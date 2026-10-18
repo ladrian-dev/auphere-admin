@@ -6,14 +6,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { slug: "", label: "Keys" },
-  { slug: "tenants", label: "Tenants" },
-  { slug: "limits", label: "Límites" },
-  { slug: "usage", label: "Uso" },
-  { slug: "wallet", label: "Consumo" },
-  { slug: "models", label: "Modelos" },
+  // Spec 031 (R4.3): fewer tabs, each one a question the operator asks.
+  { slug: "", label: "Resumen" },
+  { slug: "clients", label: "Clientes" },
+  { slug: "team", label: "Equipo" },
+  { slug: "money", label: "Dinero" },
+  { slug: "settings", label: "Configuración" },
   { slug: "knowledge", label: "Conocimiento" },
-  { slug: "receipts", label: "Recibos" },
   { slug: "audit", label: "Auditoría" },
 ] as const;
 
@@ -40,7 +39,7 @@ export function PartnerTabs({ partnerId }: { partnerId: string }) {
             : pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
-            key={tab.slug || "keys"}
+            key={tab.slug || "summary"}
             href={href}
             role="tab"
             aria-selected={active}

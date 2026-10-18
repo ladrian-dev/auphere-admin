@@ -78,8 +78,7 @@ export async function updatePartnerAction(
     const r = await backend.updatePartner(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath("/partners");
-    revalidatePath(`/partners/${partnerId}`);
-    revalidatePath(`/partners/${partnerId}/limits`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -95,7 +94,7 @@ export async function createPartnerKeyAction(
   try {
     const r = await backend.createPartnerKey(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -112,7 +111,7 @@ export async function rotatePartnerKeyAction(
       grace_hours: graceHours,
     });
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -126,7 +125,7 @@ export async function revokePartnerKeyAction(
   try {
     const r = await backend.revokePartnerKey(partnerId, keyId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -142,7 +141,7 @@ export async function linkPartnerTenantAction(
   try {
     const r = await backend.linkPartnerTenant(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/tenants`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -158,7 +157,7 @@ export async function generateReceiptAction(
   try {
     const r = await backend.generatePartnerReceipt(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/receipts`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -172,7 +171,7 @@ export async function sendReceiptAction(
   try {
     const r = await backend.sendPartnerReceipt(partnerId, invoiceId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/receipts`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -188,7 +187,7 @@ export async function rechargePartnerWallet(
   try {
     const r = await backend.rechargePartnerWallet(partnerId, qty);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/wallet`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -204,7 +203,7 @@ export async function setPartnerModels(
   try {
     const r = await backend.putPartnerModels(partnerId, modelIds);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/models`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -218,7 +217,7 @@ export async function blockPartnerLlm(
   try {
     const r = await backend.blockPartnerLlm(partnerId, blocked);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/models`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -258,7 +257,7 @@ export async function startImpersonationAction(
     );
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     await setImpersonateCookie(r.id, r.ttl_seconds);
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -273,7 +272,7 @@ export async function revokeImpersonationAction(
     const r = await backend.revokeImpersonation(sessionId, operator.id);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     await clearImpersonateCookie();
-    revalidatePath(`/partners/${r.partner_id}`);
+    revalidatePath(`/partners/${r.partner_id}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

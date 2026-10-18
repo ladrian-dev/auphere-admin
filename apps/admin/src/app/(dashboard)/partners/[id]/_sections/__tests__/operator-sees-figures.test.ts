@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const PAGE = join(__dirname, "..", "page.tsx");
+const PAGE = join(__dirname, "..", "wallet.tsx");
 
 describe("panel de operador · wallet (spec 004, R7.2)", () => {
   const source = readFileSync(PAGE, "utf8");

@@ -7,7 +7,7 @@ import { backend } from "@/lib/backend";
 import { getImpersonateSessionId } from "@/lib/impersonate";
 import { matchImpersonationBanner } from "@/lib/impersonate-cookie";
 import { getOperator } from "@/lib/session";
-import { statusLabel } from "@/lib/format";
+import { formatCents, fullDateTime, statusLabel } from "@/lib/format";
 
 import { ImpersonateBannerView } from "./impersonate-banner";
 import { PartnerTabs } from "./tabs";
@@ -78,17 +78,40 @@ export default async function PartnerLayout({
           >
             {partner.name}
           </h1>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-2">
               <StatusDot tone={STATUS_TONE[partner.status] ?? "muted"} />
               {statusLabel(partner.status)}
             </span>
-            {partner.contact_email ? (
-              <span>{partner.contact_email}</span>
-            ) : null}
+            <span className="inline-flex items-center gap-2">
+              <StatusDot tone={partner.console_enabled ? "positive" : "muted"} />
+              {partner.console_enabled ? "Consola encendida" : "Consola apagada"}
+            </span>
             <span className="font-mono text-xs">{partner.slug}</span>
           </div>
         </div>
+        {/* Spec 031 (R4.3): the facts the operator asks first, before any tab. */}
+        <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          {[
+            { term: "Clientes", detail: partner.clients_count ?? "—", href: `/partners/${partner.id}/clients` },
+            { term: "Personas", detail: partner.members_count ?? "—", href: `/partners/${partner.id}/team` },
+            { term: "Saldo disponible", detail: formatCents(partner.available_cents), href: `/partners/${partner.id}/money` },
+            { term: "Alta", detail: fullDateTime(partner.created_at), href: null },
+          ].map((f) => (
+            <div key={f.term} className="flex min-w-0 flex-col gap-1">
+              <dt className="text-xs text-muted-foreground">{f.term}</dt>
+              <dd className="truncate text-base font-semibold tabular-nums">
+                {f.href ? (
+                  <Link href={f.href} className="underline-offset-4 hover:underline">
+                    {f.detail}
+                  </Link>
+                ) : (
+                  f.detail
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
       <PartnerTabs partnerId={partner.id} />
       <Separator />
