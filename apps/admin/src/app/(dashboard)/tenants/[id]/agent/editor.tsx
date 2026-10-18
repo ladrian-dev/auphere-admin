@@ -5,17 +5,17 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
+  Badge,
+  Button,
+  Checkbox,
+  Label,
+  Textarea,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@nexus/ui";
 import type {
   AgentConfig,
   TenantConnectorStatus,
@@ -338,8 +338,7 @@ function ConnectorGroup({
             />
           ) : null}
           <span
-            className="text-[10px] font-mono uppercase text-muted-foreground truncate"
-            style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+            className="text-[10px] font-mono uppercase text-muted-foreground truncate tracking-eyebrow"
           >
             {group.label}
           </span>
@@ -355,7 +354,7 @@ function ConnectorGroup({
         {!isBaseline && installState.ctaHref ? (
           <Link
             href={installState.ctaHref(tenantId)}
-            className="text-xs text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1 shrink-0"
+            className="text-xs text-primary-deep hover:underline underline-offset-4 decoration-1 shrink-0"
           >
             {installState.ctaLabel} →
           </Link>
@@ -379,9 +378,9 @@ function ConnectorGroup({
                 checked={checked}
                 disabled={!allowed}
                 onCheckedChange={() => onToggle(tool.name, allowed)}
-                className="mt-0.5"
+                className="mt-1"
               />
-              <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="flex flex-col gap-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Tooltip>
                     <TooltipTrigger

@@ -19,8 +19,8 @@ import { Plug } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -28,9 +28,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+  Input,
+  Label,
+} from "@nexus/ui";
 
 import { connectMetaOwnedNumberAction } from "./setup-actions";
 
@@ -86,7 +86,7 @@ export function MetaConnectOwnedDialog({ tenantId }: { tenantId: string }) {
       <DialogTrigger
         render={
           <Button size="sm" variant="outline">
-            <Plug className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <Plug className="h-4 w-4" strokeWidth={1.75} />
             Conectar número propio
           </Button>
         }
@@ -105,7 +105,7 @@ export function MetaConnectOwnedDialog({ tenantId }: { tenantId: string }) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="owned-token">System User token</Label>
             <Input
               id="owned-token"
@@ -119,7 +119,7 @@ export function MetaConnectOwnedDialog({ tenantId }: { tenantId: string }) {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="owned-waba">WABA ID</Label>
               <Input
                 id="owned-waba"
@@ -130,7 +130,7 @@ export function MetaConnectOwnedDialog({ tenantId }: { tenantId: string }) {
                 disabled={busy}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="owned-pn">Phone number ID</Label>
               <Input
                 id="owned-pn"
@@ -143,7 +143,7 @@ export function MetaConnectOwnedDialog({ tenantId }: { tenantId: string }) {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="owned-catalog">Catalog ID (catálogo de Meta)</Label>
             <Input
               id="owned-catalog"

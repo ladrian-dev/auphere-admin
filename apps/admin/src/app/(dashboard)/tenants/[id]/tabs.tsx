@@ -60,7 +60,7 @@ export function TenantTabs({ tenantId }: { tenantId: string }) {
               className={cn(
                 "absolute inset-x-2 -bottom-px h-px transition-colors",
                 active
-                  ? "bg-[color:var(--color-primary)]"
+                  ? "bg-primary"
                   : "bg-transparent",
               )}
             />

@@ -114,7 +114,7 @@ export function PlaygroundShell({
       data-qa-playground-root
     >
       {/* Header */}
-      <header className="flex items-center gap-4 border-b border-border bg-card/50 px-4 py-2.5 text-sm">
+      <header className="flex items-center gap-4 border-b border-border bg-card/50 px-4 py-3 text-sm">
         <div className="flex flex-col">
           <span className="font-semibold tracking-tight">
             {headerSummary.tenantLabel}
@@ -125,7 +125,7 @@ export function PlaygroundShell({
         </div>
         <span
           aria-label="Dry run sandbox"
-          className="ml-2 rounded-full bg-[#ffe082] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#7a4f00]"
+          className="ml-2 rounded-full bg-status-warning-bg px-3 py-1 text-xs font-bold uppercase tracking-eyebrow text-status-warning-text"
         >
           Dry run
         </span>
@@ -151,8 +151,8 @@ export function PlaygroundShell({
       {/* Body */}
       <div
         className={`grid min-h-0 ${
-          inspectorOpen
-            ? "grid-cols-[260px_minmax(0,1fr)_360px]"
+ inspectorOpen
+ ? "grid-cols-[260px_minmax(0,1fr)_360px]"
             : "grid-cols-[260px_minmax(0,1fr)]"
         }`}
       >

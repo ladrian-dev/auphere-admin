@@ -6,7 +6,7 @@
  * the real layouts so the page doesn't shift on hydrate.
  */
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@nexus/ui";
 
 export function TableSkeleton({
   rows = 6,

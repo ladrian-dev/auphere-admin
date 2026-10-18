@@ -1,22 +1,20 @@
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
+  Eyebrow,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 import { GenerateReceiptForm, ResendReceiptButton } from "./receipts-client";

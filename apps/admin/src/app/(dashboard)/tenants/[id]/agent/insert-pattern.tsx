@@ -18,17 +18,17 @@ import { BookOpen, Plus, Search } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+  Input,
+} from "@nexus/ui";
 import type { PromptSnippet, PromptSnippetCategory } from "@/lib/backend";
 
 import { listPromptLibraryAction } from "./actions";
@@ -107,9 +107,9 @@ export function InsertPatternButton({
         variant="outline"
         size="sm"
         onClick={() => onOpenChange(true)}
-        className="inline-flex items-center gap-1.5"
+        className="inline-flex items-center gap-2"
       >
-        <BookOpen className="size-3.5" />
+        <BookOpen className="size-4" />
         Insertar patrón
       </Button>
 
@@ -136,7 +136,7 @@ export function InsertPatternButton({
 
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Search className="size-3.5 text-muted-foreground" />
+              <Search className="size-4 text-muted-foreground" />
               <Input
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
@@ -197,7 +197,7 @@ export function InsertPatternButton({
                         <Badge variant="outline" className="text-[10px] uppercase">
                           {s.category}
                         </Badge>
-                        <Plus className="size-3.5 text-muted-foreground" />
+                        <Plus className="size-4 text-muted-foreground" />
                       </div>
                     </div>
                     {s.description ? (

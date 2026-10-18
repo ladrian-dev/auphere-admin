@@ -14,8 +14,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { BrandMark, Wordmark } from "@/components/brand/wordmark";
 import {
+  BrandLockup,
+  BrandMark,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -23,8 +24,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -36,7 +35,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar";
+} from "@nexus/ui";
 import { logoutAction } from "@/app/(auth)/login/actions";
 import { cn } from "@/lib/utils";
 
@@ -79,8 +78,7 @@ export function AppSidebar({
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel
-            className="font-mono uppercase text-[10px]"
-            style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+            className="font-mono uppercase text-[10px] tracking-eyebrow"
           >
             Operación
           </SidebarGroupLabel>
@@ -145,9 +143,9 @@ function BrandHeader() {
       )}
     >
       {collapsed ? (
-        <BrandMark className="size-7 text-[color:var(--color-primary-deep)]" />
+        <BrandMark className="size-7 text-primary-deep" />
       ) : (
-        <Wordmark variant="horizontal" />
+        <BrandLockup />
       )}
     </div>
   );
@@ -182,12 +180,12 @@ function UserMenu({
           "transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           "focus-visible:ring-2 active:bg-sidebar-accent",
           "data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground",
-          collapsed ? "size-8 justify-center p-0" : "h-10 px-2 py-1.5",
+          collapsed ? "size-8 justify-center p-0" : "h-10 px-2 py-2",
         )}
       >
         <span
           aria-hidden="true"
-          className="grid size-6 shrink-0 place-items-center rounded-sm bg-[color:var(--color-pistachio)] text-[color:var(--color-bangladesh-green)] text-[11px] font-semibold"
+          className="grid size-6 shrink-0 place-items-center rounded-sm bg-pistachio text-bangladesh-green text-[11px] font-semibold"
         >
           {initials}
         </span>
@@ -222,8 +220,7 @@ function UserMenu({
         */}
         <DropdownMenuGroup>
           <DropdownMenuLabel
-            className="text-xs font-mono uppercase text-muted-foreground"
-            style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+            className="text-xs font-mono uppercase text-muted-foreground tracking-eyebrow"
           >
             Operador
           </DropdownMenuLabel>

@@ -1,20 +1,18 @@
-import { Eyebrow } from "@/components/brand/eyebrow";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
+  Eyebrow,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import {
   backend,
   type AgentConfig,

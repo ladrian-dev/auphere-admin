@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@nexus/ui";
 
 /** Error boundary scoped to the partner detail — keeps la shell y el
  *  resto del panel operativos si solo falla este segmento. */

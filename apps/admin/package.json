@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "prelint": "pnpm build:packages",
-    "lint": "eslint",
+    "lint": "eslint --max-warnings 0",
     "pretypecheck": "pnpm build:packages",
     "typecheck": "tsc --noEmit",
     "pretest": "pnpm build:packages",

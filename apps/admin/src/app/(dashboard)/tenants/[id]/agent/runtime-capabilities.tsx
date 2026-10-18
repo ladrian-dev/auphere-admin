@@ -3,11 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Label } from "@nexus/ui";
 import type {
   AgentConfig,
   AvailableSkill,
@@ -321,7 +317,7 @@ function ToggleRow({
         checked={checked}
         onCheckedChange={(v) => onChange(v === true)}
         disabled={disabled}
-        className="mt-0.5"
+        className="mt-1"
       />
       <div className="flex-1">
         <Label
@@ -332,7 +328,7 @@ function ToggleRow({
         >
           {label}
         </Label>
-        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
       </div>
     </div>
   );
@@ -393,7 +389,7 @@ function SkillsPicker({
                     onToggleSkill(skill.skill_id, skill.name)
                   }
                   disabled={rowDisabled}
-                  className="mt-0.5"
+                  className="mt-1"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
@@ -415,7 +411,7 @@ function SkillsPicker({
                     {skill.description || "(sin descripción)"}
                   </p>
                   {!uploaded && (
-                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    <p className="mt-1 text-xs text-status-warning-text ">
                       Antes de asignar, correr{" "}
                       <code>
                         uv run python apps/worker/scripts/upload_skill.py --skill{" "}
@@ -463,7 +459,7 @@ function ChannelGatePicker({
           </span>
         )}
       </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-2">
         {KNOWN_CHANNELS.map(({ id, label }) => {
           const isOn = selected.includes(id);
           return (
@@ -474,7 +470,7 @@ function ChannelGatePicker({
               onClick={() => onToggle(skillId, id)}
               data-testid={`channel-toggle-${skillId}-${id}`}
               className={
-                "rounded-full border px-2.5 py-0.5 text-xs transition-colors " +
+                "rounded-full border px-3 py-1 text-xs transition-colors " +
                 (isOn
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-input bg-background hover:bg-muted") +

@@ -7,8 +7,8 @@ import { z } from "zod";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Form,
   FormControl,
   FormDescription,
@@ -16,15 +16,13 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import {
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@nexus/ui";
 import {
   BusinessHoursPicker,
   type BusinessHoursValue,
@@ -111,10 +109,9 @@ function Section({
 }) {
   return (
     <section className="grid gap-6 border-t border-border pt-8 first:border-t-0 first:pt-0 md:grid-cols-[minmax(0,200px)_1fr] md:gap-x-10">
-      <header className="flex flex-col gap-1.5">
+      <header className="flex flex-col gap-2">
         <h2
-          className="text-[10px] font-mono uppercase text-muted-foreground"
-          style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+          className="text-[10px] font-mono uppercase text-muted-foreground tracking-eyebrow"
         >
           {title}
         </h2>
@@ -238,13 +235,13 @@ export function NewTenantWizard() {
                     className="font-mono"
                   />
                 </FormControl>
-                <FormDescription className="flex items-center gap-1.5">
+                <FormDescription className="flex items-center gap-2">
                   Identificador URL-safe del cliente.
                   {slugStatus.kind === "checking" && (
                     <span className="text-muted-foreground">Verificando…</span>
                   )}
                   {slugStatus.kind === "available" && (
-                    <span className="text-[color:var(--color-primary-deep)]">
+                    <span className="text-primary-deep">
                       Disponible.
                     </span>
                   )}

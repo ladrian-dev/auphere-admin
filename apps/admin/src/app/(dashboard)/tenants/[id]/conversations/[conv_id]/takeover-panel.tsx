@@ -24,18 +24,18 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+  Input,
+  Label,
+  Textarea,
+} from "@nexus/ui";
 import type { TakeoverContext } from "@/lib/backend";
 
 import {
@@ -162,7 +162,7 @@ export function TakeoverPanel({
 
       {/* Active-takeover banner */}
       {!agentActive && takeoverContext ? (
-        <div className="rounded-md border border-amber-300/40 bg-amber-50/40 dark:bg-amber-950/20 px-4 py-3 text-sm grid gap-1">
+        <div className="rounded-md border border-status-warning-border bg-status-warning-bg px-4 py-3 text-sm grid gap-1">
           <strong>Operador en control de este thread.</strong>
           {takeoverContext.reason ? (
             <div>

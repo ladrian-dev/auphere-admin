@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button, Input } from "@nexus/ui";
 
 import { rechargePartnerWallet } from "../../actions";
 
@@ -45,7 +44,7 @@ export function RechargeWalletForm({ partnerId }: { partnerId: string }) {
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">Qty purchased</span>
         <Input
           type="number"

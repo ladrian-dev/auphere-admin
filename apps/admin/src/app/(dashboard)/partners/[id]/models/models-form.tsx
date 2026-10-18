@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Checkbox } from "@/components/ui/checkbox";
+import { Checkbox } from "@nexus/ui";
 import type { PartnerModelItemOut } from "@/lib/backend";
 
 import { setPartnerModels } from "../../actions";

@@ -4,16 +4,7 @@ import Link from "next/link";
 import { useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@nexus/ui";
 import type { AuphereOwnerChannelOut } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 
@@ -181,7 +172,7 @@ function ChannelRow({
             type="button"
             onClick={onClearDefault}
             disabled={pending}
-            className="text-amber-600 hover:text-amber-700"
+            className="text-status-warning-text hover:text-status-warning-text"
             aria-label="Default — click para desmarcar"
             title="Default — click para desmarcar"
           >
@@ -192,7 +183,7 @@ function ChannelRow({
             type="button"
             onClick={onPromoteDefault}
             disabled={pending || !channel.active}
-            className="text-muted-foreground hover:text-amber-600 disabled:opacity-30"
+            className="text-muted-foreground hover:text-status-warning-text disabled:opacity-30"
             aria-label="Marcar como default"
             title="Marcar como default"
           >

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@nexus/ui";
 import type { TicketStatus } from "@/lib/backend";
 
 import { patchTicketStatus } from "../../partners/actions";
@@ -44,7 +44,7 @@ export function TicketStatusForm({
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">Estado</span>
         <select
           value={next}

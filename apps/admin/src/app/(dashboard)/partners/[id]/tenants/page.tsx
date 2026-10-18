@@ -1,21 +1,19 @@
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
+  Eyebrow,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 

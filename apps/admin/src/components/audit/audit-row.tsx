@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@nexus/ui";
 import type { AuditLogOut } from "@/lib/backend";
 import { fullDateTime } from "@/lib/format";
 
@@ -125,8 +125,8 @@ function SidePanelHeader({
 }) {
   const cls =
     tone === "added"
-      ? "text-emerald-700 dark:text-emerald-300"
-      : "text-red-700 dark:text-red-300";
+      ? "text-status-positive-text "
+      : "text-status-danger-text ";
   return (
     <span
       className={

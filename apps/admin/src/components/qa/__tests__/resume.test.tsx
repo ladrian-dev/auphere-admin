@@ -40,10 +40,10 @@ import type { QAThread } from "@/lib/qa-api";
 // not rendering. The visual contract is covered by the gallery + the
 // dedicated tests inside the packages themselves.
 vi.mock("@nexus/ucm-render-web", () => ({
-  UCMRenderer: ({ ucm }: { ucm: unknown }) => null,
+  UCMRenderer: () => null,
 }));
 vi.mock("@nexus/ucm-preview-whatsapp", () => ({
-  WhatsAppPreview: ({ ucm }: { ucm: unknown }) => null,
+  WhatsAppPreview: () => null,
 }));
 
 import { PlaygroundShell } from "../playground-shell";

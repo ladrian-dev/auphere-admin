@@ -4,9 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button, Input, Textarea } from "@nexus/ui";
 
 import { startImpersonationAction } from "../actions";
 
@@ -44,7 +42,7 @@ export function ImpersonateForm({ partnerId }: { partnerId: string }) {
 
   return (
     <div className="grid gap-3 md:grid-cols-[1fr_8rem_auto] md:items-end">
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">Motivo (mín. 8)</span>
         <Textarea
           value={reason}
@@ -53,7 +51,7 @@ export function ImpersonateForm({ partnerId }: { partnerId: string }) {
           rows={2}
         />
       </label>
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">TTL (s)</span>
         <Input
           type="number"

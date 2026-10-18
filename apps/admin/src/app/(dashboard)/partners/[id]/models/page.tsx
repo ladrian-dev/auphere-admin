@@ -1,13 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow } from "@nexus/ui";
 import { BackendError, backend } from "@/lib/backend";
 
 import { BlockLlmForm } from "./block-form";

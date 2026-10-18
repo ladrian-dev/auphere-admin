@@ -3,23 +3,21 @@
 import { useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import type {
   AuphereOwnerChannelOut,
   OwnerPhoneIndexOut,
@@ -190,7 +188,7 @@ function OwnerRow({
             ))}
             {/* Show stale pin if the pinned channel was deactivated. */}
             {pinnedChannel === null && owner.auphere_channel_id ? (
-              <SelectItem value={owner.auphere_channel_id} className="text-xs text-amber-700">
+              <SelectItem value={owner.auphere_channel_id} className="text-xs text-status-warning-text">
                 (canal eliminado)
               </SelectItem>
             ) : null}

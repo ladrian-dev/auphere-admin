@@ -164,7 +164,7 @@ function ThreadView({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 overflow-y-auto px-4 py-6">
         {messages.length === 0 ? (
-          <div className="mx-auto max-w-md rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          <div className="mx-auto max-w-md rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             <strong className="block text-foreground">
               Conversación lista
             </strong>
@@ -222,7 +222,7 @@ function ThreadView({
           <button
             type="submit"
             disabled={!composer.trim()}
-            className="rounded bg-[color:var(--color-primary)] px-4 py-2 text-sm font-medium text-[color:var(--color-on-primary,#fff)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
           >
             Enviar
           </button>
@@ -241,7 +241,7 @@ function UserBubble({ message }: { message: ThreadUserMessage }) {
     .map((p) => (p as { text: string }).text)
     .join("");
   return (
-    <div className="self-end max-w-[80%] rounded-2xl rounded-br-sm bg-[color:var(--color-primary)] px-4 py-2 text-sm text-[color:var(--color-on-primary,#fff)]">
+    <div className="self-end max-w-[80%] rounded-md rounded-br-sm bg-primary px-4 py-2 text-sm text-primary-foreground">
       {text}
     </div>
   );
@@ -276,12 +276,12 @@ function AssistantBubble({
         />
       ))}
       {error && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           <strong>Error:</strong> {error}
         </div>
       )}
       {cancelled && (
-        <div className="rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
           Cancelado por el operator.
         </div>
       )}
@@ -301,7 +301,7 @@ function AssistantPart({
   if (part.type === "text") {
     if (!part.text) return null;
     return (
-      <div className="self-start max-w-[80%] rounded-2xl rounded-bl-sm bg-muted px-4 py-2 text-sm whitespace-pre-wrap">
+      <div className="self-start max-w-[80%] rounded-md rounded-bl-sm bg-muted px-4 py-2 text-sm whitespace-pre-wrap">
         {part.text}
       </div>
     );
@@ -309,7 +309,7 @@ function AssistantPart({
   if (part.type === "reasoning") {
     if (!part.text) return null;
     return (
-      <details className="self-start max-w-[80%] rounded-lg border border-dashed border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+      <details className="self-start max-w-[80%] rounded-md border border-dashed border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground">
         <summary className="cursor-pointer select-none text-[11px] uppercase tracking-wide">
           Razonamiento
         </summary>
@@ -321,15 +321,15 @@ function AssistantPart({
   }
   if (part.type === "tool-call") {
     return (
-      <div className="self-start max-w-[80%] rounded-lg border border-border bg-card/30 px-3 py-2 text-xs">
+      <div className="self-start max-w-[80%] rounded-md border border-border bg-card/30 px-3 py-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="font-mono font-medium">{part.toolName}</span>
           {part.result !== undefined ? (
-            <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800">
+            <span className="rounded bg-status-positive-bg px-2 py-1 text-[10px] font-medium text-status-positive-text">
               done
             </span>
           ) : (
-            <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800">
+            <span className="rounded bg-status-warning-bg px-2 py-1 text-[10px] font-medium text-status-warning-text">
               running…
             </span>
           )}
@@ -355,7 +355,7 @@ function AssistantPart({
   if (part.type === "data" && part.name === "audit") {
     const audit = part.data as { tool_name?: string; blocked_reason?: string };
     return (
-      <div className="self-start max-w-[80%] rounded-lg border border-dashed border-[#ffe082] bg-[#fff8e1] px-3 py-1.5 text-[11px] text-[#7a4f00]">
+      <div className="self-start max-w-[80%] rounded-md border border-dashed border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs text-status-warning-text">
         Dry-run intercepted{" "}
         <code className="font-mono">{audit.tool_name}</code>{" "}
         ({audit.blocked_reason ?? "blocked"})
@@ -367,7 +367,7 @@ function AssistantPart({
 
 function PendingBubble() {
   return (
-    <div className="self-start max-w-[80%] rounded-2xl rounded-bl-sm bg-muted px-4 py-2 text-sm text-muted-foreground italic">
+    <div className="self-start max-w-[80%] rounded-md rounded-bl-sm bg-muted px-4 py-2 text-sm text-muted-foreground italic">
       El agente está pensando…
     </div>
   );
@@ -375,7 +375,7 @@ function PendingBubble() {
 
 function ChannelHintFooter({ channel }: { channel: ChannelKind }) {
   return (
-    <div className="border-t border-border bg-card/20 px-3 py-1.5 text-[10px] text-muted-foreground">
+    <div className="border-t border-border bg-card/20 px-3 py-2 text-[10px] text-muted-foreground">
       Preview activo: <strong className="uppercase">{channel}</strong>. Las
       respuestas se re-renderizan al cambiar el canal — sin re-ejecutar
       el turno.

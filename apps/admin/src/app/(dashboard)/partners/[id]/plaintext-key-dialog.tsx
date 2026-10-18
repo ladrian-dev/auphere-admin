@@ -4,16 +4,18 @@ import { useState } from "react";
 import { Check, Copy, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@nexus/ui";
 import type { PartnerApiKeyCreatedOut } from "@/lib/backend";
 
 /**

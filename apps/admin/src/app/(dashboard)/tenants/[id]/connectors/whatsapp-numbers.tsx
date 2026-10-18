@@ -22,31 +22,27 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { StatusDot } from "@/components/brand/status-dot";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+  StatusDot,
+} from "@nexus/ui";
 import type { ChannelOut } from "@/lib/backend";
 import {
   channelAgentEnabled,
@@ -122,7 +118,7 @@ export function WhatsAppNumbers({
           {sendsBlocked ? (
             <div
               role="alert"
-              className="rounded-md border border-[color:var(--color-status-warning)]/40 bg-[color:var(--color-status-warning)]/8 px-3 py-2 text-sm"
+              className="rounded-md border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm"
             >
               Ningún número está marcado como línea de notificaciones. Hasta que
               asignes uno, los recordatorios y los envíos por plantilla se van a
@@ -204,7 +200,7 @@ function NumberRow({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2.5">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-3">
       <StatusDot tone={STATUS_TONE[channel.status]} className="shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate font-mono text-sm">{phoneOf(channel)}</p>
@@ -233,7 +229,7 @@ function NumberRow({
             }
           >
             <SelectTrigger
-              className="h-8 w-[230px] text-xs"
+              className="h-8 w-56 text-xs"
               aria-label={`Rol de ${phoneOf(channel)}`}
             >
               {/* base-ui renders the raw value unless it is given a formatter,

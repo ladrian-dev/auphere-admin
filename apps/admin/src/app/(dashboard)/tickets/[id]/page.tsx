@@ -1,24 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { PageHeader } from "@/components/brand/page-header";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
+  Eyebrow,
+  PageHeader,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 

@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { StatusDot } from "@/components/brand/status-dot";
-import { Separator } from "@/components/ui/separator";
+import { Eyebrow, Separator, StatusDot } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { getImpersonateSessionId } from "@/lib/impersonate";
 import { matchImpersonationBanner } from "@/lib/impersonate-cookie";
@@ -62,8 +60,7 @@ export default async function PartnerLayout({
       <div className="flex flex-col gap-2">
         <nav
           aria-label="Migas"
-          className="flex items-center gap-2 text-xs font-mono uppercase text-muted-foreground"
-          style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+          className="flex items-center gap-2 text-xs font-mono uppercase text-muted-foreground tracking-eyebrow"
         >
           <Link
             href="/partners"
@@ -77,8 +74,7 @@ export default async function PartnerLayout({
         <div className="flex flex-col gap-2">
           <Eyebrow>Partner</Eyebrow>
           <h1
-            className="text-2xl md:text-3xl font-semibold leading-tight"
-            style={{ letterSpacing: "var(--tracking-tight)" }}
+            className="text-2xl md:text-3xl font-semibold leading-tight tracking-tight"
           >
             {partner.name}
           </h1>

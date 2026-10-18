@@ -20,8 +20,8 @@ import { Send } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -29,9 +29,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+  Input,
+  Label,
+} from "@nexus/ui";
 
 import { metaTestSendAction } from "./setup-actions";
 
@@ -94,7 +94,7 @@ export function MetaTestSendDialog({ tenantId }: { tenantId: string }) {
       <DialogTrigger
         render={
           <Button size="sm" variant="outline">
-            <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <Send className="h-4 w-4" strokeWidth={1.75} />
             Enviar prueba
           </Button>
         }
@@ -111,7 +111,7 @@ export function MetaTestSendDialog({ tenantId }: { tenantId: string }) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="meta-test-to">Número destino (E.164)</Label>
             <Input
               id="meta-test-to"
@@ -160,7 +160,7 @@ export function MetaTestSendDialog({ tenantId }: { tenantId: string }) {
 
           {kind === "template" ? (
             <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="meta-test-tpl">Template</Label>
                 <Input
                   id="meta-test-tpl"
@@ -169,7 +169,7 @@ export function MetaTestSendDialog({ tenantId }: { tenantId: string }) {
                   disabled={busy}
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="meta-test-lang">Idioma</Label>
                 <Input
                   id="meta-test-lang"
@@ -179,14 +179,14 @@ export function MetaTestSendDialog({ tenantId }: { tenantId: string }) {
                 />
               </div>
               {templateName.trim() === "hello_world" ? (
-                <p className="col-span-2 text-[11px] leading-snug text-[color:var(--color-status-warning)]">
+                <p className="col-span-2 text-[11px] leading-snug text-status-warning-text">
                   <code>hello_world</code> falla en números productivos (error
                   Meta #131058). Cámbialo por un template aprobado del tenant.
                 </p>
               ) : null}
             </div>
           ) : (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="meta-test-body">Cuerpo del mensaje</Label>
               <Input
                 id="meta-test-body"

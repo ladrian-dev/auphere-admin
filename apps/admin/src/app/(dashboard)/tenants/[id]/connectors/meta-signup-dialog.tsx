@@ -15,15 +15,15 @@ import { CheckCircle2, Smartphone } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@nexus/ui";
 import {
   META_CONFIG_ID_CLOUD_API,
   META_CONFIG_ID_COEXISTENCE,
@@ -182,14 +182,14 @@ function OptionCard({
   return (
     <div
       className={[
-        "relative flex flex-col gap-4 rounded-xl border p-5 transition",
+        "relative flex flex-col gap-4 rounded-md border p-5 transition",
         highlighted
           ? "border-primary/40 bg-primary/[0.02]"
           : "border-border bg-card hover:border-border/80",
       ].join(" ")}
     >
       {badge ? (
-        <span className="absolute right-4 top-4 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
+        <span className="absolute right-4 top-4 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-primary">
           {badge}
         </span>
       ) : null}

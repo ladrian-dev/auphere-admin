@@ -1,17 +1,17 @@
 import Link from "next/link";
 
-import { PageHeader } from "@/components/brand/page-header";
-import { StatusDot } from "@/components/brand/status-dot";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
+  PageHeader,
+  StatusDot,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { relativeTime, statusLabel } from "@/lib/format";
 
@@ -103,7 +103,7 @@ export default async function PartnersPage() {
                   <TableCell>
                     <Link
                       href={`/partners/${partner.id}`}
-                      className="flex flex-col gap-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      className="flex flex-col gap-1 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                     >
                       <span className="font-medium">{partner.name}</span>
                       <span className="text-xs font-mono text-muted-foreground">

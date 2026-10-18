@@ -57,7 +57,7 @@ export function PartnerTabs({ partnerId }: { partnerId: string }) {
               aria-hidden="true"
               className={cn(
                 "absolute inset-x-2 -bottom-px h-px transition-colors",
-                active ? "bg-[color:var(--color-primary)]" : "bg-transparent",
+                active ? "bg-primary" : "bg-transparent",
               )}
             />
           </Link>

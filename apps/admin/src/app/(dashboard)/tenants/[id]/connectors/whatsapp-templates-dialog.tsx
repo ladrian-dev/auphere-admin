@@ -14,21 +14,21 @@ import { LayoutTemplate, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
+  Input,
+  Label,
+  Separator,
+  Skeleton,
+  Textarea,
+} from "@nexus/ui";
 import type { WhatsAppTemplate } from "@/lib/backend";
 
 import {
@@ -39,13 +39,13 @@ import {
 
 const STATUS_TONE: Record<string, string> = {
   APPROVED:
-    "border-[color:var(--color-status-positive)]/30 text-[color:var(--color-status-positive)]",
+    "border-status-positive-border text-status-positive-text",
   PENDING:
-    "border-[color:var(--color-status-warning)]/30 text-[color:var(--color-status-warning)]",
+    "border-status-warning-border text-status-warning-text",
   REJECTED:
-    "border-[color:var(--color-status-danger)]/30 text-[color:var(--color-status-danger)]",
+    "border-status-danger-border text-status-danger-text",
   PAUSED:
-    "border-[color:var(--color-status-warning)]/30 text-[color:var(--color-status-warning)]",
+    "border-status-warning-border text-status-warning-text",
   DISABLED: "text-muted-foreground",
 };
 
@@ -151,7 +151,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
       <DialogTrigger
         render={
           <Button variant="outline" size="sm">
-            <LayoutTemplate className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <LayoutTemplate className="h-4 w-4" strokeWidth={1.75} />
             Plantillas
           </Button>
         }
@@ -174,7 +174,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
             onClick={() => void refresh()}
             disabled={loading}
           >
-            <RefreshCw className="mr-1.5 size-3.5" />
+            <RefreshCw className="mr-2 size-4" />
             Actualizar
           </Button>
           <Button
@@ -182,7 +182,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
             size="sm"
             onClick={() => setShowForm((v) => !v)}
           >
-            <Plus className="mr-1.5 size-3.5" />
+            <Plus className="mr-2 size-4" />
             Nueva plantilla
           </Button>
         </div>
@@ -193,7 +193,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
             className="grid gap-3 rounded-md border border-border bg-card p-4"
           >
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="grid gap-1.5">
+              <div className="grid gap-2">
                 <Label htmlFor="tpl-name">Nombre</Label>
                 <Input
                   id="tpl-name"
@@ -204,7 +204,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                   autoComplete="off"
                 />
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid gap-2">
                 <Label htmlFor="tpl-lang">Idioma</Label>
                 <Input
                   id="tpl-lang"
@@ -214,7 +214,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                   className="font-mono"
                 />
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid gap-2">
                 <Label htmlFor="tpl-cat">Categoría</Label>
                 <select
                   id="tpl-cat"
@@ -228,7 +228,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                 </select>
               </div>
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label htmlFor="tpl-body">Texto del mensaje</Label>
               <Textarea
                 id="tpl-body"
@@ -265,7 +265,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
             <Skeleton className="h-14 w-full" />
           </div>
         ) : loadError ? (
-          <div className="rounded-md border border-[color:var(--color-status-danger)]/30 p-4 text-sm">
+          <div className="rounded-md border border-status-danger-border p-4 text-sm">
             <p className="font-medium">No se pudieron cargar las plantillas</p>
             <p className="mt-1 text-muted-foreground">{loadError}</p>
             <Button
@@ -323,7 +323,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                     disabled={deleting === tpl.name}
                     onClick={() => void onDelete(tpl.name)}
                   >
-                    <Trash2 className="size-3.5 text-muted-foreground" />
+                    <Trash2 className="size-4 text-muted-foreground" />
                   </Button>
                 </li>
               );

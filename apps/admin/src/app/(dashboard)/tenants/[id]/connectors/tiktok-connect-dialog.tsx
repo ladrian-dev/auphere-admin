@@ -25,8 +25,8 @@ import { ArrowUpRight, Clock, MessageCircleOff } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -34,7 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@nexus/ui";
 
 import { tiktokAuthorizeUrlAction } from "./setup-actions";
 
@@ -87,7 +87,7 @@ export function TikTokConnectDialog({ tenantId, alreadyConnected = false }: Prop
         <ul className="grid gap-3 text-sm">
           <li className="flex gap-3">
             <MessageCircleOff
-              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+              className="mt-1 size-4 shrink-0 text-muted-foreground"
               aria-hidden="true"
             />
             <span>
@@ -98,7 +98,7 @@ export function TikTokConnectDialog({ tenantId, alreadyConnected = false }: Prop
           </li>
           <li className="flex gap-3">
             <Clock
-              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+              className="mt-1 size-4 shrink-0 text-muted-foreground"
               aria-hidden="true"
             />
             <span>

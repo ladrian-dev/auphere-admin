@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@nexus/ui";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 

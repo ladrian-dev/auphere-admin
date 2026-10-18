@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button, Input } from "@nexus/ui";
 import type {
   BillingPlanOut,
   PartnerOut,
@@ -112,7 +111,7 @@ export function BillingForm({
 
   return (
     <div className="grid gap-5 max-w-xl">
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">Partner</span>
         <select
           value={partnerId}
@@ -128,7 +127,7 @@ export function BillingForm({
         </select>
       </label>
 
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">Plan de suscripción</span>
         <select
           value={planId}
@@ -185,7 +184,7 @@ export function BillingForm({
         </div>
       )}
 
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">
           Precio negociado (USD/mes, opcional)
         </span>
@@ -200,7 +199,7 @@ export function BillingForm({
         </span>
       </label>
 
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">
           Inicio de facturación (opcional)
         </span>

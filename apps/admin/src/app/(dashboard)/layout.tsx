@@ -1,9 +1,4 @@
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+import { Separator, SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 import { AppSidebar } from "@/components/shell/app-sidebar";
 import { requireOperator } from "@/lib/session";
 
@@ -20,7 +15,7 @@ export default async function DashboardLayout({
         user={{ name: operator.display_name ?? operator.email, email: operator.email }}
       />
       <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-[color:var(--color-bg)]/85 backdrop-blur supports-[backdrop-filter]:bg-[color:var(--color-bg)]/60 px-4">
+        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           {/* Per-page breadcrumbs are rendered by the page itself via

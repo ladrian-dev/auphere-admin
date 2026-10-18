@@ -1,16 +1,16 @@
 import Link from "next/link";
 
-import { PageHeader } from "@/components/brand/page-header";
-import { StatusDot } from "@/components/brand/status-dot";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
+  PageHeader,
+  StatusDot,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
 import {
@@ -95,7 +95,7 @@ export default async function SignupsPage() {
                     {s.partner ? (
                       <Link
                         href={`/partners/${s.partner.id}`}
-                        className="flex min-w-0 flex-col gap-0.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="flex min-w-0 flex-col gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <span className="truncate font-medium">{s.partner.name}</span>
                         <span className="truncate font-mono text-xs text-muted-foreground">

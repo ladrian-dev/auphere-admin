@@ -3,17 +3,17 @@ import { notFound } from "next/navigation";
 
 import { ConnectorAuthBadge } from "@/components/brand/connector-auth-badge";
 import { ConnectorLogo } from "@/components/brand/connector-logo";
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { StatusDot } from "@/components/brand/status-dot";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+  Eyebrow,
+  Separator,
+  StatusDot,
+} from "@nexus/ui";
 import {
   backend,
   type Connector,
@@ -79,9 +79,9 @@ type CallbackTone = "positive" | "warning" | "danger";
 // The status colours live as CSS custom properties, not as Tailwind colour
 // utilities — ``border-positive`` would silently render borderless.
 const TIKTOK_CALLBACK_BORDER: Record<CallbackTone, string> = {
-  positive: "border-[color:var(--color-status-positive)]",
-  warning: "border-[color:var(--color-status-warning)]",
-  danger: "border-[color:var(--color-status-danger)]",
+  positive: "border-status-positive-border",
+  warning: "border-status-warning-border",
+  danger: "border-status-danger-border",
 };
 
 const TIKTOK_CALLBACK_MESSAGE: Record<
@@ -156,7 +156,7 @@ export default async function TenantConnectorsPage({
           className={TIKTOK_CALLBACK_BORDER[tiktokCallback.tone]}
         >
           <CardContent className="flex items-start gap-3 py-4 text-sm">
-            <StatusDot tone={tiktokCallback.tone} className="mt-1.5 shrink-0" />
+            <StatusDot tone={tiktokCallback.tone} className="mt-2 shrink-0" />
             <span>{tiktokCallback.text}</span>
           </CardContent>
         </Card>
@@ -484,8 +484,7 @@ function Stat({
   return (
     <div className="flex flex-col gap-1">
       <span
-        className="text-[10px] font-mono uppercase text-muted-foreground"
-        style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+        className="text-[10px] font-mono uppercase text-muted-foreground tracking-eyebrow"
       >
         {label}
       </span>

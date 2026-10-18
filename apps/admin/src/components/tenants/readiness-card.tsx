@@ -1,15 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, Check, X } from "lucide-react";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { StatusDot } from "@/components/brand/status-dot";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow, StatusDot } from "@nexus/ui";
 import type { ReadinessItem, ReadinessOut, ReadinessStatus } from "@/lib/backend";
 import { cn } from "@/lib/utils";
 
@@ -22,9 +14,9 @@ const STATUS_TONE: Record<ReadinessStatus, DotTone> = {
 };
 
 const STATUS_TEXT: Record<ReadinessStatus, string> = {
-  ok: "text-[color:var(--color-status-positive)]",
-  warning: "text-[color:var(--color-status-warning)]",
-  blocker: "text-[color:var(--color-status-danger)]",
+  ok: "text-status-positive-text",
+  warning: "text-status-warning-text",
+  blocker: "text-status-danger-text",
 };
 
 function StatusIcon({ status }: { status: ReadinessStatus }) {
@@ -74,7 +66,7 @@ export function ReadinessCard({
       <CardHeader className="flex flex-row items-start gap-3">
         <StatusDot
           tone={readiness.ready ? "positive" : "danger"}
-          className="mt-1.5"
+          className="mt-2"
         />
         <div className="min-w-0">
           <Eyebrow>Estado</Eyebrow>
@@ -107,7 +99,7 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
   return (
     <li className="flex items-start gap-3 bg-card px-4 py-3">
       <StatusIcon status={item.status} />
-      <div className="grid min-w-0 flex-1 gap-0.5">
+      <div className="grid min-w-0 flex-1 gap-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-foreground">
             {item.label}
@@ -120,7 +112,7 @@ function ReadinessRow({ item }: { item: ReadinessItem }) {
         {item.action_href ? (
           <Link
             href={item.action_href}
-            className="mt-0.5 w-fit text-sm text-[color:var(--color-primary-deep)] underline-offset-4 decoration-1 hover:underline"
+            className="mt-1 w-fit text-sm text-primary-deep underline-offset-4 decoration-1 hover:underline"
           >
             {item.action_label ?? "Resolver"} →
           </Link>

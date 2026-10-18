@@ -1,16 +1,16 @@
 import Link from "next/link";
 
-import { PageHeader } from "@/components/brand/page-header";
-import { StatusDot } from "@/components/brand/status-dot";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
+  PageHeader,
+  StatusDot,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 
@@ -109,7 +109,7 @@ export default async function TicketsPage() {
                     <div className="flex flex-col gap-1">
                       <Link
                         href={`/partners/${ticket.partner_id}`}
-                        className="flex flex-col gap-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        className="flex flex-col gap-1 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                       >
                         <span className="font-medium">{ticket.partner_name}</span>
                         <span className="text-xs font-mono text-muted-foreground">
@@ -133,7 +133,7 @@ export default async function TicketsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="flex flex-col gap-0.5">
+                    <span className="flex flex-col gap-1">
                       <span className="font-mono text-xs">{ticket.topic}</span>
                       <Badge variant="outline" className="w-fit">
                         {ticket.category}

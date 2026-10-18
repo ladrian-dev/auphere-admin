@@ -1,14 +1,7 @@
 import Link from "next/link";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow } from "@nexus/ui";
 import { ReadinessCard } from "@/components/tenants/readiness-card";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { backend } from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
 import { qaApi, type QAThread } from "@/lib/qa-api";
@@ -92,7 +85,7 @@ export default async function TenantOverview({
           />
           <Link
             href={`/tenants/${tenant.id}/agent`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
+            className="text-sm text-primary-deep hover:underline underline-offset-4 decoration-1"
           >
             Editar agente →
           </Link>
@@ -112,19 +105,19 @@ export default async function TenantOverview({
         <CardContent className="grid gap-3 text-sm">
           <Link
             href={`/tenants/${tenant.id}/conversations`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
+            className="text-sm text-primary-deep hover:underline underline-offset-4 decoration-1"
           >
             Ver conversaciones en vivo →
           </Link>
           <Link
             href={`/tenants/${tenant.id}/connectors`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
+            className="text-sm text-primary-deep hover:underline underline-offset-4 decoration-1"
           >
             Estado de connectors →
           </Link>
           <Link
             href={`/tenants/${tenant.id}/isolation`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
+            className="text-sm text-primary-deep hover:underline underline-offset-4 decoration-1"
           >
             Garantías de aislamiento →
           </Link>
@@ -145,7 +138,7 @@ export default async function TenantOverview({
           </div>
           <Link
             href={`/qa/${tenant.id}/chat`}
-            className="inline-flex items-center justify-center rounded-md bg-[color:var(--color-primary)] px-4 py-2 text-sm font-medium text-[color:var(--color-on-primary,#fff)] hover:opacity-90"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             Abrir Playground →
           </Link>
@@ -194,8 +187,7 @@ function Row({
 }) {
   return (
     <div className="grid grid-cols-[1fr_2fr] items-baseline gap-3 border-b border-border last:border-b-0 pb-2 last:pb-0">
-      <span className="text-xs font-mono uppercase text-muted-foreground"
-        style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+      <span className="text-xs font-mono uppercase text-muted-foreground tracking-eyebrow"
       >
         {label}
       </span>

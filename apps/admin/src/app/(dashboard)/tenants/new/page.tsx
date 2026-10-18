@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/brand/page-header";
+import { PageHeader } from "@nexus/ui";
 
 import { NewTenantWizard } from "./wizard-form";
 

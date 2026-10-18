@@ -1,11 +1,4 @@
-import { Eyebrow } from "@/components/brand/eyebrow";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 import {

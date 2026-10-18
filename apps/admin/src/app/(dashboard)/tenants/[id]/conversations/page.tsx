@@ -1,22 +1,20 @@
 import Link from "next/link";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { StatusDot } from "@/components/brand/status-dot";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
+  Eyebrow,
+  StatusDot,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { fullDateTime, relativeTime, statusLabel } from "@/lib/format";
 
@@ -114,7 +112,7 @@ export default async function ConversationsPage({
                         <span className="font-mono text-sm flex items-center gap-2">
                           {conv.id.slice(0, 8)}
                           {conv.provider ? (
-                            <span className="rounded-sm border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                            <span className="rounded-sm border border-border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                               {conv.provider}
                             </span>
                           ) : null}

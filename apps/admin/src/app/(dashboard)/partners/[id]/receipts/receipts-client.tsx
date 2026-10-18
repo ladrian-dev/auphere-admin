@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button, Input } from "@nexus/ui";
 
 import { generateReceiptAction, sendReceiptAction } from "../../actions";
 
@@ -72,7 +71,7 @@ export function GenerateReceiptForm({ partnerId }: { partnerId: string }) {
 
   return (
     <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto_auto] md:items-end">
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">Mes</span>
         <select
           value={month}
@@ -86,7 +85,7 @@ export function GenerateReceiptForm({ partnerId }: { partnerId: string }) {
           ))}
         </select>
       </label>
-      <label className="grid gap-1.5 text-sm">
+      <label className="grid gap-2 text-sm">
         <span className="text-muted-foreground">Año</span>
         <Input
           value={year}

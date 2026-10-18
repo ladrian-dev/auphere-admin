@@ -1,16 +1,16 @@
 import { ConnectorAuthBadge } from "@/components/brand/connector-auth-badge";
 import { ConnectorLogo } from "@/components/brand/connector-logo";
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { PageHeader } from "@/components/brand/page-header";
-import { StatusDot } from "@/components/brand/status-dot";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+  Eyebrow,
+  PageHeader,
+  StatusDot,
+} from "@nexus/ui";
 import { backend, type Connector } from "@/lib/backend";
 
 export const metadata = { title: "Connectors" };

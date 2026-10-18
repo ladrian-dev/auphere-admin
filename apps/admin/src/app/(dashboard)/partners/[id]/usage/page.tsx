@@ -1,22 +1,20 @@
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
+  Eyebrow,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 const WINDOW_DAYS = 30;
@@ -133,10 +131,10 @@ export default async function PartnerUsagePage({
                       </TableCell>
                       <TableCell>
                         {client.whatsapp_connected ? (
-                          <span className="inline-flex items-center gap-1.5 text-sm">
+                          <span className="inline-flex items-center gap-2 text-sm">
                             <span
                               aria-hidden
-                              className="size-2 rounded-full bg-[color:var(--color-primary)]"
+                              className="size-2 rounded-full bg-primary"
                             />
                             Conectado
                           </span>
