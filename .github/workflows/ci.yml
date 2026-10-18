@@ -119,14 +119,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-          cache-dependency-path: apps/admin/pnpm-lock.yaml
-      # Since the TS packages moved into apps/admin/packages/ as a
-      # pnpm workspace, ``pnpm install`` sets up symlinks and the
-      # admin's ``pretypecheck`` / ``prebuild`` / ``pretest`` hooks
-      # build the packages on demand. No explicit pre-install build
-      # step needed anymore.
+          cache-dependency-path: pnpm-lock.yaml
+      # Spec 031: the panel lives in the ROOT workspace (it consumes
+      # ``@nexus/ui``), so it installs from the root lockfile. Its
+      # ``pretypecheck`` / ``prebuild`` / ``pretest`` hooks still build the
+      # ``apps/admin/packages/ucm-*`` packages on demand.
       - name: install
-        working-directory: apps/admin
         run: pnpm install --frozen-lockfile
       - name: typecheck
         working-directory: apps/admin
@@ -151,7 +149,7 @@ jobs:
         run: pnpm build
 
   # PLAN-CONSOLE-V1 (CP-01/CP-03): the shared design system and the partner
-  # console live in the ROOT pnpm workspace (apps/admin keeps its own).
+  # console live in the ROOT pnpm workspace (so does apps/admin since spec 031).
   # The design-system lint (hex / spacing scale / radius enum), the
   # component tests, the console's tests and the "no admin token" grep all
   # block here.
