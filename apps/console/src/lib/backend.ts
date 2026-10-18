@@ -416,7 +416,13 @@ import type { CancelOut, CheckoutOut, MembershipOut } from "./backend/membership
 
 export type { CancelOut, CheckoutOut, MembershipOut, TierOut } from "./backend/membership";
 
-export type Billing = { billing_email: string | null; contact_email: string | null; receipts: ReceiptSummary[] };
+export type Billing = {
+  billing_email: string | null;
+  contact_email: string | null;
+  receipts: ReceiptSummary[];
+  /** Spec 034: the plans exist only when this is on (they belong to the Teammate). */
+  memberships_enabled?: boolean;
+};
 
 // ── client factory ─────────────────────────────────────────────────────
 

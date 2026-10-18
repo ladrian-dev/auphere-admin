@@ -667,3 +667,6 @@ class BillingOut(BaseModel):
     billing_email: str | None
     contact_email: str | None
     receipts: list[ReceiptSummaryOut]
+    #: Spec 034: whether the plans exist. Off, the screen shows no plans and
+    #: no provider portal — only the credit purchase and the receipts.
+    memberships_enabled: bool = False

@@ -342,6 +342,12 @@ async def _pool_refills_for(session: AsyncSession, partner_id: uuid.UUID) -> boo
     cobro al camino del turno: esta función se llama al servir, y CE-004 dice
     que con el proveedor caído el trabajo continúa.
     """
+    # Spec 034: with memberships off the console is free and the pool refills
+    # whatever a (leftover) subscription row says.
+    from nexus_api.config import get_settings
+
+    if not get_settings().membership_enabled:
+        return True
     state = await session.scalar(
         sa.text("SELECT state FROM partner_subscriptions WHERE partner_id = :p"),
         {"p": str(partner_id)},

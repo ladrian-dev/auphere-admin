@@ -6,6 +6,16 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 
 ---
 
+> **Estado desde el 2026-10-18 (spec 034): las membresías están apagadas.** Los
+> niveles Free/Pro/Team/Business son del **Teammate** y vuelven con él. Con
+> `NEXUS_MEMBERSHIP_ENABLED` sin definir (el defecto, `false`): no hay topes de
+> teammates ni de personas, el pool semanal se repone sin mirar la suscripción, los
+> endpoints de planes, portal y cancelación responden 404 y los avisos de suscripción
+> del proveedor se registran sin efecto. **Siguen vivos** la compra de crédito
+> (`POST /console/billing/credit`) y los recibos. Y con o sin el interruptor, solo una
+> sesión de Checkout `mode=payment` con `metadata.kind=credit` abona saldo. Lo que
+> sigue describe la spec 005 tal como funciona con el interruptor encendido.
+
 ## El reparto, en una frase
 
 **El proveedor cobra; el libro decide.** Stripe mueve dinero y nos avisa. Quién

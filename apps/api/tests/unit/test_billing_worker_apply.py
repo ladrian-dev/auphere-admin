@@ -43,13 +43,25 @@ async def _run(monkeypatch: pytest.MonkeyPatch, checkout: Any, *, fulfilled: boo
 
 
 async def test_a_paid_session_credits_at_the_sold_rate(monkeypatch) -> None:
-    checkout = SimpleNamespace(id="cs_1", payment_status="paid", amount_total=5_000)
+    checkout = SimpleNamespace(
+        mode="payment",
+        metadata={"kind": "credit"},
+        id="cs_1",
+        payment_status="paid",
+        amount_total=5_000,
+    )
     assert await _run(monkeypatch, checkout) == 5_000_000
 
 
 async def test_an_unpaid_session_credits_nothing(monkeypatch) -> None:
     """Una sesión completada con el pago pendiente **no es una compra**."""
-    checkout = SimpleNamespace(id="cs_2", payment_status="unpaid", amount_total=5_000)
+    checkout = SimpleNamespace(
+        mode="payment",
+        metadata={"kind": "credit"},
+        id="cs_2",
+        payment_status="unpaid",
+        amount_total=5_000,
+    )
     with pytest.raises(Skip, match="pendiente"):
         await _run(monkeypatch, checkout)
 
@@ -60,12 +72,46 @@ async def test_a_session_already_fulfilled_credits_nothing(monkeypatch) -> None:
     ``completed`` y ``async_payment_succeeded`` son eventos DISTINTOS y llegan
     los dos para la misma compra; el UNIQUE por id de evento no los detiene.
     """
-    checkout = SimpleNamespace(id="cs_3", payment_status="paid", amount_total=5_000)
+    checkout = SimpleNamespace(
+        mode="payment",
+        metadata={"kind": "credit"},
+        id="cs_3",
+        payment_status="paid",
+        amount_total=5_000,
+    )
     with pytest.raises(Skip, match="ya se acreditó"):
         await _run(monkeypatch, checkout, fulfilled=True)
 
 
 async def test_a_zero_amount_credits_nothing(monkeypatch) -> None:
-    checkout = SimpleNamespace(id="cs_4", payment_status="paid", amount_total=0)
+    checkout = SimpleNamespace(
+        mode="payment",
+        metadata={"kind": "credit"},
+        id="cs_4",
+        payment_status="paid",
+        amount_total=0,
+    )
     with pytest.raises(Skip):
+        await _run(monkeypatch, checkout)
+
+
+async def test_a_subscription_checkout_never_buys_balance(monkeypatch) -> None:
+    """Spec 034 (R4.1): a tier checkout completes with the same event and the
+    same partner reference. Its money is a subscription, not balance."""
+    checkout = SimpleNamespace(
+        mode="subscription", metadata={}, id="cs_sub", payment_status="paid", amount_total=2_000
+    )
+    with pytest.raises(Skip, match="no es una compra de crédito"):
+        await _run(monkeypatch, checkout)
+
+
+async def test_a_payment_without_the_credit_kind_buys_nothing(monkeypatch) -> None:
+    checkout = SimpleNamespace(
+        mode="payment",
+        metadata={"kind": "other"},
+        id="cs_x",
+        payment_status="paid",
+        amount_total=2_000,
+    )
+    with pytest.raises(Skip, match="no es una compra de crédito"):
         await _run(monkeypatch, checkout)

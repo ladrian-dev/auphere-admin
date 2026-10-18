@@ -112,6 +112,16 @@ async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout
     from nexus_api.billing.events import already_fulfilled
     from nexus_api.metering.wallet import add_purchased
 
+    # Spec 034 (R4.1): only a one-off credit session buys balance. A
+    # subscription checkout completes with the same event and the same
+    # ``client_reference_id``; without this gate its first invoice would also
+    # be credited as purchased balance.
+    mode = str(getattr(checkout, "mode", "") or "")
+    metadata = getattr(checkout, "metadata", None) or {}
+    kind = str(metadata.get("kind", "") if hasattr(metadata, "get") else "")
+    if mode != "payment" or kind != "credit":
+        raise Skip(f"la sesión no es una compra de crédito (mode={mode!r}, kind={kind!r})")
+
     payment_status = str(getattr(checkout, "payment_status", "") or "")
     if payment_status == "unpaid":
         raise Skip("la sesión está completada pero el pago sigue pendiente")
@@ -188,6 +198,17 @@ async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str
         # about money is worse than having a row nobody can act on.
         log.warning("metering.billing_event_orphan", event_type=event_type)
         return "failed"
+
+    # Spec 034 (R4.2): with memberships off, notices about a subscription are
+    # recorded (the event row stays) and change nothing. A credit purchase is
+    # a checkout, not a subscription, and keeps going below.
+    from nexus_api.config import get_settings
+
+    if not get_settings().membership_enabled and (
+        event_type.startswith("customer.subscription.") or event_type.startswith("invoice.")
+    ):
+        log.info("metering.billing_event_ignored_memberships_off", event_type=event_type)
+        return "ignored"
 
     if event_type == "invoice.paid":
         invoice = client.invoices.retrieve(fields.get("object_id") or "")

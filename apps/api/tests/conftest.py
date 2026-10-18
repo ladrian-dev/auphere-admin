@@ -540,6 +540,13 @@ async def seed_tenants(db_session: AsyncSession) -> dict[str, uuid.UUID]:
     return {"a": a_id, "b": b_id}
 
 
+@pytest.fixture
+def memberships_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Spec 034: memberships are off by default. The suites that test spec 005
+    — tiers, caps, the unpaid ladder, the plans screen — switch them on."""
+    monkeypatch.setattr(get_settings(), "membership_enabled", True, raising=False)
+
+
 @pytest_asyncio.fixture
 async def admin_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {get_settings().admin_token}"}

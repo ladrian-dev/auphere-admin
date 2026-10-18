@@ -72,6 +72,20 @@ from .schemas import (
 router = APIRouter(prefix="/billing")
 
 
+def require_memberships() -> None:
+    """Spec 034 (R3.1): with memberships off, the plans, the provider portal and
+    the cancellation do not exist — a 404, not a disabled button (§V).
+
+    Called first thing in the body, **after** the principal is resolved: an
+    anonymous caller or a client user still gets its 401/403 (the isolation
+    sweeps check exactly that), and only an authorised partner learns the
+    route is not there."""
+    from nexus_api.services.membership_limits import memberships_enabled
+
+    if not memberships_enabled():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found"})
+
+
 @router.get("", response_model=BillingOut)
 async def get_billing(
     principal: ConsolePrincipal = Depends(require_console_principal("billing:read")),
@@ -102,10 +116,13 @@ async def get_billing(
             )
             for inv in rows
         ]
+    from nexus_api.services.membership_limits import memberships_enabled
+
     return BillingOut(
         billing_email=principal.partner.billing_email,
         contact_email=principal.partner.contact_email,
         receipts=receipts,
+        memberships_enabled=memberships_enabled(),
     )
 
 
@@ -220,6 +237,7 @@ async def get_membership(
     session: AsyncSession = Depends(get_db_session),
 ) -> MembershipOut:
     """Everything the plans screen needs, in one call."""
+    require_memberships()
     partner_id = principal.partner.id
 
     subscription = (
@@ -282,6 +300,7 @@ async def start_checkout(
     session: AsyncSession = Depends(get_db_session),
 ) -> CheckoutOut:
     """Contract a tier. A person does this, and the audit names them (§IV)."""
+    require_memberships()
     partner_id = principal.partner.id
     tier = (
         await session.execute(
@@ -413,6 +432,7 @@ async def open_billing_portal(
     Delegated on purpose. The provider's invoices are the fiscal document,
     and building our own card screen would mean touching card data.
     """
+    require_memberships()
     subscription = (
         await session.execute(
             sa.select(PartnerSubscription).where(
@@ -499,6 +519,7 @@ async def cancel_subscription_route(
     Cancelling twice is not an error. Somebody who clicks again because the
     first click did not look like it worked does not deserve a red screen.
     """
+    require_memberships()
     from nexus_api.billing.ladder import cancel_subscription
 
     partner_id = principal.partner.id

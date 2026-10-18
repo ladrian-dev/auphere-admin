@@ -23,7 +23,7 @@ from nexus_api.db.models.membership import (
     SUBSCRIPTION_STATES,
 )
 
-pytestmark = [pytest.mark.asyncio]
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("memberships_on")]
 
 #: Los ocho estados de suscripción de Stripe, verificados el 2026-09-12.
 _PROVIDER_STATES = (
