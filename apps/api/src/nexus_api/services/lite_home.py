@@ -27,7 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.billing.pricing import credits_to_cents
 from nexus_api.db.models import Agent, AgentStatus, Conversation, ConversationStatus, TenantStatus
-from nexus_api.metering.wallet import allocations_for, credit_burn, credit_burn_by_agent
+from nexus_api.metering.wallet import (
+    allocations_for,
+    credit_burn,
+    credit_burn_by_agent,
+    read_wallet,
+)
 from nexus_api.services.console_home import REVIEW_WINDOW, tenant_snapshots
 from nexus_api.services.console_home_blocks import (
     SHOWN_DAYS,
@@ -92,13 +97,23 @@ class LiteHome:
     errors: list[str] = field(default_factory=list)
 
 
-def balance_of(allocation: tuple[int, int] | None, burn_7d: int) -> LiteBalance:
+def balance_of(
+    allocation: tuple[int, int] | None, burn_7d: int, purchased: int | None = None
+) -> LiteBalance:
     """El saldo del cliente: lo que le queda de su tope y para cuántos días
     alcanza al ritmo de los últimos 7 días — la misma cuenta que
-    ``credit_block`` hace por cliente para el riesgo."""
+    ``credit_block`` hace por cliente para el riesgo.
+
+    Spec 033 (R6.2): **nunca más que el dinero que existe**. El tope es un
+    límite de gasto, no una reserva: si al partner le quedan US$ 5 de saldo
+    recargado, el cliente no puede gastar más de US$ 5 aunque su tope diga
+    30. ``purchased`` es ese saldo; ``None`` = no se pudo leer, y entonces se
+    pinta el tope tal cual (el error de lectura lo marca quien llama)."""
     if allocation is None:
         return LiteBalance(assigned=False, remaining_cents=None, cap_cents=None, days_left=None)
     cap, remaining = allocation
+    if purchased is not None:
+        remaining = max(0, min(remaining, purchased))
     daily = burn_7d / SHOWN_DAYS
     days = round(remaining / daily, 1) if (daily > 0 and remaining > 0) else None
     return LiteBalance(
@@ -240,7 +255,10 @@ async def lite_home(
         burn = await credit_burn(partner_id, [tenant_id], now - REVIEW_WINDOW)
         burn_7d = burn.get(tenant_id, 0)
         allocation = (await allocations_for(partner_id, [tenant_id])).get(tenant_id)
-        out.balance = balance_of(allocation, burn_7d)
+        wallet = await read_wallet(partner_id)
+        if wallet is None:
+            raise RuntimeError("wallet unreadable")
+        out.balance = balance_of(allocation, burn_7d, wallet.purchased_remaining)
     except Exception as exc:
         log.warning("lite_home.balance_failed", error=str(exc))
         out.errors.append("balance")

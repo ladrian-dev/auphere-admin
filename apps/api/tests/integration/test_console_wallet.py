@@ -16,6 +16,7 @@ from nexus_api.api.console import companion as companion_api
 from nexus_api.core.principal_context import apply_principal_to_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models.companion import CompanionRun
+from tests.conftest import give_recharged_balance
 
 pytestmark = pytest.mark.asyncio
 
@@ -638,6 +639,8 @@ async def test_quota_state_matches_the_channel_gate(client, console_world, db_se
     from nexus_api.metering.wallet import allow_channel_turn, quota_state
 
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    await give_recharged_balance(a["partner_id"])
     unalloc_ref = "client-a-noquota"
     unalloc_tid = await _add_unallocated_client(
         db_session, partner_id=a["partner_id"], ref=unalloc_ref

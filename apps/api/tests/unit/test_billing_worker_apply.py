@@ -32,8 +32,12 @@ async def _run(monkeypatch: pytest.MonkeyPatch, checkout: Any, *, fulfilled: boo
     async def fake_already(_session: Any, _sid: str) -> bool:
         return fulfilled
 
-    async def fake_add(*, partner_id: uuid.UUID, qty: int) -> None:
+    async def fake_add(*, partner_id: uuid.UUID, qty: int, kind: str, idempotency_key: str) -> Any:
+        # Spec 033: a Stripe credit is its own kind, keyed by the session.
+        assert kind == "credit_stripe"
+        assert idempotency_key.startswith("stripe_credit:")
         added.append((partner_id, qty))
+        return SimpleNamespace(duplicate=False)
 
     monkeypatch.setattr("nexus_api.billing.events.already_fulfilled", fake_already)
     monkeypatch.setattr("nexus_api.metering.wallet.add_purchased", fake_add)

@@ -23,15 +23,15 @@ describe("panel de operador · wallet (spec 004, R7.2)", () => {
   const source = readFileSync(PAGE, "utf8");
 
   it("pinta el saldo incluido como cifra, no como porcentaje", () => {
-    expect(source).toContain("wallet.included_remaining");
-    expect(source).toMatch(/fmt\(wallet\.included_remaining\)/);
+    expect(source).toContain("wallet.included_cents");
+    expect(source).toMatch(/fmt\(wallet\.included_cents\)/);
   });
 
   it("pinta el saldo comprado como cifra", () => {
     // R7.6: además, lo comprado NUNCA se abstrae en ninguna superficie. Es
     // dinero que el partner pagó y tiene derecho a verificar.
-    expect(source).toContain("wallet.purchased_remaining");
-    expect(source).toMatch(/fmt\(wallet\.purchased_remaining\)/);
+    expect(source).toContain("wallet.purchased_cents");
+    expect(source).toMatch(/fmt\(wallet\.purchased_cents\)/);
   });
 
   it("no sustituye las cifras por la proporción del partner", () => {

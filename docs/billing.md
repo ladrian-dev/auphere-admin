@@ -16,6 +16,18 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 > sesión de Checkout `mode=payment` con `metadata.kind=credit` abona saldo. Lo que
 > sigue describe la spec 005 tal como funciona con el interruptor encendido.
 
+> **Desde la spec 033 (2026-10-18) el libro tiene tipos y cuadra.** Cada asiento de
+> `usage_ledger` dice qué es (`debit`, `credit_admin`, `credit_stripe`, `expiry`,
+> `opening_credit|opening_debit`, `allocation_legacy`) y el gasto es solo `debit`. Toda
+> recarga — del panel de Auphere en US$ o por Stripe — es una transacción idempotente:
+> saldo, asiento y auditoría juntos, con clave del formulario o de la sesión de
+> Checkout. El panel concilia el saldo recargado con el libro
+> (`GET /admin/partners/{id}/wallet/reconcile`); la migración 0158 dejó la diferencia
+> histórica como asiento de apertura. Los turnos de los clientes se abren y se cobran
+> con **saldo recargado**; el pool semanal es de Companion y teammates. El tope por
+> cliente se repone **una vez por mes de calendario** y lo que ve un cliente como saldo
+> nunca supera el recargado de su partner.
+
 ## El reparto, en una frase
 
 **El proveedor cobra; el libro decide.** Stripe mueve dinero y nos avisa. Quién

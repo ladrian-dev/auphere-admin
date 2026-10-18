@@ -245,7 +245,13 @@ class PartnerClientUsageOut(BaseModel):
     broadcast_recipients: int
     messages_inbound: int
     messages_outbound: int
+    #: Auphere's own model cost (``messages.cost_usd``). Not what the client
+    #: pays. Kept as a float for old readers; ``internal_cost_usd`` is exact.
     cost_usd: float
+    #: Spec 033 (R7.2): Auphere's cost, summed as a decimal, as a string.
+    internal_cost_usd: str = "0"
+    #: Spec 033 (R7.2): what the client spent at sale price, from the book.
+    spend_cents: int = 0
 
 
 class PartnerUsageOut(BaseModel):
@@ -265,6 +271,10 @@ class PartnerUsageOut(BaseModel):
     messages_inbound: int
     messages_outbound: int
     cost_usd: float
+    internal_cost_usd: str = "0"
+    #: Sale price from the book: the clients' spend plus the Companion's.
+    spend_cents: int = 0
+    spend_outside_clients_cents: int = 0
     clients: list[PartnerClientUsageOut]
 
 

@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@nexus/ui";
 import { backend } from "@/lib/backend";
+import { formatCents } from "@/lib/format";
 
 const WINDOW_DAYS = 30;
 
@@ -46,7 +47,10 @@ export default async function PartnerUsagePage({
     { label: "Destinatarios", value: usage.broadcast_recipients },
     { label: "Msgs entrantes", value: usage.messages_inbound },
     { label: "Msgs salientes", value: usage.messages_outbound },
-    { label: "Costo modelo", value: `$${usage.cost_usd.toFixed(4)}` },
+    // Spec 033 (R7.2): what the clients paid (the book) and what it cost
+    // Auphere (model cost), never mixed under one name.
+    { label: "Gasto de los clientes", value: formatCents(usage.spend_cents ?? null) },
+    { label: "Coste interno (modelo)", value: `${usage.internal_cost_usd ?? usage.cost_usd.toFixed(4)} US$` },
   ] as const;
 
   return (
@@ -57,8 +61,8 @@ export default async function PartnerUsagePage({
           <CardTitle>Últimos {usage.window_days} días</CardTitle>
           <CardDescription>
             Consumo agregado de los clientes del partner — la vista para
-            métricas y facturación. El costo es el gasto de modelo de los
-            agentes de sus tenants.
+            métricas y facturación. «Gasto» es lo que pagaron sus clientes, al
+            precio de venta; «coste interno» es lo que el modelo le costó a Auphere.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -105,7 +109,7 @@ export default async function PartnerUsagePage({
                     <TableHead className="text-right hidden md:table-cell">
                       Msgs in/out
                     </TableHead>
-                    <TableHead className="text-right">Costo</TableHead>
+                    <TableHead className="text-right">Gasto</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -169,7 +173,7 @@ export default async function PartnerUsagePage({
                         {client.messages_inbound}/{client.messages_outbound}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        ${client.cost_usd.toFixed(4)}
+                        {formatCents(client.spend_cents ?? null)}
                       </TableCell>
                     </TableRow>
                   ))}

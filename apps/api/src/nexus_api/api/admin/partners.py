@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import structlog
@@ -557,6 +558,15 @@ async def partner_usage(
     since = datetime.now(UTC) - timedelta(days=window_days)
 
     clients: list[PartnerClientUsageOut] = []
+    # Spec 033 (R7.2): the sale price comes from the book, read under the
+    # partner's GUC — one read for every client, plus what the Companion
+    # spent outside clients (key ``None``).
+    from nexus_api.billing.pricing import credits_to_cents
+    from nexus_api.metering.wallet import credit_burn
+
+    burn = await credit_burn(partner_id, [m.tenant_id for m in mappings], since)
+    outside_cents = credits_to_cents(burn.get(None, 0), nearest=True)
+
     for mapping in mappings:
         ctx_token = _current_tenant.set(mapping.tenant_id)
         try:
@@ -599,7 +609,10 @@ async def partner_usage(
                             sa.func.count(Message.id).filter(
                                 Message.direction == MessageDirection.OUTBOUND
                             ),
-                            sa.func.coalesce(sa.func.sum(Message.cost_usd), 0.0),
+                            # Spec 033 (R7.2): summed as a decimal, never a float.
+                            sa.func.coalesce(
+                                sa.func.sum(sa.cast(Message.cost_usd, sa.Numeric(20, 8))), 0
+                            ),
                         ).where(Message.created_at >= since)
                     )
                 ).one()
@@ -620,6 +633,8 @@ async def partner_usage(
                 messages_inbound=inbound,
                 messages_outbound=outbound,
                 cost_usd=float(cost),
+                internal_cost_usd=str(Decimal(cost).normalize() if cost else Decimal(0)),
+                spend_cents=credits_to_cents(burn.get(mapping.tenant_id, 0), nearest=True),
             )
         )
 
@@ -635,6 +650,9 @@ async def partner_usage(
         messages_inbound=sum(c.messages_inbound for c in clients),
         messages_outbound=sum(c.messages_outbound for c in clients),
         cost_usd=round(sum(c.cost_usd for c in clients), 6),
+        internal_cost_usd=str(sum((Decimal(c.internal_cost_usd) for c in clients), Decimal(0))),
+        spend_cents=sum(c.spend_cents for c in clients) + outside_cents,
+        spend_outside_clients_cents=outside_cents,
         clients=clients,
     )
 

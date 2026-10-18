@@ -48,7 +48,7 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.services import usage_alerts
-from tests.conftest import add_console_member
+from tests.conftest import add_console_member, give_recharged_balance
 
 pytestmark = pytest.mark.asyncio
 
@@ -645,6 +645,8 @@ async def test_out_of_quota_shows_in_detail_list_and_home_and_does_not_block_rea
     client, console_world, db_session
 ) -> None:
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    await give_recharged_balance(a["partner_id"])
     h = a["headers"]
     await _make_ready(db_session, a["tenant_id"])
     bare = "bare-1"

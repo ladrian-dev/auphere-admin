@@ -1003,23 +1003,51 @@ export type PartnerClientUsage = {
   messages_inbound: number;
   messages_outbound: number;
   cost_usd: number;
+  internal_cost_usd?: string;
+  spend_cents?: number;
 };
 
+/** Spec 033: every amount a person reads is US$ cents. */
 export type PartnerWalletOut = {
-  included_remaining: number;
-  purchased_remaining: number;
-  available: number;
-  reserve: number;
+  /** The weekly pool (Companion and teammates). Not what clients spend. */
+  included_cents: number;
+  /** Recharged balance: what the clients' turns spend. */
+  purchased_cents: number;
+  available_cents: number;
+  /** Sum of the clients' monthly caps. */
+  assigned_cents: number;
   included_expires_at: string | null;
   exhausted: boolean;
+  duplicate?: boolean;
 };
+
+export type LedgerKind =
+  | "debit"
+  | "credit_admin"
+  | "credit_stripe"
+  | "expiry"
+  | "allocation_legacy"
+  | "opening_credit"
+  | "opening_debit";
 
 export type PartnerLedgerOut = {
   id: string;
-  bucket: string;
-  qty: number;
-  reason: string;
+  kind: LedgerKind;
+  bucket: "included" | "purchased";
+  amount_cents: number;
+  tenant_id: string | null;
+  client_name: string | null;
   created_at: string;
+};
+
+export type PartnerReconcileOut = {
+  balanced: boolean;
+  stored_cents: number;
+  expected_cents: number;
+  difference_credits: number;
+  credits_cents: number;
+  debits_cents: number;
+  expiries_cents: number;
 };
 
 export type PartnerModelItemOut = {
@@ -1168,6 +1196,11 @@ export type PartnerUsageOut = {
   messages_inbound: number;
   messages_outbound: number;
   cost_usd: number;
+  /** Spec 033: Auphere's model cost, exact (decimal string). */
+  internal_cost_usd?: string;
+  /** Spec 033: what the clients spent at sale price, from the book. */
+  spend_cents?: number;
+  spend_outside_clients_cents?: number;
   clients: PartnerClientUsage[];
 };
 
@@ -2062,10 +2095,21 @@ export const backend = {
       `/admin/partners/${partnerId}/wallet/ledger?limit=${limit}`,
     ).then((r) => r ?? []),
 
-  rechargePartnerWallet: (partnerId: string, qty: number) =>
+  /** Spec 033: cents, a key from the form (idempotent) and the operator. */
+  rechargePartnerWallet: (
+    partnerId: string,
+    body: { amount_cents: number; idempotency_key: string },
+    operatorId: string,
+  ) =>
     call<PartnerWalletOut>(`/admin/partners/${partnerId}/wallet/purchased`, {
       method: "POST",
-      body: { qty },
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  getPartnerWalletReconcile: (partnerId: string) =>
+    call<PartnerReconcileOut>(`/admin/partners/${partnerId}/wallet/reconcile`, {
+      optional: true,
     }),
 
   getPartnerModels: (partnerId: string) =>

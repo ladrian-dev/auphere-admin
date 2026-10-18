@@ -1184,3 +1184,20 @@ async def register_machine(
         "credential": body["credential"],
         "body": body,
     }
+
+
+async def give_recharged_balance(partner_id: uuid.UUID, credits: int = 1_000_000) -> None:
+    """Spec 033 (R5.1): a client's turn opens only with RECHARGED balance —
+    the pocket that pays it. Suites that want a served client give its
+    partner some (10 US$ by default), whatever the weekly pool holds."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import PartnerWallet
+
+    async with get_sessionmaker()() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        row = await session.get(PartnerWallet, partner_id)
+        if row is None:
+            row = PartnerWallet(partner_id=partner_id, included_remaining=0, purchased_remaining=0)
+            session.add(row)
+        row.purchased_remaining = credits

@@ -214,6 +214,18 @@ async def put_client_allocation(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "over_allocated"},
         ) from None
+    # Spec 033 (R7.3): setting a client's monthly cap is a decision about
+    # money, and the audit names the person — like moving cap already did.
+    async with session.begin():
+        session.add(
+            AuditLog(
+                tenant_id=None,
+                actor=principal.actor,
+                action="console.allocation.set",
+                target=f"partner:{principal.partner.id}",
+                after_json={"to": ref, "amount_cents": body.cap_cents},
+            )
+        )
     return _allocation_out(ref, int(row.cap), int(row.remaining))
 
 

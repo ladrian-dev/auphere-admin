@@ -180,12 +180,22 @@ export async function sendReceiptAction(
 
 // ── C3 wallet (admin recharge) ───────────────────────────────────────────────
 
+/**
+ * Spec 033: a top-up in US$ cents. The key comes from the form — the same
+ * one on a retry — so the API credits once; the operator signs it.
+ */
 export async function rechargePartnerWallet(
   partnerId: string,
-  qty: number,
+  amountCents: number,
+  idempotencyKey: string,
 ): Promise<ActionResult<PartnerWalletOut>> {
   try {
-    const r = await backend.rechargePartnerWallet(partnerId, qty);
+    const operator = await requireOperator();
+    const r = await backend.rechargePartnerWallet(
+      partnerId,
+      { amount_cents: amountCents, idempotency_key: idempotencyKey },
+      operator.id,
+    );
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };

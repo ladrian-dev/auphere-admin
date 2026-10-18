@@ -139,7 +139,20 @@ async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout
     from nexus_api.billing.pricing import units_for_cents
 
     units: int = units_for_cents(amount_total)
-    await add_purchased(partner_id=partner_id, qty=units)
+    # Spec 033 (R3.4): balance and ledger entry in one transaction, keyed by
+    # the Checkout Session. A second notice for the same session — the two
+    # event types, a retry after a crash between crediting and marking the
+    # event — finds the entry and credits nothing.
+    from nexus_api.db.models.partner_wallet import KIND_CREDIT_STRIPE
+
+    result = await add_purchased(
+        partner_id=partner_id,
+        qty=units,
+        kind=KIND_CREDIT_STRIPE,
+        idempotency_key=f"stripe_credit:{session_id or uuid.uuid4()}",
+    )
+    if result.duplicate:
+        raise Skip(f"la compra {session_id} ya se acreditó")
     log.info(
         "metering.credit_purchased",
         partner_id=str(partner_id),

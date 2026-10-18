@@ -134,6 +134,11 @@ async def test_without_inbox_there_is_no_waiting_block(client, db_session, conso
 
 async def test_nothing_is_invented(client, db_session, console_world) -> None:
     w = console_world["a"]
+    # Spec 033 (R6.2): the client's balance is bounded by the partner's
+    # recharged balance; with none, «balance out» would be the truth.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(w["partner_id"])
     member = await _member(db_session, w)
     body = (await client.get(HOME, headers=member["headers"]())).json()
     # Sin semana anterior, sin gasto: ni variación ni días inventados.

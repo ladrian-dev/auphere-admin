@@ -202,6 +202,10 @@ async def test_new_period_replenishes_a_spent_quota(db_session) -> None:
     )
     assert row is not None
     row.remaining = 3
+    # Spec 033: the cap refills when the calendar month changes.
+    from datetime import date
+
+    row.period_month = date(2000, 1, 1)
     await db_session.flush()
 
     touched = await replenish_allocations(db_session, partner_id=partner_id)

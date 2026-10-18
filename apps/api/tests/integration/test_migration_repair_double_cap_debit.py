@@ -68,8 +68,8 @@ async def _entry(
 ) -> None:
     turn = uuid.uuid4().hex[:8]
     await _exec(
-        "INSERT INTO usage_ledger (id, partner_id, tenant_id, qty, bucket, idempotency_key, created_at) "
-        "VALUES (:i, :p, :t, :q, :b, :k, now() - make_interval(days => :d))",
+        "INSERT INTO usage_ledger (id, partner_id, tenant_id, qty, bucket, kind, idempotency_key, created_at) "
+        "VALUES (:i, :p, :t, :q, :b, CASE WHEN :k LIKE '%\\:allocation' THEN 'allocation_legacy' ELSE 'debit' END, :k, now() - make_interval(days => :d))",
         i=uuid.uuid4(),
         p=partner_id,
         t=tenant_id,

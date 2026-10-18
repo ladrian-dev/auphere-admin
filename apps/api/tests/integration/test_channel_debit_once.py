@@ -159,6 +159,7 @@ async def test_old_allocation_entries_are_not_spend(db_session, console_world) -
                 tenant_id=w["tenant_id"],
                 qty=TURN_QTY,
                 bucket="purchased",
+                kind="debit",
                 idempotency_key=f"{key}:purchased",
             ),
             UsageLedger(
@@ -166,6 +167,7 @@ async def test_old_allocation_entries_are_not_spend(db_session, console_world) -
                 tenant_id=w["tenant_id"],
                 qty=TURN_QTY,
                 bucket="included",
+                kind="allocation_legacy",
                 idempotency_key=f"{key}:allocation",
             ),
         ]

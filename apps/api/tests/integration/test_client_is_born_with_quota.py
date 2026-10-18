@@ -127,6 +127,10 @@ async def test_new_client_stays_quiet_until_the_partner_assigns_credit(client, d
     alloc.cap = 50_000
     alloc.remaining = 50_000
     await db_session.commit()
+    # Spec 033 (R5.1): and the partner has recharged balance to pay the turn.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(world["partner_id"])
 
     assert await allow_channel_turn(mapping.tenant_id) is True
 

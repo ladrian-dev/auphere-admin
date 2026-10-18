@@ -28,7 +28,7 @@ from nexus_api.core.client_auth import ClientPrincipal, require_client_principal
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Agent, AgentStatus, Channel, Conversation, PartnerTenant
-from nexus_api.metering.wallet import AgentFilter, allocations_for, credit_burn
+from nexus_api.metering.wallet import AgentFilter, allocations_for, credit_burn, read_wallet
 from nexus_api.services.console_home import REVIEW_WINDOW, tenant_snapshots
 from nexus_api.services.console_reporting import month_bounds, partner_mappings
 from nexus_api.services.lite_home import agent_spend, balance_of
@@ -103,8 +103,12 @@ async def usage_summary(
     try:
         burn = await credit_burn(principal.partner.id, [tid], now - REVIEW_WINDOW)
         allocation = (await allocations_for(principal.partner.id, [tid])).get(tid)
+        wallet = await read_wallet(principal.partner.id)
+        if wallet is None:
+            raise RuntimeError("wallet unreadable")
         balance = LiteBalanceOut.model_validate(
-            balance_of(allocation, burn.get(tid, 0)), from_attributes=True
+            balance_of(allocation, burn.get(tid, 0), wallet.purchased_remaining),
+            from_attributes=True,
         )
     except Exception as exc:
         log.warning("lite_usage.balance_failed", error=str(exc))
