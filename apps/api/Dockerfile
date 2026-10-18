@@ -72,6 +72,11 @@ RUN uv pip install --system --no-cache-dir --no-editable .
 # ──────────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
+# Spec 031: the commit this image was built from, read by the operator
+# panel's Estado page (GET /admin/instance). The deploy workflows pass it.
+ARG NEXUS_GIT_SHA=unknown
+ENV NEXUS_GIT_SHA=$NEXUS_GIT_SHA
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \

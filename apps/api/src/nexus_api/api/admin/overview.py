@@ -35,6 +35,7 @@ from nexus_api.metering.wallet import read_wallet
 log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/overview", dependencies=[Depends(require_admin_token)])
+instance_router = APIRouter(prefix="/instance", dependencies=[Depends(require_admin_token)])
 
 #: How many rows of each attention list the home shows; the count is exact.
 ATTENTION_LIMIT = 5
@@ -210,4 +211,42 @@ async def get_overview(session: AsyncSession = Depends(get_db_session)) -> Overv
         ],
         clients_without_cap=without_cap,
         unreadable=sorted(unreadable),
+    )
+
+
+class InstanceOut(BaseModel):
+    """Spec 031 (R6): what the Estado page says about this deployment."""
+
+    environment: str
+    #: Alembic head the database is on. None if it could not be read.
+    schema_revision: str | None
+    #: Commit the API image was built from (``NEXUS_GIT_SHA``); "unknown" locally.
+    commit: str
+    checks: dict[str, str]
+
+
+@instance_router.get("", response_model=InstanceOut)
+async def get_instance(session: AsyncSession = Depends(get_db_session)) -> InstanceOut:
+    import os
+
+    from nexus_api.config import get_settings
+    from nexus_api.health import _check_redis
+
+    checks: dict[str, str] = {}
+    revision: str | None = None
+    try:
+        revision = await session.scalar(sa.text("SELECT version_num FROM alembic_version"))
+        checks["postgres"] = "ok"
+    except Exception as exc:
+        checks["postgres"] = f"error: {type(exc).__name__}"
+    try:
+        await _check_redis()
+        checks["redis"] = "ok"
+    except Exception as exc:
+        checks["redis"] = f"error: {type(exc).__name__}"
+    return InstanceOut(
+        environment=get_settings().environment,
+        schema_revision=revision,
+        commit=os.environ.get("NEXUS_GIT_SHA", "unknown"),
+        checks=checks,
     )

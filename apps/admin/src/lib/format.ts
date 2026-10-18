@@ -1,3 +1,5 @@
+import { formatCurrency } from "@nexus/ui";
+
 /**
  * Date / number / status formatters used across the panel.
  *
@@ -103,4 +105,14 @@ export function statusLabel(status: string): string {
     default:
       return status;
   }
+}
+
+/**
+ * Spec 031: an amount the API gives in US$ cents, written exactly as the
+ * console writes it (same formatter from @nexus/ui). ``null`` reads "—":
+ * a figure we could not read is never shown as zero.
+ */
+export function formatCents(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined) return "—";
+  return formatCurrency(cents / 100, "USD", "es");
 }

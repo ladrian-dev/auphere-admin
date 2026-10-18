@@ -915,6 +915,57 @@ export type PartnerOut = {
   auto_activate: boolean;
   created_at: string;
   updated_at: string;
+  // Spec 031: what the panel reads at a glance.
+  console_enabled: boolean;
+  companion_enabled: boolean;
+  max_clients: number | null;
+  max_channels_per_client: number | null;
+  weekly_pool_tokens: number | null;
+  activated_at: string | null;
+  clients_count: number | null;
+  members_count: number | null;
+  /** US$ cents, rounded down. ``null`` = the ledger could not be read. */
+  available_cents: number | null;
+};
+
+export type PartnerMember = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  status: string;
+  accepted_at: string | null;
+  last_login_at: string | null;
+  created_at: string;
+};
+
+export type PartnerInvitation = {
+  id: string;
+  email: string;
+  role: string;
+  expires_at: string;
+  created_at: string;
+};
+
+export type PartnerMembersOut = { members: PartnerMember[]; invitations: PartnerInvitation[] };
+
+export type AdminOverview = {
+  partners: { total: number; active: number };
+  clients: { total: number; active: number; paused: number };
+  balance_cents: number | null;
+  tickets_open: number;
+  open_tickets: { id: string; ticket_ref: string; partner_id: string; partner_name: string; topic: string; opened_at: string }[];
+  signups_pending: number;
+  pending_signups: { id: string; email: string; created_at: string }[];
+  clients_without_cap: { tenant_id: string; name: string; partner_id: string; partner_name: string }[];
+  unreadable: ("balance" | "caps" | "tickets")[];
+};
+
+export type AdminInstance = {
+  environment: string;
+  schema_revision: string | null;
+  commit: string;
+  checks: Record<string, string>;
 };
 
 export type PartnerCreateInput = {
@@ -927,6 +978,7 @@ export type PartnerUpdateInput = Partial<{
   name: string;
   status: PartnerStatus;
   contact_email: string | null;
+  billing_email: string;
   broadcast_recipient_cap: number;
   rate_limit_mint_per_min: number;
   rate_limit_embed_per_min: number;
@@ -2079,6 +2131,14 @@ export const backend = {
       `/admin/partners/${partnerId}/receipts/${invoiceId}/send`,
       { method: "POST", body: {} },
     ),
+
+  // ── Spec 031: the panel's home and the partner's people ───────────
+  getOverview: () => call<AdminOverview>("/admin/overview"),
+
+  getInstance: () => call<AdminInstance>("/admin/instance"),
+
+  getPartnerMembers: (partnerId: string) =>
+    call<PartnerMembersOut>(`/admin/partners/${partnerId}/members`),
 
   // ── F4 support tickets inbox ──────────────────────────────────────
   listTickets: (opts?: { status?: TicketStatus; partnerId?: string }) => {

@@ -173,3 +173,13 @@ async def test_members_lists_people_and_pending_invitations(
 
     missing = await client.get(f"/admin/partners/{uuid.uuid4()}/members", headers=admin_headers)
     assert missing.status_code == 404
+
+
+async def test_instance_names_environment_schema_and_commit(client, admin_headers) -> None:
+    res = await client.get("/admin/instance", headers=admin_headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["schema_revision"]
+    assert body["checks"]["postgres"] == "ok"
+    assert body["environment"]
+    assert body["commit"]
