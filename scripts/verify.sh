@@ -105,8 +105,11 @@ run_js() {
   step "desktop · test"      pnpm --filter @nexus/desktop test
 
   step "panel · typecheck"   pnpm --dir "$ROOT/apps/admin" exec tsc --noEmit -p tsconfig.json
-  step "panel · lint"        pnpm --dir "$ROOT/apps/admin" exec eslint .
+  step "panel · lint"        pnpm --dir "$ROOT/apps/admin" exec eslint . --max-warnings 0
   step "panel · vitest"      pnpm --dir "$ROOT/apps/admin" exec vitest run
+  # Spec 031: el panel consume @nexus/ui desde el código fuente; un build roto
+  # por el paquete solo se ve aquí, no en el typecheck.
+  step "panel · next build"  pnpm --dir "$ROOT/apps/admin" build
 
   step "consola · next build" pnpm --dir "$ROOT/apps/console" build
 }

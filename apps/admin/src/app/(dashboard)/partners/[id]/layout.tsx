@@ -7,7 +7,7 @@ import { backend } from "@/lib/backend";
 import { getImpersonateSessionId } from "@/lib/impersonate";
 import { matchImpersonationBanner } from "@/lib/impersonate-cookie";
 import { getOperator } from "@/lib/session";
-import { formatCents, fullDateTime, statusLabel } from "@/lib/format";
+import { formatCents, statusLabel } from "@/lib/format";
 
 import { ImpersonateBannerView } from "./impersonate-banner";
 import { PartnerTabs } from "./tabs";
@@ -96,7 +96,7 @@ export default async function PartnerLayout({
             { term: "Clientes", detail: partner.clients_count ?? "—", href: `/partners/${partner.id}/clients` },
             { term: "Personas", detail: partner.members_count ?? "—", href: `/partners/${partner.id}/team` },
             { term: "Saldo disponible", detail: formatCents(partner.available_cents), href: `/partners/${partner.id}/money` },
-            { term: "Alta", detail: fullDateTime(partner.created_at), href: null },
+            { term: "Alta", detail: new Date(partner.created_at).toLocaleDateString("es", { dateStyle: "medium" }), href: null },
           ].map((f) => (
             <div key={f.term} className="flex min-w-0 flex-col gap-1">
               <dt className="text-xs text-muted-foreground">{f.term}</dt>
