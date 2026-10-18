@@ -35,6 +35,9 @@ from nexus_api.schemas.partner import (
     ApiKeyRotateIn,
     EmbedAuditEntryOut,
     PartnerCreateIn,
+    PartnerInvitationOut,
+    PartnerMemberOut,
+    PartnerMembersOut,
     PartnerOut,
     PartnerTenantLinkIn,
     PartnerTenantOut,
@@ -63,7 +66,59 @@ def _admin_actor(token: str) -> str:
 
 
 def _partner_snapshot(partner: Partner) -> dict[str, Any]:
-    return PartnerOut.model_validate(partner).model_dump(mode="json")
+    # Only the partner's own columns: the counts and the balance are reads of
+    # other tables and would make every audit diff look like a change.
+    return PartnerOut.model_validate(partner).model_dump(
+        mode="json", exclude={"clients_count", "members_count", "available_cents"}
+    )
+
+
+async def _with_facts(session: AsyncSession, partners: list[Partner]) -> list[PartnerOut]:
+    """Spec 031 (R4.1): each partner with its clients, people and balance.
+
+    Two grouped counts for the whole list, then one balance read per partner
+    under **that partner's** GUC (``read_wallet``) — ``partner_wallets`` is
+    FORCE RLS and there is no cross-partner read of it on purpose.
+    """
+    import sqlalchemy as sa
+
+    from nexus_api.billing.pricing import credits_to_cents
+    from nexus_api.db.models.partner_membership import MembershipStatus, PartnerMembership
+    from nexus_api.metering.wallet import read_wallet
+
+    ids = [p.id for p in partners]
+    if not ids:
+        return []
+    clients: dict[uuid.UUID, int] = {
+        pid: int(n)
+        for pid, n in (
+            await session.execute(
+                sa.select(PartnerTenant.partner_id, sa.func.count())
+                .where(PartnerTenant.partner_id.in_(ids))
+                .group_by(PartnerTenant.partner_id)
+            )
+        ).all()
+    }
+    members: dict[uuid.UUID, int] = {
+        pid: int(n)
+        for pid, n in (
+            await session.execute(
+                sa.select(PartnerMembership.partner_id, sa.func.count())
+                .where(PartnerMembership.partner_id.in_(ids))
+                .where(PartnerMembership.status == MembershipStatus.ACTIVE.value)
+                .group_by(PartnerMembership.partner_id)
+            )
+        ).all()
+    }
+    out: list[PartnerOut] = []
+    for p in partners:
+        row = PartnerOut.model_validate(p)
+        row.clients_count = int(clients.get(p.id, 0))
+        row.members_count = int(members.get(p.id, 0))
+        snap = await read_wallet(p.id)
+        row.available_cents = None if snap is None else credits_to_cents(snap.available)
+        out.append(row)
+    return out
 
 
 def _key_snapshot(key: PartnerApiKey) -> dict[str, Any]:
@@ -74,7 +129,7 @@ def _key_snapshot(key: PartnerApiKey) -> dict[str, Any]:
 @router.get("", response_model=list[PartnerOut])
 async def list_partners(session: AsyncSession = Depends(get_db_session)) -> list[PartnerOut]:
     partners = await PartnerRepository(session).list_all()
-    return [PartnerOut.model_validate(p) for p in partners]
+    return await _with_facts(session, list(partners))
 
 
 @router.post("", response_model=PartnerOut, status_code=status.HTTP_201_CREATED)
@@ -120,7 +175,79 @@ async def get_partner(
     partner_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> PartnerOut:
-    return PartnerOut.model_validate(await _get_partner_or_404(session, partner_id))
+    partner = await _get_partner_or_404(session, partner_id)
+    return (await _with_facts(session, [partner]))[0]
+
+
+@router.get("/{partner_id}/members", response_model=PartnerMembersOut)
+async def list_partner_members(
+    partner_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> PartnerMembersOut:
+    """Spec 031 (R4.6): who works in this partner's console, and who is invited.
+
+    ``partner_memberships`` and ``partner_invitations`` are platform tables
+    (no RLS: the console gate reads them before any scope exists); the
+    partner comes from the path and filters every query.
+    """
+    import sqlalchemy as sa
+
+    from nexus_api.db.models.console_identity import ConsoleAccount
+    from nexus_api.db.models.partner_membership import (
+        InvitationStatus,
+        PartnerInvitation,
+        PartnerMembership,
+    )
+
+    await _get_partner_or_404(session, partner_id)
+    rows = (
+        await session.execute(
+            sa.select(PartnerMembership, ConsoleAccount.last_login_at)
+            .outerjoin(
+                ConsoleAccount,
+                sa.cast(ConsoleAccount.id, sa.String) == PartnerMembership.user_id,
+            )
+            .where(PartnerMembership.partner_id == partner_id)
+            .order_by(PartnerMembership.created_at)
+        )
+    ).all()
+    invitations = (
+        (
+            await session.execute(
+                sa.select(PartnerInvitation)
+                .where(PartnerInvitation.partner_id == partner_id)
+                .where(PartnerInvitation.status == InvitationStatus.PENDING.value)
+                .order_by(PartnerInvitation.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return PartnerMembersOut(
+        members=[
+            PartnerMemberOut(
+                id=m.id,
+                email=m.email,
+                display_name=m.display_name,
+                role=m.role,
+                status=m.status,
+                accepted_at=m.accepted_at,
+                last_login_at=last_login,
+                created_at=m.created_at,
+            )
+            for m, last_login in rows
+        ],
+        invitations=[
+            PartnerInvitationOut(
+                id=i.id,
+                email=i.email,
+                role=i.role,
+                expires_at=i.expires_at,
+                created_at=i.created_at,
+            )
+            for i in invitations
+        ],
+    )
 
 
 @router.patch("/{partner_id}", response_model=PartnerOut)
@@ -185,7 +312,7 @@ async def update_partner(
                 after=_partner_snapshot(partner),
                 platform=True,
             )
-    return PartnerOut.model_validate(partner)
+    return (await _with_facts(session, [partner]))[0]
 
 
 # ── API keys ─────────────────────────────────────────────────────────────────

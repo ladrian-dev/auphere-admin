@@ -19,6 +19,7 @@ from nexus_api.api.admin import (
     isolation,
     meta_signup,
     model_bindings,
+    overview,
     partner_knowledge,
     partner_llm,
     partner_models,
@@ -64,6 +65,7 @@ router.include_router(auphere_channels.router)
 router.include_router(backchannel_owners.router)
 router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
+router.include_router(overview.router)
 router.include_router(signups.router)
 router.include_router(tickets.router)
 router.include_router(impersonate.router)
