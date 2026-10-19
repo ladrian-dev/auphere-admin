@@ -1,0 +1,6 @@
+Brand marks in apps/admin/src/components/brand/brand-marks.ts come from
+Simple Icons 15.22.0 (https://simpleicons.org), released under CC0 1.0 Universal
+(https://creativecommons.org/publicdomain/zero/1.0/).
+
+The marks themselves are trademarks of their owners. The panel uses them only
+to name the app a channel or connector belongs to.

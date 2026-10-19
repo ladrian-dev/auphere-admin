@@ -18,7 +18,6 @@ export default async function PartnersPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Gestionar"
         title="Partners"
         description="Agencias que operan la consola de Auphere para sus propios clientes."
         actions={<Button nativeButton={false} render={<Link href="/partners/new" />}>Nuevo partner</Button>}

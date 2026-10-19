@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Eyebrow, Separator, StatusDot } from "@nexus/ui";
+import { StatusDot } from "@nexus/ui";
+
+import { CrumbName } from "@/components/shell/crumb-names";
 import { backend } from "@/lib/backend";
 import { getImpersonateSessionId } from "@/lib/impersonate";
 import { matchImpersonationBanner } from "@/lib/impersonate-cookie";
@@ -57,25 +59,10 @@ export default async function PartnerLayout({
           expiresAt={live.expires_at}
         />
       ) : null}
-      <div className="flex flex-col gap-2">
-        <nav
-          aria-label="Migas"
-          className="flex items-center gap-2 text-xs font-mono uppercase text-muted-foreground tracking-eyebrow"
-        >
-          <Link
-            href="/partners"
-            className="hover:text-foreground transition-colors"
-          >
-            Partners
-          </Link>
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground">{partner.slug}</span>
-        </nav>
+      <CrumbName id={partner.id} label={partner.name} />
+      <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <Eyebrow>Partner</Eyebrow>
-          <h1
-            className="text-2xl md:text-3xl font-semibold leading-tight tracking-tight"
-          >
+          <h1 className="text-2xl font-semibold tracking-tight text-balance md:text-3xl">
             {partner.name}
           </h1>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -91,7 +78,7 @@ export default async function PartnerLayout({
           </div>
         </div>
         {/* Spec 031 (R4.3): the facts the operator asks first, before any tab. */}
-        <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
           {[
             { term: "Clientes", detail: partner.clients_count ?? "—", href: `/partners/${partner.id}/clients` },
             { term: "Personas", detail: partner.members_count ?? "—", href: `/partners/${partner.id}/team` },
@@ -114,7 +101,6 @@ export default async function PartnerLayout({
         </dl>
       </div>
       <PartnerTabs partnerId={partner.id} />
-      <Separator />
       {children}
     </div>
   );

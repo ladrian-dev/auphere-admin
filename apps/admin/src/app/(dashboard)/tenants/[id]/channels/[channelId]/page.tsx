@@ -1,11 +1,11 @@
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Button, Callout, DescriptionList, EmptyState, StatusDot } from "@nexus/ui";
 
-import { ChannelIcon } from "@/components/brand/channel-icon";
+import { ChannelLogo } from "@/components/brand/channel-logo";
 import { CHANNEL_NAME, CHANNEL_STATUS, ROLE_LABEL } from "@/components/channels/labels";
+import { CrumbName } from "@/components/shell/crumb-names";
 import { backend, type ChannelOut } from "@/lib/backend";
 import { channelAgentEnabled, channelRole } from "@/lib/channels";
 import { relativeTime } from "@/lib/format";
@@ -80,16 +80,9 @@ export default async function ChannelDetailPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href={`/tenants/${id}/channels`} />}>
-          <ArrowLeft aria-hidden="true" />
-          Canales
-        </Button>
-      </div>
+      <CrumbName id={channel.id} label={displayName(channel)} />
       <header className="flex flex-wrap items-center gap-4">
-        <span className="grid size-12 shrink-0 place-items-center rounded-md bg-muted">
-          <ChannelIcon channel={channel.type} className="size-6" />
-        </span>
+        <ChannelLogo channel={channel.type} size="xl" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <h2 className="truncate text-lg font-semibold">{displayName(channel)}</h2>
           <p className="truncate text-sm text-muted-foreground">

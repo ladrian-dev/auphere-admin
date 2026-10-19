@@ -20,7 +20,7 @@ export default async function QaIndexPage() {
   const allowed = (QA_ROLES as readonly string[]).includes(operator.role);
   return (
     <>
-      <PageHeader eyebrow="Plataforma" title="Playground QA" description="Conversa con el agente de un cliente sin tocar sus canales reales." />
+      <PageHeader title="Playground QA" description="Conversa con el agente de un cliente sin tocar sus canales reales." />
       {!allowed ? (
         <EmptyState title="Tu rol no abre el Playground" description="Lo usan los roles administrador y operador QA. Pide el cambio a quien gestiona los operadores." readonly />
       ) : tenants === null ? (

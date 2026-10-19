@@ -8,7 +8,6 @@ export default function NewPartnerPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Partners"
         title="Nuevo partner"
         description="Identidad básica del partner. Las API keys, origins y mapeos de tenants se gestionan en el detalle después del alta."
       />

@@ -35,6 +35,11 @@ Ordenada como el super admin de Chatwoot (`src/components/shell/nav.ts`):
 
 ⌘K abre una paleta que busca vistas, partners, clientes y tickets abiertos.
 
+Las migas viven en la barra superior (`components/shell/crumbs.ts`) y dicen el recorrido
+completo: «Clientes › Volumen 03 › Canales › WhatsApp». Las páginas no las repiten ni
+ponen una etiqueta encima del título. El nombre de cada registro lo anuncia su página con
+`<CrumbName>`.
+
 ## Panel (`/`)
 
 Lee `GET /admin/overview`: partners y clientes activos, saldo disponible total de los
@@ -61,8 +66,21 @@ Las rutas antiguas (`keys`, `tenants`, `usage`, `wallet`, `receipts`, `limits`,
 
 ## Ficha de cliente (`/tenants/{id}`)
 
-La cabecera enlaza al partner (o dice «Cliente directo de Auphere»). La pestaña Agente
-se divide en Prompt y herramientas · Runtime · Versiones · Evals (`?section=`).
+Se lee como la del partner: nombre, una línea con estado, plan, partner, mercado, zona e
+identificador, y cuatro hechos (canales activos, conectores activados, versión del agente y
+alta). Las pestañas van en tres grupos, como en la consola de partners: Observar (Resumen,
+Conversaciones, Aislamiento, Auditoría), Configurar (Agente, Acceso, Facturación) y
+Conectar (Canales, Conectores, Canal del dueño). Canales lleva un punto si ningún canal
+atiende o alguno tiene problemas. La ficha del partner usa los mismos grupos: Observar,
+Configurar y Cuenta.
+
+El Resumen dice qué falta para operar (agente publicado, canal activo, teléfono del dueño,
+conectores sin problemas), los datos del cliente, su agente y el Playground. La pestaña
+Agente se divide en Prompt y herramientas · Runtime · Versiones · Evals (`?section=`).
+
+Los logos de canales y conectores son las marcas de cada app (Simple Icons, CC0) sobre su
+color, en `components/brand/brand-marks.ts`. Lo que no tiene marca usa la imagen del
+catálogo o sus iniciales.
 
 ## Canales y Conectores (spec 035)
 

@@ -1,6 +1,6 @@
 import { Callout, EmptyState, ErrorState, PageHeader, Section } from "@nexus/ui";
 
-import { ChannelIcon } from "@/components/brand/channel-icon";
+import { ChannelLogo } from "@/components/brand/channel-logo";
 import { AVAILABILITY_LABEL } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
 
@@ -24,7 +24,6 @@ export default async function ChannelsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Plataforma"
         title="Canales"
         description="Por dónde escriben los clientes de cada negocio. Para conectar uno, entra en el cliente y pulsa «Añadir canal»."
       />
@@ -39,10 +38,7 @@ export default async function ChannelsPage() {
                   className="flex flex-col items-start gap-2 rounded-md p-4 ring-1 ring-foreground/10"
                   aria-disabled={entry.availability === "coming_soon" || undefined}
                 >
-                  <ChannelIcon
-                    channel={entry.key}
-                    className={entry.availability === "coming_soon" ? "size-6 opacity-50" : "size-6"}
-                  />
+                  <ChannelLogo channel={entry.key} size="lg" />
                   <span className="text-sm font-medium">{entry.name}</span>
                   <span className="text-xs text-muted-foreground">
                     {badge ?? `${countOf(entry.key)} activos`}

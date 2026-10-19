@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@nexus/ui";
 
-import { ChannelIcon } from "@/components/brand/channel-icon";
+import { ChannelLogo } from "@/components/brand/channel-logo";
 import { CHANNEL_NAME, CHANNEL_STATUS, ROLE_LABEL } from "@/components/channels/labels";
 import type { GlobalChannel } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
@@ -97,7 +97,7 @@ export function ChannelsTable({ channels }: { channels: GlobalChannel[] }) {
                         href={`/tenants/${c.tenant_id}/channels/${c.id}`}
                         className="flex items-center gap-3 hover:underline"
                       >
-                        <ChannelIcon channel={c.type} className="size-4 shrink-0" />
+                        <ChannelLogo channel={c.type} size="sm" />
                         <span className="flex min-w-0 flex-col">
                           <span className="truncate text-sm font-medium">{c.name ?? CHANNEL_NAME[c.type] ?? c.type}</span>
                           <span className="truncate font-mono text-xs text-muted-foreground">{c.provider_identifier}</span>

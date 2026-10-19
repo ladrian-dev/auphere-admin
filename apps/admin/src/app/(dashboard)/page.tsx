@@ -40,7 +40,7 @@ export default async function HomePage() {
   if (!overview) {
     return (
       <>
-        <PageHeader eyebrow="Auphere" title="Panel" />
+        <PageHeader title="Panel" />
         <ErrorState title="No se pudo leer el estado de la plataforma" description="La API no respondió. El resto del panel sigue disponible desde el menú." />
       </>
     );
@@ -51,7 +51,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <PageHeader eyebrow="Auphere" title="Panel" description="Cómo está la plataforma hoy y qué espera al equipo." />
+      <PageHeader title="Panel" description="Cómo está la plataforma hoy y qué espera al equipo." />
 
       <section aria-label="Cifras" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         <Metric

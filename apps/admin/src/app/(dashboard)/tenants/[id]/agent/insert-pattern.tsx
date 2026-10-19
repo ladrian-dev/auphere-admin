@@ -82,7 +82,7 @@ export function InsertPatternButton({
   function onPick(snippet: PromptSnippet) {
     onInsert(snippet.body);
     toast.success(`Patrón "${snippet.title}" agregado`, {
-      description: "Revisalo en el textarea y rellená los placeholders.",
+      description: "Revísalo en el texto y rellena los huecos.",
     });
     onOpenChange(false);
   }
@@ -121,7 +121,7 @@ export function InsertPatternButton({
             </DialogTitle>
             <DialogDescription>
               Patrones curados por Auphere. Click en uno para agregarlo al
-              final del prompt actual. Después rellená los
+              final del prompt actual. Después rellena los
               <code className="mx-1 font-mono">{"{placeholders}"}</code>
               {vertical ? (
                 <>

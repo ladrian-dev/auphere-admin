@@ -43,7 +43,6 @@ export default async function TicketsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Soporte"
         title="Tickets de partners"
         description="Bandeja de la plataforma. Los tickets los abre el partner en la consola; aquí se leen y se cierra el estado."
       />

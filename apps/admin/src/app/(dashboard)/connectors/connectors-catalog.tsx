@@ -50,7 +50,7 @@ export function ConnectorsCatalog({ rows }: { rows: Array<{ connector: Connector
           className="flex flex-col gap-3 rounded-md p-4 ring-1 ring-foreground/10 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="flex items-start justify-between gap-3">
-            <ConnectorLogo connector={row.connector} />
+            <ConnectorLogo connector={row.connector} size="lg" />
             {row.connector.status === "beta" ? <Badge variant="outline">Beta</Badge> : null}
           </div>
           <div className="flex flex-col gap-1">

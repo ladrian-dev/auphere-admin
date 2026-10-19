@@ -2,6 +2,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 
 import { AppSidebar } from "@/components/shell/app-sidebar";
 import { AdminCommandPalette } from "@/components/shell/command-palette";
+import { TopBarBreadcrumbs } from "@/components/shell/top-bar-breadcrumbs";
 import { backend } from "@/lib/backend";
 import { requireOperator } from "@/lib/session";
 
@@ -34,7 +35,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SidebarInset className="min-h-0 overflow-hidden bg-sidebar">
         <header className="flex h-12 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
-          <div className="flex-1" />
+          {/* Spec 035: the one breadcrumb of the panel — pages no longer repeat it. */}
+          <div className="flex min-w-0 flex-1 items-center">
+            <TopBarBreadcrumbs />
+          </div>
           <AdminCommandPalette />
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-card">

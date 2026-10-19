@@ -202,11 +202,11 @@ export function RuntimeCapabilities({
       <CardHeader className="flex flex-col gap-1">
         <CardTitle>Capacidades de runtime</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Activá Memoria, Validador y Skills para esta versión del agente.
+          Activa Memoria, Validador y Skills para esta versión del agente.
           {!editable && (
             <span className="ml-1 italic">
               · Solo editable en borradores (STAGED). Para cambiar las
-              capacidades, creá una versión nueva.
+              capacidades, crea una versión nueva.
             </span>
           )}
         </p>
@@ -221,7 +221,7 @@ export function RuntimeCapabilities({
         />
         <ToggleRow
           label="Validador de respuesta (rubric grader)"
-          description="Bloquea confirmaciones sin tool result + corrige tono. Sumá ~500ms de latencia por turn. Recomendado para mitigar alucinaciones de booking."
+          description="Bloquea confirmaciones sin resultado de herramienta y corrige el tono. Suma unos 500 ms por turno. Recomendado para evitar citas inventadas."
           checked={outcomeGrader}
           onChange={setOutcomeGrader}
           disabled={!editable}
@@ -247,7 +247,7 @@ export function RuntimeCapabilities({
             <div className="mt-3 space-y-3">
               <ToggleRow
                 label="MCP connector (kill switch)"
-                description="Activa el connector MCP de Anthropic para conectar servers externos sin Composio. EXPERIMENTAL — sólo úsalo si sabés lo que hacés."
+                description="Activa el conector MCP de Anthropic para conectar servidores externos sin Composio. Experimental: úsalo solo si sabes lo que haces."
                 checked={mcpConnector}
                 onChange={setMcpConnector}
                 disabled={!editable}
@@ -350,7 +350,7 @@ function SkillsPicker({
   if (skills.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-        No hay Anthropic Skills bundleadas en este deploy. Verificá
+        No hay Anthropic Skills incluidas en este despliegue. Revisa
         {" "}
         <code>apps/worker/skills/</code>.
       </div>
@@ -362,7 +362,7 @@ function SkillsPicker({
         <p className="text-sm font-medium">Anthropic Skills</p>
         <p className="text-xs text-muted-foreground">
           Patterns reusables que reducen el tamaño del system prompt. Selecciona
-          las que aplican al vertical de este tenant. Para cada skill podés
+          las que aplican al sector de este cliente. Para cada skill puedes
           limitar en qué canales se carga (ej. una skill de WhatsApp no
           debería cargarse en el chat web del admin).
         </p>

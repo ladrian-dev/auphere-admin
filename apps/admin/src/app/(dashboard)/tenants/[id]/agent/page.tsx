@@ -9,7 +9,6 @@ import {
   CardTitle,
   cn,
   EmptyState,
-  Eyebrow,
   Table,
   TableBody,
   TableCell,
@@ -147,15 +146,17 @@ export default async function AgentPage({
 
   return (
     <div className="grid gap-6">
-      <nav aria-label="Secciones del agente" className="flex flex-wrap gap-1 rounded-md bg-muted/50 p-1 text-sm">
+      <nav aria-label="Secciones del agente" className="flex flex-wrap gap-1 border-b border-border text-sm">
         {AGENT_SECTIONS.map((s) => (
           <Link
             key={s.key}
             href={sectionHref(s.key)}
             aria-current={section === s.key ? "page" : undefined}
             className={cn(
-              "rounded-sm px-3 py-1 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-              section === s.key ? "bg-card font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              "-mb-px border-b-2 px-3 py-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+              section === s.key
+                ? "border-foreground font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {s.label}
@@ -167,16 +168,15 @@ export default async function AgentPage({
       {section === "prompt" ? (
       <Card>
         <CardHeader className="flex flex-col gap-1">
-          <Eyebrow>
-            Configuración del agente
-            {agents.length > 1 && onScreen ? ` · ${onScreen.name}` : ""}
-          </Eyebrow>
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <CardTitle>{headerTitle}</CardTitle>
+              <CardTitle>
+                {headerTitle}
+                {agents.length > 1 && onScreen ? ` · ${onScreen.name}` : ""}
+              </CardTitle>
               <CardDescription>
-                Cada cambio que guardás queda como borrador. Promovelo cuando
-                quieras que el agente lo use en el siguiente turno.
+                Cada cambio que guardas queda como borrador. Publícalo cuando
+                quieras que el agente lo use desde el siguiente turno.
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-end gap-2">
@@ -229,11 +229,10 @@ export default async function AgentPage({
       {section === "versions" ? (
       <Card>
         <CardHeader>
-          <Eyebrow>Versiones</Eyebrow>
-          <CardTitle>Historial</CardTitle>
+          <CardTitle>Historial de versiones</CardTitle>
           <CardDescription>
-            Cada promoción se aplica en el siguiente turno del agente, sin
-            necesidad de redeploy.
+            Cada versión publicada se aplica desde el siguiente turno del
+            agente, sin desplegar nada.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -289,7 +288,7 @@ function VersionTable({
   if (versions.length === 0) {
     return (
       <div className="px-6 py-12 text-center text-muted-foreground text-sm">
-        Todavía no hay versiones. Guardá el editor para crear la primera.
+        Todavía no hay versiones. Guarda el editor para crear la primera.
       </div>
     );
   }

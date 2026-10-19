@@ -111,7 +111,7 @@ export function ApplySeedTemplateButton({
         return;
       }
       toast.success(`Borrador v${result.data.version} creado`, {
-        description: "Revisá el prompt y promovelo cuando esté listo.",
+        description: "Revisa el prompt y publícalo cuando esté listo.",
       });
       startTransition(() => {
         setOpen(false);

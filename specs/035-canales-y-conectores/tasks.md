@@ -36,3 +36,9 @@ description: "Tareas de la spec 035 — canales y conectores"
 
 - [X] T040 `docs/admin.md` y ADR-046.
 - [X] T041 Panel: `tsc`, `eslint --max-warnings 0`, `vitest`, `next build`; API: `ruff`, `mypy`, tests de la spec; recorrido en el navegador del asistente, la ficha del canal, los permisos (guardar y deshacer) y las vistas globales.
+
+## Phase 6: Pulido pedido por el owner (2026-10-19)
+
+- [X] T050 Logos reales de las apps (Simple Icons 15.22.0, CC0) en canales y conectores; fuera los glifos de Chatwoot. Test de `brandFor`.
+- [X] T051 Migas en la barra superior con el recorrido completo; fuera la miga repetida, la etiqueta «Cliente»/«Partner» y los eyebrows que repetían el grupo del sidebar. Test de `crumbsFor`.
+- [X] T052 Ficha del cliente como la del partner: hechos, pestañas en tres grupos (`NavTabs`), Resumen con lo que falta para operar (el endpoint de preparación ya no existía). Pestaña Agente en español neutro y con pestañas subrayadas.

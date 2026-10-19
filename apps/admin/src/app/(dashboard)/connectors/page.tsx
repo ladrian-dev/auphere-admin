@@ -23,7 +23,6 @@ export default async function ConnectorsCatalogPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Plataforma"
         title="Conectores"
         description="Las apps con las que trabajan los agentes: citas, cobros, tienda, documentos. Cada cliente las conecta desde su ficha, en Conectores."
       />

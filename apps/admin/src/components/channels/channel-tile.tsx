@@ -2,14 +2,14 @@ import Link from "next/link";
 
 import { cn } from "@nexus/ui";
 
-import { ChannelIcon } from "@/components/brand/channel-icon";
+import { ChannelLogo } from "@/components/brand/channel-logo";
 import type { ChannelCatalogEntry } from "@/lib/backend";
 
 import { AVAILABILITY_LABEL, canStart } from "./labels";
 
 /**
  * Spec 035: a channel of the catalog, laid out like Chatwoot's «Elegir canal»
- * tile — the mark in a circle, the name, one line of what it does. A channel
+ * tile — the app's icon, the name, one line of what it does. A channel
  * that cannot start yet keeps its place with its state («Pendiente»,
  * «Próximamente») and is not a link (constitution §V, amendment 1.1.0: the
  * operator panel only).
@@ -19,9 +19,7 @@ export function ChannelTile({ entry, href }: { entry: ChannelCatalogEntry; href?
   const badge = AVAILABILITY_LABEL[entry.availability];
   const body = (
     <>
-      <span className="grid size-10 place-items-center rounded-full bg-muted text-foreground">
-        <ChannelIcon channel={entry.key} className="size-5" />
-      </span>
+      <ChannelLogo channel={entry.key} size="lg" />
       <span className="mt-6 flex items-center gap-2">
         <span className="text-base font-medium">{entry.name}</span>
         {badge ? (

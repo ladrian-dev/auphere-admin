@@ -23,7 +23,6 @@ export default async function TenantsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Gestionar"
         title="Clientes"
         description="Cada cliente es un negocio con su propio agente. Los de un partner los opera el partner desde su consola."
         actions={<Button nativeButton={false} render={<Link href="/tenants/new" />}>Nuevo cliente</Button>}

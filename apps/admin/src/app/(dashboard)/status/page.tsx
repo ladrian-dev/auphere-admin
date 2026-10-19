@@ -13,7 +13,7 @@ export default async function StatusPage() {
   const instance = await backend.getInstance().catch(() => null);
   return (
     <>
-      <PageHeader eyebrow="Instancia" title="Estado" description="Qué entorno es este, qué versión corre y si sus dependencias responden." />
+      <PageHeader title="Estado" description="Qué entorno es este, qué versión corre y si sus dependencias responden." />
       {!instance ? (
         <ErrorState title="La API no responde" description="No se pudo leer el estado de la instancia. Si persiste, revisa el despliegue de la API." />
       ) : (

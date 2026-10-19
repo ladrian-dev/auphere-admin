@@ -1,10 +1,8 @@
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import {
   Badge,
-  Button,
   DescriptionList,
   EmptyState,
   PageHeader,
@@ -21,6 +19,7 @@ import {
 import { ConnectorAuthBadge } from "@/components/brand/connector-auth-badge";
 import { ConnectorLogo } from "@/components/brand/connector-logo";
 import { AUTH_KIND_HINT, categoryName, connectorState, isChannelOnly } from "@/components/connectors/labels";
+import { CrumbName } from "@/components/shell/crumb-names";
 import { backend, type TenantConnectorStatus } from "@/lib/backend";
 
 export const metadata = { title: "Conector" };
@@ -39,16 +38,11 @@ export default async function ConnectorPage({ params }: { params: Promise<{ slug
 
   return (
     <>
-      <div>
-        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/connectors" />}>
-          <ArrowLeft aria-hidden="true" />
-          Conectores
-        </Button>
-      </div>
+      <CrumbName id={slug} label={connector.display_name} />
       <PageHeader
         title={
           <span className="flex flex-wrap items-center gap-3">
-            <ConnectorLogo connector={connector} />
+            <ConnectorLogo connector={connector} size="xl" />
             {connector.display_name}
           </span>
         }

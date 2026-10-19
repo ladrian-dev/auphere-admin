@@ -146,7 +146,7 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
                 <DialogDescription>
                   Sandbox. Mismo modelo + prompt + whitelist que producción,
                   pero las tools <strong>no se ejecutan</strong> y la
-                  conversación no se guarda. Cerrá el dialog para descartar
+                  conversación no se guarda. Cierra la ventana para descartar
                   el historial.
                 </DialogDescription>
               </div>
@@ -161,7 +161,7 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
           <div className="grid gap-3 max-h-[60vh] overflow-y-auto pr-1">
             {turns.length === 0 ? (
               <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">
-                Escribí un mensaje como si fueras el cliente y mandalo
+                Escribe un mensaje como si fueras el cliente y envíalo
                 con Enter. El sandbox usa la versión staged más reciente
                 o la activa si no hay borrador.
               </div>

@@ -109,18 +109,18 @@ export function AgentEditor({
     });
     if (blocked.length > 0) {
       toast.error(
-        `Hay ${blocked.length} tool${blocked.length === 1 ? "" : "s"} marcadas cuyo connector no está conectado`,
+        `Hay ${blocked.length} herramienta${blocked.length === 1 ? "" : "s"} marcada${blocked.length === 1 ? "" : "s"} cuyo conector no está conectado`,
         {
           description:
-            "Conectá el connector requerido o quitalas antes de guardar.",
+            "Conecta el conector o desmárcalas antes de guardar.",
         },
       );
       return;
     }
     if (selected.size === 0) {
-      toast.warning("Sin tools seleccionadas", {
+      toast.warning("Sin herramientas seleccionadas", {
         description:
-          "El agente no podrá tomar acciones — confirmá si es intencional.",
+          "El agente no podrá hacer nada por su cuenta. Confirma que es lo que quieres.",
       });
     }
     startTransition(async () => {
@@ -179,18 +179,17 @@ export function AgentEditor({
           placeholder="Eres el asistente virtual de…"
         />
         <p className="text-xs text-muted-foreground">
-          Guardá la versión final con los datos del cliente ya interpolados —
-          el agente la consume tal cual.
+          Guarda la versión final con los datos del cliente ya escritos: el
+          agente la usa tal cual.
         </p>
       </div>
 
       <div className="grid gap-4">
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
-            <Label>Tools del agente</Label>
+            <Label>Herramientas del agente</Label>
             <span className="text-[11px] text-muted-foreground">
-              Capacidades base + tools de los connectors instalados en este
-              tenant.
+              Las capacidades base y las de los conectores de este cliente.
             </span>
           </div>
           <span className="text-xs font-mono text-muted-foreground tabular-nums">
@@ -207,8 +206,8 @@ export function AgentEditor({
         {noToolsAvailable ? (
           <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
             <span>
-              Sin tools disponibles. Conectá un connector desde la pestaña
-              Connectors para habilitar sus tools.
+              No hay herramientas disponibles. Conecta un conector desde la
+              pestaña Conectores para usar las suyas.
             </span>
           </div>
         ) : null}
@@ -230,9 +229,8 @@ export function AgentEditor({
       <div className="lg:col-span-2 flex items-center justify-between gap-2 border-t border-border pt-4">
         {sourceIsStagedDraft && source ? (
           <span className="text-xs text-muted-foreground">
-            Editando borrador v{source.version} — guardá para crear una
-            versión nueva o promovela desde el historial cuando estés
-            conforme.
+            Editando el borrador v{source.version}. Guarda para crear una
+            versión nueva y publícala desde Versiones cuando esté lista.
           </span>
         ) : (
           <span />
@@ -407,7 +405,7 @@ function ConnectorGroup({
                       variant="outline"
                       className="text-[10px] uppercase tracking-wider"
                     >
-                      Requiere consent
+                      Requiere permiso
                     </Badge>
                   ) : null}
                 </div>
@@ -456,17 +454,17 @@ function describeInstallStatus(
       };
     case "needs_reauth":
       return {
-        badgeLabel: "Re-auth",
+        badgeLabel: "Reconectar",
         badgeVariant: "secondary",
         ctaHref: (tid) => `/tenants/${tid}/connectors`,
-        ctaLabel: "Re-autenticar",
+        ctaLabel: "Reconectar",
       };
     case "pending":
       return {
         badgeLabel: "Pendiente",
         badgeVariant: "secondary",
         ctaHref: (tid) => `/tenants/${tid}/connectors`,
-        ctaLabel: "Completar consent",
+        ctaLabel: "Completar permiso",
       };
     case "disconnected":
     case "error":

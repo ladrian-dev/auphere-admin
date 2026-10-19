@@ -42,7 +42,6 @@ export default async function SignupsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Altas"
         title="Registro autónomo"
         description="Quién pidió cuenta sin que nadie del equipo ejecutara nada, y en qué quedó. Suspender un partner ya nacido se hace desde su ficha."
       />

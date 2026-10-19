@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { Button, EmptyState, ErrorState, PageHeader, StatusDot } from "@nexus/ui";
 
-import { ChannelIcon } from "@/components/brand/channel-icon";
+import { ChannelLogo } from "@/components/brand/channel-logo";
 import { CHANNEL_NAME, CHANNEL_STATUS, ROLE_LABEL } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
 
@@ -73,9 +73,7 @@ export default async function TenantChannelsPage({
               c.type;
             return (
               <li key={c.id} className="flex items-center gap-4 px-4 py-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-md bg-muted">
-                  <ChannelIcon channel={c.type} className="size-5" />
-                </span>
+                <ChannelLogo channel={c.type} size="lg" />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-medium">{name}</span>
                   <span className="truncate text-xs text-muted-foreground">

@@ -1,12 +1,11 @@
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { Button, Callout, DescriptionList, Section, StatusDot } from "@nexus/ui";
+import { Callout, DescriptionList, Section, StatusDot } from "@nexus/ui";
 
 import { ConnectorAuthBadge } from "@/components/brand/connector-auth-badge";
 import { ConnectorLogo } from "@/components/brand/connector-logo";
 import { AUTH_KIND_HINT, categoryName, connectorState, isChannelOnly } from "@/components/connectors/labels";
+import { CrumbName } from "@/components/shell/crumb-names";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 
@@ -62,15 +61,10 @@ export default async function TenantConnectorPage({ params }: { params: Promise<
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href={`/tenants/${id}/connectors`} />}>
-          <ArrowLeft aria-hidden="true" />
-          Conectores
-        </Button>
-      </div>
 
+      <CrumbName id={slug} label={connector.display_name} />
       <header className="flex flex-wrap items-center gap-4">
-        <ConnectorLogo connector={connector} />
+        <ConnectorLogo connector={connector} size="xl" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
             {connector.display_name}

@@ -72,7 +72,7 @@ export function ImprovePromptButton({
   function runImprove() {
     if (!currentPrompt.trim()) {
       toast.error(
-        "El prompt está vacío — escribí algo primero o aplicá una plantilla.",
+        "El prompt está vacío. Escribe algo primero o aplica una plantilla.",
       );
       return;
     }
@@ -107,7 +107,7 @@ export function ImprovePromptButton({
     onApply(result.improved_prompt);
     toast.success("Prompt aplicado al editor", {
       description:
-        "Revisá el textarea y guardá el borrador cuando estés conforme.",
+        "Revisa el texto y guarda el borrador cuando esté listo.",
     });
     setOpen(false);
     reset();
@@ -174,7 +174,7 @@ export function ImprovePromptButton({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={2}
-                placeholder="ej: más conciso, mantené el tono casual"
+                placeholder="p. ej.: más conciso, mantén el tono cercano"
                 disabled={pending}
               />
               <p className="text-xs text-muted-foreground">
@@ -250,7 +250,7 @@ export function ImprovePromptButton({
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   rows={2}
-                  placeholder="ej: añadí un ejemplo de cómo manejar fechas ambiguas"
+                  placeholder="p. ej.: añade un ejemplo de cómo tratar fechas ambiguas"
                   disabled={pending}
                 />
               </div>
