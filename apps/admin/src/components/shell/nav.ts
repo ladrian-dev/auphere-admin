@@ -3,6 +3,7 @@ import {
   Activity,
   FlaskConical,
   Handshake,
+  MessagesSquare,
   Inbox,
   LayoutDashboard,
   Phone,
@@ -39,8 +40,11 @@ export const NAV: NavGroup[] = [
     id: "platform",
     label: "Plataforma",
     items: [
+      // Spec 035: Canales (mensajería) and Conectores (otras apps) apart, as
+      // Chatwoot keeps Inboxes and Integrations apart.
+      { href: "/channels", label: "Canales", icon: MessagesSquare },
       { href: "/connectors", label: "Conectores", icon: Plug },
-      { href: "/auphere/channels", label: "Canales de Auphere", icon: Phone },
+      { href: "/auphere/channels", label: "Números de Auphere", icon: Phone },
       { href: "/qa", label: "Playground QA", icon: FlaskConical },
     ],
   },

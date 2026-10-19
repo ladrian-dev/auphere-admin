@@ -37,9 +37,11 @@ type SignupMode = "cloud_api" | "coexistence";
 interface Props {
   tenantId: string;
   alreadyConnected: boolean;
+  /** Spec 035: the channel wizard moves on to «Asignar agente». */
+  onConnected?: () => void;
 }
 
-export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected }: Props) {
+export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected, onConnected }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<SignupMode | null>(null);
   const [, startTransition] = useTransition();
@@ -85,6 +87,7 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected }: Props) {
         description: `${result.data.display_phone_number} — el canal ya recibe webhooks.`,
       });
       startTransition(() => setOpen(false));
+      onConnected?.();
     } finally {
       setBusy(null);
     }

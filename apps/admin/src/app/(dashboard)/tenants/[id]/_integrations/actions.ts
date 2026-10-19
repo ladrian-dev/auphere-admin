@@ -40,7 +40,7 @@ export async function initiateConsentAction(
   try {
     const r = await backend.initiateConnectorConsent(tenantId, slug);
     if (!r) return { ok: false, error: "empty response" };
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     return {
       ok: true,
       data: {
@@ -60,7 +60,7 @@ export async function disconnectAction(
 ): Promise<ActionResult<string>> {
   try {
     const r = await backend.disconnectConnector(tenantId, slug);
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     return { ok: true, data: r?.status ?? "disconnected" };
   } catch (e) {
     return err(e);
@@ -73,8 +73,7 @@ export async function pauseConnectorAction(
 ): Promise<ActionResult<string>> {
   try {
     const r = await backend.pauseConnector(tenantId, slug);
-    revalidatePath(`/tenants/${tenantId}/connectors`);
-    revalidatePath(`/tenants/${tenantId}/agent`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     return { ok: true, data: r?.status ?? "paused" };
   } catch (e) {
     return err(e);
@@ -87,8 +86,7 @@ export async function resumeConnectorAction(
 ): Promise<ActionResult<string>> {
   try {
     const r = await backend.resumeConnector(tenantId, slug);
-    revalidatePath(`/tenants/${tenantId}/connectors`);
-    revalidatePath(`/tenants/${tenantId}/agent`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     return { ok: true, data: r?.status ?? "connected" };
   } catch (e) {
     return err(e);
@@ -101,7 +99,7 @@ export async function syncAction(
 ): Promise<ActionResult<{ added: number; deprecated: number; unchanged: number }>> {
   try {
     const r = await backend.syncConnector(tenantId, slug);
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     if (!r) return { ok: false, error: "empty response" };
     return {
       ok: true,
@@ -122,7 +120,7 @@ export async function reissueConsentAction(
 ): Promise<ActionResult<{ signed_consent_url: string; expires_at: string }>> {
   try {
     const r = await backend.reissueConnectorConsent(tenantId, slug);
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     if (!r) return { ok: false, error: "empty response" };
     return {
       ok: true,
@@ -147,7 +145,7 @@ export async function putOverrideAction(
       mode,
       reason,
     });
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     return { ok: true, data: { mode: (r?.mode as ConnectorToolMode) ?? mode } };
   } catch (e) {
     return err(e);
@@ -160,7 +158,7 @@ export async function deleteOverrideAction(
 ): Promise<ActionResult<void>> {
   try {
     await backend.deleteConnectorToolOverride(tenantId, toolName);
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     return { ok: true, data: undefined };
   } catch (e) {
     return err(e);
@@ -175,7 +173,7 @@ export async function updateChannelRoleAction(
   try {
     const r = await backend.updateChannelRole(tenantId, channelId, body);
     if (!r) return { ok: false, error: "empty response" };
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);

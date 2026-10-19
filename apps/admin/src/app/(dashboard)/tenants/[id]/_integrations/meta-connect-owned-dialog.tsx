@@ -34,7 +34,14 @@ import {
 
 import { connectMetaOwnedNumberAction } from "./setup-actions";
 
-export function MetaConnectOwnedDialog({ tenantId }: { tenantId: string }) {
+export function MetaConnectOwnedDialog({
+  tenantId,
+  onConnected,
+}: {
+  tenantId: string;
+  /** Spec 035: the channel wizard moves on to «Asignar agente». */
+  onConnected?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [token, setToken] = useState("");
@@ -70,6 +77,7 @@ export function MetaConnectOwnedDialog({ tenantId }: { tenantId: string }) {
         }`,
       });
       setOpen(false);
+      onConnected?.();
     } finally {
       setBusy(false);
     }

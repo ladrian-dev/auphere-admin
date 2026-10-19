@@ -11,8 +11,9 @@ describe("operator panel navigation (spec 031, R2)", () => {
       "Clientes",
       "Altas",
       "Tickets",
+      "Canales",
       "Conectores",
-      "Canales de Auphere",
+      "Números de Auphere",
       "Playground QA",
       "Estado",
     ]);

@@ -202,7 +202,7 @@ export function NewTenantWizard() {
       // the new route's RSC payload, so refresh is redundant AND
       // harmful. Drop the refresh and let Next.js handle it.
       startTransition(() => {
-        router.replace(`/tenants/${result.tenantId}/connectors`);
+        router.replace(`/tenants/${result.tenantId}/channels/new`);
       });
     } catch (err) {
       toast.error("Error inesperado", {

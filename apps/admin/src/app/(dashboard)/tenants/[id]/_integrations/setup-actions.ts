@@ -68,7 +68,7 @@ export async function connectMetaWhatsAppSetupAction(
     await backend.connectManualConnector(tenantId, "whatsapp_meta", {
       channel_id: result.channel_id,
     });
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: result };
   } catch (err) {
@@ -100,7 +100,7 @@ export async function connectMetaOwnedNumberAction(
     await backend.connectManualConnector(tenantId, "whatsapp_meta", {
       channel_id: result.channel_id,
     });
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: result };
   } catch (err) {
@@ -170,7 +170,7 @@ export async function tiktokDisconnectAction(
     if (!result) {
       return { ok: false, error: "El backend no confirmó la desconexión." };
     }
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: { status: result.status } };
   } catch (err) {
@@ -210,7 +210,7 @@ export async function connectWooCommerceSetupAction(
       },
       endpoint_meta: { store_url: storeUrl },
     });
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: { store_url: storeUrl } };
   } catch (err) {
@@ -239,7 +239,7 @@ export async function agendaProSetPublicUrlAction(
     if (!result) {
       return { ok: false, error: "El backend no retornó datos." };
     }
-    revalidatePath(`/tenants/${tenantId}/connectors`);
+    revalidatePath(`/tenants/${tenantId}`, "layout");
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: { public_url: result.public_url } };
   } catch (err) {

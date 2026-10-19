@@ -42,14 +42,13 @@ export default async function AuphereChannelsPage({
       <Card>
         <CardHeader>
           <Eyebrow>Plataforma</Eyebrow>
-          <CardTitle>Canales Auphere (backchannel)</CardTitle>
+          <CardTitle>Números de Auphere</CardTitle>
           <CardDescription>
-            Registry global de los números desde los que Auphere escribe a
-            los dueños de los tenants. Cada canal vive en la WABA de
-            Auphere (Meta Cloud API) y necesita su phone_number_id + access
-            token para poder enviar. Mantén un ★ default — el resolver cae
-            ahí cuando un <code>owner_phone_index</code> no tiene channel
-            pin.
+            Los números desde los que Auphere escribe a los dueños de los
+            negocios (canal del dueño). Cada uno vive en la cuenta de WhatsApp
+            Business de Auphere y necesita su identificador de número y su
+            token para enviar. Mantén uno marcado con ★: es el que se usa
+            cuando un dueño no tiene número asignado.
           </CardDescription>
         </CardHeader>
         <CardContent>

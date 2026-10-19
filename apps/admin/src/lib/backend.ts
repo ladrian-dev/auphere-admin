@@ -299,6 +299,9 @@ export type SeedTemplate = {
 
 export type ChannelOut = {
   id: string;
+  /** Spec 030/035: the agent that answers on this channel; null = principal. */
+  agent_id?: string | null;
+  last_health_check_at?: string | null;
   type: "whatsapp" | "instagram" | "telegram" | "email" | "web" | "tiktok";
   provider: string;
   provider_identifier: string;
@@ -984,6 +987,34 @@ export type PartnerAccessOut = {
   modules: PartnerModule[];
   catalog: { id: PartnerModule; kind: "nav" | "assistant" }[];
 };
+
+/** Spec 035: the messaging channels Auphere knows, and whether each can start. */
+export type ChannelAvailability = "available" | "beta" | "pending" | "coming_soon";
+export type ChannelCatalogEntry = {
+  key: string;
+  name: string;
+  description: string;
+  availability: ChannelAvailability;
+  note: string | null;
+};
+
+export type GlobalChannel = {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  partner_id: string | null;
+  partner_name: string | null;
+  type: string;
+  provider: string;
+  provider_identifier: string;
+  status: string;
+  role: string | null;
+  agent_enabled: boolean;
+  name: string | null;
+  created_at: string;
+};
+
+export type ConnectorInstall = { tenant_id: string; tenant_name: string; status: string };
 
 export type AdminInstance = {
   environment: string;
@@ -2204,6 +2235,22 @@ export const backend = {
   getOverview: () => call<AdminOverview>("/admin/overview"),
 
   getInstance: () => call<AdminInstance>("/admin/instance"),
+
+  // ── Spec 035: channels and connectors across every client ────────
+  getChannelCatalog: () =>
+    call<ChannelCatalogEntry[]>("/admin/channel-catalog").then((r) => r ?? []),
+
+  listAllChannels: () =>
+    call<{ channels: GlobalChannel[]; unreadable: string[] }>("/admin/channels"),
+
+  listConnectorInstalls: () =>
+    call<Record<string, ConnectorInstall[]>>("/admin/connectors-installs").then((r) => r ?? {}),
+
+  assignChannelAgent: (tenantId: string, channelId: string, agentId: string, operatorId: string) =>
+    call<{ channel_id: string; agent_id: string }>(
+      `/admin/tenants/${tenantId}/channels/${channelId}/agent`,
+      { method: "PATCH", body: { agent_id: agentId }, headers: { "X-Operator-Id": operatorId } },
+    ),
 
   getPartnerAccess: (partnerId: string) =>
     call<PartnerAccessOut>(`/admin/partners/${partnerId}/access`),

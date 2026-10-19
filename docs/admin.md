@@ -30,7 +30,7 @@ Ordenada como el super admin de Chatwoot (`src/components/shell/nav.ts`):
 |---|---|
 | — | Panel (`/`) |
 | Gestionar | Partners · Clientes (`/tenants`) · Altas · Tickets (con contador de abiertos) |
-| Plataforma | Conectores · Canales de Auphere · Playground QA (`/qa`) |
+| Plataforma | Canales (`/channels`) · Conectores (`/connectors`) · Números de Auphere (`/auphere/channels`) · Playground QA (`/qa`) |
 | Instancia | Estado (`/status`) |
 
 ⌘K abre una paleta que busca vistas, partners, clientes y tickets abiertos.
@@ -63,6 +63,26 @@ Las rutas antiguas (`keys`, `tenants`, `usage`, `wallet`, `receipts`, `limits`,
 
 La cabecera enlaza al partner (o dice «Cliente directo de Auphere»). La pestaña Agente
 se divide en Prompt y herramientas · Runtime · Versiones · Evals (`?section=`).
+
+## Canales y Conectores (spec 035)
+
+Separados como las Bandejas y las Integraciones de Chatwoot.
+
+- **Canales del cliente** (`/tenants/{id}/channels`): una fila por canal con
+  «Configurar». «Añadir canal» abre un asistente de cuatro pasos: Elegir canal ·
+  Conectar · Asignar agente · ¡Listo!. La ficha del canal tiene Ajustes (papel del número
+  y si el agente responde), Agente, Plantillas (solo WhatsApp) y Salud (estado, envío de
+  prueba, pausar o desconectar la conexión).
+- **Catálogo de canales** (`GET /admin/channel-catalog`): WhatsApp, TikTok, Instagram,
+  Telegram, X y Threads con su disponibilidad. Lo que no es `available` ni `beta` se
+  enseña y no se puede iniciar (constitución §V 1.1.0, solo en este panel).
+- **Conectores del cliente** (`/tenants/{id}/connectors`): rejilla con buscador, categoría
+  y estado; sin WhatsApp ni TikTok, que son canales. La ficha de cada conector tiene sus
+  acciones y el editor de permisos por herramienta: por defecto, siempre, pide
+  aprobación o bloqueada.
+- **Vistas globales**: `/channels` lista los canales de todos los clientes
+  (`GET /admin/channels`) y `/connectors` el catálogo con cuántos clientes usan cada uno
+  (`GET /admin/connectors-installs`). Las dos leen cliente a cliente con su GUC.
 
 ## Estado (`/status`)
 
