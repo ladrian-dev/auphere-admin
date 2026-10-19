@@ -7,4 +7,4 @@
 - [X] T005 Consola: catálogo TS + prueba de deriva, `toResolution` (sin sección = `disabled`), `firstPartnerModulePath`, `navForPartner`, `requirePartnerModule` en layouts de sección y Panel, paleta y Companion filtrados. _Requisitos: 3.2–3.5_
 - [X] T006 Panel: pestaña Módulos (catálogo, formulario, acción con operador, mensajes) + pruebas. _Requisitos: 2.1, 2.2_
 - [X] T007 Recorrido en local: apagar Facturación la quita y redirige; encender Companion monta la burbuja. _Requisitos: 3.2, 3.3, 3.5_
-- [ ] T008 Suite completa en verde; `docs/admin.md`, `docs/console.md`; ADR-045.
+- [X] T008 Suite completa en verde; `docs/admin.md`, `docs/console.md`; ADR-045.

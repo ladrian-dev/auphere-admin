@@ -15,4 +15,4 @@
 - [X] T013 Uso del partner en el admin: gasto del libro en centavos y coste interno en decimal. _Requisitos: 7.2_
 - [X] T014 Auditoría `console.allocation.set` en `PUT /console/clients/{ref}/allocation`. _Requisitos: 7.3_
 - [X] T015 Panel: pestaña Dinero en US$ (resumen, recarga con confirmación, conciliación, libro con tipos), uso con gasto/coste separados; `lib/money.ts` con pruebas. _Requisitos: 1.1, 1.2, 2.4, 7.2_
-- [ ] T016 Suite completa API + worker + panel en verde; `docs/billing.md`; ADR-044.
+- [X] T016 Suite completa API + worker + panel en verde; `docs/billing.md`; ADR-044.
