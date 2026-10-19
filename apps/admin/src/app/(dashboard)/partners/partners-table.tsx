@@ -18,6 +18,12 @@ import {
 
 import type { PartnerOut } from "@/lib/backend";
 import { formatCents, relativeTime, statusLabel } from "@/lib/format";
+
+const CHARGING_LABEL: Record<string, string> = {
+  manual: "Cobro manual",
+  auto_recharge: "Recarga automática",
+  postpaid: "Pospago",
+};
 import { filterRows } from "@/lib/list-filter";
 
 const STATUS_TONE: Record<string, "positive" | "danger" | "muted"> = { active: "positive", suspended: "danger" };
@@ -67,6 +73,7 @@ export function PartnersTable({ partners }: { partners: PartnerOut[] }) {
                 <TableHead className="text-right">Clientes</TableHead>
                 <TableHead className="hidden sm:table-cell text-right">Personas</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
+                <TableHead className="hidden md:table-cell">Cobro</TableHead>
                 <TableHead className="hidden lg:table-cell">Contacto</TableHead>
                 <TableHead className="hidden lg:table-cell text-right">Alta</TableHead>
               </TableRow>
@@ -92,6 +99,23 @@ export function PartnersTable({ partners }: { partners: PartnerOut[] }) {
                   <TableCell className="text-right tabular-nums">{p.clients_count ?? "—"}</TableCell>
                   <TableCell className="hidden sm:table-cell text-right tabular-nums">{p.members_count ?? "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatCents(p.available_cents)}</TableCell>
+                  {/* Spec 041: the card and how the partner is charged. */}
+                  <TableCell className="hidden text-sm md:table-cell">
+                    {p.card_last4 ? (
+                      <span className="flex flex-col">
+                        <span className={p.charges_paused ? "text-status-danger-text" : undefined}>
+                          {(p.card_brand ?? "").toUpperCase()} ···· {p.card_last4}
+                          {p.charges_paused ? " · parado" : ""}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {CHARGING_LABEL[p.billing_mode ?? "manual"]}
+                          {p.card_saved_at ? ` · ${relativeTime(p.card_saved_at)}` : ""}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Sin tarjeta</span>
+                    )}
+                  </TableCell>
                   <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{p.contact_email ?? "—"}</TableCell>
                   <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground">{relativeTime(p.created_at)}</TableCell>
                 </TableRow>

@@ -9,10 +9,8 @@ from nexus_api.api.admin import (
     backchannel_owners,
     billing,
     budget_policies,
+    channel_signup_links,
     channels_overview,
-    tenant_capabilities,
-    tenants_health,
-    usage_overview,
     client_access,
     connectors,
     conversations,
@@ -25,6 +23,7 @@ from nexus_api.api.admin import (
     model_bindings,
     overview,
     partner_access,
+    partner_billing,
     partner_knowledge,
     partner_llm,
     partner_models,
@@ -35,11 +34,14 @@ from nexus_api.api.admin import (
     screenshots,
     signups,
     skills,
+    tenant_capabilities,
     tenant_payments,
     tenants,
+    tenants_health,
     tickets,
     tiktok_authorize,
     tool_catalog,
+    usage_overview,
     whatsapp_templates,
 )
 
@@ -74,6 +76,8 @@ router.include_router(channels_overview.router)
 router.include_router(tenants_health.router)
 router.include_router(tenant_capabilities.router)
 router.include_router(usage_overview.router)
+router.include_router(channel_signup_links.router)
+router.include_router(partner_billing.router)
 router.include_router(partner_access.router)
 router.include_router(overview.router)
 router.include_router(overview.instance_router)

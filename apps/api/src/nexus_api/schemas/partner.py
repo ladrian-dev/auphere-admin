@@ -145,6 +145,13 @@ class PartnerOut(BaseModel):
     #: Available balance in US$ cents, rounded down like the console shows it.
     #: None when the ledger could not be read (fail-closed, never a guess).
     available_cents: int | None = None
+    #: Spec 041: how the partner is charged and its card (never more than the
+    #: brand and the last four). None when it could not be read.
+    billing_mode: str | None = None
+    card_brand: str | None = None
+    card_last4: str | None = None
+    card_saved_at: datetime | None = None
+    charges_paused: bool | None = None
 
 
 class PartnerMemberOut(BaseModel):

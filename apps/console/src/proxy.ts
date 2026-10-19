@@ -52,6 +52,11 @@ const PUBLIC = [
   // mirando la URL desplegada.
   "/forgot",
   "/reset",
+  // `/connect` (spec 040): el dueño del negocio abre el enlace que le mandó
+  // su partner para conectar SU WhatsApp desde SU teléfono. No tiene cuenta
+  // en la consola ni la va a tener: el enlace es toda su autorización, y la
+  // API lo comprueba (un solo uso, caduca, se revoca).
+  "/connect/",
 ];
 
 export function proxy(request: NextRequest) {

@@ -57,7 +57,7 @@ Cabecera con estado, consola, clientes, personas, saldo y alta. Pestañas:
 | Clientes | Uso de 30 días por cliente y mapeos `external_client_ref` → cliente, enlazados |
 | Equipo | Personas (`GET /admin/partners/{id}/members`) e invitaciones pendientes |
 | Módulos | Consola encendida y qué secciones y servicios tiene (spec 032): rejilla Operar · Cuenta · Asistente; el Companion se enciende aquí |
-| Dinero | Saldo recargado, pool semanal y asignado en US$; recarga en dólares con confirmación e idempotencia; «¿cuadra el libro?»; movimientos con tipo (spec 033); recibos |
+| Dinero | Saldo recargado, pool semanal y asignado en US$; recarga en dólares con confirmación e idempotencia; «¿cuadra el libro?»; movimientos con tipo (spec 033); tarjeta, modo de cobro, cobros y la línea de crédito del pospago (spec 041); recibos |
 | Configuración | Límites, modelos, claves API e impersonación |
 | Conocimiento · Auditoría | Sin cambios |
 
@@ -77,6 +77,15 @@ Lee `GET /admin/usage`.
 - **Gráfico.** Gasto por día.
 - **Tablas.** Por partner (gasto, fuera de clientes, coste interno, mensajes, saldo disponible) y por cliente (gasto, coste interno, mensajes, conversaciones). Cada fila abre su ficha.
 - **Clientes directos.** Los de Auphere no tienen saldo de partner: salen «Sin saldo» y solo cuentan su coste interno.
+
+Consumo también enseña la **ganancia** (spec 039): venta, coste del modelo de esos mismos turnos (`usage_records`), ganancia, margen y «se cobra sobre el coste» frente a la tarifa fijada (2,2×). Las pruebas del Playground van aparte y solo restan de la ganancia neta.
+
+## Conectar WhatsApp desde el dispositivo del dueño (spec 040)
+
+En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar un enlace al dueño** del negocio.
+- Lo abre en su teléfono o su computadora, donde ya tiene su cuenta de Meta, y conecta él mismo el número (coexistencia o Cloud API).
+- El enlace sirve una vez, caduca a los 7 días y se puede anular desde Canales.
+- La página del dueño vive en la consola. El enlace (`/connect/whatsapp/{token}`) pasa el token a una cookie httpOnly y redirige a `/connect/whatsapp`, así que el token no queda en la dirección, el historial ni el `Referer`.
 
 ## Lista de clientes (`/tenants`, spec 036)
 

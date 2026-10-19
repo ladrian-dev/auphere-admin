@@ -163,6 +163,12 @@ export function channelsApi(call: Call) {
       }),
     clearCatalog: (ref: string, channelId: string) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, { method: "DELETE" }),
+    /** Spec 040: a link the business owner opens on their own device. */
+    whatsappSignupLink: (ref: string, mode: "cloud_api" | "coexistence") =>
+      call<{ url: string; mode: string; expires_at: string }>(`${base(ref)}/whatsapp/signup-link`, {
+        method: "POST",
+        body: { mode },
+      }),
     whatsappSignup: (ref: string, body: WhatsAppSignupBody) =>
       call<WhatsAppSignupResult>(`${base(ref)}/whatsapp/signup`, { method: "POST", body }),
     listTemplates: (ref: string) => call<TemplateList>(`${base(ref)}/whatsapp/templates`),

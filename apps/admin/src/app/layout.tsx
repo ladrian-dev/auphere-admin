@@ -19,7 +19,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   manifest: "/site.webmanifest",
   icons: {
+    // The mark on Auphere's dark green, edge to edge (no rounded corners: they
+    // read as white on a light tab bar). SVG where supported, PNG/ICO elsewhere.
+    // The 16/32 px files draw the strokes thicker so the mark reads that small.
     icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
       { url: "/favicon.ico", sizes: "any" },
       { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
       { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },

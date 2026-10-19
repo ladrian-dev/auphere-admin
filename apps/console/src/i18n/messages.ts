@@ -47,6 +47,11 @@ const core = {
   "nav.group.operate": { es: "Operar", en: "Operate" },
   "nav.group.account": { es: "Cuenta", en: "Account" },
   "shell.signOut": { es: "Cerrar sesión", en: "Sign out" },
+  "shell.beta": { es: "Beta", en: "Beta" },
+  "shell.beta.hint": {
+    es: "La consola está en fase beta: seguimos mejorándola cada semana. Si algo falla, escríbenos desde Ayuda.",
+    en: "The console is in beta: we keep improving it every week. If something fails, write to us from Help.",
+  },
   "shell.theme": { es: "Tema", en: "Theme" },
   "shell.theme.light": { es: "Claro", en: "Light" },
   "shell.theme.dark": { es: "Oscuro", en: "Dark" },

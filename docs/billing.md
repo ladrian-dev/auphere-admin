@@ -28,6 +28,28 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 > cliente se repone **una vez por mes de calendario** y lo que ve un cliente como saldo
 > nunca supera el recargado de su partner.
 
+## Tarjeta guardada, recarga automática y pospago (spec 041)
+
+- **Tarjeta.** El partner guarda su tarjeta en la página de Stripe (Checkout `mode=setup`) desde Facturación. Auphere guarda solo ids, marca, últimos 4 y caducidad (`partner_billing`).
+- **Cómo se cobra.** El partner elige entre tres modos:
+  - **Manual**: compra saldo a mano, como siempre.
+  - **Recarga automática**: si el saldo baja de un mínimo, se cobra una cantidad fija (mínimo US$5) y se abona.
+  - **Pospago**: solo con la línea de crédito que concede Auphere desde el panel (`partner_wallets.credit_limit`). El saldo puede bajar hasta menos esa línea (CHECK en la base). El día 1, hora de Madrid, se cobra la deuda y el saldo vuelve a cero.
+- **Cada cobro es una factura de Stripe** (`collection_method=charge_automatically`, pagada fuera de sesión).
+  - El saldo sube una sola vez por factura, con `credit_stripe` y la clave `stripe_invoice:<id>`. Da igual que se abone al pagar o al llegar `invoice.paid`.
+  - Los cobros quedan en `partner_charges`, con una clave única por intento.
+- **Rechazos.** Tres seguidos paran los cobros automáticos hasta que el partner cambie la tarjeta.
+- **3D Secure.** Si el banco pide confirmar (`authentication_required`), el cobro queda en `action_required` y no cuenta como rechazo.
+  - Se guarda el enlace de la factura (`action_url`), se envía al correo de facturación (o al de contacto) y sale en Facturación con «Confirmar el pago».
+  - Mientras espera no se abre otra recarga. `invoice.paid` lo liquida.
+- **Pospago sin cobrar.** Si el cobro del pospago falla o espera confirmación, la línea se congela en lo que ya se debe (`credit_frozen_at`).
+  - La línea concedida queda en `granted_credit_limit` y vuelve al pagarse.
+  - Se reintenta como mucho una vez al día (clave `postpaid:{partner}:{mes}:{día}`).
+  - El Panel del Admin lo avisa como «línea de pospago congelada».
+- **Sin claves de Stripe** no se cobra ni se registra nada.
+- **Cron.** `partner-charges-cron` en el worker: recargas cada 5 minutos, pospago el día 1 y reintento diario si la línea está congelada.
+- **Webhook.** Usa los eventos que ya estaban suscritos: `checkout.session.completed`, `invoice.paid` e `invoice.payment_failed`. Las facturas de estos cobros se procesan aunque las membresías estén apagadas.
+
 ## El reparto, en una frase
 
 **El proveedor cobra; el libro decide.** Stripe mueve dinero y nos avisa. Quién

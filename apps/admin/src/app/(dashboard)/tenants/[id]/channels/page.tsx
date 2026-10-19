@@ -7,6 +7,8 @@ import { ChannelLogo } from "@/components/brand/channel-logo";
 import { CHANNEL_NAME, CHANNEL_STATUS, ROLE_LABEL } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
 
+import { PendingLinks } from "./pending-links";
+
 export const dynamic = "force-dynamic";
 
 const TIKTOK_RESULT: Record<string, { tone: "ok" | "error"; text: string }> = {
@@ -28,7 +30,10 @@ export default async function TenantChannelsPage({
 }) {
   const { id } = await params;
   const tiktok = (await searchParams).tiktok;
-  const channels = await backend.listChannels(id).catch(() => null);
+  const [channels, links] = await Promise.all([
+    backend.listChannels(id).catch(() => null),
+    backend.listSignupLinks(id).catch(() => []),
+  ]);
   const visible = channels?.filter((c) => c.provider !== "qa_playground") ?? null;
   const result = tiktok ? (TIKTOK_RESULT[tiktok] ?? { tone: "error" as const, text: `TikTok respondió con un error (${tiktok}).` }) : null;
 
@@ -49,6 +54,7 @@ export default async function TenantChannelsPage({
           {result.text}
         </p>
       ) : null}
+      <PendingLinks tenantId={id} links={links.filter((l) => l.state === "valid")} />
       {visible === null ? (
         <ErrorState title="No se pudieron leer los canales" description="La API no respondió. Vuelve a intentarlo en un momento." />
       ) : visible.length === 0 ? (

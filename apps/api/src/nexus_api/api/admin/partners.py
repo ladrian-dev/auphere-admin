@@ -70,7 +70,17 @@ def _partner_snapshot(partner: Partner) -> dict[str, Any]:
     # Only the partner's own columns: the counts and the balance are reads of
     # other tables and would make every audit diff look like a change.
     return PartnerOut.model_validate(partner).model_dump(
-        mode="json", exclude={"clients_count", "members_count", "available_cents"}
+        mode="json",
+        exclude={
+            "clients_count",
+            "members_count",
+            "available_cents",
+            "billing_mode",
+            "card_brand",
+            "card_last4",
+            "card_saved_at",
+            "charges_paused",
+        },
     )
 
 
@@ -86,6 +96,7 @@ async def _with_facts(session: AsyncSession, partners: list[Partner]) -> list[Pa
     from nexus_api.billing.pricing import credits_to_cents
     from nexus_api.db.models.partner_membership import MembershipStatus, PartnerMembership
     from nexus_api.metering.wallet import read_wallet
+    from nexus_api.services.partner_billing import billing_summary
 
     ids = [p.id for p in partners]
     if not ids:
@@ -118,6 +129,17 @@ async def _with_facts(session: AsyncSession, partners: list[Partner]) -> list[Pa
         row.members_count = int(members.get(p.id, 0))
         snap = await read_wallet(p.id)
         row.available_cents = None if snap is None else credits_to_cents(snap.available)
+        # Spec 041: the card and how it is charged, read under the same GUC.
+        try:
+            billing = await billing_summary(p.id)
+        except Exception:  # pragma: no cover - a list never dies for one partner
+            billing = None
+        if billing is not None:
+            row.billing_mode = billing.mode
+            row.card_brand = billing.card_brand
+            row.card_last4 = billing.card_last4
+            row.card_saved_at = billing.card_saved_at
+            row.charges_paused = billing.paused_reason is not None
         out.append(row)
     return out
 

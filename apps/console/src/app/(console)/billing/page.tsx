@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Button, DescriptionList, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
 import { BuyCreditForm } from "@/components/billing/buy-credit-form";
+import { CardSection } from "@/components/billing/card-section";
 import { MembershipSection } from "@/components/billing/membership-section";
 import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-link";
 import { getT } from "@/i18n/server";
@@ -12,7 +13,7 @@ import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.billing");
 
-export default async function BillingPage() {
+export default async function BillingPage({ searchParams }: { searchParams: Promise<{ card?: string }> }) {
   const principal = await requirePartnerPrincipal("/billing");
   if (!can(principal.role, "billing:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
@@ -23,6 +24,10 @@ export default async function BillingPage() {
   // balance purchase and the receipts are all there is (§V — absence is
   // designed, not greyed out).
   const membership = billing.memberships_enabled ? await backend.membership() : null;
+  // Spec 041: the card and automatic charging. A read that fails hides the
+  // section rather than drawing a card that may not be the real one.
+  const card = membership ? null : await backend.billingCard().catch(() => null);
+  const justSaved = (await searchParams).card === "saved";
   return (
     <>
       <PageHeader
@@ -41,6 +46,7 @@ export default async function BillingPage() {
           <BuyCreditForm />
         </section>
       ) : null}
+      {card ? <CardSection view={card} canManage={can(principal.role, "billing:manage")} justSaved={justSaved} /> : null}
       <DescriptionList layout="inline" className="max-w-lg" items={[{ key: "email", term: t("billing.email"), detail: billing.billing_email ?? t("billing.notSet"), mono: true, truncate: true }]} />
       <section aria-labelledby="receipts-h" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

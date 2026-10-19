@@ -14,7 +14,10 @@ export const dynamic = "force-dynamic";
 /** Step 2 — connect the chosen channel with the flow it already has. */
 export default async function ConnectChannelPage({ params }: { params: Promise<{ id: string; channel: string }> }) {
   const { id, channel } = await params;
-  const catalog = await backend.getChannelCatalog().catch(() => []);
+  const [catalog, tenant] = await Promise.all([
+    backend.getChannelCatalog().catch(() => []),
+    backend.getTenant(id).catch(() => null),
+  ]);
   const entry = catalog.find((c) => c.key === channel);
   // A channel that cannot start has no step 2: back to the catalog.
   if (!entry || !canStart(entry.availability)) redirect(`/tenants/${id}/channels/new`);
@@ -25,7 +28,7 @@ export default async function ConnectChannelPage({ params }: { params: Promise<{
         <h2 className="text-lg font-semibold">Conectar {entry.name}</h2>
         <p className="text-sm text-pretty text-muted-foreground">{entry.description}</p>
       </div>
-      {channel === "whatsapp" ? <ConnectWhatsApp tenantId={id} /> : null}
+      {channel === "whatsapp" ? <ConnectWhatsApp tenantId={id} businessName={tenant?.name ?? "tu negocio"} /> : null}
       {channel === "tiktok" ? (
         <div className="flex flex-col gap-3 rounded-md p-6 ring-1 ring-foreground/10">
           <p className="text-sm text-pretty text-muted-foreground">

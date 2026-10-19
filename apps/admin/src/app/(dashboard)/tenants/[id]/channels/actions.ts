@@ -33,3 +33,30 @@ export async function assignChannelAgentAction(
     return { ok: false, error: toError(err) };
   }
 }
+
+/** Spec 040: a link for the business owner to connect WhatsApp on their device. */
+export async function createSignupLinkAction(
+  tenantId: string,
+  mode: "coexistence" | "cloud_api",
+): Promise<Result<{ url: string; expires_at: string }>> {
+  const operator = await requireOperator();
+  try {
+    const link = await backend.createSignupLink(tenantId, mode, operator.id);
+    if (!link?.url) return { ok: false, error: "La API no devolvió el enlace." };
+    revalidatePath(`/tenants/${tenantId}/channels`);
+    return { ok: true, data: { url: link.url, expires_at: link.expires_at } };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+export async function revokeSignupLinkAction(tenantId: string, linkId: string): Promise<Result<null>> {
+  const operator = await requireOperator();
+  try {
+    await backend.revokeSignupLink(tenantId, linkId, operator.id);
+    revalidatePath(`/tenants/${tenantId}/channels`);
+    return { ok: true, data: null };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}

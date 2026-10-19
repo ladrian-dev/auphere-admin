@@ -921,6 +921,12 @@ export type PartnerOut = {
   members_count: number | null;
   /** US$ cents, rounded down. ``null`` = the ledger could not be read. */
   available_cents: number | null;
+  /** Spec 041: how the partner is charged and its card (brand, last four). */
+  billing_mode?: "manual" | "auto_recharge" | "postpaid" | null;
+  card_brand?: string | null;
+  card_last4?: string | null;
+  card_saved_at?: string | null;
+  charges_paused?: boolean | null;
 };
 
 export type PartnerMember = {
@@ -944,6 +950,16 @@ export type PartnerInvitation = {
 
 export type PartnerMembersOut = { members: PartnerMember[]; invitations: PartnerInvitation[] };
 
+export type PartnerCardNews = {
+  partner_id: string;
+  name: string;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_saved_at: string | null;
+  mode: "manual" | "auto_recharge" | "postpaid";
+  paused_reason: string | null;
+};
+
 export type AdminOverview = {
   partners: { total: number; active: number };
   clients: { total: number; active: number; paused: number };
@@ -953,7 +969,10 @@ export type AdminOverview = {
   signups_pending: number;
   pending_signups: { id: string; email: string; created_at: string }[];
   clients_without_cap: { tenant_id: string; name: string; partner_id: string; partner_name: string }[];
-  unreadable: ("balance" | "caps" | "tickets")[];
+  /** Spec 041: cards saved lately, and partners whose charges stopped. */
+  cards_added?: PartnerCardNews[];
+  charges_paused?: PartnerCardNews[];
+  unreadable: ("balance" | "caps" | "tickets" | "cards")[];
 };
 
 /** Spec 032: what a partner's console has. Mirror of the API's PartnerModule. */
@@ -1004,6 +1023,49 @@ export type GlobalChannel = {
 };
 
 export type ConnectorInstall = { tenant_id: string; tenant_name: string; status: string };
+
+/** Spec 041: a partner's card on file, how it is charged, and its charges. */
+export type PartnerBillingView = {
+  card: {
+    brand: string | null;
+    last4: string | null;
+    exp_month: number | null;
+    exp_year: number | null;
+    /** When the partner saved (or last replaced) it. */
+    saved_at?: string | null;
+  } | null;
+  mode: "manual" | "auto_recharge" | "postpaid";
+  recharge_threshold_cents: number | null;
+  recharge_amount_cents: number | null;
+  credit_limit_cents: number;
+  /** A failed postpaid charge froze the line at what is owed. */
+  credit_frozen?: boolean;
+  owed_cents: number;
+  paused_reason: string | null;
+  failed_attempts: number;
+  charges: Array<{
+    id: string;
+    kind: "auto_recharge" | "postpaid";
+    amount_cents: number;
+    period: string | null;
+    status: "pending" | "action_required" | "paid" | "failed";
+    failure_code: string | null;
+    created_at: string;
+    settled_at: string | null;
+  }>;
+};
+
+/** Spec 040: a shareable WhatsApp signup link. `url` only on creation. */
+export type SignupLink = {
+  id: string;
+  mode: "coexistence" | "cloud_api";
+  url: string | null;
+  state: "valid" | "used" | "expired" | "revoked" | "unknown";
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+};
 
 /** Spec 038: what every partner and every client consumed. */
 export type UsageOverview = {
@@ -2333,6 +2395,43 @@ export const backend = {
 
   listAllChannels: () =>
     call<{ channels: GlobalChannel[]; unreadable: string[] }>("/admin/channels"),
+
+  getPartnerBilling: (partnerId: string) => call<PartnerBillingView>(`/admin/partners/${partnerId}/billing`),
+
+  setPartnerCharging: (
+    partnerId: string,
+    body: { mode: string; recharge_threshold_cents: number | null; recharge_amount_cents: number | null },
+    operatorId: string,
+  ) =>
+    call<PartnerBillingView>(`/admin/partners/${partnerId}/charging`, {
+      method: "PUT",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  setPartnerCreditLimit: (partnerId: string, creditLimitCents: number, operatorId: string) =>
+    call<PartnerBillingView>(`/admin/partners/${partnerId}/credit-limit`, {
+      method: "PUT",
+      body: { credit_limit_cents: creditLimitCents },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  /** Spec 040: a link the business owner opens to connect WhatsApp on their device. */
+  createSignupLink: (tenantId: string, mode: "coexistence" | "cloud_api", operatorId: string) =>
+    call<SignupLink>(`/admin/tenants/${tenantId}/channels/whatsapp/signup-link`, {
+      method: "POST",
+      body: { mode },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listSignupLinks: (tenantId: string) =>
+    call<SignupLink[]>(`/admin/tenants/${tenantId}/channels/whatsapp/signup-links`).then((r) => r ?? []),
+
+  revokeSignupLink: (tenantId: string, linkId: string, operatorId: string) =>
+    call<null>(`/admin/tenants/${tenantId}/channels/whatsapp/signup-links/${linkId}`, {
+      method: "DELETE",
+      headers: { "X-Operator-Id": operatorId },
+    }),
 
   getUsageOverview: (period: { days?: number; month?: boolean }) =>
     call<UsageOverview>(`/admin/usage?${period.month ? "month=true" : `days=${period.days ?? 30}`}`),

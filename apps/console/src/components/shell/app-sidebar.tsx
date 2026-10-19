@@ -75,7 +75,19 @@ export function AppSidebar({ who, partnerName, partnerSlug, user, badges }: Prop
             >
               lite
             </span>
-          ) : null}
+          ) : (
+            // Owner, 2026-10-19: the partner console is in beta, and says so
+            // next to the name — where it is read first and costs no space.
+            <span
+              title={t("shell.beta.hint")}
+              className={cn(
+                "shrink-0 rounded-full bg-status-warning-bg px-2 text-xs leading-5 font-semibold text-status-warning-text ring-1 ring-status-warning-border transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
+                collapsed && "opacity-0",
+              )}
+            >
+              {t("shell.beta")}
+            </span>
+          )}
         </div>
       </SidebarHeader>
       <SidebarContent>

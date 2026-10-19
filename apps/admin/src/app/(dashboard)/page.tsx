@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Handshake, Inbox, Store, UserPlus, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CreditCard, Handshake, Inbox, Store, UserPlus, Wallet } from "lucide-react";
 import Link from "next/link";
 
 import { ErrorState, Metric, PageHeader } from "@nexus/ui";
@@ -19,6 +19,19 @@ function attentionRows(o: AdminOverview): AttentionRow[] {
       href: `/tickets/${t.id}`,
       title: `Ticket ${t.ticket_ref} · ${t.topic}`,
       detail: `${t.partner_name} · abierto ${relativeTime(t.opened_at)}`,
+    })),
+    // Spec 041: a declined card stops automatic charges — the partner may run dry.
+    ...(o.charges_paused ?? []).map((c) => ({
+      key: `pay-${c.partner_id}`,
+      href: `/partners/${c.partner_id}/money`,
+      title:
+        c.paused_reason === "line_frozen"
+          ? `${c.name}: su línea de pospago está congelada`
+          : `${c.name}: los cobros a su tarjeta están parados`,
+      detail:
+        c.paused_reason === "line_frozen"
+          ? "El cobro de su consumo no se completó. No consume más a crédito hasta que se pague; se reintenta una vez al día."
+          : `La tarjeta se rechazó tres veces (${c.paused_reason}). Se reanudan cuando el partner la cambie.`,
     })),
     ...o.clients_without_cap.map((c) => ({
       key: `c-${c.tenant_id}`,
@@ -112,6 +125,32 @@ export default async function HomePage() {
           </ul>
         </section>
       )}
+      {/* Spec 041: who saved a card lately, so the team can follow up. */}
+      {(overview.cards_added ?? []).length > 0 ? (
+        <section aria-labelledby="cards-h" className="flex flex-col gap-2 rounded-md bg-card p-4 ring-1 ring-foreground/10">
+          <h2 id="cards-h" className="flex items-center gap-2 text-base font-semibold">
+            <CreditCard aria-hidden="true" className="size-4 text-muted-foreground" />
+            Tarjetas guardadas estos días
+          </h2>
+          <ul className="divide-y divide-border">
+            {(overview.cards_added ?? []).map((c) => (
+              <li key={c.partner_id}>
+                <Link
+                  href={`/partners/${c.partner_id}/money`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-sm py-3 outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="text-sm font-medium">{c.name}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {(c.card_brand ?? "").toUpperCase()} ···· {c.card_last4} ·{" "}
+                    {c.mode === "auto_recharge" ? "recarga automática" : c.mode === "postpaid" ? "pospago" : "cobro manual"}
+                    {c.card_saved_at ? ` · ${relativeTime(c.card_saved_at)}` : ""}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }

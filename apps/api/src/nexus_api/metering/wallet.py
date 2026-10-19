@@ -51,9 +51,20 @@ class OverAllocation(Exception):
 class WalletSnapshot:
     partner_id: uuid.UUID
     included_remaining: int
+    #: What is left of what was bought; never negative (a debt is ``owed``).
     purchased_remaining: int
     included_expires_at: datetime | None
     available: int
+    #: Spec 041: the postpaid credit line Auphere granted (credits); 0 = prepaid.
+    credit_limit: int = 0
+    #: Spec 041: what a postpaid partner consumed beyond its balance (credits).
+    owed: int = 0
+
+    @property
+    def spendable_purchased(self) -> int:
+        """What a turn may still draw from the purchased pocket: the balance,
+        or the unused part of the credit line once the balance is negative."""
+        return max(0, self.purchased_remaining - self.owed + self.credit_limit)
 
     @property
     def empty(self) -> bool:
@@ -117,13 +128,16 @@ async def partner_id_for_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> 
 
 def _snapshot(row: PartnerWallet, *, now: datetime | None = None) -> WalletSnapshot:
     included = effective_included(row.included_remaining, row.included_expires_at, now=now)
-    purchased = max(0, _as_int(row.purchased_remaining))
+    raw = _as_int(row.purchased_remaining)
+    purchased = max(0, raw)
     return WalletSnapshot(
         partner_id=row.partner_id,
         included_remaining=included,
         purchased_remaining=purchased,
         included_expires_at=row.included_expires_at,
         available=included + purchased,
+        credit_limit=_as_int(getattr(row, "credit_limit", 0) or 0),
+        owed=max(0, -raw),
     )
 
 
@@ -497,7 +511,8 @@ async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
             row = await session.get(PartnerWallet, partner_id)
             if row is None:
                 return False
-            if _snapshot(row).purchased_remaining <= 0:
+            # Spec 041: a postpaid partner keeps serving inside its credit line.
+            if _snapshot(row).spendable_purchased <= 0:
                 return False
             alloc = await session.scalar(
                 sa.select(PartnerAllocation).where(
@@ -534,7 +549,7 @@ async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dic
             await apply_partner_to_session(session, partner_id)
             row = await session.get(PartnerWallet, partner_id)
             # Same pocket as the gate (spec 033, R5.1): the recharged balance.
-            wallet_empty = row is None or _snapshot(row).purchased_remaining <= 0
+            wallet_empty = row is None or _snapshot(row).spendable_purchased <= 0
             rows = await session.execute(
                 sa.select(PartnerAllocation.tenant_id, PartnerAllocation.remaining).where(
                     PartnerAllocation.partner_id == partner_id,
@@ -1197,8 +1212,10 @@ async def _debit_locked(
         # se hace como si estuviera vacío. No se toca ``split_spend``: la
         # política de quién puede gastar qué es de aquí, no de la aritmética.
         spendable_included = snap.included_remaining if allow_included else 0
+        # Spec 041: inside a postpaid credit line the purchased pocket may go
+        # below zero, down to ``-credit_limit`` (the database CHECK).
         from_included, from_purchased = split_spend(
-            qty, spendable_included, snap.purchased_remaining
+            qty, spendable_included, snap.spendable_purchased
         )
         spent = from_included + from_purchased
         if spent <= 0:
@@ -1207,7 +1224,9 @@ async def _debit_locked(
         if from_included:
             wallet.included_remaining = snap.included_remaining - from_included
         if from_purchased:
-            wallet.purchased_remaining = snap.purchased_remaining - from_purchased
+            # From the stored value, never the snapshot: the snapshot shows a
+            # debt as 0, and writing ``0 - x`` would forgive what is owed.
+            wallet.purchased_remaining = _as_int(wallet.purchased_remaining) - from_purchased
         wallet.updated_at = _now()
 
         if tenant_id is not None:

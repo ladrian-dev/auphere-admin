@@ -149,3 +149,13 @@ export async function testSendAction(raw: unknown): Promise<ActionResult<TestSen
   if (!can(principal.role, "channels:write")) return forbidden();
   return run(() => backendFor(principal).channelTestSend(body.ref, body.to));
 }
+
+/** Spec 040: a link for the business owner to connect WhatsApp themselves. */
+export async function whatsappSignupLinkAction(
+  raw: unknown,
+): Promise<ActionResult<{ url: string; mode: string; expires_at: string }>> {
+  const body = z.object({ ref, mode: z.enum(["cloud_api", "coexistence"]) }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  return run(() => backendFor(principal).whatsappSignupLink(body.ref, body.mode));
+}

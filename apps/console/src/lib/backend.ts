@@ -578,6 +578,12 @@ export function backendFor(principal: Principal) {
     membership: () => call<MembershipOut>("/console/billing/membership"),
     startCheckout: (tier_code: string) =>
       call<CheckoutOut>("/console/billing/checkout", { method: "POST", body: { tier_code } }),
+    /** Spec 041: the card on file and how it is charged. */
+    billingCard: () => call<BillingCardView>("/console/billing/card"),
+    startCard: () => call<CheckoutOut>("/console/billing/card", { method: "POST" }),
+    deleteCard: () => call<null>("/console/billing/card", { method: "DELETE" }),
+    setCharging: (body: { mode: string; recharge_threshold_cents?: number | null; recharge_amount_cents?: number | null }) =>
+      call<BillingCardView>("/console/billing/charging", { method: "PUT", body }),
     buyCredit: (amount_cents: number) =>
       call<CheckoutOut>("/console/billing/credit", { method: "POST", body: { amount_cents } }),
     billingPortal: () => call<{ url: string }>("/console/billing/portal"),
@@ -594,7 +600,66 @@ export type Backend = ReturnType<typeof backendFor>;
  * "console"`), because there is no principal yet — the API mints none of
  * this from the browser, only from this server.
  */
+/** Spec 041: the partner's card on file, how it is charged, and its charges. */
+export type BillingCardView = {
+  card: { brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null } | null;
+  mode: "manual" | "auto_recharge" | "postpaid";
+  recharge_threshold_cents: number | null;
+  recharge_amount_cents: number | null;
+  credit_limit_cents: number;
+  /** A postpaid charge did not go through: no more consumption on credit. */
+  credit_frozen?: boolean;
+  owed_cents: number;
+  paused_reason: string | null;
+  failed_attempts: number;
+  charges: Array<{
+    id: string;
+    kind: "auto_recharge" | "postpaid";
+    amount_cents: number;
+    period: string | null;
+    status: "pending" | "action_required" | "paid" | "failed";
+    failure_code: string | null;
+    /** Stripe's page to confirm a charge the bank wants authenticated. */
+    action_url?: string | null;
+    created_at: string;
+    settled_at: string | null;
+  }>;
+};
+
+/** Spec 040: what the owner's page learns from a WhatsApp signup link. */
+export type ChannelSignupLinkInfo = {
+  state: "valid" | "used" | "expired" | "revoked" | "unknown";
+  business_name: string | null;
+  mode: "cloud_api" | "coexistence" | null;
+  expires_at: string | null;
+  meta_app_id: string | null;
+  meta_config_id: string | null;
+  meta_graph_version: string | null;
+};
+
+export type ChannelSignupLinkDone = {
+  status: "connected";
+  channel_id: string;
+  display_phone_number: string | null;
+  business_name: string;
+};
+
 export const consoleService = {
+  /** Spec 040: the owner has no account — the service credential carries the call. */
+  async channelSignupInfo(token: string): Promise<ChannelSignupLinkInfo> {
+    const t = await mintServiceToken();
+    return (await request<ChannelSignupLinkInfo>(t, `/console/channel-signup/${encodeURIComponent(token)}`)) as ChannelSignupLinkInfo;
+  },
+  async channelSignupComplete(
+    token: string,
+    body: { code: string; waba_id: string; phone_number_id?: string; business_id?: string },
+  ): Promise<ChannelSignupLinkDone> {
+    const t = await mintServiceToken();
+    return (await request<ChannelSignupLinkDone>(t, `/console/channel-signup/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body,
+    })) as ChannelSignupLinkDone;
+  },
   async lookupInvitation(token: string): Promise<InvitationLookup | null> {
     const t = await mintServiceToken();
     return request<InvitationLookup>(t, `/console/invitations/${encodeURIComponent(token)}`, { optional: true });

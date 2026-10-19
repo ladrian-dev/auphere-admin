@@ -9,6 +9,7 @@ import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
 import { connectChoice, metaSignupConfig } from "@/components/channels/connect-choice";
 import { WhatsAppConnect } from "@/components/channels/whatsapp-connect";
+import { WhatsAppShareLink } from "@/components/channels/whatsapp-share-link";
 import { WhatsAppConnectByAuphere } from "@/components/channels/whatsapp-connect-by-auphere";
 import { WhatsAppContinueInBrowser } from "@/components/channels/whatsapp-continue-in-browser";
 import { getT } from "@/i18n/server";
@@ -64,10 +65,24 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   // toda la consola; `shell-detect.test.ts` lo vigila.
   const meta = metaSignupConfig(env());
   const choice = connectChoice({ manage, meta });
+  // Spec 040: the link the business owner opens on their own device. It works
+  // in the desktop app too, where Meta's popup does not.
+  const linkModes = [
+    ...(meta.configIdCoexistence ? (["coexistence"] as const) : []),
+    ...(meta.configIdCloudApi ? (["cloud_api"] as const) : []),
+  ];
+  const share =
+    choice === "connect" ? <WhatsAppShareLink refId={ref} modes={linkModes} disabled={!overview.can_connect} /> : null;
   const connect = (await isDesktopShell()) ? (
-    <WhatsAppContinueInBrowser href={`${base}/channels`} />
+    <div className="flex flex-wrap items-center gap-2">
+      <WhatsAppContinueInBrowser href={`${base}/channels`} />
+      {share}
+    </div>
   ) : choice === "connect" ? (
-    <WhatsAppConnect refId={ref} meta={meta} canConnect={overview.can_connect} used={n} max={m} />
+    <div className="flex flex-wrap items-center gap-2">
+      <WhatsAppConnect refId={ref} meta={meta} canConnect={overview.can_connect} used={n} max={m} />
+      {share}
+    </div>
   ) : choice === "by_auphere" ? (
     <WhatsAppConnectByAuphere />
   ) : null;

@@ -27,12 +27,16 @@ adds what is console-specific:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import SignupIngressPayload
+from pydantic import BaseModel, ConfigDict
 from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 
 from nexus_api.api.deps import get_redis
+from nexus_api.services.channel_signup_links import mint_link
 from nexus_api.services.console_notifications import record_client_activation_detached
 from nexus_api.services.meta_signup_service import complete_meta_signup
 from nexus_api.services.partner_provisioning import activate_tenant_if_ready
@@ -139,3 +143,34 @@ async def whatsapp_signup(
 
 
 __all__ = ["router"]
+
+
+# ── Spec 040: a link for the owner to connect from their own device ─────────
+
+
+class _SignupLinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: str = "coexistence"
+
+
+class _SignupLinkOut(BaseModel):
+    url: str
+    mode: str
+    expires_at: datetime
+
+
+@router.post(
+    "/signup-link",
+    response_model=_SignupLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def whatsapp_signup_link(
+    body: _SignupLinkIn,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+) -> _SignupLinkOut:
+    """The partner sends this to the business owner: Meta's signup then runs
+    on the owner's phone or computer, with the owner's own Meta login."""
+    minted = await mint_link(
+        scope.session, tenant_id=scope.tenant.id, mode=body.mode, actor=scope.principal.actor
+    )
+    return _SignupLinkOut(url=minted.url, mode=minted.link.mode, expires_at=minted.link.expires_at)

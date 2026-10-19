@@ -36,6 +36,10 @@ from nexus_api.db.models.channel import (
     ChannelType,
     TenantCredentials,
 )
+from nexus_api.db.models.channel_signup_link import (
+    CHANNEL_SIGNUP_LINK_TTL,
+    ChannelSignupLink,
+)
 from nexus_api.db.models.client_access import (
     CLIENT_INVITATION_TTL,
     CLIENT_MODULES,
@@ -174,6 +178,7 @@ from nexus_api.db.models.partner import (
     PartnerStatus,
     PartnerTenant,
 )
+from nexus_api.db.models.partner_billing import PartnerBilling, PartnerCharge
 from nexus_api.db.models.partner_membership import (
     INVITATION_TTL,
     PARTNER_ROLES,
@@ -233,6 +238,7 @@ from nexus_api.db.models.workflow import (
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
     "CHANGED_FIELDS",
+    "CHANNEL_SIGNUP_LINK_TTL",
     "CLIENT_INVITATION_TTL",
     "CLIENT_MODULES",
     "CONSOLE_AUTH_SCHEMA",
@@ -297,6 +303,7 @@ __all__ = [
     "BroadcastRecipientStatus",
     "BroadcastStatus",
     "Channel",
+    "ChannelSignupLink",
     "ChannelStatus",
     "ChannelType",
     "ClientAccess",
@@ -368,6 +375,8 @@ __all__ = [
     "Partner",
     "PartnerAllocation",
     "PartnerApiKey",
+    "PartnerBilling",
+    "PartnerCharge",
     "PartnerDevice",
     "PartnerInvitation",
     "PartnerKnowledgeDocument",

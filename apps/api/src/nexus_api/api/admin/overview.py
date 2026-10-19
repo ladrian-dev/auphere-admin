@@ -14,7 +14,7 @@ answers (state ``parcial``).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 import structlog
@@ -74,6 +74,22 @@ class ClientWithoutCapOut(BaseModel):
     partner_name: str
 
 
+class PartnerCardOut(BaseModel):
+    """Spec 041: a partner's card news — newly saved, or charges stopped."""
+
+    partner_id: uuid.UUID
+    name: str
+    card_brand: str | None
+    card_last4: str | None
+    card_saved_at: datetime | None
+    mode: str
+    paused_reason: str | None
+
+
+#: How recent a saved card is still news on the Panel.
+CARD_NEWS_DAYS = 14
+
+
 class OverviewOut(BaseModel):
     partners: PartnerCounts
     clients: ClientCounts
@@ -85,6 +101,10 @@ class OverviewOut(BaseModel):
     signups_pending: int
     pending_signups: list[PendingSignupOut]
     clients_without_cap: list[ClientWithoutCapOut]
+    #: Spec 041: cards saved in the last ``CARD_NEWS_DAYS`` days.
+    cards_added: list[PartnerCardOut] = []
+    #: Spec 041: partners whose automatic charges stopped (card declined).
+    charges_paused: list[PartnerCardOut] = []
     #: Sections that could not be read: ``balance``, ``caps``, ``tickets``.
     unreadable: list[str]
 
@@ -193,6 +213,34 @@ async def get_overview(session: AsyncSession = Depends(get_db_session)) -> Overv
 
     if balance is None:
         unreadable.append("balance")
+
+    # Spec 041: card news, read partner by partner under its own GUC.
+    from nexus_api.services.partner_billing import billing_summary
+
+    cards_added: list[PartnerCardOut] = []
+    charges_paused: list[PartnerCardOut] = []
+    since_cards = datetime.now(UTC) - timedelta(days=CARD_NEWS_DAYS)
+    try:
+        for p in partners:
+            b = await billing_summary(p.id)
+            item = PartnerCardOut(
+                partner_id=p.id,
+                name=p.name,
+                card_brand=b.card_brand,
+                card_last4=b.card_last4,
+                card_saved_at=b.card_saved_at,
+                mode=b.mode,
+                paused_reason=b.paused_reason or ("line_frozen" if b.credit_frozen else None),
+            )
+            if b.paused_reason or b.credit_frozen:
+                charges_paused.append(item)
+            if b.card_saved_at is not None and b.card_saved_at >= since_cards:
+                cards_added.append(item)
+    except Exception as exc:  # pragma: no cover - partial state
+        log.warning("admin.overview.cards_unreadable", error=str(exc))
+        unreadable.append("cards")
+    cards_added.sort(key=lambda c: c.card_saved_at or since_cards, reverse=True)
+
     return OverviewOut(
         partners=PartnerCounts(
             total=len(partners), active=sum(1 for p in partners if p.status == "active")
@@ -210,6 +258,8 @@ async def get_overview(session: AsyncSession = Depends(get_db_session)) -> Overv
             PendingSignupOut(id=r.id, email=r.email, created_at=r.created_at) for r in pending
         ],
         clients_without_cap=without_cap,
+        cards_added=cards_added[:ATTENTION_LIMIT],
+        charges_paused=charges_paused,
         unreadable=sorted(unreadable),
     )
 

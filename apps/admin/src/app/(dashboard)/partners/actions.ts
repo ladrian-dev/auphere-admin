@@ -288,3 +288,50 @@ export async function revokeImpersonationAction(
     return err(e);
   }
 }
+
+/** Spec 041: the postpaid credit line Auphere grants a partner. */
+export async function setPartnerCreditLimitAction(
+  partnerId: string,
+  creditLimitCents: number,
+): Promise<ActionResult<null>> {
+  try {
+    const operator = await requireOperator();
+    await backend.setPartnerCreditLimit(partnerId, creditLimitCents, operator.id);
+    revalidatePath(`/partners/${partnerId}`, "layout");
+    return { ok: true, data: null };
+  } catch (e) {
+    if (e instanceof BackendError) {
+      const detail = (e.body as { detail?: { code?: string } } | null)?.detail;
+      if (detail?.code === "limit_below_debt")
+        return { ok: false, error: "La línea no puede quedar por debajo de lo que el partner ya debe." };
+    }
+    return err(e);
+  }
+}
+
+const CHARGING_ERRORS: Record<string, string> = {
+  card_required: "El partner todavía no ha guardado una tarjeta: solo puede cobrarse a mano.",
+  no_credit_line: "El pospago necesita una línea de crédito. Concédela primero.",
+  amount_too_small: "La recarga mínima es de US$5.",
+  threshold_required: "Indica el mínimo de saldo que dispara la recarga.",
+};
+
+/** Spec 041: Auphere sets how a partner is charged, with the console's rules. */
+export async function setPartnerChargingAction(
+  partnerId: string,
+  body: { mode: "manual" | "auto_recharge" | "postpaid"; recharge_threshold_cents: number | null; recharge_amount_cents: number | null },
+): Promise<ActionResult<null>> {
+  try {
+    const operator = await requireOperator();
+    await backend.setPartnerCharging(partnerId, body, operator.id);
+    revalidatePath(`/partners/${partnerId}`, "layout");
+    revalidatePath("/partners");
+    return { ok: true, data: null };
+  } catch (e) {
+    if (e instanceof BackendError) {
+      const code = (e.body as { detail?: { code?: string } } | null)?.detail?.code;
+      if (code && CHARGING_ERRORS[code]) return { ok: false, error: CHARGING_ERRORS[code] };
+    }
+    return err(e);
+  }
+}

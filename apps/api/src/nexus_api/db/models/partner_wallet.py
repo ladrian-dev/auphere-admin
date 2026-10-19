@@ -60,7 +60,12 @@ class PartnerWallet(TimestampMixin, Base):
     __tablename__ = "partner_wallets"
     __table_args__ = (
         CheckConstraint("included_remaining >= 0", name="ck_partner_wallets_included_nonneg"),
-        CheckConstraint("purchased_remaining >= 0", name="ck_partner_wallets_purchased_nonneg"),
+        # Spec 041: the purchased balance may go as far below zero as the
+        # partner's postpaid credit line — and the database is what stops it.
+        CheckConstraint(
+            "purchased_remaining >= -credit_limit", name="ck_partner_wallets_purchased_floor"
+        ),
+        CheckConstraint("credit_limit >= 0", name="ck_partner_wallets_credit_limit_nonneg"),
     )
 
     partner_id: Mapped[uuid.UUID] = mapped_column(
@@ -73,6 +78,10 @@ class PartnerWallet(TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     purchased_remaining: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    #: Spec 041: credits of postpaid line Auphere granted; 0 = prepaid only.
+    credit_limit: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     #: Spec 005 (research D8). ``NULL`` while the account is alive — that is
     #: the invariant "purchased credit does not expire while the account
     #: lives", written so it CANNOT be violated by accident: there is no date

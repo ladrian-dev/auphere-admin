@@ -212,6 +212,33 @@ async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str
         log.warning("metering.billing_event_orphan", event_type=event_type)
         return "failed"
 
+    # Spec 041: the partner's card and its automatic charges. They come
+    # before the memberships gate below: these invoices are not a
+    # subscription's, and with memberships off they must still settle.
+    if event_type in {"invoice.paid", "invoice.payment_failed"}:
+        from nexus_api.services.partner_billing import (
+            record_invoice_failed,
+            settle_paid_invoice,
+        )
+
+        invoice = client.invoices.retrieve(fields.get("object_id") or "")
+        meta = getattr(invoice, "metadata", None) or {}
+        kind = str(meta.get("kind", "") if hasattr(meta, "get") else "")
+        if kind in {"auto_recharge", "postpaid"}:
+            if event_type == "invoice.paid":
+                await settle_paid_invoice(partner_id, invoice)
+            else:
+                await record_invoice_failed(partner_id, invoice)
+            return "processed"
+    if event_type == "checkout.session.completed":
+        checkout = client.checkout.sessions.retrieve(fields.get("checkout_session_id") or "")
+        if str(getattr(checkout, "mode", "") or "") == "setup":
+            from nexus_api.services.partner_billing import apply_card_saved
+
+            await apply_card_saved(session, partner_id=partner_id, checkout=checkout)
+            await session.commit()
+            return "processed"
+
     # Spec 034 (R4.2): with memberships off, notices about a subscription are
     # recorded (the event row stays) and change nothing. A credit purchase is
     # a checkout, not a subscription, and keeps going below.
