@@ -194,7 +194,7 @@ export function TenantActionsMenu({
               </DropdownMenuItem>
             ) : null}
 
-            {(status === "active" || status === "paused") ? (
+            {(status === "active" || status === "paused" || status === "provisioning") ? (
               <DropdownMenuItem
                 disabled={pending}
                 onClick={() => setArchiveOpen(true)}

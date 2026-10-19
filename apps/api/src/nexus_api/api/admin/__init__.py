@@ -10,6 +10,7 @@ from nexus_api.api.admin import (
     billing,
     budget_policies,
     channels_overview,
+    tenants_health,
     client_access,
     connectors,
     conversations,
@@ -68,6 +69,7 @@ router.include_router(backchannel_owners.router)
 router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
 router.include_router(channels_overview.router)
+router.include_router(tenants_health.router)
 router.include_router(partner_access.router)
 router.include_router(overview.router)
 router.include_router(overview.instance_router)

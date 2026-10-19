@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Fragment } from "react";
 
-import { NavTabs, type NavTabMark } from "@nexus/ui";
+import { StatusDot, cn } from "@nexus/ui";
 
-export type ProfileTab = { seg: string; label: string; mark?: NavTabMark };
+export type ProfileTab = { seg: string; label: string; mark?: "incident" | "draft" };
 export type ProfileTabGroup = { key: string; label: string; tabs: ProfileTab[] };
 
 /** The tab whose path is the longest prefix of the address: `/agent?x` → Agente. */
@@ -17,10 +18,14 @@ export function currentTab(pathname: string, base: string, segs: readonly string
   return match ?? "";
 }
 
+const MARK_LABEL = { incident: "Necesita atención", draft: "Sin publicar" } as const;
+
 /**
- * Spec 035: a record's tabs grouped by the question they answer, the same
- * `NavTabs` as the client page of the partner console (spec 017 R2) — ten
- * flat tabs do not read; three short groups do.
+ * Spec 036: a record's tabs in **one row**, groups told apart by a hairline
+ * (Gestalt proximity) instead of a heading above each — the content starts a
+ * row higher. Each group is a `role="group"` with its name, so a screen reader
+ * still hears «Conectar: Canales, Conectores…». On a narrow screen the row
+ * scrolls sideways.
  */
 export function ProfileTabs({ base, groups, label }: { base: string; groups: ProfileTabGroup[]; label: string }) {
   const pathname = usePathname();
@@ -30,25 +35,37 @@ export function ProfileTabs({ base, groups, label }: { base: string; groups: Pro
     groups.flatMap((g) => g.tabs.map((t) => t.seg)),
   );
   return (
-    <NavTabs
-      ariaLabel={label}
-      current={current || "__summary__"}
-      marks={{ incident: "Necesita atención", draft: "Sin publicar" }}
-      groups={groups.map((g) => ({
-        key: g.key,
-        label: g.label,
-        items: g.tabs.map((t) => ({
-          key: t.seg || "__summary__",
-          label: t.label,
-          href: t.seg ? `${base}/${t.seg}` : base,
-          ...(t.mark ? { mark: t.mark } : {}),
-        })),
-      }))}
-      renderLink={({ href, className, children, ...rest }) => (
-        <Link href={href} className={className} {...rest}>
-          {children}
-        </Link>
-      )}
-    />
+    <nav aria-label={label} className="-mx-1 overflow-x-auto border-b border-border">
+      <div className="flex w-max items-center gap-1 px-1">
+        {groups.map((g, gi) => (
+          <Fragment key={g.key}>
+            {gi > 0 ? <span aria-hidden="true" className="mx-2 h-4 w-px bg-border" /> : null}
+            <div role="group" aria-label={g.label} className="flex items-center gap-1">
+              {g.tabs.map((t) => {
+                const active = t.seg === current;
+                return (
+                  <Link
+                    key={t.seg || "summary"}
+                    href={t.seg ? `${base}/${t.seg}` : base}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "border-foreground font-medium text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t.label}
+                    {t.mark ? (
+                      <StatusDot tone={t.mark === "incident" ? "danger" : "info"} label={MARK_LABEL[t.mark]} />
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          </Fragment>
+        ))}
+      </div>
+    </nav>
   );
 }

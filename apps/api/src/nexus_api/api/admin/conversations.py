@@ -21,6 +21,7 @@ from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import (
     AuditLog,
     Channel,
+    Customer,
     Message,
     MessageDirection,
     MessageStatus,
@@ -57,12 +58,31 @@ async def list_conversations(
     repo = ConversationRepository(session)
     page = await repo.list_paginated(limit=limit, cursor=cursor)
     providers = await _provider_map(session, [c.channel_id for c in page.items])
+    people = await _customer_map(session, [c.customer_id for c in page.items])
     items: list[ConversationOut] = []
     for c in page.items:
         out = ConversationOut.model_validate(c)
         out.provider = providers.get(c.channel_id)
+        person = people.get(c.customer_id)
+        if person is not None:
+            out.customer_name, out.customer_identifier = person
         items.append(out)
     return ConversationPageOut(items=items, next_cursor=page.next_cursor)
+
+
+async def _customer_map(
+    session: AsyncSession, customer_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str | None, str]]:
+    """Spec 036: ``customer_id -> (name, identifier)`` for a page, in one
+    query, under the request's tenant scope."""
+    if not customer_ids:
+        return {}
+    rows = await session.execute(
+        select(Customer.id, Customer.name, Customer.identifier).where(
+            Customer.id.in_(set(customer_ids))
+        )
+    )
+    return {cid: (name, identifier) for cid, name, identifier in rows}
 
 
 async def _provider_map(

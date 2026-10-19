@@ -1,13 +1,15 @@
+import { FlaskConical } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Badge, StatusDot } from "@nexus/ui";
+import { Badge, Button, StatusDot } from "@nexus/ui";
 
-import { TenantActionsMenu } from "@/components/tenants/tenant-actions-menu";
+import { ChannelLogo } from "@/components/brand/channel-logo";
 import { CrumbName } from "@/components/shell/crumb-names";
+import { TenantActionsMenu } from "@/components/tenants/tenant-actions-menu";
 import { backend } from "@/lib/backend";
-import { planLabel, statusLabel } from "@/lib/format";
+import { planLabel, relativeTime, statusLabel } from "@/lib/format";
 
 import { TenantTabs } from "./tabs";
 
@@ -15,6 +17,7 @@ const STATUS_TONE = {
   active: "positive",
   paused: "warning",
   archived: "muted",
+  provisioning: "warning",
 } as const;
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -24,10 +27,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 /**
- * The client's profile, built like the partner's (spec 031 R4.3): the name,
- * one line of who and what, the facts the operator asks first, and the tabs
- * grouped like the partner console's client page. The trail lives in the top
- * bar, so the page does not repeat «Clientes / slug» nor say «Cliente».
+ * Spec 036: the client's profile. The header answers «who is this and is it
+ * working?» in one glance and fits in the top third of the screen (F-pattern):
+ * name and state, one line of context, four facts with their shape (the
+ * channel's logo and number, not «1»), and the most frequent task — trying
+ * the agent — as the one primary button (Fitts). Tabs in one row below.
  */
 export default async function TenantLayout({
   children,
@@ -39,41 +43,12 @@ export default async function TenantLayout({
   const { id } = await params;
   const tenant = await backend.getTenant(id);
   if (!tenant) notFound();
-  const [partner, channels, connectors, agent] = await Promise.all([
+  const [partner, health] = await Promise.all([
     tenant.partner_id ? backend.getPartner(tenant.partner_id).catch(() => null) : null,
-    backend.listChannels(id).catch(() => null),
-    backend.listTenantConnectors(id).catch(() => null),
-    backend.getAgentConfig(id).catch(() => null),
+    backend.getTenantHealth(id).catch(() => null),
   ]);
-
-  const realChannels = channels?.filter((c) => c.provider !== "qa_playground") ?? null;
-  const liveChannels = realChannels?.filter((c) => c.status === "active") ?? null;
-  const brokenChannel = realChannels?.some((c) => c.status === "degraded") ?? false;
-  const liveConnectors = connectors?.filter((c) => c.status === "connected" || c.status === "partial") ?? null;
   const base = `/tenants/${tenant.id}`;
-
-  const facts = [
-    {
-      term: "Canales activos",
-      detail: liveChannels ? liveChannels.length : "—",
-      href: `${base}/channels`,
-    },
-    {
-      term: "Conectores activados",
-      detail: liveConnectors ? liveConnectors.length : "—",
-      href: `${base}/connectors`,
-    },
-    {
-      term: "Agente",
-      detail: agent?.active ? `Versión ${agent.active.version}` : "Sin publicar",
-      href: `${base}/agent`,
-    },
-    {
-      term: "Alta",
-      detail: new Date(tenant.created_at).toLocaleDateString("es", { dateStyle: "medium" }),
-      href: null,
-    },
-  ];
+  const channelTrouble = health ? health.channels_attention > 0 || health.channels_active === 0 : false;
 
   return (
     <div className="flex flex-col gap-6">
@@ -81,13 +56,14 @@ export default async function TenantLayout({
       <header className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="flex min-w-0 flex-col gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-balance md:text-3xl">{tenant.name}</h1>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-2">
-                <StatusDot tone={STATUS_TONE[tenant.status]} />
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight text-balance md:text-3xl">{tenant.name}</h1>
+              <span className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs font-medium">
+                <StatusDot tone={STATUS_TONE[tenant.status] ?? "muted"} />
                 {statusLabel(tenant.status)}
               </span>
-              <Badge variant="outline">{planLabel(tenant.plan)}</Badge>
+            </div>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
               {/* Spec 031 (R5.3): whose client this is, one click away. */}
               {partner ? (
                 <Link href={`/partners/${partner.id}`} className="underline-offset-4 hover:text-foreground hover:underline">
@@ -96,42 +72,93 @@ export default async function TenantLayout({
               ) : (
                 <span>Cliente directo de Auphere</span>
               )}
-              {tenant.market ? <span>{tenant.market}</span> : null}
+              <span aria-hidden="true">·</span>
+              <Badge variant="outline">{planLabel(tenant.plan)}</Badge>
+              {tenant.market ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{tenant.market}</span>
+                </>
+              ) : null}
+              <span aria-hidden="true">·</span>
               <span>{tenant.timezone}</span>
-              <span className="font-mono text-xs">{tenant.slug}</span>
-            </div>
+            </p>
           </div>
-          <TenantActionsMenu
-            tenantId={tenant.id}
-            slug={tenant.slug}
-            name={tenant.name}
-            status={tenant.status}
-            variant="labelled"
-            redirectAfterDeleteTo="/tenants"
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <Button nativeButton={false} render={<Link href={`/qa/${tenant.id}/chat`} />}>
+              <FlaskConical aria-hidden="true" />
+              Probar agente
+            </Button>
+            <TenantActionsMenu
+              tenantId={tenant.id}
+              slug={tenant.slug}
+              name={tenant.name}
+              status={tenant.status}
+              variant="labelled"
+              redirectAfterDeleteTo="/tenants"
+            />
+          </div>
         </div>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
-          {facts.map((f) => (
-            <div key={f.term} className="flex min-w-0 flex-col gap-1">
-              <dt className="text-xs text-muted-foreground">{f.term}</dt>
-              <dd className="truncate text-base font-semibold tabular-nums">
-                {f.href ? (
-                  <Link href={f.href} className="underline-offset-4 hover:underline">
-                    {f.detail}
-                  </Link>
-                ) : (
-                  f.detail
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
+
+        <ul aria-label="Datos clave" className="grid grid-cols-2 gap-px overflow-hidden rounded-md bg-border ring-1 ring-border lg:grid-cols-4">
+          <Fact term="Canal" href={health?.primary_channel ? `${base}/channels` : `${base}/channels/new`}>
+            {health?.primary_channel ? (
+              <span className="flex min-w-0 items-center gap-2">
+                <ChannelLogo channel={health.primary_channel.type} size="sm" />
+                <span className="truncate font-mono text-sm">{health.primary_channel.identifier}</span>
+                {health.channels_active > 1 ? (
+                  <span className="text-xs text-muted-foreground">+{health.channels_active - 1}</span>
+                ) : null}
+              </span>
+            ) : (
+              <span className="text-status-warning-text">{health ? "Sin canal · Añadir" : "—"}</span>
+            )}
+          </Fact>
+          <Fact term="Agente" href={`${base}/agent`}>
+            {health ? (
+              health.agent_version !== null ? (
+                `Versión ${health.agent_version}`
+              ) : (
+                <span className="text-status-warning-text">Sin publicar</span>
+              )
+            ) : (
+              "—"
+            )}
+          </Fact>
+          <Fact term="Última conversación" href={`${base}/conversations`}>
+            {health?.last_message_at ? relativeTime(health.last_message_at) : "Sin mensajes"}
+          </Fact>
+          <Fact term="Esta semana" href={`${base}/conversations`}>
+            {health ? (
+              <span className="tabular-nums">
+                {health.conversations_7d} {health.conversations_7d === 1 ? "conversación" : "conversaciones"}
+                {health.open_conversations > 0 ? (
+                  <span className="text-muted-foreground"> · {health.open_conversations} abiertas</span>
+                ) : null}
+              </span>
+            ) : (
+              "—"
+            )}
+          </Fact>
+        </ul>
       </header>
-      <TenantTabs
-        tenantId={tenant.id}
-        channelsMark={brokenChannel || (liveChannels !== null && liveChannels.length === 0) ? "incident" : undefined}
-      />
+      <TenantTabs tenantId={tenant.id} channelsMark={channelTrouble ? "incident" : undefined} />
       {children}
     </div>
+  );
+}
+
+/** One fact of the header: a label and its value, the whole cell a link. */
+function Fact({ term, href, children }: { term: string; href: string; children: React.ReactNode }) {
+  return (
+    <li className="flex">
+      <Link
+        href={href}
+        className="flex w-full min-w-0 flex-col gap-1 bg-card px-4 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      >
+        <span className="text-xs text-muted-foreground">{term}</span>
+        <span className="truncate text-sm font-medium">{children}</span>
+      </Link>
+    </li>
   );
 }

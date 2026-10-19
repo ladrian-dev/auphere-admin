@@ -1,12 +1,10 @@
-import type { NavTabMark } from "@nexus/ui";
-
 import { ProfileTabs, type ProfileTabGroup } from "@/components/shell/profile-tabs";
 
 /**
  * The client's tabs, grouped like the client page of the partner console:
  * what is happening, how it is set up, what it connects to.
  */
-export function tenantTabGroups(marks: { channels?: NavTabMark } = {}): ProfileTabGroup[] {
+export function tenantTabGroups(marks: { channels?: "incident" | "draft" } = {}): ProfileTabGroup[] {
   return [
     {
       key: "observe",
@@ -41,7 +39,7 @@ export function tenantTabGroups(marks: { channels?: NavTabMark } = {}): ProfileT
   ];
 }
 
-export function TenantTabs({ tenantId, channelsMark }: { tenantId: string; channelsMark?: NavTabMark }) {
+export function TenantTabs({ tenantId, channelsMark }: { tenantId: string; channelsMark?: "incident" | "draft" }) {
   return (
     <ProfileTabs
       base={`/tenants/${tenantId}`}

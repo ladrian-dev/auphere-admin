@@ -96,6 +96,9 @@ export function statusLabel(status: string): string {
       return "Archivado";
     case "suspended":
       return "Suspendido";
+    // A partner's client created before its WhatsApp signup finishes.
+    case "provisioning":
+      return "Preparando";
     case "escalated":
       return "Escalado";
     case "open":

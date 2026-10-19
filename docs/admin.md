@@ -64,19 +64,20 @@ Cabecera con estado, consola, clientes, personas, saldo y alta. Pestañas:
 Las rutas antiguas (`keys`, `tenants`, `usage`, `wallet`, `receipts`, `limits`,
 `models`) redirigen a la pestaña que las contiene.
 
+## Lista de clientes (`/tenants`, spec 036)
+
+- **Vistas en pestañas con contador.** Son Todos, Necesitan atención, Activos, En pausa y Archivados. «Todos» no incluye los archivados.
+- **Necesita atención** el cliente con un canal con problemas, un conector por reconectar, sin canal, con el agente sin publicar o a medio montar. El motivo sale en palabras en la columna Estado.
+- **Columnas.** Son Cliente (con su partner), Canal (logo y número), Agente, Actividad y Estado. La Mensualidad solo aparece si algún cliente tiene plan mensual.
+- **Orden.** Por defecto va primero lo urgente; también se ordena por actividad o por nombre. Búsqueda, vista, orden y filtros viven en la dirección.
+- **Datos.** Salen de `GET /admin/tenants-health`, que lee cada cliente con su GUC.
+
 ## Ficha de cliente (`/tenants/{id}`)
 
-Se lee como la del partner: nombre, una línea con estado, plan, partner, mercado, zona e
-identificador, y cuatro hechos (canales activos, conectores activados, versión del agente y
-alta). Las pestañas van en tres grupos, como en la consola de partners: Observar (Resumen,
-Conversaciones, Aislamiento, Auditoría), Configurar (Agente, Acceso, Facturación) y
-Conectar (Canales, Conectores, Canal del dueño). Canales lleva un punto si ningún canal
-atiende o alguno tiene problemas. La ficha del partner usa los mismos grupos: Observar,
-Configurar y Cuenta.
-
-El Resumen dice qué falta para operar (agente publicado, canal activo, teléfono del dueño,
-conectores sin problemas), los datos del cliente, su agente y el Playground. La pestaña
-Agente se divide en Prompt y herramientas · Runtime · Versiones · Evals (`?section=`).
+- **Cabecera.** Lleva nombre con su estado, una línea de contexto (partner, plan, mercado, zona), «Probar agente», Acciones y cuatro hechos enlazados: canal, agente, última conversación y esta semana.
+- **Pestañas.** Van en una sola fila, con una raya entre los grupos Observar, Configurar y Conectar. Canales lleva un punto si ningún canal atiende o alguno tiene problemas. La ficha del partner usa el mismo componente con Observar, Configurar y Cuenta.
+- **Resumen.** A dos columnas. A la izquierda va lo que falta para operar, solo lo pendiente y con lo hecho plegado; con todo hecho es una línea. Debajo, las conversaciones recientes. A la derecha, los datos del cliente y las pruebas del agente. La pestaña Agente se divide en Prompt y herramientas · Runtime · Versiones · Evals (`?section=`).
+- **Conversaciones.** Nombra al contacto por su nombre o número y dice quién responde. El control es un botón «Tomar control» / «Devolver», que no aparece en las conversaciones resueltas.
 
 Los logos de canales y conectores son las marcas de cada app (Simple Icons, CC0) sobre su
 color, en `components/brand/brand-marks.ts`. Lo que no tiene marca usa la imagen del

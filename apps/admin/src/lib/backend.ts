@@ -124,7 +124,8 @@ async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
 
 // ── domain types ────────────────────────────────────────────────────────────
 
-export type TenantStatus = "active" | "paused" | "archived";
+/** `provisioning`: a partner's client whose WhatsApp signup has not finished. */
+export type TenantStatus = "active" | "paused" | "archived" | "provisioning";
 export type TenantPlan = "essential" | "pro" | "business" | "internal";
 
 export type Tenant = {
@@ -564,6 +565,11 @@ export type ConversationOut = {
    *  Lets the panel badge each thread. Null only
    *  when the underlying channel row is missing. */
   provider: string | null;
+  /** Spec 036: who is on the other side — their name if known, and number. */
+  customer_identifier?: string | null;
+  customer_name?: string | null;
+  /** Last activity either way; null before the first message. */
+  last_message_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -998,6 +1004,21 @@ export type GlobalChannel = {
 };
 
 export type ConnectorInstall = { tenant_id: string; tenant_name: string; status: string };
+
+/** Spec 036: what the client list scans for, per client. */
+export type TenantHealth = {
+  tenant_id: string;
+  channels_active: number;
+  channels_attention: number;
+  /** The first channel that serves, else the first that is failing. */
+  primary_channel: { type: string; identifier: string; status: string } | null;
+  /** Published version of the principal agent; null = nothing published. */
+  agent_version: number | null;
+  open_conversations: number;
+  conversations_7d: number;
+  last_message_at: string | null;
+  connectors_attention: number;
+};
 
 export type AdminInstance = {
   environment: string;
@@ -2222,6 +2243,11 @@ export const backend = {
 
   listAllChannels: () =>
     call<{ channels: GlobalChannel[]; unreadable: string[] }>("/admin/channels"),
+
+  getTenantHealth: (tenantId: string) => call<TenantHealth>(`/admin/tenants-health/${tenantId}`),
+
+  listTenantsHealth: () =>
+    call<{ clients: TenantHealth[]; unreadable: string[] }>("/admin/tenants-health"),
 
   listConnectorInstalls: () =>
     call<Record<string, ConnectorInstall[]>>("/admin/connectors-installs").then((r) => r ?? {}),

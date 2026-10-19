@@ -10,7 +10,7 @@ type State = "connecting" | "live" | "polling" | "offline";
 const COPY: Record<State, string> = {
   connecting: "Conectando…",
   live: "En vivo",
-  polling: "Polling",
+  polling: "Se actualiza sola",
   offline: "Sin conexión",
 };
 

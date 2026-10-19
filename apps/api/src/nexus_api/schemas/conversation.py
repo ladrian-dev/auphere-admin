@@ -24,6 +24,12 @@ class ConversationOut(BaseModel):
     # assuming a provider. NULL only if the channel row
     # vanished (orphan conversation).
     provider: str | None = None
+    #: Spec 036: the person on the other side (their number or handle), filled
+    #: by the list endpoint so the panel names people, not ids.
+    customer_identifier: str | None = None
+    customer_name: str | None = None
+    #: Last activity either way; ``None`` before the first message.
+    last_message_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
