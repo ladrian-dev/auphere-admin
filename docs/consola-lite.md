@@ -189,9 +189,16 @@ entra en el turno.
 
 **Tiempo real** (`services/inbox_stream.py`): un canal Redis
 `inbox:{tenant_id}`; publican el worker (entrante, respuesta del agente,
-estado de envío), el webhook de estados de Meta (entregado/leído/fallido) y la
-API en cada acción — siempre **después** del commit y **sin cuerpo**
-(`conversation.updated`, `message.new`, `message.status`). La SSE lite
+estado de envío), el escalado del agente (`announce_waiting`), el webhook de
+estados de Meta (entregado/leído/fallido) y la API en cada acción de la Bandeja
+que cambia lo que se pinta (tomar, devolver, contestar, adjuntar, resolver,
+reabrir, etiquetar) — siempre **después** del commit y **sin cuerpo**
+(`conversation.updated`, `message.new`, `message.status`). Las rutas lite no
+confirman su transacción, la confirma `lite_scope` al cerrarse; por eso dejan el
+aviso en `scope.after_commit`, que solo corre si el commit sale bien (un
+rollback no avisa de nada) y, con FastAPI 0.136, después de enviar la
+respuesta. Lo fija `tests/unit/test_lite_inbox_publish_after_commit.py`: lo
+que un suscriptor lee al oír el aviso es lo ya confirmado. La SSE lite
 (`GET /console/lite/inbox/stream`, latido cada 15 s, sin transacción abierta)
 reenvía solo el canal del cliente de la sesión; la consola vuelve a pedir lo
 que cambió. Si la línea cae, la Bandeja dice «Reconectando…».

@@ -31,12 +31,11 @@ from nexus_api.db.models import (
     MessageDirection,
     MessageStatus,
 )
-from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.inbox_view import PLAYGROUND_PROVIDER
 from nexus_api.services.media_storage.storage import MediaStorageError, get_media_storage
 
 from .deps import LiteScope, lite_scope
-from .inbox import SentOut, _can_send, _conversation
+from .inbox import SentOut, _can_send, _conversation, _publish
 
 router = APIRouter(prefix="/inbox")
 
@@ -181,12 +180,5 @@ async def send_attachment(
     )
     await scope.session.flush()
     await scope.session.refresh(msg)
-    await publish_inbox_event(
-        redis,
-        tenant_id=conv.tenant_id,
-        event="message.new",
-        conversation_id=conv.id,
-        message_id=str(msg.id),
-        direction="outbound",
-    )
+    _publish(redis, scope, conv.id, "message.new", message_id=str(msg.id), direction="outbound")
     return SentOut(id=msg.id, at=msg.created_at, delivery="pending")

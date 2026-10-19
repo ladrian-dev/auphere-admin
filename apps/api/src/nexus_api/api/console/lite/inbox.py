@@ -11,7 +11,7 @@ de otro cliente no existe para la RLS y responde 404, igual que uno inventado.
 
 Cada acción se audita con la persona (``client:<correo>``) y sin contenido —
 solo longitudes y nombres de etiqueta— y se publica en el canal de tiempo real
-del cliente.
+del cliente cuando la transacción se confirma (``_publish``).
 """
 
 from __future__ import annotations
@@ -290,16 +290,27 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
     )
 
 
-async def _publish(
+def _publish(
     redis: Redis,
     scope: LiteScope,
     conv_id: uuid.UUID,
     event: str = "conversation.updated",
     **fields: Any,
 ) -> None:
-    await publish_inbox_event(
-        redis, tenant_id=scope.principal.tenant_id, event=event, conversation_id=conv_id, **fields
-    )
+    """Avisa al canal del cliente **cuando se confirme** la transacción, no
+    antes: quien lo oye vuelve a pedir la conversación y tiene que leer lo ya
+    escrito. Si la transacción hace rollback, no se avisa de nada."""
+
+    async def _announce() -> None:
+        await publish_inbox_event(
+            redis,
+            tenant_id=scope.principal.tenant_id,
+            event=event,
+            conversation_id=conv_id,
+            **fields,
+        )
+
+    scope.after_commit(_announce)
 
 
 # ── reads ──────────────────────────────────────────────────────────────
@@ -520,7 +531,7 @@ async def take_over(
     )
     _audit(scope, "inbox.takeover", conv.id, {"control_version": conv.agent_active_version})
     await scope.session.flush()
-    await _publish(redis, scope, conv.id)
+    _publish(redis, scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -556,7 +567,7 @@ async def give_back(
     )
     _audit(scope, "inbox.released", conv.id, {"control_version": conv.agent_active_version})
     await scope.session.flush()
-    await _publish(redis, scope, conv.id)
+    _publish(redis, scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -605,9 +616,7 @@ async def send_message(
     _audit(scope, "inbox.message_sent", conv.id, {"length": len(body.text)})
     await scope.session.flush()
     await scope.session.refresh(msg)
-    await _publish(
-        redis, scope, conv.id, "message.new", message_id=str(msg.id), direction="outbound"
-    )
+    _publish(redis, scope, conv.id, "message.new", message_id=str(msg.id), direction="outbound")
     return SentOut(id=msg.id, at=msg.created_at, delivery="pending")
 
 
@@ -624,7 +633,7 @@ async def resolve(
     if await inbox_lifecycle.resolve(scope.session, conv, actor=f"client:{_me(scope)}"):
         _audit(scope, "inbox.resolved", conv.id, {})
         await scope.session.flush()
-        await _publish(redis, scope, conv.id)
+        _publish(redis, scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -638,7 +647,7 @@ async def reopen(
     if await inbox_lifecycle.reopen(scope.session, conv, actor=f"client:{_me(scope)}"):
         _audit(scope, "inbox.reopened", conv.id, {})
         await scope.session.flush()
-        await _publish(redis, scope, conv.id)
+        _publish(redis, scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -692,7 +701,7 @@ async def set_tags(
     if removed:
         _audit(scope, "inbox.untagged", conv.id, {"tags": removed})
     await scope.session.flush()
-    await _publish(redis, scope, conv.id)
+    _publish(redis, scope, conv.id)
     return TagsOut(tags=tags)
 
 
