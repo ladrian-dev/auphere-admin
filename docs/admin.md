@@ -75,8 +75,16 @@ Las rutas antiguas (`keys`, `tenants`, `usage`, `wallet`, `receipts`, `limits`,
 ## Ficha de cliente (`/tenants/{id}`)
 
 - **Cabecera.** Lleva nombre con su estado, una línea de contexto (partner, plan, mercado, zona), «Probar agente», Acciones y cuatro hechos enlazados: canal, agente, última conversación y esta semana.
-- **Pestañas.** Van en una sola fila, con una raya entre los grupos Observar, Configurar y Conectar. Canales lleva un punto si ningún canal atiende o alguno tiene problemas. La ficha del partner usa el mismo componente con Observar, Configurar y Cuenta.
-- **Resumen.** A dos columnas. A la izquierda va lo que falta para operar, solo lo pendiente y con lo hecho plegado; con todo hecho es una línea. Debajo, las conversaciones recientes. A la derecha, los datos del cliente y las pruebas del agente. La pestaña Agente se divide en Prompt y herramientas · Runtime · Versiones · Evals (`?section=`).
+- **Pestañas.** Son el mismo `NavTabs` que la ficha del cliente en la consola de Partners, con el rótulo de cada grupo (spec 037):
+  - Observar: Resumen, Conversaciones, Playground, Auditoría, Aislamiento.
+  - Configurar: Agente, Habilidades, Acceso, Facturación.
+  - Conectar: Canales, Conectores, Canal del dueño.
+
+  Canales lleva un punto si ningún canal atiende o alguno tiene problemas. La ficha del partner usa el mismo componente con Observar, Configurar y Cuenta.
+- **Agente.** Como en la consola: «Nuevo borrador» a partir de la versión activa (solo el prompt) y una tarjeta por versión con «⋯» para publicar, revertir o ver el prompt. Debajo van las capacidades del runtime y las evaluaciones.
+- **Habilidades.** El catálogo de la consola, con un interruptor por habilidad que guarda en el borrador. Se sirve en `GET/PUT /admin/tenants/{id}/capabilities`, con el mismo código que la consola y la auditoría firmada por el operador.
+- **Playground.** El de `/qa/{cliente}/chat`, dentro de la ficha. «Probar agente» lleva aquí.
+- **Resumen.** A dos columnas. A la izquierda va lo que falta para operar, solo lo pendiente y con lo hecho plegado; con todo hecho es una línea. Debajo, las conversaciones recientes. A la derecha, los datos del cliente y las pruebas del agente.
 - **Conversaciones.** Nombra al contacto por su nombre o número y dice quién responde. El control es un botón «Tomar control» / «Devolver», que no aparece en las conversaciones resueltas.
 
 Los logos de canales y conectores son las marcas de cada app (Simple Icons, CC0) sobre su

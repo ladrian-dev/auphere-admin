@@ -45,6 +45,8 @@ export function PlaygroundShell({
   operatorEmail,
   initialThreads,
   initialActiveThread,
+  basePath,
+  embedded = false,
 }: {
   tenant: { id: string; name: string; slug: string };
   agentVersion: number | null;
@@ -52,6 +54,11 @@ export function PlaygroundShell({
   operatorEmail: string | null;
   initialThreads: QAThread[];
   initialActiveThread: QAThread | null;
+  /** Spec 037: where thread changes navigate; the client's Playground tab
+   *  keeps them inside the profile. Defaults to `/qa/{tenant}/chat`. */
+  basePath?: string;
+  /** Inside a profile tab: a framed panel instead of the full window. */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [threads, setThreads] = useState<QAThread[]>(initialThreads);
@@ -69,10 +76,10 @@ export function PlaygroundShell({
       setActiveThread(thread);
       const search = thread ? `?thread=${thread.id}` : "";
       startTransition(() => {
-        router.replace(`/qa/${tenant.id}/chat${search}`, { scroll: false });
+        router.replace(`${basePath ?? `/qa/${tenant.id}/chat`}${search}`, { scroll: false });
       });
     },
-    [router, tenant.id],
+    [router, tenant.id, basePath],
   );
 
   const onCreateThread = useCallback(
@@ -110,7 +117,11 @@ export function PlaygroundShell({
 
   return (
     <div
-      className="grid h-[calc(100vh-3rem)] w-full grid-rows-[auto_minmax(0,1fr)] bg-background"
+      className={
+        embedded
+          ? "grid h-[calc(100vh-16rem)] min-h-[480px] w-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md bg-background ring-1 ring-foreground/10"
+          : "grid h-[calc(100vh-3rem)] w-full grid-rows-[auto_minmax(0,1fr)] bg-background"
+      }
       data-qa-playground-root
     >
       {/* Header */}

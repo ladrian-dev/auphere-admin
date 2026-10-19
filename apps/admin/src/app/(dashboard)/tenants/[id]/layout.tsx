@@ -85,7 +85,7 @@ export default async function TenantLayout({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Button nativeButton={false} render={<Link href={`/qa/${tenant.id}/chat`} />}>
+            <Button nativeButton={false} render={<Link href={`${base}/playground`} />}>
               <FlaskConical aria-hidden="true" />
               Probar agente
             </Button>

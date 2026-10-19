@@ -138,7 +138,7 @@ export default async function TenantOverview({ params }: { params: Promise<{ id:
         <Section
           title="Pruebas del agente"
           actions={
-            <Link href={`/qa/${tenant.id}/chat`} className="text-sm text-primary-deep underline-offset-4 hover:underline">
+            <Link href={`${base}/playground`} className="text-sm text-primary-deep underline-offset-4 hover:underline">
               Abrir
             </Link>
           }
@@ -151,7 +151,7 @@ export default async function TenantOverview({ params }: { params: Promise<{ id:
             <ul className="flex flex-col gap-2">
               {threads.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3">
-                  <Link href={`/qa/${tenant.id}/chat?thread=${t.id}`} className="truncate text-sm underline-offset-4 hover:underline">
+                  <Link href={`${base}/playground?thread=${t.id}`} className="truncate text-sm underline-offset-4 hover:underline">
                     {t.title}
                   </Link>
                   <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(t.updated_at)}</span>

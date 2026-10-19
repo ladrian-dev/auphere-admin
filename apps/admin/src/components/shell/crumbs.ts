@@ -24,6 +24,8 @@ const SECTION: Record<string, string> = {
 const CHILD: Record<string, Record<string, string>> = {
   tenants: {
     agent: "Agente",
+    capabilities: "Habilidades",
+    playground: "Playground",
     conversations: "Conversaciones",
     channels: "Canales",
     connectors: "Conectores",

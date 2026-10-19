@@ -1,7 +1,7 @@
 import { ProfileTabs, type ProfileTabGroup } from "@/components/shell/profile-tabs";
 
 /**
- * The client's tabs, grouped like the client page of the partner console:
+ * The client's tabs, grouped and named like the client page of the partner console:
  * what is happening, how it is set up, what it connects to.
  */
 export function tenantTabGroups(marks: { channels?: "incident" | "draft" } = {}): ProfileTabGroup[] {
@@ -12,8 +12,9 @@ export function tenantTabGroups(marks: { channels?: "incident" | "draft" } = {})
       tabs: [
         { seg: "", label: "Resumen" },
         { seg: "conversations", label: "Conversaciones" },
-        { seg: "isolation", label: "Aislamiento" },
+        { seg: "playground", label: "Playground" },
         { seg: "audit", label: "Auditoría" },
+        { seg: "isolation", label: "Aislamiento" },
       ],
     },
     {
@@ -21,6 +22,8 @@ export function tenantTabGroups(marks: { channels?: "incident" | "draft" } = {})
       label: "Configurar",
       tabs: [
         { seg: "agent", label: "Agente" },
+        // Spec 037: the partner console's «Habilidades», same screen.
+        { seg: "capabilities", label: "Habilidades" },
         // Spec 030: the client's lite console — modules and people.
         { seg: "access", label: "Acceso" },
         { seg: "billing", label: "Facturación" },

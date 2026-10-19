@@ -39,6 +39,8 @@ describe("breadcrumb trail (spec 035)", () => {
     expect(crumbsFor("/qa/t1/chat", names).map((c) => c.label)).toEqual(["Playground QA", "Volumen 03"]);
     expect(crumbsFor("/tickets/k1", names).map((c) => c.label)).toEqual(["Tickets", "TCK-42"]);
     expect(crumbsFor("/tenants/new", names).map((c) => c.label)).toEqual(["Clientes", "Nuevo cliente"]);
+    expect(crumbsFor("/tenants/t1/capabilities", names).at(-1)?.label).toBe("Habilidades");
+    expect(crumbsFor("/tenants/t1/playground", names).at(-1)?.label).toBe("Playground");
   });
 
   it("only the last step is not a link", () => {

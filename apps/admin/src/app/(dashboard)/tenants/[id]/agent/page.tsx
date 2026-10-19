@@ -1,66 +1,25 @@
-import Link from "next/link";
-
-import {
-  Badge,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  cn,
-  EmptyState,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@nexus/ui";
-import {
-  backend,
-  type AgentConfig,
-  type ToolWithInstallStatus,
-} from "@/lib/backend";
-import { fullDateTime, relativeTime } from "@/lib/format";
+import { backend, type AgentConfig, type ToolWithInstallStatus } from "@/lib/backend";
 
 import { AgentPicker } from "./agent-picker";
-import { AgentEditor } from "./editor";
-import {
-  promoteAgentConfigAction,
-  rollbackAgentConfigAction,
-  stageAgentConfigAction,
-  updateRuntimeCapabilitiesAction,
-} from "./actions";
+import { stageAgentConfigAction, updateRuntimeCapabilitiesAction } from "./actions";
+import { AgentVersions } from "./agent-versions";
 import { ApplySeedTemplateButton } from "./apply-seed";
 import { EvalsSection } from "./evals/evals-section";
 import { RuntimeCapabilities } from "./runtime-capabilities";
-import {
-  PromoteVersionButton,
-  RollbackVersionButton,
-} from "./version-actions";
 
-const AGENT_SECTIONS = [
-  { key: "prompt", label: "Prompt y herramientas" },
-  { key: "runtime", label: "Runtime" },
-  { key: "versions", label: "Versiones" },
-  { key: "evals", label: "Evals" },
-] as const;
-type AgentSection = (typeof AGENT_SECTIONS)[number]["key"];
-function isAgentSection(v: string | undefined): v is AgentSection {
-  return AGENT_SECTIONS.some((s) => s.key === v);
-}
-
+/**
+ * Spec 037: the agent, as on the partner console's client page — its
+ * versions with «Nuevo borrador», then its runtime and its evaluations. The
+ * tools left this page for Habilidades.
+ */
 export default async function AgentPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ agent?: string; section?: string }>;
+  searchParams: Promise<{ agent?: string }>;
 }) {
   const { id } = await params;
-  // Spec 031 (R5.4): four subjects, one at a time — the audit's BL-2.
-  const rawSection = (await searchParams).section;
-  const section: AgentSection = isAgentSection(rawSection) ? rawSection : "prompt";
   // Spec 030: con varios agentes, `?agent=` dice de cuál es lo que se edita;
   // sin él (o con uno que no es de este cliente), el principal. Si la lista
   // no se puede leer, el agente de la URL pasa tal cual y la API decide: caer
@@ -130,124 +89,47 @@ export default async function AgentPage({
       (t.connector_slug === null || t.tenant_connector_status !== null),
   );
 
-  const headerTitle = bundle.active
-    ? `Versión ${bundle.active.version} activa`
-    : latestStaged
-      ? `Borrador v${latestStaged.version} sin promover`
-      : "Crear primera versión";
-
-  const sectionHref = (key: AgentSection) => {
-    const qs = new URLSearchParams();
-    if (agentId) qs.set("agent", agentId);
-    if (key !== "prompt") qs.set("section", key);
-    const q = qs.toString();
-    return `/tenants/${tenant.id}/agent${q ? `?${q}` : ""}`;
-  };
 
   return (
-    <div className="grid gap-6">
-      <nav aria-label="Secciones del agente" className="flex flex-wrap gap-1 border-b border-border text-sm">
-        {AGENT_SECTIONS.map((s) => (
-          <Link
-            key={s.key}
-            href={sectionHref(s.key)}
-            aria-current={section === s.key ? "page" : undefined}
-            className={cn(
-              "-mb-px border-b-2 px-3 py-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-              section === s.key
-                ? "border-foreground font-medium text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {s.label}
-            {s.key === "versions" ? ` (${bundle.versions.length})` : ""}
-          </Link>
-        ))}
-      </nav>
+    <section aria-label="Agente" className="flex min-w-0 flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <AgentPicker tenantId={tenant.id} agents={agents} selectedId={onScreen?.id ?? null} />
+        <ApplySeedTemplateButton
+          tenantId={tenant.id}
+          tenantName={tenant.name}
+          tenantTimezone={tenant.timezone}
+          templates={seedTemplates}
+          hasActiveConfig={bundle.active !== null}
+          agentId={agentId}
+        />
+      </div>
+      <p className="max-w-prose text-sm text-pretty text-muted-foreground">
+        Versiones del prompt{agents.length > 1 && onScreen ? ` de ${onScreen.name}` : ""}. Publicar crea una versión
+        activa, revertir vuelve a cualquier anterior. Las habilidades se encienden en su pestaña y van al mismo borrador.
+      </p>
 
-      {section === "prompt" ? (
-      <Card>
-        <CardHeader className="flex flex-col gap-1">
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <CardTitle>
-                {headerTitle}
-                {agents.length > 1 && onScreen ? ` · ${onScreen.name}` : ""}
-              </CardTitle>
-              <CardDescription>
-                Cada cambio que guardas queda como borrador. Publícalo cuando
-                quieras que el agente lo use desde el siguiente turno.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <AgentPicker tenantId={tenant.id} agents={agents} selectedId={onScreen?.id ?? null} />
-              <ApplySeedTemplateButton
-                tenantId={tenant.id}
-                tenantName={tenant.name}
-                tenantTimezone={tenant.timezone}
-                templates={seedTemplates}
-                hasActiveConfig={bundle.active !== null}
-                agentId={agentId}
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* The ``key`` forces ``AgentEditor`` to remount whenever the
-              underlying config row changes (id is unique per version).
-              Without it the client component's ``useState`` initialiser
-              captures the prompt + tools of the FIRST render and ignores
-              subsequent prop changes — so after a fresh ``applyTemplate``
-              the textarea + whitelist stay empty even though the server
-              already has the staged draft. BUG-E2E-01. */}
-          <AgentEditor
-            key={`${agentId ?? "principal"}:${editorSource?.id ?? "empty"}`}
-            tenantId={tenant.id}
-            agentId={agentId}
-            source={editorSource}
-            sourceIsStagedDraft={editorSource?.status === "staged"}
-            catalog={publicCatalog}
-            stageAction={stageAgentConfigAction}
-          />
-        </CardContent>
-      </Card>
-      ) : null}
+      {/* Spec 037: the partner console's version list. */}
+      <AgentVersions
+        tenantId={tenant.id}
+        agentId={agentId}
+        versions={bundle.versions}
+        activeVersion={bundle.active?.version ?? null}
+        source={editorSource}
+        sourceIsStagedDraft={editorSource?.status === "staged"}
+        catalog={publicCatalog}
+        stageAction={stageAgentConfigAction}
+      />
 
-      {section === "runtime" && !editorSource ? (
-        <EmptyState title="Este agente todavía no tiene configuración" description="Crea su primera versión en Prompt y herramientas para poder ajustar su runtime." readonly />
-      ) : null}
-
-      {section === "runtime" && editorSource && (
+      {/* Both blocks carry their own title and description. */}
+      {editorSource ? (
         <RuntimeCapabilities
           tenantId={tenant.id}
           config={editorSource}
           availableSkills={availableSkills}
           updateAction={updateRuntimeCapabilitiesAction}
         />
-      )}
-
-      {section === "versions" ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>Historial de versiones</CardTitle>
-          <CardDescription>
-            Cada versión publicada se aplica desde el siguiente turno del
-            agente, sin desplegar nada.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <VersionTable
-            tenantId={tenant.id}
-            versions={bundle.versions}
-            activeVersion={bundle.active?.version}
-            promote={promoteAgentConfigAction}
-            rollback={rollbackAgentConfigAction}
-          />
-        </CardContent>
-      </Card>
       ) : null}
 
-      {section === "evals" ? (
       <EvalsSection
         tenantId={tenant.id}
         datasets={datasets}
@@ -255,107 +137,6 @@ export default async function AgentPage({
         recentRuns={recentRuns}
         activeVersion={bundle.active?.version ?? null}
       />
-      ) : null}
-    </div>
-  );
-}
-
-function VersionTable({
-  tenantId,
-  versions,
-  activeVersion,
-  promote,
-  rollback,
-}: {
-  tenantId: string;
-  versions: Array<{
-    id: string;
-    version: number;
-    status: string;
-    promoted_at: string | null;
-    created_at: string;
-  }>;
-  activeVersion?: number;
-  promote: (
-    tenantId: string,
-    version: number,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
-  rollback: (
-    tenantId: string,
-    version: number,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
-}) {
-  if (versions.length === 0) {
-    return (
-      <div className="px-6 py-12 text-center text-muted-foreground text-sm">
-        Todavía no hay versiones. Guarda el editor para crear la primera.
-      </div>
-    );
-  }
-  const sorted = [...versions].sort((a, b) => b.version - a.version);
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Versión</TableHead>
-          <TableHead>Estado</TableHead>
-          <TableHead>Creada</TableHead>
-          <TableHead>Promovida</TableHead>
-          <TableHead>ID</TableHead>
-          <TableHead className="text-right">Acción</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {sorted.map((v) => {
-          const isActive = activeVersion === v.version;
-          // A version is promotable when it's a draft that's not already
-          // active. Archived versions can be re-applied via rollback.
-          const canPromote = !isActive && v.status === "staged";
-          const canRollback = !isActive && v.status === "archived";
-          return (
-            <TableRow key={v.id}>
-              <TableCell className="font-mono tabular-nums">
-                v{v.version}
-              </TableCell>
-              <TableCell>
-                <Badge variant={isActive ? "default" : "outline"}>
-                  {isActive
-                    ? "Activa"
-                    : v.status === "staged"
-                      ? "Borrador"
-                      : v.status === "archived"
-                        ? "Archivada"
-                        : v.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {fullDateTime(v.created_at)}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {v.promoted_at ? relativeTime(v.promoted_at) : "—"}
-              </TableCell>
-              <TableCell className="text-xs font-mono text-muted-foreground">
-                {v.id.slice(0, 8)}
-              </TableCell>
-              <TableCell className="text-right">
-                {canPromote ? (
-                  <PromoteVersionButton
-                    tenantId={tenantId}
-                    version={v.version}
-                    promote={promote}
-                  />
-                ) : canRollback ? (
-                  <RollbackVersionButton
-                    tenantId={tenantId}
-                    version={v.version}
-                    rollback={rollback}
-                  />
-                ) : null}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    </section>
   );
 }

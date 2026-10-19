@@ -30,7 +30,7 @@ type StageResult =
   | { ok: true; data: AgentConfig }
   | { ok: false; error: string };
 
-type StageAction = (
+export type StageAction = (
   tenantId: string,
   body: {
     system_prompt_rendered: string;
@@ -70,6 +70,8 @@ export function AgentEditor({
   catalog,
   stageAction,
   agentId,
+  showTools = true,
+  onDone,
 }: {
   tenantId: string;
   source: AgentConfig | null;
@@ -78,6 +80,11 @@ export function AgentEditor({
   stageAction: StageAction;
   /** Spec 030: the agent whose version this is; `undefined` is the principal. */
   agentId?: string;
+  /** Spec 037: the tools now live in Habilidades; the draft card edits the
+   *  prompt only and carries the source's tools unchanged. */
+  showTools?: boolean;
+  /** Called after a save or a discard, so the draft card can close. */
+  onDone?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -103,7 +110,7 @@ export function AgentEditor({
       toast.error("El prompt no puede estar vacío");
       return;
     }
-    const blocked = Array.from(selected).filter((name) => {
+    const blocked = !showTools ? [] : Array.from(selected).filter((name) => {
       const tool = catalog.find((t) => t.name === name);
       return tool ? !canSelect(tool.tenant_connector_status, tool.connector_slug) : false;
     });
@@ -117,7 +124,7 @@ export function AgentEditor({
       );
       return;
     }
-    if (selected.size === 0) {
+    if (showTools && selected.size === 0) {
       toast.warning("Sin herramientas seleccionadas", {
         description:
           "El agente no podrá hacer nada por su cuenta. Confirma que es lo que quieres.",
@@ -139,8 +146,9 @@ export function AgentEditor({
         return;
       }
       toast.success("Borrador guardado", {
-        description: `v${result.data.version} guardada — promovela cuando quieras que el agente la use.`,
+        description: `Versión ${result.data.version} guardada. Publícala desde la lista cuando quieras que el agente la use.`,
       });
+      onDone?.();
       router.refresh();
     });
   }
@@ -151,7 +159,7 @@ export function AgentEditor({
   ).length;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+    <div className={showTools ? "grid gap-6 lg:grid-cols-[3fr_2fr]" : "grid gap-6"}>
       <div className="grid gap-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <Label htmlFor="prompt">Prompt del agente</Label>
@@ -184,6 +192,7 @@ export function AgentEditor({
         </p>
       </div>
 
+      {showTools ? (
       <div className="grid gap-4">
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
@@ -225,6 +234,7 @@ export function AgentEditor({
           </div>
         </TooltipProvider>
       </div>
+      ) : null}
 
       <div className="lg:col-span-2 flex items-center justify-between gap-2 border-t border-border pt-4">
         {sourceIsStagedDraft && source ? (
@@ -241,6 +251,7 @@ export function AgentEditor({
             onClick={() => {
               setPrompt(source?.system_prompt_rendered ?? "");
               setSelected(new Set(source?.tools ?? []));
+              onDone?.();
             }}
             disabled={pending}
           >

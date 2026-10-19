@@ -1005,6 +1005,38 @@ export type GlobalChannel = {
 
 export type ConnectorInstall = { tenant_id: string; tenant_name: string; status: string };
 
+/** Spec 037: the client's capabilities — the partner console's «Habilidades». */
+export type CapabilityKind = "tool" | "skill";
+export type CapabilityMode = "always" | "blocked";
+export type CapabilityModeChange = CapabilityMode | "default";
+export type Capability = {
+  key: string;
+  kind: CapabilityKind;
+  business_name: string;
+  description: string;
+  function: "appointments" | "orders" | "messages" | "escalation" | "knowledge" | "other";
+  sectors: string[];
+  recommended: boolean;
+  other_sector: boolean;
+  enabled: boolean;
+  enabled_in_active: boolean;
+  usable: boolean;
+  activatable: boolean;
+  connector: { slug: string; display_name: string; status: string } | null;
+  mode: { default: CapabilityMode; override: CapabilityMode | null; effective: CapabilityMode; options: CapabilityMode[] } | null;
+  read_only: boolean;
+  destructive: boolean;
+  technical: { name: string; kind: CapabilityKind; version: string | null; tags: string[] };
+};
+export type CapabilitiesOut = {
+  sector: string | null;
+  has_draft: boolean;
+  version: number | null;
+  active_version: number | null;
+  hidden_by_sector: number;
+  groups: Array<{ function: Capability["function"]; items: Capability[] }>;
+};
+
 /** Spec 036: what the client list scans for, per client. */
 export type TenantHealth = {
   tenant_id: string;
@@ -2243,6 +2275,25 @@ export const backend = {
 
   listAllChannels: () =>
     call<{ channels: GlobalChannel[]; unreadable: string[] }>("/admin/channels"),
+
+  getCapabilities: (tenantId: string, opts: { all?: boolean; agent?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.all) q.set("all", "true");
+    if (opts.agent) q.set("agent", opts.agent);
+    const qs = q.toString();
+    return call<CapabilitiesOut>(`/admin/tenants/${tenantId}/capabilities${qs ? `?${qs}` : ""}`);
+  },
+
+  setCapability: (
+    tenantId: string,
+    body: { key: string; kind: CapabilityKind; enabled?: boolean; mode?: CapabilityModeChange },
+    operatorId: string,
+    agent?: string,
+  ) =>
+    call<{ capability: Capability; draft_created: boolean; version: number | null }>(
+      `/admin/tenants/${tenantId}/capabilities${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`,
+      { method: "PUT", body, headers: { "X-Operator-Id": operatorId } },
+    ),
 
   getTenantHealth: (tenantId: string) => call<TenantHealth>(`/admin/tenants-health/${tenantId}`),
 
