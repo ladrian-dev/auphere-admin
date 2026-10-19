@@ -135,6 +135,9 @@ async def _save_card(partner_id: uuid.UUID, fake: _FakeStripe) -> None:
         url = await pb.open_card_setup(s, await _partner(partner_id))
     assert url == "https://checkout.stripe.test/setup"
     assert fake.setup_params["mode"] == "setup"
+    # Stripe refuses payment_method_types on Checkout now; setup mode needs currency.
+    assert "payment_method_types" not in fake.setup_params
+    assert fake.setup_params["currency"] == "usd"
     async with get_sessionmaker()() as s, s.begin():
         await pb.apply_card_saved(
             s,

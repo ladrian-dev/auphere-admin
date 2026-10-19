@@ -128,7 +128,9 @@ async def open_card_setup(session: AsyncSession, partner: Partner) -> str:
                 "mode": "setup",
                 "currency": "usd",
                 "customer": customer_id,
-                "payment_method_types": ["card"],
+                # No ``payment_method_types``: Stripe refuses it now (staging,
+                # 2026-10-20) and takes the methods from the Dashboard. With it
+                # gone, ``currency`` is what setup mode requires.
                 "client_reference_id": str(partner.id),
                 "metadata": {"partner_id": str(partner.id), "kind": "card"},
                 "setup_intent_data": {"metadata": {"partner_id": str(partner.id)}},
