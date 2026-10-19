@@ -110,6 +110,10 @@ async def _add_client(
 
 async def test_home_returns_five_blocks_from_one_call(client, console_world, db_session) -> None:
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(a["partner_id"])
     # Second client, provisioning; the first one gets a degraded WhatsApp
     # channel + an active agent + one failed message in the last 24 h.
     await _add_client(db_session, a["partner_id"], "prov-1", TenantStatus.PROVISIONING)

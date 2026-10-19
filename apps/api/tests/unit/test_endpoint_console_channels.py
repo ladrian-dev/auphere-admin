@@ -763,6 +763,10 @@ async def test_signup_activates_a_provisioning_client_with_a_published_agent(
     from nexus_api.db.models import ConsoleNotification
 
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(a["partner_id"])
     await _provisioning_with_agent(db_session, a, agent=True)
     monkeypatch.setattr(
         wa_router, "complete_meta_signup", _signup_stub(channel=_channel(a["tenant_id"]))
@@ -799,6 +803,10 @@ async def test_signup_without_a_published_agent_leaves_the_client_provisioning(
     client, console_world, db_session, monkeypatch
 ) -> None:
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(a["partner_id"])
     await _provisioning_with_agent(db_session, a, agent=False)
     monkeypatch.setattr(
         wa_router, "complete_meta_signup", _signup_stub(channel=_channel(a["tenant_id"]))

@@ -24,7 +24,7 @@ from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import OperatorAccount
 from nexus_api.services import agents as agent_service
 
-from .client_access import require_operator
+from .operator import require_operator
 
 router = APIRouter()
 

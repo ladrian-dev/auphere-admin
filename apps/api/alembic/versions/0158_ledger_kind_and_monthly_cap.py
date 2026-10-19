@@ -64,6 +64,19 @@ BEGIN
 END $$;
 """
 
+REFILL_ONCE = r"""
+DO $$
+DECLARE p uuid;
+BEGIN
+  FOR p IN SELECT id FROM partners LOOP
+    PERFORM set_config('app.partner_id', p::text, true);
+    UPDATE partner_allocations SET remaining = cap, updated_at = now()
+     WHERE partner_id = p AND remaining < cap;
+  END LOOP;
+  PERFORM set_config('app.partner_id', '', true);
+END $$;
+"""
+
 # The opening entry. Purchased balance was written by hand in the database
 # before the admin top-up existed (2026-09-08) and Stripe purchases never wrote
 # an entry, so the stored balance and the book disagree from the start. The
@@ -134,6 +147,13 @@ def upgrade() -> None:
             server_default=sa.text("(date_trunc('month', timezone('UTC', now())))::date"),
         ),
     )
+    # The switch from weekly to monthly. Until now the cap refilled with the
+    # weekly pool; from here it refills on the 1st. A client whose weekly cap
+    # is spent today would stay mute until next month — silence with balance,
+    # the failure this repo already paid for (31-ago). So every cap starts the
+    # new regime whole, once. The cap is a spending limit, not money: what a
+    # turn can spend is still bounded by the recharged balance at the gate.
+    op.get_bind().execute(sa.text(REFILL_ONCE))
 
 
 DROP_OPENING = r"""
