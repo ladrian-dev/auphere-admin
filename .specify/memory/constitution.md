@@ -83,6 +83,12 @@ Estados honestos como requisito del runtime, no como copy:
 - Si algo no está en el catálogo leído en este turno, **no existe**.
 - Cuando una capacidad no está disponible, no hay botón apagado ni pantalla que
   explique lo que no tienes: **la ausencia se diseña**.
+- **Una excepción, y solo una** (enmienda 1.1.0, spec 035): el **panel de
+  operador** de Auphere puede enseñar en un catálogo lo que viene —un canal aún
+  no construido, uno pendiente de aprobación del proveedor—, marcado con su
+  estado («Próximamente», «Pendiente de TikTok») y **sin poder iniciarse**. Ahí
+  es la hoja de ruta del equipo, no una promesa a un cliente. La consola de
+  partners y la consola lite no tienen excepción.
 
 ### VI. Por API, nunca por navegador, y nunca contra nosotros mismos
 
@@ -196,4 +202,4 @@ La versión sigue `MAYOR.MENOR.PARCHE`: mayor si se retira o se redefine un
 principio, menor si se añade uno o se amplía materialmente, parche para
 redacción.
 
-**Version**: 1.0.1 | **Ratified**: 2026-09-08 | **Last Amended**: 2026-09-09
+**Version**: 1.1.0 | **Ratified**: 2026-09-08 | **Last Amended**: 2026-10-19
