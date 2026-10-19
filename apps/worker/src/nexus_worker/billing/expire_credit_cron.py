@@ -79,8 +79,8 @@ async def expire_due_credit(session: Any, *, now: datetime | None = None) -> lis
         # written and the balance was already zeroed: nothing else to do.
         written = await session.execute(
             sa.text(
-                "INSERT INTO usage_ledger (id, partner_id, qty, bucket, idempotency_key) "
-                "VALUES (:i, :p, :q, 'purchased', :k) "
+                "INSERT INTO usage_ledger (id, partner_id, qty, bucket, kind, idempotency_key) "
+                "VALUES (:i, :p, :q, 'purchased', 'expiry', :k) "
                 "ON CONFLICT (idempotency_key) DO NOTHING "
                 "RETURNING id"
             ),

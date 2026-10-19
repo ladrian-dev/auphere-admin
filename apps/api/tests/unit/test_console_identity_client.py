@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from nexus_api.api.console.auth import principal_out
-from nexus_api.db.models import ClientAccess, ClientMembership
+from nexus_api.db.models import PARTNER_NAV_MODULES, ClientAccess, ClientMembership
 from nexus_api.services import console_identity
 from tests.conftest import make_client_access
 
@@ -110,7 +110,9 @@ async def test_partner_member_is_unchanged(db_session, console_world, test_engin
     assert out.kind == "partner"
     assert out.role == "owner"
     assert out.client_name is None
-    assert out.modules == []
+    # Spec 032: a partner member carries its partner's modules (the whole
+    # console by default; the fixture switches the Companion on).
+    assert out.modules == [*PARTNER_NAV_MODULES, "companion"]
     assert "partner:read" in out.permissions
 
 

@@ -15,7 +15,7 @@ import { Suspense } from "react";
 import { UCMRenderer, type UCMMessage } from "@nexus/ucm-render-web";
 import { WhatsAppPreview } from "@nexus/ucm-preview-whatsapp";
 
-import { PageHeader } from "@/components/brand/page-header";
+import { PageHeader } from "@nexus/ui";
 
 import { UCM_GALLERY_FIXTURES } from "./fixtures";
 
@@ -53,7 +53,7 @@ function GalleryEntry({
   return (
     <section
       aria-labelledby={`g-${entry.key}-h`}
-      className="rounded-lg border border-border bg-card p-6"
+      className="rounded-md border border-border bg-card p-6"
     >
       <header className="mb-4 flex items-baseline justify-between gap-4">
         <h2

@@ -1,8 +1,11 @@
-"""Admin C3 — wallet, ledger y recarga purchased del partner del path.
+"""Admin — the money of the path partner (spec 033).
 
-El ``partner_id`` del path es la fuente de verdad. Se fija el GUC
-``app.partner_id`` igual que el libro FORCE (``partner_wallets``).
-No hay caps de cliente. En prod la recarga no existe (404 opaco).
+Everything a person reads or writes here is US$ cents, converted with the one
+conversion in ``billing/pricing.py``. The ``partner_id`` of the path is the
+source of truth and fixes ``app.partner_id`` like the FORCE-RLS book.
+
+A top-up is one transaction — balance, ledger entry and audit naming the
+operator — and is idempotent by the key the panel's form generated.
 """
 
 from __future__ import annotations
@@ -14,33 +17,47 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.api.admin.partners import _admin_actor, _get_partner_or_404
+from nexus_api.api.admin.operator import operator_actor, require_operator
+from nexus_api.api.admin.partners import _get_partner_or_404
 from nexus_api.api.deps import get_db_session
+from nexus_api.billing.pricing import cents_to_credits, credits_to_cents
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import OperatorAccount
 from nexus_api.db.models.partner_wallet import (
-    BUCKET_PURCHASED,
+    KIND_ALLOCATION_LEGACY,
+    KIND_CREDIT_ADMIN,
     PartnerAllocation,
     UsageLedger,
 )
-from nexus_api.metering.wallet import add_purchased, read_wallet
+from nexus_api.db.models.tenant import Tenant
+from nexus_api.metering.wallet import (
+    WalletSnapshot,
+    add_purchased,
+    read_wallet,
+    reconcile_purchased,
+)
 from nexus_api.repositories import AuditRepository
-from nexus_api.schemas.admin_wallet import AdminLedgerOut, AdminPurchasedIn, AdminWalletOut
+from nexus_api.schemas.admin_wallet import (
+    AdminLedgerOut,
+    AdminPurchasedIn,
+    AdminReconcileOut,
+    AdminWalletOut,
+)
 
 router = APIRouter(prefix="/partners", dependencies=[Depends(require_admin_token)])
 log = structlog.get_logger(__name__)
 
-_ALLOCATION_SUFFIX = ":allocation"
 _ADMIN_PURCHASED_PREFIX = "admin_purchased:"
 
 
 def _empty() -> AdminWalletOut:
     return AdminWalletOut(
-        included_remaining=0,
-        purchased_remaining=0,
-        available=0,
-        reserve=0,
+        included_cents=0,
+        purchased_cents=0,
+        available_cents=0,
+        assigned_cents=0,
         included_expires_at=None,
         exhausted=True,
     )
@@ -63,42 +80,25 @@ async def _sum_caps(partner_id: uuid.UUID) -> int:
         return 0
 
 
+def _out(snap: WalletSnapshot, caps: int, *, duplicate: bool = False) -> AdminWalletOut:
+    # Balances round DOWN (never show money that is not there): the same
+    # rule and the same function as the console (``credits_to_cents``).
+    return AdminWalletOut(
+        included_cents=credits_to_cents(snap.included_remaining),
+        purchased_cents=credits_to_cents(snap.purchased_remaining),
+        available_cents=credits_to_cents(snap.available),
+        assigned_cents=credits_to_cents(caps),
+        included_expires_at=snap.included_expires_at,
+        exhausted=snap.purchased_remaining <= 0,
+        duplicate=duplicate,
+    )
+
+
 async def _wallet_out(partner_id: uuid.UUID) -> AdminWalletOut:
     snap = await read_wallet(partner_id)
     if snap is None:
         return _empty()
-    caps = await _sum_caps(partner_id)
-    return AdminWalletOut(
-        included_remaining=snap.included_remaining,
-        purchased_remaining=snap.purchased_remaining,
-        available=snap.available,
-        reserve=snap.available - caps,
-        included_expires_at=snap.included_expires_at,
-        exhausted=snap.empty,
-    )
-
-
-def _ledger_reason(idempotency_key: str) -> str:
-    if idempotency_key.startswith(_ADMIN_PURCHASED_PREFIX):
-        return "admin_purchased"
-    return "debit"
-
-
-async def _record_purchased_ledger(partner_id: uuid.UUID, qty: int) -> None:
-    """Asiento del crédito admin. El GUC sale del path (FORCE)."""
-    sm = get_sessionmaker()
-    async with sm() as session, session.begin():
-        await apply_partner_to_session(session, partner_id)
-        session.add(
-            UsageLedger(
-                partner_id=partner_id,
-                tenant_id=None,
-                qty=qty,
-                bucket=BUCKET_PURCHASED,
-                idempotency_key=f"{_ADMIN_PURCHASED_PREFIX}{uuid.uuid4()}",
-                fx=None,
-            )
-        )
+    return _out(snap, await _sum_caps(partner_id))
 
 
 @router.get("/{partner_id}/wallet", response_model=AdminWalletOut)
@@ -119,16 +119,19 @@ async def get_partner_wallet_ledger(
     session: AsyncSession = Depends(get_db_session),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[AdminLedgerOut]:
-    """Asientos del partner del path. Sin filas de allocation de cliente."""
+    """The partner's entries, newest first, each with what it is (``kind``).
+    The legacy cap-only entries of the double cap debit are not money and
+    are left out."""
     async with session.begin():
         await _get_partner_or_404(session, partner_id)
         await apply_partner_to_session(session, partner_id)
         rows = (
-            await session.scalars(
-                sa.select(UsageLedger)
+            await session.execute(
+                sa.select(UsageLedger, Tenant.name)
+                .outerjoin(Tenant, Tenant.id == UsageLedger.tenant_id)
                 .where(
                     UsageLedger.partner_id == partner_id,
-                    ~UsageLedger.idempotency_key.like(f"%{_ALLOCATION_SUFFIX}"),
+                    UsageLedger.kind != KIND_ALLOCATION_LEGACY,
                 )
                 .order_by(UsageLedger.created_at.desc())
                 .limit(limit)
@@ -137,83 +140,108 @@ async def get_partner_wallet_ledger(
         return [
             AdminLedgerOut(
                 id=row.id,
+                kind=row.kind,
                 bucket=row.bucket,
-                qty=int(row.qty),
-                reason=_ledger_reason(row.idempotency_key),
+                # One entry is read on its own: nearest cent, like spend.
+                amount_cents=credits_to_cents(int(row.qty), nearest=True),
+                tenant_id=row.tenant_id,
+                client_name=name,
                 created_at=row.created_at,
             )
-            for row in rows
+            for row, name in rows
         ]
+
+
+@router.get("/{partner_id}/wallet/reconcile", response_model=AdminReconcileOut)
+async def get_partner_wallet_reconcile(
+    partner_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> AdminReconcileOut:
+    """R2.4: does the stored recharged balance match the book?"""
+    async with session.begin():
+        await _get_partner_or_404(session, partner_id)
+    try:
+        rec = await reconcile_purchased(partner_id)
+    except Exception as exc:
+        log.warning("admin.wallet.reconcile_unreadable", partner_id=str(partner_id), error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "ledger_unreadable"},
+        ) from None
+    if rec is None:
+        return AdminReconcileOut(
+            balanced=True,
+            stored_cents=0,
+            expected_cents=0,
+            difference_credits=0,
+            credits_cents=0,
+            debits_cents=0,
+            expiries_cents=0,
+        )
+    return AdminReconcileOut(
+        balanced=rec.balanced,
+        stored_cents=credits_to_cents(rec.stored),
+        expected_cents=credits_to_cents(max(0, rec.expected)),
+        difference_credits=rec.difference,
+        credits_cents=credits_to_cents(rec.credits),
+        debits_cents=credits_to_cents(rec.debits, nearest=True),
+        expiries_cents=credits_to_cents(rec.expiries, nearest=True),
+    )
 
 
 @router.post(
     "/{partner_id}/wallet/purchased",
     response_model=AdminWalletOut,
     responses={
-        409: {"description": "qty inválido o el libro no se puede escribir."},
-        422: {"description": "qty no es un entero > 0, o el cuerpo trae campos extra."},
+        400: {"description": "Falta X-Operator-Id o no es un operador."},
+        409: {"description": "El libro no se puede escribir."},
+        422: {"description": "Importe fuera de 1 a 1 000 000 centavos, sin clave, o campos extra."},
     },
 )
 async def add_partner_purchased(
     partner_id: uuid.UUID,
     body: AdminPurchasedIn,
     session: AsyncSession = Depends(get_db_session),
-    actor: str = Depends(require_admin_token),
+    operator: OperatorAccount = Depends(require_operator),
 ) -> AdminWalletOut:
-    """Suma tokens purchased al partner del path. Auditado, también en prod.
+    """Recarga del saldo del partner del path, en centavos (spec 033, R3).
 
-    D4 — hasta el 2026-09-08 esto devolvía **404 opaco si ``is_prod``**, así
-    que en producción no podía recargar nadie: ni el partner ni Auphere. El
-    único camino era escribir en la BD a mano. Un entorno no es un permiso;
-    quien manda aquí es ``require_admin_token``, que es la puerta de Auphere,
-    y cada recarga deja fila de auditoría con ``before``/``after``.
-
-    El gemelo de consola (``POST /console/wallet/purchased``) **sigue cerrado
-    en producción a propósito**: ahí se recargaría el propio partner y todavía
-    no hay cobro. Esa puerta la abre K2 (Stripe), y cuando se abra el crédito
-    lo hará el webhook del pago confirmado, no una llamada directa.
+    Una transacción: saldo, asiento ``credit_admin`` y auditoría con el
+    operador. La clave viene del formulario que la envió: la misma clave dos
+    veces abona una vez y responde ``duplicate=True`` con el saldo tal cual.
     """
     async with session.begin():
         await _get_partner_or_404(session, partner_id)
 
-    before = await read_wallet(partner_id)
-    before_available = before.available if before is not None else 0
-    try:
-        snap = await add_purchased(partner_id, body.qty)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "invalid_qty"},
-        ) from None
-    except Exception as exc:
-        log.warning(
-            "admin.wallet.purchased_unwritable",
-            partner_id=str(partner_id),
-            error=str(exc),
+    qty = cents_to_credits(body.amount_cents)
+    actor = operator_actor(operator)
+
+    async def audit(tx: AsyncSession, before: WalletSnapshot, after: WalletSnapshot) -> None:
+        await AuditRepository(tx).record(
+            actor=actor,
+            action="wallet.admin_purchased",
+            target=f"partner:{partner_id}",
+            before={"purchased_cents": credits_to_cents(before.purchased_remaining)},
+            after={
+                "purchased_cents": credits_to_cents(after.purchased_remaining),
+                "amount_cents": body.amount_cents,
+                "idempotency_key": str(body.idempotency_key),
+            },
+            platform=True,
         )
+
+    try:
+        result = await add_purchased(
+            partner_id,
+            qty,
+            kind=KIND_CREDIT_ADMIN,
+            idempotency_key=f"{_ADMIN_PURCHASED_PREFIX}{partner_id}:{body.idempotency_key}",
+            audit=audit,
+        )
+    except Exception as exc:
+        log.warning("admin.wallet.purchased_unwritable", partner_id=str(partner_id), error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "wallet_unwritable"},
         ) from None
-
-    await _record_purchased_ledger(partner_id, body.qty)
-
-    async with session.begin():
-        await AuditRepository(session).record(
-            actor=_admin_actor(actor),
-            action="wallet.admin_purchased",
-            target=f"partner:{partner_id}",
-            before={"available": before_available},
-            after={"available": snap.available},
-            platform=True,
-        )
-
-    caps = await _sum_caps(partner_id)
-    return AdminWalletOut(
-        included_remaining=snap.included_remaining,
-        purchased_remaining=snap.purchased_remaining,
-        available=snap.available,
-        reserve=snap.available - caps,
-        included_expires_at=snap.included_expires_at,
-        exhausted=snap.empty,
-    )
+    return _out(result.snapshot, await _sum_caps(partner_id), duplicate=result.duplicate)

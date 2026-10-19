@@ -1,14 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 import { BillingForm } from "./billing-form";

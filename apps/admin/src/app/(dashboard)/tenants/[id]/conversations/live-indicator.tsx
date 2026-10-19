@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { StatusDot } from "@/components/brand/status-dot";
+import { StatusDot } from "@nexus/ui";
 
 type State = "connecting" | "live" | "polling" | "offline";
 
 const COPY: Record<State, string> = {
   connecting: "Conectando…",
   live: "En vivo",
-  polling: "Polling",
+  polling: "Se actualiza sola",
   offline: "Sin conexión",
 };
 
@@ -100,8 +100,7 @@ export function LiveIndicator({ tenantId }: { tenantId: string }) {
 
   return (
     <span
-      className="inline-flex items-center gap-2 rounded-full border border-border px-2 py-0.5 text-xs font-mono uppercase text-muted-foreground"
-      style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+      className="inline-flex items-center gap-2 rounded-full border border-border px-2 py-1 text-xs font-mono uppercase text-muted-foreground tracking-eyebrow"
       aria-live="polite"
       title={
         state === "polling"

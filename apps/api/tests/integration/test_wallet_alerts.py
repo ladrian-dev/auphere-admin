@@ -34,8 +34,9 @@ pytestmark = pytest.mark.asyncio
 CAP = 500_000
 
 
-async def _partner(db_session, *, available: int) -> Partner:
-    """Partner con el wallet en el saldo pedido, vigente este mes."""
+async def _partner(db_session, *, available: int, spent: int = 0) -> Partner:
+    """Partner con el wallet en el saldo pedido, vigente este mes, y ``spent``
+    gastado este mes en el libro (spec 033: el % sale del gasto, no de un tope)."""
     partner = Partner(
         id=uuid.uuid4(),
         name="Avisos Test",
@@ -52,16 +53,33 @@ async def _partner(db_session, *, available: int) -> Partner:
     if wallet is None:
         wallet = PartnerWallet(
             partner_id=partner.id,
-            included_remaining=available,
-            purchased_remaining=0,
+            # Spec 033: a client's turn is paid from the recharged pocket.
+            included_remaining=0,
+            purchased_remaining=available,
             included_expires_at=expires,
         )
         db_session.add(wallet)
     else:
-        wallet.included_remaining = available
-        wallet.purchased_remaining = 0
+        wallet.included_remaining = 0
+        wallet.purchased_remaining = available
         wallet.included_expires_at = expires
     await db_session.commit()
+    if spent:
+        from nexus_api.core.partner_context import apply_partner_to_session
+        from nexus_api.db.base import get_sessionmaker
+        from nexus_api.db.models.partner_wallet import UsageLedger
+
+        async with get_sessionmaker()() as s, s.begin():
+            await apply_partner_to_session(s, partner.id)
+            s.add(
+                UsageLedger(
+                    partner_id=partner.id,
+                    qty=spent,
+                    bucket="purchased",
+                    kind="debit",
+                    idempotency_key=f"channel:alerts-{uuid.uuid4().hex}",
+                )
+            )
     return partner
 
 
@@ -83,7 +101,9 @@ async def test_full_wallet_says_nothing(db_session) -> None:
 
 
 async def test_eighty_percent_warns_before_the_silence(db_session) -> None:
-    partner = await _partner(db_session, available=int(CAP * 0.2))  # 80 % gastado
+    partner = await _partner(
+        db_session, available=int(CAP * 0.2), spent=int(CAP * 0.8)
+    )  # 80 % gastado
     ev = await evaluate_partner_wallet_alerts(db_session, partner)
     assert ev.percent_used == 80.0
     assert ev.created == [80]

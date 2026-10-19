@@ -47,6 +47,11 @@ const core = {
   "nav.group.operate": { es: "Operar", en: "Operate" },
   "nav.group.account": { es: "Cuenta", en: "Account" },
   "shell.signOut": { es: "Cerrar sesión", en: "Sign out" },
+  "shell.beta": { es: "Beta", en: "Beta" },
+  "shell.beta.hint": {
+    es: "La consola está en fase beta: seguimos mejorándola cada semana. Si algo falla, escríbenos desde Ayuda.",
+    en: "The console is in beta: we keep improving it every week. If something fails, write to us from Help.",
+  },
   "shell.theme": { es: "Tema", en: "Theme" },
   "shell.theme.light": { es: "Claro", en: "Light" },
   "shell.theme.dark": { es: "Oscuro", en: "Dark" },
@@ -517,6 +522,7 @@ const core = {
   // billing
   "billing.title": { es: "Facturación", en: "Billing" },
   "billing.description": { es: "Tu plan, tus recibos y tus datos de facturación.", en: "Your plan, your receipts and your billing details." },
+  "billing.descriptionFree": { es: "Tu saldo, tus recibos y tus datos de facturación. La consola es gratis: pagas solo el consumo de tus clientes.", en: "Your balance, your receipts and your billing details. The console is free: you only pay for what your clients use." },
   "billing.email": { es: "Correo de facturación", en: "Billing e-mail" },
   "billing.receipts": { es: "Recibos", en: "Receipts" },
   "billing.receipts.empty": { es: "Todavía no hay recibos", en: "No receipts yet" },

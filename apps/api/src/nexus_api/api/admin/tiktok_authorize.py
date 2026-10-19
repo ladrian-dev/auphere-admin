@@ -185,9 +185,10 @@ def _redirect_to_panel(*, tenant_id: uuid.UUID | None, status_key: str) -> Redir
     settings = get_settings()
     base = settings.admin_panel_base_url.rstrip("/")
     target = (
-        f"{base}/tenants/{tenant_id}/connectors?tiktok={status_key}"
+        # Spec 035: TikTok is a channel, so the owner lands on Canales.
+        f"{base}/tenants/{tenant_id}/channels?tiktok={status_key}"
         if tenant_id is not None
-        else f"{base}/connectors?tiktok={status_key}"
+        else f"{base}/channels?tiktok={status_key}"
     )
     # 303: the callback is a GET but the browser must not re-run it on
     # refresh — a consumed auth_code would fail the second time.

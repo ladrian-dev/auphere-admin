@@ -16,26 +16,24 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+  Input,
+  Label,
+  Textarea,
+} from "@nexus/ui";
 import type {
   EvalDataset,
   EvalDatasetDetail,
@@ -252,12 +250,12 @@ export function EvalsSection({
                 size="sm"
                 disabled={pending || isRunInFlight}
                 onClick={onRun}
-                className="inline-flex items-center gap-1.5"
+                className="inline-flex items-center gap-2"
               >
                 {isRunInFlight ? (
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Play className="size-3.5" />
+                  <Play className="size-4" />
                 )}
                 {isRunInFlight
                   ? `Corriendo · ${(runResult?.pass_count ?? 0) + (runResult?.fail_count ?? 0) + (runResult?.error_count ?? 0)}/${runResult?.case_count ?? 0}`
@@ -282,9 +280,9 @@ export function EvalsSection({
                 size="sm"
                 disabled={pending}
                 onClick={() => setCreateCaseOpen(true)}
-                className="inline-flex items-center gap-1.5"
+                className="inline-flex items-center gap-2"
               >
-                <Plus className="size-3.5" /> Agregar caso
+                <Plus className="size-4" /> Agregar caso
               </Button>
             ) : null}
           </div>
@@ -468,7 +466,7 @@ function DatasetCases({
               key={c.id}
               className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2"
             >
-              <div className="flex-1 min-w-0 grid gap-0.5">
+              <div className="flex-1 min-w-0 grid gap-1">
                 <span className="text-sm font-medium">{c.name}</span>
                 <span className="text-xs text-muted-foreground truncate">
                   {c.user_message}
@@ -493,7 +491,7 @@ function DatasetCases({
                 aria-label="Borrar caso"
                 className="size-8 p-0 shrink-0"
               >
-                <Trash2 className="size-3.5" />
+                <Trash2 className="size-4" />
               </Button>
             </li>
           ))}
@@ -566,7 +564,7 @@ function RunInFlight({ run }: { run: EvalRunDetail }) {
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Loader2 className="size-3.5 animate-spin text-primary" />
+          <Loader2 className="size-4 animate-spin text-primary" />
           <span className="text-sm font-medium">
             Corriendo evals · v{run.agent_config_version}
           </span>
@@ -584,7 +582,7 @@ function RunInFlight({ run }: { run: EvalRunDetail }) {
         aria-valuemax={total}
         aria-valuenow={completed}
         aria-label="Progreso del run de evals"
-        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+        className="h-2 w-full overflow-hidden rounded-full bg-muted"
       >
         <div
           className="h-full bg-primary transition-[width] duration-300 ease-out"

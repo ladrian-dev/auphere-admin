@@ -14,8 +14,7 @@
 import { useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, StatusDot } from "@nexus/ui";
 
 import { toggleConversationAgentAction } from "./actions";
 
@@ -52,12 +51,12 @@ export function AgentToggle({
       if (next) {
         toast.success("Agente reactivado", {
           description:
-            "El agente responderá el próximo mensaje. No hay auto-reply del backlog.",
+            "El agente responderá el próximo mensaje. Lo que llegó mientras tanto no se contesta solo.",
         });
       } else {
         toast.success("Tomaste control de la conversación", {
           description:
-            "El agente queda silenciado en este thread hasta que lo reactivas.",
+            "El agente no responde en esta conversación hasta que se la devuelvas.",
           action: {
             label: "Reactivar",
             onClick: () => {
@@ -94,27 +93,17 @@ export function AgentToggle({
     );
   }
 
+  // Spec 036: the state in words and the action as a real button (H5) — a
+  // badge that silenced the agent on click looked like a label.
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={pending}
-      className="outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
-      aria-label={
-        agentActive
-          ? "Agente activo — tomar control"
-          : "Operador en control — reactivar agente"
-      }
-    >
-      <Badge
-        variant={agentActive ? "default" : "secondary"}
-        className={
-          "text-[10px] uppercase tracking-wider cursor-pointer " +
-          (pending ? "opacity-60" : "")
-        }
-      >
-        {agentActive ? "Agente ON" : "Operador"}
-      </Badge>
-    </button>
+    <span className="inline-flex items-center gap-2">
+      <span className="inline-flex items-center gap-2 text-sm">
+        <StatusDot tone={agentActive ? "positive" : "warning"} />
+        {agentActive ? "El agente" : "Una persona"}
+      </span>
+      <Button variant="ghost" size="sm" onClick={onClick} disabled={pending}>
+        {pending ? "…" : agentActive ? "Tomar control" : "Devolver"}
+      </Button>
+    </span>
   );
 }

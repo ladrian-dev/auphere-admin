@@ -129,7 +129,9 @@ async def test_the_week_s_over_debit_goes_back_to_each_client(
     await _cap(untouched, 10_000, 4_000)
     await _entry(a["partner_id"], untouched, "purchased", 6_000, days_ago=1)
 
-    up = _alembic("upgrade", "head")
+    # Only up to the revision under test: later ones (0158 refills every cap
+    # once when the cap turns monthly) would hide what 0156 did.
+    up = _alembic("upgrade", "0156_repair_double_cap_debit")
     assert up.returncode == 0, up.stderr
     assert await _remaining(a["tenant_id"]) == 7_000
     assert await _remaining(b["tenant_id"]) == 9_500
@@ -137,7 +139,7 @@ async def test_the_week_s_over_debit_goes_back_to_each_client(
 
     # Running it again changes nothing.
     assert _alembic("downgrade", _BEFORE).returncode == 0
-    assert _alembic("upgrade", "head").returncode == 0
+    assert _alembic("upgrade", "0156_repair_double_cap_debit").returncode == 0
     assert await _remaining(a["tenant_id"]) == 7_000
     assert await _remaining(b["tenant_id"]) == 9_500
     assert await _remaining(untouched) == 4_000

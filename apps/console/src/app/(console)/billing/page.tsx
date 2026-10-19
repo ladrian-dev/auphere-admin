@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 
 import { Button, DescriptionList, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
+import { BuyCreditForm } from "@/components/billing/buy-credit-form";
+import { CardSection } from "@/components/billing/card-section";
 import { MembershipSection } from "@/components/billing/membership-section";
 import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-link";
 import { getT } from "@/i18n/server";
@@ -11,17 +13,40 @@ import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.billing");
 
-export default async function BillingPage() {
+export default async function BillingPage({ searchParams }: { searchParams: Promise<{ card?: string }> }) {
   const principal = await requirePartnerPrincipal("/billing");
   if (!can(principal.role, "billing:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
   const backend = backendFor(principal);
-  // Las dos en paralelo: son independientes y la pantalla necesita ambas.
-  const [billing, membership] = await Promise.all([backend.billing(), backend.membership()]);
+  const billing = await backend.billing();
+  // Spec 034: the plans belong to the Teammate and are off while it is being
+  // finished. Off, the screen has no plans and no provider portal: the
+  // balance purchase and the receipts are all there is (§V — absence is
+  // designed, not greyed out).
+  const membership = billing.memberships_enabled ? await backend.membership() : null;
+  // Spec 041: the card and automatic charging. A read that fails hides the
+  // section rather than drawing a card that may not be the real one.
+  const card = membership ? null : await backend.billingCard().catch(() => null);
+  const justSaved = (await searchParams).card === "saved";
   return (
     <>
-      <PageHeader eyebrow={t("nav.group.account")} title={t("billing.title")} description={t("billing.description")} />
-      <MembershipSection membership={membership} />
+      <PageHeader
+        eyebrow={t("nav.group.account")}
+        title={t("billing.title")}
+        description={t(membership ? "billing.description" : "billing.descriptionFree")}
+      />
+      {membership ? (
+        <MembershipSection membership={membership} />
+      ) : can(principal.role, "billing:manage") ? (
+        <section aria-labelledby="credit-h" className="flex max-w-lg flex-col gap-3">
+          <h2 id="credit-h" className="text-lg font-semibold">
+            {t("membership.credit.title")}
+          </h2>
+          <p className="text-sm text-pretty text-muted-foreground">{t("membership.credit.help")}</p>
+          <BuyCreditForm />
+        </section>
+      ) : null}
+      {card ? <CardSection view={card} canManage={can(principal.role, "billing:manage")} justSaved={justSaved} /> : null}
       <DescriptionList layout="inline" className="max-w-lg" items={[{ key: "email", term: t("billing.email"), detail: billing.billing_email ?? t("billing.notSet"), mono: true, truncate: true }]} />
       <section aria-labelledby="receipts-h" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -31,11 +56,13 @@ export default async function BillingPage() {
           {/* Spec 005 R8.4: la factura del proveedor es el documento fiscal;
               este recibo explica el consumo. Los dos papeles, y el camino al
               otro documento donde se busca. */}
-          <ProviderInvoicesLink hasSubscription={membership.tier.code !== "free"} />
+          <ProviderInvoicesLink hasSubscription={membership !== null && membership.tier.code !== "free"} />
         </div>
-        <p className="text-muted-foreground text-sm text-pretty">
-          {t("membership.invoices.help")}
-        </p>
+        {membership ? (
+          <p className="text-muted-foreground text-sm text-pretty">
+            {t("membership.invoices.help")}
+          </p>
+        ) : null}
         {billing.receipts.length === 0 ? (
           <EmptyState title={t("billing.receipts.empty")} readonly />
         ) : (

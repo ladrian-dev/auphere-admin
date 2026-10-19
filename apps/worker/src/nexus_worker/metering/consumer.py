@@ -334,12 +334,19 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
                 agent_id=agent_id,
             )
         except Exception as exc:
-            log.warning(
+            # Spec 033 (R4.1): a failed debit is NOT swallowed. Raising keeps
+            # the stream entry pending: it is retried (the debit is idempotent
+            # by ``channel:{turn}``, the usage rows by their own key) and after
+            # MAX_DELIVERY_ATTEMPTS it goes to the DLQ with the error. Until
+            # 2026-10 it was logged and acknowledged — a turn served and
+            # never charged.
+            log.error(
                 "metering.wallet_debit_failed",
                 tenant_id=str(tenant_id),
                 turn=turn,
                 error=str(exc),
             )
+            raise
         # El tope POR CLIENTE (``partner_allocations.remaining``) lo baja el
         # propio ``debit_wallet`` al recibir ``tenant_id``: por lo que de
         # verdad cobró y en la misma transacción que el saldo del partner.

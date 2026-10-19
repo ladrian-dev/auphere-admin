@@ -20,10 +20,11 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.api.admin.operator import operator_actor, require_operator
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.security import require_admin_token
 from nexus_api.core.tenant_context import declare_tenant
@@ -37,36 +38,8 @@ router = APIRouter(prefix="/tenants", dependencies=[Depends(require_admin_token)
 INVITE_ACCEPT_PATH = "/invite/{token}"
 
 
-async def require_operator(
-    x_operator_id: str | None = Header(default=None, alias="X-Operator-Id"),
-    session: AsyncSession = Depends(get_db_session),
-) -> OperatorAccount:
-    """El operador de la sesión del panel, nunca el token (ADR-034). Mismas
-    respuestas que la suplantación: 400 si falta o no es un operador."""
-    raw = (x_operator_id or "").strip()
-    if not raw:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Missing X-Operator-Id header"
-        )
-    try:
-        operator_id = uuid.UUID(raw)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Operator-Id must be an operator principal id",
-        ) from None
-    async with session.begin():
-        account = await session.get(OperatorAccount, operator_id)
-    if account is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Operator-Id must be an operator principal id",
-        )
-    return account
-
-
 def _actor(operator: OperatorAccount) -> str:
-    return f"operator:{operator.email}"
+    return operator_actor(operator)
 
 
 def _error(exc: ClientAccessError) -> HTTPException:

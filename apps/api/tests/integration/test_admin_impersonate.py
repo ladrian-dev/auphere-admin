@@ -196,10 +196,12 @@ async def test_recharge_and_block_stay_admin_actor(
     started = await _start(client, admin_headers, a["partner_id"], op.id)
     assert started.status_code == 201, started.text
 
+    # Spec 033: a top-up is in cents, carries the form's key and is signed
+    # by the operator of the panel session — never by the impersonated partner.
     recharge = await client.post(
         f"/admin/partners/{a['partner_id']}/wallet/purchased",
-        headers=admin_headers,
-        json={"qty": 10},
+        headers=_op_headers(admin_headers, op.id),
+        json={"amount_cents": 10, "idempotency_key": str(uuid.uuid4())},
     )
     assert recharge.status_code == 200, recharge.text
 
@@ -251,7 +253,7 @@ async def test_recharge_and_block_stay_admin_actor(
     found = {row.action: row for row in actions}
     assert "wallet.admin_purchased" in found
     assert "llm.block" in found
-    assert found["wallet.admin_purchased"].actor == "admin:test-adm"
+    assert found["wallet.admin_purchased"].actor == f"operator:{op.email}"
     assert found["llm.block"].actor == "admin:test-adm"
     assert found["wallet.admin_purchased"].tenant_id is None
     assert found["llm.block"].tenant_id is None

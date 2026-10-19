@@ -29,6 +29,7 @@ from nexus_api.api.console import (
     billing,
     capabilities,
     capabilities_client,
+    channel_signup,
     channels,
     companion,
     conversations,
@@ -91,6 +92,7 @@ router.include_router(session_codes.router)
 # Spec 011 — recuperar la contraseña. Pre-sesión, token de SERVICIO, y la
 # respuesta de pedir es la misma exista o no la cuenta.
 router.include_router(password_reset.router)
+router.include_router(channel_signup.router)
 router.include_router(keys.router)
 router.include_router(billing.router)
 router.include_router(playground.router)

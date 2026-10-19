@@ -20,7 +20,11 @@ import sqlalchemy as sa
 
 from nexus_api.db.base import get_sessionmaker
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.integration,
+    pytest.mark.usefixtures("memberships_on"),
+]
 
 _PATH = "/console/billing/membership"
 

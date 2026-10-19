@@ -37,7 +37,11 @@ from nexus_api.db.models.membership import (
 )
 from nexus_api.metering.wallet import renew_included_if_expired
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.integration,
+    pytest.mark.usefixtures("memberships_on"),
+]
 
 _ALL_STATES = (STATE_CURRENT, STATE_PAYMENT_FAILED, STATE_UNPAID, STATE_CANCELED)
 

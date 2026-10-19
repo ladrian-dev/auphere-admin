@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { isActive, navForPrincipal, navForRole } from "../nav";
+import { PARTNER_MODULES } from "@/lib/principal-access";
+
+import { isActive, navForPartner, navForPrincipal, navForRole } from "../nav";
 
 describe("nav", () => {
   it("filters items by role", () => {
@@ -46,7 +48,17 @@ describe("navForPrincipal — consola lite", () => {
     expect(navForPrincipal({ kind: "client", modules: ["panel"] })).toHaveLength(1);
   });
 
-  it("keeps the partner navigation as it was", () => {
-    expect(navForPrincipal({ kind: "partner", role: "owner" })).toEqual(navForRole("owner"));
+  it("keeps the partner navigation as it was when every module is on", () => {
+    expect(navForPrincipal({ kind: "partner", role: "owner", modules: PARTNER_MODULES })).toEqual(navForRole("owner"));
+  });
+
+  it("spec 032: shows only the modules Auphere gave the partner, in order", () => {
+    const hrefs = (role: "owner" | "analyst", modules: (typeof PARTNER_MODULES)[number][]) =>
+      navForPartner(role, modules).flatMap((g) => g.items.map((i) => i.href));
+    expect(hrefs("owner", ["billing", "panel", "usage"])).toEqual(["/", "/usage", "/billing"]);
+    // Modules AND permissions: an analyst never sees billing, module or not.
+    expect(hrefs("analyst", ["panel", "billing"])).toEqual(["/"]);
+    // The Companion is not a sidebar entry.
+    expect(hrefs("owner", ["panel", "companion"])).toEqual(["/"]);
   });
 });

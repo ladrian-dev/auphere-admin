@@ -15,7 +15,7 @@ from nexus_api.billing.events import (
     partner_id_from,
 )
 
-pytestmark = [pytest.mark.asyncio]
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("memberships_on")]
 
 
 async def test_invoice_created_is_not_subscribed() -> None:

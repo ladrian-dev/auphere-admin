@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@nexus/ui";
 
 /**
  * Frontera de error del segmento. La API es otro servicio: que no responda no

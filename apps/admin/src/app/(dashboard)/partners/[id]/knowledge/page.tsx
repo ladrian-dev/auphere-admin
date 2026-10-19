@@ -1,22 +1,20 @@
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
+  Eyebrow,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend, consoleHref, type KnowledgeDocumentOut } from "@/lib/backend";
 import { formatBytes, relativeTime } from "@/lib/format";
 
@@ -111,7 +109,7 @@ export default async function PartnerKnowledgePage({
           </dl>
           <div aria-hidden className="h-1 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full bg-[color:var(--color-primary)]"
+              className="h-full bg-primary"
               style={{ width: `${ratio}%` }}
             />
           </div>

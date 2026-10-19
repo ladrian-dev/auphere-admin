@@ -1,14 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { StatusDot } from "@/components/brand/status-dot";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow, StatusDot } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 
@@ -84,7 +76,7 @@ export default async function IsolationPage({
     <div className="grid gap-6">
       <div className="flex items-start gap-3 rounded-md border border-border bg-card p-4">
         <ShieldCheck
-          className="size-5 mt-0.5 text-[color:var(--color-primary-deep)]"
+          className="size-5 mt-1 text-primary-deep"
           aria-hidden="true"
         />
         <div className="text-sm">
@@ -121,7 +113,7 @@ export default async function IsolationPage({
               key={g.metric}
               className={
                 breached
-                  ? "border-[color:var(--color-status-danger)]/30 bg-[color:var(--color-status-danger)]/5"
+                  ? "border-status-danger-border bg-status-danger-bg"
                   : ""
               }
             >
@@ -134,8 +126,7 @@ export default async function IsolationPage({
               </CardHeader>
               <CardContent className="grid gap-2">
                 <div
-                  className="text-3xl font-semibold tabular-nums leading-none"
-                  style={{ letterSpacing: "var(--tracking-tight)" }}
+                  className="text-3xl font-semibold tabular-nums leading-none tracking-tight"
                 >
                   {count}
                   <span className="ml-2 text-sm font-normal text-muted-foreground">

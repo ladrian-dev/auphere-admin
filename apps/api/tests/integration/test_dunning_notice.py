@@ -22,7 +22,11 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models.membership import STATE_PAYMENT_FAILED, STATE_UNPAID
 from nexus_api.metering.wallet import renew_included_if_expired
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.integration,
+    pytest.mark.usefixtures("memberships_on"),
+]
 
 
 async def _partner() -> uuid.UUID:

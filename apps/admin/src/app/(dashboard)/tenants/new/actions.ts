@@ -47,5 +47,5 @@ export async function checkSlugAction(slug: string): Promise<{ available: boolea
 }
 
 export async function gotoTenantIntegrations(tenantId: string): Promise<never> {
-  redirect(`/tenants/${tenantId}/integrations`);
+  redirect(`/tenants/${tenantId}/channels/new`);
 }

@@ -78,8 +78,7 @@ export async function updatePartnerAction(
     const r = await backend.updatePartner(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     revalidatePath("/partners");
-    revalidatePath(`/partners/${partnerId}`);
-    revalidatePath(`/partners/${partnerId}/limits`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -95,7 +94,7 @@ export async function createPartnerKeyAction(
   try {
     const r = await backend.createPartnerKey(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -112,7 +111,7 @@ export async function rotatePartnerKeyAction(
       grace_hours: graceHours,
     });
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -126,7 +125,7 @@ export async function revokePartnerKeyAction(
   try {
     const r = await backend.revokePartnerKey(partnerId, keyId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -142,7 +141,7 @@ export async function linkPartnerTenantAction(
   try {
     const r = await backend.linkPartnerTenant(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/tenants`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -158,7 +157,7 @@ export async function generateReceiptAction(
   try {
     const r = await backend.generatePartnerReceipt(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/receipts`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -172,7 +171,7 @@ export async function sendReceiptAction(
   try {
     const r = await backend.sendPartnerReceipt(partnerId, invoiceId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/receipts`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -181,14 +180,24 @@ export async function sendReceiptAction(
 
 // ── C3 wallet (admin recharge) ───────────────────────────────────────────────
 
+/**
+ * Spec 033: a top-up in US$ cents. The key comes from the form — the same
+ * one on a retry — so the API credits once; the operator signs it.
+ */
 export async function rechargePartnerWallet(
   partnerId: string,
-  qty: number,
+  amountCents: number,
+  idempotencyKey: string,
 ): Promise<ActionResult<PartnerWalletOut>> {
   try {
-    const r = await backend.rechargePartnerWallet(partnerId, qty);
+    const operator = await requireOperator();
+    const r = await backend.rechargePartnerWallet(
+      partnerId,
+      { amount_cents: amountCents, idempotency_key: idempotencyKey },
+      operator.id,
+    );
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/wallet`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -204,7 +213,7 @@ export async function setPartnerModels(
   try {
     const r = await backend.putPartnerModels(partnerId, modelIds);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/models`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -218,7 +227,7 @@ export async function blockPartnerLlm(
   try {
     const r = await backend.blockPartnerLlm(partnerId, blocked);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath(`/partners/${partnerId}/models`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -258,7 +267,7 @@ export async function startImpersonationAction(
     );
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     await setImpersonateCookie(r.id, r.ttl_seconds);
-    revalidatePath(`/partners/${partnerId}`);
+    revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
     return err(e);
@@ -273,9 +282,56 @@ export async function revokeImpersonationAction(
     const r = await backend.revokeImpersonation(sessionId, operator.id);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     await clearImpersonateCookie();
-    revalidatePath(`/partners/${r.partner_id}`);
+    revalidatePath(`/partners/${r.partner_id}`, "layout");
     return { ok: true, data: r };
   } catch (e) {
+    return err(e);
+  }
+}
+
+/** Spec 041: the postpaid credit line Auphere grants a partner. */
+export async function setPartnerCreditLimitAction(
+  partnerId: string,
+  creditLimitCents: number,
+): Promise<ActionResult<null>> {
+  try {
+    const operator = await requireOperator();
+    await backend.setPartnerCreditLimit(partnerId, creditLimitCents, operator.id);
+    revalidatePath(`/partners/${partnerId}`, "layout");
+    return { ok: true, data: null };
+  } catch (e) {
+    if (e instanceof BackendError) {
+      const detail = (e.body as { detail?: { code?: string } } | null)?.detail;
+      if (detail?.code === "limit_below_debt")
+        return { ok: false, error: "La línea no puede quedar por debajo de lo que el partner ya debe." };
+    }
+    return err(e);
+  }
+}
+
+const CHARGING_ERRORS: Record<string, string> = {
+  card_required: "El partner todavía no ha guardado una tarjeta: solo puede cobrarse a mano.",
+  no_credit_line: "El pospago necesita una línea de crédito. Concédela primero.",
+  amount_too_small: "La recarga mínima es de US$5.",
+  threshold_required: "Indica el mínimo de saldo que dispara la recarga.",
+};
+
+/** Spec 041: Auphere sets how a partner is charged, with the console's rules. */
+export async function setPartnerChargingAction(
+  partnerId: string,
+  body: { mode: "manual" | "auto_recharge" | "postpaid"; recharge_threshold_cents: number | null; recharge_amount_cents: number | null },
+): Promise<ActionResult<null>> {
+  try {
+    const operator = await requireOperator();
+    await backend.setPartnerCharging(partnerId, body, operator.id);
+    revalidatePath(`/partners/${partnerId}`, "layout");
+    revalidatePath("/partners");
+    return { ok: true, data: null };
+  } catch (e) {
+    if (e instanceof BackendError) {
+      const code = (e.body as { detail?: { code?: string } } | null)?.detail?.code;
+      if (code && CHARGING_ERRORS[code]) return { ok: false, error: CHARGING_ERRORS[code] };
+    }
     return err(e);
   }
 }

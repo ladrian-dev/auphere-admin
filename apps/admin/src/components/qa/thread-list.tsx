@@ -51,7 +51,7 @@ export function ThreadList({
           type="button"
           onClick={handleCreate}
           disabled={creating}
-          className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-50"
+          className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
         >
           + nueva
         </button>
@@ -68,9 +68,9 @@ export function ThreadList({
                 type="button"
                 onClick={() => onSelect(t)}
                 aria-current={t.id === activeThreadId ? "page" : undefined}
-                className={`block w-full rounded px-2 py-1.5 text-left text-sm ${
-                  t.id === activeThreadId
-                    ? "bg-muted font-medium"
+                className={`block w-full rounded px-2 py-2 text-left text-sm ${
+ t.id === activeThreadId
+ ? "bg-muted font-medium"
                     : "hover:bg-muted/60"
                 }`}
               >

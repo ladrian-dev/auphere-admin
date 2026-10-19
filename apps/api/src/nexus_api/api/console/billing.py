@@ -21,6 +21,7 @@ from html import escape
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
@@ -48,6 +49,14 @@ from nexus_api.db.models.membership import (
 )
 from nexus_api.metering.wallet import apply_tier_change
 from nexus_api.services.membership_limits import over_cap_by
+from nexus_api.services.partner_billing import (
+    BillingRuleError,
+    BillingView,
+    billing_view,
+    open_card_setup,
+    remove_card,
+    set_charging,
+)
 from nexus_api.services.partner_receipt import (
     ReceiptLine,
     ReceiptResult,
@@ -70,6 +79,20 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/billing")
+
+
+def require_memberships() -> None:
+    """Spec 034 (R3.1): with memberships off, the plans, the provider portal and
+    the cancellation do not exist — a 404, not a disabled button (§V).
+
+    Called first thing in the body, **after** the principal is resolved: an
+    anonymous caller or a client user still gets its 401/403 (the isolation
+    sweeps check exactly that), and only an authorised partner learns the
+    route is not there."""
+    from nexus_api.services.membership_limits import memberships_enabled
+
+    if not memberships_enabled():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found"})
 
 
 @router.get("", response_model=BillingOut)
@@ -102,10 +125,13 @@ async def get_billing(
             )
             for inv in rows
         ]
+    from nexus_api.services.membership_limits import memberships_enabled
+
     return BillingOut(
         billing_email=principal.partner.billing_email,
         contact_email=principal.partner.contact_email,
         receipts=receipts,
+        memberships_enabled=memberships_enabled(),
     )
 
 
@@ -220,6 +246,7 @@ async def get_membership(
     session: AsyncSession = Depends(get_db_session),
 ) -> MembershipOut:
     """Everything the plans screen needs, in one call."""
+    require_memberships()
     partner_id = principal.partner.id
 
     subscription = (
@@ -282,6 +309,7 @@ async def start_checkout(
     session: AsyncSession = Depends(get_db_session),
 ) -> CheckoutOut:
     """Contract a tier. A person does this, and the audit names them (§IV)."""
+    require_memberships()
     partner_id = principal.partner.id
     tier = (
         await session.execute(
@@ -413,6 +441,7 @@ async def open_billing_portal(
     Delegated on purpose. The provider's invoices are the fiscal document,
     and building our own card screen would mean touching card data.
     """
+    require_memberships()
     subscription = (
         await session.execute(
             sa.select(PartnerSubscription).where(
@@ -499,6 +528,7 @@ async def cancel_subscription_route(
     Cancelling twice is not an error. Somebody who clicks again because the
     first click did not look like it worked does not deserve a red screen.
     """
+    require_memberships()
     from nexus_api.billing.ladder import cancel_subscription
 
     partner_id = principal.partner.id
@@ -538,3 +568,74 @@ async def cancel_subscription_route(
         purchased_remaining_cents=credits_to_cents(int(row[0])) if row else 0,
         purchased_expires_at=row[1] if row else expires_at,
     )
+
+
+# ── Spec 041: the card on file and how it is charged ────────────────────────
+
+
+class _ChargingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: str
+    recharge_threshold_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    recharge_amount_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+
+
+def _rule(exc: BillingRuleError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code}
+    )
+
+
+@router.get("/card", response_model=BillingView)
+async def get_card(
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:read")),
+) -> BillingView:
+    return await billing_view(principal.partner.id)
+
+
+@router.post("/card", response_model=CheckoutOut)
+async def start_card(
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> CheckoutOut:
+    """Open Stripe's page to save (or replace) the card. No card data comes here."""
+    try:
+        async with session.begin():
+            url = await open_card_setup(session, principal.partner)
+    except BillingUnavailable as exc:
+        raise _unavailable() from exc
+    return CheckoutOut(url=url)
+
+
+@router.delete("/card", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_card(
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    try:
+        async with session.begin():
+            await remove_card(session, partner_id=principal.partner.id, actor=principal.actor)
+    except BillingUnavailable as exc:
+        raise _unavailable() from exc
+
+
+@router.put("/charging", response_model=BillingView)
+async def put_charging(
+    body: _ChargingIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> BillingView:
+    """Manual, automatic recharge, or postpaid (only with Auphere's credit line)."""
+    try:
+        async with session.begin():
+            await set_charging(
+                session,
+                partner_id=principal.partner.id,
+                mode=body.mode,
+                threshold_cents=body.recharge_threshold_cents,
+                amount_cents=body.recharge_amount_cents,
+                actor=principal.actor,
+            )
+    except BillingRuleError as exc:
+        raise _rule(exc) from exc
+    return await billing_view(principal.partner.id)

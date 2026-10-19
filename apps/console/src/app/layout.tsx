@@ -22,6 +22,19 @@ export const metadata: Metadata = {
   description: "Consola de partners de Auphere.",
   applicationName: "Auphere Console",
   robots: { index: false, follow: false },
+  manifest: "/site.webmanifest",
+  // The mark on Auphere's dark green, edge to edge (no rounded corners: they
+    // read as white on a light tab bar). SVG where supported, PNG/ICO elsewhere.
+  // The 16/32 px files draw the strokes thicker so the mark reads that small.
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {

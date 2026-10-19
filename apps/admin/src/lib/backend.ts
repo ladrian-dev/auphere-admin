@@ -124,7 +124,8 @@ async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
 
 // ── domain types ────────────────────────────────────────────────────────────
 
-export type TenantStatus = "active" | "paused" | "archived";
+/** `provisioning`: a partner's client whose WhatsApp signup has not finished. */
+export type TenantStatus = "active" | "paused" | "archived" | "provisioning";
 export type TenantPlan = "essential" | "pro" | "business" | "internal";
 
 export type Tenant = {
@@ -143,6 +144,8 @@ export type Tenant = {
   agendapro_public_url: string | null;
   /** Set when the client pays a flat monthly plan (Facturación tab). */
   billing_plan_id?: string | null;
+  /** The partner this client belongs to; ``null`` = a direct Auphere client. */
+  partner_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -174,23 +177,6 @@ export type TenantUpdateInput = Partial<{
 export type SlugAvailability = {
   slug: string;
   available: boolean;
-};
-
-export type ReadinessStatus = "ok" | "warning" | "blocker";
-
-export type ReadinessItem = {
-  key: string;
-  label: string;
-  status: ReadinessStatus;
-  detail: string;
-  action_label: string | null;
-  action_href: string | null;
-};
-
-export type ReadinessOut = {
-  /** true iff no item has status "blocker". */
-  ready: boolean;
-  items: ReadinessItem[];
 };
 
 /** Mirror of ``MetaSignupOut`` from ``apps/api`` admin endpoint. The
@@ -297,6 +283,9 @@ export type SeedTemplate = {
 
 export type ChannelOut = {
   id: string;
+  /** Spec 030/035: the agent that answers on this channel; null = principal. */
+  agent_id?: string | null;
+  last_health_check_at?: string | null;
   type: "whatsapp" | "instagram" | "telegram" | "email" | "web" | "tiktok";
   provider: string;
   provider_identifier: string;
@@ -576,6 +565,11 @@ export type ConversationOut = {
    *  Lets the panel badge each thread. Null only
    *  when the underlying channel row is missing. */
   provider: string | null;
+  /** Spec 036: who is on the other side — their name if known, and number. */
+  customer_identifier?: string | null;
+  customer_name?: string | null;
+  /** Last activity either way; null before the first message. */
+  last_message_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -915,6 +909,274 @@ export type PartnerOut = {
   auto_activate: boolean;
   created_at: string;
   updated_at: string;
+  // Spec 031: what the panel reads at a glance.
+  console_enabled: boolean;
+  companion_enabled: boolean;
+  console_modules?: string[];
+  max_clients: number | null;
+  max_channels_per_client: number | null;
+  weekly_pool_tokens: number | null;
+  activated_at: string | null;
+  clients_count: number | null;
+  members_count: number | null;
+  /** US$ cents, rounded down. ``null`` = the ledger could not be read. */
+  available_cents: number | null;
+  /** Spec 041: how the partner is charged and its card (brand, last four). */
+  billing_mode?: "manual" | "auto_recharge" | "postpaid" | null;
+  card_brand?: string | null;
+  card_last4?: string | null;
+  card_saved_at?: string | null;
+  charges_paused?: boolean | null;
+};
+
+export type PartnerMember = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  status: string;
+  accepted_at: string | null;
+  last_login_at: string | null;
+  created_at: string;
+};
+
+export type PartnerInvitation = {
+  id: string;
+  email: string;
+  role: string;
+  expires_at: string;
+  created_at: string;
+};
+
+export type PartnerMembersOut = { members: PartnerMember[]; invitations: PartnerInvitation[] };
+
+export type PartnerCardNews = {
+  partner_id: string;
+  name: string;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_saved_at: string | null;
+  mode: "manual" | "auto_recharge" | "postpaid";
+  paused_reason: string | null;
+};
+
+export type AdminOverview = {
+  partners: { total: number; active: number };
+  clients: { total: number; active: number; paused: number };
+  balance_cents: number | null;
+  tickets_open: number;
+  open_tickets: { id: string; ticket_ref: string; partner_id: string; partner_name: string; topic: string; opened_at: string }[];
+  signups_pending: number;
+  pending_signups: { id: string; email: string; created_at: string }[];
+  clients_without_cap: { tenant_id: string; name: string; partner_id: string; partner_name: string }[];
+  /** Spec 041: cards saved lately, and partners whose charges stopped. */
+  cards_added?: PartnerCardNews[];
+  charges_paused?: PartnerCardNews[];
+  unreadable: ("balance" | "caps" | "tickets" | "cards")[];
+};
+
+/** Spec 032: what a partner's console has. Mirror of the API's PartnerModule. */
+export const PARTNER_MODULES = [
+  "panel",
+  "clients",
+  "usage",
+  "audit",
+  "knowledge",
+  "workstation",
+  "team",
+  "billing",
+  "keys",
+  "companion",
+] as const;
+export type PartnerModule = (typeof PARTNER_MODULES)[number];
+
+export type PartnerAccessOut = {
+  console_enabled: boolean;
+  modules: PartnerModule[];
+  catalog: { id: PartnerModule; kind: "nav" | "assistant" }[];
+};
+
+/** Spec 035: the messaging channels Auphere knows, and whether each can start. */
+export type ChannelAvailability = "available" | "beta" | "pending" | "coming_soon";
+export type ChannelCatalogEntry = {
+  key: string;
+  name: string;
+  description: string;
+  availability: ChannelAvailability;
+  note: string | null;
+};
+
+export type GlobalChannel = {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  partner_id: string | null;
+  partner_name: string | null;
+  type: string;
+  provider: string;
+  provider_identifier: string;
+  status: string;
+  role: string | null;
+  agent_enabled: boolean;
+  name: string | null;
+  created_at: string;
+};
+
+export type ConnectorInstall = { tenant_id: string; tenant_name: string; status: string };
+
+/** Spec 041: a partner's card on file, how it is charged, and its charges. */
+export type PartnerBillingView = {
+  card: {
+    brand: string | null;
+    last4: string | null;
+    exp_month: number | null;
+    exp_year: number | null;
+    /** When the partner saved (or last replaced) it. */
+    saved_at?: string | null;
+  } | null;
+  mode: "manual" | "auto_recharge" | "postpaid";
+  recharge_threshold_cents: number | null;
+  recharge_amount_cents: number | null;
+  credit_limit_cents: number;
+  /** A failed postpaid charge froze the line at what is owed. */
+  credit_frozen?: boolean;
+  owed_cents: number;
+  paused_reason: string | null;
+  failed_attempts: number;
+  charges: Array<{
+    id: string;
+    kind: "auto_recharge" | "postpaid";
+    amount_cents: number;
+    period: string | null;
+    status: "pending" | "action_required" | "paid" | "failed";
+    failure_code: string | null;
+    created_at: string;
+    settled_at: string | null;
+  }>;
+};
+
+/** Spec 040: a shareable WhatsApp signup link. `url` only on creation. */
+export type SignupLink = {
+  id: string;
+  mode: "coexistence" | "cloud_api";
+  url: string | null;
+  state: "valid" | "used" | "expired" | "revoked" | "unknown";
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+};
+
+/** Spec 038: what every partner and every client consumed. */
+export type UsageOverview = {
+  since: string;
+  until: string;
+  totals: {
+    spend_cents: number;
+    /** Model cost of what was sold (channel + Companion), US$ decimal string. */
+    cost_usd: string;
+    profit_usd: string;
+    margin_pct: number | null;
+    /** «Cuánto se cobra sobre el coste»: sale ÷ cost − 1, in %. */
+    markup_pct: number | null;
+    effective_multiplier: number | null;
+    configured_multiplier: string;
+    /** Operators' Playground turns: Auphere pays, nobody is charged. */
+    tests_cost_usd: string;
+    net_profit_usd: string;
+    unpriced_events: number;
+    messages: number;
+    conversations: number;
+    active_clients: number;
+  };
+  partners: Array<{
+    partner_id: string;
+    name: string;
+    status: string;
+    clients: number;
+    spend_cents: number;
+    spend_outside_clients_cents: number;
+    cost_usd: string;
+    profit_usd: string;
+    margin_pct: number | null;
+    markup_pct: number | null;
+    tests_cost_usd: string;
+    messages: number;
+    available_cents: number | null;
+  }>;
+  clients: Array<{
+    tenant_id: string;
+    name: string;
+    status: string;
+    partner_id: string | null;
+    partner_name: string | null;
+    spend_cents: number;
+    cost_usd: string;
+    profit_usd: string;
+    margin_pct: number | null;
+    markup_pct: number | null;
+    tests_cost_usd: string;
+    unpriced_events: number;
+    messages_inbound: number;
+    messages_outbound: number;
+    conversations: number;
+  }>;
+  daily: Array<{ day: string; spend_cents: number; cost_usd: string; profit_usd: string; messages: number }>;
+  unreadable: { partners: string[]; clients: string[] };
+};
+
+/** Spec 037: the client's capabilities — the partner console's «Habilidades». */
+export type CapabilityKind = "tool" | "skill";
+export type CapabilityMode = "always" | "blocked";
+export type CapabilityModeChange = CapabilityMode | "default";
+export type Capability = {
+  key: string;
+  kind: CapabilityKind;
+  business_name: string;
+  description: string;
+  function: "appointments" | "orders" | "messages" | "escalation" | "knowledge" | "other";
+  sectors: string[];
+  recommended: boolean;
+  other_sector: boolean;
+  enabled: boolean;
+  enabled_in_active: boolean;
+  usable: boolean;
+  activatable: boolean;
+  connector: { slug: string; display_name: string; status: string } | null;
+  mode: { default: CapabilityMode; override: CapabilityMode | null; effective: CapabilityMode; options: CapabilityMode[] } | null;
+  read_only: boolean;
+  destructive: boolean;
+  technical: { name: string; kind: CapabilityKind; version: string | null; tags: string[] };
+};
+export type CapabilitiesOut = {
+  sector: string | null;
+  has_draft: boolean;
+  version: number | null;
+  active_version: number | null;
+  hidden_by_sector: number;
+  groups: Array<{ function: Capability["function"]; items: Capability[] }>;
+};
+
+/** Spec 036: what the client list scans for, per client. */
+export type TenantHealth = {
+  tenant_id: string;
+  channels_active: number;
+  channels_attention: number;
+  /** The first channel that serves, else the first that is failing. */
+  primary_channel: { type: string; identifier: string; status: string } | null;
+  /** Published version of the principal agent; null = nothing published. */
+  agent_version: number | null;
+  open_conversations: number;
+  conversations_7d: number;
+  last_message_at: string | null;
+  connectors_attention: number;
+};
+
+export type AdminInstance = {
+  environment: string;
+  schema_revision: string | null;
+  commit: string;
+  checks: Record<string, string>;
 };
 
 export type PartnerCreateInput = {
@@ -927,6 +1189,7 @@ export type PartnerUpdateInput = Partial<{
   name: string;
   status: PartnerStatus;
   contact_email: string | null;
+  billing_email: string;
   broadcast_recipient_cap: number;
   rate_limit_mint_per_min: number;
   rate_limit_embed_per_min: number;
@@ -949,23 +1212,51 @@ export type PartnerClientUsage = {
   messages_inbound: number;
   messages_outbound: number;
   cost_usd: number;
+  internal_cost_usd?: string;
+  spend_cents?: number;
 };
 
+/** Spec 033: every amount a person reads is US$ cents. */
 export type PartnerWalletOut = {
-  included_remaining: number;
-  purchased_remaining: number;
-  available: number;
-  reserve: number;
+  /** The weekly pool (Companion and teammates). Not what clients spend. */
+  included_cents: number;
+  /** Recharged balance: what the clients' turns spend. */
+  purchased_cents: number;
+  available_cents: number;
+  /** Sum of the clients' monthly caps. */
+  assigned_cents: number;
   included_expires_at: string | null;
   exhausted: boolean;
+  duplicate?: boolean;
 };
+
+export type LedgerKind =
+  | "debit"
+  | "credit_admin"
+  | "credit_stripe"
+  | "expiry"
+  | "allocation_legacy"
+  | "opening_credit"
+  | "opening_debit";
 
 export type PartnerLedgerOut = {
   id: string;
-  bucket: string;
-  qty: number;
-  reason: string;
+  kind: LedgerKind;
+  bucket: "included" | "purchased";
+  amount_cents: number;
+  tenant_id: string | null;
+  client_name: string | null;
   created_at: string;
+};
+
+export type PartnerReconcileOut = {
+  balanced: boolean;
+  stored_cents: number;
+  expected_cents: number;
+  difference_credits: number;
+  credits_cents: number;
+  debits_cents: number;
+  expiries_cents: number;
 };
 
 export type PartnerModelItemOut = {
@@ -1114,6 +1405,11 @@ export type PartnerUsageOut = {
   messages_inbound: number;
   messages_outbound: number;
   cost_usd: number;
+  /** Spec 033: Auphere's model cost, exact (decimal string). */
+  internal_cost_usd?: string;
+  /** Spec 033: what the clients spent at sale price, from the book. */
+  spend_cents?: number;
+  spend_outside_clients_cents?: number;
   clients: PartnerClientUsage[];
 };
 
@@ -1303,9 +1599,6 @@ export const backend = {
 
   getTenant: (tenantId: string) =>
     call<Tenant>(`/admin/tenants/${tenantId}`, { optional: true }),
-
-  getReadiness: (tenantId: string) =>
-    call<ReadinessOut>(`/admin/tenants/${tenantId}/readiness`),
 
   // Spec 030: `agentId` picks one of the client's agents; without it, the principal.
   getAgentConfig: (tenantId: string, agentId?: string) =>
@@ -2008,10 +2301,21 @@ export const backend = {
       `/admin/partners/${partnerId}/wallet/ledger?limit=${limit}`,
     ).then((r) => r ?? []),
 
-  rechargePartnerWallet: (partnerId: string, qty: number) =>
+  /** Spec 033: cents, a key from the form (idempotent) and the operator. */
+  rechargePartnerWallet: (
+    partnerId: string,
+    body: { amount_cents: number; idempotency_key: string },
+    operatorId: string,
+  ) =>
     call<PartnerWalletOut>(`/admin/partners/${partnerId}/wallet/purchased`, {
       method: "POST",
-      body: { qty },
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  getPartnerWalletReconcile: (partnerId: string) =>
+    call<PartnerReconcileOut>(`/admin/partners/${partnerId}/wallet/reconcile`, {
+      optional: true,
     }),
 
   getPartnerModels: (partnerId: string) =>
@@ -2079,6 +2383,108 @@ export const backend = {
       `/admin/partners/${partnerId}/receipts/${invoiceId}/send`,
       { method: "POST", body: {} },
     ),
+
+  // ── Spec 031: the panel's home and the partner's people ───────────
+  getOverview: () => call<AdminOverview>("/admin/overview"),
+
+  getInstance: () => call<AdminInstance>("/admin/instance"),
+
+  // ── Spec 035: channels and connectors across every client ────────
+  getChannelCatalog: () =>
+    call<ChannelCatalogEntry[]>("/admin/channel-catalog").then((r) => r ?? []),
+
+  listAllChannels: () =>
+    call<{ channels: GlobalChannel[]; unreadable: string[] }>("/admin/channels"),
+
+  getPartnerBilling: (partnerId: string) => call<PartnerBillingView>(`/admin/partners/${partnerId}/billing`),
+
+  setPartnerCharging: (
+    partnerId: string,
+    body: { mode: string; recharge_threshold_cents: number | null; recharge_amount_cents: number | null },
+    operatorId: string,
+  ) =>
+    call<PartnerBillingView>(`/admin/partners/${partnerId}/charging`, {
+      method: "PUT",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  setPartnerCreditLimit: (partnerId: string, creditLimitCents: number, operatorId: string) =>
+    call<PartnerBillingView>(`/admin/partners/${partnerId}/credit-limit`, {
+      method: "PUT",
+      body: { credit_limit_cents: creditLimitCents },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  /** Spec 040: a link the business owner opens to connect WhatsApp on their device. */
+  createSignupLink: (tenantId: string, mode: "coexistence" | "cloud_api", operatorId: string) =>
+    call<SignupLink>(`/admin/tenants/${tenantId}/channels/whatsapp/signup-link`, {
+      method: "POST",
+      body: { mode },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listSignupLinks: (tenantId: string) =>
+    call<SignupLink[]>(`/admin/tenants/${tenantId}/channels/whatsapp/signup-links`).then((r) => r ?? []),
+
+  revokeSignupLink: (tenantId: string, linkId: string, operatorId: string) =>
+    call<null>(`/admin/tenants/${tenantId}/channels/whatsapp/signup-links/${linkId}`, {
+      method: "DELETE",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  getUsageOverview: (period: { days?: number; month?: boolean }) =>
+    call<UsageOverview>(`/admin/usage?${period.month ? "month=true" : `days=${period.days ?? 30}`}`),
+
+  getCapabilities: (tenantId: string, opts: { all?: boolean; agent?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.all) q.set("all", "true");
+    if (opts.agent) q.set("agent", opts.agent);
+    const qs = q.toString();
+    return call<CapabilitiesOut>(`/admin/tenants/${tenantId}/capabilities${qs ? `?${qs}` : ""}`);
+  },
+
+  setCapability: (
+    tenantId: string,
+    body: { key: string; kind: CapabilityKind; enabled?: boolean; mode?: CapabilityModeChange },
+    operatorId: string,
+    agent?: string,
+  ) =>
+    call<{ capability: Capability; draft_created: boolean; version: number | null }>(
+      `/admin/tenants/${tenantId}/capabilities${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`,
+      { method: "PUT", body, headers: { "X-Operator-Id": operatorId } },
+    ),
+
+  getTenantHealth: (tenantId: string) => call<TenantHealth>(`/admin/tenants-health/${tenantId}`),
+
+  listTenantsHealth: () =>
+    call<{ clients: TenantHealth[]; unreadable: string[] }>("/admin/tenants-health"),
+
+  listConnectorInstalls: () =>
+    call<Record<string, ConnectorInstall[]>>("/admin/connectors-installs").then((r) => r ?? {}),
+
+  assignChannelAgent: (tenantId: string, channelId: string, agentId: string, operatorId: string) =>
+    call<{ channel_id: string; agent_id: string }>(
+      `/admin/tenants/${tenantId}/channels/${channelId}/agent`,
+      { method: "PATCH", body: { agent_id: agentId }, headers: { "X-Operator-Id": operatorId } },
+    ),
+
+  getPartnerAccess: (partnerId: string) =>
+    call<PartnerAccessOut>(`/admin/partners/${partnerId}/access`),
+
+  setPartnerAccess: (
+    partnerId: string,
+    body: { console_enabled: boolean; modules: PartnerModule[] },
+    operatorId: string,
+  ) =>
+    call<PartnerAccessOut>(`/admin/partners/${partnerId}/access`, {
+      method: "PUT",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  getPartnerMembers: (partnerId: string) =>
+    call<PartnerMembersOut>(`/admin/partners/${partnerId}/members`),
 
   // ── F4 support tickets inbox ──────────────────────────────────────
   listTickets: (opts?: { status?: TicketStatus; partnerId?: string }) => {

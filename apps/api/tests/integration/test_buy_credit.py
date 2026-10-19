@@ -61,6 +61,9 @@ def _checkout(**over: Any) -> SimpleNamespace:
         "id": f"cs_{uuid.uuid4().hex[:12]}",
         "payment_status": "paid",
         "amount_total": 5_000,
+        # What ``open_credit_session`` sets (spec 034 credits nothing else).
+        "mode": "payment",
+        "metadata": {"kind": "credit"},
     }
     fields.update(over)
     return SimpleNamespace(**fields)

@@ -61,8 +61,8 @@ export function InspectorDrawer({
             aria-selected={active === tab.key}
             onClick={() => setActive(tab.key)}
             className={`rounded px-2 py-1 text-xs ${
-              active === tab.key
-                ? "bg-muted font-medium"
+ active === tab.key
+ ? "bg-muted font-medium"
                 : "hover:bg-muted/60 text-muted-foreground"
             }`}
           >
@@ -158,12 +158,12 @@ function ToolsTab({ message }: { message: ThreadAssistantMessage | null }) {
           <div className="flex items-center justify-between">
             <span className="font-mono font-medium">{c.toolName}</span>
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                c.result !== undefined
-                  ? c.isError
-                    ? "bg-red-100 text-red-800"
-                    : "bg-green-100 text-green-800"
-                  : "bg-yellow-100 text-yellow-800"
+              className={`rounded px-2 py-1 text-[10px] font-medium ${
+ c.result !== undefined
+ ? c.isError
+ ? "bg-status-danger-bg text-status-danger-text"
+                    : "bg-status-positive-bg text-status-positive-text"
+                  : "bg-status-warning-bg text-status-warning-text"
               }`}
             >
               {c.result !== undefined ? (c.isError ? "error" : "done") : "running"}
@@ -328,6 +328,9 @@ function AuditTab({
         setError(String(err));
       });
     return () => abort.abort();
+    // The audit is keyed by the thread id: a new object for the same thread
+    // must not refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread?.id, refreshKey]);
 
   if (!thread) {
@@ -339,7 +342,7 @@ function AuditTab({
   }
   if (error) {
     return (
-      <p className="text-xs text-[color:var(--color-danger,#c0392b)]">
+      <p className="text-xs text-destructive">
         Error cargando audit: {error}
       </p>
     );
@@ -364,7 +367,7 @@ function AuditTab({
         >
           <div className="flex items-center justify-between">
             <span className="font-mono font-medium">{r.tool_name}</span>
-            <span className="rounded bg-[#ffe082] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#7a4f00]">
+            <span className="rounded-sm bg-status-warning-bg px-2 py-1 text-xs font-bold uppercase text-status-warning-text">
               {r.blocked_reason}
             </span>
           </div>

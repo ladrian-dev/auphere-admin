@@ -28,6 +28,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from tests.conftest import give_recharged_balance
 
 pytestmark = pytest.mark.asyncio
 
@@ -57,6 +58,8 @@ def _channel(tenant_id: uuid.UUID, *, provider: str = "meta", type_=ChannelType.
 
 async def test_the_record_reads_sector_setup_and_quota(client, console_world, db_session) -> None:
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    await give_recharged_balance(a["partner_id"])
     # World: active tenant, allocation 500 000, no agent, no channel.
     r = await client.get(f"/console/clients/{a['ref']}", headers=a["headers"]())
     assert r.status_code == 200, r.text
@@ -131,6 +134,8 @@ async def test_quota_step_and_next_follow_the_ledger(client, console_world, db_s
 
 async def test_activation_is_the_last_step(client, console_world, db_session) -> None:
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    await give_recharged_balance(a["partner_id"])
     db_session.add(_agent(a["tenant_id"], seed=None))
     db_session.add(_channel(a["tenant_id"]))
     await db_session.execute(
@@ -146,6 +151,8 @@ async def test_the_list_carries_setup_quota_and_seven_day_conversations(
     client, console_world, db_session
 ) -> None:
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    await give_recharged_balance(a["partner_id"])
     db_session.add(_agent(a["tenant_id"], seed="panaderia_v1"))
     ch = _channel(a["tenant_id"])
     qa = _channel(a["tenant_id"], provider="qa_playground", type_=ChannelType.WEB)
@@ -209,6 +216,8 @@ async def test_serving_since_is_when_the_last_piece_landed(
     from datetime import UTC, datetime, timedelta
 
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    await give_recharged_balance(a["partner_id"])
     promoted = datetime(2026, 9, 20, 10, 0, tzinfo=UTC)
     agent = _agent(a["tenant_id"], seed=None)
     agent.promoted_at = promoted

@@ -11,6 +11,7 @@ El débito es idempotente por ``idempotency_key``.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -26,6 +27,11 @@ from nexus_api.db.models.partner import Partner
 from nexus_api.db.models.partner_wallet import (
     BUCKET_INCLUDED,
     BUCKET_PURCHASED,
+    CREDIT_KINDS,
+    KIND_DEBIT,
+    KIND_EXPIRY,
+    KIND_OPENING_CREDIT,
+    KIND_OPENING_DEBIT,
     PartnerAllocation,
     PartnerWallet,
     UsageLedger,
@@ -45,9 +51,20 @@ class OverAllocation(Exception):
 class WalletSnapshot:
     partner_id: uuid.UUID
     included_remaining: int
+    #: What is left of what was bought; never negative (a debt is ``owed``).
     purchased_remaining: int
     included_expires_at: datetime | None
     available: int
+    #: Spec 041: the postpaid credit line Auphere granted (credits); 0 = prepaid.
+    credit_limit: int = 0
+    #: Spec 041: what a postpaid partner consumed beyond its balance (credits).
+    owed: int = 0
+
+    @property
+    def spendable_purchased(self) -> int:
+        """What a turn may still draw from the purchased pocket: the balance,
+        or the unused part of the credit line once the balance is negative."""
+        return max(0, self.purchased_remaining - self.owed + self.credit_limit)
 
     @property
     def empty(self) -> bool:
@@ -111,13 +128,16 @@ async def partner_id_for_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> 
 
 def _snapshot(row: PartnerWallet, *, now: datetime | None = None) -> WalletSnapshot:
     included = effective_included(row.included_remaining, row.included_expires_at, now=now)
-    purchased = max(0, _as_int(row.purchased_remaining))
+    raw = _as_int(row.purchased_remaining)
+    purchased = max(0, raw)
     return WalletSnapshot(
         partner_id=row.partner_id,
         included_remaining=included,
         purchased_remaining=purchased,
         included_expires_at=row.included_expires_at,
         available=included + purchased,
+        credit_limit=_as_int(getattr(row, "credit_limit", 0) or 0),
+        owed=max(0, -raw),
     )
 
 
@@ -342,6 +362,12 @@ async def _pool_refills_for(session: AsyncSession, partner_id: uuid.UUID) -> boo
     cobro al camino del turno: esta función se llama al servir, y CE-004 dice
     que con el proveedor caído el trabajo continúa.
     """
+    # Spec 034: with memberships off the console is free and the pool refills
+    # whatever a (leftover) subscription row says.
+    from nexus_api.config import get_settings
+
+    if not get_settings().membership_enabled:
+        return True
     state = await session.scalar(
         sa.text("SELECT state FROM partner_subscriptions WHERE partner_id = :p"),
         {"p": str(partner_id)},
@@ -370,32 +396,41 @@ async def _pool_anchor_and_size(
     return (created_at or _now()), int(size or 0)
 
 
-async def replenish_allocations(session: AsyncSession, *, partner_id: uuid.UUID) -> int:
-    """Devuelve ``remaining`` a ``cap`` en las cuotas del partner. Filas tocadas.
+def month_start(now: datetime | None = None) -> date:
+    """First day of the calendar month (UTC) ``now`` falls in."""
+    stamp = now or _now()
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=UTC)
+    return stamp.astimezone(UTC).date().replace(day=1)
 
-    El compañero obligatorio de ``renew_included_if_expired``. El included es
-    mensual y las asignaciones por cliente son porciones de ese included: si
-    el wallet se repone y ``remaining`` no, un cliente que gastó su cuota en
-    septiembre sigue con 0 en octubre y ``allow_channel_turn`` lo deja mudo el
-    mes entero **teniendo el partner saldo de sobra**. Es el mismo modo de
-    fallo del corte del 31-ago: silencio con saldo.
 
-    Solo sube, nunca baja: la cláusula ``remaining < cap`` deja intactas las
-    filas ya llenas y hace la operación idempotente. Cambiar el cap sigue
-    siendo decisión del partner desde Consumo; esto solo repone lo gastado.
+async def replenish_allocations(
+    session: AsyncSession, *, partner_id: uuid.UUID, now: datetime | None = None
+) -> int:
+    """Refill the partner's client caps **once per calendar month** (UTC).
+
+    Spec 033 (R6.1, owner 2026-10-18): the cap is a monthly spending limit
+    and the client reads "spent this month" next to it. Until then it
+    refilled with the weekly pool, so cap minus remaining never matched the
+    month's spend and a client got four limits a month.
+
+    A row refills when its ``period_month`` is before the current month:
+    ``remaining`` goes back to ``cap`` and ``period_month`` moves to this
+    month, so a second tick in the same month touches nothing. Only up,
+    never down: what the partner sets as cap is the partner's decision.
+    Returns the rows refilled.
     """
+    current = month_start(now)
     result = await session.execute(
         sa.update(PartnerAllocation)
         .where(
             PartnerAllocation.partner_id == partner_id,
-            PartnerAllocation.remaining < PartnerAllocation.cap,
+            PartnerAllocation.period_month < current,
         )
-        .values(remaining=PartnerAllocation.cap, updated_at=_now())
+        .values(remaining=PartnerAllocation.cap, period_month=current, updated_at=_now())
     )
     # ``getattr`` y no ``result.rowcount``: el tipo estático de ``execute``
-    # es ``Result``, que no declara ``rowcount`` — solo lo tiene el
-    # ``CursorResult`` que devuelve un UPDATE en tiempo de ejecución. Mismo
-    # patrón que ``console_notifications`` y ``webhooks/meta``.
+    # es ``Result``, que no declara ``rowcount``.
     touched = int(getattr(result, "rowcount", 0) or 0)
     if touched:
         log.info("wallet.allocations_replenished", partner_id=str(partner_id), rows=touched)
@@ -458,7 +493,13 @@ async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
     """¿Puede el canal abrir el pipeline?
 
     Sin partner (tenant directo / tests legacy) → sí, el libro no aplica.
-    Con partner: wallet 0, sin asignación, asignación 0 o libro ilegible → no.
+    Con partner: saldo recargado 0, sin asignación, asignación 0 o libro
+    ilegible → no.
+
+    Spec 033 (R5.1): la puerta mira el **saldo recargado**, el mismo bolsillo
+    que paga el turno (``debit_wallet(..., allow_included=False)``). Mirando
+    incluido + recargado, un partner con solo pool semanal abría turnos que
+    después no se cobraban (seguimiento abierto de ``doble-cobro-del-tope``).
     """
     try:
         sm = get_sessionmaker()
@@ -470,7 +511,8 @@ async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
             row = await session.get(PartnerWallet, partner_id)
             if row is None:
                 return False
-            if _snapshot(row).empty:
+            # Spec 041: a postpaid partner keeps serving inside its credit line.
+            if _snapshot(row).spendable_purchased <= 0:
                 return False
             alloc = await session.scalar(
                 sa.select(PartnerAllocation).where(
@@ -506,7 +548,8 @@ async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dic
         async with sm() as session, session.begin():
             await apply_partner_to_session(session, partner_id)
             row = await session.get(PartnerWallet, partner_id)
-            wallet_empty = row is None or _snapshot(row).empty
+            # Same pocket as the gate (spec 033, R5.1): the recharged balance.
+            wallet_empty = row is None or _snapshot(row).spendable_purchased <= 0
             rows = await session.execute(
                 sa.select(PartnerAllocation.tenant_id, PartnerAllocation.remaining).where(
                     PartnerAllocation.partner_id == partner_id,
@@ -551,13 +594,18 @@ async def allocations_for(
 
 #: Ledger entries the double cap debit wrote (bug ``doble-cobro-del-tope``,
 #: 2026-09-02 → 2026-10-10): a second, wrong decrement of a client's cap, not
-#: money spent. They stay in ``usage_ledger`` as history; no spend report
-#: counts them — the admin's ledger already left them out.
+#: money spent. Since spec 033 they carry ``kind='allocation_legacy'``.
 ALLOCATION_KEY_SUFFIX = ":allocation"
 
 
 def _spend_only() -> sa.ColumnElement[bool]:
-    return ~UsageLedger.idempotency_key.like(f"%{ALLOCATION_KEY_SUFFIX}")
+    """Spec 033 (R2.3): spend is a debit and nothing else.
+
+    Until then spend was «every entry not ending in ``:allocation``», so an
+    admin top-up and a credit expiry — both written with ``tenant_id`` NULL —
+    showed up as spend outside clients on the partner's home and usage.
+    """
+    return UsageLedger.kind == KIND_DEBIT
 
 
 @dataclass(frozen=True)
@@ -677,26 +725,180 @@ async def credit_burn_by_day(
         return {(tid, d): _as_int(total) for tid, d, total in rows.all()}
 
 
-async def add_purchased(partner_id: uuid.UUID, qty: int) -> WalletSnapshot:
-    """Recarga manual: suma al cubo purchased. No caduca. Staging / admin."""
+@dataclass(frozen=True)
+class CreditResult:
+    """What a top-up did. ``duplicate``: the key was already in the book and
+    nothing was credited this time — the snapshot is the balance as it is."""
+
+    snapshot: WalletSnapshot
+    duplicate: bool
+    before_available: int
+
+
+#: Called inside the top-up's transaction, after the balance moved: the audit
+#: row lands in the same commit as the money or not at all (spec 033, R3.3).
+AuditHook = Callable[[AsyncSession, WalletSnapshot, WalletSnapshot], Awaitable[None]]
+
+
+async def add_purchased(
+    partner_id: uuid.UUID,
+    qty: int,
+    *,
+    kind: str,
+    idempotency_key: str,
+    audit: AuditHook | None = None,
+) -> CreditResult:
+    """Credit purchased balance — **one transaction, one entry, at most once**.
+
+    Spec 033 (R2.2, R3): balance, ledger entry and (optional) audit commit
+    together. The entry's ``idempotency_key`` is the caller's: the admin
+    sends the key its form generated, Stripe uses the Checkout Session id.
+    The same key twice credits once and returns ``duplicate=True``.
+
+    The wallet row is locked first (``FOR UPDATE``), so two calls with the same
+    key serialise and the second one sees the first one's entry.
+    """
     if qty <= 0:
         raise ValueError("top-up qty must be > 0")
+    if kind not in CREDIT_KINDS:
+        raise ValueError(f"not a credit kind: {kind!r}")
+    sm = get_sessionmaker()
+    for attempt in range(2):
+        try:
+            async with sm() as session, session.begin():
+                await apply_partner_to_session(session, partner_id)
+                row = await _load_wallet_for_update(session, partner_id)
+                if row is None:
+                    row = PartnerWallet(
+                        partner_id=partner_id,
+                        included_remaining=0,
+                        purchased_remaining=0,
+                    )
+                    session.add(row)
+                    await session.flush()
+                before = _snapshot(row)
+                seen = await session.scalar(
+                    sa.select(UsageLedger.id).where(UsageLedger.idempotency_key == idempotency_key)
+                )
+                if seen is not None:
+                    return CreditResult(
+                        snapshot=before, duplicate=True, before_available=before.available
+                    )
+                session.add(
+                    UsageLedger(
+                        partner_id=partner_id,
+                        tenant_id=None,
+                        qty=qty,
+                        bucket=BUCKET_PURCHASED,
+                        kind=kind,
+                        idempotency_key=idempotency_key,
+                        fx=None,
+                    )
+                )
+                row.purchased_remaining = _as_int(row.purchased_remaining) + qty
+                row.updated_at = _now()
+                await session.flush()
+                after = _snapshot(row)
+                if audit is not None:
+                    await audit(session, before, after)
+                return CreditResult(
+                    snapshot=after, duplicate=False, before_available=before.available
+                )
+        except IntegrityError:
+            # Two first top-ups racing to create the wallet row: the loser
+            # retries once and then sees the row (and maybe the entry).
+            if attempt == 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+async def purchased_spent_since(partner_id: uuid.UUID, since: datetime) -> int:
+    """Recharged balance spent since ``since`` — debits of the purchased
+    bucket, every client and the Companion. Raises when unreadable."""
     sm = get_sessionmaker()
     async with sm() as session, session.begin():
         await apply_partner_to_session(session, partner_id)
-        row = await _load_wallet_for_update(session, partner_id)
-        if row is None:
-            row = PartnerWallet(
-                partner_id=partner_id,
-                included_remaining=0,
-                purchased_remaining=0,
+        total = await session.scalar(
+            sa.select(sa.func.coalesce(sa.func.sum(UsageLedger.qty), 0)).where(
+                UsageLedger.partner_id == partner_id,
+                UsageLedger.kind == KIND_DEBIT,
+                UsageLedger.bucket == BUCKET_PURCHASED,
+                UsageLedger.created_at >= since,
             )
-            session.add(row)
-            await session.flush()
-        row.purchased_remaining = _as_int(row.purchased_remaining) + qty
-        row.updated_at = _now()
-        await session.flush()
-        return _snapshot(row)
+        )
+        return _as_int(total)
+
+
+@dataclass(frozen=True)
+class Reconciliation:
+    """Spec 033 (R2.4): the purchased balance as stored and as the book says.
+
+    Only the purchased bucket is money; the included pool is a weekly
+    allowance that refills whole and is not reconciled.
+    """
+
+    stored: int
+    credits: int
+    debits: int
+    expiries: int
+
+    @property
+    def expected(self) -> int:
+        return self.credits - self.debits - self.expiries
+
+    @property
+    def difference(self) -> int:
+        return self.stored - self.expected
+
+    @property
+    def balanced(self) -> bool:
+        return self.difference == 0
+
+
+async def reconcile_purchased(partner_id: uuid.UUID) -> Reconciliation | None:
+    """Stored purchased balance against sum(credits) - sum(purchased debits) - sum(
+    expiries), under the partner's GUC. ``None`` if the partner has no wallet.
+    Raises when the ledger cannot be read: a reconciliation that guesses is
+    worse than none."""
+    plus = (*CREDIT_KINDS, KIND_OPENING_CREDIT)
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        stored = await session.scalar(
+            sa.select(PartnerWallet.purchased_remaining).where(
+                PartnerWallet.partner_id == partner_id
+            )
+        )
+        if stored is None:
+            return None
+        row = (
+            await session.execute(
+                sa.select(
+                    sa.func.coalesce(
+                        sa.func.sum(UsageLedger.qty).filter(UsageLedger.kind.in_(plus)), 0
+                    ),
+                    sa.func.coalesce(
+                        sa.func.sum(UsageLedger.qty).filter(
+                            UsageLedger.kind == KIND_DEBIT,
+                            UsageLedger.bucket == BUCKET_PURCHASED,
+                        ),
+                        0,
+                    ),
+                    sa.func.coalesce(
+                        sa.func.sum(UsageLedger.qty).filter(
+                            UsageLedger.kind.in_((KIND_EXPIRY, KIND_OPENING_DEBIT))
+                        ),
+                        0,
+                    ),
+                ).where(UsageLedger.partner_id == partner_id)
+            )
+        ).one()
+        return Reconciliation(
+            stored=_as_int(stored),
+            credits=_as_int(row[0]),
+            debits=_as_int(row[1]),
+            expiries=_as_int(row[2]),
+        )
 
 
 async def allocatable_for(
@@ -961,7 +1163,10 @@ async def debit_wallet(
             allow_included=allow_included,
         )
     except Exception as exc:
-        if isinstance(exc, IntegrityError):
+        # Spec 033 (R4.2): only the ledger's unique key means «already
+        # charged». Any other integrity error — a CHECK on a balance, a
+        # foreign key — is a failure and must not be read as a duplicate.
+        if isinstance(exc, IntegrityError) and "uq_usage_ledger_idempotency" in str(exc.orig):
             return DebitResult(spent=0, from_included=0, from_purchased=0, duplicate=True)
         log.warning(
             "wallet.debit_failed",
@@ -1007,8 +1212,10 @@ async def _debit_locked(
         # se hace como si estuviera vacío. No se toca ``split_spend``: la
         # política de quién puede gastar qué es de aquí, no de la aritmética.
         spendable_included = snap.included_remaining if allow_included else 0
+        # Spec 041: inside a postpaid credit line the purchased pocket may go
+        # below zero, down to ``-credit_limit`` (the database CHECK).
         from_included, from_purchased = split_spend(
-            qty, spendable_included, snap.purchased_remaining
+            qty, spendable_included, snap.spendable_purchased
         )
         spent = from_included + from_purchased
         if spent <= 0:
@@ -1017,7 +1224,9 @@ async def _debit_locked(
         if from_included:
             wallet.included_remaining = snap.included_remaining - from_included
         if from_purchased:
-            wallet.purchased_remaining = snap.purchased_remaining - from_purchased
+            # From the stored value, never the snapshot: the snapshot shows a
+            # debt as 0, and writing ``0 - x`` would forgive what is owed.
+            wallet.purchased_remaining = _as_int(wallet.purchased_remaining) - from_purchased
         wallet.updated_at = _now()
 
         if tenant_id is not None:
@@ -1040,6 +1249,7 @@ async def _debit_locked(
                     tenant_id=tenant_id,
                     qty=from_included,
                     bucket=BUCKET_INCLUDED,
+                    kind=KIND_DEBIT,
                     usage_record_id=usage_record_id,
                     agent_id=agent_id,
                     companion_run_id=companion_run_id,
@@ -1054,6 +1264,7 @@ async def _debit_locked(
                     tenant_id=tenant_id,
                     qty=from_purchased,
                     bucket=BUCKET_PURCHASED,
+                    kind=KIND_DEBIT,
                     usage_record_id=usage_record_id,
                     agent_id=agent_id,
                     companion_run_id=companion_run_id,

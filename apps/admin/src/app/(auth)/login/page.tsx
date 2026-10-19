@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { Wordmark } from "@/components/brand/wordmark";
+import { BrandLockup, Eyebrow } from "@nexus/ui";
 import { getOperator } from "@/lib/session";
 
 import { LoginForm } from "./login-form";
@@ -18,15 +17,14 @@ export default async function LoginPage({
   const { from } = await searchParams;
 
   return (
-    <main className="min-h-screen grid place-items-center bg-[color:var(--color-bg)] px-6">
+    <main className="min-h-screen grid place-items-center bg-background px-6">
       <div className="w-full max-w-md flex flex-col gap-10">
         <header className="flex flex-col gap-4">
-          <Wordmark variant="horizontal" />
+          <BrandLockup />
           <div className="flex flex-col gap-2">
             <Eyebrow>Operador interno</Eyebrow>
             <h1
-              className="text-3xl font-semibold leading-tight"
-              style={{ letterSpacing: "var(--tracking-tight)" }}
+              className="text-3xl font-semibold leading-tight tracking-tight"
             >
               Inicia sesión.
             </h1>
@@ -38,8 +36,7 @@ export default async function LoginPage({
 
         <LoginForm redirectTo={from && from.startsWith("/") ? from : "/tenants"} />
 
-        <footer className="flex items-center justify-between text-xs font-mono text-muted-foreground uppercase"
-          style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+        <footer className="flex items-center justify-between text-xs font-mono text-muted-foreground uppercase tracking-eyebrow"
         >
           <span>Nexus · Auphere</span>
           <span aria-hidden="true">v0.1</span>

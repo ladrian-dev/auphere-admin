@@ -115,7 +115,8 @@ def _notice(*, partner_id: uuid.UUID | None, session_id: str) -> dict[str, Any]:
         "amount_total": _CENTS,
         "payment_status": "paid",
         "mode": "payment",
-        "metadata": {},
+        # What ``open_credit_session`` sets; spec 034 credits nothing else.
+        "metadata": {"kind": "credit"},
     }
     if partner_id is not None:
         obj["client_reference_id"] = str(partner_id)
@@ -136,7 +137,7 @@ class _FakeCheckout:
         self.mode = "payment"
         self.customer = "cus_t117"
         self.subscription = None
-        self.metadata: dict[str, str] = {}
+        self.metadata: dict[str, str] = {"kind": "credit"}
 
 
 class _FakeClient:

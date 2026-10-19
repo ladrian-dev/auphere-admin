@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@nexus/ui";
 import type { SeedTemplateMetrics } from "@/lib/backend";
 
 import { getSeedMetricsAction } from "./actions";

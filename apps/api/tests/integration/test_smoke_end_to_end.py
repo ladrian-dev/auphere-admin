@@ -28,7 +28,11 @@ from nexus_api.db.models.membership import STATE_PAYMENT_FAILED, STATE_UNPAID
 from nexus_api.metering.wallet import apply_tier_change, renew_included_if_expired
 from nexus_api.services.membership_limits import TierLimitReached, assert_can_add_teammate
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.integration,
+    pytest.mark.usefixtures("memberships_on"),
+]
 
 
 async def _q(sql: str, **params):
@@ -91,7 +95,11 @@ async def test_the_ten_steps_in_order() -> None:
     from nexus_worker.billing.process_event import Skip, apply_credit_purchase
 
     checkout = SimpleNamespace(
-        id=f"cs_{uuid.uuid4().hex[:10]}", payment_status="paid", amount_total=5_000
+        id=f"cs_{uuid.uuid4().hex[:10]}",
+        payment_status="paid",
+        amount_total=5_000,
+        mode="payment",
+        metadata={"kind": "credit"},
     )
     async with get_sessionmaker()() as s:
         await apply_credit_purchase(s, partner_id=pid, checkout=checkout)

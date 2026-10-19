@@ -8,7 +8,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
+from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models.partner_wallet import UsageLedger
 from nexus_api.metering.wallet import (
     OverAllocation,
     add_purchased,
@@ -278,8 +280,31 @@ async def test_add_purchased_is_the_manual_topup(db_session) -> None:
         await _seed_partner(session, partner_id, f"tu-{partner_id.hex[:8]}")
         await _seed_wallet(session, partner_id, included=0, purchased=1)
         await session.commit()
-    snap = await add_purchased(partner_id, 50)
-    assert snap.purchased_remaining == 51
+    result = await add_purchased(
+        partner_id, 50, kind="credit_admin", idempotency_key=f"admin_purchased:{partner_id}:t"
+    )
+    assert result.snapshot.purchased_remaining == 51
+    assert result.duplicate is False
+
+
+async def test_a_topup_writes_its_entry_under_its_own_partner(db_session) -> None:
+    """Spec 033: the credit's entry lands in the partner's book and nowhere
+    else — another partner reads zero rows of it."""
+    a, b = uuid.uuid4(), uuid.uuid4()
+    sm = get_sessionmaker()
+    async with sm() as session:
+        await _seed_partner(session, a, f"ta-{a.hex[:8]}")
+        await _seed_partner(session, b, f"tb-{b.hex[:8]}")
+        await _seed_wallet(session, a, included=0, purchased=0)
+        await _seed_wallet(session, b, included=0, purchased=0)
+        await session.commit()
+    await add_purchased(a, 7, kind="credit_admin", idempotency_key=f"admin_purchased:{a}:k")
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, b)
+        seen = await session.scalar(
+            sa.select(sa.func.count()).select_from(UsageLedger).where(UsageLedger.partner_id == a)
+        )
+    assert seen == 0
 
 
 async def test_a_clients_debit_lowers_only_its_own_cap(db_session) -> None:
@@ -519,6 +544,10 @@ async def test_quota_state_never_reads_another_partners_client_as_served(
     from nexus_api.metering.wallet import quota_state
 
     a, b = console_world["a"], console_world["b"]
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(a["partner_id"])
+    await give_recharged_balance(b["partner_id"])
     states = await quota_state(a["partner_id"], [a["tenant_id"], b["tenant_id"]])
     assert states[a["tenant_id"]] is False
     assert states[b["tenant_id"]] is True

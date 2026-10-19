@@ -99,6 +99,10 @@ async def _two_agents_two_numbers(tenant_id: uuid.UUID) -> dict[str, uuid.UUID]:
 
 async def test_each_number_runs_its_agent(console_world) -> None:
     tenant_id = console_world["a"]["tenant_id"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(console_world["a"]["partner_id"])
     ids = await _two_agents_two_numbers(tenant_id)
     pipeline = _RecordingPipeline()
 

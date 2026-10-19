@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@nexus/ui";
 
 /**
  * Segment error boundary for /partners — the backend is a separate
