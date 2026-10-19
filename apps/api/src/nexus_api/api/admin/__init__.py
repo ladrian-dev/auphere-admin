@@ -12,6 +12,7 @@ from nexus_api.api.admin import (
     channels_overview,
     tenant_capabilities,
     tenants_health,
+    usage_overview,
     client_access,
     connectors,
     conversations,
@@ -72,6 +73,7 @@ router.include_router(partners.router)
 router.include_router(channels_overview.router)
 router.include_router(tenants_health.router)
 router.include_router(tenant_capabilities.router)
+router.include_router(usage_overview.router)
 router.include_router(partner_access.router)
 router.include_router(overview.router)
 router.include_router(overview.instance_router)

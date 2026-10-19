@@ -1005,6 +1005,45 @@ export type GlobalChannel = {
 
 export type ConnectorInstall = { tenant_id: string; tenant_name: string; status: string };
 
+/** Spec 038: what every partner and every client consumed. */
+export type UsageOverview = {
+  since: string;
+  until: string;
+  totals: {
+    spend_cents: number;
+    internal_cost_usd: string;
+    margin_usd: string;
+    messages: number;
+    conversations: number;
+    active_clients: number;
+  };
+  partners: Array<{
+    partner_id: string;
+    name: string;
+    status: string;
+    clients: number;
+    spend_cents: number;
+    spend_outside_clients_cents: number;
+    internal_cost_usd: string;
+    messages: number;
+    available_cents: number | null;
+  }>;
+  clients: Array<{
+    tenant_id: string;
+    name: string;
+    status: string;
+    partner_id: string | null;
+    partner_name: string | null;
+    spend_cents: number;
+    internal_cost_usd: string;
+    messages_inbound: number;
+    messages_outbound: number;
+    conversations: number;
+  }>;
+  daily: Array<{ day: string; spend_cents: number; internal_cost_usd: string; messages: number }>;
+  unreadable: { partners: string[]; clients: string[] };
+};
+
 /** Spec 037: the client's capabilities — the partner console's «Habilidades». */
 export type CapabilityKind = "tool" | "skill";
 export type CapabilityMode = "always" | "blocked";
@@ -2275,6 +2314,9 @@ export const backend = {
 
   listAllChannels: () =>
     call<{ channels: GlobalChannel[]; unreadable: string[] }>("/admin/channels"),
+
+  getUsageOverview: (period: { days?: number; month?: boolean }) =>
+    call<UsageOverview>(`/admin/usage?${period.month ? "month=true" : `days=${period.days ?? 30}`}`),
 
   getCapabilities: (tenantId: string, opts: { all?: boolean; agent?: string } = {}) => {
     const q = new URLSearchParams();

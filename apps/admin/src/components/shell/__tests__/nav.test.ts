@@ -9,6 +9,7 @@ describe("operator panel navigation (spec 031, R2)", () => {
       "Panel",
       "Partners",
       "Clientes",
+      "Consumo",
       "Altas",
       "Tickets",
       "Canales",

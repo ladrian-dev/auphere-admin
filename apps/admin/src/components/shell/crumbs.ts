@@ -12,6 +12,7 @@ export type Crumb = { label: string; href: string | null };
 const SECTION: Record<string, string> = {
   partners: "Partners",
   tenants: "Clientes",
+  usage: "Consumo",
   signups: "Altas",
   tickets: "Tickets",
   channels: "Canales",

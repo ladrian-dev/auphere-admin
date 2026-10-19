@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  ChartColumn,
   FlaskConical,
   Handshake,
   MessagesSquare,
@@ -32,6 +33,8 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/partners", label: "Partners", icon: Handshake },
       { href: "/tenants", label: "Clientes", icon: Store },
+      // Spec 038: what every partner and client consumed.
+      { href: "/usage", label: "Consumo", icon: ChartColumn },
       { href: "/signups", label: "Altas", icon: UserPlus },
       { href: "/tickets", label: "Tickets", icon: Inbox },
     ],

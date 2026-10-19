@@ -29,7 +29,7 @@ Ordenada como el super admin de Chatwoot (`src/components/shell/nav.ts`):
 | Grupo | Vistas |
 |---|---|
 | — | Panel (`/`) |
-| Gestionar | Partners · Clientes (`/tenants`) · Altas · Tickets (con contador de abiertos) |
+| Gestionar | Partners · Clientes (`/tenants`) · Consumo (`/usage`) · Altas · Tickets (con contador de abiertos) |
 | Plataforma | Canales (`/channels`) · Conectores (`/connectors`) · Números de Auphere (`/auphere/channels`) · Playground QA (`/qa`) |
 | Instancia | Estado (`/status`) |
 
@@ -63,6 +63,20 @@ Cabecera con estado, consola, clientes, personas, saldo y alta. Pestañas:
 
 Las rutas antiguas (`keys`, `tenants`, `usage`, `wallet`, `receipts`, `limits`,
 `models`) redirigen a la pestaña que las contiene.
+
+## Consumo (`/usage`, spec 038)
+
+Lo que gastan todos los partners y sus clientes, por periodo (este mes, 7, 30 o 90 días).
+Lee `GET /admin/usage`.
+
+- **Cifras.** Hay cuatro:
+  - gasto de los clientes, a precio de venta y del libro de cada partner;
+  - coste interno, lo que el modelo le costó a Auphere, incluido el Playground;
+  - margen;
+  - mensajes, con las conversaciones y los clientes activos.
+- **Gráfico.** Gasto por día.
+- **Tablas.** Por partner (gasto, fuera de clientes, coste interno, mensajes, saldo disponible) y por cliente (gasto, coste interno, mensajes, conversaciones). Cada fila abre su ficha.
+- **Clientes directos.** Los de Auphere no tienen saldo de partner: salen «Sin saldo» y solo cuentan su coste interno.
 
 ## Lista de clientes (`/tenants`, spec 036)
 
