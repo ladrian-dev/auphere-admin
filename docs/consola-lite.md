@@ -62,6 +62,23 @@ Pestaña **Acceso** en la ficha del tenant del admin
   `requirePartnerPrincipal` o `requireClientPrincipal(module)` (lo vigila
   `src/app/__tests__/page-guards.test.ts`), y `can()` responde `false` para
   `role: "client"`.
+- **Sin pantalla intermedia** (T111): una persona de cliente que escribe a mano
+  una ruta que no es suya va a su primer módulo **desde el layout** de
+  `(console)`, antes de que empiece el stream (un 307 de verdad). El layout lee
+  la ruta de `x-pathname`, que pone `proxy.ts` y que pisa lo que mande el
+  navegador; la regla es `clientModuleOfPath` (`lib/principal-access.ts`), y
+  el barrido de páginas la ata a las que llaman a `requireClientPrincipal`. Los
+  guardias por página siguen siendo la puerta: el layout solo adelanta la
+  redirección. Hacía falta porque la del guardia se lanzaba bajo
+  `(console)/loading.tsx` y, en las páginas sin `loading.tsx` propio, rompía el
+  Router de Next (React #310): un segundo de «This page couldn't load», sin
+  traducir, antes del Panel.
+- **E2E** (`apps/console/e2e/lite.spec.ts`, proyecto `lite`, T105): como
+  persona de cliente, axe sin graves ni críticas en `/`, `/inbox`, el hilo
+  abierto y `/usage`, sin desbordes a 360 y 1920 px ni con el texto un 30 % más
+  largo, en ES y EN y en claro y oscuro; la frontera, sin errores de página.
+  `client.setup.ts` entra una vez: el login admite 10 intentos por minuto y
+  correo.
 - **Avisos**: `console_notifications.audience` (`partner` | `client`); la campana
   del partner lista `partner`, la del cliente (`/console/lite/notifications`)
   solo `client` de su `external_client_ref`. Una sola lógica (`Viewer`).
@@ -189,9 +206,16 @@ entra en el turno.
 
 **Tiempo real** (`services/inbox_stream.py`): un canal Redis
 `inbox:{tenant_id}`; publican el worker (entrante, respuesta del agente,
-estado de envío), el webhook de estados de Meta (entregado/leído/fallido) y la
-API en cada acción — siempre **después** del commit y **sin cuerpo**
-(`conversation.updated`, `message.new`, `message.status`). La SSE lite
+estado de envío), el escalado del agente (`announce_waiting`), el webhook de
+estados de Meta (entregado/leído/fallido) y la API en cada acción de la Bandeja
+que cambia lo que se pinta (tomar, devolver, contestar, adjuntar, resolver,
+reabrir, etiquetar) — siempre **después** del commit y **sin cuerpo**
+(`conversation.updated`, `message.new`, `message.status`). Las rutas lite no
+confirman su transacción, la confirma `lite_scope` al cerrarse; por eso dejan el
+aviso en `scope.after_commit`, que solo corre si el commit sale bien (un
+rollback no avisa de nada) y, con FastAPI 0.136, después de enviar la
+respuesta. Lo fija `tests/unit/test_lite_inbox_publish_after_commit.py`: lo
+que un suscriptor lee al oír el aviso es lo ya confirmado. La SSE lite
 (`GET /console/lite/inbox/stream`, latido cada 15 s, sin transacción abierta)
 reenvía solo el canal del cliente de la sesión; la consola vuelve a pedir lo
 que cambió. Si la línea cae, la Bandeja dice «Reconectando…».

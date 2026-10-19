@@ -4,7 +4,7 @@ import { cn } from "@nexus/ui";
 
 import { useLocale } from "@/i18n/client";
 
-import { type DayBarsInput, buildDayBars, showDayLabel } from "./day-bars-model";
+import { type DayBarsInput, buildDayBars, keepDayLabelWhenNarrow, showDayLabel } from "./day-bars-model";
 
 type Props = DayBarsInput & {
   /** How a value reads: a count, or money. */
@@ -35,7 +35,7 @@ export function DayBars({ format, barLabel, ariaLabel, averageLabel, todayLabel,
   const full = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "es-ES", { weekday: "long", day: "numeric", month: dense ? "short" : undefined, timeZone: "UTC" });
   const date = (d: string) => new Date(`${d}T00:00:00Z`);
   return (
-    <div className="flex flex-col gap-2" data-slot={slot ?? "day-bars"}>
+    <div className="@container flex flex-col gap-2" data-slot={slot ?? "day-bars"}>
       <p className="text-right text-xs text-muted-foreground">{averageLabel(format(Math.round(average)))}</p>
       <div className="relative h-40">
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 border-t border-dashed border-muted-foreground/60" style={{ bottom: `${(average / max) * 100}%` }} />
@@ -45,7 +45,9 @@ export function DayBars({ format, barLabel, ariaLabel, averageLabel, todayLabel,
             const align = i < bars.length / 4 ? "left-0" : i > (bars.length * 3) / 4 ? "right-0" : "left-1/2 -translate-x-1/2";
             return (
               <li key={bar.day} className="group relative flex h-full flex-1 flex-col justify-end">
+                {/* `role="img"`: a bare <div> cannot carry an accessible name. */}
                 <div
+                  role="img"
                   tabIndex={0}
                   aria-label={label}
                   className={cn("min-h-1 w-full rounded-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring", bar.today ? "bg-primary" : "bg-primary/30 group-hover:bg-primary/50")}
@@ -65,12 +67,23 @@ export function DayBars({ format, barLabel, ariaLabel, averageLabel, todayLabel,
           })}
         </ul>
       </div>
-      <ul aria-hidden="true" className={cn("flex text-xs text-muted-foreground", dense ? "gap-px" : "gap-2")}>
-        {bars.map((bar, i) => (
-          <li key={bar.day} className={cn("flex-1 overflow-visible text-center whitespace-nowrap", bar.today && "font-medium text-foreground")}>
-            {showDayLabel(i, bars.length) ? (bar.today ? todayLabel : fmt.format(date(bar.day))) : ""}
-          </li>
-        ))}
+      {/* Each column is exactly its bar's width (`min-w-0`): a label is laid
+          over its bar instead of widening the column, the first and the last
+          one held inside the chart, and a narrow chart keeps one of every two.
+          Without this, ten «20 sept» pushed a 360 px phone sideways (T105). */}
+      <ul aria-hidden="true" className={cn("flex h-4 text-xs text-muted-foreground", dense ? "gap-px" : "gap-2")}>
+        {bars.map((bar, i) => {
+          const edge = i === 0 ? "left-0" : i === bars.length - 1 ? "right-0" : "left-1/2 -translate-x-1/2";
+          return (
+            <li key={bar.day} className={cn("relative min-w-0 flex-1", bar.today && "font-medium text-foreground")}>
+              {showDayLabel(i, bars.length) ? (
+                <span className={cn("absolute top-0 whitespace-nowrap", edge, !keepDayLabelWhenNarrow(i, bars.length) && "@max-md:invisible")}>
+                  {bar.today ? todayLabel : fmt.format(date(bar.day))}
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

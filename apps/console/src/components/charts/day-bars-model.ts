@@ -33,3 +33,14 @@ export function showDayLabel(index: number, count: number): boolean {
   const every = Math.ceil(count / 10);
   return index === count - 1 || (count - 1 - index) % every === 0;
 }
+
+/**
+ * Of the printed labels, which survive a narrow chart: one of every two,
+ * counted from today, so today always keeps its label. Ten «20 sept» do not
+ * fit in a 360 px phone (spec 030, T105); a short chart already fits.
+ */
+export function keepDayLabelWhenNarrow(index: number, count: number): boolean {
+  if (count <= 14) return true;
+  const every = Math.ceil(count / 10);
+  return ((count - 1 - index) / every) % 2 === 0;
+}

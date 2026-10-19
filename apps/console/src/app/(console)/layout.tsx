@@ -1,3 +1,6 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 
 import { CompanionLauncher } from "@/components/companion/companion-launcher";
@@ -7,7 +10,8 @@ import { LiteNotificationsBell } from "@/components/shell/lite-notifications-bel
 import { LiteSearch } from "@/components/shell/lite-search";
 import { NotificationsBell } from "@/components/shell/notifications-bell";
 import { getT } from "@/i18n/server";
-import { requirePrincipal } from "@/lib/principal";
+import { clientModuleOfPath } from "@/lib/principal-access";
+import { firstModulePath, requirePrincipal } from "@/lib/principal";
 
 /**
  * The console shell (CP-07). ``requirePrincipal`` is the real gate: an
@@ -16,6 +20,18 @@ import { requirePrincipal } from "@/lib/principal";
  */
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const principal = await requirePrincipal();
+  if (principal.kind === "client") {
+    // Spec 030 (T111): a client person who types a path that is not theirs
+    // goes to its first module HERE, before anything streams — a real 307.
+    // The page guard would send them too, but from under `loading.tsx`, where
+    // the redirect broke Next's Router (React #310) and showed «This page
+    // couldn't load» for a second. The page guards stay the gate.
+    const path = (await headers()).get("x-pathname");
+    const owner = path === null ? null : clientModuleOfPath(path);
+    if (path !== null && (owner === null || !principal.modules.includes(owner))) {
+      redirect(firstModulePath(principal.modules));
+    }
+  }
   const { t } = await getT(principal.locale);
   // Spec 030: the same shell for both kinds of person. A client user gets its
   // client's modules, the «lite» badge and its own bell; no Companion, no
