@@ -40,7 +40,7 @@ export function SpendControls({
   };
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div role="group" aria-label={t("hu.usage.spend.period")} className="inline-flex rounded-md bg-muted p-1">
+      <div role="group" aria-label={t("hu.usage.spend.period")} className="inline-flex max-w-full flex-wrap rounded-md bg-muted p-1">
         {PERIODS.map((d) => (
           <button
             key={d}

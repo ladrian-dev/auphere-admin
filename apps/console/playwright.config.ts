@@ -9,6 +9,11 @@ import { defineConfig, devices } from "@playwright/test";
  * from env (``E2E_EMAIL`` / ``E2E_PASSWORD``); nothing is hard-coded.
  *
  *   pnpm test:e2e
+ *
+ * The client console (spec 030) is its own project, signed in as a person of
+ * a client (``E2E_CLIENT_EMAIL`` / ``E2E_CLIENT_PASSWORD``):
+ *
+ *   pnpm test:e2e --project=lite
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -25,8 +30,16 @@ export default defineConfig({
     { name: "setup", testMatch: /global\.setup\.ts/ },
     {
       name: "desktop",
+      testIgnore: /lite\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/owner.json" },
       dependencies: ["setup"],
+    },
+    { name: "client-setup", testMatch: /client\.setup\.ts/ },
+    {
+      name: "lite",
+      testMatch: /lite\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/client.json" },
+      dependencies: ["client-setup"],
     },
   ],
 });

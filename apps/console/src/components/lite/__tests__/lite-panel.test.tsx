@@ -43,9 +43,16 @@ describe("LitePanelView", () => {
     view();
     expect(screen.getByRole("heading", { name: "Hola, Valeria" })).toBeTruthy();
     expect(screen.getByText("Flor y Encanto")).toBeTruthy();
-    expect(screen.getByLabelText(/16,26/)).toBeTruthy();
+    expect(screen.getByText(/16,26/, { selector: "span" })).toBeTruthy();
     expect(screen.getByText("Esperan a una persona")).toBeTruthy();
     expect(screen.getByText("Últimos 7 días · sin semana anterior para comparar")).toBeTruthy();
+  });
+
+  it("reads the month's spend as text: a paragraph cannot carry a name (axe aria-prohibited-attr, T105)", () => {
+    view();
+    const amount = screen.getByText(/16,26/, { selector: "span" });
+    expect(amount.closest("p")?.hasAttribute("aria-label")).toBe(false);
+    expect(amount.getAttribute("aria-hidden")).toBeNull();
   });
 
   it("has no waiting card and no inbox line without the inbox", () => {

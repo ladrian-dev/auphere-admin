@@ -99,7 +99,10 @@
   --color-fg-subtle: oklch(0.161 0.033 115.3 / 0.5);
   --color-fg-on-dark: var(--color-bone);
 
-  --color-accent-deep: var(--color-primary-deep);
+  /* Forest, not primary-deep: accent-deep is written on accent-soft (the
+     Inbox's initials and tags), and primary-deep there is 4.21:1, under AA.
+     Forest is the nearest shade of the palette that reaches it (5.0:1). */
+  --color-accent-deep: var(--color-forest);
   --color-accent-soft: var(--color-pistachio);
   --color-accent-mid: var(--color-mint);
   --color-accent-bright: var(--color-primary-bright);

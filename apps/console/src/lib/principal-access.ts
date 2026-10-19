@@ -101,3 +101,17 @@ export function firstModulePath(modules: readonly ClientModule[]): string {
   const first = CLIENT_MODULES.find((m) => modules.includes(m)) ?? "panel";
   return first === "panel" ? "/" : first === "inbox" ? "/inbox" : "/usage";
 }
+
+/**
+ * The module a console path belongs to for a client person, or `null` when the
+ * path is not a client's (spec 030, T111). The console layout uses it to send
+ * anything else to the first module before the page streams; the page guards
+ * and the API stay the authority. `page-guards.test.ts` ties it to the pages
+ * that call `requireClientPrincipal`.
+ */
+export function clientModuleOfPath(pathname: string): ClientModule | null {
+  if (pathname === "/") return "panel";
+  if (pathname === "/inbox") return "inbox";
+  if (pathname === "/usage") return "usage";
+  return null;
+}

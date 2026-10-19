@@ -36,7 +36,9 @@ export function LiteSpendCard({
   const total = byAgent ? byAgent.reduce((s, a) => s + a.cents, 0) : 0;
   return (
     <section aria-labelledby="lite-spend-h" className="flex h-full flex-col gap-4 rounded-md bg-card p-4 ring-1 ring-foreground/10" data-slot="lite-spend">
-      <div className="flex items-center justify-between gap-2">
+      {/* Wraps: the link does not shrink, and a longer translation must move it
+          under the title instead of pushing the card off a 360 px phone. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
             <CircleDollarSign className="size-4" />
@@ -51,7 +53,10 @@ export function LiteSpendCard({
           </Button>
         ) : null}
       </div>
-      <p className="text-4xl font-semibold tracking-tight tabular-nums" aria-label={money(spend.total_cents, locale)}>
+      {/* A <p> cannot carry an accessible name: the amount is read from the
+          visually hidden text, and the split, styled parts are hidden. */}
+      <p className="text-4xl font-semibold tracking-tight tabular-nums">
+        <span className="sr-only">{money(spend.total_cents, locale)}</span>
         {parts.map((p, i) => (
           <span key={i} aria-hidden="true" className={cn((p.type === "decimal" || p.type === "fraction" || p.type === "currency") && "text-2xl text-muted-foreground")}>
             {p.value}

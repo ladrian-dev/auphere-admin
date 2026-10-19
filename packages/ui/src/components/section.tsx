@@ -69,7 +69,9 @@ function Section({ title, description, actions, headingLevel = 2, padded = true,
               </p>
             ) : null}
           </div>
-          {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+          {/* `max-w-full`: once the row wraps, the actions are as wide as the
+              section at most, so their own controls wrap instead of overflowing. */}
+          {actions ? <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
       ) : null}
       {children}

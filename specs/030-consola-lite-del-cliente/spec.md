@@ -1,6 +1,6 @@
 # Especificación: la consola lite — el cliente final entra en la misma consola
 
-**Rama**: `030-consola-lite-del-cliente` · **Creada**: 2026-10-08 · **Estado**: Borrador
+**Rama**: `030-consola-lite-del-cliente` · **Creada**: 2026-10-08 · **Estado**: Implementada (111/111 tareas, 2026-10-19). En producción desde el 2026-10-10; hoy corre `28a5b562`. Falta comprobar allí una persona de cliente y la batería de los clientes reales: ver [evidence/T110-produccion.md](evidence/T110-produccion.md)
 
 **Entrada**: diseño «Consola Lite.dc.html» (Claude Design, proyecto
 `e443cbee-f802-4f49-8ec6-422e1d8d97e6`, sincronizado el 2026-10-06) y
