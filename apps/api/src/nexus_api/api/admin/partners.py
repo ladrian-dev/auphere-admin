@@ -548,6 +548,7 @@ async def partner_usage(
         Message,
         MessageDirection,
     )
+    from nexus_api.db.models.usage_record import UsageRecord
     from nexus_api.schemas.partner import PartnerClientUsageOut, PartnerUsageOut
 
     # Reads run in their own transaction block — autobegin would collide
@@ -600,7 +601,7 @@ async def partner_usage(
                         .where(Broadcast.created_at >= since)
                     )
                 ).one()
-                inbound, outbound, cost = (
+                inbound, outbound = (
                     await session.execute(
                         sa.select(
                             sa.func.count(Message.id).filter(
@@ -609,13 +610,22 @@ async def partner_usage(
                             sa.func.count(Message.id).filter(
                                 Message.direction == MessageDirection.OUTBOUND
                             ),
-                            # Spec 033 (R7.2): summed as a decimal, never a float.
-                            sa.func.coalesce(
-                                sa.func.sum(sa.cast(Message.cost_usd, sa.Numeric(20, 8))), 0
-                            ),
                         ).where(Message.created_at >= since)
                     )
                 ).one()
+                # Spec 039: our cost is what the model charged for the turns
+                # that are sold (``usage_records``), not Meta's price on the
+                # message. Summed as a decimal (spec 033 R7.2).
+                cost: Decimal = await session.scalar(
+                    sa.select(
+                        sa.func.coalesce(
+                            sa.func.sum(sa.cast(UsageRecord.cost_usd, sa.Numeric(20, 8))), 0
+                        )
+                    ).where(
+                        UsageRecord.occurred_at >= since,
+                        UsageRecord.source.in_(("channel", "companion")),
+                    )
+                ) or Decimal(0)
         finally:
             _current_tenant.reset(ctx_token)
 

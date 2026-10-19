@@ -26,3 +26,8 @@ export function formatUsd(value: string | number): string {
   const digits = n !== 0 && Math.abs(n) < 1 ? 4 : 2;
   return new Intl.NumberFormat("es", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: digits }).format(n);
 }
+
+/** A percentage, or a dash when there is nothing to divide by. */
+export function formatPct(value: number | null): string {
+  return value === null ? "—" : `${value.toLocaleString("es", { maximumFractionDigits: 1 })} %`;
+}

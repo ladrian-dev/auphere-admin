@@ -19,12 +19,12 @@ import type { UsageOverview } from "@/lib/backend";
 import { formatCents } from "@/lib/format";
 import { filterRows } from "@/lib/list-filter";
 
-import { formatUsd } from "./period";
+import { formatPct, formatUsd } from "./period";
 
 type View = "partners" | "clients";
 
 /**
- * Spec 038: the same money by partner and by client. The highest spend comes
+ * Spec 038/039: the same money — sale, cost, profit — by partner and by client. The highest spend comes
  * first (serial position); each row opens its partner or client.
  */
 export function UsageTables({ data }: { data: UsageOverview }) {
@@ -79,11 +79,12 @@ export function UsageTables({ data }: { data: UsageOverview }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Partner</TableHead>
-                  <TableHead className="text-right">Gasto</TableHead>
-                  <TableHead className="hidden text-right md:table-cell">Fuera de clientes</TableHead>
-                  <TableHead className="hidden text-right lg:table-cell">Coste interno</TableHead>
-                  <TableHead className="hidden text-right sm:table-cell">Mensajes</TableHead>
-                  <TableHead className="text-right">Saldo disponible</TableHead>
+                  <TableHead className="text-right">Venta</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">Coste</TableHead>
+                  <TableHead className="text-right">Ganancia</TableHead>
+                  <TableHead className="hidden text-right lg:table-cell">Margen</TableHead>
+                  <TableHead className="hidden text-right lg:table-cell">Sobre coste</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Saldo disponible</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -100,15 +101,28 @@ export function UsageTables({ data }: { data: UsageOverview }) {
                         </span>
                       </Link>
                     </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">{formatCents(p.spend_cents)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCents(p.spend_cents)}
+                      {p.spend_outside_clients_cents > 0 ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {formatCents(p.spend_outside_clients_cents)} fuera de clientes
+                        </span>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="hidden text-right text-muted-foreground tabular-nums md:table-cell">
-                      {formatCents(p.spend_outside_clients_cents)}
+                      {formatUsd(p.cost_usd)}
                     </TableCell>
-                    <TableCell className="hidden text-right text-muted-foreground tabular-nums lg:table-cell">
-                      {formatUsd(p.internal_cost_usd)}
+                    <TableCell
+                      className={cn(
+                        "text-right font-medium tabular-nums",
+                        Number(p.profit_usd) < 0 && "text-status-danger-text",
+                      )}
+                    >
+                      {formatUsd(p.profit_usd)}
                     </TableCell>
-                    <TableCell className="hidden text-right tabular-nums sm:table-cell">{p.messages}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCents(p.available_cents)}</TableCell>
+                    <TableCell className="hidden text-right tabular-nums lg:table-cell">{formatPct(p.margin_pct)}</TableCell>
+                    <TableCell className="hidden text-right tabular-nums lg:table-cell">{formatPct(p.markup_pct)}</TableCell>
+                    <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatCents(p.available_cents)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -123,10 +137,12 @@ export function UsageTables({ data }: { data: UsageOverview }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
-                <TableHead className="text-right">Gasto</TableHead>
-                <TableHead className="hidden text-right lg:table-cell">Coste interno</TableHead>
+                <TableHead className="text-right">Venta</TableHead>
+                <TableHead className="hidden text-right md:table-cell">Coste</TableHead>
+                <TableHead className="text-right">Ganancia</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Sobre coste</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Pruebas</TableHead>
                 <TableHead className="hidden text-right sm:table-cell">Mensajes</TableHead>
-                <TableHead className="hidden text-right md:table-cell">Conversaciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -141,20 +157,27 @@ export function UsageTables({ data }: { data: UsageOverview }) {
                       <span className="text-xs text-muted-foreground">{c.partner_name ?? "Auphere directo"}</span>
                     </Link>
                   </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
+                  <TableCell className="text-right tabular-nums">
                     {c.partner_id ? formatCents(c.spend_cents) : <span className="text-muted-foreground">Sin saldo</span>}
                   </TableCell>
+                  <TableCell className="hidden text-right text-muted-foreground tabular-nums md:table-cell">
+                    {formatUsd(c.cost_usd)}
+                    {c.unpriced_events > 0 ? (
+                      <span className="block text-xs text-status-warning-text">{c.unpriced_events} sin precio</span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell
+                    className={cn("text-right font-medium tabular-nums", Number(c.profit_usd) < 0 && "text-status-danger-text")}
+                  >
+                    {formatUsd(c.profit_usd)}
+                  </TableCell>
+                  <TableCell className="hidden text-right tabular-nums lg:table-cell">{formatPct(c.markup_pct)}</TableCell>
                   <TableCell className="hidden text-right text-muted-foreground tabular-nums lg:table-cell">
-                    {formatUsd(c.internal_cost_usd)}
+                    {formatUsd(c.tests_cost_usd)}
                   </TableCell>
                   <TableCell className="hidden text-right tabular-nums sm:table-cell">
                     {c.messages_inbound + c.messages_outbound}
-                    <span className="sr-only">
-                      {" "}
-                      ({c.messages_inbound} recibidos, {c.messages_outbound} enviados)
-                    </span>
                   </TableCell>
-                  <TableCell className="hidden text-right tabular-nums md:table-cell">{c.conversations}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

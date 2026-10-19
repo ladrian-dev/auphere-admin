@@ -1,4 +1,4 @@
-"""Spec 038 — the consumption of every partner and every client.
+"""Spec 038/039 — the consumption of every partner and client, and our profit.
 
 Sale price from each partner's book (read under the partner's GUC), model
 cost and messages from each client (read under the client's GUC), and the
@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
+import sqlalchemy as sa
 
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
@@ -90,7 +92,26 @@ async def test_the_whole_platform_in_one_reading(
     )
     await db_session.commit()
     await _message(a["tenant_id"], direction=MessageDirection.INBOUND, cost=None)
+    # Meta's price on the message is not our cost: it must not count.
     await _message(a["tenant_id"], direction=MessageDirection.OUTBOUND, cost=0.12)
+    # What the model cost us: US$1.00 for the client's turns (sold at 2.50),
+    # US$0.10 for an operator's tests (nobody pays them), one unpriced event.
+    for source, cost in (("channel", "1.00"), ("qa", "0.10"), ("channel", None)):
+        await db_session.execute(
+            sa.text(
+                "INSERT INTO usage_records (tenant_id, partner_id, occurred_at, meter, quantity, "
+                "cost_usd, billable_qty, idempotency_key, source) "
+                "VALUES (:t, :p, now(), 'llm.output_tokens', 10, :c, 10, :k, :s)"
+            ),
+            {
+                "t": str(a["tenant_id"]),
+                "p": str(a["partner_id"]),
+                "c": cost,
+                "k": f"k:{uuid.uuid4()}",
+                "s": source,
+            },
+        )
+    await db_session.commit()
 
     res = await client.get("/admin/usage?days=30", headers=admin_headers)
     assert res.status_code == 200, res.text
@@ -107,7 +128,18 @@ async def test_the_whole_platform_in_one_reading(
     assert ca["partner_id"] == str(a["partner_id"])
     assert ca["messages_inbound"] == 1
     assert ca["messages_outbound"] == 1
-    assert ca["internal_cost_usd"] == "0.12"
+    # Sold 2.50, cost 1.00: profit 1.50, margin 60 %, charged 150 % over cost.
+    assert ca["cost_usd"] == "1"
+    assert ca["profit_usd"] == "1.5"
+    assert ca["margin_pct"] == 60.0
+    assert ca["markup_pct"] == 150.0
+    assert ca["tests_cost_usd"] == "0.1"
+    assert ca["unpriced_events"] == 1
+
+    t = body["totals"]
+    assert t["configured_multiplier"] == "2.2"
+    assert t["tests_cost_usd"] != "0"
+    assert Decimal(t["net_profit_usd"]) == Decimal(t["profit_usd"]) - Decimal(t["tests_cost_usd"])
 
     assert body["totals"]["spend_cents"] >= 350
     assert body["totals"]["messages"] >= 2

@@ -1011,8 +1011,18 @@ export type UsageOverview = {
   until: string;
   totals: {
     spend_cents: number;
-    internal_cost_usd: string;
-    margin_usd: string;
+    /** Model cost of what was sold (channel + Companion), US$ decimal string. */
+    cost_usd: string;
+    profit_usd: string;
+    margin_pct: number | null;
+    /** «Cuánto se cobra sobre el coste»: sale ÷ cost − 1, in %. */
+    markup_pct: number | null;
+    effective_multiplier: number | null;
+    configured_multiplier: string;
+    /** Operators' Playground turns: Auphere pays, nobody is charged. */
+    tests_cost_usd: string;
+    net_profit_usd: string;
+    unpriced_events: number;
     messages: number;
     conversations: number;
     active_clients: number;
@@ -1024,7 +1034,11 @@ export type UsageOverview = {
     clients: number;
     spend_cents: number;
     spend_outside_clients_cents: number;
-    internal_cost_usd: string;
+    cost_usd: string;
+    profit_usd: string;
+    margin_pct: number | null;
+    markup_pct: number | null;
+    tests_cost_usd: string;
     messages: number;
     available_cents: number | null;
   }>;
@@ -1035,12 +1049,17 @@ export type UsageOverview = {
     partner_id: string | null;
     partner_name: string | null;
     spend_cents: number;
-    internal_cost_usd: string;
+    cost_usd: string;
+    profit_usd: string;
+    margin_pct: number | null;
+    markup_pct: number | null;
+    tests_cost_usd: string;
+    unpriced_events: number;
     messages_inbound: number;
     messages_outbound: number;
     conversations: number;
   }>;
-  daily: Array<{ day: string; spend_cents: number; internal_cost_usd: string; messages: number }>;
+  daily: Array<{ day: string; spend_cents: number; cost_usd: string; profit_usd: string; messages: number }>;
   unreadable: { partners: string[]; clients: string[] };
 };
 
