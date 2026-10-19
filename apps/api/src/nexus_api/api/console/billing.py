@@ -24,7 +24,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from stripe import StripeError
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.billing.catalog import base_paid_pool, consumption_multiple, load_public_tiers
@@ -37,7 +36,11 @@ from nexus_api.billing.checkout import (
     upgrade_subscription,
 )
 from nexus_api.billing.pricing import credits_to_cents
-from nexus_api.billing.provider import idempotency_key  # noqa: F401 - re-exported for tests
+from nexus_api.billing.provider import (
+    ProviderRefusal,
+    as_refusal,
+    idempotency_key,  # noqa: F401 - re-exported for tests
+)
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.db.models import AuditLog, Invoice, InvoiceLine, Tenant
@@ -236,27 +239,33 @@ def _tier_out(tier: MembershipTier, base_pool: int) -> TierOut:
 log = structlog.get_logger(__name__)
 
 
-def _provider_error(exc: StripeError) -> HTTPException:
+def _provider_error(refusal: ProviderRefusal) -> HTTPException:
     """502 with Stripe's own reason. Without it a refused call was a bare 500
     («No se pudo hablar con el servidor») and nobody could tell why: the
     code and message go to the log and to the screen."""
-    provider_code = exc.code or type(exc).__name__
-    message = (exc.user_message or str(exc) or provider_code)[:300]
     log.warning(
         "billing.provider_error",
-        provider_code=provider_code,
-        message=message,
-        http_status=exc.http_status,
-        request_id=exc.request_id,
+        provider_code=refusal.code,
+        message=refusal.message,
+        http_status=refusal.http_status,
+        request_id=refusal.request_id,
     )
     return HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail={
             "code": "billing_provider_error",
-            "provider_code": provider_code,
-            "message": message,
+            "provider_code": refusal.code,
+            "message": refusal.message,
         },
     )
+
+
+def _refused(exc: Exception) -> HTTPException:
+    """The 502 for a provider refusal; anything else is not ours to name."""
+    refusal = as_refusal(exc)
+    if refusal is None:
+        raise exc
+    return _provider_error(refusal)
 
 
 def _unavailable() -> HTTPException:
@@ -526,8 +535,8 @@ async def buy_credit(
         )
     except BillingUnavailable as exc:
         raise _unavailable() from exc
-    except StripeError as exc:
-        raise _provider_error(exc) from exc
+    except Exception as exc:
+        raise _refused(exc) from exc
 
     session.add(
         AuditLog(
@@ -634,8 +643,8 @@ async def start_card(
             url = await open_card_setup(session, principal.partner)
     except BillingUnavailable as exc:
         raise _unavailable() from exc
-    except StripeError as exc:
-        raise _provider_error(exc) from exc
+    except Exception as exc:
+        raise _refused(exc) from exc
     return CheckoutOut(url=url)
 
 
@@ -649,8 +658,8 @@ async def delete_card(
             await remove_card(session, partner_id=principal.partner.id, actor=principal.actor)
     except BillingUnavailable as exc:
         raise _unavailable() from exc
-    except StripeError as exc:
-        raise _provider_error(exc) from exc
+    except Exception as exc:
+        raise _refused(exc) from exc
 
 
 @router.put("/charging", response_model=BillingView)
