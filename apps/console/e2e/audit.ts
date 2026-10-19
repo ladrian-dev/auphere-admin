@@ -26,11 +26,13 @@ export async function overflowOffenders(page: Page): Promise<string[]> {
   });
 }
 
-export async function auditView(page: Page, path: string) {
+/** `onLoaded` runs once the view is up and before anything is audited or mutated. */
+export async function auditView(page: Page, path: string, onLoaded?: () => Promise<void>) {
   const res = await page.goto(path);
   expect(res?.status(), `${path} responded ${res?.status()}`).toBeLessThan(400);
   await page.waitForLoadState("networkidle").catch(() => undefined);
   await expect(page.locator("main#main")).toBeVisible();
+  await onLoaded?.();
 
   const axe = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])

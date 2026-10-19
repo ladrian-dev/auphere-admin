@@ -7,37 +7,32 @@ import { auditView } from "./audit";
  * REAL app — same rules as CP-30 (`a11y.spec.ts`) plus the frontier.
  *
  * Needs a client person with Panel, Inbox and Consumo, invited from the
- * admin's «Acceso» tab (or `apps/api/scripts/dev_seed_client_access.py`):
+ * admin's «Acceso» tab (or `apps/api/scripts/dev_seed_client_access.py`).
+ * It runs as its own project, signed in once by `client.setup.ts`:
  *
- *   E2E_CLIENT_EMAIL=… E2E_CLIENT_PASSWORD=… pnpm test:e2e lite
+ *   E2E_CLIENT_EMAIL=… E2E_CLIENT_PASSWORD=… pnpm test:e2e --project=lite
  *
  * It never sends a message: in an environment with real contacts a send
  * would write to a real person. It opens, reads and checks what is offered.
  */
 
 const LITE_VIEWS = ["/", "/inbox", "/usage"] as const;
+/** The console speaks these two; the cookie is the explicit choice and wins. */
+const LOCALES = ["es", "en"] as const;
+/** The theme follows the system by default (`ThemeProvider`, `defaultTheme="system"`). */
+const SCHEMES = ["light", "dark"] as const;
 /** Partner screens a client person must never get (each one lands on its Panel). */
-const PARTNER_ONLY = ["/clients", "/audit", "/team", "/keys", "/billing", "/notifications"] as const;
+const PARTNER_ONLY = ["/clients", "/audit", "/team", "/keys", "/billing", "/notifications", "/usage/alerts", "/workstation"] as const;
 
-test.use({ storageState: { cookies: [], origins: [] } });
-
-async function signInAsClient(page: Page) {
-  const email = process.env.E2E_CLIENT_EMAIL;
-  const password = process.env.E2E_CLIENT_PASSWORD;
-  if (!email || !password) throw new Error("set E2E_CLIENT_EMAIL and E2E_CLIENT_PASSWORD (a client person, spec 030)");
-  await page.goto("/login");
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("textbox", { name: /correo|e-mail|email/i }).fill(email);
-  await page.locator('input[type="password"]').fill(password);
-  await page.getByRole("button", { name: /entrar|sign in|iniciar/i }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 90_000 });
-  await expect(page.locator("main#main")).toBeVisible();
+async function inLocaleAndScheme(page: Page, baseURL: string | undefined, locale: string, scheme: "light" | "dark") {
+  if (!baseURL) throw new Error("baseURL is not set");
+  await page.context().addCookies([{ name: "nexus-console.locale", value: locale, url: baseURL }]);
+  await page.emulateMedia({ colorScheme: scheme });
 }
 
 test.describe("spec 030 — la consola del cliente", () => {
-  test.beforeEach(async ({ page }) => signInAsClient(page));
-
   test("the sidebar is the client's: lite, its modules, nothing of the partner", async ({ page }) => {
+    await page.goto("/");
     const nav = page.getByRole("navigation").or(page.locator('[aria-label="Primary"]')).first();
     await expect(page.getByText("lite", { exact: true })).toBeVisible();
     for (const label of [/Panel/, /Bandeja de entrada/, /Consumo/]) {
@@ -48,25 +43,45 @@ test.describe("spec 030 — la consola del cliente", () => {
 
   for (const path of PARTNER_ONLY) {
     test(`a partner screen is not the client's: ${path}`, async ({ page }) => {
+      // «Vuelve a su primer módulo, sin una pantalla que explique lo que no
+      // tiene» (US2, scenario 3): no error on the way, not even for a moment.
+      // Before T111 the guard's redirect was thrown under `loading.tsx` and
+      // Next's Router broke (React #310): a second of «This page couldn't load».
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(path);
-      await page.waitForLoadState("networkidle").catch(() => undefined);
-      expect(new URL(page.url()).pathname).not.toBe(path);
+      await page.waitForURL((url) => url.pathname !== path, { timeout: 30_000 });
+      expect(["/", "/inbox", "/usage"]).toContain(new URL(page.url()).pathname);
+      await expect(page.locator("main#main")).toBeVisible();
+      expect(errors, `${path}: errors while moving the client to its module`).toEqual([]);
     });
   }
 
-  for (const path of LITE_VIEWS) {
-    test(`axe + overflow on ${path}`, async ({ page }) => auditView(page, path));
+  for (const locale of LOCALES) {
+    for (const scheme of SCHEMES) {
+      for (const path of LITE_VIEWS) {
+        test(`axe + overflow on ${path} · ${locale} · ${scheme}`, async ({ page, baseURL }) => {
+          await inLocaleAndScheme(page, baseURL, locale, scheme);
+          await auditView(page, path, async () => {
+            // Prove the matrix is real before auditing it: a cookie the app
+            // ignored, or a theme that never left light, would pass silently.
+            await expect(page.locator("html")).toHaveAttribute("lang", locale);
+            await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
+          });
+        });
+      }
+    }
   }
 
   test("the Inbox opens a conversation and offers only what is possible", async ({ page }) => {
     await page.goto("/inbox");
     const list = page.getByRole("region", { name: "Conversaciones" });
     const rows = list.getByRole("listitem").getByRole("button");
-    if ((await rows.count()) === 0) {
-      // An inbox without conversations must say so — never an empty frame.
-      await expect(page.getByText(/Aún no hay conversaciones|No hay conversaciones con estos filtros/)).toBeVisible();
-      return;
-    }
+    // The list loads in the browser: wait for rows or for the empty state
+    // (an inbox without conversations must say so — never an empty frame).
+    const empty = page.getByText(/Aún no hay conversaciones|No hay conversaciones con estos filtros/);
+    await expect(rows.first().or(empty)).toBeVisible();
+    if (await empty.isVisible()) return;
     await rows.first().click();
     await expect(page).toHaveURL(/\/inbox\?c=/);
     await expect(page.getByRole("log", { name: "Mensajes" })).toBeVisible();
@@ -78,7 +93,9 @@ test.describe("spec 030 — la consola del cliente", () => {
     ];
     let visible = 0;
     for (const o of offers) if (await o.first().isVisible()) visible += 1;
-    expect(visible).toBeGreaterThan(0);
+    expect(visible).toBe(1);
+    // The open thread is a view of its own: the same audit as the list.
+    await auditView(page, new URL(page.url()).pathname + new URL(page.url()).search);
   });
 
   test("⌘K from the Panel searches the Inbox", async ({ page }) => {

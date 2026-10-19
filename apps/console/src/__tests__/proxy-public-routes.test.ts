@@ -77,3 +77,26 @@ describe("la cabecera de seguridad viaja también en la redirección", () => {
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
   });
 });
+
+/**
+ * Spec 030 (T111): the console layout needs the path to send a client person
+ * to its first module before the page streams; a layout does not get it from
+ * Next. The proxy forwards it — and overwrites whatever the browser sent, so
+ * the header is never the caller's word (it only ever adds a redirect: the
+ * page guards and the API stay the authority).
+ */
+describe("the path the console layout reads", () => {
+  function signedInGet(path: string, headers: Record<string, string> = {}) {
+    const req = new NextRequest(new URL(`https://console.staging.auphere.com${path}`), { headers });
+    req.cookies.set("nexus-console.session", "a-session");
+    return proxy(req);
+  }
+
+  it("is forwarded as x-pathname, without the query", () => {
+    expect(signedInGet("/team?x=1").headers.get("x-middleware-request-x-pathname")).toBe("/team");
+  });
+
+  it("overwrites an x-pathname sent by the browser", () => {
+    expect(signedInGet("/audit", { "x-pathname": "/" }).headers.get("x-middleware-request-x-pathname")).toBe("/audit");
+  });
+});

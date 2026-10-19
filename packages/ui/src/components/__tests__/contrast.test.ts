@@ -80,6 +80,10 @@ const PARES: Par[] = [
   { fg: "--color-primary-text", bg: "--card", min: TEXTO, nota: "primario como texto sobre tarjeta" },
   // El token de marca que leen las gráficas para los ejes, en los dos temas.
   { fg: "--color-fg-muted", bg: "--card", min: TEXTO, nota: "tinta apagada de marca sobre tarjeta" },
+  // Spec 030 (T105): las iniciales, la etiqueta de agente y las de la ficha en
+  // la Bandeja escriben `accent-deep` sobre `accent-soft`. Con el verde
+  // profundo daba 4,21:1 y axe lo cazó en cuanto la Bandeja tuvo filas.
+  { fg: "--color-accent-deep", bg: "--color-accent-soft", min: TEXTO, nota: "acento escrito sobre acento suave" },
   // Bloque C: cada tono de estado **escrito** llega a AA sobre el fondo y
   // sobre la tarjeta, en los dos temas. Sin esto, «sin cupo» en aviso o un
   // «pendiente» en info se pintaban con el sólido, a 2,97:1.

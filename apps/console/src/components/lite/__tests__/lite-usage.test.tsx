@@ -67,6 +67,14 @@ describe("LiteUsageView", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 
+  it("names each day of the spend chart as an image: a bare div cannot carry a name (axe aria-prohibited-attr, T105)", () => {
+    view();
+    const bars = screen.getAllByRole("img", { name: /: / });
+    expect(bars).toHaveLength(spend.days.length);
+    expect(bars[0]?.getAttribute("aria-label")).toMatch(/2,40/);
+    for (const bar of bars) expect(bar.tabIndex).toBe(0);
+  });
+
   it("does not project an empty month", () => {
     view({ summary: summary({ month: { spent_cents: 0, projection_cents: null, conversations: 0, avg_per_conversation_cents: null } }) });
     expect(screen.getByText("Sin gasto este mes")).toBeTruthy();

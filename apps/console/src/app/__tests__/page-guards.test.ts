@@ -3,6 +3,8 @@ import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { clientModuleOfPath } from "@/lib/principal-access";
+
 /**
  * Spec 030 (R2.2, R2.4, R3.4): ninguna página de la consola queda sin dueño.
  *
@@ -24,6 +26,16 @@ function pages(dir: string): string[] {
   });
 }
 
+/** The URL a `page.tsx` answers: route groups out, a dynamic segment as a sample value. */
+function routeOf(file: string): string {
+  const segments = relative(CONSOLE, file)
+    .split("/")
+    .slice(0, -1)
+    .filter((s) => !(s.startsWith("(") && s.endsWith(")")))
+    .map((s) => (s.startsWith("[") ? "x" : s));
+  return `/${segments.join("/")}`;
+}
+
 describe("guardas de página", () => {
   const all = pages(CONSOLE);
 
@@ -40,5 +52,28 @@ describe("guardas de página", () => {
       return !/require(Partner|Client)Principal\(/.test(src);
     });
     expect(unguarded.map((f) => relative(CONSOLE, f))).toEqual([]);
+  });
+
+  // T111: the layout sends a client person who types someone else's path to
+  // its first module before the page streams (a guard's redirect under the
+  // group's loading.tsx broke Next's Router, React #310, and showed «This page
+  // couldn't load»). That rule must name exactly the pages that are a client's.
+  it("the layout's map of client paths is exactly the pages that call requireClientPrincipal", () => {
+    const mismatched = all.flatMap((file) => {
+      const declared = readFileSync(file, "utf8").match(/requireClientPrincipal\("(\w+)"/)?.[1] ?? null;
+      const route = routeOf(file);
+      const mapped = clientModuleOfPath(route);
+      return mapped === declared ? [] : [`${route}: page says ${declared}, layout says ${mapped}`];
+    });
+    expect(mismatched).toEqual([]);
+  });
+
+  it("only a module's own path counts, not a longer one that starts the same", () => {
+    expect(clientModuleOfPath("/")).toBe("panel");
+    expect(clientModuleOfPath("/inbox")).toBe("inbox");
+    expect(clientModuleOfPath("/usage")).toBe("usage");
+    expect(clientModuleOfPath("/usage/alerts")).toBeNull();
+    expect(clientModuleOfPath("/inboxes")).toBeNull();
+    expect(clientModuleOfPath("/clients/x/usage")).toBeNull();
   });
 });

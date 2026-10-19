@@ -82,6 +82,11 @@ export function proxy(request: NextRequest) {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  // Spec 030 (T111): the console layout sends a client person who types a path
+  // that is not theirs to its first module before the page streams, and a
+  // layout does not get the path from Next. `set` overwrites whatever the
+  // browser sent: it can only ever add a redirect, never open a page.
+  requestHeaders.set("x-pathname", pathname);
 
   if (!PUBLIC.some((p) => pathname.startsWith(p))) {
     // Name duplicated from ``lib/session.ts`` on purpose: that module
