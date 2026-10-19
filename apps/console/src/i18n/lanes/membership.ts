@@ -137,6 +137,11 @@ export const membershipMessages = {
   "card.error.no_credit_line": { es: "El pospago necesita una línea de crédito de Auphere.", en: "Postpaid needs a credit line from Auphere." },
   "card.error.amount_too_small": { es: "La recarga mínima es de US$5.", en: "The minimum top-up is US$5." },
   "card.error.threshold_required": { es: "Indica el mínimo de saldo.", en: "Enter the minimum balance." },
+  "card.error.provider": { es: "Stripe no aceptó la petición: {reason}", en: "Stripe did not accept the request: {reason}" },
+  "card.error.unavailable": {
+    es: "El cobro con tarjeta no está disponible ahora. Prueba de nuevo en un rato.",
+    en: "Card charging is not available right now. Try again in a while.",
+  },
   "membership.credit.amount": { es: "Importe en dólares", en: "Amount in dollars" },
   "membership.credit.buy": { es: "Comprar", en: "Buy" },
   // Se dice qué compra ese dinero ANTES de pagarlo: «50 $» no significa nada

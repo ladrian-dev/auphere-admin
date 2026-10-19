@@ -44,7 +44,19 @@ export function CardSection({ view, canManage, justSaved }: { view: BillingCardV
   const money = (cents: number) => formatCurrency(cents / 100, "USD", locale);
   const hasLine = view.credit_limit_cents > 0;
 
-  function errorText(res: { ok: false; status: number; message: string; code?: string | null }) {
+  function errorText(res: {
+    ok: false;
+    status: number;
+    message: string;
+    code?: string | null;
+    info?: Record<string, unknown>;
+  }) {
+    // Stripe's own reason, so a refused call is not a bare «could not reach the server».
+    if (res.code === "billing_provider_error") {
+      const reason = String(res.info?.message ?? res.info?.provider_code ?? "");
+      return t("card.error.provider", { reason });
+    }
+    if (res.code === "billing_unavailable") return t("card.error.unavailable");
     const key = `card.error.${res.code ?? ""}`;
     const known = ["card_required", "no_credit_line", "amount_too_small", "threshold_required"];
     return known.includes(res.code ?? "") ? t(key as "card.error.card_required") : actionErrorText(res, t);

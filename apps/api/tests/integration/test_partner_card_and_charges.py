@@ -535,3 +535,35 @@ async def test_a_failed_postpaid_charge_freezes_the_line_until_paid(
     assert again.spent == 10 * CREDITS_PER_CENT
     rec = await reconcile_purchased(pid)
     assert rec is not None and rec.balanced
+
+
+async def test_a_stripe_refusal_reaches_the_screen_with_its_reason(
+    client, console_world, monkeypatch
+) -> None:
+    """In staging «Añadir tarjeta» answered a bare 500 and nobody could tell
+    why. A refused call is a 502 that names Stripe's code and message."""
+    import stripe
+
+    a = console_world["a"]
+
+    class _Refusing(_FakeStripe):
+        def __init__(self) -> None:
+            super().__init__()
+
+            def refuse(*_a: Any, **_k: Any) -> Any:
+                raise stripe.InvalidRequestError(
+                    "No such price", param="currency", code="parameter_invalid_empty"
+                )
+
+            self.customers.create = refuse
+
+    monkeypatch.setattr(pb, "get_client", lambda: _Refusing())
+    res = await client.post("/console/billing/card", headers=a["headers"]())
+    assert res.status_code == 502, res.text
+    detail = res.json()["detail"]
+    assert detail["code"] == "billing_provider_error"
+    assert detail["provider_code"] == "parameter_invalid_empty"
+    assert detail["message"] == "No such price"
+    # Nothing was half-saved: no customer id without a card page.
+    view = await client.get("/console/billing/card", headers=a["headers"]())
+    assert view.json()["card"] is None

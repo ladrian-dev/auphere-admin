@@ -19,10 +19,12 @@ from datetime import UTC, datetime
 from html import escape
 
 import sqlalchemy as sa
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from stripe import StripeError
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.billing.catalog import base_paid_pool, consumption_multiple, load_public_tiers
@@ -228,6 +230,32 @@ def _tier_out(tier: MembershipTier, base_pool: int) -> TierOut:
         consumption_multiple=consumption_multiple(
             pool=tier.weekly_pool_tokens, base_pool=base_pool
         ),
+    )
+
+
+log = structlog.get_logger(__name__)
+
+
+def _provider_error(exc: StripeError) -> HTTPException:
+    """502 with Stripe's own reason. Without it a refused call was a bare 500
+    («No se pudo hablar con el servidor») and nobody could tell why: the
+    code and message go to the log and to the screen."""
+    provider_code = exc.code or type(exc).__name__
+    message = (exc.user_message or str(exc) or provider_code)[:300]
+    log.warning(
+        "billing.provider_error",
+        provider_code=provider_code,
+        message=message,
+        http_status=exc.http_status,
+        request_id=exc.request_id,
+    )
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail={
+            "code": "billing_provider_error",
+            "provider_code": provider_code,
+            "message": message,
+        },
     )
 
 
@@ -498,6 +526,8 @@ async def buy_credit(
         )
     except BillingUnavailable as exc:
         raise _unavailable() from exc
+    except StripeError as exc:
+        raise _provider_error(exc) from exc
 
     session.add(
         AuditLog(
@@ -604,6 +634,8 @@ async def start_card(
             url = await open_card_setup(session, principal.partner)
     except BillingUnavailable as exc:
         raise _unavailable() from exc
+    except StripeError as exc:
+        raise _provider_error(exc) from exc
     return CheckoutOut(url=url)
 
 
@@ -617,6 +649,8 @@ async def delete_card(
             await remove_card(session, partner_id=principal.partner.id, actor=principal.actor)
     except BillingUnavailable as exc:
         raise _unavailable() from exc
+    except StripeError as exc:
+        raise _provider_error(exc) from exc
 
 
 @router.put("/charging", response_model=BillingView)
