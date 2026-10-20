@@ -1,0 +1,25 @@
+# Spec 031 · R3.1–R3.5, CE-011 — las pestañas son los módulos del cliente, en
+# el orden de la consola. Requiere una sesión ya abierta (sign-in.yaml).
+# Entre el paso 1 y el 2, Auphere quita la Bandeja desde el admin
+# (Acceso → módulos) y la app vuelve al primer plano.
+appId: ${APP_ID || "com.auphere.customers.dev"}
+---
+- launchApp
+# Lo primero que pinte: el lanzador de un build de desarrollo, o la app.
+- extendedWaitUntil:
+    visible: "Development Build|Tu negocio, en el bolsillo|Your business, in your pocket|Hola, .*|Hi, .*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Development Build"
+    file: _dev-server.yaml
+- assertVisible: "Inicio"
+- assertVisible: "Bandeja"
+- assertVisible: "Consumo"
+- tapOn: "Bandeja"
+- assertVisible: "Bandeja de entrada"
+# Paso 2: la Bandeja ya no está en /me.nav.
+- pressKey: Home
+- launchApp
+- assertNotVisible: "Bandeja"
+- assertVisible: "Inicio"

@@ -113,3 +113,8 @@ apps/desktop/playwright-report/
 
 # impeccable (design critiques, local)
 .impeccable/
+
+# Auphere Customers (spec 031): generated native projects and Expo state
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.expo/

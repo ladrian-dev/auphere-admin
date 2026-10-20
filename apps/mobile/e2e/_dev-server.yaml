@@ -1,0 +1,16 @@
+# Solo en un build de desarrollo: tras `clearState` el cliente de Expo abre su
+# lanzador y no sabe qué servidor cargar. Abre el Metro local y cierra la hoja
+# de bienvenida del menú de desarrollo, que sale la primera vez.
+appId: ${APP_ID || "com.auphere.customers.dev"}
+---
+- openLink: "exp+auphere-customers://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
+- extendedWaitUntil:
+    visible: "Continue|Tu negocio, en el bolsillo|Your business, in your pocket"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+      # «Continue» deja el menú de desarrollo abierto: se cierra con atrás.
+      - pressKey: back

@@ -1,0 +1,5 @@
+{
+  "CFBundleDisplayName": "Customers",
+  "NSCameraUsageDescription": "To send a photo to a customer from the Inbox.",
+  "NSPhotoLibraryUsageDescription": "To send an image from your library to a customer from the Inbox."
+}
