@@ -11,11 +11,12 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 
 export const metadata: Metadata = {
   title: {
-    default: "Nexus · Auphere",
-    template: "%s · Nexus",
+    // The product is Auphere; «Nexus» is the codebase's name, not the team's.
+    default: "Admin · Auphere",
+    template: "%s · Admin Auphere",
   },
   description: "Panel interno de operaciones de la agent factory de Auphere.",
-  applicationName: "Nexus",
+  applicationName: "Auphere Admin",
   robots: { index: false, follow: false },
   manifest: "/site.webmanifest",
   icons: {

@@ -96,7 +96,7 @@ def open_credit_session(
                 "price_data": {
                     "currency": "usd",
                     "unit_amount": amount_cents,
-                    "product_data": {"name": "Crédito de consumo Nexus"},
+                    "product_data": {"name": "Saldo de consumo Auphere"},
                 },
                 "quantity": 1,
             }

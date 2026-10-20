@@ -1,6 +1,6 @@
 {
-  "name": "Nexus · Auphere",
-  "short_name": "Nexus",
+  "name": "Admin · Auphere",
+  "short_name": "Auphere Admin",
   "description": "Panel interno de operaciones de la agent factory de Auphere.",
   "icons": [
     {
