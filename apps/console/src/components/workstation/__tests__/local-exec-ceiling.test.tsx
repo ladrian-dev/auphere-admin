@@ -1,5 +1,5 @@
 /**
- * Requisito 10.1 — el techo del partner, en la página de Equipo.
+ * Requisito 10.1 — el techo del partner, en la página del Teammate.
  *
  * Tres cosas que la pantalla no puede fallar:
  *
@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Misma convención que el resto de la consola: el componente es de cliente y
 // las server actions arrastran `server-only`, que no existe en jsdom.
 const setCeiling = vi.fn();
-vi.mock("@/app/(console)/team/actions", () => ({
+vi.mock("@/app/(console)/workstation/actions", () => ({
   setLocalExecCeilingAction: (input: { ceiling: string }) => setCeiling(input),
 }));
 

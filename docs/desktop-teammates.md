@@ -103,7 +103,7 @@ persona, con su nivel (`critico · aviso · informativo`). El nivel lo decide
 | Capa | Dónde se decide | Qué puede hacer |
 |---|---|---|
 | Lista blanca de ejecutables | consola, por cliente (spec 001) | **la única que permite** |
-| Techo del partner | página de equipo de la consola | solo restringir |
+| Techo del partner | página Teammate de la consola (`/workstation`) | solo restringir |
 | Preferencia de la persona | Cuenta y panel de entorno de la app | solo restringir |
 
 `most_restrictive` vive junto al vocabulario (`db/models/local_workstation.py`)
@@ -206,8 +206,8 @@ y los medidores, extraídos del cajón de la consola: sin `next/*`, con un
 sola implementación de la pantalla que las dos enseñan.
 
 Lo que **no** se comparte es lo que solo tiene sentido en un sitio: el roster,
-Pendientes, Cuenta y el panel de entorno son de la aplicación; la página de
-equipo con el techo de ejecución es de la consola.
+Pendientes, Cuenta y el panel de entorno son de la aplicación; la página
+Teammate con el techo de ejecución es de la consola.
 
 ## Qué sabe un teammate de sí mismo (spec 015)
 
