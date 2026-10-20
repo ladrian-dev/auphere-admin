@@ -22,7 +22,7 @@ import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
@@ -43,7 +43,7 @@ from nexus_api.billing.provider import (
 )
 from nexus_api.config import get_settings
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
-from nexus_api.db.models import AuditLog, Invoice, InvoiceLine, Tenant
+from nexus_api.db.models import AuditLog, Invoice, InvoiceLine, Partner, Tenant
 from nexus_api.db.models.membership import (
     STATE_CANCELED,
     STATE_CURRENT,
@@ -138,6 +138,49 @@ async def get_billing(
         receipts=receipts,
         memberships_enabled=memberships_enabled(),
     )
+
+
+class _BillingEmailIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: ``None`` clears it: notices go back to the contact e-mail.
+    billing_email: EmailStr | None
+
+
+class BillingEmailOut(BaseModel):
+    billing_email: str | None
+
+
+@router.put("/email", response_model=BillingEmailOut)
+async def put_billing_email(
+    body: _BillingEmailIn,
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:manage")),
+    session: AsyncSession = Depends(get_db_session),
+) -> BillingEmailOut:
+    """The partner sets where billing notices go (owner, 2026-10-20).
+
+    Until now only Auphere could set it from the Admin, and the console said
+    «escríbenos». The 3D Secure notice («Confirma el cobro de tu tarjeta») goes
+    here: a partner who cannot set it may never confirm a charge.
+    """
+    new = str(body.billing_email).strip().lower() if body.billing_email else None
+    async with session.begin():
+        partner = await session.get(Partner, principal.partner.id, with_for_update=True)
+        if partner is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_partner")
+        before = partner.billing_email
+        if before != new:
+            partner.billing_email = new
+            session.add(
+                AuditLog(
+                    tenant_id=None,
+                    actor=principal.actor,
+                    action="console.billing.email_update",
+                    target=f"partner:{partner.id}",
+                    before_json={"billing_email": before},
+                    after_json={"billing_email": new},
+                )
+            )
+    return BillingEmailOut(billing_email=new)
 
 
 def _not_found() -> HTTPException:

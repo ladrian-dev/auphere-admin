@@ -46,6 +46,7 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
   - La línea concedida queda en `granted_credit_limit` y vuelve al pagarse.
   - Se reintenta como mucho una vez al día (clave `postpaid:{partner}:{mes}:{día}`).
   - El Panel del Admin lo avisa como «línea de pospago congelada».
+- **Correo de facturación.** Lo edita el propio partner en Facturación (permiso `billing:manage`, auditado como `console.billing.email_update`) o Auphere desde el Admin. Vacío, los avisos van al correo de contacto. Ahí llega el aviso de 3D Secure.
 - **Sin claves de Stripe** no se cobra ni se registra nada.
 - **Cron.** `partner-charges-cron` en el worker: recargas cada 5 minutos, pospago el día 1 y reintento diario si la línea está congelada.
 - **Webhook.** Usa los eventos que ya estaban suscritos: `checkout.session.completed`, `invoice.paid` e `invoice.payment_failed`. Las facturas de estos cobros se procesan aunque las membresías estén apagadas.

@@ -529,7 +529,17 @@ const core = {
   "billing.period": { es: "Periodo", en: "Period" },
   "billing.total": { es: "Total", en: "Total" },
   "billing.due": { es: "Vencimiento", en: "Due" },
-  "billing.notSet": { es: "No configurado — escríbenos para actualizarlo.", en: "Not set — contact us to update it." },
+  "billing.notSet": { es: "No configurado.", en: "Not set." },
+  "billing.email.fallback": { es: "No configurado. Los avisos van a {email}.", en: "Not set. Notices go to {email}." },
+  "billing.email.add": { es: "Añadir", en: "Add" },
+  "billing.email.change": { es: "Cambiar", en: "Change" },
+  "billing.email.cancel": { es: "Cancelar", en: "Cancel" },
+  "billing.email.help": {
+    es: "Aquí llegan los recibos y los avisos de cobro, como la confirmación de un pago con tarjeta. Déjalo vacío para usar el correo de contacto.",
+    en: "Receipts and charge notices go here, such as confirming a card payment. Leave it empty to use the contact e-mail.",
+  },
+  "billing.email.saved": { es: "Correo de facturación guardado.", en: "Billing e-mail saved." },
+  "billing.email.invalid": { es: "Escribe un correo válido.", en: "Enter a valid e-mail." },
 } as const;
 
 /** Lane message modules (``i18n/lanes/<lane>.ts``) — each lane owns its file. */
