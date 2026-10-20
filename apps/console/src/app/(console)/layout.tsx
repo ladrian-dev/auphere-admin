@@ -10,7 +10,7 @@ import { LiteNotificationsBell } from "@/components/shell/lite-notifications-bel
 import { LiteSearch } from "@/components/shell/lite-search";
 import { NotificationsBell } from "@/components/shell/notifications-bell";
 import { getT } from "@/i18n/server";
-import { clientModuleOfPath } from "@/lib/principal-access";
+import { clientModuleOfPath, isClientAccountPath } from "@/lib/principal-access";
 import { firstModulePath, requirePrincipal } from "@/lib/principal";
 
 /**
@@ -27,8 +27,9 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
     // the redirect broke Next's Router (React #310) and showed «This page
     // couldn't load» for a second. The page guards stay the gate.
     const path = (await headers()).get("x-pathname");
+    // Spec 031: the person's own account pages are theirs whatever the modules.
     const owner = path === null ? null : clientModuleOfPath(path);
-    if (path !== null && (owner === null || !principal.modules.includes(owner))) {
+    if (path !== null && !isClientAccountPath(path) && (owner === null || !principal.modules.includes(owner))) {
       redirect(firstModulePath(principal.modules));
     }
   }

@@ -30,8 +30,10 @@ describe("nav", () => {
 describe("navForPrincipal — consola lite", () => {
   const hrefs = (groups: ReturnType<typeof navForPrincipal>) => groups.flatMap((g) => g.items.map((i) => i.href));
 
-  it("lists the client's modules in sidebar order", () => {
-    expect(hrefs(navForPrincipal({ kind: "client", modules: ["usage", "inbox", "panel"] }))).toEqual([
+  // Spec 031 (R3.2): the order comes from the API (`ordered_modules()`), which
+  // sends Panel, Bandeja, Consumo; the bar paints it as it comes.
+  it("lists the client's modules in the order the API sent", () => {
+    expect(hrefs(navForPrincipal({ kind: "client", modules: ["panel", "inbox", "usage"] }))).toEqual([
       "/",
       "/inbox",
       "/usage",

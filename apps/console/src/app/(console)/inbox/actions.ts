@@ -100,12 +100,17 @@ export async function giveBackAction(raw: unknown): Promise<ActionResult<InboxDe
   return run(() => backendFor(principal).inboxGiveBack(p.id, p.version));
 }
 
-const sendSchema = z.object({ id, text: z.string().max(4096).refine((v) => v.trim().length > 0) });
+const sendSchema = z.object({
+  id,
+  text: z.string().max(4096).refine((v) => v.trim().length > 0),
+  // Spec 031 (R6.4): optional; the composer reuses it on a retry of the same text.
+  idempotencyKey: z.string().uuid().optional(),
+});
 export async function sendMessageAction(raw: unknown): Promise<ActionResult<InboxSent>> {
   const p = sendSchema.parse(raw);
   const principal = await inboxPrincipal();
   if (!principal) return forbidden;
-  return run(() => backendFor(principal).inboxSend(p.id, p.text));
+  return run(() => backendFor(principal).inboxSend(p.id, p.text, p.idempotencyKey));
 }
 
 export async function resolveAction(raw: unknown): Promise<ActionResult<InboxDetail>> {

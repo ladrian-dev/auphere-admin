@@ -100,8 +100,12 @@ export function inboxApi(call: Call) {
       call<InboxDetail>(`${C}/${enc(id)}/takeover`, { method: "POST", headers: ifMatch(version) }),
     inboxGiveBack: (id: string, version?: number) =>
       call<InboxDetail>(`${C}/${enc(id)}/release`, { method: "POST", headers: ifMatch(version) }),
-    inboxSend: (id: string, text: string) =>
-      call<InboxSent>(`${C}/${enc(id)}/messages`, { method: "POST", body: { text } }),
+    inboxSend: (id: string, text: string, idempotencyKey?: string) =>
+      call<InboxSent>(`${C}/${enc(id)}/messages`, {
+        method: "POST",
+        body: { text },
+        ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
+      }),
     inboxResolve: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/resolve`, { method: "POST" }),
     inboxReopen: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/reopen`, { method: "POST" }),
     inboxSetTags: (id: string, tags: string[]) =>

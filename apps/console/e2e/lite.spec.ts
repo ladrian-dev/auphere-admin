@@ -16,7 +16,8 @@ import { auditView } from "./audit";
  * would write to a real person. It opens, reads and checks what is offered.
  */
 
-const LITE_VIEWS = ["/", "/inbox", "/usage"] as const;
+// Spec 031 (T053): «Tus teléfonos» goes through the same matrix as the modules.
+const LITE_VIEWS = ["/", "/inbox", "/usage", "/account/phones"] as const;
 /** The console speaks these two; the cookie is the explicit choice and wins. */
 const LOCALES = ["es", "en"] as const;
 /** The theme follows the system by default (`ThemeProvider`, `defaultTheme="system"`). */
@@ -39,6 +40,18 @@ test.describe("spec 030 — la consola del cliente", () => {
       await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
     await expect(nav.getByRole("link", { name: /Clientes/ })).toHaveCount(0);
+  });
+
+  test("spec 031: «Tus teléfonos» is in the person's menu and opens its page", async ({ page }) => {
+    await page.goto("/");
+    // The menu's trigger is named by the person's email (`user-menu.tsx`).
+    await page.getByRole("button", { name: process.env.E2E_CLIENT_EMAIL ?? "" }).click();
+    await page.getByRole("menuitem", { name: /Tus teléfonos/ }).click();
+    await page.waitForURL("**/account/phones");
+    await expect(page.getByRole("heading", { name: "Tus teléfonos" })).toBeVisible();
+    // Either the list or the empty state — never an error for a person who
+    // simply has no phone yet.
+    await expect(page.getByRole("list", { name: "Teléfonos con la sesión abierta" }).or(page.getByRole("status"))).toBeVisible();
   });
 
   for (const path of PARTNER_ONLY) {
