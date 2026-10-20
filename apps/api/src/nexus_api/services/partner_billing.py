@@ -666,6 +666,47 @@ async def _partner_ids() -> list[uuid.UUID]:
         return list((await s.execute(sa.select(Partner.id))).scalars().all())
 
 
+async def refresh_waiting_charges() -> int:
+    """Settle the charges Stripe already paid that we still see waiting.
+
+    A charge waiting on 3D Secure is settled by ``invoice.paid``. If that
+    notice is lost — or, as in staging on 2026-10-20, read wrong and skipped —
+    the charge would wait forever and block every later top-up. Each pass asks
+    Stripe about the waiting ones; a paid invoice settles through the same
+    single path (:func:`settle_paid_invoice`), so nothing is credited twice.
+    Returns how many it settled.
+    """
+    client = get_client()
+    settled = 0
+    for partner_id in await _partner_ids():
+        async with get_sessionmaker()() as s, s.begin():
+            await apply_partner_to_session(s, partner_id)
+            invoice_ids = [
+                str(i)
+                for i in (
+                    await s.execute(
+                        sa.select(PartnerCharge.stripe_invoice_id).where(
+                            PartnerCharge.partner_id == partner_id,
+                            PartnerCharge.status == CHARGE_ACTION_REQUIRED,
+                            PartnerCharge.stripe_invoice_id.is_not(None),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            ]
+        for invoice_id in invoice_ids:
+            try:
+                invoice = client.invoices.retrieve(invoice_id)
+            except Exception as exc:  # one partner's hiccup never stops the pass
+                log.warning("billing.refresh_failed", partner_id=str(partner_id), error=str(exc))
+                continue
+            if str(_get(invoice, "status") or "") == "paid":
+                await settle_paid_invoice(partner_id, invoice)
+                settled += 1
+    return settled
+
+
 async def run_auto_recharges() -> list[ChargeOutcome]:
     """Top up every auto-recharge partner below its threshold."""
     out: list[ChargeOutcome] = []

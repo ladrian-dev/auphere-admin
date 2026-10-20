@@ -20,7 +20,11 @@ from zoneinfo import ZoneInfo
 
 import structlog
 from nexus_api.config import get_settings
-from nexus_api.services.partner_billing import run_auto_recharges, run_postpaid_settlement
+from nexus_api.services.partner_billing import (
+    refresh_waiting_charges,
+    run_auto_recharges,
+    run_postpaid_settlement,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -31,6 +35,11 @@ _BILLING_TZ = ZoneInfo("Europe/Madrid")
 async def tick(now: datetime | None = None) -> None:
     if not get_settings().billing_enabled:
         return
+    # First: a charge Stripe already paid but we still see waiting (a lost
+    # notice) is settled, so it neither blocks the next top-up nor is retried.
+    refreshed = await refresh_waiting_charges()
+    if refreshed:
+        log.info("partner_charges.refreshed", settled=refreshed)
     recharges = await run_auto_recharges()
     if recharges:
         log.info("partner_charges.recharges", outcomes=[o.status for o in recharges])

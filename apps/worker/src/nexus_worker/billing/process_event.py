@@ -110,15 +110,16 @@ async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout
       are different events — so the second anchor is the session id.
     """
     from nexus_api.billing.events import already_fulfilled
-    from nexus_api.metering.wallet import add_purchased
 
     # Spec 034 (R4.1): only a one-off credit session buys balance. A
     # subscription checkout completes with the same event and the same
     # ``client_reference_id``; without this gate its first invoice would also
     # be credited as purchased balance.
-    mode = str(getattr(checkout, "mode", "") or "")
-    metadata = getattr(checkout, "metadata", None) or {}
-    kind = str(metadata.get("kind", "") if hasattr(metadata, "get") else "")
+    from nexus_api.billing.provider import field
+    from nexus_api.metering.wallet import add_purchased
+
+    mode = str(field(checkout, "mode") or "")
+    kind = str(field(field(checkout, "metadata"), "kind") or "")
     if mode != "payment" or kind != "credit":
         raise Skip(f"la sesión no es una compra de crédito (mode={mode!r}, kind={kind!r})")
 
@@ -216,14 +217,14 @@ async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str
     # before the memberships gate below: these invoices are not a
     # subscription's, and with memberships off they must still settle.
     if event_type in {"invoice.paid", "invoice.payment_failed"}:
+        from nexus_api.billing.provider import field
         from nexus_api.services.partner_billing import (
             record_invoice_failed,
             settle_paid_invoice,
         )
 
         invoice = client.invoices.retrieve(fields.get("object_id") or "")
-        meta = getattr(invoice, "metadata", None) or {}
-        kind = str(meta.get("kind", "") if hasattr(meta, "get") else "")
+        kind = str(field(field(invoice, "metadata"), "kind") or "")
         if kind in {"auto_recharge", "postpaid"}:
             if event_type == "invoice.paid":
                 await settle_paid_invoice(partner_id, invoice)

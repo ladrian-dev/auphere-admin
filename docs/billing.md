@@ -43,6 +43,7 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 - **3D Secure.** Si el banco pide confirmar (`authentication_required`), el cobro queda en `action_required` y no cuenta como rechazo.
   - Se guarda el enlace de la factura (`action_url`), se envía al correo de facturación (o al de contacto) y sale en Facturación con «Confirmar el pago».
   - Mientras espera no se abre otra recarga. `invoice.paid` lo liquida.
+  - Si el aviso se pierde, cada pasada del cron pregunta a Stripe por los cobros en espera y liquida los ya pagados (`refresh_waiting_charges`), por el mismo camino y sin abonar dos veces.
 - **Pospago sin cobrar.** Si el cobro del pospago falla o espera confirmación, la línea se congela en lo que ya se debe (`credit_frozen_at`).
   - La línea concedida queda en `granted_credit_limit` y vuelve al pagarse.
   - Se reintenta como mucho una vez al día (clave `postpaid:{partner}:{mes}:{día}`).
@@ -50,6 +51,7 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 - **Correo de facturación.** Lo edita el propio partner en Facturación (permiso `billing:manage`, auditado como `console.billing.email_update`) o Auphere desde el Admin. Vacío, los avisos van al correo de contacto. Ahí llega el aviso de 3D Secure.
 - **Sin claves de Stripe** no se cobra ni se registra nada.
 - **Cron.** `partner-charges-cron` en el worker: recargas cada 5 minutos, pospago el día 1 y reintento diario si la línea está congelada.
+- **Objetos de Stripe.** Desde stripe-python 13 no son `dict`: se leen con `billing.provider.field`, nunca con `.get` (así se perdieron en staging una compra de saldo y una recarga pagada, 2026-10-20).
 - **Webhook.** Usa los eventos que ya estaban suscritos: `checkout.session.completed`, `invoice.paid` e `invoice.payment_failed`. Las facturas de estos cobros se procesan aunque las membresías estén apagadas.
 
 ## El reparto, en una frase

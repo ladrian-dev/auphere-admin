@@ -119,3 +119,69 @@ async def test_a_payment_without_the_credit_kind_buys_nothing(monkeypatch) -> No
     )
     with pytest.raises(Skip, match="no es una compra de crédito"):
         await _run(monkeypatch, checkout)
+
+
+# ── Los objetos de verdad del SDK (2026-10-20) ───────────────────────────────
+#
+# Desde stripe-python 13 un objeto de Stripe no es un dict: ``.get`` lanza y
+# ``hasattr(obj, "get")`` es False. Leer ``metadata`` así daba «sin tipo» y en
+# staging se descartaron una compra de saldo y una recarga pagada. Los tests de
+# arriba usan dicts y no lo veían: estos usan el objeto que devuelve el SDK.
+
+
+def _stripe_object(values: dict[str, Any]) -> Any:
+    from stripe import StripeObject
+
+    return StripeObject.construct_from(values, "sk_test_x")
+
+
+async def test_a_real_sdk_credit_session_credits(monkeypatch) -> None:
+    checkout = _stripe_object(
+        {
+            "id": "cs_real",
+            "mode": "payment",
+            "metadata": {"kind": "credit", "partner_id": str(_PID)},
+            "payment_status": "paid",
+            "amount_total": 2_000,
+        }
+    )
+    assert await _run(monkeypatch, checkout) == 2_000_000
+
+
+async def test_a_real_sdk_paid_card_invoice_settles(monkeypatch) -> None:
+    from nexus_worker.billing.process_event import handle_entry
+
+    invoice = _stripe_object(
+        {
+            "id": "in_real",
+            "amount_paid": 2_000,
+            "status": "paid",
+            "metadata": {"kind": "auto_recharge", "charge_id": str(uuid.uuid4())},
+        }
+    )
+    client = SimpleNamespace(invoices=SimpleNamespace(retrieve=lambda _id: invoice))
+    settled: list[Any] = []
+
+    async def fake_settle(partner_id: uuid.UUID, inv: Any) -> bool:
+        settled.append((partner_id, inv))
+        return True
+
+    monkeypatch.setattr("nexus_api.services.partner_billing.settle_paid_invoice", fake_settle)
+    status = await handle_entry(
+        FakeSession(),
+        client,
+        {"event_type": "invoice.paid", "partner_id": str(_PID), "object_id": "in_real"},
+    )
+    assert status == "processed"
+    assert settled == [(_PID, invoice)]
+
+
+def test_field_reads_sdk_objects_and_dicts_alike() -> None:
+    from nexus_api.billing.provider import field
+
+    obj = _stripe_object({"metadata": {"kind": "auto_recharge"}, "missing": None})
+    assert field(field(obj, "metadata"), "kind") == "auto_recharge"
+    assert field({"metadata": {"kind": "credit"}}, "metadata") == {"kind": "credit"}
+    assert field(obj, "nope", "x") == "x"
+    assert field(obj, "missing", "x") == "x"
+    assert field(None, "kind") is None
