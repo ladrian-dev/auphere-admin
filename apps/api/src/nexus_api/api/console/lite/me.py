@@ -51,6 +51,10 @@ class LiteAgentOut(BaseModel):
 class LiteMeOut(BaseModel):
     user: LiteUserOut
     client: LiteClientOut
+    #: Spec 031 (R3.2): los módulos del cliente en el orden de la barra. Es la
+    #: **única** fuente del orden para la consola y para la app; ninguna de las
+    #: dos lo reescribe.
+    nav: list[str]
     balance_contact: BalanceContactOut
     # Spec 030 (iteration 3): the client's active agents, principal first.
     agents: list[LiteAgentOut]
@@ -76,6 +80,7 @@ async def read_me(scope: LiteScope = Depends(lite_scope())) -> LiteMeOut:
     return LiteMeOut(
         user=LiteUserOut(email=member.email, name=member.display_name or member.email),
         client=LiteClientOut(name=principal.client_name, modules=list(principal.modules)),
+        nav=list(principal.modules),
         balance_contact=contact,
         agents=[
             LiteAgentOut(id=aid, name=name)

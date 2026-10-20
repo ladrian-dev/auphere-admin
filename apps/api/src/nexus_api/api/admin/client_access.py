@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.security import require_admin_token
 from nexus_api.core.tenant_context import declare_tenant
-from nexus_api.db.models import OperatorAccount
-from nexus_api.services import client_access
+from nexus_api.db.models import ClientPhone, OperatorAccount
+from nexus_api.services import client_access, client_phones
 from nexus_api.services.client_access import AccessView, ClientAccessError
 from nexus_api.services.client_invitation_email import send_client_invitation
 
@@ -288,4 +288,70 @@ async def revoke_client_member(
             await client_access.revoke(session, tenant_id, member_id, actor=_actor(operator))
     except ClientAccessError as exc:
         raise _error(exc) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── Spec 031: los teléfonos de cada persona (R7.4) ────────────────────
+
+
+class ClientPhoneOut(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    platform: Literal["ios", "android"]
+    app_version: str
+    last_seen_at: datetime
+    enrolled_at: datetime
+    revoked_at: datetime | None
+    revoked_reason: str | None
+    revoked_by: str | None
+
+
+def _phone_out(p: ClientPhone) -> ClientPhoneOut:
+    return ClientPhoneOut(
+        id=p.id,
+        display_name=p.display_name,
+        platform=p.platform,  # type: ignore[arg-type]
+        app_version=p.app_version,
+        last_seen_at=p.last_seen_at,
+        enrolled_at=p.enrolled_at,
+        revoked_at=p.revoked_at,
+        revoked_reason=p.revoked_reason,
+        revoked_by=p.revoked_by,
+    )
+
+
+@router.get("/{tenant_id}/client-members/{member_id}/phones", response_model=list[ClientPhoneOut])
+async def list_member_phones(
+    tenant_id: uuid.UUID,
+    member_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> list[ClientPhoneOut]:
+    """Los teléfonos de una persona del cliente: activos y los últimos cerrados."""
+    async with session.begin():
+        await declare_tenant(session, tenant_id)
+        phones = await client_phones.for_membership(
+            session, tenant_id=tenant_id, membership_id=member_id
+        )
+    return [_phone_out(p) for p in phones]
+
+
+@router.delete(
+    "/{tenant_id}/client-members/{member_id}/phones/{phone_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def close_member_phone(
+    tenant_id: uuid.UUID,
+    member_id: uuid.UUID,
+    phone_id: uuid.UUID,
+    operator: OperatorAccount = Depends(require_operator),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Cierra un teléfono, por ejemplo uno perdido (R7.4). Queda en la auditoría
+    con el operador (``operator:<correo>``). Idempotente."""
+    async with session.begin():
+        await declare_tenant(session, tenant_id)
+        phone = await session.get(ClientPhone, phone_id)
+        if phone is None or phone.tenant_id != tenant_id or phone.client_membership_id != member_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        client_phones.revoke(session, phone, reason="closed_by_auphere", by=_actor(operator))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

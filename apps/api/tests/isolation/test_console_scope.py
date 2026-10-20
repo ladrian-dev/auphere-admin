@@ -358,6 +358,8 @@ def _fill(path: str, *, ref: str) -> str:
         .replace("{conversation_id}", str(uuid.uuid4()))
         .replace("{message_id}", str(uuid.uuid4()))
         .replace("{reply_id}", str(uuid.uuid4()))
+        # spec 031: los teléfonos de la persona de cliente
+        .replace("{phone_id}", str(uuid.uuid4()))
     )
 
 

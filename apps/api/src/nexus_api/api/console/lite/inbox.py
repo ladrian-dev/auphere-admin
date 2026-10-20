@@ -24,6 +24,7 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from redis.asyncio import Redis
+from sqlalchemy.exc import IntegrityError
 
 from nexus_api.api.deps import get_redis
 from nexus_api.db.models import (
@@ -42,6 +43,7 @@ from nexus_api.db.models import (
     SavedReply,
 )
 from nexus_api.services import conversation_control, inbox_lifecycle, inbox_view
+from nexus_api.services import lite_send_idempotency as idempotency
 from nexus_api.services.conversation_control import VersionMismatch
 from nexus_api.services.inbox_stream import publish_inbox_event
 
@@ -592,11 +594,20 @@ async def _can_send(scope: LiteScope, conv: Conversation) -> Channel:
 )
 async def send_message(
     body: SendIn,
+    response: Response,
     conversation_id: uuid.UUID = ConversationId,
     scope: LiteScope = Depends(lite_scope("inbox")),
     redis: Redis = Depends(get_redis),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> SentOut:
+    """Envía texto. Con ``Idempotency-Key`` (spec 031, R6.4) un reintento no
+    manda otro WhatsApp: ver ``services/lite_send_idempotency``."""
+    key = idempotency.parse_key(idempotency_key)
     conv = await _conversation(scope, conversation_id)
+    if key is not None:
+        prior = await idempotency.prior_send(scope.session, key=key, conversation_id=conv.id)
+        if prior is not None:
+            return await _answer_prior(scope, redis, conv, prior, response)
     await _can_send(scope, conv)
     now = datetime.now(UTC)
     msg = Message(
@@ -610,14 +621,62 @@ async def send_message(
         # La membresía, no el ``user_id``: ``actor_id`` es UUID y el id de
         # la consola es texto de Better Auth.
         actor_id=scope.principal.membership.id,
+        idempotency_key=key,
     )
-    scope.session.add(msg)
+    raced = await _insert_once(scope, msg, key=key, conversation_id=conv.id)
+    if raced is not None:
+        response.status_code = status.HTTP_200_OK
+        return _sent(raced)
     conv.last_message_at = now
     _audit(scope, "inbox.message_sent", conv.id, {"length": len(body.text)})
     await scope.session.flush()
     await scope.session.refresh(msg)
     _publish(redis, scope, conv.id, "message.new", message_id=str(msg.id), direction="outbound")
     return SentOut(id=msg.id, at=msg.created_at, delivery="pending")
+
+
+def _sent(msg: Message) -> SentOut:
+    return SentOut(id=msg.id, at=msg.created_at, delivery=msg.status.value)
+
+
+async def _answer_prior(
+    scope: LiteScope, redis: Redis, conv: Conversation, prior: Message, response: Response
+) -> SentOut:
+    """Un envío anterior con la misma clave: replay, o reintento si falló."""
+    response.status_code = status.HTTP_200_OK
+    if idempotency.classify(prior) == "replay":
+        return _sent(prior)
+    # Esta vez sí se envía: las precondiciones valen igual que para uno nuevo.
+    await _can_send(scope, conv)
+    idempotency.revive(prior)
+    _audit(scope, "inbox.message_sent", conv.id, {"retry_of": str(prior.id)})
+    await scope.session.flush()
+    _publish(redis, scope, conv.id, "message.new", message_id=str(prior.id), direction="outbound")
+    return _sent(prior)
+
+
+async def _insert_once(
+    scope: LiteScope, msg: Message, *, key: str | None, conversation_id: uuid.UUID
+) -> Message | None:
+    """Inserta ``msg``. Si otra petición con la misma clave ganó la carrera,
+    devuelve **su** fila en vez de fallar: el índice único choca dentro de un
+    savepoint y la transacción de la ruta sigue viva."""
+    if key is None:
+        scope.session.add(msg)
+        return None
+    try:
+        async with scope.session.begin_nested():
+            scope.session.add(msg)
+            await scope.session.flush()
+    except IntegrityError:
+        scope.session.expunge(msg)
+        winner = await idempotency.prior_send(
+            scope.session, key=key, conversation_id=conversation_id
+        )
+        if winner is None:  # pragma: no cover - el índice dice que existe
+            raise
+        return winner
+    return None
 
 
 # ── lifecycle ──────────────────────────────────────────────────────────

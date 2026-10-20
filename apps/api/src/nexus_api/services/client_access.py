@@ -215,7 +215,16 @@ def _audit(
     )
 
 
-async def _end_sessions(session: AsyncSession, user_ids: list[str]) -> int:
+async def _end_sessions(
+    session: AsyncSession, user_ids: list[str], *, phone_reason: str = "member_removed"
+) -> int:
+    """Cierra las sesiones web **y los teléfonos** de esas personas (spec 031,
+    R7.2): apagar el acceso o quitar a alguien no puede dejar una app abierta."""
+    from nexus_api.services import client_phones
+
+    await client_phones.revoke_where(
+        session, reason=phone_reason, by="system", principal_ids=list(user_ids)
+    )
     closed = 0
     for raw in user_ids:
         try:
@@ -274,7 +283,7 @@ async def set_access(
                 )
             )
         ).scalars()
-        await _end_sessions(session, list(active))
+        await _end_sessions(session, list(active), phone_reason="access_disabled")
 
     # Sin Bandeja nadie atendería las conversaciones que un escalado dejó con
     # el agente callado: vuelven al agente (R11.5).

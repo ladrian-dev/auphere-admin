@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from nexus_api import __version__
 from nexus_api.api import (
     admin,
+    app_public,
     console,
     device_bridge,
     messages,
@@ -142,6 +143,8 @@ app.include_router(webhooks.router)
 app.include_router(connectors_public.router)
 app.include_router(qa.router)
 app.include_router(device_bridge.router)
+# Spec 031: lo público de la app Auphere Customers (canje, renovación, config).
+app.include_router(app_public.router)
 app.add_exception_handler(device_bridge.DeviceRefused, device_bridge.device_refused_handler)  # type: ignore[arg-type]
 # ADR-028 + WP-28: superficie pública de partners (clave secreta,
 # servidor a servidor), montada una vez por versión viva. `/v1` está

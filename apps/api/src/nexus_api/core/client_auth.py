@@ -23,13 +23,21 @@ de la consola del partner, y apagarla no puede dejar fuera a sus clientes.
 
 El cliente sale de la membresía, nunca de la petición. Ninguna ruta lite lleva
 ``ref``, ``tenant_id`` ni ``partner_id``.
+
+**Spec 031: la misma puerta acepta el teléfono.** Un token HS256 de la app
+Auphere Customers (``core.phone_credential``) entra por una segunda rama que
+termina en **el mismo** :func:`resolve_client_principal`, así que ninguna ruta
+lite cambia su autorización. La fila del teléfono se lee como identidad, igual
+que la membresía; de ella salen partner y cuenta (research D3). Cada petición
+vuelve a mirar la fila: un teléfono cerrado deja de leer en la siguiente.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 import structlog
@@ -38,20 +46,32 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
-from nexus_api.core.console_auth import _SERVICE_CLAIM, _verify_bearer
+from nexus_api.config import get_settings
+from nexus_api.core import phone_credential
+from nexus_api.core.console_auth import (
+    _SERVICE_CLAIM,
+    _bearer,
+    _require_console_switch,
+    _verify_bearer,
+)
 from nexus_api.db.models import (
     CLIENT_MODULES,
     ClientAccess,
     ClientMembership,
     ClientMemberStatus,
+    ClientPhone,
     Partner,
     PartnerStatus,
     PartnerTenant,
     Tenant,
     TenantStatus,
 )
+from nexus_api.desktop_version import MinimumVersion, is_blocked
 
 log = structlog.get_logger(__name__)
+
+#: Como ``client_phones.TOUCH_INTERVAL``: el uso se anota como mucho cada 5 min.
+TOUCH_INTERVAL = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -71,6 +91,9 @@ class ClientPrincipal:
     client_name: str
     modules: tuple[str, ...]
     jti: str
+    #: Spec 031: el teléfono desde el que llama, si llama desde la app. ``None``
+    #: es la consola web (la BFF).
+    phone_id: uuid.UUID | None = None
 
     @property
     def actor(self) -> str:
@@ -96,6 +119,52 @@ def _unauthorized() -> HTTPException:
     )
 
 
+@dataclass(frozen=True)
+class OpenClient:
+    """Un cliente al que sus personas pueden entrar ahora mismo."""
+
+    partner: Partner
+    tenant: Tenant
+    mapping: PartnerTenant
+    access: ClientAccess
+    modules: tuple[str, ...]
+
+
+async def open_client(
+    session: AsyncSession, *, partner_id: uuid.UUID, tenant_id: uuid.UUID
+) -> OpenClient | None:
+    """**La** regla de «este cliente está abierto para sus personas»: partner
+    activo, tenant sin archivar, todavía de ese partner, acceso encendido y con
+    algún módulo. La usan cada petición (``resolve_client_principal``) y el
+    reparto de avisos (``push_fanout``): dos copias de la regla acabarían
+    diciendo cosas distintas, y un aviso no puede llegar a quien ya no puede
+    leer. No abre transacción: corre en la de quien llama.
+    """
+    partner = await session.get(Partner, partner_id)
+    if partner is None or partner.status != PartnerStatus.ACTIVE.value:
+        return None
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None or tenant.status == TenantStatus.ARCHIVED:
+        return None
+    mapping = await session.scalar(
+        sa.select(PartnerTenant).where(
+            PartnerTenant.partner_id == partner_id,
+            PartnerTenant.tenant_id == tenant_id,
+        )
+    )
+    if mapping is None:
+        return None
+    access = await session.get(ClientAccess, tenant_id)
+    if access is None or not access.enabled or access.partner_id != partner_id:
+        return None
+    modules = access.ordered_modules()
+    if not modules:
+        return None
+    return OpenClient(
+        partner=partner, tenant=tenant, mapping=mapping, access=access, modules=modules
+    )
+
+
 async def resolve_client_principal(
     session: AsyncSession, *, partner_id: uuid.UUID, user_id: str, jti: str
 ) -> ClientPrincipal | None:
@@ -115,36 +184,113 @@ async def resolve_client_principal(
         )
         if membership is None or membership.status != ClientMemberStatus.ACTIVE.value:
             return None
-        partner = await session.get(Partner, partner_id)
-        if partner is None or partner.status != PartnerStatus.ACTIVE.value:
-            return None
-        tenant = await session.get(Tenant, membership.tenant_id)
-        if tenant is None or tenant.status == TenantStatus.ARCHIVED:
-            return None
-        mapping = await session.scalar(
-            sa.select(PartnerTenant).where(
-                PartnerTenant.partner_id == partner_id,
-                PartnerTenant.tenant_id == membership.tenant_id,
-            )
-        )
-        if mapping is None:
-            return None
-        access = await session.get(ClientAccess, membership.tenant_id)
-        if access is None or not access.enabled or access.partner_id != partner_id:
-            return None
-        modules = access.ordered_modules()
-        if not modules:
+        client = await open_client(session, partner_id=partner_id, tenant_id=membership.tenant_id)
+        if client is None:
             return None
     return ClientPrincipal(
         user_id=user_id,
-        partner=partner,
+        partner=client.partner,
         membership=membership,
         tenant_id=membership.tenant_id,
-        client_ref=mapping.external_client_ref,
-        client_name=mapping.client_name or tenant.name,
-        modules=modules,
+        client_ref=client.mapping.external_client_ref,
+        client_name=client.mapping.client_name or client.tenant.name,
+        modules=client.modules,
         jti=jti,
     )
+
+
+def _phone_refused(code: str, status_code: int, **info: object) -> HTTPException:
+    return HTTPException(status_code=status_code, detail={"code": code, **info})
+
+
+def _customers_minimum(platform: str) -> MinimumVersion | None:
+    """La mínima de la app por plataforma (R13), con las reglas del escritorio."""
+    s = get_settings()
+    raw = (
+        s.customers_app_min_version_ios
+        if platform == "ios"
+        else s.customers_app_min_version_android
+    ).strip()
+    if not raw:
+        return None
+    since = datetime.min.replace(tzinfo=UTC)
+    if s.customers_app_min_version_from.strip():
+        try:
+            since = datetime.fromisoformat(s.customers_app_min_version_from.strip())
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=UTC)
+        except ValueError:
+            log.warning("client_auth.bad_min_version_from", value=s.customers_app_min_version_from)
+    return MinimumVersion(
+        version=raw, reason=s.customers_app_min_version_reason, effective_from=since
+    )
+
+
+async def _resolve_phone(
+    token: str,
+    *,
+    session: AsyncSession,
+    platform: str | None,
+    app_version: str | None,
+) -> ClientPrincipal:
+    """La rama del teléfono. Cada paso tiene su respuesta, y la app las distingue:
+
+    * 400 sin ``X-App-Platform`` o ``X-App-Version``: la app siempre las manda.
+    * 401 con un token que no vale o con otra generación: renovar.
+    * 403 ``phone_closed`` (con motivo): volver a entrar y decir por qué.
+    * 403 ``app_update_required``: actualizar (R13).
+    * 403 sin código: el acceso de la persona o del cliente ya no vale (R1.5).
+    """
+    _require_console_switch()
+    if platform not in ("ios", "android") or not app_version:
+        raise _phone_refused("app_headers_required", status.HTTP_400_BAD_REQUEST)
+    try:
+        claims = phone_credential.verify_access_token(token)
+    except phone_credential.PhoneCredentialError:
+        raise _unauthorized() from None
+
+    async with session.begin():
+        phone = await session.get(ClientPhone, claims.phone_id)
+        if phone is None:
+            raise _unauthorized()
+        if phone.revoked_at is not None:
+            raise _phone_refused(
+                "phone_closed", status.HTTP_403_FORBIDDEN, reason=phone.revoked_reason
+            )
+        if phone.credential_generation != claims.generation:
+            raise _unauthorized()
+        partner_id, principal_id, phone_id = phone.partner_id, phone.principal_id, phone.id
+        last_seen = phone.last_seen_at
+
+    minimum = _customers_minimum(platform)
+    if is_blocked(app_version, minimum):
+        assert minimum is not None
+        raise _phone_refused(
+            "app_update_required",
+            status.HTTP_403_FORBIDDEN,
+            reason=minimum.reason,
+            minimum_version=minimum.version,
+        )
+
+    principal = await resolve_client_principal(
+        session,
+        partner_id=partner_id,
+        user_id=principal_id,
+        jti=f"phone:{phone_id}:{claims.generation}",
+    )
+    if principal is None:
+        raise _forbidden()
+
+    if datetime.now(UTC) - (last_seen if last_seen.tzinfo else last_seen.replace(tzinfo=UTC)) >= (
+        TOUCH_INTERVAL
+    ):
+        async with session.begin():
+            await session.execute(
+                sa.update(ClientPhone)
+                .where(ClientPhone.id == phone_id)
+                .values(last_seen_at=datetime.now(UTC))
+            )
+    return replace(principal, phone_id=phone_id)
 
 
 def require_client_principal(
@@ -163,7 +309,23 @@ def require_client_principal(
         authorization: str | None = Header(default=None, alias="Authorization"),
         session: AsyncSession = Depends(get_db_session),
         redis: Redis = Depends(get_redis),
+        app_platform: str | None = Header(default=None, alias="X-App-Platform"),
+        app_version: str | None = Header(default=None, alias="X-App-Version"),
     ) -> ClientPrincipal:
+        token = _bearer(authorization)
+        if phone_credential.looks_like_phone_token(token):
+            from_phone = await _resolve_phone(
+                token, session=session, platform=app_platform, app_version=app_version
+            )
+            if any(not from_phone.has(m) for m in modules):
+                raise _forbidden()
+            structlog.contextvars.bind_contextvars(
+                partner=from_phone.partner.slug,
+                console_user=from_phone.membership.email,
+                console_kind="client_phone",
+            )
+            return from_phone
+
         payload = await _verify_bearer(authorization, redis)
         if payload.get("svc") == _SERVICE_CLAIM:
             raise _forbidden()

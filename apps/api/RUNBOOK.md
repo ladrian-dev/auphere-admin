@@ -227,6 +227,21 @@ DR drill formal queda para Phase 2 (cuando hay 2+ clientes).
 ⚠️ Nunca pegues secretos en este repo, en Slack, ni en chat con
 Claude. Doppler es el único lugar.
 
+### Variables de la app Auphere Customers (spec 031)
+
+| Variable | Qué es | Sin ella |
+|---|---|---|
+| `NEXUS_CUSTOMERS_APP_TOKEN_SECRET` | Firma las credenciales del teléfono. Al menos 32 caracteres, y distinto de `NEXUS_DEVICE_TOKEN_SECRET` | La API no arranca en producción |
+| `NEXUS_CUSTOMERS_APP_MIN_VERSION_IOS` / `_ANDROID` | Versión mínima por plataforma, por ejemplo `1.0.0` | Vacío: no se bloquea a nadie |
+| `NEXUS_CUSTOMERS_APP_MIN_VERSION_REASON` | `contract` o `security` | `contract` |
+| `NEXUS_CUSTOMERS_APP_MIN_VERSION_FROM` | Desde cuándo rige (ISO-8601). Antes de esa fecha no cierra | Rige ya |
+| `NEXUS_APNS_KEY_ID` / `NEXUS_APNS_TEAM_ID` / `NEXUS_APNS_KEY_PEM` | La clave `.p8` de APNs y sus identificadores. El Team ID es de FACELAD mientras la app se publique ahí | Los avisos de iPhone fallan con `provider_not_configured`; la API arranca |
+| `NEXUS_APNS_TOPIC` | Bundle de la app, `com.auphere.customers` | Ese mismo valor |
+| `NEXUS_FCM_PROJECT_ID` / `NEXUS_FCM_SERVICE_ACCOUNT_JSON` | El proyecto de Firebase de Auphere y el JSON de su cuenta de servicio | Los avisos de Android fallan con `provider_not_configured` |
+
+Subir la versión mínima es cambiar la variable y redesplegar la API. No hace
+falta publicar una versión de la app (R13.2).
+
 ---
 
 ## Alembic downgrade (manual, solo Lee + revisión)

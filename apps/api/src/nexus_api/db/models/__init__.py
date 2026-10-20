@@ -46,6 +46,12 @@ from nexus_api.db.models.client_access import (
     ClientMemberStatus,
     ClientModule,
 )
+from nexus_api.db.models.client_phone import (
+    NOTICE_KINDS,
+    ClientPhone,
+    ClientPushDelivery,
+    ClientPushEvent,
+)
 from nexus_api.db.models.companion import (
     MODE_BUILD,
     MODE_CONSULT,
@@ -243,6 +249,7 @@ __all__ = [
     "MODEL_ROLES",
     "MODE_BUILD",
     "MODE_CONSULT",
+    "NOTICE_KINDS",
     "OPERATOR_AUTH_SCHEMA",
     "OUTCOMES",
     "OWNER_COMMAND_KINDS",
@@ -300,6 +307,9 @@ __all__ = [
     "ClientMemberStatus",
     "ClientMembership",
     "ClientModule",
+    "ClientPhone",
+    "ClientPushDelivery",
+    "ClientPushEvent",
     "CompanionAction",
     "CompanionMessage",
     "CompanionRun",

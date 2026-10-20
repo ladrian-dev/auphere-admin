@@ -1177,3 +1177,70 @@ async def register_machine(
         "credential": body["credential"],
         "body": body,
     }
+
+
+# ── Spec 031: el teléfono de una persona de cliente ────────────────────────
+#
+# La app Auphere Customers no usa el JWT de 60 s de la BFF: tiene su propia
+# credencial (``core.phone_credential``) y entra por la misma puerta
+# (``require_client_principal``). Estas ayudas dan de alta un teléfono como lo
+# haría el canje, sin pasar por el código, para las suites que prueban lo que
+# hay detrás de la puerta.
+
+
+def phone_headers(
+    access_token: str, *, platform: str = "ios", app_version: str = "1.0.0"
+) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "X-App-Platform": platform,
+        "X-App-Version": app_version,
+    }
+
+
+async def add_client_phone(
+    db_session: AsyncSession,
+    *,
+    membership_id: uuid.UUID,
+    platform: str = "ios",
+    install_id: str | None = None,
+    display_name: str = "iPhone de Valeria",
+) -> dict[str, Any]:
+    """Un teléfono activo de la persona ``membership_id``; devuelve ids,
+    credenciales y una fábrica de cabeceras de app."""
+    from nexus_api.db.models import ClientMembership
+    from nexus_api.services import client_phones
+
+    membership = await db_session.get(ClientMembership, membership_id)
+    assert membership is not None
+    tokens = await client_phones.enroll(
+        db_session,
+        membership=membership,
+        platform=platform,
+        display_name=display_name,
+        install_id=install_id or uuid.uuid4().hex,
+        app_version="1.0.0",
+        locale="es",
+    )
+    await db_session.commit()
+    return {
+        "phone_id": tokens.phone_id,
+        "access_token": tokens.access_token,
+        "refresh_token": tokens.refresh_token,
+        "headers": lambda **kw: phone_headers(tokens.access_token, platform=platform, **kw),
+    }
+
+
+async def make_console_account(db_session: AsyncSession, *, email: str | None = None) -> uuid.UUID:
+    """Una cuenta de ``console_auth.principals``: lo que hay detrás de una
+    membresía de verdad (su ``user_id`` es el id de la cuenta en texto)."""
+    pid = uuid.uuid4()
+    await db_session.execute(
+        text(
+            "INSERT INTO console_auth.principals (id, email, password_hash) "
+            "VALUES (:i, :e, 'scrypt$x')"
+        ),
+        {"i": str(pid), "e": email or f"acct-{pid.hex[:10]}@cliente.test"},
+    )
+    await db_session.commit()
+    return pid

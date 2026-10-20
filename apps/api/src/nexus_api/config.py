@@ -89,6 +89,34 @@ class Settings(BaseSettings):
     desktop_min_version_reason: str = "contract"
     desktop_min_version_from: str = ""
 
+    #: Spec 031 (research D18): la versión mínima de la app Auphere Customers,
+    #: por plataforma, con las mismas tres reglas que la del escritorio —ausente
+    #: no bloquea, hay fecha de entrada en vigor y solo se bloquea por contrato o
+    #: seguridad—. Subirla no exige publicar una versión de la app (R13.2).
+    customers_app_min_version_ios: str = ""
+    customers_app_min_version_android: str = ""
+    customers_app_min_version_reason: str = "contract"
+    customers_app_min_version_from: str = ""
+
+    #: Firma las credenciales del teléfono (spec 031, research D4). Propio y
+    #: distinto de ``device_token_secret``: comprometer uno no abre el otro. El
+    #: valor de abajo solo vale en desarrollo.
+    customers_app_token_secret: str = "dev-customers-app-secret-change-me-32+"
+
+    #: Avisos al teléfono (spec 031, research D8). Vacíos = el reparto marca las
+    #: entregas como fallidas con ``provider_not_configured``; la API arranca.
+    #: ``apns_key_pem`` admite ``\\n`` escapados, como la clave de la consola.
+    apns_key_id: str = ""
+    apns_team_id: str = ""
+    apns_key_pem: str = ""
+    apns_topic: str = "com.auphere.customers"
+    #: ``production`` o ``sandbox``: el entorno lo decide el build, y la app lo
+    #: dice al registrar su destino. Esto es solo el valor por defecto.
+    apns_default_environment: str = "production"
+    fcm_project_id: str = ""
+    #: El JSON de la cuenta de servicio de Firebase, entero.
+    fcm_service_account_json: str = ""
+
     admin_token: str = "dev-admin-token-change-me"
 
     # Meta WhatsApp Cloud API — direct Tech Provider integration. The only
@@ -566,7 +594,7 @@ class Settings(BaseSettings):
     #: Separados por comas, como ``expected_worker_services``.
     auphere_partner_slugs: str = ""
 
-    @field_validator("console_jwt_public_key", mode="before")
+    @field_validator("console_jwt_public_key", "apns_key_pem", mode="before")
     @classmethod
     def _pem_newlines(cls, v: object) -> object:
         # Secret managers and .env files usually cannot carry real newlines;
@@ -660,6 +688,10 @@ class Settings(BaseSettings):
         # máquina de un partner.
         if "change-me" in self.device_token_secret:
             offenders.append("NEXUS_DEVICE_TOKEN_SECRET")
+        # Spec 031: con el valor de fábrica, cualquiera que lea el repo podría
+        # acuñar la sesión del teléfono de una persona de cliente.
+        if "change-me" in self.customers_app_token_secret:
+            offenders.append("NEXUS_CUSTOMERS_APP_TOKEN_SECRET")
         # Cierra las 20+ rutas de ``/admin`` (``impersonate`` incluida). Con el
         # valor de fábrica, cualquiera que lea este repositorio tiene el Bearer
         # del panel de operador.

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import home, inbox, inbox_media, inbox_stream, me, notifications, usage
+from . import home, inbox, inbox_media, inbox_stream, me, notifications, phones, usage
 
 router = APIRouter(prefix="/lite", tags=["console-lite"])
 router.include_router(me.router)
@@ -22,5 +22,7 @@ router.include_router(inbox_stream.router)
 router.include_router(inbox_media.router)
 router.include_router(inbox.router)
 router.include_router(notifications.router)
+# Spec 031: los teléfonos de la persona y lo que solo hace la app.
+router.include_router(phones.router)
 
 __all__ = ["router"]
