@@ -5,6 +5,9 @@
 > [030](../specs/030-consola-lite-del-cliente/spec.md) y su porqué está en
 > `kb/Auphere/nexus/decisions/ADR-041-consola-lite-del-cliente-final.md`. Se
 > actualiza en el mismo commit que cambia lo que describe (constitución §IX).
+>
+> La misma consola en el teléfono —la app Auphere Customers, spec 031— se
+> describe aparte: [app-movil.md](app-movil.md).
 
 ## Qué es
 
@@ -218,7 +221,11 @@ respuesta. Lo fija `tests/unit/test_lite_inbox_publish_after_commit.py`: lo
 que un suscriptor lee al oír el aviso es lo ya confirmado. La SSE lite
 (`GET /console/lite/inbox/stream`, latido cada 15 s, sin transacción abierta)
 reenvía solo el canal del cliente de la sesión; la consola vuelve a pedir lo
-que cambió. Si la línea cae, la Bandeja dice «Reconectando…».
+que cambió. Si la línea cae, la Bandeja dice «Reconectando…». La sesión se
+comprueba al abrir la línea, no después: por eso la de un **teléfono** (spec
+031) se corta sola a los 5 minutos (`PHONE_LINE_SECONDS`) y un teléfono
+cerrado deja de recibir eventos dentro del plazo de R7.2. La de la web no se
+corta (lo fija `tests/isolation/test_phone_revocation.py`).
 
 **Consola**: lista de 320 px, hilo flexible y panel de contacto plegable (por
 defecto plegado bajo 1280 px, recordado por navegador con respaldo en memoria
@@ -295,3 +302,29 @@ agentes.
 - **Pendiente**: quien publica una promoción sigue avisando por cliente
   (`<tenant_id>`), lo que invalida la caché de todos sus agentes; el suscriptor
   ya entiende `<tenant_id>:<agent_id>`.
+
+## Lo que la spec 031 cambió aquí
+
+- **Un solo orden de módulos**: `GET /console/lite/me` devuelve `nav`, los
+  módulos en el orden de la barra (`ClientAccess.ordered_modules()`). La barra
+  de la consola (`lite-nav.ts`) y las pestañas de la app lo pintan tal cual;
+  ninguna de las dos tiene un `ORDER` propio. `firstModulePath` toma el primero.
+- **Enviar no duplica**: `POST …/messages` y `POST …/attachments` aceptan
+  `Idempotency-Key` (un UUID). Si la petición se repite con la misma clave, la
+  API devuelve el envío ya hecho (200) en vez de mandar otro WhatsApp; un envío
+  que falló se reintenta con la misma clave tras volver a comprobar sus
+  condiciones; la misma clave con otro texto es un 422
+  `idempotency_key_reused`. La consola web genera la clave al enviar y la
+  reutiliza si la persona reintenta el mismo texto.
+- **Los teléfonos de la persona**: «Tus teléfonos» (`/account/phones`, en el
+  menú de la persona de cliente) lista los teléfonos con la sesión abierta en
+  la app, con su último uso, y cierra cualquiera tras confirmar. Es una página
+  de la persona, no de un módulo: la tiene toda persona de cliente
+  (`requireClientAccount`, `CLIENT_ACCOUNT_PATHS`), y el layout la deja pasar
+  sin mirar los módulos. En el admin, Acceso → persona → «Teléfonos» lista los
+  activos y los últimos cerrados con su motivo, y cierra uno (auditado con el
+  operador).
+- **La entrada de la app no pasa por la consola**: la app tiene la suya
+  (correo y contraseña, o Google, en la API); ver
+  [app-movil.md](app-movil.md#entrar-y-quedarse-dentro).
+
