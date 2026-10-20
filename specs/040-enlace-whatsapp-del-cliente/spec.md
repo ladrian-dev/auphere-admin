@@ -24,6 +24,8 @@ de Meta».
    - Un miembro del partner con `channels:write` lo crea en la consola (`POST /console/clients/{ref}/channels/whatsapp/signup-link`).
    - El modo es coexistencia por defecto, o Cloud API.
 2. **Cómo se guarda.** Solo se guarda el SHA-256 del token. El enlace es de un solo uso, caduca a los 7 días y se puede anular. Crear, anular y conectar quedan auditados.
+   - **Uno vivo por cliente** (owner, 2026-10-20): crear un enlace anula los anteriores sin usar (auditado como `revoked` con `reason: replaced`).
+   - La consola enseña el enlace vivo (modo y caducidad, nunca el enlace) y deja anularlo: `GET/DELETE /console/clients/{ref}/channels/whatsapp/signup-links`.
 3. **La página del dueño** (`/connect/whatsapp/{token}`, consola, pública en el proxy).
    - Dice para qué negocio es y abre el Embedded Signup de Meta en el dispositivo del dueño.
    - Un enlace usado, caducado, anulado o inexistente lo dice sin revelar de quién era.

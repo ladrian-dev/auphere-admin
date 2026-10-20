@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
-from nexus_api.db.models import Channel, ChannelSignupLink, TenantConnector
+from nexus_api.db.models import AuditLog, Channel, ChannelSignupLink, TenantConnector
 from nexus_api.services import meta_signup_service
 from nexus_api.services.connectors.seed_loader import load_all_seeds
 from nexus_api.services.connectors.seed_runner import apply_seeds
@@ -172,3 +172,58 @@ async def test_a_partner_member_mints_a_link_for_their_client(client, console_wo
 
 async def test_the_owner_route_needs_the_console_service_credential(client) -> None:
     assert (await client.get("/console/channel-signup/anything")).status_code in (401, 403)
+
+
+async def test_one_live_link_per_client_and_the_partner_revokes_it(
+    client, console_world, db_session
+) -> None:
+    """Owner, 2026-10-20: every «Enviar enlace» left another valid link, and
+    the console could neither see nor revoke them."""
+    a, b = console_world["a"], console_world["b"]
+    base = f"/console/clients/{a['ref']}/channels/whatsapp"
+    first = await client.post(f"{base}/signup-link", headers=a["headers"](), json={})
+    second = await client.post(f"{base}/signup-link", headers=a["headers"](), json={})
+    assert first.status_code == second.status_code == 201
+
+    # The first no longer works: the new one replaced it.
+    old = await client.get(f"/console/channel-signup/{_token(first.json()['url'])}", headers=_svc())
+    assert old.json()["state"] == "revoked"
+    new = await client.get(
+        f"/console/channel-signup/{_token(second.json()['url'])}", headers=_svc()
+    )
+    assert new.json()["state"] == "valid"
+
+    listed = await client.get(f"{base}/signup-links", headers=a["headers"]())
+    assert listed.status_code == 200, listed.text
+    states = [r["state"] for r in listed.json()]
+    assert states == ["valid", "revoked"]
+    assert "url" not in listed.json()[0]  # the token is never shown again
+    live_id = listed.json()[0]["id"]
+
+    # Another partner cannot revoke it, nor see that it exists.
+    other = await client.delete(
+        f"/console/clients/{b['ref']}/channels/whatsapp/signup-links/{live_id}",
+        headers=b["headers"](),
+    )
+    assert other.status_code == 404
+
+    gone = await client.delete(f"{base}/signup-links/{live_id}", headers=a["headers"]())
+    assert gone.status_code == 204
+    again = await client.get(
+        f"/console/channel-signup/{_token(second.json()['url'])}", headers=_svc()
+    )
+    assert again.json()["state"] == "revoked"
+    # Revoking twice is harmless.
+    twice = await client.delete(f"{base}/signup-links/{live_id}", headers=a["headers"]())
+    assert twice.status_code == 204
+
+    rows = (
+        (
+            await db_session.execute(
+                sa.select(AuditLog).where(AuditLog.action == "channel.signup_link.revoked")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert sorted(r.after_json["reason"] for r in rows) == ["replaced", "revoked"]

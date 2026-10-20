@@ -159,3 +159,13 @@ export async function whatsappSignupLinkAction(
   if (!can(principal.role, "channels:write")) return forbidden();
   return run(() => backendFor(principal).whatsappSignupLink(body.ref, body.mode));
 }
+
+/** Revoke a WhatsApp link the owner has not used (owner, 2026-10-20). */
+export async function revokeWhatsappSignupLinkAction(raw: unknown): Promise<ActionResult<null>> {
+  const body = z.object({ ref, id: z.string().uuid() }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).revokeWhatsappSignupLink(body.ref, body.id));
+  if (res.ok) revalidatePath(`/clients/${body.ref}/channels`);
+  return res;
+}
