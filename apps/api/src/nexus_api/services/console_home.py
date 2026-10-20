@@ -23,9 +23,11 @@ month). Where each figure comes from and why:
   invitations (platform), unread ``usage.*`` notifications (platform).
 
 Incident definition (documented here, rendered by the console): an
-ACTIVE client whose WhatsApp channel is ``degraded`` or ``disconnected``,
-or that has no ACTIVE agent version, or that has ≥ 1 ``failed`` message in
-the last 24 h.
+ACTIVE client whose WhatsApp channel is ``degraded``, or that has no
+ACTIVE agent version, or that has ≥ 1 ``failed`` message in the last 24 h.
+A ``disconnected`` channel is NOT an incident: only the partner's own
+«Desvincular» sets it, the row stays as history and Canales hides it, so
+counting it warned «número desconectado» about a number already replaced.
 """
 
 from __future__ import annotations
@@ -78,7 +80,7 @@ class TenantSnapshot:
     failed_messages_24h: int
     agent_version: int | None
     whatsapp_channels: int
-    whatsapp_bad: int  # degraded | disconnected
+    whatsapp_bad: int  # degraded (a disconnected number is retired, not broken)
     #: Spec 017 (R1.1): any ACTIVE customer-facing channel counts as «canal»
     #: (WhatsApp today; Instagram and Messenger tomorrow). The Playground never.
     active_channels: int = 0
@@ -160,7 +162,7 @@ def _snapshot_stmt(
         .select_from(Channel)
         .where(
             Channel.type == ChannelType.WHATSAPP,
-            Channel.status.in_([ChannelStatus.DEGRADED, ChannelStatus.DISCONNECTED]),
+            Channel.status == ChannelStatus.DEGRADED,
         )
         .scalar_subquery()
     )
