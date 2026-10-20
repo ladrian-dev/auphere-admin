@@ -3,9 +3,9 @@
 /**
  * El techo de ejecución local del partner — spec 003, Requisito 10.1.
  *
- * Está en Equipo y no en el puesto de trabajo porque no es configuración de una
- * máquina: es **hasta dónde puede llegar cada persona** con la suya. Tres
- * valores y ninguna casilla:
+ * Está en Teammate (owner, 2026-10-20), con las máquinas del equipo: es **hasta
+ * dónde puede llegar cada persona** con la suya. Tres valores y ninguna
+ * casilla:
  *
  * * *Cada persona decide* — el techo no restringe (es el estado de partida).
  * * *Preguntar siempre* — nadie puede saltarse la tarjeta, ni queriendo.
@@ -19,7 +19,7 @@ import * as React from "react";
 
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@nexus/ui";
 
-import { setLocalExecCeilingAction } from "@/app/(console)/team/actions";
+import { setLocalExecCeilingAction } from "@/app/(console)/workstation/actions";
 import { useT } from "@/i18n/client";
 import type { ExecMode } from "@/lib/backend";
 
