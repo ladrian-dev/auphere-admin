@@ -51,6 +51,13 @@ def _catalog(monkeypatch):
     monkeypatch.setattr(consumer, "get_catalog", _fake_catalog)
 
 
+@pytest.fixture(autouse=True)
+def _limited(monkeypatch):
+    """Sin Postgres: el cliente no tiene consumo ilimitado (owner, 2026-10-20)
+    salvo que el test diga lo contrario."""
+    monkeypatch.setattr("nexus_api.metering.wallet.is_unlimited", AsyncMock(return_value=False))
+
+
 def _event(meter: str, quantity: int, *, seq: int = 1) -> dict:
     return {
         "meter": meter,
@@ -142,3 +149,29 @@ async def test_a_failed_debit_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(RuntimeError, match="db down"):
         await consumer._debit_channel_wallet(tenant_id, rows)
+
+
+@pytest.mark.asyncio
+async def test_an_unlimited_client_is_absorbed_not_debited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Owner, 2026-10-20: Auphere covers it — measured as ``absorbed``, never a
+    debit of the partner's balance or the client's cap."""
+    tenant_id, rows = _rows()
+    partner_id = uuid.uuid4()
+    monkeypatch.setattr(consumer, "_partner_for", AsyncMock(return_value=partner_id))
+    monkeypatch.setattr("nexus_api.metering.wallet.is_unlimited", AsyncMock(return_value=True))
+    wallet = AsyncMock()
+    absorbed = AsyncMock(return_value=True)
+    monkeypatch.setattr("nexus_api.metering.wallet.debit_wallet", wallet)
+    monkeypatch.setattr("nexus_api.metering.wallet.record_absorbed", absorbed)
+
+    await consumer._debit_channel_wallet(tenant_id, rows)
+
+    assert wallet.await_count == 0
+    assert absorbed.await_count == 1
+    kw = absorbed.await_args.kwargs
+    assert kw["partner_id"] == partner_id
+    assert kw["tenant_id"] == tenant_id
+    assert kw["qty"] > 0
+    assert kw["idempotency_key"].startswith("channel:")

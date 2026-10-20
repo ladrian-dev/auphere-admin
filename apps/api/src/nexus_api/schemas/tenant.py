@@ -45,6 +45,8 @@ class TenantOut(BaseModel):
     billing_plan_id: uuid.UUID | None = None
     price_override_cents: int | None = None
     billing_effective_from: date | None = None
+    # Migration 0164: Auphere covers this client's consumption (Admin only).
+    unlimited_consumption: bool = False
     created_at: datetime
     updated_at: datetime
 

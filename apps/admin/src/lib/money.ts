@@ -41,6 +41,7 @@ export const LEDGER_KIND_LABEL: Record<string, string> = {
   allocation_legacy: "Ajuste de tope antiguo",
   credit_manual: "Pago del partner fuera de Stripe",
   credit_reversal: "Pago anulado (se descuenta)",
+  absorbed: "Consumo que asume Auphere (no descuenta)",
 };
 
 /** Kinds that add money; the rest subtract it. */

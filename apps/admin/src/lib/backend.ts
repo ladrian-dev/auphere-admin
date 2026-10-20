@@ -1241,7 +1241,8 @@ export type LedgerKind =
   | "opening_credit"
   | "opening_debit"
   | "credit_manual"
-  | "credit_reversal";
+  | "credit_reversal"
+  | "absorbed";
 
 export type PartnerLedgerOut = {
   id: string;
@@ -1569,6 +1570,16 @@ export type TenantPaymentMethod =
 
 /** A client's monthly fee received outside the payment provider, paid by its
  *  partner. Since 2026-10-20 recording it credits the partner's balance. */
+/** Owner, 2026-10-20: Auphere covers a partner's client's consumption. */
+export type UnlimitedConsumption = {
+  tenant_id: string;
+  partner_id: string | null;
+  partner_name: string | null;
+  unlimited: boolean;
+  /** What Auphere covered this month, US$ cents; `null` = unreadable. */
+  absorbed_month_cents: number | null;
+};
+
 export type TenantPaymentOut = {
   id: string;
   tenant_id: string;
@@ -2594,6 +2605,17 @@ export const backend = {
     call<TenantBillingOut>(`/admin/tenants/${tenantId}/billing`, {
       method: "PUT",
       body,
+    }),
+
+  // ── unlimited consumption (owner, 2026-10-20) ─────────────────────────
+  getUnlimitedConsumption: (tenantId: string) =>
+    call<UnlimitedConsumption>(`/admin/tenants/${tenantId}/consumption`),
+
+  setUnlimitedConsumption: (tenantId: string, unlimited: boolean, operatorId: string) =>
+    call<UnlimitedConsumption>(`/admin/tenants/${tenantId}/consumption`, {
+      method: "PUT",
+      body: { unlimited },
+      headers: { "X-Operator-Id": operatorId },
     }),
 
   // ── monthly fees paid outside the provider ────────────────────────────

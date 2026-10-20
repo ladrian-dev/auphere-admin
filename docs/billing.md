@@ -37,6 +37,27 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 - Los pagos anotados antes de este cambio quedan como registro, sin abono (decisión del owner).
 - Un cliente directo de Auphere (sin partner) se sigue anotando en su ficha y no abona nada.
 
+## Consumo ilimitado de un cliente (2026-10-20)
+
+Para que el agente de un cliente de partner **no se pare nunca por saldo**.
+Solo lo cambia Auphere: Admin → cliente → **Facturación** → «Que el agente no
+se pare» (pide confirmación y queda en la auditoría con el nombre del
+operador; el partner la lee en frases).
+
+- **Encendido** (`tenants.unlimited_consumption`, migración `0164`):
+  `allow_channel_turn` deja pasar el turno sin mirar el saldo recargado del
+  partner ni el tope del cliente, y `quota_state` deja de marcarlo «sin
+  cupo», así que tampoco salen avisos.
+- **El consumo lo asume Auphere.** El worker anota el turno como `absorbed`
+  (`channel:{turno}:absorbed`) en vez de `debit`: se mide igual, pero no baja
+  el saldo del partner ni el tope del cliente, no cuenta como gasto del
+  partner y no entra en la conciliación. El Admin enseña cuánto ha asumido
+  Auphere este mes y lo lista en el libro del partner sin signo.
+- **El partner lo ve, sin poder tocarlo**: «Consumo ilimitado (lo gestiona
+  Auphere)» en la ficha del cliente, en la lista de clientes y en Consumo.
+- Un cliente directo de Auphere (sin partner) nunca se para por saldo: el
+  endpoint responde 422 `no_partner`.
+
 ## Tarjeta guardada, recarga automática y pospago (spec 041)
 
 - **Tarjeta.** El partner guarda su tarjeta en la página de Stripe (Checkout `mode=setup`) desde Facturación. Auphere guarda solo ids, marca, últimos 4 y caducidad (`partner_billing`).

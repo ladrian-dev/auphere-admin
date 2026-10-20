@@ -120,6 +120,10 @@ class ClientSummaryOut(BaseModel):
     #: Spec 016 (R2.1): the list shows the «sin cupo» dot without one scoped
     #: transaction per row — it is ``quota_state`` read once per page.
     out_of_quota: bool = False
+    #: Owner, 2026-10-20: Auphere covers this client's consumption — it never
+    #: stops for balance and does not spend the partner's. Read-only here;
+    #: only the Admin changes it.
+    unlimited_consumption: bool = False
     #: Spec 017 (R9.1): the list says who is ready and how much is left,
     #: read once per page (snapshots + ledger), never per row.
     setup: ClientSetupOut | None = None
