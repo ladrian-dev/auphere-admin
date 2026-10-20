@@ -28,6 +28,15 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 > cliente se repone **una vez por mes de calendario** y lo que ve un cliente como saldo
 > nunca supera el recargado de su partner.
 
+## Pagos del partner fuera de Stripe (2026-10-20)
+
+- **Quien paga es el partner**, no su cliente. Los pagos por transferencia, cripto u otro medio se anotan en el Admin, en **Partners → el partner → Facturas → «Pagos recibidos fuera de Stripe»**, eligiendo el cliente y el mes que cubren.
+- **Anotar un pago suma su importe al saldo recargado del partner**, una vez, con un asiento `credit_manual` (clave `tenant_payment:<id>`) y auditoría `wallet.admin_purchased` a nombre del operador.
+- **Anular un pago descuenta ese abono** (`credit_reversal`, auditoría `wallet.payment_reversed`). Si el partner ya gastó ese saldo, la anulación se rechaza: el saldo nunca queda en negativo por una corrección.
+- No sube el tope de ningún cliente: el partner reparte el saldo desde su consola.
+- Los pagos anotados antes de este cambio quedan como registro, sin abono (decisión del owner).
+- Un cliente directo de Auphere (sin partner) se sigue anotando en su ficha y no abona nada.
+
 ## Tarjeta guardada, recarga automática y pospago (spec 041)
 
 - **Tarjeta.** El partner guarda su tarjeta en la página de Stripe (Checkout `mode=setup`) desde Facturación. Auphere guarda solo ids, marca, últimos 4 y caducidad (`partner_billing`).

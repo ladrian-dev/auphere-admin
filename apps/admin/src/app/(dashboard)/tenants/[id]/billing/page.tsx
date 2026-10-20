@@ -113,9 +113,9 @@ export default async function TenantBillingPage({
           <Eyebrow>Pagos</Eyebrow>
           <CardTitle>Pagos recibidos fuera de Stripe</CardTitle>
           <CardDescription>
-            Mensualidades que el cliente pagó por transferencia, efectivo u
-            otro medio. Anotar un pago deja constancia de quién pagó qué mes;
-            no cambia su servicio ni su saldo.
+            {billing.partner_id
+              ? "Lo que su partner pagó por este cliente fuera de Stripe. Se anota en las Facturas del partner y suma a su saldo."
+              : "Mensualidades que este cliente directo pagó por transferencia, efectivo u otro medio. Anotar un pago deja constancia de quién pagó qué mes."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -123,6 +123,7 @@ export default async function TenantBillingPage({
             tenantId={id}
             payments={payments}
             monthlyCents={billing.effective_monthly_cents}
+            partner={billing.partner_id ? { id: billing.partner_id, name: billing.partner_name } : null}
           />
         </CardContent>
       </Card>

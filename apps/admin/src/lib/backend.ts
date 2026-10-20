@@ -1239,7 +1239,9 @@ export type LedgerKind =
   | "expiry"
   | "allocation_legacy"
   | "opening_credit"
-  | "opening_debit";
+  | "opening_debit"
+  | "credit_manual"
+  | "credit_reversal";
 
 export type PartnerLedgerOut = {
   id: string;
@@ -1565,8 +1567,8 @@ export type TenantPaymentMethod =
   | "crypto"
   | "other";
 
-/** A client's monthly fee received outside the payment provider. A record
- *  only: it never changes the client's service. */
+/** A client's monthly fee received outside the payment provider, paid by its
+ *  partner. Since 2026-10-20 recording it credits the partner's balance. */
 export type TenantPaymentOut = {
   id: string;
   tenant_id: string;
@@ -1582,7 +1584,12 @@ export type TenantPaymentOut = {
   created_at: string;
   voided_at: string | null;
   voided_by: string | null;
+  /** What it credited to the partner's balance. null: recorded before the
+   *  change, a direct client, or the credit failed (retry with «Abonar»). */
+  credited_cents?: number | null;
 };
+
+export type PartnerPaymentOut = TenantPaymentOut & { client_name: string | null };
 
 export type TenantPaymentInput = {
   period_year: number;
@@ -2621,4 +2628,31 @@ export const backend = {
       `/admin/tenants/${tenantId}/payments/${paymentId}/void`,
       { method: "POST", headers: { "X-Operator-Id": operatorId } },
     ),
+
+  // ── The partner's payments outside Stripe (owner, 2026-10-20) ─────────
+  listPartnerPayments: (partnerId: string) =>
+    call<PartnerPaymentOut[]>(`/admin/partners/${partnerId}/payments`).then((r) => r ?? []),
+
+  recordPartnerPayment: (
+    partnerId: string,
+    body: TenantPaymentInput & { tenant_id: string },
+    operatorId: string,
+  ) =>
+    call<PartnerPaymentOut>(`/admin/partners/${partnerId}/payments`, {
+      method: "POST",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  voidPartnerPayment: (partnerId: string, paymentId: string, operatorId: string) =>
+    call<PartnerPaymentOut>(`/admin/partners/${partnerId}/payments/${paymentId}/void`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  creditPartnerPayment: (partnerId: string, paymentId: string, operatorId: string) =>
+    call<PartnerPaymentOut>(`/admin/partners/${partnerId}/payments/${paymentId}/credit`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
 };

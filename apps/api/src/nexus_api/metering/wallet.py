@@ -28,6 +28,7 @@ from nexus_api.db.models.partner_wallet import (
     BUCKET_INCLUDED,
     BUCKET_PURCHASED,
     CREDIT_KINDS,
+    KIND_CREDIT_REVERSAL,
     KIND_DEBIT,
     KIND_EXPIRY,
     KIND_OPENING_CREDIT,
@@ -812,6 +813,67 @@ async def add_purchased(
     raise AssertionError("unreachable")  # pragma: no cover
 
 
+class NotEnoughBalance(Exception):
+    """Taking a credit back would leave the purchased balance below zero."""
+
+    def __init__(self, available: int, qty: int) -> None:
+        super().__init__(f"available {available} < qty {qty}")
+        self.available = available
+        self.qty = qty
+
+
+async def reverse_purchased(
+    partner_id: uuid.UUID,
+    qty: int,
+    *,
+    idempotency_key: str,
+    audit: AuditHook | None = None,
+) -> CreditResult:
+    """Take back a credit — the mirror of :func:`add_purchased`.
+
+    Owner, 2026-10-20: voiding a payment recorded by mistake takes its credit
+    back. One transaction, one ``credit_reversal`` entry, at most once by key.
+    Refused with :class:`NotEnoughBalance` when the partner already spent it:
+    the balance never goes below zero for a correction (the credit line is for
+    postpaid spend, not for this).
+    """
+    if qty <= 0:
+        raise ValueError("reversal qty must be > 0")
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        row = await _load_wallet_for_update(session, partner_id)
+        if row is None:
+            raise NotEnoughBalance(0, qty)
+        before = _snapshot(row)
+        seen = await session.scalar(
+            sa.select(UsageLedger.id).where(UsageLedger.idempotency_key == idempotency_key)
+        )
+        if seen is not None:
+            return CreditResult(snapshot=before, duplicate=True, before_available=before.available)
+        available = _as_int(row.purchased_remaining)
+        if available < qty:
+            raise NotEnoughBalance(available, qty)
+        session.add(
+            UsageLedger(
+                partner_id=partner_id,
+                tenant_id=None,
+                qty=qty,
+                bucket=BUCKET_PURCHASED,
+                kind=KIND_CREDIT_REVERSAL,
+                idempotency_key=idempotency_key,
+                fx=None,
+            )
+        )
+        row.purchased_remaining = available - qty
+        row.updated_at = _now()
+        await session.flush()
+        after = _snapshot(row)
+        if audit is not None:
+            await audit(session, before, after)
+        return CreditResult(snapshot=after, duplicate=False, before_available=before.available)
+
+
 async def purchased_spent_since(partner_id: uuid.UUID, since: datetime) -> int:
     """Recharged balance spent since ``since`` — debits of the purchased
     bucket, every client and the Companion. Raises when unreadable."""
@@ -886,7 +948,9 @@ async def reconcile_purchased(partner_id: uuid.UUID) -> Reconciliation | None:
                     ),
                     sa.func.coalesce(
                         sa.func.sum(UsageLedger.qty).filter(
-                            UsageLedger.kind.in_((KIND_EXPIRY, KIND_OPENING_DEBIT))
+                            UsageLedger.kind.in_(
+                                (KIND_EXPIRY, KIND_OPENING_DEBIT, KIND_CREDIT_REVERSAL)
+                            )
                         ),
                         0,
                     ),
