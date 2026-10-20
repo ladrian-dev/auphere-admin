@@ -4,9 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Button, Checkbox, Label } from "@nexus/ui";
 import type { ClientAccessOut, ClientModule } from "@/lib/backend";
 
 import { setAccessAction } from "./actions";
@@ -122,13 +120,13 @@ function Row({
         onCheckedChange={(v) => onChange(v === true)}
         disabled={disabled}
         aria-describedby={`${id}-desc`}
-        className="mt-0.5"
+        className="mt-1"
       />
       <div className="min-w-0 flex-1">
         <Label htmlFor={id} className={"text-sm font-medium " + (disabled ? "text-muted-foreground" : "")}>
           {label}
         </Label>
-        <p id={`${id}-desc`} className="mt-0.5 text-xs text-muted-foreground text-pretty">
+        <p id={`${id}-desc`} className="mt-1 text-xs text-muted-foreground text-pretty">
           {description}
         </p>
       </div>

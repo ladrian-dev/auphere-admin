@@ -34,6 +34,15 @@ pytestmark = pytest.mark.asyncio
 # una necesita una razón que explique por qué una policy la rompería,
 # no solo por qué "no hace falta".
 PRE_TENANT_TABLES: dict[str, str] = {
+    # Spec 040 (migración 0160): el enlace para que el dueño conecte WhatsApp.
+    "channel_signup_links": (
+        "La página del dueño solo conoce el token: la fila se busca por "
+        "``token_hash`` para AVERIGUAR a qué tenant pertenece, antes de que "
+        "exista ámbito de tenant (como ``signup_requests``). Con policy por "
+        "tenant no resolvería nunca. Solo se guarda el SHA-256 del token, la "
+        "API solo atiende esa ruta con la credencial de servicio de la consola, "
+        "y la conexión corre después bajo el GUC del tenant del enlace."
+    ),
     "api_keys": (
         "Autenticación: se lee para AVERIGUAR quién llama, antes de que exista "
         "ámbito de tenant. Además ``tenant_id`` es NULL en las claves de nivel "
@@ -79,6 +88,9 @@ PRE_TENANT_TABLES: dict[str, str] = {
 # Libro Fase 3: RLS por partner_id, FORCE. Sin GUC, cero filas.
 PARTNER_FORCE_TABLES: dict[str, str] = {
     "partner_wallets": "Saldo included+purchased. FORCE por partner_id.",
+    # Spec 041 (migración 0161): la tarjeta y los cobros automáticos.
+    "partner_billing": "Tarjeta guardada (solo ids, marca, 4 últimos) y modo de cobro. FORCE por partner_id.",
+    "partner_charges": "Cobros automáticos, uno por intento. FORCE por partner_id.",
     "partner_subscriptions": "Nivel y escalón de impago. FORCE por partner_id (spec 005).",
     "partner_allocations": "Cap por tenant. FORCE por partner_id.",
     "usage_ledger": "Asientos. FORCE por partner_id; fx NULL v1.",

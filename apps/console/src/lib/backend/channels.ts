@@ -163,6 +163,16 @@ export function channelsApi(call: Call) {
       }),
     clearCatalog: (ref: string, channelId: string) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/catalog`, { method: "DELETE" }),
+    /** Spec 040: a link the business owner opens on their own device. */
+    whatsappSignupLink: (ref: string, mode: "cloud_api" | "coexistence") =>
+      call<{ url: string; mode: string; expires_at: string }>(`${base(ref)}/whatsapp/signup-link`, {
+        method: "POST",
+        body: { mode },
+      }),
+    /** The client's recent links (owner, 2026-10-20): one works at a time. */
+    whatsappSignupLinks: (ref: string) => call<SignupLinkRow[]>(`${base(ref)}/whatsapp/signup-links`),
+    revokeWhatsappSignupLink: (ref: string, linkId: string) =>
+      call<null>(`${base(ref)}/whatsapp/signup-links/${enc(linkId)}`, { method: "DELETE" }),
     whatsappSignup: (ref: string, body: WhatsAppSignupBody) =>
       call<WhatsAppSignupResult>(`${base(ref)}/whatsapp/signup`, { method: "POST", body }),
     listTemplates: (ref: string) => call<TemplateList>(`${base(ref)}/whatsapp/templates`),
@@ -175,3 +185,13 @@ export function channelsApi(call: Call) {
       call<TestSendResult>(`${base(ref)}/diagnostics/test-send`, { method: "POST", body: { to } }),
   };
 }
+
+/** Spec 040: one of the client's WhatsApp links. The token is never shown again. */
+export type SignupLinkRow = {
+  id: string;
+  mode: "coexistence" | "cloud_api";
+  state: "valid" | "used" | "revoked" | "expired";
+  created_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+};

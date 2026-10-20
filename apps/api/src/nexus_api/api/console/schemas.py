@@ -54,6 +54,8 @@ class MeOut(BaseModel):
     #: ``companion:use`` **Y** esta bandera, comprobadas en el backend; esto
     #: es solo lo que la consola mira para montar o no la burbuja.
     companion_enabled: bool = False
+    #: Spec 032: the modules Auphere gave this partner (sidebar + Companion).
+    modules: list[str] = Field(default_factory=list)
 
 
 # ── clients ────────────────────────────────────────────────────────────
@@ -667,3 +669,6 @@ class BillingOut(BaseModel):
     billing_email: str | None
     contact_email: str | None
     receipts: list[ReceiptSummaryOut]
+    #: Spec 034: whether the plans exist. Off, the screen shows no plans and
+    #: no provider portal — only the credit purchase and the receipts.
+    memberships_enabled: bool = False

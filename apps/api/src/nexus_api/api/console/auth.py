@@ -101,6 +101,8 @@ def principal_out(view: PrincipalView) -> PrincipalOut:
         role=view.membership.role,
         permissions=sorted(permissions_for(view.membership.role)),
         console_enabled=view.partner.console_enabled,
+        # Spec 032: the partner's modules — the sidebar and the Companion.
+        modules=view.partner.ordered_console_modules(),
     )
 
 

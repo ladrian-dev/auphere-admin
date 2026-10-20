@@ -9,6 +9,8 @@ import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
 import { connectChoice, metaSignupConfig } from "@/components/channels/connect-choice";
 import { WhatsAppConnect } from "@/components/channels/whatsapp-connect";
+import { PendingSignupLinks } from "@/components/channels/pending-signup-links";
+import { WhatsAppShareLink } from "@/components/channels/whatsapp-share-link";
 import { WhatsAppConnectByAuphere } from "@/components/channels/whatsapp-connect-by-auphere";
 import { WhatsAppContinueInBrowser } from "@/components/channels/whatsapp-continue-in-browser";
 import { getT } from "@/i18n/server";
@@ -34,7 +36,14 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   const manage = can(principal.role, "channels:write");
   const api = backendFor(principal);
 
-  const [overview, { agents }] = await Promise.all([api.channelsOverview(ref), agentChoice(principal, ref, undefined)]);
+  const [overview, { agents }, signupLinks] = await Promise.all([
+    api.channelsOverview(ref),
+    agentChoice(principal, ref, undefined),
+    // Spec 040 (owner, 2026-10-20): the link sent to the owner, if one still
+    // works. A read that fails hides the line; the page does not depend on it.
+    api.whatsappSignupLinks(ref).catch(() => []),
+  ]);
+  const liveLink = signupLinks.some((l) => l.state === "valid");
   // Spec 030: who answers on each number — its agent, or the principal.
   const principalAgent = agents.find((a) => a.is_principal)?.id;
   const agentOf: Record<string, string> = {};
@@ -64,10 +73,26 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   // toda la consola; `shell-detect.test.ts` lo vigila.
   const meta = metaSignupConfig(env());
   const choice = connectChoice({ manage, meta });
+  // Spec 040: the link the business owner opens on their own device. It works
+  // in the desktop app too, where Meta's popup does not.
+  const linkModes = [
+    ...(meta.configIdCoexistence ? (["coexistence"] as const) : []),
+    ...(meta.configIdCloudApi ? (["cloud_api"] as const) : []),
+  ];
+  const share =
+    choice === "connect" ? (
+      <WhatsAppShareLink refId={ref} modes={linkModes} disabled={!overview.can_connect} hasLive={liveLink} />
+    ) : null;
   const connect = (await isDesktopShell()) ? (
-    <WhatsAppContinueInBrowser href={`${base}/channels`} />
+    <div className="flex flex-wrap items-center gap-2">
+      <WhatsAppContinueInBrowser href={`${base}/channels`} />
+      {share}
+    </div>
   ) : choice === "connect" ? (
-    <WhatsAppConnect refId={ref} meta={meta} canConnect={overview.can_connect} used={n} max={m} />
+    <div className="flex flex-wrap items-center gap-2">
+      <WhatsAppConnect refId={ref} meta={meta} canConnect={overview.can_connect} used={n} max={m} />
+      {share}
+    </div>
   ) : choice === "by_auphere" ? (
     <WhatsAppConnectByAuphere />
   ) : null;
@@ -88,6 +113,7 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
         </div>
       </div>
       {!manage ? <p className="text-xs text-muted-foreground">{t("ch.forbidden.write")}</p> : null}
+      <PendingSignupLinks refId={ref} links={signupLinks} manage={manage} />
       {overview.roles_required ? (
         <Alert>
           <AlertTitle>{t("ch.roles.required.title")}</AlertTitle>

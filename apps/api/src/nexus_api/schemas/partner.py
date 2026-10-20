@@ -101,6 +101,8 @@ class PartnerUpdateIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     status: Literal["active", "suspended"] | None = None
     contact_email: EmailStr | None = None
+    # Spec 031: the operator edits where receipts go from the partner's page.
+    billing_email: EmailStr | None = None
     broadcast_recipient_cap: int | None = Field(default=None, ge=1, le=10_000)
     rate_limit_mint_per_min: int | None = Field(default=None, ge=1, le=10_000)
     rate_limit_embed_per_min: int | None = Field(default=None, ge=1, le=100_000)
@@ -127,6 +129,55 @@ class PartnerOut(BaseModel):
     auto_activate: bool
     created_at: datetime
     updated_at: datetime
+    # Spec 031 — what the operator needs to read a partner at a glance. The
+    # flags and caps are columns; the counts and the balance are filled by
+    # the list/get handlers (None when a handler does not compute them).
+    console_enabled: bool = False
+    companion_enabled: bool = False
+    #: Spec 032: read-only here; written by PUT /admin/partners/{id}/access.
+    console_modules: list[str] = []
+    max_clients: int | None = None
+    max_channels_per_client: int | None = None
+    weekly_pool_tokens: int | None = None
+    activated_at: datetime | None = None
+    clients_count: int | None = None
+    members_count: int | None = None
+    #: Available balance in US$ cents, rounded down like the console shows it.
+    #: None when the ledger could not be read (fail-closed, never a guess).
+    available_cents: int | None = None
+    #: Spec 041: how the partner is charged and its card (never more than the
+    #: brand and the last four). None when it could not be read.
+    billing_mode: str | None = None
+    card_brand: str | None = None
+    card_last4: str | None = None
+    card_saved_at: datetime | None = None
+    charges_paused: bool | None = None
+
+
+class PartnerMemberOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    display_name: str | None
+    role: str
+    status: str
+    accepted_at: datetime | None
+    last_login_at: datetime | None
+    created_at: datetime
+
+
+class PartnerInvitationOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    role: str
+    expires_at: datetime
+    created_at: datetime
+
+
+class PartnerMembersOut(BaseModel):
+    """Spec 031 (R4.6): the partner's people and its pending invitations."""
+
+    members: list[PartnerMemberOut]
+    invitations: list[PartnerInvitationOut]
 
 
 class ApiKeyCreateIn(BaseModel):
@@ -203,7 +254,13 @@ class PartnerClientUsageOut(BaseModel):
     broadcast_recipients: int
     messages_inbound: int
     messages_outbound: int
+    #: Auphere's own model cost (``messages.cost_usd``). Not what the client
+    #: pays. Kept as a float for old readers; ``internal_cost_usd`` is exact.
     cost_usd: float
+    #: Spec 033 (R7.2): Auphere's cost, summed as a decimal, as a string.
+    internal_cost_usd: str = "0"
+    #: Spec 033 (R7.2): what the client spent at sale price, from the book.
+    spend_cents: int = 0
 
 
 class PartnerUsageOut(BaseModel):
@@ -223,6 +280,10 @@ class PartnerUsageOut(BaseModel):
     messages_inbound: int
     messages_outbound: int
     cost_usd: float
+    internal_cost_usd: str = "0"
+    #: Sale price from the book: the clients' spend plus the Companion's.
+    spend_cents: int = 0
+    spend_outside_clients_cents: int = 0
     clients: list[PartnerClientUsageOut]
 
 

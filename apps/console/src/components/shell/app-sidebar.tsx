@@ -21,7 +21,7 @@ import {
 } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import type { ClientModule, Role } from "@/lib/principal";
+import type { ClientModule, PartnerModule, Role } from "@/lib/principal";
 
 import { isActive, navForPrincipal } from "./nav";
 import { useInboxUnread } from "./use-inbox-unread";
@@ -29,7 +29,7 @@ import { UserMenu } from "./user-menu";
 
 /** Spec 030: who the sidebar is for. A client user sees its client's modules. */
 export type SidebarWho =
-  | { kind: "partner"; role: Role }
+  | { kind: "partner"; role: Role; modules: PartnerModule[] }
   | { kind: "client"; modules: ClientModule[]; clientName: string };
 
 type Props = {
@@ -75,7 +75,19 @@ export function AppSidebar({ who, partnerName, partnerSlug, user, badges }: Prop
             >
               lite
             </span>
-          ) : null}
+          ) : (
+            // Owner, 2026-10-19: the partner console is in beta, and says so
+            // next to the name — where it is read first and costs no space.
+            <span
+              title={t("shell.beta.hint")}
+              className={cn(
+                "shrink-0 rounded-full bg-status-warning-bg px-2 text-xs leading-5 font-semibold text-status-warning-text ring-1 ring-status-warning-border transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
+                collapsed && "opacity-0",
+              )}
+            >
+              {t("shell.beta")}
+            </span>
+          )}
         </div>
       </SidebarHeader>
       <SidebarContent>

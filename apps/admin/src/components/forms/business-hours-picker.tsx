@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { Button, Checkbox, Input } from "@nexus/ui";
 
 /**
  * Business hours editor for the new-tenant wizard.
@@ -134,13 +132,13 @@ export function BusinessHoursPicker({
           Aplicar lunes a Mar–Vie
         </Button>
       </div>
-      <div className="grid gap-1.5">
+      <div className="grid gap-2">
         {DAYS.map(({ key, label }) => {
           const day = state[key];
           return (
             <div
               key={key}
-              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 rounded-sm px-2 py-1.5 hover:bg-muted/40"
+              className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 rounded-sm px-2 py-2 hover:bg-muted/40"
             >
               <label className="flex items-center gap-3 cursor-pointer">
                 <Checkbox
@@ -158,7 +156,7 @@ export function BusinessHoursPicker({
                     type="time"
                     value={day.from}
                     onChange={(e) => update(key, { from: e.target.value })}
-                    className="h-8 w-[110px] font-mono text-xs"
+                    className="h-8 w-28 font-mono text-xs"
                     aria-label={`${label} desde`}
                   />
                   <span
@@ -171,7 +169,7 @@ export function BusinessHoursPicker({
                     type="time"
                     value={day.to}
                     onChange={(e) => update(key, { to: e.target.value })}
-                    className="h-8 w-[110px] font-mono text-xs"
+                    className="h-8 w-28 font-mono text-xs"
                     aria-label={`${label} hasta`}
                   />
                 </>

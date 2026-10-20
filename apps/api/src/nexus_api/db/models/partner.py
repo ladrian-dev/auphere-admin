@@ -78,12 +78,46 @@ class ApiKeyScope(str, enum.Enum):
 TENANT_SCOPED_API_KEY_SCOPES = frozenset({ApiKeyScope.MESSAGES_SEND.value})
 
 
+class PartnerModule(str, enum.Enum):
+    """Spec 032: the views and services Auphere switches on per partner.
+
+    The nav modules are the partner console's sidebar, in its order; the
+    Companion is the assistant bubble. ``notifications`` (the bell) is not a
+    module: it is always there.
+    """
+
+    PANEL = "panel"
+    CLIENTS = "clients"
+    USAGE = "usage"
+    AUDIT = "audit"
+    KNOWLEDGE = "knowledge"
+    WORKSTATION = "workstation"
+    TEAM = "team"
+    BILLING = "billing"
+    KEYS = "keys"
+    COMPANION = "companion"
+
+
+#: Every module, in canonical order (sidebar order, then the Companion).
+PARTNER_MODULES: tuple[str, ...] = tuple(m.value for m in PartnerModule)
+#: The modules that are a view of the sidebar.
+PARTNER_NAV_MODULES: tuple[str, ...] = tuple(
+    m for m in PARTNER_MODULES if m != PartnerModule.COMPANION.value
+)
+_MODULES_SQL = ", ".join(f"'{m}'" for m in PARTNER_MODULES)
+_NAV_DEFAULT_SQL = "ARRAY[" + ", ".join(f"'{m}'" for m in PARTNER_NAV_MODULES) + "]::varchar[]"
+
+
 class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     __tablename__ = "partners"
     __table_args__ = (
         CheckConstraint(
             "status IN ('active', 'suspended')",
             name="ck_partners_status",
+        ),
+        CheckConstraint(
+            f"console_modules <@ ARRAY[{_MODULES_SQL}]::varchar[]",
+            name="ck_partners_console_modules",
         ),
     )
 
@@ -195,6 +229,31 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     companion_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    # Migration 0159 — spec 032: which console views and services this
+    # partner has. Written only by ``services/partner_access.set_access``,
+    # which keeps ``companion_enabled`` in sync (``"companion" in modules``);
+    # ``companion_enabled`` stays as the column every Companion gate already
+    # reads and is retired by a later spec.
+    console_modules: Mapped[list[str]] = mapped_column(
+        ARRAY(String(16)),
+        nullable=False,
+        default=lambda: list(PARTNER_NAV_MODULES),
+        server_default=text(_NAV_DEFAULT_SQL),
+    )
+
+    def ordered_console_modules(self) -> list[str]:
+        """The modules in canonical order, unknown values dropped.
+
+        The Companion is read from ``companion_enabled``: it is the column
+        every Companion gate checks, so whichever path wrote it (a seed, the
+        signup, the panel) the console and the gate cannot disagree.
+        """
+        have = set(self.console_modules or ())
+        have.discard(PartnerModule.COMPANION.value)
+        if self.companion_enabled:
+            have.add(PartnerModule.COMPANION.value)
+        return [m for m in PARTNER_MODULES if m in have]
+
     # Migration 0086 — activation metric (CP-29): first moment the partner
     # had an ACTIVE client with a published agent. NULL = not yet.
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

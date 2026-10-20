@@ -23,13 +23,7 @@
  * (e.g. "respond as operator on this thread") is Bloque C.
  */
 
-import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Badge, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nexus/ui";
 import type {
   InteractivePayload,
   MessageOut,
@@ -49,7 +43,7 @@ export function MessageBubble({ message }: { message: MessageOut }) {
     <div
       className={
         "flex flex-col gap-2 rounded-md border border-border px-3 py-2 " +
-        (inbound ? "bg-blue-50/50 dark:bg-blue-950/20" : "bg-muted/40")
+        (inbound ? "bg-status-info-bg " : "bg-muted/40")
       }
       data-testid={`message-bubble-${message.id}`}
     >
@@ -92,8 +86,7 @@ function MessageHeader({
   return (
     <div className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase text-muted-foreground tabular-nums">
       <span
-        className="flex items-center gap-2 flex-wrap"
-        style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+        className="flex items-center gap-2 flex-wrap tracking-eyebrow"
       >
         <span>{inbound ? "← Cliente" : "→ Agente"}</span>
         {message.intent ? <span>· {message.intent}</span> : null}
@@ -141,12 +134,12 @@ const OUTCOME_VARIANTS: Record<
   pass: {
     label: "Pass",
     className:
-      "border-emerald-500/40 bg-emerald-100/60 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200",
+      "border-status-positive-border bg-status-positive-bg text-status-positive-text  ",
   },
   fail: {
     label: "Fail",
     className:
-      "border-red-500/40 bg-red-100/60 text-red-900 dark:bg-red-950/40 dark:text-red-200",
+      "border-status-danger-border bg-status-danger-bg text-status-danger-text  ",
   },
   skipped: {
     label: "Skipped",
@@ -155,7 +148,7 @@ const OUTCOME_VARIANTS: Record<
   error: {
     label: "Error",
     className:
-      "border-amber-500/40 bg-amber-100/60 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
+      "border-status-warning-border bg-status-warning-bg text-status-warning-text  ",
   },
 };
 
@@ -172,7 +165,7 @@ function OutcomeBadge({
   const trigger = (
     <span
       className={
-        "rounded-full border px-2 py-0.5 text-[10px] uppercase font-medium " +
+        "rounded-full border px-2 py-1 text-[10px] uppercase font-medium " +
         spec.className
       }
       data-testid={`outcome-badge-${verdict}`}
@@ -240,11 +233,11 @@ function ButtonsRow({
   buttons: NonNullable<InteractivePayload["buttons"]>;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-2">
       {buttons.map((b) => (
         <span
           key={b.id}
-          className="rounded-full border border-input bg-background px-2.5 py-0.5 text-xs"
+          className="rounded-full border border-input bg-background px-3 py-1 text-xs"
           data-testid="interactive-button"
         >
           {b.title}
@@ -264,7 +257,7 @@ function ListPreview({
       <span className="text-[10px] font-mono uppercase text-muted-foreground">
         Botón: {list.button} · {list.items.length} ítems
       </span>
-      <ul className="grid gap-0.5">
+      <ul className="grid gap-1">
         {list.items.slice(0, 6).map((item) => (
           <li
             key={item.id}
@@ -295,7 +288,7 @@ function CtaUrlPreview({
   return (
     <div className="flex items-center gap-2">
       <span
-        className="rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium"
+        className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium"
         data-testid="interactive-cta-url"
       >
         {cta.text}
@@ -321,13 +314,13 @@ function MediaPreview({ message }: { message: MessageOut }) {
   const icon = MEDIA_ICONS[kind] ?? "📎";
   return (
     <div
-      className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5"
+      className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-2"
       data-testid={`media-preview-${kind}`}
     >
       <span className="text-base" aria-hidden="true">
         {icon}
       </span>
-      <div className="flex flex-col gap-0.5 min-w-0">
+      <div className="flex flex-col gap-1 min-w-0">
         <span className="text-xs font-medium truncate">
           {message.media_filename ?? `[${kind}]`}
         </span>
@@ -385,12 +378,12 @@ type ToolEnvelope = {
 };
 
 const TOOL_STATUS_TONE: Record<string, string> = {
-  ok: "border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20",
+  ok: "border-status-positive-border bg-status-positive-bg ",
   "skipped:not_in_whitelist":
-    "border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/20",
+    "border-status-warning-border bg-status-warning-bg ",
   "skipped:dry_run":
-    "border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/20",
-  error: "border-red-500/30 bg-red-50/40 dark:bg-red-950/20",
+    "border-status-warning-border bg-status-warning-bg ",
+  error: "border-status-danger-border bg-status-danger-bg ",
 };
 
 function ToolCallsPanel({ calls }: { calls: Array<Record<string, unknown>> }) {
@@ -412,7 +405,7 @@ function ToolCallsPanel({ calls }: { calls: Array<Record<string, unknown>> }) {
           return (
             <div
               key={idx}
-              className={"rounded-md border px-2 py-1.5 " + tone}
+              className={"rounded-md border px-2 py-2 " + tone}
               data-testid="tool-call-entry"
             >
               <div className="flex items-center justify-between gap-2 text-[11px]">
@@ -424,13 +417,13 @@ function ToolCallsPanel({ calls }: { calls: Array<Record<string, unknown>> }) {
                 </span>
               </div>
               {envelope.error ? (
-                <p className="mt-1 text-red-700 dark:text-red-300">
+                <p className="mt-1 text-status-danger-text ">
                   {envelope.error}
                 </p>
               ) : null}
               {envelope.result &&
               Object.keys(envelope.result).length > 0 ? (
-                <pre className="mt-1 overflow-x-auto rounded bg-background/60 p-1.5 text-[10px] leading-tight">
+                <pre className="mt-1 overflow-x-auto rounded bg-background/60 p-2 text-[10px] leading-tight">
                   {JSON.stringify(envelope.result, null, 2)}
                 </pre>
               ) : null}
@@ -465,7 +458,7 @@ function MessageFooter({ message }: { message: MessageOut }) {
       ) : null}
       {message.failure_code ? (
         <span
-          className="text-red-700 dark:text-red-300"
+          className="text-status-danger-text "
           title={message.last_error ?? undefined}
         >
           err:{message.failure_code}

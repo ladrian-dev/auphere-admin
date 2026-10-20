@@ -1,44 +1,33 @@
 import Link from "next/link";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { StatusDot } from "@/components/brand/status-dot";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
+  EmptyState,
+  Section,
+  StatusDot,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import { backend } from "@/lib/backend";
-import { fullDateTime, relativeTime, statusLabel } from "@/lib/format";
+import { fullDateTime, relativeTime } from "@/lib/format";
 
 import { AgentToggle } from "./agent-toggle";
 import { LiveIndicator } from "./live-indicator";
 
-const STATUS_TONE = {
-  open: "info",
-  closed: "muted",
-  escalated: "danger",
-} as const;
+const STATUS_TONE = { open: "info", closed: "muted", escalated: "danger" } as const;
+const STATUS_LABEL = { open: "Abierta", closed: "Resuelta", escalated: "Escalada" } as const;
 
-export default async function ConversationsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/**
+ * Spec 036: the client's conversations, by the person who wrote (H2: names,
+ * not ids), newest activity first, with who answers and the way to take over
+ * said in words.
+ */
+export default async function ConversationsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [tenant, page] = await Promise.all([
-    backend.getTenant(id),
-    backend.listConversations(id, undefined, 50),
-  ]);
+  const [tenant, page] = await Promise.all([backend.getTenant(id), backend.listConversations(id, undefined, 50)]);
   if (!tenant) return null;
 
   const escalated = page.items.filter((c) => c.status === "escalated").length;
@@ -46,110 +35,100 @@ export default async function ConversationsPage({
   const takenOver = page.items.filter((c) => c.agent_active === false).length;
 
   return (
-    <div className="grid gap-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <Eyebrow>Conversaciones</Eyebrow>
-              <CardTitle className="flex items-center gap-3">
-                Historial reciente
-                <LiveIndicator tenantId={tenant.id} />
-              </CardTitle>
-              <CardDescription>
-                Las últimas {page.items.length} conversaciones del tenant. El
-                indicador en vivo escucha el stream del backend.
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <span className="inline-flex items-center gap-2">
-                <StatusDot tone="info" />
-                <span>
-                  <strong className="tabular-nums text-foreground">{open}</strong> abiertas
-                </span>
+    <Section
+      title={
+        <span className="flex items-center gap-3">
+          Conversaciones
+          <LiveIndicator tenantId={tenant.id} />
+        </span>
+      }
+      description={`Las ${page.items.length} más recientes. Pulsa una para leerla o responder.`}
+      actions={
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-2">
+            <StatusDot tone="info" />
+            <span>
+              <strong className="text-foreground tabular-nums">{open}</strong> abiertas
+            </span>
+          </span>
+          {escalated > 0 ? (
+            <span className="inline-flex items-center gap-2">
+              <StatusDot tone="danger" pulse />
+              <span>
+                <strong className="text-foreground tabular-nums">{escalated}</strong> escaladas
               </span>
-              {escalated > 0 ? (
-                <span className="inline-flex items-center gap-2">
-                  <StatusDot tone="danger" pulse />
-                  <span>
-                    <strong className="tabular-nums text-foreground">{escalated}</strong> escaladas
+            </span>
+          ) : null}
+          {takenOver > 0 ? (
+            <span className="inline-flex items-center gap-2">
+              <StatusDot tone="warning" />
+              <span>
+                <strong className="text-foreground tabular-nums">{takenOver}</strong> con una persona
+              </span>
+            </span>
+          ) : null}
+        </div>
+      }
+      padded={false}
+    >
+      {page.items.length === 0 ? (
+        <EmptyState
+          title="Todavía nadie ha escrito"
+          description="Cuando llegue el primer mensaje por un canal del cliente aparecerá aquí."
+          readonly
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Contacto</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead>Responde</TableHead>
+              <TableHead className="hidden md:table-cell">Empezó</TableHead>
+              <TableHead className="text-right">Último mensaje</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {page.items.map((conv) => (
+              <TableRow key={conv.id} className="relative hover:bg-muted/50">
+                <TableCell>
+                  <Link
+                    href={`/tenants/${tenant.id}/conversations/${conv.id}`}
+                    className="flex flex-col gap-1 outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+                  >
+                    <span className="text-sm font-medium">
+                      {conv.customer_name || conv.customer_identifier || "Contacto sin número"}
+                    </span>
+                    {conv.customer_name && conv.customer_identifier ? (
+                      <span className="font-mono text-xs text-muted-foreground">{conv.customer_identifier}</span>
+                    ) : null}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <span className="inline-flex items-center gap-2 text-sm">
+                    <StatusDot tone={STATUS_TONE[conv.status]} />
+                    {STATUS_LABEL[conv.status]}
                   </span>
-                </span>
-              ) : null}
-              {takenOver > 0 ? (
-                <span className="inline-flex items-center gap-2">
-                  <StatusDot tone="warning" />
-                  <span>
-                    <strong className="tabular-nums text-foreground">{takenOver}</strong> con operador
-                  </span>
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {page.items.length === 0 ? (
-            <div className="px-6 py-12 text-center text-muted-foreground text-sm">
-              Sin conversaciones todavía. Cuando llegue el primer mensaje de WhatsApp aparecerán acá.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Conversación</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Agente</TableHead>
-                  <TableHead className="hidden md:table-cell">Abierta</TableHead>
-                  <TableHead className="text-right">Última actividad</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {page.items.map((conv) => (
-                  <TableRow key={conv.id} className="hover:bg-muted/40">
-                    <TableCell>
-                      <Link
-                        href={`/tenants/${tenant.id}/conversations/${conv.id}`}
-                        className="flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
-                      >
-                        <span className="font-mono text-sm flex items-center gap-2">
-                          {conv.id.slice(0, 8)}
-                          {conv.provider ? (
-                            <span className="rounded-sm border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {conv.provider}
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          customer {conv.customer_id.slice(0, 8)}
-                        </span>
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-2">
-                        <StatusDot tone={STATUS_TONE[conv.status]} />
-                        {statusLabel(conv.status)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <AgentToggle
-                        tenantId={tenant.id}
-                        conversationId={conv.id}
-                        agentActive={conv.agent_active}
-                      />
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {fullDateTime(conv.created_at)}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground tabular-nums">
-                      {relativeTime(conv.updated_at)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                </TableCell>
+                <TableCell className="relative z-10">
+                  {conv.status === "closed" ? (
+                    // A resolved conversation has nobody to answer: no control to offer.
+                    <span className="text-sm text-muted-foreground">—</span>
+                  ) : (
+                    <AgentToggle tenantId={tenant.id} conversationId={conv.id} agentActive={conv.agent_active} />
+                  )}
+                </TableCell>
+                <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
+                  {fullDateTime(conv.created_at)}
+                </TableCell>
+                <TableCell className="text-right text-sm text-muted-foreground tabular-nums">
+                  {relativeTime(conv.last_message_at ?? conv.updated_at)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Section>
   );
 }

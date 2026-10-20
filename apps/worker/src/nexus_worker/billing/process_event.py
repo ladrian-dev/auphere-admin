@@ -110,7 +110,18 @@ async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout
       are different events — so the second anchor is the session id.
     """
     from nexus_api.billing.events import already_fulfilled
+
+    # Spec 034 (R4.1): only a one-off credit session buys balance. A
+    # subscription checkout completes with the same event and the same
+    # ``client_reference_id``; without this gate its first invoice would also
+    # be credited as purchased balance.
+    from nexus_api.billing.provider import field
     from nexus_api.metering.wallet import add_purchased
+
+    mode = str(field(checkout, "mode") or "")
+    kind = str(field(field(checkout, "metadata"), "kind") or "")
+    if mode != "payment" or kind != "credit":
+        raise Skip(f"la sesión no es una compra de crédito (mode={mode!r}, kind={kind!r})")
 
     payment_status = str(getattr(checkout, "payment_status", "") or "")
     if payment_status == "unpaid":
@@ -129,7 +140,20 @@ async def apply_credit_purchase(session: Any, *, partner_id: uuid.UUID, checkout
     from nexus_api.billing.pricing import units_for_cents
 
     units: int = units_for_cents(amount_total)
-    await add_purchased(partner_id=partner_id, qty=units)
+    # Spec 033 (R3.4): balance and ledger entry in one transaction, keyed by
+    # the Checkout Session. A second notice for the same session — the two
+    # event types, a retry after a crash between crediting and marking the
+    # event — finds the entry and credits nothing.
+    from nexus_api.db.models.partner_wallet import KIND_CREDIT_STRIPE
+
+    result = await add_purchased(
+        partner_id=partner_id,
+        qty=units,
+        kind=KIND_CREDIT_STRIPE,
+        idempotency_key=f"stripe_credit:{session_id or uuid.uuid4()}",
+    )
+    if result.duplicate:
+        raise Skip(f"la compra {session_id} ya se acreditó")
     log.info(
         "metering.credit_purchased",
         partner_id=str(partner_id),
@@ -188,6 +212,44 @@ async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str
         # about money is worse than having a row nobody can act on.
         log.warning("metering.billing_event_orphan", event_type=event_type)
         return "failed"
+
+    # Spec 041: the partner's card and its automatic charges. They come
+    # before the memberships gate below: these invoices are not a
+    # subscription's, and with memberships off they must still settle.
+    if event_type in {"invoice.paid", "invoice.payment_failed"}:
+        from nexus_api.billing.provider import field
+        from nexus_api.services.partner_billing import (
+            record_invoice_failed,
+            settle_paid_invoice,
+        )
+
+        invoice = client.invoices.retrieve(fields.get("object_id") or "")
+        kind = str(field(field(invoice, "metadata"), "kind") or "")
+        if kind in {"auto_recharge", "postpaid"}:
+            if event_type == "invoice.paid":
+                await settle_paid_invoice(partner_id, invoice)
+            else:
+                await record_invoice_failed(partner_id, invoice)
+            return "processed"
+    if event_type == "checkout.session.completed":
+        checkout = client.checkout.sessions.retrieve(fields.get("checkout_session_id") or "")
+        if str(getattr(checkout, "mode", "") or "") == "setup":
+            from nexus_api.services.partner_billing import apply_card_saved
+
+            await apply_card_saved(session, partner_id=partner_id, checkout=checkout)
+            await session.commit()
+            return "processed"
+
+    # Spec 034 (R4.2): with memberships off, notices about a subscription are
+    # recorded (the event row stays) and change nothing. A credit purchase is
+    # a checkout, not a subscription, and keeps going below.
+    from nexus_api.config import get_settings
+
+    if not get_settings().membership_enabled and (
+        event_type.startswith("customer.subscription.") or event_type.startswith("invoice.")
+    ):
+        log.info("metering.billing_event_ignored_memberships_off", event_type=event_type)
+        return "ignored"
 
     if event_type == "invoice.paid":
         invoice = client.invoices.retrieve(fields.get("object_id") or "")

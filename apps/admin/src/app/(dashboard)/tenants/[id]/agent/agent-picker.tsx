@@ -7,8 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { usePathname, useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -16,8 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   Form,
   FormControl,
   FormDescription,
@@ -25,14 +23,14 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+  Input,
+} from "@nexus/ui";
 import type { TenantAgent } from "@/lib/backend";
 
 import { createTenantAgentAction } from "./actions";
 
 const schema = z.object({
-  name: z.string().trim().min(1, "Poné un nombre.").max(80, "Máximo 80 caracteres."),
+  name: z.string().trim().min(1, "Ponle un nombre.").max(80, "Máximo 80 caracteres."),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -75,7 +73,7 @@ export function AgentPicker({
       return;
     }
     toast.success(`Agente «${result.data.name}» creado`, {
-      description: "Aplicá una plantilla o guardá su primera versión desde el editor.",
+      description: "Aplica una plantilla o guarda su primera versión desde el editor.",
     });
     setOpen(false);
     form.reset();
@@ -116,7 +114,7 @@ export function AgentPicker({
             <DialogTitle>Nuevo agente</DialogTitle>
             <DialogDescription>
               Con su propio prompt, herramientas y versiones. Nace sin versiones:
-              guardá la primera desde el editor o aplicá una plantilla, y asignale
+              guarda la primera desde el editor o aplica una plantilla, y asígnale
               un número para que conteste.
             </DialogDescription>
           </DialogHeader>

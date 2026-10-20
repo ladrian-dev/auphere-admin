@@ -16,6 +16,7 @@
 import { notFound } from "next/navigation";
 
 import { PlaygroundShell } from "@/components/qa/playground-shell";
+import { CrumbName } from "@/components/shell/crumb-names";
 import { backend } from "@/lib/backend";
 import { qaApi, type QAThread } from "@/lib/qa-api";
 import { requireOperator } from "@/lib/session";
@@ -48,6 +49,8 @@ export default async function PlaygroundPage({
     : null;
 
   return (
+    <>
+    <CrumbName id={tenant.id} label={tenant.name} />
     <PlaygroundShell
       tenant={{
         id: tenant.id,
@@ -60,5 +63,6 @@ export default async function PlaygroundPage({
       initialThreads={threads}
       initialActiveThread={activeThread}
     />
+    </>
   );
 }

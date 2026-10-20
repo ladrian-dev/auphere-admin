@@ -76,6 +76,7 @@ async def _ledger(db_session, w, agent_id: uuid.UUID | None, qty: int) -> None:
             tenant_id=w["tenant_id"],
             qty=qty,
             bucket="purchased",
+            kind="debit",
             idempotency_key=f"t:{uuid.uuid4()}",
             agent_id=agent_id,
         )

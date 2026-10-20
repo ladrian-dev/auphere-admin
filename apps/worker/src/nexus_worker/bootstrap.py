@@ -86,6 +86,7 @@ from nexus_worker.streams.owner_fanout import run_owner_fanout_consumer
 from nexus_worker.streams.owner_fanout_sweep import run_owner_fanout_sweep
 from nexus_worker.streams.owner_outbox import run_owner_outbox_dispatcher
 from nexus_worker.streams.partition_maintenance_cron import run_partition_maintenance_cron
+from nexus_worker.streams.partner_charges_cron import run_partner_charges_cron
 from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
@@ -139,6 +140,7 @@ SCHEDULER_TASK_NAMES = frozenset(
         "cobranza-reminder-cron",
         "agent-sales-poll-cron",
         "partner-receipt-cron",
+        "partner-charges-cron",
         "wallet-renewal-cron",
         # Spec 005: caduca el crédito comprado doce meses después de una baja.
         "expire-credit-cron",
@@ -449,6 +451,8 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
+        # Spec 041: automatic recharge and the postpaid settlement on the 1st.
+        _spawn("partner-charges-cron", run_partner_charges_cron(stop=ctx.stop)),
         _spawn("wallet-renewal-cron", run_wallet_renewal_cron(stop=ctx.stop)),
         _spawn("expire-credit-cron", run_expire_credit_cron(stop=ctx.stop)),
         _spawn("expire-signups-cron", run_expire_signups_cron(stop=ctx.stop)),

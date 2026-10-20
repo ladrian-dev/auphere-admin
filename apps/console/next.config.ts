@@ -33,6 +33,12 @@ const nextConfig: NextConfig = {
           { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
         ],
       },
+      {
+        // Spec 040: the owner's signup page sends no referrer at all — its
+        // link carried a token, and nothing about it should leave the page.
+        source: "/connect/:path*",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
     ];
   },
 };

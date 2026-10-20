@@ -39,7 +39,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
   const who =
     principal.kind === "client"
       ? { kind: "client" as const, modules: principal.modules, clientName: principal.clientName }
-      : { kind: "partner" as const, role: principal.role };
+      : { kind: "partner" as const, role: principal.role, modules: principal.modules };
   return (
     // El shell mide exactamente la ventana. Sin esto, el inset medía la
     // ventana entera **más** sus 8 px de margen arriba y abajo, y esos 16 px
@@ -71,7 +71,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           <div className="flex-1" />
           {principal.kind === "partner" ? (
             <>
-              <ConsoleCommandPalette role={principal.role} />
+              <ConsoleCommandPalette role={principal.role} modules={principal.modules} />
               <NotificationsBell initialUnread={null} />
             </>
           ) : (
@@ -97,7 +97,10 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
             `(auth)`. It is mounted here rather than per page so the drawer
             survives navigation — a run keeps going while the user moves
             around, which is the whole point of the durable run log. */}
-        {principal.kind === "partner" ? <CompanionLauncher role={principal.role} userId={principal.userId} /> : null}
+        {/* Spec 032: the Companion is a module Auphere switches on per partner. */}
+        {principal.kind === "partner" && principal.modules.includes("companion") ? (
+          <CompanionLauncher role={principal.role} userId={principal.userId} />
+        ) : null}
       </SidebarInset>
     </SidebarProvider>
   );

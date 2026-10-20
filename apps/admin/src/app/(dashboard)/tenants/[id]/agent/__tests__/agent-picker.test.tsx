@@ -81,7 +81,7 @@ describe("AgentPicker", () => {
     await userEvent.click(screen.getByRole("button", { name: "Nuevo agente" }));
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Crear agente" }));
-    expect(await within(dialog).findByText("Poné un nombre.")).toBeInTheDocument();
+    expect(await within(dialog).findByText("Ponle un nombre.")).toBeInTheDocument();
     expect(createTenantAgentAction).not.toHaveBeenCalled();
   });
 });

@@ -10,13 +10,14 @@ import { searchClientsAction } from "@/app/(console)/notifications/actions";
 import { useT } from "@/i18n/client";
 import type { ClientSummary } from "@/lib/backend";
 import { can, type Role } from "@/lib/permissions";
+import type { PartnerModule } from "@/lib/principal-access";
 
 /**
  * ⌘K for the console (CP-07): searches clients (server action, debounced)
  * and offers navigation to their tabs, plus global actions. Global
  * shortcut ⌘K / Ctrl+K on the shell; a visible button in the header.
  */
-export function ConsoleCommandPalette({ role }: { role: Role }) {
+export function ConsoleCommandPalette({ role, modules }: { role: Role; modules: readonly PartnerModule[] }) {
   const t = useT();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -37,7 +38,9 @@ export function ConsoleCommandPalette({ role }: { role: Role }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const canClients = can(role, "clients:read");
+  // Spec 032: a section Auphere did not give this partner is not searchable.
+  const has = React.useCallback((m: PartnerModule) => modules.includes(m), [modules]);
+  const canClients = has("clients") && can(role, "clients:read");
   React.useEffect(() => {
     if (!open || !canClients) return;
     const my = ++seq.current;
@@ -68,16 +71,16 @@ export function ConsoleCommandPalette({ role }: { role: Role }) {
         if (can(role, "agents:read")) out.push({ id: `c:${c.external_client_ref}:agent`, group: "clients", label: `${c.name} · ${t("cmdk.client.agent")}`, hint: c.external_client_ref, icon: <Bot />, onSelect: go(`${base}/agent`) });
         if (can(role, "channels:read")) out.push({ id: `c:${c.external_client_ref}:channels`, group: "clients", label: `${c.name} · ${t("cmdk.client.channels")}`, hint: c.external_client_ref, icon: <Radio />, onSelect: go(`${base}/channels`) });
         if (can(role, "playground:run")) out.push({ id: `c:${c.external_client_ref}:playground`, group: "clients", label: `${c.name} · ${t("cmdk.client.playground")}`, hint: c.external_client_ref, icon: <FlaskConical />, onSelect: go(`${base}/playground`) });
-        if (can(role, "usage:read")) out.push({ id: `c:${c.external_client_ref}:usage`, group: "clients", label: `${c.name} · ${t("cmdk.client.usage")}`, hint: c.external_client_ref, icon: <BarChart3 />, onSelect: go(`/usage?client=${encodeURIComponent(c.external_client_ref)}`) });
+        if (has("usage") && can(role, "usage:read")) out.push({ id: `c:${c.external_client_ref}:usage`, group: "clients", label: `${c.name} · ${t("cmdk.client.usage")}`, hint: c.external_client_ref, icon: <BarChart3 />, onSelect: go(`/usage?client=${encodeURIComponent(c.external_client_ref)}`) });
       }
     }
     const actions: CommandItem[] = [];
-    if (can(role, "clients:write")) actions.push({ id: "a:new", group: "actions", label: t("cmdk.action.newClient"), icon: <Plus />, keywords: "nuevo new client cliente", onSelect: go("/clients/new") });
-    if (can(role, "team:read")) actions.push({ id: "a:team", group: "actions", label: t("cmdk.action.team"), icon: <Users />, keywords: "team equipo", onSelect: go("/team") });
-    if (can(role, "keys:read")) actions.push({ id: "a:keys", group: "actions", label: t("cmdk.action.keys"), icon: <KeyRound />, keywords: "keys claves api", onSelect: go("/keys") });
+    if (has("clients") && can(role, "clients:write")) actions.push({ id: "a:new", group: "actions", label: t("cmdk.action.newClient"), icon: <Plus />, keywords: "nuevo new client cliente", onSelect: go("/clients/new") });
+    if (has("team") && can(role, "team:read")) actions.push({ id: "a:team", group: "actions", label: t("cmdk.action.team"), icon: <Users />, keywords: "team equipo", onSelect: go("/team") });
+    if (has("keys") && can(role, "keys:read")) actions.push({ id: "a:keys", group: "actions", label: t("cmdk.action.keys"), icon: <KeyRound />, keywords: "keys claves api", onSelect: go("/keys") });
     actions.push({ id: "a:notif", group: "actions", label: t("cmdk.action.notifications"), icon: <Bell />, keywords: "notifications notificaciones", onSelect: go("/notifications") });
     return [...out, ...filterCommandItems(actions, q)];
-  }, [clients, q, role, t, go]);
+  }, [clients, q, role, t, go, has]);
 
   return (
     <>

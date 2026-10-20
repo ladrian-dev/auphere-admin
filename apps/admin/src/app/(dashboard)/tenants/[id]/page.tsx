@@ -1,205 +1,189 @@
+import { Check, CircleAlert } from "lucide-react";
 import Link from "next/link";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { ReadinessCard } from "@/components/tenants/readiness-card";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { backend } from "@/lib/backend";
+import { Callout, DescriptionList, Section, StatusDot } from "@nexus/ui";
+
+import { backend, type ConversationOut } from "@/lib/backend";
 import { fullDateTime, relativeTime } from "@/lib/format";
 import { qaApi, type QAThread } from "@/lib/qa-api";
 import { requireOperator } from "@/lib/session";
 
-export default async function TenantOverview({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+import { readinessChecks } from "./readiness";
+
+const CONVERSATION_TONE = { open: "info", escalated: "danger", closed: "muted" } as const;
+const CONVERSATION_LABEL = { open: "Abierta", escalated: "Escalada", closed: "Resuelta" } as const;
+
+/**
+ * Spec 036: the client's summary, in two columns on a wide screen (F-pattern):
+ * on the left what needs doing and what is happening, on the right the data
+ * you look up. What is pending goes first; with nothing pending the checklist
+ * folds to one line (progressive disclosure).
+ */
+export default async function TenantOverview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const operator = await requireOperator();
-  const operatorId = operator.id;
-
-  const [tenant, agentBundle, recentThreads, readiness] = await Promise.all([
+  const [tenant, health, conversations, connectors, threads] = await Promise.all([
     backend.getTenant(id),
-    backend.getAgentConfig(id),
-    // Best-effort fetch — if /qa/* is misconfigured we still render the page.
-    qaApi
-      .listThreads({ operatorId, tenantId: id, limit: 5 })
-      .catch(() => [] as QAThread[]),
-    // Best-effort — a readiness failure must not break the overview.
-    backend.getReadiness(id).catch(() => null),
+    backend.getTenantHealth(id).catch(() => null),
+    backend.listConversations(id, undefined, 6).catch(() => null),
+    backend.listTenantConnectors(id).catch(() => null),
+    qaApi.listThreads({ operatorId: operator.id, tenantId: id, limit: 3 }).catch(() => [] as QAThread[]),
   ]);
   if (!tenant) return null;
+  const partner = tenant.partner_id ? await backend.getPartner(tenant.partner_id).catch(() => null) : null;
 
-  const activeVersion = agentBundle.active?.version;
-  const totalVersions = agentBundle.versions.length;
-  const whitelistSize = agentBundle.active?.tools.length ?? 0;
-  const channelsCount = (agentBundle.active?.channels ?? []).length;
+  const base = `/tenants/${id}`;
+  const broken = connectors?.filter((c) => c.status === "needs_reauth" || c.status === "error") ?? [];
+  const checks = readinessChecks({ base, tenant, health, brokenConnectors: broken.map((c) => c.connector_display_name) });
+  const pending = checks.filter((c) => !c.ok);
+  const done = checks.filter((c) => c.ok);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      {/* Go-live readiness — full width, top of the grid */}
-      <ReadinessCard readiness={readiness} />
-
-      {/* Identity */}
-      <Card className="lg:col-span-1">
-        <CardHeader>
-          <Eyebrow>Identidad</Eyebrow>
-          <CardTitle>{tenant.name}</CardTitle>
-          <CardDescription className="font-mono">{tenant.slug}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          <Row label="Mercado" value={tenant.market ?? "—"} />
-          <Row label="Zona horaria" value={tenant.timezone} mono />
-          <Row label="Owner email" value={tenant.owner_email ?? "—"} />
-          <Row label="Owner phone" value={tenant.owner_phone ?? "—"} mono />
-          <Row label="Creado" value={fullDateTime(tenant.created_at)} />
-          <Row label="Actualizado" value={relativeTime(tenant.updated_at)} />
-        </CardContent>
-      </Card>
-
-      {/* Agent state */}
-      <Card className="lg:col-span-1">
-        <CardHeader>
-          <Eyebrow>Agente</Eyebrow>
-          <CardTitle>
-            {activeVersion
-              ? `Versión ${activeVersion} activa`
-              : "Sin versión activa"}
-          </CardTitle>
-          <CardDescription>
-            {activeVersion
-              ? `${totalVersions} versión${totalVersions === 1 ? "" : "es"} en historial · ${whitelistSize} tools en whitelist`
-              : "Crea una primera versión desde la pestaña Agente."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          <Row
-            label="Canales"
-            value={channelsCount === 0 ? "—" : `${channelsCount} canal${channelsCount === 1 ? "" : "es"}`}
-          />
-          <Row
-            label="Última promoción"
-            value={
-              agentBundle.active?.promoted_at
-                ? relativeTime(agentBundle.active.promoted_at)
-                : "—"
-            }
-          />
-          <Link
-            href={`/tenants/${tenant.id}/agent`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
+    <div className="grid gap-6 xl:grid-cols-3">
+      <div className="flex min-w-0 flex-col gap-6 xl:col-span-2">
+        {pending.length === 0 ? (
+          <Callout tone="positive" title="Listo para operar">
+            Agente publicado, canal activo, teléfono del dueño y conectores en orden.
+          </Callout>
+        ) : (
+          <Section
+            title="Qué falta para operar"
+            description={`${done.length} de ${checks.length} pasos hechos.`}
+            padded={false}
           >
-            Editar agente →
-          </Link>
-        </CardContent>
-      </Card>
-
-      {/* Quick actions / signals */}
-      <Card className="lg:col-span-1">
-        <CardHeader>
-          <Eyebrow>Salud operativa</Eyebrow>
-          <CardTitle>Indicadores</CardTitle>
-          <CardDescription>
-            Resumen rápido. Entrá a las pestañas de aislamiento o connectors
-            para el detalle completo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          <Link
-            href={`/tenants/${tenant.id}/conversations`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
-          >
-            Ver conversaciones en vivo →
-          </Link>
-          <Link
-            href={`/tenants/${tenant.id}/connectors`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
-          >
-            Estado de connectors →
-          </Link>
-          <Link
-            href={`/tenants/${tenant.id}/isolation`}
-            className="text-sm text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1"
-          >
-            Garantías de aislamiento →
-          </Link>
-        </CardContent>
-      </Card>
-
-      {/* Probar agente — ADR-020 Phase 5 entry point */}
-      <Card className="lg:col-span-3">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div>
-            <Eyebrow>QA Playground</Eyebrow>
-            <CardTitle>Probar agente</CardTitle>
-            <CardDescription>
-              Conversá con el agente como si fueras el cliente, en sandbox
-              dry-run. Ningún side-effect real se ejecuta; los tool calls
-              quedan auditados.
-            </CardDescription>
-          </div>
-          <Link
-            href={`/qa/${tenant.id}/chat`}
-            className="inline-flex items-center justify-center rounded-md bg-[color:var(--color-primary)] px-4 py-2 text-sm font-medium text-[color:var(--color-on-primary,#fff)] hover:opacity-90"
-          >
-            Abrir Playground →
-          </Link>
-        </CardHeader>
-        <CardContent className="grid gap-2 text-sm">
-          {recentThreads.length === 0 ? (
-            <span className="text-muted-foreground">
-              Sin conversaciones QA todavía.
-            </span>
-          ) : (
-            <>
-              <span className="text-xs font-mono uppercase text-muted-foreground">
-                Conversaciones QA recientes
-              </span>
-              <ul className="grid gap-1">
-                {recentThreads.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between">
-                    <Link
-                      href={`/qa/${tenant.id}/chat?thread=${t.id}`}
-                      className="hover:underline underline-offset-4 decoration-1"
-                    >
-                      {t.title}
+            <ul className="divide-y divide-border">
+              {pending.map((c) => (
+                <li key={c.key} className="flex items-start gap-3 px-6 py-3">
+                  <CircleAlert className="mt-1 size-4 shrink-0 text-status-warning-text" aria-hidden="true" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="text-sm font-medium">{c.label}</span>
+                    <span className="text-sm text-pretty text-muted-foreground">{c.detail}</span>
+                  </div>
+                  {c.href && c.action ? (
+                    <Link href={c.href} className="shrink-0 text-sm font-medium text-primary-deep underline-offset-4 hover:underline">
+                      {c.action}
                     </Link>
-                    <span className="text-xs text-muted-foreground">
-                      {relativeTime(t.updated_at)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            {done.length > 0 ? (
+              <details className="group border-t border-border px-6 py-3">
+                <summary className="cursor-pointer text-sm text-muted-foreground select-none hover:text-foreground">
+                  Ya está hecho ({done.length})
+                </summary>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {done.map((c) => (
+                    <li key={c.key} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Check className="size-4 shrink-0 text-status-positive-text" aria-hidden="true" />
+                      {c.label}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </Section>
+        )}
+
+        <Section
+          title="Conversaciones recientes"
+          actions={
+            <Link href={`${base}/conversations`} className="text-sm text-primary-deep underline-offset-4 hover:underline">
+              Ver todas
+            </Link>
+          }
+          padded={false}
+        >
+          {conversations === null ? (
+            <p className="px-6 py-4 text-sm text-muted-foreground">No se pudieron leer las conversaciones.</p>
+          ) : conversations.items.length === 0 ? (
+            <p className="px-6 py-4 text-sm text-muted-foreground">
+              Todavía nadie ha escrito. Cuando llegue el primer mensaje aparecerá aquí.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {conversations.items.map((c) => (
+                <ConversationRow key={c.id} base={base} conversation={c} />
+              ))}
+            </ul>
           )}
-        </CardContent>
-      </Card>
+        </Section>
+      </div>
+
+      <aside className="flex min-w-0 flex-col gap-6">
+        <Section title="Datos del cliente" description="Se editan desde Acciones.">
+          <DescriptionList
+            layout="inline"
+            items={[
+              { key: "slug", term: "Identificador", detail: tenant.slug, mono: true, truncate: true },
+              {
+                key: "partner",
+                term: "Partner",
+                detail: partner ? (
+                  <Link href={`/partners/${partner.id}`} className="underline-offset-4 hover:underline">
+                    {partner.name}
+                  </Link>
+                ) : (
+                  "Auphere directo"
+                ),
+              },
+              { key: "email", term: "Correo", detail: tenant.owner_email ?? "—", truncate: true },
+              { key: "phone", term: "Teléfono", detail: tenant.owner_phone ?? "—", mono: true },
+              { key: "market", term: "Mercado", detail: tenant.market ?? "—" },
+              { key: "tz", term: "Zona horaria", detail: tenant.timezone },
+              { key: "created", term: "Alta", detail: fullDateTime(tenant.created_at) },
+            ]}
+          />
+        </Section>
+        <Section
+          title="Pruebas del agente"
+          actions={
+            <Link href={`${base}/playground`} className="text-sm text-primary-deep underline-offset-4 hover:underline">
+              Abrir
+            </Link>
+          }
+        >
+          {threads.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nadie lo ha probado todavía. «Probar agente» abre una conversación de prueba: nada sale de verdad.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {threads.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3">
+                  <Link href={`${base}/playground?thread=${t.id}`} className="truncate text-sm underline-offset-4 hover:underline">
+                    {t.title}
+                  </Link>
+                  <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(t.updated_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      </aside>
     </div>
   );
 }
 
-function Row({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-}) {
+function ConversationRow({ base, conversation: c }: { base: string; conversation: ConversationOut }) {
+  const who = c.customer_name || c.customer_identifier || "Contacto sin número";
   return (
-    <div className="grid grid-cols-[1fr_2fr] items-baseline gap-3 border-b border-border last:border-b-0 pb-2 last:pb-0">
-      <span className="text-xs font-mono uppercase text-muted-foreground"
-        style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+    <li>
+      <Link
+        href={`${base}/conversations/${c.id}`}
+        className="flex items-center gap-3 px-6 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
-        {label}
-      </span>
-      <span className={mono ? "font-mono" : undefined}>{value}</span>
-    </div>
+        <StatusDot tone={CONVERSATION_TONE[c.status]} label={CONVERSATION_LABEL[c.status]} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium">{who}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {CONVERSATION_LABEL[c.status]} · {c.agent_active ? "Responde el agente" : "La atiende una persona"}
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          {relativeTime(c.last_message_at ?? c.updated_at)}
+        </span>
+      </Link>
+    </li>
   );
 }

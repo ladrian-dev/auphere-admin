@@ -22,16 +22,14 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -39,9 +37,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+  Input,
+  Label,
+} from "@nexus/ui";
 import type { TenantStatus } from "@/lib/backend";
 
 import {
@@ -196,7 +194,7 @@ export function TenantActionsMenu({
               </DropdownMenuItem>
             ) : null}
 
-            {(status === "active" || status === "paused") ? (
+            {(status === "active" || status === "paused" || status === "provisioning") ? (
               <DropdownMenuItem
                 disabled={pending}
                 onClick={() => setArchiveOpen(true)}

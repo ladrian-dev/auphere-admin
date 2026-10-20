@@ -25,7 +25,11 @@ from nexus_api.services.membership_limits import (
     over_cap_by,
 )
 
-pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.integration,
+    pytest.mark.usefixtures("memberships_on"),
+]
 
 
 async def _partner(session, *, tier: str | None = None) -> uuid.UUID:

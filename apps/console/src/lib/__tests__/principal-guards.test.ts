@@ -30,7 +30,8 @@ const base = {
   partner_status: "active",
   console_enabled: true,
 };
-const partner = { ...base, role: "owner", permissions: ["partner:read"], kind: "partner", client_name: null, modules: [] };
+const ALL_PARTNER_MODULES = ["panel", "clients", "usage", "audit", "knowledge", "workstation", "team", "billing", "keys", "companion"];
+const partner = { ...base, role: "owner", permissions: ["partner:read"], kind: "partner", client_name: null, modules: ALL_PARTNER_MODULES };
 const client = (modules: string[]) => ({
   ...base,
   role: "client",
@@ -86,5 +87,26 @@ describe("requireClientPrincipal", () => {
     session.mockResolvedValue(partner);
     const { requireClientPrincipal } = await load();
     await expect(requireClientPrincipal("inbox")).rejects.toThrow("REDIRECT /");
+  });
+});
+
+describe("requirePartnerModule (spec 032)", () => {
+  it("lets a partner with the module through", async () => {
+    session.mockResolvedValue(partner);
+    const { requirePartnerModule } = await load();
+    await expect(requirePartnerModule("billing")).resolves.toBeUndefined();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("sends a partner without the module to its first module", async () => {
+    session.mockResolvedValue({ ...partner, modules: ["usage", "keys"] });
+    const { requirePartnerModule } = await load();
+    await expect(requirePartnerModule("billing")).rejects.toThrow("REDIRECT /usage");
+  });
+
+  it("lets a client user through: its own pages gate it", async () => {
+    session.mockResolvedValue(client(["usage"]));
+    const { requirePartnerModule } = await load();
+    await expect(requirePartnerModule("usage")).resolves.toBeUndefined();
   });
 });

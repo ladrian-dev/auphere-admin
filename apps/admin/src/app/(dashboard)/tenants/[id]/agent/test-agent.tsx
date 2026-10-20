@@ -25,17 +25,17 @@ import { Play, RotateCcw, SendHorizonal } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+  Input,
+} from "@nexus/ui";
 import type {
   PlannedToolCall,
   TestAgentHistoryMessage,
@@ -129,9 +129,9 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5"
+        className="inline-flex items-center gap-2"
       >
-        <Play className="size-3.5" />
+        <Play className="size-4" />
         Probar agente
       </Button>
 
@@ -146,7 +146,7 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
                 <DialogDescription>
                   Sandbox. Mismo modelo + prompt + whitelist que producción,
                   pero las tools <strong>no se ejecutan</strong> y la
-                  conversación no se guarda. Cerrá el dialog para descartar
+                  conversación no se guarda. Cierra la ventana para descartar
                   el historial.
                 </DialogDescription>
               </div>
@@ -161,7 +161,7 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
           <div className="grid gap-3 max-h-[60vh] overflow-y-auto pr-1">
             {turns.length === 0 ? (
               <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">
-                Escribí un mensaje como si fueras el cliente y mandalo
+                Escribe un mensaje como si fueras el cliente y envíalo
                 con Enter. El sandbox usa la versión staged más reciente
                 o la activa si no hay borrador.
               </div>
@@ -186,9 +186,9 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
               size="sm"
               disabled={pending || !draft.trim()}
               onClick={send}
-              className="inline-flex items-center gap-1.5"
+              className="inline-flex items-center gap-2"
             >
-              <SendHorizonal className="size-3.5" />
+              <SendHorizonal className="size-4" />
               {pending ? "Enviando…" : "Enviar"}
             </Button>
           </div>
@@ -200,9 +200,9 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
                 size="sm"
                 onClick={reset}
                 disabled={pending}
-                className="inline-flex items-center gap-1.5"
+                className="inline-flex items-center gap-2"
               >
-                <RotateCcw className="size-3.5" />
+                <RotateCcw className="size-4" />
                 Reiniciar conversación
               </Button>
             ) : null}
@@ -224,7 +224,7 @@ export function TestAgentButton({ tenantId }: { tenantId: string }) {
 function TurnRow({ turn }: { turn: TurnEntry }) {
   return (
     <div className="grid gap-2">
-      <div className="self-end max-w-[80%] rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 px-3 py-2 text-sm whitespace-pre-wrap break-words">
+      <div className="self-end max-w-[80%] rounded-md bg-status-info-bg border border-status-info-border px-3 py-2 text-sm whitespace-pre-wrap break-words">
         {turn.user}
       </div>
       <div className="grid gap-2 max-w-[80%]">
@@ -252,12 +252,12 @@ function TurnRow({ turn }: { turn: TurnEntry }) {
 
 function ToolCallCard({ call }: { call: PlannedToolCall }) {
   return (
-    <div className="rounded-md border border-amber-300/60 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2 text-xs">
+    <div className="rounded-md border border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="font-mono font-medium">{call.name}</span>
         <Badge
           variant="outline"
-          className="text-[9px] uppercase border-amber-500/60 text-amber-700 dark:text-amber-300"
+          className="text-[9px] uppercase border-status-warning-border text-status-warning-text "
         >
           Sandbox · sin ejecutar
         </Badge>

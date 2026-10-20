@@ -1,7 +1,6 @@
 import Link from "next/link";
 
-import { Wordmark } from "@/components/brand/wordmark";
-import { Button } from "@/components/ui/button";
+import { BrandLockup, Button } from "@nexus/ui";
 
 export const metadata = { title: "Página no encontrada" };
 
@@ -15,11 +14,10 @@ export default function NotFound() {
   return (
     <main className="grid min-h-dvh place-items-center bg-background px-6">
       <div className="flex flex-col items-center gap-6 text-center max-w-md">
-        <Wordmark variant="horizontal" />
+        <BrandLockup />
         <div className="flex flex-col gap-2">
           <h1
-            className="text-3xl font-semibold leading-tight"
-            style={{ letterSpacing: "var(--tracking-tight)" }}
+            className="text-3xl font-semibold leading-tight tracking-tight"
           >
             Página no encontrada
           </h1>
@@ -30,7 +28,7 @@ export default function NotFound() {
             arreglarlo.
           </p>
         </div>
-        <Button render={<Link href="/tenants" />}>Volver a Tenants</Button>
+        <Button nativeButton={false} render={<Link href="/tenants" />}>Volver a Tenants</Button>
       </div>
     </main>
   );

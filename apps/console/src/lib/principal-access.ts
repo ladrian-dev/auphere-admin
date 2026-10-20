@@ -33,7 +33,47 @@ type PrincipalBase = {
   consoleEnabled: boolean;
 };
 
-export type PartnerPrincipal = PrincipalBase & { kind: "partner"; role: Role };
+/**
+ * Spec 032: the partner console's modules, in sidebar order, then the
+ * Companion. Auphere chooses them per partner from the operator panel; the
+ * API is the authority (`PartnerModule` in `db/models/partner.py`) and this
+ * copy only decides what to render. A drift is caught by
+ * `lib/__tests__/principal-access.test.ts`.
+ */
+export const PARTNER_MODULES = [
+  "panel",
+  "clients",
+  "usage",
+  "audit",
+  "knowledge",
+  "workstation",
+  "team",
+  "billing",
+  "keys",
+  "companion",
+] as const;
+export type PartnerModule = (typeof PARTNER_MODULES)[number];
+export const PARTNER_NAV_MODULES = PARTNER_MODULES.filter((m) => m !== "companion");
+
+/** Where each nav module lives. */
+export const PARTNER_MODULE_PATH: Record<Exclude<PartnerModule, "companion">, string> = {
+  panel: "/",
+  clients: "/clients",
+  usage: "/usage",
+  audit: "/audit",
+  knowledge: "/knowledge",
+  workstation: "/workstation",
+  team: "/team",
+  billing: "/billing",
+  keys: "/keys",
+};
+
+export type PartnerPrincipal = PrincipalBase & {
+  kind: "partner";
+  role: Role;
+  /** Spec 032. Never without a nav module: such a partner resolves as `disabled`. */
+  modules: PartnerModule[];
+};
 
 export type ClientPrincipal = PrincipalBase & {
   kind: "client";
@@ -54,6 +94,10 @@ export type PrincipalResolution =
 
 function clientModules(raw: string[]): ClientModule[] {
   return CLIENT_MODULES.filter((m) => raw.includes(m));
+}
+
+function partnerModules(raw: string[]): PartnerModule[] {
+  return PARTNER_MODULES.filter((m) => raw.includes(m));
 }
 
 export function toResolution(p: ApiPrincipal): PrincipalResolution {
@@ -93,7 +137,20 @@ export function toResolution(p: ApiPrincipal): PrincipalResolution {
       principal: { ...base, kind: "client", role: "client", clientName: p.client_name ?? "", modules },
     };
   }
-  return { kind: "ok", principal: { ...base, kind: "partner", role: p.role as Role } };
+  // Spec 032: a partner whose console has no view left reads as switched off —
+  // the same /no-access copy as a console that is off.
+  const modules = partnerModules(p.modules ?? []);
+  if (!modules.some((m) => m !== "companion")) {
+    return { kind: "disabled", email, partnerName: p.partner_name ?? "" };
+  }
+  return { kind: "ok", principal: { ...base, kind: "partner", role: p.role as Role, modules } };
+}
+
+/** Spec 032: where a partner lands when a section is not theirs — the first
+ * module of the sidebar they have. */
+export function firstPartnerModulePath(modules: readonly PartnerModule[]): string {
+  const first = PARTNER_NAV_MODULES.find((m) => modules.includes(m)) ?? "panel";
+  return PARTNER_MODULE_PATH[first as Exclude<PartnerModule, "companion">];
 }
 
 /** Where a client lands: its first module, in sidebar order. */

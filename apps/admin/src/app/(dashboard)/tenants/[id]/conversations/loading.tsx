@@ -1,5 +1,5 @@
 import { TableSkeleton } from "@/components/skeletons/list-skeleton";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@nexus/ui";
 
 export default function ConversationsLoading() {
   return (

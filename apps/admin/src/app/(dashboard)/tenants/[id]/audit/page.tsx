@@ -1,14 +1,7 @@
 import Link from "next/link";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow } from "@nexus/ui";
 import { AuditRow } from "@/components/audit/audit-row";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { backend } from "@/lib/backend";
 
 import { AuditFilters } from "./filters";
@@ -124,7 +117,7 @@ function NextPageLink({
     <div className="flex justify-center">
       <Link
         href={`/tenants/${tenantId}/audit?${qs.toString()}`}
-        className="rounded-md border border-input bg-background px-3 py-1.5 text-xs hover:bg-muted"
+        className="rounded-md border border-input bg-background px-3 py-2 text-xs hover:bg-muted"
       >
         Cargar más →
       </Link>

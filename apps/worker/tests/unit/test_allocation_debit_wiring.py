@@ -127,3 +127,18 @@ def test_wallet_renewal_cron_is_registered_in_the_scheduler() -> None:
     from nexus_worker.bootstrap import SCHEDULER_TASK_NAMES
 
     assert "wallet-renewal-cron" in SCHEDULER_TASK_NAMES
+
+
+@pytest.mark.asyncio
+async def test_a_failed_debit_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Spec 033 (R4.1): if the debit fails the error reaches ``persist_rows``,
+    so the stream entry is not acknowledged and is retried (then dead-
+    lettered). Until 2026-10 it was logged and acked: served, never charged."""
+    tenant_id, rows = _rows()
+    monkeypatch.setattr(consumer, "_partner_for", AsyncMock(return_value=uuid.uuid4()))
+    monkeypatch.setattr(
+        "nexus_api.metering.wallet.debit_wallet", AsyncMock(side_effect=RuntimeError("db down"))
+    )
+
+    with pytest.raises(RuntimeError, match="db down"):
+        await consumer._debit_channel_wallet(tenant_id, rows)

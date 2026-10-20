@@ -219,6 +219,10 @@ class ChannelOut(BaseModel):
     provider_identifier: str
     config: dict[str, Any]
     status: str
+    #: Spec 030/035: the client's agent that answers on this channel; None =
+    #: the principal agent.
+    agent_id: uuid.UUID | None = None
+    last_health_check_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

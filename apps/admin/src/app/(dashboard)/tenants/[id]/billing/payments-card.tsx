@@ -4,17 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
+  Badge,
+  Button,
+  Input,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
 import type { TenantPaymentMethod, TenantPaymentOut } from "@/lib/backend";
 
 import {
@@ -245,7 +245,7 @@ export function PaymentsCard({
       <div className="grid gap-4 max-w-2xl">
         <h3 className="text-sm font-medium">Anotar un pago</h3>
         <div className="grid gap-4 sm:grid-cols-3">
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm">
             <span className="text-muted-foreground">Mes que cubre</span>
             <select
               value={month}
@@ -259,7 +259,7 @@ export function PaymentsCard({
               ))}
             </select>
           </label>
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm">
             <span className="text-muted-foreground">Año</span>
             <Input
               value={year}
@@ -267,7 +267,7 @@ export function PaymentsCard({
               inputMode="numeric"
             />
           </label>
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm">
             <span className="text-muted-foreground">Monto recibido (USD)</span>
             <Input
               value={amount}
@@ -276,7 +276,7 @@ export function PaymentsCard({
               placeholder="75.00"
             />
           </label>
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm">
             <span className="text-muted-foreground">Medio</span>
             <select
               value={method}
@@ -290,7 +290,7 @@ export function PaymentsCard({
               ))}
             </select>
           </label>
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm">
             <span className="text-muted-foreground">Día en que llegó</span>
             <Input
               type="date"
@@ -298,7 +298,7 @@ export function PaymentsCard({
               onChange={(e) => setPaidOn(e.target.value)}
             />
           </label>
-          <label className="grid gap-1.5 text-sm">
+          <label className="grid gap-2 text-sm">
             <span className="text-muted-foreground">Referencia (opcional)</span>
             <Input
               value={reference}
@@ -308,7 +308,7 @@ export function PaymentsCard({
             />
           </label>
         </div>
-        <label className="grid gap-1.5 text-sm">
+        <label className="grid gap-2 text-sm">
           <span className="text-muted-foreground">Nota (opcional)</span>
           <Input
             value={note}

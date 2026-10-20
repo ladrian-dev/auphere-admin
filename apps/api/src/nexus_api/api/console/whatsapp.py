@@ -27,12 +27,23 @@ adds what is console-specific:
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import SignupIngressPayload
+from pydantic import BaseModel, ConfigDict
 from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 
 from nexus_api.api.deps import get_redis
+from nexus_api.db.models import ChannelSignupLink
+from nexus_api.services.channel_signup_links import (
+    link_state,
+    mint_link,
+    recent_links,
+    revoke_link,
+)
 from nexus_api.services.console_notifications import record_client_activation_detached
 from nexus_api.services.meta_signup_service import complete_meta_signup
 from nexus_api.services.partner_provisioning import activate_tenant_if_ready
@@ -139,3 +150,76 @@ async def whatsapp_signup(
 
 
 __all__ = ["router"]
+
+
+# ── Spec 040: a link for the owner to connect from their own device ─────────
+
+
+class _SignupLinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: str = "coexistence"
+
+
+class _SignupLinkOut(BaseModel):
+    url: str
+    mode: str
+    expires_at: datetime
+
+
+@router.post(
+    "/signup-link",
+    response_model=_SignupLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def whatsapp_signup_link(
+    body: _SignupLinkIn,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+) -> _SignupLinkOut:
+    """The partner sends this to the business owner: Meta's signup then runs
+    on the owner's phone or computer, with the owner's own Meta login."""
+    minted = await mint_link(
+        scope.session, tenant_id=scope.tenant.id, mode=body.mode, actor=scope.principal.actor
+    )
+    return _SignupLinkOut(url=minted.url, mode=minted.link.mode, expires_at=minted.link.expires_at)
+
+
+class _SignupLinkRow(BaseModel):
+    id: uuid.UUID
+    mode: str
+    #: ``valid``, ``used``, ``revoked`` or ``expired``.
+    state: str
+    created_at: datetime
+    expires_at: datetime
+    consumed_at: datetime | None
+
+
+@router.get("/signup-links", response_model=list[_SignupLinkRow])
+async def whatsapp_signup_links(
+    scope: ClientScope = Depends(client_scope("channels:read")),
+) -> list[_SignupLinkRow]:
+    """The client's recent links, so the partner sees which one still works
+    and can revoke it (owner, 2026-10-20). The token is never stored: a link
+    cannot be shown again, only replaced."""
+    rows = await recent_links(scope.session, scope.tenant.id, limit=10)
+    return [
+        _SignupLinkRow(
+            id=r.id,
+            mode=r.mode,
+            state=link_state(r),
+            created_at=r.created_at,
+            expires_at=r.expires_at,
+            consumed_at=r.consumed_at,
+        )
+        for r in rows
+    ]
+
+
+@router.delete("/signup-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_whatsapp_signup_link(
+    link_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+) -> None:
+    link = await scope.session.get(ChannelSignupLink, link_id)
+    if link is None or link.tenant_id != scope.tenant.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_link")
+    await revoke_link(scope.session, link, actor=scope.principal.actor)

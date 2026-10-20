@@ -43,7 +43,7 @@ from nexus_api.db.models import (
     NotificationSeverity,
     Partner,
 )
-from nexus_api.metering.wallet import read_wallet
+from nexus_api.metering.wallet import purchased_spent_since, read_wallet
 from nexus_api.services.console_reporting import month_bounds
 from nexus_api.services.email import send_email
 
@@ -273,11 +273,18 @@ async def evaluate_client_balance_alerts(
     return told
 
 
-def _percent_used(available: int, cap: int) -> float:
-    if cap <= 0:
-        return 0.0
-    used = max(0, cap - max(0, available))
-    return min(100.0, round(100.0 * used / cap, 2))
+def _percent_used(available: int, spent: int) -> float:
+    """Spec 033 (R7.1): how much of this month's money is gone.
+
+    ``spent`` is the recharged balance spent this month, ``available`` what is
+    left of it. Until spec 033 the base was ``companion_monthly_token_cap``, a
+    deprecated figure: after a top-up the available balance exceeded it and
+    the alert read «0 % used» with the partner about to run dry.
+    """
+    if available <= 0:
+        return 100.0
+    base = max(0, spent) + available
+    return min(100.0, round(100.0 * max(0, spent) / base, 2))
 
 
 async def clients_without_quota(session: AsyncSession, partner_id: uuid.UUID) -> list[str]:
@@ -330,16 +337,23 @@ async def evaluate_partner_wallet_alerts(
     consola es el registro durable.
     """
     since, _until, _elapsed, _days = month_bounds(now)
-    cap = int(partner.companion_monthly_token_cap or 0)
     snap = await read_wallet(partner.id)
-    available = snap.available if snap is not None else 0
+    if snap is None:
+        return WalletAlertEvaluation(available=0, cap=None, percent_used=None)
+    # The money: recharged balance, and what of it was spent this month.
+    available = snap.purchased_remaining
+    try:
+        spent = await purchased_spent_since(partner.id, since)
+    except Exception as exc:
+        log.warning("wallet_alerts.spend_unreadable", partner_id=str(partner.id), error=str(exc))
+        return WalletAlertEvaluation(available=available, cap=None, percent_used=None)
 
     result = WalletAlertEvaluation(
         available=available,
-        cap=cap or None,
-        percent_used=_percent_used(available, cap) if cap > 0 else None,
+        cap=spent + available,
+        percent_used=_percent_used(available, spent),
     )
-    if snap is None or cap <= 0 or result.percent_used is None:
+    if result.percent_used is None:
         return result
 
     async with session.begin():
@@ -365,7 +379,7 @@ async def evaluate_partner_wallet_alerts(
                 severity=severity.value,
                 payload={
                     "percent": threshold,
-                    "cap": cap,
+                    "cap": result.cap,
                     "available": available,
                     "period": f"{since:%Y-%m}",
                     "clients_out": len(result.clients_out),

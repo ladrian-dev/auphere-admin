@@ -36,6 +36,10 @@ from nexus_api.db.models.channel import (
     ChannelType,
     TenantCredentials,
 )
+from nexus_api.db.models.channel_signup_link import (
+    CHANNEL_SIGNUP_LINK_TTL,
+    ChannelSignupLink,
+)
 from nexus_api.db.models.client_access import (
     CLIENT_INVITATION_TTL,
     CLIENT_MODULES,
@@ -162,15 +166,19 @@ from nexus_api.db.models.owner_backchannel import (
     OwnerPhoneIndex,
 )
 from nexus_api.db.models.partner import (
+    PARTNER_MODULES,
+    PARTNER_NAV_MODULES,
     TENANT_SCOPED_API_KEY_SCOPES,
     ApiKeyScope,
     ApiKeyType,
     EmbedAuditLog,
     Partner,
     PartnerApiKey,
+    PartnerModule,
     PartnerStatus,
     PartnerTenant,
 )
+from nexus_api.db.models.partner_billing import PartnerBilling, PartnerCharge
 from nexus_api.db.models.partner_membership import (
     INVITATION_TTL,
     PARTNER_ROLES,
@@ -230,6 +238,7 @@ from nexus_api.db.models.workflow import (
 __all__ = [
     "AUPHERE_CHANNEL_PROVIDERS",
     "CHANGED_FIELDS",
+    "CHANNEL_SIGNUP_LINK_TTL",
     "CLIENT_INVITATION_TTL",
     "CLIENT_MODULES",
     "CONSOLE_AUTH_SCHEMA",
@@ -249,6 +258,8 @@ __all__ = [
     "OWNER_CONSULTATION_EXPECTED_REPLY_KINDS",
     "OWNER_CONSULTATION_STATUSES",
     "OWNER_CONSULTATION_URGENCIES",
+    "PARTNER_MODULES",
+    "PARTNER_NAV_MODULES",
     "PARTNER_ROLES",
     "PERMISSION_KEYS",
     "PLATFORMS",
@@ -292,6 +303,7 @@ __all__ = [
     "BroadcastRecipientStatus",
     "BroadcastStatus",
     "Channel",
+    "ChannelSignupLink",
     "ChannelStatus",
     "ChannelType",
     "ClientAccess",
@@ -363,12 +375,15 @@ __all__ = [
     "Partner",
     "PartnerAllocation",
     "PartnerApiKey",
+    "PartnerBilling",
+    "PartnerCharge",
     "PartnerDevice",
     "PartnerInvitation",
     "PartnerKnowledgeDocument",
     "PartnerLocalExecPolicy",
     "PartnerMembership",
     "PartnerModelAllowlist",
+    "PartnerModule",
     "PartnerRole",
     "PartnerStatus",
     "PartnerSubscription",

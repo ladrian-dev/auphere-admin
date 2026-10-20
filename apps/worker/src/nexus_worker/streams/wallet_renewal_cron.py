@@ -92,10 +92,10 @@ async def sweep_once(sm: object) -> dict[str, int]:
                 # deuda D5.
                 if await renew_included_if_expired(session, partner_id=partner_id):
                     renewed += 1
-                    # Periodo nuevo: lo gastado el mes pasado se repone. Sin
-                    # esto el wallet vuelve a 500k y un cliente que agotó su
-                    # cuota sigue mudo el mes entero con saldo de sobra.
-                    replenished += await replenish_allocations(session, partner_id=partner_id)
+                # Spec 033 (R6.1): the client caps are monthly and refill on
+                # their own clock — once per calendar month, whatever the
+                # weekly pool does. Idempotent within the month.
+                replenished += await replenish_allocations(session, partner_id=partner_id)
         except Exception as exc:
             # Un partner que falla no puede dejar sin saldo a los demás.
             log.error(

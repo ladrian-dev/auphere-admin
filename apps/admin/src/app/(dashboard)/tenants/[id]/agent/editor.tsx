@@ -5,17 +5,17 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
+  Badge,
+  Button,
+  Checkbox,
+  Label,
+  Textarea,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@nexus/ui";
 import type {
   AgentConfig,
   TenantConnectorStatus,
@@ -30,7 +30,7 @@ type StageResult =
   | { ok: true; data: AgentConfig }
   | { ok: false; error: string };
 
-type StageAction = (
+export type StageAction = (
   tenantId: string,
   body: {
     system_prompt_rendered: string;
@@ -70,6 +70,8 @@ export function AgentEditor({
   catalog,
   stageAction,
   agentId,
+  showTools = true,
+  onDone,
 }: {
   tenantId: string;
   source: AgentConfig | null;
@@ -78,6 +80,11 @@ export function AgentEditor({
   stageAction: StageAction;
   /** Spec 030: the agent whose version this is; `undefined` is the principal. */
   agentId?: string;
+  /** Spec 037: the tools now live in Habilidades; the draft card edits the
+   *  prompt only and carries the source's tools unchanged. */
+  showTools?: boolean;
+  /** Called after a save or a discard, so the draft card can close. */
+  onDone?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -103,24 +110,24 @@ export function AgentEditor({
       toast.error("El prompt no puede estar vacío");
       return;
     }
-    const blocked = Array.from(selected).filter((name) => {
+    const blocked = !showTools ? [] : Array.from(selected).filter((name) => {
       const tool = catalog.find((t) => t.name === name);
       return tool ? !canSelect(tool.tenant_connector_status, tool.connector_slug) : false;
     });
     if (blocked.length > 0) {
       toast.error(
-        `Hay ${blocked.length} tool${blocked.length === 1 ? "" : "s"} marcadas cuyo connector no está conectado`,
+        `Hay ${blocked.length} herramienta${blocked.length === 1 ? "" : "s"} marcada${blocked.length === 1 ? "" : "s"} cuyo conector no está conectado`,
         {
           description:
-            "Conectá el connector requerido o quitalas antes de guardar.",
+            "Conecta el conector o desmárcalas antes de guardar.",
         },
       );
       return;
     }
-    if (selected.size === 0) {
-      toast.warning("Sin tools seleccionadas", {
+    if (showTools && selected.size === 0) {
+      toast.warning("Sin herramientas seleccionadas", {
         description:
-          "El agente no podrá tomar acciones — confirmá si es intencional.",
+          "El agente no podrá hacer nada por su cuenta. Confirma que es lo que quieres.",
       });
     }
     startTransition(async () => {
@@ -139,8 +146,9 @@ export function AgentEditor({
         return;
       }
       toast.success("Borrador guardado", {
-        description: `v${result.data.version} guardada — promovela cuando quieras que el agente la use.`,
+        description: `Versión ${result.data.version} guardada. Publícala desde la lista cuando quieras que el agente la use.`,
       });
+      onDone?.();
       router.refresh();
     });
   }
@@ -151,7 +159,7 @@ export function AgentEditor({
   ).length;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+    <div className={showTools ? "grid gap-6 lg:grid-cols-[3fr_2fr]" : "grid gap-6"}>
       <div className="grid gap-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <Label htmlFor="prompt">Prompt del agente</Label>
@@ -179,18 +187,18 @@ export function AgentEditor({
           placeholder="Eres el asistente virtual de…"
         />
         <p className="text-xs text-muted-foreground">
-          Guardá la versión final con los datos del cliente ya interpolados —
-          el agente la consume tal cual.
+          Guarda la versión final con los datos del cliente ya escritos: el
+          agente la usa tal cual.
         </p>
       </div>
 
+      {showTools ? (
       <div className="grid gap-4">
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
-            <Label>Tools del agente</Label>
+            <Label>Herramientas del agente</Label>
             <span className="text-[11px] text-muted-foreground">
-              Capacidades base + tools de los connectors instalados en este
-              tenant.
+              Las capacidades base y las de los conectores de este cliente.
             </span>
           </div>
           <span className="text-xs font-mono text-muted-foreground tabular-nums">
@@ -207,8 +215,8 @@ export function AgentEditor({
         {noToolsAvailable ? (
           <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
             <span>
-              Sin tools disponibles. Conectá un connector desde la pestaña
-              Connectors para habilitar sus tools.
+              No hay herramientas disponibles. Conecta un conector desde la
+              pestaña Conectores para usar las suyas.
             </span>
           </div>
         ) : null}
@@ -226,13 +234,13 @@ export function AgentEditor({
           </div>
         </TooltipProvider>
       </div>
+      ) : null}
 
       <div className="lg:col-span-2 flex items-center justify-between gap-2 border-t border-border pt-4">
         {sourceIsStagedDraft && source ? (
           <span className="text-xs text-muted-foreground">
-            Editando borrador v{source.version} — guardá para crear una
-            versión nueva o promovela desde el historial cuando estés
-            conforme.
+            Editando el borrador v{source.version}. Guarda para crear una
+            versión nueva y publícala desde Versiones cuando esté lista.
           </span>
         ) : (
           <span />
@@ -243,6 +251,7 @@ export function AgentEditor({
             onClick={() => {
               setPrompt(source?.system_prompt_rendered ?? "");
               setSelected(new Set(source?.tools ?? []));
+              onDone?.();
             }}
             disabled={pending}
           >
@@ -338,8 +347,7 @@ function ConnectorGroup({
             />
           ) : null}
           <span
-            className="text-[10px] font-mono uppercase text-muted-foreground truncate"
-            style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+            className="text-[10px] font-mono uppercase text-muted-foreground truncate tracking-eyebrow"
           >
             {group.label}
           </span>
@@ -355,7 +363,7 @@ function ConnectorGroup({
         {!isBaseline && installState.ctaHref ? (
           <Link
             href={installState.ctaHref(tenantId)}
-            className="text-xs text-[color:var(--color-primary-deep)] hover:underline underline-offset-4 decoration-1 shrink-0"
+            className="text-xs text-primary-deep hover:underline underline-offset-4 decoration-1 shrink-0"
           >
             {installState.ctaLabel} →
           </Link>
@@ -379,9 +387,9 @@ function ConnectorGroup({
                 checked={checked}
                 disabled={!allowed}
                 onCheckedChange={() => onToggle(tool.name, allowed)}
-                className="mt-0.5"
+                className="mt-1"
               />
-              <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="flex flex-col gap-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Tooltip>
                     <TooltipTrigger
@@ -408,7 +416,7 @@ function ConnectorGroup({
                       variant="outline"
                       className="text-[10px] uppercase tracking-wider"
                     >
-                      Requiere consent
+                      Requiere permiso
                     </Badge>
                   ) : null}
                 </div>
@@ -457,17 +465,17 @@ function describeInstallStatus(
       };
     case "needs_reauth":
       return {
-        badgeLabel: "Re-auth",
+        badgeLabel: "Reconectar",
         badgeVariant: "secondary",
         ctaHref: (tid) => `/tenants/${tid}/connectors`,
-        ctaLabel: "Re-autenticar",
+        ctaLabel: "Reconectar",
       };
     case "pending":
       return {
         badgeLabel: "Pendiente",
         badgeVariant: "secondary",
         ctaHref: (tid) => `/tenants/${tid}/connectors`,
-        ctaLabel: "Completar consent",
+        ctaLabel: "Completar permiso",
       };
     case "disconnected":
     case "error":

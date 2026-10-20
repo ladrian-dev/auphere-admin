@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { type ActionResult, run } from "@/lib/actions";
-import { type CancelOut, type CheckoutOut, backendFor } from "@/lib/backend";
+import { type BillingCardView, type CancelOut, type CheckoutOut, backendFor } from "@/lib/backend";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /** Spec 016 (R8.1): every billing action is `billing:manage` — the API's own permission. */
@@ -55,6 +55,51 @@ export async function cancelSubscriptionAction(): Promise<ActionResult<CancelOut
   const principal = await requirePrincipal();
   if (!can(principal.role, "billing:manage")) return forbidden;
   const res = await run(() => backendFor(principal).cancelSubscription());
+  if (res.ok) revalidatePath("/billing");
+  return res;
+}
+
+/** Spec 041: Stripe's page to save or replace the card. */
+export async function startCardAction(): Promise<ActionResult<CheckoutOut>> {
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "billing:manage")) return forbidden;
+  return run(() => backendFor(principal).startCard());
+}
+
+export async function deleteCardAction(): Promise<ActionResult<null>> {
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "billing:manage")) return forbidden;
+  const res = await run(() => backendFor(principal).deleteCard());
+  if (res.ok) revalidatePath("/billing");
+  return res;
+}
+
+export async function setChargingAction(raw: unknown): Promise<ActionResult<BillingCardView>> {
+  const body = z
+    .object({
+      mode: z.enum(["manual", "auto_recharge", "postpaid"]),
+      recharge_threshold_cents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+      recharge_amount_cents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+    })
+    .parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "billing:manage")) return forbidden;
+  const res = await run(() => backendFor(principal).setCharging(body));
+  if (res.ok) revalidatePath("/billing");
+  return res;
+}
+
+/**
+ * The partner sets its billing e-mail (owner, 2026-10-20). Empty clears it:
+ * notices go back to the contact e-mail. The 3D Secure notice goes here.
+ */
+export async function setBillingEmailAction(raw: unknown): Promise<ActionResult<{ billing_email: string | null }>> {
+  const { billing_email } = z
+    .object({ billing_email: z.string().trim().max(320).email().nullable() })
+    .parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "billing:manage")) return forbidden;
+  const res = await run(() => backendFor(principal).setBillingEmail(billing_email));
   if (res.ok) revalidatePath("/billing");
   return res;
 }

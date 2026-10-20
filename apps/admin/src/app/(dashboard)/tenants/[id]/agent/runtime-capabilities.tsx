@@ -3,11 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, Label } from "@nexus/ui";
 import type {
   AgentConfig,
   AvailableSkill,
@@ -206,11 +202,11 @@ export function RuntimeCapabilities({
       <CardHeader className="flex flex-col gap-1">
         <CardTitle>Capacidades de runtime</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Activá Memoria, Validador y Skills para esta versión del agente.
+          Activa Memoria, Validador y Skills para esta versión del agente.
           {!editable && (
             <span className="ml-1 italic">
               · Solo editable en borradores (STAGED). Para cambiar las
-              capacidades, creá una versión nueva.
+              capacidades, crea una versión nueva.
             </span>
           )}
         </p>
@@ -225,7 +221,7 @@ export function RuntimeCapabilities({
         />
         <ToggleRow
           label="Validador de respuesta (rubric grader)"
-          description="Bloquea confirmaciones sin tool result + corrige tono. Sumá ~500ms de latencia por turn. Recomendado para mitigar alucinaciones de booking."
+          description="Bloquea confirmaciones sin resultado de herramienta y corrige el tono. Suma unos 500 ms por turno. Recomendado para evitar citas inventadas."
           checked={outcomeGrader}
           onChange={setOutcomeGrader}
           disabled={!editable}
@@ -251,7 +247,7 @@ export function RuntimeCapabilities({
             <div className="mt-3 space-y-3">
               <ToggleRow
                 label="MCP connector (kill switch)"
-                description="Activa el connector MCP de Anthropic para conectar servers externos sin Composio. EXPERIMENTAL — sólo úsalo si sabés lo que hacés."
+                description="Activa el conector MCP de Anthropic para conectar servidores externos sin Composio. Experimental: úsalo solo si sabes lo que haces."
                 checked={mcpConnector}
                 onChange={setMcpConnector}
                 disabled={!editable}
@@ -321,7 +317,7 @@ function ToggleRow({
         checked={checked}
         onCheckedChange={(v) => onChange(v === true)}
         disabled={disabled}
-        className="mt-0.5"
+        className="mt-1"
       />
       <div className="flex-1">
         <Label
@@ -332,7 +328,7 @@ function ToggleRow({
         >
           {label}
         </Label>
-        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
       </div>
     </div>
   );
@@ -354,7 +350,7 @@ function SkillsPicker({
   if (skills.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-        No hay Anthropic Skills bundleadas en este deploy. Verificá
+        No hay Anthropic Skills incluidas en este despliegue. Revisa
         {" "}
         <code>apps/worker/skills/</code>.
       </div>
@@ -366,7 +362,7 @@ function SkillsPicker({
         <p className="text-sm font-medium">Anthropic Skills</p>
         <p className="text-xs text-muted-foreground">
           Patterns reusables que reducen el tamaño del system prompt. Selecciona
-          las que aplican al vertical de este tenant. Para cada skill podés
+          las que aplican al sector de este cliente. Para cada skill puedes
           limitar en qué canales se carga (ej. una skill de WhatsApp no
           debería cargarse en el chat web del admin).
         </p>
@@ -393,7 +389,7 @@ function SkillsPicker({
                     onToggleSkill(skill.skill_id, skill.name)
                   }
                   disabled={rowDisabled}
-                  className="mt-0.5"
+                  className="mt-1"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
@@ -415,7 +411,7 @@ function SkillsPicker({
                     {skill.description || "(sin descripción)"}
                   </p>
                   {!uploaded && (
-                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    <p className="mt-1 text-xs text-status-warning-text ">
                       Antes de asignar, correr{" "}
                       <code>
                         uv run python apps/worker/scripts/upload_skill.py --skill{" "}
@@ -463,7 +459,7 @@ function ChannelGatePicker({
           </span>
         )}
       </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-2">
         {KNOWN_CHANNELS.map(({ id, label }) => {
           const isOn = selected.includes(id);
           return (
@@ -474,7 +470,7 @@ function ChannelGatePicker({
               onClick={() => onToggle(skillId, id)}
               data-testid={`channel-toggle-${skillId}-${id}`}
               className={
-                "rounded-full border px-2.5 py-0.5 text-xs transition-colors " +
+                "rounded-full border px-3 py-1 text-xs transition-colors " +
                 (isOn
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-input bg-background hover:bg-muted") +

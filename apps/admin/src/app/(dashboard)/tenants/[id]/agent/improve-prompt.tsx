@@ -25,18 +25,18 @@ import { Sparkles } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+  Label,
+  Textarea,
+} from "@nexus/ui";
 import type { ImprovePromptMode, ImprovePromptOut } from "@/lib/backend";
 
 import { improveAgentPromptAction } from "./actions";
@@ -72,7 +72,7 @@ export function ImprovePromptButton({
   function runImprove() {
     if (!currentPrompt.trim()) {
       toast.error(
-        "El prompt está vacío — escribí algo primero o aplicá una plantilla.",
+        "El prompt está vacío. Escribe algo primero o aplica una plantilla.",
       );
       return;
     }
@@ -107,7 +107,7 @@ export function ImprovePromptButton({
     onApply(result.improved_prompt);
     toast.success("Prompt aplicado al editor", {
       description:
-        "Revisá el textarea y guardá el borrador cuando estés conforme.",
+        "Revisa el texto y guarda el borrador cuando esté listo.",
     });
     setOpen(false);
     reset();
@@ -120,9 +120,9 @@ export function ImprovePromptButton({
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5"
+        className="inline-flex items-center gap-2"
       >
-        <Sparkles className="size-3.5" />
+        <Sparkles className="size-4" />
         Mejorar prompt
       </Button>
 
@@ -174,7 +174,7 @@ export function ImprovePromptButton({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={2}
-                placeholder="ej: más conciso, mantené el tono casual"
+                placeholder="p. ej.: más conciso, mantén el tono cercano"
                 disabled={pending}
               />
               <p className="text-xs text-muted-foreground">
@@ -197,7 +197,7 @@ export function ImprovePromptButton({
                   <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                     Sugerido
                   </Label>
-                  <pre className="max-h-[420px] overflow-auto rounded-md border border-emerald-300/50 bg-emerald-50/40 dark:bg-emerald-950/20 p-3 text-xs whitespace-pre-wrap break-words font-mono">
+                  <pre className="max-h-[420px] overflow-auto rounded-md border border-status-positive-border bg-status-positive-bg p-3 text-xs whitespace-pre-wrap break-words font-mono">
                     {result.improved_prompt}
                   </pre>
                 </div>
@@ -250,7 +250,7 @@ export function ImprovePromptButton({
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   rows={2}
-                  placeholder="ej: añadí un ejemplo de cómo manejar fechas ambiguas"
+                  placeholder="p. ej.: añade un ejemplo de cómo tratar fechas ambiguas"
                   disabled={pending}
                 />
               </div>

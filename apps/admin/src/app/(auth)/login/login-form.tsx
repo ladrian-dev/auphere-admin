@@ -4,9 +4,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button, Input, Label } from "@nexus/ui";
 
 import { loginAction, type LoginState } from "./actions";
 
@@ -74,7 +72,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       </div>
 
       {state.error ? (
-        <p role="alert" aria-live="polite" className="text-sm text-[color:var(--color-danger)]">
+        <p role="alert" aria-live="polite" className="text-sm text-destructive">
           {state.error}
         </p>
       ) : null}

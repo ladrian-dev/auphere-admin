@@ -61,6 +61,10 @@ class _RecordingPipeline:
 @pytest.mark.asyncio
 async def test_a_turn_never_carries_the_note(db_session, console_world) -> None:
     w = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(w["partner_id"])
     inbox = await make_inbox(
         db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"], conversations=1
     )

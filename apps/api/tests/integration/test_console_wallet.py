@@ -16,6 +16,7 @@ from nexus_api.api.console import companion as companion_api
 from nexus_api.core.principal_context import apply_principal_to_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models.companion import CompanionRun
+from tests.conftest import give_recharged_balance
 
 pytestmark = pytest.mark.asyncio
 
@@ -467,11 +468,33 @@ async def test_a_first_cap_is_accepted_even_with_the_balance_committed(
     assert now.json()["cap_cents"] == 1
 
 
-# ── admin C3 (F1) ────────────────────────────────────────────────────────────
+# ── admin C3 (F1) — spec 033: cents, a key and the operator ─────────────
 
 
 def _admin_wallet(partner_id) -> str:
     return f"/admin/partners/{partner_id}/wallet"
+
+
+async def _op_headers(admin_headers, db_session) -> dict[str, str]:
+    """The panel signs a top-up with the operator of its session (ADR-034)."""
+    import uuid as _uuid
+
+    from nexus_api.services import operator_identity
+
+    account = await operator_identity.create_account(
+        db_session,
+        email=f"op-{_uuid.uuid4().hex[:6]}@auphere.test",
+        password="x" * 16,
+        role="admin",
+    )
+    await db_session.commit()
+    return {**admin_headers, "X-Operator-Id": str(account.id)}
+
+
+def _topup(cents: int) -> dict[str, object]:
+    import uuid as _uuid
+
+    return {"amount_cents": cents, "idempotency_key": str(_uuid.uuid4())}
 
 
 async def test_admin_purchased_credits_and_shows_ledger(
@@ -479,34 +502,41 @@ async def test_admin_purchased_credits_and_shows_ledger(
 ) -> None:
     a = console_world["a"]
     pid = a["partner_id"]
+    headers = await _op_headers(admin_headers, db_session)
     before = await client.get(_admin_wallet(pid), headers=admin_headers)
     assert before.status_code == 200, before.text
-    purchased = before.json()["purchased_remaining"]
-    available = before.json()["available"]
+    purchased = before.json()["purchased_cents"]
+    available = before.json()["available_cents"]
 
-    resp = await client.post(
-        f"{_admin_wallet(pid)}/purchased",
-        headers=admin_headers,
-        json={"qty": 250},
-    )
+    resp = await client.post(f"{_admin_wallet(pid)}/purchased", headers=headers, json=_topup(250))
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["purchased_remaining"] == purchased + 250
-    assert body["available"] == available + 250
+    assert body["purchased_cents"] == purchased + 250
+    assert body["available_cents"] == available + 250
 
     again = await client.get(_admin_wallet(pid), headers=admin_headers)
     assert again.status_code == 200, again.text
-    assert again.json()["purchased_remaining"] == purchased + 250
+    assert again.json()["purchased_cents"] == purchased + 250
 
     ledger = await client.get(f"{_admin_wallet(pid)}/ledger", headers=admin_headers)
     assert ledger.status_code == 200, ledger.text
     rows = ledger.json()
     assert any(
-        row["qty"] == 250 and row["bucket"] == "purchased" and row["reason"] == "admin_purchased"
+        row["amount_cents"] == 250
+        and row["bucket"] == "purchased"
+        and row["kind"] == "credit_admin"
         for row in rows
     )
     for row in rows:
-        assert set(row) == {"id", "bucket", "qty", "reason", "created_at"}
+        assert set(row) == {
+            "id",
+            "kind",
+            "bucket",
+            "amount_cents",
+            "tenant_id",
+            "client_name",
+            "created_at",
+        }
 
     import sqlalchemy as sa
 
@@ -520,64 +550,61 @@ async def test_admin_purchased_credits_and_shows_ledger(
     )
     assert audit is not None
     assert audit.tenant_id is None
-    assert audit.actor == "admin:test-adm"
-    assert audit.actor != f"admin:{admin_headers['Authorization'].removeprefix('Bearer ')}"
+    # The person, never the token (ADR-034).
+    assert audit.actor.startswith("operator:op-")
+    assert "Bearer" not in audit.actor
     assert audit.target == f"partner:{pid}"
-    assert audit.before_json == {"available": available}
-    assert audit.after_json == {"available": available + 250}
+    assert audit.before_json == {"purchased_cents": purchased}
+    assert audit.after_json["purchased_cents"] == purchased + 250
+    assert audit.after_json["amount_cents"] == 250
 
 
 async def test_admin_purchased_rejects_extra_and_partner_id(
-    client, console_world, admin_headers
+    client, console_world, admin_headers, db_session
 ) -> None:
     a = console_world["a"]
     pid = a["partner_id"]
+    headers = await _op_headers(admin_headers, db_session)
     before = await client.get(_admin_wallet(pid), headers=admin_headers)
     assert before.status_code == 200, before.text
-    purchased = before.json()["purchased_remaining"]
+    purchased = before.json()["purchased_cents"]
 
     extra = await client.post(
-        f"{_admin_wallet(pid)}/purchased",
-        headers=admin_headers,
-        json={"qty": 1, "note": "nope"},
+        f"{_admin_wallet(pid)}/purchased", headers=headers, json={**_topup(1), "note": "nope"}
     )
     in_body = await client.post(
         f"{_admin_wallet(pid)}/purchased",
-        headers=admin_headers,
-        json={"qty": 1, "partner_id": str(pid)},
+        headers=headers,
+        json={**_topup(1), "partner_id": str(pid)},
     )
     assert extra.status_code == 422, extra.text
     assert in_body.status_code == 422, in_body.text
 
     after = await client.get(_admin_wallet(pid), headers=admin_headers)
     assert after.status_code == 200, after.text
-    assert after.json()["purchased_remaining"] == purchased
+    assert after.json()["purchased_cents"] == purchased
 
 
 async def test_admin_path_a_does_not_return_or_credit_b(
-    client, console_world, admin_headers
+    client, console_world, admin_headers, db_session
 ) -> None:
     a, b = console_world["a"], console_world["b"]
+    headers = await _op_headers(admin_headers, db_session)
     before_b = await client.get(_admin_wallet(b["partner_id"]), headers=admin_headers)
     assert before_b.status_code == 200, before_b.text
     wallet_a = await client.get(_admin_wallet(a["partner_id"]), headers=admin_headers)
     assert wallet_a.status_code == 200, wallet_a.text
-    assert wallet_a.json()["purchased_remaining"] != before_b.json()["purchased_remaining"] or (
-        wallet_a.json()["included_remaining"] == 500_000
-    )
 
     resp = await client.post(
-        f"{_admin_wallet(a['partner_id'])}/purchased",
-        headers=admin_headers,
-        json={"qty": 77},
+        f"{_admin_wallet(a['partner_id'])}/purchased", headers=headers, json=_topup(77)
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["purchased_remaining"] == wallet_a.json()["purchased_remaining"] + 77
+    assert resp.json()["purchased_cents"] == wallet_a.json()["purchased_cents"] + 77
 
     after_b = await client.get(_admin_wallet(b["partner_id"]), headers=admin_headers)
     assert after_b.status_code == 200, after_b.text
-    assert after_b.json()["purchased_remaining"] == before_b.json()["purchased_remaining"]
-    assert after_b.json()["available"] == before_b.json()["available"]
+    assert after_b.json()["purchased_cents"] == before_b.json()["purchased_cents"]
+    assert after_b.json()["available_cents"] == before_b.json()["available_cents"]
 
     ledger_a = await client.get(f"{_admin_wallet(a['partner_id'])}/ledger", headers=admin_headers)
     ledger_b = await client.get(f"{_admin_wallet(b['partner_id'])}/ledger", headers=admin_headers)
@@ -589,35 +616,32 @@ async def test_admin_path_a_does_not_return_or_credit_b(
 
 
 async def test_admin_recharge_works_in_prod_and_leaves_an_audit_row(
-    client, console_world, admin_headers, monkeypatch
+    client, console_world, admin_headers, db_session, monkeypatch
 ) -> None:
     """D4 — en producción Auphere SÍ puede recargar.
 
     Hasta el 2026-09-08 este endpoint devolvía 404 opaco si ``is_prod``, así
     que en producción no recargaba nadie y el único camino era escribir en la
     BD a mano. Un entorno no es un permiso: quien manda aquí es el token de
-    admin, y cada recarga deja auditoría.
+    admin con la persona del panel, y cada recarga deja auditoría.
     """
 
     from nexus_api.config import Settings
 
+    headers = await _op_headers(admin_headers, db_session)
     monkeypatch.setattr(Settings, "is_prod", property(lambda self: True))
     pid = console_world["a"]["partner_id"]
     before = await client.get(_admin_wallet(pid), headers=admin_headers)
     assert before.status_code == 200, before.text
-    purchased = before.json()["purchased_remaining"]
+    purchased = before.json()["purchased_cents"]
 
-    resp = await client.post(
-        f"{_admin_wallet(pid)}/purchased",
-        headers=admin_headers,
-        json={"qty": 1_000},
-    )
+    resp = await client.post(f"{_admin_wallet(pid)}/purchased", headers=headers, json=_topup(1_000))
     assert resp.status_code == 200, resp.text
-    assert resp.json()["purchased_remaining"] == purchased + 1_000
+    assert resp.json()["purchased_cents"] == purchased + 1_000
 
     after = await client.get(_admin_wallet(pid), headers=admin_headers)
     assert after.status_code == 200, after.text
-    assert after.json()["purchased_remaining"] == purchased + 1_000
+    assert after.json()["purchased_cents"] == purchased + 1_000
 
 
 # ``test_partner_self_recharge_stays_closed_in_prod`` también se fue: decía que
@@ -638,6 +662,8 @@ async def test_quota_state_matches_the_channel_gate(client, console_world, db_se
     from nexus_api.metering.wallet import allow_channel_turn, quota_state
 
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    await give_recharged_balance(a["partner_id"])
     unalloc_ref = "client-a-noquota"
     unalloc_tid = await _add_unallocated_client(
         db_session, partner_id=a["partner_id"], ref=unalloc_ref

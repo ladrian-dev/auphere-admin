@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import structlog
@@ -35,6 +36,9 @@ from nexus_api.schemas.partner import (
     ApiKeyRotateIn,
     EmbedAuditEntryOut,
     PartnerCreateIn,
+    PartnerInvitationOut,
+    PartnerMemberOut,
+    PartnerMembersOut,
     PartnerOut,
     PartnerTenantLinkIn,
     PartnerTenantOut,
@@ -63,7 +67,81 @@ def _admin_actor(token: str) -> str:
 
 
 def _partner_snapshot(partner: Partner) -> dict[str, Any]:
-    return PartnerOut.model_validate(partner).model_dump(mode="json")
+    # Only the partner's own columns: the counts and the balance are reads of
+    # other tables and would make every audit diff look like a change.
+    return PartnerOut.model_validate(partner).model_dump(
+        mode="json",
+        exclude={
+            "clients_count",
+            "members_count",
+            "available_cents",
+            "billing_mode",
+            "card_brand",
+            "card_last4",
+            "card_saved_at",
+            "charges_paused",
+        },
+    )
+
+
+async def _with_facts(session: AsyncSession, partners: list[Partner]) -> list[PartnerOut]:
+    """Spec 031 (R4.1): each partner with its clients, people and balance.
+
+    Two grouped counts for the whole list, then one balance read per partner
+    under **that partner's** GUC (``read_wallet``) — ``partner_wallets`` is
+    FORCE RLS and there is no cross-partner read of it on purpose.
+    """
+    import sqlalchemy as sa
+
+    from nexus_api.billing.pricing import credits_to_cents
+    from nexus_api.db.models.partner_membership import MembershipStatus, PartnerMembership
+    from nexus_api.metering.wallet import read_wallet
+    from nexus_api.services.partner_billing import billing_summary
+
+    ids = [p.id for p in partners]
+    if not ids:
+        return []
+    clients: dict[uuid.UUID, int] = {
+        pid: int(n)
+        for pid, n in (
+            await session.execute(
+                sa.select(PartnerTenant.partner_id, sa.func.count())
+                .where(PartnerTenant.partner_id.in_(ids))
+                .group_by(PartnerTenant.partner_id)
+            )
+        ).all()
+    }
+    members: dict[uuid.UUID, int] = {
+        pid: int(n)
+        for pid, n in (
+            await session.execute(
+                sa.select(PartnerMembership.partner_id, sa.func.count())
+                .where(PartnerMembership.partner_id.in_(ids))
+                .where(PartnerMembership.status == MembershipStatus.ACTIVE.value)
+                .group_by(PartnerMembership.partner_id)
+            )
+        ).all()
+    }
+    out: list[PartnerOut] = []
+    for p in partners:
+        row = PartnerOut.model_validate(p)
+        row.clients_count = int(clients.get(p.id, 0))
+        row.members_count = int(members.get(p.id, 0))
+        snap = await read_wallet(p.id)
+        row.available_cents = None if snap is None else credits_to_cents(snap.available)
+        # Spec 041: the card and how it is charged, read under the same GUC.
+        try:
+            billing = await billing_summary(p.id)
+        except Exception:  # pragma: no cover - a list never dies for one partner
+            billing = None
+        if billing is not None:
+            row.billing_mode = billing.mode
+            row.card_brand = billing.card_brand
+            row.card_last4 = billing.card_last4
+            row.card_saved_at = billing.card_saved_at
+            row.charges_paused = billing.paused_reason is not None
+        out.append(row)
+    return out
 
 
 def _key_snapshot(key: PartnerApiKey) -> dict[str, Any]:
@@ -74,7 +152,7 @@ def _key_snapshot(key: PartnerApiKey) -> dict[str, Any]:
 @router.get("", response_model=list[PartnerOut])
 async def list_partners(session: AsyncSession = Depends(get_db_session)) -> list[PartnerOut]:
     partners = await PartnerRepository(session).list_all()
-    return [PartnerOut.model_validate(p) for p in partners]
+    return await _with_facts(session, list(partners))
 
 
 @router.post("", response_model=PartnerOut, status_code=status.HTTP_201_CREATED)
@@ -120,7 +198,79 @@ async def get_partner(
     partner_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> PartnerOut:
-    return PartnerOut.model_validate(await _get_partner_or_404(session, partner_id))
+    partner = await _get_partner_or_404(session, partner_id)
+    return (await _with_facts(session, [partner]))[0]
+
+
+@router.get("/{partner_id}/members", response_model=PartnerMembersOut)
+async def list_partner_members(
+    partner_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> PartnerMembersOut:
+    """Spec 031 (R4.6): who works in this partner's console, and who is invited.
+
+    ``partner_memberships`` and ``partner_invitations`` are platform tables
+    (no RLS: the console gate reads them before any scope exists); the
+    partner comes from the path and filters every query.
+    """
+    import sqlalchemy as sa
+
+    from nexus_api.db.models.console_identity import ConsoleAccount
+    from nexus_api.db.models.partner_membership import (
+        InvitationStatus,
+        PartnerInvitation,
+        PartnerMembership,
+    )
+
+    await _get_partner_or_404(session, partner_id)
+    rows = (
+        await session.execute(
+            sa.select(PartnerMembership, ConsoleAccount.last_login_at)
+            .outerjoin(
+                ConsoleAccount,
+                sa.cast(ConsoleAccount.id, sa.String) == PartnerMembership.user_id,
+            )
+            .where(PartnerMembership.partner_id == partner_id)
+            .order_by(PartnerMembership.created_at)
+        )
+    ).all()
+    invitations = (
+        (
+            await session.execute(
+                sa.select(PartnerInvitation)
+                .where(PartnerInvitation.partner_id == partner_id)
+                .where(PartnerInvitation.status == InvitationStatus.PENDING.value)
+                .order_by(PartnerInvitation.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return PartnerMembersOut(
+        members=[
+            PartnerMemberOut(
+                id=m.id,
+                email=m.email,
+                display_name=m.display_name,
+                role=m.role,
+                status=m.status,
+                accepted_at=m.accepted_at,
+                last_login_at=last_login,
+                created_at=m.created_at,
+            )
+            for m, last_login in rows
+        ],
+        invitations=[
+            PartnerInvitationOut(
+                id=i.id,
+                email=i.email,
+                role=i.role,
+                expires_at=i.expires_at,
+                created_at=i.created_at,
+            )
+            for i in invitations
+        ],
+    )
 
 
 @router.patch("/{partner_id}", response_model=PartnerOut)
@@ -185,7 +335,7 @@ async def update_partner(
                 after=_partner_snapshot(partner),
                 platform=True,
             )
-    return PartnerOut.model_validate(partner)
+    return (await _with_facts(session, [partner]))[0]
 
 
 # ── API keys ─────────────────────────────────────────────────────────────────
@@ -420,6 +570,7 @@ async def partner_usage(
         Message,
         MessageDirection,
     )
+    from nexus_api.db.models.usage_record import UsageRecord
     from nexus_api.schemas.partner import PartnerClientUsageOut, PartnerUsageOut
 
     # Reads run in their own transaction block — autobegin would collide
@@ -430,6 +581,15 @@ async def partner_usage(
     since = datetime.now(UTC) - timedelta(days=window_days)
 
     clients: list[PartnerClientUsageOut] = []
+    # Spec 033 (R7.2): the sale price comes from the book, read under the
+    # partner's GUC — one read for every client, plus what the Companion
+    # spent outside clients (key ``None``).
+    from nexus_api.billing.pricing import credits_to_cents
+    from nexus_api.metering.wallet import credit_burn
+
+    burn = await credit_burn(partner_id, [m.tenant_id for m in mappings], since)
+    outside_cents = credits_to_cents(burn.get(None, 0), nearest=True)
+
     for mapping in mappings:
         ctx_token = _current_tenant.set(mapping.tenant_id)
         try:
@@ -463,7 +623,7 @@ async def partner_usage(
                         .where(Broadcast.created_at >= since)
                     )
                 ).one()
-                inbound, outbound, cost = (
+                inbound, outbound = (
                     await session.execute(
                         sa.select(
                             sa.func.count(Message.id).filter(
@@ -472,10 +632,22 @@ async def partner_usage(
                             sa.func.count(Message.id).filter(
                                 Message.direction == MessageDirection.OUTBOUND
                             ),
-                            sa.func.coalesce(sa.func.sum(Message.cost_usd), 0.0),
                         ).where(Message.created_at >= since)
                     )
                 ).one()
+                # Spec 039: our cost is what the model charged for the turns
+                # that are sold (``usage_records``), not Meta's price on the
+                # message. Summed as a decimal (spec 033 R7.2).
+                cost: Decimal = await session.scalar(
+                    sa.select(
+                        sa.func.coalesce(
+                            sa.func.sum(sa.cast(UsageRecord.cost_usd, sa.Numeric(20, 8))), 0
+                        )
+                    ).where(
+                        UsageRecord.occurred_at >= since,
+                        UsageRecord.source.in_(("channel", "companion")),
+                    )
+                ) or Decimal(0)
         finally:
             _current_tenant.reset(ctx_token)
 
@@ -493,6 +665,8 @@ async def partner_usage(
                 messages_inbound=inbound,
                 messages_outbound=outbound,
                 cost_usd=float(cost),
+                internal_cost_usd=str(Decimal(cost).normalize() if cost else Decimal(0)),
+                spend_cents=credits_to_cents(burn.get(mapping.tenant_id, 0), nearest=True),
             )
         )
 
@@ -508,6 +682,9 @@ async def partner_usage(
         messages_inbound=sum(c.messages_inbound for c in clients),
         messages_outbound=sum(c.messages_outbound for c in clients),
         cost_usd=round(sum(c.cost_usd for c in clients), 6),
+        internal_cost_usd=str(sum((Decimal(c.internal_cost_usd) for c in clients), Decimal(0))),
+        spend_cents=sum(c.spend_cents for c in clients) + outside_cents,
+        spend_outside_clients_cents=outside_cents,
         clients=clients,
     )
 

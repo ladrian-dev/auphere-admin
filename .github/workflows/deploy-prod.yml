@@ -113,6 +113,7 @@ jobs:
               nexus-worker) dockerfile=apps/worker/Dockerfile ;;
             esac
             docker build -f "$dockerfile" \
+              --build-arg NEXUS_GIT_SHA="$SHA" \
               -t "$REGISTRY/$image:$SHA" \
               -t "$REGISTRY/$image:prod" \
               .

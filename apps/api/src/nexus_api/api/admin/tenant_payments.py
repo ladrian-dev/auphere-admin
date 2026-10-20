@@ -32,7 +32,7 @@ from nexus_api.db.models import OperatorAccount, TenantPayment
 from nexus_api.repositories import AuditRepository
 from nexus_api.schemas.billing import TenantPaymentIn, TenantPaymentOut
 
-from .client_access import require_operator
+from .operator import require_operator
 
 log = structlog.get_logger(__name__)
 

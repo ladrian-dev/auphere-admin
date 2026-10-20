@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/brand/page-header";
+import { PageHeader } from "@nexus/ui";
 
 import { NewTenantWizard } from "./wizard-form";
 
@@ -8,7 +8,6 @@ export default function NewTenantPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Onboarding"
         title="Nuevo tenant"
         description="Identidad básica del cliente y alerta de costo. Los connectors se conectan en el siguiente paso."
       />

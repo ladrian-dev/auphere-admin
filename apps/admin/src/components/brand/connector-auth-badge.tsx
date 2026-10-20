@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@nexus/ui";
 import type { ConnectorAuthKind } from "@/lib/backend";
 
 const AUTH_KIND_LABEL: Record<ConnectorAuthKind, string> = {

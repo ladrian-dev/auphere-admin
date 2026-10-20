@@ -1,43 +1,17 @@
-import { Eyebrow } from "@/components/brand/eyebrow";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  backend,
-  type AgentConfig,
-  type ToolWithInstallStatus,
-} from "@/lib/backend";
-import { fullDateTime, relativeTime } from "@/lib/format";
+import { backend, type AgentConfig, type ToolWithInstallStatus } from "@/lib/backend";
 
 import { AgentPicker } from "./agent-picker";
-import { AgentEditor } from "./editor";
-import {
-  promoteAgentConfigAction,
-  rollbackAgentConfigAction,
-  stageAgentConfigAction,
-  updateRuntimeCapabilitiesAction,
-} from "./actions";
+import { stageAgentConfigAction, updateRuntimeCapabilitiesAction } from "./actions";
+import { AgentVersions } from "./agent-versions";
 import { ApplySeedTemplateButton } from "./apply-seed";
 import { EvalsSection } from "./evals/evals-section";
 import { RuntimeCapabilities } from "./runtime-capabilities";
-import {
-  PromoteVersionButton,
-  RollbackVersionButton,
-} from "./version-actions";
 
+/**
+ * Spec 037: the agent, as on the partner console's client page — its
+ * versions with «Nuevo borrador», then its runtime and its evaluations. The
+ * tools left this page for Habilidades.
+ */
 export default async function AgentPage({
   params,
   searchParams,
@@ -115,89 +89,46 @@ export default async function AgentPage({
       (t.connector_slug === null || t.tenant_connector_status !== null),
   );
 
-  const headerTitle = bundle.active
-    ? `Versión ${bundle.active.version} activa`
-    : latestStaged
-      ? `Borrador v${latestStaged.version} sin promover`
-      : "Crear primera versión";
 
   return (
-    <div className="grid gap-6">
-      <Card>
-        <CardHeader className="flex flex-col gap-1">
-          <Eyebrow>
-            Configuración del agente
-            {agents.length > 1 && onScreen ? ` · ${onScreen.name}` : ""}
-          </Eyebrow>
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <CardTitle>{headerTitle}</CardTitle>
-              <CardDescription>
-                Cada cambio que guardás queda como borrador. Promovelo cuando
-                quieras que el agente lo use en el siguiente turno.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <AgentPicker tenantId={tenant.id} agents={agents} selectedId={onScreen?.id ?? null} />
-              <ApplySeedTemplateButton
-                tenantId={tenant.id}
-                tenantName={tenant.name}
-                tenantTimezone={tenant.timezone}
-                templates={seedTemplates}
-                hasActiveConfig={bundle.active !== null}
-                agentId={agentId}
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* The ``key`` forces ``AgentEditor`` to remount whenever the
-              underlying config row changes (id is unique per version).
-              Without it the client component's ``useState`` initialiser
-              captures the prompt + tools of the FIRST render and ignores
-              subsequent prop changes — so after a fresh ``applyTemplate``
-              the textarea + whitelist stay empty even though the server
-              already has the staged draft. BUG-E2E-01. */}
-          <AgentEditor
-            key={`${agentId ?? "principal"}:${editorSource?.id ?? "empty"}`}
-            tenantId={tenant.id}
-            agentId={agentId}
-            source={editorSource}
-            sourceIsStagedDraft={editorSource?.status === "staged"}
-            catalog={publicCatalog}
-            stageAction={stageAgentConfigAction}
-          />
-        </CardContent>
-      </Card>
+    <section aria-label="Agente" className="flex min-w-0 flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <AgentPicker tenantId={tenant.id} agents={agents} selectedId={onScreen?.id ?? null} />
+        <ApplySeedTemplateButton
+          tenantId={tenant.id}
+          tenantName={tenant.name}
+          tenantTimezone={tenant.timezone}
+          templates={seedTemplates}
+          hasActiveConfig={bundle.active !== null}
+          agentId={agentId}
+        />
+      </div>
+      <p className="max-w-prose text-sm text-pretty text-muted-foreground">
+        Versiones del prompt{agents.length > 1 && onScreen ? ` de ${onScreen.name}` : ""}. Publicar crea una versión
+        activa, revertir vuelve a cualquier anterior. Las habilidades se encienden en su pestaña y van al mismo borrador.
+      </p>
 
-      {editorSource && (
+      {/* Spec 037: the partner console's version list. */}
+      <AgentVersions
+        tenantId={tenant.id}
+        agentId={agentId}
+        versions={bundle.versions}
+        activeVersion={bundle.active?.version ?? null}
+        source={editorSource}
+        sourceIsStagedDraft={editorSource?.status === "staged"}
+        catalog={publicCatalog}
+        stageAction={stageAgentConfigAction}
+      />
+
+      {/* Both blocks carry their own title and description. */}
+      {editorSource ? (
         <RuntimeCapabilities
           tenantId={tenant.id}
           config={editorSource}
           availableSkills={availableSkills}
           updateAction={updateRuntimeCapabilitiesAction}
         />
-      )}
-
-      <Card>
-        <CardHeader>
-          <Eyebrow>Versiones</Eyebrow>
-          <CardTitle>Historial</CardTitle>
-          <CardDescription>
-            Cada promoción se aplica en el siguiente turno del agente, sin
-            necesidad de redeploy.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <VersionTable
-            tenantId={tenant.id}
-            versions={bundle.versions}
-            activeVersion={bundle.active?.version}
-            promote={promoteAgentConfigAction}
-            rollback={rollbackAgentConfigAction}
-          />
-        </CardContent>
-      </Card>
+      ) : null}
 
       <EvalsSection
         tenantId={tenant.id}
@@ -206,106 +137,6 @@ export default async function AgentPage({
         recentRuns={recentRuns}
         activeVersion={bundle.active?.version ?? null}
       />
-    </div>
-  );
-}
-
-function VersionTable({
-  tenantId,
-  versions,
-  activeVersion,
-  promote,
-  rollback,
-}: {
-  tenantId: string;
-  versions: Array<{
-    id: string;
-    version: number;
-    status: string;
-    promoted_at: string | null;
-    created_at: string;
-  }>;
-  activeVersion?: number;
-  promote: (
-    tenantId: string,
-    version: number,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
-  rollback: (
-    tenantId: string,
-    version: number,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
-}) {
-  if (versions.length === 0) {
-    return (
-      <div className="px-6 py-12 text-center text-muted-foreground text-sm">
-        Todavía no hay versiones. Guardá el editor para crear la primera.
-      </div>
-    );
-  }
-  const sorted = [...versions].sort((a, b) => b.version - a.version);
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Versión</TableHead>
-          <TableHead>Estado</TableHead>
-          <TableHead>Creada</TableHead>
-          <TableHead>Promovida</TableHead>
-          <TableHead>ID</TableHead>
-          <TableHead className="text-right">Acción</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {sorted.map((v) => {
-          const isActive = activeVersion === v.version;
-          // A version is promotable when it's a draft that's not already
-          // active. Archived versions can be re-applied via rollback.
-          const canPromote = !isActive && v.status === "staged";
-          const canRollback = !isActive && v.status === "archived";
-          return (
-            <TableRow key={v.id}>
-              <TableCell className="font-mono tabular-nums">
-                v{v.version}
-              </TableCell>
-              <TableCell>
-                <Badge variant={isActive ? "default" : "outline"}>
-                  {isActive
-                    ? "Activa"
-                    : v.status === "staged"
-                      ? "Borrador"
-                      : v.status === "archived"
-                        ? "Archivada"
-                        : v.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {fullDateTime(v.created_at)}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {v.promoted_at ? relativeTime(v.promoted_at) : "—"}
-              </TableCell>
-              <TableCell className="text-xs font-mono text-muted-foreground">
-                {v.id.slice(0, 8)}
-              </TableCell>
-              <TableCell className="text-right">
-                {canPromote ? (
-                  <PromoteVersionButton
-                    tenantId={tenantId}
-                    version={v.version}
-                    promote={promote}
-                  />
-                ) : canRollback ? (
-                  <RollbackVersionButton
-                    tenantId={tenantId}
-                    version={v.version}
-                    rollback={rollback}
-                  />
-                ) : null}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    </section>
   );
 }

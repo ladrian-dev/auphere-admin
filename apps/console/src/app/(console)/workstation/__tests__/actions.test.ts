@@ -5,7 +5,7 @@ vi.mock("@/lib/principal", () => h.principalModule);
 vi.mock("@/lib/backend", () => h.backendModule);
 vi.mock("next/cache", () => h.cacheModule);
 
-const { renameMachineAction, archiveMachineAction, linkClientAction, unlinkClientAction } = await import("../actions");
+const { renameMachineAction, archiveMachineAction, linkClientAction, unlinkClientAction, setLocalExecCeilingAction } = await import("../actions");
 
 describe("partner workstation actions (spec 016, R8)", () => {
   it("builder pairs: rename, archive, link and unlink", async () => {
@@ -27,5 +27,20 @@ describe("partner workstation actions (spec 016, R8)", () => {
     expect(await linkClientAction({ id: "7b2a1e3c-4d5f-4a6b-8c7d-9e0f1a2b3c4d", ref: "demo" })).toEqual(h.denied());
     expect(await unlinkClientAction({ id: "7b2a1e3c-4d5f-4a6b-8c7d-9e0f1a2b3c4d", ref: "demo" })).toEqual(h.denied());
     for (const fn of fns) expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe("the execution ceiling lives in Teammate (owner, 2026-10-20)", () => {
+  it("admin sets it and the Teammate page refreshes", async () => {
+    h.setRole("admin");
+    expect(await setLocalExecCeilingAction({ ceiling: "ask" })).toMatchObject({ ok: true });
+    expect(h.backend.setLocalExecCeiling).toHaveBeenCalledWith("ask");
+    expect(h.cacheModule.revalidatePath).toHaveBeenCalledWith("/workstation");
+  });
+  it("builder (no teammates:policy): denied before any call", async () => {
+    h.setRole("builder");
+    h.backend.setLocalExecCeiling.mockClear();
+    expect(await setLocalExecCeilingAction({ ceiling: "never" })).toEqual(h.denied());
+    expect(h.backend.setLocalExecCeiling).not.toHaveBeenCalled();
   });
 });

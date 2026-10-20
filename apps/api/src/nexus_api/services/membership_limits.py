@@ -83,7 +83,16 @@ async def effective_caps(session: AsyncSession, partner_id: uuid.UUID) -> Caps:
     )
 
 
+def memberships_enabled() -> bool:
+    """Spec 034: whether the tiers bind at all. Off, nothing is capped by tier."""
+    from nexus_api.config import get_settings
+
+    return bool(get_settings().membership_enabled)
+
+
 async def assert_can_add_teammate(session: AsyncSession, partner_id: uuid.UUID) -> None:
+    if not memberships_enabled():
+        return
     caps = await effective_caps(session, partner_id)
     current = int(
         await session.scalar(
@@ -101,6 +110,8 @@ async def assert_can_add_teammate(session: AsyncSession, partner_id: uuid.UUID) 
 
 
 async def assert_can_add_member(session: AsyncSession, partner_id: uuid.UUID) -> None:
+    if not memberships_enabled():
+        return
     caps = await effective_caps(session, partner_id)
     current = int(
         await session.scalar(

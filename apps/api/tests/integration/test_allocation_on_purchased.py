@@ -96,21 +96,75 @@ async def test_an_exhausted_client_silences_only_itself(db_session) -> None:
 
 
 async def test_the_client_cap_is_replenished_monthly_not_weekly(db_session) -> None:
-    """R6.2 — it does not follow the pool's weekly cycle.
+    """R6.2 (spec 004) and spec 033 R6.1 — the cap refills once per calendar
+    month and never with the weekly pool. Was a test that read the
+    docstring; now it moves the clock."""
+    from datetime import UTC, date, datetime
 
-    It is not a slice of what is included: it is a spending limit the partner
-    sets so one client cannot take the lot. A limit that resets every week is
-    four times more permissive, and nobody asked for that.
-    """
-    import inspect
+    import sqlalchemy as sa
 
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import PartnerAllocation
     from nexus_api.metering.wallet import replenish_allocations
 
-    doc = (replenish_allocations.__doc__ or "").lower()
-    src = inspect.getsource(replenish_allocations).lower()
-    assert "mensual" in doc or "monthly" in doc or "mensual" in src, (
-        "the per-client replenishment must state that it stays monthly"
+    partner_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    await db_session.execute(
+        sa.text("INSERT INTO partners (id, name, slug, status) VALUES (:i, :n, :n, 'active')"),
+        {"i": str(partner_id), "n": f"mo-{partner_id.hex[:8]}"},
     )
+    await db_session.execute(
+        sa.text(
+            "INSERT INTO tenants (id, name, slug, plan, status, partner_id) "
+            "VALUES (:i, 'c', :s, 'pro', 'active', :p)"
+        ),
+        {"i": str(tenant_id), "s": f"mo-{tenant_id.hex[:8]}", "p": str(partner_id)},
+    )
+    await db_session.commit()
+    sm = get_sessionmaker()
+    async with sm() as s, s.begin():
+        await apply_partner_to_session(s, partner_id)
+        s.add(
+            PartnerAllocation(
+                partner_id=partner_id,
+                tenant_id=tenant_id,
+                cap=100,
+                remaining=0,
+                period_month=date(2026, 9, 1),
+            )
+        )
+
+    async def refill(at: datetime) -> int:
+        async with sm() as s, s.begin():
+            await apply_partner_to_session(s, partner_id)
+            return await replenish_allocations(s, partner_id=partner_id, now=at)
+
+    async def remaining() -> int:
+        async with sm() as s, s.begin():
+            await apply_partner_to_session(s, partner_id)
+            row = await s.scalar(
+                sa.select(PartnerAllocation).where(PartnerAllocation.tenant_id == tenant_id)
+            )
+            assert row is not None
+            return int(row.remaining)
+
+    # Later in September: same month, nothing refills.
+    assert await refill(datetime(2026, 9, 28, 23, 0, tzinfo=UTC)) == 0
+    assert await remaining() == 0
+    # October 1st: the cap is whole again, once.
+    assert await refill(datetime(2026, 10, 1, 0, 5, tzinfo=UTC)) == 1
+    assert await remaining() == 100
+    # A week later (the pool's cycle) nothing happens.
+    async with sm() as s, s.begin():
+        await apply_partner_to_session(s, partner_id)
+        await s.execute(
+            sa.update(PartnerAllocation)
+            .where(PartnerAllocation.tenant_id == tenant_id)
+            .values(remaining=10)
+        )
+    assert await refill(datetime(2026, 10, 8, 0, 5, tzinfo=UTC)) == 0
+    assert await remaining() == 10
 
 
 async def test_a_client_of_a_partner_without_credit_is_not_born_mute(db_session) -> None:

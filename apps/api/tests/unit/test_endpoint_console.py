@@ -160,6 +160,10 @@ async def test_partner_api_shares_the_quota(client, console_world, db_session) -
 
 async def test_client_detail_update_and_transitions(client, console_world, db_session) -> None:
     a = console_world["a"]
+    # Spec 033 (R5.1): a served client needs RECHARGED balance.
+    from tests.conftest import give_recharged_balance
+
+    await give_recharged_balance(a["partner_id"])
     h = a["headers"]
     detail = await client.get(f"/console/clients/{a['ref']}", headers=h())
     assert detail.status_code == 200

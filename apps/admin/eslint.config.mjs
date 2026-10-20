@@ -1,23 +1,20 @@
+import nexusUi from "@nexus/ui/eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
-const eslintConfig = defineConfig([
+// Spec 031: the same rules as the console — no raw colours, no values off the
+// spacing scale, only the radii the tokens define.
+export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  // Override default ignores of eslint-config-next.
+  nexusUi.configs.recommended,
   globalIgnores([
-    // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Workspace packages have their own lint setup (or none). The
-    // admin's eslint config doesn't apply to them — keep concerns
-    // separate. CI builds them via ``pnpm build:packages`` before
-    // typecheck, so any TS errors still surface there.
+    // The ucm-* packages have their own setup; CI builds them before typecheck.
     "packages/**",
   ]),
 ]);
-
-export default eslintConfig;

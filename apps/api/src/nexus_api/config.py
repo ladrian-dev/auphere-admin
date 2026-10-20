@@ -265,6 +265,15 @@ class Settings(BaseSettings):
     #: demás. Con la bandera apagada la consola no enseña un botón gris ni una
     #: pantalla que explique lo que no hay: enseña el login (constitución §V).
     signup_enabled: bool = False
+
+    # ── Spec 034: las membresías son del Teammate, no de la consola ───────
+    #: Apagada por defecto. Los niveles Free/Pro/Team/Business (spec 005) se
+    #: venden con el Teammate; mientras se termina, la consola es gratis: sin
+    #: topes de teammates ni de personas, el pool semanal se repone siempre y
+    #: los endpoints de planes, portal y cancelación responden 404. La compra
+    #: de crédito y los recibos siguen. Encenderla devuelve la spec 005 entera
+    #: sin migración.
+    membership_enabled: bool = False
     #: 24 h, no los 21 días de una invitación. Una invitación la manda alguien
     #: que te conoce; una solicitud de alta la pide un desconocido y su correo
     #: está en la bandeja ahora mismo.

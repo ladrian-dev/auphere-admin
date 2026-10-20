@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
-import { backendFor } from "@/lib/backend";
+import { backendFor, type LocalExecCeiling } from "@/lib/backend";
 import type { MachineClientOut, MachineOut } from "@/lib/backend/workstation";
 import { can, requirePrincipal } from "@/lib/principal";
 
@@ -68,4 +68,23 @@ export async function unlinkClientAction(raw: unknown): Promise<ActionResult<nul
     revalidatePath("/workstation");
     return null;
   });
+}
+
+const execMode = z.enum(["ask", "always", "never"]);
+
+/**
+ * El techo de ejecución local del partner (spec 003, R10.1).
+ *
+ * Vive en Teammate (owner, 2026-10-20): acota lo que cada persona puede
+ * permitirse con el Teammate en su propia máquina. Bajarlo tiene efecto en la
+ * siguiente invocación; no revoca permisos de argumentos ya concedidos, que se
+ * revocan uno a uno desde el puesto de trabajo del cliente.
+ */
+export async function setLocalExecCeilingAction(raw: unknown): Promise<ActionResult<LocalExecCeiling>> {
+  const { ceiling } = z.object({ ceiling: execMode }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "teammates:policy")) return forbidden();
+  const res = await run(() => backendFor(principal).setLocalExecCeiling(ceiling));
+  if (res.ok) revalidatePath("/workstation");
+  return res;
 }

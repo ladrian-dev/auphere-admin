@@ -1,16 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { StatusDot } from "@/components/brand/status-dot";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow, StatusDot } from "@nexus/ui";
 import { MessageBubble } from "@/components/conversation/message-bubble";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { backend } from "@/lib/backend";
 import { relativeTime, statusLabel } from "@/lib/format";
 

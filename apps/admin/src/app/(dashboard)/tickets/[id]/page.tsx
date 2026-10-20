@@ -1,24 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Eyebrow } from "@/components/brand/eyebrow";
-import { PageHeader } from "@/components/brand/page-header";
-import { Badge } from "@/components/ui/badge";
 import {
+  Badge,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
+  Eyebrow,
+  PageHeader,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@nexus/ui";
+import { CrumbName } from "@/components/shell/crumb-names";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 
@@ -44,8 +43,8 @@ export default async function TicketDetailPage({
 
   return (
     <div className="grid gap-6">
+      <CrumbName id={id} label={ticket.ticket_ref} />
       <PageHeader
-        eyebrow="Soporte"
         title={ticket.ticket_ref}
         description={
           <>

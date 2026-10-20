@@ -1,68 +1,36 @@
-"use client";
+import { ProfileTabs, type ProfileTabGroup } from "@/components/shell/profile-tabs";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+/** The partner's tabs, grouped the same way as the client's (spec 035). */
+export const PARTNER_TAB_GROUPS: ProfileTabGroup[] = [
+  {
+    key: "observe",
+    label: "Observar",
+    tabs: [
+      { seg: "", label: "Resumen" },
+      { seg: "clients", label: "Clientes" },
+      { seg: "audit", label: "Auditoría" },
+    ],
+  },
+  {
+    key: "configure",
+    label: "Configurar",
+    tabs: [
+      // Spec 032: which console views and services this partner has.
+      { seg: "modules", label: "Módulos" },
+      { seg: "settings", label: "Configuración" },
+      { seg: "knowledge", label: "Conocimiento" },
+    ],
+  },
+  {
+    key: "account",
+    label: "Cuenta",
+    tabs: [
+      { seg: "team", label: "Equipo" },
+      { seg: "money", label: "Facturas" },
+    ],
+  },
+];
 
-import { cn } from "@/lib/utils";
-
-const TABS = [
-  { slug: "", label: "Keys" },
-  { slug: "tenants", label: "Tenants" },
-  { slug: "limits", label: "Límites" },
-  { slug: "usage", label: "Uso" },
-  { slug: "wallet", label: "Consumo" },
-  { slug: "models", label: "Modelos" },
-  { slug: "knowledge", label: "Conocimiento" },
-  { slug: "receipts", label: "Recibos" },
-  { slug: "audit", label: "Auditoría" },
-] as const;
-
-/**
- * Editorial tab bar — same underline-only pattern as the tenant tabs
- * (``tenants/[id]/tabs.tsx``): 1px primary underline + weight bump for
- * the active tab, no pills, no chrome.
- */
 export function PartnerTabs({ partnerId }: { partnerId: string }) {
-  const pathname = usePathname();
-  const base = `/partners/${partnerId}`;
-
-  return (
-    <nav
-      role="tablist"
-      aria-label="Secciones del partner"
-      className="-mb-px flex items-center gap-1 overflow-x-auto"
-    >
-      {TABS.map((tab) => {
-        const href = tab.slug ? `${base}/${tab.slug}` : base;
-        const active =
-          tab.slug === ""
-            ? pathname === base
-            : pathname === href || pathname.startsWith(`${href}/`);
-        return (
-          <Link
-            key={tab.slug || "keys"}
-            href={href}
-            role="tab"
-            aria-selected={active}
-            className={cn(
-              "relative px-3 py-2 text-sm transition-colors outline-none",
-              "focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
-              active
-                ? "text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {tab.label}
-            <span
-              aria-hidden="true"
-              className={cn(
-                "absolute inset-x-2 -bottom-px h-px transition-colors",
-                active ? "bg-[color:var(--color-primary)]" : "bg-transparent",
-              )}
-            />
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <ProfileTabs base={`/partners/${partnerId}`} label="Secciones del partner" groups={PARTNER_TAB_GROUPS} />;
 }

@@ -1,30 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import {
-  ChevronsUpDown,
-  Handshake,
-  Inbox,
-  LayoutDashboard,
-  LogOut,
-  Phone,
-  Plug,
-  UserPlus,
-  type LucideIcon,
-} from "lucide-react";
+import { usePathname } from "next/navigation";
 
-import { BrandMark, Wordmark } from "@/components/brand/wordmark";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
+  BrandMark,
+  BrandWordmark,
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -35,221 +16,91 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  cn,
   useSidebar,
-} from "@/components/ui/sidebar";
-import { logoutAction } from "@/app/(auth)/login/actions";
-import { cn } from "@/lib/utils";
+} from "@nexus/ui";
 
-type Item = { href: string; label: string; icon: LucideIcon };
+import { NAV, isActive } from "./nav";
+import { UserMenu } from "./user-menu";
 
-const NAV: Item[] = [
-  { href: "/tenants", label: "Tenants", icon: LayoutDashboard },
-  { href: "/partners", label: "Partners", icon: Handshake },
-  { href: "/signups", label: "Altas", icon: UserPlus },
-  { href: "/tickets", label: "Tickets", icon: Inbox },
-  { href: "/connectors", label: "Connectors", icon: Plug },
-  { href: "/auphere/channels", label: "Auphere channels", icon: Phone },
-];
+type Props = {
+  user: { name: string; email: string; role: string };
+  /** R2.5: a count next to an entry, by href (open tickets). Zero hides it. */
+  badges?: Record<string, number>;
+};
 
 /**
- * Editorial sidebar — bone background, hairline border, no gradients.
- *
- * Active state uses pistachio accent (per brand-system) instead of the
- * primary green so the cue is calm rather than highlighty. Lee will see
- * this for hours; it has to behave like a piece of furniture.
- *
- * Collapse behaviour follows the Vercel / Linear pattern: in icon mode
- * we keep only the brand mark and the menu icons; the user menu turns
- * into a single avatar-shaped row with a popover so el cierre de sesión queda a un
- * click away regardless of state.
+ * Spec 031: the operator panel's sidebar, built like the console's — the
+ * same primitive, the same fade when it folds to icons (⌘B), the same
+ * group labels — with the panel's own navigation (`nav.ts`).
  */
-export function AppSidebar({
-  user,
-}: {
-  user: { name?: string | null; email: string };
-}) {
+export function AppSidebar({ user, badges = {} }: Props) {
   const pathname = usePathname();
+  const { state, isMobile } = useSidebar();
+  const collapsed = state === "collapsed" && !isMobile;
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
+    <Sidebar variant="inset" collapsible="icon" aria-label="Principal">
       <SidebarHeader>
-        <BrandHeader />
-      </SidebarHeader>
-
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel
-            className="font-mono uppercase text-[10px]"
-            style={{ letterSpacing: "var(--tracking-eyebrow)" }}
+        <Link href="/" className="flex h-10 min-w-0 items-center gap-2 overflow-hidden rounded-sm px-1 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+          <BrandMark className="size-7 shrink-0 text-primary" />
+          <BrandWordmark
+            className={cn(
+              "h-5 w-auto shrink-0 text-foreground transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
+              collapsed && "opacity-0",
+            )}
+          />
+          <span
+            className={cn(
+              "shrink-0 rounded-full bg-primary/15 px-2 text-xs leading-5 font-semibold text-accent-foreground transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
+              collapsed && "opacity-0",
+            )}
           >
-            Operación
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NAV.map((item) => {
-                const active =
-                  item.href === "/tenants"
-                    ? pathname === "/tenants" ||
-                      pathname.startsWith("/tenants/")
-                    : pathname.startsWith(item.href);
-                const Icon = item.icon;
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      isActive={active}
-                      tooltip={item.label}
-                      render={
-                        <Link href={item.href}>
-                          <Icon className="size-4" aria-hidden="true" />
-                          <span>{item.label}</span>
-                        </Link>
-                      }
-                    />
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+            admin
+          </span>
+        </Link>
+      </SidebarHeader>
+      <SidebarContent>
+        {NAV.map((group) => (
+          <SidebarGroup key={group.id}>
+            {group.label ? (
+              <SidebarGroupLabel className="text-xs font-medium tracking-eyebrow uppercase">{group.label}</SidebarGroupLabel>
+            ) : null}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(pathname, item);
+                  const badge = badges[item.href] ?? 0;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={active}
+                        tooltip={item.label}
+                        render={
+                          <Link href={item.href} aria-current={active ? "page" : undefined}>
+                            <Icon className="size-4" aria-hidden="true" />
+                            <span className="flex-1 truncate">{item.label}</span>
+                            {badge > 0 ? (
+                              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs leading-none font-semibold text-primary-foreground tabular-nums">
+                                <span className="sr-only">{badge} abiertos</span>
+                                <span aria-hidden="true">{badge > 99 ? "99+" : badge}</span>
+                              </span>
+                            ) : null}
+                          </Link>
+                        }
+                      />
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
-
       <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <UserMenu user={user} />
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <UserMenu user={user} collapsed={collapsed} />
       </SidebarFooter>
     </Sidebar>
-  );
-}
-
-/**
- * Brand mark inside the sidebar header.
- *
- * Expanded: full horizontal lockup (mark + wordmark + nexus eyebrow) using
- * the canonical Auphere SVGs.
- *
- * Collapsed: isotipo only, 28px square, centred on the 56px rail — mirrors
- * Linear / Vercel and keeps the brand identity present at any sidebar
- * state instead of degrading to a generic dot.
- */
-function BrandHeader() {
-  const { state, isMobile } = useSidebar();
-  const collapsed = state === "collapsed" && !isMobile;
-  return (
-    <div
-      className={cn(
-        "flex h-10 items-center",
-        collapsed ? "justify-center px-0" : "px-2",
-      )}
-    >
-      {collapsed ? (
-        <BrandMark className="size-7 text-[color:var(--color-primary-deep)]" />
-      ) : (
-        <Wordmark variant="horizontal" />
-      )}
-    </div>
-  );
-}
-
-/**
- * Footer user menu.
- *
- * Originally I tried wrapping ``SidebarMenuButton`` inside
- * ``DropdownMenuTrigger`` via the ``render`` prop. Both components use
- * Base UI's ``useRender`` and the nested composition crashes on click.
- * Inlining the sidebar-button styles on the trigger directly is the
- * documented Base UI escape hatch, and lets us flip to icon-only
- * layout via ``useSidebar`` without losing the dropdown affordance.
- */
-function UserMenu({
-  user,
-}: {
-  user: { name?: string | null; email: string };
-}) {
-  const router = useRouter();
-  const { state, isMobile } = useSidebar();
-  const collapsed = state === "collapsed" && !isMobile;
-  const initials = (user.name ?? user.email).slice(0, 2).toUpperCase();
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={user.email}
-        className={cn(
-          "group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-sm text-left text-sm outline-none ring-sidebar-ring",
-          "transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          "focus-visible:ring-2 active:bg-sidebar-accent",
-          "data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground",
-          collapsed ? "size-8 justify-center p-0" : "h-10 px-2 py-1.5",
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className="grid size-6 shrink-0 place-items-center rounded-sm bg-[color:var(--color-pistachio)] text-[color:var(--color-bangladesh-green)] text-[11px] font-semibold"
-        >
-          {initials}
-        </span>
-        {!collapsed ? (
-          <>
-            <span className="grid flex-1 text-left leading-tight overflow-hidden">
-              <span className="truncate text-sm font-medium">
-                {user.name ?? "Operador"}
-              </span>
-              <span className="truncate text-[11px] text-muted-foreground">
-                {user.email}
-              </span>
-            </span>
-            <ChevronsUpDown
-              className="ml-auto size-4 shrink-0 text-muted-foreground"
-              aria-hidden="true"
-            />
-          </>
-        ) : null}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="right"
-        align="end"
-        sideOffset={8}
-        className="min-w-56"
-      >
-        {/*
-          Base UI requires GroupLabel + every Item that shares its label
-          to live inside a single Menu.Group. We wrap the whole menu in
-          one ``DropdownMenuGroup`` to satisfy the contract — the group
-          here is the entire user menu.
-        */}
-        <DropdownMenuGroup>
-          <DropdownMenuLabel
-            className="text-xs font-mono uppercase text-muted-foreground"
-            style={{ letterSpacing: "var(--tracking-eyebrow)" }}
-          >
-            Operador
-          </DropdownMenuLabel>
-          <DropdownMenuItem disabled>
-            <span className="grid leading-tight">
-              <span className="text-sm font-medium">
-                {user.name ?? "Operador"}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {user.email}
-              </span>
-            </span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={async () => {
-              await logoutAction();
-              router.replace("/login");
-              router.refresh();
-            }}
-          >
-            <LogOut className="size-4" />
-            Cerrar sesión
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

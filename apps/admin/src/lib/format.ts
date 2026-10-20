@@ -1,3 +1,5 @@
+import { formatCurrency } from "@nexus/ui";
+
 /**
  * Date / number / status formatters used across the panel.
  *
@@ -94,6 +96,9 @@ export function statusLabel(status: string): string {
       return "Archivado";
     case "suspended":
       return "Suspendido";
+    // A partner's client created before its WhatsApp signup finishes.
+    case "provisioning":
+      return "Preparando";
     case "escalated":
       return "Escalado";
     case "open":
@@ -103,4 +108,25 @@ export function statusLabel(status: string): string {
     default:
       return status;
   }
+}
+
+/**
+ * Spec 031: an amount the API gives in US$ cents, written exactly as the
+ * console writes it (same formatter from @nexus/ui). ``null`` reads "—":
+ * a figure we could not read is never shown as zero.
+ */
+export function formatCents(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined) return "—";
+  return formatCurrency(cents / 100, "USD", "es");
+}
+
+/**
+ * Spec 041: the partner's saved payment method in a few words. Not every
+ * method is a card — Link has no last four digits — so it is never left as
+ * «···· » or read as «Sin tarjeta».
+ */
+export function cardLabel(brand: string | null | undefined, last4: string | null | undefined): string {
+  if (last4) return `${(brand ?? "").toUpperCase()} ···· ${last4}`;
+  if (brand === "link") return "Link";
+  return brand ? brand.toUpperCase() : "Método de pago guardado";
 }
