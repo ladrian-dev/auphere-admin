@@ -119,3 +119,14 @@ export function formatCents(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return "—";
   return formatCurrency(cents / 100, "USD", "es");
 }
+
+/**
+ * Spec 041: the partner's saved payment method in a few words. Not every
+ * method is a card — Link has no last four digits — so it is never left as
+ * «···· » or read as «Sin tarjeta».
+ */
+export function cardLabel(brand: string | null | undefined, last4: string | null | undefined): string {
+  if (last4) return `${(brand ?? "").toUpperCase()} ···· ${last4}`;
+  if (brand === "link") return "Link";
+  return brand ? brand.toUpperCase() : "Método de pago guardado";
+}

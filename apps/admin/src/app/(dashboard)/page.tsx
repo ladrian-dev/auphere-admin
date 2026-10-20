@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ErrorState, Metric, PageHeader } from "@nexus/ui";
 
 import { backend, type AdminOverview } from "@/lib/backend";
-import { formatCents, relativeTime } from "@/lib/format";
+import { cardLabel, formatCents, relativeTime } from "@/lib/format";
 
 export const metadata = { title: "Panel" };
 export const dynamic = "force-dynamic";
@@ -141,7 +141,7 @@ export default async function HomePage() {
                 >
                   <span className="text-sm font-medium">{c.name}</span>
                   <span className="text-sm text-muted-foreground">
-                    {(c.card_brand ?? "").toUpperCase()} ···· {c.card_last4} ·{" "}
+                    {cardLabel(c.card_brand, c.card_last4)} ·{" "}
                     {c.mode === "auto_recharge" ? "recarga automática" : c.mode === "postpaid" ? "pospago" : "cobro manual"}
                     {c.card_saved_at ? ` · ${relativeTime(c.card_saved_at)}` : ""}
                   </span>

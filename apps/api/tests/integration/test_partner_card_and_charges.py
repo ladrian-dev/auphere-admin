@@ -79,6 +79,19 @@ class _FakeStripe:
             def detach(self, pm):
                 outer.detached = pm
 
+            def retrieve(self, pm):
+                outer.retrieved_pm = pm
+                return {
+                    "id": pm,
+                    "type": "card",
+                    "card": {
+                        "brand": "mastercard",
+                        "last4": "4444",
+                        "exp_month": 3,
+                        "exp_year": 2031,
+                    },
+                }
+
         class _Items:
             def create(self, params, options=None):
                 outer._items.append(params)
@@ -570,3 +583,56 @@ async def test_a_stripe_refusal_reaches_the_screen_with_its_reason(
     # Nothing was half-saved: no customer id without a card page.
     view = await client.get("/console/billing/card", headers=a["headers"]())
     assert view.json()["card"] is None
+
+
+async def _billing(partner_id: uuid.UUID) -> PartnerBilling:
+    async with get_sessionmaker()() as s, s.begin():
+        await apply_partner_to_session(s, partner_id)
+        row = await s.get(PartnerBilling, partner_id)
+        assert row is not None
+        s.expunge(row)
+        return row
+
+
+async def test_a_saved_method_without_card_details_is_read_again(
+    console_world, monkeypatch
+) -> None:
+    """Staging saved a method and showed «terminada en · caduca 00/»: the
+    details were not in what Checkout handed back."""
+    pid = console_world["a"]["partner_id"]
+    fake = _FakeStripe()
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.apply_card_saved(
+            s,
+            partner_id=pid,
+            checkout={
+                "customer": "cus_test",
+                "setup_intent": {"id": "seti_2", "payment_method": {"id": "pm_bare"}},
+            },
+        )
+    assert fake.retrieved_pm == "pm_bare"
+    row = await _billing(pid)
+    assert (row.card_brand, row.card_last4, row.card_exp_month) == ("mastercard", "4444", 3)
+
+
+async def test_a_link_method_is_named_not_left_blank(console_world, monkeypatch) -> None:
+    pid = console_world["a"]["partner_id"]
+    fake = _FakeStripe()
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.apply_card_saved(
+            s,
+            partner_id=pid,
+            checkout={
+                "customer": "cus_test",
+                "setup_intent": {
+                    "id": "seti_3",
+                    "payment_method": {"id": "pm_link", "type": "link", "link": {}},
+                },
+            },
+        )
+    assert not hasattr(fake, "retrieved_pm")
+    row = await _billing(pid)
+    assert row.card_brand == "link" and row.card_last4 is None
+    assert row.payment_method_id == "pm_link"

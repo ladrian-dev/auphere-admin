@@ -17,7 +17,7 @@ import {
 } from "@nexus/ui";
 
 import type { PartnerOut } from "@/lib/backend";
-import { formatCents, relativeTime, statusLabel } from "@/lib/format";
+import { cardLabel, formatCents, relativeTime, statusLabel } from "@/lib/format";
 
 const CHARGING_LABEL: Record<string, string> = {
   manual: "Cobro manual",
@@ -101,10 +101,10 @@ export function PartnersTable({ partners }: { partners: PartnerOut[] }) {
                   <TableCell className="text-right tabular-nums">{formatCents(p.available_cents)}</TableCell>
                   {/* Spec 041: the card and how the partner is charged. */}
                   <TableCell className="hidden text-sm md:table-cell">
-                    {p.card_last4 ? (
+                    {p.card_saved_at || p.card_last4 ? (
                       <span className="flex flex-col">
                         <span className={p.charges_paused ? "text-status-danger-text" : undefined}>
-                          {(p.card_brand ?? "").toUpperCase()} ···· {p.card_last4}
+                          {cardLabel(p.card_brand, p.card_last4)}
                           {p.charges_paused ? " · parado" : ""}
                         </span>
                         <span className="text-xs text-muted-foreground">

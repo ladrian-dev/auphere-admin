@@ -88,6 +88,8 @@ export const membershipMessages = {
   },
   "card.none": { es: "No hay ninguna tarjeta guardada.", en: "No card saved." },
   "card.saved": { es: "{brand} terminada en {last4} · caduca {month}/{year}", en: "{brand} ending in {last4} · expires {month}/{year}" },
+  "card.savedOther": { es: "Método de pago guardado: {method}", en: "Saved payment method: {method}" },
+  "card.method.unknown": { es: "sin detalles de Stripe", en: "no details from Stripe" },
   "card.add": { es: "Añadir tarjeta", en: "Add a card" },
   "card.replace": { es: "Cambiar tarjeta", en: "Change card" },
   "card.remove": { es: "Quitar tarjeta", en: "Remove card" },

@@ -62,6 +62,12 @@ export function CardSection({ view, canManage, justSaved }: { view: BillingCardV
     return known.includes(res.code ?? "") ? t(key as "card.error.card_required") : actionErrorText(res, t);
   }
 
+  function methodName(brand: string | null): string {
+    if (!brand) return t("card.method.unknown");
+    if (brand === "link") return "Link";
+    return brand.toUpperCase();
+  }
+
   function openStripe() {
     start(async () => {
       const res = await startCardAction();
@@ -123,12 +129,15 @@ export function CardSection({ view, canManage, justSaved }: { view: BillingCardV
         <CreditCard className="size-5 text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 flex-1 text-sm">
           {view.card
-            ? t("card.saved", {
-                brand: (view.card.brand ?? "").toUpperCase(),
-                last4: view.card.last4 ?? "",
-                month: String(view.card.exp_month ?? "").padStart(2, "0"),
-                year: String(view.card.exp_year ?? ""),
-              })
+            ? view.card.last4
+              ? t("card.saved", {
+                  brand: (view.card.brand ?? "").toUpperCase(),
+                  last4: view.card.last4,
+                  month: String(view.card.exp_month ?? "").padStart(2, "0"),
+                  year: String(view.card.exp_year ?? ""),
+                })
+              : // Not every saved method is a card (Link has no last 4 digits).
+                t("card.savedOther", { method: methodName(view.card.brand) })
             : t("card.none")}
         </span>
         {canManage ? (
