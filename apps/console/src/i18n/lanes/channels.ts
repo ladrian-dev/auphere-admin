@@ -19,8 +19,8 @@ export const channelsMessages = {
   },
   "ch.link.pending.title": { es: "Enlace enviado al cliente", en: "Link sent to the client" },
   "ch.link.pending.line": {
-    es: "Hay un enlace sin usar ({mode}). Caduca el {date}.",
-    en: "There is an unused link ({mode}). It expires on {date}.",
+    es: "Hay un enlace sin usar, en modo {mode}. Caduca el {date}.",
+    en: "There is an unused link, in {mode} mode. It expires on {date}.",
   },
   "ch.link.revoke": { es: "Anular enlace", en: "Revoke link" },
   "ch.link.revoke.title": { es: "Anular el enlace", en: "Revoke the link" },
