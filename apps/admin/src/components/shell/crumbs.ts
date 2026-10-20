@@ -40,7 +40,7 @@ const CHILD: Record<string, Record<string, string>> = {
     clients: "Clientes",
     team: "Equipo",
     modules: "Módulos",
-    money: "Dinero",
+    money: "Facturas",
     settings: "Configuración",
     knowledge: "Conocimiento",
     audit: "Auditoría",

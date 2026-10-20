@@ -54,7 +54,7 @@ export default async function PartnerWalletPage({ params }: { params: Promise<{ 
     <div className="grid gap-6">
       <Card>
         <CardHeader>
-          <Eyebrow>Dinero</Eyebrow>
+          <Eyebrow>Facturas</Eyebrow>
           <CardTitle>Saldo del partner</CardTitle>
           <CardDescription>
             Todo en US$. El partner reparte el saldo recargado entre sus clientes con un tope mensual por cliente.

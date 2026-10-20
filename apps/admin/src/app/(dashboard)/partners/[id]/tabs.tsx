@@ -26,7 +26,7 @@ export const PARTNER_TAB_GROUPS: ProfileTabGroup[] = [
     label: "Cuenta",
     tabs: [
       { seg: "team", label: "Equipo" },
-      { seg: "money", label: "Dinero" },
+      { seg: "money", label: "Facturas" },
     ],
   },
 ];
