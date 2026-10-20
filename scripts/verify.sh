@@ -18,6 +18,7 @@
 #   ./scripts/verify.sh lint     solo ruff + mypy
 #   ./scripts/verify.sh py       solo las suites de Python
 #   ./scripts/verify.sh js       solo consola + panel + @nexus/ui
+#   ./scripts/verify.sh mobile   solo la app Auphere Customers (spec 031)
 #
 # No sustituye a la tubería —ella además construye imágenes y valida
 # Terraform—, pero cubre todo lo que se rompe escribiendo código.
@@ -111,6 +112,23 @@ run_js() {
   step "consola · next build" pnpm --dir "$ROOT/apps/console" build
 }
 
+run_mobile() {
+  # Spec 031 (D13): la app vive en su propio workspace de pnpm, con su propio
+  # lockfile — Expo 58 fija React 19.3 y la consola 19.2. Lo compartido entra
+  # generado; ``gen:check`` falla si los tipos, los tokens o los textos ya no
+  # son los de su fuente, y el contrato OpenAPI tiene que ser el de esta rama.
+  local M="$ROOT/apps/mobile"
+  step "app · lockfile al dia"          pnpm --dir "$M" install --frozen-lockfile --ignore-scripts
+  step "app · typecheck"                pnpm --dir "$M" typecheck
+  step "app · lint"                     pnpm --dir "$M" lint
+  step "app · jest"                     pnpm --dir "$M" test --ci
+  step "app · generados al dia"         pnpm --dir "$M" gen:check
+  step "app · contrato OpenAPI al dia"  uv run --directory "$API" python scripts/export_openapi.py --check
+  # Lo que tsc y jest no ven: una dependencia nativa par que falta (expo-symbols
+  # sin expo-font tumbaba Android) o un paquete fuera de las versiones del SDK.
+  step "app · expo-doctor"              bash -c "cd '$M' && npx --yes expo-doctor"
+}
+
 # Constitución §VIII (spec 017, T-LIC): ninguna dependencia nueva entra sin
 # su licencia leída. En una rama de feature los lockfiles no cambian respecto
 # a develop; si cambian, la tarea de licencias tiene que existir.
@@ -127,9 +145,10 @@ case "${1:-all}" in
   lint) run_lint ;;
   py)   run_py ;;
   js)   run_js ;;
+  mobile) run_mobile ;;
   locks) run_locks ;;
-  all)  run_locks; run_lint; run_py; run_js ;;
-  *)    echo "uso: $0 [all|lint|py|js|locks]" >&2; exit 2 ;;
+  all)  run_locks; run_lint; run_py; run_js; run_mobile ;;
+  *)    echo "uso: $0 [all|lint|py|js|mobile|locks]" >&2; exit 2 ;;
 esac
 
 printf '\n'
