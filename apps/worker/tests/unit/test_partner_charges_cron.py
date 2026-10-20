@@ -42,9 +42,22 @@ async def test_every_tick_tops_up_and_lets_the_settlement_decide(monkeypatch) ->
         calls.append(f"settle:{now:%Y-%m-%d}")
         return []
 
+    async def refresh() -> int:
+        calls.append("refresh")
+        return 0
+
     monkeypatch.setattr(cron, "get_settings", lambda: _Settings(True))
+    monkeypatch.setattr(cron, "refresh_waiting_charges", refresh)
     monkeypatch.setattr(cron, "run_auto_recharges", recharge)
     monkeypatch.setattr(cron, "run_postpaid_settlement", settle)
     await cron.tick(datetime(2026, 11, 2, 8, tzinfo=_MADRID))
     await cron.tick(datetime(2026, 11, 1, 8, tzinfo=_MADRID))
-    assert calls == ["recharge", "settle:2026-11-02", "recharge", "settle:2026-11-01"]
+    # A charge Stripe already paid is settled before anything new is charged.
+    assert calls == [
+        "refresh",
+        "recharge",
+        "settle:2026-11-02",
+        "refresh",
+        "recharge",
+        "settle:2026-11-01",
+    ]

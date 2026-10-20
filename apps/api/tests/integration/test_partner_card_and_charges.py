@@ -741,3 +741,53 @@ async def test_an_old_charge_without_the_id_is_found_by_its_metadata(
     assert fake.searched == f"metadata['charge_id']:'{charge.id}'"
     # Found once, kept: the next click goes straight to it.
     assert (await _charges(pid))[0].stripe_invoice_id == "in_found"
+
+
+async def test_a_paid_charge_whose_notice_was_lost_settles_on_the_next_pass(
+    console_world, monkeypatch
+) -> None:
+    """Staging, 2026-10-20: the partner confirmed 3D Secure, Stripe marked the
+    invoice paid, and the notice was skipped. The charge waited for ever and
+    blocked every later top-up. The pass asks Stripe and settles it once."""
+    pid = console_world["a"]["partner_id"]
+    fake = _FakeStripe(sca=True)
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    monkeypatch.setattr(pb, "_send_action_email", _noop_email)
+    await _set(pid, purchased_remaining=0)
+    await _save_card(pid, fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.set_charging(
+            s,
+            partner_id=pid,
+            mode="auto_recharge",
+            threshold_cents=1000,
+            amount_cents=2000,
+            actor="t",
+        )
+    await pb.run_auto_recharges()
+    waiting = (await _charges(pid))[0]
+    assert waiting.status == "action_required"
+
+    # Not paid yet in Stripe: nothing moves.
+    assert await pb.refresh_waiting_charges() == 0
+    assert (await _charges(pid))[0].status == "action_required"
+
+    # The partner confirmed on Stripe's page; the notice never arrived.
+    paid = {
+        "id": waiting.stripe_invoice_id,
+        "status": "paid",
+        "amount_paid": 2000,
+        "metadata": {"partner_id": str(pid), "kind": "auto_recharge", "charge_id": str(waiting.id)},
+    }
+    monkeypatch.setattr(fake.invoices, "retrieve", lambda iid, params=None: paid)
+    assert await pb.refresh_waiting_charges() == 1
+    assert (await _charges(pid))[0].status == "paid"
+    assert await _balance(pid) == 2000 * CREDITS_PER_CENT
+    # A second pass (or the late notice) credits nothing more.
+    assert await pb.refresh_waiting_charges() == 0
+    assert await pb.settle_paid_invoice(pid, paid) is False
+    assert await _balance(pid) == 2000 * CREDITS_PER_CENT
+
+
+async def _noop_email(**_kw: Any) -> None:
+    return None

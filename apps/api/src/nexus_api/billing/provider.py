@@ -56,6 +56,25 @@ def idempotency_key(domain: str, partner_id: uuid.UUID, *parts: str) -> str:
     return key[:_MAX_KEY]
 
 
+def field(obj: Any, key: str, default: Any = None) -> Any:
+    """Read one field of a provider object or of a plain dict alike.
+
+    The SDK's objects stopped being dicts (stripe-python 13+): ``.get`` raises
+    and ``hasattr(obj, "get")`` is False. Reading ``metadata["kind"]`` that way
+    returned nothing, so in staging a paid automatic top-up and a credit
+    purchase were both skipped (2026-10-20). Tests that feed dicts never saw it.
+    """
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    try:
+        value = obj[key]
+    except (KeyError, TypeError, AttributeError):
+        return getattr(obj, key, default)
+    return default if value is None else value
+
+
 @dataclass(frozen=True)
 class ProviderRefusal:
     """What the provider said when it refused a call, in its own words.
