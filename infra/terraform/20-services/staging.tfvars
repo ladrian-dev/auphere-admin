@@ -39,3 +39,15 @@ state_bucket = "nexus-terraform-state-793033583982"
 # necesita el equivalente porque allí ``litellm_count`` es 0 por workspace,
 # pase lo que pase con la variable.
 litellm_enabled = true
+
+# Spec 031: los avisos de la app (APNs y FCM). Se encienden **después** de
+# crear las cinco claves en el secreto de este entorno:
+#
+#   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh <ws> \
+#     NEXUS_APNS_KEY_ID NEXUS_APNS_TEAM_ID NEXUS_APNS_KEY_PEM \
+#     NEXUS_FCM_PROJECT_ID NEXUS_FCM_SERVICE_ACCOUNT_JSON
+#
+# push_secret_keys = [
+#   "NEXUS_APNS_KEY_ID", "NEXUS_APNS_TEAM_ID", "NEXUS_APNS_KEY_PEM",
+#   "NEXUS_FCM_PROJECT_ID", "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
+# ]

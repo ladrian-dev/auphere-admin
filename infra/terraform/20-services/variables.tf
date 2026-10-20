@@ -46,6 +46,32 @@ variable "image_tag" {
   default     = "staging"
 }
 
+variable "push_secret_keys" {
+  description = <<-EOT
+    Spec 031: las claves de los avisos de Auphere Customers (APNs y FCM),
+    **por entorno** y no en la lista compartida de arriba. Vacía por defecto:
+    cada workspace las enciende en su tfvars cuando existan en SU secreto
+    (antes, con ./infra/scripts/add_app_secret_keys.sh), porque una task que
+    pide una clave ausente no arranca. Sin ellas el worker no envía avisos y
+    lo registra; la app funciona igual.
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for k in var.push_secret_keys : contains([
+        "NEXUS_APNS_KEY_ID",
+        "NEXUS_APNS_TEAM_ID",
+        "NEXUS_APNS_KEY_PEM",
+        "NEXUS_FCM_PROJECT_ID",
+        "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
+      ], k)
+    ])
+    error_message = "push_secret_keys solo admite las claves de APNs y FCM."
+  }
+}
+
 variable "app_secret_keys" {
   description = <<-EOT
     Claves del secreto JSON nexus/<ws>/app que se inyectan como env vars
@@ -87,6 +113,12 @@ variable "app_secret_keys" {
     # fábrica; en staging solo avisa. La clave tiene que existir en el secreto
     # ANTES de aparecer aquí, o ECS aborta el arranque de la task.
     "NEXUS_DEVICE_TOKEN_SECRET",
+    # Spec 031: firma las sesiones de la app Auphere Customers. El mismo guard
+    # que la de arriba: producción no arranca con el valor de fábrica. Crear la
+    # clave en el secreto (staging y prod) ANTES de aplicar esto. Las de APNs y
+    # FCM (NEXUS_APNS_*, NEXUS_FCM_*) entran cuando existan la clave de Apple y
+    # el proyecto de Firebase; sin ellas el worker no envía avisos y lo dice.
+    "NEXUS_CUSTOMERS_APP_TOKEN_SECRET",
     "NEXUS_COMPOSIO_API_KEY",
     "NEXUS_COMPOSIO_WEBHOOK_SECRET",
     "NEXUS_PUBLIC_API_BASE_URL",
