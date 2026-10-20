@@ -90,6 +90,7 @@ async function PartnerUsage({
   const money = (cents: number) => formatMoney(cents, locale);
   const month = report.month;
   const names = new Map((clients?.items ?? []).map((c) => [c.external_client_ref, c.name]));
+  const unlimitedRefs = new Set((clients?.items ?? []).filter((c) => c.unlimited_consumption).map((c) => c.external_client_ref));
 
 
   const csvHref = `/api/usage/export?days=${days}${sp.client ? `&client=${encodeURIComponent(sp.client)}` : ""}${sp.source ? `&source=${sp.source}` : ""}&lang=${locale}`;
@@ -104,6 +105,7 @@ async function PartnerUsage({
     capCents: row.cap_cents,
     remainingCents: row.remaining_cents,
     monthCents: monthOf.get(row.client_ref) ?? 0,
+    unlimited: unlimitedRefs.has(row.client_ref),
   }));
   const assignedCents = Math.max(0, wallet.available_cents - wallet.reserve_cents);
 

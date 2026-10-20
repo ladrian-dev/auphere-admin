@@ -92,6 +92,7 @@ def _summary(
         created_at=tenant.created_at,
         updated_at=tenant.updated_at,
         out_of_quota=out_of_quota,
+        unlimited_consumption=bool(tenant.unlimited_consumption),
     )
 
 

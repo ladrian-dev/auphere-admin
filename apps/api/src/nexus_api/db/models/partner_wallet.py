@@ -44,6 +44,10 @@ KIND_OPENING_DEBIT = "opening_debit"
 #: recorded in the Admin credits its balance; voiding it takes that back.
 KIND_CREDIT_MANUAL = "credit_manual"
 KIND_CREDIT_REVERSAL = "credit_reversal"
+#: Owner, 2026-10-20: a turn of a client with unlimited consumption. Measured
+#: like a debit, but Auphere covers it: it never touches the partner's balance,
+#: the client's cap or the reconciliation, and it is not the partner's spend.
+KIND_ABSORBED = "absorbed"
 LEDGER_KINDS: tuple[str, ...] = (
     KIND_DEBIT,
     KIND_CREDIT_ADMIN,
@@ -54,6 +58,7 @@ LEDGER_KINDS: tuple[str, ...] = (
     KIND_OPENING_DEBIT,
     KIND_CREDIT_MANUAL,
     KIND_CREDIT_REVERSAL,
+    KIND_ABSORBED,
 )
 #: Kinds that add to the purchased balance.
 CREDIT_KINDS: tuple[str, ...] = (KIND_CREDIT_ADMIN, KIND_CREDIT_STRIPE, KIND_CREDIT_MANUAL)

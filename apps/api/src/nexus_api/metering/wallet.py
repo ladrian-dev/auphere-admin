@@ -28,6 +28,7 @@ from nexus_api.db.models.partner_wallet import (
     BUCKET_INCLUDED,
     BUCKET_PURCHASED,
     CREDIT_KINDS,
+    KIND_ABSORBED,
     KIND_CREDIT_REVERSAL,
     KIND_DEBIT,
     KIND_EXPIRY,
@@ -490,12 +491,43 @@ async def companion_allocation_remaining(partner_id: uuid.UUID, tenant_id: uuid.
         return 0
 
 
+async def _is_unlimited(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    found = await session.scalar(
+        sa.select(Tenant.unlimited_consumption).where(Tenant.id == tenant_id)
+    )
+    return bool(found)
+
+
+async def unlimited_among(session: AsyncSession, tenant_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """The clients among ``tenant_ids`` whose consumption Auphere covers
+    (owner, 2026-10-20). ``tenants`` is platform data: readable from any
+    session, before or after the partner's GUC."""
+    if not tenant_ids:
+        return set()
+    rows = await session.scalars(
+        sa.select(Tenant.id).where(
+            Tenant.id.in_(tenant_ids), Tenant.unlimited_consumption.is_(True)
+        )
+    )
+    return set(rows.all())
+
+
+async def is_unlimited(tenant_id: uuid.UUID) -> bool:
+    """Whether Auphere covers this client's consumption. Raises when it
+    cannot be read: the caller (the worker's debit) retries rather than
+    guess who pays."""
+    sm = get_sessionmaker()
+    async with sm() as session:
+        return await _is_unlimited(session, tenant_id)
+
+
 async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
     """¿Puede el canal abrir el pipeline?
 
     Sin partner (tenant directo / tests legacy) → sí, el libro no aplica.
     Con partner: saldo recargado 0, sin asignación, asignación 0 o libro
-    ilegible → no.
+    ilegible → no. Un cliente con consumo ilimitado (owner, 2026-10-20) → sí,
+    sin mirar saldo ni tope: su consumo lo asume Auphere.
 
     Spec 033 (R5.1): la puerta mira el **saldo recargado**, el mismo bolsillo
     que paga el turno (``debit_wallet(..., allow_included=False)``). Mirando
@@ -507,6 +539,8 @@ async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
         async with sm() as session, session.begin():
             partner_id = await partner_id_for_tenant(session, tenant_id)
             if partner_id is None:
+                return True
+            if await _is_unlimited(session, tenant_id):
                 return True
             await apply_partner_to_session(session, partner_id)
             row = await session.get(PartnerWallet, partner_id)
@@ -532,7 +566,8 @@ async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dic
 
     The ONE definition of "this client cannot take a turn for lack of
     quota", with the same reading as ``allow_channel_turn``: no wallet, an
-    empty wallet, no allocation row, or ``remaining <= 0`` → ``True``. The
+    empty wallet, no allocation row, or ``remaining <= 0`` → ``True``; a
+    client with unlimited consumption → ``False``, always. The
     console's health, list, home and the out-of-quota notice all read this
     so the screen and the gate never disagree (spec 016, R2.1/R2.5).
 
@@ -547,6 +582,7 @@ async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dic
     try:
         sm = get_sessionmaker()
         async with sm() as session, session.begin():
+            unlimited = await unlimited_among(session, tenant_ids)
             await apply_partner_to_session(session, partner_id)
             row = await session.get(PartnerWallet, partner_id)
             # Same pocket as the gate (spec 033, R5.1): the recharged balance.
@@ -559,7 +595,9 @@ async def quota_state(partner_id: uuid.UUID, tenant_ids: list[uuid.UUID]) -> dic
             )
             remaining = {tid: _as_int(rem) for tid, rem in rows.all()}
         return {
-            tid: wallet_empty or tid not in remaining or remaining[tid] <= 0 for tid in tenant_ids
+            tid: tid not in unlimited
+            and (wallet_empty or tid not in remaining or remaining[tid] <= 0)
+            for tid in tenant_ids
         }
     except Exception as exc:
         log.warning("wallet.quota_state_unreadable", partner_id=str(partner_id), error=str(exc))
@@ -1260,7 +1298,12 @@ async def _debit_locked(
             .select_from(UsageLedger)
             .where(
                 UsageLedger.idempotency_key.in_(
-                    (f"{idempotency_key}:included", f"{idempotency_key}:purchased")
+                    (
+                        f"{idempotency_key}:included",
+                        f"{idempotency_key}:purchased",
+                        # The same turn, written as covered by Auphere.
+                        f"{idempotency_key}:absorbed",
+                    )
                 )
             )
         )
@@ -1343,3 +1386,80 @@ async def _debit_locked(
             from_purchased=from_purchased,
             duplicate=False,
         )
+
+
+async def record_absorbed(
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    qty: int,
+    idempotency_key: str,
+    agent_id: uuid.UUID | None = None,
+) -> bool:
+    """Write a turn of a client with unlimited consumption (owner, 2026-10-20).
+
+    One ``absorbed`` entry under ``{key}:absorbed``: measured like a debit,
+    but the partner's balance and the client's cap do not move — Auphere
+    covers it. ``False`` when the turn is already in the book, as absorbed or
+    as a debit (the switch changed between two deliveries of the same turn).
+    Any other failure raises, like the debit: the worker retries.
+    """
+    if qty <= 0:
+        return False
+    keys = (
+        f"{idempotency_key}:absorbed",
+        f"{idempotency_key}:included",
+        f"{idempotency_key}:purchased",
+    )
+    sm = get_sessionmaker()
+    try:
+        async with sm() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            already = await session.scalar(
+                sa.select(sa.func.count())
+                .select_from(UsageLedger)
+                .where(UsageLedger.idempotency_key.in_(keys))
+            )
+            if _as_int(already) > 0:
+                return False
+            session.add(
+                UsageLedger(
+                    partner_id=partner_id,
+                    tenant_id=tenant_id,
+                    qty=qty,
+                    bucket=BUCKET_PURCHASED,
+                    kind=KIND_ABSORBED,
+                    agent_id=agent_id,
+                    idempotency_key=keys[0],
+                    fx=None,
+                )
+            )
+            await session.flush()
+        return True
+    except IntegrityError as exc:
+        if "uq_usage_ledger_idempotency" in str(exc.orig):
+            return False
+        raise
+
+
+async def absorbed_since(
+    partner_id: uuid.UUID, tenant_ids: list[uuid.UUID], since: datetime
+) -> dict[uuid.UUID, int]:
+    """What Auphere covered since ``since``, per client (``absorbed``
+    entries). Raises when unreadable."""
+    if not tenant_ids:
+        return {}
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        rows = await session.execute(
+            sa.select(UsageLedger.tenant_id, sa.func.sum(UsageLedger.qty))
+            .where(
+                UsageLedger.partner_id == partner_id,
+                UsageLedger.tenant_id.in_(tenant_ids),
+                UsageLedger.kind == KIND_ABSORBED,
+                UsageLedger.created_at >= since,
+            )
+            .group_by(UsageLedger.tenant_id)
+        )
+        return {tid: _as_int(total) for tid, total in rows.all() if tid is not None}

@@ -130,3 +130,31 @@ export async function voidTenantPaymentAction(
     return err(e);
   }
 }
+
+/** Owner, 2026-10-20: only the Admin turns a client's unlimited consumption
+ *  on or off; the audit names the operator. */
+export async function setUnlimitedConsumptionAction(
+  tenantId: string,
+  unlimited: boolean,
+): Promise<ActionResult<import("@/lib/backend").UnlimitedConsumption>> {
+  const operator = await requireOperator();
+  try {
+    const r = await backend.setUnlimitedConsumption(tenantId, unlimited, operator.id);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePath(`/tenants/${tenantId}/billing`);
+    revalidatePath(`/tenants/${tenantId}`);
+    revalidatePath("/tenants");
+    return { ok: true, data: r };
+  } catch (e) {
+    if (e instanceof BackendError) {
+      const code = (e.body as { detail?: { code?: string } } | null)?.detail?.code;
+      if (code === "no_partner") {
+        return {
+          ok: false,
+          error: "Este cliente no tiene partner: nunca se para por saldo.",
+        };
+      }
+    }
+    return err(e);
+  }
+}

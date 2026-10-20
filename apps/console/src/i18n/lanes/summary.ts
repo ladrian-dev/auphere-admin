@@ -25,6 +25,13 @@ export const summaryMessages = {
   "sum.credit.spent": { es: "{spent} gastados este mes", en: "{spent} spent this month" },
   "sum.credit.none": { es: "Sin saldo asignado. Este cliente no tiene tope, así que no hay nada que medir todavía.", en: "No balance assigned. This client has no cap, so there is nothing to measure yet." },
   "sum.credit.empty": { es: "Sin saldo: el agente no está respondiendo.", en: "No balance left: the agent is not replying." },
+  // Owner, 2026-10-20: Auphere covers this client's consumption; only the
+  // Admin turns it on or off.
+  "sum.credit.unlimited": { es: "Consumo ilimitado (lo gestiona Auphere)", en: "Unlimited consumption (managed by Auphere)" },
+  "sum.credit.unlimited.help": {
+    es: "El agente de este cliente no se para por falta de saldo y su consumo no se descuenta de tu saldo: lo asume Auphere. Solo Auphere puede cambiarlo.",
+    en: "This client's agent never stops for lack of balance and its consumption is not taken from your balance: Auphere covers it. Only Auphere can change this.",
+  },
   "sum.credit.assign": { es: "Asignar más saldo", en: "Assign more balance" },
   // Un cero aquí se leería como una caída, no como un cliente nuevo.
   "sum.credit.noActivity": {
