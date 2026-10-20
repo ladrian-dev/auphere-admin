@@ -96,3 +96,16 @@ class TenantPaymentOut(BaseModel):
     created_at: datetime
     voided_at: datetime | None
     voided_by: str | None
+    #: Owner, 2026-10-20: what the payment credited to the partner's balance.
+    #: None: recorded before the change, direct client, or the credit failed.
+    credited_cents: int | None = None
+
+
+class PartnerPaymentIn(TenantPaymentIn):
+    """A payment of the partner, recorded for one of its clients and a month."""
+
+    tenant_id: uuid.UUID
+
+
+class PartnerPaymentOut(TenantPaymentOut):
+    client_name: str | None = None

@@ -59,7 +59,7 @@ export function RechargeWalletForm({ partnerId, purchasedCents }: { partnerId: s
 
   return (
     <form
-      className="flex flex-col gap-3 sm:flex-row sm:items-end"
+      className="grid gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         if (cents === null) return;
@@ -67,8 +67,9 @@ export function RechargeWalletForm({ partnerId, purchasedCents }: { partnerId: s
         setConfirming(true);
       }}
     >
-      <div className="grid gap-2">
-        <Label htmlFor="topup-amount">Importe en US$</Label>
+      <Label htmlFor="topup-amount">Importe en US$</Label>
+      {/* The button sits on the input's line, not on the hint's (owner, 2026-10-20). */}
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           id="topup-amount"
           inputMode="decimal"
@@ -83,13 +84,13 @@ export function RechargeWalletForm({ partnerId, purchasedCents }: { partnerId: s
           aria-describedby="topup-help"
           className="w-40"
         />
-        <p id="topup-help" className={invalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-          {invalid ? "Escribe un importe entre 0,01 y 10 000 US$, con dos decimales como mucho." : "Entre 0,01 y 10 000 US$."}
-        </p>
+        <Button type="submit" disabled={cents === null || busy}>
+          Recargar
+        </Button>
       </div>
-      <Button type="submit" disabled={cents === null || busy}>
-        Recargar
-      </Button>
+      <p id="topup-help" className={invalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+        {invalid ? "Escribe un importe entre 0,01 y 10 000 US$, con dos decimales como mucho." : "Entre 0,01 y 10 000 US$."}
+      </p>
       <ConfirmDialog
         open={confirming}
         onOpenChange={(o) => !busy && setConfirming(o)}
