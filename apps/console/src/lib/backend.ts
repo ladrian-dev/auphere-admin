@@ -575,6 +575,8 @@ export function backendFor(principal: Principal) {
     revokeKey: (id: string) => call<ApiKey>(`/console/keys/${enc(id)}/revoke`, { method: "POST" }),
 
     billing: () => call<Billing>("/console/billing"),
+    /** Stripe's invoice of one card charge (owner, 2026-10-20). */
+    chargeInvoice: (chargeId: string) => call<{ url: string }>(`/console/billing/charges/${chargeId}/invoice`),
     /** The partner sets where billing notices go (owner, 2026-10-20). */
     setBillingEmail: (billing_email: string | null) =>
       call<{ billing_email: string | null }>("/console/billing/email", { method: "PUT", body: { billing_email } }),
@@ -624,6 +626,8 @@ export type BillingCardView = {
     failure_code: string | null;
     /** Stripe's page to confirm a charge the bank wants authenticated. */
     action_url?: string | null;
+    /** Stripe issued an invoice for it: `/api/billing/charges/{id}/invoice` opens it. */
+    has_invoice?: boolean;
     created_at: string;
     settled_at: string | null;
   }>;

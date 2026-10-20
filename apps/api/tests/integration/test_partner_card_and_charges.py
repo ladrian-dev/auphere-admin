@@ -108,6 +108,14 @@ class _FakeStripe:
             def retrieve(self, iid, params=None):
                 return {"id": iid, "hosted_invoice_url": f"https://invoice.stripe.test/{iid}"}
 
+            def search(self, params):
+                outer.searched = params["query"]
+                found = {
+                    "id": "in_found",
+                    "hosted_invoice_url": "https://invoice.stripe.test/in_found",
+                }
+                return {"data": [found] if getattr(outer, "searchable", False) else []}
+
             def pay(self, iid, params=None):
                 if outer.sca:
                     err = RuntimeError("This payment requires authentication.")
@@ -636,3 +644,100 @@ async def test_a_link_method_is_named_not_left_blank(console_world, monkeypatch)
     row = await _billing(pid)
     assert row.card_brand == "link" and row.card_last4 is None
     assert row.payment_method_id == "pm_link"
+
+
+async def test_each_card_charge_opens_its_stripe_invoice(
+    client, console_world, admin_headers, monkeypatch
+) -> None:
+    """The owner asked to see the invoices of the automatic top-ups
+    (2026-10-20): paid and declined alike, never another partner's."""
+    a, b = console_world["a"], console_world["b"]
+    pid = a["partner_id"]
+    fake = _FakeStripe(decline=True)
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    await _set(pid, purchased_remaining=0)
+    await _save_card(pid, fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.set_charging(
+            s,
+            partner_id=pid,
+            mode="auto_recharge",
+            threshold_cents=1000,
+            amount_cents=2000,
+            actor="t",
+        )
+    await pb.run_auto_recharges()
+    declined = (await _charges(pid))[0]
+    assert declined.status == "failed"
+    # The declined invoice is kept: the partner can see (and pay) it in Stripe.
+    assert declined.stripe_invoice_id
+
+    view = await client.get("/console/billing/card", headers=a["headers"]())
+    assert view.json()["charges"][0]["has_invoice"] is True
+    res = await client.get(
+        f"/console/billing/charges/{declined.id}/invoice", headers=a["headers"]()
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["url"] == f"https://invoice.stripe.test/{declined.stripe_invoice_id}"
+
+    # Auphere sees the same page from the Admin.
+    op = await client.get(
+        f"/admin/partners/{pid}/charges/{declined.id}/invoice", headers=admin_headers
+    )
+    assert op.status_code == 200, op.text
+    assert op.json()["url"] == res.json()["url"]
+
+    # Partner B cannot open A's invoice, and the answer does not say it exists.
+    other = await client.get(
+        f"/console/billing/charges/{declined.id}/invoice", headers=b["headers"]()
+    )
+    assert other.status_code == 404
+    assert other.json()["detail"]["code"] == "unknown_charge"
+    wrong = await client.get(
+        f"/admin/partners/{b['partner_id']}/charges/{declined.id}/invoice", headers=admin_headers
+    )
+    assert wrong.status_code == 404
+
+
+async def test_an_old_charge_without_the_id_is_found_by_its_metadata(
+    client, console_world, monkeypatch
+) -> None:
+    a = console_world["a"]
+    pid = a["partner_id"]
+    fake = _FakeStripe(decline=True)
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    await _set(pid, purchased_remaining=0)
+    await _save_card(pid, fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.set_charging(
+            s,
+            partner_id=pid,
+            mode="auto_recharge",
+            threshold_cents=1000,
+            amount_cents=2000,
+            actor="t",
+        )
+    await pb.run_auto_recharges()
+    charge = (await _charges(pid))[0]
+    # As the declined charges recorded before this change were.
+    async with get_sessionmaker()() as s, s.begin():
+        await apply_partner_to_session(s, pid)
+        row = await s.get(PartnerCharge, charge.id)
+        assert row is not None
+        row.stripe_invoice_id = None
+
+    missing = await client.get(
+        f"/console/billing/charges/{charge.id}/invoice", headers=a["headers"]()
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "no_invoice"
+
+    fake.searchable = True
+    found = await client.get(
+        f"/console/billing/charges/{charge.id}/invoice", headers=a["headers"]()
+    )
+    assert found.status_code == 200, found.text
+    assert found.json()["url"] == "https://invoice.stripe.test/in_found"
+    assert fake.searched == f"metadata['charge_id']:'{charge.id}'"
+    # Found once, kept: the next click goes straight to it.
+    assert (await _charges(pid))[0].stripe_invoice_id == "in_found"

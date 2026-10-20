@@ -16,12 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin.operator import operator_actor, require_operator
 from nexus_api.api.deps import get_db_session
+from nexus_api.billing.provider import BillingUnavailable, as_refusal
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import OperatorAccount, Partner
 from nexus_api.services.partner_billing import (
     BillingRuleError,
     BillingView,
+    UnknownCharge,
     billing_view,
+    charge_invoice_url,
     set_charging,
     set_credit_limit,
 )
@@ -104,3 +107,42 @@ async def put_partner_charging(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": exc.code}
         ) from exc
     return await billing_view(partner_id)
+
+
+class ChargeInvoiceOut(BaseModel):
+    url: str
+
+
+@router.get("/{partner_id}/charges/{charge_id}/invoice", response_model=ChargeInvoiceOut)
+async def get_partner_charge_invoice(
+    partner_id: uuid.UUID,
+    charge_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> ChargeInvoiceOut:
+    """Stripe's invoice of one of the partner's card charges (owner, 2026-10-20)."""
+    await _exists(session, partner_id)
+    try:
+        url = await charge_invoice_url(partner_id, charge_id)
+    except UnknownCharge as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail={"code": "unknown_charge"}
+        ) from exc
+    except BillingUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"code": "billing_unavailable"}
+        ) from exc
+    except Exception as exc:
+        refusal = as_refusal(exc)
+        if refusal is None:
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "billing_provider_error",
+                "provider_code": refusal.code,
+                "message": refusal.message,
+            },
+        ) from exc
+    if url is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "no_invoice"})
+    return ChargeInvoiceOut(url=url)

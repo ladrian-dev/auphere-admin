@@ -32,7 +32,18 @@ const CHARGE_TONE = { paid: "positive", pending: "info", action_required: "warni
  * credit line Auphere grants). The card is entered on Stripe's page: its
  * number never reaches Auphere.
  */
-export function CardSection({ view, canManage, justSaved }: { view: BillingCardView; canManage: boolean; justSaved: boolean }) {
+export function CardSection({
+  view,
+  canManage,
+  justSaved,
+  invoiceMissing = false,
+}: {
+  view: BillingCardView;
+  canManage: boolean;
+  justSaved: boolean;
+  /** Back from «Ver factura» without an invoice to show. */
+  invoiceMissing?: boolean;
+}) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -104,6 +115,11 @@ export function CardSection({ view, canManage, justSaved }: { view: BillingCardV
         <p className="text-sm text-pretty text-muted-foreground">{t("card.help")}</p>
       </div>
 
+      {invoiceMissing ? (
+        <Alert>
+          <AlertDescription>{t("card.charge.invoiceMissing")}</AlertDescription>
+        </Alert>
+      ) : null}
       {justSaved && !view.card ? (
         <Alert>
           <AlertDescription>{t("card.justSaved")}</AlertDescription>
@@ -218,6 +234,16 @@ export function CardSection({ view, canManage, justSaved }: { view: BillingCardV
                 <span className="flex items-center gap-3">
                   <span className="tabular-nums">{money(c.amount_cents)}</span>
                   <StatusBadge tone={CHARGE_TONE[c.status]}>{t(`card.charge.${c.status}`)}</StatusBadge>
+                  {c.has_invoice ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      nativeButton={false}
+                      render={<a href={`/api/billing/charges/${c.id}/invoice`} target="_blank" rel="noreferrer" />}
+                    >
+                      {t("card.charge.invoice")}
+                    </Button>
+                  ) : null}
                   {c.status === "action_required" && c.action_url && canManage ? (
                     <Button size="sm" nativeButton={false} render={<a href={c.action_url} target="_blank" rel="noreferrer" />}>
                       {t("card.charge.confirm")}

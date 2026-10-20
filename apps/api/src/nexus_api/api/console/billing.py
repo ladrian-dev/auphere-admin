@@ -57,7 +57,9 @@ from nexus_api.services.membership_limits import over_cap_by
 from nexus_api.services.partner_billing import (
     BillingRuleError,
     BillingView,
+    UnknownCharge,
     billing_view,
+    charge_invoice_url,
     open_card_setup,
     remove_card,
     set_charging,
@@ -703,6 +705,31 @@ async def delete_card(
         raise _unavailable() from exc
     except Exception as exc:
         raise _refused(exc) from exc
+
+
+class ChargeInvoiceOut(BaseModel):
+    url: str
+
+
+@router.get("/charges/{charge_id}/invoice", response_model=ChargeInvoiceOut)
+async def get_charge_invoice(
+    charge_id: uuid.UUID,
+    principal: ConsolePrincipal = Depends(require_console_principal("billing:read")),
+) -> ChargeInvoiceOut:
+    """Stripe's invoice of one card charge (owner, 2026-10-20)."""
+    try:
+        url = await charge_invoice_url(principal.partner.id, charge_id)
+    except UnknownCharge as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail={"code": "unknown_charge"}
+        ) from exc
+    except BillingUnavailable as exc:
+        raise _unavailable() from exc
+    except Exception as exc:
+        raise _refused(exc) from exc
+    if url is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "no_invoice"})
+    return ChargeInvoiceOut(url=url)
 
 
 @router.put("/charging", response_model=BillingView)
