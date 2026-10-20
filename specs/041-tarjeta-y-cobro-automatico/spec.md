@@ -62,3 +62,13 @@ a elección del partner.
 
 - Probar en staging con las claves de prueba de Stripe: guardar una tarjeta 4242, provocar una recarga y un cierre de pospago, y una tarjeta rechazada (4000 0000 0000 0341).
 - El tratamiento fiscal que `docs/billing.md` marca como bloqueante del primer cobro real sigue aplicando.
+
+## Ajustes tras probar en staging (2026-10-20)
+
+- **El error de Stripe se ve.** Un `StripeError` es un 502 `billing_provider_error` con el código y el mensaje de Stripe, en el log y en pantalla.
+- **Los objetos del SDK no son `dict`.** Se leen con `billing.provider.field`. Así se perdían `invoice.paid` y la compra de saldo.
+- **Un aviso perdido no bloquea.** Cada pasada del cron liquida los cobros en espera que Stripe ya cobró (`refresh_waiting_charges`).
+- **Método guardado.** Si Checkout no trae los datos de la tarjeta, se vuelven a pedir; Link se guarda como tal y se nombra.
+- **Quién guardó la tarjeta.** La persona viaja en la metadata de la sesión de Checkout (solo actores `console:`).
+- **Facturas.** «Ver factura» en cada cobro (consola y Admin). La factura de cada intento rechazado se anula en Stripe, y un rechazo cuenta una sola vez aunque llegue también `invoice.payment_failed`.
+- **Correo de facturación.** Lo edita el partner en Facturación.

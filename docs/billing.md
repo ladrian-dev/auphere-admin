@@ -38,7 +38,7 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 - **Cada cobro es una factura de Stripe** (`collection_method=charge_automatically`, pagada fuera de sesión).
   - El saldo sube una sola vez por factura, con `credit_stripe` y la clave `stripe_invoice:<id>`. Da igual que se abone al pagar o al llegar `invoice.paid`.
   - Los cobros quedan en `partner_charges`, con una clave única por intento.
-- **Rechazos.** Tres seguidos paran los cobros automáticos hasta que el partner cambie la tarjeta.
+- **Rechazos.** Tres seguidos paran los cobros automáticos hasta que el partner cambie la tarjeta. La factura de cada intento rechazado se anula en Stripe, y un rechazo cuenta una vez aunque llegue también `invoice.payment_failed`.
 - **Facturas.** Cada cobro guarda el id de su factura de Stripe, también si se rechaza. «Ver factura» (consola y Admin) pide a Stripe la página de la factura en cada clic; un cobro anterior sin id se busca por `metadata.charge_id`.
 - **3D Secure.** Si el banco pide confirmar (`authentication_required`), el cobro queda en `action_required` y no cuenta como rechazo.
   - Se guarda el enlace de la factura (`action_url`), se envía al correo de facturación (o al de contacto) y sale en Facturación con «Confirmar el pago».

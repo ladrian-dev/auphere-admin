@@ -18,7 +18,7 @@ from nexus_api.core.security import require_admin_token
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import ChannelSignupLink, OperatorAccount, Tenant
-from nexus_api.services.channel_signup_links import link_state, mint_link
+from nexus_api.services.channel_signup_links import link_state, mint_link, revoke_link
 
 router = APIRouter(dependencies=[Depends(require_admin_token)])
 
@@ -102,20 +102,8 @@ async def revoke_signup_link(
     link_id: uuid.UUID,
     operator: OperatorAccount = Depends(require_operator),
 ) -> None:
-    from datetime import UTC
-    from datetime import datetime as dt
-
-    from nexus_api.repositories.audit import AuditRepository
-
     async with get_sessionmaker()() as s, tenant_scoped_session(s, tenant_id):
         link = await s.get(ChannelSignupLink, link_id)
         if link is None or link.tenant_id != tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_link")
-        if link.revoked_at is None and link.consumed_at is None:
-            link.revoked_at = dt.now(UTC)
-            await AuditRepository(s).record(
-                actor=operator_actor(operator),
-                action="channel.signup_link.revoked",
-                target=f"tenant:{tenant_id}",
-                after={"link_id": str(link_id)},
-            )
+        await revoke_link(s, link, actor=operator_actor(operator))

@@ -108,6 +108,10 @@ class _FakeStripe:
             def retrieve(self, iid, params=None):
                 return {"id": iid, "hosted_invoice_url": f"https://invoice.stripe.test/{iid}"}
 
+            def void_invoice(self, iid):
+                outer.voided = [*getattr(outer, "voided", []), iid]
+                return {"id": iid, "status": "void"}
+
             def search(self, params):
                 outer.searched = params["query"]
                 found = {
@@ -791,3 +795,96 @@ async def test_a_paid_charge_whose_notice_was_lost_settles_on_the_next_pass(
 
 async def _noop_email(**_kw: Any) -> None:
     return None
+
+
+async def test_the_saved_card_is_audited_under_the_person_who_opened_stripe(
+    console_world, monkeypatch, db_session
+) -> None:
+    """Staging showed «API key guardó una tarjeta»: Stripe's notice does not
+    know who clicked. The person travels in the session's metadata."""
+    from nexus_api.db.models import AuditLog
+
+    pid = console_world["a"]["partner_id"]
+    fake = _FakeStripe()
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.open_card_setup(s, await _partner(pid), actor="console:ana@partner-a.example")
+    assert fake.setup_params["metadata"]["actor"] == "console:ana@partner-a.example"
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.apply_card_saved(
+            s,
+            partner_id=pid,
+            checkout={
+                "setup_intent": "seti_1",
+                "customer": "cus_test",
+                "metadata": fake.setup_params["metadata"],
+            },
+        )
+    row = (
+        await db_session.execute(sa.select(AuditLog).where(AuditLog.action == "billing.card_saved"))
+    ).scalar_one()
+    assert row.actor == "console:ana@partner-a.example"
+
+
+async def test_a_metadata_actor_that_is_not_a_console_person_is_not_trusted(
+    console_world, monkeypatch, db_session
+) -> None:
+    from nexus_api.db.models import AuditLog
+
+    pid = console_world["a"]["partner_id"]
+    fake = _FakeStripe()
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.apply_card_saved(
+            s,
+            partner_id=pid,
+            checkout={
+                "setup_intent": "seti_1",
+                "customer": "cus_test",
+                "metadata": {"actor": "operator:someone@auphere.test"},
+            },
+        )
+    row = (
+        await db_session.execute(sa.select(AuditLog).where(AuditLog.action == "billing.card_saved"))
+    ).scalar_one()
+    assert row.actor == f"partner:{pid}"
+
+
+async def test_a_declined_attempt_voids_its_invoice_and_counts_once(
+    console_world, monkeypatch
+) -> None:
+    """Owner, 2026-10-20: three declines left three unpaid invoices for one
+    top-up. Each declined attempt voids its own; and Stripe's
+    ``invoice.payment_failed`` repeating the decline does not count it twice."""
+    pid = console_world["a"]["partner_id"]
+    fake = _FakeStripe(decline=True)
+    monkeypatch.setattr(pb, "get_client", lambda: fake)
+    await _set(pid, purchased_remaining=0)
+    await _save_card(pid, fake)
+    async with get_sessionmaker()() as s, s.begin():
+        await pb.set_charging(
+            s,
+            partner_id=pid,
+            mode="auto_recharge",
+            threshold_cents=1000,
+            amount_cents=2000,
+            actor="t",
+        )
+    await pb.run_auto_recharges()
+    charge = (await _charges(pid))[0]
+    assert charge.status == "failed"
+    assert fake.voided == [charge.stripe_invoice_id]
+
+    # The notice for the same decline arrives later.
+    notice = {
+        "id": charge.stripe_invoice_id,
+        "metadata": {"kind": "auto_recharge", "charge_id": str(charge.id)},
+    }
+    await pb.record_invoice_failed(pid, notice)
+    await pb.record_invoice_failed(pid, notice)
+    async with get_sessionmaker()() as s, s.begin():
+        await apply_partner_to_session(s, pid)
+        billing = await s.get(PartnerBilling, pid)
+        assert billing is not None
+        assert billing.failed_attempts == 1
+        assert billing.paused_reason is None

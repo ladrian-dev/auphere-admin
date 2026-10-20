@@ -685,7 +685,7 @@ async def start_card(
     """Open Stripe's page to save (or replace) the card. No card data comes here."""
     try:
         async with session.begin():
-            url = await open_card_setup(session, principal.partner)
+            url = await open_card_setup(session, principal.partner, actor=principal.actor)
     except BillingUnavailable as exc:
         raise _unavailable() from exc
     except Exception as exc:

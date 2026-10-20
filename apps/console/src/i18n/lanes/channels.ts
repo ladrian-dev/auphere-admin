@@ -13,6 +13,22 @@ export const channelsMessages = {
     en: "The business owner opens the link on their phone or computer, where they are already logged in to Meta, and does the WhatsApp steps themselves. Their Meta details never go through your device. The link works once and expires in 7 days.",
   },
   "ch.link.create": { es: "Crear enlace", en: "Create link" },
+  "ch.link.replaces": {
+    es: "Ya hay un enlace sin usar para este cliente. El nuevo lo sustituye: el anterior deja de funcionar.",
+    en: "There is already an unused link for this client. The new one replaces it: the earlier one stops working.",
+  },
+  "ch.link.pending.title": { es: "Enlace enviado al cliente", en: "Link sent to the client" },
+  "ch.link.pending.line": {
+    es: "Hay un enlace sin usar ({mode}). Caduca el {date}.",
+    en: "There is an unused link ({mode}). It expires on {date}.",
+  },
+  "ch.link.revoke": { es: "Anular enlace", en: "Revoke link" },
+  "ch.link.revoke.title": { es: "Anular el enlace", en: "Revoke the link" },
+  "ch.link.revoke.body": {
+    es: "El cliente ya no podrá conectar su WhatsApp con ese enlace. Puedes enviarle otro cuando quieras.",
+    en: "The client will no longer be able to connect their WhatsApp with that link. You can send another one at any time.",
+  },
+  "ch.link.revoked": { es: "Enlace anulado.", en: "Link revoked." },
   "ch.link.creating": { es: "Creando…", en: "Creating…" },
   "ch.link.copy": { es: "Copiar enlace", en: "Copy link" },
   "ch.link.copied": { es: "Enlace copiado.", en: "Link copied." },

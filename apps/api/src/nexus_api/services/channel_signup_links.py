@@ -71,9 +71,16 @@ class MintedLink:
 async def mint_link(
     session: AsyncSession, *, tenant_id: uuid.UUID, mode: str, actor: str
 ) -> MintedLink:
-    """A new link for the client. Earlier unused links of the client stay valid."""
+    """A new link for the client. It replaces the client's earlier unused ones.
+
+    One live link per client (owner, 2026-10-20): every «Enviar enlace» used
+    to leave another valid link around, and nobody could tell which one the
+    owner had. The earlier ones are revoked here, each with its audit row.
+    """
     if mode not in MODES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown_mode")
+    for earlier in await live_links(session, tenant_id):
+        await revoke_link(session, earlier, actor=actor, reason="replaced")
     token = secrets.token_urlsafe(32)
     link = ChannelSignupLink(
         tenant_id=tenant_id,
@@ -93,6 +100,54 @@ async def mint_link(
         after={"link_id": str(link.id), "mode": mode, "expires_at": link.expires_at.isoformat()},
     )
     return MintedLink(link=link, token=token, url=link_url(token))
+
+
+async def live_links(session: AsyncSession, tenant_id: uuid.UUID) -> list[ChannelSignupLink]:
+    """The client's links that still work: not used, not revoked, not expired."""
+    rows = (
+        await session.execute(
+            sa.select(ChannelSignupLink)
+            .where(
+                ChannelSignupLink.tenant_id == tenant_id,
+                ChannelSignupLink.revoked_at.is_(None),
+                ChannelSignupLink.consumed_at.is_(None),
+                ChannelSignupLink.expires_at > datetime.now(UTC),
+            )
+            .with_for_update()
+        )
+    ).scalars()
+    return list(rows)
+
+
+async def recent_links(
+    session: AsyncSession, tenant_id: uuid.UUID, *, limit: int = 20
+) -> list[ChannelSignupLink]:
+    rows = (
+        await session.execute(
+            sa.select(ChannelSignupLink)
+            .where(ChannelSignupLink.tenant_id == tenant_id)
+            .order_by(ChannelSignupLink.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars()
+    return list(rows)
+
+
+async def revoke_link(
+    session: AsyncSession, link: ChannelSignupLink, *, actor: str, reason: str = "revoked"
+) -> bool:
+    """Revoke a link that still works. Returns False if it was already done."""
+    if link.revoked_at is not None or link.consumed_at is not None:
+        return False
+    link.revoked_at = datetime.now(UTC)
+    await AuditRepository(session).record(
+        actor=actor,
+        action="channel.signup_link.revoked",
+        target=f"tenant:{link.tenant_id}",
+        before=None,
+        after={"link_id": str(link.id), "reason": reason},
+    )
+    return True
 
 
 def link_state(link: ChannelSignupLink | None, now: datetime | None = None) -> str:

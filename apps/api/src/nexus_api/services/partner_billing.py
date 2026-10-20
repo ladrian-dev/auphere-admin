@@ -114,8 +114,19 @@ def _ensure_customer(client: Any, partner: Partner, billing: PartnerBilling) -> 
     return billing.stripe_customer_id
 
 
-async def open_card_setup(session: AsyncSession, partner: Partner) -> str:
-    """The Stripe page where the partner saves (or replaces) a card."""
+async def open_card_setup(
+    session: AsyncSession, partner: Partner, *, actor: str | None = None
+) -> str:
+    """The Stripe page where the partner saves (or replaces) a card.
+
+    ``actor`` is the person who opened it. It travels in the session's
+    metadata so the audit row written when Stripe confirms the card names that
+    person — the notice itself does not know who clicked (staging showed
+    «API key», 2026-10-20).
+    """
+    meta = {"partner_id": str(partner.id), "kind": "card"}
+    if actor:
+        meta["actor"] = actor[:200]
     await apply_partner_to_session(session, partner.id)
     billing = await billing_row(session, partner.id)
     client = get_client()
@@ -132,7 +143,7 @@ async def open_card_setup(session: AsyncSession, partner: Partner) -> str:
                 # 2026-10-20) and takes the methods from the Dashboard. With it
                 # gone, ``currency`` is what setup mode requires.
                 "client_reference_id": str(partner.id),
-                "metadata": {"partner_id": str(partner.id), "kind": "card"},
+                "metadata": meta,
                 "setup_intent_data": {"metadata": {"partner_id": str(partner.id)}},
                 "success_url": f"{base}/billing?card=saved",
                 "cancel_url": f"{base}/billing",
@@ -146,6 +157,13 @@ async def open_card_setup(session: AsyncSession, partner: Partner) -> str:
     )
     billing.updated_at = datetime.now(UTC)
     return str(_get(checkout, "url"))
+
+
+def _card_actor(checkout: Any, partner_id: uuid.UUID) -> str:
+    """Who saved the card: the console person who opened the page, else the
+    partner. Only a ``console:`` actor is taken from the metadata."""
+    actor = str(_get(_get(checkout, "metadata"), "actor") or "")
+    return actor if actor.startswith("console:") else f"partner:{partner_id}"
 
 
 async def apply_card_saved(session: AsyncSession, *, partner_id: uuid.UUID, checkout: Any) -> None:
@@ -202,7 +220,7 @@ async def apply_card_saved(session: AsyncSession, *, partner_id: uuid.UUID, chec
     billing.paused_reason = None
     billing.updated_at = datetime.now(UTC)
     await AuditRepository(session).record(
-        actor=f"partner:{partner_id}",
+        actor=_card_actor(checkout, partner_id),
         action="billing.card_saved",
         target=f"partner:{partner_id}",
         after={"brand": billing.card_brand, "last4": billing.card_last4},
@@ -456,6 +474,7 @@ async def charge(
                 partner_id, charge_id, invoice_id, url, kind=kind, amount_cents=amount_cents
             )
             return ChargeOutcome(charge_id, CHARGE_ACTION_REQUIRED, code)
+        _void_quietly(client, invoice_id, partner_id=partner_id)
         await _record_failure(partner_id, charge_id, code, kind=kind, invoice_id=invoice_id)
         return ChargeOutcome(charge_id, CHARGE_FAILED, code)
     if str(_get(invoice, "status")) == "paid":
@@ -471,6 +490,23 @@ async def charge(
         amount_cents=amount_cents,
     )
     return ChargeOutcome(charge_id, CHARGE_ACTION_REQUIRED)
+
+
+def _void_quietly(client: Any, invoice_id: str, *, partner_id: uuid.UUID) -> None:
+    """Void the invoice of a declined attempt (owner, 2026-10-20).
+
+    Each retry opens a new invoice, so without this a partner saw several
+    unpaid invoices for one top-up — and paying them all from «Ver factura»
+    would credit each one. Voided, the invoice still opens, marked as void,
+    and only the next attempt can be paid. A failure here never hides the
+    decline: it is logged and the charge is recorded as failed anyway.
+    """
+    try:
+        client.invoices.void_invoice(invoice_id)
+    except Exception as exc:
+        log.warning(
+            "billing.void_failed", partner_id=str(partner_id), invoice_id=invoice_id, error=str(exc)
+        )
 
 
 async def _freeze_line(session: AsyncSession, partner_id: uuid.UUID) -> None:
@@ -548,10 +584,13 @@ async def _record_failure(
         if row is not None and invoice_id and not row.stripe_invoice_id:
             # A declined invoice still exists in Stripe: the partner can see it.
             row.stripe_invoice_id = invoice_id
-        if row is not None and row.status in (CHARGE_PENDING, CHARGE_ACTION_REQUIRED):
-            row.status = CHARGE_FAILED
-            row.failure_code = code
-            row.settled_at = datetime.now(UTC)
+        if row is None or row.status not in (CHARGE_PENDING, CHARGE_ACTION_REQUIRED):
+            # Already recorded: the charge saw the decline and Stripe's
+            # ``invoice.payment_failed`` says it again. One decline counts once.
+            return
+        row.status = CHARGE_FAILED
+        row.failure_code = code
+        row.settled_at = datetime.now(UTC)
         billing = await billing_row(s, partner_id)
         billing.failed_attempts = int(billing.failed_attempts or 0) + 1
         if billing.failed_attempts >= MAX_FAILED_ATTEMPTS:

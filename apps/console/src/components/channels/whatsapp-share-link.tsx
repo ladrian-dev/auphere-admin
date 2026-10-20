@@ -1,6 +1,7 @@
 "use client";
 
 import { Copy, Link2, Mail, MessageCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -31,12 +32,16 @@ export function WhatsAppShareLink({
   refId,
   modes,
   disabled,
+  hasLive = false,
 }: {
   refId: string;
   modes: Array<"coexistence" | "cloud_api">;
   disabled?: boolean;
+  /** An unused link is out there: the new one replaces it. */
+  hasLive?: boolean;
 }) {
   const t = useT();
+  const router = useRouter();
   const locale = useLocale();
   const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState(modes[0] ?? "coexistence");
@@ -48,6 +53,8 @@ export function WhatsAppShareLink({
       const res = await whatsappSignupLinkAction({ ref: refId, mode });
       if (!res.ok) return void toast.error(actionErrorText(res, t));
       setLink({ url: res.data.url, expires_at: res.data.expires_at });
+      // The list of links under the button now shows this one.
+      router.refresh();
     });
   }
 
@@ -116,6 +123,7 @@ export function WhatsAppShareLink({
             </div>
           ) : (
             <div className="flex flex-col gap-4">
+              {hasLive ? <p className="text-sm text-muted-foreground">{t("ch.link.replaces")}</p> : null}
               {modes.length > 1 ? (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="link-mode">{t("ch.connect.mode")}</Label>
