@@ -39,9 +39,11 @@ export const LEDGER_KIND_LABEL: Record<string, string> = {
   opening_credit: "Apertura del libro (ajuste a favor)",
   opening_debit: "Apertura del libro (ajuste en contra)",
   allocation_legacy: "Ajuste de tope antiguo",
+  credit_manual: "Pago del partner fuera de Stripe",
+  credit_reversal: "Pago anulado (se descuenta)",
 };
 
 /** Kinds that add money; the rest subtract it. */
 export function isCredit(kind: string): boolean {
-  return kind === "credit_admin" || kind === "credit_stripe" || kind === "opening_credit";
+  return kind === "credit_admin" || kind === "credit_stripe" || kind === "credit_manual" || kind === "opening_credit";
 }

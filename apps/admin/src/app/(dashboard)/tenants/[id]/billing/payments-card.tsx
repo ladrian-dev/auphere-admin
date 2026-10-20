@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -63,19 +64,25 @@ function today(): string {
 }
 
 /**
- * Mensualidades cobradas fuera del proveedor de pagos. Anotar una deja
- * constancia y nada más: no cambia el servicio del cliente.
+ * Mensualidades cobradas fuera del proveedor de pagos. Con partner (owner,
+ * 2026-10-20) quien paga es el partner: aquí solo se leen, y se anotan en las
+ * Facturas del partner, donde suman a su saldo. Un cliente directo de Auphere
+ * se sigue anotando aquí, como constancia.
  */
 export function PaymentsCard({
   tenantId,
   payments,
   monthlyCents,
+  partner,
 }: {
   tenantId: string;
   payments: TenantPaymentOut[];
   /** Lo que el cliente paga al mes; rellena el monto del formulario. */
   monthlyCents: number | null;
+  /** El partner que paga por este cliente: entonces esta tarjeta es de lectura. */
+  partner?: { id: string; name: string | null } | null;
 }) {
+  const readOnly = Boolean(partner);
   const router = useRouter();
   const now = new Date();
   const [year, setYear] = useState(String(now.getFullYear()));
@@ -205,7 +212,7 @@ export function PaymentsCard({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      {voided ? null : confirmVoid === p.id ? (
+                      {voided || readOnly ? null : confirmVoid === p.id ? (
                         <span className="inline-flex items-center gap-2">
                           <Button
                             size="sm"
@@ -242,6 +249,15 @@ export function PaymentsCard({
         </div>
       )}
 
+      {readOnly && partner ? (
+        <p className="text-sm text-muted-foreground">
+          Quien paga es {partner.name ?? "su partner"}. Los pagos se anotan y se anulan en{" "}
+          <Link href={`/partners/${partner.id}/money`} className="text-primary-deep underline-offset-4 hover:underline">
+            sus Facturas
+          </Link>
+          , donde suman a su saldo.
+        </p>
+      ) : (
       <div className="grid gap-4 max-w-2xl">
         <h3 className="text-sm font-medium">Anotar un pago</h3>
         <div className="grid gap-4 sm:grid-cols-3">
@@ -323,6 +339,7 @@ export function PaymentsCard({
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

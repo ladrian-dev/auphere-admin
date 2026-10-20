@@ -3,8 +3,9 @@
 Auphere's own collection records. RLS like ``invoices``: enabled, not forced —
 the runtime sees one client's rows, the platform path sees every client's.
 
-A row is a **record and nothing else**. It grants no tier, credits no balance
-and moves nobody's state — writing one never touches the service.
+Since 2026-10-20 (owner) a payment of a partner's client also credits the
+partner's recharged balance (``credit_manual``), once; voiding it takes it
+back. It still grants no tier and moves no client's state.
 
 One live payment per client and month (partial unique index). A payment
 recorded by mistake is voided, never deleted, and the month is free again.
@@ -13,7 +14,7 @@ recorded by mistake is voided, never deleted, and the month is free again.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID
@@ -27,6 +28,12 @@ from nexus_api.db.models._mixins import UUIDPrimaryKey
 PAYMENT_METHODS: frozenset[str] = frozenset(
     {"transfer", "cash", "zelle", "paypal", "crypto", "other"}
 )
+
+
+#: Payments recorded from this moment on credit the partner's balance
+#: (migration 0163). Earlier rows stay a record: the owner chose not to credit
+#: them retroactively (2026-10-20).
+CREDIT_SINCE = datetime(2026, 10, 20, tzinfo=UTC)
 
 
 class TenantPayment(UUIDPrimaryKey, Base):
@@ -57,6 +64,10 @@ class TenantPayment(UUIDPrimaryKey, Base):
     paid_on: Mapped[date] = mapped_column(Date, nullable=False)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     recorded_by: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: Owner, 2026-10-20: what this payment credited to the partner's balance.
+    #: NULL on rows recorded before the change, or when the client has no
+    #: partner (a direct client of Auphere has no balance to credit).
+    credited_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     voided_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

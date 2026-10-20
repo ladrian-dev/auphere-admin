@@ -335,3 +335,64 @@ export async function setPartnerChargingAction(
     return err(e);
   }
 }
+
+// ── Pagos del partner fuera de Stripe (owner, 2026-10-20) ───────────────────
+
+function paymentError(e: unknown): { ok: false; error: string } {
+  if (e instanceof BackendError) {
+    const detail = (e.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return { ok: false, error: detail };
+  }
+  return err(e);
+}
+
+function revalidatePartnerMoney(partnerId: string, tenantId?: string) {
+  revalidatePath(`/partners/${partnerId}`, "layout");
+  revalidatePath("/partners");
+  if (tenantId) revalidatePath(`/tenants/${tenantId}/billing`);
+}
+
+export async function recordPartnerPaymentAction(
+  partnerId: string,
+  body: import("@/lib/backend").TenantPaymentInput & { tenant_id: string },
+): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
+  try {
+    const operator = await requireOperator();
+    const r = await backend.recordPartnerPayment(partnerId, body, operator.id);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePartnerMoney(partnerId, body.tenant_id);
+    return { ok: true, data: r };
+  } catch (e) {
+    return paymentError(e);
+  }
+}
+
+export async function voidPartnerPaymentAction(
+  partnerId: string,
+  paymentId: string,
+): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
+  try {
+    const operator = await requireOperator();
+    const r = await backend.voidPartnerPayment(partnerId, paymentId, operator.id);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePartnerMoney(partnerId, r.tenant_id);
+    return { ok: true, data: r };
+  } catch (e) {
+    return paymentError(e);
+  }
+}
+
+export async function creditPartnerPaymentAction(
+  partnerId: string,
+  paymentId: string,
+): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
+  try {
+    const operator = await requireOperator();
+    const r = await backend.creditPartnerPayment(partnerId, paymentId, operator.id);
+    if (!r) return { ok: false, error: "empty response" };
+    revalidatePartnerMoney(partnerId, r.tenant_id);
+    return { ok: true, data: r };
+  } catch (e) {
+    return paymentError(e);
+  }
+}
