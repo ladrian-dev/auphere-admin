@@ -12,9 +12,9 @@ import { tokens } from "./src/theme/tokens.gen.ts";
  * others are the same app. What changes between them comes from the
  * environment, never from editing this file:
  *
- * - `EAS_PROJECT_ID` / `EAS_OWNER`: the FACELAD Expo account for now (D21).
- *   The owner runs `eas init` once and sets them; until then the app still
- *   builds locally (`expo run:*`), it just has no OTA channel.
+ * - The EAS project (`eas init`, 2026-10-20): `@lmatos/auphere-customers`.
+ *   Fixed below because they are identifiers, not secrets; `EAS_PROJECT_ID` /
+ *   `EAS_OWNER` still override them, for the move to Auphere's account.
  * - `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_CONSOLE_URL`: where it talks to.
  * - `GOOGLE_SERVICES_JSON`: the Firebase file for FCM, as an EAS file secret.
  *
@@ -23,7 +23,8 @@ import { tokens } from "./src/theme/tokens.gen.ts";
  * scheme (`auphere-customers://auth/callback`), which PKCE and `state` protect;
  * the universal link (`applinks:`) is deferred (contracts/phone-auth.md).
  */
-const projectId = process.env.EAS_PROJECT_ID;
+const projectId = process.env.EAS_PROJECT_ID ?? "15621aff-af18-43b6-917c-6df25f22e737";
+const owner = process.env.EAS_OWNER ?? "lmatos";
 const variant = process.env.APP_VARIANT ?? "production";
 const dev = variant === "development";
 
@@ -33,7 +34,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: "auphere-customers",
   // A phone app: no web build (Metro would try to bundle one for a browser).
   platforms: ["ios", "android"],
-  ...(process.env.EAS_OWNER ? { owner: process.env.EAS_OWNER } : {}),
+  owner,
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
@@ -108,7 +109,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   // D19: OTA only for fixes, one channel per profile; the native runtime is the app version.
   runtimeVersion: { policy: "appVersion" },
-  ...(projectId ? { updates: { url: `https://u.expo.dev/${projectId}` } } : {}),
+  updates: { url: `https://u.expo.dev/${projectId}` },
   experiments: { typedRoutes: true, reactCompiler: true },
-  extra: { ...(projectId ? { eas: { projectId } } : {}), variant },
+  extra: { eas: { projectId }, variant },
 });

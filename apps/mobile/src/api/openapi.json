@@ -2139,6 +2139,7 @@
     },
     "/app/phones/refresh": {
       "post": {
+        "description": "Renueva (R2.1). **Sin límite de intentos, a propósito:** la renovación\nes un secreto aleatorio de 256 bits, no hay nada que adivinar, y un límite\npor IP aquí sería uno solo para todos los teléfonos (ver ``_code_key``).",
         "operationId": "refresh_app_phones_refresh_post",
         "requestBody": {
           "content": {

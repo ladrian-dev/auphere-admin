@@ -45,7 +45,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Refresh */
+        /**
+         * Refresh
+         * @description Renueva (R2.1). **Sin límite de intentos, a propósito:** la renovación
+         *     es un secreto aleatorio de 256 bits, no hay nada que adivinar, y un límite
+         *     por IP aquí sería uno solo para todos los teléfonos (ver ``_code_key``).
+         */
         post: operations["refresh_app_phones_refresh_post"];
         delete?: never;
         options?: never;
