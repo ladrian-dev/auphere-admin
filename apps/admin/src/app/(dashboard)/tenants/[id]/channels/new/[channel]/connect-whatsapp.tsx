@@ -11,7 +11,15 @@ import { SignupLinkDialog } from "../../../_integrations/signup-link-dialog";
  * here the two ways Auphere connects a number. Each one opens the flow that
  * already exists; when it connects, the wizard moves on.
  */
-export function ConnectWhatsApp({ tenantId, businessName }: { tenantId: string; businessName: string }) {
+export function ConnectWhatsApp({
+  tenantId,
+  businessName,
+  hasLiveLink = false,
+}: {
+  tenantId: string;
+  businessName: string;
+  hasLiveLink?: boolean;
+}) {
   const router = useRouter();
   const next = () => router.push(`/tenants/${tenantId}/channels/new/whatsapp/agent`);
   return (
@@ -25,7 +33,7 @@ export function ConnectWhatsApp({ tenantId, businessName }: { tenantId: string; 
           aparece en Canales cuando termina.
         </p>
         <div className="mt-auto">
-          <SignupLinkDialog tenantId={tenantId} businessName={businessName} />
+          <SignupLinkDialog tenantId={tenantId} businessName={businessName} hasLiveLink={hasLiveLink} />
         </div>
       </div>
       <div className="flex flex-col gap-3 rounded-md p-6 ring-1 ring-foreground/10">

@@ -30,7 +30,16 @@ const MODE_LABEL = {
  * already logged in to Meta — to run WhatsApp's signup themselves. Their Meta
  * details never pass through the operator's or the partner's device.
  */
-export function SignupLinkDialog({ tenantId, businessName }: { tenantId: string; businessName: string }) {
+export function SignupLinkDialog({
+  tenantId,
+  businessName,
+  hasLiveLink = false,
+}: {
+  tenantId: string;
+  businessName: string;
+  /** An unused link is out there: the new one replaces it (one live link per client). */
+  hasLiveLink?: boolean;
+}) {
   const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState<"coexistence" | "cloud_api">("coexistence");
   const [pending, start] = React.useTransition();
@@ -104,6 +113,11 @@ export function SignupLinkDialog({ tenantId, businessName }: { tenantId: string;
             </div>
           ) : (
             <div className="flex flex-col gap-4">
+              {hasLiveLink ? (
+                <p className="text-sm text-muted-foreground">
+                  Ya hay un enlace sin usar para este cliente. El nuevo lo sustituye: el anterior deja de funcionar.
+                </p>
+              ) : null}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="link-mode">Modo de conexión</Label>
                 <NativeSelect id="link-mode" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>

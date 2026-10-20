@@ -35,7 +35,7 @@ describe("breadcrumb trail (spec 035)", () => {
   it("speaks the sidebar's words for sections and pages", () => {
     expect(crumbsFor("/", names)).toEqual([{ label: "Panel", href: null }]);
     expect(crumbsFor("/auphere/channels", names)).toEqual([{ label: "Números de Auphere", href: null }]);
-    expect(crumbsFor("/partners/p1/money", names).map((c) => c.label)).toEqual(["Partners", "Demo Auditoría", "Dinero"]);
+    expect(crumbsFor("/partners/p1/money", names).map((c) => c.label)).toEqual(["Partners", "Demo Auditoría", "Facturas"]);
     expect(crumbsFor("/qa/t1/chat", names).map((c) => c.label)).toEqual(["Playground QA", "Volumen 03"]);
     expect(crumbsFor("/tickets/k1", names).map((c) => c.label)).toEqual(["Tickets", "TCK-42"]);
     expect(crumbsFor("/tenants/new", names).map((c) => c.label)).toEqual(["Clientes", "Nuevo cliente"]);

@@ -10,7 +10,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * «Ver factura» of a partner's card charge (owner, 2026-10-20): straight to
  * Stripe's invoice page, read fresh by the API. Anything that fails lands back
- * on the partner's Dinero tab with a line that says so.
+ * on the partner's Facturas tab with a line that says so.
  */
 export async function GET(
   request: Request,
