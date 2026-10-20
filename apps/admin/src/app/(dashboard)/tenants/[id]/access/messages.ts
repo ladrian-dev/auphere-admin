@@ -32,3 +32,17 @@ export const INELIGIBLE: Record<"no_partner" | "archived", string> = {
   no_partner: ACCESS_ERRORS.no_partner!,
   archived: ACCESS_ERRORS.archived!,
 };
+
+/** Spec 031 (R7.4): why a phone stopped being signed in, for the operator. */
+export const PHONE_REASONS: Record<string, string> = {
+  signed_out: "Cerró sesión en el teléfono",
+  closed_by_person: "Lo cerró la persona desde otro sitio",
+  closed_by_auphere: "Lo cerró Auphere",
+  access_disabled: "Se apagó el acceso del cliente",
+  member_removed: "Se le retiró el acceso a la persona",
+  password_reset: "La persona restableció su contraseña",
+  abandoned: "Sin usarse 90 días",
+  refresh_reused: "Se cerró por seguridad: su sesión se usó dos veces",
+};
+
+export const PHONE_GONE = "Ese teléfono ya no está en la lista. Vuelve a abrirla.";

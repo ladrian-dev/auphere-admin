@@ -85,6 +85,12 @@ jobs:
       - name: pytest — apps/api (unit + isolation + integration)
         working-directory: apps/api
         run: pytest -x --tb=short
+      # Spec 031 (D14): the phone app's types are generated from this file. A
+      # route that changes shape without re-exporting it fails here, not on a
+      # phone.
+      - name: "mobile — OpenAPI contract up to date"
+        working-directory: apps/api
+        run: python scripts/export_openapi.py --check
       # CO-07. Corre por segunda vez a propósito: el paso de arriba es la
       # barrera (ya rompe el build), y este deja el reparto del dataset y
       # los dos números de R1 —falsos positivos y recall— en su propio
@@ -229,6 +235,36 @@ jobs:
           BETTER_AUTH_SECRET: ci-secret-32-chars-padding-padding-padding
           BETTER_AUTH_URL: http://localhost:3110
         run: pnpm build
+
+  # Spec 031 (D13): Auphere Customers lives in its own pnpm workspace with its
+  # own lockfile (Expo 58 pins React 19.3, the console 19.2). ``pnpm verify``
+  # is tsc + eslint + jest + the three generated files (types, tokens, words)
+  # checked against their sources — the same as ``./scripts/verify.sh mobile``.
+  test-mobile:
+    name: test-mobile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+      - name: install (apps/mobile workspace)
+        working-directory: apps/mobile
+        run: pnpm install --frozen-lockfile
+      - name: "mobile — typecheck + lint + jest + generated files"
+        working-directory: apps/mobile
+        run: pnpm verify
+      # Catches what tsc and jest cannot: a native peer dependency missing
+      # (expo-symbols without expo-font crashed Android, 2026-10-20) or a
+      # package off the SDK's versions.
+      - name: "mobile — expo-doctor"
+        working-directory: apps/mobile
+        run: npx expo-doctor
 
   # ADR-017 / migration 0021 — the AgendaPro admin browser MCP (Node
   # subprocess) was removed. The ``test-mcp-node`` job that built +

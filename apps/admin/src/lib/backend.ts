@@ -52,6 +52,18 @@ export type ClientAccessOut = {
   modules: ClientModule[];
   members: ClientMemberOut[];
 };
+/** Spec 031 (R7.4): one phone of a client person, active or recently closed. */
+export type ClientPhoneOut = {
+  id: string;
+  display_name: string;
+  platform: "ios" | "android";
+  app_version: string;
+  last_seen_at: string;
+  enrolled_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  revoked_by: string | null;
+};
 export type ClientInvitationOut = {
   id: string;
   email: string;
@@ -2563,6 +2575,16 @@ export const backend = {
     call<null>(`/admin/tenants/${tenantId}/client-members/${memberId}/revoke`, {
       method: "POST",
       body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listClientMemberPhones: (tenantId: string, memberId: string, operatorId: string) =>
+    call<ClientPhoneOut[]>(`/admin/tenants/${tenantId}/client-members/${memberId}/phones`, {
+      headers: { "X-Operator-Id": operatorId },
+    }),
+  closeClientMemberPhone: (tenantId: string, memberId: string, phoneId: string, operatorId: string) =>
+    call<null>(`/admin/tenants/${tenantId}/client-members/${memberId}/phones/${phoneId}`, {
+      method: "DELETE",
       headers: { "X-Operator-Id": operatorId },
     }),
 

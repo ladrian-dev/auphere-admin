@@ -1,0 +1,65 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "24.11.1",
+      "pnpm": "10.15.0"
+    },
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "env": {
+        "APP_VARIANT": "development"
+      }
+    },
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "channel": "preview",
+      "env": {
+        "APP_VARIANT": "preview",
+        "EXPO_PUBLIC_API_URL": "https://api.staging.auphere.com",
+        "EXPO_PUBLIC_CONSOLE_URL": "https://console.staging.auphere.com"
+      }
+    },
+    "staging": {
+      "extends": "base",
+      "channel": "staging",
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "staging",
+        "EXPO_PUBLIC_API_URL": "https://api.staging.auphere.com",
+        "EXPO_PUBLIC_CONSOLE_URL": "https://console.staging.auphere.com"
+      }
+    },
+    "production": {
+      "extends": "base",
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.auphere.com",
+        "EXPO_PUBLIC_CONSOLE_URL": "https://console.auphere.com"
+      }
+    }
+  },
+  "submit": {
+    "staging": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
+    },
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
+  }
+}

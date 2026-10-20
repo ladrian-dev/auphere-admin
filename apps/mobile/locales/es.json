@@ -1,0 +1,5 @@
+{
+  "CFBundleDisplayName": "Customers",
+  "NSCameraUsageDescription": "Para enviar una foto a un cliente desde la Bandeja.",
+  "NSPhotoLibraryUsageDescription": "Para enviar una imagen de tu galería a un cliente desde la Bandeja."
+}

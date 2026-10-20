@@ -1,0 +1,43 @@
+# Spec 031 · R6.4, CE-004 — un reintento nunca manda dos WhatsApp. Vale en es y en.
+# 100 envíos con doble toque; después, en la base, una fila por clave y 100 filas
+# nuevas:
+#   SELECT idempotency_key, count(*) FROM messages
+#    WHERE idempotency_key IS NOT NULL GROUP BY 1 HAVING count(*) > 1;  -- 0 filas
+appId: ${APP_ID || "com.auphere.customers.dev"}
+---
+# Empieza limpio: el borrador del cuadro no sobrevive a cerrar la app.
+- stopApp
+- launchApp
+# Lo primero que pinte: el lanzador de un build de desarrollo, o la app.
+- extendedWaitUntil:
+    visible: "Development Build|Tu negocio, en el bolsillo|Your business, in your pocket|Hola, .*|Hi, .*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Development Build"
+    file: _dev-server.yaml
+# Directo a la conversación por su enlace (el mismo que abre un aviso).
+- openLink: "auphere-customers://inbox/${CONVERSATION_ID}"
+- extendedWaitUntil:
+    visible:
+      id: "composer-input"
+    timeout: 20000
+- repeat:
+    times: 100
+    commands:
+      - tapOn:
+          id: "composer-input"
+      - inputRandomText
+      # El toque impaciente: dos veces «Enviar». Tiene que salir uno.
+      - doubleTapOn:
+          id: "send"
+      # Si quedó «no enviado», tocarlo reintenta con la misma clave.
+      - runFlow:
+          when:
+            visible: "No se envió. Toca para reintentar.|Not sent. Tap to retry."
+          commands:
+            - tapOn: "No se envió. Toca para reintentar.|Not sent. Tap to retry."
+# El corte de red a mitad de envío no se automatiza aquí: el modo avión de
+# Maestro abre el panel del sistema y su «atrás» cierra la conversación, y en el
+# emulador el túnel de `adb reverse` no se corta. Se prueba a mano en un teléfono
+# contra staging (Wi-Fi fuera y dentro mientras se envía; ver evidence/quickstart.md).

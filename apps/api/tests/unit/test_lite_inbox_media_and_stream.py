@@ -155,7 +155,7 @@ async def test_stream_relays_only_its_clients_channel(
     conv, foreign = uuid.uuid4(), uuid.uuid4()
     response = await stream_route.stream(
         request=_Request(turns=5),  # type: ignore[arg-type]
-        principal=SimpleNamespace(tenant_id=mine),  # type: ignore[arg-type]
+        principal=SimpleNamespace(tenant_id=mine, phone_id=None),  # type: ignore[arg-type]
         redis=fake_redis,
     )
     events = response.body_iterator.__aiter__()

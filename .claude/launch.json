@@ -3,20 +3,10 @@
   "configurations": [
     {
       "name": "api",
-      "runtimeExecutable": "uv",
+      "runtimeExecutable": "bash",
       "runtimeArgs": [
-        "--directory",
-        "apps/api",
-        "run",
-        "uvicorn",
-        "nexus_api.main:app",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8000",
-        "--reload",
-        "--reload-dir",
-        "src"
+        "-c",
+        "cd apps/api && if [ -f .env.local ]; then set -a; . ./.env.local; set +a; fi && exec uv run uvicorn nexus_api.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir src"
       ],
       "port": 8000
     },
@@ -67,6 +57,21 @@
         "--ci"
       ],
       "port": 6006
+    },
+    {
+      "name": "mobile-metro",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "apps/mobile",
+        "exec",
+        "expo",
+        "start",
+        "--dev-client",
+        "--port",
+        "8081"
+      ],
+      "port": 8081
     }
   ]
 }

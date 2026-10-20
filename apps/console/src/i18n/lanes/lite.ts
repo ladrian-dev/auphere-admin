@@ -89,4 +89,37 @@ export const liteMessages = {
   "lite.notif.client.balance_low": { es: "Tu saldo alcanza para unos {days} días", en: "Your balance lasts about {days} more days" },
   "lite.notif.client.balance_out": { es: "Tu saldo se agotó: el agente no responde", en: "Your balance is used up: the agent is not answering" },
   "lite.notif.someone": { es: "Un contacto", en: "A contact" },
+  // ── Tus teléfonos (spec 031, R7.3) ───────────────────────────────
+  "lite.phones.menu": { es: "Tus teléfonos", en: "Your phones" },
+  "lite.phones.title": { es: "Tus teléfonos", en: "Your phones" },
+  "lite.phones.subtitle": {
+    es: "Los teléfonos con la sesión abierta en Auphere Customers. Cierra el que ya no uses o hayas perdido: deja de entrar y de recibir avisos al momento.",
+    en: "The phones signed in to Auphere Customers. Sign out one you no longer use or have lost: it stops getting in and getting notifications right away.",
+  },
+  "lite.phones.list": { es: "Teléfonos con la sesión abierta", en: "Signed-in phones" },
+  "lite.phones.meta": { es: "{platform} · versión {version}", en: "{platform} · version {version}" },
+  "lite.phones.lastSeen": { es: "Último uso {when}", en: "Last used {when}" },
+  "lite.phones.enrolled": { es: "Entró el {date}", en: "Signed in on {date}" },
+  "lite.phones.close": { es: "Cerrar sesión", en: "Sign out" },
+  "lite.phones.close.aria": { es: "Cerrar la sesión de {name}", en: "Sign out {name}" },
+  "lite.phones.confirm.title": { es: "¿Cerrar la sesión de {name}?", en: "Sign out {name}?" },
+  "lite.phones.confirm.body": {
+    es: "Ese teléfono deja de ver tu negocio y de recibir avisos ahora mismo. Para volver a usarlo, hay que entrar otra vez con tu correo.",
+    en: "That phone stops seeing your business and getting notifications right now. To use it again, sign in again with your email.",
+  },
+  "lite.phones.closed": { es: "Sesión cerrada en {name}", en: "{name} is signed out" },
+  "lite.phones.closeFailed": {
+    es: "No se pudo cerrar la sesión de {name}. Sigue abierta: inténtalo de nuevo.",
+    en: "{name} could not be signed out. It is still signed in. Try again.",
+  },
+  "lite.phones.empty.title": { es: "Todavía no has entrado desde un teléfono", en: "You haven't signed in from a phone yet" },
+  "lite.phones.empty.body": {
+    es: "Instala Auphere Customers en tu iPhone o Android y entra con el correo de siempre. Cada teléfono donde entres aparecerá aquí.",
+    en: "Install Auphere Customers on your iPhone or Android and sign in with your usual email. Every phone you sign in on shows up here.",
+  },
+  "lite.phones.error.title": { es: "No se pudieron cargar tus teléfonos", en: "Your phones could not load" },
+  "lite.phones.error.body": {
+    es: "Tus sesiones siguen como estaban. Vuelve a intentarlo en un momento.",
+    en: "Your sessions are as they were. Try again in a moment.",
+  },
 } as const;

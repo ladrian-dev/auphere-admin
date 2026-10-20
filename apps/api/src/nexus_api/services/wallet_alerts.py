@@ -198,7 +198,7 @@ async def _emit_client_balance(
     data: dict[str, object] = {}
     if days_left is not None:
         data["days_left"] = max(round(days_left), 0)
-    return await emit(
+    row = await emit(
         session,
         partner_id=partner_id,
         kind=(
@@ -212,6 +212,19 @@ async def _emit_client_balance(
         dedupe_key=client_balance_dedupe_key(tenant_id, kind, ts),
         audience=NotificationAudience.CLIENT,
     )
+    if row is not None:
+        # Spec 031 (R8.4): el aviso al teléfono va con la fila de la campana, en
+        # la misma sesión. Uno deduplicado (``None``) no avisa otra vez.
+        from nexus_api.services import push_events
+
+        await push_events.enqueue(
+            session,
+            tenant_id=tenant_id,
+            kind="client.balance",
+            notification_id=row.id,
+            dedupe_key=f"client.balance:{row.id}",
+        )
+    return row
 
 
 async def evaluate_client_balance_alerts(

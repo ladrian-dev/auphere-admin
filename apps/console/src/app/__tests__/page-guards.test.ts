@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { clientModuleOfPath } from "@/lib/principal-access";
+import { CLIENT_ACCOUNT_PATHS, clientModuleOfPath, isClientAccountPath } from "@/lib/principal-access";
 
 /**
  * Spec 030 (R2.2, R2.4, R3.4): ninguna página de la consola queda sin dueño.
@@ -49,7 +49,7 @@ describe("guardas de página", () => {
       // Los alias viejos (`/tools`, `/skills`…) solo redirigen a una página
       // guardada y no leen nada: no tienen nada que guardar.
       if (/permanentRedirect\(/.test(src) && !src.includes("@/lib/backend")) return false;
-      return !/require(Partner|Client)Principal\(/.test(src);
+      return !/require(Partner|Client)Principal\(|requireClientAccount\(/.test(src);
     });
     expect(unguarded.map((f) => relative(CONSOLE, f))).toEqual([]);
   });
@@ -66,6 +66,15 @@ describe("guardas de página", () => {
       return mapped === declared ? [] : [`${route}: page says ${declared}, layout says ${mapped}`];
     });
     expect(mismatched).toEqual([]);
+  });
+
+  // Spec 031 (R7.3): a client person's account pages are let through by the
+  // layout whatever the modules; the list must be exactly the pages that say so.
+  it("the layout's account paths are exactly the pages that call requireClientAccount", () => {
+    const declared = all.filter((file) => /requireClientAccount\(/.test(readFileSync(file, "utf8"))).map(routeOf);
+    expect(declared.sort()).toEqual([...CLIENT_ACCOUNT_PATHS].sort());
+    expect(isClientAccountPath("/account/phones/x")).toBe(false);
+    expect(isClientAccountPath("/account")).toBe(false);
   });
 
   it("only a module's own path counts, not a longer one that starts the same", () => {

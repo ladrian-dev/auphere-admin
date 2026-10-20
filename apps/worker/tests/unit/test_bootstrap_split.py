@@ -30,6 +30,9 @@ ALL_EXPECTED = {
     "owner-fanout-consumer",
     "outbound-dispatcher",
     "owner-outbox-dispatcher",
+    # Spec 031: los avisos al teléfono. En los tres sitios: ``_spawn``,
+    # ``EGRESS_TASK_NAMES`` y aquí.
+    "push-dispatcher",
     "operator-alerter",
     "grade-consumer",
     "platform-watcher",

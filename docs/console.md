@@ -6,7 +6,8 @@
 > mismo commit que cambia el comportamiento (constitución §IX).
 >
 > La consola del **cliente final** (consola lite, spec 030) vive en la misma
-> app y se describe aparte: [consola-lite.md](consola-lite.md). El panel de
+> app y se describe aparte: [consola-lite.md](consola-lite.md); su versión para
+> el teléfono, Auphere Customers, en [app-movil.md](app-movil.md). El panel de
 > operador de Auphere, que comparte con ésta el sistema de diseño `@nexus/ui`,
 > se describe en [admin.md](admin.md).
 

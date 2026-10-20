@@ -133,7 +133,7 @@ locals {
   )
 
   secrets = [
-    for key in var.app_secret_keys : {
+    for key in concat(var.app_secret_keys, var.push_secret_keys) : {
       name      = key
       valueFrom = "${local.data.app_secret_arn}:${key}::"
     }

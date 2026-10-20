@@ -19,15 +19,18 @@ siempre en céntimos de US$ (`*_cents`), redondeado en servidor (spec 027).
 
 ```json
 {
-  "user": {"id": "…", "email": "valeria@minegocio.com", "name": "Valeria Ríos"},
+  "user": {"email": "valeria@minegocio.com", "name": "Valeria Ríos"},
   "client": {"name": "Flor y Encanto", "modules": ["panel", "inbox", "usage"]},
+  "nav": ["panel", "inbox", "usage"],
   "balance_contact": {"kind": "partner", "name": "Amacrux"},
   "agents": [{"id": "…", "name": "Agente de soporte"}],
   "channels": [{"kind": "whatsapp", "connected": true}]
 }
 ```
 
-`balance_contact.kind` es `partner` o `auphere` (D10). `agents` solo lista los
+`balance_contact.kind` es `partner` o `auphere` (D10). `nav` (spec 031, R3.2)
+son los módulos en el orden de la barra: la única fuente del orden para la web
+y para la app. La persona no lleva `id`: no lo necesita nadie fuera de la API. `agents` solo lista los
 activos.
 
 ## Panel (`panel`)
@@ -130,7 +133,7 @@ Detalle para la cabecera, el cuadro y el panel de contacto:
 
 ```json
 {
-  "id": "…", "state": "person", "assignee": {"id": "…", "name": "Valeria Ríos", "is_me": true},
+  "id": "…", "state": "person", "assignee": {"kind": "member", "name": "Valeria Ríos", "is_me": true},
   "agent": {"id": "…", "name": "Agente de soporte"},
   "control_version": 7,
   "window": {"open": true, "closes_at": "…"},

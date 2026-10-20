@@ -22,7 +22,10 @@ describe("inbox actions", () => {
     await actions.takeOverAction({ id: ID, version: 4 });
     expect(h.backend.inboxTakeOver).toHaveBeenCalledWith(ID, 4);
     await actions.sendMessageAction({ id: ID, text: "Hola" });
-    expect(h.backend.inboxSend).toHaveBeenCalledWith(ID, "Hola");
+    expect(h.backend.inboxSend).toHaveBeenCalledWith(ID, "Hola", undefined);
+    const key = "0f8b2c3e-6a1d-4b7e-9c2f-1a2b3c4d5e6f";
+    await actions.sendMessageAction({ id: ID, text: "Hola", idempotencyKey: key });
+    expect(h.backend.inboxSend).toHaveBeenLastCalledWith(ID, "Hola", key);
     await actions.listConversationsAction({ filter: "waiting", q: "  ana " });
     expect(h.backend.inboxList).toHaveBeenCalledWith({ filter: "waiting", q: "ana", cursor: undefined });
   });

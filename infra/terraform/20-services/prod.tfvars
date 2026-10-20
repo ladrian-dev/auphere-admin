@@ -47,3 +47,15 @@ https_enabled = true
 extra_certificate_arns = [
   "arn:aws:acm:eu-south-2:793033583982:certificate/ca6d3efb-2187-4347-973c-8340b33f7f72",
 ]
+
+# Spec 031: los avisos de la app (APNs y FCM). Se encienden **después** de
+# crear las cinco claves en el secreto de este entorno:
+#
+#   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh <ws> \
+#     NEXUS_APNS_KEY_ID NEXUS_APNS_TEAM_ID NEXUS_APNS_KEY_PEM \
+#     NEXUS_FCM_PROJECT_ID NEXUS_FCM_SERVICE_ACCOUNT_JSON
+#
+# push_secret_keys = [
+#   "NEXUS_APNS_KEY_ID", "NEXUS_APNS_TEAM_ID", "NEXUS_APNS_KEY_PEM",
+#   "NEXUS_FCM_PROJECT_ID", "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
+# ]

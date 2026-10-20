@@ -96,8 +96,9 @@ describe("toResolution — persona de un cliente", () => {
     modules: ["panel", "inbox", "usage"],
   };
 
-  it("maps to a client principal with its modules in sidebar order", () => {
-    const res = toResolution({ ...client, modules: ["usage", "panel"] });
+  // Spec 031 (R3.2): the API sends the sidebar order; the console keeps it.
+  it("maps to a client principal with its modules in the API's order", () => {
+    const res = toResolution({ ...client, modules: ["panel", "usage"] });
     expect(res.kind).toBe("ok");
     if (res.kind !== "ok") throw new Error("unreachable");
     expect(res.principal).toMatchObject({

@@ -135,6 +135,18 @@ async def mark_waiting(
             conversation, reason="escalated", notes=reason, operator_label=AGENT
         )
         conversation.assigned_user_id = None
+    if inbox:
+        # Spec 031 (R8.2, R8.5): el aviso al teléfono nace aquí, en la
+        # transacción del escalado. Si el escalado no se confirma, no avisa.
+        from nexus_api.services import push_events
+
+        await push_events.enqueue(
+            session,
+            tenant_id=conversation.tenant_id,
+            kind="inbox.waiting",
+            conversation_id=conversation.id,
+            dedupe_key=f"inbox.waiting:{event.id}",
+        )
     await session.flush()
     return WaitingMark(
         tenant_id=conversation.tenant_id,

@@ -131,12 +131,20 @@ _FOREIGN: dict[str, Callable[[dict[str, Any]], str]] = {
 #: ``test_lite_inbox_media_and_stream.py::test_stream_relays_only_its_clients_channel``.
 _STREAMS = {"/console/lite/inbox/stream"}
 
+#: Spec 031: rutas que solo tienen sentido desde la app (la web recibe 403
+#: ``phone_only``). Se barren con la credencial del teléfono en
+#: ``test_phone_route_scope.py``, que importa este mismo vecindario.
+PHONE_ONLY = {"/console/lite/phones/current/notices"}
+
 
 def _lite_gets() -> list[str]:
     return [
         r.path
         for r in _console_routes()
-        if r.path.startswith("/console/lite") and "GET" in r.methods and r.path not in _STREAMS
+        if r.path.startswith("/console/lite")
+        and "GET" in r.methods
+        and r.path not in _STREAMS
+        and r.path not in PHONE_ONLY
     ]
 
 

@@ -92,8 +92,18 @@ export type PrincipalResolution =
   | { kind: "disabled"; email: string; partnerName: string; clientName?: string }
   | { kind: "ok"; principal: Principal };
 
+function isClientModule(m: string): m is ClientModule {
+  return (CLIENT_MODULES as readonly string[]).includes(m);
+}
+
+/**
+ * Spec 031 (R3.2): the API sends the modules already in sidebar order
+ * (`ClientAccess.ordered_modules()`), and that order is the only one — the
+ * console and the phone app both paint it as it comes. This only drops what the
+ * console cannot render yet and repeats; it never re-sorts.
+ */
 function clientModules(raw: string[]): ClientModule[] {
-  return CLIENT_MODULES.filter((m) => raw.includes(m));
+  return raw.filter(isClientModule).filter((m, i, all) => all.indexOf(m) === i);
 }
 
 function partnerModules(raw: string[]): PartnerModule[] {
@@ -153,9 +163,9 @@ export function firstPartnerModulePath(modules: readonly PartnerModule[]): strin
   return PARTNER_MODULE_PATH[first as Exclude<PartnerModule, "companion">];
 }
 
-/** Where a client lands: its first module, in sidebar order. */
+/** Where a client lands: its first module, in the order the API sent. */
 export function firstModulePath(modules: readonly ClientModule[]): string {
-  const first = CLIENT_MODULES.find((m) => modules.includes(m)) ?? "panel";
+  const first = modules[0] ?? "panel";
   return first === "panel" ? "/" : first === "inbox" ? "/inbox" : "/usage";
 }
 
@@ -171,4 +181,16 @@ export function clientModuleOfPath(pathname: string): ClientModule | null {
   if (pathname === "/inbox") return "inbox";
   if (pathname === "/usage") return "usage";
   return null;
+}
+
+/**
+ * Spec 031 (R7.3): the client person's own account pages. They belong to the
+ * person, not to a module — every client person has them, whatever modules its
+ * client has. `page-guards.test.ts` ties this list to the pages that call
+ * `requireClientAccount`.
+ */
+export const CLIENT_ACCOUNT_PATHS = ["/account/phones"] as const;
+
+export function isClientAccountPath(pathname: string): boolean {
+  return (CLIENT_ACCOUNT_PATHS as readonly string[]).includes(pathname);
 }

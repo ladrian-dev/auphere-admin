@@ -126,6 +126,18 @@ REASON: _Words = {
     "session_not_recently_confirmed": {"es": "sesión sin confirmar", "en": "session not confirmed"},
     "machine_cap_reached": {"es": "límite de máquinas", "en": "machine limit reached"},
     "vanished": {"es": "la máquina desapareció", "en": "the machine vanished"},
+    # Spec 031: por qué se cerró el teléfono de una persona de cliente.
+    "signed_out": {"es": "cerró la sesión", "en": "signed out"},
+    "closed_by_person": {"es": "la cerró la propia persona", "en": "closed by the person"},
+    "closed_by_auphere": {"es": "la cerró Auphere", "en": "closed by Auphere"},
+    "access_disabled": {"es": "se apagó el acceso del negocio", "en": "the business lost access"},
+    "member_removed": {"es": "se quitó a la persona", "en": "the person was removed"},
+    "password_reset": {"es": "se restableció la contraseña", "en": "the password was reset"},
+    "abandoned": {"es": "90 días sin usarse", "en": "unused for 90 days"},
+    "refresh_reused": {
+        "es": "se reutilizó una credencial vieja",
+        "en": "an old credential was reused",
+    },
 }
 
 TICKET_CATEGORY: _Words = {

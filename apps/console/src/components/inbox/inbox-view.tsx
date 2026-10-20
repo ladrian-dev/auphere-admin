@@ -184,6 +184,10 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
   const [suggested, setSuggested] = React.useState<string[]>(initial.suggested);
   const panelPref = React.useSyncExternalStore(subscribePanel, panelSnapshot, panelServerSnapshot);
   const frame = React.useRef<HTMLDivElement>(null);
+  // Spec 031 (R6.4): la clave de idempotencia del mensaje que se está
+  // intentando enviar. Si el envío falla y la persona lo reintenta sin cambiar
+  // el texto, se reutiliza: un reintento nunca manda dos WhatsApp.
+  const lastAttempt = React.useRef<{ id: string; text: string; key: string } | null>(null);
   const wide = useWide(frame);
   // Below 1280 px the sheet is opened on purpose each time; it is not remembered.
   const [sheetOpen, setSheetOpen] = React.useState(false);
@@ -366,6 +370,9 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
   function send(text: string): Promise<boolean> {
     const id = detail?.id;
     if (!id) return Promise.resolve(false);
+    const prev = lastAttempt.current;
+    const idempotencyKey = prev && prev.id === id && prev.text === text ? prev.key : crypto.randomUUID();
+    lastAttempt.current = { id, text, key: idempotencyKey };
     return new Promise((done) => {
       startTransition(async () => {
         addOptimistic({
@@ -381,8 +388,9 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
           kind: null,
           detail: null,
         });
-        const r = guard(await sendMessageAction({ id, text }));
+        const r = guard(await sendMessageAction({ id, text, idempotencyKey }));
         if (r.ok) {
+          lastAttempt.current = null;
           setSendError(null);
           await refreshOpen(id, false);
           done(true);

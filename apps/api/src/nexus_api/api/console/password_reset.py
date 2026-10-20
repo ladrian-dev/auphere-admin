@@ -31,7 +31,7 @@ reloj diría lo que el cuerpo calla.
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,15 +102,21 @@ def _attempt_key(email: str) -> str:
     return f"pwreset:{email}"
 
 
-@router.post("", response_model=PasswordResetStartOut, status_code=status.HTTP_202_ACCEPTED)
-async def start_password_reset(
-    body: PasswordResetStartIn,
-    _svc: ConsoleService = Depends(require_console_service()),
-    session: AsyncSession = Depends(get_db_session),
-    redis: Redis = Depends(get_redis),
-) -> PasswordResetStartOut:
-    """Pide un enlace. **Siempre 202 y siempre el mismo cuerpo.**"""
-    email = console_identity.normalize_email(str(body.email))
+async def _send_link(*, email: str, token: str, locale: str) -> None:
+    sent = await password_reset.send_reset_mail(email=email, token=token, locale=locale)
+    if not sent:
+        # **Y aquí se acaba.** El fallo es de Auphere y vive en sus registros;
+        # la respuesta no se entera. Sin la dirección: ``services/email`` ya la
+        # lleva, y repetirla aquí la duplica en un sitio más.
+        log.error("password_reset.mail_not_sent")
+
+
+async def request_reset_link(
+    session: AsyncSession, redis: Redis, background: BackgroundTasks, *, email: str
+) -> None:
+    """Pide un enlace para ``email`` (ya normalizado). **No devuelve nada que
+    distinga** si la cuenta existe: la consola y la app (spec 031, R1.7)
+    contestan siempre lo mismo después de llamar aquí."""
     limiter = _limiter(redis)
     key = _attempt_key(email)
 
@@ -121,7 +127,7 @@ async def start_password_reset(
         await limiter.check(key)
     except CodeRateLimited as exc:
         log.warning("password_reset.rate_limited", retry_after=exc.retry_after_seconds)
-        return PasswordResetStartOut()
+        return
 
     # Esta petición cuenta, exista o no la cuenta: si sólo contaran las que
     # aciertan, barrer direcciones saldría gratis.
@@ -140,17 +146,26 @@ async def start_password_reset(
     if plaintext is None:
         # Sin cuenta no sale ningún correo: mandar uno a una dirección que no
         # pidió nada convierte esta ruta en un remitente de correo ajeno.
-        return PasswordResetStartOut()
+        return
 
-    # Fuera de la transacción: mandar correo no debe mantener abierta una
-    # transacción, y que el envío falle no debe deshacer la petición — el
-    # enlace ya existe y pedir otro es un gesto de una línea.
-    sent = await password_reset.send_reset_mail(email=email, token=plaintext, locale=locale)
-    if not sent:
-        # **Y aquí se acaba.** El fallo es de Auphere y vive en sus registros;
-        # la respuesta no se entera. Sin la dirección: ``services/email`` ya la
-        # lleva, y repetirla aquí la duplica en un sitio más.
-        log.error("password_reset.mail_not_sent")
+    # Fuera de la transacción y **fuera de la respuesta**: mandar correo no debe
+    # mantener abierta una transacción, que el envío falle no debe deshacer la
+    # petición, y que tarde no puede notarse — si la respuesta esperase al
+    # correo, tardaría más justo cuando la cuenta existe.
+    background.add_task(_send_link, email=email, token=plaintext, locale=locale)
+
+
+@router.post("", response_model=PasswordResetStartOut, status_code=status.HTTP_202_ACCEPTED)
+async def start_password_reset(
+    body: PasswordResetStartIn,
+    background: BackgroundTasks,
+    _svc: ConsoleService = Depends(require_console_service()),
+    session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
+) -> PasswordResetStartOut:
+    """Pide un enlace. **Siempre 202 y siempre el mismo cuerpo.**"""
+    email = console_identity.normalize_email(str(body.email))
+    await request_reset_link(session, redis, background, email=email)
     return PasswordResetStartOut()
 
 

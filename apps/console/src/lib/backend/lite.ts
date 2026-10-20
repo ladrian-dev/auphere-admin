@@ -14,6 +14,19 @@ export type LiteMe = {
   /** The client's active agents, principal first (spec 030, iteration 3). */
   agents: { id: string; name: string }[];
   channels: { kind: string; connected: boolean }[];
+  /** Spec 031 (R3.2): the modules in sidebar order — the only source of the order. */
+  nav: string[];
+};
+
+/** Spec 031 (R7.3): one of the person's phones with the Auphere Customers app. */
+export type LitePhone = {
+  id: string;
+  display_name: string;
+  platform: "ios" | "android";
+  app_version: string;
+  last_seen_at: string;
+  enrolled_at: string;
+  current: boolean;
 };
 
 /** `GET /console/lite/home` — the Panel of one client (spec 030, R4). Money in cents. */
@@ -54,5 +67,9 @@ export function liteApi(call: Call) {
     liteReadAllNotifications: () => call<{ marked: number }>("/console/lite/notifications/read-all", { method: "POST" }),
     liteMarkNotificationRead: (id: string) =>
       call<Notification>(`/console/lite/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }),
+    // Spec 031: the person's phones («Tus teléfonos»).
+    litePhones: () => call<LitePhone[]>("/console/lite/phones"),
+    liteClosePhone: (id: string) =>
+      call<null>(`/console/lite/phones/${encodeURIComponent(id)}`, { method: "DELETE" }),
   };
 }
