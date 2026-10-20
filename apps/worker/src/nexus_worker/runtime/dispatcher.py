@@ -35,6 +35,7 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
+from nexus_api.services import push_events
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
 from nexus_api.services.inbox_stream import publish_inbox_event
 
@@ -404,6 +405,10 @@ async def _process_inbound_after_gates(
         conversation_id = conversation.id
         inbound_id = inbound_msg.id
         conversation_agent_active = conversation.agent_active
+        # Spec 031 (R8.3, R8.5): si la atiende una persona, su teléfono se
+        # entera. Aquí, en la transacción del entrante: si no se confirma, no
+        # avisa. Las burbujas plegadas de arriba son este mismo entrante.
+        await push_events.enqueue_message_for_you(session, conversation, inbound_id=inbound_msg.id)
         # Send-only channel (``config.agent_enabled = false``): a number the
         # business uses to push notifications out, with nobody behind it to
         # answer what comes back. Read here, inside the session that is

@@ -55,6 +55,7 @@ from nexus_worker.health import run_heartbeat
 from nexus_worker.observability import init_langfuse
 from nexus_worker.observability import shutdown as langfuse_shutdown
 from nexus_worker.observability.otel import install_worker_tracing
+from nexus_worker.push.dispatcher import run_push_dispatcher
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
@@ -127,6 +128,9 @@ EGRESS_TASK_NAMES = frozenset(
         "heartbeat",
         "outbound-dispatcher",
         "owner-outbox-dispatcher",
+        # Spec 031: los avisos al teléfono (APNs y FCM). Egress como los otros
+        # dos: envía hacia fuera, drena un outbox y no es un cron.
+        "push-dispatcher",
     }
 )
 SCHEDULER_TASK_NAMES = frozenset(
@@ -398,6 +402,7 @@ def egress_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.
             "owner-outbox-dispatcher",
             run_owner_outbox_dispatcher(stop=ctx.stop, meta_client=ctx.meta_client),
         ),
+        _spawn("push-dispatcher", run_push_dispatcher(stop=ctx.stop)),
     ]
 
 
