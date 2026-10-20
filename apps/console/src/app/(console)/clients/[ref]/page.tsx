@@ -81,6 +81,7 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
         sector: client.sector ?? null,
         health: client.health,
         quota: client.quota ?? null,
+        unlimited: client.unlimited_consumption ?? false,
       }}
       usage={
         usage === null || !usage.ok

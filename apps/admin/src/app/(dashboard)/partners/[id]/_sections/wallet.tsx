@@ -146,16 +146,19 @@ export default async function PartnerWalletPage({ params }: { params: Promise<{ 
                         )}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                        {row.bucket === "purchased" ? "Recargado" : "Pool semanal"}
+                        {row.kind === "absorbed" ? "Auphere" : row.bucket === "purchased" ? "Recargado" : "Pool semanal"}
                       </TableCell>
                       <TableCell
                         className={
                           isCredit(row.kind)
                             ? "text-right font-medium text-status-positive-text tabular-nums"
-                            : "text-right tabular-nums"
+                            : row.kind === "absorbed"
+                              ? "text-right tabular-nums text-muted-foreground"
+                              : "text-right tabular-nums"
                         }
                       >
-                        {isCredit(row.kind) ? "+" : "−"}
+                        {/* Absorbed: measured, but it never moved the partner's balance. */}
+                        {isCredit(row.kind) ? "+" : row.kind === "absorbed" ? "" : "−"}
                         {fmt(row.amount_cents)}
                       </TableCell>
                     </TableRow>
