@@ -3,7 +3,7 @@ import { CreditCard } from "lucide-react";
 import { DescriptionList, Section, StatusBadge } from "@nexus/ui";
 
 import { backend } from "@/lib/backend";
-import { formatCents, fullDateTime } from "@/lib/format";
+import { cardLabel, formatCents, fullDateTime } from "@/lib/format";
 
 import { ChargingForm } from "./charging-form";
 import { CreditLimitForm } from "./credit-limit-form";
@@ -46,8 +46,14 @@ export default async function BillingCard({ params }: { params: Promise<{ id: st
           <CreditCard className="size-5 text-muted-foreground" aria-hidden="true" />
           {view.card ? (
             <span>
-              {(view.card.brand ?? "").toUpperCase()} terminada en {view.card.last4} · caduca{" "}
-              {String(view.card.exp_month ?? "").padStart(2, "0")}/{view.card.exp_year}
+              {view.card.last4 ? (
+                <>
+                  {(view.card.brand ?? "").toUpperCase()} terminada en {view.card.last4} · caduca{" "}
+                  {String(view.card.exp_month ?? "").padStart(2, "0")}/{view.card.exp_year}
+                </>
+              ) : (
+                cardLabel(view.card.brand, null)
+              )}
               {view.card.saved_at ? (
                 <span className="text-muted-foreground"> · guardada el {fullDateTime(view.card.saved_at)}</span>
               ) : null}

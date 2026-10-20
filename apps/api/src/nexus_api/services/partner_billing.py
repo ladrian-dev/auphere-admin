@@ -163,7 +163,23 @@ async def apply_card_saved(session: AsyncSession, *, partner_id: uuid.UUID, chec
     if not method_id:
         raise BillingRuleError("no_payment_method")
     customer_id = str(_get(checkout, "customer") or "")
-    card = _get(method, "card") or {}
+    # Checkout picks the methods from the Dashboard now, so what comes back is
+    # not always a ``card`` (Link, for one). Staging saved one and showed
+    # «terminada en · caduca 00/»: read the details again if they are missing
+    # and name the method when it has no card.
+    kind = str(_get(method, "type") or "")
+    card = _get(method, "card")
+    if not card and kind in ("", "card"):
+        method = client.payment_methods.retrieve(method_id)
+        kind = str(_get(method, "type") or kind)
+        card = _get(method, "card")
+    card = card or {}
+    log.info(
+        "billing.card_details",
+        partner_id=str(partner_id),
+        method_type=kind or None,
+        has_last4=bool(_get(card, "last4")),
+    )
     await apply_partner_to_session(session, partner_id)
     billing = await billing_row(session, partner_id)
     if customer_id:
@@ -176,7 +192,7 @@ async def apply_card_saved(session: AsyncSession, *, partner_id: uuid.UUID, chec
         cast(Any, {"invoice_settings": {"default_payment_method": method_id}}),
     )
     billing.payment_method_id = method_id
-    billing.card_brand = str(_get(card, "brand") or "") or None
+    billing.card_brand = str(_get(card, "brand") or "") or (kind if kind != "card" else "") or None
     billing.card_last4 = str(_get(card, "last4") or "") or None
     billing.card_exp_month = _get(card, "exp_month")
     billing.card_exp_year = _get(card, "exp_year")

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fullDateTime, planLabel, relativeTime, statusLabel } from "./format";
+import { cardLabel, fullDateTime, planLabel, relativeTime, statusLabel } from "./format";
 
 describe("relativeTime", () => {
   it("returns dash for null/undefined", () => {
@@ -46,5 +46,17 @@ describe("fullDateTime", () => {
   it("formats an ISO string", () => {
     const out = fullDateTime("2026-05-09T12:00:00Z");
     expect(out).toMatch(/2026/);
+  });
+});
+
+describe("cardLabel", () => {
+  it("names a card by brand and last four", () => {
+    expect(cardLabel("visa", "4242")).toBe("VISA ···· 4242");
+  });
+  it("names Link, which has no last four", () => {
+    expect(cardLabel("link", null)).toBe("Link");
+  });
+  it("never leaves a saved method blank", () => {
+    expect(cardLabel(null, null)).toBe("Método de pago guardado");
   });
 });
