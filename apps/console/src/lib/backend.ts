@@ -575,6 +575,9 @@ export function backendFor(principal: Principal) {
     revokeKey: (id: string) => call<ApiKey>(`/console/keys/${enc(id)}/revoke`, { method: "POST" }),
 
     billing: () => call<Billing>("/console/billing"),
+    /** The partner sets where billing notices go (owner, 2026-10-20). */
+    setBillingEmail: (billing_email: string | null) =>
+      call<{ billing_email: string | null }>("/console/billing/email", { method: "PUT", body: { billing_email } }),
     membership: () => call<MembershipOut>("/console/billing/membership"),
     startCheckout: (tier_code: string) =>
       call<CheckoutOut>("/console/billing/checkout", { method: "POST", body: { tier_code } }),

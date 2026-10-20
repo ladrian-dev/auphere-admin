@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { Button, DescriptionList, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
+import { Button, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
+import { BillingEmailForm } from "@/components/billing/billing-email-form";
 import { BuyCreditForm } from "@/components/billing/buy-credit-form";
 import { CardSection } from "@/components/billing/card-section";
 import { MembershipSection } from "@/components/billing/membership-section";
@@ -47,7 +48,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         </section>
       ) : null}
       {card ? <CardSection view={card} canManage={can(principal.role, "billing:manage")} justSaved={justSaved} /> : null}
-      <DescriptionList layout="inline" className="max-w-lg" items={[{ key: "email", term: t("billing.email"), detail: billing.billing_email ?? t("billing.notSet"), mono: true, truncate: true }]} />
+      <BillingEmailForm
+        email={billing.billing_email}
+        contactEmail={billing.contact_email ?? null}
+        canManage={can(principal.role, "billing:manage")}
+      />
       <section aria-labelledby="receipts-h" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="receipts-h" className="text-lg font-semibold">

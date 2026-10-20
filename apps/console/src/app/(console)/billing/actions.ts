@@ -88,3 +88,18 @@ export async function setChargingAction(raw: unknown): Promise<ActionResult<Bill
   if (res.ok) revalidatePath("/billing");
   return res;
 }
+
+/**
+ * The partner sets its billing e-mail (owner, 2026-10-20). Empty clears it:
+ * notices go back to the contact e-mail. The 3D Secure notice goes here.
+ */
+export async function setBillingEmailAction(raw: unknown): Promise<ActionResult<{ billing_email: string | null }>> {
+  const { billing_email } = z
+    .object({ billing_email: z.string().trim().max(320).email().nullable() })
+    .parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "billing:manage")) return forbidden;
+  const res = await run(() => backendFor(principal).setBillingEmail(billing_email));
+  if (res.ok) revalidatePath("/billing");
+  return res;
+}
