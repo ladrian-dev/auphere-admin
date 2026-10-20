@@ -26,7 +26,13 @@ const CHARGE_LABEL = {
  * more), how it is charged, its charges, and the postpaid line, which is
  * Auphere's decision.
  */
-export default async function BillingCard({ params }: { params: Promise<{ id: string }> }) {
+export default async function BillingCard({
+  params,
+  invoiceMissing = false,
+}: {
+  params: Promise<{ id: string }>;
+  invoiceMissing?: boolean;
+}) {
   const { id } = await params;
   const view = await backend.getPartnerBilling(id).catch(() => null);
   if (!view) {
@@ -103,6 +109,11 @@ export default async function BillingCard({ params }: { params: Promise<{ id: st
         {view.charges.length > 0 ? (
           <div className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">Cobros a la tarjeta</h3>
+            {invoiceMissing ? (
+              <p role="status" className="text-sm text-status-warning-text">
+                No se pudo abrir esa factura: Stripe no tiene factura para ese cobro o no respondió.
+              </p>
+            ) : null}
             <ul className="flex flex-col divide-y divide-border rounded-md ring-1 ring-foreground/10">
               {view.charges.map((c) => (
                 <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -116,6 +127,16 @@ export default async function BillingCard({ params }: { params: Promise<{ id: st
                   <span className="flex items-center gap-3">
                     <span className="tabular-nums">{formatCents(c.amount_cents)}</span>
                     <StatusBadge tone={CHARGE_TONE[c.status]}>{CHARGE_LABEL[c.status]}</StatusBadge>
+                    {c.has_invoice ? (
+                      <a
+                        href={`/partners/${id}/charges/${c.id}/invoice`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary-deep underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                      >
+                        Ver factura
+                      </a>
+                    ) : null}
                   </span>
                 </li>
               ))}

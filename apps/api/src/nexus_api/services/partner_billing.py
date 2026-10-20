@@ -456,7 +456,7 @@ async def charge(
                 partner_id, charge_id, invoice_id, url, kind=kind, amount_cents=amount_cents
             )
             return ChargeOutcome(charge_id, CHARGE_ACTION_REQUIRED, code)
-        await _record_failure(partner_id, charge_id, code, kind=kind)
+        await _record_failure(partner_id, charge_id, code, kind=kind, invoice_id=invoice_id)
         return ChargeOutcome(charge_id, CHARGE_FAILED, code)
     if str(_get(invoice, "status")) == "paid":
         await settle_paid_invoice(partner_id, invoice)
@@ -533,13 +533,21 @@ async def _send_action_email(*, to: str, url: str, amount_cents: int, kind: str)
 
 
 async def _record_failure(
-    partner_id: uuid.UUID, charge_id: uuid.UUID, code: str, *, kind: str
+    partner_id: uuid.UUID,
+    charge_id: uuid.UUID,
+    code: str,
+    *,
+    kind: str,
+    invoice_id: str | None = None,
 ) -> None:
     async with get_sessionmaker()() as s, s.begin():
         await apply_partner_to_session(s, partner_id)
         row = await s.get(PartnerCharge, charge_id)
         if kind == CHARGE_POSTPAID:
             await _freeze_line(s, partner_id)
+        if row is not None and invoice_id and not row.stripe_invoice_id:
+            # A declined invoice still exists in Stripe: the partner can see it.
+            row.stripe_invoice_id = invoice_id
         if row is not None and row.status in (CHARGE_PENDING, CHARGE_ACTION_REQUIRED):
             row.status = CHARGE_FAILED
             row.failure_code = code
@@ -593,6 +601,46 @@ async def settle_paid_invoice(partner_id: uuid.UUID, invoice: Any) -> bool:
     return not result.duplicate
 
 
+class UnknownCharge(LookupError):
+    """The charge is not this partner's, or does not exist."""
+
+
+async def charge_invoice_url(partner_id: uuid.UUID, charge_id: uuid.UUID) -> str | None:
+    """Stripe's page for the invoice of one charge, or ``None`` if there is none.
+
+    The owner asked to see the invoices of the automatic top-ups (2026-10-20).
+    Read fresh from Stripe on each click rather than stored: the hosted page
+    is what Stripe keeps current (paid, refunded, the PDF). A charge from
+    before the invoice id was kept on failures is found by its metadata.
+    """
+    async with get_sessionmaker()() as s, s.begin():
+        await apply_partner_to_session(s, partner_id)
+        row = await s.get(PartnerCharge, charge_id)
+        if row is None or row.partner_id != partner_id:
+            raise UnknownCharge(str(charge_id))
+        invoice_id = row.stripe_invoice_id
+    client = get_client()
+    invoice: Any = None
+    if invoice_id:
+        invoice = client.invoices.retrieve(invoice_id)
+    else:
+        found = client.invoices.search(
+            cast(Any, {"query": f"metadata['charge_id']:'{charge_id}'", "limit": 1})
+        )
+        data = _get(found, "data") or []
+        invoice = data[0] if data else None
+        if invoice is not None:
+            async with get_sessionmaker()() as s, s.begin():
+                await apply_partner_to_session(s, partner_id)
+                row = await s.get(PartnerCharge, charge_id)
+                if row is not None and not row.stripe_invoice_id:
+                    row.stripe_invoice_id = str(_get(invoice, "id"))
+    if invoice is None:
+        return None
+    url = _get(invoice, "hosted_invoice_url") or _get(invoice, "invoice_pdf")
+    return str(url) if url else None
+
+
 async def record_invoice_failed(partner_id: uuid.UUID, invoice: Any) -> None:
     """``invoice.payment_failed`` for one of our charges."""
     meta = _get(invoice, "metadata") or {}
@@ -601,7 +649,13 @@ async def record_invoice_failed(partner_id: uuid.UUID, invoice: Any) -> None:
         return
     error = _get(_get(invoice, "last_finalization_error"), "code") or "payment_failed"
     kind = str(_get(meta, "kind") or "")
-    await _record_failure(partner_id, uuid.UUID(raw_charge), str(error), kind=kind)
+    await _record_failure(
+        partner_id,
+        uuid.UUID(raw_charge),
+        str(error),
+        kind=kind,
+        invoice_id=str(_get(invoice, "id") or "") or None,
+    )
 
 
 # ── what the crons do ───────────────────────────────────────────────────────
@@ -746,6 +800,8 @@ class ChargeView(BaseModel):
     failure_code: str | None
     #: Stripe's page to confirm a charge the bank wants authenticated.
     action_url: str | None = None
+    #: Stripe issued an invoice for it (``charge_invoice_url`` opens it).
+    has_invoice: bool = False
     created_at: datetime
     settled_at: datetime | None
 
@@ -819,6 +875,9 @@ async def billing_view(partner_id: uuid.UUID) -> BillingView:
                     status=c.status,
                     failure_code=c.failure_code,
                     action_url=c.action_url if c.status == CHARGE_ACTION_REQUIRED else None,
+                    # A settled charge may still lack the id (before it was
+                    # kept on failures): the link finds it by metadata.
+                    has_invoice=bool(c.stripe_invoice_id) or c.status != CHARGE_PENDING,
                     created_at=c.created_at,
                     settled_at=c.settled_at,
                 )

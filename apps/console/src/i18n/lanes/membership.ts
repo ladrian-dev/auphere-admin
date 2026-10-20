@@ -127,6 +127,11 @@ export const membershipMessages = {
   "card.charge.failed": { es: "Rechazado", en: "Declined" },
   "card.charge.action_required": { es: "Falta confirmar", en: "Needs confirming" },
   "card.charge.confirm": { es: "Confirmar el pago", en: "Confirm the payment" },
+  "card.charge.invoice": { es: "Ver factura", en: "View invoice" },
+  "card.charge.invoiceMissing": {
+    es: "No se pudo abrir esa factura. Stripe no tiene factura para ese cobro o no respondió. Prueba de nuevo en un rato.",
+    en: "That invoice could not be opened. Stripe has no invoice for that charge or did not answer. Try again in a while.",
+  },
   "card.actionRequired": {
     es: "Tu banco pide confirmar un cobro. Confírmalo para que se complete: también te lo enviamos por correo.",
     en: "Your bank asks you to confirm a charge. Confirm it so it goes through: we also sent it to you by e-mail.",

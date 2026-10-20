@@ -1050,6 +1050,8 @@ export type PartnerBillingView = {
     period: string | null;
     status: "pending" | "action_required" | "paid" | "failed";
     failure_code: string | null;
+    /** Stripe issued an invoice for it (owner, 2026-10-20). */
+    has_invoice?: boolean;
     created_at: string;
     settled_at: string | null;
   }>;
@@ -2397,6 +2399,9 @@ export const backend = {
     call<{ channels: GlobalChannel[]; unreadable: string[] }>("/admin/channels"),
 
   getPartnerBilling: (partnerId: string) => call<PartnerBillingView>(`/admin/partners/${partnerId}/billing`),
+  /** Stripe's invoice of one of the partner's card charges (owner, 2026-10-20). */
+  getPartnerChargeInvoice: (partnerId: string, chargeId: string) =>
+    call<{ url: string }>(`/admin/partners/${partnerId}/charges/${chargeId}/invoice`),
 
   setPartnerCharging: (
     partnerId: string,

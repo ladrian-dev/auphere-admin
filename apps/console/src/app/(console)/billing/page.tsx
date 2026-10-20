@@ -14,7 +14,7 @@ import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.billing");
 
-export default async function BillingPage({ searchParams }: { searchParams: Promise<{ card?: string }> }) {
+export default async function BillingPage({ searchParams }: { searchParams: Promise<{ card?: string; invoice?: string }> }) {
   const principal = await requirePartnerPrincipal("/billing");
   if (!can(principal.role, "billing:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
@@ -28,7 +28,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   // Spec 041: the card and automatic charging. A read that fails hides the
   // section rather than drawing a card that may not be the real one.
   const card = membership ? null : await backend.billingCard().catch(() => null);
-  const justSaved = (await searchParams).card === "saved";
+  const params = await searchParams;
+  const justSaved = params.card === "saved";
+  const invoiceMissing = params.invoice === "missing";
   return (
     <>
       <PageHeader
@@ -47,7 +49,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           <BuyCreditForm />
         </section>
       ) : null}
-      {card ? <CardSection view={card} canManage={can(principal.role, "billing:manage")} justSaved={justSaved} /> : null}
+      {card ? (
+        <CardSection
+          view={card}
+          canManage={can(principal.role, "billing:manage")}
+          justSaved={justSaved}
+          invoiceMissing={invoiceMissing}
+        />
+      ) : null}
       <BillingEmailForm
         email={billing.billing_email}
         contactEmail={billing.contact_email ?? null}
