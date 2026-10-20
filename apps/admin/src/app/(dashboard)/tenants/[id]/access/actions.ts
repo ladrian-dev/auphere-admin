@@ -2,10 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 
-import { backend, BackendError, type ClientAccessOut, type ClientInvitationOut, type ClientModule } from "@/lib/backend";
+import {
+  backend,
+  BackendError,
+  type ClientAccessOut,
+  type ClientInvitationOut,
+  type ClientModule,
+  type ClientPhoneOut,
+} from "@/lib/backend";
 import { requireOperator } from "@/lib/session";
 
-import { ACCESS_ERRORS } from "./messages";
+import { ACCESS_ERRORS, PHONE_GONE } from "./messages";
 
 /**
  * Spec 030: the client-access tab. Every call carries the operator of the
@@ -60,4 +67,26 @@ export async function resendAction(tenantId: string, memberId: string): Promise<
 
 export async function revokeAction(tenantId: string, memberId: string): Promise<Result<null>> {
   return guarded(tenantId, (op) => backend.revokeClientMember(tenantId, memberId, op));
+}
+
+/** Spec 031 (R7.4): the phones of one person. A read: nothing to revalidate. */
+export async function listPhonesAction(tenantId: string, memberId: string): Promise<Result<ClientPhoneOut[]>> {
+  const operator = await requireOperator();
+  try {
+    return { ok: true, data: (await backend.listClientMemberPhones(tenantId, memberId, operator.id)) ?? [] };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+/** Spec 031 (R7.4): Auphere closes one phone (a lost one, say). Audited with this operator. */
+export async function closePhoneAction(tenantId: string, memberId: string, phoneId: string): Promise<Result<null>> {
+  const operator = await requireOperator();
+  try {
+    await backend.closeClientMemberPhone(tenantId, memberId, phoneId, operator.id);
+    return { ok: true, data: null };
+  } catch (err) {
+    if (err instanceof BackendError && err.status === 404) return { ok: false, error: PHONE_GONE };
+    return { ok: false, error: toError(err) };
+  }
 }

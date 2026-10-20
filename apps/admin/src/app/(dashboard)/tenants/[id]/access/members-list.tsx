@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { ClientMemberOut } from "@/lib/backend";
 
 import { resendAction, revokeAction } from "./actions";
+import { PhonesDialog } from "./phones-list";
 
 const STATUS: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
   active: { label: "Activa", variant: "default" },
@@ -29,13 +30,15 @@ const STATUS: Record<string, { label: string; variant: "default" | "secondary" |
 /**
  * Spec 030 (R1.6, R1.7, R1.9): who has access to the client console. A
  * person can be revoked (their sessions close); an invitation can be resent
- * (the old link dies) or revoked.
+ * (the old link dies) or revoked. Spec 031 (R7.4): a person's phones, each
+ * closable on its own.
  */
 export function MembersList({ tenantId, members }: { tenantId: string; members: ClientMemberOut[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [revoking, setRevoking] = useState<ClientMemberOut | null>(null);
   const [lastLink, setLastLink] = useState<string | null>(null);
+  const [phonesOf, setPhonesOf] = useState<ClientMemberOut | null>(null);
 
   if (members.length === 0) {
     return <p className="text-sm text-muted-foreground">Nadie tiene acceso todavía.</p>;
@@ -100,6 +103,11 @@ export function MembersList({ tenantId, members }: { tenantId: string; members: 
                         Reenviar
                       </Button>
                     ) : null}
+                    {m.kind === "member" ? (
+                      <Button size="sm" variant="outline" onClick={() => setPhonesOf(m)} aria-label={`Teléfonos de ${m.email}`}>
+                        Teléfonos
+                      </Button>
+                    ) : null}
                     {canRevoke ? (
                       <Button size="sm" variant="ghost" disabled={pending} onClick={() => setRevoking(m)} aria-label={`Revocar a ${m.email}`}>
                         Revocar
@@ -117,6 +125,7 @@ export function MembersList({ tenantId, members }: { tenantId: string; members: 
           Enlace nuevo, por si el correo no llega: <code className="break-all">{lastLink}</code>
         </p>
       ) : null}
+      {phonesOf ? <PhonesDialog key={phonesOf.id} tenantId={tenantId} member={phonesOf} onClose={() => setPhonesOf(null)} /> : null}
       <Dialog open={revoking !== null} onOpenChange={(open) => (open ? undefined : setRevoking(null))}>
         <DialogContent>
           <DialogHeader>
