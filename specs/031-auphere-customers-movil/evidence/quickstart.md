@@ -88,7 +88,7 @@ la spec y el barrido de los seis disparadores de revocación
   dentro), enviar (201, una fila `pending` del miembro; sin worker local queda
   «Enviando…», igual que en la web), devolver al agente, buscar sin acentos,
   filtros, etiqueta y nota interna desde la hoja del contacto.
-- ☐ `e2e/send-flaky.yaml` (Maestro): escrito, sin ejecutar.
+- ☑ `e2e/send-flaky.yaml` (Maestro): 100 envíos con doble toque, **100 filas, ninguna clave repetida**. El corte de red a mitad de envío, a mano en un teléfono contra staging (en el emulador no se puede cortar el túnel de `adb reverse`).
 
 ## 6. Avisos
 

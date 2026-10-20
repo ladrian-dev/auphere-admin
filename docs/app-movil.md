@@ -148,7 +148,10 @@ Contrato en [push.md](../specs/031-auphere-customers-movil/contracts/push.md).
    `pg_notify('nexus_push')` y barre cada 30 s. `push_fanout.claim` calcula los
    destinatarios **al repartir** (teléfono activo, persona con acceso, tipo
    encendido, destino registrado), comprueba que el hecho sigue siendo verdad y
-   compone el título y el texto en el idioma del teléfono.
+   compone el título y el texto en el idioma del teléfono. «Persona con
+   acceso» es **la misma regla** que cada petición del teléfono
+   (`open_client` en `core/client_auth.py`): un cliente archivado, un partner
+   suspendido o un acceso apagado no reciben ni lo que estaba pendiente.
 3. **Lo mínimo viaja**: el nombre del contacto (o «Un contacto» si su nombre
    es un número), el motivo del agente o el principio del mensaje recortado a
    100 caracteres con los teléfonos tapados, y el estado del saldo. Nunca
@@ -207,10 +210,12 @@ aviso real, la pantalla bloqueada, VoiceOver y TalkBack— tiene su lista en
 - **En local**: `pnpm --dir apps/mobile android` o `ios` (necesita Xcode 26.4
   o posterior para el SDK 58). Sin variables, un build de desarrollo habla con
   la máquina donde se compiló (`10.0.2.2` en el emulador de Android).
-- **En la nube**: la cuenta de Expo de FACELAD. Su dueño corre `eas init` una
-  vez y define `EAS_PROJECT_ID` y `EAS_OWNER`; sin ellos la app compila en
-  local y no tiene canal de actualizaciones. Firebase entra como secreto de
-  archivo (`GOOGLE_SERVICES_JSON`).
+- **En la nube**: el proyecto de EAS `@lmatos/auphere-customers` (creado con
+  `eas init` el 2026-10-20). Su ID y su dueño están fijados en
+  `app.config.ts` porque no son secretos; `EAS_PROJECT_ID` y `EAS_OWNER` los
+  sustituyen si el proyecto cambia de cuenta. Firebase entra como variable de
+  archivo de EAS (`GOOGLE_SERVICES_JSON`). La firma de iOS es del equipo de
+  Apple que se elija en el primer build, no de la cuenta de Expo.
 - **Actualizaciones por aire** (D19): **solo arreglos**. `runtimeVersion`
   sigue la versión de la app, así que algo que cambie lo nativo exige versión
   nueva en las tiendas. Nunca se publica por aire algo que cambie qué datos se
@@ -251,10 +256,10 @@ con sus módulos → invitar a la persona con un correo que controles. Acepta la
 invitación desde el correo (`console.staging.auphere.com`) y crea su
 contraseña. Con esa cuenta se entra en la app.
 
-**4. La app** (dueño, con la cuenta de Expo de FACELAD):
+**4. La app** (dueño):
 
-- `cd apps/mobile && eas init`; definir `EAS_PROJECT_ID` y `EAS_OWNER` como
-  variables de EAS (todos los entornos) y en la shell que lanza los builds.
+- El proyecto de EAS ya existe (`@lmatos/auphere-customers`) y está en
+  `app.config.ts`: no hay variables que definir.
 - **iOS:** la ficha de App Store Connect con `com.auphere.customers` (equipo de
   FACELAD; EAS crea el App ID y los certificados en el primer build). Después
   `eas build -p ios --profile staging` y `eas submit -p ios --profile staging`.

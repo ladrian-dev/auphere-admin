@@ -48,7 +48,7 @@ encargados). La persona puede pedir el borrado de su cuenta desde la app
 - ☐ La app en Google Play Console y el proyecto de Firebase con su cuenta de
   servicio de FCM (`fcm_project_id`, `fcm_service_account_json`) y su
   `google-services.json` como secreto de archivo de EAS.
-- ☐ `eas init` con la cuenta de Expo de FACELAD (`EAS_PROJECT_ID`, `EAS_OWNER`).
+- ☑ `eas init`: proyecto `@lmatos/auphere-customers`, fijado en `app.config.ts` (2026-10-20).
 - ☐ Publicar el párrafo en la política de privacidad y revisar los borradores
   con un abogado.
 - ☐ El cliente de demostración en producción bajo Auphere Internal Partner,

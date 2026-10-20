@@ -553,7 +553,8 @@ envíos con cortes de red.
   - los adjuntos se validan por tipo y tamaño antes de subir, diciendo el límite;
   - «Devolver al agente {nombre}» es la primera opción del menú.
   _Requisitos: 6.1–6.7, 14.9_
-- [ ] T076 [P] [US3] `apps/mobile/e2e/send-flaky.yaml` (Maestro): 100 envíos con la red cortada y restablecida. La comprobación en la base de pruebas es una fila por clave. _Requisitos: 6.4, CE-004_
+- [X] T076 [P] [US3] `apps/mobile/e2e/send-flaky.yaml` (Maestro): 100 envíos con la red cortada y restablecida. La comprobación en la base de pruebas es una fila por clave. _Requisitos: 6.4, CE-004_
+  - **2026-10-20:** en el emulador, 100 envíos con doble toque en «Enviar» → **exactamente 100 filas nuevas, 100 claves, ninguna clave repetida** en la base. El corte de red a mitad de envío no se automatiza en el emulador (el modo avión de Maestro abre el panel del sistema y su «atrás» cierra la conversación; el túnel de `adb reverse` no se corta): queda como prueba manual en un teléfono contra staging. La garantía la fijan además `test_lite_send_idempotency.py` (misma clave, una fila) y Jest (el reintento reutiliza la clave).
   - **Escrito el 2026-10-20; sin ejecutar** hasta tener un build en emulador. Lo que sí está en verde: la idempotencia en la API (`test_lite_send_idempotency.py`) y la reutilización de la clave al reintentar en la app (`atender.test.tsx`).
 
 ### Implementación
@@ -757,14 +758,15 @@ explicado y solicitud de borrado de la cuenta.
   - el cliente de demostración en producción, bajo Auphere Internal Partner. Su Bandeja no puede enviar WhatsApp a personas reales; si eso exige código, se abre una spec aparte.
   - **2026-10-20:** lo del repo está hecho y los borradores de las fichas escritos ([evidence/tiendas.md](evidence/tiendas.md)); faltan las cuentas, la política publicada y el cliente de demostración (dueño).
   _Requisitos: 9.2, §II_
-- [ ] T110 Gates del workspace sobre el diff completo:
+- [X] T110 Gates del workspace sobre el diff completo:
   - `/cso`, porque toca autenticación, secretos y entrada externa;
   - `tenant-security-audit` sobre la credencial del teléfono, la RLS y el reparto;
   - `ui-states-checklist`, `a11y-audit` y `responsive-audit` sobre la consola (`/account/phones`) y el admin.
   - Ningún hallazgo HIGH o CRITICAL abierto.
-  - **2026-10-20:** `/cso` sobre el diff sin hallazgos confirmados (informe en la KB, el repo es público). Los cinco estados, nombres accesibles y tokens de `/account/phones` y del admin están en sus pruebas. Pase vivo con la base migrada: axe-core (WCAG 2.0–2.2 AA) **sin violaciones** a 367 px en `/account/phones` (oscuro) y en el diálogo de teléfonos del panel, sin desplazamiento horizontal. Queda el `tenant-security-audit` sobre lo añadido en T113 (la línea del teléfono).
+  - **2026-10-20:** `/cso` sobre el diff sin hallazgos confirmados (informe en la KB, el repo es público). Los cinco estados, nombres accesibles y tokens de `/account/phones` y del admin están en sus pruebas. Pase vivo con la base migrada: axe-core (WCAG 2.0–2.2 AA) **sin violaciones** a 367 px en `/account/phones` (oscuro) y en el diálogo de teléfonos del panel, sin desplazamiento horizontal. **2026-10-20, tras la enmienda de R1:** `/cso` sobre la entrada propia y `tenant-security-audit` sobre la credencial, `/app/*`, el reparto, los teléfonos y las migraciones 0158–0162: ningún camino entre clientes, 0 críticos, 0 altos. Corregido con prueba: la renovación y el canje contaban fallos en un solo cubo para todos los teléfonos (ahora la renovación no lleva límite y el canje cuenta por código); el reparto de avisos usaba una regla de «cliente abierto» más floja que cada petición (ahora las dos usan `open_client`, y el barrido de revocación suma «cliente archivado» y «partner suspendido»); el olvido de contraseña manda el correo fuera de la respuesta. Abierto, de configuración: el límite por IP de la entrada va en Cloudflare, con el ALB cerrado a sus rangos (runbook). Detalle en la KB (`compliance/2026-10-20-seguridad-spec-031.md`).
   _§I, Requisitos: 14.1, 15.2_
 - [ ] T111 Validación completa: `./scripts/verify.sh` en verde, todas las secciones de [quickstart.md](quickstart.md) recorridas y anotadas en `evidence/quickstart.md`, y `/speckit-analyze` sin hallazgos críticos. _Requisitos: CE-001–CE-011_
+  - **2026-10-20:** `./scripts/verify.sh` entero en verde tras los arreglos de la auditoría (API 5388, aislamiento, worker, channels, mcp, consola, panel, `next build`, app 124 y expo-doctor 20/20; una prueba de Jest se pasó de tiempo una vez con la máquina cargada y en tres pasadas sueltas pasa). El quickstart está recorrido salvo lo que pide un dispositivo o las cuentas: avisos reales de APNs y FCM, VoiceOver y TalkBack, y el corte de red a mitad de envío. Falta `/speckit-analyze` sobre la enmienda de R1.
 - [X] T113 Lo que encontró el pase vivo en el emulador (2026-10-20), test primero en cada caso:
   - La conversación y su contacto se abren por encima de las pestañas (`apps/mobile/src/app/conversacion/[id]/{index,contacto}.tsx`). Antes, ocultar la barra desde dentro de la pestaña entraba en un bucle de foco con expo-router 58 y la app no abría ninguna conversación. Rutas de avisos y enlaces en `push/routing.ts` y `+native-intent.tsx`; la pila raíz ancla `index`.
   - Inicio se refresca con la Bandeja (`invalidateInbox` en `src/api/query.ts`): la insignia y «Necesita tu atención» no pueden decir cosas distintas.
