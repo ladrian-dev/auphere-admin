@@ -179,7 +179,14 @@ async def test_concurrent_delivery_of_the_same_event_leaves_one_row(client) -> N
 async def test_the_webhook_answers_well_under_the_redirect_budget(client) -> None:
     """No es una meta de estilo: el proveedor espera hasta 10 s antes de
     redirigir al cliente a la página de gracias, y una página de gracias que
-    tarda diez segundos parece un pago fallido."""
+    tarda diez segundos parece un pago fallido.
+
+    Se mide la segunda petición: la primera del proceso paga una sola vez la
+    carga del SDK del proveedor (import perezoso de ``verify_signature``), y en
+    el runner compartido de CI eso la subía a 0,95 s sin que el webhook
+    hubiera cambiado (2026-10-20)."""
+    warm = json.dumps(_event()).encode()
+    await client.post(_PATH, content=warm, headers={"Stripe-Signature": _sign(warm)})
     event = _event()
     body = json.dumps(event).encode()
     started = time.perf_counter()
