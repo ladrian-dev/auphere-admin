@@ -14,7 +14,11 @@ dependencies = [
     "nexus-ucm-schema",
     "langgraph>=1.0.0",
     "langgraph-checkpoint-postgres>=2.0.0",
-    "litellm>=1.52.0",
+    # <1.106: from 1.106.0 every completion() that carries tools imports the
+    # optional ``mcp`` package, which these images do not install — every
+    # agent turn with tools failed («proxy unreachable»). The Dockerfile runs
+    # ``nexus_api.core.litellm_smoke`` so the next such release fails the build.
+    "litellm>=1.52.0,<1.106",
     "structlog>=24.4.0",
     "redis>=5.2.0",
     "sqlalchemy[asyncio]>=2.0.36",
@@ -39,8 +43,8 @@ dependencies = [
     # Whisper transcription (audio) and Claude Sonnet vision (image,
     # OCR fallback for scanned documents). The API package already
     # carries litellm as a dep but the worker imports it directly
-    # for ``atranscription``/``acompletion`` calls.
-    "litellm>=1.52.0",
+    # for ``atranscription``/``acompletion`` calls. Same <1.106 cap as above.
+    "litellm>=1.52.0,<1.106",
     # Block N: ``S3MediaStorage`` (read path used by the worker's
     # MediaProcessor to fetch bytes for transcription/vision).
     "boto3>=1.34.0",

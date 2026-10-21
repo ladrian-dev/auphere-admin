@@ -65,6 +65,10 @@ WORKDIR /build/apps/api
 # into ``site-packages``, NOT as ``.pth`` pointers back to /build/...
 # Otherwise the runtime stage can't find them after stripping /build.
 RUN uv pip install --system --no-cache-dir --no-editable .
+# The install above resolves fresh, not from uv.lock: fail the build if the
+# LiteLLM it picked crashes on any call with tools (1.106.0 did, needing
+# ``mcp``). Local call to a closed port; nothing leaves the build.
+RUN python -m nexus_api.core.litellm_smoke
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 2 — runtime
