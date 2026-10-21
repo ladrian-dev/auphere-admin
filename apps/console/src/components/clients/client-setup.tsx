@@ -41,6 +41,7 @@ export function ClientSetup({
   phone,
   hasAgentVersion = false,
   draftScreens = 0,
+  unlimited = false,
 }: {
   refId: string;
   name: string;
@@ -55,6 +56,8 @@ export function ClientSetup({
   hasAgentVersion?: boolean;
   /** Cuántas pantallas del agente tienen cambios sin publicar. */
   draftScreens?: number;
+  /** Owner, 2026-10-20: Auphere covers its consumption — the balance step is done. */
+  unlimited?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -66,7 +69,7 @@ export function ClientSetup({
   // marcha, y el bloque entero desaparece.
   if (!pending) return null;
 
-  const steps = subSteps({ setup, quota, agentVersion, phone, hasAgentVersion, draftScreens, status, locale });
+  const steps = subSteps({ setup, quota, agentVersion, phone, hasAgentVersion, draftScreens, status, locale, unlimited });
   // Se cuentan **pasos**, no partes: hay tantas barras como pasos, y un
   // contador que cuente otra cosa no cuadra con lo que se ve. Las partes
   // siguen existiendo, pero solo para rellenar la barra a medias.
@@ -145,6 +148,7 @@ function subSteps({
   draftScreens,
   status,
   locale,
+  unlimited = false,
 }: {
   setup: ClientSetupDetail | null;
   quota: ClientQuota | null;
@@ -154,6 +158,7 @@ function subSteps({
   draftScreens: number;
   status: string;
   locale: "es" | "en";
+  unlimited?: boolean;
 }): SubStep[] {
   const publicado = Boolean(agentVersion);
   const sinPublicar = draftScreens > 0;
@@ -186,11 +191,16 @@ function subSteps({
       // agotado tiene el paso hecho y al agente callado.
       step: "quota",
       label: "clients.setup.quota",
-      done: (quota ? 1 : 0) + (quota && quota.remaining_cents > 0 ? 1 : 0),
+      // Con consumo ilimitado el saldo no para al agente: el paso está hecho.
+      done: unlimited ? 2 : (quota ? 1 : 0) + (quota && quota.remaining_cents > 0 ? 1 : 0),
       of: 2,
       // Toda cifra pasa por Intl: «50000» en crudo no es un número, es
       // una cadena que casualmente tiene dígitos.
-      detail: quota ? formatMoney(quota.remaining_cents, locale) : null,
+      detail: unlimited
+        ? translate(locale, "clients.col.credit.unlimited")
+        : quota
+          ? formatMoney(quota.remaining_cents, locale)
+          : null,
     },
   ];
   // «Activación» solo es un paso cuando de verdad falta. Un cliente se crea
