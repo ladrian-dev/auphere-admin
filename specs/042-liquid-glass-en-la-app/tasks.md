@@ -452,13 +452,17 @@ Depende de 2c (T025, T026) y del spike (T019).
       altura va por `withTiming` con `durations.state`. _Requisitos: 2.5, 2.6_
 - [X] T057 [US1] Añadir «Leer más» a `apps/mobile/src/i18n/app.{es,en}.ts`.
       _Requisitos: 2.4_
-- [ ] T058 [US1] Pasar `e2e/send-flaky.yaml` en «13 26» con Maestro sin
+- [X] T058 [US1] Pasar `e2e/send-flaky.yaml` en «13 26» con Maestro sin
       cambiarlo; guardar el log en `evidence/maestro-send.log`. _Requisitos: 10.2_
-      > 2026-10-21, primer intento: `evidence/maestro-send.log` (exit 0, las 100
-      > repeticiones) pero una recarga en caliente a mitad (edición de código
-      > durante el flujo, ver la memoria del proyecto) dejó la pantalla en un
-      > error de contexto y solo 11 envíos llegaron a la base, sin ninguna
-      > clave repetida. Se repite con el código congelado.
+      > 2026-10-21. Primer intento invalidado por una recarga en caliente a
+      > mitad (11 envíos). Segundo, con el código congelado:
+      > `evidence/maestro-send.log` (exit 0, «Repeat 100 times… COMPLETED»);
+      > en la base, **97 filas nuevas con 97 claves distintas y 0 claves
+      > repetidas** en toda la tabla. Los 3 que faltan son los tres últimos:
+      > el disco del Mac se llenó en ese minuto, Postgres dejó de escribir y la
+      > app los dejó en «No se envió. Toca para reintentar»
+      > (`capturas/ios26-13-tras-100-envios.png`): ni duplicados ni pérdida
+      > silenciosa. Postgres se recuperó por WAL al reiniciar Docker.
 - [X] T059 [US1] En «13 26»: capturas
       `evidence/capturas/ios26-13-conversacion-espera-{claro,oscuro}.png` y
       `ios26-13-conversacion-mia-teclado.png`; grabar el paso del panel al
@@ -535,7 +539,7 @@ Depende del spike (T019) y de T025.
 - [X] T068 [P] [US4] En `apps/mobile/src/app/(app)/bandeja/index.tsx`,
       `headerSearchBarOptions.placement` según lo que cerró T019 (`automatic`
       o `stacked`), manteniendo `hideWhenScrolling: false`. _Requisitos: 1.8_
-- [ ] T069 [US4] Comprobar en «13 26» que `NativeTabs` se encoge al bajar y
+- [X] T069 [US4] Comprobar en «13 26» que `NativeTabs` se encoge al bajar y
       vuelve al subir, y que el tinte se lee sobre la Bandeja clara y oscura;
       en un runtime anterior a 26 (si Luis lo aporta) que la barra es la de
       siempre y el log avisa de `minimizeBehavior` sin romper nada; las
@@ -548,6 +552,22 @@ Depende del spike (T019) y de T025.
       Capturas `evidence/capturas/ios26-13-pestanas-encogidas.png`,
       `ios26-13-un-modulo.png` e `ios26-13-inicio-tras-reintentar.png`.
       _Requisitos: 1.1, 1.3, 1.5, 1.6, 3.1, 10.5_
+      > 2026-10-21. **Se encoge al bajar** (`capturas/ios26-13-pestanas-encogidas.png`;
+      > hace falta un desplazamiento largo: uno corto queda bajo el umbral de
+      > UIKit, que fue el «no se encoge» de un primer pase). **No vuelve al
+      > subir** con los gestos sintéticos de Maestro, ni siquiera arriba del
+      > todo (`ios26-13-pestanas-arriba.png`); **vuelve al tocarla**
+      > (`ios26-13-pestanas-tras-tocar.png`). Probado también con el
+      > `ScrollViewMarker` en la vista de Inicio (le da a UIKit la vista de
+      > desplazamiento de la pestaña): igual, así que no se añade. Queda como
+      > H22, pendiente de un iPhone. El tinte se lee en claro y oscuro
+      > (`a11y.md`). Un cliente de un solo módulo: sin barra y sin franja vacía
+      > (`ios26-13-un-modulo.png`); sin la Bandeja, dos pestañas
+      > (`ios26-13-sin-bandeja.png`), que es lo que comprueba
+      > `e2e/dynamic-tabs.yaml` (no se corrió tal cual: su paso 2 pide quitar
+      > el módulo desde el admin; se hizo en la base local y se restauró).
+      > H16 no se reproduce (`ios26-13-inicio-tras-reintentar.png`,
+      > `ios26-13-bandeja-tras-reintentar.png`). iOS < 26: pendiente de Luis.
 - [ ] T070 [US4] Capturas en «13 26»: `evidence/capturas/ios26-13-bandeja-{claro,oscuro}.png`
       (desplazada, con filas bajo las barras), `ios26-13-ajustes-hoja.png`,
       `ios26-13-conversacion-menu.png`; en Android,
@@ -590,7 +610,7 @@ Depende de US1 y US4.
 - [X] T073 [US3] En `apps/mobile/src/ui/button.tsx`, `disabled` por contraste
       del contenido y no por opacidad; comprobar lo mismo en `IconButton`,
       `Segmented` y `RowButton`. _Requisitos: 4.8_
-- [ ] T074 [US3] Medir el contraste sobre las capturas de US1 y US4 con el
+- [X] T074 [US3] Medir el contraste sobre las capturas de US1 y US4 con el
       Medidor de color digital y `culori.wcagContrast` (script de un uso en el
       scratchpad, no en el repo), en las ocho combinaciones del quickstart §5,
       con el contenido más desfavorable bajo la barra (una burbuja de color y
@@ -698,7 +718,7 @@ y el cierre de los criterios de éxito.
       (`/Users/lmatos/Work/Auphere/nexus/research/2026-10-20-liquid-glass-app-movil.md`)
       qué cerró el spike y qué hallazgos cambiaron con el pase en simulador,
       en una sección «Resultado» al final. §IX
-- [ ] T088 `./scripts/verify.sh mobile` entero en verde (typecheck, lint,
+- [X] T088 `./scripts/verify.sh mobile` entero en verde (typecheck, lint,
       jest, `gen:check`, contrato OpenAPI, `expo-doctor`), y
       `./scripts/verify.sh js` por el cambio en `apps/console` (T046). §VII
       > 2026-10-21: `verify.sh mobile` en verde (typecheck, lint, 191 tests,
@@ -706,8 +726,14 @@ y el cierre de los criterios de éxito.
       > pasaron todos los pasos salvo los dos `next build` (panel y consola),
       > que no se ejecutaron: la consola ya ocupa 4,4 GB en `.next` y el disco
       > quedó con ~2 GB libres durante el pase; se corren cuando haya disco.
-- [ ] T089 Recorrer `quickstart.md` de arriba abajo y marcar cada casilla; lo
+      > Al cierre, `verify.sh mobile` en verde otra vez (195 tests).
+- [X] T089 Recorrer `quickstart.md` de arriba abajo y marcar cada casilla; lo
       que no se pudo hacer en esta máquina queda escrito con su razón. §VII
+      > 2026-10-21: recorrido. Hecho en «13 26» todo lo de iOS 26.0 (§2–§8 y la
+      > tabla de contraste marcada). Queda escrito con su razón en
+      > `evidence/hallazgos.md`, «Lo que depende de Luis»: Android (sin disco
+      > para el emulador), iOS < 26 y 26.1 (sin runtime), H22 en un iPhone, y
+      > los `next build` de `verify.sh js` (disco).
 
 ---
 

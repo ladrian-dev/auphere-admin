@@ -152,9 +152,12 @@ transición `layout` en un envoltorio, salta en uno. `@expo/ui` no hace falta.
   curva del teclado para el teclado), nunca con una propiedad de layout
   animada por Reanimated dentro de la lista.
 - La lista va envuelta en el `ScrollViewMarker` de react-native-screens
-  (experimental, `src/components/gamma/scroll-view-marker`) con los cuatro
-  efectos de borde en `hidden`, y arranca bajo el borde inferior de la
-  cabecera (`marginTop: headerHeight`); el hueco de arriba es solo 8 pt.
+  (`react-native-screens/experimental`; está compilado porque expo-router
+  construye la librería con `RNS_GAMMA_ENABLED`) con los cuatro efectos de
+  borde en `hidden`, y, donde la cabecera es transparente (Liquid Glass),
+  arranca bajo su borde inferior (`marginTop: headerHeight`); en Android y
+  antes de iOS 26 el contenido ya empieza bajo la cabecera opaca, sin hueco.
+  El hueco de arriba es solo 8 pt.
 - `offset.opened` del `KeyboardStickyView` compensa `insets.bottom`, para que
   no quede un hueco entre el cuadro y el teclado.
 
@@ -166,10 +169,17 @@ transición `layout` en un envoltorio, salta en uno. `@expo/ui` no hace falta.
   contraste» o «Reducir transparencia», que vuelven el efecto opaco). Se vio
   con `KeyboardChatScrollView`, con un separador animado por Reanimated y con
   un separador fijo: cualquier hilo más alto que la pantalla.
-- La opción `scrollEdgeEffects` de la pantalla no llega: react-native-screens
-  busca la vista de desplazamiento por el **primer descendiente** de cada
-  nivel, y el primero de la pantalla es la configuración de la cabecera. El
-  `ScrollViewMarker` aplica el efecto a lo que envuelve, y sí llega.
+- La opción `scrollEdgeEffects` de la pantalla no llega al hilo (medido:
+  sigue al 13 %). react-native-screens la aplica a la primera vista de
+  desplazamiento de la cadena de primeros descendientes **cuando llegan las
+  opciones**; lo más probable es que entonces el hilo aún no exista (la
+  pantalla pinta primero el esqueleto de carga y monta la lista al llegar la
+  conversación). El `ScrollViewMarker` aplica el efecto a lo que envuelve
+  cada vez que se monta, y sí llega. (Una primera explicación —que el primer
+  descendiente era la configuración de la cabecera— era falsa: la librería
+  pinta esa configuración *después* del contenido.) El marcador va en
+  `ContentScroll` (`src/ui/content-scroll.tsx`), que en Android es una vista
+  normal.
 - Sin efecto suave, el contenido que pasara bajo el título de la cabecera
   chocaría con él; por eso la lista empieza bajo la cabecera. La cabecera de
   vidrio sigue siendo la del sistema (sus botones son cápsulas de vidrio); lo

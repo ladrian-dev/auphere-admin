@@ -5,7 +5,6 @@ import { useHeaderHeight, useIsFocused } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, FlatList, Keyboard, LayoutAnimation, Platform, Pressable, StyleSheet, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
-import { ScrollViewMarker } from "react-native-screens/src/components/gamma/scroll-view-marker";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,8 +22,10 @@ import { useLocale, useT } from "@/i18n/t";
 import { durations } from "@/motion/durations";
 import { useMotion } from "@/motion/use-motion";
 import { setOpenConversation } from "@/push/handler";
+import { glassAvailable } from "@/theme/glass";
 import { useTheme } from "@/theme/theme";
 import { useActions } from "@/ui/actions";
+import { ContentScroll } from "@/ui/content-scroll";
 import { IconButton } from "@/ui/button";
 import { icons } from "@/ui/icon";
 import { useOnline } from "@/ui/online";
@@ -56,6 +57,8 @@ export default function ConversationScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
+  // With Liquid Glass the header is transparent and the screen runs under it; elsewhere it starts below it.
+  const underHeader = glassAvailable() ? headerHeight : 0;
   const focused = useIsFocused();
   const qc = useQueryClient();
 
@@ -228,7 +231,7 @@ export default function ConversationScreen() {
         {detail.isError ? (
           <ErrorState body={t("inbox.thread.error")} onRetry={() => void detail.refetch()} />
         ) : (
-          <View style={[styles.pad, { paddingTop: headerHeight + 16 }]}>
+          <View style={[styles.pad, { paddingTop: underHeader + 16 }]}>
             <Skeleton rows={4} label={t("inbox.thread.loading")} />
           </View>
         )}
@@ -238,13 +241,10 @@ export default function ConversationScreen() {
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.background }]}>
-      {/* The thread starts under the header's edge, inside a marker that hides the scroll edge effects of iOS 26: on an
-          inverted list the system draws its gradient over the whole thread, and the stack's own option never reaches
-          this list (H20). With no soft edge, the rows stop at the header instead of running under its title. */}
-      <ScrollViewMarker
-        style={[styles.fill, { marginTop: headerHeight }]}
-        scrollEdgeEffects={{ top: "hidden", bottom: "hidden", left: "hidden", right: "hidden" }}
-      >
+      {/* The thread hides the scroll-edge effects of iOS 26: on an inverted list the system draws its gradient over
+          the whole thread (H20). With no soft edge, the rows start under the header's edge instead of running under
+          its title — where the header is transparent; elsewhere the content already starts below it. */}
+      <ContentScroll edges="hidden" style={{ marginTop: underHeader }}>
       <FlatList<Row>
         inverted
         style={styles.fill}
@@ -302,7 +302,7 @@ export default function ConversationScreen() {
           </View>
         }
       />
-      </ScrollViewMarker>
+      </ContentScroll>
       <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={styles.foot}>
         {mode ? (
           <ThreadFoot

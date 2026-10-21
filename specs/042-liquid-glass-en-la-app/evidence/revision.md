@@ -42,9 +42,10 @@ Una fila fallida de severidad 1 → **9/10**.
 | R-03 | Ajustes | «Versión 1.0.0» sin el entorno en un build de desarrollo (la prueba de `versionLabel` espera «· development»): el dev client de EAS no pasa la variante al JS. No afecta a producción | 1 | abierto, fuera de esta spec (031 R11) |
 | R-04 | Conversación, con el teclado | El hilo arranca bajo el borde de la cabecera y no pasa bajo su título: se pierde el fundido del sistema bajo la barra. Consecuencia deliberada de H20 (el efecto de borde del sistema atenuaba el hilo entero); los botones de la barra siguen en vidrio | 0 | aceptado; research D4 |
 | R-06 | Conversación, oscuro + «Aumentar contraste» | Dos capturas con los botones de barra como discos claros y el tinte menta a 1,85:1. Era un artefacto de la recarga en caliente de Metro durante la tanda: con el código congelado no se reproduce y el disco sigue el esquema (6,9:1). Sin cambio (H21) | 0 | cerrado |
+| R-07 | Pestañas | La barra se encoge al bajar y, en el simulador, no vuelve al subir; vuelve al tocarla. La insignia de espera queda oculta mientras tanto (H22) | 2 | abierto: comprobar en un iPhone |
 | R-05 | Bandeja | Con cinco conversaciones la lista no llega a pasar bajo las barras; la captura «desplazada» de T070 no es posible con esta semilla | 0 | no es un problema de la app |
 
-Nada de severidad 2 o más. Los seis hallazgos nuevos del pase (H14, H17–H20)
+Nada de severidad 3 o 4; una de severidad 2 abierta (R-07, H22), a confirmar en hardware. Los seis hallazgos nuevos del pase (H14, H17–H20)
 están cerrados en `hallazgos.md` con su captura de antes y de después.
 
 ## 2. `design-critique` — una crítica por pantalla

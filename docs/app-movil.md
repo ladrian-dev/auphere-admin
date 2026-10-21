@@ -75,8 +75,9 @@ para entrar (solo esquema propio).
     en iOS (`ConversationToolbar`, `Stack.Toolbar.Menu`, con «Devolver al
     agente» la primera) y la hoja de acciones de siempre en Android; la lista
     de acciones es una sola (`conversationMenu`). El hilo es un `FlatList`
-    invertido envuelto en el `ScrollViewMarker` de react-native-screens con
-    los efectos de borde de iOS 26 ocultos y empieza bajo la cabecera: con la
+    invertido envuelto en el `ScrollViewMarker` de react-native-screens
+    (`ContentScroll`; en Android, una vista normal) con los efectos de borde
+    de iOS 26 ocultos y, con la cabecera de vidrio, empieza bajo ella: con la
     lista invertida, el efecto del sistema atenuaba el hilo entero (spec 042,
     H20, research D4). El relleno que deja sitio al pie es un separador en
     estado de React animado con `LayoutAnimation`, nunca una propiedad de
