@@ -18,8 +18,29 @@ jest.mock("@/api/endpoints", () => ({ endpoints: { setNotices: jest.fn(), reques
 jest.mock("@/ui/online", () => ({ useOnline: () => true }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ setQueryData: jest.fn() }) }));
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: jest.fn() }));
+let mockGlass = false;
+jest.mock("expo-glass-effect", () => ({ isLiquidGlassAvailable: () => mockGlass }));
 
 const Ajustes = require("@/app/ajustes").default;
+
+describe("as a sheet with glass (spec 042, T063, T066, R1.7)", () => {
+  it("with Liquid Glass the scroll paints no background and respects the transparent header's inset", async () => {
+    mockGlass = true;
+    const { StyleSheet } = require("react-native");
+    await render(<Ajustes />);
+    const scroll = screen.getByTestId("settings-scroll");
+    expect(StyleSheet.flatten(scroll.props.style)?.backgroundColor).toBeUndefined();
+    expect(scroll.props.contentInsetAdjustmentBehavior).toBe("automatic");
+    mockGlass = false;
+  });
+
+  it("without it, the background of today", async () => {
+    const { StyleSheet } = require("react-native");
+    const { tokens } = require("@/theme/tokens.gen");
+    await render(<Ajustes />);
+    expect(StyleSheet.flatten(screen.getByTestId("settings-scroll").props.style)?.backgroundColor).toBe(tokens.light.background);
+  });
+});
 
 it("who you are here: name, email, business and role", async () => {
   await render(<Ajustes />);

@@ -1,0 +1,16 @@
+Running on 13 26 - iOS 26.0 - D61F4EE7-0F63-416B-9CC5-18DFD648703A
+ > Flow send-flaky
+Stop ${APP_ID || "com.auphere.customers.dev"}... COMPLETED
+Launch app "${APP_ID || "com.auphere.customers.dev"}"... COMPLETED
+Assert that "Development Build|Tu negocio, en el bolsillo|Your business, in your pocket|Hola, .*|Hi, .*" is visible... COMPLETED
+Run _dev-server.yaml when "Development Build" is visible...
+Run _dev-server.yaml when "Development Build" is visible... SKIPPED
+Open auphere-customers://inbox/${CONVERSATION_ID}... COMPLETED
+Assert that id: composer-input is visible... COMPLETED
+Repeat 100 times...
+  Tap on id: composer-input... COMPLETED
+  Input text random TEXT... COMPLETED
+  Double tap on id: send... COMPLETED
+  Run flow when "No se envió. Toca para reintentar.|Not sent. Tap to retry." is visible...
+  Run flow when "No se envió. Toca para reintentar.|Not sent. Tap to retry." is visible... SKIPPED
+Repeat 100 times... COMPLETED

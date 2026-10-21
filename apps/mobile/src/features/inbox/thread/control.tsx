@@ -1,18 +1,23 @@
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import type { T } from "@/i18n/t";
-import { useTheme } from "@/theme/theme";
 import { Button } from "@/ui/button";
 import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
 import type { ComposerMode } from "../model";
 
+/** How many lines of the agent's reason the foot shows before «Leer más» (R2.3). */
+const REASON_LINES = 2;
+
 /**
- * The bottom of a conversation nobody here answers yet (R6.1): why it waits,
- * said BEFORE the action, and «Tomar el control» full width under the thumb.
- * When the agent or another person answers, who — and the same action.
- * Resolved: it says so, and «Reabrir».
+ * What the foot says when this person does not answer yet (R6.1 of the 031;
+ * spec 042 R2.3, R2.4, R2.9). Content only — the surface is `ThreadFoot`'s.
+ * Waiting: why, said BEFORE the action, in two lines, with «Leer más» when it
+ * does not fit; then «Tomar el control» under the thumb and «Devolver al
+ * agente». When the agent or another person answers: who, and the same
+ * action. Resolved: it says so, and «Reabrir».
  */
 export function ControlCard({
   mode,
@@ -22,6 +27,7 @@ export function ControlCard({
   onTakeOver,
   onGiveBack,
   onReopen,
+  onReadMore,
 }: {
   mode: Exclude<ComposerMode, { kind: "mine" }>;
   busy: boolean;
@@ -30,34 +36,54 @@ export function ControlCard({
   onTakeOver: () => void;
   onGiveBack: () => void;
   onReopen: () => void;
+  onReadMore?: () => void;
 }) {
-  const { colors, radius } = useTheme();
+  const [overflows, setOverflows] = useState(false);
   const off = busy || !online;
 
   if (mode.kind === "resolved") {
     return (
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: radius.md }]}>
+      <View style={styles.stack}>
         <Text variant="callout" tone="mutedForeground">
           {t("inbox.composer.resolved")}
         </Text>
-        <Button label={t("inbox.action.reopen")} variant="secondary" full busy={busy} disabled={!online} onPress={onReopen} />
+        <Button label={t("inbox.action.reopen")} variant="secondary" full busy={busy} disabled={!online} onPress={onReopen} testID="reopen" />
       </View>
     );
   }
 
   if (mode.kind === "waiting") {
+    const reason = mode.reason ?? t("inbox.composer.waiting.noReason");
     return (
-      <View
-        style={[styles.card, { backgroundColor: colors.warningBg, borderColor: colors.warningSolid, borderRadius: radius.md }]}
-        testID="waiting-card"
-      >
+      <View style={styles.stack} testID="waiting-card">
         <View style={styles.head}>
           <Icon name={icons.hand} size={18} tone="warningText" />
           <Text variant="bodyStrong" style={styles.flex} accessibilityRole="header">
             {t("inbox.composer.waiting.title")}
           </Text>
         </View>
-        <Text variant="callout">{mode.reason ?? t("inbox.composer.waiting.noReason")}</Text>
+        <Text variant="callout" numberOfLines={REASON_LINES} testID="waiting-reason">
+          {reason}
+        </Text>
+        {/* The same words laid out without a limit, only to know whether they fit; nobody sees or hears them. */}
+        <Text
+          variant="callout"
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          pointerEvents="none"
+          style={styles.measure}
+          testID="waiting-reason-measure"
+          onTextLayout={(e) => setOverflows(e.nativeEvent.lines.length > REASON_LINES)}
+        >
+          {reason}
+        </Text>
+        {overflows && onReadMore ? (
+          <Pressable accessibilityRole="button" onPress={onReadMore} hitSlop={8} style={styles.more}>
+            <Text variant="subhead" tone="primaryText">
+              {t("app.inbox.readMore")}
+            </Text>
+          </Pressable>
+        ) : null}
         <Button label={t("inbox.composer.takeover")} full busy={busy} disabled={!online} onPress={onTakeOver} testID="take-over" />
         <Button label={t("inbox.composer.giveBack")} variant="ghost" full disabled={off} onPress={onGiveBack} />
       </View>
@@ -65,7 +91,7 @@ export function ControlCard({
   }
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: radius.md }]}>
+    <View style={styles.stack}>
       <View style={styles.head}>
         <Icon name={icons.bot} size={18} tone="primaryText" />
         <Text variant="callout" tone="mutedForeground" style={styles.flex}>
@@ -78,7 +104,9 @@ export function ControlCard({
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 12, gap: 10, borderWidth: StyleSheet.hairlineWidth * 2 },
+  stack: { padding: 16, gap: 10 },
   head: { flexDirection: "row", alignItems: "center", gap: 8 },
   flex: { flex: 1, minWidth: 0 },
+  measure: { position: "absolute", left: 16, right: 16, top: 0, opacity: 0 },
+  more: { alignSelf: "flex-start", minHeight: 32, justifyContent: "center" },
 });

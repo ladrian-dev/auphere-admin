@@ -68,14 +68,20 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
                   close();
                   a.onPress();
                 }}
-                style={({ pressed }) => [styles.item, { opacity: pressed ? 0.6 : 1 }]}
+                android_ripple={{ color: colors.muted }}
+                style={({ pressed }) => [styles.item, pressed ? { backgroundColor: colors.muted } : null]}
               >
                 <Text variant="body" tone={a.destructive ? "destructive" : "foreground"}>
                   {a.label}
                 </Text>
               </Pressable>
             ))}
-            <Pressable accessibilityRole="button" onPress={close} style={({ pressed }) => [styles.item, { opacity: pressed ? 0.6 : 1 }]}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={close}
+              android_ripple={{ color: colors.muted }}
+              style={({ pressed }) => [styles.item, pressed ? { backgroundColor: colors.muted } : null]}
+            >
               <Text variant="bodyStrong" tone="mutedForeground">
                 {t("app.cancel")}
               </Text>

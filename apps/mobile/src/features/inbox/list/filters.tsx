@@ -65,13 +65,14 @@ function Chip({ label, on, onPress, icon = false }: { label: string; on: boolean
       accessibilityState={icon ? undefined : { checked: on }}
       onPress={onPress}
       hitSlop={{ top: 6, bottom: 6 }}
+      // The press is a tint, never a drop in opacity (spec 042, R7.2).
+      android_ripple={{ color: on ? colors.primaryDeep : colors.muted }}
       style={({ pressed }) => [
         styles.chip,
         {
           borderRadius: radius.full,
-          backgroundColor: on ? colors.primary : colors.card,
-          borderColor: on ? colors.primary : colors.border,
-          opacity: pressed ? 0.7 : 1,
+          backgroundColor: on ? (pressed ? colors.primaryDeep : colors.primary) : pressed ? colors.muted : colors.card,
+          borderColor: on ? (pressed ? colors.primaryDeep : colors.primary) : colors.border,
         },
       ]}
     >

@@ -18,22 +18,28 @@ pide un dispositivo o un runtime que no está en la máquina queda marcado.
   cd apps/mobile && eas build -p ios --profile development-simulator
   ```
 
-  Los dos simuladores ya existen en esta máquina (creados el 2026-10-21 con
-  el runtime `com.apple.CoreSimulator.SimRuntime.iOS-26-0`, iOS 26.0.1). Si
-  hay que recrearlos:
+  El simulador de referencia es **«13 26»** (iPhone 13, iOS 26.0.1, runtime
+  `com.apple.CoreSimulator.SimRuntime.iOS-26-0`): Luis pidió el 2026-10-21
+  medir en un iPhone 13 y no en el SE, y en esta máquina solo cabe un
+  simulador arrancado a la vez (disco). Los dos de antes («SE 26», «17 26»)
+  se borraron; las dos capturas de Inicio del SE se conservan como histórico.
+  Si hay que recrearlo:
 
   ```bash
-  xcrun simctl create "SE 26" "iPhone SE (3rd generation)" com.apple.CoreSimulator.SimRuntime.iOS-26-0
+  xcrun simctl create "13 26" "iPhone 13" com.apple.CoreSimulator.SimRuntime.iOS-26-0
   ```
 
-  ```bash
-  xcrun simctl create "17 26" "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-0
-  ```
+  Después, `xcrun simctl boot "13 26"`, `xcrun simctl install booted <ruta
+  del .app>` y `pnpm start` para Metro. Las capturas se toman con `xcrun
+  simctl io <udid> screenshot`; en un build de desarrollo, apagar antes el
+  botón flotante del dev client (menú → «Tools button»), que tapa el botón
+  de Ajustes.
 
-  Después, `xcrun simctl boot "SE 26"`, `xcrun simctl install booted <ruta
-  del .app>` y `pnpm start` para Metro.
-
-- **El emulador de Android** de la 031, con la pila local arriba
+- **El emulador de Android** de la 031, con la pila local arriba. El build de
+  desarrollo de Android está en EAS (`eas build -p android --profile
+  development`, 2026-10-21, build `f6f47ac2`; la primera vez crea el keystore
+  de desarrollo en la cuenta). El emulador exige ~2 GB libres para arrancar;
+  el 2026-10-21 no los había (`hallazgos.md`, «Lo que depende de Luis»)
   (`docker compose up -d`).
 - **Las skills de revisión** en `apps/mobile/.claude/skills/`
   (`npx skills experimental_install` si faltan).
@@ -67,9 +73,9 @@ resultado. Lo que decide: D3 (vidrio que sigue la altura), D4 (teclado), D6
 - `pnpm test --ci -- inicio`: el número de espera aparece una vez; sin nada
   pendiente no hay cifra a cero; sin módulo de Consumo no hay fila navegable;
   con saldo bajo y espera, dos filas con un dato cada una.
-- En el emulador de Android y en «SE 26», con tres clientes de semilla:
+- En el emulador de Android y en «13 26», con tres clientes de semilla:
   con dos conversaciones esperando, sin nada pendiente, con saldo bajo.
-- **CE-002 (Inicio)**: en «SE 26», al tamaño de texto por defecto, la atención
+- **CE-002 (Inicio)**: en «13 26», al tamaño de texto por defecto, la atención
   y el dinero se ven sin desplazar. Captura `evidence/capturas/ios26-se-inicio-claro.png`.
 
 ## 3. Historia 5 · Saber a dónde lleva cada cosa (R6, R8, R9)
@@ -88,7 +94,7 @@ resultado. Lo que decide: D3 (vidrio que sigue la altura), D4 (teclado), D6
   `GlassView` con vidrio y `View` sin él o con «Reducir transparencia»; los
   `testID` siguen; «Tomar el control» dispara la vibración de éxito.
 - Maestro: `e2e/send-flaky.yaml` sigue pasando sin cambios.
-- En «SE 26», con una conversación en espera:
+- En «13 26», con una conversación en espera:
   - se ven el último mensaje, el motivo y «Tomar el control» sin desplazar
     (CE-002);
   - desde Inicio, dos toques hasta escribir (CE-003);
@@ -99,8 +105,8 @@ resultado. Lo que decide: D3 (vidrio que sigue la altura), D4 (teclado), D6
   - con el teclado abierto, el cuadro queda sobre el teclado y el último
     mensaje a la vista;
   - un hilo de un solo mensaje: el mensaje queda por encima de la superficie.
-- Capturas: `ios26-se-conversacion-espera-{claro,oscuro}.png`,
-  `ios26-se-conversacion-mia-teclado.png`.
+- Capturas: `ios26-13-conversacion-espera-{claro,oscuro}.png`,
+  `ios26-13-conversacion-mia-teclado.png`.
 
 ## 5. Historia 3 · Legible siempre (CE-005, R4)
 
@@ -110,10 +116,10 @@ Bandeja llena):
 
 | | claro | oscuro |
 |---|---|---|
-| normal | ☐ | ☐ |
-| «Reducir transparencia» | ☐ | ☐ |
-| «Aumentar contraste» | ☐ | ☐ |
-| texto al máximo | ☐ | ☐ |
+| normal | ☑ 2026-10-21 | ☑ 2026-10-21 |
+| «Reducir transparencia» | ☑ 2026-10-21 | ☑ 2026-10-21 |
+| «Aumentar contraste» | ☑ 2026-10-21 | ☑ 2026-10-21 (H21 corregido en el pase) |
+| texto al máximo | ☑ 2026-10-21 | ☑ 2026-10-21 |
 
 - El contraste se mide sobre la captura, con el Medidor de color digital de
   macOS sobre el texto y su fondo, y la razón con `culori.wcagContrast` (ya
@@ -129,11 +135,11 @@ Bandeja llena):
 
 ## 6. Historia 4 · La navegación es de vidrio (CE-007, R1)
 
-- En «17 26»: desplazar la Bandeja y ver las filas a través de las dos barras;
+- En «13 26»: desplazar la Bandeja y ver las filas a través de las dos barras;
   la barra de pestañas se encoge al bajar y vuelve; los botones de la barra son
   cápsulas del sistema; Ajustes se abre a 0,6 y sube a 1; se cierra deslizando.
-- Capturas: `ios26-17-bandeja-{claro,oscuro}.png`,
-  `ios26-17-ajustes-hoja.png`.
+- Capturas: `ios26-13-bandeja-{claro,oscuro}.png`,
+  `ios26-13-ajustes-hoja.png`.
 - **CE-007, Android**: ninguna superficie imita el vidrio. Capturas
   `android-bandeja-{claro,oscuro}.png`.
 - **CE-007, iOS < 26 (pendiente de Luis):** un iPhone con iOS 18 o un runtime

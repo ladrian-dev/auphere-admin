@@ -13,6 +13,7 @@ import { kindsFor } from "@/features/notices";
 import { useT } from "@/i18n/t";
 import { haptics } from "@/motion/haptics";
 import { usePush } from "@/push/provider";
+import { glassAvailable } from "@/theme/glass";
 import { TOUCH, useTheme } from "@/theme/theme";
 import { Divider, RowButton } from "@/ui/bits";
 import { Button } from "@/ui/button";
@@ -81,7 +82,13 @@ export default function Ajustes() {
     ]);
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    // With Liquid Glass the sheet's own material shows through; before it, the container is opaque (spec 042, R1.7).
+    <ScrollView
+      testID="settings-scroll"
+      style={glassAvailable() ? undefined : { backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+    >
       <Card testID="settings-account">
         <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
           {t("app.account")}

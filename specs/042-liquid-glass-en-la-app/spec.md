@@ -303,8 +303,9 @@ sistema al lado (Ajustes del teléfono, Mensajes), en iOS 26 y en Android.
   cifras inventadas.
 - **El texto al máximo con el panel de espera.** El panel crece, pero el hilo
   se sigue pudiendo desplazar para leer cualquier mensaje.
-- **iOS 26 con un iPhone de 4,7″.** Las condiciones de «sin desplazar» se miden
-  aquí, al tamaño de texto por defecto.
+- **iOS 26 en un iPhone 13 (6,1″).** Las condiciones de «sin desplazar» se
+  miden aquí, al tamaño de texto por defecto (decisión de Luis, 2026-10-21; el
+  SE de 4,7″ sigue siendo el suelo que admite iOS 26, pero no se mide).
 
 ## Requisitos *(obligatorio)*
 
@@ -590,8 +591,9 @@ Medibles y sin tecnología dentro.
   superior, aunque el hilo siga pudiendo desplazarse hasta el último mensaje.
 - **El vocabulario compartido con la consola se cambia en su fuente.** La app
   lo recibe generado, como hoy.
-- **El teléfono más pequeño que admite iOS 26 es el iPhone SE de 4,7″.** Es la
-  referencia de R5.6 y de CE-002.
+- **El teléfono más pequeño que admite iOS 26 es el iPhone SE de 4,7″.** Las
+  medidas de R5.6 y de CE-002 se toman en un iPhone 13 (6,1″) por decisión de
+  Luis del 2026-10-21; el SE queda como suelo conocido y no medido.
 - **El pase visual necesita un equipo que hoy no está.** Hace falta Xcode 26.4
   o posterior, espacio en disco para compilar para iOS, y simuladores de iOS 26
   y de un iOS anterior.

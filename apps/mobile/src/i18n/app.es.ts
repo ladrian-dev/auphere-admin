@@ -93,6 +93,7 @@ export const appEs = {
   "app.inbox.replies.pick": "Insertar respuesta guardada",
   "app.inbox.open.failed": "No se pudo abrir el archivo.",
   "app.inbox.contact": "Contacto",
+  "app.inbox.readMore": "Leer más",
   // ── avisos (R8, R10) ─────────────────────────────────────────────
   "app.notices.title": "Entérate de lo que te necesita",
   "app.notices.body": "Te avisamos en este teléfono de tres cosas, y de nada más:",

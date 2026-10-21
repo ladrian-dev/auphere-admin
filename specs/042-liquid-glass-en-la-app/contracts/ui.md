@@ -15,7 +15,7 @@ barra) o un `GlassView` de `expo-glass-effect` donde el sistema no llega.
 |---|---|---|---|---|
 | Barra superior (y título grande) | Vidrio del sistema, sin fondo propio | El sistema la vuelve opaca (lo comprueban T018 y T074) | Opaca `colors.background`, como hoy | Material, `colors.background`, como hoy |
 | Barra de pestañas | Vidrio del sistema | El sistema la vuelve opaca (T018, T074) | La de siempre | Material 3 |
-| Botones de barra | `Stack.Toolbar.Button` / `.Menu` | Ídem | Ídem | `headerRight` con `IconButton` |
+| Botones de barra | `Stack.Toolbar.Button` / `.Menu`, tinte `primaryText` | Ídem | Ídem | `headerRight` con `IconButton` |
 | Pie de la conversación (`FloatingSurface`) | `GlassView` `regular`, flotante, radio `concentric` | **Opaca y anclada** (la app lo decide) | Opaca y anclada: el pie de la 031 | Opaca y anclada |
 | Hojas (contacto, Ajustes) | Material del sistema; el contenedor no pinta fondo | El sistema las vuelve opacas (T018, T074) | Contenedor con `colors.background` | Hoja de Material (`formSheet`) / pantalla (Ajustes) |
 | Tarjetas, grupos, filas, burbujas, cifras, gráficos, formularios, avisos | **Opacos siempre** | | | |
@@ -55,6 +55,15 @@ Prohibido: un `GlassView` dentro de otro; opacidad menor que 1 en un
   `onLayout` y lleva la altura del contenedor con `withTiming` a
   `durations.state` y `Easing.out(cubic)`; con «Reducir movimiento», sin
   animar. Una transición `layout` en un envoltorio no mueve el vidrio.
+- **`clearance`**: la pantalla le pasa un `SharedValue` y la superficie
+  escribe en él la **holgura** — contenido, borde, margen flotante y
+  `FOOT_GAP` (8) — que la lista usa como relleno inferior; si solo cambia el
+  marco (borde con «Aumentar contraste», margen al cambiar el material), la
+  holgura se recalcula sin volver a medir.
+- **Nunca ocupa toda la pantalla** (R4.7): con el texto al máximo el panel de
+  espera sobrepasa la ventana; la superficie se detiene en `FOOT_MAX_SHARE`
+  (0,6) de la altura de la ventana y su contenido se desplaza dentro
+  (`ScrollView`, solo entonces), de modo que el hilo conserva el resto.
 - Expone `onLayout` para que la pantalla mida su altura.
 
 **Pruebas:** con vidrio disponible renderiza `GlassView` flotante; sin él,
@@ -91,8 +100,12 @@ contraste», `borderWidth` 1 y `colors.border` en todo el contorno.
   al tono de pulsación (`primary` → `primaryDeep`, `secondary` → `muted`);
   Android, `android_ripple`. Fuera la opacidad 0,75.
 - `busy` y `disabled` se distinguen sobre vidrio y sobre opaco: `disabled` baja
-  el contraste del **contenido** (`mutedForeground`) y no la opacidad del
-  botón (R4.8).
+  el contraste del **contenido** (`mutedForeground`) y apaga el relleno
+  (`muted`; `ghost` sigue sin fondo), nunca la opacidad del botón (R4.8).
+  `busy` conserva los tonos y el tamaño del botón, y lo dice a la tecnología
+  de apoyo. Con «Reducir movimiento», la pulsación es solo el tono, sin escala.
+- `IconButton` es la misma cápsula: tono `muted` al apoyar, ondulación sin
+  borde en Android, el icono en `mutedForeground` si está desactivado.
 
 ### `RowButton` (existente)
 
@@ -125,7 +138,10 @@ byte a byte con la consola).
 | caption | 12/16 500 | xs 12 |
 | figure | 28/34 700 tabular | 2xl 32 tabular |
 
-Sin `letterSpacing` en ninguna variante de iOS.
+Sin `letterSpacing` en ninguna variante de iOS. Cada variante de iOS lleva
+`maxFontSizeMultiplier` = su tamaño en AX5 de la tabla de Apple entre el de
+base (`maxScale` en `type.ts`): largeTitle 60, title 43, headline/body 53,
+callout 51, subhead 49, footnote 44, caption 43, figure 44 (R4.6).
 
 ## 3. Composición de las pantallas
 
@@ -200,10 +216,13 @@ contenido según `mode`:
   ella quien anima su altura (`withTiming`, `durations.state`,
   `Easing.out(Easing.cubic)`); con «Reducir movimiento», la altura cambia sin
   animar y los hijos solo se funden (R2.5, R2.6).
-- La lista usa un `renderScrollComponent` **memorizado** (inline remonta el
-  scroll en cada render) y pone a mano el hueco de la cabecera transparente.
-- La lista recibe `extraContentPadding` igual a la altura medida de la
-  superficie (R2.2).
+- La lista es el `FlatList` invertido de React Native, envuelto en el
+  `ScrollViewMarker` de react-native-screens con los efectos de borde de iOS
+  26 en `hidden` (H20), y empieza bajo la cabecera (`marginTop: headerHeight`).
+- La superficie entrega su holgura por `onClearance`; la pantalla la guarda en
+  estado y pinta un separador al pie visual de la lista con esa altura más lo
+  que el teclado levanta el pie, animado con `LayoutAnimation` (R2.2). Nada
+  de propiedades de layout animadas por Reanimated dentro de la lista.
 - `testID` que no cambian: `waiting-card` (ahora en la superficie en modo
   `waiting`), `take-over`, `composer-input`, `send`.
 

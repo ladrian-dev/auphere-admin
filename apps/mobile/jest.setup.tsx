@@ -27,6 +27,17 @@ jest.mock("expo-localization", () => ({
 
 jest.mock("expo-symbols", () => ({ SymbolView: () => null }));
 
+// Liquid Glass is a native module; here there is no glass unless a test says so (floating-surface.test.tsx).
+jest.mock("expo-glass-effect", () => {
+  const RN = jest.requireActual<typeof import("react-native")>("react-native");
+  return {
+    isLiquidGlassAvailable: () => false,
+    isGlassEffectAPIAvailable: () => false,
+    GlassView: (p: Record<string, unknown>) => <RN.View testID="glass-view" {...p} />,
+    GlassContainer: (p: Record<string, unknown>) => <RN.View {...p} />,
+  };
+});
+
 // Reanimated 4's own double does not load under Jest; this one is enough (test/reanimated.ts).
 jest.mock("react-native-reanimated", () => require("./test/reanimated"));
 

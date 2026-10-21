@@ -135,40 +135,65 @@ transición `layout` en un envoltorio, salta en uno. `@expo/ui` no hace falta.
 - **`expo-blur`.** Es el material antiguo, y la dirección prohíbe el vidrio
   hecho a mano.
 
-## D4 · El hilo pasa por debajo: lista con el teclado de keyboard-controller
+## D4 · El hilo pasa por debajo: lista invertida con un separador, y el pie en `KeyboardStickyView`
 
-**Decisión:**
-- La conversación deja el `KeyboardAvoidingView` con el pie anclado y pasa a
-  `KeyboardChatScrollView` como `renderScrollComponent` del `FlatList`
-  invertido, con `FloatingSurface` dentro de un `KeyboardStickyView`
-  superpuesto al pie.
-- La altura de la superficie se mide con `onLayout`, va a un `SharedValue` y
-  entra como `extraContentPadding`: el último mensaje queda entero por encima
-  de los controles (R2.2) y el relleno crece con el cuadro.
-- La lista lleva `automaticallyAdjustContentInsets={false}` y
-  `contentInsetAdjustmentBehavior="never"`, como pide la librería, así que el
-  hueco de la cabecera transparente se pone a mano desde `useHeaderHeight()`.
-  En una lista invertida, ese hueco es el `paddingBottom` del contenido.
+**Decisión (revisada el 2026-10-21, H20):**
+- La conversación deja el `KeyboardAvoidingView` con el pie anclado: el
+  `FloatingSurface` va dentro de un `KeyboardStickyView` superpuesto al pie,
+  y el `FlatList` invertido sigue siendo el de React Native, sin
+  `renderScrollComponent`.
+- La superficie mide su contenido con `onLayout` y entrega su **holgura**
+  (contenido, borde, margen flotante y `FOOT_GAP`) a la pantalla como un
+  número (`onClearance`). La pantalla la guarda en estado y pinta un
+  **separador** al pie visual de la lista (`ListHeaderComponent` de la lista
+  invertida) con esa altura más lo que el teclado levanta el pie
+  (`Keyboard.addListener`, `keyboardWillShow/Hide`). Los cambios van con
+  `LayoutAnimation` del sistema (`durations.state` para el pie; la duración y
+  curva del teclado para el teclado), nunca con una propiedad de layout
+  animada por Reanimated dentro de la lista.
+- La lista va envuelta en el `ScrollViewMarker` de react-native-screens
+  (experimental, `src/components/gamma/scroll-view-marker`) con los cuatro
+  efectos de borde en `hidden`, y arranca bajo el borde inferior de la
+  cabecera (`marginTop: headerHeight`); el hueco de arriba es solo 8 pt.
 - `offset.opened` del `KeyboardStickyView` compensa `insets.bottom`, para que
   no quede un hueco entre el cuadro y el teclado.
 
-**Por qué:**
-- Es el montaje que la librería documenta para un chat con cuadro flotante, y
-  la app ya depende de ella (1.22.7).
-- Con el pie flotante, el hilo tiene que poder desplazarse por debajo hasta el
-  final (R2.1, R2.7); un pie anclado lo impide por construcción.
+**Por qué (lo que el pase en «13 26» enseñó, H20):**
+- **iOS 26 dibuja su efecto de borde (`UIScrollEdgeEffect`) sobre toda la
+  lista invertida** en cuanto el hilo puede desplazarse: con el `scaleY: -1`
+  de `inverted`, el degradado que debería quedar bajo la barra cubre el hilo
+  entero y las filas quedan al 13 % de opacidad (y desaparecen con «Aumentar
+  contraste» o «Reducir transparencia», que vuelven el efecto opaco). Se vio
+  con `KeyboardChatScrollView`, con un separador animado por Reanimated y con
+  un separador fijo: cualquier hilo más alto que la pantalla.
+- La opción `scrollEdgeEffects` de la pantalla no llega: react-native-screens
+  busca la vista de desplazamiento por el **primer descendiente** de cada
+  nivel, y el primero de la pantalla es la configuración de la cabecera. El
+  `ScrollViewMarker` aplica el efecto a lo que envuelve, y sí llega.
+- Sin efecto suave, el contenido que pasara bajo el título de la cabecera
+  chocaría con él; por eso la lista empieza bajo la cabecera. La cabecera de
+  vidrio sigue siendo la del sistema (sus botones son cápsulas de vidrio); lo
+  que se pierde es el fundido del contenido bajo el título.
+- `KeyboardChatScrollView` queda fuera de la conversación: su relleno es un
+  `contentInset` grande (hasta una pantalla de «espacio en blanco») que, con
+  el efecto de borde, es exactamente lo que fallaba; y con el efecto oculto,
+  el separador en estado hace lo mismo con menos piezas. La librería se queda
+  para el `KeyboardStickyView`.
 
-**Lo que el spike cerró (comprobación 2):** el cuadro queda pegado al teclado y
-crece con el texto; el hilo pasa bajo la cabecera de vidrio. Dos cuidados que
-van a T053: `renderScrollComponent` tiene que ser un componente **memorizado**
-(inline remonta el scroll en cada render; en un arranque la lista salió vacía),
-y el hueco de la cabecera, con `contentInsetAdjustmentBehavior="never"`, se
-pone a mano y se comprueba el efecto de borde del sistema. El texto al máximo
-queda para US3 (T076).
+**Lo que el spike cerró (comprobación 2) y sigue valiendo:** el cuadro queda
+pegado al teclado y crece con el texto; el cambio del panel al cuadro es
+continuo (vídeo `evidence/morph.mp4`, T059).
 
 **Alternativas:**
-- **`KeyboardAvoidingView` + pie absoluto.** Habría que recalcular el relleno
-  del teclado a mano; es lo que `KeyboardChatScrollView` ya hace.
+- **`KeyboardChatScrollView` como `renderScrollComponent` (la decisión
+  original).** Descartada por lo de arriba: su inset es la zona que iOS 26
+  atenúa.
+- **Un separador animado por Reanimated (`useAnimatedStyle` con `height`).**
+  Igual de atenuado; además, una propiedad de layout animada en el hilo del
+  UI dentro de la lista obliga a recomprometer el árbol cada fotograma.
+- **Lista sin `inverted`** (datos ascendentes y `scrollToEnd`). Evitaría el
+  `scaleY: -1`, pero cambia el anclaje al final y el mantenimiento de la
+  posición al cargar mensajes antiguos; no hace falta con el marcador.
 
 ## D5 · La apariencia del sistema se lee en vivo
 

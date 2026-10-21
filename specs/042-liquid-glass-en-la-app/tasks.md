@@ -69,9 +69,13 @@ dejar la evidencia.
       `docs/app-movil.md` §Builds que es el build de simulador en la nube
       (research D16). _Requisitos: 1.1_
 - [X] T002 [P] Crear los simuladores de referencia con `xcrun simctl create`:
-      «SE 26» (iPhone SE 3.ª generación, iOS 26.0) y «17 26» (iPhone 17,
+      «13 26» (iPhone SE 3.ª generación, iOS 26.0) y «13 26» (iPhone 17,
       iOS 26.0), y dejar los comandos en `quickstart.md` §Requisitos previos
       tal como quedaron. _Requisitos: 5.6_
+      > 2026-10-21: los dos se sustituyen por **«13 26»** (iPhone 13, iOS
+      > 26.0.1) por decisión de Luis, y un solo simulador arrancado a la vez
+      > por el disco. Donde las tareas de abajo dicen «13 26» antes decían
+      > «SE 26» o «17 26».
 - [X] T003 [P] Crear `specs/042-liquid-glass-en-la-app/evidence/` con
       `capturas/`, `a11y.md` (tabla vacía de combinaciones del quickstart §5)
       y `hallazgos.md` (los trece hallazgos de la auditoría, cada uno con su
@@ -133,7 +137,7 @@ US3 y US6; no bloquea US2 ni US5.
       decisión cierra y cuál es su respaldo. §II
 - [X] T012 En una rama de spike, instalar `expo-glass-effect` con `npx expo
       install expo-glass-effect` desde `apps/mobile`, hacer el build
-      `development-simulator` (T001) e instalarlo en «17 26». Guardar en
+      `development-simulator` (T001) e instalarlo en «13 26». Guardar en
       `.specify/assessments/042-s2-vidrio-en-el-pie/evidence/` el log del
       build con la imagen usada («Spin up build environment»). §VIII
 - [X] T013 Comprobación 1 (D3): un `GlassView` cuyo hijo cambia de altura con
@@ -247,7 +251,7 @@ material es, y el movimiento reacciona en vivo.
 **Goal**: tres bloques (atención, dinero, conversaciones); cada dato una vez;
 ningún número contradice a otro. Cierra H1, H2, H3 y H13.
 
-**Independent Test**: `pnpm test --ci -- inicio` en verde, y en «SE 26» al
+**Independent Test**: `pnpm test --ci -- inicio` en verde, y en «13 26» al
 tamaño por defecto se ven la atención y el dinero sin desplazar (CE-002).
 
 ### Tests
@@ -295,7 +299,7 @@ tamaño por defecto se ven la atención y el dinero sin desplazar (CE-002).
       y `app.en.ts` solo entra lo que no tenga clave compartida (el pie del
       saldo sin asignar, si hiciera falta). `grep` de cada texto nuevo en
       `lite.gen.ts` antes de añadirlo. _Requisitos: 5.4_
-- [X] T037 [US2] Captura de Inicio en «SE 26» al tamaño por defecto, claro y
+- [X] T037 [US2] Captura de Inicio en «13 26» al tamaño por defecto, claro y
       oscuro, con dos conversaciones esperando:
       `evidence/capturas/ios26-se-inicio-{claro,oscuro}.png`; anotar en
       `evidence/hallazgos.md` que H1, H2, H3 y H13 quedan cerrados con ellas y
@@ -380,7 +384,7 @@ mobile` en verde; el contenido está arreglado en todas las plataformas.
 hilo y cambia de forma al tomar el control. Cierra H4.
 
 **Independent Test**: `pnpm test --ci -- atender hilo` y
-`e2e/send-flaky.yaml` en verde; en «SE 26», con una conversación en espera, se
+`e2e/send-flaky.yaml` en verde; en «13 26», con una conversación en espera, se
 ven el último mensaje, el motivo y «Tomar el control» sin desplazar, y el paso
 al cuadro dura 240 ms sin ningún fotograma sin controles.
 
@@ -388,7 +392,7 @@ Depende de 2c (T025, T026) y del spike (T019).
 
 ### Tests
 
-- [ ] T049 [P] [US1] En `apps/mobile/__tests__/atender.test.tsx`: el pie es una
+- [X] T049 [P] [US1] En `apps/mobile/__tests__/atender.test.tsx`: el pie es una
       sola `FloatingSurface` (`testID="thread-surface"`) en los cinco modos
       (espera, quién atiende, resuelta, cuadro de escribir y el bloqueo de las
       24 horas); con `reason` nulo, el panel dice que el agente no dio motivo;
@@ -397,22 +401,22 @@ Depende de 2c (T025, T026) y del spike (T019).
       los botones `take-over` y «Devolver al agente»; en `mine`,
       `composer-input` y `send`; el botón de enviar es un círculo `primary` con
       radio `concentric`. _Requisitos: 2.1, 2.3, 2.4, 2.9_
-- [ ] T050 [P] [US1] En `apps/mobile/__tests__/atender.test.tsx`: al tomar el control cambian los hijos
+- [X] T050 [P] [US1] En `apps/mobile/__tests__/atender.test.tsx`: al tomar el control cambian los hijos
       de la misma superficie (el nodo `thread-surface` es el mismo antes y
       después), la vibración de éxito se dispara y el cuadro recibe el foco;
       con `reduceMotion` la superficie no lleva `layout` y los hijos solo se
       funden. _Requisitos: 2.5, 2.6_
-- [ ] T051 [P] [US1] En `apps/mobile/__tests__/atender.test.tsx`: si otra persona cambia el control
+- [X] T051 [P] [US1] En `apps/mobile/__tests__/atender.test.tsx`: si otra persona cambia el control
       con el panel a la vista (`control_version` distinto), el panel pasa al
       estado real y no se aplica la acción (031 R6.2). _Requisitos: 2.8_
-- [ ] T052 [P] [US1] En `apps/mobile/__tests__/hilo.test.tsx`: la lista recibe
+- [X] T052 [P] [US1] En `apps/mobile/__tests__/hilo.test.tsx`: la lista recibe
       un relleno igual a la altura medida de la superficie (`onLayout` →
       `extraContentPadding`), y el hueco de la cabecera va en el
       `paddingBottom` del contenido invertido. _Requisitos: 2.2_
 
 ### Implementación
 
-- [ ] T053 [US1] Reescribir el pie de
+- [X] T053 [US1] Reescribir el pie de
       `apps/mobile/src/app/conversacion/[id]/index.tsx` según
       [contracts/ui.md §3 Pie](contracts/ui.md) y research D4: `FlatList`
       invertido con `KeyboardChatScrollView` como `renderScrollComponent`
@@ -427,18 +431,18 @@ Depende de 2c (T025, T026) y del spike (T019).
       remonta el scroll y vacía la lista), y se comprueba en el simulador que
       el efecto de borde del sistema aparece bajo la cabecera con el hueco
       puesto a mano. _Requisitos: 2.1, 2.2, 2.7, 3.1_
-- [ ] T054 [US1] Convertir `ControlCard`
+- [X] T054 [US1] Convertir `ControlCard`
       (`apps/mobile/src/features/inbox/thread/control.tsx`) en contenido sin
       tarjeta propia: `waiting` con motivo a dos líneas y «Leer más» (abre el
       motivo entero con `actions()`), «Tomar el control» como cápsula
       `primary`, «Devolver al agente» como `ghost`; `agent`/`other` y
       `resolved` igual, sin fondo. _Requisitos: 2.3, 2.4, 2.9_
-- [ ] T055 [US1] Convertir `Composer`
+- [X] T055 [US1] Convertir `Composer`
       (`apps/mobile/src/features/inbox/thread/composer.tsx`) en contenido sin
       tarjeta propia: `TextInput` sobre la superficie, botón de enviar como
       círculo `primary` de radio `concentric(radius, padding)`, mismos
       `testID`. _Requisitos: 2.1, 7.1_
-- [ ] T056 [US1] Animar el cambio de modo **con la altura de la superficie**
+- [X] T056 [US1] Animar el cambio de modo **con la altura de la superficie**
       (spike S2, comprobación 1): `FloatingSurface` mide su contenido con
       `onLayout` y lleva la altura del contenedor con
       `withTiming(h, { duration: durations.state, easing: Easing.out(Easing.cubic) })`;
@@ -446,13 +450,18 @@ Depende de 2c (T025, T026) y del spike (T019).
       movimiento reducido la altura cambia sin animar (T026). Nada de `layout`
       en envoltorios y nada de `opacity` en la superficie. Test en T050: la
       altura va por `withTiming` con `durations.state`. _Requisitos: 2.5, 2.6_
-- [ ] T057 [US1] Añadir «Leer más» a `apps/mobile/src/i18n/app.{es,en}.ts`.
+- [X] T057 [US1] Añadir «Leer más» a `apps/mobile/src/i18n/app.{es,en}.ts`.
       _Requisitos: 2.4_
-- [ ] T058 [US1] Pasar `e2e/send-flaky.yaml` en «17 26» con Maestro sin
+- [ ] T058 [US1] Pasar `e2e/send-flaky.yaml` en «13 26» con Maestro sin
       cambiarlo; guardar el log en `evidence/maestro-send.log`. _Requisitos: 10.2_
-- [ ] T059 [US1] En «SE 26»: capturas
-      `evidence/capturas/ios26-se-conversacion-espera-{claro,oscuro}.png` y
-      `ios26-se-conversacion-mia-teclado.png`; grabar el paso del panel al
+      > 2026-10-21, primer intento: `evidence/maestro-send.log` (exit 0, las 100
+      > repeticiones) pero una recarga en caliente a mitad (edición de código
+      > durante el flujo, ver la memoria del proyecto) dejó la pantalla en un
+      > error de contexto y solo 11 envíos llegaron a la base, sin ninguna
+      > clave repetida. Se repite con el código congelado.
+- [X] T059 [US1] En «13 26»: capturas
+      `evidence/capturas/ios26-13-conversacion-espera-{claro,oscuro}.png` y
+      `ios26-13-conversacion-mia-teclado.png`; grabar el paso del panel al
       cuadro, contar fotogramas (240 ms, ninguno sin controles, el hilo no
       salta) y anotarlo con el vídeo en `evidence/motion.md`; un hilo de un
       solo mensaje queda por encima de la superficie. Cerrar H4 y anotar
@@ -469,7 +478,7 @@ Depende de 2c (T025, T026) y del spike (T019).
 contenido pasando por debajo; Ajustes como hoja. Antes de 26 y en Android, nada
 imita el vidrio.
 
-**Independent Test**: en «17 26», al desplazar la Bandeja las filas se ven a
+**Independent Test**: en «13 26», al desplazar la Bandeja las filas se ven a
 través de las dos barras, los botones de barra son cápsulas del sistema y
 Ajustes se abre a media altura; en Android nada cambia.
 
@@ -487,11 +496,11 @@ Depende del spike (T019) y de T025.
       `Stack.Toolbar placement="right"` con un `Stack.Toolbar.Button` con
       `accessibilityLabel` de Ajustes; en Android se mantiene `headerRight`
       con el `IconButton`. _Requisitos: 1.4_
-- [ ] T062 [P] [US4] En `apps/mobile/__tests__/atender.test.tsx`: en iOS, el
+- [X] T062 [P] [US4] En `apps/mobile/__tests__/atender.test.tsx`: en iOS, el
       menú de la conversación es un `Stack.Toolbar.Menu` cuya primera acción
       es «Devolver al agente» con el nombre del agente (031 R6.7).
       _Requisitos: 1.4, 2.9_
-- [ ] T063 [P] [US4] En `apps/mobile/__tests__/contacto.test.tsx` y
+- [X] T063 [P] [US4] En `apps/mobile/__tests__/contacto.test.tsx` y
       `ajustes-avisos.test.tsx`: con vidrio disponible, el contenedor de la
       hoja no lleva `backgroundColor`; sin él, lleva `colors.background`; en
       iOS `ajustes` se presenta como `formSheet` con `sheetAllowedDetents:
@@ -504,11 +513,11 @@ Depende del spike (T019) y de T025.
       fondos solo sin vidrio; `headerLargeTitleEnabled`; `scrollEdgeEffects`
       en `automatic`; `Stack.Toolbar` en iOS y `headerRight` en Android;
       `fontSize` del título en Android. _Requisitos: 1.1, 1.4, 1.6, 3.1, 4.6_
-- [ ] T065 [US4] Pasar el menú de
+- [X] T065 [US4] Pasar el menú de
       `apps/mobile/src/app/conversacion/[id]/index.tsx` a `Stack.Toolbar.Menu`
       en iOS, con «Devolver al agente» la primera, y dejar el `ActionSheet` de
       hoy en Android. _Requisitos: 1.4, 2.9_
-- [ ] T066 [P] [US4] En `apps/mobile/src/app/_layout.tsx`: `ajustes` como
+- [X] T066 [P] [US4] En `apps/mobile/src/app/_layout.tsx`: `ajustes` como
       `formSheet` `[0.6, 1]` con `sheetGrabberVisible` en iOS y `card` en
       Android; las dos hojas sin `contentStyle` con fondo cuando hay vidrio, y
       sin el `backgroundColor` del `ScrollView` de
@@ -517,7 +526,7 @@ Depende del spike (T019) y de T025.
       comprobación 4): el contenido respeta su inset con
       `contentInsetAdjustmentBehavior="automatic"` (Ajustes ya lo lleva).
       Actualizar el párrafo «Rutas» de `docs/app-movil.md`. _Requisitos: 1.7, 3.1_
-- [ ] T067 [P] [US4] Quitar `colors.background` del contenedor de
+- [X] T067 [P] [US4] Quitar `colors.background` del contenedor de
       `apps/mobile/src/app/conversacion/[id]/contacto.tsx` cuando hay vidrio
       (`FloatingSurface` no: es contenido; basta un `View` sin fondo), y dar al
       `ScrollView` de la hoja `contentInsetAdjustmentBehavior="automatic"`
@@ -526,7 +535,7 @@ Depende del spike (T019) y de T025.
 - [X] T068 [P] [US4] En `apps/mobile/src/app/(app)/bandeja/index.tsx`,
       `headerSearchBarOptions.placement` según lo que cerró T019 (`automatic`
       o `stacked`), manteniendo `hideWhenScrolling: false`. _Requisitos: 1.8_
-- [ ] T069 [US4] Comprobar en «17 26» que `NativeTabs` se encoge al bajar y
+- [ ] T069 [US4] Comprobar en «13 26» que `NativeTabs` se encoge al bajar y
       vuelve al subir, y que el tinte se lee sobre la Bandeja clara y oscura;
       en un runtime anterior a 26 (si Luis lo aporta) que la barra es la de
       siempre y el log avisa de `minimizeBehavior` sin romper nada; las
@@ -536,15 +545,20 @@ Depende del spike (T019) y de T025.
       «Reintentar» cuando vuelve, y comprobar que Inicio y la Bandeja no quedan
       empujados ~120 pt bajo la cabecera al remontarse las pestañas; si lo
       hacen, arreglarlo (remontar la pila, o fijar el inset) con su test.
-      Capturas `evidence/capturas/ios26-17-pestanas-encogidas.png`,
-      `ios26-17-un-modulo.png` e `ios26-se-inicio-tras-reintentar.png`.
+      Capturas `evidence/capturas/ios26-13-pestanas-encogidas.png`,
+      `ios26-13-un-modulo.png` e `ios26-13-inicio-tras-reintentar.png`.
       _Requisitos: 1.1, 1.3, 1.5, 1.6, 3.1, 10.5_
-- [ ] T070 [US4] Capturas en «17 26»: `evidence/capturas/ios26-17-bandeja-{claro,oscuro}.png`
-      (desplazada, con filas bajo las barras), `ios26-17-ajustes-hoja.png`,
-      `ios26-17-conversacion-menu.png`; en Android,
+- [ ] T070 [US4] Capturas en «13 26»: `evidence/capturas/ios26-13-bandeja-{claro,oscuro}.png`
+      (desplazada, con filas bajo las barras), `ios26-13-ajustes-hoja.png`,
+      `ios26-13-conversacion-menu.png`; en Android,
       `android-bandeja-{claro,oscuro}.png`; anotar CE-007 (Android) en
       `evidence/hallazgos.md` y dejar la fila de iOS < 26 como pendiente de
       Luis. _Requisitos: 1.1, 1.3, 1.5, 1.7, 3.3_
+      > 2026-10-21: las capturas de iOS están (`ios26-13-bandeja-{claro,oscuro}`,
+      > `ios26-13-ajustes-hoja`, `-abajo`, `ios26-13-conversacion-menu`,
+      > `ios26-13-contacto-hoja`); la Bandeja de la semilla no llega a pasar bajo
+      > las barras (cinco filas). Android queda pendiente de disco para el
+      > emulador (`hallazgos.md`, «Lo que depende de Luis»).
 
 **Checkpoint**: T060 a T063 en verde. La navegación es del sistema.
 
@@ -563,17 +577,17 @@ Depende de US1 y US4.
 
 ### Tests
 
-- [ ] T071 [P] [US3] En `apps/mobile/__tests__/states.test.tsx`: `Button`
+- [X] T071 [P] [US3] En `apps/mobile/__tests__/states.test.tsx`: `Button`
       `disabled` baja el contraste del contenido a `mutedForeground` y no
       aplica `opacity`; `busy` mantiene el tamaño. _Requisitos: 4.8_
-- [ ] T072 [P] [US3] En `apps/mobile/__tests__/floating-surface.test.tsx`: al
+- [X] T072 [P] [US3] En `apps/mobile/__tests__/floating-surface.test.tsx`: al
       emitir `reduceTransparencyChanged` con `true`, la superficie pasa de
       `GlassView` a `View` sin desmontar a sus hijos (el `TextInput` conserva
       su valor). _Requisitos: 4.2, 4.5_
 
 ### Implementación
 
-- [ ] T073 [US3] En `apps/mobile/src/ui/button.tsx`, `disabled` por contraste
+- [X] T073 [US3] En `apps/mobile/src/ui/button.tsx`, `disabled` por contraste
       del contenido y no por opacidad; comprobar lo mismo en `IconButton`,
       `Segmented` y `RowButton`. _Requisitos: 4.8_
 - [ ] T074 [US3] Medir el contraste sobre las capturas de US1 y US4 con el
@@ -583,20 +597,24 @@ Depende de US1 y US4.
       una foto recibida). Rellenar `evidence/a11y.md`. Si una celda baja de
       4,5:1 o de 3:1, abrir la corrección en esta misma fase antes de seguir.
       _Requisitos: 4.1, 4.2, 4.3, 4.4_
-- [ ] T075 [US3] Con la app abierta en «17 26», cambiar oscuro, «Reducir
+- [X] T075 [US3] Con la app abierta en «13 26», cambiar oscuro, «Reducir
       transparencia» y «Aumentar contraste»: la app lo adopta sin reiniciar;
-      capturas `ios26-17-conversacion-reducir-transparencia.png` y
-      `ios26-17-conversacion-aumentar-contraste.png`. _Requisitos: 4.5_
+      capturas `ios26-13-conversacion-reducir-transparencia.png` y
+      `ios26-13-conversacion-aumentar-contraste.png`. _Requisitos: 4.5_
 - [ ] T076 [US3] Texto al máximo: `xcrun simctl ui booted content_size
-      accessibility-extra-extra-extra-large` en «SE 26» (Inicio y
+      accessibility-extra-extra-extra-large` en «13 26» (Inicio y
       conversación en espera) y el emulador de Android al 200 % (Inicio): el
       título crece y nunca queda más pequeño que el cuerpo; el hilo se
-      desplaza hasta cualquier mensaje. Capturas `ios26-se-inicio-texto-max.png`,
-      `ios26-se-conversacion-espera-texto-max.png`,
+      desplaza hasta cualquier mensaje. Capturas `ios26-13-inicio-texto-max.png`,
+      `ios26-13-conversacion-espera-texto-max.png`,
       `android-inicio-oscuro-texto-200.png`. Cerrar H8 en
       `evidence/hallazgos.md`; si en Android el título sigue sin crecer,
       documentar la causa con la captura (research D14). _Requisitos: 4.6, 4.7_
-- [ ] T077 [US3] Dejar en `evidence/a11y.md` la fila «vidrio claro o tintado
+      > 2026-10-21: iOS hecho en «13 26» (`ios26-13-inicio-texto-max{,-oscuro}`,
+      > `ios26-13-conversacion-espera-texto-max{,-oscuro}`, `ios26-13-bandeja-texto-max{,-oscuro}`);
+      > H8 cerrado con `headerSize` y el tope por estilo (`maxScale`). Android
+      > pendiente de disco para el emulador.
+- [X] T077 [US3] Dejar en `evidence/a11y.md` la fila «vidrio claro o tintado
       (iOS 26.1)» como pendiente de Luis, con lo que hay que hacer (un iPhone
       con 26.1 o un runtime nuevo). _Requisitos: 4.4_
 
@@ -615,36 +633,38 @@ sistema al lado, los controles tienen la misma forma y responden igual.
 
 ### Tests
 
-- [ ] T078 [P] [US6] En `apps/mobile/__tests__/states.test.tsx`: `Button` usa
+- [X] T078 [P] [US6] En `apps/mobile/__tests__/states.test.tsx`: `Button` usa
       `radius.full`; al `pressIn` el fondo pasa al tono de pulsación
       (`primaryDeep` para `primary`, `muted` para `secondary`) y la opacidad no
       cambia; al `pressOut` vuelve; en Android el `Pressable` lleva
       `android_ripple`; `minHeight` y `minWidth` siguen en `TOUCH`.
       _Requisitos: 7.1, 7.2, 10.4_
-- [ ] T079 [P] [US6] En el mismo fichero: `type` en iOS devuelve body 17/22,
+- [X] T079 [P] [US6] En el mismo fichero: `type` en iOS devuelve body 17/22,
       headline 17 semibold, title 22, largeTitle 34, figure 28 tabular, y
       ninguna variante lleva `letterSpacing`; en Android devuelve la escala de
       los tokens. _Requisitos: 7.3, 7.4_
 
 ### Implementación
 
-- [ ] T080 [US6] Reescribir la pulsación de `Button` e `IconButton` en
+- [X] T080 [US6] Reescribir la pulsación de `Button` e `IconButton` en
       `apps/mobile/src/ui/button.tsx`: cápsula; en iOS, `onPressIn` → escala
       0,97 con `withTiming(durations.fast)` y fondo al tono de pulsación,
       `onPressOut` → vuelta; en Android, `android_ripple`; fuera la opacidad
       0,75 y 0,6. _Requisitos: 7.1, 7.2_
-- [ ] T081 [P] [US6] Quitar la pulsación por opacidad en
+- [X] T081 [P] [US6] Quitar la pulsación por opacidad en
       `apps/mobile/src/features/inbox/thread/bubble.tsx:145`,
       `apps/mobile/src/features/inbox/list/filters.tsx:74` y en los elementos
       de `apps/mobile/src/ui/actions.tsx` (Android), sustituyéndola por fondo
       de pulsación u ondulación. _Requisitos: 7.2_
-- [ ] T082 [P] [US6] Reescribir `apps/mobile/src/theme/type.ts` con
+- [X] T082 [P] [US6] Reescribir `apps/mobile/src/theme/type.ts` con
       `Platform.select`: la tabla de [contracts/ui.md §2 Tipografía](contracts/ui.md)
       en iOS, los tokens en Android; sin `letterSpacing`. _Requisitos: 7.3, 7.4_
 - [ ] T083 [US6] Capturas comparadas con Ajustes del sistema al lado:
-      `evidence/capturas/ios26-17-botones-vs-sistema.png` y
+      `evidence/capturas/ios26-13-botones-vs-sistema.png` y
       `android-botones-vs-sistema.png`; cerrar H6 y H9 en
       `evidence/hallazgos.md`. _Requisitos: 7.1, 7.2, 7.3_
+      > 2026-10-21: iOS hecho (`ios26-13-botones-vs-sistema.png`; H6 y H9
+      > cerrados). Android pendiente de disco para el emulador.
 
 **Checkpoint · fin de la iteración 2**: T078 y T079 en verde;
 `./scripts/verify.sh mobile` en verde; `e2e/send-flaky.yaml` en verde. **Se
@@ -659,28 +679,33 @@ CE-006, CE-007), o con la aceptación escrita de Luis de ese riesgo en
 **Propósito**: la revisión con el listón de la dirección, la documentación viva
 y el cierre de los criterios de éxito.
 
-- [ ] T084 Revisión heurística sobre todas las capturas de `evidence/capturas/`
+- [X] T084 Revisión heurística sobre todas las capturas de `evidence/capturas/`
       con `ux-heuristics` (severidades 0–4), `design-critique` (una crítica
       por pantalla) e `impeccable` (`reference/ios.md` y
       `reference/audit.native.md`); informe en `evidence/revision.md`. Ningún
       hallazgo de severidad 3 o 4 abierto: si aparece uno, se abre su tarea en
       esta fase y se cierra antes de fusionar (CE-006). §VII
-- [ ] T085 Cerrar `evidence/hallazgos.md`: los trece hallazgos con su captura,
+- [X] T085 Cerrar `evidence/hallazgos.md`: los trece hallazgos con su captura,
       y los ocho criterios de éxito con su evidencia o con «pendiente de Luis»
       y la razón (CE-005 vidrio tintado; CE-007 iOS < 26). §VII
-- [ ] T086 [P] Actualizar `docs/app-movil.md` §Arquitectura en un solo pase:
+- [X] T086 [P] Actualizar `docs/app-movil.md` §Arquitectura en un solo pase:
       cabeceras sin fondo en iOS 26, `Stack.Toolbar`, el pie de la conversación
       como una superficie, `useSystemAppearance`, formas y tipografía por
       plataforma, y el perfil de simulador; y `apps/mobile/AGENTS.md`: la
       regla «hasta que exista su tasks.md» se sustituye por «los cambios de UI
       citan la spec 042». §IX
-- [ ] T087 [P] Anotar en la KB
+- [X] T087 [P] Anotar en la KB
       (`/Users/lmatos/Work/Auphere/nexus/research/2026-10-20-liquid-glass-app-movil.md`)
       qué cerró el spike y qué hallazgos cambiaron con el pase en simulador,
       en una sección «Resultado» al final. §IX
 - [ ] T088 `./scripts/verify.sh mobile` entero en verde (typecheck, lint,
       jest, `gen:check`, contrato OpenAPI, `expo-doctor`), y
       `./scripts/verify.sh js` por el cambio en `apps/console` (T046). §VII
+      > 2026-10-21: `verify.sh mobile` en verde (typecheck, lint, 191 tests,
+      > `gen:check`, contrato OpenAPI, expo-doctor 20/20). De `verify.sh js`
+      > pasaron todos los pasos salvo los dos `next build` (panel y consola),
+      > que no se ejecutaron: la consola ya ocupa 4,4 GB en `.next` y el disco
+      > quedó con ~2 GB libres durante el pase; se corren cuando haya disco.
 - [ ] T089 Recorrer `quickstart.md` de arriba abajo y marcar cada casilla; lo
       que no se pudo hacer en esta máquina queda escrito con su razón. §VII
 
@@ -747,7 +772,7 @@ Task: "home-view.tsx en tres bloques"   (y a la vez, las claves de i18n)
 ### MVP primero (iteración 1: US2 y US5)
 
 1. Setup y 2a.
-2. US2 → `pnpm test --ci -- inicio` en verde → captura en «SE 26».
+2. US2 → `pnpm test --ci -- inicio` en verde → captura en «13 26».
 3. US5 → `pnpm test --ci -- consumo ajustes-avisos` en verde → capturas en
    Android.
 4. **Parar y validar**: `./scripts/verify.sh mobile` en verde. Esto ya cierra

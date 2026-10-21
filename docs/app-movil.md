@@ -54,7 +54,14 @@ para entrar (solo esquema propio).
     El botón de Ajustes es un elemento de barra nativo en iOS
     (`SettingsToolbar`, `Stack.Toolbar`) y un `headerRight` en Android. La
     Bandeja lleva la búsqueda nativa en la cabecera, con la colocación que
-    elija el sistema.
+    elija el sistema. En iOS el tamaño del título grande sale de la tabla de
+    Dynamic Type de Apple (`headerSize`, en `type.ts`): en cuanto se le pone
+    un color, react-native-screens lo pinta con una fuente fija y dejaría de
+    crecer con el texto del teléfono (H8). El título normal de la barra se
+    queda fijo, como el de Apple: la barra no crece. Con «Aumentar contraste» iOS 26
+    vuelve opacos los botones de vidrio de la barra siguiendo el esquema
+    (disco claro en claro, oscuro en oscuro) y el tinte `primaryText` sigue
+    leyéndose en los dos (spec 042, `evidence/a11y.md`).
   - **Los ajustes de apariencia se leen en vivo** (`useSystemAppearance`):
     «Reducir transparencia», «Aumentar contraste» (o el contraste alto de
     Android) y «Reducir movimiento». `FloatingSurface` es la única superficie
@@ -64,10 +71,42 @@ para entrar (solo esquema propio).
   - La **conversación** (`conversacion/[id]`) y su contacto (una hoja,
     `formSheet`) se abren **por encima de las pestañas**, en la pila raíz,
     como en cualquier app de mensajes: el cuadro de escribir es dueño del
-    borde de abajo. No ocultar la barra desde dentro de una pestaña: con
-    expo-router 58 eso entra en un bucle de foco («Maximum update depth»).
-    La pila raíz ancla `index`, así que un enlace abierto con la app cerrada
-    deja algo debajo y «atrás» no saca de la app.
+    borde de abajo. El menú de la conversación es el de la barra del sistema
+    en iOS (`ConversationToolbar`, `Stack.Toolbar.Menu`, con «Devolver al
+    agente» la primera) y la hoja de acciones de siempre en Android; la lista
+    de acciones es una sola (`conversationMenu`). El hilo es un `FlatList`
+    invertido envuelto en el `ScrollViewMarker` de react-native-screens con
+    los efectos de borde de iOS 26 ocultos y empieza bajo la cabecera: con la
+    lista invertida, el efecto del sistema atenuaba el hilo entero (spec 042,
+    H20, research D4). El relleno que deja sitio al pie es un separador en
+    estado de React animado con `LayoutAnimation`, nunca una propiedad de
+    layout animada por Reanimated dentro de la lista. No ocultar la barra desde
+    dentro de una pestaña: con expo-router 58 eso entra en un bucle de foco
+    («Maximum update depth»). La pila raíz ancla `index`, así que un enlace
+    abierto con la app cerrada deja algo debajo y «atrás» no saca de la app.
+  - **Las dos hojas** salen de `useSheetOptions` (spec 042, R1.7): el contacto
+    y, en iOS, también Ajustes son `formSheet` con paradas en `[0.6, 1]` y
+    asa; en Android el contacto es una hoja inferior con las esquinas de la
+    app y Ajustes, una pantalla. Con Liquid Glass el contenedor de la hoja no
+    pinta fondo (se ve el material del sistema y su cabecera es transparente,
+    así que el `ScrollView` lleva `contentInsetAdjustmentBehavior="automatic"`);
+    sin vidrio, el fondo de siempre. `glassAvailable()` (`src/theme/glass.ts`)
+    es la única pregunta de «¿hay vidrio?»; lo que la persona pidió en
+    accesibilidad se lee aparte, en vivo.
+  - **Formas y tacto** (spec 042, R7, D12): botones y chips en cápsula
+    (`radius.full`); tarjetas y grupos con `CARD_RADIUS` y lo que va dentro
+    con esquinas concéntricas (`concentric`). La pulsación es la de cada
+    plataforma: en iOS el control se encoge a 0,97 en `durations.fast` y su
+    fondo pasa al tono de pulsación; en Android, la ondulación de Material.
+    Nunca una bajada de opacidad: sobre vidrio un control translúcido deja de
+    leerse como control. `disabled` baja el contraste del contenido y apaga el
+    relleno; `busy` conserva tamaño y tonos. La tipografía (`src/theme/type.ts`)
+    son los estilos de texto del sistema en iOS (cuerpo 17/22, título 22,
+    título grande 34, cifras 28 tabulares) y los tokens de la consola en
+    Android; sin `letterSpacing`. En iOS cada estilo deja de crecer donde lo
+    hace la tabla de Apple (`maxScale`, como `maxFontSizeMultiplier`): con el
+    texto al máximo un título de 22 pt escalado linealmente pasaría de los 60
+    pt del título grande.
 - **Datos**: `openapi-fetch` tipado con `src/api/schema.gen.ts` y React Query
   en memoria (nada de los clientes finales en disco). Al volver al primer plano
   se relee lo visible; sin red se lee lo último marcado como no actualizado y
@@ -234,7 +273,10 @@ aviso real, la pantalla bloqueada, VoiceOver y TalkBack— tiene su lista en
   compila en la nube con la imagen del SDK 58 (Xcode 27, que trae Liquid
   Glass) y el `.app` se instala en el simulador local con
   `xcrun simctl install booted <ruta>`. Es la forma de ver iOS 26 cuando la
-  máquina no puede compilar para iOS.
+  máquina no puede compilar para iOS. El simulador de referencia es «13 26»
+  (iPhone 13, iOS 26.0.1); en un build de desarrollo, apagar el botón
+  flotante del dev client (menú → «Tools button») antes de capturar, porque
+  tapa el botón de Ajustes.
 - **En la nube**: el proyecto de EAS `@lmatos/auphere-customers` (creado con
   `eas init` el 2026-10-20). Su ID y su dueño están fijados en
   `app.config.ts` porque no son secretos; `EAS_PROJECT_ID` y `EAS_OWNER` los

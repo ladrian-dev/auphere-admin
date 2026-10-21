@@ -2,9 +2,10 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight, useIsFocused } from "expo-router/react-navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, FlatList, Keyboard, LayoutAnimation, Platform, Pressable, StyleSheet, View } from "react-native";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
+import { ScrollViewMarker } from "react-native-screens/src/components/gamma/scroll-view-marker";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,11 +15,12 @@ import { useConversation, useReplies, useThread } from "@/api/hooks";
 import { invalidateInbox } from "@/api/query";
 import { checkAttachment, composerMode, attendsLine, dayLabel, withDaySeparators, type ThreadRow } from "@/features/inbox/model";
 import { DayLine, EventLine, MessageBubble, PendingBubble, type Pending } from "@/features/inbox/thread/bubble";
-import { Composer } from "@/features/inbox/thread/composer";
-import { ControlCard } from "@/features/inbox/thread/control";
+import { ThreadFoot } from "@/features/inbox/thread/foot";
 import { openMedia } from "@/features/inbox/thread/media";
+import { ConversationToolbar, conversationMenu, type ConversationMenu } from "@/features/inbox/thread/toolbar";
 import { useConversationActions } from "@/features/inbox/thread/use-conversation";
 import { useLocale, useT } from "@/i18n/t";
+import { durations } from "@/motion/durations";
 import { useMotion } from "@/motion/use-motion";
 import { setOpenConversation } from "@/push/handler";
 import { useTheme } from "@/theme/theme";
@@ -32,12 +34,17 @@ import { Text } from "@/ui/text";
 type Row = ThreadRow | { kind: "pending"; key: string; p: Pending };
 
 /**
- * One conversation (spec 031, R5.3–R6.8). The thread, newest at the bottom;
- * who answers under the name; and at the bottom, either why it waits and
- * «Tomar el control», or the box. It opens above the tabs, like any chat: the
- * box owns the bottom of the screen and the tab bar does not cover it. The orchestrated moment of the app (D24)
- * is here: taking control swaps the card for the box, confirms it with a
- * vibration and puts the cursor in the box.
+ * One conversation (spec 031, R5.3–R6.8; spec 042, R2). The thread, newest at
+ * the bottom, scrolling under the system's header; who answers under the
+ * name; and at the foot, one surface floating over the thread — why it waits
+ * and «Tomar el control», or the box. It opens above the tabs, like any chat.
+ * The orchestrated moment of the app (D24) is here: taking control changes
+ * what the surface holds, the surface animates its height, a vibration
+ * confirms it and the cursor lands in the box.
+ *
+ * The list is the keyboard library's chat scroll view: the foot's measured
+ * height is the list's extra bottom padding, so the last message always
+ * clears it, and the box rides the keyboard up (D4).
  */
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -59,6 +66,38 @@ export default function ConversationScreen() {
   const mode = d ? composerMode(d) : null;
   const replies = useReplies(mode?.kind === "mine");
   const [now] = useState(() => new Date());
+
+  // A spacer at the list's visual bottom keeps the last message clear of the foot (R2.2): the foot's
+  // clearance plus what the keyboard lifts it. Both live in React state and move with the platform's own
+  // LayoutAnimation — never a Reanimated layout prop inside the list: on iOS 26 that leaves every row
+  // drawn at a fraction of its opacity (H20), with the chat scroll view's inset as much as with a spacer.
+  const [clearance, setClearance] = useState(0);
+  const [keyboard, setKeyboard] = useState(0);
+  const onClearance = useCallback(
+    (px: number) => {
+      setClearance((cur) => {
+        if (cur !== 0 && cur !== px && !motion.reduced) LayoutAnimation.configureNext(LayoutAnimation.create(durations.state, "easeInEaseOut", "opacity"));
+        return px;
+      });
+    },
+    [motion.reduced],
+  );
+  useEffect(() => {
+    const curve = (ms: number) => LayoutAnimation.create(ms || durations.state, "keyboard", "opacity");
+    const show = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", (e) => {
+      if (Platform.OS === "ios" && !motion.reduced) LayoutAnimation.configureNext(curve(e.duration));
+      setKeyboard(e.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", (e) => {
+      if (Platform.OS === "ios" && !motion.reduced) LayoutAnimation.configureNext(curve(e.duration));
+      setKeyboard(0);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [motion.reduced]);
+  const spacer = clearance + Math.max(0, keyboard - insets.bottom);
 
   // R8.7: this conversation's notices stay quiet while it is on screen.
   useEffect(() => {
@@ -87,34 +126,28 @@ export default function ConversationScreen() {
 
   const openContact = () => router.push(`/conversacion/${id}/contacto`);
 
-  const menu = () => {
-    if (!d || !mode) return;
-    const resolved = d.state === "resolved";
-    actions(d.contact.name, [
-      // R6.7: first, give it back — to the agent by its name.
-      ...(mode.kind === "mine"
-        ? [
-            {
-              label: d.agent ? t("app.inbox.giveBackTo", { name: d.agent.name }) : t("inbox.composer.giveBack"),
-              onPress: () => void act.giveBack(d.control_version),
-              disabled: !online,
-            },
-          ]
-        : []),
-      { label: t("inbox.action.panel"), onPress: openContact },
-      {
-        label: t("inbox.action.unread"),
-        disabled: !online,
-        onPress: () =>
-          void act.markUnread().then((ok) => {
-            if (ok) router.back();
-          }),
-      },
-      resolved
-        ? { label: t("inbox.action.reopen"), onPress: () => void act.reopen(), disabled: !online }
-        : { label: t("inbox.action.resolve"), onPress: () => void act.resolve(), disabled: !online },
-    ]);
+  // One menu, two shapes (R1.4, R2.9): the bar's own menu on iOS, the action sheet behind a button on Android.
+  const menu: ConversationMenu | null =
+    d && mode
+      ? {
+          mine: mode.kind === "mine",
+          agentName: d.agent?.name ?? null,
+          resolved: d.state === "resolved",
+          online,
+          onGiveBack: () => void act.giveBack(d.control_version),
+          onContact: openContact,
+          onUnread: () =>
+            void act.markUnread().then((ok) => {
+              if (ok) router.back();
+            }),
+          onResolve: () => void act.resolve(),
+          onReopen: () => void act.reopen(),
+        }
+      : null;
+  const openMenu = () => {
+    if (d && menu) actions(d.contact.name, conversationMenu(menu, t));
   };
+  const toolbar = menu ? <ConversationToolbar {...menu} /> : null;
 
   const pick = async (source: "camera" | "library" | "document") => {
     let asset: { uri: string; mimeType?: string | null; size?: number | null; name: string } | null = null;
@@ -156,6 +189,11 @@ export default function ConversationScreen() {
       if (!ok) act.setNotice({ text: t("app.inbox.open.failed"), tone: "warning" });
     });
 
+  // R2.4: the agent's reason, whole, when two lines were not enough.
+  const readMore = () => {
+    if (mode?.kind === "waiting" && mode.reason) Alert.alert(t("inbox.composer.waiting.title"), mode.reason);
+  };
+
   const header = (
     <Stack.Screen
       options={{
@@ -168,15 +206,16 @@ export default function ConversationScreen() {
               onPress={openContact}
               style={styles.title}
             >
-              <Text variant="bodyStrong" numberOfLines={1}>
+              {/* The bar cannot grow: like Apple's own inline titles, these stay at their size whatever the text setting. */}
+              <Text variant="bodyStrong" numberOfLines={1} maxFontSizeMultiplier={1}>
                 {d.contact.name}
               </Text>
-              <Text variant="caption" tone="mutedForeground" numberOfLines={1}>
+              <Text variant="caption" tone="mutedForeground" numberOfLines={1} maxFontSizeMultiplier={1}>
                 {attendsLine(d, t)}
               </Text>
             </Pressable>
           ) : null,
-        headerRight: () => (d ? <IconButton icon={icons.more} label={t("app.more")} onPress={menu} /> : null),
+        headerRight: Platform.OS === "android" && d ? () => <IconButton icon={icons.more} label={t("app.more")} onPress={openMenu} /> : undefined,
       }}
     />
   );
@@ -185,10 +224,11 @@ export default function ConversationScreen() {
     return (
       <View style={[styles.fill, { backgroundColor: colors.background }]}>
         {header}
+        {toolbar}
         {detail.isError ? (
           <ErrorState body={t("inbox.thread.error")} onRetry={() => void detail.refetch()} />
         ) : (
-          <View style={styles.pad}>
+          <View style={[styles.pad, { paddingTop: headerHeight + 16 }]}>
             <Skeleton rows={4} label={t("inbox.thread.loading")} />
           </View>
         )}
@@ -197,31 +237,45 @@ export default function ConversationScreen() {
   }
 
   return (
-    <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={headerHeight} style={[styles.fill, { backgroundColor: colors.background }]}>
-      {header}
-      {act.notice ? (
-        <Animated.View
-          entering={motion.enter}
-          exiting={motion.exit}
-          accessible
-          accessibilityRole="alert"
-          accessibilityLiveRegion="polite"
-          style={[styles.notice, { backgroundColor: act.notice.tone === "warning" ? colors.warningBg : colors.infoBg }]}
-        >
-          <Text variant="subhead" tone={act.notice.tone === "warning" ? "warningText" : "infoText"}>
-            {act.notice.text}
-          </Text>
-        </Animated.View>
-      ) : null}
+    <View style={[styles.fill, { backgroundColor: colors.background }]}>
+      {/* The thread starts under the header's edge, inside a marker that hides the scroll edge effects of iOS 26: on an
+          inverted list the system draws its gradient over the whole thread, and the stack's own option never reaches
+          this list (H20). With no soft edge, the rows stop at the header instead of running under its title. */}
+      <ScrollViewMarker
+        style={[styles.fill, { marginTop: headerHeight }]}
+        scrollEdgeEffects={{ top: "hidden", bottom: "hidden", left: "hidden", right: "hidden" }}
+      >
       <FlatList<Row>
         inverted
         style={styles.fill}
         data={rows}
         keyExtractor={(r) => r.key}
         accessibilityLabel={t("inbox.thread")}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          // Inverted: the "header" is the visual bottom — the notice, then the spacer that clears the foot.
+          <View>
+            {act.notice ? (
+              <Animated.View
+                entering={motion.enter}
+                exiting={motion.exit}
+                accessible
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                style={[styles.notice, { backgroundColor: act.notice.tone === "warning" ? colors.warningBg : colors.infoBg }]}
+              >
+                <Text variant="subhead" tone={act.notice.tone === "warning" ? "warningText" : "infoText"}>
+                  {act.notice.text}
+                </Text>
+              </Animated.View>
+            ) : null}
+            <View testID="thread-spacer" style={{ height: spacer }} />
+          </View>
+        }
         renderItem={({ item: row }) =>
           row.kind === "day" ? (
             <DayLine label={dayLabel(row.at, now, locale, t)} />
@@ -238,47 +292,46 @@ export default function ConversationScreen() {
           if (thread.hasNextPage && !thread.isFetchingNextPage) void thread.fetchNextPage();
         }}
         ListFooterComponent={
-          thread.isFetchingNextPage || thread.isPending ? (
-            <View style={styles.pad}>
-              <Skeleton rows={2} label={t("inbox.thread.loading")} />
-            </View>
-          ) : undefined
+          // Inverted: the "footer" is the visual top — the room the transparent header needs, then older pages loading.
+          <View style={styles.top}>
+            {thread.isFetchingNextPage || thread.isPending ? (
+              <View style={styles.pad}>
+                <Skeleton rows={2} label={t("inbox.thread.loading")} />
+              </View>
+            ) : null}
+          </View>
         }
       />
-      <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, 8), borderTopColor: colors.border }]}>
-        {mode?.kind === "mine" ? (
-          <Animated.View key="mine" entering={motion.enter} exiting={motion.exit} layout={motion.layout}>
-            <Composer
-              mode={mode}
-              online={online}
-              focusSignal={act.tookOver}
-              replies={replies.data ?? null}
-              t={t}
-              onSend={(text) => void act.send(text)}
-              onAttach={attach}
-              onReplies={(insert) =>
-                actions(
-                  t("inbox.replies"),
-                  (replies.data ?? []).map((r) => ({ label: r.title, onPress: () => insert(r.body) })),
-                )
-              }
-            />
-          </Animated.View>
-        ) : mode ? (
-          <Animated.View key={`control-${mode.kind}`} entering={motion.enter} exiting={motion.exit} layout={motion.layout}>
-            <ControlCard
-              mode={mode}
-              busy={act.busy}
-              online={online}
-              t={t}
-              onTakeOver={() => void act.takeOver(d.control_version)}
-              onGiveBack={() => void act.giveBack(d.control_version)}
-              onReopen={() => void act.reopen()}
-            />
-          </Animated.View>
+      </ScrollViewMarker>
+      <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={styles.foot}>
+        {mode ? (
+          <ThreadFoot
+            mode={mode}
+            busy={act.busy}
+            online={online}
+            t={t}
+            replies={replies.data ?? null}
+            focusSignal={act.tookOver}
+            onTakeOver={() => void act.takeOver(d.control_version)}
+            onGiveBack={() => void act.giveBack(d.control_version)}
+            onReopen={() => void act.reopen()}
+            onReadMore={readMore}
+            onSend={(text) => void act.send(text)}
+            onAttach={attach}
+            onReplies={(insert) =>
+              actions(
+                t("inbox.replies"),
+                (replies.data ?? []).map((r) => ({ label: r.title, onPress: () => insert(r.body) })),
+              )
+            }
+            onClearance={onClearance}
+            bottomInset={insets.bottom}
+          />
         ) : null}
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardStickyView>
+      {header}
+      {toolbar}
+    </View>
   );
 }
 
@@ -286,7 +339,8 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   pad: { padding: 16 },
   list: { paddingVertical: 8 },
+  top: { paddingTop: 8 },
   title: { minHeight: 44, justifyContent: "center", maxWidth: 240 },
-  notice: { paddingHorizontal: 16, paddingVertical: 10 },
-  bottom: { paddingHorizontal: 12, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  notice: { marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  foot: { position: "absolute", left: 0, right: 0, bottom: 0 },
 });

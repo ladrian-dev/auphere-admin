@@ -84,6 +84,7 @@ export const appEn: Record<AppKey, string> = {
   "app.inbox.replies.pick": "Insert a saved reply",
   "app.inbox.open.failed": "The file couldn't be opened.",
   "app.inbox.contact": "Contact",
+  "app.inbox.readMore": "Read more",
   "app.notices.title": "Hear about what needs you",
   "app.notices.body": "We notify you on this phone about three things, and nothing else:",
   "app.notices.kind.inbox.waiting": "A conversation is waiting for a person",

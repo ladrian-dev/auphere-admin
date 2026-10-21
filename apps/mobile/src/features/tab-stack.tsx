@@ -1,15 +1,17 @@
-import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { router, Stack } from "expo-router";
 import type { ComponentProps } from "react";
-import { Platform } from "react-native";
+import { Platform, useWindowDimensions } from "react-native";
 
 import { useT } from "@/i18n/t";
+import { glassAvailable } from "@/theme/glass";
 import { useTheme } from "@/theme/theme";
-import { type } from "@/theme/type";
+import { headerSize, type } from "@/theme/type";
 import { IconButton } from "@/ui/button";
 import { icons } from "@/ui/icon";
 
-type Options = Extract<ComponentProps<typeof Stack>["screenOptions"], object>;
+/** A stack screen's options as a plain object (not the function form `screenOptions` also takes). */
+export type ScreenOptions = Exclude<Extract<ComponentProps<typeof Stack>["screenOptions"], object>, (...a: never[]) => unknown>;
+type Options = ScreenOptions;
 
 /**
  * The platform's own header in the app's colours (spec 042, R1.1, R3.1, D1).
@@ -24,13 +26,16 @@ type Options = Extract<ComponentProps<typeof Stack>["screenOptions"], object>;
  */
 export function useHeaderOptions(): Options {
   const { colors } = useTheme();
+  const { fontScale } = useWindowDimensions();
+  // iOS: the large title follows the phone's text size by Apple's own table (R4.6, H8); the inline title stays
+  // fixed, as Apple keeps it (the bar cannot grow). Android scales its sp itself.
   const base: Options = {
     headerShadowVisible: false,
     headerTintColor: colors.primaryText,
     headerTitleStyle: { color: colors.foreground },
-    headerLargeTitleStyle: { color: colors.foreground },
+    headerLargeTitleStyle: { color: colors.foreground, ...(Platform.OS === "ios" ? { fontSize: headerSize("largeTitle", fontScale) } : {}) },
   };
-  if (Platform.OS === "ios" && isLiquidGlassAvailable()) return base;
+  if (glassAvailable()) return base;
   return {
     ...base,
     // Android's toolbar sizes its title in sp only when told a size (R4.6, D14).

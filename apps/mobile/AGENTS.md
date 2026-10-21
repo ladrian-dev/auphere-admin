@@ -64,5 +64,6 @@ la sustituye.
 - **De dónde se parte.** La auditoría de partida está en la KB:
   `research/2026-10-20-liquid-glass-app-movil.md`.
 - **El rediseño cambia comportamiento y va por la spec 042**
-  (`specs/042-liquid-glass-en-la-app/`, regla nº1). Hasta que exista su
-  `tasks.md`, no se toca la UI por esta dirección.
+  (`specs/042-liquid-glass-en-la-app/`, regla nº1). Los cambios de UI citan
+  la spec 042 (su requisito o su tarea) y actualizan `docs/app-movil.md` en
+  el mismo commit; lo que la spec no cubre abre una spec nueva, no un parche.

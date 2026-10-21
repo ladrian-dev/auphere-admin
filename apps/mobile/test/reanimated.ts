@@ -42,11 +42,20 @@ export const LinearTransition = builder("LinearTransition");
 export const ReduceMotion = { System: "system", Always: "always", Never: "never" };
 
 export const useReducedMotion = jest.fn(() => false);
-export const useSharedValue = <T,>(v: T) => ({ value: v });
+export const useSharedValue = <T,>(v: T) => {
+  const sv = {
+    value: v,
+    get: () => sv.value,
+    set: (next: T | ((cur: T) => T)) => {
+      sv.value = typeof next === "function" ? (next as (cur: T) => T)(sv.value) : next;
+    },
+  };
+  return sv;
+};
 export const useAnimatedStyle = (fn: () => object) => fn();
 export const withRepeat = jest.fn((v: unknown) => v);
 export const withTiming = jest.fn((v: unknown) => v);
 export const cancelAnimation = jest.fn();
 
-const Animated = { View };
+const Animated = { View, createAnimatedComponent: <C,>(c: C) => c };
 export default Animated;
