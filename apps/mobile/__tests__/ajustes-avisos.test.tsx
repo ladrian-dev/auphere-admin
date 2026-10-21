@@ -76,6 +76,33 @@ it("«Cerrar sesión» confirms, then signs out this phone only", async () => {
   expect(mockSignOut).toHaveBeenCalled();
 });
 
+describe("two risks, two sections (spec 042, T040, R8)", () => {
+  it("«Cerrar sesión» and the account's deletion live in different groups, the deletion last", async () => {
+    mockPermission = "granted";
+    await render(<Ajustes />);
+    const groups = screen.getAllByTestId(/^settings-/).map((n) => n.props.testID as string);
+    expect(groups.indexOf("settings-signout")).toBeGreaterThan(-1);
+    expect(groups.indexOf("settings-deletion")).toBe(groups.length - 1);
+    expect(groups.indexOf("settings-deletion")).not.toBe(groups.indexOf("settings-signout"));
+  });
+
+  it("only the deletion wears the colour of danger, and it says what happens next before being tapped", async () => {
+    const { tokens } = require("@/theme/tokens.gen");
+    const { StyleSheet } = require("react-native");
+    await render(<Ajustes />);
+    const colour = (text: string) => StyleSheet.flatten(screen.getByText(text).props.style).color as string;
+    expect(colour("Solicitar el borrado de la cuenta")).toBe(tokens.light.destructive);
+    expect(colour("Cerrar sesión")).not.toBe(tokens.light.destructive);
+    expect(screen.getByText("Auphere te escribirá para confirmarlo y cerrará tu acceso.")).toBeTruthy();
+  });
+
+  it("the way to the web says it leaves the app", async () => {
+    await render(<Ajustes />);
+    expect(screen.getByTestId("row-indicator-external")).toBeTruthy();
+    expect(screen.queryByTestId("row-indicator-push")).toBeNull();
+  });
+});
+
 it("the version says which environment a test build talks to, and nothing in production", () => {
   const { versionLabel } = require("@/lib/version");
   expect(versionLabel("1.0.0", "production")).toBe("1.0.0");

@@ -42,9 +42,13 @@ encargados). La persona puede pedir el borrado de su cuenta desde la app
 
 ## Pendiente del dueño
 
-- ☐ El App ID `com.auphere.customers` en el team de FACELAD con Push
-  Notifications y Time Sensitive Notifications; la clave APNs `.p8`; una API
-  key **nueva** de App Store Connect para EAS (T004).
+- ☑ El App ID `com.auphere.customers` en el team de FACELAD con Push
+  Notifications y Time Sensitive Notifications, y su ficha en App Store Connect
+  (`6825002452`, en el `submit` de `eas.json`). La clave APNs `.p8`
+  (Sandbox & Production) está en el secreto de staging. Primer build de
+  staging, `1.0.0 (1)`, en TestFlight (2026-10-20).
+- ☐ Comprobar en expo.dev que la API key de App Store Connect que usa EAS
+  Submit es **nueva**, no la «[Expo] EAS Submit» de FACELAD (T004).
 - ☐ La app en Google Play Console y el proyecto de Firebase con su cuenta de
   servicio de FCM (`fcm_project_id`, `fcm_service_account_json`) y su
   `google-services.json` como secreto de archivo de EAS.

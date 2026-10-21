@@ -41,10 +41,19 @@ jest.mock("@/api/hooks", () => ({
 jest.mock("@/api/sse", () => ({ useLiveStatus: () => "live" }));
 jest.mock("@/ui/actions", () => ({ useActions: () => jest.fn() }));
 jest.mock("@/ui/online", () => ({ useOnline: () => true }));
-jest.mock("expo-router", () => ({
-  router: { push: jest.fn() },
-  Stack: { Screen: ({ options }: { options: Record<string, unknown> }) => ((mockOptions.current = options), null) },
-}));
+jest.mock("expo-router", () => {
+  // The settings bar button (spec 042, SettingsToolbar) renders nothing here.
+  function Toolbar() {
+    return null;
+  }
+  Toolbar.Button = function ToolbarButton() {
+    return null;
+  };
+  return {
+    router: { push: jest.fn() },
+    Stack: { Screen: ({ options }: { options: Record<string, unknown> }) => ((mockOptions.current = options), null), Toolbar },
+  };
+});
 
 function page(items: Conversation[], has_any = items.length > 0) {
   return { pages: [{ items, next_cursor: null, counts: { unread: 1, waiting: 2 }, has_any, channel_kinds: ["whatsapp"] }] };

@@ -7,6 +7,9 @@ import { t as translate, type Locale, type MessageKey } from "@/i18n/t";
 /**
  * Spec 031 (T064, R4.2, R4.4, R4.5): Consumo is read-only — the balance, the
  * month and its projection, per day and per agent; never a way to buy.
+ * Spec 042 (T038, T039, R9, R6.2, R6.3, R10.1): no opening sentence, the
+ * figures as rows of one group, the chart's period only when there is
+ * something to chart, and one row that says it leaves for the web.
  */
 const summary = (o: Partial<UsageSummary> = {}): UsageSummary =>
   ({
@@ -28,14 +31,17 @@ const spend: Spend = {
   projected_cents: 4100,
 } as Spend;
 
-async function view(locale: Locale = "es", s: UsageSummary | null = summary()) {
+async function view(p: { locale?: Locale; summary?: UsageSummary | null; anySpend?: boolean | null; spend?: Spend | null } = {}) {
+  const locale = p.locale ?? "es";
   const t = (k: MessageKey, v?: Record<string, string | number>) => translate(locale, k, v);
   const onDays = jest.fn();
+  const onWeb = jest.fn();
   await render(
     <UsageView
-      summary={s}
-      spend={spend}
+      summary={p.summary === undefined ? summary() : p.summary}
+      spend={p.spend === undefined ? spend : p.spend}
       spendFailed={false}
+      anySpend={p.anySpend === undefined ? true : p.anySpend}
       days={30}
       onDays={onDays}
       agents={[]}
@@ -45,27 +51,42 @@ async function view(locale: Locale = "es", s: UsageSummary | null = summary()) {
       locale={locale}
       now={new Date("2026-10-08T12:00:00Z")}
       onRetry={jest.fn()}
-      onWeb={jest.fn()}
+      onWeb={onWeb}
     />,
   );
-  return { onDays };
+  return { onDays, onWeb };
 }
 
-it("the balance, how long it lasts, the month and its projection", async () => {
+it("the balance, how long it lasts, the month and its projection — the same cents as before (R10.1)", async () => {
   await view();
-  expect(screen.getByText(/30,13/)).toBeTruthy();
-  expect(screen.getByText("Cubre unos 11 días al ritmo de esta semana")).toBeTruthy();
-  expect(screen.getByText(/A este ritmo, .*41,00.* a fin de mes/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Saldo disponible: .*30,13/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Cubre unos 11 días al ritmo de esta semana/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Gasto del mes: .*16,26.*A este ritmo, .*41,00.* a fin de mes/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Conversaciones del mes: 75\. .*0,22.* de media cada una/)).toBeTruthy();
 });
 
-it("spend per day with 7, 30 and 90", async () => {
+it("opens with the figures, not with a sentence that repeats the title (R9.1)", async () => {
+  await view();
+  expect(screen.queryByText("Tu saldo, lo que gastas y lo que se gasta cada día.")).toBeNull();
+  expect(screen.queryByText(/Tu saldo, lo que gasta cada agente/)).toBeNull();
+});
+
+it("spend per day with 7, 30 and 90, and the period's total as the figure", async () => {
   const { onDays } = await view();
   // The group is a radiogroup for screen readers; each period is a radio.
   expect(screen.getAllByRole("radio")).toHaveLength(3);
   expect(screen.getByRole("radio", { name: "30 días" }).props.accessibilityState).toEqual({ checked: true });
   await fireEvent.press(screen.getByRole("radio", { name: "90 días" }));
   expect(onDays).toHaveBeenCalledWith(90);
+  expect(screen.getByText(/3,50/)).toBeTruthy();
   expect(screen.getByLabelText(/Gasto por día en dólares/)).toBeTruthy();
+});
+
+it("with no spend in 90 days there is no period to choose, and it says what will fill the chart (R9.2)", async () => {
+  await view({ anySpend: false, spend: null });
+  expect(screen.queryAllByRole("radio")).toHaveLength(0);
+  expect(screen.getByText("Cuando tus agentes atiendan conversaciones, aquí verás el gasto de cada día.")).toBeTruthy();
+  expect(screen.queryByLabelText(/Gasto por día en dólares/)).toBeNull();
 });
 
 it("the split by agent", async () => {
@@ -75,23 +96,24 @@ it("the split by agent", async () => {
 });
 
 it.each<Locale>(["es", "en"])("no buy, top-up or «ask for balance» anywhere (%s)", async (locale) => {
-  await view(locale);
+  await view({ locale });
   for (const word of [/comprar/i, /recargar/i, /pedir saldo/i, /\bbuy\b/i, /top[- ]?up/i, /ask .* for more balance/i]) {
     expect(screen.queryByText(word)).toBeNull();
     expect(screen.queryByRole("button", { name: word })).toBeNull();
   }
 });
 
-it("no technical detail and no export: those stay on the web", async () => {
-  await view();
-  // Only the pointer to the web mentions it; nothing here exports.
+it("the way to the web is one row that says it leaves the app and where it goes (R6.2, R6.3)", async () => {
+  const { onWeb } = await view();
   expect(screen.queryByRole("button", { name: /^(exportar|export)/i })).toBeNull();
   expect(screen.queryByText(/medidor|meter/i)).toBeNull();
-  expect(screen.getByRole("button", { name: "El detalle técnico y la exportación están en la consola web." })).toBeTruthy();
+  expect(screen.getByTestId("row-indicator-external")).toBeTruthy();
+  await fireEvent.press(screen.getByRole("button", { name: "Abrir en la consola web. El detalle técnico y la exportación" }));
+  expect(onWeb).toHaveBeenCalled();
 });
 
 it("a failed read is an error with retry, never zeros", async () => {
-  await view("es", null);
+  await view({ summary: null });
   expect(screen.getByRole("alert")).toBeTruthy();
   expect(screen.queryByText(/30,13/)).toBeNull();
 });

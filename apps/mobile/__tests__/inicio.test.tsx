@@ -6,7 +6,8 @@ import { t as translate, type MessageKey } from "@/i18n/t";
 
 /**
  * Spec 031 (T063, R4.1, R4.4, R14.1): Inicio is the console's Panel, in each
- * of its states.
+ * of its states. Spec 042 (T028–T032, R5, R6.4, CE-001): it says each thing
+ * once — one attention block, one money group, one conversations block.
  */
 const t = (k: MessageKey, v?: Record<string, string | number>) => translate("es", k, v);
 const NOW = new Date("2026-10-08T12:00:00Z");
@@ -50,8 +51,7 @@ it("ideal: the client's figures, as the console shows them", async () => {
   await view();
   expect(screen.getByText("75")).toBeTruthy();
   expect(screen.getByText("Últimos 7 días · sin semana anterior para comparar")).toBeTruthy();
-  expect(screen.getByText(/16,26/)).toBeTruthy();
-  expect(screen.getByText("Esperan a una persona")).toBeTruthy();
+  expect(screen.getByLabelText(/^Gasto del mes: .*16,26/)).toBeTruthy();
 });
 
 it("error: the whole read failed — an alert with a retry, no invented zeros", async () => {
@@ -71,8 +71,84 @@ it("partial: a block that failed is said, the rest shows", async () => {
 it("«Necesita tu atención» comes first, and «Atender» opens the waiting conversation", async () => {
   const { onAttend } = await view({ home: home({ attention: [{ kind: "waiting", count: 3, days_left: null }] }) });
   expect(screen.getByRole("header", { name: "Necesita tu atención" })).toBeTruthy();
-  await fireEvent.press(screen.getByRole("button", { name: "Atender" }));
+  await fireEvent.press(screen.getByRole("button", { name: /^Atender/ }));
   expect(onAttend).toHaveBeenCalledWith("c-2");
+});
+
+describe("each thing once (spec 042, R5)", () => {
+  it("CE-001: with two conversations waiting, the number appears once, in the attention block, and nowhere else", async () => {
+    await view({
+      home: home({ attention: [{ kind: "waiting", count: 2, days_left: null }], waiting: { count: 2, first_conversation_id: "c-2" } }),
+    });
+    expect(screen.getAllByText("2 conversaciones esperan a una persona")).toHaveLength(1);
+    // Not the old «Esperan a una persona» metric, and no badge counting something else (H13).
+    expect(screen.queryByText("Esperan a una persona")).toBeNull();
+    expect(screen.queryByText(/^[12]$/)).toBeNull();
+  });
+
+  it("nothing pending is one calm line, never a zero", async () => {
+    await view();
+    expect(screen.getByText("Todo en orden. Nada espera a una persona y el saldo alcanza para el mes.")).toBeTruthy();
+    expect(screen.queryByText(/esperan a una persona/i)).toBeNull();
+    expect(screen.queryByText(/^0$/)).toBeNull();
+  });
+
+  it("money is one group: the balance, how long it lasts, the month's spend — and the way to Consumo", async () => {
+    const { onUsage } = await view();
+    expect(screen.getAllByText("Saldo disponible")).toHaveLength(1);
+    expect(screen.getByLabelText(/^Saldo disponible: .*30,13/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Cubre 11 de 24 días del mes/)).toBeTruthy();
+    expect(screen.getByRole("progressbar", { name: "Días del mes que cubre el saldo" })).toBeTruthy();
+    expect(screen.getByLabelText(/^Gasto del mes: .*16,26/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Ver consumo" }));
+    expect(onUsage).toHaveBeenCalled();
+  });
+
+  it("without the Consumo module the money group has no way in and nothing to press (R6.4)", async () => {
+    await view({ nav: ["panel", "inbox"] });
+    expect(screen.getByLabelText(/^Saldo disponible: .*30,13/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ver consumo" })).toBeNull();
+    expect(screen.queryByTestId("row-indicator-push")).toBeNull();
+  });
+
+  it("waiting and a low balance: two rows in the attention block, each datum once", async () => {
+    await view({
+      home: home({
+        attention: [
+          { kind: "waiting", count: 1, days_left: null },
+          { kind: "balance_low", count: null, days_left: 4.6 },
+        ],
+      }),
+    });
+    expect(screen.getAllByText("1 conversación espera a una persona")).toHaveLength(1);
+    expect(screen.getAllByText("Te quedarás sin saldo en unos 4 días. Pide más saldo a Amacrux.")).toHaveLength(1);
+    expect(screen.getAllByText("Saldo disponible")).toHaveLength(1);
+  });
+
+  it("one way to Consumo per screen: when the attention block offers it, the money group does not repeat it", async () => {
+    await view({ home: home({ attention: [{ kind: "balance_low", count: null, days_left: 4.6 }] }) });
+    expect(screen.getAllByRole("button", { name: "Ver consumo" })).toHaveLength(1);
+  });
+
+  it("the waiting row says it once: no «Bandeja de entrada» label repeating the sentence next to it", async () => {
+    await view({ home: home({ attention: [{ kind: "waiting", count: 2, days_left: null }] }) });
+    expect(screen.queryByText("Bandeja de entrada")).toBeNull();
+    expect(screen.getByText("2 conversaciones esperan a una persona")).toBeTruthy();
+  });
+
+  it("an unassigned balance says so, with no invented figures", async () => {
+    await view({ home: home({ balance: { assigned: false, remaining_cents: null, cap_cents: null, days_left: null } }) });
+    expect(screen.getByLabelText(/^Saldo disponible: —\. Todavía no tienes un tope asignado/)).toBeTruthy();
+    expect(screen.queryByText(/Cubre/)).toBeNull();
+  });
+
+  it("conversations are one hero figure with their trend, and the bars under it", async () => {
+    await view({ home: home({ conversations: { last_7d: 75, prev_7d: 60, daily: days.map((day) => ({ day, count: 10 })) } }) });
+    expect(screen.getByText("75")).toBeTruthy();
+    expect(screen.getByText("25 % más que los 7 días anteriores")).toBeTruthy();
+    expect(screen.getByLabelText(/^Conversaciones por día de los últimos 7 días/)).toBeTruthy();
+    expect(screen.queryByTestId("row-indicator-push")).toBeTruthy(); // only the money group's way to Consumo
+  });
 });
 
 it("a short balance says for how long and whom to ask — with no buy button (R4.4)", async () => {
@@ -81,49 +157,8 @@ it("a short balance says for how long and whom to ask — with no buy button (R4
   expect(screen.queryByText(/comprar|recargar/i)).toBeNull();
 });
 
-it("nothing pending is one calm line", async () => {
-  await view();
-  expect(screen.getByText("Todo en orden. Nada espera a una persona y el saldo alcanza para el mes.")).toBeTruthy();
-});
-
 it("without the Bandeja there is no «waiting» action into it", async () => {
   await view({ nav: ["panel", "usage"], home: home({ waiting: null }) });
-  expect(screen.queryByText("Esperan a una persona")).toBeNull();
+  expect(screen.queryByText(/esperan a una persona/i)).toBeNull();
   expect(screen.queryByRole("button", { name: /Atender/ })).toBeNull();
-});
-
-it("the spend splits by agent only with more than one", async () => {
-  await view({
-    home: home({
-      spend_month: {
-        total_cents: 1000,
-        by_agent: [
-          { agent_id: "a1", name: "Recepción", cents: 600 },
-          { agent_id: "a2", name: "Ventas", cents: 400 },
-        ],
-      },
-    }),
-  });
-  expect(screen.getByLabelText(/Recepción: .*60 %/)).toBeTruthy();
-  expect(screen.getByLabelText(/Ventas: .*40 %/)).toBeTruthy();
-});
-
-describe("large text (R14.3)", () => {
-  it("the figures grow with the system text size, so at 200 % they stack instead of splitting words", async () => {
-    const { Metric } = require("@/features/home/metric");
-    const { icons } = require("@/ui/icon");
-    const RN = require("react-native");
-    const spy = jest.spyOn(RN, "useWindowDimensions");
-    const basisAt = async (fontScale: number) => {
-      spy.mockReturnValue({ width: 411, height: 914, scale: 2.625, fontScale });
-      await render(<Metric icon={icons.chat} label="Conversaciones" value="5" testID="metric" />);
-      return RN.StyleSheet.flatten(screen.getByTestId("metric").props.style).flexBasis as number;
-    };
-    const normal = await basisAt(1);
-    const large = await basisAt(2);
-    // Two cards and the gap fit in a 379 dp column at 100 %, and do not at 200 %.
-    expect(2 * normal + 12).toBeLessThanOrEqual(379);
-    expect(2 * large + 12).toBeGreaterThan(379);
-    spy.mockRestore();
-  });
 });

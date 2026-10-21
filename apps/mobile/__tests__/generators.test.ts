@@ -34,6 +34,10 @@ describe("gen-i18n", () => {
     expect(liteMessages["inbox.composer.takeover"]).toEqual({ es: "Tomar el control", en: "Take over" });
     expect(liteMessages["inbox.badge.waiting"]).toEqual({ es: "Necesita humano", en: "Needs a human" });
   });
+
+  it("the attention button names what it does, in both languages (spec 042, T041, R9.3)", () => {
+    expect(liteMessages["lite.attention.attend"]).toEqual({ es: "Atender ahora", en: "Answer now" });
+  });
 });
 
 describe("--check", () => {

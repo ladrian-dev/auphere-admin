@@ -3,6 +3,7 @@ import * as Reanimated from "react-native-reanimated";
 
 import { MAX, durations } from "@/motion/durations";
 import { motionFor } from "@/motion/use-motion";
+import { CARD_RADIUS, concentric } from "@/theme/theme";
 import { EmptyState, ErrorState, OfflineBanner, PartialNotice, ReconnectingIndicator, SKELETON_DELAY_MS, Skeleton } from "@/ui/states";
 import { Avatar } from "@/ui/bits";
 import { Text } from "@/ui/text";
@@ -53,7 +54,8 @@ describe("the five states", () => {
 
   it("«Reconectando…» is named, and still with reduced motion", async () => {
     const repeat = jest.spyOn(Reanimated, "withRepeat");
-    jest.spyOn(Reanimated, "useReducedMotion").mockReturnValue(true);
+    const appearance = require("@/theme/system-appearance") as { useSystemAppearance: () => unknown };
+    jest.spyOn(appearance, "useSystemAppearance").mockReturnValue({ reduceTransparency: false, increaseContrast: false, reduceMotion: true });
     await render(<ReconnectingIndicator label="Reconectando…" />);
     expect(screen.getByLabelText("Reconectando…")).toBeTruthy();
     expect(repeat).not.toHaveBeenCalled();
@@ -80,6 +82,36 @@ describe("motion (D24)", () => {
     expect(reduced.layout).toBeUndefined();
     expect(full.enter).not.toBe(full.fade);
     expect(full.layout).toBeDefined();
+  });
+
+  it("tells Reanimated explicitly, never «System» — the app decides what reduced motion looks like (spec 042, T022, R2.6, R4.5)", () => {
+    const motion = (b: unknown) => (b as { motion?: unknown }).motion;
+    const reduced = motionFor(true);
+    const full = motionFor(false);
+    // The fade IS the reduced-motion alternative, so it must play: «Always» would skip it.
+    expect(motion(reduced.enter)).toBe(Reanimated.ReduceMotion.Never);
+    expect(motion(reduced.exit)).toBe(Reanimated.ReduceMotion.Never);
+    expect(motion(full.enter)).toBe(Reanimated.ReduceMotion.Never);
+    expect(motion(full.layout)).toBe(Reanimated.ReduceMotion.Never);
+    expect((full.layout as unknown as { ms?: number }).ms).toBe(durations.state);
+  });
+
+  it("useMotion follows the phone's setting live, not the value at launch (T022)", async () => {
+    const appearance = require("@/theme/system-appearance") as { useSystemAppearance: () => unknown };
+    jest.spyOn(appearance, "useSystemAppearance").mockReturnValue({ reduceTransparency: false, increaseContrast: false, reduceMotion: true });
+    const { useMotion } = require("@/motion/use-motion") as { useMotion: () => { reduced: boolean } };
+    const { renderHook } = require("@testing-library/react-native") as typeof import("@testing-library/react-native");
+    expect((await renderHook(() => useMotion())).result.current.reduced).toBe(true);
+    jest.restoreAllMocks();
+  });
+});
+
+describe("shape (spec 042, T006, R7.1)", () => {
+  it("cards share one radius, and what sits inside keeps its corners concentric", () => {
+    expect(CARD_RADIUS).toBe(12);
+    expect(concentric(24, 8)).toBe(16);
+    expect(concentric(12, 12)).toBe(4);
+    expect(concentric(6, 10)).toBe(4);
   });
 });
 

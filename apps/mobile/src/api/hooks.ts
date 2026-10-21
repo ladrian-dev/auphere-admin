@@ -37,11 +37,12 @@ export function useUsageSummary() {
   return q;
 }
 
-export function useUsageSpend(days: number, agent: string | null) {
+export function useUsageSpend(days: number, agent: string | null, enabled = true) {
   const q = useQuery({
     queryKey: keys.usageSpend(days, agent),
     queryFn: () => endpoints.usageSpend(days, agent),
     placeholderData: (prev) => prev,
+    enabled,
   });
   useForbiddenRereadsMe(q.error);
   return q;

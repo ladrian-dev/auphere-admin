@@ -1,5 +1,4 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { useReducedMotion } from "react-native-reanimated";
 
 import type { ThreadItem } from "@/api/endpoints";
 import { eventText, withDaySeparators } from "@/features/inbox/model";
@@ -83,7 +82,6 @@ it("days are separated", () => {
 });
 
 it("with reduced motion, entrances are fades only", () => {
-  (useReducedMotion as jest.Mock).mockReturnValue(true);
   const m = motionFor(true);
   expect(m.enter).toBe(m.fade);
   expect(m.layout).toBeUndefined();

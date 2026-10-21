@@ -1,15 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 
 import { useT } from "@/i18n/t";
+import { useSystemAppearance } from "@/theme/system-appearance";
 import { useTheme } from "@/theme/theme";
 
 import { Button } from "./button";
@@ -153,7 +147,7 @@ export function PartialNotice({ text }: { text?: string }) {
  */
 export function ReconnectingIndicator({ label }: { label: string }) {
   const { colors } = useTheme();
-  const reduced = useReducedMotion();
+  const reduced = useSystemAppearance().reduceMotion;
   const opacity = useSharedValue(1);
   useEffect(() => {
     if (reduced) {

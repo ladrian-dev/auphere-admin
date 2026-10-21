@@ -3,17 +3,19 @@ import { StyleSheet, View } from "react-native";
 import type { Home, Me } from "@/api/endpoints";
 import type { T } from "@/i18n/t";
 import { useTheme } from "@/theme/theme";
-import { Badge, Divider } from "@/ui/bits";
+import { Divider, RowButton } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
 /**
- * «Necesita tu atención» (spec 030 R4.5–R4.7, here R4.1): what waits for a
- * person goes first, with its way in, within reach of the thumb; a short
- * balance says for how long it lasts and whom to ask — there is no buy
- * button (R4.4). Nothing pending is one calm line.
+ * «Necesita tu atención» (spec 030 R4.5–R4.7, here R4.1; spec 042 R5.1, R5.2):
+ * what waits for a person goes first, with its way in, within reach of the
+ * thumb; a short balance says for how long it lasts and whom to ask — there
+ * is no buy button (R4.4). Nothing pending is one calm line. The number of
+ * conversations waiting appears once, in its row, and nothing counts
+ * anything else next to the title (H13).
  */
 export function Attention({
   home,
@@ -60,7 +62,6 @@ export function Attention({
         <Text variant="headline" accessibilityRole="header" style={styles.flex}>
           {t("lite.attention.title")}
         </Text>
-        <Badge label={n(home.attention.length)} tone="danger" />
       </View>
       {home.attention.map((item, i) => {
         const divider = i > 0 ? <Divider /> : null;
@@ -69,8 +70,8 @@ export function Attention({
           return (
             <View key="waiting" style={styles.item}>
               {divider}
-              <Text variant="bodyStrong">{t("lite.attention.inbox")}</Text>
-              <Text variant="callout" tone="mutedForeground">
+              {/* The sentence already names the inbox; a «Bandeja de entrada» label above it said it twice (R5.1). */}
+              <Text variant="bodyStrong">
                 {count === 1 ? t("lite.attention.waiting.one") : t("lite.attention.waiting", { count: n(count) })}
               </Text>
               {hasInbox ? (
@@ -97,7 +98,11 @@ export function Attention({
             <Text variant="callout" tone="mutedForeground">
               {ask ? `${body}. ${ask}` : body}
             </Text>
-            {modules.includes("usage") ? <Button label={t("lite.spend.see")} variant="secondary" onPress={onUsage} /> : null}
+            {modules.includes("usage") ? (
+              <View style={styles.bleed}>
+                <RowButton title={t("lite.spend.see")} tone="primaryText" kind="push" onPress={onUsage} />
+              </View>
+            ) : null}
           </View>
         );
       })}
@@ -111,4 +116,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   title: { flexDirection: "row", alignItems: "center", gap: 8 },
   item: { gap: 6, paddingTop: 4 },
+  // The row's press tint reaches the card's edges, past the card's own padding.
+  bleed: { marginHorizontal: -16 },
 });

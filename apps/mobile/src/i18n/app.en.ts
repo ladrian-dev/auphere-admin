@@ -69,7 +69,8 @@ export const appEn: Record<AppKey, string> = {
   "app.home.greeting": "Hi, {name}",
   "app.usage.days": "Period",
   "app.usage.days.n": "{days} days",
-  "app.usage.web": "The technical detail and the export are in the web console.",
+  "app.usage.web": "The technical detail and the export",
+  "app.usage.empty": "When your agents handle conversations, you'll see each day's spend here.",
   "app.chart.day": "{day}: {value}",
   "app.inbox.agentFilter": "Filter by agent",
   "app.inbox.agentFilter.value": "Agent: {name}",
@@ -119,5 +120,6 @@ export const appEn: Record<AppKey, string> = {
     "We let Auphere know, and they'll email you to confirm. Your account and your personal data are deleted within the legal deadline, one month at most. Meanwhile you can keep using the app.",
   "app.deletion.sent": "Request sent. Auphere will email you.",
   "app.deletion.failed": "The request couldn't be sent. Try again.",
+  "app.deletion.footer": "Auphere will email you to confirm and will close your access.",
   "app.version": "Version {version}",
 };

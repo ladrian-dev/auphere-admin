@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useMe, useUsageSpend, useUsageSummary } from "@/api/hooks";
 import { CONSOLE_URL } from "@/config";
+import { SettingsToolbar } from "@/features/tab-stack";
 import { UsageView, type Period } from "@/features/usage/usage-view";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
@@ -12,7 +13,12 @@ import { useOnline } from "@/ui/online";
 import { ScrollScreen } from "@/ui/screen";
 import { OfflineBanner, Skeleton } from "@/ui/states";
 
-/** Consumo (R4.2): read-only, the client's own money, in its five states. */
+/**
+ * Consumo (R4.2): read-only, the client's own money, in its five states.
+ * The 90-day series is read first (spec 042, R9.2): it contains the other
+ * two, so it decides whether there is anything to chart before a period is
+ * offered. The chosen period is read only when there is.
+ */
 export default function Consumo() {
   const t = useT();
   const locale = useLocale();
@@ -22,7 +28,10 @@ export default function Consumo() {
   const [days, setDays] = useState<Period>(30);
   const [agent, setAgent] = useState<string | null>(null);
   const summary = useUsageSummary();
-  const spend = useUsageSpend(days, agent);
+  const wide = useUsageSpend(90, agent);
+  const anySpend = wide.data ? wide.data.series_cents.some((c) => c > 0) : null;
+  const narrow = useUsageSpend(days, agent, anySpend === true && days !== 90);
+  const spend = days === 90 ? wide : narrow;
   const agents = (me.data?.agents ?? []).map((a) => ({ id: a.id, name: a.name }));
 
   const pickAgent = () =>
@@ -34,11 +43,13 @@ export default function Consumo() {
   return (
     <>
       <Stack.Screen options={{ title: t("app.tab.usage") }} />
+      <SettingsToolbar />
       <ScrollScreen
         refreshing={summary.isRefetching}
         onRefresh={() => {
           void summary.refetch();
-          void spend.refetch();
+          void wide.refetch();
+          if (days !== 90 && anySpend) void narrow.refetch();
         }}
         testID="consumo"
       >
@@ -47,7 +58,8 @@ export default function Consumo() {
           <UsageView
             summary={summary.data ?? null}
             spend={spend.data ?? null}
-            spendFailed={spend.isError}
+            spendFailed={spend.isError || (anySpend === null && wide.isError)}
+            anySpend={anySpend}
             days={days}
             onDays={setDays}
             agents={agents}

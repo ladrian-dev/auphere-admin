@@ -77,7 +77,8 @@ export const appEs = {
   "app.home.greeting": "Hola, {name}",
   "app.usage.days": "Periodo",
   "app.usage.days.n": "{days} días",
-  "app.usage.web": "El detalle técnico y la exportación están en la consola web.",
+  "app.usage.web": "El detalle técnico y la exportación",
+  "app.usage.empty": "Cuando tus agentes atiendan conversaciones, aquí verás el gasto de cada día.",
   "app.chart.day": "{day}: {value}",
   // ── bandeja (R5, R6) ─────────────────────────────────────────────
   "app.inbox.agentFilter": "Filtrar por agente",
@@ -130,6 +131,7 @@ export const appEs = {
     "Avisamos a Auphere, que te escribirá al correo para confirmarlo. Tu cuenta y tus datos personales se borran dentro del plazo que marca la ley, un mes como máximo. Mientras tanto puedes seguir usando la app.",
   "app.deletion.sent": "Solicitud enviada. Auphere te escribirá al correo.",
   "app.deletion.failed": "No se pudo enviar la solicitud. Inténtalo de nuevo.",
+  "app.deletion.footer": "Auphere te escribirá para confirmarlo y cerrará tu acceso.",
   "app.version": "Versión {version}",
 } as const;
 

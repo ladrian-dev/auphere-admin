@@ -6,20 +6,34 @@
  */
 import { View } from "react-native";
 
-type Builder = { name: string; duration: (ms: number) => Builder; reduceMotion: (m: unknown) => Builder; ms?: number };
+type Builder = {
+  name: string;
+  duration: (ms: number) => Builder;
+  easing: (e: unknown) => Builder;
+  reduceMotion: (m: unknown) => Builder;
+  ms?: number;
+  /** What the app told Reanimated about «Reduce motion» (spec 042, T022). */
+  motion?: unknown;
+};
 
-function builder(name: string): Builder {
+function builder(name: string, extra: Partial<Builder> = {}): Builder {
   const b: Builder = {
     name,
+    ...extra,
     duration(ms) {
-      return { ...b, ms };
+      return builder(name, { ...extra, ms });
     },
-    reduceMotion() {
-      return b;
+    easing() {
+      return builder(name, extra);
+    },
+    reduceMotion(m) {
+      return builder(name, { ...extra, motion: m });
     },
   };
   return b;
 }
+
+export const Easing = { out: (f: unknown) => f, inOut: (f: unknown) => f, cubic: () => 0, quad: () => 0 };
 
 export const FadeIn = builder("FadeIn");
 export const FadeInDown = builder("FadeInDown");

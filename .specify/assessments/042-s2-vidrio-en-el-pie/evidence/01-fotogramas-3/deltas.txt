@@ -1,0 +1,84 @@
+frames.swift:37:24: warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
+35 | while t <= seconds {
+36 |   let time = CMTime(seconds: t, preferredTimescale: 600)
+37 |   if let cg = try? gen.copyCGImage(at: time, actualTime: nil) {
+   |                        `- warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
+38 |     let th = thumb(cg)
+39 |     if let p = prev {
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+t=0.033 delta=0.00
+t=0.067 delta=0.00
+t=0.100 delta=0.00
+t=0.133 delta=0.00
+t=0.167 delta=0.00
+t=0.200 delta=0.00
+t=0.233 delta=0.00
+t=0.267 delta=0.00
+t=0.300 delta=0.00
+t=0.333 delta=0.00
+t=0.367 delta=0.00
+t=0.400 delta=0.00
+t=0.433 delta=0.00
+t=0.467 delta=0.00
+t=0.500 delta=5.09  *
+t=0.533 delta=0.00
+t=0.567 delta=0.00
+t=0.600 delta=0.00
+t=0.633 delta=0.00
+t=0.667 delta=0.00
+t=0.700 delta=0.36
+t=0.733 delta=16.55  *
+t=0.767 delta=12.79  *
+t=0.800 delta=11.01  *
+t=0.833 delta=10.71  *
+t=0.867 delta=10.50  *
+t=0.900 delta=11.36  *
+t=0.933 delta=8.78  *
+t=0.967 delta=5.53  *
+t=1.000 delta=2.41  *
+t=1.033 delta=2.44  *
+t=1.067 delta=1.00
+t=1.100 delta=0.54
+t=1.133 delta=0.54
+t=1.167 delta=0.04
+t=1.200 delta=0.03
+t=1.233 delta=0.04
+t=1.267 delta=0.02
+t=1.300 delta=0.02
+t=1.333 delta=0.01
+t=1.367 delta=0.01
+t=1.400 delta=0.01
+t=1.433 delta=0.10
+t=1.467 delta=0.02
+t=1.500 delta=0.02
+t=1.533 delta=0.01
+t=1.567 delta=0.01
+t=1.600 delta=0.00
+t=1.633 delta=0.01
+t=1.667 delta=0.01
+t=1.700 delta=0.01
+t=1.733 delta=0.00
+t=1.767 delta=0.01
+t=1.800 delta=0.02
+t=1.833 delta=0.02
+t=1.867 delta=0.00
+t=1.900 delta=0.02
+t=1.933 delta=0.04
+t=1.967 delta=0.00
+t=2.000 delta=0.00
+t=2.033 delta=0.00
+t=2.067 delta=0.00
+t=2.100 delta=0.00
+t=2.133 delta=0.00
+t=2.167 delta=0.00
+t=2.200 delta=0.00
+t=2.233 delta=0.00
+t=2.267 delta=0.00
+t=2.300 delta=0.00
+t=2.333 delta=0.00
+t=2.367 delta=0.00
+t=2.400 delta=0.00
+t=2.433 delta=0.01
+t=2.467 delta=0.02
+cambio: de t=0.500 a t=1.033 (17 fotogramas, 567 ms)

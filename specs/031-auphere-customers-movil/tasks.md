@@ -757,6 +757,7 @@ explicado y solicitud de borrado de la cuenta.
   - las etiquetas de privacidad del App Store y el formulario Data safety de Play;
   - el cliente de demostración en producción, bajo Auphere Internal Partner. Su Bandeja no puede enviar WhatsApp a personas reales; si eso exige código, se abre una spec aparte.
   - **2026-10-20:** lo del repo está hecho y los borradores de las fichas escritos ([evidence/tiendas.md](evidence/tiendas.md)); faltan las cuentas, la política publicada y el cliente de demostración (dueño).
+  - **2026-10-20, más tarde:** la spec está en `develop` y en staging (migraciones renumeradas a 0165–0169). Primer build de iOS, `1.0.0 (1)` del perfil `staging`, subido a TestFlight desde el commit de la fusión. Falta Android (Play Console y Firebase).
   _Requisitos: 9.2, §II_
 - [X] T110 Gates del workspace sobre el diff completo:
   - `/cso`, porque toca autenticación, secretos y entrada externa;

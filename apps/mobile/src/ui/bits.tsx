@@ -102,30 +102,41 @@ export function Segmented<T extends string | number>({
   );
 }
 
-/** A tappable row of a list or a settings group, 48 pt minimum. */
+/**
+ * A tappable row of a settings group, 48 pt minimum (spec 042, R6, D12). Its
+ * shape says what it does: `push` goes somewhere in the app (chevron),
+ * `external` leaves it (the external-link icon, and the subtitle says where),
+ * `action` does something here (no indicator). The press shows as a tint on
+ * the row, never as a drop in opacity.
+ */
 export function RowButton({
   title,
   subtitle,
   icon,
   tone = "foreground",
   onPress,
-  chevron = true,
   accessibilityHint,
+  testID,
+  ...rest
 }: {
   title: string;
-  subtitle?: string;
   icon?: IconName;
   tone?: keyof Palette;
   onPress: () => void;
-  chevron?: boolean;
   accessibilityHint?: string;
-}) {
+  testID?: string;
+} & ({ kind?: "push" | "action"; subtitle?: string } | { kind: "external"; subtitle: string })) {
+  const { colors } = useTheme();
+  const kind = rest.kind ?? "push";
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
       accessibilityHint={accessibilityHint}
       onPress={onPress}
-      style={({ pressed }) => [styles.rowButton, { opacity: pressed ? 0.6 : 1 }]}
+      android_ripple={{ color: colors.muted }}
+      style={({ pressed }) => [styles.rowButton, pressed ? { backgroundColor: colors.muted } : null]}
+      testID={testID}
     >
       {icon ? <Icon name={icon} size={20} tone={tone} /> : null}
       <View style={styles.rowText}>
@@ -138,7 +149,15 @@ export function RowButton({
           </Text>
         ) : null}
       </View>
-      {chevron ? <Icon name={icons.chevron} size={14} tone="subtle" /> : null}
+      {kind === "push" ? (
+        <View testID="row-indicator-push">
+          <Icon name={icons.chevron} size={14} tone="subtle" />
+        </View>
+      ) : kind === "external" ? (
+        <View testID="row-indicator-external">
+          <Icon name={icons.external} size={16} tone="subtle" />
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -155,6 +174,6 @@ const styles = StyleSheet.create({
   fill: { height: "100%", borderRadius: 3 },
   segments: { flexDirection: "row", padding: 2, gap: 2 },
   segment: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
-  rowButton: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: TOUCH, paddingVertical: 10 },
+  rowButton: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: TOUCH, paddingHorizontal: 16, paddingVertical: 12 },
   rowText: { flex: 1, minWidth: 0, gap: 2 },
 });

@@ -22,3 +22,47 @@ Antes de escribir código que toque una API de Expo, EAS o React Native:
 - Las rutas son de expo-router en `src/app/`; lo demás vive fuera.
 - Antes de dar algo por hecho: `pnpm verify` (o `./scripts/verify.sh mobile`
   desde la raíz).
+
+## Dirección de diseño: Liquid Glass, con exigencia
+
+Luis lo pidió el 2026-10-20: la interfaz de iOS adopta **Liquid Glass**, y cada
+cambio de UI se mira con ojo crítico y perfeccionista. Esto concreta la D24 de
+la spec 031 (nativo primero; la marca en el color, el contenido y la voz), no
+la sustituye.
+
+- **El vidrio es para navegar y para los controles, nunca para el contenido.**
+  - Lleva vidrio: barras, pestañas, la barra de herramientas, el cuadro de
+    escribir y los controles que flotan sobre el hilo.
+  - Se queda opaco: listas, burbujas, cifras y gráficos.
+  - Nunca vidrio sobre vidrio.
+- **Primero el del sistema.**
+  - Las pestañas nativas, la cabecera nativa sin fondo propio, las hojas y los
+    elementos de barra nativos ya traen Liquid Glass en iOS 26.
+  - `expo-glass-effect` solo para lo que el sistema no da.
+  - Nada de vidrio hecho a mano con `expo-blur`.
+- **Respaldo para iOS anterior a 26.**
+  - La app arranca en iOS 16.4. Sin `isLiquidGlassAvailable()`, la superficie
+    se queda como hoy.
+  - «Reducir transparencia» y «Aumentar contraste» se respetan siempre.
+  - Android sigue en Material 3 Expressive, sin imitar el vidrio.
+- **Se ve en el simulador o no está hecho.**
+  - Capturas de iOS 26 en claro y oscuro, con texto grande y con «Reducir
+    transparencia»; además, Android en claro y oscuro.
+  - Una captura de Android no prueba nada sobre el vidrio.
+- **Antes de dar una pantalla por buena,** pásale las skills de
+  `.claude/skills/`. Son locales y no van a git, igual que las de la raíz:
+  - se restauran con `npx skills experimental_install`, que lee
+    `skills-lock.json`;
+  - su `README.md` recoge los orígenes, las licencias y las advertencias.
+
+  Las tres que se pasan son:
+  - `ux-heuristics`, con severidades de 0 a 4;
+  - `design-critique`, sobre las capturas;
+  - `impeccable`, con `reference/ios.md` y `reference/audit.native.md`.
+
+  Un hallazgo de severidad 3 o 4 bloquea igual que un test rojo.
+- **De dónde se parte.** La auditoría de partida está en la KB:
+  `research/2026-10-20-liquid-glass-app-movil.md`.
+- **El rediseño cambia comportamiento y va por la spec 042**
+  (`specs/042-liquid-glass-en-la-app/`, regla nº1). Hasta que exista su
+  `tasks.md`, no se toca la UI por esta dirección.

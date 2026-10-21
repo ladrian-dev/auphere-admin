@@ -71,7 +71,7 @@ describe("LitePanelView", () => {
   it("points «Atender» at the first waiting conversation", () => {
     view({ home: home({ attention: [{ kind: "waiting", count: 3, days_left: null }] }) });
     // `Button` con `render={<Link />}` es un enlace con rol de botón (base-ui).
-    const attend = screen.getByRole("button", { name: "Atender" });
+    const attend = screen.getByRole("button", { name: "Atender ahora" });
     expect(attend.getAttribute("href")).toBe("/inbox?c=c-2");
   });
 
