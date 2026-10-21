@@ -61,6 +61,10 @@ WORKDIR /py-build/apps/worker
 # Otherwise the runtime stage can't find them after we strip /py-build.
 # Same pattern as ``apps/api/Dockerfile``.
 RUN uv pip install --system --no-cache-dir --no-editable .
+# The install above resolves fresh, not from uv.lock: fail the build if the
+# LiteLLM it picked crashes on any call with tools (1.106.0 did, needing
+# ``mcp``, and every agent turn died). Local call to a closed port.
+RUN python -m nexus_api.core.litellm_smoke
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 2 — node-build
