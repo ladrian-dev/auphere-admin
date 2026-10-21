@@ -72,7 +72,7 @@ export function UnlimitedCard({
         <div className="flex items-center gap-3">
           {on ? <StatusBadge tone="info">Lo asume Auphere</StatusBadge> : null}
           <Switch
-            aria-labelledby="unlimited-label"
+            aria-label="Consumo ilimitado"
             checked={on}
             onCheckedChange={(v) => setConfirm(Boolean(v))}
           />
