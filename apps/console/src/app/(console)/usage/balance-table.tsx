@@ -27,7 +27,15 @@ import { formatMoney, moneyInputValue, parseMoney } from "@/lib/money";
 
 import { moveAllocationAction, saveAllocationAction } from "./actions";
 
-export type BalanceRow = { ref: string; name: string; capCents: number; remainingCents: number; monthCents: number };
+export type BalanceRow = {
+  ref: string;
+  name: string;
+  capCents: number;
+  remainingCents: number;
+  monthCents: number;
+  /** Owner, 2026-10-20: Auphere covers it — the cap does not stop the agent. */
+  unlimited?: boolean;
+};
 type Client = { ref: string; name: string };
 type Open = { kind: "cap"; row: BalanceRow } | { kind: "move"; row: BalanceRow } | { kind: "assign" } | null;
 
@@ -74,7 +82,7 @@ export function BalanceTable({ rows, unassigned, everyone, canWrite, exhausted }
             </thead>
             <tbody>
               {rows.map((row) => {
-                const out = row.remainingCents <= 0 || exhausted;
+                const out = !row.unlimited && (row.remainingCents <= 0 || exhausted);
                 return (
                   <tr key={row.ref} id={`allocation-${row.ref}`} className="border-b last:border-0">
                     <td className="max-w-56 truncate px-4 py-2">
@@ -85,7 +93,9 @@ export function BalanceTable({ rows, unassigned, everyone, canWrite, exhausted }
                     <td className="px-2 py-2 text-right tabular-nums">{money(row.capCents)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{money(row.monthCents)}</td>
                     <td className="px-2 py-2">
-                      {out ? (
+                      {row.unlimited ? (
+                        <StatusBadge tone="info">{t("sum.credit.unlimited")}</StatusBadge>
+                      ) : out ? (
                         <StatusBadge tone="danger">{t("hu.usage.allocations.outOfQuota")}</StatusBadge>
                       ) : (
                         <Meter

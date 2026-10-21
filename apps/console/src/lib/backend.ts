@@ -181,6 +181,8 @@ export type ClientSummary = {
   /** Spec 016 (R2.1): the channel gate is closed for this client — same
    *  reading as ``health.missing`` containing ``quota``. */
   out_of_quota?: boolean;
+  /** Owner, 2026-10-20: Auphere covers this client's consumption (Admin only). */
+  unlimited_consumption?: boolean;
   /** Spec 017 (R9.1): read once per page; absent on older API responses. */
   setup?: ClientSetup;
   quota?: ClientQuota | null;

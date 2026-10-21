@@ -1,4 +1,5 @@
 import BillingCard from "../_sections/billing-card";
+import PartnerPayments from "../_sections/partner-payments";
 import Receipts from "../_sections/receipts";
 import Wallet from "../_sections/wallet";
 
@@ -17,6 +18,8 @@ export default async function PartnerMoneyPage({
       <Wallet params={params} />
       {/* Spec 041: the card, automatic charges and the postpaid line. */}
       <BillingCard params={params} invoiceMissing={invoiceMissing} />
+      {/* Owner, 2026-10-20: the partner pays Auphere; its payments live here and credit its balance. */}
+      <PartnerPayments params={params} />
       <Receipts params={params} />
     </div>
   );

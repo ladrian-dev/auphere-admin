@@ -106,6 +106,9 @@ export function ClientsTable({ items, total, page, limit, query }: Props) {
         header: t("clients.col.credit"),
         cell: (c) => {
           const quota = c.row.original.quota;
+          if (c.row.original.unlimited_consumption) {
+            return <StatusBadge tone="info">{t("clients.col.credit.unlimited")}</StatusBadge>;
+          }
           // `null` es «no se pudo leer», que no es lo mismo que cero. Un cero
           // inventado sobre un dato que falta es justo la pantalla mintiendo.
           if (!quota) return <span className="text-xs text-muted-foreground">—</span>;

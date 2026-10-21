@@ -57,7 +57,9 @@ jobs:
           # el margen se lo comió el propio proyecto. Esperar de más no cuesta
           # nada: si ``ci`` se cuelga, el paso siguiente no arranca igual.
           for i in $(seq 1 180); do
-            RUN=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
+            # Solo el run del push: el de un PR con el mismo sha no es el que
+            # cuenta (el 2026-10-20 este paso esperó a uno cancelado).
+            RUN=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&per_page=50" \
               --jq '[.workflow_runs[] | select(.name == "ci")][0] // empty')
             if [ -n "$RUN" ]; then
               STATUS=$(echo "$RUN" | jq -r .status)

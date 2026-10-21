@@ -155,5 +155,16 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
     # Optional — only set on tenants whose booking provider is AgendaPro.
     agendapro_public_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Migration 0164 (owner, 2026-10-20). A partner's client whose agent never
+    # stops for lack of balance: the turn passes without balance or cap and
+    # its consumption is written as ``absorbed`` — Auphere covers it, the
+    # partner does not pay it. Only the Admin can change it.
+    unlimited_consumption: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
     def __repr__(self) -> str:
         return f"<Tenant {self.slug}>"

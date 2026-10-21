@@ -74,6 +74,8 @@ export type SummaryProps = {
     };
     /** Spec 027: in cents of USD. */
     quota: { cap_cents: number; remaining_cents: number } | null;
+    /** Owner, 2026-10-20: Auphere covers its consumption (read-only here). */
+    unlimited?: boolean;
   };
   usage: Block<{ units: number; projected: number; basisDays: number; daysInMonth: number }>;
   /** `null` cuando el rol no puede leer conversaciones: el bloque no existe. */
@@ -97,7 +99,7 @@ export function ClientSummary(props: SummaryProps) {
       <ClientIdentity refId={refId} role={role} client={client} />
 
       <div className="grid grid-cols-1 gap-(--space-block) lg:grid-cols-2">
-        <Credit refId={refId} role={role} quota={client.quota} usage={usage} />
+        <Credit refId={refId} role={role} quota={client.quota} usage={usage} unlimited={client.unlimited ?? false} />
         {conversations ? <Conversations base={base} block={conversations} /> : null}
       </div>
 
@@ -196,10 +198,15 @@ function Credit({
   role,
   quota,
   usage,
-}: Pick<SummaryProps, "refId" | "role" | "usage"> & { quota: SummaryProps["client"]["quota"] }) {
+  unlimited,
+}: Pick<SummaryProps, "refId" | "role" | "usage"> & {
+  quota: SummaryProps["client"]["quota"];
+  unlimited: boolean;
+}) {
   const t = useT();
   const locale = useLocale();
-  const empty = quota !== null && quota.remaining_cents <= 0;
+  // With unlimited consumption the cap does not stop the agent: no alarm.
+  const empty = !unlimited && quota !== null && quota.remaining_cents <= 0;
 
   return (
     <Section
@@ -223,7 +230,14 @@ function Credit({
       }
       className="min-w-0"
     >
-      {!usage.ok ? (
+      {unlimited ? (
+        <div className="flex flex-col gap-2">
+          <span>
+            <StatusBadge tone="info">{t("sum.credit.unlimited")}</StatusBadge>
+          </span>
+          <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("sum.credit.unlimited.help")}</p>
+        </div>
+      ) : !usage.ok ? (
         <Failed what={t("sum.failed.credit")} />
       ) : quota === null ? (
         <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("sum.credit.none")}</p>

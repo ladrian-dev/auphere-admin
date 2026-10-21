@@ -40,6 +40,14 @@ KIND_ALLOCATION_LEGACY = "allocation_legacy"
 #: and the book at that moment (balances written by hand before 2026-09-08).
 KIND_OPENING_CREDIT = "opening_credit"
 KIND_OPENING_DEBIT = "opening_debit"
+#: Owner, 2026-10-20: a partner's payment received outside Stripe and
+#: recorded in the Admin credits its balance; voiding it takes that back.
+KIND_CREDIT_MANUAL = "credit_manual"
+KIND_CREDIT_REVERSAL = "credit_reversal"
+#: Owner, 2026-10-20: a turn of a client with unlimited consumption. Measured
+#: like a debit, but Auphere covers it: it never touches the partner's balance,
+#: the client's cap or the reconciliation, and it is not the partner's spend.
+KIND_ABSORBED = "absorbed"
 LEDGER_KINDS: tuple[str, ...] = (
     KIND_DEBIT,
     KIND_CREDIT_ADMIN,
@@ -48,9 +56,12 @@ LEDGER_KINDS: tuple[str, ...] = (
     KIND_ALLOCATION_LEGACY,
     KIND_OPENING_CREDIT,
     KIND_OPENING_DEBIT,
+    KIND_CREDIT_MANUAL,
+    KIND_CREDIT_REVERSAL,
+    KIND_ABSORBED,
 )
 #: Kinds that add to the purchased balance.
-CREDIT_KINDS: tuple[str, ...] = (KIND_CREDIT_ADMIN, KIND_CREDIT_STRIPE)
+CREDIT_KINDS: tuple[str, ...] = (KIND_CREDIT_ADMIN, KIND_CREDIT_STRIPE, KIND_CREDIT_MANUAL)
 LEDGER_BUCKETS: frozenset[str] = frozenset({BUCKET_INCLUDED, BUCKET_PURCHASED})
 
 

@@ -322,6 +322,7 @@ const core = {
   "clients.col.credit": { es: "Saldo", en: "Balance" },
   "clients.col.credit.value": { es: "{remaining} de {cap}", en: "{remaining} of {cap}" },
   "clients.col.credit.none": { es: "Sin asignar", en: "Not assigned" },
+  "clients.col.credit.unlimited": { es: "Ilimitado · Auphere", en: "Unlimited · Auphere" },
   "clients.timezone": { es: "Zona horaria", en: "Time zone" },
   "clients.timezone.placeholder": { es: "Elige una zona horaria", en: "Pick a time zone" },
   "clients.count": { es: "{count} cliente(s)", en: "{count} client(s)" },

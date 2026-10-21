@@ -41,6 +41,7 @@ from nexus_api.api.admin import (
     tickets,
     tiktok_authorize,
     tool_catalog,
+    unlimited_consumption,
     usage_overview,
     whatsapp_templates,
 )
@@ -53,6 +54,7 @@ router.include_router(tenants.router)
 router.include_router(client_access.router)
 # La mensualidad de un cliente cobrada fuera del proveedor de pagos.
 router.include_router(tenant_payments.router)
+router.include_router(unlimited_consumption.router)
 router.include_router(agent_configs.router)
 # Spec 030: los agentes de un cliente.
 router.include_router(agents.router)

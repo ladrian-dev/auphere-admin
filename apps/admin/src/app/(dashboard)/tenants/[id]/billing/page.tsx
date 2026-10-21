@@ -5,6 +5,7 @@ import { backend } from "@/lib/backend";
 
 import { BillingForm } from "./billing-form";
 import { PaymentsCard } from "./payments-card";
+import { UnlimitedCard } from "./unlimited-card";
 
 const MODEL_LABEL: Record<string, string> = {
   subscription: "Suscripción",
@@ -33,11 +34,12 @@ export default async function TenantBillingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [billing, partners, plans, payments] = await Promise.all([
+  const [billing, partners, plans, payments, unlimited] = await Promise.all([
     backend.getTenantBilling(id),
     backend.listPartners(),
     backend.listBillingPlans(),
     backend.listTenantPayments(id),
+    backend.getUnlimitedConsumption(id).catch(() => null),
   ]);
   if (!billing) notFound();
 
@@ -108,14 +110,32 @@ export default async function TenantBillingPage({
         </CardContent>
       </Card>
 
+      {unlimited ? (
+        <Card>
+          <CardHeader>
+            <Eyebrow>Consumo</Eyebrow>
+            <CardTitle>Que el agente no se pare</CardTitle>
+            <CardDescription>
+              Solo Auphere lo cambia. Con el consumo ilimitado, el agente
+              responde aunque el partner no tenga saldo o el cliente haya
+              llegado a su tope, y ese consumo lo asume Auphere: se sigue
+              midiendo, pero no se descuenta del partner.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <UnlimitedCard tenantId={id} tenantName={billing.tenant_name} state={unlimited} />
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <Eyebrow>Pagos</Eyebrow>
           <CardTitle>Pagos recibidos fuera de Stripe</CardTitle>
           <CardDescription>
-            Mensualidades que el cliente pagó por transferencia, efectivo u
-            otro medio. Anotar un pago deja constancia de quién pagó qué mes;
-            no cambia su servicio ni su saldo.
+            {billing.partner_id
+              ? "Lo que su partner pagó por este cliente fuera de Stripe. Se anota en las Facturas del partner y suma a su saldo."
+              : "Mensualidades que este cliente directo pagó por transferencia, efectivo u otro medio. Anotar un pago deja constancia de quién pagó qué mes."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -123,6 +143,7 @@ export default async function TenantBillingPage({
             tenantId={id}
             payments={payments}
             monthlyCents={billing.effective_monthly_cents}
+            partner={billing.partner_id ? { id: billing.partner_id, name: billing.partner_name } : null}
           />
         </CardContent>
       </Card>

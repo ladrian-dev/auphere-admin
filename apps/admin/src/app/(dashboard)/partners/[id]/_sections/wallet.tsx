@@ -88,7 +88,7 @@ export default async function PartnerWalletPage({ params }: { params: Promise<{ 
           <Eyebrow>Conciliación</Eyebrow>
           <CardTitle>¿Cuadra el libro?</CardTitle>
           <CardDescription>
-            Saldo recargado guardado frente a recargas − gastos − caducidades del libro.
+            Saldo recargado guardado frente a recargas − gastos − caducidades y pagos anulados del libro.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -98,7 +98,7 @@ export default async function PartnerWalletPage({ params }: { params: Promise<{ 
             <p className="flex items-center gap-2 text-sm">
               <CheckCircle2 aria-hidden="true" className="size-4 text-status-positive" />
               El libro cuadra: {fmt(reconcile.credits_cents)} recargados − {fmt(reconcile.debits_cents)} gastados −{" "}
-              {fmt(reconcile.expiries_cents)} caducados = {fmt(reconcile.stored_cents)}.
+              {fmt(reconcile.expiries_cents)} caducados o anulados = {fmt(reconcile.stored_cents)}.
             </p>
           ) : (
             <p className="flex items-center gap-2 text-sm text-destructive" role="alert">
@@ -146,16 +146,19 @@ export default async function PartnerWalletPage({ params }: { params: Promise<{ 
                         )}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                        {row.bucket === "purchased" ? "Recargado" : "Pool semanal"}
+                        {row.kind === "absorbed" ? "Auphere" : row.bucket === "purchased" ? "Recargado" : "Pool semanal"}
                       </TableCell>
                       <TableCell
                         className={
                           isCredit(row.kind)
                             ? "text-right font-medium text-status-positive-text tabular-nums"
-                            : "text-right tabular-nums"
+                            : row.kind === "absorbed"
+                              ? "text-right tabular-nums text-muted-foreground"
+                              : "text-right tabular-nums"
                         }
                       >
-                        {isCredit(row.kind) ? "+" : "−"}
+                        {/* Absorbed: measured, but it never moved the partner's balance. */}
+                        {isCredit(row.kind) ? "+" : row.kind === "absorbed" ? "" : "−"}
                         {fmt(row.amount_cents)}
                       </TableCell>
                     </TableRow>

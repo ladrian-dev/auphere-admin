@@ -296,7 +296,7 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
     partner_id = await _partner_for(tenant_id)
     if partner_id is None:
         return
-    from nexus_api.metering.wallet import debit_wallet
+    from nexus_api.metering.wallet import debit_wallet, is_unlimited, record_absorbed
 
     # R3.4 se aplica al camino de **servir** un turno, no al de asentarlo: aquí
     # el turno ya ocurrió y el modelo ya se pagó, así que negarse no impide
@@ -315,10 +315,24 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
             return
     # Spec 030: the agent the turn ran for — same for every row of an entry.
     agent_id = (rows[0] or {}).get("agent_id") if rows else None
+    # Owner, 2026-10-20: a client with unlimited consumption is measured the
+    # same and written as ``absorbed`` — Auphere covers it; the partner's
+    # balance and the client's cap do not move. Unreadable → raise and retry,
+    # never a guess about who pays.
+    unlimited = await is_unlimited(tenant_id)
     for turn, qty in _turn_quota(rows, weights).items():
         if qty <= 0:
             continue
         key = f"channel:{turn}"
+        if unlimited:
+            await record_absorbed(
+                partner_id=partner_id,
+                tenant_id=tenant_id,
+                qty=qty,
+                idempotency_key=key,
+                agent_id=agent_id,
+            )
+            continue
         try:
             await debit_wallet(
                 partner_id=partner_id,
