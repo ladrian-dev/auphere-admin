@@ -73,13 +73,30 @@ jobs:
       NEXUS_COMPANION_EVAL_LIVE: "1"
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
+      # Lo que dice el comentario de ``environment`` hay que hacerlo: sin la
+      # clave, avisar y no correr. Hasta el 2026-10-21 el job corría igual y
+      # fallaba cada noche con «x-api-key header is required» (51 rojos
+      # seguidos desde el 2026-09-01), un rojo que enseña a ignorar los rojos.
+      - name: ¿hay clave de Anthropic?
+        id: key
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "live=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "live=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Sin ANTHROPIC_API_KEY en el entorno companion-evals: los evals live no se corren."
+          fi
       - uses: actions/checkout@v5
+        if: steps.key.outputs.live == 'true'
       - uses: actions/setup-python@v6
+        if: steps.key.outputs.live == 'true'
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: install uv
+        if: steps.key.outputs.live == 'true'
         run: pip install uv
       - name: install api + worker (desde uv.lock)
+        if: steps.key.outputs.live == 'true'
         run: |
           set -euo pipefail
           for pkg in api worker; do
@@ -90,13 +107,15 @@ jobs:
           done
           uv pip install --system --no-deps ./apps/api ./apps/worker
       - name: alembic upgrade head
+        if: steps.key.outputs.live == 'true'
         working-directory: apps/api
         run: alembic upgrade head
       - name: "evals live — los casos marcados requires: live"
+        if: steps.key.outputs.live == 'true'
         working-directory: apps/api
         run: pytest tests/evals/ -m evals --tb=short
       - name: "dataset completo contra el modelo (manual, ~18 $)"
-        if: ${{ inputs.full_dataset }}
+        if: ${{ inputs.full_dataset && steps.key.outputs.live == 'true' }}
         working-directory: apps/api
         # ``NEXUS_COMPANION_EVAL_ALL_LIVE`` no existe todavía: promover el
         # dataset entero exige que las familias dejen de asertar sobre la
@@ -104,6 +123,6 @@ jobs:
         # conjunto y sirve como recordatorio con nombre.
         run: pytest tests/evals/ -m evals --tb=short
       - name: informe del reparto
-        if: always()
+        if: ${{ always() && steps.key.outputs.live == 'true' }}
         working-directory: apps/api
         run: python scripts/companion_evals.py --report
