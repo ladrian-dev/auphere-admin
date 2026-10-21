@@ -368,10 +368,13 @@ Android se cuentan dos formas de ir a otro sitio en Inicio, Consumo y Ajustes.
       `src/app` de `Button` con `variant="ghost"` usados para ir a otro sitio y
       de chevrones sueltos; todos pasan a `RowButton`/`Row`. Anotar en
       `evidence/hallazgos.md` que H5 queda cerrado. _Requisitos: 6.1, 6.3_
-- [ ] T048 [US5] Capturas en Android (claro) de Consumo sin gasto y de Ajustes:
+- [X] T048 [US5] Capturas en Android (claro) de Consumo sin gasto y de Ajustes:
       `evidence/capturas/android-consumo-vacio-claro.png`,
       `android-ajustes-claro.png`; cerrar H7, H10, H11 y H12 en
       `evidence/hallazgos.md`. _Requisitos: 8.1, 9.1, 9.2, 9.3_
+      > 2026-10-21, en un emulador temporal (imagen del Pixel 9, API 36):
+      > `android-consumo-vacio-claro.png`, `android-ajustes-claro.png`; H2, H7,
+      > H10 y H11 con su captura de Android. H12 se cerró por test.
 
 **Checkpoint · fin de la iteración 1**: T038 a T041 en verde; `./scripts/verify.sh
 mobile` en verde; el contenido está arreglado en todas las plataformas.
@@ -568,7 +571,7 @@ Depende del spike (T019) y de T025.
       > el módulo desde el admin; se hizo en la base local y se restauró).
       > H16 no se reproduce (`ios26-13-inicio-tras-reintentar.png`,
       > `ios26-13-bandeja-tras-reintentar.png`). iOS < 26: pendiente de Luis.
-- [ ] T070 [US4] Capturas en «13 26»: `evidence/capturas/ios26-13-bandeja-{claro,oscuro}.png`
+- [X] T070 [US4] Capturas en «13 26»: `evidence/capturas/ios26-13-bandeja-{claro,oscuro}.png`
       (desplazada, con filas bajo las barras), `ios26-13-ajustes-hoja.png`,
       `ios26-13-conversacion-menu.png`; en Android,
       `android-bandeja-{claro,oscuro}.png`; anotar CE-007 (Android) en
@@ -579,6 +582,10 @@ Depende del spike (T019) y de T025.
       > `ios26-13-contacto-hoja`); la Bandeja de la semilla no llega a pasar bajo
       > las barras (cinco filas). Android queda pendiente de disco para el
       > emulador (`hallazgos.md`, «Lo que depende de Luis»).
+      > 2026-10-21: Android hecho (`android-bandeja-{claro,oscuro}.png` y el
+      > resto de `android-*.png`); CE-007 cerrado en Android. Al hacerlo salió
+      > H23 (la lupa de la búsqueda invisible en oscuro), corregido con su
+      > test. iOS < 26 sigue pendiente de Luis.
 
 **Checkpoint**: T060 a T063 en verde. La navegación es del sistema.
 
@@ -621,7 +628,7 @@ Depende de US1 y US4.
       transparencia» y «Aumentar contraste»: la app lo adopta sin reiniciar;
       capturas `ios26-13-conversacion-reducir-transparencia.png` y
       `ios26-13-conversacion-aumentar-contraste.png`. _Requisitos: 4.5_
-- [ ] T076 [US3] Texto al máximo: `xcrun simctl ui booted content_size
+- [X] T076 [US3] Texto al máximo: `xcrun simctl ui booted content_size
       accessibility-extra-extra-extra-large` en «13 26» (Inicio y
       conversación en espera) y el emulador de Android al 200 % (Inicio): el
       título crece y nunca queda más pequeño que el cuerpo; el hilo se
@@ -634,6 +641,11 @@ Depende de US1 y US4.
       > `ios26-13-conversacion-espera-texto-max{,-oscuro}`, `ios26-13-bandeja-texto-max{,-oscuro}`);
       > H8 cerrado con `headerSize` y el tope por estilo (`maxScale`). Android
       > pendiente de disco para el emulador.
+      > 2026-10-21: Android al 200 % hecho (`android-inicio-texto-200.png`,
+      > `android-inicio-oscuro-texto-200.png`,
+      > `android-conversacion-espera-texto-200.png`). El título de Inicio crece y
+      > queda sobre el cuerpo. El de la conversación no crecía (H24, el tope de
+      > iOS aplicado también a Android): corregido con su test.
 - [X] T077 [US3] Dejar en `evidence/a11y.md` la fila «vidrio claro o tintado
       (iOS 26.1)» como pendiente de Luis, con lo que hay que hacer (un iPhone
       con 26.1 o un runtime nuevo). _Requisitos: 4.4_
@@ -679,12 +691,15 @@ sistema al lado, los controles tienen la misma forma y responden igual.
 - [X] T082 [P] [US6] Reescribir `apps/mobile/src/theme/type.ts` con
       `Platform.select`: la tabla de [contracts/ui.md §2 Tipografía](contracts/ui.md)
       en iOS, los tokens en Android; sin `letterSpacing`. _Requisitos: 7.3, 7.4_
-- [ ] T083 [US6] Capturas comparadas con Ajustes del sistema al lado:
+- [X] T083 [US6] Capturas comparadas con Ajustes del sistema al lado:
       `evidence/capturas/ios26-13-botones-vs-sistema.png` y
       `android-botones-vs-sistema.png`; cerrar H6 y H9 en
       `evidence/hallazgos.md`. _Requisitos: 7.1, 7.2, 7.3_
       > 2026-10-21: iOS hecho (`ios26-13-botones-vs-sistema.png`; H6 y H9
       > cerrados). Android pendiente de disco para el emulador.
+      > 2026-10-21: Android hecho (`android-botones-vs-sistema.png`: Ajustes de
+      > la app junto a los Ajustes del sistema; cápsulas y grupos con la forma
+      > de Material).
 
 **Checkpoint · fin de la iteración 2**: T078 y T079 en verde;
 `./scripts/verify.sh mobile` en verde; `e2e/send-flaky.yaml` en verde. **Se
@@ -726,14 +741,16 @@ y el cierre de los criterios de éxito.
       > pasaron todos los pasos salvo los dos `next build` (panel y consola),
       > que no se ejecutaron: la consola ya ocupa 4,4 GB en `.next` y el disco
       > quedó con ~2 GB libres durante el pase; se corren cuando haya disco.
-      > Al cierre, `verify.sh mobile` en verde otra vez (195 tests).
+      > Al cierre, `verify.sh mobile` en verde otra vez. Los dos `next build`
+      > (panel y consola) se corrieron después de liberar disco: en verde.
 - [X] T089 Recorrer `quickstart.md` de arriba abajo y marcar cada casilla; lo
       que no se pudo hacer en esta máquina queda escrito con su razón. §VII
       > 2026-10-21: recorrido. Hecho en «13 26» todo lo de iOS 26.0 (§2–§8 y la
       > tabla de contraste marcada). Queda escrito con su razón en
       > `evidence/hallazgos.md`, «Lo que depende de Luis»: Android (sin disco
       > para el emulador), iOS < 26 y 26.1 (sin runtime), H22 en un iPhone, y
-      > los `next build` de `verify.sh js` (disco).
+      > los `next build` de `verify.sh js` (disco). Al cierre: Android hecho y
+      > los dos `next build` en verde.
 
 ---
 

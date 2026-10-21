@@ -1,10 +1,32 @@
 import { Stack } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, Pressable, StyleSheet } from "react-native";
 
 import { useT } from "@/i18n/t";
 import { useTheme } from "@/theme/theme";
 import type { Action } from "@/ui/actions";
 import { icons, type IconName } from "@/ui/icon";
+import { Text } from "@/ui/text";
+
+/**
+ * The conversation's title in the bar: the contact and who answers, a button
+ * to the contact. How far it grows with the phone's text size (spec 042,
+ * R4.6, H24): iOS keeps inline titles at their size, as Apple's own do — the
+ * bar cannot grow; Android scales app-bar titles in sp, and 1,3 is what the
+ * 64 dp bar holds with its two lines.
+ */
+export function ConversationTitle({ name, line, hint, onPress }: { name: string; line: string; hint: string; onPress: () => void }) {
+  const max = Platform.OS === "ios" ? 1 : 1.3;
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`${name}. ${line}`} accessibilityHint={hint} onPress={onPress} style={styles.title}>
+      <Text variant="bodyStrong" numberOfLines={1} maxFontSizeMultiplier={max}>
+        {name}
+      </Text>
+      <Text variant="caption" tone="mutedForeground" numberOfLines={1} maxFontSizeMultiplier={max}>
+        {line}
+      </Text>
+    </Pressable>
+  );
+}
 
 /** What a conversation's menu needs to know, and what each action does. */
 export type ConversationMenu = {
@@ -70,3 +92,7 @@ export function ConversationToolbar(m: ConversationMenu) {
     </Stack.Toolbar>
   );
 }
+
+const styles = StyleSheet.create({
+  title: { minHeight: 44, justifyContent: "center", maxWidth: 240 },
+});

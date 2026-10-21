@@ -106,6 +106,16 @@ describe("the list", () => {
     expect(mockConversations).toHaveBeenLastCalledWith("all", "600", null);
   });
 
+  it("the search bar's icon, text and hint come from the theme, so they read in dark mode on Android (spec 042, H23)", async () => {
+    const { tokens } = require("@/theme/tokens.gen") as typeof import("@/theme/tokens.gen");
+    list({ data: page([conv()]) });
+    await render(<Bandeja />);
+    const search = mockOptions.current?.headerSearchBarOptions as Record<string, unknown>;
+    expect(search.headerIconColor).toBe(tokens.light.primaryText);
+    expect(search.textColor).toBe(tokens.light.foreground);
+    expect(search.hintTextColor).toBe(tokens.light.mutedForeground);
+  });
+
   it("loading: a named skeleton", async () => {
     list({ isPending: true, data: undefined });
     await render(<Bandeja />);

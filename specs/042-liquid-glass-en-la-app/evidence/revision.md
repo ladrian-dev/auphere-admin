@@ -132,10 +132,33 @@ están cerrados en `hallazgos.md` con su captura de antes y de después.
 **Veredicto de conformidad:** la app se ve y se toca como una app de iOS 26:
 lo que es del sistema es del sistema, lo propio va en el color y la voz.
 
-## 4. Lo que no cubre esta revisión
+## 4. Android (2026-10-21)
 
-- **Android**: sin emulador en esta máquina (ver `hallazgos.md`, «Lo que
-  depende de Luis»). Las heurísticas de interacción (R6, R8, R9) están
-  cubiertas por los tests; el aspecto, no.
+Las tres pasadas sobre `capturas/android-*.png` (emulador con la imagen del
+Pixel 9, API 36):
+
+- **`ux-heuristics`**: el mismo diagnóstico rápido que en iOS pasa entero;
+  sin la fila de R-01 (el panel de espera al 200 % cabe sin desplazarse dentro).
+  Dos hallazgos de severidad 2 corregidos en el pase: H23 (la lupa de la
+  búsqueda invisible en oscuro) y H24 (el título de la conversación no crecía
+  con el texto). Puntuación **10/10**.
+- **`design-critique`**: Material 3 sin imitar el vidrio (CE-007). Barra
+  superior y pestañas de Material con el indicador en píldora; el pie de la
+  conversación anclado y opaco con su borde de aviso; el contacto en hoja
+  inferior; Ajustes como pantalla con los grupos de la app junto a los del
+  sistema (`android-botones-vs-sistema.png`); menús en hoja de acciones.
+  Mismo contenido y misma voz que en iOS.
+- **`impeccable`** (`reference/android.md` y `audit.native.md`): 20/20.
+  Etiquetas, ≥ 48 dp, sp, ondulación de Material en lo que se pulsa, el gesto
+  de atrás vivo, tema claro y oscuro desde los tokens.
+
+| # | Pantalla | Hallazgo | Sev. | Estado |
+|---|---|---|---|---|
+| A-01 | Bandeja, oscuro | La lupa de la búsqueda salía gris oscuro sobre negro (H23) | 2 → 0 | cerrado |
+| A-02 | Conversación, 200 % | El nombre y quién atiende no crecían con el texto (H24) | 2 → 0 | cerrado |
+| A-03 | Pestañas, 200 % | Las etiquetas de las pestañas crecen hasta tocarse («Bandeja» y «Consumo»); es el comportamiento de Material con el texto al máximo | 1 | aceptado |
+
+## 5. Lo que no cubre esta revisión
+
 - **iOS anterior a 26 y 26.1 (vidrio tintado)**: sin runtime.
 - **Hardware**: posturas, gestos y rendimiento real necesitan un iPhone.

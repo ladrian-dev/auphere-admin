@@ -110,6 +110,10 @@ export default function Bandeja() {
             // Spec 042, D6 (spike S2, check 3): the system chooses where a section's search goes.
             placement: "automatic",
             tintColor: colors.primaryText,
+            // Android draws the search icon, the text and the hint in its own greys unless told (H23): from the theme.
+            headerIconColor: colors.primaryText,
+            textColor: colors.foreground,
+            hintTextColor: colors.mutedForeground,
           },
         }}
       />

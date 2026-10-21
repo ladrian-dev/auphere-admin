@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight, useIsFocused } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, Keyboard, LayoutAnimation, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Alert, FlatList, Keyboard, LayoutAnimation, Platform, StyleSheet, View } from "react-native";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,7 +16,7 @@ import { checkAttachment, composerMode, attendsLine, dayLabel, withDaySeparators
 import { DayLine, EventLine, MessageBubble, PendingBubble, type Pending } from "@/features/inbox/thread/bubble";
 import { ThreadFoot } from "@/features/inbox/thread/foot";
 import { openMedia } from "@/features/inbox/thread/media";
-import { ConversationToolbar, conversationMenu, type ConversationMenu } from "@/features/inbox/thread/toolbar";
+import { ConversationTitle, ConversationToolbar, conversationMenu, type ConversationMenu } from "@/features/inbox/thread/toolbar";
 import { useConversationActions } from "@/features/inbox/thread/use-conversation";
 import { useLocale, useT } from "@/i18n/t";
 import { durations } from "@/motion/durations";
@@ -201,23 +201,7 @@ export default function ConversationScreen() {
     <Stack.Screen
       options={{
         headerTitle: () =>
-          d ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${d.contact.name}. ${attendsLine(d, t)}`}
-              accessibilityHint={t("inbox.action.panel")}
-              onPress={openContact}
-              style={styles.title}
-            >
-              {/* The bar cannot grow: like Apple's own inline titles, these stay at their size whatever the text setting. */}
-              <Text variant="bodyStrong" numberOfLines={1} maxFontSizeMultiplier={1}>
-                {d.contact.name}
-              </Text>
-              <Text variant="caption" tone="mutedForeground" numberOfLines={1} maxFontSizeMultiplier={1}>
-                {attendsLine(d, t)}
-              </Text>
-            </Pressable>
-          ) : null,
+          d ? <ConversationTitle name={d.contact.name} line={attendsLine(d, t)} hint={t("inbox.action.panel")} onPress={openContact} /> : null,
         headerRight: Platform.OS === "android" && d ? () => <IconButton icon={icons.more} label={t("app.more")} onPress={openMenu} /> : undefined,
       }}
     />
@@ -340,7 +324,6 @@ const styles = StyleSheet.create({
   pad: { padding: 16 },
   list: { paddingVertical: 8 },
   top: { paddingTop: 8 },
-  title: { minHeight: 44, justifyContent: "center", maxWidth: 240 },
   notice: { marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
   foot: { position: "absolute", left: 0, right: 0, bottom: 0 },
 });

@@ -54,11 +54,16 @@ para entrar (solo esquema propio).
     El botón de Ajustes es un elemento de barra nativo en iOS
     (`SettingsToolbar`, `Stack.Toolbar`) y un `headerRight` en Android. La
     Bandeja lleva la búsqueda nativa en la cabecera, con la colocación que
-    elija el sistema. En iOS el tamaño del título grande sale de la tabla de
+    elija el sistema; en Android, el icono, el texto y la pista de la búsqueda
+    salen del tema (`headerIconColor`, `textColor`, `hintTextColor`): sin eso
+    Android los pinta con sus grises y en oscuro la lupa no se ve (H23). En iOS el tamaño del título grande sale de la tabla de
     Dynamic Type de Apple (`headerSize`, en `type.ts`): en cuanto se le pone
     un color, react-native-screens lo pinta con una fuente fija y dejaría de
     crecer con el texto del teléfono (H8). El título normal de la barra se
-    queda fijo, como el de Apple: la barra no crece. Con «Aumentar contraste» iOS 26
+    queda fijo, como el de Apple: la barra no crece. En Android sí crece
+    (los títulos de barra van en sp); el de la conversación (`ConversationTitle`)
+    tiene un tope de 1,3, lo que cabe en la barra de 64 dp con sus dos líneas
+    (H24). Con «Aumentar contraste» iOS 26
     vuelve opacos los botones de vidrio de la barra siguiendo el esquema
     (disco claro en claro, oscuro en oscuro) y el tinte `primaryText` sigue
     leyéndose en los dos (spec 042, `evidence/a11y.md`).
@@ -275,7 +280,9 @@ aviso real, la pantalla bloqueada, VoiceOver y TalkBack— tiene su lista en
   Glass) y el `.app` se instala en el simulador local con
   `xcrun simctl install booted <ruta>`. Es la forma de ver iOS 26 cuando la
   máquina no puede compilar para iOS. El simulador de referencia es «13 26»
-  (iPhone 13, iOS 26.0.1); en un build de desarrollo, apagar el botón
+  (iPhone 13, iOS 26.0.1); en Android, la imagen del Pixel 9 (API 36) con
+  8 GB de datos (el build de desarrollo no cabe en los 6 GB por defecto). En
+  un build de desarrollo, apagar el botón
   flotante del dev client (menú → «Tools button») antes de capturar, porque
   tapa el botón de Ajustes.
 - **En la nube**: el proyecto de EAS `@lmatos/auphere-customers` (creado con

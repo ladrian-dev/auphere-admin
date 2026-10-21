@@ -66,3 +66,23 @@ it("Android: nothing in the toolbar — the headerRight button and the action sh
   expect(screen.queryByTestId("toolbar-right")).toBeNull();
   os.restore();
 });
+
+describe("the conversation's title in the bar (spec 042, R4.6, H24)", () => {
+  const { ConversationTitle } = require("@/features/inbox/thread/toolbar") as typeof import("@/features/inbox/thread/toolbar");
+
+  it("iOS: the inline title stays at its size, as Apple's own do — the bar cannot grow", async () => {
+    await render(<ConversationTitle name="Lucía Fernández" line="Nadie la atiende todavía" hint="Datos del contacto" onPress={jest.fn()} />);
+    expect(screen.getByText("Lucía Fernández").props.maxFontSizeMultiplier).toBe(1);
+    expect(screen.getByText("Nadie la atiende todavía").props.maxFontSizeMultiplier).toBe(1);
+  });
+
+  it("Android: it grows with the text size, up to what the 64 dp bar holds", async () => {
+    const os = jest.replaceProperty(Platform, "OS", "android");
+    const onPress = jest.fn();
+    await render(<ConversationTitle name="Lucía Fernández" line="Nadie la atiende todavía" hint="Datos del contacto" onPress={onPress} />);
+    expect(screen.getByText("Lucía Fernández").props.maxFontSizeMultiplier).toBe(1.3);
+    await fireEvent.press(screen.getByRole("button", { name: "Lucía Fernández. Nadie la atiende todavía" }));
+    expect(onPress).toHaveBeenCalled();
+    os.restore();
+  });
+});

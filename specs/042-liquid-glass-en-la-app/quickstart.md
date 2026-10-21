@@ -38,8 +38,11 @@ pide un dispositivo o un runtime que no está en la máquina queda marcado.
 - **El emulador de Android** de la 031, con la pila local arriba. El build de
   desarrollo de Android está en EAS (`eas build -p android --profile
   development`, 2026-10-21, build `f6f47ac2`; la primera vez crea el keystore
-  de desarrollo en la cuenta). El emulador exige ~2 GB libres para arrancar;
-  el 2026-10-21 no los había (`hallazgos.md`, «Lo que depende de Luis»)
+  de desarrollo en la cuenta). El APK de desarrollo (~280 MB) no cabe en los
+  6 GB de datos por defecto del AVD del Pixel 9: el pase del 2026-10-21 se
+  hizo en un AVD temporal con la misma imagen y `disk.dataPartition.size=8G`,
+  borrado al terminar. `adb reverse tcp:8081` y `tcp:8000` se caen a ratos:
+  si la app dice «No hay conexión», volver a ponerlos
   (`docker compose up -d`).
 - **Las skills de revisión** en `apps/mobile/.claude/skills/`
   (`npx skills experimental_install` si faltan).
