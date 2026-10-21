@@ -5,8 +5,12 @@ on:
   push:
     branches: [main, develop]
 
+# Un grupo por evento: el de un PR por su número, el de un push por su rama.
+# Con ``ci-${{ github.ref }}`` a secas, el run de un PR que GitHub lanza al
+# fusionarlo llega con ``ref`` = la rama base y cancela el CI del push: el
+# 2026-10-20, fusionar #8 a main canceló ese CI y deploy-prod abortó.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
