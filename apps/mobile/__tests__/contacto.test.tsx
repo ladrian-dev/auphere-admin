@@ -16,7 +16,18 @@ jest.mock("@/api/hooks", () => ({
   useSuggestedTags: () => ({ data: { tags: ["vip", "reserva"] } }),
 }));
 jest.mock("@/ui/online", () => ({ useOnline: () => true }));
-jest.mock("expo-router", () => ({ useLocalSearchParams: () => ({ id: "c1" }) }));
+const mockBack = jest.fn();
+const mockNavigate = jest.fn();
+jest.mock("expo-router", () => ({
+  useLocalSearchParams: () => ({ id: "c1" }),
+  router: { back: (...a: unknown[]) => mockBack(...a), navigate: (...a: unknown[]) => mockNavigate(...a) },
+}));
+const mockHasReservas = { current: false };
+jest.mock("@/api/reservas-hooks", () => ({
+  useHasReservas: () => mockHasReservas.current,
+  useReservasConfig: () => ({ data: { timezone: "America/Santiago" } }),
+  useBizToday: () => "2026-10-22",
+}));
 let mockGlass = false;
 jest.mock("expo-glass-effect", () => ({ isLiquidGlassAvailable: () => mockGlass }));
 const mockSetQueryData = jest.fn();
@@ -44,6 +55,9 @@ const Contacto = require("@/app/conversacion/[id]/contacto").default;
 
 beforeEach(() => {
   mockDetail.current = { data: detail, isError: false, refetch: jest.fn() };
+  mockHasReservas.current = false;
+  mockBack.mockReset();
+  mockNavigate.mockReset();
   mockSetTags.mockReset();
   mockSetNote.mockReset();
 });
@@ -110,4 +124,48 @@ it("loading and error states", async () => {
   mockDetail.current = { data: undefined, isError: true, refetch: jest.fn() };
   await render(<Contacto />);
   expect(screen.getByRole("alert")).toBeTruthy();
+});
+
+/**
+ * Spec 044, Historia 7, Requisito 12: the contact's next reservation, and the
+ * way to it without changing tabs by hand.
+ */
+describe("the next reservation (R12)", () => {
+  // 043 §1: the contact gains `next_booking`.
+  const next = {
+    id: "r9",
+    starts_at: "2026-10-23T20:00:00Z",
+    local: { date: "2026-10-23", start: "17:00", end: "17:45" },
+    status: "confirmed",
+    service_name: "Corte y peinado con Marcos",
+    party_size: null,
+  };
+
+  it("with Reservas and a reservation ahead, a row that says when and what", async () => {
+    mockHasReservas.current = true;
+    mockDetail.current = { data: { ...detail, contact: { ...detail.contact, next_booking: next } }, isError: false, refetch: jest.fn() };
+    await render(<Contacto />);
+    expect(screen.getByRole("button", { name: "Próxima reserva. Mañana a las 17:00 · Corte y peinado con Marcos" })).toBeTruthy();
+  });
+
+  it("takes you to that day in Reservas with the reservation open, closing the sheet (R12.2)", async () => {
+    mockHasReservas.current = true;
+    mockDetail.current = { data: { ...detail, contact: { ...detail.contact, next_booking: next } }, isError: false, refetch: jest.fn() };
+    await render(<Contacto />);
+    await fireEvent.press(screen.getByRole("button", { name: /^Próxima reserva\./ }));
+    expect(mockBack).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: "/reservas", params: { date: "2026-10-23", open: "r9" } });
+  });
+
+  it("without the module there is nothing — not even with a reservation (R1.2)", async () => {
+    mockDetail.current = { data: { ...detail, contact: { ...detail.contact, next_booking: next } }, isError: false, refetch: jest.fn() };
+    await render(<Contacto />);
+    expect(screen.queryByText("Próxima reserva")).toBeNull();
+  });
+
+  it("with the module but nothing ahead, nothing either", async () => {
+    mockHasReservas.current = true;
+    await render(<Contacto />);
+    expect(screen.queryByText("Próxima reserva")).toBeNull();
+  });
 });

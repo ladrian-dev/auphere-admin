@@ -47,3 +47,9 @@ it("Android: the contact is a Material bottom sheet with the app's corners; Ajus
   expect((ajustes.contentStyle as { backgroundColor?: string }).backgroundColor).toBe(tokens.light.background);
   os.restore();
 });
+
+it("spec 044 (D5): a reservation is the contact's sheet; the forms open tall", async () => {
+  const opts = (await renderHook(() => useSheetOptions())).result.current;
+  expect(opts.reserva).toMatchObject({ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true, headerShown: false });
+  expect(opts.reservaForm).toMatchObject({ presentation: "formSheet", sheetAllowedDetents: [1], headerShown: false });
+});

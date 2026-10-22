@@ -213,7 +213,8 @@ desplazando el contenido, y se abre Ajustes.
 1. **Dado** iOS 26, **cuando** la persona desplaza la Bandeja, **entonces**:
    - las conversaciones se ven a través de la barra superior y de la de
      pestañas;
-   - la barra de pestañas se encoge al bajar y vuelve al subir.
+   - la barra de pestañas se queda entera, con la insignia de la Bandeja a
+     la vista (R1.5, enmendado el 2026-10-22).
 2. **Dado** iOS 26, **cuando** toca un botón de una barra, **entonces** es un
    botón del sistema, agrupado y con la respuesta al toque del sistema.
 3. **Dado** iOS, **cuando** abre Ajustes, **entonces**:
@@ -332,7 +333,17 @@ teléfono y el contenido tenga más sitio.
    Android siguen siendo los botones de Material de hoy. En todos los casos,
    cada uno DEBE tener nombre accesible y un objetivo táctil de al menos
    44 × 44 pt.
-5. La barra de pestañas DEBE encogerse al bajar en una lista y volver al subir.
+5. La barra de pestañas NO DEBE encogerse al desplazar el contenido: la
+   insignia de la Bandeja (lo que espera a una persona) DEBE quedar siempre a
+   la vista.
+   > **Enmendado el 2026-10-22 (H22).** Decía «DEBE encogerse al bajar en una
+   > lista y volver al subir». Encogida, iOS 26 enseña solo la pestaña activa
+   > y la insignia de la Bandeja desaparece; y con arrastres reales en «13 26»
+   > la barra solo volvía arriba del todo, no al subir a mitad de contenido
+   > (`evidence/capturas/ios26-13-h22-encogida-tras-subir.png` y
+   > `ios26-13-h22-vuelve-solo-arriba.png`). El aviso de que alguien espera
+   > pesa más que el espacio que se gana al encogerla:
+   > `minimizeBehavior="never"` (`TAB_BAR_MINIMIZE`, `tabs.test.tsx`).
 6. El sistema DEBE usar un solo color de acento, y solo en lo que se toca,
    incluida la pestaña activa. Los títulos DEBEN ir en el color del texto.
 7. WHEN la persona abre Ajustes en iOS THEN el sistema DEBE presentarlo como

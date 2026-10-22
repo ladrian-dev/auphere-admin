@@ -62,12 +62,35 @@ describe("the header on iOS 26 (spec 042, T060, T061, R1.1, R1.4, R3.1, R4.6)", 
 });
 
 /**
+ * Spec 042, H22 and R1.5 as amended on 2026-10-22: a minimized bar shows only
+ * the current tab, so the Bandeja's badge (what waits for a person) vanished
+ * while scrolling, and with real drags it only came back at the very top.
+ */
+describe("the tab labels keep the system's size (spec 044, R16.3, D13; 042 H25)", () => {
+  it("on iOS they are the bar's 10 pt, so the phone's text size never clips them", () => {
+    const { tabLabelStyle } = require("@/lib/modules") as typeof import("@/lib/modules");
+    expect(tabLabelStyle("ios")).toEqual({ fontSize: 10, fontWeight: "500" });
+    expect(tabLabelStyle("android")).toBeUndefined();
+    // Each time the tabs show again the style is sent anew (first iOS pass), by a hundredth of a point.
+    expect(tabLabelStyle("ios", 1)?.fontSize).toBeCloseTo(10, 1);
+    expect(tabLabelStyle("ios", 1)).not.toEqual(tabLabelStyle("ios", 2));
+  });
+});
+
+describe("the tab bar never minimizes (spec 042, H22, R1.5)", () => {
+  it("keeps the Bandeja's badge in view while scrolling", () => {
+    const { TAB_BAR_MINIMIZE } = require("@/lib/modules") as typeof import("@/lib/modules");
+    expect(TAB_BAR_MINIMIZE).toBe("never");
+  });
+});
+
+/**
  * Spec 031 (T043, R3.1–R3.7): the tabs are the client's modules, in the API's
  * order, from `/me.nav` — never a fixed list in the app.
  */
 describe("tabs from /me.nav", () => {
   it("follow the order of nav", () => {
-    expect(tabPlan(["usage", "panel", "inbox"]).map((t) => t.module)).toEqual(["usage", "panel", "inbox"]);
+    expect(tabPlan(["usage", "panel", "inbox"]).filter((t) => !t.hidden).map((t) => t.module)).toEqual(["usage", "panel", "inbox"]);
     expect(tabPlan(["inbox", "panel"]).filter((t) => !t.hidden).map((t) => t.module)).toEqual(["inbox", "panel"]);
   });
 
@@ -75,8 +98,21 @@ describe("tabs from /me.nav", () => {
     expect(tabPlan(["panel"])).toEqual([
       { module: "panel", hidden: false },
       { module: "inbox", hidden: true },
+      { module: "reservas", hidden: true },
       { module: "usage", hidden: true },
     ]);
+  });
+
+  it("know Reservas (spec 044, R1.1): its route, its label and the calendar of each platform", () => {
+    expect(knownModules(["panel", "inbox", "reservas", "usage"])).toEqual(["panel", "inbox", "reservas", "usage"]);
+    expect(firstRoute(["reservas"])).toBe("/reservas");
+    const { MODULES } = require("@/lib/modules") as typeof import("@/lib/modules");
+    expect(MODULES.reservas.icon).toEqual({ ios: "calendar", android: "event" });
+    expect(MODULES.reservas.label).toBe("app.tab.reservas");
+  });
+
+  it("without the module, Reservas is declared but hidden (R1.2)", () => {
+    expect(tabPlan(["panel", "inbox", "usage"]).find((t) => t.module === "reservas")).toEqual({ module: "reservas", hidden: true });
   });
 
   it("with one module there is one visible tab — the layout hides the bar", () => {

@@ -1,9 +1,10 @@
 import { StyleSheet, View } from "react-native";
 
-import type { Spend, UsageSummary } from "@/api/endpoints";
+import type { Me, Spend, UsageSummary } from "@/api/endpoints";
 import type { Locale, T } from "@/i18n/t";
 import { formatMoney, formatNumber, shortDay } from "@/lib/format";
-import { creditRunway } from "@/lib/panel-model";
+import { creditRunway, localToday, untilDay } from "@/lib/panel-model";
+import { runsOutOn } from "@/lib/reservas-model";
 import { Divider, Meter, RowButton, Segmented } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -21,7 +22,10 @@ export type Period = (typeof PERIODS)[number];
  * Consumo (spec 031, R4.2–R4.5; spec 042, R9, R6.2): read-only. The figures as
  * rows of one group — the balance and how long it lasts, the month's spend and
  * its projection, the month's conversations — the same cents as the console
- * (R4.3). Then the spend per day as one figure with its bars; the period is
+ * (R4.3). Spec 044 (R13): the group opens with the answer — «Te alcanza hasta
+ * el sábado 17», at the 7-day pace, from the API's `runs_out_on` or worked out
+ * from `days_left` — and says whom to talk to for more; with no spend, no
+ * balance assigned or nothing left, it says that instead and invents no date. Then the spend per day as one figure with its bars; the period is
  * offered only when the widest series has something in it (R9.2), and an empty
  * chart says what will fill it. No buy, no top-up, no link to one (R4.4); the
  * technical detail and its export stay on the web (R4.5), behind one row that
@@ -42,6 +46,7 @@ export function UsageView({
   now = new Date(),
   onRetry,
   onWeb,
+  contact = null,
 }: {
   summary: UsageSummary | null;
   /** The series for `days`. */
@@ -59,6 +64,8 @@ export function UsageView({
   now?: Date;
   onRetry: () => void;
   onWeb: () => void;
+  /** Who manages the balance (`/me.balance_contact`): whom to talk to for more (R13.1). */
+  contact?: Me["balance_contact"] | null;
 }) {
   const n = (v: number) => formatNumber(v, locale);
   const money = (c: number) => formatMoney(c, locale);
@@ -72,6 +79,10 @@ export function UsageView({
   const agentName = agent ? agents.find((a) => a.id === agent)?.name ?? null : null;
   const every = days === 7 ? 1 : days === 30 ? 5 : 15;
   const periodCents = spend ? spend.series_cents.reduce((a, b) => a + b, 0) : null;
+  const today = localToday(now);
+  const apiDate = balance ? (balance as { runs_out_on?: string | null }).runs_out_on ?? null : null;
+  const lastsUntil = balance?.assigned && !out ? (apiDate ?? (balance.days_left != null ? runsOutOn(balance.days_left, today) : null)) : null;
+  const whom = contact ? (contact.kind === "auphere" ? t("app.usage.recharge.auphere") : t("app.usage.recharge.partner", { name: contact.name })) : null;
 
   return (
     <View style={styles.stack}>
@@ -93,10 +104,21 @@ export function UsageView({
                     : t("lite.kpi.balance.noSpend")
           }
         />
-        {runway ? (
-          <Row label={t("lite.usage.balance.runway", { days: n(runway.days) })}>
-            <Meter value={runway.days} max={runway.monthLeft} tone={runway.tone} label={t("lite.kpi.balance.runway.aria")} />
-          </Row>
+        {lastsUntil ? (
+          <View style={styles.answer} testID="usage-answer">
+            <Text variant="title">{t("app.usage.runsOut", { date: untilDay(lastsUntil, today, locale) })}</Text>
+            {runway ? <Meter value={runway.days} max={runway.monthLeft} tone={runway.tone} label={t("lite.kpi.balance.runway.aria")} /> : null}
+            <Text variant="footnote" tone="mutedForeground">
+              {t("app.usage.runsOut.pace")}
+            </Text>
+          </View>
+        ) : null}
+        {balance && whom ? (
+          <View style={styles.whom}>
+            <Text variant="footnote" tone="mutedForeground">
+              {whom}
+            </Text>
+          </View>
         ) : null}
         <Row
           label={t("lite.spend.title")}
@@ -124,7 +146,7 @@ export function UsageView({
 
       <Card>
         <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
-          {t("hu.usage.spend.title")}
+          {t("app.usage.spend.title", { days })}
         </Text>
         {anySpend === false ? (
           <Text variant="callout" tone="mutedForeground">
@@ -214,6 +236,8 @@ export function UsageView({
 
 const styles = StyleSheet.create({
   stack: { gap: 16 },
+  answer: { gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+  whom: { paddingHorizontal: 16, paddingVertical: 12 },
   agent: { gap: 6 },
   agentRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   flex: { flex: 1, minWidth: 0 },

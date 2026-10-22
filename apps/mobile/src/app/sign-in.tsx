@@ -191,6 +191,10 @@ export default function SignIn() {
             onPress={() => void withGoogle()}
             testID="sign-in-google"
           />
+          {/* Which account, and whom to ask (spec 044, R15.2): said before the window opens, not after it fails. */}
+          <Text variant="footnote" tone="mutedForeground" style={styles.center}>
+            {t("avisos.signIn.googleNote")}
+          </Text>
         </>
       ) : null}
       <Text variant="footnote" tone="mutedForeground" style={styles.center}>

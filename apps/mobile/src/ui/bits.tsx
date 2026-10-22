@@ -92,7 +92,8 @@ export function Segmented<T extends string | number>({
             onPress={() => onChange(o.value)}
             style={[styles.segment, { borderRadius: radius.sm, backgroundColor: on ? colors.card : "transparent" }]}
           >
-            <Text variant="subhead" tone={on ? "foreground" : "mutedForeground"}>
+            {/* One line: with large text a word shrinks to fit its segment rather than break in two (spec 044). */}
+            <Text variant="subhead" tone={on ? "foreground" : "mutedForeground"} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
               {o.label}
             </Text>
           </Pressable>

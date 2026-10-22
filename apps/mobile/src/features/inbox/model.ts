@@ -9,21 +9,43 @@ import type { Locale, T } from "@/i18n/t";
 
 // ── composer ──────────────────────────────────────────────────────────
 
+/**
+ * What the foot offers. Spec 044 (R11) adds, when known, the agent's name and —
+ * while it waits — since when (`waiting_since` from the API, or the last
+ * «escalated» of the activity).
+ */
 export type ComposerMode =
   | { kind: "resolved" }
-  | { kind: "waiting"; reason: string | null }
-  | { kind: "agent" }
+  | { kind: "waiting"; reason: string | null; since?: string | null; agent?: string | null }
+  | { kind: "agent"; agent?: string | null }
   | { kind: "other"; name: string | null }
-  | { kind: "mine"; blocked: "window_closed" | "channel_disconnected" | null };
+  | { kind: "mine"; blocked: "window_closed" | "channel_disconnected" | null; agent?: string | null };
 
-export function composerMode(d: Pick<Detail, "state" | "assignee" | "waiting_reason" | "window" | "channel">): ComposerMode {
+export function composerMode(
+  d: Pick<Detail, "state" | "assignee" | "waiting_reason" | "window" | "channel"> & Partial<Pick<Detail, "agent" | "waiting_since" | "activity">>,
+): ComposerMode {
+  const agent = d.agent?.name ?? null;
   if (d.state === "resolved") return { kind: "resolved" };
-  if (d.state === "waiting" && !d.assignee) return { kind: "waiting", reason: d.waiting_reason ?? null };
-  if (d.state === "agent") return { kind: "agent" };
+  if (d.state === "waiting" && !d.assignee) return { kind: "waiting", reason: d.waiting_reason ?? null, since: d.waiting_since ?? lastEscalatedAt(d.activity ?? []), agent };
+  if (d.state === "agent") return { kind: "agent", agent };
   if (d.assignee && !d.assignee.is_me) return { kind: "other", name: d.assignee.name ?? null };
-  if (!d.channel.connected) return { kind: "mine", blocked: "channel_disconnected" };
-  if (!d.window.open) return { kind: "mine", blocked: "window_closed" };
-  return { kind: "mine", blocked: null };
+  if (!d.channel.connected) return { kind: "mine", blocked: "channel_disconnected", agent };
+  if (!d.window.open) return { kind: "mine", blocked: "window_closed", agent };
+  return { kind: "mine", blocked: null, agent };
+}
+
+/** When the agent last asked for a person, from the activity (spec 044, R11.1). */
+export function lastEscalatedAt(activity: readonly { kind: string; at: string }[]): string | null {
+  const last = activity.filter((a) => a.kind === "escalated").sort((a, b) => a.at.localeCompare(b.at)).at(-1);
+  return last?.at ?? null;
+}
+
+/** «12 min», «3 h», «2 d»: how long since a moment (spec 044, R10.1, R11.1). */
+export function agoText(since: string, now: number, t: T): string {
+  const min = Math.max(0, Math.floor((now - Date.parse(since)) / 60_000));
+  if (min < 60) return t("app.inbox.ago.min", { n: min });
+  if (min < 24 * 60) return t("app.inbox.ago.h", { n: Math.floor(min / 60) });
+  return t("app.inbox.ago.d", { n: Math.floor(min / (24 * 60)) });
 }
 
 /** The API's 409 codes on a send, as the composer says them. */
@@ -132,12 +154,14 @@ export function eventText(kind: string | null | undefined, a: Author | null | un
 }
 
 /** «Atiende: …» under the contact's name. */
+/** Under the name, the state in words (spec 044, R11.2): waits, you, resolved, or the agent that answers. */
 export function attendsLine(d: Pick<Detail, "state" | "assignee" | "agent">, t: T): string {
-  if (d.state === "agent") return d.agent ? t("inbox.assigned", { name: d.agent.name }) : t("inbox.assigned.agent");
+  if (d.state === "resolved") return t("app.inbox.attends.resolved");
   if (d.assignee) {
     return d.assignee.is_me ? t("inbox.assigned.you") : t("inbox.assigned", { name: d.assignee.name ?? t("inbox.who.someone") });
   }
-  return d.state === "waiting" ? t("inbox.assigned.nobody") : t("inbox.assigned.agent");
+  if (d.state === "waiting") return t("app.inbox.attends.waiting");
+  return d.agent ? t("app.inbox.attends.agent", { agent: d.agent.name }) : t("app.inbox.attends.agent.noName");
 }
 
 /** A list row's preview: who wrote it, and the text or «Archivo». */

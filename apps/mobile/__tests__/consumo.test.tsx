@@ -31,7 +31,11 @@ const spend: Spend = {
   projected_cents: 4100,
 } as Spend;
 
-async function view(p: { locale?: Locale; summary?: UsageSummary | null; anySpend?: boolean | null; spend?: Spend | null } = {}) {
+type Contact = { kind: "auphere" | "partner"; name: string } | null;
+
+async function view(
+  p: { locale?: Locale; summary?: UsageSummary | null; anySpend?: boolean | null; spend?: Spend | null; contact?: Contact } = {},
+) {
   const locale = p.locale ?? "es";
   const t = (k: MessageKey, v?: Record<string, string | number>) => translate(locale, k, v);
   const onDays = jest.fn();
@@ -52,6 +56,7 @@ async function view(p: { locale?: Locale; summary?: UsageSummary | null; anySpen
       now={new Date("2026-10-08T12:00:00Z")}
       onRetry={jest.fn()}
       onWeb={onWeb}
+      contact={p.contact === undefined ? { kind: "auphere", name: "Auphere" } : p.contact}
     />,
   );
   return { onDays, onWeb };
@@ -60,7 +65,7 @@ async function view(p: { locale?: Locale; summary?: UsageSummary | null; anySpen
 it("the balance, how long it lasts, the month and its projection — the same cents as before (R10.1)", async () => {
   await view();
   expect(screen.getByLabelText(/^Saldo disponible: .*30,13/)).toBeTruthy();
-  expect(screen.getByLabelText(/^Cubre unos 11 días al ritmo de esta semana/)).toBeTruthy();
+  // Spec 044, R13.1: «how long it lasts» is now the answer first (below), not a «Cubre unos N días» row.
   expect(screen.getByLabelText(/^Gasto del mes: .*16,26.*A este ritmo, .*41,00.* a fin de mes/)).toBeTruthy();
   expect(screen.getByLabelText(/^Conversaciones del mes: 75\. .*0,22.* de media cada una/)).toBeTruthy();
 });
@@ -97,9 +102,12 @@ it("the split by agent", async () => {
 
 it.each<Locale>(["es", "en"])("no buy, top-up or «ask for balance» anywhere (%s)", async (locale) => {
   await view({ locale });
+  // Spec 044, R13.1 and R13.4: one sentence says whom to talk to for more balance; nothing offers it.
+  const whom = locale === "es" ? "Para recargar, habla con quien gestiona tu negocio en Auphere." : "To top up, talk to whoever manages your business at Auphere.";
   for (const word of [/comprar/i, /recargar/i, /pedir saldo/i, /\bbuy\b/i, /top[- ]?up/i, /ask .* for more balance/i]) {
-    expect(screen.queryByText(word)).toBeNull();
+    expect(screen.queryAllByText(word).filter((el) => el.props.children !== whom)).toHaveLength(0);
     expect(screen.queryByRole("button", { name: word })).toBeNull();
+    expect(screen.queryByRole("link", { name: word })).toBeNull();
   }
 });
 
@@ -116,4 +124,50 @@ it("a failed read is an error with retry, never zeros", async () => {
   await view({ summary: null });
   expect(screen.getByRole("alert")).toBeTruthy();
   expect(screen.queryByText(/30,13/)).toBeNull();
+});
+
+/**
+ * Spec 044, Historia 8, Requisito 13: Consumo starts with the answer to «how
+ * long does it last?», says whom to talk to, and never makes up a date.
+ */
+describe("the answer first (R13)", () => {
+  it("«Te alcanza hasta el <día> <n>» at the 7-day pace, and whom to talk to", async () => {
+    await view();
+    // 8 October plus 11 whole days: Monday 19.
+    expect(screen.getByText("Te alcanza hasta el lunes 19")).toBeTruthy();
+    expect(screen.getByText("Al ritmo de los últimos 7 días.")).toBeTruthy();
+    expect(screen.getByText("Para recargar, habla con quien gestiona tu negocio en Auphere.")).toBeTruthy();
+  });
+
+  it("says the month when it is not this one", async () => {
+    await view({ summary: summary({ balance: { assigned: true, remaining_cents: 3013, cap_cents: 5000, days_left: 26.4 } }) });
+    expect(screen.getByText("Te alcanza hasta el martes 3 de noviembre")).toBeTruthy();
+  });
+
+  it("takes the API's own date when it gives one", async () => {
+    const balance = { assigned: true, remaining_cents: 3013, cap_cents: 5000, days_left: 11, runs_out_on: "2026-10-17" };
+    await view({ summary: summary({ balance } as Partial<UsageSummary>) });
+    expect(screen.getByText("Te alcanza hasta el sábado 17")).toBeTruthy();
+  });
+
+  it("with a partner, names it", async () => {
+    await view({ contact: { kind: "partner", name: "Amacrux Demo" } });
+    expect(screen.getByText("Para recargar, habla con Amacrux Demo.")).toBeTruthy();
+  });
+
+  it.each([
+    ["no spend in 7 days", { assigned: true, remaining_cents: 3013, cap_cents: 5000, days_left: null }, "Sin gasto en los últimos 7 días"],
+    ["no balance assigned", { assigned: false, remaining_cents: null, cap_cents: null, days_left: null }, "Todavía no tienes un tope asignado"],
+    ["used up", { assigned: true, remaining_cents: 0, cap_cents: 5000, days_left: 0 }, "Saldo agotado: el agente no responde"],
+  ])("%s: says it, and no date", async (_name, balance, line) => {
+    await view({ summary: summary({ balance } as Partial<UsageSummary>) });
+    expect(screen.getByText(line)).toBeTruthy();
+    expect(screen.queryByText(/Te alcanza hasta/)).toBeNull();
+  });
+
+  it("the chart says its period and its total (R13.3)", async () => {
+    await view();
+    expect(screen.getByRole("header", { name: "Gasto de los últimos 30 días" })).toBeTruthy();
+    expect(screen.getByText(/3,50/)).toBeTruthy();
+  });
 });

@@ -571,6 +571,7 @@ Depende del spike (T019) y de T025.
       > el módulo desde el admin; se hizo en la base local y se restauró).
       > H16 no se reproduce (`ios26-13-inicio-tras-reintentar.png`,
       > `ios26-13-bandeja-tras-reintentar.png`). iOS < 26: pendiente de Luis.
+      > 2026-10-22: H22 decidido en T090 (la barra ya no se encoge).
 - [X] T070 [US4] Capturas en «13 26»: `evidence/capturas/ios26-13-bandeja-{claro,oscuro}.png`
       (desplazada, con filas bajo las barras), `ios26-13-ajustes-hoja.png`,
       `ios26-13-conversacion-menu.png`; en Android,
@@ -751,6 +752,23 @@ y el cierre de los criterios de éxito.
       > para el emulador), iOS < 26 y 26.1 (sin runtime), H22 en un iPhone, y
       > los `next build` de `verify.sh js` (disco). Al cierre: Android hecho y
       > los dos `next build` en verde.
+- [X] T090 Decidir H22 con lo que se pueda comprobar en «13 26»: repetir el
+      desplazamiento con arrastres reales (no los de Maestro) y, si la barra
+      no vuelve al subir, `minimizeBehavior="never"` con su test y la
+      enmienda de R1.5. _Requisitos: 1.5_
+      > 2026-10-22: con arrastres con velocidad (`touch_path` del simulador) y
+      > el texto en AX-L, la barra se encoge al bajar y **a mitad de contenido
+      > no vuelve al subir**; solo vuelve arriba del todo
+      > (`ios26-13-h22-encogida-tras-subir.png`, `ios26-13-h22-vuelve-solo-arriba.png`).
+      > Encogida, la insignia de la Bandeja no se ve. Decidido:
+      > `TAB_BAR_MINIMIZE = "never"` (`lib/modules.ts`, `tabs.test.tsx` en
+      > rojo antes del cambio); R1.5 enmendado; después:
+      > `ios26-13-h22-nunca-se-encoge.png`.
+- [X] T091 Puerta de fusión de la iteración 2: sin runtime de iOS < 26 ni de
+      26.1 en la máquina (solo `iOS 26.0`, y el disco no da para otro), dejar
+      escrita en `evidence/hallazgos.md` la aceptación del riesgo de Luis,
+      con la fecha. _Requisitos: CE-005, CE-006, CE-007_
+      > 2026-10-22: escrita («Aceptación del riesgo», en `hallazgos.md`).
 
 ---
 

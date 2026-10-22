@@ -169,10 +169,28 @@ describe("«Entrar»", () => {
     await waitFor(() => expect(screen.getByText("No terminaste de entrar. Vuelve a intentarlo cuando quieras.")).toBeTruthy());
   });
 
-  it("without Google on the API there is no Google button", async () => {
+  it("without Google on the API there is no Google button, and no note about it", async () => {
     mockGoogle = false;
     await render(<SignIn />);
     expect(screen.queryByRole("button", { name: "Continuar con Google" })).toBeNull();
+    expect(screen.queryByText(/Usa la cuenta de Google del mismo correo/)).toBeNull();
+  });
+
+  it("under Google, which account to use and whom to ask (spec 044, R15.2)", async () => {
+    await render(<SignIn />);
+    expect(
+      screen.getByText("Usa la cuenta de Google del mismo correo. Si no tienes acceso, pídelo a quien gestiona tu negocio en Auphere."),
+    ).toBeTruthy();
+  });
+
+  it("a refusal is one sentence that never says which field failed (spec 044, R15.1)", async () => {
+    mockSession.signInWithPassword.mockResolvedValue({ kind: "invalid-credentials" });
+    await render(<SignIn />);
+    await fill("valeria@flor.test", "mala");
+    await fireEvent.press(screen.getByRole("button", { name: "Entrar" }));
+    const sentence = await waitFor(() => screen.getByText("El correo o la contraseña no son correctos."));
+    expect(String(sentence.props.children).split(". ").filter(Boolean)).toHaveLength(1);
+    expect(screen.queryByText(/correo no existe|contraseña (es )?incorrecta|no encontramos ese correo/i)).toBeNull();
   });
 
   it("offline, it says so and tries nothing", async () => {

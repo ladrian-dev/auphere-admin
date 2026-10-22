@@ -3,10 +3,20 @@
  * generated from the console (`lite.gen.ts`); these are only what the phone
  * says and the web does not: tabs, signing in, settings, notices.
  */
+import { atenderEs } from "./atender.es";
+import { avisosEs } from "./avisos.es";
+import { mejorasEs } from "./mejoras.es";
+import { reservasEs } from "./reservas.es";
+
 export const appEs = {
+  ...reservasEs,
+  ...mejorasEs,
+  ...avisosEs,
+  ...atenderEs,
   // ── tabs (R3) ────────────────────────────────────────────────────
   "app.tab.panel": "Inicio",
   "app.tab.inbox": "Bandeja",
+  "app.tab.reservas": "Reservas",
   "app.tab.usage": "Consumo",
   "app.settings": "Ajustes",
   "app.settings.open": "Abrir ajustes",
@@ -95,8 +105,6 @@ export const appEs = {
   "app.inbox.contact": "Contacto",
   "app.inbox.readMore": "Leer más",
   // ── avisos (R8, R10) ─────────────────────────────────────────────
-  "app.notices.title": "Entérate de lo que te necesita",
-  "app.notices.body": "Te avisamos en este teléfono de tres cosas, y de nada más:",
   "app.notices.kind.inbox.waiting": "Una conversación espera a una persona",
   "app.notices.kind.inbox.waiting.hint": "Cuando el agente pide ayuda. Es el aviso urgente.",
   "app.notices.kind.inbox.message_for_you": "Mensaje nuevo donde respondes tú",

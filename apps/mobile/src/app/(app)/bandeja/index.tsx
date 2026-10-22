@@ -10,6 +10,7 @@ import { Filters } from "@/features/inbox/list/filters";
 import { SettingsToolbar } from "@/features/tab-stack";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
+import { usePullRefresh } from "@/lib/use-pull-refresh";
 import { useTheme } from "@/theme/theme";
 import { useActions } from "@/ui/actions";
 import { Divider } from "@/ui/bits";
@@ -17,9 +18,10 @@ import { icons } from "@/ui/icon";
 import { useOnline } from "@/ui/online";
 import { EmptyState, ErrorState, OfflineBanner, ReconnectingIndicator, Skeleton } from "@/ui/states";
 import { Button } from "@/ui/button";
+import { Text } from "@/ui/text";
 
 /**
- * The Bandeja (spec 031, R5.1–R5.4): the client's conversations, filtered,
+ * The Bandeja (spec 031, R5.1–R5.4; spec 044, R10): the client's conversations, filtered,
  * searchable by name or number from the native search bar, live while the
  * app is in front. An empty inbox and an empty filter are different things,
  * and say so.
@@ -38,6 +40,7 @@ export default function Bandeja() {
   const [agent, setAgent] = useState<string | null>(null);
   const counts = useCounts(true);
   const list = useConversations(filter, query, agent);
+  const pull = usePullRefresh(() => Promise.all([list.refetch(), counts.refetch()]));
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -49,6 +52,10 @@ export default function Bandeja() {
   const items = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const first = list.data?.pages[0];
   const filtered = filter !== "all" || query !== "" || agent !== null;
+  // Spec 044, R10.1: with «Todas» and no search, the ones waiting for a person go first, apart.
+  const isWaiting = (c: (typeof items)[number]) => c.state === "waiting" && !c.assignee;
+  const pinned = filtered ? [] : items.filter(isWaiting);
+  const rest = filtered ? items : items.filter((c) => !isWaiting(c));
 
   const pickAgent = () =>
     actions(t("inbox.filter.agent"), [
@@ -71,6 +78,32 @@ export default function Bandeja() {
         {!online && list.data ? <OfflineBanner since={clock(new Date(list.dataUpdatedAt), locale)} /> : null}
         {online && live === "reconnecting" ? <ReconnectingIndicator label={t("inbox.live.reconnecting")} /> : null}
       </View>
+      {pinned.length > 0 ? (
+        <View>
+          <Text variant="subhead" tone="dangerText" accessibilityRole="header" style={styles.section}>
+            {t("app.inbox.waitingGroup", { n: pinned.length })}
+          </Text>
+          {pinned.map((c, i) => (
+            <View key={c.id}>
+              {i > 0 ? <Divider /> : null}
+              <ConversationRow
+                c={c}
+                now={now}
+                t={t}
+                locale={locale}
+                pinned
+                agentName={agentNames && c.agent ? (agentNames.get(c.agent.id) ?? c.agent.name) : null}
+                onPress={(id) => router.push(`/conversacion/${id}`)}
+              />
+            </View>
+          ))}
+          {rest.length > 0 ? (
+            <Text variant="subhead" tone="mutedForeground" accessibilityRole="header" style={styles.section}>
+              {t("app.inbox.others")}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -120,13 +153,13 @@ export default function Bandeja() {
       <FlatList
         testID="bandeja"
         accessibilityLabel={t("inbox.list")}
-        data={items}
+        data={rest}
         keyExtractor={(c) => c.id}
         contentInsetAdjustmentBehavior="automatic"
         style={{ backgroundColor: colors.background }}
         keyboardDismissMode="on-drag"
         ListHeaderComponent={header}
-        ListEmptyComponent={empty}
+        ListEmptyComponent={pinned.length > 0 ? undefined : empty}
         ItemSeparatorComponent={Divider}
         renderItem={({ item }) => (
           <ConversationRow
@@ -151,15 +184,17 @@ export default function Bandeja() {
             <View style={styles.more}>
               <Button label={t("inbox.list.more")} variant="ghost" onPress={() => void list.fetchNextPage()} />
             </View>
+          ) : items.length > 0 ? (
+            // Spec 044, R10.3: what the Bandeja is, and what it is not.
+            <Text variant="footnote" tone="mutedForeground" style={styles.footer}>
+              {t("app.inbox.footer")}
+            </Text>
           ) : undefined
         }
         refreshControl={
           <RefreshControl
-            refreshing={list.isRefetching && !list.isFetchingNextPage}
-            onRefresh={() => {
-              void list.refetch();
-              void counts.refetch();
-            }}
+            refreshing={pull.refreshing}
+            onRefresh={pull.onRefresh}
             tintColor={colors.primaryText}
             colors={[colors.primaryDeep]}
           />
@@ -173,4 +208,6 @@ const styles = StyleSheet.create({
   status: { paddingHorizontal: 16, gap: 8 },
   pad: { padding: 16 },
   more: { alignItems: "center", paddingVertical: 8 },
+  section: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  footer: { paddingHorizontal: 16, paddingVertical: 20, textAlign: "center" },
 });

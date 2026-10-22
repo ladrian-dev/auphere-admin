@@ -4,7 +4,7 @@ import type { Home, Me } from "@/api/endpoints";
 import type { Locale, T } from "@/i18n/t";
 import { formatMoney, formatMoneyCompact, formatNumber, shortDay } from "@/lib/format";
 import { creditRunway, trendDelta } from "@/lib/panel-model";
-import { Meter } from "@/ui/bits";
+import { Meter, RowButton } from "@/ui/bits";
 import { Card } from "@/ui/card";
 import { Group, Row } from "@/ui/group";
 import { ErrorState, PartialNotice } from "@/ui/states";
@@ -12,6 +12,7 @@ import { Text } from "@/ui/text";
 
 import { DayBars } from "../charts/day-bars";
 import { Attention } from "./attention";
+import { TodayCard, unconfirmedToday, type TodayReservas } from "./today-reservas";
 
 /**
  * Inicio (spec 031, R4.1; spec 042, R5): the Panel of the console, laid out for
@@ -31,6 +32,9 @@ export function HomeView({
   onRetry,
   onAttend,
   onUsage,
+  onInbox,
+  reservas = null,
+  onReservas,
 }: {
   me: Pick<Me, "client" | "nav" | "balance_contact">;
   home: Home | null;
@@ -40,6 +44,11 @@ export function HomeView({
   onRetry: () => void;
   onAttend: (conversationId: string | null) => void;
   onUsage: () => void;
+  /** Spec 044, R9.3: the conversations block leads to the Bandeja. */
+  onInbox?: () => void;
+  /** Spec 044, R9.1, R9.4: today in Reservas; `null` without the module (R1.2). */
+  reservas?: TodayReservas | null;
+  onReservas?: () => void;
 }) {
   const n = (v: number) => formatNumber(v, locale);
   if (home === null) return <ErrorState body={t("common.error.backend")} onRetry={onRetry} />;
@@ -63,10 +72,12 @@ export function HomeView({
         home={home}
         contact={me.balance_contact}
         modules={modules}
+        reservasUnconfirmed={unconfirmedToday(reservas)}
         t={t}
         n={n}
         onAttend={onAttend}
         onUsage={onUsage}
+        onReservas={onReservas}
       />
       {balance ? (
         <Group testID="home-money">
@@ -93,6 +104,7 @@ export function HomeView({
           {hasUsage && !attentionOffersUsage ? <Row label={t("lite.spend.see")} tone="primaryText" kind="push" onPress={onUsage} /> : null}
         </Group>
       ) : null}
+      {reservas && onReservas ? <TodayCard today={reservas} onReservas={onReservas} t={t} /> : null}
       {conv ? (
         <Card>
           <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
@@ -111,6 +123,11 @@ export function HomeView({
               summary={`${t("hu.home.kpi.conversations.trend")}: ${conv.daily.map((d) => t("app.chart.day", { day: shortDay(d.day, locale), value: n(d.count) })).join(", ")}`}
             />
           ) : null}
+          {modules.includes("inbox") && onInbox ? (
+            <View style={styles.bleed}>
+              <RowButton title={t("app.home.inbox.see")} tone="primaryText" kind="push" onPress={onInbox} />
+            </View>
+          ) : null}
         </Card>
       ) : null}
     </View>
@@ -119,4 +136,6 @@ export function HomeView({
 
 const styles = StyleSheet.create({
   stack: { gap: 16 },
+  // The row's press tint reaches the card's edges, past the card's own padding.
+  bleed: { marginHorizontal: -16, marginBottom: -8 },
 });

@@ -2,18 +2,20 @@ import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import type { T } from "@/i18n/t";
+import { useNowMs } from "@/lib/use-now";
 import { Button } from "@/ui/button";
 import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
-import type { ComposerMode } from "../model";
+import { agoText, type ComposerMode } from "../model";
 
 /** How many lines of the agent's reason the foot shows before «Leer más» (R2.3). */
 const REASON_LINES = 2;
 
 /**
  * What the foot says when this person does not answer yet (R6.1 of the 031;
- * spec 042 R2.3, R2.4, R2.9). Content only — the surface is `ThreadFoot`'s.
+ * spec 042 R2.3, R2.4, R2.9; spec 044 R11.1, R11.3). Content only — the
+ * surface is `ThreadFoot`'s.
  * Waiting: why, said BEFORE the action, in two lines, with «Leer más» when it
  * does not fit; then «Tomar el control» under the thumb and «Devolver al
  * agente». When the agent or another person answers: who, and the same
@@ -39,6 +41,7 @@ export function ControlCard({
   onReadMore?: () => void;
 }) {
   const [overflows, setOverflows] = useState(false);
+  const now = useNowMs();
   const off = busy || !online;
 
   if (mode.kind === "resolved") {
@@ -62,6 +65,14 @@ export function ControlCard({
             {t("inbox.composer.waiting.title")}
           </Text>
         </View>
+        {mode.since ? (
+          // Spec 044, R11.1: since when, and who asked — before the action.
+          <Text variant="footnote" tone="warningText">
+            {mode.agent
+              ? t("app.inbox.waitingSince", { time: agoText(mode.since, now, t), agent: mode.agent })
+              : t("app.inbox.waitingSince.noAgent", { time: agoText(mode.since, now, t) })}
+          </Text>
+        ) : null}
         <Text variant="callout" numberOfLines={REASON_LINES} testID="waiting-reason">
           {reason}
         </Text>
@@ -95,7 +106,11 @@ export function ControlCard({
       <View style={styles.head}>
         <Icon name={icons.bot} size={18} tone="primaryText" />
         <Text variant="callout" tone="mutedForeground" style={styles.flex}>
-          {mode.kind === "agent" ? t("inbox.composer.agent") : t("inbox.composer.other", { name: mode.name ?? t("inbox.who.someone") })}
+          {mode.kind === "agent"
+            ? mode.agent
+              ? t("app.inbox.agentAnswers", { agent: mode.agent })
+              : t("app.inbox.agentAnswers.noAgent")
+            : t("inbox.composer.other", { name: mode.name ?? t("inbox.who.someone") })}
         </Text>
       </View>
       <Button label={t("inbox.composer.takeover")} variant="secondary" full busy={busy} disabled={!online} onPress={onTakeOver} testID="take-over" />

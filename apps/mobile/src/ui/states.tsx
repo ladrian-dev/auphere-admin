@@ -74,7 +74,11 @@ export function EmptyState({
           {body}
         </Text>
       ) : null}
-      {action ? <Button label={action.label} variant="secondary" onPress={action.onPress} /> : null}
+      {action ? (
+        <View style={styles.centerAction}>
+          <Button label={action.label} variant="secondary" onPress={action.onPress} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -96,7 +100,12 @@ export function ErrorState({ title, body, onRetry }: { title?: string; body?: st
           {body ?? t("app.error.body")}
         </Text>
       </View>
-      {onRetry ? <Button label={t("app.retry")} variant="secondary" icon={icons.retry} onPress={onRetry} /> : null}
+      {/* A button sits at the start of its line; this one is centred under the words (spec 044). */}
+      {onRetry ? (
+        <View testID="error-retry" style={styles.centerAction}>
+          <Button label={t("app.retry")} variant="secondary" icon={icons.retry} onPress={onRetry} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -180,6 +189,7 @@ const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center", gap: 12, paddingHorizontal: 24, paddingVertical: 40 },
   centerText: { textAlign: "center", maxWidth: 420 },
   centerGroup: { alignItems: "center", gap: 12 },
+  centerAction: { alignSelf: "center" },
   badge: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
   banner: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12 },
   bannerText: { flex: 1, minWidth: 0, gap: 2 },

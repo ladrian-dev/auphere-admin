@@ -13,12 +13,17 @@ import { Text } from "@/ui/text";
  * The frame of the screens before the app proper: sign in, not a client, no
  * access, update. The brand mark, a title, a few lines, and the actions at the
  * bottom, within reach of the thumb. It scrolls when the text is at its largest.
+ *
+ * `footer` is pinned under what scrolls, always in sight: the notices screen
+ * puts its two answers there so «Ahora no» is never below the fold on a 4,7″
+ * phone (spec 044, R14.4; closes 042 H15).
  */
 export function EntryFrame({
   title,
   body,
   lead,
   notice,
+  footer,
   children,
 }: {
   title: string;
@@ -26,6 +31,7 @@ export function EntryFrame({
   /** What reads with the body (a list it introduces), kept under it instead of pushed to the actions. */
   lead?: ReactNode;
   notice?: ReactNode;
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   const { colors } = useTheme();
@@ -33,7 +39,13 @@ export function EntryFrame({
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
       {/* Follows the keyboard: the field in focus and the start of the next one stay in sight. */}
-      <KeyboardAwareScrollView contentContainerStyle={styles.scroll} bounces={false} bottomOffset={112} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.scroll}
+        bounces={false}
+        bottomOffset={112}
+        keyboardShouldPersistTaps="handled"
+        testID="entry-scroll"
+      >
         <Animated.View entering={motion.enter} style={styles.top}>
           <Image
             source={require("@/assets/images/mark.png")}
@@ -58,6 +70,11 @@ export function EntryFrame({
           {children}
         </View>
       </KeyboardAwareScrollView>
+      {footer ? (
+        <View style={[styles.footer, { borderTopColor: colors.border }]} testID="entry-footer">
+          {footer}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -85,5 +102,6 @@ const styles = StyleSheet.create({
   top: { gap: 16, paddingTop: 32 },
   mark: { width: 56, height: 56 },
   bottom: { gap: 12 },
+  footer: { gap: 4, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth },
   notice: { padding: 12 },
 });

@@ -1,8 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 
 import type { Home, Me } from "@/api/endpoints";
 import { HomeView } from "@/features/home/home-view";
+import type { TodayReservas } from "@/features/home/today-reservas";
 import { t as translate, type MessageKey } from "@/i18n/t";
+
+import { capacityConfig, corte, marcos, peinado, javiera, res, servicesConfig, TODAY } from "../test/reservas-fixtures";
 
 /**
  * Spec 031 (T063, R4.1, R4.4, R14.1): Inicio is the console's Panel, in each
@@ -28,10 +32,12 @@ function home(o: Partial<Home> = {}): Home {
 const me = (nav: string[] = ["panel", "inbox", "usage"]) =>
   ({ client: { name: "Flor y Encanto", modules: nav }, nav, balance_contact: { kind: "partner", name: "Amacrux" } }) as unknown as Me;
 
-async function view(p: { home?: Home | null; nav?: string[] } = {}) {
+async function view(p: { home?: Home | null; nav?: string[]; reservas?: TodayReservas | null } = {}) {
   const onAttend = jest.fn();
   const onUsage = jest.fn();
   const onRetry = jest.fn();
+  const onInbox = jest.fn();
+  const onReservas = jest.fn();
   await render(
     <HomeView
       me={me(p.nav)}
@@ -42,9 +48,12 @@ async function view(p: { home?: Home | null; nav?: string[] } = {}) {
       onRetry={onRetry}
       onAttend={onAttend}
       onUsage={onUsage}
+      onInbox={onInbox}
+      reservas={p.reservas ?? null}
+      onReservas={onReservas}
     />,
   );
-  return { onAttend, onUsage, onRetry };
+  return { onAttend, onUsage, onRetry, onInbox, onReservas };
 }
 
 it("ideal: the client's figures, as the console shows them", async () => {
@@ -108,7 +117,8 @@ describe("each thing once (spec 042, R5)", () => {
     await view({ nav: ["panel", "inbox"] });
     expect(screen.getByLabelText(/^Saldo disponible: .*30,13/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Ver consumo" })).toBeNull();
-    expect(screen.queryByTestId("row-indicator-push")).toBeNull();
+    // The money group has nothing to press (the conversations' row to the Bandeja is another block, spec 044 R9.3).
+    expect(within(screen.getByTestId("home-money")).queryByTestId("row-indicator-push")).toBeNull();
   });
 
   it("waiting and a low balance: two rows in the attention block, each datum once", async () => {
@@ -147,7 +157,8 @@ describe("each thing once (spec 042, R5)", () => {
     expect(screen.getByText("75")).toBeTruthy();
     expect(screen.getByText("25 % más que los 7 días anteriores")).toBeTruthy();
     expect(screen.getByLabelText(/^Conversaciones por día de los últimos 7 días/)).toBeTruthy();
-    expect(screen.queryByTestId("row-indicator-push")).toBeTruthy(); // only the money group's way to Consumo
+    // The money group's way to Consumo, and the conversations' way to the Bandeja (spec 044, R9.3).
+    expect(screen.getAllByTestId("row-indicator-push")).toHaveLength(2);
   });
 });
 
@@ -161,4 +172,94 @@ it("without the Bandeja there is no «waiting» action into it", async () => {
   await view({ nav: ["panel", "usage"], home: home({ waiting: null }) });
   expect(screen.queryByText(/esperan a una persona/i)).toBeNull();
   expect(screen.queryByRole("button", { name: /Atender/ })).toBeNull();
+});
+
+/**
+ * Spec 044, Historia 5, Requisito 9: what needs a person in every module, and
+ * «Hoy en Reservas» — counted from the same read as the Reservas tab (D4).
+ */
+describe("Inicio with Reservas (spec 044, R9)", () => {
+  const nav = ["panel", "inbox", "reservas", "usage"];
+  const servicesToday: TodayReservas = {
+    state: "ready",
+    config: servicesConfig,
+    now: { date: TODAY, minutes: 11 * 60 + 20 },
+    waitlist: null,
+    items: [
+      res({ id: "a", start: 600, end: 630, service: corte, pro: marcos, state: "done" }),
+      res({ id: "b", start: 690, end: 735, service: peinado, pro: javiera, state: "pending", customer: { name: "Camila Rojas", phone: null } }),
+      res({ id: "c", start: 720, end: 750, service: corte, pro: marcos, customer: { name: "Tomás Silva", phone: null } }),
+      res({ id: "d", start: 780, end: 810, service: corte, pro: marcos, state: "pending", customer: { name: "Isidora Morales", phone: null } }),
+      res({ id: "e", start: 840, end: 870, service: corte, pro: marcos, customer: { name: "Joaquín Contreras", phone: null } }),
+      res({ id: "x", start: 900, end: 930, service: corte, pro: marcos, state: "cancelled" }),
+    ],
+  };
+
+  it("today's unconfirmed reservations join «Necesita tu atención», with «Ver reservas»", async () => {
+    const { onReservas } = await view({ nav, reservas: servicesToday });
+    expect(screen.getByText("2 reservas de hoy sin confirmar. El agente ya les escribió.")).toBeTruthy();
+    await fireEvent.press(screen.getAllByRole("button", { name: "Ver reservas" })[0]!);
+    expect(onReservas).toHaveBeenCalled();
+  });
+
+  it("they bring the attention block even when nothing else needs a person", async () => {
+    await view({ nav, reservas: servicesToday });
+    expect(screen.getByRole("header", { name: "Necesita tu atención" })).toBeTruthy();
+    expect(screen.queryByText(/Todo en orden/)).toBeNull();
+  });
+
+  it("«Hoy en Reservas» in Servicios: today's count, the next one and the three next", async () => {
+    await view({ nav, reservas: servicesToday });
+    expect(screen.getByRole("header", { name: "Hoy en Reservas" })).toBeTruthy();
+    expect(screen.getByText("5 reservas hoy")).toBeTruthy();
+    expect(screen.getByText("Próxima a las 11:30 · 2 sin confirmar")).toBeTruthy();
+    expect(screen.getByText("Camila Rojas")).toBeTruthy();
+    expect(screen.getByText("Isidora Morales")).toBeTruthy();
+    expect(screen.queryByText("Joaquín Contreras")).toBeNull();
+  });
+
+  it("with large text, the time grows instead of breaking and the state goes under the name (gate review)", async () => {
+    await view({ nav, reservas: servicesToday });
+    const time = screen.getByText("11:30");
+    expect(time.props.numberOfLines).toBe(1);
+    expect(StyleSheet.flatten(time.props.style).width).toBeUndefined();
+    expect(within(screen.getByTestId("today-b-body")).getByTestId("pill-pending")).toBeTruthy();
+  });
+
+  it("«Hoy en Reservas» in Aforo: inside now, who arrives in the next hour and the waitlist", async () => {
+    await view({
+      nav,
+      reservas: {
+        state: "ready",
+        config: capacityConfig,
+        now: { date: TODAY, minutes: 13 * 60 + 20 },
+        waitlist: 2,
+        items: [
+          res({ id: "in", start: 780, end: 870, partySize: 4, state: "arrived" }),
+          res({ id: "soon", start: 810, end: 900, partySize: 6, state: "confirmed", customer: { name: "Josefa Castillo", phone: null } }),
+        ],
+      },
+    });
+    // At 13:20 the 13:00 table (4) is inside; the 13:30 one (6) is not yet.
+    expect(screen.getByText("4 de 64 dentro ahora")).toBeTruthy();
+    expect(screen.getByText("Llegan 6 comensales en la próxima hora · 2 en lista de espera")).toBeTruthy();
+    expect(screen.getByText("Josefa Castillo")).toBeTruthy();
+  });
+
+  it("without the module there is no trace of Reservas", async () => {
+    await view();
+    expect(screen.queryByText("Hoy en Reservas")).toBeNull();
+    expect(screen.queryByText(/reservas de hoy/)).toBeNull();
+  });
+
+  it("loading and failing are said in place", async () => {
+    await view({ nav, reservas: { state: "error", retry: () => undefined } });
+    expect(screen.getByText("No pudimos cargar las reservas.")).toBeTruthy();
+  });
+
+  it("the conversations block takes you to the Bandeja (R9.3)", async () => {
+    const { onInbox } = await view({ nav });
+    await fireEvent.press(screen.getByRole("button", { name: "Ver la Bandeja" }));
+    expect(onInbox).toHaveBeenCalled();
+  });
 });

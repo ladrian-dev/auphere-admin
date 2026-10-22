@@ -7,11 +7,12 @@ import { useTheme } from "@/theme/theme";
 import { Avatar, Badge } from "@/ui/bits";
 import { Text } from "@/ui/text";
 
-import { badgeOf, initialsOf, listTime, previewOf } from "../model";
+import { agoText, badgeOf, initialsOf, listTime, previewOf } from "../model";
 
 /**
  * One conversation in the list (R5.2): who, when, the last line and its state
- * in words. Unread is bold and a dot — and said, not only shown. The whole row
+ * in words — or, pinned among the ones waiting (spec 044, R10.1), the agent's
+ * reason and how long it has waited. Unread is bold and a dot — and said, not only shown. The whole row
  * is one button with one spoken sentence.
  */
 export const ConversationRow = memo(function ConversationRow({
@@ -20,6 +21,7 @@ export const ConversationRow = memo(function ConversationRow({
   t,
   locale,
   agentName,
+  pinned = false,
   onPress,
 }: {
   c: Conversation;
@@ -28,12 +30,16 @@ export const ConversationRow = memo(function ConversationRow({
   locale: Locale;
   /** The agent's name, only when the client has more than one. */
   agentName: string | null;
+  /** Spec 044, R10.1: in the waiting group, the agent's reason is the preview and the badge says how long. */
+  pinned?: boolean;
   onPress: (id: string) => void;
 }) {
   const { colors } = useTheme();
   const time = c.last_message ? listTime(c.last_message.at, now, locale, t) : "";
-  const preview = previewOf(c, t);
-  const badge = badgeOf(c, t);
+  const preview = pinned && c.waiting?.reason ? c.waiting.reason : previewOf(c, t);
+  const base = badgeOf(c, t);
+  // Without the time from the API there is no time: the plain badge, never an invented wait (R10.2).
+  const badge = pinned && base && c.waiting?.since ? { ...base, label: t("app.inbox.waitingFor", { time: agoText(c.waiting.since, now.getTime(), t) }) } : base;
   const spoken = [c.contact.name, c.unread ? t("inbox.row.unread") : null, badge?.label, agentName, preview, time]
     .filter(Boolean)
     .join(". ");

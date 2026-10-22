@@ -44,3 +44,29 @@ export function shares(values: number[]): number[] {
   }
   return pcts;
 }
+
+/**
+ * Spec 044, R13.1: the day the balance runs out, as Consumo says it — «sábado
+ * 17» this month, «martes 3 de noviembre» another, with the year only when it
+ * is not this one. Dates are wall dates (`YYYY-MM-DD`), read at noon UTC.
+ */
+export function untilDay(date: string, today: string, locale: "es" | "en"): string {
+  const at = new Date(`${date}T12:00:00Z`);
+  const opts = (o: Intl.DateTimeFormatOptions) => at.toLocaleDateString(locale, { ...o, timeZone: "UTC" });
+  const weekday = opts({ weekday: "long" });
+  const day = Number(date.slice(8, 10));
+  const otherMonth = date.slice(0, 7) !== today.slice(0, 7);
+  const otherYear = date.slice(0, 4) !== today.slice(0, 4);
+  if (locale === "en") {
+    const month = opts({ month: "long" });
+    return otherMonth ? `${weekday}, ${month} ${day}${otherYear ? `, ${date.slice(0, 4)}` : ""}` : `${weekday} ${day}`;
+  }
+  const month = opts({ month: "long" });
+  return `${weekday} ${day}${otherMonth ? ` de ${month}` : ""}${otherYear ? ` de ${date.slice(0, 4)}` : ""}`;
+}
+
+/** The phone's own today, as a wall date: what «hasta el …» counts from. */
+export function localToday(now: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}

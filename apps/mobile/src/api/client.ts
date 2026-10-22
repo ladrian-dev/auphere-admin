@@ -102,8 +102,9 @@ export function refresh(): Promise<Session | null> {
     }
     const err = errorOf(res.status, body);
     if (res.status === 401 || res.status === 403) {
-      // A renewal the API refuses never comes back: the phone is closed.
-      await handleRefusal(err.code ? err : new ApiError(res.status, "phone_closed", err.info));
+      // A renewal the API refuses never comes back: the phone is closed — whatever the code
+      // (`invalid_grant` for a token it does not know), except an update the app needs.
+      await handleRefusal(err.code === "app_update_required" || err.code === "phone_closed" ? err : new ApiError(res.status, "phone_closed", err.info));
       return null;
     }
     throw err;
