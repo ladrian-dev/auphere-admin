@@ -7,7 +7,7 @@ import { useCounts, useMe } from "@/api/hooks";
 import { noticesAsked } from "@/auth/store";
 import { MeGateState } from "@/features/me-gate";
 import { useT } from "@/i18n/t";
-import { MODULES, knownModules, tabPlan } from "@/lib/modules";
+import { MODULES, TAB_BAR_MINIMIZE, knownModules, tabPlan } from "@/lib/modules";
 import { useInboxStream } from "@/api/sse";
 import { useTheme } from "@/theme/theme";
 
@@ -20,7 +20,8 @@ import { useTheme } from "@/theme/theme";
  *   the order remounts the navigator on purpose (`key`): the person lands on
  *   the first module, never on a tab that no longer exists (R3.5).
  * - One module: no tab bar at all (R3.4).
- * - The Bandeja's badge is what waits for a person.
+ * - The Bandeja's badge is what waits for a person, so the bar never
+ *   minimizes while scrolling (spec 042, H22).
  */
 export default function AppLayout() {
   const me = useMe();
@@ -58,7 +59,7 @@ export default function AppLayout() {
       key={visible.join(",")}
       hidden={visible.length === 1}
       tintColor={colors.primaryText}
-      minimizeBehavior="onScrollDown"
+      minimizeBehavior={TAB_BAR_MINIMIZE}
     >
       {tabPlan(nav).map(({ module, hidden }) => {
         const m = MODULES[module];

@@ -139,7 +139,8 @@ Bandeja llena):
 ## 6. Historia 4 · La navegación es de vidrio (CE-007, R1)
 
 - En «13 26»: desplazar la Bandeja y ver las filas a través de las dos barras;
-  la barra de pestañas se encoge al bajar y vuelve; los botones de la barra son
+  la barra de pestañas se queda entera con la insignia a la vista (R1.5,
+  enmendado el 2026-10-22: `ios26-13-h22-nunca-se-encoge.png`); los botones de la barra son
   cápsulas del sistema; Ajustes se abre a 0,6 y sube a 1; se cierra deslizando.
 - Capturas: `ios26-13-bandeja-{claro,oscuro}.png`,
   `ios26-13-ajustes-hoja.png`.

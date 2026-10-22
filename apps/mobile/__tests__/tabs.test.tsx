@@ -62,6 +62,18 @@ describe("the header on iOS 26 (spec 042, T060, T061, R1.1, R1.4, R3.1, R4.6)", 
 });
 
 /**
+ * Spec 042, H22 and R1.5 as amended on 2026-10-22: a minimized bar shows only
+ * the current tab, so the Bandeja's badge (what waits for a person) vanished
+ * while scrolling, and with real drags it only came back at the very top.
+ */
+describe("the tab bar never minimizes (spec 042, H22, R1.5)", () => {
+  it("keeps the Bandeja's badge in view while scrolling", () => {
+    const { TAB_BAR_MINIMIZE } = require("@/lib/modules") as typeof import("@/lib/modules");
+    expect(TAB_BAR_MINIMIZE).toBe("never");
+  });
+});
+
+/**
  * Spec 031 (T043, R3.1–R3.7): the tabs are the client's modules, in the API's
  * order, from `/me.nav` — never a fixed list in the app.
  */

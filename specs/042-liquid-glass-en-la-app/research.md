@@ -239,6 +239,9 @@ continuo (vídeo `evidence/morph.mp4`, T059).
 - `NativeTabs` se queda como está: en iOS 26 ya es vidrio, con
   `minimizeBehavior="onScrollDown"`; en iOS anterior a 26 la opción se ignora
   (solo deja un aviso en el log) y la barra es la de siempre.
+  > **Revisado el 2026-10-22 (H22):** `minimizeBehavior="never"`. Encogida, la
+  > barra esconde la insignia de la Bandeja, y con arrastres reales solo
+  > volvía arriba del todo. R1.5 se enmienda en la spec.
 - La búsqueda de la Bandeja se queda en la cabecera (`headerSearchBarOptions`)
   con `placement: "automatic"`. **Por ver** dónde la coloca iOS 26 dentro de un
   controlador de pestañas; si cae en un sitio inusable, el respaldo es

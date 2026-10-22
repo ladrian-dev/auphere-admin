@@ -16,6 +16,13 @@ export const MODULES = {
 
 export type KnownModule = keyof typeof MODULES;
 
+/**
+ * The tab bar stays whole while scrolling (spec 042, H22, R1.5). Minimized, iOS
+ * 26 shows only the current tab, so the Bandeja's badge disappears, and with
+ * real drags the bar only came back at the very top.
+ */
+export const TAB_BAR_MINIMIZE = "never" as const;
+
 export function knownModules(nav: readonly string[]): KnownModule[] {
   return nav.filter((m): m is KnownModule => m in MODULES).filter((m, i, all) => all.indexOf(m) === i);
 }

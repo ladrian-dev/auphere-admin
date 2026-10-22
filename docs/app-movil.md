@@ -46,6 +46,8 @@ para entrar (solo esquema propio).
     (las pestañas nativas no se pueden añadir en caliente). Si `nav` cambia, la
     barra se vuelve a montar a propósito (`key`) y la persona cae en el primer
     módulo. Con un módulo no hay barra. Un módulo desconocido se ignora.
+    La barra **no se encoge** al desplazar (`TAB_BAR_MINIMIZE = "never"`,
+    spec 042, H22): encogida, iOS 26 esconde la insignia de la Bandeja.
   - Cada pestaña es una pila nativa (título grande en iOS, cabecera propia en
     Android) con Ajustes a la derecha. En iOS 26 la cabecera es la del sistema,
     **sin fondo propio**: pintarle uno apaga el vidrio y deja el título grande
