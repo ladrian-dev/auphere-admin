@@ -16,6 +16,8 @@ from nexus_worker.streams.reminder_cron import _process_pending
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
+    AgentConfig,
+    AgentConfigStatus,
     Message,
     MessageDirection,
     MessageStatus,
@@ -146,6 +148,7 @@ async def test_reminder_cron_isolation_two_tenants(
 
 
 async def test_reminder_scheduled_by_the_tool_is_sent(
+    db_session,
     two_tenants_with_channels: dict[str, dict[str, Any]],
 ):
     from nexus_mcp import build_default_registry
@@ -154,6 +157,20 @@ async def test_reminder_scheduled_by_the_tool_is_sent(
     from nexus_api.core.tenant_context import customer_context, tenant_context
 
     info = two_tenants_with_channels["a"]
+    # Desde el bug recordatorios-sin-tope, la herramienta solo programa las
+    # plantillas que permite la política del agente.
+    db_session.add(
+        AgentConfig(
+            tenant_id=info["tenant_id"],
+            version=1,
+            status=AgentConfigStatus.ACTIVE,
+            system_prompt_rendered="Eres Alex.",
+            channels=[],
+            tools=["notification.schedule_reminder"],
+            policies={"scheduled_reminders": {"templates": ["reminder_24h"]}},
+        )
+    )
+    await db_session.commit()
     reset_default_registry()
     registry = build_default_registry()
     with tenant_context(info["tenant_id"]), customer_context(info["customer_id"]):
