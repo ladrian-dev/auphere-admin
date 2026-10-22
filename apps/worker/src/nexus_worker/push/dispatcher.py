@@ -144,12 +144,12 @@ async def drain_tenant(
 async def _run_listener(work: PushWorkSet, stop: asyncio.Event) -> None:
     import asyncpg
 
-    from nexus_worker.streams.outbound import _asyncpg_dsn
+    from nexus_worker.streams.outbound import _asyncpg_connect_kwargs
 
     while not stop.is_set():
         conn = None
         try:
-            conn = await asyncpg.connect(_asyncpg_dsn())
+            conn = await asyncpg.connect(**_asyncpg_connect_kwargs())
 
             def _on_notify(_conn, _pid, _channel, payload):  # type: ignore[no-untyped-def]
                 work.add_raw(payload)

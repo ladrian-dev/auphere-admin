@@ -49,3 +49,24 @@ async def test_reconcile_tenant_does_not_commit(_patched: MagicMock) -> None:
     await cron._reconcile_tenant(sm, uuid.uuid4())
     # The scoped-session context manager owns the commit — the cron must not.
     _patched.commit.assert_not_called()
+
+
+async def test_tenants_still_being_set_up_are_reconciled_too(_patched: MagicMock) -> None:
+    """Un cliente en alta (``provisioning``) conecta Google Calendar antes que
+    WhatsApp. Sin webhook de Composio, el cron es lo único que pasa su conector
+    de ``pending`` a ``connected``; si solo mira tenants activos, la consola
+    enseña «pendiente» hasta que se conecta el canal (2026-10-22, 38 min en
+    ``demo-lorenzo``) y el dueño vuelve a pulsar Conectar."""
+    from sqlalchemy.dialects import postgresql
+
+    rows = MagicMock()
+    rows.__iter__.return_value = iter([])
+    _patched.execute = AsyncMock(return_value=rows)
+
+    await cron._list_reconcilable_tenants(cron.get_sessionmaker())
+
+    stmt = _patched.execute.await_args.args[0]
+    sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+    assert "'provisioning'" in sql
+    assert "'active'" in sql
+    assert "'archived'" not in sql

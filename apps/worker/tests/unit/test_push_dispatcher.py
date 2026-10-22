@@ -101,3 +101,37 @@ async def test_the_work_set_parses_notifications() -> None:
     work.add_raw("no-es-un-uuid")
     assert work.pop_all() == {tid}
     assert work.pop_all() == set()
+
+
+async def test_the_listener_connects_with_a_password_that_has_brackets(monkeypatch) -> None:
+    """El LISTEN de los avisos copia el del dispatcher de salida, y con él su
+    fallo: asyncpg lee un DSN con ``urllib`` y una contraseña generada por RDS
+    con ``[`` daba ``Invalid IPv6 URL`` en bucle. Tiene que conectar con los
+    argumentos ya separados, como ``outbound`` desde el hotfix del 2026-10-22."""
+    import asyncio
+    from dataclasses import dataclass
+
+    import asyncpg
+    from nexus_api import config
+
+    @dataclass
+    class _Settings:
+        database_url: str = "postgresql+asyncpg://nexus:pw@pgbouncer:5432/nexus"
+        database_url_direct: str = "postgresql+asyncpg://nexus:ab[cd@aurora.internal:5432/nexus"
+
+    monkeypatch.setattr(config, "get_settings", lambda: _Settings())
+    stop = asyncio.Event()
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    async def _connect(*args: Any, **kwargs: Any) -> None:
+        calls.append((args, kwargs))
+        stop.set()
+        raise OSError("no database in a unit test")
+
+    monkeypatch.setattr(asyncpg, "connect", _connect)
+    await dispatcher._run_listener(dispatcher.PushWorkSet(), stop)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == ()
+    assert (kwargs["host"], kwargs["password"]) == ("aurora.internal", "ab[cd")

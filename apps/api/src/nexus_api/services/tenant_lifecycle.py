@@ -7,7 +7,8 @@ the two surfaces cannot drift on the three things a schema cannot decide:
 
 1. **Archive first.** Delete is not reversible; archive is. The
    two-step is deliberate.
-2. **What is NOT deleted**: an issued invoice has a legal retention duty
+2. **What is NOT deleted**: an issued invoice — the tenant's own, or its
+   partner's where the tenant is a line — has a legal retention duty
    (GDPR art. 17.3.b excludes it from erasure), so its FK stays RESTRICT
    and this checks BEFORE, answering 409 with what to resolve instead of
    letting Postgres refuse with an unreadable 502.
@@ -64,16 +65,24 @@ async def hard_delete_tenant(session: AsyncSession, tenant: Tenant, *, actor: st
             409, "tenant must be archived before delete; PATCH status='archived' first"
         )
 
+    # Its own invoices AND its partner's: a partner invoice carries no
+    # ``tenant_id`` and names the tenant as one of its lines — RESTRICT too.
     invoices = await session.scalar(
-        sa.text("SELECT count(*) FROM invoices WHERE tenant_id = :t"),
+        sa.text(
+            "SELECT count(*) FROM ("
+            "  SELECT id FROM invoices WHERE tenant_id = :t"
+            "  UNION SELECT invoice_id FROM invoice_lines WHERE tenant_id = :t"
+            ") AS i"
+        ),
         {"t": str(tenant_id)},
     )
     if invoices:
         raise TenantDeleteBlocked(
             409,
-            f"el tenant tiene {invoices} factura(s) y no se puede borrar: la "
-            "conservación de facturación es una obligación legal (RGPD art. "
-            "17.3.b). Anula o traspasa las facturas antes de borrar.",
+            f"el tenant aparece en {invoices} factura(s), propias o de su partner, "
+            "y no se puede borrar: la conservación de facturación es una "
+            "obligación legal (RGPD art. 17.3.b). Anula o traspasa las facturas "
+            "antes de borrar.",
         )
 
     payments = await session.scalar(

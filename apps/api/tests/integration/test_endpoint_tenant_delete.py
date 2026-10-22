@@ -261,6 +261,39 @@ async def test_a_tenant_with_invoices_is_refused_with_a_readable_reason(
     assert await _residual("channels", tenant_id) == 1
 
 
+async def test_a_line_in_the_partners_invoice_also_blocks_with_a_readable_reason(
+    client, admin_headers, db_session, partner
+) -> None:
+    """La factura del partner no lleva ``tenant_id``: el cliente aparece como
+    una de sus líneas, y ``invoice_lines`` también es RESTRICT. El guardarraíl
+    solo miraba las facturas propias, así que Postgres rechazaba el borrado y
+    salía el 502 con la constraint (producción, 2026-10-21,
+    ``demo-farmacia-amacrux``)."""
+    tenant_id, _ = await _tenant_with_history(db_session, partner_id=partner)
+    sm = get_sessionmaker()
+    async with sm() as session:
+        invoice_id = await session.scalar(
+            sa.text(
+                "INSERT INTO invoices (partner_id, period_year, period_month, status, total_cents) "
+                "VALUES (:p, 2026, 9, 'issued', 2500) RETURNING id"
+            ),
+            {"p": str(partner)},
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO invoice_lines (invoice_id, tenant_id, description, amount_cents) "
+                "VALUES (:i, :t, 'Consumo de septiembre', 2500)"
+            ),
+            {"i": str(invoice_id), "t": str(tenant_id)},
+        )
+        await session.commit()
+
+    r = await client.delete(f"/admin/tenants/{tenant_id}", headers=admin_headers)
+    assert r.status_code == 409
+    assert "factura" in r.text
+    assert await _residual("channels", tenant_id) == 1
+
+
 async def test_an_active_tenant_still_has_to_be_archived_first(
     client, admin_headers, db_session, partner
 ) -> None:
