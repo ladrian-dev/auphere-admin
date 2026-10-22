@@ -48,8 +48,10 @@ litellm_enabled = true
 #     NEXUS_FCM_PROJECT_ID NEXUS_FCM_SERVICE_ACCOUNT_JSON
 #
 # 2026-10-20: APNs creadas en el secreto de staging (clave de FACELAD,
-# Sandbox & Production). FCM, cuando exista Firebase.
+# Sandbox & Production).
+# 2026-10-22: FCM creadas (proyecto de Firebase `auphere-customers`, cuenta de
+# servicio `firebase-adminsdk-fbsvc`).
 push_secret_keys = [
   "NEXUS_APNS_KEY_ID", "NEXUS_APNS_TEAM_ID", "NEXUS_APNS_KEY_PEM",
-  # "NEXUS_FCM_PROJECT_ID", "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
+  "NEXUS_FCM_PROJECT_ID", "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
 ]

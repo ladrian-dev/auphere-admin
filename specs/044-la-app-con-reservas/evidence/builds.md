@@ -93,8 +93,14 @@ Apple lo procesa.
    lleva el build 1.1.0 (4); el (3) no.
 5. ~~**Firebase › Configuración del proyecto › Cuentas de servicio › Generar
    clave privada** (JSON) para la API (FCM)~~ **Hecho por Luis el 2026-10-22**
-   (clave en el secreto de staging, `push_secret_keys` y `terraform apply`). Es
-   una clave privada: no pasó por la sesión.
+   (clave en el secreto de staging). Es una clave privada: no pasó por la sesión.
+   El mismo día por la tarde, `push_secret_keys` de `staging.tfvars` seguía sin
+   las dos de FCM, así que ninguna tarea de ECS las recibía. Se añadieron y se
+   hizo `terraform apply` del workspace `staging`. Las tareas nuevas las llevan,
+   y el despachador de avisos de egress arranca con `fcm_configured: true`.
+   Antes se probó en seco la cuenta de servicio contra FCM HTTP v1
+   (`validate_only`, token falso): OAuth 200 y `INVALID_ARGUMENT` por el token,
+   es decir, API activa y con permiso.
 6. **Google Cloud (proyecto `auphere-customers`) › IAM › Cuentas de servicio ›
    Crear cuenta** para EAS Submit, con su clave JSON; y en **Play Console ›
    Usuarios y permisos › Invitar** a su correo con permiso para publicar en
