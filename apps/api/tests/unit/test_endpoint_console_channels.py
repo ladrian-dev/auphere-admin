@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 
 import pytest
 import respx
@@ -31,6 +32,7 @@ from nexus_api.api.console import channels as ch_router
 from nexus_api.api.console import diagnostics as diag
 from nexus_api.api.console import templates as tpl_router
 from nexus_api.api.console import whatsapp as wa_router
+from nexus_api.config import get_settings
 from nexus_api.db.models import (
     AuditLog,
     Channel,
@@ -911,14 +913,40 @@ async def test_a_failure_after_the_code_leaves_no_channel_and_no_credentials(
 # ── Spec 021 · desvincular deshace en Meta ─────────────────────────────
 
 
+def _subscribed(callback: str | None, *, app_id: str | None = None) -> dict:
+    """Lo que contesta ``GET /{waba}/subscribed_apps``: nuestra app suscrita,
+    con el ``override_callback_uri`` que dejó el alta (o sin él)."""
+    entry: dict[str, object] = {
+        "whatsapp_business_api_data": {
+            "id": app_id or get_settings().meta_app_id,
+            "name": "Auphere",
+        }
+    }
+    if callback is not None:
+        entry["override_callback_uri"] = callback
+    return {"data": [entry]}
+
+
 class _MetaSim:
     """Meta simulado para desvincular: registra lo que se le pide y falla
-    a la carta. ``down`` = todo falla como si Meta no contestara."""
+    a la carta. ``down`` = todo falla como si Meta no contestara.
 
-    def __init__(self, *, down: bool = False, fail_steps: set[str] | None = None) -> None:
+    ``calls`` son las escrituras (lo que cambia algo en Meta); ``reads``, las
+    lecturas. Por defecto la suscripción es **de este entorno**: emite a su
+    ``meta_webhook_callback_url``, como la deja el alta."""
+
+    def __init__(
+        self,
+        *,
+        down: bool = False,
+        fail_steps: set[str] | None = None,
+        subscription: dict | None = None,
+    ) -> None:
         self.down = down
         self.fail_steps = fail_steps or set()
+        self.subscription = subscription
         self.calls: list[tuple[str, dict]] = []
+        self.reads: list[tuple[str, dict]] = []
 
     async def _step(self, name: str, **kw):
         self.calls.append((name, kw))
@@ -931,6 +959,14 @@ class _MetaSim:
 
     async def unsubscribe_app(self, **kw):
         return await self._step("unsubscribe_app", **kw)
+
+    async def list_subscribed_apps(self, **kw):
+        self.reads.append(("list_subscribed_apps", kw))
+        if self.down or "list_subscribed_apps" in self.fail_steps:
+            raise MetaTransientError("list_subscribed_apps unavailable", status_code=503, code=None)
+        if self.subscription is not None:
+            return self.subscription
+        return _subscribed(get_settings().meta_webhook_callback_url)
 
     async def close(self) -> None:
         pass
@@ -1105,6 +1141,148 @@ async def test_last_number_of_the_waba_deregisters_unsubscribes_and_drops_creden
         )
     )
     assert quedan == 0, "la credencial del tenant sigue guardada"
+
+
+# ── bug desconectar-respeta-el-otro-entorno ─────────────────────────────
+#
+# La suscripción a una cuenta de WhatsApp es de la **app**, y la app de Meta es
+# la misma en staging y producción: cada entorno marca la suya con su
+# ``override_callback_uri``. El 2026-10-22 producción desconectó el número de
+# pruebas de staging (+34672138367) y, por ser el último de la cuenta **en su
+# base**, desuscribió la app: Meta dejó de entregar sus mensajes en los dos.
+
+
+async def _disconnect_last_of_waba(client, console_world, db_session, sim):
+    a = console_world["a"]
+    canal = _channel(a["tenant_id"], waba_id="W-otro")
+    await _seed_channel_creds(db_session, canal, waba_id="W-otro")
+    db_session.add(canal)
+    await db_session.commit()
+    await _seed_creds(db_session, a["tenant_id"], waba_id="W-otro")
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "disconnected"
+    audit = (
+        (
+            await db_session.execute(
+                sa.select(AuditLog)
+                .where(
+                    AuditLog.action == "console.channel.disconnect",
+                    AuditLog.tenant_id == a["tenant_id"],
+                )
+                .order_by(AuditLog.created_at.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert audit is not None
+    return r.json(), audit.after_json["meta"], await _reload(db_session, canal.id)
+
+
+async def test_a_subscription_to_another_environment_is_left_alone(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """El último número de la cuenta **aquí**, pero la app emite a otro
+    entorno: no se desuscribe. Se suelta lo propio (el número, la credencial) y
+    queda dicho por qué no se tocó la suscripción."""
+    sim = _sim(
+        monkeypatch, subscription=_subscribed("https://api.staging.auphere.com/webhook/meta")
+    )
+    body, meta, fila = await _disconnect_last_of_waba(client, console_world, db_session, sim)
+
+    assert "unsubscribe_app" not in [c[0] for c in sim.calls], (
+        "desuscribió una cuenta cuyo webhook es de otro entorno: lo deja sordo"
+    )
+    assert [c[0] for c in sim.reads] == ["list_subscribed_apps"]
+    assert body["unlink_pending"] == []
+    assert meta["skipped"] == ["unsubscribe"]
+    assert meta["kept_subscription"] == {
+        "reason": "subscription_elsewhere",
+        "callback_host": "api.staging.auphere.com",
+    }
+    assert fila.config_encrypted is None
+
+
+async def test_a_subscription_without_override_is_left_alone(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Sin ``override_callback_uri`` la cuenta emite al webhook general de la
+    app, que no es de ningún entorno en concreto: ante la duda, no se borra."""
+    sim = _sim(monkeypatch, subscription=_subscribed(None))
+    _body, meta, _fila = await _disconnect_last_of_waba(client, console_world, db_session, sim)
+
+    assert "unsubscribe_app" not in [c[0] for c in sim.calls]
+    assert meta["skipped"] == ["unsubscribe"]
+    assert meta["kept_subscription"] == {"reason": "subscription_elsewhere", "callback_host": None}
+
+
+async def test_an_account_without_our_app_has_nothing_to_unsubscribe(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Nuestra app ya no está suscrita (la desuscribió otro entorno, o el
+    partner): no hay nada que deshacer y no se llama a ``DELETE``."""
+    sim = _sim(monkeypatch, subscription=_subscribed("https://otra.app/webhook", app_id="999"))
+    body, meta, _fila = await _disconnect_last_of_waba(client, console_world, db_session, sim)
+
+    assert "unsubscribe_app" not in [c[0] for c in sim.calls]
+    assert body["unlink_pending"] == []
+    assert meta["kept_subscription"] == {"reason": "not_subscribed", "callback_host": None}
+
+
+async def test_our_own_subscription_is_still_removed(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Lo de siempre (spec 021 R2.2) sigue igual cuando la suscripción es de
+    este entorno, aunque el host venga con otra caja o la ruta con barra final."""
+    u = urlsplit(get_settings().meta_webhook_callback_url)
+    propia = f"{u.scheme.upper()}://{u.netloc.upper()}{u.path.rstrip('/')}/"
+    sim = _sim(monkeypatch, subscription=_subscribed(propia))
+    _body, meta, _fila = await _disconnect_last_of_waba(client, console_world, db_session, sim)
+
+    assert [c[0] for c in sim.calls][-1] == "unsubscribe_app"
+    assert "unsubscribe" in meta["done"]
+    assert "kept_subscription" not in meta
+
+
+async def test_disconnecting_stops_routing_the_number_right_away(
+    client, console_world, db_session, monkeypatch, fake_redis
+) -> None:
+    """Dejar la suscripción solo es inocuo si el número deja de llevar a este
+    cliente **en el acto**. El resolver guarda número → cliente una hora en
+    Redis: sin invalidarlo, los mensajes de un número desconectado seguían
+    llegando a su agente hasta que caducaba."""
+    a = console_world["a"]
+    _sim(monkeypatch, subscription=_subscribed("https://api.staging.auphere.com/webhook/meta"))
+    canal = _channel(a["tenant_id"], waba_id="W-cache")
+    await _seed_channel_creds(db_session, canal, waba_id="W-cache")
+    db_session.add(canal)
+    await db_session.commit()
+    clave = f"nexus:tenant_resolve:meta:{canal.provider_identifier}"
+    await fake_redis.set(clave, str(a["tenant_id"]))
+
+    r = await client.post(
+        f"/console/clients/{a['ref']}/channels/{canal.id}/disconnect", headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert await fake_redis.get(clave) is None, (
+        "el número desconectado sigue llevando a este cliente durante la hora de caché"
+    )
+
+
+async def test_reading_the_subscription_fails_and_the_step_waits(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Si no se puede leer a quién emite, no se adivina: el paso queda
+    pendiente con su motivo, y el mismo endpoint lo reintenta."""
+    sim = _sim(monkeypatch, fail_steps={"list_subscribed_apps"})
+    body, meta, _fila = await _disconnect_last_of_waba(client, console_world, db_session, sim)
+
+    assert "unsubscribe_app" not in [c[0] for c in sim.calls]
+    assert body["unlink_pending"] == ["unsubscribe"]
+    assert meta["error"]["step"] == "unsubscribe"
 
 
 async def test_a_live_sibling_keeps_the_subscription_and_the_credentials(

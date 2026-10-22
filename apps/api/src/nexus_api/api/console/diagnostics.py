@@ -23,6 +23,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Literal
+from urllib.parse import urlsplit
 
 import sqlalchemy as sa
 import structlog
@@ -249,22 +251,59 @@ async def _probe_webhook(creds: MetaCredentials) -> bool | None:
     return webhook_subscribed(payload, app_id=settings.meta_app_id)
 
 
-def webhook_subscribed(payload: dict[str, object], *, app_id: str) -> bool:
-    """``GET /{waba_id}/subscribed_apps`` → is OUR app among them? Pure.
-
-    Meta answers ``{"data": [{"whatsapp_business_api_data": {"id": ..,
-    "name": .., "link": ..}}]}``."""
+def _our_entry(payload: dict[str, object], *, app_id: str) -> dict[str, object] | None:
     apps = payload.get("data")
     if not isinstance(apps, list):
-        return False
+        return None
     for entry in apps:
         if not isinstance(entry, dict):
             continue
         data = entry.get("whatsapp_business_api_data")
         ident = data.get("id") if isinstance(data, dict) else entry.get("id")
         if str(ident) == str(app_id):
-            return True
-    return False
+            return entry
+    return None
+
+
+def webhook_subscribed(payload: dict[str, object], *, app_id: str) -> bool:
+    """``GET /{waba_id}/subscribed_apps`` → is OUR app among them? Pure.
+
+    Meta answers ``{"data": [{"whatsapp_business_api_data": {"id": ..,
+    "name": .., "link": ..}}]}``."""
+    return _our_entry(payload, app_id=app_id) is not None
+
+
+def same_callback(a: str, b: str) -> bool:
+    """Dos URLs de webhook son la misma: esquema y host sin caja, ruta sin la
+    barra final."""
+    pa, pb = urlsplit(a.strip()), urlsplit(b.strip())
+    return (pa.scheme.lower(), pa.netloc.lower(), pa.path.rstrip("/")) == (
+        pb.scheme.lower(),
+        pb.netloc.lower(),
+        pb.path.rstrip("/"),
+    )
+
+
+def subscription_owner(
+    payload: dict[str, object], *, app_id: str, callback_url: str
+) -> tuple[Literal["ours", "elsewhere", "none"], str | None]:
+    """``GET /{waba_id}/subscribed_apps`` → ¿emite nuestra app a **este**
+    entorno? Puro.
+
+    La suscripción es de la app, y la app de Meta es la misma en staging y en
+    producción: cada entorno la marca con su ``override_callback_uri`` al dar de
+    alta (bug ``desconectar-respeta-el-otro-entorno``). Devuelve ``ours`` si
+    emite a ``callback_url``; ``elsewhere`` si emite a otra URL **o a ninguna**
+    (el webhook general de la app no es de ningún entorno en concreto); ``none``
+    si nuestra app no está suscrita. Y la URL a la que emite, si la dice."""
+    entry = _our_entry(payload, app_id=app_id)
+    if entry is None:
+        return "none", None
+    target = entry.get("override_callback_uri")
+    url = target if isinstance(target, str) and target.strip() else None
+    if url is not None and same_callback(url, callback_url):
+        return "ours", url
+    return "elsewhere", url
 
 
 async def _probe_templates(scope: ClientScope) -> tuple[int, int, int] | None:
