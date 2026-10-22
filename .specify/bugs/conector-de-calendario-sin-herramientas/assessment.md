@@ -31,9 +31,11 @@ segundo clic no rompe nada, y el agente recibe las herramientas del calendario.
 Son cuatro fallos encadenados:
 
 1. **El webhook de Composio no llega a producción.** Cero peticiones a
-   `/connectors/composio-webhook` en 30 días, ni siquiera rechazadas.
-   `NEXUS_COMPOSIO_WEBHOOK_SECRET` está en la task definition, así que lo que
-   falta es la URL en el proyecto de Composio. Es configuración, no código.
+   `/connectors/composio-webhook` en 30 días, ni siquiera rechazadas. La URL sí
+   estaba registrada (proyecto `auphere`, desde el 12-may, payload V3), pero
+   suscrita solo a `trigger.message`, `trigger.disabled` y
+   `connected_account.expired`: faltaba `composio.connected_account.activated`,
+   el evento de «el dueño ha autorizado». Es configuración, no código.
 2. **El cron de reconciliación solo recorre tenants `active`.** Un cliente en
    alta (`provisioning`) conecta el calendario antes que WhatsApp, y su conector
    se queda `pending` hasta que conecta el canal: 38 minutos aquí.
@@ -64,4 +66,5 @@ Son cuatro fallos encadenados:
   ya está `ACTIVE` arriba, dejarla `connected` y decirlo (409), confirmando la
   transacción.
 - El cron reconcilia todo tenant que no esté archivado.
-- Registrar el webhook en Composio — **acción manual**, fuera del código.
+- Suscribir el webhook a `composio.connected_account.activated` — **acción
+  manual** en el panel de Composio, fuera del código.

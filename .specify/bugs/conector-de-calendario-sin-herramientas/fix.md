@@ -4,7 +4,7 @@
 - **Fixed**: 2026-10-22
 - **Assessment**: ./assessment.md
 - **Status**: applied (rama `hotfix/prod-2026-10-22`, sin desplegar); el webhook
-  de Composio sigue pendiente de configurar a mano
+  de Composio, suscrito al evento que faltaba el 2026-10-22
 
 ## Summary
 
@@ -46,11 +46,21 @@ except ConsentAlreadyGranted as exc:
 - La consola no se toca: un 409 ya enseña el `detail` en el aviso. La tarjeta
   sigue en «pendiente» hasta recargar, aunque la base ya diga `connected`.
 
+## Hecho fuera del código
+
+- **Webhook de Composio** (2026-10-22): en el proyecto `auphere` (vista Platform →
+  Settings → Webhooks), suscrito además a `composio.connected_account.activated`.
+  La URL y los otros tres eventos ya estaban y no se han tocado.
+
 ## Pendiente (manual)
 
-- **Registrar el webhook en Composio**: `https://api.auphere.com/connectors/composio-webhook`,
-  con el mismo secreto que `NEXUS_COMPOSIO_WEBHOOK_SECRET`. Sin él, el estado
-  depende del cron (10 min) o de un segundo clic.
+- **Comprobar el secreto de firma.** Composio solo lo enseña al crearlo o
+  rotarlo, así que no se sabe si coincide con `NEXUS_COMPOSIO_WEBHOOK_SECRET`
+  (el 19-ago prod aún tenía el valor de desarrollo). En la próxima autorización
+  de un conector: si sale `composio_webhook.signature_invalid` en
+  `/nexus/prod/api`, rotarlo en Composio, copiarlo a `nexus/prod/app` y volver a
+  desplegar la API. Mientras tanto, el estado lo resuelven el cron (10 min) o un
+  segundo clic.
 - `demo-lorenzo` desconectó los dos conectores el 22-oct a las 13:59; hay que
   volver a conectarlos después de desplegar para que se sincronicen las
   herramientas.

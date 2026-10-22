@@ -31,4 +31,4 @@
 
 - Una llamada real a Composio: las pruebas usan el falso, que ahora imita el
   rechazo del SDK a una segunda cuenta `ACTIVE`.
-- El webhook de Composio: es configuración de su panel.
+- El webhook de Composio: es configuración de su panel (suscrito a `connected_account.activated` el 22-oct; el secreto de firma, sin comprobar).
