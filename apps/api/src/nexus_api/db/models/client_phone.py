@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
@@ -37,8 +38,21 @@ from sqlalchemy.orm import Mapped, mapped_column
 from nexus_api.db.base import Base
 from nexus_api.db.models._mixins import UUIDPrimaryKey
 
-#: Los tres tipos de aviso (R8.1). El orden es el de Ajustes.
-NOTICE_KINDS: tuple[str, ...] = ("inbox.waiting", "inbox.message_for_you", "client.balance")
+#: Los tipos de aviso (spec 031 R8.1; los de Reservas, spec 043). El orden es el
+#: de Ajustes. Los de Reservas solo llegan a clientes con el módulo.
+NOTICE_KINDS: tuple[str, ...] = (
+    "inbox.waiting",
+    "inbox.message_for_you",
+    "client.balance",
+    "reservas.agent_change",
+    "reservas.cancelled_today",
+    "reservas.waitlist_accepted",
+)
+#: Los que nacen encendidos en un teléfono nuevo: «alguien de la lista de
+#: espera aceptó» nace apagado (diseño).
+DEFAULT_NOTICE_KINDS: tuple[str, ...] = tuple(
+    k for k in NOTICE_KINDS if k != "reservas.waitlist_accepted"
+)
 
 PHONE_PLATFORMS: frozenset[str] = frozenset({"ios", "android"})
 
@@ -61,6 +75,8 @@ DELIVERY_SKIP_REASONS: tuple[str, ...] = (
     "module_missing",
     "no_longer_true",
     "token_owned_elsewhere",
+    # Spec 045 (R5.3): fuera del horario del negocio, con el silencio puesto.
+    "quiet_hours",
 )
 
 
@@ -140,12 +156,18 @@ class ClientPhone(UUIDPrimaryKey, Base):
     notice_kinds: Mapped[list[str]] = mapped_column(
         ARRAY(String(32)),
         nullable=False,
-        default=lambda: list(NOTICE_KINDS),
+        default=lambda: list(DEFAULT_NOTICE_KINDS),
         server_default=text(
-            "ARRAY['inbox.waiting','inbox.message_for_you','client.balance']::varchar[]"
+            "ARRAY['inbox.waiting','inbox.message_for_you','client.balance',"
+            "'reservas.agent_change','reservas.cancelled_today']::varchar[]"
         ),
     )
     locale: Mapped[str] = mapped_column(String(2), nullable=False, default="es")
+    #: Spec 045 (R5): fuera del horario del negocio no salen los avisos que no
+    #: son urgentes. Por teléfono, encendido por defecto.
+    quiet_outside_hours: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -175,6 +197,9 @@ class ClientPushEvent(UUIDPrimaryKey, Base):
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: Spec 043: los avisos de Reservas nombran la reserva (sin clave foránea:
+    #: el aviso es una cola, y la reserva puede cancelarse antes de repartir).
+    reservation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     notification_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     #: Solo para ``inbox.message_for_you``: la persona que tiene el control.
@@ -234,6 +259,7 @@ class ClientPushDelivery(UUIDPrimaryKey, Base):
 
 
 __all__ = [
+    "DEFAULT_NOTICE_KINDS",
     "DELIVERY_SKIP_REASONS",
     "NOTICE_KINDS",
     "PHONE_PLATFORMS",

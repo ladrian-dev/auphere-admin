@@ -14,7 +14,10 @@ Each tick (~30s):
    run_at <= now().
 3. For each row, call ``MCPRegistry.dispatch('notification.send_template',
    args)`` with the payload — that writes a ``messages.status='pending'``
-   row, which the outbound dispatcher then drains.
+   row, which the outbound dispatcher then drains. The payload is what
+   ``notification.schedule_reminder`` writes (``template_name``,
+   ``parameters``); older rows used ``template``/``params``/``language`` and
+   are still honoured.
 4. Mark the job ``sent``.
 
 If the dispatch fails, increment ``attempts`` + ``last_error``. The cron is
@@ -116,17 +119,25 @@ async def _dispatch_one(
     tenant_id: uuid.UUID,
 ) -> None:
     payload = cast(dict[str, Any], job.payload or {})
-    template_name = payload.get("template")
+    # ``template_name``/``parameters`` es lo que escribe
+    # ``notification.schedule_reminder``; ``template``/``params`` son de filas
+    # anteriores o sembradas a mano. Leer solo las segundas dejaba en FAILED
+    # todo recordatorio que programaba el agente (bug
+    # el-recordatorio-programado-no-sale).
+    template_name = payload.get("template_name") or payload.get("template")
     conversation_id = payload.get("conversation_id")
     if not template_name or not conversation_id:
         job.status = ScheduledJobStatus.FAILED
-        job.last_error = "payload missing 'template' and/or 'conversation_id'"
+        job.last_error = "payload missing 'template_name' and/or 'conversation_id'"
         return
     args: dict[str, Any] = {
         "conversation_id": conversation_id,
         "template_name": template_name,
-        "parameters": payload.get("params") or payload.get("parameters") or {},
+        "parameters": payload.get("parameters") or payload.get("params") or {},
     }
+    language = payload.get("language")
+    if isinstance(language, str) and language:
+        args["language"] = language
     try:
         await registry.dispatch(
             "notification.send_template",

@@ -11,7 +11,8 @@ type HighlightMetricProps = {
   hint?: ReactNode;
   /** Change against the previous period, already formatted. */
   delta?: { label: ReactNode; srLabel?: string };
-  trend?: { values: number[]; ariaLabel: string };
+  /** ``area`` draws it as a filled band along the bottom edge, as ``Metric`` does (spec 045). */
+  trend?: { values: number[]; ariaLabel: string; style?: "line" | "area" };
   /** Decorative icon before the label, as in ``Metric``. */
   icon?: ReactNode;
   href?: string;
@@ -26,6 +27,7 @@ type HighlightMetricProps = {
  * with an icon, so it sits in the same grid without breaking it.
  */
 function HighlightMetric({ label, value, hint, delta, trend, icon, href, className }: HighlightMetricProps) {
+  const area = trend?.style === "area";
   const body = (
     <>
       <div className="flex min-w-0 items-center gap-2">
@@ -48,11 +50,20 @@ function HighlightMetric({ label, value, hint, delta, trend, icon, href, classNa
         ) : null}
       </div>
       {hint ? <p className="line-clamp-2 min-w-0 text-sm text-pretty text-pistachio dark:text-dark-green/80">{hint}</p> : null}
-      {trend ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} className="mt-auto pt-2 text-pistachio dark:text-dark-green" /> : null}
+      {trend && !area ? <Sparkline values={trend.values} ariaLabel={trend.ariaLabel} className="mt-auto pt-2 text-pistachio dark:text-dark-green" /> : null}
+      {trend && area ? (
+        <Sparkline
+          values={trend.values}
+          ariaLabel={trend.ariaLabel}
+          variant="area"
+          className="-mx-4 -mb-4 mt-auto h-12 w-[calc(100%+2rem)] text-primary dark:text-dark-green"
+        />
+      ) : null}
     </>
   );
   const classes = cn(
     "flex min-w-0 flex-col gap-1 rounded-md bg-dark-green p-4 text-anti-flash dark:bg-pistachio dark:text-dark-green",
+    area && "overflow-hidden",
     href && "transition-opacity hover:opacity-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
     className,
   );

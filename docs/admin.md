@@ -101,7 +101,11 @@ En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar u
 - **Cabecera.** Lleva nombre con su estado, una línea de contexto (partner, plan, mercado, zona), «Probar agente», Acciones y cuatro hechos enlazados: canal, agente, última conversación y esta semana.
 - **Pestañas.** Son el mismo `NavTabs` que la ficha del cliente en la consola de Partners, con el rótulo de cada grupo (spec 037):
   - Observar: Resumen, Conversaciones, Playground, Auditoría, Aislamiento.
-  - Configurar: Agente, Habilidades, Acceso, Facturación.
+  - Configurar: Agente, Habilidades, Acceso, Facturación. En Acceso, el módulo
+    Reservas se activa con su modo (Servicios o Aforo con su tipo de negocio);
+    cambiar de modo con reservas futuras pide «Cancelarlas y cambiar», y las
+    versiones del agente que la activación prepara se promueven en Agente
+    ([reservas.md](reservas.md#activarlo-panel-de-operador)).
   - Conectar: Canales, Conectores, Canal del dueño.
 
   Canales lleva un punto si ningún canal atiende o alguno tiene problemas. La ficha del partner usa el mismo componente con Observar, Configurar y Cuenta.

@@ -54,9 +54,12 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
     Partner,
+    Reservation,
+    Tenant,
 )
 from nexus_api.services import inbox_view, push_texts
-from nexus_api.services.push_payloads import Notice, inbox_url, usage_url
+from nexus_api.services.business_hours import is_open_at, parse_business_hours
+from nexus_api.services.push_payloads import Notice, inbox_url, reservas_url, usage_url
 
 log = structlog.get_logger(__name__)
 
@@ -68,6 +71,12 @@ MAX_ATTEMPTS = 5
 BATCH = 20
 
 _INBOX_KINDS = frozenset({"inbox.waiting", "inbox.message_for_you"})
+#: Spec 043: los avisos de Reservas, solo a clientes con el módulo.
+_RESERVAS_KINDS = frozenset(
+    {"reservas.agent_change", "reservas.cancelled_today", "reservas.waitlist_accepted"}
+)
+#: Spec 045 (R5.4): lo que atraviesa el silencio fuera de horario.
+URGENT_KINDS = frozenset({"inbox.waiting"})
 
 
 @dataclass(frozen=True)
@@ -123,6 +132,9 @@ async def _targets(identity: AsyncSession, event: ClientPushEvent) -> list[_Targ
     apagó su acceso, un aviso pendiente no sale, igual que el teléfono ya no
     puede leer."""
     access = await identity.get(ClientAccess, event.tenant_id)
+    outside_hours = event.kind not in URGENT_KINDS and await _outside_hours(
+        identity, event.tenant_id
+    )
     open_for: dict[uuid.UUID, bool] = {}
     rows = (
         await identity.execute(
@@ -155,16 +167,31 @@ async def _targets(identity: AsyncSession, event: ClientPushEvent) -> list[_Targ
             not open_for[phone.partner_id]
             or access is None
             or (event.kind in _INBOX_KINDS and "inbox" not in (access.modules or []))
+            or (event.kind in _RESERVAS_KINDS and "reservas" not in (access.modules or []))
         ):
             target.skip = "module_missing"
         elif event.kind not in (phone.notice_kinds or []):
             target.skip = "kind_disabled"
+        elif outside_hours and phone.quiet_outside_hours:
+            target.skip = "quiet_hours"
         elif not phone.push_token or not phone.push_provider:
             target.skip = "no_push_token"
         elif await _token_owned_elsewhere(identity, phone):
             target.skip = "token_owned_elsewhere"
         out.append(target)
     return out
+
+
+async def _outside_hours(identity: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """¿Es ahora fuera del horario del negocio? Sin horario, nunca (spec 045,
+    R5.5): no se puede saber qué es fuera."""
+    tenant = await identity.get(Tenant, tenant_id)
+    if tenant is None:
+        return False
+    hours = parse_business_hours(tenant.business_hours)
+    if hours is None:
+        return False
+    return not is_open_at(hours, tenant.timezone, _now())
 
 
 async def _token_owned_elsewhere(identity: AsyncSession, phone: ClientPhone) -> bool:
@@ -218,7 +245,11 @@ async def _waiting_reason(session: AsyncSession, conv: Conversation) -> str | No
 async def _last_inbound(session: AsyncSession, conv: Conversation) -> Message | None:
     msg: Message | None = await session.scalar(
         sa.select(Message)
-        .where(Message.conversation_id == conv.id, Message.direction == MessageDirection.INBOUND)
+        .where(
+            Message.conversation_id == conv.id,
+            Message.direction == MessageDirection.INBOUND,
+            Message.skipped_reason.is_(None),
+        )
         .order_by(Message.created_at.desc())
         .limit(1)
     )
@@ -247,7 +278,8 @@ async def compose(
         if event.conversation_id is None:
             return None
         conv = await session.get(Conversation, event.conversation_id)
-        if conv is None:
+        # Spec 045 (R2.4): lo que la Bandeja no enseña no avisa.
+        if conv is None or conv.attended_at is None:
             return None
         contact = await _contact(session, conv)
         if event.kind == "inbox.waiting":
@@ -274,6 +306,8 @@ async def compose(
             thread=str(conv.id),
             badge=badge,
         )
+    if event.kind in _RESERVAS_KINDS:
+        return await _reservas_notice(session, event, locale=locale, badge=badge)
     # client.balance — la fila de la campana es de plataforma: se lee como identidad.
     if event.notification_id is None:
         return None
@@ -293,6 +327,42 @@ async def compose(
         body=text.body,
         url=usage_url(),
         thread="balance",
+        badge=badge,
+    )
+
+
+async def _reservas_notice(
+    session: AsyncSession, event: ClientPushEvent, *, locale: str, badge: int
+) -> Notice | None:
+    """Spec 043: el aviso de una reserva, sin nombre del cliente final ni nota.
+    ``None`` si ya no es cierto (la cancelaron antes de repartir…)."""
+    from nexus_api.services.reservations.core import load_ctx
+
+    if event.reservation_id is None:
+        return None
+    res = await session.get(Reservation, event.reservation_id)
+    ctx = await load_ctx(session, event.tenant_id)
+    if res is None or ctx is None:
+        return None
+    if event.kind == "reservas.agent_change" and res.status not in ("pending", "confirmed"):
+        return None
+    if event.kind == "reservas.cancelled_today" and res.status != "cancelled":
+        return None
+    text = push_texts.reservas(
+        kind=event.kind,
+        at=ctx.local(res.starts_at),
+        party=res.party_size if res.mode == "capacity" else None,
+        changed=event.dedupe_key.rsplit(":", 1)[-1] not in ("1",)
+        if event.kind == "reservas.agent_change"
+        else False,
+        locale=locale,
+    )
+    return Notice(
+        kind=event.kind,
+        title=text.title,
+        body=text.body,
+        url=reservas_url(res.id),
+        thread=f"reserva:{res.id}",
         badge=badge,
     )
 

@@ -91,6 +91,10 @@ from nexus_worker.streams.partner_charges_cron import run_partner_charges_cron
 from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
+from nexus_worker.streams.reservation_calendar_cron import run_reservation_calendar_cron
+from nexus_worker.streams.reservation_offers_cron import run_reservation_offers_cron
+from nexus_worker.streams.reservation_outbox_cron import run_reservation_outbox_cron
+from nexus_worker.streams.reservations_cron import run_reservations_cron
 from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
@@ -170,6 +174,14 @@ SCHEDULER_TASK_NAMES = frozenset(
         # Spec 003 — cierra las tareas de teammate vencidas. Corre sin persona,
         # así que es del planificador y no del runner.
         "teammate-task-expiry-cron",
+        # Spec 043 — Reservas: confirmaciones, liberar, terminar y caducar (60 s);
+        # el avance de las ofertas de la lista (15 s); los avisos al cliente
+        # final (10 s); y P3, el Google Calendar del equipo (120 s). También en
+        # ``_spawn`` y en ``ALL_EXPECTED``.
+        "reservations-cron",
+        "reservation-offers-cron",
+        "reservation-outbox-cron",
+        "reservation-calendar-cron",
     }
 )
 
@@ -454,6 +466,11 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
             "cobranza-reminder-cron",
             run_cobranza_reminder_cron(stop=ctx.stop, redis=ctx.redis),
         ),
+        # Spec 043 — Reservas (contracts/worker-y-avisos.md).
+        _spawn("reservations-cron", run_reservations_cron(stop=ctx.stop)),
+        _spawn("reservation-offers-cron", run_reservation_offers_cron(stop=ctx.stop)),
+        _spawn("reservation-outbox-cron", run_reservation_outbox_cron(stop=ctx.stop)),
+        _spawn("reservation-calendar-cron", run_reservation_calendar_cron(stop=ctx.stop)),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.

@@ -51,11 +51,15 @@ export function Thread({
       role="log"
       aria-label={t("inbox.thread")}
       aria-live="polite"
+      // A thread with no link or button inside still scrolls: it takes the
+      // focus so the keyboard can scroll it (WCAG 2.1.1, axe
+      // `scrollable-region-focusable`).
+      tabIndex={0}
       onScroll={(e) => {
         const el = e.currentTarget;
         atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
       }}
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-5 md:px-6"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:px-6"
     >
       {hasOlder ? (
         <Button type="button" variant="ghost" size="sm" className="self-center" disabled={loadingOlder} onClick={onOlder}>

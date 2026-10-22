@@ -35,8 +35,8 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
   }
   const { t } = await getT(principal.locale);
   // Spec 030: the same shell for both kinds of person. A client user gets its
-  // client's modules, the «lite» badge and its own bell; no Companion, no
-  // partner search.
+  // client's modules, the Beta badge with its own hint (spec 045) and its own
+  // bell; no Companion, no partner search.
   const who =
     principal.kind === "client"
       ? { kind: "client" as const, modules: principal.modules, clientName: principal.clientName }

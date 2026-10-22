@@ -27,7 +27,7 @@ from nexus_api.api.deps import get_db_session
 from nexus_api.core.client_auth import ClientPrincipal, require_client_principal
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Agent, AgentStatus, Channel, Conversation, PartnerTenant
+from nexus_api.db.models import Agent, AgentStatus, Channel, Conversation, PartnerTenant, Tenant
 from nexus_api.metering.wallet import AgentFilter, allocations_for, credit_burn, read_wallet
 from nexus_api.services.console_home import REVIEW_WINDOW, tenant_snapshots
 from nexus_api.services.console_reporting import month_bounds, partner_mappings
@@ -35,7 +35,7 @@ from nexus_api.services.lite_home import agent_spend, balance_of
 
 from ..schemas import UsageBucketOut
 from ..usage import bucket_report, csv_export, spend_report
-from .home import LiteBalanceOut
+from .home import LiteBalanceOut, balance_out
 
 router = APIRouter(prefix="/usage")
 log = structlog.get_logger(__name__)
@@ -106,9 +106,14 @@ async def usage_summary(
         wallet = await read_wallet(principal.partner.id)
         if wallet is None:
             raise RuntimeError("wallet unreadable")
-        balance = LiteBalanceOut.model_validate(
+        # La zona del negocio, en una lectura propia: esta ruta abre sus
+        # transacciones más abajo y la sesión de la petición no puede empezar una.
+        async with get_sessionmaker()() as tz_session:
+            tenant = await tz_session.get(Tenant, tid)
+        balance = balance_out(
             balance_of(allocation, burn.get(tid, 0), wallet.purchased_remaining),
-            from_attributes=True,
+            tz_name=tenant.timezone if tenant is not None else None,
+            now=now,
         )
     except Exception as exc:
         log.warning("lite_usage.balance_failed", error=str(exc))

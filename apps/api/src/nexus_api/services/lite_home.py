@@ -20,25 +20,26 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy as sa
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.billing.pricing import credits_to_cents
-from nexus_api.db.models import Agent, AgentStatus, Conversation, ConversationStatus, TenantStatus
+from nexus_api.db.models import Agent, AgentStatus, TenantStatus
 from nexus_api.metering.wallet import (
     allocations_for,
     credit_burn,
     credit_burn_by_agent,
     read_wallet,
 )
+from nexus_api.services import inbox_view
 from nexus_api.services.console_home import REVIEW_WINDOW, tenant_snapshots
 from nexus_api.services.console_home_blocks import (
     SHOWN_DAYS,
     ClientRow,
     days_until,
-    review_block,
     spend_block,
     trend_block,
 )
@@ -78,6 +79,29 @@ class LiteBalance:
     remaining_cents: int | None
     cap_cents: int | None
     days_left: float | None
+
+
+def balance_horizon(
+    balance: LiteBalance, *, tz_name: str | None, now: datetime
+) -> tuple[int, date | None]:
+    """Spec 045 (R4): ``(month_days_left, runs_out_on)`` en la zona del negocio.
+
+    ``month_days_left`` son los días del mes que quedan, hoy incluido.
+    ``runs_out_on`` es hoy más los días enteros que dura el saldo al ritmo de
+    los últimos 7 días; ``None`` sin gasto o sin saldo asignado. Con el saldo
+    agotado, hoy."""
+    try:
+        tz = ZoneInfo(tz_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+    today = now.astimezone(tz).date()
+    next_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_days_left = (next_month - today).days
+    if not balance.assigned or balance.days_left is None:
+        return month_days_left, None
+    if (balance.remaining_cents or 0) <= 0:
+        return month_days_left, today
+    return month_days_left, today + timedelta(days=int(balance.days_left))
 
 
 @dataclass(frozen=True)
@@ -200,18 +224,6 @@ def balance_notice(balance: LiteBalance, days_to_month_end: float) -> str | None
     return None
 
 
-async def _first_waiting(session: AsyncSession) -> uuid.UUID | None:
-    """La conversación que espera a una persona desde hace más tiempo sin
-    respuesta —la que «Atender» abre primero—. RLS: el tenant de la sesión."""
-    found: uuid.UUID | None = await session.scalar(
-        sa.select(Conversation.id)
-        .where(Conversation.status == ConversationStatus.ESCALATED)
-        .order_by(Conversation.last_inbound_at.desc().nulls_last(), Conversation.id)
-        .limit(1)
-    )
-    return found
-
-
 async def lite_home(
     session: AsyncSession,
     *,
@@ -239,15 +251,21 @@ async def lite_home(
             prev_7d=trend.previous,
             daily=[DayCount(d, n) for d, n in zip(trend.days, trend.series, strict=True)],
         )
-        if with_inbox:
-            review = review_block([row], snap.snapshots)
-            out.waiting = LiteWaiting(
-                count=review.escalated,
-                first_conversation_id=await _first_waiting(session) if review.escalated else None,
-            )
     except Exception as exc:
         log.warning("lite_home.snapshot_failed", error=str(exc))
         out.errors.append("conversations")
+
+    # ── lo que espera a una persona: el número de la Bandeja (spec 045) ──
+    if with_inbox:
+        try:
+            _unread, waiting = await inbox_view.counts(session, me="")
+            out.waiting = LiteWaiting(
+                count=waiting,
+                first_conversation_id=await inbox_view.first_waiting(session) if waiting else None,
+            )
+        except Exception as exc:
+            log.warning("lite_home.waiting_failed", error=str(exc))
+            out.errors.append("conversations")
 
     # ── saldo y gasto (libro del partner, solo las filas del cliente) ──
     burn_7d = 0

@@ -7,13 +7,13 @@ mismas funciones que el Inicio del partner. Solo módulo ``panel``.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from nexus_api.services.lite_home import lite_home
+from nexus_api.services.lite_home import LiteBalance, balance_horizon, lite_home
 
 from .deps import LiteScope, lite_scope
 
@@ -52,6 +52,21 @@ class LiteBalanceOut(BaseModel):
     remaining_cents: int | None
     cap_cents: int | None
     days_left: float | None
+    # Spec 045 (R4): «cubre N de M días del mes» y «te alcanza hasta…».
+    month_days_left: int = 0
+    runs_out_on: date | None = None
+
+
+def balance_out(balance: LiteBalance, *, tz_name: str | None, now: datetime) -> LiteBalanceOut:
+    month_days_left, runs_out_on = balance_horizon(balance, tz_name=tz_name, now=now)
+    return LiteBalanceOut(
+        assigned=balance.assigned,
+        remaining_cents=balance.remaining_cents,
+        cap_cents=balance.cap_cents,
+        days_left=balance.days_left,
+        month_days_left=month_days_left,
+        runs_out_on=runs_out_on,
+    )
 
 
 class LiteAttentionOut(BaseModel):
@@ -72,6 +87,7 @@ class LiteHomeOut(BaseModel):
 @router.get("/home", response_model=LiteHomeOut)
 async def read_home(scope: LiteScope = Depends(lite_scope("panel"))) -> LiteHomeOut:
     p = scope.principal
+    now = datetime.now(UTC)
     data = await lite_home(
         scope.session,
         partner_id=p.partner.id,
@@ -80,5 +96,9 @@ async def read_home(scope: LiteScope = Depends(lite_scope("panel"))) -> LiteHome
         client_name=p.client_name,
         tenant_status=scope.tenant.status,
         with_inbox=p.has("inbox"),
+        now=now,
     )
-    return LiteHomeOut.model_validate(data, from_attributes=True)
+    out = LiteHomeOut.model_validate(data, from_attributes=True)
+    if data.balance is not None:
+        out.balance = balance_out(data.balance, tz_name=scope.tenant.timezone, now=now)
+    return out

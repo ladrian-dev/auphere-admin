@@ -76,6 +76,13 @@ ALL_EXPECTED = {
     "workflow-pack-cron",
     # Spec 003
     "teammate-task-expiry-cron",
+    # Spec 043 (Reservas): confirmaciones, liberar, terminar, caducar; el
+    # avance de las ofertas de la lista; los avisos al cliente final. En los
+    # tres sitios: ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
+    "reservations-cron",
+    "reservation-offers-cron",
+    "reservation-outbox-cron",
+    "reservation-calendar-cron",
 }
 
 

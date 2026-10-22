@@ -39,10 +39,13 @@ class ClientModule(str, enum.Enum):
 
     PANEL = "panel"
     INBOX = "inbox"
+    #: Spec 043: el modo (Servicios o Aforo) vive en ``reservation_settings``.
+    RESERVAS = "reservas"
     USAGE = "usage"
 
 
-#: Orden canónico: el de la barra lateral (Panel, Bandeja de entrada, Consumo).
+#: Orden canónico: el de la barra lateral (Panel, Bandeja de entrada, Reservas,
+#: Consumo).
 CLIENT_MODULES: tuple[str, ...] = tuple(m.value for m in ClientModule)
 
 
@@ -66,7 +69,7 @@ class ClientAccess(TimestampMixin, Base):
     __tablename__ = "client_access"
     __table_args__ = (
         CheckConstraint(
-            "modules <@ ARRAY['panel','inbox','usage']::varchar[]",
+            "modules <@ ARRAY['panel','inbox','usage','reservas']::varchar[]",
             name="ck_client_access_modules",
         ),
     )

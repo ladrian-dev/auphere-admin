@@ -23,10 +23,13 @@ export async function LiteUsage({ principal, searchParams }: { principal: Client
     .then((me) => (me.agents.length > 1 ? me.agents : []))
     .catch(() => []);
   const agent = agents.some((a) => a.id === searchParams.agent) ? searchParams.agent : undefined;
-  const [summary, spend, detail] = await Promise.all([
+  const [summary, spend, detail, periodSpend] = await Promise.all([
     api.liteUsageSummary().catch(() => null),
     api.liteUsageSpend(days, agent).catch(() => null),
     api.liteUsageDetail(days).catch(() => null),
+    // Spec 045: the technical detail's money is the client's whole spend, also
+    // while the chart shows one agent — only then is it a second read.
+    agent ? api.liteUsageSpend(days).catch(() => null) : Promise.resolve(undefined),
   ]);
   return (
     <LiteUsageView
@@ -34,6 +37,7 @@ export async function LiteUsage({ principal, searchParams }: { principal: Client
       summary={summary}
       spend={spend}
       detail={detail}
+      periodSpend={periodSpend}
       days={days}
       agent={agent ?? ""}
       agents={agents}

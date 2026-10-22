@@ -2,15 +2,20 @@ import { MessageCircle } from "lucide-react";
 
 import { cn } from "@nexus/ui";
 
-import { useLocale, useT } from "@/i18n/client";
-import type { InboxConversation } from "@/lib/backend/inbox";
+import { formatNumber } from "@nexus/ui";
 
-import { listTime } from "./inbox-model";
+import { useLocale, useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
+import type { InboxConversation, InboxWaiting } from "@/lib/backend/inbox";
+
+import { listTime, waitingFor, type WaitingFor } from "./inbox-model";
 
 /**
  * One conversation in the list (spec 030, R7.1–R7.2). A button: the whole
  * row opens it. Long names and previews are cut with an ellipsis inside the
- * row — never wrapped into a taller row that pushes the list around.
+ * row — never wrapped into a taller row that pushes the list around. One
+ * that waits for a person (spec 045, R3.1) also says why, in two lines at
+ * most, and for how long: nobody has to open it to know what it needs.
  */
 export function ConversationRow({
   conversation: c,
@@ -77,9 +82,39 @@ export function ConversationRow({
             </span>
           ) : null}
         </span>
+        {c.state === "waiting" && c.waiting ? <WaitingLines waiting={c.waiting} now={now} /> : null}
         <StateBadges conversation={c} />
       </span>
     </button>
+  );
+}
+
+const WAITED: Record<WaitingFor["unit"], MessageKey> = {
+  now: "inbox.row.waiting.now",
+  min: "inbox.row.waiting.min",
+  h: "inbox.row.waiting.h",
+  d: "inbox.row.waiting.d",
+};
+
+/** The agent's reason, cut at two lines (the whole of it in `title` and in the row's name), and the wait. */
+function WaitingLines({ waiting, now }: { waiting: InboxWaiting; now: Date }) {
+  const t = useT();
+  const locale = useLocale();
+  const wait = waitingFor(waiting.since, now);
+  const waited = wait ? (wait.unit === "d" && wait.n === 1 ? t("inbox.row.waiting.d.one") : t(WAITED[wait.unit], { n: formatNumber(wait.n, locale) })) : null;
+  if (!waiting.reason && !waited) return null;
+  return (
+    <span className="mt-1 flex min-w-0 flex-col gap-1 border-l-2 border-status-warning-border pl-2">
+      {waiting.reason ? (
+        <>
+          <span className="sr-only">{t("inbox.row.reason")}</span>
+          <span className="line-clamp-2 min-w-0 text-xs break-words text-pretty text-foreground" title={waiting.reason}>
+            {waiting.reason}
+          </span>
+        </>
+      ) : null}
+      {waited ? <span className="text-xs font-medium text-status-warning-text tabular-nums">{waited}</span> : null}
+    </span>
   );
 }
 

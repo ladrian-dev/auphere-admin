@@ -1,0 +1,1344 @@
+{
+  "reservas.answer_offer": {
+    "description": "The person answers a waitlist offer we sent them (yes or no). Resolves their open offer; never name one. result 'booked' means it is theirs; 'late_taken' means someone else took it first and they stay on the list.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "accept": {
+          "title": "Accept",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        }
+      },
+      "required": [
+        "accept"
+      ],
+      "title": "AnswerOfferInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "BookingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "party_size": {
+              "title": "Party Size",
+              "type": "integer"
+            },
+            "service_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Service Name"
+            },
+            "staff_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Staff Name"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "date",
+            "start",
+            "end",
+            "starts_at",
+            "party_size"
+          ],
+          "title": "BookingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "booking": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BookingBrief"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "result": {
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "AnswerOfferOutput",
+      "type": "object"
+    },
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "reservas.cancel": {
+    "description": "Cancel a booking of the person you are talking to. A booking that is not theirs reads as not found. The freed time may be offered to the waitlist.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "booking_id": {
+          "format": "uuid",
+          "title": "Booking Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "booking_id"
+      ],
+      "title": "CancelInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "BookingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "party_size": {
+              "title": "Party Size",
+              "type": "integer"
+            },
+            "service_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Service Name"
+            },
+            "staff_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Staff Name"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "date",
+            "start",
+            "end",
+            "starts_at",
+            "party_size"
+          ],
+          "title": "BookingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "booking": {
+          "$ref": "#/$defs/BookingBrief"
+        },
+        "offered_to_waitlist": {
+          "title": "Offered To Waitlist",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "booking",
+        "offered_to_waitlist"
+      ],
+      "title": "CancelOutput",
+      "type": "object"
+    },
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "reservas.confirm_attendance": {
+    "description": "The person answers the confirmation request: attending=true confirms their next unconfirmed booking (or booking_id), attending=false cancels it.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "attending": {
+          "title": "Attending",
+          "type": "boolean"
+        },
+        "booking_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Booking Id"
+        }
+      },
+      "required": [
+        "attending"
+      ],
+      "title": "ConfirmAttendanceInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "BookingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "party_size": {
+              "title": "Party Size",
+              "type": "integer"
+            },
+            "service_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Service Name"
+            },
+            "staff_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Staff Name"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "date",
+            "start",
+            "end",
+            "starts_at",
+            "party_size"
+          ],
+          "title": "BookingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "booking": {
+          "$ref": "#/$defs/BookingBrief"
+        }
+      },
+      "required": [
+        "booking"
+      ],
+      "title": "ConfirmAttendanceOutput",
+      "type": "object"
+    },
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "reservas.create": {
+    "description": "Book for the person you are talking to, at a time find_slots returned. You cannot book for anyone else. Idempotent by idempotency_key. If refused is 'too_large', the group is above what you may book: escalate to a person. Confirm the booking to the customer only when booking is returned.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "any_staff": {
+          "default": false,
+          "title": "Any Staff",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "description": "Stable for this request: repeating it returns the same booking instead of a second one, e.g. 'reserva:{date}:{time}'.",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "join_waitlist": {
+          "default": false,
+          "description": "Services: also notify them if an earlier slot frees up.",
+          "title": "Join Waitlist",
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "party_size": {
+          "default": 1,
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Party Size",
+          "type": "integer"
+        },
+        "service_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Id"
+        },
+        "staff_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Staff Id"
+        },
+        "time": {
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "title": "Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "time",
+        "idempotency_key"
+      ],
+      "title": "CreateInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "BookingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "party_size": {
+              "title": "Party Size",
+              "type": "integer"
+            },
+            "service_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Service Name"
+            },
+            "staff_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Staff Name"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "date",
+            "start",
+            "end",
+            "starts_at",
+            "party_size"
+          ],
+          "title": "BookingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "booking": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BookingBrief"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "first_fit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Fit"
+        },
+        "idempotent_replay": {
+          "default": false,
+          "title": "Idempotent Replay",
+          "type": "boolean"
+        },
+        "refused": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "slot_taken | too_large | too_soon | too_far | closed | hours_missing. too_large: escalate to a person with escalate.escalate_to_human.",
+          "title": "Refused"
+        }
+      },
+      "title": "CreateOutput",
+      "type": "object"
+    },
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "reservas.find_slots": {
+    "description": "Free times on a day, only within the business's opening hours and its rules. Services mode: pass service_id (and staff_id, or omit for anyone). Capacity mode: pass party_size. Offer only the returned times; if closed or empty, say so and suggest first_fit or another day.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "description": "Business-local day to search.",
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "party_size": {
+          "anyOf": [
+            {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Capacity mode.",
+          "title": "Party Size"
+        },
+        "service_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Services mode: the service.",
+          "title": "Service Id"
+        },
+        "staff_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Services mode: a team member, or omit for anyone.",
+          "title": "Staff Id"
+        }
+      },
+      "required": [
+        "date"
+      ],
+      "title": "FindSlotsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "SlotOut": {
+          "additionalProperties": false,
+          "properties": {
+            "left": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Left"
+            },
+            "staff": {
+              "items": {
+                "$ref": "#/$defs/StaffRef"
+              },
+              "title": "Staff",
+              "type": "array"
+            },
+            "time": {
+              "title": "Time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "time"
+          ],
+          "title": "SlotOut",
+          "type": "object"
+        },
+        "StaffRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "title": "StaffRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "closed": {
+          "title": "Closed",
+          "type": "boolean"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "first_fit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Fit"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/$defs/SlotOut"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "why_closed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why Closed"
+        }
+      },
+      "required": [
+        "date",
+        "closed"
+      ],
+      "title": "FindSlotsOutput",
+      "type": "object"
+    },
+    "side_effects": []
+  },
+  "reservas.join_waitlist": {
+    "description": "Put the person you are talking to on the waitlist. Capacity mode: date, time and party_size of the full hour they wanted. Services mode: service_id (staff_id or anyone) and either a day, an 'until' day, or booking_id if they want to bring an existing booking forward.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "booking_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Booking Id"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date"
+        },
+        "party_size": {
+          "default": 1,
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Party Size",
+          "type": "integer"
+        },
+        "service_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Id"
+        },
+        "staff_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Staff Id"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "title": "JoinWaitlistInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "entry_id": {
+          "format": "uuid",
+          "title": "Entry Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entry_id",
+        "status"
+      ],
+      "title": "JoinWaitlistOutput",
+      "type": "object"
+    },
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "reservas.list_mine": {
+    "description": "The bookings of the person you are talking to (only theirs).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "only_upcoming": {
+          "default": true,
+          "title": "Only Upcoming",
+          "type": "boolean"
+        }
+      },
+      "title": "ListMineInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "BookingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "party_size": {
+              "title": "Party Size",
+              "type": "integer"
+            },
+            "service_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Service Name"
+            },
+            "staff_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Staff Name"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "date",
+            "start",
+            "end",
+            "starts_at",
+            "party_size"
+          ],
+          "title": "BookingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "bookings": {
+          "items": {
+            "$ref": "#/$defs/BookingBrief"
+          },
+          "title": "Bookings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bookings"
+      ],
+      "title": "ListMineOutput",
+      "type": "object"
+    },
+    "side_effects": []
+  },
+  "reservas.reschedule": {
+    "description": "Move a booking of the person you are talking to, to a time find_slots returned. A booking that is not theirs reads as not found.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "booking_id": {
+          "format": "uuid",
+          "title": "Booking Id",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "staff_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Staff Id"
+        },
+        "time": {
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "title": "Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "booking_id",
+        "date",
+        "time"
+      ],
+      "title": "RescheduleInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "BookingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Note"
+            },
+            "party_size": {
+              "title": "Party Size",
+              "type": "integer"
+            },
+            "service_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Service Name"
+            },
+            "staff_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Staff Name"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "starts_at": {
+              "format": "date-time",
+              "title": "Starts At",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "date",
+            "start",
+            "end",
+            "starts_at",
+            "party_size"
+          ],
+          "title": "BookingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "booking": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BookingBrief"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "first_fit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Fit"
+        },
+        "refused": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refused"
+        }
+      },
+      "title": "RescheduleOutput",
+      "type": "object"
+    },
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "reservas.services": {
+    "description": "What can be booked: in services mode, the services with duration, price and who does each one (use their ids in find_slots/create); in capacity mode, the largest group the agent may book.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ServicesInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "Money": {
+          "additionalProperties": false,
+          "properties": {
+            "amount_minor": {
+              "title": "Amount Minor",
+              "type": "integer"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            }
+          },
+          "required": [
+            "amount_minor",
+            "currency"
+          ],
+          "title": "Money",
+          "type": "object"
+        },
+        "ServiceItem": {
+          "additionalProperties": false,
+          "properties": {
+            "duration_minutes": {
+              "title": "Duration Minutes",
+              "type": "integer"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Money"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "staff": {
+              "items": {
+                "$ref": "#/$defs/StaffRef"
+              },
+              "title": "Staff",
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "duration_minutes",
+            "staff"
+          ],
+          "title": "ServiceItem",
+          "type": "object"
+        },
+        "StaffRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "title": "StaffRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "max_party": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Party"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "services": {
+          "items": {
+            "$ref": "#/$defs/ServiceItem"
+          },
+          "title": "Services",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "ServicesOutput",
+      "type": "object"
+    },
+    "side_effects": []
+  }
+}

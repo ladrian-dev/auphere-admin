@@ -66,6 +66,9 @@ async def _seed(db_session: Any, tenant_id: uuid.UUID, channel_id: uuid.UUID) ->
             "status": ConversationStatus.ESCALATED if i % 10 == 0 else ConversationStatus.OPEN,
             "last_inbound_at": now - timedelta(minutes=i),
             "last_message_at": now - timedelta(minutes=i) + timedelta(seconds=5),
+            # Spec 045: cada una la atendió el agente.
+            "attended_at": now - timedelta(minutes=i),
+            "last_attended_inbound_at": now - timedelta(minutes=i),
         }
         for i, c in enumerate(customers)
     ]

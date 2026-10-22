@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core import phone_credential as pc
 from nexus_api.db.models import (
-    NOTICE_KINDS,
+    DEFAULT_NOTICE_KINDS,
     AuditLog,
     ClientMembership,
     ClientMemberStatus,
@@ -161,7 +161,7 @@ async def enroll(
         refresh_prev_hash=None,
         refresh_rotated_at=now,
         credential_generation=1,
-        notice_kinds=list(NOTICE_KINDS),
+        notice_kinds=list(DEFAULT_NOTICE_KINDS),
         locale=locale if locale in ("es", "en") else "es",
         last_seen_at=now,
         enrolled_at=now,

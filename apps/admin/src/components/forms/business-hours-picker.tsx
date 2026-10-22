@@ -7,19 +7,24 @@ import { Button, Checkbox, Input } from "@nexus/ui";
 /**
  * Business hours editor for the new-tenant wizard.
  *
- * Serializes to the same JSON shape the backend already expects:
- *   { monday: "09:00-18:00", tuesday: "closed", ... }
+ * Serializes to the canonical shape the API stores (bug
+ * horario-del-negocio-en-tres-formas): every weekday present, a list of
+ * ranges per day, an empty list for a closed day:
+ *   { monday: [{ from: "09:00", to: "18:00" }], ..., sunday: [] }
+ *
+ * The API also accepts the older `"09:00-18:00"` / `"closed"` strings and
+ * normalizes them; this editor reads both so an old value still opens.
  *
  * State of the art for booking-style products (Calendly, Cal.com) uses
  * per-day open/closed toggle plus from/to inputs. We keep it minimal:
- * single range per day. Multi-range (e.g. 09-13 + 15-19) is a future
- * upgrade — most clients of this stage don't need it, and the agent
- * receives the rendered text label anyway, not the structured hours.
+ * single range per day in the editor, although the stored shape admits more
+ * (lunch and dinner), which the client console can edit.
  */
 
-export type BusinessHoursValue = Record<string, string>;
+export type BusinessHoursRange = { from: string; to: string };
+export type BusinessHoursValue = Record<DayKey, BusinessHoursRange[]>;
 
-type DayKey =
+export type DayKey =
   | "monday"
   | "tuesday"
   | "wednesday"
@@ -38,19 +43,29 @@ const DAYS: { key: DayKey; label: string }[] = [
   { key: "sunday", label: "Domingo" },
 ];
 
-type DayState = { open: boolean; from: string; to: string };
+export type DayState = { open: boolean; from: string; to: string };
 
 const DEFAULT_FROM = "09:00";
 const DEFAULT_TO = "18:00";
 
-function parseInitial(value: BusinessHoursValue | null): Record<DayKey, DayState> {
+/** Reads the canonical shape and the older `"HH:MM-HH:MM"` / `"closed"` one. */
+export function parseInitial(
+  value: Record<string, unknown> | null,
+): Record<DayKey, DayState> {
   const out = Object.fromEntries(
     DAYS.map((d) => [d.key, { open: false, from: DEFAULT_FROM, to: DEFAULT_TO }]),
   ) as Record<DayKey, DayState>;
   if (!value) return out;
   for (const { key } of DAYS) {
     const raw = value[key];
-    if (!raw || raw === "closed") continue;
+    if (Array.isArray(raw)) {
+      const first = raw[0] as Partial<BusinessHoursRange> | undefined;
+      if (first && typeof first.from === "string" && typeof first.to === "string") {
+        out[key] = { open: true, from: first.from, to: first.to };
+      }
+      continue;
+    }
+    if (typeof raw !== "string" || raw === "closed") continue;
     const match = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(raw);
     if (match) {
       out[key] = { open: true, from: match[1], to: match[2] };
@@ -59,11 +74,11 @@ function parseInitial(value: BusinessHoursValue | null): Record<DayKey, DayState
   return out;
 }
 
-function serialize(state: Record<DayKey, DayState>): BusinessHoursValue {
-  const out: BusinessHoursValue = {};
+export function serialize(state: Record<DayKey, DayState>): BusinessHoursValue {
+  const out = {} as BusinessHoursValue;
   for (const { key } of DAYS) {
     const s = state[key];
-    out[key] = s.open ? `${s.from}-${s.to}` : "closed";
+    out[key] = s.open ? [{ from: s.from, to: s.to }] : [];
   }
   return out;
 }

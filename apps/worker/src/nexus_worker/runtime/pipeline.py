@@ -318,6 +318,16 @@ _RETRY_SYSTEM_TEMPLATE: str = (
 # can be looked up while booking or queueing).
 _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
     "book": (
+        # Spec 043: la agenda propia del negocio (con el módulo Reservas).
+        "reservas.services",
+        "reservas.find_slots",
+        "reservas.create",
+        "reservas.list_mine",
+        "reservas.reschedule",
+        "reservas.cancel",
+        "reservas.confirm_attendance",
+        "reservas.join_waitlist",
+        "reservas.answer_offer",
         "booking.check_availability",
         "booking.create_appointment",
         "booking.modify_appointment",
@@ -343,6 +353,8 @@ _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
         "operator.consult_owner",
     ),
     "info": (
+        "reservas.services",
+        "reservas.list_mine",
         "client.get_preferences",
         "client.get_history",
         "booking.get_appointments",

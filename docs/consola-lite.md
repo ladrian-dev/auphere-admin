@@ -25,9 +25,12 @@ Pestaña **Acceso** en la ficha del tenant del admin
 
 - **Elegible**: el tenant está en `partner_tenants` y no está archivado. Los
   directos de Auphere cuelgan de Auphere Internal Partner.
-- **Módulos por cliente**: `panel`, `inbox`, `usage`, guardados en
+- **Módulos por cliente**: `panel`, `inbox`, `reservas`, `usage`, guardados en
   `client_access.modules` en el orden de la barra. Encendido exige al menos
-  uno; la Bandeja exige un WhatsApp conectado **al elegirla**.
+  uno; la Bandeja exige un WhatsApp conectado **al elegirla**; Reservas exige
+  el modo (Servicios o Aforo, y en Aforo el tipo de negocio) la primera vez, y
+  cambiarlo con reservas vivas pide decidir qué pasa con ellas
+  ([reservas.md](reservas.md#activarlo-panel-de-operador)).
 - **Personas**: invitación de un solo uso (hash SHA-256, 21 días) por correo
   y también impresa al operador (`accept_path`). Reenviar retira el enlace
   anterior. Revocar a una persona o apagar el acceso **cierra sus sesiones**
@@ -328,3 +331,67 @@ agentes.
   (correo y contraseña, o Google, en la API); ver
   [app-movil.md](app-movil.md#entrar-y-quedarse-dentro).
 
+
+## Lo que la spec 045 cambió aquí
+
+Spec [`045-consola-customers-mejoras-y-beta`](../specs/045-consola-customers-mejoras-y-beta/spec.md),
+del diseño «Consola Customers» (2026-10-22).
+
+- **La Bandeja solo enseña lo que el agente atiende o atendió.** Una
+  conversación existe para la Bandeja si tiene un entrante que el agente pudo
+  atender: uno que la puerta de números permitidos (spec 024) no silenció, en un
+  número con agente. El despachador lo anota en `conversations.attended_at` (el
+  primero) y `last_attended_inbound_at` (el último); la migración `0171` los
+  rellenó desde los mensajes. Sin `attended_at`, la conversación no se lista, no
+  se cuenta y toda ruta con su id responde 404 (`inbox_view._in_inbox`). El hilo
+  empieza en `attended_at` y no enseña entrantes silenciados; el «sin leer» se
+  mide contra `last_attended_inbound_at` (`last_inbound_at` sigue siendo la
+  ventana de 24 h de WhatsApp, que Meta abre con cualquier mensaje). Un mensaje
+  silenciado no avisa: el despachador encola «mensaje para ti» después de la
+  puerta, y la fan-out descarta lo que la Bandeja no enseña. Barrido:
+  `tests/isolation/test_lite_inbox_attended_only.py`.
+- **El «esperan» del Panel es el de la Bandeja**: la misma función
+  (`inbox_view.counts`), sin la ventana de 7 días del Inicio del partner, que no
+  cambia.
+- **Motivo y espera**: cada fila que espera trae `waiting {reason, since}` (el
+  último escalado del agente); el detalle, `waiting_since`.
+- **El saldo dice hasta cuándo alcanza**: `balance.month_days_left` (días del
+  mes que quedan, hoy incluido, en la zona del negocio) y `runs_out_on` (la
+  fecha local en que se acaba al ritmo de 7 días; `null` sin gasto o sin tope),
+  en `/home` y `/usage/summary` (`lite_home.balance_horizon`). Sigue siendo de
+  solo lectura: sin «Comprar saldo» ni alertas (decisión del owner).
+- **El horario del negocio en `/me`**: `business {timezone, hours, hours_label}`,
+  con `hours` en la forma canónica del bug `horario-del-negocio-en-tres-formas`
+  y la frase compuesta en el idioma de la persona (el de su teléfono; en la web,
+  el del navegador).
+- **Silencio fuera de horario**, por teléfono: `quiet_outside_hours` en
+  `/phones/current/notices`, encendido por defecto. Fuera del horario del
+  negocio no sale el push de lo que no es urgente; «una conversación espera a
+  una persona» sale siempre. La entrega queda `skipped` con `quiet_hours`. Sin
+  horario no se silencia nada.
+- **Pantallas**: Panel con la tarjeta destacada de conversaciones, «Cubre N de M
+  días del mes» con el tono por días; Bandeja que nombra solo WhatsApp, con el
+  motivo y la espera en la fila y la píldora «N agentes activos»; Consumo que
+  empieza por «Te alcanza hasta…» y agrupa el detalle técnico en mensajes, uso
+  del modelo y multimedia. Esqueletos con las medidas finales en `/` y `/usage`.
+  «Gasto del mes» baja junto a la gráfica solo cuando se reparte por agente;
+  con una sola cifra es una tarjeta más de la primera fila y la gráfica ocupa
+  el ancho (una tarjeta de dos filas con una cifra era una caja vacía).
+- **Accesibilidad que destapó el pase vivo** (`e2e/lite.spec.ts` contra datos
+  sembrados): el hilo de la Bandeja toma el foco para poder desplazarlo con el
+  teclado cuando no trae ningún enlace (axe `scrollable-region-focusable`).
+- **Beta**: el lateral de una persona de cliente enseña la insignia «Beta» (la
+  misma que la del partner, con su pista `shell.beta.client.hint`); «lite» ya no
+  sale en pantalla.
+
+## Reservas (spec 043)
+
+Módulo `reservas`, entre la Bandeja y el Consumo. Pantalla `/reservas`
+(`app/(console)/reservas/`, `components/reservas/`) en el modo del cliente:
+**Servicios** (Agenda · Lista de espera · Ajustes, agenda por profesional) o
+**Aforo** (Ocupación · Lista de espera · Ajustes, mapa de ocupación y lista por
+hora con llegadas). Vista (Cuadrícula o Lista) y periodo (Día, Semana, Mes) son
+dos controles separados; los botones de cada reserva salen de `allowed`. El
+Panel enseña su bloque (de `/reservas/summary`) y la fila «N reservas de hoy sin
+confirmar». Todo lo demás —dominio, API, agente, crons, plantillas, Google
+Calendar— está en [reservas.md](reservas.md).

@@ -11,8 +11,10 @@ export default async function Loading() {
       aria-label={t("inbox.list.loading")}
       className="flex h-[calc(100svh-8rem)] min-h-[32rem] flex-col overflow-hidden rounded-md border border-border bg-card"
     >
-      <div className="border-b border-border px-4 py-2">
+      {/* The head: the title and, under it, the intro line (spec 045). */}
+      <div className="flex flex-col gap-1 border-b border-border px-4 py-2">
         <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-4 w-80 max-w-full" />
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="flex w-full flex-col gap-2 p-3 md:w-80 md:border-r md:border-border">

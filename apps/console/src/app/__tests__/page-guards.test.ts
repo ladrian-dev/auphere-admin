@@ -80,7 +80,9 @@ describe("guardas de página", () => {
   it("only a module's own path counts, not a longer one that starts the same", () => {
     expect(clientModuleOfPath("/")).toBe("panel");
     expect(clientModuleOfPath("/inbox")).toBe("inbox");
+    expect(clientModuleOfPath("/reservas")).toBe("reservas");
     expect(clientModuleOfPath("/usage")).toBe("usage");
+    expect(clientModuleOfPath("/reservas/x")).toBeNull();
     expect(clientModuleOfPath("/usage/alerts")).toBeNull();
     expect(clientModuleOfPath("/inboxes")).toBeNull();
     expect(clientModuleOfPath("/clients/x/usage")).toBeNull();

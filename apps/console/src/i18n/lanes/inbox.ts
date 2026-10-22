@@ -5,6 +5,13 @@
  */
 export const inboxMessages = {
   "inbox.title": { es: "Bandeja de entrada", en: "Inbox" },
+  // Spec 045 (R6.2): only WhatsApp by Meta is in use — the intro names nothing else.
+  "inbox.intro.one": { es: "Tu agente responde en WhatsApp. Tú entras cuando hace falta.", en: "Your agent answers on WhatsApp. You step in when needed." },
+  "inbox.intro.many": {
+    es: "Tus agentes responden en WhatsApp. Tú entras cuando hace falta.",
+    en: "Your agents answer on WhatsApp. You step in when needed.",
+  },
+  "inbox.agents.active": { es: "{count} agentes activos", en: "{count} active agents" },
   "inbox.live.reconnecting": { es: "Reconectando…", en: "Reconnecting…" },
   "inbox.live.reconnecting.hint": {
     es: "Se cortó la conexión en vivo. Lo nuevo aparecerá en cuanto vuelva.",
@@ -38,6 +45,13 @@ export const inboxMessages = {
   "inbox.empty.filtered": { es: "No hay conversaciones con estos filtros.", en: "No conversations match these filters." },
   "inbox.empty.clear": { es: "Ver todas las conversaciones", en: "See all conversations" },
   "inbox.row.unread": { es: "Sin leer", en: "Unread" },
+  // Spec 045 (R3.1): why and since when a conversation waits for a person.
+  "inbox.row.reason": { es: "Motivo del agente:", en: "Agent's reason:" },
+  "inbox.row.waiting.now": { es: "Espera hace menos de 1 min", en: "Waiting for less than a minute" },
+  "inbox.row.waiting.min": { es: "Espera hace {n} min", en: "Waiting for {n} min" },
+  "inbox.row.waiting.h": { es: "Espera hace {n} h", en: "Waiting for {n} h" },
+  "inbox.row.waiting.d": { es: "Espera hace {n} días", en: "Waiting for {n} days" },
+  "inbox.row.waiting.d.one": { es: "Espera hace 1 día", en: "Waiting for 1 day" },
   "inbox.row.media": { es: "Archivo", en: "File" },
   "inbox.row.you": { es: "Tú: {text}", en: "You: {text}" },
   "inbox.row.agent": { es: "Agente: {text}", en: "Agent: {text}" },

@@ -74,8 +74,8 @@ def unread_expr(user_id: str) -> sa.ColumnElement[bool]:
     return sa.or_(
         sa.func.coalesce(marked, sa.false()),
         sa.and_(
-            Conversation.last_inbound_at.is_not(None),
-            Conversation.last_inbound_at
+            Conversation.last_attended_inbound_at.is_not(None),
+            Conversation.last_attended_inbound_at
             > sa.func.coalesce(read, sa.text("'-infinity'::timestamptz")),
         ),
     )
@@ -83,6 +83,23 @@ def unread_expr(user_id: str) -> sa.ColumnElement[bool]:
 
 def _not_playground() -> sa.ColumnElement[bool]:
     return Channel.provider != PLAYGROUND_PROVIDER
+
+
+def _in_inbox() -> sa.ColumnElement[bool]:
+    """Spec 045 (R1): la conversación existe para la Bandeja si el agente la
+    atiende o la atendió, y no es del Playground. Lo demás —un número que la
+    puerta de números permitidos silenció, un envío del sistema que nadie
+    contestó— no se lista, no se cuenta y su id responde 404."""
+    return sa.and_(_not_playground(), Conversation.attended_at.is_not(None))
+
+
+def _shown_message() -> sa.ColumnElement[bool]:
+    """Los mensajes que el hilo enseña: desde el primero atendido, sin los
+    entrantes silenciados (spec 045, R1.4). Correlacionado con ``Conversation``."""
+    return sa.and_(
+        Message.skipped_reason.is_(None),
+        Message.created_at >= Conversation.attended_at,
+    )
 
 
 def encode_cursor(at: datetime | None, id_: uuid.UUID) -> str:
@@ -124,6 +141,9 @@ class ListItem:
     tags: list[str]
     # Spec 030: the agent of the conversation's number — only with 2+ agents.
     agent: tuple[uuid.UUID, str] | None = None
+    # Spec 045 (R3.1): why and since when it waits — only while it waits.
+    waiting_reason: str | None = None
+    waiting_since: datetime | None = None
 
 
 @dataclass
@@ -237,7 +257,7 @@ async def list_conversations(
         )
         .join(Customer, Customer.id == Conversation.customer_id)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(_not_playground())
+        .where(_in_inbox())
     )
     if flt == "resolved":
         base = base.where(Conversation.status == ConversationStatus.CLOSED)
@@ -254,7 +274,11 @@ async def list_conversations(
         in_messages = (
             sa.select(sa.literal(1))
             .select_from(Message)
-            .where(Message.conversation_id == Conversation.id, Message.content.ilike(like))
+            .where(
+                Message.conversation_id == Conversation.id,
+                _shown_message(),
+                Message.content.ilike(like),
+            )
             .exists()
         )
         base = base.where(
@@ -285,6 +309,7 @@ async def list_conversations(
     names = await member_names(session, tenant_id)
     last_by_conv: dict[uuid.UUID, Message] = {}
     tags_by_conv: dict[uuid.UUID, list[str]] = {}
+    waiting_by_conv: dict[uuid.UUID, tuple[str | None, datetime]] = {}
     if ids:
         ranked = (
             sa.select(
@@ -293,7 +318,8 @@ async def list_conversations(
                 .over(partition_by=Message.conversation_id, order_by=Message.created_at.desc())
                 .label("rn"),
             )
-            .where(Message.conversation_id.in_(ids))
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(Message.conversation_id.in_(ids), _shown_message())
             .subquery()
         )
         latest = aliased(Message, ranked)
@@ -307,6 +333,9 @@ async def list_conversations(
             )
         ).all():
             tags_by_conv.setdefault(cid, []).append(str(tag))
+        waiting_ids = [r[0].id for r in shown if r[0].status == ConversationStatus.ESCALATED]
+        if waiting_ids:
+            waiting_by_conv = await _last_escalations(session, waiting_ids)
 
     show_agents = len(agents) > 1
     for conv, name, identifier, channel_type, is_unread, agent_id in shown:
@@ -338,6 +367,8 @@ async def list_conversations(
                     if show_agents and agent_id is not None
                     else None
                 ),
+                waiting_reason=waiting_by_conv.get(conv.id, (None, None))[0],
+                waiting_since=waiting_by_conv.get(conv.id, (None, None))[1],
             )
         )
 
@@ -345,7 +376,7 @@ async def list_conversations(
         sa.select(sa.func.count())
         .select_from(Conversation)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(_not_playground())
+        .where(_in_inbox())
     )
     page.unread = int(
         await session.scalar(
@@ -367,13 +398,48 @@ async def list_conversations(
     return page
 
 
+async def _last_escalations(
+    session: AsyncSession, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str | None, datetime]]:
+    """El motivo y el momento del último escalado de cada conversación."""
+    ranked = (
+        sa.select(
+            ConversationEvent.conversation_id,
+            ConversationEvent.payload,
+            ConversationEvent.created_at,
+            sa.func.row_number()
+            .over(
+                partition_by=ConversationEvent.conversation_id,
+                order_by=ConversationEvent.created_at.desc(),
+            )
+            .label("rn"),
+        )
+        .where(
+            ConversationEvent.conversation_id.in_(ids),
+            ConversationEvent.kind == ConversationEventKind.ESCALATED.value,
+        )
+        .subquery()
+    )
+    out: dict[uuid.UUID, tuple[str | None, datetime]] = {}
+    for cid, payload, at in (
+        await session.execute(
+            sa.select(ranked.c.conversation_id, ranked.c.payload, ranked.c.created_at).where(
+                ranked.c.rn == 1
+            )
+        )
+    ).all():
+        reason = (payload or {}).get("reason") or None
+        out[cid] = (str(reason) if reason else None, at)
+    return out
+
+
 async def counts(session: AsyncSession, *, me: str) -> tuple[int, int]:
     unread = unread_expr(me)
     base = (
         sa.select(sa.func.count())
         .select_from(Conversation)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(_not_playground())
+        .where(_in_inbox())
     )
     n_unread = await session.scalar(
         base.where(Conversation.status != ConversationStatus.CLOSED, unread)
@@ -384,14 +450,29 @@ async def counts(session: AsyncSession, *, me: str) -> tuple[int, int]:
     return int(n_unread or 0), int(n_waiting or 0)
 
 
+async def first_waiting(session: AsyncSession) -> uuid.UUID | None:
+    """La conversación que espera a una persona desde hace más tiempo sin
+    respuesta —la que «Atender» abre primero—, entre las que la Bandeja
+    enseña. RLS: el tenant de la sesión."""
+    found: uuid.UUID | None = await session.scalar(
+        sa.select(Conversation.id)
+        .join(Channel, Channel.id == Conversation.channel_id)
+        .where(Conversation.status == ConversationStatus.ESCALATED, _in_inbox())
+        .order_by(Conversation.last_inbound_at.desc().nulls_last(), Conversation.id)
+        .limit(1)
+    )
+    return found
+
+
 async def get_conversation(
     session: AsyncSession, conversation_id: uuid.UUID
 ) -> Conversation | None:
-    """La conversación, si es del cliente de la sesión y no del Playground."""
+    """La conversación, si es del cliente de la sesión, no es del Playground y
+    el agente la atiende o la atendió (spec 045): lo demás, 404."""
     row = await session.execute(
         sa.select(Conversation)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(Conversation.id == conversation_id, _not_playground())
+        .where(Conversation.id == conversation_id, _in_inbox())
     )
     return row.scalar_one_or_none()
 
@@ -419,6 +500,7 @@ class Detail:
     conversations: int
     summary: str | None
     waiting_reason: str | None
+    waiting_since: datetime | None
     tags: list[str]
     note_body: str
     note_updated_at: datetime | None
@@ -445,19 +527,18 @@ async def detail(
     customer = await session.get(Customer, conversation.customer_id)
     channel = await session.get(Channel, conversation.channel_id)
     first = await session.scalar(
-        sa.select(sa.func.min(Message.created_at)).where(
-            Message.conversation_id.in_(
-                sa.select(Conversation.id).where(
-                    Conversation.customer_id == conversation.customer_id
-                )
-            )
-        )
+        sa.select(sa.func.min(Message.created_at))
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .where(Conversation.customer_id == conversation.customer_id, _shown_message())
     )
     rows_for_customer = int(
         await session.scalar(
             sa.select(sa.func.count())
             .select_from(Conversation)
-            .where(Conversation.customer_id == conversation.customer_id)
+            .where(
+                Conversation.customer_id == conversation.customer_id,
+                Conversation.attended_at.is_not(None),
+            )
         )
         or 0
     )
@@ -531,6 +612,9 @@ async def detail(
         waiting_reason=(payload.get("reason") or None)
         if (last_escalation and conversation.status == ConversationStatus.ESCALATED)
         else None,
+        waiting_since=last_escalation.created_at
+        if (last_escalation and conversation.status == ConversationStatus.ESCALATED)
+        else None,
         tags=tags,
         note_body=note.body if note else "",
         note_updated_at=note.updated_at if note else None,
@@ -579,7 +663,12 @@ async def thread(
 ) -> tuple[list[ThreadItem], str | None]:
     """Mensajes y eventos en orden, paginando hacia atrás desde ``before``."""
     names = await member_names(session, tenant_id)
-    msg_stmt = sa.select(Message).where(Message.conversation_id == conversation.id)
+    # Spec 045 (R1.4): desde el primer mensaje atendido, sin los silenciados.
+    msg_stmt = sa.select(Message).where(
+        Message.conversation_id == conversation.id, Message.skipped_reason.is_(None)
+    )
+    if conversation.attended_at is not None:
+        msg_stmt = msg_stmt.where(Message.created_at >= conversation.attended_at)
     ev_stmt = sa.select(ConversationEvent).where(
         ConversationEvent.conversation_id == conversation.id
     )
@@ -653,6 +742,7 @@ __all__ = [
     "ThreadItem",
     "counts",
     "detail",
+    "first_waiting",
     "get_conversation",
     "list_conversations",
     "state_of",

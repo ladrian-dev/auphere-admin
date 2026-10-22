@@ -12,7 +12,8 @@ import { MembersList } from "./members-list";
  * Spec 030 — «Acceso»: the client's own console (consola lite).
  *
  * The Auphere team switches it on, chooses the modules for the whole client
- * (Panel, Bandeja de entrada, Consumo) and invites or revokes its people.
+ * (Panel, Bandeja de entrada, Reservas with its mode — spec 043 —, Consumo)
+ * and invites or revokes its people.
  * Every change is audited with the operator of this session.
  */
 export default async function AccessPage({ params }: { params: Promise<{ id: string }> }) {

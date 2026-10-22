@@ -58,3 +58,46 @@ async def test_partner_member_gets_403(client, db_session, console_world) -> Non
     w = console_world["a"]
     await make_client_access(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
     assert (await client.get(ME, headers=w["headers"]())).status_code == 403
+
+
+async def test_me_brings_the_business_hours(client, db_session, console_world) -> None:
+    """Spec 045 R5.1: la zona, el horario canónico y su frase ya escrita."""
+    from nexus_api.db.models import Tenant
+
+    w = console_world["a"]
+    tenant = await db_session.get(Tenant, w["tenant_id"])
+    tenant.timezone = "America/Santiago"
+    tenant.business_hours = {
+        **{
+            d: [{"from": "09:00", "to": "19:00"}]
+            for d in ("monday", "tuesday", "wednesday", "thursday", "friday")
+        },
+        "saturday": [{"from": "09:00", "to": "14:00"}],
+        "sunday": [],
+    }
+    await db_session.commit()
+    await make_client_access(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    member = await add_client_member(
+        db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"]
+    )
+
+    body = (await client.get(ME, headers=member["headers"]())).json()
+
+    assert body["business"]["timezone"] == "America/Santiago"
+    assert body["business"]["hours"]["saturday"] == [{"from": "09:00", "to": "14:00"}]
+    assert body["business"]["hours"]["sunday"] == []
+    assert body["business"]["hours_label"].startswith("Lunes a viernes 09:00")
+
+    en = (await client.get(ME, headers={**member["headers"](), "Accept-Language": "en-GB"})).json()
+    assert en["business"]["hours_label"].startswith("Monday to Friday 09:00")
+
+
+async def test_me_without_hours_says_so(client, db_session, console_world) -> None:
+    w = console_world["a"]
+    await make_client_access(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    member = await add_client_member(
+        db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"]
+    )
+    business = (await client.get(ME, headers=member["headers"]())).json()["business"]
+    assert business["hours"] is None
+    assert business["hours_label"] is None

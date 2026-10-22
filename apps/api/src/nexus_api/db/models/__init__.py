@@ -51,6 +51,7 @@ from nexus_api.db.models.client_access import (
     ClientModule,
 )
 from nexus_api.db.models.client_phone import (
+    DEFAULT_NOTICE_KINDS,
     NOTICE_KINDS,
     ClientPhone,
     ClientPushDelivery,
@@ -204,6 +205,19 @@ from nexus_api.db.models.partner_wallet import (
 from nexus_api.db.models.payment_review import PaymentReview, PaymentReviewNotice
 from nexus_api.db.models.qa import QAAuditLog, QARun, QASideEffectAudit, QAThread
 from nexus_api.db.models.queue_entry import QueueEntry, QueueEntryStatus
+from nexus_api.db.models.reservation import (
+    Reservation,
+    ReservationBlock,
+    ReservationEvent,
+    ReservationOffer,
+    ReservationOfferCandidate,
+    ReservationOutbox,
+    ReservationService,
+    ReservationServiceStaff,
+    ReservationSettings,
+    ReservationStaff,
+    ReservationWaitlist,
+)
 from nexus_api.db.models.sales import AgentSale
 from nexus_api.db.models.scheduled_job import (
     ScheduledJob,
@@ -248,6 +262,7 @@ __all__ = [
     "CLIENT_INVITATION_TTL",
     "CLIENT_MODULES",
     "CONSOLE_AUTH_SCHEMA",
+    "DEFAULT_NOTICE_KINDS",
     "DENIAL_REASONS",
     "EVENT_KINDS",
     "EVENT_OPEN",
@@ -410,6 +425,17 @@ __all__ = [
     "QAThread",
     "QueueEntry",
     "QueueEntryStatus",
+    "Reservation",
+    "ReservationBlock",
+    "ReservationEvent",
+    "ReservationOffer",
+    "ReservationOfferCandidate",
+    "ReservationOutbox",
+    "ReservationService",
+    "ReservationServiceStaff",
+    "ReservationSettings",
+    "ReservationStaff",
+    "ReservationWaitlist",
     "SavedReply",
     "ScheduledJob",
     "ScheduledJobKind",

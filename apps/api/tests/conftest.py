@@ -326,6 +326,21 @@ async def test_engine() -> AsyncIterator[Any]:
 
 
 _TRUNCATE_TABLES = (
+    # Spec 043 — Reservas (todas cuelgan del tenant; el CASCADE las alcanza
+    # igual, pero nombrarlas deja el orden escrito).
+    "reservation_busy",
+    "reservation_staff_calendars",
+    "reservation_outbox",
+    "reservation_offer_candidates",
+    "reservation_offers",
+    "reservation_waitlist",
+    "reservation_blocks",
+    "reservation_events",
+    "reservations",
+    "reservation_service_staff",
+    "reservation_services",
+    "reservation_staff",
+    "reservation_settings",
     # Block L — connectors module (tenant-scoped FK to tenants must clear first).
     "tenant_connector_tool_overrides",
     "tenant_connectors",
@@ -937,6 +952,9 @@ async def make_inbox(
             status=ConversationStatus.OPEN,
             last_inbound_at=at,
             last_message_at=at + timedelta(seconds=5),
+            # Spec 045: el entrante de abajo lo atendió el agente.
+            attended_at=at,
+            last_attended_inbound_at=at,
         )
         db_session.add(conv)
         await db_session.flush()
@@ -1268,3 +1286,95 @@ async def make_console_account(db_session: AsyncSession, *, email: str | None = 
     )
     await db_session.commit()
     return pid
+
+
+# ── Spec 043: un cliente con Reservas ───────────────────────────────────────
+
+#: Abre todos los días de 09:00 a 21:00: ninguna prueba depende de qué día cae.
+OPEN_EVERY_DAY = {
+    d: [{"from": "09:00", "to": "21:00"}]
+    for d in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+}
+
+
+async def make_reservas(
+    db_session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    mode: str = "services",
+    capacity_kind: str | None = None,
+    hours: dict[str, Any] | None = OPEN_EVERY_DAY,
+    modules: tuple[str, ...] = ("panel", "inbox", "reservas", "usage"),
+    with_access: bool = True,
+) -> dict[str, Any]:
+    """Un cliente con el módulo ``reservas`` en ``mode``, su horario, su zona
+    (Santiago) y una persona. En Servicios, dos personas del equipo (Lucía con
+    pausa de 14 a 15, Marcos) y dos servicios (Corte 30 min, Color 90 min).
+    Aforo de restaurante con un horario de franjas que cubre el día entero
+    (cada 30 min de 10:00 a 20:00): ninguna prueba depende de la hora."""
+    from nexus_api.db.models import (
+        ReservationService,
+        ReservationSettings,
+        ReservationStaff,
+        Tenant,
+    )
+    from nexus_api.services.reservations.settings import apply_defaults
+
+    tenant = await db_session.get(Tenant, tenant_id)
+    assert tenant is not None
+    tenant.timezone = "America/Santiago"
+    tenant.market = "CL"
+    tenant.business_hours = hours
+    settings = ReservationSettings(tenant_id=tenant_id, version=1, updated_by="operator:tests")
+    apply_defaults(settings, mode, capacity_kind or ("restaurant" if mode == "capacity" else None))
+    if mode == "capacity":
+        settings.schedule = {"model": "slots", "step_minutes": 30, "from": "10:00", "to": "20:00"}
+    db_session.add(settings)
+    await db_session.flush()
+    out: dict[str, Any] = {"tenant_id": tenant_id}
+    if mode == "services":
+        lucia = ReservationStaff(
+            tenant_id=tenant_id,
+            name="Lucía",
+            position=1,
+            hours={
+                d: [{"from": "09:00", "to": "14:00"}, {"from": "15:00", "to": "21:00"}]
+                for d in OPEN_EVERY_DAY
+            },
+        )
+        marcos = ReservationStaff(tenant_id=tenant_id, name="Marcos", position=2)
+        corte = ReservationService(
+            tenant_id=tenant_id,
+            name="Corte",
+            duration_minutes=30,
+            price_minor=15000,
+            currency="CLP",
+        )
+        color = ReservationService(
+            tenant_id=tenant_id,
+            name="Color",
+            duration_minutes=90,
+            price_minor=45000,
+            currency="CLP",
+        )
+        db_session.add_all([lucia, marcos, corte, color])
+        await db_session.flush()
+        out.update(lucia=lucia.id, marcos=marcos.id, corte=corte.id, color=color.id)
+    if with_access:
+        await make_client_access(
+            db_session, partner_id=partner_id, tenant_id=tenant_id, modules=modules
+        )
+        member = await add_client_member(db_session, partner_id=partner_id, tenant_id=tenant_id)
+        out["member"] = member
+        out["headers"] = member["headers"]
+    await db_session.commit()
+    return out
+
+
+def future_day(days: int = 3) -> Any:
+    """Un día que siempre es futuro, en la zona de las pruebas."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    return (datetime.now(ZoneInfo("America/Santiago")) + timedelta(days=days)).date()
