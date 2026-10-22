@@ -188,12 +188,23 @@ class OutboundWorkSet:
             await asyncio.wait_for(self._wakeup.wait(), timeout=timeout)
 
 
-def _asyncpg_dsn() -> str:
+def _asyncpg_connect_kwargs() -> dict[str, Any]:
+    """``asyncpg.connect`` keyword arguments for the LISTEN connection.
+
+    Not a DSN: asyncpg parses one with ``urllib``, which reads a ``[`` or ``]``
+    in the password as a broken IPv6 host — and Aurora's password is generated
+    by RDS, which can produce them. The URL is split with SQLAlchemy's parser,
+    the one every other connection of the app already goes through.
+    """
     from nexus_api.config import get_settings
+    from sqlalchemy.engine import make_url
 
     settings = get_settings()
-    url: str = settings.database_url_direct or settings.database_url
-    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    url = make_url(settings.database_url_direct or settings.database_url)
+    # What the asyncpg dialect hands to ``asyncpg.connect`` for one host.
+    kwargs: dict[str, Any] = url.translate_connect_args(username="user")
+    kwargs.update(url.query)
+    return kwargs
 
 
 async def _run_listener(work: OutboundWorkSet, stop: asyncio.Event) -> None:
@@ -204,7 +215,7 @@ async def _run_listener(work: OutboundWorkSet, stop: asyncio.Event) -> None:
     while not stop.is_set():
         conn = None
         try:
-            conn = await asyncpg.connect(_asyncpg_dsn())
+            conn = await asyncpg.connect(**_asyncpg_connect_kwargs())
 
             def _on_notify(_conn, _pid, _channel, payload):  # type: ignore[no-untyped-def]
                 work.add_raw(payload)
