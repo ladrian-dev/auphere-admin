@@ -1,6 +1,6 @@
 "use client";
 
-import { WifiOff } from "lucide-react";
+import { Bot, WifiOff } from "lucide-react";
 import * as React from "react";
 
 import { Alert, AlertDescription, Button, Sheet, SheetContent, SheetTitle, cn } from "@nexus/ui";
@@ -39,7 +39,7 @@ import { inboxAttachmentUrl } from "@/lib/inbox-urls";
 
 import { Composer } from "./composer";
 import { ContactPanel } from "./contact-panel";
-import { ConversationList } from "./conversation-list";
+import { ConversationList, INBOX_AGENT_FILTER_ID } from "./conversation-list";
 import { composerMode, initialsOf, sendErrorOf, type SendError } from "./inbox-model";
 import { reloadPage } from "./reload";
 import type { RepliesApi } from "./saved-replies";
@@ -492,6 +492,28 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     else setSheetOpen((v) => !v);
   }
 
+  /** Spec 045 (R6.2): the «N agentes activos» pill takes you to the agent filter.
+   *  On a phone with a conversation open the list is hidden: back to it first. */
+  function focusAgentFilter() {
+    const open = (el: HTMLElement | null) => {
+      if (!(el instanceof HTMLSelectElement)) return;
+      el.focus();
+      try {
+        el.showPicker();
+      } catch {
+        /* no picker API (older browsers, tests): the focus is enough */
+      }
+    };
+    const el = document.getElementById(INBOX_AGENT_FILTER_ID);
+    if (el && el.getClientRects().length > 0) {
+      open(el);
+      return;
+    }
+    if (selectedId) back();
+    // After the list is painted again.
+    window.requestAnimationFrame(() => open(document.getElementById(INBOX_AGENT_FILTER_ID)));
+  }
+
   // ── render ──────────────────────────────────────────────────────────
   const initials = detail ? initialsOf(detail.contact.name) : "·";
   return (
@@ -499,9 +521,27 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       ref={frame}
       className="flex h-[calc(100svh-8rem)] min-h-[32rem] flex-col overflow-hidden rounded-md border border-border bg-card"
     >
-      <div className="flex items-center gap-3 border-b border-border px-4 py-2">
-        <h1 className="text-base font-semibold">{t("inbox.title")}</h1>
-        <span className="flex-1" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-base font-semibold text-balance">{t("inbox.title")}</h1>
+            {initial.agents.length > 1 ? (
+              <button
+                type="button"
+                onClick={focusAgentFilter}
+                aria-controls={INBOX_AGENT_FILTER_ID}
+                title={initial.agents.map((a) => a.name).join(" · ")}
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 text-xs font-medium text-accent-foreground transition-colors duration-(--duration-fast) hover:bg-primary/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+              >
+                <Bot className="size-3" aria-hidden="true" />
+                {t("inbox.agents.active", { count: initial.agents.length })}
+              </button>
+            ) : null}
+          </div>
+          <p className="min-w-0 text-xs text-pretty text-muted-foreground">
+            {initial.agents.length > 1 ? t("inbox.intro.many") : t("inbox.intro.one")}
+          </p>
+        </div>
         <span role="status" className="text-xs text-muted-foreground">
           {notice}
         </span>

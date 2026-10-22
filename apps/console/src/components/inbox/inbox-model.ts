@@ -95,6 +95,21 @@ export function clock(at: string, locale: string): string {
   return new Date(at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Spec 045 (R3.1): how long a conversation has waited for a person, in whole units. */
+export type WaitingFor = { unit: "now" | "min" | "h" | "d"; n: number };
+
+export function waitingFor(since: string, now: Date): WaitingFor | null {
+  const start = new Date(since).getTime();
+  if (Number.isNaN(start)) return null;
+  // A browser clock a little ahead of the server's must not read as a negative wait.
+  const minutes = Math.floor(Math.max(0, now.getTime() - start) / 60_000);
+  if (minutes < 1) return { unit: "now", n: 0 };
+  if (minutes < 60) return { unit: "min", n: minutes };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { unit: "h", n: hours };
+  return { unit: "d", n: Math.floor(hours / 24) };
+}
+
 /** Thread items with a separator wherever the day changes. */
 export type ThreadRow = { kind: "day"; key: string; at: string } | { kind: "item"; key: string; item: InboxThreadItem };
 

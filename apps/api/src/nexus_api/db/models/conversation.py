@@ -153,6 +153,18 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     #: Última actividad en cualquier sentido: el orden de la Bandeja.
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Spec 045 (migración 0171): la Bandeja solo enseña lo que el agente
+    # atiende o atendió. Un entrante «atendido» es uno que la puerta de
+    # números permitidos (spec 024) no silenció, en un número con agente.
+    #: Primer entrante atendido. ``NULL`` = la conversación no existe para la
+    #: Bandeja (un número silenciado, un envío del sistema sin respuesta).
+    attended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Último entrante atendido: contra lo que se mide el «sin leer». No es
+    #: ``last_inbound_at``, que sigue siendo la ventana de 24 h de WhatsApp.
+    last_attended_inbound_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "messages"

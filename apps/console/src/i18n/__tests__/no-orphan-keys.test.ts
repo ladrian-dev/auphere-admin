@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { agentsMessages } from "../lanes/agents";
 import { inboxMessages } from "../lanes/inbox";
 import { liteMessages } from "../lanes/lite";
+import { reservasMessages } from "../lanes/reservas";
 import { workstationMessages } from "../lanes/workstation";
 
 /**
@@ -60,6 +61,22 @@ const corpus = sourceFiles(SRC)
 /** `t("ws.machines.title")` — la clave entera, tal cual. */
 const literal = new Set(Array.from(corpus.matchAll(/["'`]([\w.-]+)["'`]/g), (m) => m[1]!));
 
+/**
+ * Spec 031 (D16): la app lee los carriles lite e inbox generados. Una clave que
+ * solo pide la app tiene dueño; lo generado (`*.gen.ts`) no cuenta como uso.
+ */
+const APP = join(SRC, "..", "..", "mobile", "src");
+function appFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) return entry === "__tests__" ? [] : appFiles(full);
+    return /\.(ts|tsx)$/.test(entry) && !entry.endsWith(".gen.ts") ? [full] : [];
+  });
+}
+const appLiteral = new Set(
+  appFiles(APP).flatMap((f) => Array.from(readFileSync(f, "utf8").matchAll(/["'`]([\w.-]+)["'`]/g), (m) => m[1]!)),
+);
+
 /** `` t(`ws.setup.step.${x}`) `` — lo que hay antes de la interpolación. */
 const prefixes = Array.from(new Set(Array.from(corpus.matchAll(/`([\w.-]*\.)\$\{/g), (m) => m[1]!)));
 
@@ -88,8 +105,12 @@ describe("claves de la consola lite sin dueño", () => {
     ["lite", liteMessages],
     ["inbox", inboxMessages],
     ["agents", agentsMessages],
+    // Spec 043: Reservas nace vigilada, como la Bandeja.
+    ["reservas", reservasMessages],
   ] as const)("carril %s: ninguna clave se queda sin quien la pida", (_lane, lane) => {
-    const orphans = Object.keys(lane).filter((key) => !literal.has(key) && !prefixes.some((p) => key.startsWith(p)));
+    const orphans = Object.keys(lane).filter(
+      (key) => !literal.has(key) && !appLiteral.has(key) && !prefixes.some((p) => key.startsWith(p)),
+    );
     expect(orphans, `claves que no pide nadie: ${orphans.join(", ")}`).toEqual([]);
   });
 });

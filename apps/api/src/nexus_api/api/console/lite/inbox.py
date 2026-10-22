@@ -84,6 +84,13 @@ class LastMessageOut(BaseModel):
     has_media: bool
 
 
+class WaitingOut(BaseModel):
+    """Spec 045 (R3.1): por qué y desde cuándo espera a una persona."""
+
+    reason: str | None
+    since: datetime
+
+
 class ConversationItemOut(BaseModel):
     id: uuid.UUID
     contact: ContactOut
@@ -94,6 +101,7 @@ class ConversationItemOut(BaseModel):
     last_message: LastMessageOut | None
     unread: bool
     tags: list[str]
+    waiting: WaitingOut | None = None
 
 
 class CountsOut(BaseModel):
@@ -114,11 +122,29 @@ class WindowOut(BaseModel):
     closes_at: datetime | None
 
 
+class NextBookingLocal(BaseModel):
+    date: str
+    start: str
+    end: str
+
+
+class NextBookingOut(BaseModel):
+    """Spec 043: la próxima reserva viva del contacto (con el módulo)."""
+
+    id: uuid.UUID
+    starts_at: datetime
+    local: NextBookingLocal
+    status: str
+    service_name: str | None
+    party_size: int | None
+
+
 class ContactDetailOut(BaseModel):
     name: str
     handle: str
     first_message_at: datetime | None
     conversations: int
+    next_booking: NextBookingOut | None = None
 
 
 class NoteOut(BaseModel):
@@ -144,6 +170,7 @@ class ConversationDetailOut(BaseModel):
     contact: ContactDetailOut
     summary: str | None
     waiting_reason: str | None
+    waiting_since: datetime | None = None
     tags: list[str]
     note: NoteOut
     activity: list[ActivityOut]
@@ -275,9 +302,11 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
             handle=d.contact_handle,
             first_message_at=d.first_message_at,
             conversations=d.conversations,
+            next_booking=await _next_booking(scope, conv),
         ),
         summary=d.summary,
         waiting_reason=d.waiting_reason,
+        waiting_since=d.waiting_since,
         tags=d.tags,
         note=NoteOut(body=d.note_body, updated_at=d.note_updated_at),
         activity=[
@@ -290,6 +319,19 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
             for a in d.activity
         ],
     )
+
+
+async def _next_booking(scope: LiteScope, conv: Conversation) -> NextBookingOut | None:
+    if not scope.principal.has("reservas"):
+        return None
+    from nexus_api.services.reservations.core import load_ctx
+    from nexus_api.services.reservations.views import next_booking_of
+
+    ctx = await load_ctx(scope.session, scope.principal.tenant_id)
+    if ctx is None:
+        return None
+    found = await next_booking_of(scope.session, ctx, conv.customer_id, datetime.now(UTC))
+    return NextBookingOut.model_validate(found) if found else None
 
 
 def _publish(
@@ -367,6 +409,11 @@ async def list_conversations(
                 ),
                 unread=i.unread,
                 tags=i.tags,
+                waiting=(
+                    WaitingOut(reason=i.waiting_reason, since=i.waiting_since)
+                    if i.state == "waiting" and i.waiting_since is not None
+                    else None
+                ),
             )
             for i in page.items
         ],

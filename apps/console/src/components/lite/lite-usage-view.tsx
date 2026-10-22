@@ -1,16 +1,15 @@
-import { BarChart3, CircleDollarSign, MessageCircle, Wallet } from "lucide-react";
+import { BarChart3, CircleDollarSign, MessageCircle } from "lucide-react";
 
 import { Alert, AlertDescription, EmptyState, Metric, PageHeader, Section, formatNumber } from "@nexus/ui";
 
-import { MeterList } from "@/app/(console)/usage/meter-list";
 import { SpendChart } from "@/app/(console)/usage/spend-chart";
 import { SpendControls } from "@/app/(console)/usage/spend-controls";
-import { creditRunway } from "@/components/home/home-model";
 import type { Locale, MessageKey } from "@/i18n/messages";
 import type { LiteSpend, LiteUsageDetail, LiteUsageSummary } from "@/lib/backend/lite";
-import { meterLabel } from "@/lib/meter-label";
 import { formatMoney } from "@/lib/money";
-import { meterGroups } from "@/lib/usage-projection";
+
+import { LiteBalanceCard } from "./lite-balance-card";
+import { detailFamilies } from "./lite-model";
 
 type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
@@ -19,12 +18,18 @@ type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
  * «Comprar saldo», no tope to change and no alerts to set (C2: Auphere bills
  * the partner). The same money the partner sees for this client; never
  * Auphere's cost. Pure: every state is testable.
+ *
+ * Spec 045 (R6.3): the balance goes first and big, with until when it lasts;
+ * the technical detail is one WhatsApp row in three families (messages,
+ * model usage, media) and the period's spend. Only WhatsApp by Meta is in
+ * use, so there is no row or tab of another channel.
  */
 export function LiteUsageView({
   clientName,
   summary,
   spend,
   detail,
+  periodSpend,
   days,
   agent = "",
   agents = [],
@@ -36,6 +41,9 @@ export function LiteUsageView({
   summary: LiteUsageSummary | null;
   spend: LiteSpend | null;
   detail: LiteUsageDetail | null;
+  /** The client's whole spend over `days` when the chart is narrowed to one
+   *  agent; without it, `spend` is already the whole one. */
+  periodSpend?: LiteSpend | null;
   days: number;
   /** Spec 030: the spend chart of one agent; `agents` is empty with one. */
   agent?: string;
@@ -48,8 +56,9 @@ export function LiteUsageView({
   const money = (cents: number) => formatMoney(cents, locale);
   const balance = summary?.balance ?? null;
   const month = summary?.month ?? null;
-  const runway = balance?.assigned ? creditRunway(balance.remaining_cents, balance.days_left, now) : null;
   const byAgent = summary?.by_agent && summary.by_agent.length > 1 ? summary.by_agent : null;
+  const whole = periodSpend !== undefined ? periodSpend : agent ? null : spend;
+  const periodCents = whole ? whole.series_cents.reduce((sum, c) => sum + c, 0) : null;
 
   return (
     <>
@@ -64,34 +73,10 @@ export function LiteUsageView({
         </Alert>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-3" aria-label={t("lite.usage.cards")}>
-        <Metric
-          icon={<Wallet />}
-          label={t("lite.kpi.balance")}
-          value={balance?.assigned && balance.remaining_cents != null ? money(balance.remaining_cents) : "—"}
-          progress={
-            runway
-              ? {
-                  value: runway.days,
-                  max: runway.monthLeft,
-                  tone: runway.tone,
-                  label: t("lite.kpi.balance.runway.aria"),
-                  valueLabel: t("lite.usage.balance.runway", { days: n(runway.days) }),
-                }
-              : undefined
-          }
-          hint={
-            balance === null
-              ? t("lite.usage.unreadable")
-              : !balance.assigned
-                ? t("lite.kpi.balance.unassigned")
-                : (balance.remaining_cents ?? 0) <= 0
-                  ? t("lite.kpi.balance.out")
-                  : runway
-                    ? undefined
-                    : t("lite.kpi.balance.noSpend")
-          }
-        />
+      {/* The balance first and big (spec 045): it answers «until when» before
+          anything else. Spend and conversations stack beside it. */}
+      <section className="grid gap-4 md:grid-cols-2" aria-label={t("lite.usage.cards")}>
+        <LiteBalanceCard balance={balance} t={t} locale={locale} now={now} className="md:row-span-2" />
         <Metric
           icon={<CircleDollarSign />}
           label={t("lite.spend.title")}
@@ -168,7 +153,7 @@ export function LiteUsageView({
             {t("hu.usage.detail.title")}
             <span className="block text-xs font-normal text-muted-foreground">{t("lite.usage.detail.hint")}</span>
           </span>
-          <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90">
+          <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none">
             ›
           </span>
         </summary>
@@ -187,37 +172,91 @@ export function LiteUsageView({
           ) : detail.buckets.length === 0 ? (
             <EmptyState title={t("usage.empty")} description={t("usage.period", { days })} readonly />
           ) : (
-            <>
-              <MeterList groups={meterGroups([], detail.totals_by_meter)} t={t} locale={locale} />
-              <div className="max-h-112 min-w-0 overflow-auto rounded-md ring-1 ring-foreground/10">
-                <table className="w-full text-sm">
-                  <caption className="sr-only">{t("hu.usage.detail.title")}</caption>
-                  <thead>
-                    <tr className="sticky top-0 border-b bg-card text-left">
-                      <th className="h-10 px-2 font-medium">{t("usage.meter")}</th>
-                      <th className="h-10 px-2 text-right font-medium">{t("usage.quantity")}</th>
-                      <th className="h-10 px-2 text-right font-medium">{t("usage.billable")}</th>
-                      <th className="h-10 px-2 text-right font-medium">{t("usage.records")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.buckets.map((b, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="p-2" title={b.meter}>
-                          {meterLabel(b.meter, t)}
-                        </td>
-                        <td className="p-2 text-right tabular-nums">{n(b.quantity)}</td>
-                        <td className="p-2 text-right tabular-nums">{n(b.billable_qty)}</td>
-                        <td className="p-2 text-right tabular-nums">{n(b.records)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+            <DetailTable totals={detail.totals_by_meter} periodCents={periodCents} days={days} t={t} locale={locale} />
           )}
         </div>
       </details>
     </>
+  );
+}
+
+/**
+ * The technical detail (spec 045, R6.3): one row, WhatsApp —the only channel
+ * in use—, the meters added up in their families, each in its own unit, and
+ * the money the period cost. The families do not add up to that money: the
+ * API measures quantities per meter, not money per meter, so the money is
+ * the period's spend and says so in its header.
+ */
+function DetailTable({
+  totals,
+  periodCents,
+  days,
+  t,
+  locale,
+}: {
+  totals: Record<string, number>;
+  periodCents: number | null;
+  days: number;
+  t: T;
+  locale: Locale;
+}) {
+  const n = (v: number) => formatNumber(v, locale);
+  const families = detailFamilies(totals);
+  const unit = "block text-xs font-normal text-muted-foreground";
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <p className="text-xs text-muted-foreground">{t("usage.period", { days })}</p>
+      {/* Its own horizontal scroll: five columns do not fit a 360 px phone.
+          Focusable, so a keyboard can scroll it too (WCAG 2.1.1). */}
+      <div
+        role="region"
+        aria-label={t("hu.usage.detail.title")}
+        tabIndex={0}
+        className="min-w-0 overflow-x-auto rounded-md ring-1 ring-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <table className="w-full min-w-xl text-sm">
+          <caption className="sr-only">{t("hu.usage.detail.title")}</caption>
+          <thead>
+            <tr className="border-b text-left align-bottom">
+              <th scope="col" className="h-10 px-4 py-2 font-medium">
+                {t("lite.usage.detail.channel")}
+              </th>
+              <th scope="col" className="h-10 px-4 py-2 text-right font-medium">
+                {t("hu.usage.meters.messages")}
+              </th>
+              <th scope="col" className="h-10 px-4 py-2 text-right font-medium">
+                {t("hu.usage.meters.model")}
+                <span className={unit}>{t("lite.usage.detail.unit.model")}</span>
+              </th>
+              <th scope="col" className="h-10 px-4 py-2 text-right font-medium">
+                {t("hu.usage.meters.media")}
+                <span className={unit}>{t("lite.usage.detail.unit.media")}</span>
+              </th>
+              {families.other != null ? (
+                <th scope="col" className="h-10 px-4 py-2 text-right font-medium">
+                  {t("hu.usage.meters.other")}
+                  <span className={unit}>{t("lite.usage.detail.unit.other")}</span>
+                </th>
+              ) : null}
+              <th scope="col" className="h-10 px-4 py-2 text-right font-medium">
+                {t("lite.usage.detail.spend")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row" className="px-4 py-3 text-left font-medium">
+                {t("inbox.channel.whatsapp")}
+              </th>
+              <td className="px-4 py-3 text-right tabular-nums">{n(families.messages)}</td>
+              <td className="px-4 py-3 text-right tabular-nums">{n(families.model)}</td>
+              <td className="px-4 py-3 text-right tabular-nums">{n(families.media)}</td>
+              {families.other != null ? <td className="px-4 py-3 text-right tabular-nums">{n(families.other)}</td> : null}
+              <td className="px-4 py-3 text-right font-medium tabular-nums">{periodCents == null ? "—" : formatMoney(periodCents, locale)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

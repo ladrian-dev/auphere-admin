@@ -457,6 +457,7 @@ import { liteApi } from "./backend/lite";
 import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
+import { reservasApi } from "./backend/reservas";
 import { teammatesApi } from "./backend/teammates";
 export type { ExecMode, LocalExecCeiling, LocalExecPolicy, LocalExecPref } from "./backend/teammates";
 import { workstationApi, workstationPartnerApi } from "./backend/workstation";
@@ -500,6 +501,8 @@ export function backendFor(principal: Principal) {
     // Spec 030: the client console (`/console/lite/*`).
     ...liteApi(call),
     ...inboxApi(call),
+    // Spec 043: Reservas (`/console/lite/reservas/*`).
+    ...reservasApi(call),
     ...modelsApi(call),
     ...onboardingApi(call),
     ...workstationApi(call),

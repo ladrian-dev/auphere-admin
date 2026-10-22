@@ -73,14 +73,16 @@ BOREAL_SLUG = "clinica-boreal"
 BOREAL_NAME = "Clínica Boreal"
 BOREAL_TIMEZONE = "America/Caracas"
 BOREAL_MARKET = "VE"
+# La forma canónica de ``services/business_hours.py`` (bug
+# horario-del-negocio-en-tres-formas): tramos por día, lista vacía = cerrado.
 BOREAL_BUSINESS_HOURS = {
-    "monday": {"open": "09:00", "close": "18:00"},
-    "tuesday": {"open": "09:00", "close": "18:00"},
-    "wednesday": {"open": "09:00", "close": "18:00"},
-    "thursday": {"open": "09:00", "close": "18:00"},
-    "friday": {"open": "09:00", "close": "18:00"},
-    "saturday": {"open": "09:00", "close": "14:00"},
-    "sunday": None,
+    "monday": [{"from": "09:00", "to": "18:00"}],
+    "tuesday": [{"from": "09:00", "to": "18:00"}],
+    "wednesday": [{"from": "09:00", "to": "18:00"}],
+    "thursday": [{"from": "09:00", "to": "18:00"}],
+    "friday": [{"from": "09:00", "to": "18:00"}],
+    "saturday": [{"from": "09:00", "to": "14:00"}],
+    "sunday": [],
 }
 
 # Placeholders ficticios pero verosímiles — coherentes con la ficha

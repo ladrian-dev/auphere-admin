@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 #: Lo más largo que viaja de un texto libre (R9.2).
 MAX_TEXT = 100
@@ -121,6 +122,49 @@ def balance(*, kind: str, days_left: int | None, contact: str, locale: str) -> N
     return NoticeText(title=title, body=body)
 
 
+_DAYS = {
+    "es": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
+    "en": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
+}
+
+
+def reservas(
+    *, kind: str, at: datetime, party: int | None, changed: bool, locale: str
+) -> NoticeText:
+    """Spec 043: los avisos de Reservas. La hora y, en Aforo, cuántos; **nunca**
+    el nombre del cliente final ni la nota (R9.2 de la 031)."""
+    lang = _lang(locale)
+    en = lang == "en"
+    day = _DAYS[lang][at.weekday()]
+    hour = at.strftime("%H:%M")
+    people = ""
+    if party is not None:
+        people = f" · {party} people" if en else f" · {party} personas"
+    if kind == "reservas.agent_change":
+        title = (
+            ("Booking changed" if en else "Reserva cambiada")
+            if changed
+            else ("New booking" if en else "Reserva nueva")
+        )
+        body = (
+            f"The agent booked {day} {at.day} at {hour}{people}"
+            if en
+            else f"El agente reservó para el {day} {at.day} a las {hour}{people}"
+        )
+        return NoticeText(title=title, body=body)
+    if kind == "reservas.cancelled_today":
+        return NoticeText(
+            title="Today's cancellation" if en else "Cancelación de hoy",
+            body=f"The {hour} booking is free again{people}"
+            if en
+            else f"Se liberó la reserva de las {hour}{people}",
+        )
+    return NoticeText(
+        title="Waitlist" if en else "Lista de espera",
+        body=f"Someone took the {hour} slot" if en else f"Alguien aceptó el hueco de las {hour}",
+    )
+
+
 __all__ = [
     "MAX_TEXT",
     "NoticeText",
@@ -128,6 +172,7 @@ __all__ = [
     "contact_label",
     "cut",
     "message",
+    "reservas",
     "scrub",
     "waiting",
 ]

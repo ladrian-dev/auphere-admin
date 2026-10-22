@@ -357,3 +357,92 @@ async def test_the_sweep_finds_tenants_with_due_work(db_session, identity, shop)
     )
     async with identity() as s:
         assert tid in await push_fanout.tenants_with_pending(s)
+
+
+# ── spec 045 ─────────────────────────────────────────────────────────────
+
+
+async def test_a_conversation_the_agent_never_attended_never_notifies(
+    db_session, scoped_session_factory, identity, shop
+) -> None:
+    """R2.4: lo que la Bandeja no enseña no avisa."""
+    tid = shop["w"]["tenant_id"]
+    await db_session.execute(
+        sa.update(Conversation).where(Conversation.id == shop["conv"]).values(attended_at=None)
+    )
+    await db_session.commit()
+    await _enqueue(
+        db_session, tid, kind="inbox.waiting", conversation_id=shop["conv"], dedupe_key="w:q1"
+    )
+
+    out = await _claim(scoped_session_factory, identity, tid)
+
+    assert out == []
+    assert {x.skip_reason for x in (await _deliveries(db_session, tid)).values()} == {
+        "no_longer_true"
+    }
+
+
+async def _closed_all_week(db_session, tenant_id) -> None:
+    from nexus_api.db.models import Tenant
+
+    days = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    await db_session.execute(
+        sa.update(Tenant)
+        .where(Tenant.id == tenant_id)
+        .values(business_hours={d: [] for d in days}, timezone="America/Santiago")
+    )
+    await db_session.commit()
+
+
+async def test_quiet_hours_hold_back_what_is_not_urgent(
+    db_session, scoped_session_factory, identity, shop
+) -> None:
+    """R5.3 y R5.4: fuera de horario, el mensaje para quien atiende no sale a
+    un teléfono con el silencio puesto; a uno sin silencio, sí."""
+    tid = shop["w"]["tenant_id"]
+    me = shop["box"]["member"]["user_id"]
+    await _closed_all_week(db_session, tid)
+    await db_session.execute(
+        sa.update(ClientPhone)
+        .where(ClientPhone.id == shop["valeria_android"]["phone_id"])
+        .values(quiet_outside_hours=False)
+    )
+    await db_session.execute(
+        sa.update(Conversation)
+        .where(Conversation.id == shop["conv"])
+        .values(status=ConversationStatus.OPEN, agent_active=False, assigned_user_id=me)
+    )
+    await db_session.commit()
+    await _enqueue(
+        db_session,
+        tid,
+        kind="inbox.message_for_you",
+        conversation_id=shop["conv"],
+        target_principal_id=me,
+        dedupe_key="m:q1",
+    )
+
+    out = await _claim(scoped_session_factory, identity, tid)
+
+    assert {o.phone_id for o in out} == {shop["valeria_android"]["phone_id"]}
+    d = await _deliveries(db_session, tid)
+    assert d[shop["valeria_ios"]["phone_id"]].skip_reason == "quiet_hours"
+
+
+async def test_quiet_hours_never_hold_back_a_waiting_conversation(
+    db_session, scoped_session_factory, identity, shop
+) -> None:
+    tid = shop["w"]["tenant_id"]
+    await _closed_all_week(db_session, tid)
+    await _enqueue(
+        db_session, tid, kind="inbox.waiting", conversation_id=shop["conv"], dedupe_key="w:q2"
+    )
+
+    out = await _claim(scoped_session_factory, identity, tid)
+
+    assert {o.phone_id for o in out} == {
+        shop["valeria_ios"]["phone_id"],
+        shop["valeria_android"]["phone_id"],
+        shop["marcos"]["phone_id"],
+    }

@@ -11,12 +11,17 @@ import uuid
 from typing import Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from nexus_api.config import get_settings
-from nexus_api.db.models import Channel, ChannelStatus
+from nexus_api.db.models import Channel, ChannelStatus, ClientPhone, ReservationSettings
 from nexus_api.services import inbox_view
+from nexus_api.services.business_hours import (
+    business_hours_label,
+    parse_business_hours,
+    to_canonical,
+)
 
 from .deps import LiteScope, lite_scope
 
@@ -48,6 +53,22 @@ class LiteAgentOut(BaseModel):
     name: str
 
 
+class LiteBusinessOut(BaseModel):
+    """Spec 045 (R5.1): el horario del perfil del negocio y su zona. La app lo
+    lee para «silenciar fuera de horario»; se edita en la web (Reservas)."""
+
+    timezone: str
+    hours: dict[str, list[dict[str, str]]] | None
+    hours_label: str | None
+
+
+class LiteReservasOut(BaseModel):
+    """Spec 043: el modo de Reservas (las palabras las pone cada pantalla)."""
+
+    mode: Literal["services", "capacity"]
+    capacity_kind: str | None
+
+
 class LiteMeOut(BaseModel):
     user: LiteUserOut
     client: LiteClientOut
@@ -59,10 +80,35 @@ class LiteMeOut(BaseModel):
     # Spec 030 (iteration 3): the client's active agents, principal first.
     agents: list[LiteAgentOut]
     channels: list[LiteChannelOut]
+    business: LiteBusinessOut
+    reservas: LiteReservasOut | None = None
+
+
+async def _locale(scope: LiteScope, request: Request) -> str:
+    """El idioma de la persona: el de su teléfono; en la web, el que pide el
+    navegador."""
+    phone_id = scope.principal.phone_id
+    if phone_id is not None:
+        phone = await scope.session.get(ClientPhone, phone_id)
+        if phone is not None:
+            return phone.locale
+    return "en" if request.headers.get("accept-language", "").lower().startswith("en") else "es"
+
+
+async def business_of(scope: LiteScope, request: Request) -> LiteBusinessOut:
+    tenant = scope.tenant
+    hours = parse_business_hours(tenant.business_hours)
+    return LiteBusinessOut(
+        timezone=tenant.timezone or "UTC",
+        hours=to_canonical(hours) if hours is not None else None,
+        hours_label=business_hours_label(hours, await _locale(scope, request))
+        if hours is not None
+        else None,
+    )
 
 
 @router.get("/me", response_model=LiteMeOut)
-async def read_me(scope: LiteScope = Depends(lite_scope())) -> LiteMeOut:
+async def read_me(request: Request, scope: LiteScope = Depends(lite_scope())) -> LiteMeOut:
     principal = scope.principal
     partner = principal.partner
     if partner.slug in get_settings().auphere_partner_slug_set:
@@ -87,4 +133,15 @@ async def read_me(scope: LiteScope = Depends(lite_scope())) -> LiteMeOut:
             for aid, name in await inbox_view.client_agents(scope.session)
         ],
         channels=channels,
+        business=await business_of(scope, request),
+        reservas=await _reservas(scope),
     )
+
+
+async def _reservas(scope: LiteScope) -> LiteReservasOut | None:
+    if not scope.principal.has("reservas"):
+        return None
+    settings = await scope.session.get(ReservationSettings, scope.principal.tenant_id)
+    if settings is None:
+        return None
+    return LiteReservasOut(mode=settings.mode, capacity_kind=settings.capacity_kind)  # type: ignore[arg-type]

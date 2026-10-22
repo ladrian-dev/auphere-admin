@@ -17,8 +17,8 @@ import type { Role } from "./permissions";
  * in; this module only carries the answer.
  */
 
-/** The client console's modules, in sidebar order (Panel, Bandeja, Consumo). */
-export const CLIENT_MODULES = ["panel", "inbox", "usage"] as const;
+/** The client console's modules, in sidebar order (Panel, Bandeja, Reservas, Consumo). */
+export const CLIENT_MODULES = ["panel", "inbox", "reservas", "usage"] as const;
 export type ClientModule = (typeof CLIENT_MODULES)[number];
 
 type PrincipalBase = {
@@ -163,10 +163,17 @@ export function firstPartnerModulePath(modules: readonly PartnerModule[]): strin
   return PARTNER_MODULE_PATH[first as Exclude<PartnerModule, "companion">];
 }
 
+/** Where each client module lives (spec 043 adds Reservas). */
+const CLIENT_MODULE_PATH: Record<ClientModule, string> = {
+  panel: "/",
+  inbox: "/inbox",
+  reservas: "/reservas",
+  usage: "/usage",
+};
+
 /** Where a client lands: its first module, in the order the API sent. */
 export function firstModulePath(modules: readonly ClientModule[]): string {
-  const first = modules[0] ?? "panel";
-  return first === "panel" ? "/" : first === "inbox" ? "/inbox" : "/usage";
+  return CLIENT_MODULE_PATH[modules[0] ?? "panel"];
 }
 
 /**
@@ -179,6 +186,7 @@ export function firstModulePath(modules: readonly ClientModule[]): string {
 export function clientModuleOfPath(pathname: string): ClientModule | null {
   if (pathname === "/") return "panel";
   if (pathname === "/inbox") return "inbox";
+  if (pathname === "/reservas") return "reservas";
   if (pathname === "/usage") return "usage";
   return null;
 }

@@ -9,6 +9,8 @@ import { ConversationRow } from "./conversation-row";
 
 /** The id the global search (⌘K) focuses — R7.4. */
 export const INBOX_SEARCH_ID = "inbox-search";
+/** The id the «N agentes activos» pill of the head focuses (spec 045, R6.2). */
+export const INBOX_AGENT_FILTER_ID = "inbox-agent-filter";
 
 const FILTERS: InboxFilter[] = ["all", "unread", "waiting", "resolved"];
 
@@ -104,6 +106,7 @@ export function ConversationList({
         </div>
         {agents.length > 1 ? (
           <NativeSelect
+            id={INBOX_AGENT_FILTER_ID}
             size="sm"
             aria-label={t("inbox.filter.agent")}
             value={agent ?? ""}

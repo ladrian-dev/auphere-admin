@@ -74,6 +74,9 @@ async def _seed_activity(db_session, tenant_id: uuid.UUID, *, escalated: bool = 
                 else ConversationStatus.OPEN,
                 last_inbound_at=now,
                 created_at=now - timedelta(days=i),
+                # Spec 045: las atendió el agente.
+                attended_at=now - timedelta(days=i),
+                last_attended_inbound_at=now,
             )
         )
     await db_session.commit()
@@ -121,6 +124,39 @@ async def test_every_figure_matches_what_the_partner_sees(
     assert body["spend_month"]["by_agent"] is None
     assert body["waiting"]["count"] == partner["to_review"]["escalated"] == 1
     assert body["waiting"]["first_conversation_id"] is not None
+    counts = (await client.get("/console/lite/inbox/counts", headers=member["headers"]())).json()
+    assert body["waiting"]["count"] == counts["waiting"]
+
+
+async def test_waiting_is_the_inbox_number(client, db_session, console_world) -> None:
+    """Spec 045 R2.2: el «esperan» del Panel es el de la Bandeja, con los
+    mismos datos — también una escalada cuyo último mensaje es de hace dos
+    semanas, que el Inicio del partner (ventana de 7 días) no cuenta."""
+    w = console_world["a"]
+    await _seed_activity(db_session, w["tenant_id"])
+    old = datetime.now(UTC) - timedelta(days=14)
+    convs = (
+        (
+            await db_session.execute(
+                sa.select(Conversation).where(Conversation.tenant_id == w["tenant_id"])
+            )
+        )
+        .scalars()
+        .all()
+    )
+    stale = next(c for c in convs if c.status == ConversationStatus.OPEN)
+    stale.status = ConversationStatus.ESCALATED
+    stale.last_inbound_at = old
+    stale.last_attended_inbound_at = old
+    await db_session.commit()
+    member = await _member(db_session, w)
+
+    body = (await client.get(HOME, headers=member["headers"]())).json()
+    counts = (await client.get("/console/lite/inbox/counts", headers=member["headers"]())).json()
+
+    assert counts["waiting"] == 2
+    assert body["waiting"]["count"] == counts["waiting"]
+    assert {"kind": "waiting", "count": 2, "days_left": None} in body["attention"]
 
 
 async def test_without_inbox_there_is_no_waiting_block(client, db_session, console_world) -> None:

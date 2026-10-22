@@ -28,6 +28,7 @@ from tests.isolation.test_lite_client_vs_client import (
     _STREAMS,
     NEIGHBOUR_NAME,
     NEIGHBOUR_REF,
+    RESERVAS_PREFIX,
     _neighbourhood,
 )
 
@@ -52,7 +53,11 @@ def _lite_gets() -> list[str]:
     return [
         r.path
         for r in _console_routes()
-        if r.path.startswith("/console/lite") and "GET" in r.methods and r.path not in _STREAMS
+        if r.path.startswith("/console/lite")
+        and "GET" in r.methods
+        and r.path not in _STREAMS
+        # Spec 043: con la credencial del teléfono también, en su propio barrido.
+        and not r.path.startswith(RESERVAS_PREFIX)
     ]
 
 
@@ -99,6 +104,7 @@ async def test_every_write_with_an_id_is_probed() -> None:
         and sorted(r.methods)[0] != "GET"
         and not r.path.endswith("/attachments")
         and not r.path.startswith("/console/lite/notifications/")
+        and not r.path.startswith(RESERVAS_PREFIX)
     }
     assert mounted == {(m, p) for m, p, _ in _PHONE_WRITES}
 

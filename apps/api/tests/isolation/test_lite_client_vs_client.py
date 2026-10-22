@@ -137,6 +137,12 @@ _STREAMS = {"/console/lite/inbox/stream"}
 PHONE_ONLY = {"/console/lite/phones/current/notices"}
 
 
+#: Spec 043: Reservas tiene rutas por modo y con rango de fechas; su barrido,
+#: en los dos modos y con las dos credenciales, es
+#: ``test_reservas_client_vs_client.py``.
+RESERVAS_PREFIX = "/console/lite/reservas"
+
+
 def _lite_gets() -> list[str]:
     return [
         r.path
@@ -145,6 +151,7 @@ def _lite_gets() -> list[str]:
         and "GET" in r.methods
         and r.path not in _STREAMS
         and r.path not in PHONE_ONLY
+        and not r.path.startswith(RESERVAS_PREFIX)
     ]
 
 

@@ -405,10 +405,6 @@ async def _process_inbound_after_gates(
         conversation_id = conversation.id
         inbound_id = inbound_msg.id
         conversation_agent_active = conversation.agent_active
-        # Spec 031 (R8.3, R8.5): si la atiende una persona, su teléfono se
-        # entera. Aquí, en la transacción del entrante: si no se confirma, no
-        # avisa. Las burbujas plegadas de arriba son este mismo entrante.
-        await push_events.enqueue_message_for_you(session, conversation, inbound_id=inbound_msg.id)
         # Send-only channel (``config.agent_enabled = false``): a number the
         # business uses to push notifications out, with nobody behind it to
         # answer what comes back. Read here, inside the session that is
@@ -451,6 +447,28 @@ async def _process_inbound_after_gates(
         if skipped_reason is not None:
             inbound_msg.skipped_reason = skipped_reason
             await session.flush()
+        # Spec 045 (R1): la Bandeja solo enseña lo que el agente atiende o
+        # atendió. Un entrante cuenta si la puerta de arriba no lo silenció y
+        # el número tiene agente. Se marca con la hora del propio mensaje (el
+        # ``now()`` de la transacción), para que el hilo que empieza en
+        # ``attended_at`` lo incluya.
+        attended = (
+            skipped_reason is None
+            and config_agent_enabled(channel_config)
+            and active_agent is not None
+        )
+        if attended:
+            if conversation.attended_at is None:
+                conversation.attended_at = inbound_msg.created_at
+            conversation.last_attended_inbound_at = inbound_msg.created_at
+            await session.flush()
+            # Spec 031 (R8.3, R8.5): si la atiende una persona, su teléfono se
+            # entera. Aquí, en la transacción del entrante: si no se confirma,
+            # no avisa. Las burbujas plegadas son este mismo entrante. Un
+            # mensaje silenciado no avisa (spec 045, R2.3).
+            await push_events.enqueue_message_for_you(
+                session, conversation, inbound_id=inbound_msg.id
+            )
         # WP-17: qué VERSIÓN de agente consumió. Es lo que responde si el
         # prompt nuevo salió más caro que el viejo.
         agent_config_id: uuid.UUID | None = active_agent[0] if active_agent else None
@@ -485,14 +503,17 @@ async def _process_inbound_after_gates(
 
     # Spec 030: the Inbox shows the new inbound live. After the commit above
     # and without a body; a client without Inbox simply has no subscriber.
-    await publish_inbox_event(
-        None,
-        tenant_id=event.tenant_id,
-        event="message.new",
-        conversation_id=conversation_id,
-        message_id=str(inbound_id),
-        direction="inbound",
-    )
+    # Spec 045: only what the Inbox shows — a silenced inbound's id must not
+    # reach the console (its media route takes a message id; /cso CSO-002).
+    if attended:
+        await publish_inbox_event(
+            None,
+            tenant_id=event.tenant_id,
+            event="message.new",
+            conversation_id=conversation_id,
+            message_id=str(inbound_id),
+            direction="inbound",
+        )
 
     tenant_status = TenantStatus(tenant_status_raw)
     if tenant_status in _INACTIVE_STATUSES:

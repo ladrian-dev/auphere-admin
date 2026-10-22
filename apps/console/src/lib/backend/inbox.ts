@@ -20,11 +20,16 @@ export type InboxConversation = {
   channel: { kind: string };
   agent: { id: string; name: string } | null;
   state: InboxState;
+  /** Spec 045 (R3.1): why and since when it waits for a person; `null` unless `state = "waiting"`. */
+  waiting: InboxWaiting | null;
   assignee: InboxAuthor | null;
   last_message: { at: string; author: InboxAuthor; preview: string; has_media: boolean } | null;
   unread: boolean;
   tags: string[];
 };
+
+/** The agent's last escalation: its reason (it may leave none) and when it happened. */
+export type InboxWaiting = { reason: string | null; since: string };
 
 export type InboxCounts = { unread: number; waiting: number };
 
@@ -51,6 +56,8 @@ export type InboxDetail = {
   contact: { name: string; handle: string; first_message_at: string | null; conversations: number };
   summary: string | null;
   waiting_reason: string | null;
+  /** Spec 045 (R3.2): when the agent asked for a person; `null` unless `state = "waiting"`. */
+  waiting_since: string | null;
   tags: string[];
   note: { body: string; updated_at: string | null };
   activity: InboxActivity[];

@@ -33,5 +33,6 @@ def test_nav_is_the_bar_order_whatever_the_stored_order(stored: list[str]) -> No
     assert list(nav) == [m for m in CLIENT_MODULES if m in stored]
 
 
-def test_the_bar_order_is_panel_inbox_usage() -> None:
-    assert CLIENT_MODULES == ("panel", "inbox", "usage")
+def test_the_bar_order_is_panel_inbox_reservas_usage() -> None:
+    # Spec 043: Reservas va entre la Bandeja y Consumo, como en el diseño.
+    assert CLIENT_MODULES == ("panel", "inbox", "reservas", "usage")

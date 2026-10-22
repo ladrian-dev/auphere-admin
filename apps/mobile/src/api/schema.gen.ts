@@ -680,6 +680,542 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/lite/reservas/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Blocks */
+        get: operations["list_blocks_console_lite_reservas_blocks_get"];
+        put?: never;
+        /** Create Block */
+        post: operations["create_block_console_lite_reservas_blocks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/blocks/{block_id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove Block */
+        post: operations["remove_block_console_lite_reservas_blocks__block_id__remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Bookings */
+        get: operations["list_bookings_console_lite_reservas_bookings_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_console_lite_reservas_bookings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Booking */
+        get: operations["read_booking_console_lite_reservas_bookings__booking_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/arrive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Arrive */
+        post: operations["arrive_console_lite_reservas_bookings__booking_id__arrive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_console_lite_reservas_bookings__booking_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/cancel-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cancel Preview */
+        get: operations["cancel_preview_console_lite_reservas_bookings__booking_id__cancel_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm */
+        post: operations["confirm_console_lite_reservas_bookings__booking_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move */
+        post: operations["move_console_lite_reservas_bookings__booking_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/noshow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Noshow */
+        post: operations["noshow_console_lite_reservas_bookings__booking_id__noshow_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/request-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Confirmation */
+        post: operations["request_confirmation_console_lite_reservas_bookings__booking_id__request_confirmation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/bookings/{booking_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo */
+        post: operations["undo_console_lite_reservas_bookings__booking_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/business-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Business Hours */
+        put: operations["put_business_hours_console_lite_reservas_business_hours_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Calendar
+         * @description P3: la cuenta de Google Calendar del cliente y sus calendarios.
+         */
+        get: operations["read_calendar_console_lite_reservas_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/occupancy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Occupancy */
+        get: operations["occupancy_console_lite_reservas_occupancy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Offers */
+        get: operations["list_offers_console_lite_reservas_offers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/offers/{offer_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Offer */
+        post: operations["stop_offer_console_lite_reservas_offers__offer_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Services */
+        get: operations["list_services_console_lite_reservas_services_get"];
+        put?: never;
+        /** Create Service */
+        post: operations["create_service_console_lite_reservas_services_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/services/{service_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Service */
+        patch: operations["patch_service_console_lite_reservas_services__service_id__patch"];
+        trace?: never;
+    };
+    "/console/lite/reservas/services/{service_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Service */
+        post: operations["archive_service_console_lite_reservas_services__service_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Settings */
+        get: operations["read_settings_console_lite_reservas_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Settings */
+        patch: operations["patch_settings_console_lite_reservas_settings_patch"];
+        trace?: never;
+    };
+    "/console/lite/reservas/slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Slots */
+        get: operations["slots_console_lite_reservas_slots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Staff */
+        get: operations["list_staff_console_lite_reservas_staff_get"];
+        put?: never;
+        /** Create Staff */
+        post: operations["create_staff_console_lite_reservas_staff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/staff/{staff_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Staff */
+        patch: operations["patch_staff_console_lite_reservas_staff__staff_id__patch"];
+        trace?: never;
+    };
+    "/console/lite/reservas/staff/{staff_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Staff */
+        post: operations["archive_staff_console_lite_reservas_staff__staff_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/staff/{staff_id}/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Staff Calendar */
+        put: operations["put_staff_calendar_console_lite_reservas_staff__staff_id__calendar_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_console_lite_reservas_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/waitlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Waitlist */
+        get: operations["list_waitlist_console_lite_reservas_waitlist_get"];
+        put?: never;
+        /** Add Waitlist */
+        post: operations["add_waitlist_console_lite_reservas_waitlist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/waitlist/{entry_id}/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Offer Waitlist */
+        post: operations["offer_waitlist_console_lite_reservas_waitlist__entry_id__offer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/waitlist/{entry_id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove Waitlist */
+        post: operations["remove_waitlist_console_lite_reservas_waitlist__entry_id__remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/walkins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Walkin */
+        post: operations["walkin_console_lite_reservas_walkins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/lite/usage/detail": {
         parameters: {
             query?: never;
@@ -765,6 +1301,13 @@ export interface components {
             /** Kind */
             kind: string;
         };
+        /** AgentSettings */
+        AgentSettings: {
+            /** Max Days Ahead */
+            max_days_ahead: number;
+            /** Min Notice Minutes */
+            min_notice_minutes: number;
+        };
         /** AgentSpendOut */
         AgentSpendOut: {
             /**
@@ -833,12 +1376,434 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** BlockCreatedOut */
+        BlockCreatedOut: {
+            block: components["schemas"]["BlockOut"];
+            /** Overlapping Bookings */
+            overlapping_bookings: number;
+        };
+        /** BlockIn */
+        BlockIn: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** From */
+            from: string;
+            /** Label */
+            label: string;
+            /** Until */
+            until: string;
+        };
+        /** BlockListOut */
+        BlockListOut: {
+            /** Items */
+            items: components["schemas"]["BlockOut"][];
+        };
+        /** BlockOut */
+        BlockOut: {
+            /** Created By Name */
+            created_by_name: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** From */
+            from: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /** Until */
+            until: string;
+        };
+        /** BlockRefOut */
+        BlockRefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+        };
         /** Body_send_attachment_console_lite_inbox_conversations__conversation_id__attachments_post */
         Body_send_attachment_console_lite_inbox_conversations__conversation_id__attachments_post: {
             /** Caption */
             caption?: string | null;
             /** File */
             file: string;
+        };
+        /** BookingDetailOut */
+        BookingDetailOut: {
+            /** Allowed */
+            allowed: ("confirm" | "move" | "cancel" | "request_confirmation" | "arrive" | "noshow" | "undo")[];
+            /** Any Staff */
+            any_staff: boolean;
+            /** Arrived At */
+            arrived_at: string | null;
+            cancelled: components["schemas"]["CancelledOut"] | null;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "whatsapp" | "phone" | "in_person";
+            clash: components["schemas"]["ClashOut"] | null;
+            contact: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ContactOut"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            created_by: components["schemas"]["CreatedByOut"];
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Events */
+            events: components["schemas"]["EventOut"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Late Minutes */
+            late_minutes: number | null;
+            local: components["schemas"]["LocalSpan"];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "services" | "capacity";
+            /** Note */
+            note: string | null;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "agent" | "person" | "waitlist" | "walkin";
+            /** Party Size */
+            party_size: number;
+            price: components["schemas"]["MoneyOut"] | null;
+            service: components["schemas"]["BookingServiceOut"] | null;
+            staff: components["schemas"]["RefOut"] | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed" | "arrived" | "done" | "noshow" | "cancelled";
+            /** Version */
+            version: number;
+            /** Wants Earlier */
+            wants_earlier: boolean;
+        };
+        /** BookingListOut */
+        BookingListOut: {
+            /** Closed Days */
+            closed_days: string[];
+            /** Items */
+            items: components["schemas"]["BookingOut"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** BookingOut */
+        BookingOut: {
+            /** Allowed */
+            allowed: ("confirm" | "move" | "cancel" | "request_confirmation" | "arrive" | "noshow" | "undo")[];
+            /** Any Staff */
+            any_staff: boolean;
+            /** Arrived At */
+            arrived_at: string | null;
+            cancelled: components["schemas"]["CancelledOut"] | null;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "whatsapp" | "phone" | "in_person";
+            clash: components["schemas"]["ClashOut"] | null;
+            contact: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ContactOut"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            created_by: components["schemas"]["CreatedByOut"];
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Late Minutes */
+            late_minutes: number | null;
+            local: components["schemas"]["LocalSpan"];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "services" | "capacity";
+            /** Note */
+            note: string | null;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "agent" | "person" | "waitlist" | "walkin";
+            /** Party Size */
+            party_size: number;
+            price: components["schemas"]["MoneyOut"] | null;
+            service: components["schemas"]["BookingServiceOut"] | null;
+            staff: components["schemas"]["RefOut"] | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed" | "arrived" | "done" | "noshow" | "cancelled";
+            /** Version */
+            version: number;
+            /** Wants Earlier */
+            wants_earlier: boolean;
+        };
+        /** BookingServiceOut */
+        BookingServiceOut: {
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** BusinessHoursIn */
+        BusinessHoursIn: {
+            /** Hours */
+            hours: {
+                [key: string]: {
+                    [key: string]: string;
+                }[];
+            };
+        };
+        /** BusinessHoursOut */
+        BusinessHoursOut: {
+            /** Business Hours */
+            business_hours: {
+                [key: string]: {
+                    [key: string]: string;
+                }[];
+            } | null;
+            /** Business Hours Label */
+            business_hours_label: string | null;
+        };
+        /** CalendarItemOut */
+        CalendarItemOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** CalendarOut */
+        CalendarOut: {
+            /** Calendars */
+            calendars: components["schemas"]["CalendarItemOut"][];
+            /** Connected */
+            connected: boolean;
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "google";
+        };
+        /** CalendarStatus */
+        CalendarStatus: {
+            /** Calendar Name */
+            calendar_name?: string | null;
+            /** Last Sync At */
+            last_sync_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "connected";
+        };
+        /** CancelIn */
+        CancelIn: {
+            /**
+             * Notify
+             * @default true
+             */
+            notify: boolean;
+            /**
+             * Offer Slot
+             * @default false
+             */
+            offer_slot: boolean;
+        };
+        /** CancelledBookingOut */
+        CancelledBookingOut: {
+            /** Allowed */
+            allowed: ("confirm" | "move" | "cancel" | "request_confirmation" | "arrive" | "noshow" | "undo")[];
+            /** Any Staff */
+            any_staff: boolean;
+            /** Arrived At */
+            arrived_at: string | null;
+            cancelled: components["schemas"]["CancelledOut"] | null;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "whatsapp" | "phone" | "in_person";
+            clash: components["schemas"]["ClashOut"] | null;
+            contact: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ContactOut"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            created_by: components["schemas"]["CreatedByOut"];
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Late Minutes */
+            late_minutes: number | null;
+            local: components["schemas"]["LocalSpan"];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "services" | "capacity";
+            /** Note */
+            note: string | null;
+            offer: components["schemas"]["OfferRefOut"] | null;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "agent" | "person" | "waitlist" | "walkin";
+            /** Party Size */
+            party_size: number;
+            price: components["schemas"]["MoneyOut"] | null;
+            service: components["schemas"]["BookingServiceOut"] | null;
+            staff: components["schemas"]["RefOut"] | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed" | "arrived" | "done" | "noshow" | "cancelled";
+            /** Version */
+            version: number;
+            /** Wants Earlier */
+            wants_earlier: boolean;
+        };
+        /** CancelledOut */
+        CancelledOut: {
+            /** At */
+            at: string | null;
+            /** By */
+            by: ("customer" | "business" | "system") | null;
+            /** Cause */
+            cause: string | null;
+        };
+        /** CancelPreviewOut */
+        CancelPreviewOut: {
+            /** Can Offer */
+            can_offer: boolean;
+            /** Candidates */
+            candidates: number;
+            /** Why Not */
+            why_not: ("waitlist_off" | "too_soon" | "nobody_fits" | "not_services") | null;
+        };
+        /** CandidateOut */
+        CandidateOut: {
+            /** Answered At */
+            answered_at: string | null;
+            /** Deadline At */
+            deadline_at: string | null;
+            /** Name */
+            name: string | null;
+            /** Position */
+            position: number;
+            /** Status */
+            status: string;
+            /**
+             * Waitlist Id
+             * Format: uuid
+             */
+            waitlist_id: string;
+        };
+        /** CapacitySettings */
+        CapacitySettings: {
+            /** Max Party */
+            max_party: number;
+            /** Schedule */
+            schedule: {
+                [key: string]: unknown;
+            };
+            /** Seats */
+            seats: number;
+            /** Stay Minutes */
+            stay_minutes: number;
+            /** Walkin Hold */
+            walkin_hold: number;
+        };
+        /** ClashLocal */
+        ClashLocal: {
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /** ClashOut */
+        ClashOut: {
+            local: components["schemas"]["ClashLocal"];
+            /**
+             * Source
+             * @constant
+             */
+            source: "google";
+        };
+        /** ConfirmationSettings */
+        ConfirmationSettings: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * When
+             * @enum {string}
+             */
+            when: "24h" | "same_day_12" | "3h";
         };
         /** ContactDetailOut */
         ContactDetailOut: {
@@ -850,15 +1815,14 @@ export interface components {
             handle: string;
             /** Name */
             name: string;
+            next_booking?: components["schemas"]["NextBookingOut"] | null;
         };
-        /** ContactOut */
-        ContactOut: {
-            /** Handle */
-            handle: string;
-            /** Initials */
-            initials: string;
+        /** ContactIn */
+        ContactIn: {
             /** Name */
             name: string;
+            /** Phone */
+            phone?: string | null;
         };
         /** ConversationDetailOut */
         ConversationDetailOut: {
@@ -893,6 +1857,8 @@ export interface components {
             tags: string[];
             /** Waiting Reason */
             waiting_reason: string | null;
+            /** Waiting Since */
+            waiting_since?: string | null;
             window: components["schemas"]["WindowOut"];
         };
         /** ConversationItemOut */
@@ -906,7 +1872,7 @@ export interface components {
             channel: {
                 [key: string]: string;
             };
-            contact: components["schemas"]["ContactOut"];
+            contact: components["schemas"]["nexus_api__api__console__lite__inbox__ContactOut"];
             /**
              * Id
              * Format: uuid
@@ -922,6 +1888,7 @@ export interface components {
             tags: string[];
             /** Unread */
             unread: boolean;
+            waiting?: components["schemas"]["WaitingOut"] | null;
         };
         /** CountsOut */
         CountsOut: {
@@ -929,6 +1896,16 @@ export interface components {
             unread: number;
             /** Waiting */
             waiting: number;
+        };
+        /** CreatedByOut */
+        CreatedByOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "agent" | "person" | "system" | "customer";
+            /** Name */
+            name: string | null;
         };
         /** DayCountOut */
         DayCountOut: {
@@ -939,6 +1916,50 @@ export interface components {
              * Format: date
              */
             day: string;
+        };
+        /** DesiredOut */
+        DesiredOut: {
+            /** Date */
+            date: string | null;
+            /** Time */
+            time: string | null;
+            /** Until */
+            until: string | null;
+        };
+        /** EntryOfferOut */
+        EntryOfferOut: {
+            /** Deadline At */
+            deadline_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** EventActor */
+        EventActor: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "agent" | "person" | "system" | "customer";
+            /** Name */
+            name: string | null;
+        };
+        /** EventOut */
+        EventOut: {
+            actor: components["schemas"]["EventActor"];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
         };
         /** GoogleRedeemIn */
         GoogleRedeemIn: {
@@ -967,6 +1988,21 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** JoinedOut */
+        JoinedOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "agent" | "person" | "in_person";
+            /** Name */
+            name: string | null;
         };
         /** LastMessageOut */
         LastMessageOut: {
@@ -1011,8 +2047,32 @@ export interface components {
             cap_cents: number | null;
             /** Days Left */
             days_left: number | null;
+            /**
+             * Month Days Left
+             * @default 0
+             */
+            month_days_left: number;
             /** Remaining Cents */
             remaining_cents: number | null;
+            /** Runs Out On */
+            runs_out_on?: string | null;
+        };
+        /**
+         * LiteBusinessOut
+         * @description Spec 045 (R5.1): el horario del perfil del negocio y su zona. La app lo
+         *     lee para «silenciar fuera de horario»; se edita en la web (Reservas).
+         */
+        LiteBusinessOut: {
+            /** Hours */
+            hours: {
+                [key: string]: {
+                    [key: string]: string;
+                }[];
+            } | null;
+            /** Hours Label */
+            hours_label: string | null;
+            /** Timezone */
+            timezone: string;
         };
         /** LiteChannelOut */
         LiteChannelOut: {
@@ -1053,12 +2113,27 @@ export interface components {
             /** Agents */
             agents: components["schemas"]["LiteAgentOut"][];
             balance_contact: components["schemas"]["BalanceContactOut"];
+            business: components["schemas"]["LiteBusinessOut"];
             /** Channels */
             channels: components["schemas"]["LiteChannelOut"][];
             client: components["schemas"]["LiteClientOut"];
             /** Nav */
             nav: string[];
+            reservas?: components["schemas"]["LiteReservasOut"] | null;
             user: components["schemas"]["LiteUserOut"];
+        };
+        /**
+         * LiteReservasOut
+         * @description Spec 043: el modo de Reservas (las palabras las pone cada pantalla).
+         */
+        LiteReservasOut: {
+            /** Capacity Kind */
+            capacity_kind: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "services" | "capacity";
         };
         /** LiteSpendMonthOut */
         LiteSpendMonthOut: {
@@ -1135,6 +2210,119 @@ export interface components {
             /** First Conversation Id */
             first_conversation_id: string | null;
         };
+        /** LocalSpan */
+        LocalSpan: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /** MoneyOut */
+        MoneyOut: {
+            /** Amount Minor */
+            amount_minor: number;
+            /** Currency */
+            currency: string;
+        };
+        /**
+         * MoveIn
+         * @description Lo que no cambia, se omite (la fecha y la hora, también).
+         */
+        MoveIn: {
+            /** Date */
+            date?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Notify
+             * @default true
+             */
+            notify: boolean;
+            /** Party Size */
+            party_size?: number | null;
+            /** Staff Id */
+            staff_id?: string | null;
+            /** Time */
+            time?: string | null;
+        };
+        /** NewBookingIn */
+        NewBookingIn: {
+            contact: components["schemas"]["ContactIn"];
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Join Waitlist
+             * @default false
+             */
+            join_waitlist: boolean;
+            /** Note */
+            note?: string | null;
+            /**
+             * Notify
+             * @default true
+             */
+            notify: boolean;
+            /**
+             * Party Size
+             * @default 1
+             */
+            party_size: number;
+            /** Service Id */
+            service_id?: string | null;
+            /** Staff Id */
+            staff_id?: string | null;
+            /** Time */
+            time: string;
+        };
+        /** NextBookingLocal */
+        NextBookingLocal: {
+            /** Date */
+            date: string;
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /**
+         * NextBookingOut
+         * @description Spec 043: la próxima reserva viva del contacto (con el módulo).
+         */
+        NextBookingOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            local: components["schemas"]["NextBookingLocal"];
+            /** Party Size */
+            party_size: number | null;
+            /** Service Name */
+            service_name: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Status */
+            status: string;
+        };
+        /** ContactOut */
+        nexus_api__api__console__lite__inbox__ContactOut: {
+            /** Handle */
+            handle: string;
+            /** Initials */
+            initials: string;
+            /** Name */
+            name: string;
+        };
         /** ConversationPageOut */
         nexus_api__api__console__lite__inbox__ConversationPageOut: {
             /** Channel Kinds */
@@ -1159,6 +2347,15 @@ export interface components {
             /** Next Before */
             next_before: string | null;
         };
+        /** ContactOut */
+        nexus_api__api__console__lite__reservas_schemas__ContactOut: {
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Name */
+            name: string | null;
+            /** Phone */
+            phone: string | null;
+        };
         /** NoteIn */
         NoteIn: {
             /** Body */
@@ -1175,11 +2372,15 @@ export interface components {
         NoticesIn: {
             /** Kinds */
             kinds: string[];
+            /** Quiet Outside Hours */
+            quiet_outside_hours?: boolean | null;
         };
         /** NoticesOut */
         NoticesOut: {
             /** Kinds */
             kinds: string[];
+            /** Quiet Outside Hours */
+            quiet_outside_hours: boolean;
         };
         /** NotificationOut */
         NotificationOut: {
@@ -1214,6 +2415,97 @@ export interface components {
             next_cursor?: string | null;
             /** Unread */
             unread: number;
+        };
+        /** OccupancyDayOut */
+        OccupancyDayOut: {
+            /** Closed */
+            closed: boolean;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Slots */
+            slots: components["schemas"]["OccupancySlotOut"][];
+        };
+        /** OccupancyOut */
+        OccupancyOut: {
+            /** Days */
+            days: components["schemas"]["OccupancyDayOut"][];
+            /** Seats */
+            seats: number;
+            /** Stay Minutes */
+            stay_minutes: number;
+            /** Walkin Hold */
+            walkin_hold: number;
+        };
+        /** OccupancySlotOut */
+        OccupancySlotOut: {
+            /** Arrived */
+            arrived: number;
+            /** Arriving */
+            arriving: number;
+            blocked: components["schemas"]["BlockRefOut"] | null;
+            /** Past */
+            past: boolean;
+            /** Pending */
+            pending: number;
+            /** Present */
+            present: number;
+            /** Shift */
+            shift: string | null;
+            /** Time */
+            time: string;
+        };
+        /** OfferListOut */
+        OfferListOut: {
+            /** Items */
+            items: components["schemas"]["OfferOut"][];
+        };
+        /** OfferOut */
+        OfferOut: {
+            /** Cancelled By Name */
+            cancelled_by_name: string | null;
+            /** Candidates */
+            candidates: components["schemas"]["CandidateOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Filled Booking Id */
+            filled_booking_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            slot: components["schemas"]["OfferSlotOut"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "filled" | "empty" | "stopped";
+            /** Window Minutes */
+            window_minutes: number;
+        };
+        /** OfferRefOut */
+        OfferRefOut: {
+            /** Candidates */
+            candidates: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** OfferSlotOut */
+        OfferSlotOut: {
+            local: components["schemas"]["LocalSpan"];
+            /** Seats */
+            seats: number | null;
+            service: components["schemas"]["RefOut"] | null;
+            staff: components["schemas"]["RefOut"] | null;
         };
         /** PasswordResetIn */
         PasswordResetIn: {
@@ -1301,6 +2593,16 @@ export interface components {
             /** Marked */
             marked: number;
         };
+        /** RefOut */
+        RefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** RefreshIn */
         RefreshIn: {
             /** App Version */
@@ -1349,10 +2651,284 @@ export interface components {
              */
             id: string;
         };
+        /** ServiceIn */
+        ServiceIn: {
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Name */
+            name: string;
+            /** Price Minor */
+            price_minor?: number | null;
+            /** Staff Ids */
+            staff_ids?: string[] | null;
+        };
+        /** ServiceListOut */
+        ServiceListOut: {
+            /** Items */
+            items: components["schemas"]["ServiceOut"][];
+        };
+        /** ServiceOut */
+        ServiceOut: {
+            /** Archived */
+            archived: boolean;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            price: components["schemas"]["MoneyOut"] | null;
+            /**
+             * Staff
+             * @enum {string}
+             */
+            staff: "all" | "some";
+            /** Staff Ids */
+            staff_ids: string[];
+        };
+        /** ServicePatchIn */
+        ServicePatchIn: {
+            /** All Staff */
+            all_staff?: boolean | null;
+            /**
+             * Clear Price
+             * @default false
+             */
+            clear_price: boolean;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Price Minor */
+            price_minor?: number | null;
+            /** Staff Ids */
+            staff_ids?: string[] | null;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            agent: components["schemas"]["AgentSettings"];
+            /** Business Hours */
+            business_hours: {
+                [key: string]: {
+                    [key: string]: string;
+                }[];
+            } | null;
+            /** Business Hours Label */
+            business_hours_label: string | null;
+            capacity: components["schemas"]["CapacitySettings"] | null;
+            /** Capacity Kind */
+            capacity_kind: string | null;
+            confirmation: components["schemas"]["ConfirmationSettings"];
+            /** Currency */
+            currency: string;
+            /** Hours Missing */
+            hours_missing: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "services" | "capacity";
+            /** Release Unconfirmed */
+            release_unconfirmed: boolean;
+            /** Reminder Enabled */
+            reminder_enabled: boolean;
+            /** Slot Step Minutes */
+            slot_step_minutes: number;
+            /** Timezone */
+            timezone: string;
+            /** Version */
+            version: number;
+            waitlist: components["schemas"]["WaitlistSettings"];
+        };
+        /** SettingsPatchIn */
+        SettingsPatchIn: {
+            /** Agent */
+            agent?: {
+                [key: string]: unknown;
+            } | null;
+            /** Capacity */
+            capacity?: {
+                [key: string]: unknown;
+            } | null;
+            /** Confirmation */
+            confirmation?: {
+                [key: string]: unknown;
+            } | null;
+            /** Release Unconfirmed */
+            release_unconfirmed?: boolean | null;
+            /** Reminder Enabled */
+            reminder_enabled?: boolean | null;
+            /** Slot Step Minutes */
+            slot_step_minutes?: number | null;
+            /** Waitlist */
+            waitlist?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** SignInMethodsOut */
         SignInMethodsOut: {
             /** Google */
             google: boolean;
+        };
+        /** SlotOut */
+        SlotOut: {
+            /** Fits */
+            fits?: boolean | null;
+            /** Left */
+            left?: number | null;
+            /** Shift */
+            shift?: string | null;
+            /** Staff Ids */
+            staff_ids?: string[] | null;
+            /** Time */
+            time: string;
+            /** Why */
+            why?: string | null;
+        };
+        /** SlotsOut */
+        SlotsOut: {
+            /** Closed */
+            closed: boolean;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** First Fit */
+            first_fit?: string | null;
+            /** Slots */
+            slots: components["schemas"]["SlotOut"][];
+        };
+        /** StaffCalendarIn */
+        StaffCalendarIn: {
+            /** Calendar Id */
+            calendar_id?: string | null;
+        };
+        /** StaffIn */
+        StaffIn: {
+            /** Email */
+            email?: string | null;
+            /** Hours */
+            hours?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name: string;
+        };
+        /** StaffListOut */
+        StaffListOut: {
+            /** Items */
+            items: components["schemas"]["StaffOut"][];
+        };
+        /** StaffOut */
+        StaffOut: {
+            /** Archived */
+            archived: boolean;
+            calendar: components["schemas"]["CalendarStatus"];
+            /** Effective Hours */
+            effective_hours: {
+                [key: string]: {
+                    [key: string]: string;
+                }[];
+            } | null;
+            /** Email */
+            email: string | null;
+            /** Hours */
+            hours: {
+                [key: string]: {
+                    [key: string]: string;
+                }[];
+            } | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+        };
+        /** StaffPatchIn */
+        StaffPatchIn: {
+            /** Email */
+            email?: string | null;
+            /** Hours */
+            hours?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
+        /** SummaryMonthOut */
+        SummaryMonthOut: {
+            /** Noshow Pct */
+            noshow_pct: number | null;
+            /** Recovered */
+            recovered: number | null;
+        };
+        /** SummaryOut */
+        SummaryOut: {
+            /** Clashes */
+            clashes: number;
+            /** Errors */
+            errors: string[];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "services" | "capacity";
+            month: components["schemas"]["SummaryMonthOut"] | null;
+            today: components["schemas"]["SummaryTodayOut"];
+            /** Upcoming */
+            upcoming: components["schemas"]["BookingOut"][];
+            waitlist: components["schemas"]["SummaryWaitlistOut"];
+            week: components["schemas"]["SummaryWeekOut"] | null;
+        };
+        /** SummaryTodayOut */
+        SummaryTodayOut: {
+            /** Arriving Next Hour */
+            arriving_next_hour: number | null;
+            /** Bookings */
+            bookings: number;
+            /** Confirmed */
+            confirmed: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Inside Now */
+            inside_now: number | null;
+            /** Next At */
+            next_at: string | null;
+            /** Pending */
+            pending: number;
+            /** People */
+            people: number | null;
+            /** Seats */
+            seats: number | null;
+        };
+        /** SummaryWaitlistOut */
+        SummaryWaitlistOut: {
+            /** Waiting */
+            waiting: number;
+        };
+        /** SummaryWeekOut */
+        SummaryWeekOut: {
+            /** Agent Share Pct */
+            agent_share_pct: number | null;
+            /** Occupancy Pct */
+            occupancy_pct: number | null;
         };
         /** TagsIn */
         TagsIn: {
@@ -1444,6 +3020,93 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WaitingOut
+         * @description Spec 045 (R3.1): por qué y desde cuándo espera a una persona.
+         */
+        WaitingOut: {
+            /** Reason */
+            reason: string | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+        };
+        /** WaitlistEntryOut */
+        WaitlistEntryOut: {
+            /** Booking Id */
+            booking_id: string | null;
+            booking_local?: components["schemas"]["LocalSpan"] | null;
+            contact: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ContactOut"];
+            desired: components["schemas"]["DesiredOut"];
+            /** Fits Now */
+            fits_now: boolean | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            joined: components["schemas"]["JoinedOut"];
+            offer: components["schemas"]["EntryOfferOut"] | null;
+            /** Party Size */
+            party_size: number;
+            service: components["schemas"]["BookingServiceOut"] | null;
+            staff: components["schemas"]["RefOut"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "offered" | "accepted" | "removed" | "expired";
+        };
+        /** WaitlistIn */
+        WaitlistIn: {
+            /** Date */
+            date?: string | null;
+            /**
+             * In Person
+             * @default false
+             */
+            in_person: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Party Size
+             * @default 1
+             */
+            party_size: number;
+            /** Phone */
+            phone?: string | null;
+            /** Service Id */
+            service_id?: string | null;
+            /** Staff Id */
+            staff_id?: string | null;
+            /** Time */
+            time?: string | null;
+            /** Until */
+            until?: string | null;
+        };
+        /** WaitlistOut */
+        WaitlistOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Items */
+            items: components["schemas"]["WaitlistEntryOut"][];
+        };
+        /** WaitlistSettings */
+        WaitlistSettings: {
+            /** Enabled */
+            enabled: boolean;
+            /** Lead Minutes */
+            lead_minutes: number;
+        };
+        /** WalkinIn */
+        WalkinIn: {
+            /** Name */
+            name?: string | null;
+            /** Party Size */
+            party_size: number;
         };
         /** WindowOut */
         WindowOut: {
@@ -2915,6 +4578,1351 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_blocks_console_lite_reservas_blocks_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_block_console_lite_reservas_blocks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_block_console_lite_reservas_blocks__block_id__remove_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_bookings_console_lite_reservas_bookings_get: {
+        parameters: {
+            query: {
+                from: string;
+                origin?: string[];
+                q?: string | null;
+                staff_id?: string | null;
+                status?: string[];
+                to: string;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_console_lite_reservas_bookings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewBookingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_booking_console_lite_reservas_bookings__booking_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    arrive_console_lite_reservas_bookings__booking_id__arrive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_console_lite_reservas_bookings__booking_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelledBookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_preview_console_lite_reservas_bookings__booking_id__cancel_preview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_console_lite_reservas_bookings__booking_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_console_lite_reservas_bookings__booking_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    noshow_console_lite_reservas_bookings__booking_id__noshow_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_confirmation_console_lite_reservas_bookings__booking_id__request_confirmation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_console_lite_reservas_bookings__booking_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_business_hours_console_lite_reservas_business_hours_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessHoursIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessHoursOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_calendar_console_lite_reservas_calendar_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    occupancy_console_lite_reservas_occupancy_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OccupancyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_offers_console_lite_reservas_offers_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_offer_console_lite_reservas_offers__offer_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                offer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_services_console_lite_reservas_services_get: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_service_console_lite_reservas_services_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_service_console_lite_reservas_services__service_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                service_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServicePatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_service_console_lite_reservas_services__service_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                service_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_settings_console_lite_reservas_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_settings_console_lite_reservas_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    slots_console_lite_reservas_slots_get: {
+        parameters: {
+            query: {
+                date: string;
+                exclude?: string | null;
+                party_size?: number;
+                service_id?: string | null;
+                staff_id?: string | null;
+                walkin?: boolean;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlotsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_staff_console_lite_reservas_staff_get: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_staff_console_lite_reservas_staff_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_staff_console_lite_reservas_staff__staff_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_staff_console_lite_reservas_staff__staff_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_staff_calendar_console_lite_reservas_staff__staff_id__calendar_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffCalendarIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_console_lite_reservas_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_waitlist_console_lite_reservas_waitlist_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                status?: string;
+                to?: string | null;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitlistOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_waitlist_console_lite_reservas_waitlist_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaitlistIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitlistEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    offer_waitlist_console_lite_reservas_waitlist__entry_id__offer_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_waitlist_console_lite_reservas_waitlist__entry_id__remove_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    walkin_console_lite_reservas_walkins_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalkinIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingOut"];
+                };
             };
             /** @description Validation Error */
             422: {

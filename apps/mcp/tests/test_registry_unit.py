@@ -29,7 +29,19 @@ def test_default_registry_has_all_block_d_tools():
     names = set(reg.names())
     # + catalog.search_products, catalog.get_product (spec 022)
     # + payments.request_review (spec 025)
-    assert len(names) == 61
+    # + the nine reservas.* (spec 043)
+    assert len(names) == 70
+    assert {n for n in names if n.startswith("reservas.")} == {
+        "reservas.services",
+        "reservas.find_slots",
+        "reservas.create",
+        "reservas.list_mine",
+        "reservas.reschedule",
+        "reservas.cancel",
+        "reservas.confirm_attendance",
+        "reservas.join_waitlist",
+        "reservas.answer_offer",
+    }
     assert "payments.request_review" in names
     assert "operator.consult_owner" in names
     assert "response.send_interactive" in names

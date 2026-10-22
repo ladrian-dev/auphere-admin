@@ -42,7 +42,7 @@ from nexus_api.db.models import (
     MessageStatus,
 )
 from nexus_api.services import lite_send_idempotency as idempotency
-from nexus_api.services.inbox_view import PLAYGROUND_PROVIDER
+from nexus_api.services.inbox_view import _in_inbox, _shown_message
 from nexus_api.services.media_storage.storage import MediaStorageError, get_media_storage
 
 from .deps import LiteScope, lite_scope
@@ -102,7 +102,9 @@ async def read_media(
             sa.select(Message)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .join(Channel, Channel.id == Conversation.channel_id)
-            .where(Message.id == message_id, Channel.provider != PLAYGROUND_PROVIDER)
+            # Spec 045: solo lo que la Bandeja enseña. El id llega por el
+            # stream y la ruta no pasa por la conversación (/cso CSO-002).
+            .where(Message.id == message_id, _in_inbox(), _shown_message())
         )
     ).scalar_one_or_none()
     if msg is None or not msg.media_s3_key:

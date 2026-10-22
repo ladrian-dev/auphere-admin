@@ -200,4 +200,18 @@ async def test_every_lite_route_that_announces_is_checked() -> None:
             announcing |= {(m, route.path) for m in route.methods - {"GET", "HEAD"}}
 
     checked = {(a.method, f"{BASE}/{{conversation_id}}/{a.route}") for a in ACTIONS.values()}
-    assert announcing == checked
+    # Spec 043: Reservas recibe su Redis para la ``Idempotency-Key`` (24 h) de
+    # equipo, servicios, bloqueos y lista de espera; no avisa a la Bandeja.
+    reservas = {r for r in announcing if r[1].startswith("/console/lite/reservas/")}
+    assert reservas == {
+        ("POST", "/console/lite/reservas/blocks"),
+        ("POST", "/console/lite/reservas/services"),
+        ("POST", "/console/lite/reservas/staff"),
+        ("POST", "/console/lite/reservas/waitlist"),
+    }
+    import inspect
+
+    from nexus_api.api.console.lite import reservas as reservas_routes
+
+    assert "publish_inbox_event" not in inspect.getsource(reservas_routes)
+    assert announcing - reservas == checked

@@ -72,6 +72,13 @@ async def test_summary_and_reason_come_from_the_last_escalation(
     d = await _detail(client, inbox, c0)
     assert d["summary"] == "Compró el lunes"
     assert d["waiting_reason"] == "Pide un reembolso"
+    # Spec 045 R3: desde cuándo espera, también en la fila de la lista.
+    assert d["waiting_since"] == d["activity"][0]["at"]
+    page = (await client.get(BASE, params={"filter": "waiting"}, headers=inbox["headers"]())).json()
+    row = next(i for i in page["items"] if i["id"] == str(c0))
+    assert row["waiting"] == {"reason": "Pide un reembolso", "since": d["waiting_since"]}
+    others = (await client.get(BASE, headers=inbox["headers"]())).json()["items"]
+    assert all(i["waiting"] is None for i in others if i["id"] != str(c0))
     assert [a["kind"] for a in d["activity"]] == ["escalated", "escalated"]
     assert d["activity"][0]["at"] > d["activity"][1]["at"]
 
@@ -80,6 +87,7 @@ async def test_summary_and_reason_come_from_the_last_escalation(
     ).status_code == 200
     d = await _detail(client, inbox, c0)
     assert d["waiting_reason"] is None  # ya no espera
+    assert d["waiting_since"] is None
     assert d["summary"] == "Compró el lunes"
     assert d["activity"][0]["kind"] == "resolved"
     assert d["activity"][0]["actor"]["is_me"] is True
@@ -97,6 +105,9 @@ async def test_the_contact_counts_everything_of_theirs(client, db_session, conso
         customer_id=customer,
         status=ConversationStatus.CLOSED,
         last_message_at=old_at,
+        # Spec 045: la atendió el agente (lo que la migración 0171 rellena).
+        attended_at=old_at,
+        last_attended_inbound_at=old_at,
     )
     db_session.add(old)
     await db_session.flush()
@@ -189,6 +200,8 @@ async def test_the_note_belongs_to_the_contact_and_is_never_audited(
         channel_id=inbox["channel_id"],
         customer_id=inbox["customers"][0],
         status=ConversationStatus.CLOSED,
+        # Spec 045: una conversación que el agente atendió (si no, no existe).
+        attended_at=datetime.now(UTC) - timedelta(days=2),
     )
     db_session.add(second)
     await db_session.commit()

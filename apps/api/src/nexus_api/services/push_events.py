@@ -32,6 +32,7 @@ async def enqueue(
     conversation_id: uuid.UUID | None = None,
     notification_id: uuid.UUID | None = None,
     target_principal_id: str | None = None,
+    reservation_id: uuid.UUID | None = None,
 ) -> None:
     """Deja el evento. Idempotente por ``(tenant_id, dedupe_key)``.
 
@@ -49,6 +50,7 @@ async def enqueue(
             conversation_id=conversation_id,
             notification_id=notification_id,
             target_principal_id=target_principal_id,
+            reservation_id=reservation_id,
             dedupe_key=dedupe_key[:160],
         )
         .on_conflict_do_nothing(constraint="uq_client_push_events_dedupe")

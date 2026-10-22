@@ -115,6 +115,17 @@ describe("toResolution — persona de un cliente", () => {
     expect(res.kind === "ok" && res.principal.kind === "client" && res.principal.modules).toEqual(["panel"]);
   });
 
+  // Spec 043 (T020): Reservas is a client module, kept where the API puts it.
+  it("keeps Reservas in the API's order", () => {
+    const res = toResolution({ ...client, modules: ["panel", "inbox", "reservas", "usage"] });
+    expect(res.kind === "ok" && res.principal.kind === "client" && res.principal.modules).toEqual([
+      "panel",
+      "inbox",
+      "reservas",
+      "usage",
+    ]);
+  });
+
   it("degrades to no-membership without modules", () => {
     expect(toResolution({ ...client, modules: [] }).kind).toBe("no-membership");
   });

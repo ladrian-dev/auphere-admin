@@ -38,6 +38,26 @@ KIND_CONFIG: dict[str, dict[str, str]] = {
         "channel": "balance_v1",
         "fcm_priority": "normal",
     },
+    # Spec 043: los tres de Reservas comparten el canal y la categoría que la
+    # app crea (``reservations_v1``, ``reservations``).
+    "reservas.agent_change": {
+        "interruption": "active",
+        "category": "reservations",
+        "channel": "reservations_v1",
+        "fcm_priority": "high",
+    },
+    "reservas.cancelled_today": {
+        "interruption": "active",
+        "category": "reservations",
+        "channel": "reservations_v1",
+        "fcm_priority": "high",
+    },
+    "reservas.waitlist_accepted": {
+        "interruption": "active",
+        "category": "reservations",
+        "channel": "reservations_v1",
+        "fcm_priority": "normal",
+    },
 }
 
 #: Un aviso que no llega en una hora ya no sirve: espera a una persona *ahora*.
@@ -65,6 +85,11 @@ def inbox_url(conversation_id: object) -> str:
 
 def usage_url() -> str:
     return f"{APP_SCHEME}://usage"
+
+
+def reservas_url(booking_id: object) -> str:
+    """Spec 043: la reserva en la app."""
+    return f"{APP_SCHEME}://reservas/{booking_id}"
 
 
 def apns(

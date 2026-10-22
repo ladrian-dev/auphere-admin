@@ -99,6 +99,42 @@ async def test_create_tenant_full(client, admin_headers):
     assert payload["cost_alert_threshold_usd_per_day"] == "60.00"
 
 
+async def test_create_tenant_stores_canonical_business_hours(client, admin_headers):
+    """Bug horario-del-negocio-en-tres-formas: la forma del asistente del admin
+    entra, pero se guarda la canónica, con los siete días."""
+    body = {
+        "slug": "horario-canonico",
+        "name": "Horario",
+        "plan": "pro",
+        "business_hours": {"monday": "09:00-18:00", "sunday": "closed"},
+    }
+    r = await client.post("/admin/tenants", headers=admin_headers, json=body)
+    assert r.status_code == 201, r.text
+    hours = r.json()["business_hours"]
+    assert hours["monday"] == [{"from": "09:00", "to": "18:00"}]
+    assert hours["sunday"] == []
+    assert hours["tuesday"] == []
+    assert len(hours) == 7
+
+
+async def test_update_tenant_canonicalises_and_rejects_garbage(client, admin_headers, seed_tenants):
+    tenant_id = seed_tenants["a"]
+    ok = await client.put(
+        f"/admin/tenants/{tenant_id}",
+        headers=admin_headers,
+        json={"business_hours": {"friday": {"open": "13:00", "close": "16:00"}}},
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["business_hours"]["friday"] == [{"from": "13:00", "to": "16:00"}]
+
+    bad = await client.put(
+        f"/admin/tenants/{tenant_id}",
+        headers=admin_headers,
+        json={"business_hours": {"monday": "9 a 18"}},
+    )
+    assert bad.status_code == 422
+
+
 async def test_create_tenant_slug_conflict(client, admin_headers, seed_tenants):
     body = {"slug": "tenant-a", "name": "Cultor Barber", "plan": "pro"}
     r = await client.post("/admin/tenants", headers=admin_headers, json=body)

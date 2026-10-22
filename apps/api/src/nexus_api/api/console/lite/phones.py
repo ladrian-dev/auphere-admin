@@ -134,23 +134,39 @@ async def register_push(body: PushIn, scope: LiteScope = Depends(lite_scope())) 
 
 class NoticesIn(BaseModel):
     kinds: list[str] = Field(max_length=len(NOTICE_KINDS))
+    #: Spec 045 (R5.2): si no viene, no cambia.
+    quiet_outside_hours: bool | None = None
 
 
 class NoticesOut(BaseModel):
     kinds: list[str]
+    quiet_outside_hours: bool
+
+
+def _visible(scope: LiteScope, kinds: list[str]) -> list[str]:
+    """Spec 043: sin el módulo, los avisos de Reservas no se enseñan (el
+    teléfono nace con dos encendidos y la app devuelve lo que lee)."""
+    reservas = scope.principal.has("reservas")
+    return [k for k in NOTICE_KINDS if k in kinds and (reservas or not k.startswith("reservas."))]
 
 
 @router.get("/phones/current/notices", response_model=NoticesOut)
 async def read_notices(scope: LiteScope = Depends(lite_scope())) -> NoticesOut:
     phone = await scope.session.get(ClientPhone, _from_phone(scope))
     kinds = list(phone.notice_kinds) if phone is not None else []
-    return NoticesOut(kinds=[k for k in NOTICE_KINDS if k in kinds])
+    return NoticesOut(
+        kinds=_visible(scope, kinds),
+        quiet_outside_hours=phone.quiet_outside_hours if phone is not None else True,
+    )
 
 
 @router.put("/phones/current/notices", response_model=NoticesOut)
 async def set_notices(body: NoticesIn, scope: LiteScope = Depends(lite_scope())) -> NoticesOut:
     """Los interruptores de Ajustes (R11.2). Aplican a este teléfono."""
     unknown = set(body.kinds) - set(NOTICE_KINDS)
+    # Spec 043: los avisos de Reservas, solo con el módulo.
+    if not scope.principal.has("reservas"):
+        unknown |= {k for k in body.kinds if k.startswith("reservas.")}
     if unknown:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -159,9 +175,15 @@ async def set_notices(body: NoticesIn, scope: LiteScope = Depends(lite_scope()))
     phone = await scope.session.get(ClientPhone, _from_phone(scope))
     if phone is None:  # pragma: no cover - la dependencia lo cubre
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    ordered = [k for k in NOTICE_KINDS if k in set(body.kinds)]
+    wanted = set(body.kinds)
+    if not scope.principal.has("reservas"):
+        # Lo de Reservas que el teléfono ya tenía se conserva para cuando se encienda.
+        wanted |= {k for k in phone.notice_kinds or [] if k.startswith("reservas.")}
+    ordered = [k for k in NOTICE_KINDS if k in wanted]
     phone.notice_kinds = ordered
-    return NoticesOut(kinds=ordered)
+    if body.quiet_outside_hours is not None:
+        phone.quiet_outside_hours = body.quiet_outside_hours
+    return NoticesOut(kinds=_visible(scope, ordered), quiet_outside_hours=phone.quiet_outside_hours)
 
 
 # ── pedir que se borre la cuenta ──────────────────────────────────────

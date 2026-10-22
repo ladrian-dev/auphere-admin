@@ -22,6 +22,15 @@ describe("liteNav", () => {
   it("lands on the first module the API sent", () => {
     expect(firstModulePath(["inbox", "panel"])).toBe("/inbox");
     expect(firstModulePath(["usage"])).toBe("/usage");
+    expect(firstModulePath(["reservas", "usage"])).toBe("/reservas");
+    expect(firstModulePath([])).toBe("/");
+  });
+
+  // Spec 043 (T020): Reservas sits between the Inbox and Consumo, with its calendar.
+  it("paints Reservas with its own label and path", () => {
+    const items = liteNav(["panel", "inbox", "reservas", "usage"]).flatMap((g) => g.items);
+    expect(items.map((i) => i.href)).toEqual(["/", "/inbox", "/reservas", "/usage"]);
+    expect(items[2]?.labelKey).toBe("nav.reservas");
   });
 });
 
@@ -41,7 +50,7 @@ describe("toResolution keeps the API order", () => {
       console_enabled: true,
       role: "client",
       client_name: "Mi negocio",
-      modules: ["inbox", "reservas", "panel", "inbox"],
+      modules: ["inbox", "agenda", "panel", "inbox"],
     } as Parameters<typeof toResolution>[0]);
     expect(res.kind).toBe("ok");
     if (res.kind === "ok" && res.principal.kind === "client") {

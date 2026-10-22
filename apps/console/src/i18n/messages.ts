@@ -18,6 +18,7 @@ import { membershipMessages } from "./lanes/membership";
 import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
+import { reservasMessages } from "./lanes/reservas";
 import { summaryMessages } from "./lanes/summary";
 import { workstationMessages } from "./lanes/workstation";
 
@@ -39,6 +40,7 @@ const core = {
   "nav.workstation": { es: "Teammate", en: "Teammate" },
   "nav.usage": { es: "Consumo", en: "Usage" },
   "nav.inbox": { es: "Bandeja de entrada", en: "Inbox" },
+  "nav.reservas": { es: "Reservas", en: "Bookings" },
   "nav.audit": { es: "Auditoría", en: "Audit" },
   "nav.knowledge": { es: "Guía del partner", en: "Playbook" },
   "nav.team": { es: "Equipo", en: "Team" },
@@ -560,6 +562,7 @@ const messages = {
   ...capabilitiesMessages,
   ...liteMessages,
   ...inboxMessages,
+  ...reservasMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

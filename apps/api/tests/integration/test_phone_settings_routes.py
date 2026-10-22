@@ -78,7 +78,10 @@ async def test_a_destination_has_one_owner(client, db_session, phones) -> None:
 async def test_notices_start_with_the_three_kinds_and_can_be_switched(client, phones) -> None:
     headers = phones["one"]["headers"]()
     start = await client.get("/console/lite/phones/current/notices", headers=headers)
-    assert start.json() == {"kinds": ["inbox.waiting", "inbox.message_for_you", "client.balance"]}
+    assert start.json() == {
+        "kinds": ["inbox.waiting", "inbox.message_for_you", "client.balance"],
+        "quiet_outside_hours": True,
+    }
 
     resp = await client.put(
         "/console/lite/phones/current/notices",
@@ -86,12 +89,55 @@ async def test_notices_start_with_the_three_kinds_and_can_be_switched(client, ph
         json={"kinds": ["client.balance", "inbox.waiting"]},
     )
     assert resp.status_code == 200
-    assert resp.json() == {"kinds": ["inbox.waiting", "client.balance"]}
+    assert resp.json() == {
+        "kinds": ["inbox.waiting", "client.balance"],
+        "quiet_outside_hours": True,
+    }
 
     other = await client.get(
         "/console/lite/phones/current/notices", headers=phones["two"]["headers"]()
     )
     assert len(other.json()["kinds"]) == 3
+
+
+async def test_without_reservas_its_kinds_are_hidden_and_kept(client, db_session, phones) -> None:
+    """Spec 043: el teléfono nace con los avisos de Reservas encendidos por
+    defecto. Sin el módulo no se enseñan, así que lo que la app lee lo puede
+    devolver tal cual sin un 422; y se conservan para cuando se encienda."""
+    from nexus_api.db.models import ClientPhone
+
+    headers = phones["one"]["headers"]()
+    read = await client.get("/console/lite/phones/current/notices", headers=headers)
+    assert all(not k.startswith("reservas.") for k in read.json()["kinds"])
+    kinds = [k for k in read.json()["kinds"] if k != "client.balance"]
+    put = await client.put(
+        "/console/lite/phones/current/notices", headers=headers, json={"kinds": kinds}
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["kinds"] == kinds
+
+    db_session.expire_all()
+    phone = await db_session.get(ClientPhone, phones["one"]["phone_id"])
+    assert phone is not None
+    assert {"reservas.agent_change", "reservas.cancelled_today"} <= set(phone.notice_kinds)
+
+
+async def test_quiet_outside_hours_is_per_phone_and_on_by_default(client, phones) -> None:
+    """Spec 045 R5.2: el silencio fuera de horario se cambia solo en este
+    teléfono; sin el campo, un PUT no lo toca."""
+    one, two = phones["one"]["headers"], phones["two"]["headers"]
+    off = await client.put(
+        "/console/lite/phones/current/notices",
+        headers=one(),
+        json={"kinds": ["inbox.waiting"], "quiet_outside_hours": False},
+    )
+    assert off.json() == {"kinds": ["inbox.waiting"], "quiet_outside_hours": False}
+    kept = await client.put(
+        "/console/lite/phones/current/notices", headers=one(), json={"kinds": ["inbox.waiting"]}
+    )
+    assert kept.json()["quiet_outside_hours"] is False
+    other = await client.get("/console/lite/phones/current/notices", headers=two())
+    assert other.json()["quiet_outside_hours"] is True
 
 
 async def test_an_unknown_kind_is_rejected(client, phones) -> None:

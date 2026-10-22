@@ -3,40 +3,48 @@ import { ArrowDownRight, ArrowUpRight, Bot, Hand, Wallet } from "lucide-react";
 import { Alert, AlertDescription, HighlightMetric, Metric, PageHeader, Section, formatNumber } from "@nexus/ui";
 
 import { ConversationsChart } from "@/components/home/conversations-chart";
-import { creditRunway, trendDelta } from "@/components/home/home-model";
+import { trendDelta } from "@/components/home/home-model";
 import type { Locale, MessageKey } from "@/i18n/messages";
 import type { HomeTrend } from "@/lib/backend/home-usage";
 import type { LiteHome, LiteMe } from "@/lib/backend/lite";
 import { formatMoneyCompact } from "@/lib/money";
 
 import { LiteAttention } from "./lite-attention";
-import { LiteSpendCard } from "./lite-spend-card";
+import { balanceRunway, waitingHref } from "./lite-model";
+import { LiteReservasBlock, type LitePanelReservas } from "./lite-reservas";
+import { LiteSpendCard, spendSplits } from "./lite-spend-card";
 
 type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 export type LitePanelWho = { name: string; clientName: string; modules: readonly string[] };
 
 /**
- * The Panel of one client (spec 030, US3) — pure, so every state is testable
- * without a request. `home === null` is the whole read failing; `errors`
- * lists the blocks that did not load (partial). Each block is absent when
- * its data is absent: no inbox, no «waiting» card; no allocation, a balance
- * card that says so instead of an invented zero.
+ * The Panel of one client (spec 030, US3; the design of spec 045, R6.1) —
+ * pure, so every state is testable without a request. `home === null` is the
+ * whole read failing; `errors` lists the blocks that did not load (partial).
+ * Each block is absent when its data is absent: no inbox, no «waiting» card;
+ * no allocation, a balance card that says so instead of an invented zero.
+ * Conversations is the one dark card (two would not stand out); the balance
+ * bar warns under 14 days and alarms under 7, with tokens.
+ *
+ * Spec 043 (T026): with the `reservas` module, the Reservas block of the mode
+ * and the row of today's unconfirmed bookings; `reservas` is `null` (or
+ * absent) without the module.
  */
 export function LitePanelView({
   who,
   home,
   contact,
+  reservas = null,
   t,
   locale,
-  now = new Date(),
 }: {
   who: LitePanelWho;
   home: LiteHome | null;
   contact: LiteMe["balance_contact"] | null;
+  reservas?: LitePanelReservas | null;
   t: T;
   locale: Locale;
-  now?: Date;
 }) {
   const n = (v: number) => formatNumber(v, locale);
   const first = who.name.split(" ")[0] || who.name;
@@ -46,9 +54,10 @@ export function LitePanelView({
     ? { days: conv.daily.map((d) => d.day), series: conv.daily.map((d) => d.count), current: conv.last_7d, previous: conv.prev_7d, by_client: [] }
     : null;
   const balance = home?.balance ?? null;
-  const runway = balance?.assigned ? creditRunway(balance.remaining_cents, balance.days_left, now) : null;
+  const runway = balanceRunway(balance);
   const hasUsage = who.modules.includes("usage");
 
+  const split = home?.spend_month ? spendSplits(home.spend_month) : false;
   return (
     <>
       <PageHeader eyebrow={who.clientName} title={t("lite.panel.greeting", { name: first })} size="compact" />
@@ -65,8 +74,11 @@ export function LitePanelView({
 
       {home ? (
         <div className="grid gap-4 lg:grid-cols-3">
+          {/* With the split by agent the spend runs down beside the chart; a
+              single amount is a first-row card and the chart takes the width
+              (a two-row card with one figure is an empty box). */}
           {home.spend_month ? (
-            <div className="lg:row-span-2">
+            <div className={split ? "lg:row-span-2" : undefined}>
               <LiteSpendCard spend={home.spend_month} showUsageLink={hasUsage} t={t} locale={locale} />
             </div>
           ) : null}
@@ -90,7 +102,7 @@ export function LitePanelView({
                           srLabel: t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) }),
                         }
                   }
-                  trend={{ values: conv.daily.map((d) => d.count), ariaLabel: t("hu.home.kpi.conversations.trend") }}
+                  trend={{ values: conv.daily.map((d) => d.count), ariaLabel: t("hu.home.kpi.conversations.trend"), style: "area" }}
                   hint={delta.kind === "none" ? t("hu.home.kpi.delta.none") : t(`hu.home.kpi.delta.${delta.kind}`, { pct: n(delta.pct) })}
                   href={who.modules.includes("inbox") ? "/inbox" : undefined}
                 />
@@ -101,9 +113,7 @@ export function LitePanelView({
                   label={t("lite.kpi.waiting")}
                   value={n(home.waiting.count)}
                   hint={t("lite.kpi.waiting.hint")}
-                  href={
-                    home.waiting.first_conversation_id ? `/inbox?c=${encodeURIComponent(home.waiting.first_conversation_id)}` : "/inbox"
-                  }
+                  href={waitingHref(home.waiting.first_conversation_id)}
                 />
               ) : null}
               {balance ? (
@@ -138,14 +148,23 @@ export function LitePanelView({
             </div>
           </section>
           {trend ? (
-            <Section title={t("hu.home.chart.title")} className={home.spend_month ? "lg:col-span-2" : "lg:col-span-3"}>
+            <Section title={t("hu.home.chart.title")} className={split ? "lg:col-span-2" : "lg:col-span-3"}>
               <ConversationsChart trend={trend} />
             </Section>
           ) : null}
         </div>
       ) : null}
 
-      {home ? <LiteAttention home={home} contact={contact} modules={who.modules} t={t} n={n} /> : null}
+      {reservas ? <LiteReservasBlock reservas={reservas} t={t} locale={locale} /> : null}
+
+      <LiteAttention
+        home={home}
+        contact={contact}
+        modules={who.modules}
+        reservasPending={reservas?.summary?.today?.pending ?? null}
+        t={t}
+        n={n}
+      />
     </>
   );
 }

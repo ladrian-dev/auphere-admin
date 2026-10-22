@@ -32,6 +32,7 @@ from nexus_api.db.models import ClientPhone, OperatorAccount
 from nexus_api.services import client_access, client_phones
 from nexus_api.services.client_access import AccessView, ClientAccessError
 from nexus_api.services.client_invitation_email import send_client_invitation
+from nexus_api.services.reservations import admin as reservations_admin
 
 router = APIRouter(prefix="/tenants", dependencies=[Depends(require_admin_token)])
 
@@ -43,7 +44,7 @@ def _actor(operator: OperatorAccount) -> str:
 
 
 def _error(exc: ClientAccessError) -> HTTPException:
-    return HTTPException(status_code=exc.status, detail={"code": exc.code})
+    return HTTPException(status_code=exc.status, detail={"code": exc.code, **exc.info})
 
 
 class PartnerRefOut(BaseModel):
@@ -61,6 +62,21 @@ class ClientMemberOut(BaseModel):
     expires_at: datetime | None = None
 
 
+class PendingAgentOut(BaseModel):
+    agent_id: uuid.UUID
+    name: str
+    version: int
+
+
+class ClientReservasOut(BaseModel):
+    """Spec 043: el modo de Reservas del cliente (``null`` si nunca lo tuvo)."""
+
+    mode: Literal["services", "capacity"]
+    capacity_kind: str | None
+    live_future: int
+    agents_pending_promotion: list[PendingAgentOut]
+
+
 class ClientAccessOut(BaseModel):
     eligible: bool
     ineligible_reason: str | None
@@ -69,13 +85,25 @@ class ClientAccessOut(BaseModel):
     enabled: bool
     modules: list[str]
     members: list[ClientMemberOut]
+    reservas: ClientReservasOut | None = None
+
+
+class ClientReservasIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["services", "capacity"]
+    capacity_kind: Literal["restaurant", "bar", "classes", "tours", "rooms", "spa"] | None = None
+    on_live: Literal["refuse", "cancel_and_notify"] = "refuse"
 
 
 class ClientAccessIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
-    modules: list[Literal["panel", "inbox", "usage"]] = Field(default_factory=list, max_length=3)
+    modules: list[Literal["panel", "inbox", "reservas", "usage"]] = Field(
+        default_factory=list, max_length=4
+    )
+    reservas: ClientReservasIn | None = None
 
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -116,6 +144,7 @@ def _out(view: AccessView) -> ClientAccessOut:
         whatsapp_connected=view.whatsapp_connected,
         enabled=view.enabled,
         modules=list(view.modules),
+        reservas=ClientReservasOut.model_validate(view.reservas) if view.reservas else None,
         members=[
             ClientMemberOut(
                 id=m.id,
@@ -163,6 +192,13 @@ async def set_client_access(
                 enabled=body.enabled,
                 modules=list(body.modules),
                 actor=_actor(operator),
+                reservas=reservations_admin.Choice(
+                    mode=body.reservas.mode,
+                    capacity_kind=body.reservas.capacity_kind,
+                    on_live=body.reservas.on_live,
+                )
+                if body.reservas is not None
+                else None,
             )
             return _out(view)
     except ClientAccessError as exc:

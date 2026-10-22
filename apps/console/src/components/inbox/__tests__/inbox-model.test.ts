@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkAttachment, composerMode, dayLabel, initialsOf, sendErrorOf, withDaySeparators } from "../inbox-model";
+import { checkAttachment, composerMode, dayLabel, initialsOf, sendErrorOf, waitingFor, withDaySeparators } from "../inbox-model";
 import { ME, NOW, detail, message } from "./fixtures";
 
 /** Spec 030: the decisions the Inbox must not get wrong, without rendering. */
@@ -74,5 +74,29 @@ describe("days and people", () => {
     expect(initialsOf("ana")).toBe("A");
     expect(initialsOf("+54 9 11")).toBe("·");
     expect(initialsOf(null)).toBe("·");
+  });
+});
+
+/** Spec 045 (R3.1): how long a conversation has waited for a person, as the row says it. */
+describe("waitingFor", () => {
+  const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+  const MIN = 60_000;
+
+  it("counts minutes, then hours, then days — whole ones, never rounded up", () => {
+    expect(waitingFor(ago(12 * MIN), NOW)).toEqual({ unit: "min", n: 12 });
+    expect(waitingFor(ago(59 * MIN + 59_000), NOW)).toEqual({ unit: "min", n: 59 });
+    expect(waitingFor(ago(60 * MIN), NOW)).toEqual({ unit: "h", n: 1 });
+    expect(waitingFor(ago(3 * 60 * MIN + 20 * MIN), NOW)).toEqual({ unit: "h", n: 3 });
+    expect(waitingFor(ago(24 * 60 * MIN), NOW)).toEqual({ unit: "d", n: 1 });
+    expect(waitingFor(ago(3 * 24 * 60 * MIN), NOW)).toEqual({ unit: "d", n: 3 });
+  });
+
+  it("under a minute —or a clock a little ahead— is «just now», never a negative wait", () => {
+    expect(waitingFor(ago(30_000), NOW)).toEqual({ unit: "now", n: 0 });
+    expect(waitingFor(ago(-90_000), NOW)).toEqual({ unit: "now", n: 0 });
+  });
+
+  it("a date it cannot read says nothing", () => {
+    expect(waitingFor("not-a-date", NOW)).toBeNull();
   });
 });

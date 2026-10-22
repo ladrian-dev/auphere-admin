@@ -3,6 +3,11 @@
  * Panel and Consumo for a single client. Spread into `i18n/messages.ts`.
  */
 export const liteMessages = {
+  // ── lateral: la fase Beta (spec 045, R7) ─────────────────────────
+  "shell.beta.client.hint": {
+    es: "Auphere Customers está en fase beta. Si algo no funciona como esperas, cuéntaselo a quien te dio acceso.",
+    en: "Auphere Customers is in beta. If something doesn't work as you expect, tell whoever gave you access.",
+  },
   "lite.panel.greeting": { es: "Hola, {name}", en: "Hi, {name}" },
   // ── Panel (R4) ───────────────────────────────────────────────────
   "lite.panel.partial": {
@@ -37,6 +42,48 @@ export const liteMessages = {
   },
   "lite.ok": { es: "Todo en orden. El saldo alcanza para el mes.", en: "All good. The balance lasts the month." },
   "lite.ok.noBalance.withInbox": { es: "Todo en orden. Nada espera a una persona.", en: "All good. Nothing is waiting for a person." },
+  // ── Panel: el bloque de Reservas (spec 043, T026) ────────────────
+  "lite.reservas.title": { es: "Reservas", en: "Bookings" },
+  "lite.reservas.title.services": { es: "Agenda", en: "Schedule" },
+  "lite.reservas.title.capacity": { es: "Ocupación", en: "Occupancy" },
+  "lite.reservas.see": { es: "Ver reservas", en: "See bookings" },
+  "lite.reservas.pct": { es: "{pct} %", en: "{pct}%" },
+  "lite.reservas.today": { es: "Reservas hoy", en: "Bookings today" },
+  "lite.reservas.today.split": { es: "{confirmed} confirmadas · {pending} sin confirmar", en: "{confirmed} confirmed · {pending} unconfirmed" },
+  "lite.reservas.week.occupancy": { es: "Ocupación esta semana", en: "Occupancy this week" },
+  "lite.reservas.week.occupancy.hint": { es: "De lunes a domingo", en: "Monday to Sunday" },
+  "lite.reservas.week.agent": { es: "Reservadas por el agente", en: "Booked by the agent" },
+  "lite.reservas.week.agent.hint": { es: "De la semana", en: "Of this week" },
+  "lite.reservas.month.noshow": { es: "No se presentaron", en: "No-shows" },
+  "lite.reservas.month.noshow.hint": { es: "Del mes", en: "This month" },
+  "lite.reservas.month.recovered": { es: "Huecos recuperados", en: "Openings recovered" },
+  "lite.reservas.month.recovered.hint": { es: "Con la lista de espera, este mes", en: "Through the waitlist, this month" },
+  "lite.reservas.month.recovered.off": { es: "La lista de espera está apagada", en: "The waitlist is off" },
+  "lite.reservas.people": { es: "Reservados hoy", en: "Booked today" },
+  "lite.reservas.people.hint": { es: "{unit} en {bookings}", en: "{unit} in {bookings}" },
+  "lite.reservas.inside": { es: "Dentro ahora", en: "Inside now" },
+  "lite.reservas.inside.of": { es: "De un aforo de {seats}", en: "Out of {seats} seats" },
+  "lite.reservas.inside.next": { es: "Llegan {people} en la próxima hora", en: "{people} arriving in the next hour" },
+  "lite.reservas.pending": { es: "Sin confirmar", en: "Unconfirmed" },
+  "lite.reservas.pending.hint": { es: "Reservas de hoy", en: "Today's bookings" },
+  "lite.reservas.waitlist": { es: "Lista de espera", en: "Waitlist" },
+  "lite.reservas.waitlist.hint": { es: "Esperan sitio", en: "Waiting for room" },
+  "lite.reservas.upcoming": { es: "Próximas de hoy", en: "Next today" },
+  "lite.reservas.upcoming.empty": { es: "No quedan reservas para hoy.", en: "No more bookings today." },
+  "lite.reservas.error": { es: "No se pudieron cargar las cifras de Reservas.", en: "The Bookings figures could not load." },
+  "lite.reservas.partial": {
+    es: "Parte de las cifras de Reservas no se pudo cargar.",
+    en: "Part of the Bookings figures could not load.",
+  },
+  "lite.attention.reservas": { es: "Reservas", en: "Bookings" },
+  "lite.attention.reservas.pending": {
+    es: "{count} reservas de hoy sin confirmar. El agente ya les escribió.",
+    en: "{count} of today's bookings are unconfirmed. The agent has already written to them.",
+  },
+  "lite.attention.reservas.pending.one": {
+    es: "1 reserva de hoy sin confirmar. El agente ya le escribió.",
+    en: "1 of today's bookings is unconfirmed. The agent has already written to them.",
+  },
   // ── invitación (R1.4) ────────────────────────────────────────────
   "invite.client.body": {
     es: "Te dieron acceso a la consola de {client}. Crea tu contraseña para entrar.",
@@ -63,6 +110,9 @@ export const liteMessages = {
     en: "Part of Usage could not load. Reload to try again.",
   },
   "lite.usage.cards": { es: "Saldo y gasto", en: "Balance and spend" },
+  // Spec 045 (R4): the balance answers «until when» first. The date is the API's local date, in the person's language.
+  "lite.usage.balance.until": { es: "Te alcanza hasta el {date}", en: "Lasts until {date}" },
+  // La pide la app (spec 031): sigue hasta que la app use `until`.
   "lite.usage.balance.runway": { es: "Cubre unos {days} días al ritmo de esta semana", en: "Lasts about {days} days at this week's pace" },
   "lite.usage.unreadable": { es: "No se pudo leer ahora", en: "Could not be read right now" },
   "lite.usage.month.projection": { es: "A este ritmo, {amount} a fin de mes", en: "At this pace, {amount} by the end of the month" },
@@ -76,9 +126,15 @@ export const liteMessages = {
   "lite.usage.byAgent.spent": { es: "Gastado este mes", en: "Spent this month" },
   "lite.usage.byAgent.share": { es: "Parte del gasto", en: "Share of spend" },
   "lite.usage.detail.hint": {
-    es: "Lo que mide la plataforma por dentro, por medidor. Para revisar con detalle o exportar.",
-    en: "What the platform measures inside, per meter. To review in detail or export.",
+    es: "Lo que mide la plataforma por dentro, por canal. Para revisar con detalle o exportar.",
+    en: "What the platform measures inside, per channel. To review in detail or export.",
   },
+  // Spec 045 (R6.3): the detail in three families, one WhatsApp row and the period's spend.
+  "lite.usage.detail.channel": { es: "Canal", en: "Channel" },
+  "lite.usage.detail.unit.model": { es: "tokens", en: "tokens" },
+  "lite.usage.detail.unit.media": { es: "archivos", en: "files" },
+  "lite.usage.detail.unit.other": { es: "unidades varias", en: "mixed units" },
+  "lite.usage.detail.spend": { es: "Gasto del periodo", en: "Spend in the period" },
   // ── campana (R15) ────────────────────────────────────────────────
   "lite.bell.title": { es: "Avisos", en: "Notifications" },
   "lite.bell.readAll": { es: "Marcar todo como leído", en: "Mark all as read" },

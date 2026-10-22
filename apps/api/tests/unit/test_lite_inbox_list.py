@@ -103,10 +103,15 @@ async def test_filters_and_counts_are_per_person(client, db_session, console_wor
     assert (await client.post(f"{LIST}/{c0}/unread", headers=me())).status_code == 204
     assert (await client.get(COUNTS, headers=me())).json()["unread"] == 2
 
-    # Un entrante nuevo después de leer vuelve a contar.
+    # Un entrante nuevo después de leer vuelve a contar...
+    assert (await client.post(f"{LIST}/{c0}/read", headers=me())).status_code == 204
+    later = datetime.now(UTC)
+    await _set(db_session, c0, last_inbound_at=later, last_attended_inbound_at=later)
+    assert (await client.get(COUNTS, headers=me())).json()["unread"] == 2
+    # ...pero uno silenciado (spec 045) solo mueve la ventana de WhatsApp.
     assert (await client.post(f"{LIST}/{c0}/read", headers=me())).status_code == 204
     await _set(db_session, c0, last_inbound_at=datetime.now(UTC))
-    assert (await client.get(COUNTS, headers=me())).json()["unread"] == 2
+    assert (await client.get(COUNTS, headers=me())).json()["unread"] == 1
 
 
 async def test_search_by_name_phone_and_text(client, db_session, console_world) -> None:
