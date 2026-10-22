@@ -15,6 +15,7 @@ stays ``NULL`` — they exist only in our DB, not in AgendaPro.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -88,6 +89,41 @@ async def _own_appointment(
     return appt
 
 
+def _agent_key(customer_id: uuid.UUID, key: str) -> str:
+    """La clave que eligió el modelo, de esta persona.
+
+    El modelo no conoce el id de la conversación, así que dos personas pueden
+    mandar la misma clave («sabado-1000»). Sin esto, la segunda recibía la cita
+    de la primera (/cso CSO-001, variante de `booking.*`). Cabe en la columna
+    (120) y en la entrada de `agendapro_public.create_appointment` (120).
+    """
+    digest = hashlib.sha256(f"{customer_id}:{key}".encode()).hexdigest()
+    return f"agent:{digest}"
+
+
+def _replay(existing: Appointment, customer_id: uuid.UUID) -> CreateAppointmentOutput:
+    """La cita que ya creó esta clave, si es de esta persona.
+
+    Con `_agent_key` dos personas no comparten clave; esto es la defensa por si
+    una fila llega con la de otra: una clave nunca entrega la cita ajena.
+    """
+    if existing.customer_id != customer_id:
+        raise ToolError("idempotency_conflict")
+    # Surface the existing row's async state so the agent doesn't lie.
+    # ``confirmed`` if the cron already completed, ``enqueued_async`` if it's
+    # still in flight.
+    replay_status: Literal["confirmed", "enqueued_async"] = (
+        "enqueued_async"
+        if existing.public_booking_status in ("pending", "in_progress")
+        else "confirmed"
+    )
+    return CreateAppointmentOutput(
+        appointment=_to_brief(existing),
+        idempotent_replay=True,
+        booking_status=replay_status,
+    )
+
+
 # ── Block O helpers ──────────────────────────────────────────────────────────
 
 
@@ -133,7 +169,7 @@ async def _enqueue_async_booking_job(
         "starts_at_iso": payload.starts_at.isoformat(),
         "duration_min": payload.duration_min,
         "preferred_barber_id": str(payload.barber_id) if payload.barber_id else None,
-        "idempotency_key": payload.idempotency_key,
+        "idempotency_key": appointment.idempotency_key,
     }
     job = ScheduledJob(
         tenant_id=tenant_id,
@@ -192,11 +228,11 @@ class CreateAppointment(ToolBase):
     name = "booking.create_appointment"
     description = (
         "Book an appointment for the person you are talking to. You cannot book "
-        "on behalf of anyone else. Idempotent: a second call with the same "
-        "``idempotency_key`` returns the original row without creating a duplicate "
-        "(required because the WhatsApp webhook may retry on transient errors). The "
-        "caller should derive a stable key from the conversation turn — for "
-        "example, ``conv:{conversation_id}:create_appt:{intent_hash}``."
+        "on behalf of anyone else. Idempotent per person: a second call with the "
+        "same ``idempotency_key`` returns their original row without creating a "
+        "duplicate (required because the WhatsApp webhook may retry on transient "
+        "errors). Derive a stable key from what is being booked — for example, "
+        "``corte-2026-10-24T10:00``."
     )
     input_model = CreateAppointmentInput
     output_model = CreateAppointmentOutput
@@ -207,25 +243,14 @@ class CreateAppointment(ToolBase):
         tenant_id = require_current_tenant()
         customer_id = current_customer_or_refuse("reservar una cita")
         ends_at = payload.starts_at + timedelta(minutes=payload.duration_min)
+        key = _agent_key(customer_id, payload.idempotency_key)
 
         async with tool_session() as session:
-            # Idempotent path: replay if (tenant_id, idempotency_key) is taken.
-            stmt = select(Appointment).where(Appointment.idempotency_key == payload.idempotency_key)
+            # Idempotent path: replay if (tenant_id, key) is taken.
+            stmt = select(Appointment).where(Appointment.idempotency_key == key)
             existing = (await session.execute(stmt)).scalar_one_or_none()
             if existing is not None:
-                # Surface the existing row's async state so the agent
-                # doesn't lie. ``confirmed`` if the cron already completed,
-                # ``enqueued_async`` if it's still in flight.
-                replay_status: Literal["confirmed", "enqueued_async"] = (
-                    "enqueued_async"
-                    if existing.public_booking_status in ("pending", "in_progress")
-                    else "confirmed"
-                )
-                return CreateAppointmentOutput(
-                    appointment=_to_brief(existing),
-                    idempotent_replay=True,
-                    booking_status=replay_status,
-                )
+                return _replay(existing, customer_id)
 
             # Block O: detect whether the tenant uses the public AgendaPro
             # path. If yes, persist the row as provisional and enqueue an
@@ -243,7 +268,7 @@ class CreateAppointment(ToolBase):
                 price_cents=payload.price_cents,
                 currency=payload.currency,
                 status=AppointmentStatus.BOOKED,
-                idempotency_key=payload.idempotency_key,
+                idempotency_key=key,
                 external_ref=None,
                 notes=payload.notes,
                 public_booking_status="pending" if tenant_uses_public else None,
@@ -258,9 +283,7 @@ class CreateAppointment(ToolBase):
                 async with tool_session() as session2:
                     again = (
                         await session2.execute(
-                            select(Appointment).where(
-                                Appointment.idempotency_key == payload.idempotency_key
-                            )
+                            select(Appointment).where(Appointment.idempotency_key == key)
                         )
                     ).scalar_one_or_none()
                     if again is None:
@@ -268,16 +291,7 @@ class CreateAppointment(ToolBase):
                             "idempotency_key collision with no replay row — "
                             "transactional anomaly, refusing to retry"
                         ) from None
-                    replay_status_again: Literal["confirmed", "enqueued_async"] = (
-                        "enqueued_async"
-                        if again.public_booking_status in ("pending", "in_progress")
-                        else "confirmed"
-                    )
-                    return CreateAppointmentOutput(
-                        appointment=_to_brief(again),
-                        idempotent_replay=True,
-                        booking_status=replay_status_again,
-                    )
+                    return _replay(again, customer_id)
             await session.refresh(row)
 
             booking_status: Literal["confirmed", "enqueued_async"] = "confirmed"

@@ -63,7 +63,7 @@ class CreateAppointmentInput(InputModel):
         max_length=120,
         description=(
             "Caller-supplied idempotency token. Two ``create_appointment`` calls "
-            "with the same key for the same tenant return the SAME row, never "
+            "with the same key for the same person return the SAME row, never "
             "two separate appointments. Required to avoid double-booking on "
             "webhook retries."
         ),
