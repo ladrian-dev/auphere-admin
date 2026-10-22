@@ -22,6 +22,7 @@ from typing import Any, cast
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.config import get_settings
@@ -54,6 +55,7 @@ from nexus_api.services.connectors.service import (
     ConnectorAlreadyConnected,
     ConnectorNotConfigured,
     ConnectorNotFound,
+    ConsentAlreadyGranted,
     IncompatibleAuthKind,
 )
 from nexus_api.services.templating.seed_templates import load_seed_template
@@ -360,7 +362,7 @@ async def start_consent(
     slug: str,
     scope: ClientScope = Depends(agent_scope("agents:write")),
     composio: ComposioClientProtocol = Depends(get_composio_client),
-) -> ConsentOut:
+) -> ConsentOut | JSONResponse:
     """Start (or re-issue) the OAuth consent of an ``oauth_composio``
     connector. The signed URL is returned once, to this caller."""
     slug = _guard_slug(slug)
@@ -406,6 +408,10 @@ async def start_consent(
             consent_secret=settings.connector_consent_secret,
             actor=scope.principal.actor,
         )
+    except ConsentAlreadyGranted as exc:
+        # Returned, not raised: an exception would roll back the transaction
+        # that has just settled the install as connected.
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
     except ConnectorAlreadyConnected as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ConnectorNotConfigured as exc:

@@ -342,6 +342,37 @@ async def test_tools_enable_and_publish(
     ).status_code == 404
 
 
+async def test_a_second_consent_after_the_owner_already_authorised_settles_it(
+    client, console_world, db_session, seeded_connectors, fake_composio
+) -> None:
+    """El webhook de Composio no llega a producción y el cron solo reconcilia
+    tenants activos: con el cliente aún en alta, la tarjeta sigue «pendiente»
+    después de autorizar. Al volver a pulsar Conectar, Composio no deja crear
+    otra cuenta para el mismo usuario y salía un 502 mudo (2026-10-22,
+    ``demo-lorenzo``). Ahora se reconoce la autorización y se dice."""
+    a = console_world["a"]
+    h = a["headers"]
+    base = f"/console/clients/{a['ref']}/connectors"
+
+    first = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    assert first.status_code == 201, first.text
+    tc = await db_session.scalar(
+        sa.select(TenantConnector).where(TenantConnector.tenant_id == a["tenant_id"])
+    )
+    assert tc is not None and tc.status == "pending"
+    # El dueño autoriza en Google; Composio da la cuenta por buena y el
+    # webhook no llega nunca.
+    fake_composio._connections[tc.credentials_ref["composio_connection_id"]].status = "ACTIVE"
+
+    again = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    assert again.status_code == 409, again.text
+    assert "ya" in again.json()["detail"].lower()
+    await db_session.refresh(tc)
+    assert tc.status == "connected"
+    tools = {c["slug"]: c for c in (await client.get(base, headers=h())).json()}["googlecalendar"]
+    assert tools["status"] == "connected" and tools["tools_total"] >= 1
+
+
 async def test_connectors_never_leak_secrets_and_consent_once(
     client, console_world, db_session, seeded_connectors, fake_composio
 ) -> None:

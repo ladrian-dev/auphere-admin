@@ -5,7 +5,9 @@ forever because Composio's server-to-server webhook never landed (not
 configured, transient miss, signature mismatch) — and the inverse, where
 a token expired upstream but our row still says ``connected``.
 
-Every tick this cron walks ACTIVE tenants, finds their ``oauth_composio``
+Every tick this cron walks every tenant that is not archived — including
+one still in ``provisioning``, whose owner often connects a calendar before
+the WhatsApp line — finds their ``oauth_composio``
 installs in a reconcilable state and drives
 :func:`nexus_api.services.connectors.service.reconcile_connector_status`
 — the SAME idempotent path the operator's "Sincronizar" button uses, so
@@ -50,6 +52,14 @@ _RECONCILABLE = (
     TenantConnectorStatus.NEEDS_REAUTH.value,
 )
 
+# Every tenant but an archived one. A tenant in ``provisioning`` has no
+# channel yet but may already have authorised a connector.
+_RECONCILED_TENANT_STATUSES = (
+    TenantStatus.ACTIVE,
+    TenantStatus.PAUSED,
+    TenantStatus.PROVISIONING,
+)
+
 
 async def run_connector_reconcile_cron(
     *,
@@ -61,7 +71,7 @@ async def run_connector_reconcile_cron(
     sm = get_sessionmaker()
     while not stop.is_set():
         try:
-            tenant_ids = await _list_active_tenants(sm)
+            tenant_ids = await _list_reconcilable_tenants(sm)
             for tid in tenant_ids:
                 if stop.is_set():
                     break
@@ -75,10 +85,10 @@ async def run_connector_reconcile_cron(
     log.info("connector_reconcile.stopped")
 
 
-async def _list_active_tenants(sm: sa.orm.sessionmaker) -> list[uuid.UUID]:  # type: ignore[type-arg]
+async def _list_reconcilable_tenants(sm: sa.orm.sessionmaker) -> list[uuid.UUID]:  # type: ignore[type-arg]
     async with sm() as session:
         rows = await session.execute(
-            sa.select(Tenant.id).where(Tenant.status == TenantStatus.ACTIVE)
+            sa.select(Tenant.id).where(Tenant.status.in_(_RECONCILED_TENANT_STATUSES))
         )
         return [row[0] for row in rows]
 
