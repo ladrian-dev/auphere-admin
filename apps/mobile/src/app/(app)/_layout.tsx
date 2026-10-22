@@ -1,13 +1,14 @@
 import * as Notifications from "expo-notifications";
 import { NativeTabs } from "expo-router/native-tabs";
-import { useEffect, useRef } from "react";
-import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
+import { router, useNavigation } from "expo-router";
 
 import { useCounts, useMe } from "@/api/hooks";
 import { noticesAsked } from "@/auth/store";
 import { MeGateState } from "@/features/me-gate";
 import { useT } from "@/i18n/t";
-import { MODULES, TAB_BAR_MINIMIZE, knownModules, tabPlan } from "@/lib/modules";
+import { MODULES, TAB_BAR_MINIMIZE, knownModules, tabLabelStyle, tabPlan } from "@/lib/modules";
 import { useInboxStream } from "@/api/sse";
 import { useTheme } from "@/theme/theme";
 
@@ -32,6 +33,8 @@ export default function AppLayout() {
   const hasInbox = visible.includes("inbox");
   const counts = useCounts(hasInbox);
   useInboxStream(hasInbox);
+  // The tabs exist once `/me` is read, and are rebuilt when the modules change (`key`).
+  const pass = useTabRelayout(me.data && visible.length > 0 ? visible.join(",") : null);
 
   // The app's badge is what waits for a person (R8, same number as the tab).
   const waitingCount = counts.data?.waiting;
@@ -60,6 +63,7 @@ export default function AppLayout() {
       hidden={visible.length === 1}
       tintColor={colors.primaryText}
       minimizeBehavior={TAB_BAR_MINIMIZE}
+      labelStyle={tabLabelStyle(Platform.OS, pass)}
     >
       {tabPlan(nav).map(({ module, hidden }) => {
         const m = MODULES[module];
@@ -75,4 +79,34 @@ export default function AppLayout() {
       })}
     </NativeTabs>
   );
+}
+
+/**
+ * Spec 044, first iOS pass: on iOS 26 the native bar can lay its labels out
+ * wrong — when it is built, or when the tab changes while a screen of the root
+ * stack covers it (a link from a contact's next reservation, a notice) — and
+ * sending the label style again puts them right. So it goes again once the
+ * tabs are in view, past the transition: after each build of the bar (`shape`,
+ * null while there is none) and after each return to them.
+ */
+const RELAYOUT_AFTER_MS = 400;
+
+function useTabRelayout(shape: string | null): number {
+  const navigation = useNavigation();
+  const [pass, setPass] = useState(0);
+  useEffect(() => {
+    if (shape === null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const again = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setPass((n) => n + 1), RELAYOUT_AFTER_MS);
+    };
+    again();
+    const off = navigation.addListener("focus", again);
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  }, [navigation, shape]);
+  return pass;
 }

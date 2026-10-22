@@ -7,7 +7,7 @@ import { AppState } from "react-native";
 import { API_URL } from "@/config";
 
 import { APP_HEADERS, accessToken, refresh, settleRefusal } from "./client";
-import { invalidateInbox, keys } from "./query";
+import { invalidateInbox, invalidateReservas, keys } from "./query";
 
 /**
  * The Bandeja, live (spec 031, D17, R5.4, R5.5). One stream while the app is
@@ -24,6 +24,9 @@ export type InboxEvent = {
 };
 
 const NAMES = new Set(["conversation.updated", "message.new", "message.status"]);
+
+/** Spec 044, contracts §8: something in Reservas changed. No data rides on it; the app re-reads. */
+export const RESERVATIONS_EVENT = "reservations.changed";
 
 let status: LiveStatus = "off";
 const watchers = new Set<() => void>();
@@ -73,12 +76,18 @@ export function parseFrame(event: string | undefined, data: string): InboxEvent 
 function rereadAll(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: ["inbox"] });
   void qc.invalidateQueries({ queryKey: keys.home });
+  invalidateReservas(qc);
 }
 
 function makeInvalidator(qc: QueryClient) {
   let lists: ReturnType<typeof setTimeout> | null = null;
   const open = new Map<string, ReturnType<typeof setTimeout>>();
+  let reservas: ReturnType<typeof setTimeout> | null = null;
   return {
+    reservas() {
+      if (reservas) clearTimeout(reservas);
+      reservas = setTimeout(() => invalidateReservas(qc), 400);
+    },
     handle(e: InboxEvent) {
       const what = invalidationsFor(e);
       if (lists) clearTimeout(lists);
@@ -97,6 +106,7 @@ function makeInvalidator(qc: QueryClient) {
     },
     cancel() {
       if (lists) clearTimeout(lists);
+      if (reservas) clearTimeout(reservas);
       for (const t of open.values()) clearTimeout(t);
       open.clear();
     },
@@ -164,6 +174,7 @@ export function useInboxStream(enabled: boolean): void {
               setStatus("live");
               return;
             }
+            if (msg.event === RESERVATIONS_EVENT) return invalidator.reservas();
             const event = parseFrame(msg.event, msg.data);
             if (event) invalidator.handle(event);
           },

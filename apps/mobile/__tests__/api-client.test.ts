@@ -100,6 +100,17 @@ it("a refused renewal is a closed phone too", async () => {
   off();
 });
 
+it("a renewal refused with any other code is a closed phone too — never a stuck «No se pudo cargar» (spec 044, found against the 043 API)", async () => {
+  // The API answers an unknown refresh token (a reset database, a deleted phone) with 401 `invalid_grant`.
+  handler = (c) => (c.url.endsWith("/app/phones/refresh") ? json(401, { code: "invalid_grant" }) : json(401, { detail: "Invalid console token" }));
+  const events: SessionEvent[] = [];
+  const off = onSessionEvent((e) => events.push(e));
+  const { api, call } = await client();
+  await expect(call(api.GET("/console/lite/home"))).rejects.toMatchObject({ status: 401 });
+  expect(events).toContainEqual({ type: "closed", reason: null });
+  off();
+});
+
 it("app_update_required sends the person to update", async () => {
   handler = () => json(403, { detail: { code: "app_update_required", minimum_version: "1.2.0", reason: "Seguridad" } });
   const events: SessionEvent[] = [];

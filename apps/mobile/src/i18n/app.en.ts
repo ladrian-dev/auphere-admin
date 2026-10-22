@@ -1,9 +1,18 @@
 import type { AppKey } from "./app.es";
+import { atenderEn } from "./atender.en";
+import { avisosEn } from "./avisos.en";
+import { mejorasEn } from "./mejoras.en";
+import { reservasEn } from "./reservas.en";
 
 /** The app's own words, English. Every Spanish key must exist here (`tsc` checks it). */
 export const appEn: Record<AppKey, string> = {
+  ...reservasEn,
+  ...mejorasEn,
+  ...avisosEn,
+  ...atenderEn,
   "app.tab.panel": "Home",
   "app.tab.inbox": "Inbox",
+  "app.tab.reservas": "Bookings",
   "app.tab.usage": "Usage",
   "app.settings": "Settings",
   "app.settings.open": "Open settings",
@@ -85,8 +94,6 @@ export const appEn: Record<AppKey, string> = {
   "app.inbox.open.failed": "The file couldn't be opened.",
   "app.inbox.contact": "Contact",
   "app.inbox.readMore": "Read more",
-  "app.notices.title": "Hear about what needs you",
-  "app.notices.body": "We notify you on this phone about three things, and nothing else:",
   "app.notices.kind.inbox.waiting": "A conversation is waiting for a person",
   "app.notices.kind.inbox.waiting.hint": "When the agent asks for help. This is the urgent one.",
   "app.notices.kind.inbox.message_for_you": "New message where you're answering",

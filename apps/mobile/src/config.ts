@@ -21,6 +21,22 @@ export const APP_VERSION = Constants.expoConfig?.version ?? "0.0.0";
 export const PLATFORM: "ios" | "android" = Platform.OS === "ios" ? "ios" : "android";
 export const VARIANT = String(Constants.expoConfig?.extra?.variant ?? "production");
 
+/**
+ * Spec 044, research D2: example data for Reservas while its API does not
+ * exist, in a development build that asks for it at build time — and nowhere
+ * else. Outside `__DEV__` both are always `null`, whatever the environment says.
+ */
+export function demoModeOf(value: string | undefined, dev: boolean): "services" | "capacity" | null {
+  return dev && (value === "services" || value === "capacity") ? value : null;
+}
+
+export function demoStateOf(value: string | undefined, dev: boolean): "empty" | "error" | "slow" | null {
+  return dev && (value === "empty" || value === "error" || value === "slow") ? value : null;
+}
+
+export const RESERVAS_DEMO = demoModeOf(process.env.EXPO_PUBLIC_RESERVAS_DEMO, __DEV__);
+export const RESERVAS_DEMO_STATE = demoStateOf(process.env.EXPO_PUBLIC_RESERVAS_DEMO_STATE, __DEV__);
+
 /** The only way back from Google's window: fixed on the API too (`api/app_public.py`). */
 export const AUTH_REDIRECT = "auphere-customers://auth/callback";
 

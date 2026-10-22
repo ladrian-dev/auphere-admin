@@ -71,11 +71,13 @@ describe("the box (R6.3, R6.5)", () => {
 
   it("modes follow who answers", () => {
     const base = { waiting_reason: null, window: { open: true, closes_at: null }, channel: { kind: "whatsapp", connected: true } };
-    expect(composerMode({ ...base, state: "waiting", assignee: null })).toEqual({ kind: "waiting", reason: null });
+    // Spec 044 (R11) adds since when and the agent's name; the kind and reason are the 031's.
+    expect(composerMode({ ...base, state: "waiting", assignee: null })).toEqual({ kind: "waiting", reason: null, since: null, agent: null });
     expect(composerMode({ ...base, state: "person", assignee: { kind: "member", name: "Luis", is_me: false } })).toEqual({ kind: "other", name: "Luis" });
     expect(composerMode({ ...base, state: "person", assignee: { kind: "member", name: null, is_me: true }, channel: { kind: "whatsapp", connected: false } })).toEqual({
       kind: "mine",
       blocked: "channel_disconnected",
+      agent: null,
     });
   });
 
@@ -211,5 +213,63 @@ describe("sending and control (R6.2, R6.4, R6.6)", () => {
     expect(result.current.tookOver).toBe(1);
     // Back on Inicio, it no longer says the conversation waits.
     expect(spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey))).toContain(JSON.stringify(["home"]));
+  });
+});
+
+/**
+ * Spec 044, Historia 6, Requisito 11: whoever opens a waiting conversation
+ * sees since when and who asked; with control, «Devolver» is one tap and the
+ * saved replies are in view.
+ */
+describe("attending (spec 044, R11)", () => {
+  const since = new Date(Date.now() - 12 * 60_000).toISOString();
+
+  it("the waiting card says since when and who asked, before «Tomar el control»", async () => {
+    await render(
+      <ControlCard mode={{ kind: "waiting", reason: "Pide la seña", since, agent: "Soporte" }} busy={false} online t={t} onTakeOver={jest.fn()} onGiveBack={jest.fn()} onReopen={jest.fn()} />,
+    );
+    expect(screen.getByText("Espera hace 12 min · lo pidió Soporte")).toBeTruthy();
+  });
+
+  it("while the agent answers, it says what stepping in does", async () => {
+    await render(<ControlCard mode={{ kind: "agent", agent: "Ventas" }} busy={false} online t={t} onTakeOver={jest.fn()} onGiveBack={jest.fn()} onReopen={jest.fn()} />);
+    expect(screen.getByText("Responde Ventas. Si entras, deja de responder.")).toBeTruthy();
+  });
+
+  it("with control, «Devolver» is one tap away, not only in the menu", async () => {
+    const onGiveBack = jest.fn();
+    await render(
+      <Composer mode={{ kind: "mine", blocked: null, agent: "Ventas" }} online focusSignal={0} replies={null} t={t} onSend={jest.fn()} onAttach={jest.fn()} onReplies={jest.fn()} onGiveBack={onGiveBack} />,
+    );
+    expect(screen.getByText("Atiendes tú · Ventas está en pausa")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Devolver" }));
+    expect(onGiveBack).toHaveBeenCalled();
+  });
+
+  it("with the draft empty, the saved replies are chips that fill it", async () => {
+    await render(
+      <Composer
+        mode={{ kind: "mine", blocked: null, agent: "Ventas" }}
+        online
+        focusSignal={0}
+        replies={[{ id: "r1", title: "Horario de la semana y del sábado", body: "Abrimos de 9 a 19." }]}
+        t={t}
+        onSend={jest.fn()}
+        onAttach={jest.fn()}
+        onReplies={jest.fn()}
+        onGiveBack={jest.fn()}
+      />,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Horario de la semana y del sábado" }));
+    expect(screen.getByLabelText("Escribir un mensaje").props.value).toBe("Abrimos de 9 a 19.");
+    expect(screen.queryByRole("button", { name: "Horario de la semana y del sábado" })).toBeNull();
+  });
+
+  it("the bar says the state in words (R11.2)", () => {
+    const { attendsLine } = require("@/features/inbox/model") as typeof import("@/features/inbox/model");
+    expect(attendsLine({ state: "waiting", assignee: null, agent: { id: "a", name: "Soporte" } }, t)).toBe("Espera a una persona");
+    expect(attendsLine({ state: "resolved", assignee: null, agent: null }, t)).toBe("Resuelta");
+    expect(attendsLine({ state: "agent", assignee: null, agent: { id: "a", name: "Soporte" } }, t)).toBe("Atiende Soporte");
+    expect(attendsLine({ state: "person", assignee: { is_me: true, kind: "member", name: "Valeria" }, agent: null }, t)).toBe("Atiendes tú");
   });
 });

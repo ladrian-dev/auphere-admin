@@ -59,6 +59,16 @@ export function invalidateInbox(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: keys.home });
 }
 
+/**
+ * Spec 044, R17.2: something in Reservas changed — the day, the occupancy, the
+ * waitlist, Inicio (which counts today's unconfirmed and «Hoy en Reservas» from
+ * the same reads) and the contact's next reservation.
+ */
+export function invalidateReservas(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: keys.reservas });
+  void qc.invalidateQueries({ queryKey: ["inbox", "conversation"] });
+}
+
 export const keys = {
   me: ["me"] as const,
   appConfig: ["app", "config"] as const,
@@ -73,4 +83,11 @@ export const keys = {
   replies: ["inbox", "replies"] as const,
   tags: ["inbox", "tags"] as const,
   notices: ["phone", "notices"] as const,
+  reservas: ["reservas"] as const,
+  reservasConfig: ["reservas", "config"] as const,
+  reservasRange: (from: string, to: string) => ["reservas", "range", from, to] as const,
+  reservasOccupancy: (from: string, to: string) => ["reservas", "occupancy", from, to] as const,
+  reservasSlots: (date: string, serviceId: string | null, proId: string | null, partySize: number | null) =>
+    ["reservas", "slots", date, serviceId, proId, partySize] as const,
+  reservasWaitlist: ["reservas", "waitlist"] as const,
 };

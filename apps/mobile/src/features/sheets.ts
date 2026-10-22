@@ -7,8 +7,8 @@ import { SHEET_RADIUS, useTheme } from "@/theme/theme";
 import { useHeaderOptions, type ScreenOptions as Options } from "./tab-stack";
 
 /**
- * The two sheets of the app (spec 042, R1.7, R3.1, R3.3, D7): the contact of
- * a conversation and Ajustes. On iOS both are form sheets that stop at six
+ * The sheets of the app (spec 042, R1.7, R3.1, R3.3, D7): the contact of a
+ * conversation and Ajustes; Reservas' four (spec 044, D5) follow the contact's. On iOS both are form sheets that stop at six
  * tenths and rise to full height, with the system's grabber. With Liquid
  * Glass the container paints nothing, so the sheet's own material shows
  * through and its header is transparent — the content respects the inset
@@ -16,7 +16,7 @@ import { useHeaderOptions, type ScreenOptions as Options } from "./tab-stack";
  * Before iOS 26 the container is opaque, as it was. On Android the contact is
  * a Material bottom sheet with the app's corners and Ajustes is a screen.
  */
-export function useSheetOptions(): { contacto: Options; ajustes: Options } {
+export function useSheetOptions(): { contacto: Options; ajustes: Options; reserva: Options; reservaForm: Options } {
   const t = useT();
   const { colors } = useTheme();
   const header = useHeaderOptions();
@@ -30,6 +30,10 @@ export function useSheetOptions(): { contacto: Options; ajustes: Options } {
   };
   return {
     contacto: { ...sheet, ...opaque, headerShown: false },
+    // Spec 044 (research D5): a reservation and the short walk-in are the contact's sheet;
+    // the forms (a new reservation, blocking hours) open tall, with room for the keyboard.
+    reserva: { ...sheet, ...opaque, headerShown: false },
+    reservaForm: { ...sheet, sheetAllowedDetents: [1], ...opaque, headerShown: false },
     ajustes: {
       ...header,
       ...(Platform.OS === "ios" ? sheet : { presentation: "card" }),

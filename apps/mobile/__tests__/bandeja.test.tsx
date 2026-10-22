@@ -153,3 +153,37 @@ describe("row words", () => {
     expect(badgeOf(conv({ state: "agent" }), t)).toBeNull();
   });
 });
+
+/**
+ * Spec 044, Historia 6, Requisito 10: the ones waiting for a person, pinned on
+ * top with the agent's reason and how long they have waited; the rule of
+ * what the Bandeja shows, said at its foot.
+ */
+describe("the waiting ones, pinned (spec 044, R10)", () => {
+  const since = new Date(Date.now() - 12 * 60_000).toISOString();
+  const waiting = conv({ id: "w1", waiting: { reason: "Pide que le devuelvan la seña", since } });
+  const other = conv({ id: "o1", state: "agent", contact: { name: "Benjamín Soto", handle: "+56 9 1111 2222", initials: "BS" }, unread: false });
+
+  it("with «Todas» and no search, they go first under «Esperan a una persona · N», with the reason and the wait", async () => {
+    list({ data: page([other, waiting]) });
+    await render(<Bandeja />);
+    expect(screen.getByText("Esperan a una persona · 1")).toBeTruthy();
+    expect(screen.getByText("Las demás")).toBeTruthy();
+    expect(screen.getByText("Pide que le devuelvan la seña")).toBeTruthy();
+    expect(screen.getByText("Necesita humano · hace 12 min")).toBeTruthy();
+  });
+
+  it("without the time from the API, the reason alone — never an invented wait (R10.2)", async () => {
+    // 045 §2 always sends `since` with `waiting`; an older API sends no `waiting` at all: the plain preview, no time.
+    list({ data: page([conv({ id: "w2", waiting: null, last_message: { at: new Date().toISOString(), author: { kind: "contact", name: "Ana", is_me: false }, preview: "Quiere hablar con alguien", has_media: false } })]) });
+    await render(<Bandeja />);
+    expect(screen.getByText("Quiere hablar con alguien")).toBeTruthy();
+    expect(screen.queryByText(/hace \d/)).toBeNull();
+  });
+
+  it("says, at its foot, which conversations it shows", async () => {
+    list({ data: page([other]) });
+    await render(<Bandeja />);
+    expect(screen.getByText("Aquí solo están las conversaciones que atiende o atendió tu agente. El resto de chats de tu WhatsApp no aparece.")).toBeTruthy();
+  });
+});

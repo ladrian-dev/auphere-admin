@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import * as Reanimated from "react-native-reanimated";
 
 import { MAX, durations } from "@/motion/durations";
@@ -7,6 +8,8 @@ import { CARD_RADIUS, concentric } from "@/theme/theme";
 import { EmptyState, ErrorState, OfflineBanner, PartialNotice, ReconnectingIndicator, SKELETON_DELAY_MS, Skeleton } from "@/ui/states";
 import { Avatar } from "@/ui/bits";
 import { Text } from "@/ui/text";
+
+const noop = () => undefined;
 
 /**
  * Spec 031 (T014, T029, R14.1, R14.2, R14.4, R14.7): the five states, named
@@ -39,6 +42,11 @@ describe("the five states", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "Reintentar" }));
     expect(onRetry).toHaveBeenCalled();
+  });
+
+  it("puts «Reintentar» under the words, centred like them (spec 044, first iOS pass: it sat on the left)", async () => {
+    await render(<ErrorState onRetry={noop} />);
+    expect(StyleSheet.flatten(screen.getByTestId("error-retry").props.style)).toMatchObject({ alignSelf: "center" });
   });
 
   it("offline says that what shows is the last thing that loaded, and since when", async () => {

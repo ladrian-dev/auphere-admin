@@ -10,14 +10,15 @@
 ## Qué es
 
 La Consola Lite ([consola-lite.md](consola-lite.md)) en iOS y Android, para la
-misma persona y con la misma cuenta. Tres módulos —Inicio (el Panel), Bandeja y
+misma persona y con la misma cuenta. Cuatro módulos —Inicio (el Panel),
+Bandeja, Reservas (spec [044](../specs/044-la-app-con-reservas/spec.md)) y
 Consumo—, las pestañas que el cliente tenga y en el orden de la web, y avisos
 normales de lo que necesita a una persona. Convive con la consola web, que no
 cambia: la app no tiene ninguna regla de negocio propia, lee las mismas rutas
 `/console/lite/*`.
 
-Lo que **no** hace en la v1: Reservas, comprar o recargar saldo, responder
-desde el aviso, plantillas de WhatsApp fuera de la ventana de 24 h, deslizar
+Lo que **no** hace: comprar o recargar saldo (decisión del owner, 2026-10-22),
+mover o editar una reserva (044), responder desde el aviso, plantillas de WhatsApp fuera de la ventana de 24 h, deslizar
 para actuar sobre una conversación (todo está en su menú) y el enlace universal
 para entrar (solo esquema propio).
 
@@ -46,6 +47,9 @@ para entrar (solo esquema propio).
     (las pestañas nativas no se pueden añadir en caliente). Si `nav` cambia, la
     barra se vuelve a montar a propósito (`key`) y la persona cae en el primer
     módulo. Con un módulo no hay barra. Un módulo desconocido se ignora.
+    Las etiquetas de la barra van a 10 pt en iOS, como las de Apple
+    (`tabLabelStyle`, spec 044 D13): dejadas al tamaño del texto del teléfono
+    crecían y se recortaban (042 H25).
     La barra **no se encoge** al desplazar (`TAB_BAR_MINIMIZE = "never"`,
     spec 042, H22): encogida, iOS 26 esconde la insignia de la Bandeja.
   - Cada pestaña es una pila nativa (título grande en iOS, cabecera propia en
@@ -403,3 +407,86 @@ Cuando la app pase a la cuenta de desarrollador de Auphere:
   app no pasa por ella.
 - Admin: `tenants/[id]/access/phones-list.tsx`.
 - App: `apps/mobile/src/{app,api,auth,features,push,motion,theme,ui,i18n}`.
+
+## Reservas (spec 044)
+
+La pestaña del módulo `reservas`, en el modo que diga la API (`/me.reservas.mode`:
+Servicios o Aforo; lo elige el admin y el teléfono no lo cambia). Contrato:
+[`specs/043-reservas/contracts/lite-api.md`](../specs/043-reservas/contracts/lite-api.md)
+(rutas `/console/lite/reservas/*`, congelado el 2026-10-22).
+
+- **Un adaptador** (`src/api/reservas.ts`) entre el contrato y el modelo de las
+  pantallas ([data-model.md](../specs/044-la-app-con-reservas/data-model.md)).
+  Las rutas aún no están en `openapi.json` y van por `authedFetch` (la misma
+  credencial y la misma renovación). Cada acción manda la `version` de la reserva
+  en `If-Match`; un 412 `stale` se dice en una frase y se relee.
+- **La hora es la del negocio** (D3): fechas y horas de pared de su zona
+  (`settings.timezone`); «ahora» es el reloj del teléfono en esa zona.
+- **Pantallas**: `src/app/(app)/reservas/` (Día, Semana y Mes; Lista de espera
+  y Ajustes de reservas apiladas) y cuatro hojas en la pila raíz,
+  `src/app/reserva/{[id],nueva,llegada,bloquear}` (`useSheetOptions().reserva` y
+  `.reservaForm`). En Servicios, el día en lista o cuadrícula por profesional;
+  en Aforo, cifras, tira de franjas y grupos por hora con «Llegó» y «No vino».
+  Los botones son los que la API deja (`allowed`).
+- **Los dos «+»** (D6): «Nueva reserva» es un botón de barra con un calendario
+  en iOS y el flotante extendido en Android; el «+» redondo es solo «Llegada sin
+  reserva» (Aforo, Día, hoy), en vidrio en iOS 26 (`src/ui/fab.tsx`).
+- **El aviso breve** (`src/ui/toast.tsx`, D7): una frase para lo que no queda a
+  la vista, anunciada al lector de pantalla, con «Deshacer» tras «Llegó» o «No
+  vino». Cancelar pide confirmación porque avisa al cliente por WhatsApp.
+- **Inicio** cuenta las reservas de hoy sin confirmar y «Hoy en Reservas» con
+  la misma lectura que la pestaña (D4), no con `/summary`.
+- **Datos de ejemplo** (D2): un build de desarrollo con
+  `EXPO_PUBLIC_RESERVAS_DEMO=services|capacity` (y, para ver estados,
+  `EXPO_PUBLIC_RESERVAS_DEMO_STATE=empty|error|slow`) enseña Barbería Norte o
+  Casa Lucía desde `src/api/reservas-demo.ts`, con «Datos de ejemplo» en cada
+  pantalla. Fuera de `__DEV__` ese archivo no se carga.
+- Nada de Reservas va a disco (`__tests__/reservas-no-disk.test.ts`).
+
+Lo que dejó la primera pasada en el simulador (hallazgos R1–R16 en
+`specs/044-la-app-con-reservas/evidence/hallazgos.md`), como reglas:
+
+- **Un reloj que avanza es estado** (`useNowMs` en `src/lib/use-now.ts`), y la
+  hora se pasa a la cuenta. Un `useMemo` con un tic que la cuenta no lee lo
+  congela React Compiler: «Ahora» se quedaba en la hora de la lectura.
+- **Tirar para recargar gira solo con el gesto** (`usePullRefresh`), nunca con
+  `isRefetching`: cada relectura en segundo plano lo encendía y en la Bandeja
+  dejaba el título grande bajo la búsqueda.
+- **iOS 26 desordena las etiquetas de la barra** si la pestaña cambia con una
+  pantalla de la pila raíz encima (el enlace del contacto a su reserva): las
+  pestañas reenvían su estilo al volver a verse (`useTabRelayout` en
+  `src/app/(app)/_layout.tsx`).
+- **Una renovación rechazada cierra el teléfono**, venga con el código que
+  venga (`phone_closed`, `invalid_grant`…), salvo `app_update_required`: si no,
+  la app se quedaba en «No se pudo cargar» sin volver a Entrar (R17).
+- **Una hoja dice sus errores dentro**: el aviso breve vive en la raíz y en iOS
+  queda debajo de un `formSheet`. Al acertar, la hoja se cierra y el aviso se
+  ve; al fallar, la frase va en la hoja (`useActOn(t)` con `onError`).
+
+La revisión con los gates de UI (G1–G5 en `evidence/revision.md`) dejó dos más:
+un periodo que se está leyendo nunca enseña el anterior como si fuera él
+(`showsOtherPeriod`), y los controles de Ajustes no se desmontan al guardar.
+
+## Mejoras de la spec 044 en lo que ya había
+
+- **Bandeja**: con «Todas» y sin búsqueda, las que esperan a una persona van
+  arriba con el motivo y «hace N min» (`waiting` de la 045 §2); al pie, qué
+  conversaciones enseña.
+- **Conversación**: la tarjeta de espera dice desde cuándo y quién lo pidió; con
+  el control, «Devolver» a un toque y las respuestas guardadas como chips.
+- **Contacto**: su próxima reserva (`contact.next_booking`), que lleva a ella.
+- **Consumo**: empieza por «Te alcanza hasta el …» (`balance.runs_out_on`).
+- **Avisos**: tres de Reservas (`reservas.agent_change`,
+  `reservas.cancelled_today`, `reservas.waitlist_accepted`, este apagado de
+  partida), agrupados por módulo en Ajustes; «Silenciar fuera del horario del
+  negocio» si la API lo trae (045 §5), con el horario de `/me.business`. Canal
+  de Android `reservations_v1` y categoría de iOS `reservations`. Un aviso de
+  Reservas (`auphere-customers://reservas/{id}`) abre la reserva.
+
+## Versión 1.1.0
+
+`version` 1.1.0 y `runtimeVersion` que la sigue: la 1.0.0 de TestFlight no
+tiene `expo-glass-effect` y no puede recibir nada por aire. `preview` hace un
+APK; `staging`, AAB para la pista interna de Play y el build de TestFlight. Lo
+que falta crear (Play Console, Firebase, claves) y los comandos están en
+[`specs/044-la-app-con-reservas/evidence/builds.md`](../specs/044-la-app-con-reservas/evidence/builds.md).

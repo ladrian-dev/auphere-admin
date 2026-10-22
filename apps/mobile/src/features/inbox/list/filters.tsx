@@ -1,11 +1,10 @@
-import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { ScrollView, StyleSheet } from "react-native";
 
 import type { Counts, InboxFilter } from "@/api/endpoints";
 import type { T } from "@/i18n/t";
 import { haptics } from "@/motion/haptics";
-import { useTheme } from "@/theme/theme";
-import { Icon, icons } from "@/ui/icon";
-import { Text } from "@/ui/text";
+import { Chip } from "@/ui/chip";
+import { icons } from "@/ui/icon";
 
 const FILTERS: InboxFilter[] = ["all", "unread", "waiting", "resolved"];
 
@@ -52,39 +51,11 @@ export function Filters({
           }}
         />
       ))}
-      {onAgent && agentLabel ? <Chip label={agentLabel} on={false} onPress={onAgent} icon /> : null}
+      {onAgent && agentLabel ? <Chip label={agentLabel} on={false} onPress={onAgent} icon={icons.bot} /> : null}
     </ScrollView>
-  );
-}
-
-function Chip({ label, on, onPress, icon = false }: { label: string; on: boolean; onPress: () => void; icon?: boolean }) {
-  const { colors, radius } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole={icon ? "button" : "radio"}
-      accessibilityState={icon ? undefined : { checked: on }}
-      onPress={onPress}
-      hitSlop={{ top: 6, bottom: 6 }}
-      // The press is a tint, never a drop in opacity (spec 042, R7.2).
-      android_ripple={{ color: on ? colors.primaryDeep : colors.muted }}
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          borderRadius: radius.full,
-          backgroundColor: on ? (pressed ? colors.primaryDeep : colors.primary) : pressed ? colors.muted : colors.card,
-          borderColor: on ? (pressed ? colors.primaryDeep : colors.primary) : colors.border,
-        },
-      ]}
-    >
-      {icon ? <Icon name={icons.bot} size={14} tone="foreground" /> : null}
-      <Text variant="subhead" tone={on ? "primaryForeground" : "foreground"}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   row: { gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  chip: { minHeight: 36, paddingHorizontal: 14, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 6 },
 });

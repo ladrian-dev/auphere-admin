@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 
 import type { SavedReply } from "@/api/endpoints";
 import type { T } from "@/i18n/t";
 import { concentric, TOUCH, useTheme } from "@/theme/theme";
-import { IconButton } from "@/ui/button";
+import { Button, IconButton } from "@/ui/button";
 import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
@@ -12,7 +12,9 @@ import type { ComposerMode } from "../model";
 import { FOOT_RADIUS } from "./foot-radius";
 
 /**
- * The box (R6.3, R6.5 of the 031; spec 042 R2.1, R7.1). Only when this person
+ * The box (R6.3, R6.5 of the 031; spec 042 R2.1, R7.1; spec 044 R11.4, R11.5:
+ * who answers and «Devolver» one tap away, the saved replies as chips with the
+ * draft empty). Only when this person
  * answers. Content only — the surface is `ThreadFoot`'s. If WhatsApp would
  * refuse — the 24 h window closed, the number disconnected — it says why
  * instead of a box that cannot send. A saved reply lands in the box, never
@@ -28,6 +30,7 @@ export function Composer({
   onSend,
   onAttach,
   onReplies,
+  onGiveBack,
 }: {
   mode: Extract<ComposerMode, { kind: "mine" }>;
   online: boolean;
@@ -38,8 +41,10 @@ export function Composer({
   onSend: (text: string) => void;
   onAttach: () => void;
   onReplies: (insert: (body: string) => void) => void;
+  /** Spec 044, R11.4: give it back in one tap, not only from the menu. */
+  onGiveBack?: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, radius } = useTheme();
   const [draft, setDraft] = useState("");
   const input = useRef<ComponentRef<typeof TextInput>>(null);
 
@@ -68,8 +73,41 @@ export function Composer({
     setDraft("");
   };
 
+  // Spec 044, R11.5: with the draft empty, the saved replies are in view as chips that fill it.
+  const chips = draft.trim() === "" && online && replies && replies.length > 0 ? replies.slice(0, 8) : null;
   return (
     <View style={styles.wrap}>
+      {onGiveBack ? (
+        <View style={styles.mine}>
+          <View style={[styles.dot, { backgroundColor: colors.primary }]} />
+          <Text variant="footnote" tone="mutedForeground" style={styles.flex} numberOfLines={2}>
+            {mode.agent ? t("app.inbox.mineLine", { agent: mode.agent }) : t("app.inbox.mineLine.noAgent")}
+          </Text>
+          <Button label={t("app.inbox.giveBack.short")} icon={icons.giveBack} variant="secondary" compact disabled={!online} onPress={onGiveBack} />
+        </View>
+      ) : null}
+      {chips ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.chips} accessibilityLabel={t("app.inbox.replies.chips")}>
+          {chips.map((r) => (
+            <Pressable
+              key={r.id}
+              accessibilityRole="button"
+              accessibilityLabel={r.title}
+              onPress={() => {
+                setDraft(r.body);
+                input.current?.focus();
+              }}
+              android_ripple={{ color: colors.muted }}
+              hitSlop={CHIP_SLOP}
+              style={({ pressed }) => [styles.chip, { borderRadius: radius.full, borderColor: colors.border, backgroundColor: pressed ? colors.muted : colors.card }]}
+            >
+              <Text variant="subhead" numberOfLines={1}>
+                {r.title.length > 28 ? `${r.title.slice(0, 27)}…` : r.title}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
       {!online ? (
         <Text variant="footnote" tone="warningText" style={styles.offline}>
           {t("app.offline.actions")}
@@ -127,6 +165,9 @@ export function Composer({
 /** The send button sits this far from the surface's edge: its radius is concentric with FOOT_RADIUS. */
 const SEND_INSET = 4;
 
+/** 36 pt chips reach the app's 48 pt target with the space around them (gate review). */
+const CHIP_SLOP = { top: 6, bottom: 6 };
+
 const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 12, paddingTop: 6, paddingBottom: SEND_INSET },
   flex: { flex: 1, minWidth: 0 },
@@ -136,4 +177,8 @@ const styles = StyleSheet.create({
   send: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   blocked: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16 },
   offline: { paddingHorizontal: 4, paddingTop: 4 },
+  mine: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4, paddingBottom: 4 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  chips: { gap: 8, paddingHorizontal: 4, paddingVertical: 4 },
+  chip: { minHeight: 36, maxWidth: 240, paddingHorizontal: 14, borderWidth: 1, justifyContent: "center" },
 });

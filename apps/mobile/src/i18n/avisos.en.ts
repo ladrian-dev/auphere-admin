@@ -1,0 +1,30 @@
+import type { avisosEs } from "./avisos.es";
+
+/** Spec 044 (avisos y Entrar), English. Every Spanish key must exist here (`tsc` checks it). */
+export const avisosEn: Record<keyof typeof avisosEs, string> = {
+  "avisos.kind.reservations.changed": "Booking new or changed by the agent",
+  "avisos.kind.reservations.changed.hint": "Once per booking.",
+  "avisos.kind.reservations.cancelled_today": "Today's cancellations",
+  "avisos.kind.reservations.cancelled_today.hint": "When someone cancels a booking for today.",
+  "avisos.kind.reservations.waitlist_accepted": "Someone on the waitlist accepted",
+  "avisos.kind.reservations.waitlist_accepted.hint": "When the agent books someone from the waitlist.",
+  "avisos.group.inbox": "Inbox",
+  "avisos.group.reservas": "Bookings",
+  "avisos.group.balance": "Balance",
+  "avisos.quiet": "Mute outside business hours",
+  "avisos.quiet.hint": "{hours}. Urgent notices still come through.",
+  "avisos.quiet.hint.noHours": "Urgent notices still come through.",
+  "avisos.permission.title": "We let you know when someone needs you",
+  "avisos.permission.body": "On this phone, only about this:",
+  "avisos.permission.reservas": "Changes to today's bookings",
+  "avisos.permission.reservas.hint": "New or changed by the agent, and cancellations.",
+  "avisos.example.app": "Auphere Customers",
+  "avisos.example.when": "now",
+  "avisos.example.title": "Lucía Fernández is waiting for a person",
+  "avisos.example.body": "Asks for her deposit back…",
+  "avisos.example.a11y": "Example notice: {title}. {body}",
+  "avisos.channel.reservations": "Bookings",
+  "avisos.placeholder.reservations": "A booking changed",
+  "avisos.signOut.row": "Sign out on this phone",
+  "avisos.signIn.googleNote": "Use the Google account of the same email. If you have no access, ask whoever manages your business in Auphere.",
+};

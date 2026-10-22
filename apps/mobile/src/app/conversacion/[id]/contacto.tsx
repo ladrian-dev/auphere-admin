@@ -1,20 +1,24 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 
-import { endpoints, type Detail } from "@/api/endpoints";
+import { endpoints, type Detail, type NextBooking } from "@/api/endpoints";
 import { useConversation, useSuggestedTags } from "@/api/hooks";
 import { keys } from "@/api/query";
+import { demo } from "@/api/reservas";
+import { useBizToday, useHasReservas, useReservasConfig } from "@/api/reservas-hooks";
 import { attendsLine, eventText, initialsOf } from "@/features/inbox/model";
+import { relativeDay } from "@/features/reservas/format";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
 import { haptics } from "@/motion/haptics";
 import { glassAvailable } from "@/theme/glass";
 import { TOUCH, useTheme } from "@/theme/theme";
-import { Avatar, Divider } from "@/ui/bits";
+import { Avatar, Divider, RowButton } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
+import { Group } from "@/ui/group";
 import { Icon, icons } from "@/ui/icon";
 import { useOnline } from "@/ui/online";
 import { ErrorState, Skeleton } from "@/ui/states";
@@ -25,7 +29,8 @@ const MAX_TAGS = 20;
 /**
  * The contact, as a sheet over the conversation (spec 031, R12): who they are,
  * the agent's summary, the team's tags and internal note — editable, and the
- * web sees it on its next read (R12.2) — and what happened.
+ * web sees it on its next read (R12.2) — and what happened. Spec 044 (R12):
+ * with Reservas, their next reservation, one row that leads to it.
  */
 export default function Contacto() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,6 +41,9 @@ export default function Contacto() {
   const qc = useQueryClient();
   const detail = useConversation(id);
   const suggested = useSuggestedTags(true);
+  const hasReservas = useHasReservas();
+  const config = useReservasConfig(hasReservas);
+  const today = useBizToday(config.data);
   const d = detail.data;
 
   /** The person's edit of the note; `null` while they have not touched it. */
@@ -113,6 +121,8 @@ export default function Contacto() {
           {attendsLine(d, t)}
         </Text>
       </View>
+
+      {hasReservas && today ? <NextReservation next={nextOf(d.contact.next_booking, t) ?? demo?.nextFor(d.contact.name) ?? null} today={today} /> : null}
 
       {d.summary ? (
         <Card>
@@ -266,6 +276,32 @@ export default function Contacto() {
   );
 }
 
+/**
+ * Spec 044, R12: the contact's next reservation — «Mañana a las 17:00 · Corte y
+ * peinado con Marcos» — and the way to it: the sheet closes and Reservas opens
+ * on that day with the reservation's own sheet. No reservation, no row.
+ */
+function NextReservation({ next, today }: { next: { id: string; date: string; start: string; label: string } | null; today: string }) {
+  const t = useT();
+  const locale = useLocale();
+  if (!next) return null;
+  return (
+    <Group testID="contact-next">
+      <RowButton
+        title={t("app.contact.next")}
+        subtitle={t("app.contact.next.value", { day: relativeDay(next.date, today, locale, t), time: next.start, label: next.label })}
+        icon={icons.calendar}
+        tone="primaryText"
+        accessibilityHint={t("app.contact.next.hint")}
+        onPress={() => {
+          router.back();
+          router.navigate({ pathname: "/reservas", params: { date: next.date, open: next.id } });
+        }}
+      />
+    </Group>
+  );
+}
+
 function Field({ label, value, selectable = false }: { label: string; value: string; selectable?: boolean }) {
   return (
     <View style={styles.field} accessible accessibilityLabel={`${label}: ${value}`}>
@@ -294,3 +330,10 @@ const styles = StyleSheet.create({
   field: { gap: 2, paddingVertical: 4 },
   activity: { gap: 2, paddingVertical: 4 },
 });
+
+/** The contact's next reservation (043 §1 `contact.next_booking`), as the row says it. */
+function nextOf(b: NextBooking | null | undefined, t: ReturnType<typeof useT>): { id: string; date: string; start: string; label: string } | null {
+  if (!b) return null;
+  const label = b.service_name ?? (b.party_size != null ? t("reservas.party", { n: b.party_size, unit: t("reservas.unit.other") }) : "");
+  return { id: b.id, date: b.local.date, start: b.local.start, label };
+}

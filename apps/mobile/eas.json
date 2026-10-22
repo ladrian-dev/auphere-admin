@@ -31,6 +31,9 @@
         "APP_VARIANT": "preview",
         "EXPO_PUBLIC_API_URL": "https://api.staging.auphere.com",
         "EXPO_PUBLIC_CONSOLE_URL": "https://console.staging.auphere.com"
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "staging": {
@@ -41,6 +44,9 @@
         "APP_VARIANT": "staging",
         "EXPO_PUBLIC_API_URL": "https://api.staging.auphere.com",
         "EXPO_PUBLIC_CONSOLE_URL": "https://console.staging.auphere.com"
+      },
+      "android": {
+        "buildType": "app-bundle"
       }
     },
     "production": {

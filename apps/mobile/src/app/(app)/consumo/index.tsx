@@ -8,6 +8,7 @@ import { SettingsToolbar } from "@/features/tab-stack";
 import { UsageView, type Period } from "@/features/usage/usage-view";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
+import { usePullRefresh } from "@/lib/use-pull-refresh";
 import { useActions } from "@/ui/actions";
 import { useOnline } from "@/ui/online";
 import { ScrollScreen } from "@/ui/screen";
@@ -40,17 +41,15 @@ export default function Consumo() {
       ...agents.map((a) => ({ label: a.name, onPress: () => setAgent(a.id) })),
     ]);
 
+  const pull = usePullRefresh(() => Promise.all([summary.refetch(), wide.refetch(), days !== 90 && anySpend ? narrow.refetch() : null]));
+
   return (
     <>
       <Stack.Screen options={{ title: t("app.tab.usage") }} />
       <SettingsToolbar />
       <ScrollScreen
-        refreshing={summary.isRefetching}
-        onRefresh={() => {
-          void summary.refetch();
-          void wide.refetch();
-          if (days !== 90 && anySpend) void narrow.refetch();
-        }}
+        refreshing={pull.refreshing}
+        onRefresh={pull.onRefresh}
         testID="consumo"
       >
         {!online && summary.data ? <OfflineBanner since={clock(new Date(summary.dataUpdatedAt), locale)} /> : null}
@@ -69,6 +68,7 @@ export default function Consumo() {
             locale={locale}
             onRetry={() => void summary.refetch()}
             onWeb={() => void WebBrowser.openBrowserAsync(`${CONSOLE_URL}/usage`)}
+            contact={me.data?.balance_contact ?? null}
           />
         ) : (
           <Skeleton rows={4} />

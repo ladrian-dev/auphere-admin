@@ -21,24 +21,39 @@ export function Attention({
   home,
   contact,
   modules,
+  reservasUnconfirmed = 0,
   t,
   n,
   onAttend,
   onUsage,
+  onReservas,
 }: {
   home: Home;
   contact: Me["balance_contact"] | null;
   modules: readonly string[];
+  /** Spec 044, R9.1: today's reservations still unconfirmed, from the Reservas read (D4). */
+  reservasUnconfirmed?: number;
   t: T;
   n: (v: number) => string;
   onAttend: (conversationId: string | null) => void;
   onUsage: () => void;
+  onReservas?: () => void;
 }) {
   const { colors } = useTheme();
   const hasInbox = modules.includes("inbox");
   const ask = contact ? (contact.kind === "auphere" ? t("lite.attention.ask.auphere") : t("lite.attention.ask.partner", { name: contact.name })) : null;
 
-  if (home.attention.length === 0) {
+  const reservas =
+    reservasUnconfirmed > 0 && onReservas ? (
+      <View key="reservas" style={styles.item}>
+        <Text variant="bodyStrong">
+          {reservasUnconfirmed === 1 ? t("app.home.reservas.unconfirmed.one") : t("app.home.reservas.unconfirmed", { n: n(reservasUnconfirmed) })}
+        </Text>
+        <Button label={t("app.home.reservas.see")} icon={icons.calendar} variant="secondary" full onPress={onReservas} />
+      </View>
+    ) : null;
+
+  if (home.attention.length === 0 && !reservas) {
     if (home.errors.length > 0) return null;
     const balanceKnown = home.balance?.assigned === true;
     const line = balanceKnown ? (hasInbox ? t("lite.ok.withInbox") : t("lite.ok")) : hasInbox ? t("lite.ok.noBalance.withInbox") : null;
@@ -63,28 +78,33 @@ export function Attention({
           {t("lite.attention.title")}
         </Text>
       </View>
-      {home.attention.map((item, i) => {
-        const divider = i > 0 ? <Divider /> : null;
-        if (item.kind === "waiting") {
-          const count = item.count ?? 0;
-          return (
-            <View key="waiting" style={styles.item}>
-              {divider}
-              {/* The sentence already names the inbox; a «Bandeja de entrada» label above it said it twice (R5.1). */}
-              <Text variant="bodyStrong">
-                {count === 1 ? t("lite.attention.waiting.one") : t("lite.attention.waiting", { count: n(count) })}
-              </Text>
-              {hasInbox ? (
-                <Button
-                  label={t("lite.attention.attend")}
-                  icon={icons.hand}
-                  full
-                  onPress={() => onAttend(home.waiting?.first_conversation_id ?? null)}
-                />
-              ) : null}
-            </View>
-          );
-        }
+      {home.attention.filter((a) => a.kind === "waiting").map((item) => {
+        const count = item.count ?? 0;
+        return (
+          <View key="waiting" style={styles.item}>
+            {/* The sentence already names the inbox; a «Bandeja de entrada» label above it said it twice (R5.1). */}
+            <Text variant="bodyStrong">
+              {count === 1 ? t("lite.attention.waiting.one") : t("lite.attention.waiting", { count: n(count) })}
+            </Text>
+            {hasInbox ? (
+              <Button
+                label={t("lite.attention.attend")}
+                icon={icons.hand}
+                full
+                onPress={() => onAttend(home.waiting?.first_conversation_id ?? null)}
+              />
+            ) : null}
+          </View>
+        );
+      })}
+      {reservas ? (
+        <>
+          {home.attention.some((a) => a.kind === "waiting") ? <Divider /> : null}
+          {reservas}
+        </>
+      ) : null}
+      {home.attention.filter((a) => a.kind !== "waiting").map((item, i) => {
+        const divider = i > 0 || reservas || home.attention.some((a) => a.kind === "waiting") ? <Divider /> : null;
         const body =
           item.kind === "balance_out"
             ? t("lite.attention.balance_out")

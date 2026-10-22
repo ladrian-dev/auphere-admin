@@ -12,6 +12,8 @@ export const CATEGORIES = [
   { id: "inbox_waiting", placeholder: "app.notices.placeholder.waiting" },
   { id: "inbox_message", placeholder: "app.notices.placeholder.message" },
   { id: "client_balance", placeholder: "app.notices.placeholder.balance" },
+  // Spec 044 (R14.6): Reservas' notices, with no actions either.
+  { id: "reservations", placeholder: "avisos.placeholder.reservations" },
 ] as const;
 
 export async function ensureCategories(t: T): Promise<void> {

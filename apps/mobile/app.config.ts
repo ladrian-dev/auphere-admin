@@ -35,7 +35,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // A phone app: no web build (Metro would try to bundle one for a browser).
   platforms: ["ios", "android"],
   owner,
-  version: "1.0.0",
+  // Spec 044 (D14): 1.1.0 carries spec 042's native module; `runtimeVersion` follows it.
+  version: "1.1.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "auphere-customers",

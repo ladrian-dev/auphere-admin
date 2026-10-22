@@ -14,6 +14,7 @@ import { useHeaderOptions } from "@/features/tab-stack";
 import { PushProvider } from "@/push/provider";
 import { useTheme } from "@/theme/theme";
 import { ActionsProvider } from "@/ui/actions";
+import { ToastProvider } from "@/ui/toast";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -41,9 +42,11 @@ export default function RootLayout() {
           <SessionProvider>
             <Themed>
               <ActionsProvider>
-                <PushProvider>
-                  <Screens />
-                </PushProvider>
+                <ToastProvider>
+                  <PushProvider>
+                    <Screens />
+                  </PushProvider>
+                </ToastProvider>
               </ActionsProvider>
             </Themed>
           </SessionProvider>
@@ -99,6 +102,11 @@ function Screens() {
         {/* Only the chevron goes back: the previous screen is a tab group, and its name is nothing to a person. */}
         <Stack.Screen name="conversacion/[id]/index" options={{ ...header, headerShown: true, title: "", headerBackButtonDisplayMode: "minimal" }} />
         <Stack.Screen name="conversacion/[id]/contacto" options={sheets.contacto} />
+        {/* Reservas' sheets (spec 044, D5): above the tabs, like the contact. */}
+        <Stack.Screen name="reserva/[id]" options={sheets.reserva} />
+        <Stack.Screen name="reserva/llegada" options={sheets.reserva} />
+        <Stack.Screen name="reserva/nueva" options={sheets.reservaForm} />
+        <Stack.Screen name="reserva/bloquear" options={sheets.reservaForm} />
         {/* Ajustes is a sheet too on iOS (spec 042, R1.7) and a screen on Android. */}
         <Stack.Screen name="ajustes" options={sheets.ajustes} />
         <Stack.Screen name="notices-permission" options={{ presentation: "modal", gestureEnabled: false }} />

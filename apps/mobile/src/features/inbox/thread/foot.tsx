@@ -66,7 +66,17 @@ export function ThreadFoot({
     >
       {mode.kind === "mine" ? (
         <Animated.View key="mine" entering={motion.enter} exiting={motion.exit}>
-          <Composer mode={mode} online={online} focusSignal={focusSignal} replies={replies} t={t} onSend={onSend} onAttach={onAttach} onReplies={onReplies} />
+          <Composer
+            mode={mode}
+            online={online}
+            focusSignal={focusSignal}
+            replies={replies}
+            t={t}
+            onSend={onSend}
+            onAttach={onAttach}
+            onReplies={onReplies}
+            onGiveBack={mode.blocked === null ? onGiveBack : undefined}
+          />
         </Animated.View>
       ) : (
         <Animated.View key={`control-${mode.kind}`} entering={motion.enter} exiting={motion.exit}>

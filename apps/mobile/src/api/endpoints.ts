@@ -10,7 +10,12 @@ import type { components } from "./schema.gen";
  */
 type S = components["schemas"];
 
-export type Me = S["LiteMeOut"];
+/** `/me` with what specs 043 (§1 `reservas`) and 045 (§4 `business`) add, optional until `openapi.json` has them. */
+export type Business = { timezone: string; hours: Record<string, { from: string; to: string }[]> | null; hours_label: string | null };
+export type Me = S["LiteMeOut"] & {
+  reservas?: { mode: "services" | "capacity"; capacity_kind: string | null } | null;
+  business?: Business | null;
+};
 export type AppConfig = S["AppConfigOut"];
 export type Tokens = S["TokensOut"];
 export type Home = S["LiteHomeOut"];
@@ -18,22 +23,48 @@ export type UsageSummary = S["LiteUsageSummaryOut"];
 export type Spend = S["LiteSpendOut"];
 export type Counts = S["CountsOut"];
 export type Author = S["AuthorOut"];
-export type NoticeKind = "inbox.waiting" | "inbox.message_for_you" | "client.balance";
+/** Spec 044 (R14.2) with the names of the frozen contract (043 §1): the three of Reservas, only with the module. */
+export type NoticeKind =
+  | "inbox.waiting"
+  | "inbox.message_for_you"
+  | "client.balance"
+  | "reservas.agent_change"
+  | "reservas.cancelled_today"
+  | "reservas.waitlist_accepted";
+/** `GET /phones/current/notices`, with the quiet hours of spec 045 §5 when the API has them (R14.3). */
+export type Notices = { kinds: string[]; quiet_outside_hours?: boolean };
 export type InboxFilter = "all" | "unread" | "waiting" | "resolved";
 export type InboxState = "agent" | "waiting" | "person" | "resolved";
 
 type Named = { id: string; name: string };
 
+/**
+ * What specs 045 (§2) and 043 (§1) add, and the app reads when they are there
+ * (spec 044, R10–R12): why and since when a conversation waits, and the
+ * contact's next reservation. Optional until `openapi.json` carries them.
+ */
+export type NextBooking = {
+  id: string;
+  starts_at: string;
+  local: { date: string; start: string; end: string };
+  status: string;
+  service_name: string | null;
+  party_size: number | null;
+};
+
 export type Conversation = Omit<S["ConversationItemOut"], "agent" | "channel"> & {
   agent: Named | null;
   channel: { kind: string };
+  waiting?: { reason: string | null; since: string } | null;
 };
 export type ConversationPage = Omit<S["nexus_api__api__console__lite__inbox__ConversationPageOut"], "items"> & {
   items: Conversation[];
 };
-export type Detail = Omit<S["ConversationDetailOut"], "agent" | "channel"> & {
+export type Detail = Omit<S["ConversationDetailOut"], "agent" | "channel" | "contact"> & {
   agent: Named | null;
   channel: { kind: string; connected: boolean };
+  waiting_since?: string | null;
+  contact: S["ConversationDetailOut"]["contact"] & { next_booking?: NextBooking | null };
 };
 export type ThreadItem = S["ThreadItemOut"];
 export type Thread = S["nexus_api__api__console__lite__inbox__ThreadOut"];
@@ -51,7 +82,7 @@ export const endpoints = {
   passwordReset: (email: string) => call(publicApi.POST("/app/password-reset", { body: { email } })),
 
   // ── who and what ────────────────────────────────────────────────────
-  me: () => call(api.GET("/console/lite/me")),
+  me: () => call(api.GET("/console/lite/me")) as Promise<Me>,
   home: () => call(api.GET("/console/lite/home")),
   usageSummary: () => call(api.GET("/console/lite/usage/summary")),
   usageSpend: (days: number, agent?: string | null) =>
@@ -115,8 +146,14 @@ export const endpoints = {
   // ── this phone (R7, R10, R11) ───────────────────────────────────────
   signOut: () => call(api.DELETE("/console/lite/phones/current")),
   registerPush: (body: S["PushIn"]) => call(api.PUT("/console/lite/phones/current/push", { body })),
-  notices: () => call(api.GET("/console/lite/phones/current/notices")),
-  setNotices: (kinds: NoticeKind[]) => call(api.PUT("/console/lite/phones/current/notices", { body: { kinds } })),
+  notices: () => call(api.GET("/console/lite/phones/current/notices")) as Promise<Notices>,
+  /** `quiet_outside_hours` goes only when the API has it (spec 045); today's schema knows `kinds`. */
+  setNotices: (kinds: NoticeKind[], quiet?: boolean) =>
+    call(
+      api.PUT("/console/lite/phones/current/notices", {
+        body: (quiet === undefined ? { kinds } : { kinds, quiet_outside_hours: quiet }) as { kinds: NoticeKind[] },
+      }),
+    ) as Promise<Notices>,
   requestDeletion: () => call(api.POST("/console/lite/account/deletion-request")),
 };
 
