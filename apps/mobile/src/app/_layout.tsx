@@ -3,17 +3,16 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
-import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { makeQueryClient, wireQueryManagers } from "@/api/query";
 import { SessionProvider, useSession } from "@/auth/session";
+import { useSheetOptions } from "@/features/sheets";
 import { useHeaderOptions } from "@/features/tab-stack";
-import { useT } from "@/i18n/t";
 import { PushProvider } from "@/push/provider";
-import { SHEET_RADIUS, useTheme } from "@/theme/theme";
+import { useTheme } from "@/theme/theme";
 import { ActionsProvider } from "@/ui/actions";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -83,8 +82,8 @@ function Themed({ children }: { children: React.ReactNode }) {
 
 function Screens() {
   const { state } = useSession();
-  const t = useT();
   const header = useHeaderOptions();
+  const sheets = useSheetOptions();
   if (state.status === "booting") return null; // the splash stays up
   const update = state.status === "update-required";
   const signedIn = state.status === "signed-in";
@@ -97,27 +96,11 @@ function Screens() {
       <Stack.Protected guard={!update && signedIn}>
         <Stack.Screen name="(app)" />
         {/* A conversation opens above the tabs; its contact is a sheet over it (R12). */}
-        <Stack.Screen name="conversacion/[id]/index" options={{ ...header, headerShown: true, title: "" }} />
-        <Stack.Screen
-          name="conversacion/[id]/contacto"
-          options={{
-            presentation: "formSheet",
-            sheetAllowedDetents: [0.6, 1],
-            sheetGrabberVisible: true,
-            // Android draws it square; iOS keeps the system's own corners.
-            sheetCornerRadius: Platform.OS === "android" ? SHEET_RADIUS : undefined,
-            headerShown: false,
-          }}
-        />
-        <Stack.Screen
-          name="ajustes"
-          options={{
-            ...header,
-            headerShown: true,
-            title: t("app.settings"),
-            presentation: Platform.OS === "ios" ? "modal" : "card",
-          }}
-        />
+        {/* Only the chevron goes back: the previous screen is a tab group, and its name is nothing to a person. */}
+        <Stack.Screen name="conversacion/[id]/index" options={{ ...header, headerShown: true, title: "", headerBackButtonDisplayMode: "minimal" }} />
+        <Stack.Screen name="conversacion/[id]/contacto" options={sheets.contacto} />
+        {/* Ajustes is a sheet too on iOS (spec 042, R1.7) and a screen on Android. */}
+        <Stack.Screen name="ajustes" options={sheets.ajustes} />
         <Stack.Screen name="notices-permission" options={{ presentation: "modal", gestureEnabled: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!update && !signedIn}>

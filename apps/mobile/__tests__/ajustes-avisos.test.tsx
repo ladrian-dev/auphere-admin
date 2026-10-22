@@ -18,8 +18,29 @@ jest.mock("@/api/endpoints", () => ({ endpoints: { setNotices: jest.fn(), reques
 jest.mock("@/ui/online", () => ({ useOnline: () => true }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ setQueryData: jest.fn() }) }));
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: jest.fn() }));
+let mockGlass = false;
+jest.mock("expo-glass-effect", () => ({ isLiquidGlassAvailable: () => mockGlass }));
 
 const Ajustes = require("@/app/ajustes").default;
+
+describe("as a sheet with glass (spec 042, T063, T066, R1.7)", () => {
+  it("with Liquid Glass the scroll paints no background and respects the transparent header's inset", async () => {
+    mockGlass = true;
+    const { StyleSheet } = require("react-native");
+    await render(<Ajustes />);
+    const scroll = screen.getByTestId("settings-scroll");
+    expect(StyleSheet.flatten(scroll.props.style)?.backgroundColor).toBeUndefined();
+    expect(scroll.props.contentInsetAdjustmentBehavior).toBe("automatic");
+    mockGlass = false;
+  });
+
+  it("without it, the background of today", async () => {
+    const { StyleSheet } = require("react-native");
+    const { tokens } = require("@/theme/tokens.gen");
+    await render(<Ajustes />);
+    expect(StyleSheet.flatten(screen.getByTestId("settings-scroll").props.style)?.backgroundColor).toBe(tokens.light.background);
+  });
+});
 
 it("who you are here: name, email, business and role", async () => {
   await render(<Ajustes />);
@@ -74,6 +95,33 @@ it("«Cerrar sesión» confirms, then signs out this phone only", async () => {
   expect(body).toMatch(/Tus otros teléfonos siguen como están/);
   (buttons as { onPress?: () => void }[])[1]!.onPress?.();
   expect(mockSignOut).toHaveBeenCalled();
+});
+
+describe("two risks, two sections (spec 042, T040, R8)", () => {
+  it("«Cerrar sesión» and the account's deletion live in different groups, the deletion last", async () => {
+    mockPermission = "granted";
+    await render(<Ajustes />);
+    const groups = screen.getAllByTestId(/^settings-/).map((n) => n.props.testID as string);
+    expect(groups.indexOf("settings-signout")).toBeGreaterThan(-1);
+    expect(groups.indexOf("settings-deletion")).toBe(groups.length - 1);
+    expect(groups.indexOf("settings-deletion")).not.toBe(groups.indexOf("settings-signout"));
+  });
+
+  it("only the deletion wears the colour of danger, and it says what happens next before being tapped", async () => {
+    const { tokens } = require("@/theme/tokens.gen");
+    const { StyleSheet } = require("react-native");
+    await render(<Ajustes />);
+    const colour = (text: string) => StyleSheet.flatten(screen.getByText(text).props.style).color as string;
+    expect(colour("Solicitar el borrado de la cuenta")).toBe(tokens.light.destructive);
+    expect(colour("Cerrar sesión")).not.toBe(tokens.light.destructive);
+    expect(screen.getByText("Auphere te escribirá para confirmarlo y cerrará tu acceso.")).toBeTruthy();
+  });
+
+  it("the way to the web says it leaves the app", async () => {
+    await render(<Ajustes />);
+    expect(screen.getByTestId("row-indicator-external")).toBeTruthy();
+    expect(screen.queryByTestId("row-indicator-push")).toBeNull();
+  });
 });
 
 it("the version says which environment a test build talks to, and nothing in production", () => {

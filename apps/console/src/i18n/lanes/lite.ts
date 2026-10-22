@@ -25,7 +25,7 @@ export const liteMessages = {
   "lite.attention.inbox": { es: "Bandeja de entrada", en: "Inbox" },
   "lite.attention.waiting": { es: "{count} conversaciones esperan a una persona", en: "{count} conversations are waiting for a person" },
   "lite.attention.waiting.one": { es: "1 conversación espera a una persona", en: "1 conversation is waiting for a person" },
-  "lite.attention.attend": { es: "Atender", en: "Attend" },
+  "lite.attention.attend": { es: "Atender ahora", en: "Answer now" },
   "lite.attention.balance": { es: "Saldo", en: "Balance" },
   "lite.attention.balance_out": { es: "Tu saldo se agotó y el agente no responde", en: "Your balance is used up and the agent is not answering" },
   "lite.attention.balance_low": { es: "Te quedarás sin saldo en unos {days} días", en: "You will run out of balance in about {days} days" },

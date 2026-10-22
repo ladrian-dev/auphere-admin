@@ -142,23 +142,30 @@ function MediaChip({
       accessibilityRole="button"
       accessibilityLabel={t("inbox.media.open", { name: label })}
       onPress={() => onOpen(id, kind === "document" ? "application/pdf" : null)}
-      style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+      android_ripple={{ color: colors.scrim }}
+      style={{ borderRadius: radius.md, overflow: "hidden" }}
     >
-      {kind === "image" && headers ? (
-        <Image
-          source={{ uri: mediaUrl(id), headers }}
-          style={[styles.image, { borderRadius: radius.md, backgroundColor: colors.muted }]}
-          contentFit="cover"
-          transition={120}
-          accessible={false}
-        />
-      ) : (
-        <View style={[styles.file, { backgroundColor: colors.muted, borderRadius: radius.md }]}>
-          <Icon name={MEDIA_ICON[kind ?? ""] ?? icons.document} size={20} tone="primaryText" />
-          <Text variant="subhead" numberOfLines={2} style={styles.fileName}>
-            {label}
-          </Text>
-        </View>
+      {({ pressed }) => (
+        <>
+          {kind === "image" && headers ? (
+            <Image
+              source={{ uri: mediaUrl(id), headers }}
+              style={[styles.image, { borderRadius: radius.md, backgroundColor: colors.muted }]}
+              contentFit="cover"
+              transition={120}
+              accessible={false}
+            />
+          ) : (
+            <View style={[styles.file, { backgroundColor: colors.muted, borderRadius: radius.md }]}>
+              <Icon name={MEDIA_ICON[kind ?? ""] ?? icons.document} size={20} tone="primaryText" />
+              <Text variant="subhead" numberOfLines={2} style={styles.fileName}>
+                {label}
+              </Text>
+            </View>
+          )}
+          {/* The press is a scrim over the attachment, never a drop in opacity (spec 042, R7.2). */}
+          {pressed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} /> : null}
+        </>
       )}
     </Pressable>
   );

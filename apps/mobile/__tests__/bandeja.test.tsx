@@ -41,10 +41,19 @@ jest.mock("@/api/hooks", () => ({
 jest.mock("@/api/sse", () => ({ useLiveStatus: () => "live" }));
 jest.mock("@/ui/actions", () => ({ useActions: () => jest.fn() }));
 jest.mock("@/ui/online", () => ({ useOnline: () => true }));
-jest.mock("expo-router", () => ({
-  router: { push: jest.fn() },
-  Stack: { Screen: ({ options }: { options: Record<string, unknown> }) => ((mockOptions.current = options), null) },
-}));
+jest.mock("expo-router", () => {
+  // The settings bar button (spec 042, SettingsToolbar) renders nothing here.
+  function Toolbar() {
+    return null;
+  }
+  Toolbar.Button = function ToolbarButton() {
+    return null;
+  };
+  return {
+    router: { push: jest.fn() },
+    Stack: { Screen: ({ options }: { options: Record<string, unknown> }) => ((mockOptions.current = options), null), Toolbar },
+  };
+});
 
 function page(items: Conversation[], has_any = items.length > 0) {
   return { pages: [{ items, next_cursor: null, counts: { unread: 1, waiting: 2 }, has_any, channel_kinds: ["whatsapp"] }] };
@@ -95,6 +104,16 @@ describe("the list", () => {
     expect(search.placeholder).toBe("Buscar por nombre, teléfono o mensaje");
     await act(async () => search.onChangeText({ nativeEvent: { text: "600" } }));
     expect(mockConversations).toHaveBeenLastCalledWith("all", "600", null);
+  });
+
+  it("the search bar's icon, text and hint come from the theme, so they read in dark mode on Android (spec 042, H23)", async () => {
+    const { tokens } = require("@/theme/tokens.gen") as typeof import("@/theme/tokens.gen");
+    list({ data: page([conv()]) });
+    await render(<Bandeja />);
+    const search = mockOptions.current?.headerSearchBarOptions as Record<string, unknown>;
+    expect(search.headerIconColor).toBe(tokens.light.primaryText);
+    expect(search.textColor).toBe(tokens.light.foreground);
+    expect(search.hintTextColor).toBe(tokens.light.mutedForeground);
   });
 
   it("loading: a named skeleton", async () => {

@@ -17,6 +17,8 @@ jest.mock("@/api/hooks", () => ({
 }));
 jest.mock("@/ui/online", () => ({ useOnline: () => true }));
 jest.mock("expo-router", () => ({ useLocalSearchParams: () => ({ id: "c1" }) }));
+let mockGlass = false;
+jest.mock("expo-glass-effect", () => ({ isLiquidGlassAvailable: () => mockGlass }));
 const mockSetQueryData = jest.fn();
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ setQueryData: mockSetQueryData, invalidateQueries: jest.fn() }),
@@ -44,6 +46,25 @@ beforeEach(() => {
   mockDetail.current = { data: detail, isError: false, refetch: jest.fn() };
   mockSetTags.mockReset();
   mockSetNote.mockReset();
+});
+
+describe("as a sheet with glass (spec 042, T063, T067, R1.7)", () => {
+  it("with Liquid Glass the scroll paints no background and respects the inset of a transparent header", async () => {
+    mockGlass = true;
+    const { StyleSheet } = require("react-native");
+    await render(<Contacto />);
+    const scroll = screen.getByTestId("contact-scroll");
+    expect(StyleSheet.flatten(scroll.props.style)?.backgroundColor).toBeUndefined();
+    expect(scroll.props.contentInsetAdjustmentBehavior).toBe("automatic");
+    mockGlass = false;
+  });
+
+  it("without it, the background of today", async () => {
+    const { StyleSheet } = require("react-native");
+    const { tokens } = require("@/theme/tokens.gen");
+    await render(<Contacto />);
+    expect(StyleSheet.flatten(screen.getByTestId("contact-scroll").props.style)?.backgroundColor).toBe(tokens.light.background);
+  });
 });
 
 it("shows the data, the summary, the tags, the note and the activity", async () => {

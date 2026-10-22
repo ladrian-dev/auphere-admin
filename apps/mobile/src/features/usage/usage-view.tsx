@@ -4,29 +4,34 @@ import type { Spend, UsageSummary } from "@/api/endpoints";
 import type { Locale, T } from "@/i18n/t";
 import { formatMoney, formatNumber, shortDay } from "@/lib/format";
 import { creditRunway } from "@/lib/panel-model";
-import { Divider, Meter, Segmented } from "@/ui/bits";
+import { Divider, Meter, RowButton, Segmented } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
+import { Group, Row } from "@/ui/group";
 import { icons } from "@/ui/icon";
 import { ErrorState, PartialNotice } from "@/ui/states";
 import { Text } from "@/ui/text";
 
 import { DayBars } from "../charts/day-bars";
-import { Metric } from "../home/metric";
 
 export const PERIODS = [7, 30, 90] as const;
 export type Period = (typeof PERIODS)[number];
 
 /**
- * Consumo (spec 031, R4.2–R4.5): read-only. The balance and how long it lasts,
- * the month's spend and its projection, spend per day and per agent — the same
- * cents as the console (R4.3). No buy, no top-up, no link to one (R4.4); the
- * technical detail and its export stay on the web (R4.5).
+ * Consumo (spec 031, R4.2–R4.5; spec 042, R9, R6.2): read-only. The figures as
+ * rows of one group — the balance and how long it lasts, the month's spend and
+ * its projection, the month's conversations — the same cents as the console
+ * (R4.3). Then the spend per day as one figure with its bars; the period is
+ * offered only when the widest series has something in it (R9.2), and an empty
+ * chart says what will fill it. No buy, no top-up, no link to one (R4.4); the
+ * technical detail and its export stay on the web (R4.5), behind one row that
+ * says it leaves the app.
  */
 export function UsageView({
   summary,
   spend,
   spendFailed,
+  anySpend,
   days,
   onDays,
   agents,
@@ -39,8 +44,11 @@ export function UsageView({
   onWeb,
 }: {
   summary: UsageSummary | null;
+  /** The series for `days`. */
   spend: Spend | null;
   spendFailed: boolean;
+  /** Whether the 90-day series has any spend: `null` while unknown. */
+  anySpend: boolean | null;
   days: Period;
   onDays: (d: Period) => void;
   agents: { id: string; name: string }[];
@@ -63,19 +71,16 @@ export function UsageView({
   const byAgent = summary.by_agent && summary.by_agent.length > 1 ? summary.by_agent : null;
   const agentName = agent ? agents.find((a) => a.id === agent)?.name ?? null : null;
   const every = days === 7 ? 1 : days === 30 ? 5 : 15;
+  const periodCents = spend ? spend.series_cents.reduce((a, b) => a + b, 0) : null;
 
   return (
     <View style={styles.stack}>
-      <Text variant="callout" tone="mutedForeground">
-        {byAgent ? t("lite.usage.intro.agents") : t("lite.usage.intro")}
-      </Text>
       {summary.errors.length > 0 ? <PartialNotice text={t("lite.usage.partial")} /> : null}
-      <View style={styles.grid} accessibilityLabel={t("lite.usage.cards")}>
-        <Metric
-          icon={icons.wallet}
+      <Group testID="usage-figures">
+        <Row
           label={t("lite.kpi.balance")}
           value={balance?.assigned && balance.remaining_cents != null ? money(balance.remaining_cents) : "—"}
-          tone={out ? "danger" : undefined}
+          valueTone={out ? "dangerText" : "foreground"}
           hint={
             balance === null
               ? t("lite.usage.unreadable")
@@ -84,14 +89,16 @@ export function UsageView({
                 : out
                   ? t("lite.kpi.balance.out")
                   : runway
-                    ? t("lite.usage.balance.runway", { days: n(runway.days) })
+                    ? undefined
                     : t("lite.kpi.balance.noSpend")
           }
-        >
-          {runway ? <Meter value={runway.days} max={runway.monthLeft} tone={runway.tone} label={t("lite.kpi.balance.runway.aria")} /> : null}
-        </Metric>
-        <Metric
-          icon={icons.money}
+        />
+        {runway ? (
+          <Row label={t("lite.usage.balance.runway", { days: n(runway.days) })}>
+            <Meter value={runway.days} max={runway.monthLeft} tone={runway.tone} label={t("lite.kpi.balance.runway.aria")} />
+          </Row>
+        ) : null}
+        <Row
           label={t("lite.spend.title")}
           value={month ? money(month.spent_cents) : "—"}
           hint={
@@ -102,8 +109,7 @@ export function UsageView({
                 : t("lite.usage.month.none")
           }
         />
-        <Metric
-          icon={icons.chat}
+        <Row
           label={t("lite.usage.conversations")}
           value={month?.conversations != null ? n(month.conversations) : "—"}
           hint={
@@ -114,48 +120,59 @@ export function UsageView({
                 : undefined
           }
         />
-      </View>
+      </Group>
 
       <Card>
         <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
           {t("hu.usage.spend.title")}
         </Text>
-        <Segmented
-          label={t("app.usage.days")}
-          value={days}
-          onChange={onDays}
-          options={PERIODS.map((d) => ({ value: d, label: t("app.usage.days.n", { days: d }) }))}
-        />
-        {agents.length > 1 ? (
-          <Button
-            label={agentName ? t("app.inbox.agentFilter.value", { name: agentName }) : t("lite.usage.agent.all")}
-            variant="secondary"
-            compact
-            icon={icons.bot}
-            onPress={onAgent}
-            accessibilityHint={t("lite.usage.agent")}
-          />
-        ) : null}
-        {spend ? (
-          spend.series_cents.some((c) => c > 0) ? (
-            <DayBars
-              values={spend.series_cents}
-              labels={spend.days.map((d) => shortDay(d, locale))}
-              every={every}
-              summary={`${t("hu.usage.spend.aria")}: ${spend.days
-                .map((d, i) => t("hu.usage.spend.bar", { day: shortDay(d, locale), amount: money(spend.series_cents[i] ?? 0) }))
-                .join(", ")}`}
-            />
-          ) : (
-            <Text variant="callout" tone="mutedForeground">
-              {t("hu.usage.spend.empty")}
-            </Text>
-          )
-        ) : spendFailed ? (
+        {anySpend === false ? (
           <Text variant="callout" tone="mutedForeground">
-            {t("lite.usage.unreadable")}
+            {t("app.usage.empty")}
           </Text>
-        ) : null}
+        ) : (
+          <>
+            {periodCents != null ? <Text variant="figure">{money(periodCents)}</Text> : null}
+            {anySpend ? (
+              <Segmented
+                label={t("app.usage.days")}
+                value={days}
+                onChange={onDays}
+                options={PERIODS.map((d) => ({ value: d, label: t("app.usage.days.n", { days: d }) }))}
+              />
+            ) : null}
+            {agents.length > 1 ? (
+              <Button
+                label={agentName ? t("app.inbox.agentFilter.value", { name: agentName }) : t("lite.usage.agent.all")}
+                variant="secondary"
+                compact
+                icon={icons.bot}
+                onPress={onAgent}
+                accessibilityHint={t("lite.usage.agent")}
+              />
+            ) : null}
+            {spend ? (
+              spend.series_cents.some((c) => c > 0) ? (
+                <DayBars
+                  values={spend.series_cents}
+                  labels={spend.days.map((d) => shortDay(d, locale))}
+                  every={every}
+                  summary={`${t("hu.usage.spend.aria")}: ${spend.days
+                    .map((d, i) => t("hu.usage.spend.bar", { day: shortDay(d, locale), amount: money(spend.series_cents[i] ?? 0) }))
+                    .join(", ")}`}
+                />
+              ) : (
+                <Text variant="callout" tone="mutedForeground">
+                  {t("hu.usage.spend.empty")}
+                </Text>
+              )
+            ) : spendFailed ? (
+              <Text variant="callout" tone="mutedForeground">
+                {t("lite.usage.unreadable")}
+              </Text>
+            ) : null}
+          </>
+        )}
       </Card>
 
       {byAgent ? (
@@ -188,14 +205,15 @@ export function UsageView({
         </Card>
       ) : null}
 
-      <Button label={t("app.usage.web")} variant="ghost" icon={icons.external} onPress={onWeb} />
+      <Group testID="usage-web">
+        <RowButton title={t("app.web")} subtitle={t("app.usage.web")} kind="external" tone="primaryText" onPress={onWeb} />
+      </Group>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   stack: { gap: 16 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   agent: { gap: 6 },
   agentRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   flex: { flex: 1, minWidth: 0 },

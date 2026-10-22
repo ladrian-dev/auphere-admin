@@ -4,6 +4,15 @@
 appId: ${APP_ID || "com.auphere.customers.dev"}
 ---
 - openLink: "exp+auphere-customers://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"
+# iOS asks before handing the link to the app («Open in “Customers”?»); Android does not.
+- extendedWaitUntil:
+    visible: "Open|Abrir|Continue|Tu negocio, en el bolsillo|Your business, in your pocket"
+    timeout: 20000
+- runFlow:
+    when:
+      visible: "Open|Abrir"
+    commands:
+      - tapOn: "Open|Abrir"
 - extendedWaitUntil:
     visible: "Continue|Tu negocio, en el bolsillo|Your business, in your pocket"
     timeout: 90000

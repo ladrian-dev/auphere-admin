@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import type { SavedReply } from "@/api/endpoints";
 import type { T } from "@/i18n/t";
-import { TOUCH, useTheme } from "@/theme/theme";
+import { concentric, TOUCH, useTheme } from "@/theme/theme";
 import { IconButton } from "@/ui/button";
-import { icons } from "@/ui/icon";
+import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
 import type { ComposerMode } from "../model";
+import { FOOT_RADIUS } from "./foot-radius";
 
 /**
- * The box (R6.3, R6.5). Only when this person answers. If WhatsApp would
+ * The box (R6.3, R6.5 of the 031; spec 042 R2.1, R7.1). Only when this person
+ * answers. Content only — the surface is `ThreadFoot`'s. If WhatsApp would
  * refuse — the 24 h window closed, the number disconnected — it says why
  * instead of a box that cannot send. A saved reply lands in the box, never
- * sent on its own. Offline, nothing that writes is offered (R14.2).
+ * sent on its own. Offline, nothing that writes is offered (R14.2). The send
+ * button is a solid circle whose corners are concentric with the surface's.
  */
 export function Composer({
   mode,
@@ -36,7 +39,7 @@ export function Composer({
   onAttach: () => void;
   onReplies: (insert: (body: string) => void) => void;
 }) {
-  const { colors, radius } = useTheme();
+  const { colors } = useTheme();
   const [draft, setDraft] = useState("");
   const input = useRef<ComponentRef<typeof TextInput>>(null);
 
@@ -49,12 +52,9 @@ export function Composer({
 
   if (mode.blocked) {
     return (
-      <View
-        accessible
-        accessibilityRole="alert"
-        style={[styles.blocked, { backgroundColor: colors.warningBg, borderColor: colors.warningSolid, borderRadius: radius.md }]}
-      >
-        <Text variant="callout" tone="warningText">
+      <View accessible accessibilityRole="alert" style={styles.blocked} testID="blocked">
+        <Icon name={icons.warning} size={18} tone="warningText" />
+        <Text variant="callout" tone="warningText" style={styles.flex}>
           {t(`inbox.composer.${mode.blocked}`)}
         </Text>
       </View>
@@ -69,7 +69,7 @@ export function Composer({
   };
 
   return (
-    <View style={[styles.wrap, { backgroundColor: colors.card, borderColor: colors.input, borderRadius: radius.md * 2 }]}>
+    <View style={styles.wrap}>
       {!online ? (
         <Text variant="footnote" tone="warningText" style={styles.offline}>
           {t("app.offline.actions")}
@@ -104,17 +104,36 @@ export function Composer({
           />
         ) : null}
         <View style={styles.spacer} />
-        <IconButton icon={icons.send} label={t("inbox.composer.send")} tone={canSend ? "primaryText" : "subtle"} disabled={!canSend} onPress={send} testID="send" />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("inbox.composer.send")}
+          accessibilityState={{ disabled: !canSend }}
+          disabled={!canSend}
+          onPress={send}
+          hitSlop={6}
+          style={({ pressed }) => [
+            styles.send,
+            { borderRadius: concentric(FOOT_RADIUS, SEND_INSET), backgroundColor: canSend ? (pressed ? colors.primaryDeep : colors.primary) : colors.muted },
+          ]}
+          testID="send"
+        >
+          <Icon name={icons.arrowUp} size={20} tone={canSend ? "primaryForeground" : "mutedForeground"} />
+        </Pressable>
       </View>
     </View>
   );
 }
 
+/** The send button sits this far from the surface's edge: its radius is concentric with FOOT_RADIUS. */
+const SEND_INSET = 4;
+
 const styles = StyleSheet.create({
-  wrap: { borderWidth: StyleSheet.hairlineWidth * 2, paddingHorizontal: 8, paddingTop: 6 },
-  input: { minHeight: TOUCH, maxHeight: 160, fontSize: 16, lineHeight: 22, paddingHorizontal: 8, paddingVertical: 8, textAlignVertical: "top" },
-  actions: { flexDirection: "row", alignItems: "center" },
+  wrap: { paddingHorizontal: 12, paddingTop: 6, paddingBottom: SEND_INSET },
+  flex: { flex: 1, minWidth: 0 },
+  input: { minHeight: TOUCH, maxHeight: 160, fontSize: 17, lineHeight: 22, paddingHorizontal: 4, paddingVertical: 8, textAlignVertical: "top" },
+  actions: { flexDirection: "row", alignItems: "center", gap: 4 },
   spacer: { flex: 1 },
-  blocked: { padding: 12, borderWidth: StyleSheet.hairlineWidth * 2 },
-  offline: { paddingHorizontal: 8, paddingTop: 4 },
+  send: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  blocked: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16 },
+  offline: { paddingHorizontal: 4, paddingTop: 4 },
 });

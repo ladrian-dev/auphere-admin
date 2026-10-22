@@ -7,6 +7,7 @@ import { useConversations, useCounts, useMe } from "@/api/hooks";
 import { useLiveStatus } from "@/api/sse";
 import { ConversationRow } from "@/features/inbox/list/conversation-row";
 import { Filters } from "@/features/inbox/list/filters";
+import { SettingsToolbar } from "@/features/tab-stack";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
 import { useTheme } from "@/theme/theme";
@@ -98,6 +99,7 @@ export default function Bandeja() {
 
   return (
     <>
+      <SettingsToolbar />
       <Stack.Screen
         options={{
           headerSearchBarOptions: {
@@ -105,7 +107,13 @@ export default function Bandeja() {
             onChangeText: (e) => setSearch(e.nativeEvent.text),
             onCancelButtonPress: () => setSearch(""),
             hideWhenScrolling: false,
+            // Spec 042, D6 (spike S2, check 3): the system chooses where a section's search goes.
+            placement: "automatic",
             tintColor: colors.primaryText,
+            // Android draws the search icon, the text and the hint in its own greys unless told (H23): from the theme.
+            headerIconColor: colors.primaryText,
+            textColor: colors.foreground,
+            hintTextColor: colors.mutedForeground,
           },
         }}
       />

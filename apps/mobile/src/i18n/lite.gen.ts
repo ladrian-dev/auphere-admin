@@ -158,7 +158,7 @@ export const liteMessages = {
   "inbox.who.you": { es: "Tú", en: "You" },
   "lite.attention.ask.auphere": { es: "Pide más saldo a Auphere.", en: "Ask Auphere for more balance." },
   "lite.attention.ask.partner": { es: "Pide más saldo a {name}.", en: "Ask {name} for more balance." },
-  "lite.attention.attend": { es: "Atender", en: "Attend" },
+  "lite.attention.attend": { es: "Atender ahora", en: "Answer now" },
   "lite.attention.balance": { es: "Saldo", en: "Balance" },
   "lite.attention.balance_low": { es: "Te quedarás sin saldo en unos {days} días", en: "You will run out of balance in about {days} days" },
   "lite.attention.balance_out": { es: "Tu saldo se agotó y el agente no responde", en: "Your balance is used up and the agent is not answering" },

@@ -10,6 +10,7 @@ import { attendsLine, eventText, initialsOf } from "@/features/inbox/model";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
 import { haptics } from "@/motion/haptics";
+import { glassAvailable } from "@/theme/glass";
 import { TOUCH, useTheme } from "@/theme/theme";
 import { Avatar, Divider } from "@/ui/bits";
 import { Button } from "@/ui/button";
@@ -45,7 +46,7 @@ export default function Contacto() {
 
   if (!d) {
     return (
-      <View style={[styles.fill, { backgroundColor: colors.background }]}>
+      <View style={[styles.fill, glassAvailable() ? null : { backgroundColor: colors.background }]}>
         {detail.isError ? <ErrorState onRetry={() => void detail.refetch()} /> : <View style={styles.pad}><Skeleton rows={3} /></View>}
       </View>
     );
@@ -95,7 +96,14 @@ export default function Contacto() {
   const noteDirty = draft !== null && draft !== d.note.body;
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    // With Liquid Glass the sheet's own material shows through (spec 042, R1.7); the content is opaque cards either way.
+    <ScrollView
+      testID="contact-scroll"
+      style={glassAvailable() ? undefined : { backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.who}>
         <Avatar initials={initialsOf(d.contact.name)} size={56} />
         <Text variant="title" accessibilityRole="header" style={styles.center}>

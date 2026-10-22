@@ -25,7 +25,9 @@ para entrar (solo esquema propio).
 
 - **Expo SDK 58** (React Native 0.88, React 19.3), sin código nativo propio:
   todo son módulos de Expo y de Software Mansion. Licencias en
-  [research.md §Licencias](../specs/031-auphere-customers-movil/research.md#licencias-de-lo-que-entra-constitución-viii).
+  [research.md §Licencias](../specs/031-auphere-customers-movil/research.md#licencias-de-lo-que-entra-constitución-viii)
+  y, para `expo-glass-effect` (~58.0.4, MIT, el vidrio de iOS 26), en la
+  [research de la spec 042](../specs/042-liquid-glass-en-la-app/research.md#licencias-de-lo-que-entra-constitución-viii).
 - **Su propio workspace de pnpm** (`apps/mobile/pnpm-workspace.yaml`, su
   lockfile y `pnpm@10.15.0`): Expo fija React 19.3 y la consola 19.2, y dos
   Reacts en un árbol rompen en ejecución. Nunca se añade `apps/mobile` al
@@ -45,21 +47,80 @@ para entrar (solo esquema propio).
     barra se vuelve a montar a propósito (`key`) y la persona cae en el primer
     módulo. Con un módulo no hay barra. Un módulo desconocido se ignora.
   - Cada pestaña es una pila nativa (título grande en iOS, cabecera propia en
-    Android) con Ajustes a la derecha. La Bandeja lleva la búsqueda nativa en
-    la cabecera.
+    Android) con Ajustes a la derecha. En iOS 26 la cabecera es la del sistema,
+    **sin fondo propio**: pintarle uno apaga el vidrio y deja el título grande
+    invisible (spec 042, D1 y H14); antes de iOS 26 y en Android lleva el fondo
+    de siempre (`useHeaderOptions`, decidido con `isLiquidGlassAvailable()`).
+    El botón de Ajustes es un elemento de barra nativo en iOS
+    (`SettingsToolbar`, `Stack.Toolbar`) y un `headerRight` en Android. La
+    Bandeja lleva la búsqueda nativa en la cabecera, con la colocación que
+    elija el sistema; en Android, el icono, el texto y la pista de la búsqueda
+    salen del tema (`headerIconColor`, `textColor`, `hintTextColor`): sin eso
+    Android los pinta con sus grises y en oscuro la lupa no se ve (H23). En iOS el tamaño del título grande sale de la tabla de
+    Dynamic Type de Apple (`headerSize`, en `type.ts`): en cuanto se le pone
+    un color, react-native-screens lo pinta con una fuente fija y dejaría de
+    crecer con el texto del teléfono (H8). El título normal de la barra se
+    queda fijo, como el de Apple: la barra no crece. En Android sí crece
+    (los títulos de barra van en sp); el de la conversación (`ConversationTitle`)
+    tiene un tope de 1,3, lo que cabe en la barra de 64 dp con sus dos líneas
+    (H24). Con «Aumentar contraste» iOS 26
+    vuelve opacos los botones de vidrio de la barra siguiendo el esquema
+    (disco claro en claro, oscuro en oscuro) y el tinte `primaryText` sigue
+    leyéndose en los dos (spec 042, `evidence/a11y.md`).
+  - **Los ajustes de apariencia se leen en vivo** (`useSystemAppearance`):
+    «Reducir transparencia», «Aumentar contraste» (o el contraste alto de
+    Android) y «Reducir movimiento». `FloatingSurface` es la única superficie
+    de vidrio propia (`expo-glass-effect`, MIT): flota en iOS 26 y, sin vidrio
+    o con «Reducir transparencia», se presenta anclada y opaca, como el pie de
+    la 031. Nunca lleva `opacity`; nunca va vidrio dentro de vidrio.
   - La **conversación** (`conversacion/[id]`) y su contacto (una hoja,
     `formSheet`) se abren **por encima de las pestañas**, en la pila raíz,
     como en cualquier app de mensajes: el cuadro de escribir es dueño del
-    borde de abajo. No ocultar la barra desde dentro de una pestaña: con
-    expo-router 58 eso entra en un bucle de foco («Maximum update depth»).
-    La pila raíz ancla `index`, así que un enlace abierto con la app cerrada
-    deja algo debajo y «atrás» no saca de la app.
+    borde de abajo. El menú de la conversación es el de la barra del sistema
+    en iOS (`ConversationToolbar`, `Stack.Toolbar.Menu`, con «Devolver al
+    agente» la primera) y la hoja de acciones de siempre en Android; la lista
+    de acciones es una sola (`conversationMenu`). El hilo es un `FlatList`
+    invertido envuelto en el `ScrollViewMarker` de react-native-screens
+    (`ContentScroll`; en Android, una vista normal) con los efectos de borde
+    de iOS 26 ocultos y, con la cabecera de vidrio, empieza bajo ella: con la
+    lista invertida, el efecto del sistema atenuaba el hilo entero (spec 042,
+    H20, research D4). El relleno que deja sitio al pie es un separador en
+    estado de React animado con `LayoutAnimation`, nunca una propiedad de
+    layout animada por Reanimated dentro de la lista. No ocultar la barra desde
+    dentro de una pestaña: con expo-router 58 eso entra en un bucle de foco
+    («Maximum update depth»). La pila raíz ancla `index`, así que un enlace
+    abierto con la app cerrada deja algo debajo y «atrás» no saca de la app.
+  - **Las dos hojas** salen de `useSheetOptions` (spec 042, R1.7): el contacto
+    y, en iOS, también Ajustes son `formSheet` con paradas en `[0.6, 1]` y
+    asa; en Android el contacto es una hoja inferior con las esquinas de la
+    app y Ajustes, una pantalla. Con Liquid Glass el contenedor de la hoja no
+    pinta fondo (se ve el material del sistema y su cabecera es transparente,
+    así que el `ScrollView` lleva `contentInsetAdjustmentBehavior="automatic"`);
+    sin vidrio, el fondo de siempre. `glassAvailable()` (`src/theme/glass.ts`)
+    es la única pregunta de «¿hay vidrio?»; lo que la persona pidió en
+    accesibilidad se lee aparte, en vivo.
+  - **Formas y tacto** (spec 042, R7, D12): botones y chips en cápsula
+    (`radius.full`); tarjetas y grupos con `CARD_RADIUS` y lo que va dentro
+    con esquinas concéntricas (`concentric`). La pulsación es la de cada
+    plataforma: en iOS el control se encoge a 0,97 en `durations.fast` y su
+    fondo pasa al tono de pulsación; en Android, la ondulación de Material.
+    Nunca una bajada de opacidad: sobre vidrio un control translúcido deja de
+    leerse como control. `disabled` baja el contraste del contenido y apaga el
+    relleno; `busy` conserva tamaño y tonos. La tipografía (`src/theme/type.ts`)
+    son los estilos de texto del sistema en iOS (cuerpo 17/22, título 22,
+    título grande 34, cifras 28 tabulares) y los tokens de la consola en
+    Android; sin `letterSpacing`. En iOS cada estilo deja de crecer donde lo
+    hace la tabla de Apple (`maxScale`, como `maxFontSizeMultiplier`): con el
+    texto al máximo un título de 22 pt escalado linealmente pasaría de los 60
+    pt del título grande.
 - **Datos**: `openapi-fetch` tipado con `src/api/schema.gen.ts` y React Query
   en memoria (nada de los clientes finales en disco). Al volver al primer plano
   se relee lo visible; sin red se lee lo último marcado como no actualizado y
   no se ofrece nada que escriba. Lo que cambia la Bandeja se invalida junto
   (`invalidateInbox`: listas, recuentos e Inicio), porque «Necesita tu
-  atención» es el mismo número que la insignia.
+  atención» es el mismo número que la insignia. Consumo lee primero la serie
+  de 90 días, que contiene a las de 7 y 30, y solo ofrece elegir periodo
+  cuando hay algo que pintar (spec 042, R9.2).
 - **Tiempo real**: SSE propia sobre `expo/fetch` y `eventsource-parser`, solo
   en primer plano. Los eventos dicen qué cambió y la app lo relee. «Reconectando…»
   aparece tras 3 s sin línea; al recuperarla se relee la Bandeja entera (la API
@@ -71,8 +132,11 @@ para entrar (solo esquema propio).
 - **Movimiento** (D24): duraciones de los tokens, ninguna por encima de 300 ms,
   sin rebotes y una sola coreografía: «Tomar el control» (sale la tarjeta,
   entra el cuadro, vibración de éxito y el cursor en el cuadro). Con
-  «Reducir movimiento» todo pasa a fundidos. Lo único que va en bucle es el
-  punto de «Reconectando», que se queda quieto con movimiento reducido.
+  «Reducir movimiento» todo pasa a fundidos, y el ajuste se sigue en vivo, no
+  solo al arrancar: a Reanimated se le dice `ReduceMotion.Never` siempre,
+  porque el fundido *es* la alternativa y `Always` lo saltaría (spec 042,
+  D5). Lo único que va en bucle es el punto de «Reconectando», que se queda
+  quieto con movimiento reducido.
 
 ## Entrar y quedarse dentro
 
@@ -210,6 +274,17 @@ aviso real, la pantalla bloqueada, VoiceOver y TalkBack— tiene su lista en
 - **En local**: `pnpm --dir apps/mobile android` o `ios` (necesita Xcode 26.4
   o posterior para el SDK 58). Sin variables, un build de desarrollo habla con
   la máquina donde se compiló (`10.0.2.2` en el emulador de Android).
+- **El simulador de iOS sin compilar en local** (spec 042, D16): el perfil
+  `development-simulator` es el de desarrollo con `ios.simulator: true`. Se
+  compila en la nube con la imagen del SDK 58 (Xcode 27, que trae Liquid
+  Glass) y el `.app` se instala en el simulador local con
+  `xcrun simctl install booted <ruta>`. Es la forma de ver iOS 26 cuando la
+  máquina no puede compilar para iOS. El simulador de referencia es «13 26»
+  (iPhone 13, iOS 26.0.1); en Android, la imagen del Pixel 9 (API 36) con
+  8 GB de datos (el build de desarrollo no cabe en los 6 GB por defecto). En
+  un build de desarrollo, apagar el botón
+  flotante del dev client (menú → «Tools button») antes de capturar, porque
+  tapa el botón de Ajustes.
 - **En la nube**: el proyecto de EAS `@lmatos/auphere-customers` (creado con
   `eas init` el 2026-10-20). Su ID y su dueño están fijados en
   `app.config.ts` porque no son secretos; `EAS_PROJECT_ID` y `EAS_OWNER` los
@@ -261,10 +336,11 @@ contraseña. Con esa cuenta se entra en la app.
 - El proyecto de EAS ya existe (`@lmatos/auphere-customers`) y está en
   `app.config.ts`: no hay variables que definir.
 - **iOS:** la ficha de App Store Connect con `com.auphere.customers` (equipo de
-  FACELAD; EAS crea el App ID y los certificados en el primer build). Después
-  `eas build -p ios --profile staging` y `eas submit -p ios --profile staging`.
-  Los probadores internos de TestFlight la tienen en cuanto Apple procesa el
-  build; los externos pasan antes la revisión beta.
+  FACELAD; EAS crea el App ID y los certificados en el primer build; su id en
+  App Store Connect, `6825002452`, está en el `submit` de `eas.json`). Después
+  `eas build -p ios --profile staging --auto-submit`, que lo sube a TestFlight
+  al terminar. Los probadores internos de TestFlight la tienen en cuanto Apple
+  procesa el build; los externos pasan antes la revisión beta.
 - **Android:** la app en Play Console (`com.auphere.customers`) y, en Firebase,
   una app Android con ese paquete: su `google-services.json` va como variable
   de archivo de EAS `GOOGLE_SERVICES_JSON`. Después

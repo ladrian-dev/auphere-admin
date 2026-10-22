@@ -17,6 +17,12 @@
         "APP_VARIANT": "development"
       }
     },
+    "development-simulator": {
+      "extends": "development",
+      "ios": {
+        "simulator": true
+      }
+    },
     "preview": {
       "extends": "base",
       "distribution": "internal",
@@ -50,12 +56,18 @@
   },
   "submit": {
     "staging": {
+      "ios": {
+        "ascAppId": "6825002452"
+      },
       "android": {
         "track": "internal",
         "releaseStatus": "completed"
       }
     },
     "production": {
+      "ios": {
+        "ascAppId": "6825002452"
+      },
       "android": {
         "track": "internal",
         "releaseStatus": "draft"

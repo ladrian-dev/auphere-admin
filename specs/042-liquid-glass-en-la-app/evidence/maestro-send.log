@@ -1,0 +1,30 @@
+Running on 13 26 - iOS 26.0 - D61F4EE7-0F63-416B-9CC5-18DFD648703A
+ > Flow send-flaky
+Stop ${APP_ID || "com.auphere.customers.dev"}... COMPLETED
+Launch app "${APP_ID || "com.auphere.customers.dev"}"... COMPLETED
+Assert that "Development Build|Tu negocio, en el bolsillo|Your business, in your pocket|Hola, .*|Hi, .*" is visible... COMPLETED
+Run _dev-server.yaml when "Development Build" is visible...
+Run _dev-server.yaml when "Development Build" is visible... SKIPPED
+Open auphere-customers://inbox/${CONVERSATION_ID}... COMPLETED
+Assert that id: composer-input is visible... COMPLETED
+Repeat 100 times...
+  Tap on id: composer-input... COMPLETED
+  Input text random TEXT... COMPLETED
+  Double tap on id: send... COMPLETED
+  Run flow when "No se envió. Toca para reintentar.|Not sent. Tap to retry." is visible...
+  Run flow when "No se envió. Toca para reintentar.|Not sent. Tap to retry." is visible... SKIPPED
+Repeat 100 times... COMPLETED
+Exception in thread "Thread-5" java.io.FileNotFoundException: /Users/lmatos/.maestro/sessions (No space left on device)
+	at java.base/java.io.FileOutputStream.open0(Native Method)
+	at java.base/java.io.FileOutputStream.open(FileOutputStream.java:293)
+	at java.base/java.io.FileOutputStream.<init>(FileOutputStream.java:235)
+	at java.base/java.io.FileOutputStream.<init>(FileOutputStream.java:184)
+	at kotlin.io.FilesKt__FileReadWriteKt.writeText(FileReadWrite.kt:145)
+	at kotlin.io.FilesKt__FileReadWriteKt.writeText$default(FileReadWrite.kt:144)
+	at maestro.cli.db.KeyValueStore.commit(KeyValueStore.kt:50)
+	at maestro.cli.db.KeyValueStore.delete$lambda$5$lambda$4(KeyValueStore.kt:31)
+	at maestro.cli.db.KeyValueStore.withFileLock(KeyValueStore.kt:62)
+	at maestro.cli.db.KeyValueStore.delete(KeyValueStore.kt:28)
+	at maestro.cli.session.SessionStore.delete(SessionStore.kt:33)
+	at maestro.cli.session.MaestroSessionManager.newSession$lambda$2(MaestroSessionManager.kt:126)
+	at kotlin.concurrent.ThreadsKt$thread$thread$1.run(Thread.kt:30)

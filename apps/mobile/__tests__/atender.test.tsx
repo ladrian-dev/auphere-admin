@@ -87,6 +87,80 @@ describe("the box (R6.3, R6.5)", () => {
   });
 });
 
+describe("the foot of the thread is one surface (spec 042, T049–T051, R2.1, R2.3, R2.4, R2.5, R2.8, R2.9)", () => {
+  const { ThreadFoot } = require("@/features/inbox/thread/foot") as typeof import("@/features/inbox/thread/foot");
+  const noop = jest.fn();
+  const foot = (mode: Parameters<typeof ThreadFoot>[0]["mode"], extra: Partial<Parameters<typeof ThreadFoot>[0]> = {}) => (
+    <ThreadFoot
+      mode={mode}
+      busy={false}
+      online
+      t={t}
+      replies={null}
+      focusSignal={0}
+      onTakeOver={noop}
+      onGiveBack={noop}
+      onReopen={noop}
+      onSend={noop}
+      onAttach={noop}
+      onReplies={noop}
+      onReadMore={noop}
+      {...extra}
+    />
+  );
+
+  it.each([
+    [{ kind: "waiting", reason: "Pide hablar con alguien" }, "take-over"],
+    [{ kind: "agent" }, "take-over"],
+    [{ kind: "other", name: "Luis" }, "take-over"],
+    [{ kind: "resolved" }, "reopen"],
+    [{ kind: "mine", blocked: null }, "send"],
+    [{ kind: "mine", blocked: "window_closed" }, "blocked"],
+  ] as const)("renders one surface for %j, with its own control", async (mode, control) => {
+    await render(foot(mode as Parameters<typeof ThreadFoot>[0]["mode"]));
+    expect(screen.getAllByTestId("thread-surface")).toHaveLength(1);
+    expect(screen.getByTestId(control)).toBeTruthy();
+    if (mode.kind === "waiting") expect(screen.getByTestId("waiting-card")).toBeTruthy();
+  });
+
+  it("waiting: the reason comes before the action, in two lines, and «Leer más» opens it whole when it does not fit", async () => {
+    const onReadMore = jest.fn();
+    await render(foot({ kind: "waiting", reason: "Quiere cambiar su cita del jueves y el agente no puede mover reservas. Además pregunta por el tinte." }, { onReadMore }));
+    const reason = screen.getByTestId("waiting-reason");
+    expect(reason.props.numberOfLines).toBe(2);
+    expect(screen.queryByRole("button", { name: "Leer más" })).toBeNull();
+    // The hidden copy, laid out without a limit, is what says whether the words fit.
+    await fireEvent(screen.getByTestId("waiting-reason-measure", { includeHiddenElements: true }), "textLayout", { nativeEvent: { lines: [{}, {}, {}] } });
+    await fireEvent.press(screen.getByRole("button", { name: "Leer más" }));
+    expect(onReadMore).toHaveBeenCalled();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf("Quiere cambiar")).toBeLessThan(tree.indexOf("Tomar el control"));
+    expect(screen.getByRole("button", { name: "Devolver al agente" })).toBeTruthy();
+  });
+
+  it("with no reason, the panel says the agent gave none", async () => {
+    await render(foot({ kind: "waiting", reason: null }));
+    expect(screen.getByText(t("inbox.composer.waiting.noReason"))).toBeTruthy();
+  });
+
+  it("taking control changes the children of the same surface: the node stays, the box arrives with its testIDs", async () => {
+    const { rerender } = await render(foot({ kind: "waiting", reason: "x" }));
+    const before = screen.getByTestId("thread-surface");
+    await rerender(foot({ kind: "mine", blocked: null }, { focusSignal: 1 }));
+    expect(screen.getByTestId("thread-surface")).toBe(before);
+    expect(screen.getByTestId("composer-input")).toBeTruthy();
+    expect(screen.getByTestId("send")).toBeTruthy();
+    expect(screen.queryByTestId("take-over")).toBeNull();
+  });
+
+  it("another person took it meanwhile: the panel shows the real state and offers nothing it cannot do", async () => {
+    const { rerender } = await render(foot({ kind: "waiting", reason: "x" }));
+    await rerender(foot({ kind: "other", name: "Luis" }));
+    expect(screen.getByText(t("inbox.composer.other", { name: "Luis" }))).toBeTruthy();
+    expect(screen.queryByTestId("waiting-card")).toBeNull();
+  });
+});
+
 const testClient = () => new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
 
 describe("sending and control (R6.2, R6.4, R6.6)", () => {

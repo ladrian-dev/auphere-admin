@@ -2,6 +2,7 @@ import { router, Stack } from "expo-router";
 
 import { useHome, useMe } from "@/api/hooks";
 import { HomeView } from "@/features/home/home-view";
+import { SettingsToolbar } from "@/features/tab-stack";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
 import { ScrollScreen } from "@/ui/screen";
@@ -21,6 +22,7 @@ export default function Inicio() {
   return (
     <>
       <Stack.Screen options={{ title: first ? t("app.home.greeting", { name: first }) : t("app.tab.panel") }} />
+      <SettingsToolbar />
       <ScrollScreen refreshing={home.isRefetching} onRefresh={() => void home.refetch()} testID="inicio">
         {me.data ? (
           <Text variant="subhead" tone="mutedForeground">

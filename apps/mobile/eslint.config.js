@@ -24,7 +24,7 @@ module.exports = defineConfig([
   },
   {
     // Tests assert the generated hex on purpose, and `require` after `jest.mock`.
-    files: ["__tests__/**", "test/**", "jest.setup.ts"],
+    files: ["__tests__/**", "test/**", "jest.setup.tsx"],
     rules: { "no-restricted-syntax": "off", "@typescript-eslint/no-require-imports": "off" },
   },
 ]);

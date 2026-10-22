@@ -13,18 +13,22 @@ import { kindsFor } from "@/features/notices";
 import { useT } from "@/i18n/t";
 import { haptics } from "@/motion/haptics";
 import { usePush } from "@/push/provider";
+import { glassAvailable } from "@/theme/glass";
 import { TOUCH, useTheme } from "@/theme/theme";
 import { Divider, RowButton } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
-import { icons } from "@/ui/icon";
+import { Group } from "@/ui/group";
 import { useOnline } from "@/ui/online";
 import { Text } from "@/ui/text";
 
 /**
- * Ajustes (spec 031, R11): who you are here, this phone's notices, the web
- * console, signing out of this phone and asking for the account's deletion.
- * A notice switch exists only when the system lets notices through (R10.3).
+ * Ajustes (spec 031, R11; spec 042, R8, R6.2): who you are here, this phone's
+ * notices, the web console (one row that says it leaves the app and where
+ * to), signing out of this phone, and — in its own group, last, the only one
+ * in the colour of danger, with a line that says what happens next — asking
+ * for the account's deletion. A notice switch exists only when the system
+ * lets notices through (R10.3).
  */
 export default function Ajustes() {
   const t = useT();
@@ -78,8 +82,14 @@ export default function Ajustes() {
     ]);
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
-      <Card>
+    // With Liquid Glass the sheet's own material shows through; before it, the container is opaque (spec 042, R1.7).
+    <ScrollView
+      testID="settings-scroll"
+      style={glassAvailable() ? undefined : { backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      <Card testID="settings-account">
         <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
           {t("app.account")}
         </Text>
@@ -92,7 +102,7 @@ export default function Ajustes() {
         <Line label={t("app.account.role")} value={t("app.account.role.client")} />
       </Card>
 
-      <Card>
+      <Card testID="settings-notices">
         <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
           {t("app.notices.section")}
         </Text>
@@ -140,30 +150,44 @@ export default function Ajustes() {
         </Text>
       </Card>
 
-      <Card>
-        <RowButton title={t("app.web")} icon={icons.external} tone="primaryText" onPress={() => void WebBrowser.openBrowserAsync(CONSOLE_URL)} />
-      </Card>
-
-      <Card>
-        <RowButton title={t("app.signOut")} tone="destructive" chevron={false} onPress={confirmSignOut} />
-        <Divider />
+      <Group testID="settings-web">
         <RowButton
-          title={t("app.deletion")}
-          tone="destructive"
-          chevron={false}
-          onPress={confirmDeletion}
-          accessibilityHint={t("app.deletion.body")}
+          title={t("app.web")}
+          subtitle={new URL(CONSOLE_URL).host}
+          kind="external"
+          tone="primaryText"
+          onPress={() => void WebBrowser.openBrowserAsync(CONSOLE_URL)}
         />
-        {deletion !== "idle" ? (
-          <Text
-            variant="footnote"
-            tone={deletion === "failed" ? "dangerText" : "mutedForeground"}
-            accessibilityRole="alert"
-          >
-            {deletion === "sending" ? t("app.loading") : deletion === "sent" ? t("app.deletion.sent") : t("app.deletion.failed")}
-          </Text>
-        ) : null}
-      </Card>
+      </Group>
+
+      <Group testID="settings-signout">
+        <RowButton title={t("app.signOut")} kind="action" onPress={confirmSignOut} />
+      </Group>
+
+      <View style={styles.last}>
+        <Group testID="settings-deletion">
+          <RowButton
+            title={t("app.deletion")}
+            tone="destructive"
+            kind="action"
+            onPress={confirmDeletion}
+            accessibilityHint={t("app.deletion.body")}
+          />
+          {deletion !== "idle" ? (
+            <Text
+              variant="footnote"
+              tone={deletion === "failed" ? "dangerText" : "mutedForeground"}
+              accessibilityRole="alert"
+              style={styles.status}
+            >
+              {deletion === "sending" ? t("app.loading") : deletion === "sent" ? t("app.deletion.sent") : t("app.deletion.failed")}
+            </Text>
+          ) : null}
+        </Group>
+        <Text variant="footnote" tone="mutedForeground" style={styles.footer}>
+          {t("app.deletion.footer")}
+        </Text>
+      </View>
 
       <Text variant="caption" tone="mutedForeground" style={styles.version}>
         {t("app.version", { version: versionLabel(APP_VERSION, VARIANT) })}
@@ -191,5 +215,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0, gap: 2 },
   line: { flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", minHeight: 32, alignItems: "center" },
   value: { flexShrink: 1, textAlign: "right" },
+  // Signing out is everyday; deleting the account is rare and final. Distance between them (R8.1).
+  last: { gap: 8, marginTop: 8 },
+  status: { paddingHorizontal: 16, paddingVertical: 12 },
+  footer: { paddingHorizontal: 4 },
   version: { textAlign: "center" },
 });
