@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 #: The scope vocabulary, mirrored from ``ApiKeyScope`` so the admin
 #: surface rejects unknown values at the edge instead of storing them.
@@ -300,3 +300,10 @@ class EmbedAuditEntryOut(BaseModel):
     origin: str | None
     jti: str | None
     created_at: datetime
+
+    @field_validator("ip", mode="before")
+    @classmethod
+    def _ip_as_text(cls, v: object) -> object:
+        # The column is INET: asyncpg hands back an ``ipaddress`` object, not
+        # the string that was written.
+        return None if v is None else str(v)

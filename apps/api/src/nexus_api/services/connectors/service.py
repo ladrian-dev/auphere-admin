@@ -77,6 +77,12 @@ class ConnectorAlreadyConnected(RuntimeError):
     pass
 
 
+class ConsentAlreadyGranted(ConnectorAlreadyConnected):
+    """A re-consent found the owner had already authorised: the install was
+    only ``pending`` because the webhook never landed. It has just been
+    settled — the caller must COMMIT, not roll back, before answering."""
+
+
 class ConnectorNotConfigured(RuntimeError):
     """The connector exists but its auth_config or secret is missing in env."""
 
@@ -294,6 +300,18 @@ async def initiate_consent(
         raise ConnectorNotConfigured(msg)
 
     existing = await _load_tenant_connector(session, tenant.id, connector.id)
+    if existing and existing.status == TenantConnectorStatus.PENDING.value:
+        # The owner may have consented already and the webhook never landed
+        # (the reconcile cron skips tenants still being set up). Composio
+        # refuses a second account for the same user while one is ACTIVE, so
+        # linking again can only fail — settle the pending one instead.
+        await reconcile_connector_status(
+            session, tenant_connector=existing, connector=connector, composio=composio, actor=actor
+        )
+        if existing.status == TenantConnectorStatus.CONNECTED.value:
+            raise ConsentAlreadyGranted(
+                f"{connector.display_name} ya estaba autorizado: queda conectado."
+            )
     if existing and existing.status == TenantConnectorStatus.CONNECTED.value:
         msg = f"tenant {tenant.slug} already has connector {connector_slug} connected"
         raise ConnectorAlreadyConnected(msg)

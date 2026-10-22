@@ -390,28 +390,31 @@ class LiveComposioClient(ComposioClientProtocol):
     async def list_tools(
         self, *, user_id: str, toolkit: str, limit: int | None = None
     ) -> list[ComposioTool]:
+        # ``tools.get`` wraps each tool for the SDK's default provider
+        # (OpenAI): plain dicts, where ``getattr`` finds no slug and every
+        # tool came back blank. The raw schema is the catalog model itself.
+        # ``user_id`` only matters to the wrapped tools' executor.
+        del user_id
         try:
-            kwargs: dict[str, Any] = {
-                "user_id": user_id,
-                "toolkits": [toolkit],
-            }
+            kwargs: dict[str, Any] = {"toolkits": [toolkit]}
             if limit:
                 kwargs["limit"] = limit
-            tools = await _maybe_async(self._client.tools.get, **kwargs)
+            tools = await _maybe_async(self._client.tools.get_raw_composio_tools, **kwargs)
         except Exception as exc:
             raise _translate_composio_error(exc) from exc
         out: list[ComposioTool] = []
         for t in tools:
+            tags = getattr(t, "tags", None) or []
             out.append(
                 ComposioTool(
-                    slug=str(getattr(t, "name", getattr(t, "slug", ""))),
-                    description=str(getattr(t, "description", "")),
-                    input_schema=dict(
-                        getattr(t, "parameters", getattr(t, "input_schema", {})) or {}
-                    ),
-                    output_schema=dict(getattr(t, "output_schema", {}) or {}),
-                    scopes=list(getattr(t, "scopes", []) or []),
-                    raw_tags=dict(getattr(t, "tags", {}) or {}),
+                    slug=str(getattr(t, "slug", "") or ""),
+                    description=str(getattr(t, "description", "") or ""),
+                    input_schema=dict(getattr(t, "input_parameters", None) or {}),
+                    output_schema=dict(getattr(t, "output_parameters", None) or {}),
+                    scopes=list(getattr(t, "scopes", None) or []),
+                    # Composio sends tags as a list of names; the annotation
+                    # resolver reads them as a map.
+                    raw_tags=dict(tags) if isinstance(tags, dict) else dict.fromkeys(tags, True),
                 )
             )
         return out
@@ -690,6 +693,16 @@ class FakeComposioClient(ComposioClientProtocol):
     ) -> ConnectionRequest:
         if self.simulate_unavailable:
             raise ComposioUnavailable("fake: composio down")
+        # The SDK refuses a second account for the same user and auth config
+        # while one is ACTIVE (``allow_multiple=False``, its default).
+        if any(
+            c.user_id == user_id and c.auth_config_id == auth_config_id and c.status == "ACTIVE"
+            for c in self._connections.values()
+        ):
+            raise ComposioError(
+                f"fake: Multiple connected accounts found for user {user_id} "
+                f"in auth config {auth_config_id}"
+            )
         connection_id = f"conn_fake_{self._next_id:04d}"
         self._next_id += 1
         # Toolkit is derived from auth_config_id convention in real Composio;
