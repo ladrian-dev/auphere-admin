@@ -58,7 +58,14 @@ Apple lo procesa.
 - **EAS**: build `staging` de Android **1.1.0 (3)**, terminado; el (2) falló en
   `lintVitalRelease` por los `locales` (arriba). EAS creó y guarda la clave de
   subida de Android. El AAB, descargado en `~/Downloads/auphere-customers-1.1.0-3-staging.aab`
-  (71 MB); su manifiesto no trae `AD_ID`.
+  (71 MB); su manifiesto no trae `AD_ID`. **No lleva Firebase**: no subirlo.
+- **EAS, build 1.1.0 (4)** (`f11a3e7a-7681-4c54-a7fa-94f9ab1a3d23`), terminado el
+  2026-10-22 a las 14:19 UTC: es el que va a Play. El log muestra
+  `GOOGLE_SERVICES_JSON` cargada, `googleServicesFile` en la configuración,
+  `:app:processReleaseGoogleServices`, `APP_VARIANT=staging` y
+  `EXPO_PUBLIC_API_URL=https://api.staging.auphere.com`. El «production» que
+  sale en el log es el entorno de variables de EAS (el que toma por defecto un
+  build de tienda), no el servidor: la URL la pone el perfil `staging`.
 - **Firebase**: proyecto `auphere-customers` (organización de Google Cloud
   ladrian.dev, sin Analytics ni Gemini), con las apps Android
   `com.auphere.customers` y `com.auphere.customers.dev`.
@@ -73,7 +80,8 @@ Apple lo procesa.
    datos**: borradores en `apps/mobile/store/play/app-content.md`. El ID de
    publicidad ya está declarado («No»).
 3. **Primer AAB a mano**: Pruebas internas › Crear versión (queda abierta) ›
-   Subir `~/Downloads/auphere-customers-1.1.0-3-staging.aab`, aceptar la firma de
+   Subir el AAB del build **1.1.0 (4)** (desde la página del build en expo.dev;
+   el (3) no lleva Firebase), aceptar la firma de
    apps de Google Play, notas de la versión (abajo) › Siguiente › Guardar y
    publicar. Después, copiar el enlace de adhesión de la pista y abrirlo en el
    teléfono con contacto@ladrian.dev. Notas propuestas (es-419):
@@ -81,11 +89,12 @@ Apple lo procesa.
    cuándo en la Bandeja, y Consumo con hasta cuándo te alcanza el saldo.»
 4. ~~**`google-services.json`**~~ **Hecho el 2026-10-22**: el de Firebase (las dos
    apps, proyecto `auphere-customers`) está en EAS como variable de archivo
-   secreta `GOOGLE_SERVICES_JSON` en development, preview y production. El
-   siguiente build de Android lo incluye; el 1.1.0 (3) no lo lleva.
-5. **Firebase › Configuración del proyecto › Cuentas de servicio › Generar
-   clave privada** (JSON) para la API (FCM). Es una clave privada: no pasa por
-   la sesión.
+   secreta `GOOGLE_SERVICES_JSON` en development, preview y production. Lo
+   lleva el build 1.1.0 (4); el (3) no.
+5. ~~**Firebase › Configuración del proyecto › Cuentas de servicio › Generar
+   clave privada** (JSON) para la API (FCM)~~ **Hecho por Luis el 2026-10-22**
+   (clave en el secreto de staging, `push_secret_keys` y `terraform apply`). Es
+   una clave privada: no pasó por la sesión.
 6. **Google Cloud (proyecto `auphere-customers`) › IAM › Cuentas de servicio ›
    Crear cuenta** para EAS Submit, con su clave JSON; y en **Play Console ›
    Usuarios y permisos › Invitar** a su correo con permiso para publicar en
