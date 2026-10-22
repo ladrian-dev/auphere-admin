@@ -112,8 +112,6 @@ export const liteMessages = {
   "lite.usage.cards": { es: "Saldo y gasto", en: "Balance and spend" },
   // Spec 045 (R4): the balance answers «until when» first. The date is the API's local date, in the person's language.
   "lite.usage.balance.until": { es: "Te alcanza hasta el {date}", en: "Lasts until {date}" },
-  // La pide la app (spec 031): sigue hasta que la app use `until`.
-  "lite.usage.balance.runway": { es: "Cubre unos {days} días al ritmo de esta semana", en: "Lasts about {days} days at this week's pace" },
   "lite.usage.unreadable": { es: "No se pudo leer ahora", en: "Could not be read right now" },
   "lite.usage.month.projection": { es: "A este ritmo, {amount} a fin de mes", en: "At this pace, {amount} by the end of the month" },
   "lite.usage.month.none": { es: "Sin gasto este mes", en: "No spend this month" },

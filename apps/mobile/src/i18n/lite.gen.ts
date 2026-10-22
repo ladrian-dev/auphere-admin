@@ -252,7 +252,6 @@ export const liteMessages = {
   "lite.spend.title": { es: "Gasto del mes", en: "This month's spend" },
   "lite.usage.agent": { es: "Agente", en: "Agent" },
   "lite.usage.agent.all": { es: "Todos los agentes", en: "All agents" },
-  "lite.usage.balance.runway": { es: "Cubre unos {days} días al ritmo de esta semana", en: "Lasts about {days} days at this week's pace" },
   "lite.usage.balance.until": { es: "Te alcanza hasta el {date}", en: "Lasts until {date}" },
   "lite.usage.byAgent.agent": { es: "Agente", en: "Agent" },
   "lite.usage.byAgent.share": { es: "Parte del gasto", en: "Share of spend" },
