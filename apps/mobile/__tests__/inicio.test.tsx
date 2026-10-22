@@ -147,7 +147,7 @@ describe("each thing once (spec 042, R5)", () => {
   });
 
   it("an unassigned balance says so, with no invented figures", async () => {
-    await view({ home: home({ balance: { assigned: false, remaining_cents: null, cap_cents: null, days_left: null } }) });
+    await view({ home: home({ balance: { assigned: false, remaining_cents: null, cap_cents: null, days_left: null, month_days_left: 24 } }) });
     expect(screen.getByLabelText(/^Saldo disponible: —\. Todavía no tienes un tope asignado/)).toBeTruthy();
     expect(screen.queryByText(/Cubre/)).toBeNull();
   });
