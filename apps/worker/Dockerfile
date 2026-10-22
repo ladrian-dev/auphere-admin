@@ -63,7 +63,7 @@ WORKDIR /py-build/apps/worker
 # Same pattern as ``apps/api/Dockerfile``.
 # Versions come from ``uv.lock``, not from a fresh resolution — see the
 # same step in ``apps/api/Dockerfile`` for why.
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
+RUN uv export --locked --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
     && uv pip install --system --no-cache-dir --no-editable -r /tmp/requirements.txt \
     && uv pip install --system --no-cache-dir --no-editable --no-deps .
 # Fail the build if the LiteLLM installed crashes on any call with tools
