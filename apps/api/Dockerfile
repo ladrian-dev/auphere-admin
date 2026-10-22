@@ -27,7 +27,7 @@ WORKDIR /build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv
+    && pip install --no-cache-dir uv==0.13.4
 
 # Copy each package's pyproject + src so uv can resolve the editable
 # path sources. Dependency order:
@@ -54,17 +54,29 @@ COPY apps/worker/src /build/apps/worker/src
 COPY apps/worker/skills /build/apps/worker/skills
 
 COPY apps/api/pyproject.toml /build/apps/api/pyproject.toml
+COPY apps/api/uv.lock /build/apps/api/uv.lock
 COPY apps/api/src /build/apps/api/src
 COPY apps/api/alembic.ini /build/apps/api/alembic.ini
 COPY apps/api/alembic /build/apps/api/alembic
 COPY apps/api/scripts /build/apps/api/scripts
 
 WORKDIR /build/apps/api
+# Versions come from ``uv.lock`` — the ones CI tests — not from a fresh
+# resolution at build time. Resolving on every build had drifted the image
+# 123 of 148 packages away from the lock by 2026-10-22: LiteLLM 1.106 broke
+# every agent turn with tools and Composio 0.28 left connectors without
+# tools. ``--frozen`` fails the build if the lock no longer matches.
 # ``--no-editable`` forces the path-source deps (nexus-worker, nexus-mcp,
 # nexus-ucm-schema, nexus-channels) to be installed as regular wheels
 # into ``site-packages``, NOT as ``.pth`` pointers back to /build/...
 # Otherwise the runtime stage can't find them after stripping /build.
-RUN uv pip install --system --no-cache-dir --no-editable .
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
+    && uv pip install --system --no-cache-dir --no-editable -r /tmp/requirements.txt \
+    && uv pip install --system --no-cache-dir --no-editable --no-deps .
+# Fail the build if the LiteLLM installed crashes on any call with tools
+# (1.106.0 did, needing ``mcp``). Local call to a closed port; nothing
+# leaves the build.
+RUN python -m nexus_api.core.litellm_smoke
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 2 — runtime

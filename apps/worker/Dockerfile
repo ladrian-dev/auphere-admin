@@ -27,7 +27,7 @@ WORKDIR /py-build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv
+    && pip install --no-cache-dir uv==0.13.4
 
 # Order matters: api / channels / mcp don't depend on worker; worker
 # depends on all three. Copy each package fully then ``uv pip install``
@@ -52,6 +52,7 @@ COPY apps/mcp/src /py-build/apps/mcp/src
 COPY packages/ucm-schema/py /py-build/packages/ucm-schema/py
 
 COPY apps/worker/pyproject.toml /py-build/apps/worker/pyproject.toml
+COPY apps/worker/uv.lock /py-build/apps/worker/uv.lock
 COPY apps/worker/src /py-build/apps/worker/src
 
 WORKDIR /py-build/apps/worker
@@ -60,7 +61,15 @@ WORKDIR /py-build/apps/worker
 # site-packages instead of ``.pth`` pointers back to /py-build/...
 # Otherwise the runtime stage can't find them after we strip /py-build.
 # Same pattern as ``apps/api/Dockerfile``.
-RUN uv pip install --system --no-cache-dir --no-editable .
+# Versions come from ``uv.lock``, not from a fresh resolution — see the
+# same step in ``apps/api/Dockerfile`` for why.
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
+    && uv pip install --system --no-cache-dir --no-editable -r /tmp/requirements.txt \
+    && uv pip install --system --no-cache-dir --no-editable --no-deps .
+# Fail the build if the LiteLLM installed crashes on any call with tools
+# (1.106.0 did, needing ``mcp``, and every agent turn died). Local call to
+# a closed port.
+RUN python -m nexus_api.core.litellm_smoke
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 2 — node-build

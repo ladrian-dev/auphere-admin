@@ -42,7 +42,10 @@ dependencies = [
     # LiteLLM. Same provider abstraction the worker uses for the agent
     # runtime, kept synchronous on the API side because the operation is
     # operator-interactive (sub-3s perceived latency expected).
-    "litellm>=1.52.0",
+    # <1.106: from 1.106.0 every completion() that carries tools imports the
+    # optional ``mcp`` package, which the images do not install — every agent
+    # turn with tools failed. ``nexus_api.core.litellm_smoke`` guards the build.
+    "litellm>=1.52.0,<1.106",
     # Block N: WhatsApp media storage. ``boto3`` powers ``S3MediaStorage``
     # (AWS, R2, MinIO) — the webhook downloads inbound media from Meta
     # and the outbound dispatcher presigns S3 URLs the Cloud API fetches.
