@@ -34,6 +34,7 @@ from nexus_api.db.models.local_workstation import (
     OUTCOME_PENDIENTE,
 )
 from nexus_api.services.device_credential import issue_device_token
+from tests.conftest import poll_until_work
 
 pytestmark = pytest.mark.asyncio
 
@@ -96,12 +97,10 @@ async def _run(client, world, *, executable: str = MAKE, args: list[str] | None 
 
 
 async def _machine_answers(
-    client, token: str, *, sample: str = "ok\n", outcome: str = "completada"
+    client, token: str, running, *, sample: str = "ok\n", outcome: str = "completada"
 ):
     """Lo que hace la aplicación de escritorio: sondea, ejecuta y contesta."""
-    polled = await client.get("/device/poll", headers=_auth(token))
-    assert polled.status_code == 200, polled.text
-    work = polled.json()["work"]
+    work = await poll_until_work(client, token, running)
     for item in work:
         answered = await client.post(
             "/device/result",
@@ -129,8 +128,7 @@ async def test_an_allowed_command_reaches_the_machine_and_its_output_comes_back(
     await _set_pref(client, a, mode=EXEC_ALWAYS)
 
     running = asyncio.create_task(_run(client, a))
-    await asyncio.sleep(0.2)
-    work = await _machine_answers(client, token, sample="4 de 4 en verde\n")
+    work = await _machine_answers(client, token, running, sample="4 de 4 en verde\n")
     response = await running
 
     assert response.status_code == 200, response.text
@@ -155,10 +153,9 @@ async def test_the_same_work_is_never_handed_out_twice(client, db_session, conso
     await _set_pref(client, a, mode=EXEC_ALWAYS)
 
     running = asyncio.create_task(_run(client, a))
-    await asyncio.sleep(0.2)
-    first = await client.get("/device/poll", headers=_auth(token))
+    first = await poll_until_work(client, token, running)
     second = await client.get("/device/poll", headers=_auth(token))
-    assert len(first.json()["work"]) == 1
+    assert len(first) == 1
     assert second.json()["work"] == [], "un sondeo mientras ejecuta no repite el comando"
     # Se contesta lo que dio el PRIMER sondeo: el segundo ya no lo trae, que es
     # justo lo que este test afirma.
@@ -166,7 +163,7 @@ async def test_the_same_work_is_never_handed_out_twice(client, db_session, conso
         "/device/result",
         headers=_auth(token),
         json={
-            "execution_id": first.json()["work"][0]["execution_id"],
+            "execution_id": first[0]["execution_id"],
             "outcome": "completada",
             "exit_code": 0,
             "children_reaped": 0,
@@ -182,8 +179,7 @@ async def test_the_output_never_lands_in_the_audit_row(client, db_session, conso
     _device, token = await _machine(db_session, a)
     await _set_pref(client, a, mode=EXEC_ALWAYS)
     running = asyncio.create_task(_run(client, a))
-    await asyncio.sleep(0.2)
-    await _machine_answers(client, token, sample="una contraseña que no debe guardarse")
+    await _machine_answers(client, token, running, sample="una contraseña que no debe guardarse")
     await running
 
     sm = get_sessionmaker()
@@ -297,8 +293,7 @@ async def test_every_decision_is_audited_with_the_person(client, db_session, con
     _device, token = await _machine(db_session, a)
     await _set_pref(client, a, mode=EXEC_ALWAYS)
     running = asyncio.create_task(_run(client, a))
-    await asyncio.sleep(0.2)
-    await _machine_answers(client, token)
+    await _machine_answers(client, token, running)
     await running
 
     sm = get_sessionmaker()
@@ -380,8 +375,7 @@ async def test_a_confirmed_action_lets_the_same_command_through_and_leaves_a_gra
     await _confirmed_action(db_session, a, executable=MAKE, args=["test"])
 
     running = asyncio.create_task(_run(client, a))
-    await asyncio.sleep(0.2)
-    await _machine_answers(client, token)
+    await _machine_answers(client, token, running)
     response = await running
     assert response.json()["decision"] == "permitida"
 
