@@ -20,6 +20,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import sqlalchemy as sa
 import structlog
@@ -36,7 +37,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from nexus_api.api.deps import get_redis
+from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.core.tenant_resolver import invalidate_tenant_cache
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Connector
 from nexus_api.repositories.audit import AuditRepository
@@ -44,6 +47,7 @@ from nexus_api.services.channel_routing import channel_agent_enabled, channel_ro
 from nexus_api.services.meta_signup_service import build_meta_client as _build_meta_client
 
 from .deps import ClientScope, client_scope
+from .diagnostics import subscription_owner
 from .schemas import ChannelOut
 from .schemas_channels import (
     CatalogErrorOut,
@@ -278,7 +282,10 @@ def build_meta_client() -> MetaClient:
 
 #: Lo que conectar hizo en Meta, en el orden en que se deshace. ``unsubscribe``
 #: solo entra cuando el número era el último vivo de su WABA en el cliente:
-#: la suscripción es por cuenta, no por número (spec 021, R2.3).
+#: la suscripción es por cuenta, no por número (spec 021, R2.3). Y es de la
+#: **app**, que es la misma en staging y en producción: antes de desuscribir se
+#: mira que emita al webhook de este entorno (bug
+#: ``desconectar-respeta-el-otro-entorno``).
 UNLINK_STEPS: tuple[str, ...] = ("deregister", "unsubscribe")
 
 # Lo que Meta contesta a ``deregister`` sobre un número en coexistencia
@@ -710,6 +717,7 @@ async def clear_channel_catalog(
 async def disconnect_channel(
     channel_id: uuid.UUID,
     scope: ClientScope = Depends(client_scope("channels:write")),
+    redis: Redis = Depends(get_redis),
 ) -> ChannelDetailOut:
     """Soltar un número: el agente deja de atender por él, y Meta lo suelta.
 
@@ -793,10 +801,18 @@ async def disconnect_channel(
             # Ya estaba hecho del todo: quien pulsa dos veces no merece un error.
             return _detail(fila, await channel_logos(s1))
 
+    # El resolver guarda número → cliente una hora en Redis. Sin esto, los
+    # mensajes del número seguían llegando a este agente hasta que caducaba; y
+    # ahora que la suscripción de otro entorno se deja viva, eso importa más
+    # (bug ``desconectar-respeta-el-otro-entorno``).
+    await invalidate_tenant_cache(redis, ch.provider, ch.provider_identifier)
+
     # ── 2 · Meta, paso a paso, quitando cada uno al terminar ───────────
     client = build_meta_client()
+    settings = get_settings()
     done: list[str] = []
     skipped: list[str] = []
+    kept: dict[str, str | None] | None = None
     try:
         async with sm() as s2, tenant_scoped_session(s2, tenant_id):
             fila = await s2.get(Channel, channel_id)
@@ -821,6 +837,35 @@ async def disconnect_channel(
                                 phone_number_id=phone_number_id, access_token=token
                             )
                         elif step == "unsubscribe":
+                            # Solo se borra la suscripción que se sabe propia.
+                            # Una de más no rompe nada (sus mensajes llegan a un
+                            # canal desconectado); una de menos deja sordo, sin
+                            # aviso, al entorno que sí la usaba (2026-10-22: el
+                            # número de pruebas de staging, desconectado en prod).
+                            owner, target = subscription_owner(
+                                await client.list_subscribed_apps(
+                                    waba_id=waba_id, access_token=token
+                                ),
+                                app_id=settings.meta_app_id,
+                                callback_url=settings.meta_webhook_callback_url,
+                            )
+                            if owner != "ours":
+                                kept = {
+                                    "reason": "not_subscribed"
+                                    if owner == "none"
+                                    else "subscription_elsewhere",
+                                    "callback_host": urlsplit(target).hostname if target else None,
+                                }
+                                log.info(
+                                    "channel.unlink.subscription_kept",
+                                    channel_id=str(channel_id),
+                                    waba_id=waba_id,
+                                    **kept,
+                                )
+                                skipped.append(step)
+                                pending.remove(step)
+                                await MetaCredentialsRepository(s2).delete()
+                                continue
                             await client.unsubscribe_app(waba_id=waba_id, access_token=token)
                     except MetaAPIError as exc:
                         if step == "deregister" and deregister_not_applicable(exc):
@@ -868,6 +913,8 @@ async def disconnect_channel(
             meta: dict[str, object] = {"done": done, "pending": pending}
             if skipped:
                 meta["skipped"] = skipped
+            if kept:
+                meta["kept_subscription"] = kept
             if cfg.get("unlink_error"):
                 meta["error"] = cfg["unlink_error"]
             await AuditRepository(s2).record(

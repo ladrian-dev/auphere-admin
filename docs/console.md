@@ -42,6 +42,15 @@ integraciones y observa lo que pasa. La API decide; la consola pinta y dice
    «lo conecta Auphere» (sin botón). Al volver, el cliente se activa si puede
    operar y la respuesta trae `client_status` y `health`. Un número de otro
    cliente es 409 `number_in_use`; cualquier fallo deja el signup sin rastro.
+   **Desconectar** da de baja el número en Meta y, si era el último vivo de su
+   cuenta, desuscribe la app, pero **solo si la suscripción emite al webhook de
+   este entorno** (`NEXUS_META_WEBHOOK_CALLBACK_URL`). La app de Meta es la misma
+   en staging y producción y cada entorno marca su suscripción con su
+   `override_callback_uri`; si emite a otro sitio, o a ninguno, se deja como
+   está y la auditoría lo dice en `meta.kept_subscription` (bug
+   `desconectar-respeta-el-otro-entorno`). El número deja de llevar a su
+   cliente **en el acto**: desconectar invalida la caché del resolver (una hora
+   en Redis), antes incluso de llamar a Meta.
 5. **Integraciones**: AgendaPro se **enlaza por su agenda pública**
    (`PUT …/integrations/agendapro/public-url`, solo `https` en `agendapro.com`);
    nunca se piden credenciales desde la consola. Un conector por clave de API
