@@ -17,6 +17,8 @@ from nexus_mcp.registry import reset_default_registry
 
 from nexus_api.core.tenant_context import tenant_context
 from nexus_api.db.models import (
+    AgentConfig,
+    AgentConfigStatus,
     Channel,
     ChannelStatus,
     ChannelType,
@@ -118,6 +120,34 @@ async def seed_barber(
     return node
 
 
+async def seed_reminder_policy(
+    db_session,
+    *,
+    tenant_id: uuid.UUID,
+    templates: list[str],
+    agent_id: uuid.UUID | None = None,
+    version: int = 1,
+    **limits: int,
+) -> AgentConfig:
+    """An active agent version whose ``policies.scheduled_reminders`` lets
+    ``notification.schedule_reminder`` use ``templates``. Without ``agent_id``
+    the row lands on the principal agent (default-agent trigger)."""
+    config = AgentConfig(
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        version=version,
+        status=AgentConfigStatus.ACTIVE,
+        system_prompt_rendered="Eres Alex.",
+        channels=[],
+        tools=["notification.schedule_reminder"],
+        policies={"scheduled_reminders": {"templates": templates, **limits}},
+    )
+    db_session.add(config)
+    await db_session.commit()
+    await db_session.refresh(config)
+    return config
+
+
 def all_whitelist() -> list[str]:
     """Returns the 21 tool names — handy when a test doesn't care about
     whitelist filtering and wants every tool dispatchable."""
@@ -144,5 +174,6 @@ __all__ = [
     "seed_barber",
     "seed_channel_and_conversation",
     "seed_customer",
+    "seed_reminder_policy",
     "tenant_context",
 ]
