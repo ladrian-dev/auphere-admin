@@ -43,6 +43,7 @@ from .conftest import (
     seed_barber,
     seed_channel_and_conversation,
     seed_customer,
+    seed_reminder_policy,
 )
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -438,6 +439,7 @@ async def test_notification_send_template_and_text_and_schedule_and_cancel(
     db_session, two_tenants, mcp_registry
 ):
     a = two_tenants["a"]
+    await seed_reminder_policy(db_session, tenant_id=a, templates=["reminder_24h"])
     cust = await seed_customer(db_session, tenant_id=a)
     _, conv = await seed_channel_and_conversation(
         db_session, tenant_id=a, customer_id=cust.id, provider_identifier="not-1"
@@ -582,6 +584,7 @@ async def test_flow1_booking_with_preferred_barber_smoke(db_session, two_tenants
     using only the booking + client + notification servers (AgendaPro is
     Block E)."""
     a = two_tenants["a"]
+    await seed_reminder_policy(db_session, tenant_id=a, templates=["reminder_24h"])
     cust = await seed_customer(db_session, tenant_id=a, identifier="+56-99-flow1")
     barber = await seed_barber(db_session, tenant_id=a, name="Luis")
     _, conv = await seed_channel_and_conversation(

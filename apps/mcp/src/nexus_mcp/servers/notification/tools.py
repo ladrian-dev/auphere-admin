@@ -22,9 +22,11 @@ because Cloud API enforces it uniformly across free-form types.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import structlog
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import (
     Channel,
@@ -37,7 +39,9 @@ from nexus_api.db.models import (
     ScheduledJobStatus,
     WhatsAppTemplateStatus,
 )
-from sqlalchemy import select
+from nexus_api.repositories.agent_config import AgentConfigRepository
+from nexus_api.services.agents import agent_for_channel
+from sqlalchemy import String, cast, func, select, text
 
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
@@ -65,6 +69,8 @@ from nexus_mcp.servers.notification.schemas import (
     SendVideoInput,
     SendVideoOutput,
 )
+
+log = structlog.get_logger(__name__)
 
 # Cloud API enforces a 24h customer-service window for free-form messages.
 # We apply the same threshold here so the dispatcher never sends a
@@ -494,13 +500,122 @@ class SendReaction(ToolBase):
 # ── schedule_reminder ────────────────────────────────────────────────────────
 
 
+# Every reminder that fires is a WhatsApp template Meta bills to the business,
+# and the one asking the agent for it is the end customer. The agent answering
+# on the number sets the limits in ``policies.scheduled_reminders``; the
+# ceilings bound a policy written by mistake (bug recordatorios-sin-tope).
+DEFAULT_REMINDERS_PER_CUSTOMER_PER_DAY = 3
+MAX_REMINDERS_PER_CUSTOMER_PER_DAY = 10
+DEFAULT_REMINDER_DAYS_AHEAD = 30
+MAX_REMINDER_DAYS_AHEAD = 365
+
+
+def _clamp_int(value: Any, default: int, lo: int, hi: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, parsed))
+
+
+@dataclass(frozen=True)
+class ReminderPolicy:
+    """``policies.scheduled_reminders`` of the agent, with defaults applied.
+
+    No ``templates`` means no reminders: there is no template name that is
+    safe to assume exists, approved, in every business's WABA.
+    """
+
+    templates: frozenset[str]
+    per_customer_per_day: int
+    days_ahead: int
+
+    @classmethod
+    def from_policies(cls, policies: dict[str, Any] | None) -> ReminderPolicy:
+        raw = (policies or {}).get("scheduled_reminders")
+        data = raw if isinstance(raw, dict) else {}
+        listed = data.get("templates")
+        names = listed if isinstance(listed, list) else []
+        return cls(
+            templates=frozenset(n.strip() for n in names if isinstance(n, str) and n.strip()),
+            per_customer_per_day=_clamp_int(
+                data.get("max_per_customer_per_day"),
+                DEFAULT_REMINDERS_PER_CUSTOMER_PER_DAY,
+                1,
+                MAX_REMINDERS_PER_CUSTOMER_PER_DAY,
+            ),
+            days_ahead=_clamp_int(
+                data.get("max_days_ahead"), DEFAULT_REMINDER_DAYS_AHEAD, 1, MAX_REMINDER_DAYS_AHEAD
+            ),
+        )
+
+
+async def _reminder_policy(session: Any, conversation: Conversation) -> ReminderPolicy:
+    # Spec 030: the agent that answers on THIS number, as payments.request_review.
+    agent_id = await agent_for_channel(session, conversation.channel_id)
+    active = await AgentConfigRepository(session).get_active(agent_id=agent_id)
+    return ReminderPolicy.from_policies(active.policies if active is not None else None)
+
+
+def _refuse_reminder(reason: str, message: str, **context: Any) -> ToolError:
+    # The log is how an operator spots a customer fishing for paid sends.
+    log.warning("notification.schedule_reminder.refused", reason=reason, **context)
+    return ToolError(message)
+
+
+async def _assert_reminder_quota(
+    session: Any,
+    policy: ReminderPolicy,
+    *,
+    tenant_id: uuid.UUID,
+    customer_id: uuid.UUID,
+) -> None:
+    """At most ``per_customer_per_day`` reminders scheduled for the customer
+    in the last 24 hours, over all their conversations. Cancelled ones never
+    send, so they do not count."""
+    # Without the lock two calls read the same count and both insert; with
+    # it the second waits for the first's COMMIT, where it is released.
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"schedule_reminder:{tenant_id}:{customer_id}"},
+    )
+    their_conversations = select(cast(Conversation.id, String)).where(
+        Conversation.customer_id == customer_id
+    )
+    scheduled = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(ScheduledJob)
+            .where(
+                ScheduledJob.kind == ScheduledJobKind.REMINDER,
+                ScheduledJob.status != ScheduledJobStatus.CANCELLED,
+                ScheduledJob.created_at >= datetime.now(UTC) - timedelta(days=1),
+                ScheduledJob.payload["conversation_id"].astext.in_(their_conversations),
+            )
+        )
+        or 0
+    )
+    if scheduled >= policy.per_customer_per_day:
+        raise _refuse_reminder(
+            "per_customer_per_day",
+            f"this customer already has {scheduled} reminders scheduled in the last "
+            f"24 hours (limit {policy.per_customer_per_day}); do not schedule more — "
+            "tell the customer",
+            tenant_id=str(tenant_id),
+            customer_id=str(customer_id),
+        )
+
+
 class ScheduleReminder(ToolBase):
     name = "notification.schedule_reminder"
     description = (
-        "Persist a future-dated reminder. Block H's cron dispatcher reads the "
-        "scheduled_jobs table, finds rows where run_at<=now() and status='pending', "
-        "and fires the corresponding template. Returns the reminder_id so the "
-        "caller can later cancel it via notification.cancel_scheduled."
+        "Schedule a reminder: at run_at the reminder cron sends the WhatsApp template "
+        "template_name to the conversation. Every reminder is a paid template send, so "
+        "the business limits them: only the templates it enabled for reminders, at most "
+        f"{DEFAULT_REMINDERS_PER_CUSTOMER_PER_DAY} per customer per day and "
+        f"{DEFAULT_REMINDER_DAYS_AHEAD} days ahead unless it set other limits. A refusal "
+        "says which limit was hit: tell the customer instead of insisting. Returns the "
+        "reminder_id so the caller can later cancel it via notification.cancel_scheduled."
     )
     input_model = ScheduleReminderInput
     output_model = ScheduleReminderOutput
@@ -509,10 +624,41 @@ class ScheduleReminder(ToolBase):
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, ScheduleReminderInput)
         tenant_id = require_current_tenant()
+        # Stored as UTC; a run_at without offset is read as UTC too.
+        run_at = payload.run_at if payload.run_at.tzinfo else payload.run_at.replace(tzinfo=UTC)
         async with tool_session() as session:
             conv = await session.get(Conversation, payload.conversation_id)
             if conv is None:
                 raise ToolError(f"conversation {payload.conversation_id} not found for this tenant")
+            policy = await _reminder_policy(session, conv)
+            context = {"tenant_id": str(tenant_id), "customer_id": str(conv.customer_id)}
+            if not policy.templates:
+                raise _refuse_reminder(
+                    "no_templates",
+                    "this business has no template enabled for reminders: do not promise "
+                    "the customer a reminder — tell them you cannot schedule one",
+                    **context,
+                )
+            if payload.template_name not in policy.templates:
+                raise _refuse_reminder(
+                    "template",
+                    f"template {payload.template_name!r} is not one of this business's "
+                    f"reminder templates ({', '.join(sorted(policy.templates))}); use one "
+                    "of those or do not schedule the reminder",
+                    template=payload.template_name,
+                    **context,
+                )
+            ahead = run_at - datetime.now(UTC)
+            if ahead > timedelta(days=policy.days_ahead):
+                raise _refuse_reminder(
+                    "days_ahead",
+                    f"run_at is {ahead.days} days ahead; reminders can be scheduled at most "
+                    f"{policy.days_ahead} days ahead",
+                    **context,
+                )
+            await _assert_reminder_quota(
+                session, policy, tenant_id=tenant_id, customer_id=conv.customer_id
+            )
             job_payload = {
                 "conversation_id": str(payload.conversation_id),
                 "appointment_id": (str(payload.appointment_id) if payload.appointment_id else None),
@@ -522,7 +668,7 @@ class ScheduleReminder(ToolBase):
             job = ScheduledJob(
                 tenant_id=tenant_id,
                 kind=ScheduledJobKind.REMINDER,
-                run_at=payload.run_at,
+                run_at=run_at,
                 payload=job_payload,
                 status=ScheduledJobStatus.PENDING,
             )
