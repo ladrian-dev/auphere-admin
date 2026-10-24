@@ -138,7 +138,10 @@ export default async function ClientLayout({ params, children }: { params: Promi
         refId={client.external_client_ref}
         role={principal.role}
         draftScreens={draftScreens}
-        incidents={client.health.whatsapp_connected ? [] : ["channels"]}
+        // Spec 046: a client still being set up has a pending step, not an
+        // incident — the setup header already says it. The dot is for a
+        // client that was serving and lost its WhatsApp.
+        incidents={client.status === "active" && !client.health.whatsapp_connected ? ["channels"] : []}
       />
       {/* Spec 030: en las pestañas de UN agente, de cuál —y «Nuevo agente»—. */}
       {readsAgents ? (

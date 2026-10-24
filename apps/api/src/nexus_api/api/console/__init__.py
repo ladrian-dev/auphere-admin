@@ -29,6 +29,7 @@ from nexus_api.api.console import (
     billing,
     capabilities,
     capabilities_client,
+    channel_catalog,
     channel_signup,
     channels,
     companion,
@@ -78,6 +79,8 @@ router.include_router(tenants.router)
 router.include_router(agents.router)
 # Spec 030: los agentes de un cliente y qué agente contesta en cada número.
 router.include_router(agents_list.router)
+# Spec 046: el catálogo de canales del asistente «Añadir canal».
+router.include_router(channel_catalog.router)
 router.include_router(channels.router)
 router.include_router(conversations.router)
 router.include_router(usage.router)

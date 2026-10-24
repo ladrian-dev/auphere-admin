@@ -9,6 +9,7 @@ export type Locale = "es" | "en";
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { agentsMessages } from "./lanes/agents";
 import { capabilitiesMessages } from "./lanes/capabilities";
+import { channelWizardMessages } from "./lanes/channel-wizard";
 import { channelsMessages } from "./lanes/channels";
 import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
@@ -305,7 +306,8 @@ const core = {
   "home.conversations30": { es: "Conversaciones (30 días)", en: "Conversations (30 days)" },
   "home.pending": { es: "Acciones pendientes", en: "Pending actions" },
   "home.pending.none": { es: "Nada pendiente", en: "Nothing pending" },
-  "home.pending.item": { es: "{count} cliente(s) sin agente o sin canal", en: "{count} client(s) without agent or channel" },
+  "home.pending.item": { es: "{count} clientes sin agente o sin canal", en: "{count} clients without an agent or a channel" },
+  "home.pending.item.one": { es: "1 cliente sin agente o sin canal", en: "1 client without an agent or a channel" },
   "home.team": { es: "Miembros del equipo", en: "Team members" },
   "home.welcome": { es: "Hola, {name}", en: "Hello, {name}" },
 
@@ -327,7 +329,8 @@ const core = {
   "clients.col.credit.unlimited": { es: "Ilimitado · Auphere", en: "Unlimited · Auphere" },
   "clients.timezone": { es: "Zona horaria", en: "Time zone" },
   "clients.timezone.placeholder": { es: "Elige una zona horaria", en: "Pick a time zone" },
-  "clients.count": { es: "{count} cliente(s)", en: "{count} client(s)" },
+  "clients.count": { es: "{count} clientes", en: "{count} clients" },
+  "clients.count.one": { es: "1 cliente", en: "1 client" },
   "clients.filter.all": { es: "Todos", en: "All" },
   "clients.create.title": { es: "Nuevo cliente", en: "New client" },
   "clients.create.body": { es: "Datos básicos. El agente borrador y el canal se configuran después, desde la ficha.", en: "Basics. The draft agent and the channel are set up next, from the client page." },
@@ -554,6 +557,7 @@ const messages = {
   ...membershipMessages,
   ...workstationMessages,
   ...channelsMessages,
+  ...channelWizardMessages,
   ...homeUsageMessages,
   ...onboardingMessages,
   ...companionMessages,
@@ -567,8 +571,21 @@ const messages = {
 
 export type MessageKey = keyof typeof messages;
 
+/**
+ * Spec 046: «1 números» is wrong in both languages. A key may have a `.one`
+ * sibling, used when its `count` (or `n`) is exactly 1, so the callers keep
+ * passing the number and never pick the form themselves.
+ */
+function singular(key: MessageKey, vars?: Record<string, string | number>): MessageKey | null {
+  // A formatted count ("1") counts too: callers often pass `n(value)`.
+  const count = vars?.count ?? vars?.n;
+  if (count !== 1 && count !== "1") return null;
+  const one = `${key}.one`;
+  return one in messages ? (one as MessageKey) : null;
+}
+
 export function t(locale: Locale, key: MessageKey, vars?: Record<string, string | number>): string {
-  const entry = messages[key];
+  const entry = messages[singular(key, vars) ?? key];
   let out: string = entry[locale] ?? entry.es;
   if (vars) for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{${k}}`, String(v));
   return out;

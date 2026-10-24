@@ -33,12 +33,15 @@ export function WhatsAppShareLink({
   modes,
   disabled,
   hasLive = false,
+  variant = "outline",
 }: {
   refId: string;
   modes: Array<"coexistence" | "cloud_api">;
   disabled?: boolean;
   /** An unused link is out there: the new one replaces it. */
   hasLive?: boolean;
+  /** Spec 046: solid where it is the recommended way, as in the wizard. */
+  variant?: "default" | "outline";
 }) {
   const t = useT();
   const router = useRouter();
@@ -72,7 +75,7 @@ export function WhatsAppShareLink({
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)} disabled={disabled || modes.length === 0}>
+      <Button variant={variant} onClick={() => setOpen(true)} disabled={disabled || modes.length === 0}>
         <Link2 aria-hidden="true" />
         {t("ch.link.open")}
       </Button>

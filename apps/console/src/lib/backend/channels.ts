@@ -146,10 +146,22 @@ export type DiagnosticRow = { key: DiagnosticKey | string; state: DiagnosticStat
 export type Diagnostics = { rows: DiagnosticRow[]; checked_at: string; healthy: boolean };
 export type TestSendResult = { status: string; wamid: string; to: string };
 
+/** Spec 046: a channel of the «Añadir canal» catalog. Only `available` starts. */
+export type ChannelAvailability = "available" | "pending" | "coming_soon";
+export type ChannelCatalogEntry = {
+  key: string;
+  name: string;
+  description: string;
+  availability: ChannelAvailability;
+  note: string | null;
+};
+
 export function channelsApi(call: Call) {
   const enc = encodeURIComponent;
   const base = (ref: string) => `/console/clients/${enc(ref)}/channels`;
   return {
+    /** Spec 046: the same for every client, so it takes no `ref`. */
+    channelCatalog: () => call<ChannelCatalogEntry[]>("/console/channel-catalog"),
     channelsOverview: (ref: string) => call<ChannelsOverview>(`${base(ref)}/overview`),
     setChannelRole: (ref: string, channelId: string, role: ChannelRole | null) =>
       call<ChannelDetail>(`${base(ref)}/${enc(channelId)}/role`, { method: "PATCH", body: { role } }),

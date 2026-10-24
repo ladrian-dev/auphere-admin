@@ -37,7 +37,9 @@ export const recordMessages = {
   "clients.servingSince": { es: "Atendiendo desde el {date}", en: "Serving since {date}" },
   // Spec 024: el agente responde solo a una lista de números.
   "clients.audience.only": { es: "Responde solo a {n} números", en: "Answers only {n} numbers" },
+  "clients.audience.only.one": { es: "Responde solo a 1 número", en: "Answers only 1 number" },
   "clients.audience.badge": { es: "Solo {n} números", en: "Only {n} numbers" },
+  "clients.audience.badge.one": { es: "Solo 1 número", en: "Only 1 number" },
   "clients.setup.detail.agent": { es: "versión {version}", en: "version {version}" },
   "clients.setup.next": { es: "Siguiente paso", en: "Next step" },
   "clients.setup.next.agent": { es: "Preparar el agente", en: "Prepare the agent" },
@@ -164,6 +166,7 @@ export const recordMessages = {
   "draft.value.disclosure.off": { es: "No avisa de que es una IA", en: "Does not say it is an AI" },
   "draft.value.audience.everyone": { es: "A todo el mundo", en: "Everyone" },
   "draft.value.audience.list": { es: "Solo a {count} números", en: "Only {count} numbers" },
+  "draft.value.audience.list.one": { es: "Solo a 1 número", en: "Only 1 number" },
   "draft.value.paymentReview.none": { es: "Nadie revisa pagos", en: "Nobody reviews payments" },
   "draft.value.paymentReview.some": { es: "Revisores de pagos: {count}", en: "Payment reviewers: {count}" },
 } as const;

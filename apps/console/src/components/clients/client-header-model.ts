@@ -93,11 +93,13 @@ export function nextAction(
     case "agent":
       return { ...common, kind: "link", href: `${base}/agent` };
     case "channel":
-      return { ...common, kind: "link", href: `${base}/channels` };
+      // Spec 046: straight to the wizard's «Conectar» step for WhatsApp.
+      return { ...common, kind: "link", href: `${base}/channels/new/whatsapp` };
     case "quota":
       // Iteración 1: el crédito se asigna en la pantalla de consumo, que es
       // la que hay. Asignarlo sin salir de la ficha es de la iteración 3.
-      return { ...common, kind: "link", href: "/usage" };
+      // Spec 046: with the client in the link, as the health checklist does.
+      return { ...common, kind: "link", href: `/usage?client=${base.slice("/clients/".length)}` };
     case "activation":
       return { ...common, kind: "activate" };
   }

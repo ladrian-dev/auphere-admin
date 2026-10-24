@@ -74,6 +74,7 @@ export function WhatsAppConnect({
   used,
   max,
   variant = "default",
+  onConnected,
 }: {
   refId: string;
   meta: MetaSignupConfig;
@@ -81,6 +82,9 @@ export function WhatsAppConnect({
   used: number;
   max: number;
   variant?: "default" | "outline";
+  /** Spec 046: inside the «Añadir canal» wizard the next step takes over —
+   *  it assigns the agent and offers the catalog there, on the number's card. */
+  onConnected?: (channelId: string) => void;
 }) {
   const t = useT();
   const router = useRouter();
@@ -111,6 +115,7 @@ export function WhatsAppConnect({
         res.data.client_status === "active" ? t("ch.connect.done.active", { phone: res.data.display_phone_number }) : t("ch.connect.done", { phone: res.data.display_phone_number }),
       );
       setOpen(false);
+      if (onConnected) return void onConnected(res.data.channel_id);
       router.refresh();
       const list = await listCatalogsAction({ ref: refId, channelId: res.data.channel_id });
       if (offerCatalogAfterSignup(list) && list.ok) setOffer({ channelId: res.data.channel_id, list: list.data });

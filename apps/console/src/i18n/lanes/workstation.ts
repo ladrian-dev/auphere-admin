@@ -1,6 +1,6 @@
 /** ES/EN del lane `workstation` (spec 001, superficie 3a). Se difunde en `i18n/messages.ts`. */
 export const workstationMessages = {
-  "clients.tabs.workstation": { es: "Puesto de trabajo", en: "Workstation" },
+  "clients.tabs.workstation": { es: "Teammate", en: "Teammate" },
 
   // Aquí vivían `workstation.title` y `workstation.description`, que la spec 002
   // sustituyó por `ws.title` y `ws.description` sin llevárselas. Nadie las
@@ -42,8 +42,8 @@ export const workstationMessages = {
   "workstation.devices.title": { es: "Máquinas", en: "Machines" },
   "workstation.devices.empty.title": { es: "Ninguna máquina dada de alta", en: "No machine enrolled" },
   "workstation.devices.empty.body": {
-    es: "El teammate solo puede ejecutar cuando una máquina vinculada a este cliente está conectada. Abre la aplicación de escritorio en la tuya y vincúlala desde Puesto de trabajo.",
-    en: "The teammate can only run things when a machine linked to this client is connected. Open the desktop app on yours and link it from Workstation.",
+    es: "El teammate solo puede ejecutar cuando una máquina vinculada a este cliente está conectada. Abre la aplicación de escritorio en la tuya y vincúlala desde la pestaña Teammate.",
+    en: "The teammate can only run things when a machine linked to this client is connected. Open the desktop app on yours and link it from the Teammate tab.",
   },
   "workstation.devices.unavailable": {
     es: "No se pudieron cargar las máquinas. La lista de ejecutables de arriba sí es correcta.",
@@ -62,7 +62,7 @@ export const workstationMessages = {
   "workstation.devices.manageLink": { es: "Gestionar máquinas", en: "Manage machines" },
 
   // ── spec 002: el puesto a nivel de partner ─────────────────────────
-  "ws.title": { es: "Puesto de trabajo", en: "Workstation" },
+  "ws.title": { es: "Teammate", en: "Teammate" },
   "ws.description": {
     es: "Tus máquinas, a qué clientes sirven y en qué directorio. Los ejecutables permitidos se gestionan en cada cliente.",
     en: "Your machines, which clients they serve and in which directory. Allowed executables are managed per client.",
@@ -143,7 +143,7 @@ export const workstationMessages = {
   "ws.setup.step.clients": { es: "Elige a qué clientes sirve", en: "Choose which clients it serves" },
   "ws.setup.step.directories": { es: "Declara el directorio de cada cliente en la aplicación de escritorio", en: "Declare each client's directory in the desktop app" },
   "ws.setup.step.executables": { es: "Ejecutables habilitados por Auphere", en: "Executables enabled by Auphere" },
-  "ws.setup.pending": { es: "{n} pendiente(s)", en: "{n} pending" },
+  "ws.setup.pending": { es: "{n} pendientes", en: "{n} pending" },
   "ws.setup.executables.help": {
     es: "Los ejecutables los habilita Auphere por cliente. Si falta alguno, pídelo desde la página del cliente.",
     en: "Executables are enabled by Auphere per client. If one is missing, request it from the client's page.",

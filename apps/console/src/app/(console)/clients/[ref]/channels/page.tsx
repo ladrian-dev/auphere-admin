@@ -1,4 +1,4 @@
-import { Stethoscope, MessageCircle } from "lucide-react";
+import { MessageCircle, Plus, Stethoscope } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -7,26 +7,19 @@ import { Alert, AlertDescription, AlertTitle, Button, EmptyState } from "@nexus/
 import { ChannelsList } from "@/components/channels/channels-list";
 import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
-import { connectChoice, metaSignupConfig } from "@/components/channels/connect-choice";
-import { WhatsAppConnect } from "@/components/channels/whatsapp-connect";
 import { PendingSignupLinks } from "@/components/channels/pending-signup-links";
-import { WhatsAppShareLink } from "@/components/channels/whatsapp-share-link";
-import { WhatsAppConnectByAuphere } from "@/components/channels/whatsapp-connect-by-auphere";
-import { WhatsAppContinueInBrowser } from "@/components/channels/whatsapp-continue-in-browser";
 import { getT } from "@/i18n/server";
 import { BackendError, backendFor } from "@/lib/backend";
 import type { TemplateList } from "@/lib/backend/channels";
-import { env } from "@/lib/env";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
-import { isDesktopShell } from "@/lib/shell";
 
 import { agentChoice } from "../data";
 
 /**
  * Channels centre (CP-17/18). WhatsApp cards, quality + roles, templates,
- * diagnostics link. Spec 016 (R1): the real Embedded Signup button when the
- * environment has Meta configured; the «lo conecta Auphere» note when it
- * does not; «continue in the browser» inside the desktop shell.
+ * diagnostics link. Spec 046: «Añadir canal» opens the wizard
+ * (`channels/new`), where Meta's window, the link to the owner and the
+ * desktop app's «continue in the browser» live (spec 016 R1, spec 040).
  */
 export default async function ChannelsPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
@@ -43,7 +36,6 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
     // works. A read that fails hides the line; the page does not depend on it.
     api.whatsappSignupLinks(ref).catch(() => []),
   ]);
-  const liveLink = signupLinks.some((l) => l.state === "valid");
   // Spec 030: who answers on each number — its agent, or the principal.
   const principalAgent = agents.find((a) => a.is_principal)?.id;
   const agentOf: Record<string, string> = {};
@@ -67,35 +59,17 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
     }
   }
   const base = `/clients/${encodeURIComponent(ref)}`;
-  // Spec 002, R12.7: dentro de la aplicación de escritorio la ventana emergente
-  // de Meta no vuelve, así que el control **no existe** ahí y en su lugar se
-  // ofrece continuar en el navegador. Es la única bifurcación por cáscara de
-  // toda la consola; `shell-detect.test.ts` lo vigila.
-  const meta = metaSignupConfig(env());
-  const choice = connectChoice({ manage, meta });
-  // Spec 040: the link the business owner opens on their own device. It works
-  // in the desktop app too, where Meta's popup does not.
-  const linkModes = [
-    ...(meta.configIdCoexistence ? (["coexistence"] as const) : []),
-    ...(meta.configIdCloudApi ? (["cloud_api"] as const) : []),
-  ];
-  const share =
-    choice === "connect" ? (
-      <WhatsAppShareLink refId={ref} modes={linkModes} disabled={!overview.can_connect} hasLive={liveLink} />
-    ) : null;
-  const connect = (await isDesktopShell()) ? (
-    <div className="flex flex-wrap items-center gap-2">
-      <WhatsAppContinueInBrowser href={`${base}/channels`} />
-      {share}
-    </div>
-  ) : choice === "connect" ? (
-    <div className="flex flex-wrap items-center gap-2">
-      <WhatsAppConnect refId={ref} meta={meta} canConnect={overview.can_connect} used={n} max={m} />
-      {share}
-    </div>
-  ) : choice === "by_auphere" ? (
-    <WhatsAppConnectByAuphere />
-  ) : null;
+  // Spec 046: connecting is the «Añadir canal» wizard — the same four steps
+  // as the operator panel. The link to the owner, Meta's window and the
+  // desktop app's «continue in the browser» live in its step 2 now.
+  const connect = overview.can_connect ? (
+    <Button nativeButton={false} render={<Link href={`${base}/channels/new`} />}>
+      <Plus aria-hidden="true" />
+      {t("chw.add")}
+    </Button>
+  ) : (
+    <p className="max-w-xs text-xs text-muted-foreground text-pretty">{t("ch.quota.full", { used: n, max: m })}</p>
+  );
 
   return (
     <div className="flex min-w-0 flex-col gap-6">

@@ -2,7 +2,8 @@
  * Requisito 12.7 (spec 002) — la consola reconoce a la cáscara en UN sitio.
  *
  * El acoplamiento es mínimo y está vigilado: `isDesktopShell` se importa
- * exactamente una vez fuera de su módulo, en la página de canales, para
+ * exactamente una vez fuera de su módulo, en el paso «Conectar» del asistente
+ * «Añadir canal» (spec 046 la trasladó desde la página de canales), para
  * esconder la conexión de Meta y decir «continúa en el navegador». Una
  * segunda bifurcación exige su propia spec, y este test es la puerta.
  */
@@ -35,12 +36,12 @@ describe("una sola bifurcación por cáscara en toda la consola", () => {
     const importers = walk(src)
       .filter((p) => /\.(ts|tsx)$/.test(p) && !p.includes("__tests__") && !p.endsWith("/lib/shell.ts") && !p.endsWith("/lib/shell-ua.ts"))
       .filter((p) => /from ["']@\/lib\/shell["']/.test(readFileSync(p, "utf8")));
-    expect(importers.map((p) => p.replace(src, ""))).toEqual(["app/(console)/clients/[ref]/channels/page.tsx"]);
+    expect(importers.map((p) => p.replace(src, ""))).toEqual(["app/(console)/clients/[ref]/channels/new/[channel]/page.tsx"]);
   });
-  it("«continuar en el navegador» apunta a la misma página de canales, donde vive el botón real (spec 016)", () => {
-    const page = readFileSync(resolve(process.cwd(), "src/app/(console)/clients/[ref]/channels/page.tsx"), "utf8");
-    expect(page).toMatch(/<WhatsAppContinueInBrowser href=\{`\$\{base\}\/channels`\} \/>/);
-    expect(page).toContain("<WhatsAppConnect ");
-    expect(page).not.toContain("WhatsAppConnectUnavailable");
+  it("«continuar en el navegador» apunta al mismo paso «Conectar», donde vive el botón real (specs 016 y 046)", () => {
+    const step = readFileSync(resolve(process.cwd(), "src/components/channels/wizard/connect-whatsapp-step.tsx"), "utf8");
+    expect(step).toContain('<WhatsAppContinueInBrowser href={paths.connect("whatsapp")} />');
+    expect(step).toContain("<WhatsAppConnect");
+    expect(step).not.toContain("WhatsAppConnectUnavailable");
   });
 });

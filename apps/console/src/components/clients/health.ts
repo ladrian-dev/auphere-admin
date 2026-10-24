@@ -39,7 +39,7 @@ export function missingItems(health: Pick<ClientHealth, "missing">, ref: string)
       case "agent":
         return { key, label: "clients.detail.missing.agent", fix: "clients.health.fix.agent", href: `${base}/agent`, permission: "agents:write", blocking: true };
       case "whatsapp":
-        return { key, label: "clients.detail.missing.whatsapp", fix: "clients.health.fix.whatsapp", href: `${base}/channels`, permission: "channels:write", blocking: true };
+        return { key, label: "clients.detail.missing.whatsapp", fix: "clients.health.fix.whatsapp", href: `${base}/channels/new/whatsapp`, permission: "channels:write", blocking: true };
       case "quota":
         return { key, label: "clients.detail.missing.quota", fix: "clients.health.fix.quota", href: `/usage?client=${encodeURIComponent(ref)}`, permission: "usage:write", blocking: false };
       case "activation":

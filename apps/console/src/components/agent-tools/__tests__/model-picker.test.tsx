@@ -32,8 +32,10 @@ describe("ModelPicker (spec 016, US4)", () => {
         <ModelPicker refId="demo" models={models} current={bound("openai/gpt-5.6-sol")} canWrite />
       </LocaleProvider>,
     );
-    expect(screen.getByText("×4 créditos")).toBeInTheDocument();
-    expect(screen.getByText(/×1 créditos/)).toBeInTheDocument();
+    expect(screen.getByText("Cuesta ×4 el más económico")).toBeInTheDocument();
+    expect(screen.getByText("El más económico")).toBeInTheDocument();
+    // Spec 027: credits are internal, the partner never reads the word.
+    expect(screen.queryByText(/créditos/)).toBeNull();
     const radios = screen.getAllByRole("radio");
     expect(radios[1]).toHaveAttribute("aria-checked", "true");
     expect(radios[1]).toHaveTextContent("Actual");
