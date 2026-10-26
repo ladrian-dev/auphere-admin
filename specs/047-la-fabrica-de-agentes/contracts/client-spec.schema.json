@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auphere.com/schemas/nexus/client-spec/1.json",
+  "title": "ClientSpec v1",
+  "description": "Vista tipada de la ficha del negocio (spec 047, requisito 8; research D3). No es una fuente: se deriva de las tablas de la ficha. Sirve para tres cosas: lo lee el constructor, es el formato de importar y exportar, y es la base de los parches que propone el constructor (`$defs.patch`). Un validador sin modelo comprueba el documento y cada parche antes de enseñarlo y otra vez al aplicarlo. Los importes van en unidades menores de su moneda (ISO 4217, exponente de la moneda).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "business"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "business": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "niche", "country", "timezone", "price_currency", "wallet_currency"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "niche": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "info": { "description": "Información adicional. Dato no confiable (§III).", "type": "string", "maxLength": 2000 },
+        "website": { "type": ["string", "null"], "format": "uri", "maxLength": 300 },
+        "country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "timezone": { "description": "Zona IANA; el servidor la valida con zoneinfo.", "type": "string", "maxLength": 64 },
+        "price_currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "wallet_currency": { "enum": ["EUR", "USD"] },
+        "eu_only": { "type": "boolean" },
+        "sovereign": { "description": "Solo lectura: la fija Auphere (requisito 54.6).", "type": "boolean", "readOnly": true }
+      }
+    },
+    "locations": {
+      "type": "array", "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "address": { "type": "string", "maxLength": 300 },
+          "phone_e164": { "type": "string", "pattern": "^\\+[1-9][0-9]{6,14}$" },
+          "hours": { "$ref": "#/$defs/weekSchedule" },
+          "archived": { "type": "boolean", "readOnly": true }
+        }
+      }
+    },
+    "hours": { "$ref": "#/$defs/weekSchedule" },
+    "special_dates": {
+      "type": "array", "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "closed"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "maxLength": 80 },
+          "location_id": { "type": ["string", "null"], "format": "uuid" },
+          "from": { "type": "string", "format": "date" },
+          "to": { "type": "string", "format": "date" },
+          "closed": { "type": "boolean" },
+          "shifts": { "type": "array", "maxItems": 6, "items": { "$ref": "#/$defs/shift" } }
+        }
+      }
+    },
+    "services": {
+      "type": "array", "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "bookable"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "bookable": { "type": "boolean" },
+          "duration_min": { "type": "integer", "minimum": 5, "maximum": 480 },
+          "price": {
+            "oneOf": [
+              { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "enum": ["none", "free"] } } },
+              {
+                "type": "object", "additionalProperties": false, "required": ["kind", "amount_minor"],
+                "properties": { "kind": { "const": "amount" }, "amount_minor": { "type": "integer", "minimum": 0 } }
+              }
+            ]
+          },
+          "staff": { "description": "Quién lo hace en Reservas: «all» o la lista de personas.", "oneOf": [{ "const": "all" }, { "type": "array", "items": { "type": "string", "format": "uuid" } }] },
+          "archived": { "type": "boolean", "readOnly": true }
+        },
+        "if": { "properties": { "bookable": { "const": true } } },
+        "then": { "required": ["duration_min"] }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cancellation": { "type": "string", "maxLength": 1000 },
+        "payments": { "type": "string", "maxLength": 1000 },
+        "deposit": { "type": "string", "maxLength": 1000 },
+        "no_show": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "faqs": {
+      "description": "Preguntas frecuentes del negocio (capa del negocio). Las propias de un agente van en su AgentSpec.",
+      "type": "array", "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["q", "a"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "q": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "a": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "suggested": { "description": "«Sugerido · confirma» (requisito 18.3): no se da por cierto hasta que una persona lo confirma.", "type": "boolean" }
+        }
+      }
+    },
+    "links": {
+      "type": "array", "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["network"],
+        "properties": {
+          "network": { "enum": ["web", "instagram", "facebook", "tiktok", "linkedin", "youtube", "x", "threads"] },
+          "url": { "type": "string", "format": "uri", "maxLength": 300 },
+          "handle": { "type": "string", "pattern": "^@?[A-Za-z0-9._]{1,30}$" }
+        },
+        "anyOf": [{ "required": ["url"] }, { "required": ["handle"] }]
+      }
+    },
+    "documents": {
+      "description": "Solo lectura en el documento: las fuentes se suben o se añaden por su ruta, no importando un ClientSpec.",
+      "readOnly": true,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "kind": { "enum": ["file", "web"] },
+          "title": { "type": "string" },
+          "layer": { "enum": ["business", "agent"] },
+          "agent_id": { "type": ["string", "null"], "format": "uuid" },
+          "status": { "enum": ["reading", "read", "failed"] },
+          "failure": { "enum": ["unreachable", "blocked", "no_text", "too_large", null] }
+        }
+      }
+    },
+    "provenance": {
+      "description": "Procedencia por sección y por dato, con puntero JSON (RFC 6901) como clave. Solo lectura al exportar; al importar la pone el servidor.",
+      "readOnly": true,
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/provenanceEntry" }
+    }
+  },
+  "$defs": {
+    "shift": {
+      "description": "`HH:MM` en la hora del negocio. Un cierre igual o anterior a la apertura termina al día siguiente (requisito 10.2). 00:00–24:00 es abierto 24 horas.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["open", "close"],
+      "properties": {
+        "open": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+        "close": { "type": "string", "pattern": "^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$" }
+      }
+    },
+    "weekSchedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layout", "days"],
+      "properties": {
+        "layout": { "description": "Cómo lo enseña la consola: por bloques (L–V, S, D) o día por día.", "enum": ["blocks", "daily"] },
+        "days": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mon": { "$ref": "#/$defs/dayShifts" }, "tue": { "$ref": "#/$defs/dayShifts" },
+            "wed": { "$ref": "#/$defs/dayShifts" }, "thu": { "$ref": "#/$defs/dayShifts" },
+            "fri": { "$ref": "#/$defs/dayShifts" }, "sat": { "$ref": "#/$defs/dayShifts" },
+            "sun": { "$ref": "#/$defs/dayShifts" }
+          }
+        },
+        "label": { "description": "Solo lectura: «Así lo dirá el agente» (requisito 10.5).", "type": "string", "readOnly": true }
+      }
+    },
+    "dayShifts": { "description": "Lista vacía = cerrado.", "type": "array", "maxItems": 6, "items": { "$ref": "#/$defs/shift" } },
+    "provenanceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "at"],
+      "properties": {
+        "source": { "enum": ["person", "web", "document", "social", "migrated", "builder", "inbox_correction", "import"] },
+        "by": { "description": "Persona (id y nombre visible) cuando la hay.", "type": ["object", "null"] },
+        "origin": { "enum": ["console", "lite_web", "app", "admin", "api", "system"] },
+        "at": { "type": "string", "format": "date-time" },
+        "source_url": { "type": "string", "format": "uri" },
+        "translated_from": { "type": "string", "pattern": "^[a-z]{2,3}$" },
+        "review": { "description": "«Leído de la web · revísalo» hasta que una persona lo confirma (requisito 13.2).", "enum": ["pending", "confirmed"] }
+      }
+    },
+    "patch": {
+      "description": "Parche que propone el constructor o una lectura: una lista de operaciones sobre el ClientSpec, cada una con su procedencia. Se aplica por el mismo servicio que la edición a mano. Un dato que contradice otro escrito por una persona no se sobrescribe: queda como propuesta al lado (requisito 5.8).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_hash", "ops"],
+      "properties": {
+        "base_hash": { "description": "`state_hash` del estado sobre el que se hizo; si cambió, aplicar se rechaza por caducado.", "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "ops": {
+          "type": "array", "minItems": 1, "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["op", "path", "provenance"],
+            "properties": {
+              "op": { "enum": ["add", "replace", "archive"] },
+              "path": { "description": "Puntero JSON dentro del ClientSpec. No admite `/documents`, `/provenance` ni `/business/sovereign`.", "type": "string", "pattern": "^/(business|locations|hours|special_dates|services|policies|faqs|links)(/.*)?$" },
+              "value": {},
+              "provenance": { "$ref": "#/$defs/provenanceEntry" },
+              "section_decision": { "description": "Lo que decidió la persona al revisar la sección.", "enum": ["accepted", "edited", "discarded", null] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

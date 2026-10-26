@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auphere.com/schemas/nexus/agent-spec/1.json",
+  "title": "AgentSpec v1",
+  "description": "Documento tipado de una versión de agente (spec 047, requisito 16). Fuente del prompt compilado. Lo escriben las personas del partner y el constructor (solo como propuesta). Un validador sin modelo lo comprueba antes de enseñar una propuesta y otra vez al aplicarla. Límites de texto en caracteres Unicode. Las claves de plataforma están prohibidas: `additionalProperties: false` en todos los niveles.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "mode", "identity", "model_policy", "memory", "ai_disclosure"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "mode": {
+      "description": "«instructions» para los agentes migrados (su prompt de hoy, byte a byte) y «structured» para los nuevos. Un agente puede pasar de «instructions» a «structured» solo con una propuesta que una persona aplica.",
+      "enum": ["instructions", "structured"]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "description": {
+          "description": "«¿Qué tiene que hacer?». Dato no confiable para el constructor (§III).",
+          "type": "string", "minLength": 20, "maxLength": 1024
+        },
+        "goal": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tone": { "type": "string", "maxLength": 200 },
+        "languages": {
+          "description": "Etiquetas BCP 47; la primera es la principal.",
+          "type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$" }
+        },
+        "register": { "enum": ["tu", "usted", "vos"] },
+        "greeting": { "type": "string", "maxLength": 300 }
+      }
+    },
+    "instructions": {
+      "description": "En «structured», secciones que suman como mucho 8.000 caracteres. En «instructions», `legacy_text` guarda el prompt migrado sin recortar; editarlo no puede hacerlo crecer por encima de max(8.000, su longitud migrada), regla que aplica el validador.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sections": {
+          "type": "array", "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "body"],
+            "properties": {
+              "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "body": { "type": "string", "minLength": 1, "maxLength": 8000 }
+            }
+          }
+        },
+        "legacy_text": { "type": "string" }
+      }
+    },
+    "procedures": {
+      "description": "Procedimientos en prosa que citan herramientas por su nombre del catálogo.",
+      "type": "array", "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "when", "steps"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "when": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "steps": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "tools": { "type": "array", "maxItems": 10, "uniqueItems": true, "items": { "$ref": "#/$defs/toolName" } }
+        }
+      }
+    },
+    "services": {
+      "description": "Qué servicios de la ficha atiende el agente (requisito 11). «all» = «Atiende todos los servicios».",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["all", "list"] },
+        "service_ids": { "type": "array", "maxItems": 200, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } },
+        "faqs": {
+          "description": "Preguntas frecuentes propias del agente (capa del agente, garantía 9).",
+          "type": "array", "maxItems": 100,
+          "items": { "$ref": "#/$defs/faq" }
+        }
+      }
+    },
+    "skills": {
+      "type": "array", "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "enabled"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z0-9_.]{1,60}$" },
+          "enabled": { "type": "boolean" },
+          "integration": { "description": "Clave del catálogo de integraciones que necesita, o nula.", "type": ["string", "null"], "pattern": "^[a-z0-9_]{1,40}$" },
+          "fallback": { "description": "Qué hace el agente si la integración no está conectada.", "type": "string", "maxLength": 300 }
+        }
+      }
+    },
+    "tools": {
+      "description": "Lista blanca exhaustiva de la versión (garantía 2). El runtime la intersecta con las activaciones del agente (garantía 9): una herramienta sin activación no se construye.",
+      "type": "array", "maxItems": 60, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/toolName" }
+    },
+    "connection_requests": {
+      "type": "array", "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["integration", "reason"],
+        "properties": {
+          "integration": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" },
+          "reason": { "type": "string", "maxLength": 200 }
+        }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "triggers": {
+          "type": "array", "maxItems": 20, "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              { "enum": ["asks_for_human", "failed_attempts", "complaint", "payment_issue", "emergency", "out_of_scope"] },
+              { "type": "object", "additionalProperties": false, "required": ["custom"], "properties": { "custom": { "type": "string", "minLength": 1, "maxLength": 300 } } }
+            ]
+          }
+        },
+        "failed_attempts": { "type": "integer", "minimum": 1, "maximum": 5, "default": 2 },
+        "message": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "rules": {
+      "description": "Reglas en lenguaje natural («no ofrezcas descuentos»).",
+      "type": "array", "maxItems": 30,
+      "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+    },
+    "team_access": {
+      "description": "Personas del equipo del negocio que hablan con el agente por WhatsApp y qué herramientas usan (requisito 32.10). Sigue en el agente; la audiencia está en el canal.",
+      "type": "array", "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phone_e164", "level"],
+        "properties": {
+          "phone_e164": { "type": "string", "pattern": "^\\+[1-9][0-9]{6,14}$" },
+          "level": { "enum": ["full", "readonly"] },
+          "label": { "type": "string", "maxLength": 60 }
+        }
+      }
+    },
+    "ai_disclosure": {
+      "description": "Lo decide una persona (requisito 16.6). El validador rechaza una propuesta del constructor que traiga `decided: true`. Para clientes de la UE, «on_ask» genera un hallazgo «avisa» en la revisión (AI Act, art. 50).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decided"],
+      "properties": {
+        "decided": { "type": "boolean" },
+        "mode": { "enum": ["first_message", "on_ask"] },
+        "text": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "model_policy": {
+      "description": "Requisito 39. «pinned» solo cubre las tareas de conversación.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "profile"],
+          "properties": { "kind": { "const": "profile" }, "profile": { "enum": ["auto", "economy", "balanced", "max"] } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "deployment"],
+          "properties": { "kind": { "const": "pinned" }, "deployment": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:/-]{2,120}$" } }
+        }
+      ]
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope"],
+      "properties": { "scope": { "enum": ["shared", "own"] } }
+    },
+    "reception": {
+      "description": "«Recepción que deriva» (requisito 53, P3).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "targets": {
+          "type": "array", "maxItems": 10,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["agent_id", "when"],
+            "properties": {
+              "agent_id": { "type": "string", "format": "uuid" },
+              "when": { "type": "string", "minLength": 1, "maxLength": 300 }
+            }
+          }
+        }
+      }
+    },
+    "test_suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suite_id", "revision"],
+      "properties": {
+        "suite_id": { "type": "string", "format": "uuid" },
+        "revision": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "structured" } } },
+      "then": { "required": ["voice", "instructions", "services", "tools", "escalation"] }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "instructions" } } },
+      "then": { "required": ["instructions"], "properties": { "instructions": { "required": ["legacy_text"] } } }
+    }
+  ],
+  "$defs": {
+    "toolName": {
+      "description": "Nombre del catálogo de herramientas (con punto, p. ej. `reservas.create`). El transporte lo traduce para los proveedores que no admiten el punto (requisito 41.3).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "faq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["q", "a"],
+      "properties": {
+        "q": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "a": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    }
+  }
+}
