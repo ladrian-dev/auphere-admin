@@ -2,11 +2,24 @@ import "server-only";
 
 import { cache } from "react";
 
-import { backendFor, type ClientAgent } from "@/lib/backend";
+import { resolveConsoleVersion } from "@/components/shell/console-version";
+import { backendFor, callFor, type ClientAgent } from "@/lib/backend";
+import { clientRecordsApi } from "@/lib/backend/client-records";
 import type { Principal } from "@/lib/principal";
 
 /** One fetch per request for layout + metadata + page. */
 export const getClientCached = cache(async (principal: Principal, ref: string) => backendFor(principal).getClient(ref));
+
+/** Spec 047: qué consola ve el partner (una lectura por petición). Lo que no
+ *  se sabe con certeza es la de hoy. */
+export const getConsoleVersionCached = cache(async (principal: Principal) =>
+  resolveConsoleVersion(await backendFor(principal).me().catch(() => null)),
+);
+
+/** Spec 047: la cabecera del cliente con la consola nueva (modal, ciclo de vida y revisión). */
+export const getClientV2Cached = cache(async (principal: Principal, ref: string) =>
+  clientRecordsApi(callFor(principal)).getClientV2(ref),
+);
 
 /** Spec 017 (R3.1): el layout necesita saber si hay borrador y en qué
  *  pantallas, para el punto de la pestaña y para la barra. Una lectura por

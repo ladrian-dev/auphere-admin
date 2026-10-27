@@ -44,6 +44,7 @@ import structlog
 from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models.usage_record import USAGE_LINE_BY_SOURCE
 from nexus_api.metering.pricing_policy import UnweightedModel, weights_for
 from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens, uncached_input_tokens
 from redis.asyncio import Redis
@@ -107,12 +108,15 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
     source = fields.get("source") or SOURCE_CHANNEL
     if source not in USAGE_SOURCES:
         raise ValueError(f"'source' desconocido: {source!r}")
+    # Spec 047 (0177): la partida de Consumo se deriva del origen al escribir.
+    line = USAGE_LINE_BY_SOURCE[source]
     events = json.loads(fields["events"])
     if not isinstance(events, list):
         raise ValueError("'events' no es una lista")
 
     rows: list[dict[str, Any]] = []
     for event in events:
+        decision = event.get("route_decision_id")
         rows.append(
             {
                 "tenant_id": tenant_id,
@@ -134,6 +138,11 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "agent_id": uuid.UUID(agent_id) if agent_id else None,
                 "idempotency_key": event["idempotency_key"],
                 "source": source,
+                # Spec 047 (requisitos 40.1 y 40.9): la tarea de la llamada y
+                # la decisión del router. Las entradas de antes no las llevan.
+                "task": event.get("task"),
+                "route_decision_id": uuid.UUID(decision) if decision else None,
+                "line": line,
             }
         )
     _apply_native_breakdown(rows)
@@ -235,11 +244,11 @@ _INSERT_SQL = sa.text(
     INSERT INTO usage_records (
         tenant_id, occurred_at, meter, quantity, billable_qty, cost_usd,
         provider, model, conversation_id, agent_config_id, agent_id, idempotency_key,
-        source
+        source, task, route_decision_id, line
     ) VALUES (
         :tenant_id, :occurred_at, :meter, :quantity, :billable_qty, :cost_usd,
         :provider, :model, :conversation_id, :agent_config_id, :agent_id, :idempotency_key,
-        :source
+        :source, :task, :route_decision_id, :line
     )
     ON CONFLICT (idempotency_key, occurred_at) DO NOTHING
     """
@@ -396,6 +405,12 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
     for tenant_id, rows in rows_by_tenant.items():
         if not rows:
             continue
+        for row in rows:
+            # Spec 047 (0177): toda fila sale con su partida, también la que
+            # no viene de ``rows_from_entry``; tarea y decisión, si las hubo.
+            row.setdefault("task", None)
+            row.setdefault("route_decision_id", None)
+            row.setdefault("line", USAGE_LINE_BY_SOURCE.get(str(row.get("source") or "")))
         if catalog:
             # Spec 007: la segunda mitad del desglose. El catálogo ya está
             # leído para valorar en dólares, así que ponderar aquí no cuesta

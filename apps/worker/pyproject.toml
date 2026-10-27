@@ -57,6 +57,9 @@ dependencies = [
     # the HTTP client for completions; this dep is used ONLY for the
     # memory tool subclass + its built-in args validation.
     "anthropic>=0.104.0",
+    # Spec 047 (T022): the ``vector`` type, for the knowledge indexer job.
+    # MIT, read in full: docs/licenses/pgvector.md.
+    "pgvector>=0.4.1",
 ]
 
 [project.optional-dependencies]

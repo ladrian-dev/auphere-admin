@@ -31,12 +31,15 @@ from __future__ import annotations
 import time
 import zlib
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import sqlalchemy as sa
 import structlog
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.services.router_catalog import ProfilePolicy
+
+from nexus_worker.runtime.model_resolver import RouteContext, RouteDecision, chain_for
 
 log = structlog.get_logger(__name__)
 
@@ -99,8 +102,17 @@ def decide(
     intent: str | None,
     wrote: bool,
     turn_key: str,
+    judge_sampling: str | float | None = None,
+    risk: str | None = None,
 ) -> GradingDecision:
-    """Decide qué hacer con el grader en este turno."""
+    """Decide qué hacer con el grader en este turno.
+
+    Spec 047 (T143): ``judge_sampling`` es el muestreo del juez que fija el
+    perfil del agente para su tarea (``router-and-catalog.md`` §3). Una fracción
+    sustituye al ``sample_rate`` del agente; ``by_risk`` gradúa en el momento el
+    turno que el clasificador tipado dio de riesgo alto y muestrea el resto con
+    el ``sample_rate`` de siempre. Sin perfil (None), todo como antes.
+    """
     if not grader_enabled:
         # El interruptor maestro del agent_config gana sobre el modo: un
         # agente con el grader apagado no gradúa ni difiere nada.
@@ -115,9 +127,32 @@ def decide(
     if wrote:
         return GradingDecision("sync", "write_tool")
 
-    if _in_sample(turn_key, sample_rate):
+    rate = sample_rate
+    if judge_sampling == "by_risk":
+        if risk == "high":
+            return GradingDecision("sync", "risk:high")
+    elif isinstance(judge_sampling, int | float) and not isinstance(judge_sampling, bool):
+        rate = float(judge_sampling)
+
+    if _in_sample(turn_key, rate):
         return GradingDecision("sync", "sampled_in")
     return GradingDecision("deferred", "sampled_out")
+
+
+# ── el juez de otra familia (spec 047, T143, requisito 42.5) ─────────────
+
+#: La tarea del router para juzgar: el juez del turno, el de las pruebas y el
+#: de las certificaciones.
+JUDGE_TASK = "judge"
+
+
+def judge_route(
+    profile: ProfilePolicy, ctx: RouteContext, *, judged_family: str | None
+) -> RouteDecision:
+    """El juez que elige el router para juzgar un modelo de ``judged_family``:
+    el filtro duro descarta la misma familia (``same_family``), porque un juez de
+    la familia juzgada comparte sus puntos ciegos."""
+    return chain_for(JUDGE_TASK, profile, replace(ctx, judged_family=judged_family))
 
 
 # ── catálogo de herramientas de solo-lectura ──────────────────────────

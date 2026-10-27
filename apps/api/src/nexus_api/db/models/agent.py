@@ -7,15 +7,18 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     FetchedValue,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -57,6 +60,17 @@ class Agent(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=AgentStatus.ACTIVE.value
     )
+    # Spec 047 (migración 0178): the revision of the agent's one draft, for
+    # ``If-Match``. A stale write answers 412 with what the other person changed.
+    draft_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Spec 047 (migración 0183): the services this agent offers. ``True`` =
+    # every service «Para todos los agentes»; ``False`` = only its
+    # ``agent_services`` rows (requisito 11.2, garantía 9).
+    serves_all_services: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
 
 class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
@@ -89,6 +103,14 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         index=True,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Spec 047 (migración 0178): «v{n} de {agente}», numbered per agent. The
+    # database fills it on INSERT (trigger); ``version`` stays per client.
+    agent_version_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=FetchedValue()
+    )
+    #: The version this draft started from (composite FK, same client).
+    base_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[AgentConfigStatus] = mapped_column(
         pg_enum(AgentConfigStatus, name="agent_config_status"),
         nullable=False,
@@ -152,4 +174,61 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # to actually call MCP — defence in depth.
     runtime_mcp_connector: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+
+
+class AgentService(Base):
+    """Spec 047 (0183): which services an agent offers when it does not serve
+    them all (``Agent.serves_all_services``; requisito 11.4, garantía 9)."""
+
+    __tablename__ = "agent_services"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            ["agents.tenant_id", "agents.id"],
+            name="fk_agent_services_agent",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "service_id"],
+            ["reservation_services.tenant_id", "reservation_services.id"],
+            name="fk_agent_services_service",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    service_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+
+
+class AgentVersionCompilation(UUIDPrimaryKey, Base):
+    """Spec 047 (0183, research D4): the history of compilations — which prompt
+    answered each turn, by its ``sha256``. The runtime does not read it: it reads
+    ``AgentConfig.system_prompt_rendered``, which each new compilation of the
+    active version rewrites in the same transaction."""
+
+    __tablename__ = "agent_version_compilations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_agent_version_compilations_tenant_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_config_id"],
+            ["agent_configs.tenant_id", "agent_configs.id"],
+            name="fk_agent_version_compilations_version",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    agent_config_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    business_rev: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    knowledge_rev: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    tools_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    family_variant: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

@@ -24,7 +24,7 @@ import decimal
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, Text, text
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -110,6 +110,35 @@ class UsageRecord(Base):
         nullable=False,
         server_default=text("'channel'"),
     )
+    # Spec 047 (migración 0177). ``task`` is the router's taxonomy code
+    # (``contracts/router-and-catalog.md`` §1); a call without one fails in the
+    # tests. ``route_decision_id`` links the row to its ``llm.route_decision``
+    # log line. ``line`` is the partner's Consumo line, derived from ``source``
+    # when writing (``USAGE_LINE_BY_SOURCE``); rows from before stay NULL and
+    # readers derive it the same way.
+    task: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    route_decision_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    line: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+#: Spec 047 (0177): who spent, and the Consumo line it lands on. The build
+#: sources are «Construcción y pruebas»: Auphere pays them up to the partner's
+#: cap and they never come out of a client's bag (requisito 46.4). The keys are
+#: exactly ``ck_usage_source``.
+USAGE_LINE_BY_SOURCE: dict[str, str] = {
+    "channel": "conversations",
+    "qa": "build",
+    "builder": "build",
+    "tests": "build",
+    "reader": "build",
+    "indexer": "build",
+    "suggestions": "build",
+    # Requisito 42.6: the certifications Auphere launches (a cheaper
+    # deployment, a retirement) are Auphere's, outside the partner's lines.
+    # The ones the partner launches when changing quality come as ``tests``.
+    "certification": "platform",
+    "companion": "companion",
+}
 
 
 # Medidores conocidos. Es una lista, no un enum de Postgres, porque añadir

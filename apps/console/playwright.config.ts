@@ -30,7 +30,12 @@ export default defineConfig({
     { name: "setup", testMatch: /global\.setup\.ts/ },
     {
       name: "desktop",
-      testIgnore: /lite\.spec\.ts/,
+      // Spec 047: ``shell.spec.ts`` (the new frame) and ``new-client.spec.ts``
+      // (the three-field creation) need a partner with the new console on; each
+      // runs on its own against a mock of the contract:
+      //   pnpm exec playwright test -c e2e/shell.config.ts
+      //   pnpm exec playwright test -c e2e/clients-v2.config.ts
+      testIgnore: /(lite|shell|new-client)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/owner.json" },
       dependencies: ["setup"],
     },

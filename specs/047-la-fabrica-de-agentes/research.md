@@ -821,6 +821,80 @@ activación por cliente no cabe en él.
 
 ---
 
+### D43 · Los trabajos y la agrupación van por Redis, no por Dramatiq (implementación)
+
+**Decisión** (2026-10-26, al empezar el bloque A): `plan.md` habla de «un actor de
+Dramatiq por tipo de trabajo» (T003) y de «un mensaje diferido de Dramatiq» para la
+agrupación (T034). **Dramatiq no está en el repo**: el worker son tareas asyncio por
+familia (`runner`, `egress`, `scheduler`) sobre Redis Streams, registradas con
+`_spawn` en `wk/bootstrap.py`.
+- Los trabajos se encolan en el stream `nexus:jobs` con su `tenant_id` y su
+  `job_id`. Los consume `jobs-consumer`, de la familia `runner`, que despacha por
+  `kind` a un manejador registrado. La fila de `jobs` es la verdad; el stream solo
+  avisa.
+- La caducidad de un trabajo colgado no necesita cron: un trabajo vivo sin latido
+  (`updated_at`) más allá de su plazo se da por `failed` (`timeout`) al leerlo, y
+  el consumidor lo marca igual si su manejador no termina a tiempo.
+- La agrupación de T034 usa una cola diferida en Redis (un conjunto ordenado por
+  vencimiento, deduplicado por conversación), con el candado por conversación de
+  la base.
+
+**Por qué.** Meter Dramatiq sería una dependencia nueva con licencia LGPL-3.0, que
+§VIII obliga a leer y que nada pide: el mismo ciclo ya existe con los streams del
+repo, sus reintentos (`stream-claimer`) y su contrato de nombres por familia.
+
+---
+
+### D44 · Ningún despliegue de hoy tiene la retención cero comprobada (implementación)
+
+**Hecho** (2026-10-27, bloque B): el filtro duro del router exige
+`zero_retention` (requisito 41.2; «al catálogo solo entran proveedores con
+contrato sin retención ni entrenamiento»). Las ocho filas de `model_profiles` de
+hoy (OpenAI y Anthropic directos) nacieron en la 0180 con `zero_retention=false`,
+porque nadie lo ha comprobado. Con eso, `chain_for` responde `no_model` a toda
+tarea nueva, también con el modelo de reserva, que pasa el mismo filtro.
+
+**Decisión** (sin el owner, se puede reabrir):
+- **Los agentes que ya existen no cambian** (D24, Historia 13): siguen fijados en su
+  modelo por el camino de hoy, fuera del router nuevo, hasta que su partner elija
+  un perfil. Que la pantalla no mienta: la consola no les ofrece «Automático» hasta
+  que haya un despliegue que pase el filtro.
+- **Ninguna fila se marca con retención cero sin su evidencia.** Hace falta que Luis
+  confirme el acuerdo de retención cero con OpenAI y con Anthropic (y su
+  `retention_how`), o que entren Bedrock y Scaleway (T142, tras darlos de alta como
+  subprocesadores). Es la única forma de que el router nuevo elija.
+- **En local**, la semilla puede marcar un despliegue de desarrollo como certificado
+  y sin retención, solo en la base de desarrollo, para ver al router decidir
+  (`quickstart.md` §1).
+
+**Por qué.** Marcar la retención cero para desbloquear el router sería afirmar un
+contrato que no se ha leído (§VIII, §V). Mantener fijados a los agentes de hoy es lo
+que ya decía D24 y es lo que exige «lo que ya existe sigue funcionando».
+
+---
+
+### D45 · El perfil de modelo vive en la versión, y «Automático» solo si puede atender (implementación)
+
+**Decisión** (2026-10-27, bloque C, T145; se puede reabrir):
+- Hasta que llegue el AgentSpec (bloque D), el perfil va en
+  `agent_configs.policies["model_policy"]`, con la forma exacta del `model_policy`
+  del AgentSpec. Va con la versión: el borrador, la puerta, deshacer y restaurar le
+  valen tal cual, y al pasar al AgentSpec se copia.
+- **Una versión sin `model_policy` es un agente de hoy**: fijado en su modelo por el
+  camino de hoy. A los agentes migrados no se les escribe `pinned`, porque con D44 el
+  filtro duro lo rechazaría y se quedarían sin modelo.
+- **Un agente nuevo nace en «Automático» solo si «Automático» puede atenderlo en ese
+  cliente**: hace falta un despliegue de reserva que pase el filtro duro del cliente
+  para `classify`, `answer` y `tool_turn`. Con D44 no lo hay, así que hoy los agentes
+  nuevos nacen como los de hoy. Ampliación de D44 y de D24, pendiente de que Luis la
+  confirme.
+
+**Por qué.** Que un agente nuevo naciera en un perfil sin ningún modelo que lo atienda
+lo dejaría mudo desde el primer mensaje: la pantalla diría «Automático» y la Bandeja,
+«Sin modelo disponible».
+
+---
+
 ## Parte 7 — Números y límites
 
 | Qué | Valor | De dónde sale |

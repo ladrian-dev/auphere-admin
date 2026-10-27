@@ -22,6 +22,7 @@ off after N turns" the classifier's verdict is overridden to
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import structlog
@@ -29,6 +30,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.services.agent_console_policy import (
     ConsolePolicy,
+    SchedulePolicy,
     read_console_policy,
     render_operating_policy,
     turn_cap_reached,
@@ -51,9 +53,108 @@ def console_policy_of(policies: dict[str, Any] | None) -> ConsolePolicy | None:
         return None
 
 
-def render_operating_policy_block(policies: dict[str, Any] | None) -> str:
+def _clock(at: datetime) -> str:
+    return at.strftime("%A %H:%M")
+
+
+def _ficha_hours_lines(
+    raw: dict[str, Any], *, closed_message: str, now: datetime | None
+) -> list[str] | None:
+    """The business hours of the ficha (spec 047, research D15), computed for
+    this turn: the phrase, «open now?» with night shifts and special dates, and
+    the locations with their own hours. ``None`` when the ficha has no hours —
+    then nothing is claimed here (the compiled block says it, and an older
+    console schedule, if any, still applies)."""
+    from nexus_api.services.business import hours as business_hours
+
+    try:
+        hours = business_hours.load_dumped(raw)
+    except Exception as exc:  # pragma: no cover - the loader built it
+        log.warning("console_context.hours_invalid", error=type(exc).__name__)
+        return None
+    if not hours.known:
+        return None
+    at = now or datetime.now(UTC)
+    locale = str(raw.get("locale") or "es")
+
+    def state_text(h: business_hours.Hours) -> list[str]:
+        state = business_hours.open_state(h, at)
+        local = at.astimezone(h.tz)
+        if state.open and state.until is not None:
+            now_line = (
+                f"  Right now it is {_clock(local)} local time — the business is OPEN "
+                f"until {_clock(state.until)}."
+            )
+        else:
+            nxt = f" It opens next on {_clock(state.next_open)}." if state.next_open else ""
+            now_line = (
+                f"  Right now it is {_clock(local)} local time — the business is CLOSED.{nxt}"
+            )
+        out = [now_line]
+        sp = business_hours.special_on(h, local.date())
+        if sp is not None:
+            what = (
+                "closed all day"
+                if sp.closed
+                else "special hours: " + business_hours.shifts_text(sp.shifts, locale=locale)
+            )
+            name = f" ({sp.name})" if sp.name else ""
+            out.append(f"  Today is a special date{name}: {what}.")
+        return out
+
+    lines = [
+        f"- Business hours (from the business profile, {hours.timezone}): "
+        f"{business_hours.phrase(hours.week, locale=locale)}",
+        *state_text(hours),
+    ]
+    if closed_message:
+        lines.append(f'  When closed, say: "{closed_message}"')
+    else:
+        lines.append(
+            "  When closed, say so, give the next opening time and offer to take a message."
+        )
+    for loc in raw.get("locations") or ():
+        try:
+            own = business_hours.load_dumped(loc["hours"])
+        except Exception:  # pragma: no cover - the loader built it
+            continue
+        if not own.known:
+            continue
+        lines.append(
+            f"- Location «{loc.get('name')}» has its own hours: "
+            f"{business_hours.phrase(own.week, locale=locale)}"
+        )
+        lines.extend(state_text(own))
+    return lines
+
+
+def render_operating_policy_block(
+    policies: dict[str, Any] | None, *, now: datetime | None = None
+) -> str:
+    """The operating block of the turn. Spec 047: the hours come from the
+    business profile (the agent loader puts them in the bundle under
+    ``business.hours.RUNTIME_KEY``), not from ``policies.console.schedule``,
+    which was one of the three copies that did not talk to each other."""
+    from nexus_api.services.business.hours import RUNTIME_KEY
+
     policy = console_policy_of(policies)
-    return render_operating_policy(policy) if policy is not None else ""
+    raw = (policies or {}).get(RUNTIME_KEY)
+    closed_message = policy.schedule.closed_message if policy is not None else ""
+    ficha = (
+        _ficha_hours_lines(raw, closed_message=closed_message, now=now)
+        if isinstance(raw, dict)
+        else None
+    )
+    if ficha is None:
+        return render_operating_policy(policy, now=now) if policy is not None else ""
+    if policy is None:
+        head = "Operating policy (set by the business — follow it):"
+    else:
+        without = policy.model_copy(
+            update={"schedule": SchedulePolicy(timezone=policy.schedule.timezone)}
+        )
+        head = render_operating_policy(without, now=now)
+    return "\n".join([head, *ficha])
 
 
 def _strip_tags(text: str) -> str:

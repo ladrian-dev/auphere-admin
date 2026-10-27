@@ -244,9 +244,10 @@ async def test_tenant_with_only_archived_agent_is_not_treated_as_send_only(
     db_session: Any,
 ) -> None:
     """Having versions but no ACTIVE one is a BROKEN agent, not a
-    send-only client. It must keep reaching the pipeline, where the loader
-    raises IsolationViolation and the consumer logs a real error (the
-    sentinel pipeline here stands in for that path)."""
+    send-only client. Until spec 047 it reached the pipeline, the loader
+    raised and the entry died in the DLQ — a message lost to the Inbox. Now
+    it is an unpublished agent: kept, and waiting for a person with its reason
+    (requisito 2.3), distinct from the send-only skip."""
     tenant_id, channel_id = await _make_tenant_with_channel(
         db_session, TenantStatus.ACTIVE, agent=AgentConfigStatus.ARCHIVED
     )
@@ -262,8 +263,10 @@ async def test_tenant_with_only_archived_agent_is_not_treated_as_send_only(
         pipeline=pipeline,
     )
 
-    assert result.get("skipped") is None, "a broken agent must not be silenced"
-    assert len(pipeline.calls) == 1
+    assert result["skipped"] == "agent_unpublished", "not the send-only skip"
+    assert result["reason"] == "agent_unpublished"
+    assert pipeline.calls == []
+    assert await _count_inbound(tenant_id) == 1
 
 
 async def test_unknown_tenant_returns_skipped_without_raising(

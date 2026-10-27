@@ -25,11 +25,14 @@ from nexus_api.core.tenant_context import get_current_customer, require_current_
 from nexus_api.db.models import (
     Appointment,
     AppointmentStatus,
+    Conversation,
     ScheduledJob,
     ScheduledJobKind,
     ScheduledJobStatus,
     Tenant,
 )
+from nexus_api.services.agents import agent_for_channel
+from nexus_api.services.business import services_catalog
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,6 +76,43 @@ def _to_brief(a: Appointment) -> AppointmentBrief:
 #
 # La agenda tiene dos ejes: el negocio y la persona. La RLS cubre el primero;
 # el segundo, `nexus_mcp/_customer.py`. Ver `tests/isolation/test_35_*`.
+#
+# Y un tercero desde la spec 047 (requisito 11.4, garantía 9): un servicio del
+# catálogo de la ficha que el agente del turno no ofrece no se busca ni se
+# reserva. El agente es el del número de la conversación de la persona
+# (``agent_for_channel``), nunca un argumento del modelo. Un nombre que no está
+# en el catálogo (las citas de antes, de texto libre) sigue como siempre.
+
+
+def _same_name(a: str, b: str) -> bool:
+    return " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
+
+
+async def _sibling_service(session: AsyncSession, service_name: str) -> bool:
+    """¿Es ``service_name`` un servicio del negocio que este agente no ofrece?"""
+    catalog = [
+        s for s in await services_catalog.list_services(session) if _same_name(s.name, service_name)
+    ]
+    if not catalog:
+        return False
+    agent_id = None
+    customer_id = get_current_customer()
+    if customer_id is not None:
+        channel_id = await session.scalar(
+            select(Conversation.channel_id)
+            .where(Conversation.customer_id == customer_id)
+            .order_by(Conversation.last_message_at.desc().nulls_last())
+            .limit(1)
+        )
+        agent_id = await agent_for_channel(session, channel_id)
+    mine = {s.id for s in await services_catalog.services_for_agent(session, agent_id)}
+    return not any(s.id in mine for s in catalog)
+
+
+NOT_OFFERED = (
+    "not_offered: you do not handle this service. Say so and hand the conversation "
+    "to the team; do not offer times for it."
+)
 
 
 async def _own_appointment(
@@ -207,6 +247,8 @@ class CheckAvailability(ToolBase):
         assert isinstance(payload, CheckAvailabilityInput)
         tenant_id = require_current_tenant()
         async with tool_session() as session:
+            if await _sibling_service(session, payload.service_name):
+                raise ToolError(NOT_OFFERED)
             slots = await find_free_slots(
                 session,
                 tenant_id=tenant_id,
@@ -251,6 +293,8 @@ class CreateAppointment(ToolBase):
             existing = (await session.execute(stmt)).scalar_one_or_none()
             if existing is not None:
                 return _replay(existing, customer_id)
+            if await _sibling_service(session, payload.service_name):
+                raise ToolError(NOT_OFFERED)
 
             # Block O: detect whether the tenant uses the public AgendaPro
             # path. If yes, persist the row as provisional and enqueue an

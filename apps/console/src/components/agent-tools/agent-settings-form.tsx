@@ -38,22 +38,30 @@ import {
 } from "@nexus/ui";
 
 import { saveAgentSettingsAction } from "@/app/(console)/clients/[ref]/agent/actions";
+import { useDraftSection, type SectionError } from "@/components/agent-draft/draft-edits";
 import { AudienceEditor, newRow, type AudienceRow } from "@/components/agent-tools/audience-editor";
 import { PhoneRows, type PhoneRowsLabels } from "@/components/agent-tools/phone-rows";
 import { normalisePhone } from "@/components/agent-tools/audience-lines";
 import { useLocale, useT } from "@/i18n/client";
+import type { DraftPatch } from "@/lib/backend/agent-draft-types";
 import {
   ESCALATION_TRIGGERS,
   TONES,
   type AgentSettingsOut,
+  type Audience,
+  type AudienceIn,
   type ConsolePolicy,
   type EscalationTrigger,
+  type PaymentReview,
   type Tone,
   type Weekday,
   type AudienceMode,
 } from "@/lib/backend/agent-tools-types";
 
 import { buildConsolePolicySchema, groupSlotsByDay, parseLanguageList } from "./settings-schema";
+
+/** What the form hands over: the settings plus the two lists that live next to them. */
+type SettingsPart = { settings: ConsolePolicy; audience: AudienceIn; paymentReview?: PaymentReview };
 
 /** `agentId`: spec 030 — one of the client's agents; `undefined` is the principal. */
 type Props = { refId: string; data: AgentSettingsOut; canWrite: boolean; actor: string; agentId?: string };
@@ -92,17 +100,24 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
   // Spec 024: «A quién responde». Lives next to the form, not inside it:
   // the API stores it in a different key and validates it by line.
   const audienceLocked = data.audience.locked;
+  // What this form last saved: the props until the first save, then what the
+  // API answered. Pending changes are measured against it, never against
+  // props a refresh has not replaced yet.
+  const [saved, setSaved] = React.useState(() => ({
+    audience: data.audience,
+    reviewers: data.payment_review?.reviewers ?? [],
+    disclosure: data.settings.ai_disclosure.enabled,
+  }));
   const [audienceMode, setAudienceMode] = React.useState<AudienceMode>(data.audience.mode);
   const [audienceRows, setAudienceRows] = React.useState<AudienceRow[]>(() => rowsOf(data.audience.numbers));
   const [audienceError, setAudienceError] = React.useState<string | null>(null);
   const audienceDirty =
-    audienceMode !== data.audience.mode ||
-    JSON.stringify(numbersOf(audienceRows)) !== JSON.stringify(data.audience.numbers);
+    audienceMode !== saved.audience.mode ||
+    JSON.stringify(numbersOf(audienceRows)) !== JSON.stringify(saved.audience.numbers);
   // Spec 025: «Revisión de pagos». Same rows as the allowed numbers, its own key.
-  const savedReviewers = data.payment_review?.reviewers ?? [];
-  const [reviewRows, setReviewRows] = React.useState<AudienceRow[]>(() => rowsOf(savedReviewers));
+  const [reviewRows, setReviewRows] = React.useState<AudienceRow[]>(() => rowsOf(data.payment_review?.reviewers ?? []));
   const [reviewError, setReviewError] = React.useState<string | null>(null);
-  const reviewDirty = JSON.stringify(numbersOf(reviewRows)) !== JSON.stringify(savedReviewers);
+  const reviewDirty = JSON.stringify(numbersOf(reviewRows)) !== JSON.stringify(saved.reviewers);
 
   const toneItems = React.useMemo(
     () => TONES.map((v) => ({ value: v, label: t(`agentSettings.tone.${v}`) })),
@@ -118,13 +133,13 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
     return res.message;
   }
 
-  function onSubmit(values: ConsolePolicy) {
-    const changed = values.ai_disclosure.enabled !== data.settings.ai_disclosure.enabled;
+  /** Every check that runs before anything travels; `null` when one fails —
+   *  the row that fails says so under itself (spec 024 and 025). */
+  function buildPart(values: ConsolePolicy): SettingsPart | null {
+    const changed = values.ai_disclosure.enabled !== saved.disclosure;
     const settings: ConsolePolicy = changed
       ? { ...values, ai_disclosure: { ...values.ai_disclosure, decided_by: actor, decided_at: new Date().toISOString() } }
       : values;
-    // Spec 024: every row is checked before anything travels; the row that
-    // fails says so under itself.
     if (audienceMode === "list") {
       let bad = false;
       const checked = audienceRows.map((r) => {
@@ -134,18 +149,13 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
         return { ...r, error: t("agentSettings.audience.err.phone", { text: r.phone.trim() }) };
       });
       setAudienceRows(checked);
-      if (bad) {
-        toast.error(t("agentSettings.fixErrors"));
-        return;
-      }
+      if (bad) return null;
       if (numbersOf(checked).length === 0) {
         setAudienceError(t("agentSettings.audience.err.empty"));
-        toast.error(t("agentSettings.fixErrors"));
-        return;
+        return null;
       }
     }
     setAudienceError(null);
-    // Spec 025: same per-row check for the payment reviewers.
     let badReviewer = false;
     const checkedReviewers = reviewRows.map((r) => {
       if (!r.phone.trim() || normalisePhone(r.phone)) return { ...r, error: null };
@@ -153,42 +163,100 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
       return { ...r, error: t("agentSettings.paymentReview.err.phone", { text: r.phone.trim() }) };
     });
     setReviewRows(checkedReviewers);
-    if (badReviewer) {
-      toast.error(t("agentSettings.fixErrors"));
-      return;
-    }
+    if (badReviewer) return null;
     if (numbersOf(checkedReviewers).length > 10) {
       setReviewError(t("agentSettings.paymentReview.err.tooMany"));
-      toast.error(t("agentSettings.fixErrors"));
-      return;
+      return null;
     }
     setReviewError(null);
-    const audience = { mode: audienceMode, numbers: numbersOf(audienceRows) };
-    const paymentReview = reviewDirty ? { reviewers: numbersOf(checkedReviewers) } : undefined;
+    return {
+      settings,
+      audience: { mode: audienceMode, numbers: numbersOf(audienceRows) },
+      paymentReview: reviewDirty ? { reviewers: numbersOf(checkedReviewers) } : undefined,
+    };
+  }
+
+  /** An error of the API that belongs to this form, under the field it is about. */
+  function showError(res: SectionError): boolean {
+    if (res.code?.startsWith("payment_reviewer")) {
+      const text =
+        res.code === "payment_reviewer_invalid_phone"
+          ? t("agentSettings.paymentReview.err.phone", { text: String(res.info?.phone ?? "") })
+          : t("agentSettings.paymentReview.err.tooMany");
+      setReviewError(text);
+      toast.error(text);
+      return true;
+    }
+    if (res.code?.startsWith("audience_")) {
+      const text = audienceErrorText(res);
+      setAudienceError(text);
+      toast.error(text);
+      return true;
+    }
+    return false;
+  }
+
+  function resetTo(next: { settings: ConsolePolicy; audience: Audience; payment_review?: PaymentReview | null }) {
+    const reviewers = next.payment_review?.reviewers ?? [];
+    form.reset(next.settings);
+    setAllowedText(next.settings.languages.allowed.join(", "));
+    setAudienceMode(next.audience.mode);
+    setAudienceRows(rowsOf(next.audience.numbers));
+    setReviewRows(rowsOf(reviewers));
+    setAudienceError(null);
+    setReviewError(null);
+    setSaved({ audience: next.audience, reviewers, disclosure: next.settings.ai_disclosure.enabled });
+  }
+
+  // Spec 047 (historia 2): on the agent page this form is one section of the
+  // one save bar — what it has pending, in the API's keys, and no button of
+  // its own. Used on its own it keeps its button, as before.
+  const pendingFields = [
+    ...Object.keys(form.formState.dirtyFields)
+      .filter((k) => k !== "schema_version")
+      .map((k) => `settings.${k}`),
+    ...(audienceDirty ? ["audience"] : []),
+    ...(reviewDirty ? ["payment_review"] : []),
+  ].sort();
+  const inBar = useDraftSection("settings", canWrite ? pendingFields : [], {
+    collect: () =>
+      new Promise<DraftPatch | null>((resolve) => {
+        void form.handleSubmit(
+          (values) => {
+            const part = buildPart(values);
+            resolve(
+              part
+                ? { settings: part.settings, audience: part.audience, ...(part.paymentReview ? { payment_review: part.paymentReview } : {}) }
+                : null,
+            );
+          },
+          () => resolve(null),
+        )();
+      }),
+    reset: resetTo,
+    onError: showError,
+  });
+
+  function onSubmit(values: ConsolePolicy) {
+    const part = buildPart(values);
+    if (!part) return void toast.error(t("agentSettings.fixErrors"));
     startTransition(async () => {
-      const res = await saveAgentSettingsAction({ ref: refId, settings, audience, paymentReview, agent: agentId });
+      const res = await saveAgentSettingsAction({
+        ref: refId,
+        settings: part.settings,
+        audience: part.audience,
+        paymentReview: part.paymentReview,
+        agent: agentId,
+      });
       if (!res.ok) {
-        if (res.code?.startsWith("payment_reviewer")) {
-          const text =
-            res.code === "payment_reviewer_invalid_phone"
-              ? t("agentSettings.paymentReview.err.phone", { text: String(res.info?.phone ?? "") })
-              : t("agentSettings.paymentReview.err.tooMany");
-          setReviewError(text);
-          return void toast.error(text);
-        }
-        const text = audienceErrorText(res);
-        if (res.code?.startsWith("audience_")) setAudienceError(text);
-        return void toast.error(text);
+        if (showError(res)) return;
+        return void toast.error(audienceErrorText(res));
       }
       const v = res.data.version ?? 0;
       toast.success(t(res.data.draft_created ? "agentSettings.draft.saved" : "agentSettings.draft.updated", { v }), {
         action: { label: t("agentSettings.draft.publishLink"), onClick: () => router.push(`${base}/agent`) },
       });
-      form.reset(res.data.settings);
-      setAllowedText(res.data.settings.languages.allowed.join(", "));
-      setAudienceMode(res.data.audience.mode);
-      setAudienceRows(rowsOf(res.data.audience.numbers));
-      setReviewRows(rowsOf(res.data.payment_review?.reviewers ?? []));
+      resetTo(res.data);
       router.refresh();
     });
   }
@@ -208,9 +276,11 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
         noValidate
         aria-busy={pending}
         className="flex min-w-0 flex-col gap-4"
-        onSubmit={form.handleSubmit(onSubmit, () => toast.error(t("agentSettings.fixErrors")))}
+        // In the bar, Enter in a field must not save behind the bar's back.
+        onSubmit={inBar ? (e) => e.preventDefault() : form.handleSubmit(onSubmit, () => toast.error(t("agentSettings.fixErrors")))}
       >
-        <p className="text-xs text-muted-foreground">{context}</p>
+        {/* In the bar the instructions say which draft this is, per agent. */}
+        {inBar ? null : <p className="text-xs text-muted-foreground">{context}</p>}
         {!canWrite ? <p className="text-xs text-muted-foreground">{t("agentSettings.readonly")}</p> : null}
 
         {/* identity */}
@@ -622,7 +692,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
           </CardContent>
         </Card>
 
-        {canWrite ? (
+        {canWrite && !inBar ? (
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={pending || (!form.formState.isDirty && !audienceDirty && !reviewDirty)}>
               {t("agentSettings.save")}

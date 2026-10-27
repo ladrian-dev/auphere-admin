@@ -37,6 +37,7 @@ Idempotencia — el consumidor inserta con ``ON CONFLICT DO NOTHING`` sobre
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -46,6 +47,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from nexus_api.db.models.usage_record import USAGE_LINE_BY_SOURCE
 
 log = structlog.get_logger(__name__)
 
@@ -77,7 +79,81 @@ SOURCE_QA = "qa"
 # lo compartiera, probar el agente y pedirle ayuda al Companion se robarían
 # presupuesto entre sí.
 SOURCE_COMPANION = "companion"
-USAGE_SOURCES: frozenset[str] = frozenset({SOURCE_CHANNEL, SOURCE_QA, SOURCE_COMPANION})
+# Spec 047 (0177, requisito 46.4): la partida «Construcción y pruebas». Gasto
+# que paga Auphere hasta el tope del partner y que nunca sale de la bolsa de un
+# cliente: el constructor, las pruebas, la lectura de webs, la indexación, las
+# sugerencias y las certificaciones. La lista es la de ``ck_usage_source`` y
+# ``USAGE_LINE_BY_SOURCE`` del modelo; un origen fuera de ella se mediría como
+# tráfico del cliente (``usage_turn``), que es justo lo que no puede pasar.
+SOURCE_BUILDER = "builder"
+SOURCE_TESTS = "tests"
+SOURCE_READER = "reader"
+SOURCE_INDEXER = "indexer"
+SOURCE_SUGGESTIONS = "suggestions"
+SOURCE_CERTIFICATION = "certification"
+USAGE_SOURCES: frozenset[str] = frozenset(USAGE_LINE_BY_SOURCE)
+
+# Spec 047 (requisito 40.1): la taxonomía de tareas del router, versión 1
+# (``contracts/router-and-catalog.md`` §1). Es la del catálogo
+# (``router_taxonomy``, sembrada en la 0180) y una prueba las ata: una tarea
+# nueva es una versión nueva de la taxonomía, no una cadena inventada aquí.
+LLM_TASKS: frozenset[str] = frozenset(
+    {
+        "classify",
+        "extract",
+        "answer",
+        "tool_turn",
+        "escalate",
+        "summarize",
+        "translate",
+        "vision",
+        "transcribe",
+        "embed",
+        "rerank",
+        "moderate",
+        "judge",
+        "build",
+        "read_source",
+    }
+)
+
+# Una llamada a un modelo sin tarea (o con una que no está en la taxonomía)
+# falla en los tests y en producción se mide igual y queda como anomalía
+# (``usage.task_missing``). Lo enciende la suite con esta variable: en
+# producción, tirar el turno por una etiqueta sería peor que el hueco.
+REQUIRE_TASK_ENV = "NEXUS_USAGE_REQUIRE_TASK"
+
+
+class UsageTaskMissing(RuntimeError):
+    """Una llamada a un modelo sin tarea de la taxonomía, con el modo estricto."""
+
+
+def _task_required() -> bool:
+    return os.environ.get(REQUIRE_TASK_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _check_task(task: str | None, *, model: str) -> None:
+    """La tarea de una llamada: estricto en los tests, anomalía en producción.
+
+    Lanza **fuera** de cualquier ``try``: es lo único de este módulo que puede
+    romper un turno, y solo con el modo estricto encendido.
+    """
+    if task in LLM_TASKS:
+        return
+    if _task_required():
+        raise UsageTaskMissing(
+            f"llamada a {model!r} sin tarea de la taxonomía (task={task!r}); "
+            "cada llamada a un modelo lleva su tarea (requisito 40.1)"
+        )
+    scope = _scope.get()
+    log.error(
+        "usage.task_missing" if task is None else "usage.task_unknown",
+        tenant_id=str(scope.tenant_id) if scope else None,
+        turn_id=scope.turn_id if scope else None,
+        source=scope.source if scope else None,
+        model=model,
+        task=task,
+    )
 
 
 def provider_of(model: str) -> str | None:
@@ -142,6 +218,9 @@ class UsageEvent:
     occurred_at: str
     provider: str | None = None
     model: str | None = None
+    # Spec 047 (0177): the router's task and its decision, per call.
+    task: str | None = None
+    route_decision_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -154,6 +233,10 @@ class UsageEvent:
             out["provider"] = self.provider
         if self.model:
             out["model"] = self.model
+        if self.task:
+            out["task"] = self.task
+        if self.route_decision_id:
+            out["route_decision_id"] = self.route_decision_id
         return out
 
 
@@ -194,6 +277,18 @@ async def usage_turn(
     cualquier camino nuevo que olvide declararlo cuente como tráfico real
     — es el error que se nota, frente a un consumo que se cuela como
     interno y desaparece de la factura.
+
+    Spec 047 (requisito 46.4): la partida sale de ``source``. Todo lo que es
+    «Construcción y pruebas» abre su propio buffer con su origen —el trabajo
+    del constructor, la lectura de una web, la indexación, las pruebas o las
+    sugerencias—, con el id del trabajo como ``turn_id``::
+
+        async with usage_turn(tenant_id=t, turn_id=f"job:{job_id}", source=SOURCE_READER):
+            ...
+
+    El consumidor lo escribe con ``line = build`` (una certificación de
+    Auphere, con ``platform``): no baja la bolsa del cliente ni alimenta su
+    presupuesto (solo ``channel`` lo hace).
     """
     scope = _TurnScope(
         tenant_id=tenant_id,
@@ -218,6 +313,8 @@ def record_usage(
     provider: str | None = None,
     model: str | None = None,
     idempotency_suffix: str | None = None,
+    task: str | None = None,
+    route_decision_id: uuid.UUID | None = None,
 ) -> None:
     """Anota un evento en el turno en curso. Fuera de turno, no-op."""
     try:
@@ -233,19 +330,34 @@ def record_usage(
                 occurred_at=_now(),
                 provider=provider,
                 model=model,
+                task=task,
+                route_decision_id=str(route_decision_id) if route_decision_id else None,
             )
         )
     except Exception as exc:  # pragma: no cover - defensivo
         log.warning("usage.record_failed", meter=meter, error=str(exc))
 
 
-def record_llm_usage(*, model: str, provider: str | None, usage: dict[str, int]) -> None:
+def record_llm_usage(
+    *,
+    model: str,
+    provider: str | None,
+    usage: dict[str, int],
+    task: str | None = None,
+    route_decision_id: uuid.UUID | None = None,
+) -> None:
     """Una llamada LLM → un evento por medidor con cantidad > 0.
 
     Se llama desde ``LiteLLMProvider._raw_complete``, el ÚNICO punto por el
     que pasan todas las llamadas del sistema (classify, respond, grader,
     multimodal): una línea allí da cobertura total.
+
+    Spec 047: ``task`` es la tarea de la taxonomía y ``route_decision_id`` la
+    decisión del router que eligió el modelo. Sin tarea, falla con el modo
+    estricto (los tests) y en producción se mide igual, como anomalía.
     """
+    if _scope.get() is not None:
+        _check_task(task, model=model)
     try:
         scope = _scope.get()
         if scope is None:
@@ -254,12 +366,21 @@ def record_llm_usage(*, model: str, provider: str | None, usage: dict[str, int])
         for usage_key, meter in LLM_METERS.items():
             quantity = usage.get(usage_key) or 0
             if quantity:
-                record_usage(meter=meter, quantity=quantity, provider=provider, model=model)
+                record_usage(
+                    meter=meter,
+                    quantity=quantity,
+                    provider=provider,
+                    model=model,
+                    task=task,
+                    route_decision_id=route_decision_id,
+                )
     except Exception as exc:  # pragma: no cover - defensivo
         log.warning("usage.record_llm_failed", model=model, error=str(exc))
 
 
-def record_voice_minutes(*, model: str, provider: str | None, seconds: float) -> None:
+def record_voice_minutes(
+    *, model: str, provider: str | None, seconds: float, task: str = "transcribe"
+) -> None:
     """Transcripción de una nota de voz → medidor ``voice.minutes``.
 
     Whisper se factura por minuto de audio, no por token, así que no cabe
@@ -271,6 +392,8 @@ def record_voice_minutes(*, model: str, provider: str | None, seconds: float) ->
     Incrementa ``call_seq`` igual que ``record_llm_usage`` — un turno con
     dos notas de voz necesita dos claves de idempotencia distintas o la
     segunda se descartaría en el ``ON CONFLICT`` del consumidor.
+
+    Spec 047: siempre es la tarea ``transcribe`` de la taxonomía.
     """
     try:
         scope = _scope.get()
@@ -282,6 +405,7 @@ def record_voice_minutes(*, model: str, provider: str | None, seconds: float) ->
             quantity=seconds / 60.0,
             provider=provider,
             model=model,
+            task=task,
         )
     except Exception as exc:  # pragma: no cover - defensivo
         log.warning("usage.record_voice_failed", model=model, error=str(exc))

@@ -9,6 +9,7 @@ from nexus_api.api.admin import (
     backchannel_owners,
     billing,
     budget_policies,
+    certifications,
     channel_signup_links,
     channels_overview,
     client_access,
@@ -21,6 +22,7 @@ from nexus_api.api.admin import (
     isolation,
     meta_signup,
     model_bindings,
+    models_catalog,
     overview,
     partner_access,
     partner_billing,
@@ -31,6 +33,7 @@ from nexus_api.api.admin import (
     partners,
     prompt_library,
     receipts,
+    router_policies,
     screenshots,
     signups,
     skills,
@@ -95,3 +98,8 @@ router.include_router(billing.router)
 router.include_router(model_bindings.router)
 router.include_router(budget_policies.router)
 router.include_router(cost.router)
+# Spec 047 (T150): el catálogo de despliegues, la política del router y las
+# certificaciones, sin tocar la base a mano (historia 30).
+router.include_router(models_catalog.router)
+router.include_router(router_policies.router)
+router.include_router(certifications.router)

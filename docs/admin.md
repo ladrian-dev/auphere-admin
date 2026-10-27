@@ -30,7 +30,7 @@ Ordenada como el super admin de Chatwoot (`src/components/shell/nav.ts`):
 |---|---|
 | — | Panel (`/`) |
 | Gestionar | Partners · Clientes (`/tenants`) · Consumo (`/usage`) · Altas · Tickets (con contador de abiertos) |
-| Plataforma | Canales (`/channels`) · Conectores (`/connectors`) · Números de Auphere (`/auphere/channels`) · Playground QA (`/qa`) |
+| Plataforma | Canales (`/channels`) · Conectores (`/connectors`) · Números de Auphere (`/auphere/channels`) · Playground QA (`/qa`) · Modelos (`/models`) · Router (`/router`) · Certificaciones (`/certifications`) |
 | Instancia | Estado (`/status`) |
 
 ⌘K abre una paleta que busca vistas, partners, clientes y tickets abiertos.
@@ -109,7 +109,7 @@ En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar u
   - Conectar: Canales, Conectores, Canal del dueño.
 
   Canales lleva un punto si ningún canal atiende o alguno tiene problemas. La ficha del partner usa el mismo componente con Observar, Configurar y Cuenta.
-- **Agente.** Como en la consola: «Nuevo borrador» a partir de la versión activa (solo el prompt) y una tarjeta por versión con «⋯» para publicar, revertir o ver el prompt. Debajo van las capacidades del runtime y las evaluaciones.
+- **Agente.** Como en la consola: «Nuevo borrador» a partir de la versión activa (solo el prompt) y una tarjeta por versión con «⋯» para publicar, revertir o ver el prompt. Debajo van las capacidades del runtime y las evaluaciones. Spec 047: cada agente tiene un solo borrador, y guardar desde aquí escribe **en** él. Lo que el operador deja como está en la versión activa conserva lo que el borrador ya tenía, así que editar desde aquí no deshace lo que el partner dejó pendiente.
 - **Habilidades.** El catálogo de la consola, con un interruptor por habilidad que guarda en el borrador. Se sirve en `GET/PUT /admin/tenants/{id}/capabilities`, con el mismo código que la consola y la auditoría firmada por el operador.
 - **Playground.** El de `/qa/{cliente}/chat`, dentro de la ficha. «Probar agente» lleva aquí.
 - **Resumen.** A dos columnas. A la izquierda va lo que falta para operar, solo lo pendiente y con lo hecho plegado; con todo hecho es una línea. Debajo, las conversaciones recientes. A la derecha, los datos del cliente y las pruebas del agente.
@@ -158,3 +158,42 @@ Todo en US$. La recarga (`POST /admin/partners/{id}/wallet/purchased`) lleva
 `amount_cents`, la clave de idempotencia que genera el formulario y el operador; saldo,
 asiento y auditoría van en una transacción. `GET …/wallet/reconcile` compara el saldo
 recargado con el libro.
+
+## Modelos, Router y Certificaciones (spec 047)
+
+El catálogo de modelos, la política del router y las certificaciones, sin tocar la
+base a mano (historia 30; `contracts/admin-api.md` §1 a §3). Cada escritura lleva
+`X-Operator-Id` y un **motivo**, que van a la auditoría de plataforma, y se aplica
+desde el siguiente turno: la API olvida su catálogo y publica `catalog` en el canal
+de promoción para los workers. Son las únicas pantallas que enseñan costes (54.11).
+Cómo funciona lo que hay detrás: [modelos-y-router.md](modelos-y-router.md).
+
+- **Modelos** (`/models`, `api/admin/models_catalog.py`). Una fila por despliegue:
+  proveedor y ruta, residencia, estado (con la fecha de retirada), precio vigente,
+  tareas certificadas y **lo que le falta para activarse**, en palabras. Filtros por
+  estado. Acciones de la fila: «Activar» (por la puerta de
+  `router_catalog.activate_deployment`, que dice antes y después todo lo que falta),
+  «Precio» (con vigencia y fuente; si sube más de un 10 % el precio por mensaje de un
+  agente, avisa a su partner y dice a cuántos), «Retirar» (con fecha: enseña el
+  sustituto propuesto a cada agente fijado) y «No disponible». «Nuevo despliegue» da
+  de alta en borrador, sin retención ni contrato: una licencia excluida (Llama 4,
+  Qwen3.8-Flash-Next, AGPL) se rechaza y la razón queda en la auditoría
+  (`deployment.rejected`). Editar las capacidades, la región, la ruta o el modelo
+  caduca sus certificaciones por clase (`PATCH`, sin pantalla todavía).
+- **Router** (`/router`, `api/admin/router_policies.py`; no se llama `router.py`
+  porque taparía el `router` del paquete). El editor de cada perfil, tarea por tarea:
+  calidad mínima, techo por llamada, hasta qué gama escala, razonamiento, muestreo
+  del juez y modelo de reserva, y los techos del turno, que se pueden bajar y nunca
+  subir. Guardar publica una **versión nueva** con su motivo (`router.policy_changed`).
+  Debajo, la **vista previa**: cliente, agente opcional, tarea y perfil → qué
+  elegiría el router, las alternativas y cada descartado con su motivo, sin llamar a
+  ningún modelo (`POST /admin/router/preview`, el mismo `chain_for` del turno).
+  `/router/anomalies`: los modelos de reserva y los `no_model` de los últimos 7 días,
+  cliente a cliente con su GUC, y quién espera en la Bandeja por «Sin modelo
+  disponible».
+- **Certificaciones** (`/certifications`, `api/admin/certifications.py`). Por
+  despliegue (batería, nota, métricas, fecha y si sigue vigente) y por agente (la
+  suite, quién la pagó, estado), con filtros por despliegue y tarea, y el aviso si la
+  batería está incompleta (sin el paquete `es` de τ-bench). «Lanzar una
+  certificación» todavía responde que no se puede, y por qué: la batería por clase
+  corre fuera de línea y la suite por agente es el trabajo `quality_check` de T147.

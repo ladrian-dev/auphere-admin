@@ -252,13 +252,13 @@ _APPS = Path(__file__).resolve().parents[3]
 #: Written to ``qa.audit_log`` (the Playground's own trail), not ``audit_log``.
 _NOT_THE_PARTNER_TRAIL = {"thread.create", "thread.patch"}
 _WRITTEN = (
-    re.compile(r"""action\s*=\s*["']([a-z_]+\.[a-z_.]+)["']"""),
-    re.compile(r"""_audit\([^,()]+,\s*["']([a-z_]+\.[a-z_.]+)["']"""),
+    re.compile(r"""action\s*=\s*["']([a-z_]+\.[a-z0-9_.]+)["']"""),
+    re.compile(r"""_audit\([^,()]+,\s*["']([a-z_]+\.[a-z0-9_.]+)["']"""),
     # Constants: ``ESCALATION_ACTION = "budget.hard_limit_reached"``.
     re.compile(
-        r"""^[A-Z_]*ACTION[A-Z_]*(?:\s*:\s*[^=\n]+)?\s*=\s*["']([a-z_]+\.[a-z_.]+)["']""", re.M
+        r"""^[A-Z_]*ACTION[A-Z_]*(?:\s*:\s*[^=\n]+)?\s*=\s*["']([a-z_]+\.[a-z0-9_.]+)["']""", re.M
     ),
-    re.compile(r"""INSERT INTO audit_log[^;]*?'([a-z_]+\.[a-z_.]+)'""", re.S),
+    re.compile(r"""INSERT INTO audit_log[^;]*?'([a-z_]+\.[a-z0-9_.]+)'""", re.S),
 )
 
 

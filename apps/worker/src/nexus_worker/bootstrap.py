@@ -52,6 +52,7 @@ from nexus_worker.billing.process_event import run_billing_event_consumer
 from nexus_worker.config import WorkerSettings, get_api_settings, get_worker_settings
 from nexus_worker.guardrails import OutcomeGrader
 from nexus_worker.health import run_heartbeat
+from nexus_worker.jobs import run_jobs_consumer
 from nexus_worker.observability import init_langfuse
 from nexus_worker.observability import shutdown as langfuse_shutdown
 from nexus_worker.observability.otel import install_worker_tracing
@@ -77,6 +78,8 @@ from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.memory_versions_retention import (
     run_memory_versions_retention_cron,
 )
+from nexus_worker.streams.meta_reconciliation_cron import run_meta_reconciliation_cron
+from nexus_worker.streams.model_lifecycle_cron import run_model_lifecycle_cron
 from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
 from nexus_worker.streams.outbound import run_outbound_dispatcher
@@ -126,6 +129,10 @@ RUNNER_TASK_NAMES = frozenset(
         # reparte, con la restricción única de ``provider_event_id``
         # sosteniendo la idempotencia.
         "billing-event-consumer",
+        # Spec 047 (research D43): los trabajos largos (leer la web, construir,
+        # probar, publicar…). Consumidor de ``nexus:jobs`` que escala en
+        # horizontal como los demás; reclama solo sus huérfanos.
+        "jobs-consumer",
     }
 )
 EGRESS_TASK_NAMES = frozenset(
@@ -182,6 +189,11 @@ SCHEDULER_TASK_NAMES = frozenset(
         "reservation-offers-cron",
         "reservation-outbox-cron",
         "reservation-calendar-cron",
+        # Spec 047 (T037): lo entregado por Meta frente a lo guardado, por canal
+        # y día. Sin persona y una vez al día: del planificador.
+        "meta-reconciliation-cron",
+        # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.
+        "model-lifecycle-cron",
     }
 )
 
@@ -403,6 +415,14 @@ def runner_tasks(
                 stop=ctx.stop,
             ),
         ),
+        _spawn(
+            "jobs-consumer",
+            run_jobs_consumer(
+                ctx.redis,
+                consumer_name=ws.inbound_consumer_name + ":jobs",
+                stop=ctx.stop,
+            ),
+        ),
     ]
 
 
@@ -471,6 +491,8 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("reservation-offers-cron", run_reservation_offers_cron(stop=ctx.stop)),
         _spawn("reservation-outbox-cron", run_reservation_outbox_cron(stop=ctx.stop)),
         _spawn("reservation-calendar-cron", run_reservation_calendar_cron(stop=ctx.stop)),
+        _spawn("meta-reconciliation-cron", run_meta_reconciliation_cron(stop=ctx.stop)),
+        _spawn("model-lifecycle-cron", run_model_lifecycle_cron(stop=ctx.stop, redis=ctx.redis)),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.

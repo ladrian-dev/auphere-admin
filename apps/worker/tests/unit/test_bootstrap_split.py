@@ -55,6 +55,9 @@ ALL_EXPECTED = {
     # literalmente «a task assigned to none dies without a trace» de la cabecera
     # de este fichero, con el camino del dinero dentro.
     "billing-event-consumer",
+    # Spec 047 (D43): los trabajos largos. En ``RUNNER_TASK_NAMES``, su
+    # ``_spawn`` en ``runner_tasks`` y aquí.
+    "jobs-consumer",
     "isolation-event-drainer",
     "no-show-scrape-cron",
     "cost-rollup-cron",
@@ -83,6 +86,10 @@ ALL_EXPECTED = {
     "reservation-offers-cron",
     "reservation-outbox-cron",
     "reservation-calendar-cron",
+    # Spec 047 (T037): la conciliación diaria con Meta.
+    "meta-reconciliation-cron",
+    # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.
+    "model-lifecycle-cron",
 }
 
 

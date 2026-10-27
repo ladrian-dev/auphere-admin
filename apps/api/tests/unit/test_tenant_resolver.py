@@ -60,12 +60,26 @@ async def test_unknown_identifier_raises(db_session, fake_redis):
         await resolve_tenant(db_session, fake_redis, "meta", "ghost-xyz")
 
 
-async def test_paused_channel_does_not_resolve(db_session, fake_redis, seed_tenants):
+@pytest.mark.parametrize("status", [ChannelStatus.PAUSED, ChannelStatus.DEGRADED])
+async def test_a_paused_or_degraded_channel_still_resolves(
+    db_session, fake_redis, seed_tenants, status
+):
+    """Spec 047, requisito 2.2: un número en pausa o con problemas sigue siendo
+    del cliente. Su mensaje se guarda y va a la Bandeja con su motivo; antes se
+    descartaba en el webhook y no quedaba ni rastro (migración 0176)."""
     tid = seed_tenants["a"]
     async with db_session.begin():
-        await _add_channel(db_session, tid, "paused-1", status=ChannelStatus.PAUSED)
+        await _add_channel(db_session, tid, f"{status.value}-1", status=status)
+    assert await resolve_tenant(db_session, fake_redis, "meta", f"{status.value}-1") == tid
+
+
+async def test_a_disconnected_channel_does_not_resolve(db_session, fake_redis, seed_tenants):
+    """Desvinculado ya no es del cliente: el número puede ser de otro (spec 021)."""
+    tid = seed_tenants["a"]
+    async with db_session.begin():
+        await _add_channel(db_session, tid, "gone-1", status=ChannelStatus.DISCONNECTED)
     with pytest.raises(TenantNotFound):
-        await resolve_tenant(db_session, fake_redis, "meta", "paused-1")
+        await resolve_tenant(db_session, fake_redis, "meta", "gone-1")
 
 
 async def test_invalidate_cache(db_session, fake_redis, seed_tenants):

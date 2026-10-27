@@ -16,6 +16,10 @@ describe("operator panel navigation (spec 031, R2)", () => {
       "Conectores",
       "Números de Auphere",
       "Playground QA",
+      // Spec 047 (T150): el catálogo de modelos, el router y las certificaciones.
+      "Modelos",
+      "Router",
+      "Certificaciones",
       "Estado",
     ]);
   });

@@ -82,6 +82,12 @@ dependencies = [
     # Every ``import stripe`` in this codebase lives under
     # ``nexus_api/billing/`` — enforced by tests/unit/test_billing_boundary.py.
     "stripe>=15.6.1",
+    # Spec 047 (T022): the ``vector`` column type for SQLAlchemy, for the
+    # knowledge chunks of each client (exact search, no shared ANN index).
+    # MIT — «Permission is hereby granted, free of charge, to any person
+    # obtaining a copy of this software … to deal in the Software without
+    # restriction». Read in full: docs/licenses/pgvector.md.
+    "pgvector>=0.4.1",
 ]
 
 [project.optional-dependencies]

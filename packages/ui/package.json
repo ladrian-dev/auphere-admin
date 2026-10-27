@@ -13,7 +13,8 @@
     "./tokens.css": "./src/styles/tokens.css",
     "./eslint": "./eslint/index.js",
     "./lib/*": "./src/lib/*.ts",
-    "./components/*": "./src/components/*.tsx"
+    "./components/*": "./src/components/*.tsx",
+    "./test/axe": "./src/test/axe.ts"
   },
   "files": [
     "src",

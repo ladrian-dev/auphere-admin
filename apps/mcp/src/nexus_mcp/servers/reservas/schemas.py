@@ -30,7 +30,13 @@ class StaffRef(OutputModel):
 class ServiceItem(OutputModel):
     id: uuid.UUID
     name: str
-    duration_minutes: int
+    #: Spec 047: a service that is not bookable (a product, a menu) has no
+    #: duration and no times; explain how it is ordered instead.
+    bookable: bool = True
+    duration_minutes: int | None
+    description: str | None = None
+    #: ``none`` (the team confirms it), ``free`` or ``amount`` (``price``).
+    price_kind: str = "none"
     price: Money | None = None
     staff: list[StaffRef]
 
@@ -106,8 +112,10 @@ class CreateOutput(OutputModel):
     refused: str | None = Field(
         default=None,
         description=(
-            "slot_taken | too_large | too_soon | too_far | closed | hours_missing. "
-            "too_large: escalate to a person with escalate.escalate_to_human."
+            "slot_taken | too_large | too_soon | too_far | closed | hours_missing | "
+            "not_bookable | not_offered. too_large: escalate to a person with "
+            "escalate.escalate_to_human. not_offered: you do not handle that service; "
+            "say so and hand the conversation to the team."
         ),
     )
     first_fit: str | None = None

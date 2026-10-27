@@ -15,7 +15,9 @@ const run = (script: string, ...args: string[]) =>
 
 describe("gen-tokens", () => {
   it("converts the console's OKLCH roles to the brand hex, in light and dark", () => {
-    expect(tokens.light.primary).toBe("#2CC295");
+    // Spec 047 (T005): in light the primary is the deep green (≥ 4.5:1 with its
+    // text), the same hex the primary text already had.
+    expect(tokens.light.primary).toBe("#03624C");
     expect(tokens.light.primaryText).toBe("#03624C");
     expect(tokens.light.background).toBe("#F1F7F6");
     // Dark: the primary stays the brand green; the ground is the warm ink, not green.

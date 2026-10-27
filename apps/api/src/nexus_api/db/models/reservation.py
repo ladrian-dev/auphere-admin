@@ -41,6 +41,8 @@ from nexus_api.db.base import Base
 from nexus_api.db.models._mixins import TenantScopedMixin, TimestampMixin, UUIDPrimaryKey
 
 MODES: tuple[str, ...] = ("services", "capacity")
+#: Spec 047 (0183): how a service's price is said.
+PRICE_KINDS: tuple[str, ...] = ("none", "free", "amount")
 CAPACITY_KINDS: tuple[str, ...] = ("restaurant", "bar", "classes", "tours", "rooms", "spa")
 CONFIRM_WHEN: tuple[str, ...] = ("24h", "same_day_12", "3h")
 STATUSES: tuple[str, ...] = ("pending", "confirmed", "arrived", "done", "noshow", "cancelled")
@@ -166,17 +168,35 @@ class ReservationService(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base
     __tablename__ = "reservation_services"
     __table_args__ = (
         UniqueConstraint("tenant_id", "id", name="uq_reservation_services_tenant_id"),
+        # Spec 047 (0183): a service may not be bookable (a product, a menu) and
+        # then has no duration; a bookable one runs 5 to 480 minutes in steps of 5.
         CheckConstraint(
-            "duration_minutes BETWEEN 15 AND 480 AND duration_minutes % 15 = 0",
+            "(bookable AND duration_minutes IS NOT NULL "
+            "AND duration_minutes BETWEEN 5 AND 480 AND duration_minutes % 5 = 0) "
+            "OR (NOT bookable AND duration_minutes IS NULL)",
             name="ck_reservation_services_duration",
         ),
         CheckConstraint(
             "price_minor IS NULL OR price_minor >= 0", name="ck_reservation_services_price"
         ),
+        CheckConstraint(
+            f"price_kind IN ({_in(PRICE_KINDS)}) "
+            "AND (price_kind <> 'amount' OR price_minor IS NOT NULL)",
+            name="ck_reservation_services_price_kind",
+        ),
     )
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    duration_minutes: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    #: ``None`` only when the service is not bookable (spec 047).
+    duration_minutes: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    bookable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    #: ``none`` (no price said), ``free`` or ``amount`` (``price_minor``).
+    price_kind: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="none", server_default="none"
+    )
     price_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="CLP")
     all_staff: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

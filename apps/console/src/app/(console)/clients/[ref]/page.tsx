@@ -1,8 +1,11 @@
 import { ClientSummary, type Block, type ConnectedItem } from "@/components/clients/summary/client-summary";
-import { backendFor } from "@/lib/backend";
+import { ClientPanelView } from "@/components/clients/v2/client-panel";
+import { PanelError } from "@/components/clients/v2/panel-error";
+import { backendFor, callFor } from "@/lib/backend";
+import { clientRecordsApi } from "@/lib/backend/client-records";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
 
-import { getClientCached } from "./data";
+import { getClientCached, getConsoleVersionCached } from "./data";
 
 /**
  * El Resumen del cliente (spec 018, R1).
@@ -30,6 +33,14 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
   const { ref } = await params;
   const principal = await requirePartnerPrincipal();
   const api = backendFor(principal);
+  // Spec 047 (T067, requisito 14): con la consola nueva, el Panel del cliente
+  // sustituye al Resumen y a su checklist.
+  if ((await getConsoleVersionCached(principal)) === "v2") {
+    const panel = await clientRecordsApi(callFor(principal))
+      .getClientPanel(ref)
+      .catch(() => null);
+    return panel ? <ClientPanelView panel={panel} canWrite={can(principal.role, "clients:write")} /> : <PanelError />;
+  }
 
   const [client, usage, conversations, channels, connectors] = await Promise.all([
     getClientCached(principal, ref),

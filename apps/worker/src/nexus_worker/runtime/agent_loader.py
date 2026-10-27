@@ -16,6 +16,15 @@ Caching:
   drives that on every ``nexus:agent_config:promote`` message.
 - A staged version that is NOT promoted does not change the active row, so we
   never need to invalidate on stage.
+- Spec 047 (research D4): a change of the business profile **recompiles** the
+  active version in place (``nexus_api.services.business.compilation``) — same
+  version, new ``system_prompt_rendered`` — and, after its commit, publishes
+  ``<tenant_id>:<agent_id>`` on the same channel. That is what drops the entry
+  here, so the next message uses the new hours or price without a publish.
+
+The bundle also carries the profile's hours (``policies[RUNTIME_KEY]``, never
+persisted): the per-turn operating block computes «open now?» from them, with
+night shifts and special dates, instead of from ``policies.console.schedule``.
 
 The loader opens its own SQLAlchemy session inside ``tenant_scoped_session``
 so it can be called from worker code that already has a transaction open
@@ -26,6 +35,7 @@ inside an active transaction) is satisfied here.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 from collections import OrderedDict
 from collections.abc import Iterable
@@ -39,6 +49,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Tenant
 from nexus_api.repositories import AgentConfigRepository
+from nexus_api.services.business.hours import RUNTIME_KEY, runtime_snapshot
 
 from nexus_worker.runtime.model_resolver import ModelBinding, load_bindings
 
@@ -99,6 +110,10 @@ class AgentBundle:
     # Spec 030 — which of the client's agents this is. ``None`` only for
     # bundles built by hand (tests, evals) before agents existed.
     agent_id: uuid.UUID | None = None
+
+    # Spec 047 (research D4) — the fingerprint of the prompt that answers:
+    # ``agent_version_compilations.sha256`` of the compilation, for traces.
+    prompt_sha256: str = ""
 
 
 #: Cache key: the tenant and the agent; ``None`` = «the principal agent».
@@ -208,6 +223,8 @@ class AgentLoader:
             tenant_tz = await session.scalar(
                 sa.select(Tenant.timezone).where(Tenant.id == tenant_id)
             )
+            # Same scoped session: the profile's tables force RLS.
+            business_hours = await runtime_snapshot(session, tenant_id)
             return AgentBundle(
                 tenant_id=tenant_id,
                 agent_id=cfg.agent_id,
@@ -215,8 +232,9 @@ class AgentLoader:
                 version=cfg.version,
                 version_id=cfg.id,
                 system_prompt=cfg.system_prompt_rendered,
+                prompt_sha256=hashlib.sha256(cfg.system_prompt_rendered.encode()).hexdigest(),
                 tools=frozenset(cfg.tools or ()),
-                policies=dict(cfg.policies or {}),
+                policies={**dict(cfg.policies or {}), RUNTIME_KEY: business_hours},
                 runtime_skills=tuple(
                     {
                         "skill_id": str(s.get("skill_id", "")),

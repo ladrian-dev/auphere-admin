@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
+from nexus_api.services.console_v2 import console_version
 from nexus_api.services.partner_clients import quota_state
 
 from .schemas import MeOut, PartnerBrief, QuotaOut
@@ -54,4 +55,7 @@ async def me(
         companion_enabled=principal.partner.companion_enabled,
         # Spec 032: what this partner's console has.
         modules=principal.partner.ordered_console_modules(),
+        # Spec 047 (R55.2): the frame the console mounts. ``v1`` until Auphere
+        # activates the new console for this partner.
+        console_version=console_version(principal.partner),
     )

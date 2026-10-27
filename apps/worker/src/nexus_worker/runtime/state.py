@@ -118,6 +118,27 @@ class AgentState(TypedDict, total=False):
     # Free-form trace metadata (replaced by the last writer)
     meta: dict[str, Any]
 
+    # Spec 047 (T140, requisito 40.3) — la afinidad del router. Agente →
+    # ``PinnedModel.to_state()``: el modelo de las tareas de conversación queda
+    # fijado por conversación, dentro del checkpoint del hilo del cliente
+    # (garantía 4), y por agente porque con «memoria propia» o con Recepción dos
+    # agentes comparten hilo. Lo leen y lo escriben ``model_resolver.pins_from_state``
+    # y ``with_pin``; sobrevive a ``checkpoint_shrink_update``.
+    pinned_model: dict[str, Any]
+    # Los escalados de la última hora (segundos desde la época), para el techo
+    # de 3 por hora y conversación (40.10). ``model_resolver.record_escalation``.
+    router_escalations: list[float]
+    # Spec 047 (T140, requisito 40.5) — lo que dio el clasificador tipado en
+    # este turno (``ClassifyResult.model_dump()``): intención, herramientas,
+    # riesgo, complejidad, idioma y cuántas peticiones trae. Vacío cuando el
+    # turno clasificó por el camino de hoy (la etiqueta suelta).
+    classification: dict[str, Any]
+    # Lo que llevan gastado las llamadas enrutadas del turno, de un nodo al
+    # siguiente (``{"calls", "cost_micros"}``): el techo de 12 llamadas y el de
+    # coste son del turno entero (40.10), y cada nodo de LangGraph corre en su
+    # propio contexto. ``new_state`` lo vacía al empezar cada turno.
+    router_turn: dict[str, Any]
+
 
 # ── WP-13: checkpoint bloat control ─────────────────────────────────────────
 #
@@ -184,4 +205,8 @@ def new_state(
         "system_addendum": system_addendum or "",
         "tool_calls": [],
         "meta": {},
+        # Spec 047: lo del turno anterior no cuenta para este (el checkpoint los
+        # devolvería). La afinidad y los escalados de la hora, en cambio, sí.
+        "classification": {},
+        "router_turn": {},
     }

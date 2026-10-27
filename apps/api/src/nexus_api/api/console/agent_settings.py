@@ -38,7 +38,7 @@ from nexus_api.services.agent_payment_review import (
     reviewers_of,
 )
 
-from .agent_drafts import DraftView, ensure_draft, load_view
+from .agent_drafts import DraftView, draft_written, ensure_draft, load_view
 from .deps import ClientScope, agent_scope
 from .schemas_agent_tools import (
     AgentSettingsIn,
@@ -156,7 +156,7 @@ async def put_settings(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail
             ) from exc
     draft.policies = policies
-    await scope.session.flush()
+    await draft_written(scope, draft)
     view = await load_view(scope)
     base = _out(view)
     return AgentSettingsSaved(**base.model_dump(), draft_created=created)

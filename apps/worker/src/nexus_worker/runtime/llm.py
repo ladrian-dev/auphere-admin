@@ -23,6 +23,17 @@ Context editing (Fase A — claude-platform-integration):
   classify call carries no tools and would not benefit). LiteLLM's
   Anthropic adapter auto-injects the ``context-management-2025-06-27``
   beta header — we do NOT pass it via ``extra_headers``.
+
+Spec 047 (T141) — the router's transport. A call routed by
+``model_resolver.chain_for`` runs inside ``routed(hop)``: the hop carries the
+task, the decision id and the chosen deployment, and the transport adapts the
+call to what that deployment declares (cache marks, dotted tool names, strict
+structured outputs, zero retention, reasoning level, a stable prefix and a
+per-client cache key). Every call — routed or not — reaches the meter with its
+task. ``LLMRouter.complete_routed`` / ``respond_routed`` walk the decision's
+chain (chosen + two alternatives), cool a deployment whose provider fails and
+log ``llm.route_decision``. A call **without** a hop keeps today's transport
+exactly: the legacy paths are untouched.
 """
 
 from __future__ import annotations
@@ -30,15 +41,20 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import math
 import os
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeVar
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any, Generic, Protocol, TypeVar
 
 import structlog
+from nexus_api.core.errors import IsolationViolation
 from nexus_api.core.llm_proxy import (
     apply_litellm_proxy_kwargs,
     proxy_required,
@@ -51,9 +67,18 @@ from nexus_api.core.metrics import (
 )
 from nexus_api.core.otel_metrics import record_llm_call
 from nexus_api.core.respond_catalog import require_hop_model
+from nexus_api.metering.pricing_policy import QUOTA_TARGET_MULTIPLIER
+from nexus_api.services.router_catalog import (
+    Deployment,
+    MissingTask,
+    TokenEstimate,
+    estimate_cost_micros,
+)
+from pydantic import BaseModel, ValidationError
 
 from nexus_worker.metering.collector import provider_of, record_llm_usage, usage_fields
 from nexus_worker.observability.tracing import record_generation
+from nexus_worker.runtime.model_resolver import RouteDecision, current_turn_budget
 
 log = structlog.get_logger(__name__)
 
@@ -98,6 +123,17 @@ def _is_fast_retry_error(exc: BaseException) -> bool:
     """True for transient connection/timeout errors that should retry with no
     backoff (a dead pooled socket), False for anything else (rate limits, …)."""
     return type(exc).__name__ in _FAST_RETRY_ERROR_NAMES
+
+
+# Spec 047 (requisito 40.6): a deployment whose provider is down — server error,
+# timeout or rate limit after the retries — is cooled for the time its catalog
+# row says. A bad request is OUR fault, not the provider's: it moves to the next
+# alternative but cools nothing.
+_COOLDOWN_ERROR_NAMES = _FAST_RETRY_ERROR_NAMES | {"RateLimitError"}
+
+
+def _is_provider_failure(exc: BaseException) -> bool:
+    return type(exc).__name__ in _COOLDOWN_ERROR_NAMES
 
 
 # ── latency / cache observability ────────────────────────────────────────────
@@ -319,6 +355,281 @@ class LLMCall:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+# ── routing hop (spec 047, T141) ─────────────────────────────────────────────
+
+#: The router's decision event (``contracts/events.md`` §5). Emitted once per
+#: routed call, when the decision is used: that is when it knows whether an
+#: alternative answered, how long it took and what it cost.
+ROUTE_DECISION_EVENT = "llm.route_decision"
+
+#: How each ``model_profiles.retention_how`` is put on the wire (requisito 41.3).
+#: A deployment that declares zero retention by a mechanism not listed here
+#: never receives data: the transport refuses before calling.
+RETENTION_WIRE: dict[str, dict[str, Any]] = {
+    # Responses API and Chat Completions (OpenAI-compatible).
+    "store=false": {"store": False},
+    # Bedrock. Verified on the wire with T142, when the route exists.
+    "data_retention_mode:none": {"data_retention_mode": "none"},
+}
+
+#: Thinking budget per reasoning level, for ``reasoning_control = budget``.
+REASONING_BUDGET_TOKENS: dict[str, int] = {"low": 1024, "medium": 4096, "high": 16384}
+
+#: The task of a call that does not come through the router, by its role. The
+#: whole system goes through this transport, so this is what makes every call
+#: reach the meter with a task (requisito 40.1) before C3 routes them all.
+TASK_BY_ROLE: dict[str, str] = {
+    "classify": "classify",
+    "grader": "judge",
+    "judge": "judge",
+    "companion": "build",
+    "builder": "build",
+    "vision": "vision",
+    "transcribe": "transcribe",
+    "summarize": "summarize",
+    "translate": "translate",
+    "extract": "extract",
+    "read_source": "read_source",
+}
+#: Roles that answer the end customer: ``answer`` without tools, ``tool_turn``
+#: with them. The pipeline passes the intent as the role.
+_CONVERSATION_ROLES = frozenset({"respond", "book", "queue", "info", "escalate", "fallback"})
+
+
+class UnknownRetention(RuntimeError):
+    """The deployment's ``retention_how`` is not one the transport can apply."""
+
+
+class RetentionNotGuaranteed(RuntimeError):
+    """A routed call to a deployment without zero retention: never sent."""
+
+
+class StructuredOutputInvalid(ValueError):
+    """The reply did not validate against the expected shape — our own check,
+    which runs always, strict provider or not (requisito 41.3)."""
+
+
+class NoModelAvailable(RuntimeError):
+    """No deployment for the client's residency (40.7): the conversation goes
+    to the Inbox with ``no_model`` and Auphere is told."""
+
+    reason = "no_model"
+
+    def __init__(self, decision: RouteDecision) -> None:
+        super().__init__(f"no model for task {decision.task}")
+        self.decision = decision
+
+
+class ProviderChainExhausted(RuntimeError):
+    """Every deployment of the chain failed (40.6): ``provider_failure``."""
+
+    reason = "provider_failure"
+
+    def __init__(self, decision: RouteDecision) -> None:
+        super().__init__(f"every deployment failed for task {decision.task}")
+        self.decision = decision
+
+
+@dataclass(frozen=True)
+class RouteHop:
+    """One attempt of a routed call: what the transport needs to adapt it."""
+
+    task: str
+    deployment: Deployment | None = None
+    decision_id: uuid.UUID | None = None
+    reasoning: str = "none"
+    #: Per client and agent version (``model_resolver.cache_key_for``).
+    cache_key: str | None = None
+    #: JSON Schema of the expected reply, for structured outputs.
+    response_schema: Mapping[str, Any] | None = None
+    schema_name: str = "result"
+
+
+_current_hop: ContextVar[RouteHop | None] = ContextVar("llm_route_hop", default=None)
+
+
+@contextlib.contextmanager
+def routed(hop: RouteHop) -> Iterator[RouteHop]:
+    """Every provider call inside goes out adapted to ``hop``."""
+    token = _current_hop.set(hop)
+    try:
+        yield hop
+    finally:
+        _current_hop.reset(token)
+
+
+def current_hop() -> RouteHop | None:
+    return _current_hop.get()
+
+
+def task_for_call(role: str, *, has_tools: bool) -> str | None:
+    """The task of this call: the hop's, or the one its role implies."""
+    hop = current_hop()
+    if hop is not None:
+        return hop.task
+    if role in TASK_BY_ROLE:
+        return TASK_BY_ROLE[role]
+    if role in _CONVERSATION_ROLES:
+        return "tool_turn" if has_tools else "answer"
+    return None
+
+
+def _canonical(value: Any) -> Any:
+    """JSON with sorted keys, recursively: same tools, same bytes (41.4)."""
+    return json.loads(json.dumps(value, sort_keys=True, default=str))
+
+
+def _tool_name(spec: Any) -> str:
+    function = spec.get("function") if isinstance(spec, dict) else None
+    return str(function.get("name") or "") if isinstance(function, dict) else ""
+
+
+def _prepare_messages(
+    messages: list[dict[str, Any]], *, cache_tail: bool, split_header: bool
+) -> list[dict[str, Any]]:
+    """Cache marks only where the deployment takes them (41.3). Without a hop,
+    or with explicit caching, today's breakpoints; with implicit caching (Gemini,
+    OpenAI) or none, the messages go as they are."""
+    hop = current_hop()
+    if (
+        hop is not None
+        and hop.deployment is not None
+        and hop.deployment.capabilities.cache_mode != "explicit"
+    ):
+        return list(messages)
+    return _with_prompt_caching(messages, cache_tail=cache_tail, split_header=split_header)
+
+
+def apply_capabilities(kwargs: dict[str, Any], hop: RouteHop) -> dict[str, Any]:
+    """Adapt one routed call to its deployment (requisitos 41.3 y 41.4).
+
+    Retention first: a call that could be kept never leaves. Then the stable
+    prefix (tools sorted by name, JSON keys sorted), the per-client cache key
+    where the provider has one, structured outputs (strict where they exist;
+    our own validation runs anyway in the caller) and the reasoning level of
+    the task. Dotted tool names are rewritten in ``_proxied_acompletion``,
+    which also maps them back on the reply.
+    """
+    deployment = hop.deployment
+    if deployment is None:
+        return kwargs
+    caps = deployment.capabilities
+    if not (deployment.zero_retention and deployment.contract_dpa):
+        raise RetentionNotGuaranteed(f"{deployment.key} has no zero-retention contract")
+    how = deployment.retention_how
+    if how is None or how not in RETENTION_WIRE:
+        raise UnknownRetention(f"{deployment.key}: retention_how={how!r}")
+    kwargs.update(RETENTION_WIRE[how])
+
+    if caps.cache_key and hop.cache_key:
+        kwargs["prompt_cache_key"] = hop.cache_key
+    if not caps.context_management:
+        kwargs.pop("context_management", None)
+
+    tools = kwargs.get("tools")
+    if isinstance(tools, list) and tools:
+        kwargs["tools"] = sorted((_canonical(t) for t in tools), key=_tool_name)
+
+    if hop.response_schema is not None:
+        if caps.strict_structured_outputs:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": hop.schema_name,
+                    "schema": _canonical(dict(hop.response_schema)),
+                    "strict": True,
+                },
+            }
+        elif caps.structured_outputs:
+            kwargs["response_format"] = {"type": "json_object"}
+
+    if caps.reasoning_control == "effort":
+        kwargs["reasoning_effort"] = hop.reasoning
+    elif caps.reasoning_control == "budget" and hop.reasoning in REASONING_BUDGET_TOKENS:
+        budget = REASONING_BUDGET_TOKENS[hop.reasoning]
+        kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        # The thinking budget has to fit under the reply's limit.
+        ceiling = caps.max_output or budget * 4
+        kwargs["max_tokens"] = max(int(kwargs.get("max_tokens") or 0), min(ceiling, budget * 2))
+    return kwargs
+
+
+@dataclass
+class _CallLedger:
+    """What the provider measured for the routed call in flight."""
+
+    cost_micros: int = 0
+
+
+_current_ledger: ContextVar[_CallLedger | None] = ContextVar("llm_call_ledger", default=None)
+
+
+def _call_cost_micros(deployment: Deployment, usage: Mapping[str, int]) -> int:
+    """Provider cost of one call, from what it reported and today's price."""
+    price = deployment.current_price(datetime.now(UTC).date())
+    if price is None:
+        return 0
+    cache_read = int(usage.get("cache_read_input_tokens") or 0)
+    cache_write = int(usage.get("cache_creation_input_tokens") or 0)
+    prompt = int(usage.get("prompt_tokens") or 0)
+    estimate = TokenEstimate(
+        input_tokens=max(0, prompt - cache_read - cache_write),
+        output_tokens=int(usage.get("completion_tokens") or 0),
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+    )
+    return estimate_cost_micros(price, estimate) or 0
+
+
+def _price_micros(cost_micros: int) -> int:
+    """What the partner pays: 2,2 times the cost (ADR-037, research D19)."""
+    multiplier: Decimal = Decimal(QUOTA_TARGET_MULTIPLIER)
+    return math.ceil(Decimal(cost_micros) * multiplier)
+
+
+@dataclass
+class CooldownBook:
+    """Deployments resting after a provider failure (40.6). Process-local, like
+    LiteLLM's own router cooldowns without Redis: a cooled deployment in one
+    worker is still tried by another, which costs one failed attempt there —
+    never a turn."""
+
+    clock: Callable[[], float] = time.monotonic
+    _until: dict[str, float] = field(default_factory=dict)
+
+    def cool(self, key: str, seconds: float) -> None:
+        self._until[key] = self.clock() + max(0.0, seconds)
+
+    def is_cool(self, key: str) -> bool:
+        until = self._until.get(key)
+        if until is None:
+            return False
+        if self.clock() >= until:
+            self._until.pop(key, None)
+            return False
+        return True
+
+    def active(self) -> frozenset[str]:
+        return frozenset(k for k in list(self._until) if self.is_cool(k))
+
+
+_R = TypeVar("_R")
+_M = TypeVar("_M", bound=BaseModel)
+
+
+@dataclass(frozen=True)
+class RoutedCall(Generic[_R]):
+    """The result of a routed call and what C3 needs to keep the affinity."""
+
+    value: _R
+    decision: RouteDecision
+    served: str
+    fallback_used: bool
+    cooled: tuple[str, ...]
+    latency_ms: int
+    cost_micros: int
+
+
 # ── provider protocol ────────────────────────────────────────────────────────
 
 
@@ -363,6 +674,19 @@ class LLMProvider(Protocol):
         tools: list[dict[str, Any]],
         extra: dict[str, Any] | None = ...,
     ) -> AsyncIterator[tuple[str, str]]: ...
+
+
+def _with_hop(extra: dict[str, Any] | None) -> dict[str, Any]:
+    """What a test double records of the call: its extras and, when routed, the
+    hop's task and decision — the graph tests (C3) assert on them."""
+    out = dict(extra) if extra else {}
+    hop = current_hop()
+    if hop is not None:
+        out["task"] = hop.task
+        out["route_decision_id"] = hop.decision_id
+        if hop.deployment is not None:
+            out["deployment"] = hop.deployment.key
+    return out
 
 
 # ── in-memory provider ───────────────────────────────────────────────────────
@@ -415,7 +739,13 @@ class InMemoryProvider:
         model: str,
         messages: list[dict[str, str]],
     ) -> str:
-        call = LLMCall(tenant_id=tenant_id, role=role, model=model, messages=list(messages))
+        call = LLMCall(
+            tenant_id=tenant_id,
+            role=role,
+            model=model,
+            messages=list(messages),
+            extra=_with_hop(None),
+        )
         async with self._lock:
             self.calls.append(call)
         if self.responder is None:
@@ -438,7 +768,7 @@ class InMemoryProvider:
             model=model,
             messages=list(messages),
             tools=tuple(tools),
-            extra=dict(extra) if extra else {},
+            extra=_with_hop(extra),
         )
         async with self._lock:
             self.calls.append(call)
@@ -465,7 +795,7 @@ class InMemoryProvider:
             role=role,
             model=model,
             messages=list(messages),
-            extra=dict(extra) if extra else {},
+            extra=_with_hop(extra),
         )
         async with self._lock:
             self.calls.append(call)
@@ -500,7 +830,7 @@ class InMemoryProvider:
             model=model,
             messages=list(messages),
             tools=tuple(tools),
-            extra=dict(extra) if extra else {},
+            extra=_with_hop(extra),
         )
         async with self._lock:
             self.calls.append(call)
@@ -697,7 +1027,7 @@ _WIRE_SEPARATOR = "__"
 _OPENAI_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
-def _wire_openai_tool_names(kwargs: dict[str, Any]) -> dict[str, str]:
+def _wire_openai_tool_names(kwargs: dict[str, Any], *, force: bool = False) -> dict[str, str]:
     """Rewrite dotted tool names to their wire form for openai/ hops.
 
     Touches ``tools[]`` and the assistant ``tool_calls`` echoes in the
@@ -705,9 +1035,13 @@ def _wire_openai_tool_names(kwargs: dict[str, Any]) -> dict[str, str]:
     the tool-free final iteration still carries the history). Non-streaming
     only: the streaming paths are Companion-only and already send wire
     names. Returns the wire→catalog back-map; empty when nothing changed.
+
+    Spec 047 (41.3): ``force`` does the same for every deployment that
+    declares ``tool_name_charset = no_dots``, not only GPT-5.6.
     """
     model = kwargs.get("model")
-    if not (isinstance(model, str) and model.startswith("openai/")) or kwargs.get("stream"):
+    openai_hop = isinstance(model, str) and model.startswith("openai/")
+    if not (force or openai_hop) or kwargs.get("stream"):
         return {}
 
     back: dict[str, str] = {}
@@ -793,12 +1127,21 @@ def _unwire_response_tool_calls(response: Any, back: dict[str, str]) -> None:
 
 
 async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
-    """Single hop: catalog id, same api_base, no vendor fallback."""
+    """Single hop: catalog id, same api_base, no vendor fallback.
+
+    A routed hop (spec 047) is adapted to its deployment first — retention
+    before anything, so a call that could be kept never reaches the vendor —
+    and the OpenAI-specific rules below still apply on top."""
     model = kwargs.get("model")
     require_hop_model(model if isinstance(model, str) else "")
+    hop = current_hop()
+    no_dots = False
+    if hop is not None and hop.deployment is not None:
+        apply_capabilities(kwargs, hop)
+        no_dots = hop.deployment.capabilities.tool_name_charset == "no_dots"
     _proxy_kwargs(kwargs)
     _drop_openai_unsupported(kwargs)
-    back = _wire_openai_tool_names(kwargs)
+    back = _wire_openai_tool_names(kwargs, force=no_dots)
     try:
         response = await litellm.acompletion(**kwargs)
     except Exception as exc:
@@ -854,6 +1197,11 @@ class LiteLLMProvider:
     #: con teammate—. El agente de cliente y los playgrounds comparten esta
     #: clase y son carga viva.
     split_header: bool = False
+    #: Spec 047 (40.1): a call without a task fails here instead of reaching
+    #: the vendor. Off in production — there it is logged as an anomaly
+    #: (``llm.task_missing``) and the call goes out — and on in the tests that
+    #: check every call site carries one.
+    require_task: bool = False
 
     def __post_init__(self) -> None:
         # Pre-import litellm so the first acomplete() doesn't pay the
@@ -933,11 +1281,13 @@ class LiteLLMProvider:
     ) -> Any:
         import litellm  # local import — heavy dep
 
+        task = self._task_or_refuse(tenant_id=tenant_id, role=role, model=model, tools=tools)
         kwargs: dict[str, Any] = {
             "model": model,
             # Prompt caching: mark the stable system prefix as a cache
-            # breakpoint so repeated turns / loop iterations reuse it.
-            "messages": _with_prompt_caching(
+            # breakpoint so repeated turns / loop iterations reuse it — where
+            # the deployment takes marks (spec 047, 41.3).
+            "messages": _prepare_messages(
                 messages, cache_tail=self.cache_tail, split_header=self.split_header
             ),
             "metadata": {"tenant_id": str(tenant_id), "role": role},
@@ -998,8 +1348,26 @@ class LiteLLMProvider:
             elapsed_ms=elapsed_ms,
             has_tools=bool(tools),
             usage_counts=usage_fields(response),
+            task=task,
         )
         return response
+
+    def _task_or_refuse(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        tools: Sequence[Any] | None,
+    ) -> str | None:
+        """Every call carries its task (40.1). Without one: refused under
+        ``require_task``, an anomaly otherwise."""
+        task = task_for_call(role, has_tools=bool(tools))
+        if task is None:
+            if self.require_task:
+                raise MissingTask(f"call without task (role={role!r})")
+            log.warning("llm.task_missing", tenant_id=str(tenant_id), role=role, model=model)
+        return task
 
     async def astream_complete(
         self,
@@ -1027,9 +1395,10 @@ class LiteLLMProvider:
         """
         import litellm  # local import — heavy dep
 
+        task = self._task_or_refuse(tenant_id=tenant_id, role=role, model=model, tools=None)
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _with_prompt_caching(
+            "messages": _prepare_messages(
                 messages, cache_tail=self.cache_tail, split_header=self.split_header
             ),
             "metadata": {"tenant_id": str(tenant_id), "role": role},
@@ -1080,6 +1449,7 @@ class LiteLLMProvider:
                 elapsed_ms=elapsed_ms,
                 has_tools=False,
                 usage_counts=usage_counts,
+                task=task,
             )
         yield ("usage", json.dumps(usage_counts))
 
@@ -1116,9 +1486,10 @@ class LiteLLMProvider:
         """
         import litellm  # local import — heavy dep
 
+        task = self._task_or_refuse(tenant_id=tenant_id, role=role, model=model, tools=tools)
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _with_prompt_caching(
+            "messages": _prepare_messages(
                 messages, cache_tail=self.cache_tail, split_header=self.split_header
             ),
             "tools": tools,
@@ -1168,6 +1539,7 @@ class LiteLLMProvider:
                 elapsed_ms=elapsed_ms,
                 has_tools=True,
                 usage_counts=usage_counts,
+                task=task,
             )
 
         emitted = [_finish_tool_call(c) for _idx, c in sorted(pending.items())]
@@ -1198,6 +1570,7 @@ class LiteLLMProvider:
         elapsed_ms: int,
         has_tools: bool,
         usage_counts: dict[str, int],
+        task: str | None = None,
     ) -> None:
         """Telemetry + metering of one provider invocation.
 
@@ -1207,10 +1580,13 @@ class LiteLLMProvider:
         if it is always zero, caching is not working and that alone
         explains slow turns).
         """
+        hop = current_hop()
+        deployment = hop.deployment if hop is not None else None
         log.info(
             "llm.call_complete",
             tenant_id=str(tenant_id),
             role=role,
+            task=task,
             model=model,
             elapsed_ms=elapsed_ms,
             has_tools=has_tools,
@@ -1227,9 +1603,21 @@ class LiteLLMProvider:
         # (evals, scripts) es no-op.
         record_llm_usage(
             model=model,
-            provider=provider_of(model),
+            provider=deployment.provider if deployment is not None else provider_of(model),
             usage=usage_counts,
+            task=task,
+            route_decision_id=hop.decision_id if hop is not None else None,
         )
+        # Spec 047 (40.10): what a routed call cost counts against the turn's
+        # ceiling, and the router reports it in ``llm.route_decision``.
+        if deployment is not None:
+            cost = _call_cost_micros(deployment, usage_counts)
+            ledger = _current_ledger.get()
+            if ledger is not None:
+                ledger.cost_micros += cost
+            budget = current_turn_budget()
+            if budget is not None:
+                budget.add_cost(cost)
         # WP-06: hourly token counters for the cache-ratio alert. Best-effort.
         with contextlib.suppress(Exception):
             from nexus_api.core.redis_client import get_redis
@@ -1279,6 +1667,10 @@ class LLMRouter:
     classify_model: str
     respond_model: str
     fallback_model: str
+    #: Spec 047 (40.6): deployments resting after a provider failure.
+    cooldowns: CooldownBook = field(default_factory=CooldownBook)
+    #: Backoff between attempts of a routed call; None = ``_RETRY_BACKOFF_S``.
+    retry_backoff_s: float | None = None
 
     async def _call_with_resilience(
         self,
@@ -1297,6 +1689,12 @@ class LLMRouter:
         last_exc: Exception | None = None
         for model in models:
             for attempt in range(_MAX_ATTEMPTS_PER_MODEL):
+                # Spec 047 (40.10): every attempt is a call against the turn's
+                # ceiling, when C3 has set one. Outside the ``try``: reaching the
+                # limit is not a model failure to fall back from.
+                budget = current_turn_budget()
+                if budget is not None:
+                    budget.before_call()
                 try:
                     return await invoke(model)
                 except Exception as exc:
@@ -1421,6 +1819,232 @@ class LLMRouter:
             invoke=invoke,
         )
 
+    # ── routed calls (spec 047, T141) ────────────────────────────────────
+
+    async def complete_routed(
+        self,
+        *,
+        decision: RouteDecision,
+        tenant_id: uuid.UUID,
+        messages: list[dict[str, str]],
+        role: str | None = None,
+    ) -> RoutedCall[str]:
+        """A plain completion along the decision's chain."""
+
+        async def invoke(model: str) -> str:
+            return await self.provider.acomplete(
+                tenant_id=tenant_id,
+                role=role or decision.task,
+                model=model,
+                messages=messages,
+            )
+
+        return await self._routed(decision=decision, tenant_id=tenant_id, invoke=invoke)
+
+    async def complete_structured(
+        self,
+        *,
+        decision: RouteDecision,
+        tenant_id: uuid.UUID,
+        messages: list[dict[str, str]],
+        output: type[_M],
+        role: str | None = None,
+    ) -> RoutedCall[_M]:
+        """A typed completion: strict structured outputs where the deployment has
+        them, and our own validation **always** (41.3). An invalid reply raises
+        :class:`StructuredOutputInvalid`; it is not a provider failure, so it
+        neither falls back nor cools anything."""
+
+        async def invoke(model: str) -> str:
+            return await self.provider.acomplete(
+                tenant_id=tenant_id,
+                role=role or decision.task,
+                model=model,
+                messages=messages,
+            )
+
+        raw = await self._routed(
+            decision=decision,
+            tenant_id=tenant_id,
+            invoke=invoke,
+            response_schema=output.model_json_schema(),
+            schema_name=output.__name__.lower(),
+        )
+        try:
+            parsed = output.model_validate_json(_strip_fence(raw.value))
+        except ValidationError as exc:
+            raise StructuredOutputInvalid(f"{decision.task}: {exc.error_count()} errors") from exc
+        return RoutedCall(
+            value=parsed,
+            decision=raw.decision,
+            served=raw.served,
+            fallback_used=raw.fallback_used,
+            cooled=raw.cooled,
+            latency_ms=raw.latency_ms,
+            cost_micros=raw.cost_micros,
+        )
+
+    async def respond_routed(
+        self,
+        *,
+        decision: RouteDecision,
+        tenant_id: uuid.UUID,
+        role: str,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        extra: dict[str, Any] | None = None,
+    ) -> RoutedCall[LLMResponse]:
+        """One step of the ReAct loop along the decision's chain."""
+
+        async def invoke(model: str) -> LLMResponse:
+            return await self.provider.acomplete_with_tools(
+                tenant_id=tenant_id,
+                role=role,
+                model=model,
+                messages=messages,
+                tools=tools,
+                extra=extra,
+            )
+
+        return await self._routed(decision=decision, tenant_id=tenant_id, invoke=invoke)
+
+    async def _routed(
+        self,
+        *,
+        decision: RouteDecision,
+        tenant_id: uuid.UUID,
+        invoke: Callable[[str], Awaitable[_R]],
+        response_schema: Mapping[str, Any] | None = None,
+        schema_name: str = "result",
+    ) -> RoutedCall[_R]:
+        """Walk the chain: the chosen deployment, then its alternatives in the
+        same turn (40.6). A deployment whose provider failed after the retries
+        is cooled for its catalog time and skipped while it rests. Logs
+        ``llm.route_decision`` once, success or not."""
+        if decision.tenant_id != tenant_id:
+            # A decision is one client's: never the key to another's call (garantía 7).
+            raise IsolationViolation("route decision used for another tenant")
+        started = time.perf_counter()
+        ledger = _CallLedger()
+        ledger_token = _current_ledger.set(ledger)
+        cooled: list[str] = []
+        backoff = _RETRY_BACKOFF_S if self.retry_backoff_s is None else self.retry_backoff_s
+        try:
+            if not decision.chain:
+                raise NoModelAvailable(decision)
+            for deployment in decision.chain:
+                if self.cooldowns.is_cool(deployment.key):
+                    continue
+                hop = RouteHop(
+                    task=decision.task,
+                    deployment=deployment,
+                    decision_id=decision.id,
+                    reasoning=decision.reasoning,
+                    cache_key=decision.cache_key,
+                    response_schema=response_schema,
+                    schema_name=schema_name,
+                )
+                failure: Exception | None = None
+                for attempt in range(_MAX_ATTEMPTS_PER_MODEL):
+                    budget = current_turn_budget()
+                    if budget is not None:
+                        budget.before_call()
+                    try:
+                        with routed(hop):
+                            value = await invoke(deployment.key)
+                    except (UnknownRetention, RetentionNotGuaranteed) as exc:
+                        # A catalog error, not a provider one: never retried,
+                        # never cooled, and the next alternative has its own rule.
+                        log.error(
+                            "llm.retention_refused",
+                            tenant_id=str(tenant_id),
+                            deployment=deployment.key,
+                            error=str(exc),
+                        )
+                        failure = exc
+                        break
+                    except Exception as exc:
+                        failure = exc
+                        fast = _is_fast_retry_error(exc)
+                        log.warning(
+                            "llm.attempt_failed",
+                            tenant_id=str(tenant_id),
+                            role=decision.task,
+                            model=deployment.key,
+                            attempt=attempt,
+                            error=str(exc),
+                            fast_retry=fast,
+                        )
+                        if attempt + 1 < _MAX_ATTEMPTS_PER_MODEL and not fast:
+                            await asyncio.sleep(backoff * (attempt + 1))
+                    else:
+                        latency_ms = round((time.perf_counter() - started) * 1000)
+                        self._log_decision(
+                            decision,
+                            served=deployment.key,
+                            latency_ms=latency_ms,
+                            cost_micros=ledger.cost_micros,
+                        )
+                        return RoutedCall(
+                            value=value,
+                            decision=decision,
+                            served=deployment.key,
+                            fallback_used=deployment.key != decision.chosen,
+                            cooled=tuple(cooled),
+                            latency_ms=latency_ms,
+                            cost_micros=ledger.cost_micros,
+                        )
+                if failure is not None and _is_provider_failure(failure):
+                    seconds = deployment.capabilities.cooldown_s
+                    self.cooldowns.cool(deployment.key, seconds)
+                    cooled.append(deployment.key)
+                    log.warning(
+                        "llm.cooldown",
+                        tenant_id=str(tenant_id),
+                        deployment=deployment.key,
+                        seconds=seconds,
+                    )
+            raise ProviderChainExhausted(decision)
+        except BaseException:
+            self._log_decision(
+                decision,
+                served=None,
+                latency_ms=round((time.perf_counter() - started) * 1000),
+                cost_micros=ledger.cost_micros,
+            )
+            raise
+        finally:
+            _current_ledger.reset(ledger_token)
+
+    @staticmethod
+    def _log_decision(
+        decision: RouteDecision, *, served: str | None, latency_ms: int, cost_micros: int
+    ) -> None:
+        """``llm.route_decision`` (``events.md`` §5, garantía 6): client and
+        agent, the task and its policy, who was discarded and why, who answered —
+        and no text of the conversation."""
+        log.info(
+            ROUTE_DECISION_EVENT,
+            tenant_id=str(decision.tenant_id),
+            agent_id=None if decision.agent_id is None else str(decision.agent_id),
+            # What ``usage_records.route_decision_id`` points at.
+            decision_id=str(decision.id),
+            agent_version=decision.agent_version,
+            turn_id=decision.turn_id,
+            job_id=decision.job_id,
+            conversation_id=decision.conversation_id,
+            task=decision.task,
+            profile=decision.profile,
+            policy_version=decision.policy_version,
+            candidates_rejected=[r.as_log() for r in decision.rejected],
+            chosen=decision.chosen,
+            fallback_used=served if served is not None and served != decision.chosen else None,
+            escalated=decision.escalated,
+            latency_ms=latency_ms,
+            cost_micros=cost_micros,
+            price_micros=_price_micros(cost_micros),
+        )
+
     async def call_with_fallback(
         self,
         *,
@@ -1455,6 +2079,17 @@ class LLMRouter:
             return text, self.fallback_model
 
 
+def _strip_fence(raw: str) -> str:
+    """Some models wrap JSON in a markdown fence even when told not to."""
+    text = raw.strip()
+    if text.startswith("```"):
+        first_nl = text.find("\n")
+        text = text[first_nl + 1 :] if first_nl != -1 else ""
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3]
+    return text
+
+
 def build_default_router(
     *,
     classify_model: str,
@@ -1473,16 +2108,32 @@ def build_default_router(
 
 __all__ = [
     "DEFAULT_CONTEXT_MANAGEMENT",
+    "REASONING_BUDGET_TOKENS",
+    "RETENTION_WIRE",
+    "ROUTE_DECISION_EVENT",
+    "TASK_BY_ROLE",
+    "CooldownBook",
     "InMemoryProvider",
     "LLMCall",
     "LLMProvider",
     "LLMResponse",
     "LLMRouter",
     "LiteLLMProvider",
+    "NoModelAvailable",
+    "ProviderChainExhausted",
+    "RetentionNotGuaranteed",
+    "RouteHop",
+    "RoutedCall",
+    "StructuredOutputInvalid",
     "ToolCall",
+    "UnknownRetention",
+    "apply_capabilities",
     "build_default_router",
+    "current_hop",
     "default_context_management_from_env",
     "litellm_kwargs_contract",
+    "routed",
+    "task_for_call",
 ]
 
 

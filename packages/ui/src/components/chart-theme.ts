@@ -5,7 +5,9 @@
  * chart with 2–6 series stays legible in light and dark.
  */
 export const CHART_SERIES_COLORS: readonly string[] = [
-  "var(--color-primary)",
+  // El verde de marca por su nombre: desde la spec 047 `--color-primary` es el
+  // verde profundo, y la primera serie sería igual que la segunda.
+  "var(--color-mountain-meadow)",
   "var(--color-primary-deep)",
   "var(--color-accent-mid)",
   "var(--color-status-warning)",

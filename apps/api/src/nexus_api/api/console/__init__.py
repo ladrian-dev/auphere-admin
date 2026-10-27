@@ -20,6 +20,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from nexus_api.api.console import (
+    agent_draft_routes,
     agent_settings,
     agents,
     agents_list,
@@ -27,6 +28,8 @@ from nexus_api.api.console import (
     auth,
     auth_google,
     billing,
+    business,
+    business_records,
     capabilities,
     capabilities_client,
     channel_signup,
@@ -37,6 +40,7 @@ from nexus_api.api.console import (
     home,
     integrations,
     invitations,
+    jobs,
     keys,
     knowledge,
     lite,
@@ -47,6 +51,7 @@ from nexus_api.api.console import (
     password_reset,
     playbook,
     playground,
+    search,
     seed_templates,
     session_catalog,
     session_codes,
@@ -126,3 +131,17 @@ router.include_router(workflow.router)
 router.include_router(workstation.router)
 router.include_router(workstation_partner.router)
 router.include_router(session_catalog.router)
+# Spec 047 (ola 0): el estado de los trabajos largos. La ruta solo recibe el id;
+# ``job_tenant`` da el cliente y la pertenencia al partner se comprueba antes de
+# abrir la transacción con él.
+router.include_router(jobs.router)
+# Spec 047 (R47.2): ⌘K. Pantallas y acciones como claves; los agentes de cada
+# cliente se leen con su cliente puesto (RLS), nunca sin ``app.tenant_id``.
+router.include_router(search.router)
+# Spec 047 (requisito 3): el único borrador de cada agente, con If-Match, y su historial.
+router.include_router(agent_draft_routes.router)
+# Spec 047 (T057, T058): las secciones de Negocio que escribe la persona.
+router.include_router(business.router)
+# Spec 047 (de la T069 a la T072): la ficha entera, su procedencia, su historial, sus
+# propuestas, sus fuentes y el ClientSpec.
+router.include_router(business_records.router)

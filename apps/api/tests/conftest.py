@@ -40,6 +40,8 @@ os.environ.setdefault("NEXUS_ADMIN_TOKEN", "test-admin-token")
 os.environ.setdefault("NEXUS_WEBHOOK_HMAC_SECRET", "test-hmac-secret")
 os.environ.setdefault("NEXUS_FERNET_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("NEXUS_ISOLATION_ENFORCER_RAISE_IN_DEV", "false")
+# Spec 047 (T023): a model call without its router task fails in the tests.
+os.environ.setdefault("NEXUS_USAGE_REQUIRE_TASK", "1")
 
 # ── Partner console (CP-03): one Ed25519 keypair per test session ──────────
 # The API only ever holds the PUBLIC key; tests mint tokens with the private
@@ -326,6 +328,30 @@ async def test_engine() -> AsyncIterator[Any]:
 
 
 _TRUNCATE_TABLES = (
+    # Spec 047 — los trabajos largos (0175): cuelgan del tenant y del agente.
+    "jobs",
+    # Spec 047, bloque B (0176 a 0180): el turno, la ficha y el router por cliente.
+    # Las tablas de plataforma (precios, taxonomía, perfiles) guardan su semilla.
+    "turn_effects",
+    "meta_reconciliation_runs",
+    "business_links",
+    "business_suggestions",
+    "business_changes",
+    "business_field_provenance",
+    "business_sections",
+    "business_profiles",
+    "agent_model_certifications",
+    "router_anomalies",
+    # Spec 047, bloque C (0183): horarios, sedes, servicios por agente y
+    # compilaciones.
+    "agent_version_compilations",
+    "agent_services",
+    "business_faqs",
+    "business_special_shifts",
+    "business_special_dates",
+    "business_shifts",
+    "business_schedules",
+    "business_locations",
     # Spec 043 — Reservas (todas cuelgan del tenant; el CASCADE las alcanza
     # igual, pero nombrarlas deja el orden escrito).
     "reservation_busy",

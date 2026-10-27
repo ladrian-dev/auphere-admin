@@ -170,6 +170,48 @@ export type Me = {
   companion_enabled: boolean;
   /** Spec 032: the modules Auphere gave this partner. */
   modules?: string[];
+  /** Spec 047 (R55.2): the frame this partner sees. `v2` only once Auphere
+   *  activated the new console; absent on older API responses = `v1`. */
+  console_version?: ConsoleVersion;
+};
+export type ConsoleVersion = "v1" | "v2";
+
+/** Spec 047 — `GET /console/jobs/{job_id}` (`contracts/console-api.md`). The
+ *  console polls it with a growing wait (1, 2, 4… 10 s). No cost (C9); a
+ *  failure travels as `error_code` only and the console owns the words. */
+export type JobKind =
+  | "client_read"
+  | "client_builder"
+  | "agent_draft"
+  | "tests"
+  | "publish"
+  | "fix"
+  | "copilot"
+  | "quality_check"
+  | "suggestions";
+export type JobStatus = "queued" | "running" | "done" | "failed";
+export type Job = {
+  job_id: string;
+  kind: JobKind;
+  status: JobStatus;
+  agent_id: string | null;
+  progress: { step?: string | null; blocks?: unknown[] } & Record<string, unknown>;
+  questions: Record<string, unknown>[] | null;
+  result: Record<string, unknown> | null;
+  error_code: string | null;
+  created_at: string;
+  finished_at: string | null;
+};
+export type JobAccepted = { job_id: string };
+
+/** Spec 047 (R47.2) — `GET /console/search?q=`, the ⌘K palette. Only
+ *  actions the person may do come back (§V). Labels are the console's:
+ *  screens and actions travel as stable keys. */
+export type SearchResult = {
+  clients: { ref: string; name: string; niche: string | null }[];
+  agents: { agent_id: string; name: string; client_ref: string; client_name: string }[];
+  screens: { key: string; href: string }[];
+  actions: { key: string; href: string }[];
 };
 export type ClientSummary = {
   external_client_ref: string;
@@ -447,6 +489,7 @@ export type { Opts };
  * are spread into ``backendFor`` below. Keeps this file from being the
  * merge hotspot of every package.
  */
+import { agentDraftApi } from "./backend/agent-draft";
 import { agentToolsApi } from "./backend/agent-tools";
 import { capabilitiesApi } from "./backend/capabilities";
 import { channelsApi } from "./backend/channels";
@@ -492,6 +535,8 @@ export function backendFor(principal: Principal) {
       call<{ code: string }>("/console/auth/session-code", { method: "POST", body }),
     // lane modules — each lane owns its file under lib/backend/
     ...agentToolsApi(call),
+    // Spec 047 (historia 2): the agent's one draft, with If-Match.
+    ...agentDraftApi(call),
     // Spec 017 (R5): herramientas y habilidades, en una sola lectura.
     ...capabilitiesApi(call),
     ...playgroundApi(call),

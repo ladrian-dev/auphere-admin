@@ -82,14 +82,18 @@ async def test_promote_workflow(client, admin_headers, seed_tenants):
 
 async def test_rollback_workflow(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
-    for prompt in ("v1", "v2"):
-        await client.put(
+    # Spec 047 (R3.1): one draft per agent — stage, publish, stage the next.
+    for version, prompt in ((1, "v1"), (2, "v2")):
+        staged = await client.put(
             f"/admin/tenants/{tid}/agent-config",
             json={"system_prompt_rendered": prompt, "tools": []},
             headers=admin_headers,
         )
-    await client.post(f"/admin/tenants/{tid}/agent-config/1/promote", headers=admin_headers)
-    await client.post(f"/admin/tenants/{tid}/agent-config/2/promote", headers=admin_headers)
+        assert staged.status_code == 201 and staged.json()["version"] == version
+        promoted = await client.post(
+            f"/admin/tenants/{tid}/agent-config/{version}/promote", headers=admin_headers
+        )
+        assert promoted.status_code == 200, promoted.text
     # Rollback to v1
     r = await client.post(f"/admin/tenants/{tid}/agent-config/1/rollback", headers=admin_headers)
     assert r.status_code == 200
@@ -119,14 +123,42 @@ async def test_endpoints_require_auth(client, seed_tenants):
 async def test_versions_listed_in_descending_order(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
     for prompt in ("v1", "v2", "v3"):
-        await client.put(
+        staged = await client.put(
             f"/admin/tenants/{tid}/agent-config",
             json={"system_prompt_rendered": prompt, "tools": []},
             headers=admin_headers,
         )
+        assert staged.status_code == 201, staged.text
+        if prompt != "v3":
+            await client.post(
+                f"/admin/tenants/{tid}/agent-config/{staged.json()['version']}/promote",
+                headers=admin_headers,
+            )
     r = await client.get(f"/admin/tenants/{tid}/agent-config", headers=admin_headers)
     versions = [v["version"] for v in r.json()["versions"]]
     assert versions == [3, 2, 1]
+    assert [v["status"] for v in r.json()["versions"]] == ["staged", "active", "archived"]
+
+
+async def test_staging_twice_writes_into_the_one_draft(client, admin_headers, seed_tenants):
+    """Spec 047 (R3.1): a second PUT before publishing does not stage another
+    version — it writes into the agent's draft."""
+    tid = seed_tenants["a"]
+    first = await client.put(
+        f"/admin/tenants/{tid}/agent-config",
+        json={"system_prompt_rendered": "uno", "tools": []},
+        headers=admin_headers,
+    )
+    second = await client.put(
+        f"/admin/tenants/{tid}/agent-config",
+        json={"system_prompt_rendered": "dos", "tools": []},
+        headers=admin_headers,
+    )
+    assert first.json()["version"] == second.json()["version"] == 1
+    r = await client.get(f"/admin/tenants/{tid}/agent-config", headers=admin_headers)
+    assert [(v["version"], v["system_prompt_rendered"]) for v in r.json()["versions"]] == [
+        (1, "dos")
+    ]
 
 
 # ── Block J: seed-template bootstrap ───────────────────────────────────────

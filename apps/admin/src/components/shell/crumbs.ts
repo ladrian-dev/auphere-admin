@@ -19,6 +19,15 @@ const SECTION: Record<string, string> = {
   connectors: "Conectores",
   qa: "Playground QA",
   status: "Estado",
+  // Spec 047 (T150).
+  models: "Modelos",
+  router: "Router",
+  certifications: "Certificaciones",
+};
+
+/** Pages right under a section that are not a record of it. */
+const PAGE: Record<string, Record<string, string>> = {
+  router: { anomalies: "Anomalías" },
 };
 
 /** Tabs and sub-pages, by the section they hang from. */
@@ -79,6 +88,11 @@ export function crumbsFor(pathname: string, names: Record<string, string>): Crum
     const parent = segs[i - 1]!;
     if (seg === "new") {
       out.push({ label: NEW_LABEL[parent] ?? "Nuevo", href: href(i) });
+      continue;
+    }
+    const page = PAGE[section]?.[seg];
+    if (i === 1 && page) {
+      out.push({ label: page, href: href(i) });
       continue;
     }
     if (i === 1) {

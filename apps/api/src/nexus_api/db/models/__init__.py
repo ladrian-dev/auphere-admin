@@ -12,7 +12,9 @@ from nexus_api.db.models.agent import (
     Agent,
     AgentConfig,
     AgentConfigStatus,
+    AgentService,
     AgentStatus,
+    AgentVersionCompilation,
 )
 from nexus_api.db.models.agent_memory import AgentMemory
 from nexus_api.db.models.appointment import Appointment, AppointmentStatus
@@ -29,6 +31,20 @@ from nexus_api.db.models.broadcast import (
     BroadcastRecipient,
     BroadcastRecipientStatus,
     BroadcastStatus,
+)
+from nexus_api.db.models.business import (
+    BusinessChange,
+    BusinessFaq,
+    BusinessFieldProvenance,
+    BusinessLink,
+    BusinessLocation,
+    BusinessProfile,
+    BusinessSchedule,
+    BusinessSection,
+    BusinessShift,
+    BusinessSpecialDate,
+    BusinessSpecialShift,
+    BusinessSuggestion,
 )
 from nexus_api.db.models.channel import (
     Channel,
@@ -126,6 +142,7 @@ from nexus_api.db.models.inbox import (
     SavedReply,
 )
 from nexus_api.db.models.isolation_event import IsolationEvent
+from nexus_api.db.models.jobs import JOB_KINDS, JOB_STATUSES, Job
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
 from nexus_api.db.models.knowledge import (
     KnowledgeDocument,
@@ -218,6 +235,14 @@ from nexus_api.db.models.reservation import (
     ReservationStaff,
     ReservationWaitlist,
 )
+from nexus_api.db.models.router import (
+    AgentModelCertification,
+    ModelPrice,
+    ModelTaskCertification,
+    RouterAnomaly,
+    RouterProfile,
+    RouterTaxonomy,
+)
 from nexus_api.db.models.sales import AgentSale
 from nexus_api.db.models.scheduled_job import (
     ScheduledJob,
@@ -246,6 +271,7 @@ from nexus_api.db.models.teammate import (
 from nexus_api.db.models.tenant import Tenant, TenantPlan, TenantStatus, TenantTier
 from nexus_api.db.models.tenant_payment import TenantPayment
 from nexus_api.db.models.tool import ToolCatalog, ToolStatus
+from nexus_api.db.models.turns import MetaReconciliationRun, TurnEffect
 from nexus_api.db.models.usage import UsageEvent
 from nexus_api.db.models.usage_record import USAGE_METERS, UsageRecord
 from nexus_api.db.models.workflow import (
@@ -268,7 +294,9 @@ __all__ = [
     "EVENT_OPEN",
     "EVENT_STATUS",
     "INVITATION_TTL",
+    "JOB_KINDS",
     "JOB_SEED",
+    "JOB_STATUSES",
     "LEDGER_BUCKETS",
     "MODEL_ROLES",
     "MODE_BUILD",
@@ -310,8 +338,11 @@ __all__ = [
     "AgentConfig",
     "AgentConfigStatus",
     "AgentMemory",
+    "AgentModelCertification",
     "AgentSale",
+    "AgentService",
     "AgentStatus",
+    "AgentVersionCompilation",
     "ApiKeyScope",
     "ApiKeyType",
     "Appointment",
@@ -324,6 +355,18 @@ __all__ = [
     "BroadcastRecipient",
     "BroadcastRecipientStatus",
     "BroadcastStatus",
+    "BusinessChange",
+    "BusinessFaq",
+    "BusinessFieldProvenance",
+    "BusinessLink",
+    "BusinessLocation",
+    "BusinessProfile",
+    "BusinessSchedule",
+    "BusinessSection",
+    "BusinessShift",
+    "BusinessSpecialDate",
+    "BusinessSpecialShift",
+    "BusinessSuggestion",
     "Channel",
     "ChannelSignupLink",
     "ChannelStatus",
@@ -371,6 +414,7 @@ __all__ = [
     "InvoiceLine",
     "InvoiceStatus",
     "IsolationEvent",
+    "Job",
     "KGEdge",
     "KGNode",
     "KGSchema",
@@ -387,7 +431,10 @@ __all__ = [
     "Message",
     "MessageDirection",
     "MessageStatus",
+    "MetaReconciliationRun",
+    "ModelPrice",
     "ModelProfile",
+    "ModelTaskCertification",
     "NotificationAudience",
     "NotificationKind",
     "NotificationSeverity",
@@ -436,6 +483,9 @@ __all__ = [
     "ReservationSettings",
     "ReservationStaff",
     "ReservationWaitlist",
+    "RouterAnomaly",
+    "RouterProfile",
+    "RouterTaxonomy",
     "SavedReply",
     "ScheduledJob",
     "ScheduledJobKind",
@@ -460,6 +510,7 @@ __all__ = [
     "TenantTier",
     "ToolCatalog",
     "ToolStatus",
+    "TurnEffect",
     "UsageEvent",
     "UsageLedger",
     "UsageLedger",

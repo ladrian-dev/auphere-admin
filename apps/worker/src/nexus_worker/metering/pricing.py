@@ -24,12 +24,15 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Collection
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
 import structlog
+from nexus_api.core import respond_catalog
 from nexus_api.db.base import get_sessionmaker
 
 log = structlog.get_logger(__name__)
@@ -76,6 +79,14 @@ class ModelPrice:
     # consulta por turno para leer un entero que cambia una vez al año
     # sería pagar latencia por nada.
     max_context: int | None = None
+    # Spec 047 (0180): lo que ``cheapest_model`` filtra. Los valores por defecto
+    # son los de una fila de antes de la 0180, para que quien construye un
+    # ``ModelPrice`` a mano (tests) no cambie de comportamiento.
+    status: str = "active"
+    supports_tools: bool = True
+    residency: str = "global"
+    zero_retention: bool = False
+    offer_label: str | None = None
 
 
 # Medidor → (atributo de tarifa, unidad). ``mtok`` divide entre un millón;
@@ -101,7 +112,12 @@ _CATALOG_SQL = sa.text(
            quota_weight,
            quota_weight_input,
            quota_weight_cache_read,
-           quota_weight_output
+           quota_weight_output,
+           status,
+           supports_tools,
+           residency,
+           zero_retention,
+           offer_label
       FROM model_profiles
     """
 )
@@ -175,6 +191,11 @@ async def load_catalog() -> dict[str, ModelPrice]:
         w_in,
         w_cache,
         w_out,
+        status,
+        supports_tools,
+        residency,
+        zero_retention,
+        offer_label,
     ) in rows:
         catalog[model_id] = ModelPrice(
             model_id=model_id,
@@ -189,7 +210,24 @@ async def load_catalog() -> dict[str, ModelPrice]:
             quota_weight_input=w_in,
             quota_weight_cache_read=w_cache,
             quota_weight_output=w_out,
+            status=status,
+            supports_tools=bool(supports_tools),
+            residency=residency,
+            zero_retention=bool(zero_retention),
+            offer_label=offer_label,
         )
+    # Spec 047 (T139): la oferta y lo ejecutable por un hop salen de estas mismas
+    # filas. Se refrescan aquí porque esta es la lectura periódica del catálogo
+    # en el worker; así el hop no consulta la base y tampoco se queda viejo.
+    respond_catalog.refresh_from_rows(
+        {
+            "model_id": p.model_id,
+            "status": p.status,
+            "offer_label": p.offer_label,
+            "price_input_per_mtok": p.input_per_mtok,
+        }
+        for p in catalog.values()
+    )
     return catalog
 
 
@@ -292,7 +330,13 @@ def invalidate() -> None:
     _unit_cached_at = 0.0
 
 
-async def cheapest_model() -> str | None:
+async def cheapest_model(
+    *,
+    statuses: Collection[str] = ("active",),
+    needs_tools: bool = True,
+    allowed: AbstractSet[str] | None = None,
+    eu_only: bool = False,
+) -> str | None:
     """El modelo con la entrada más barata del catálogo (WP-20).
 
     Se ordena por precio de ENTRADA y no por el de salida porque en estos
@@ -300,11 +344,29 @@ async def cheapest_model() -> str | None:
     historial y las envolturas de herramienta se reenvían enteros en cada
     llamada, mientras que la respuesta son un par de frases.
 
-    Devuelve None si no hay ningún modelo con precio — degradar a un
-    modelo del que no sabemos el coste no degradaría nada.
+    Spec 047 (plan, ola 6): con sus filtros. Sin ellos, el más barato del
+    catálogo podía ser uno deprecado o uno sin herramientas, y el turno
+    degradado es un turno con herramientas:
+
+    - ``statuses``: solo lo activo, por defecto;
+    - ``needs_tools``: solo lo que admite herramientas, por defecto;
+    - ``allowed``: la lista permitida del partner y del cliente
+      (``partner_model_allowlist`` y ``tenant_model_bindings``), si se sabe;
+    - ``eu_only``: «Solo UE» del cliente, si lo tiene.
+
+    Devuelve None si no hay ningún modelo con precio que pase — degradar a
+    un modelo del que no sabemos el coste no degradaría nada.
     """
     catalog = await get_catalog()
-    priced = [p for p in catalog.values() if p.input_per_mtok is not None]
+    priced = [
+        p
+        for p in catalog.values()
+        if p.input_per_mtok is not None
+        and p.status in statuses
+        and (p.supports_tools or not needs_tools)
+        and (allowed is None or p.model_id in allowed)
+        and (not eu_only or p.residency == "eu")
+    ]
     if not priced:
         return None
     return min(priced, key=lambda p: (p.input_per_mtok, p.model_id)).model_id

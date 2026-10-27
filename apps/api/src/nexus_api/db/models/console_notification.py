@@ -72,6 +72,35 @@ class NotificationKind(str, enum.Enum):
     CLIENT_BALANCE_LOW = "client.balance_low"
     # El saldo del cliente se agotó: el agente no responde. payload: {}
     CLIENT_BALANCE_OUT = "client.balance_out"
+    # Spec 047 (T049) — la lectura de la web del cliente terminó, para quien la
+    # lanzó. payload: {external_client_ref, job_id} (+ error_code si falló).
+    CLIENT_READ_DONE = "client.read.done"
+    CLIENT_READ_FAILED = "client.read.failed"
+    # Spec 047 — the rest of ``contracts/events.md`` §3 (partner and client
+    # audiences; the ``ops.*`` ones go to the operator panel). The payload never
+    # carries message bodies (C8) nor our cost (C9).
+    CLIENT_WALLET_LOW = "client.wallet.low"
+    CLIENT_WALLET_NOT_ENOUGH = "client.wallet.not_enough"
+    CLIENT_WALLET_EMPTY = "client.wallet.empty"
+    CLIENT_WALLET_REFILL_SHORT = "client.wallet.refill_short"
+    CLIENT_BALANCE_REQUEST = "client.balance_request"
+    AGENT_CAP_WARNING = "agent.cap.warning"
+    AGENT_CAP_REACHED = "agent.cap.reached"
+    AGENT_PAUSED = "agent.paused"
+    AGENT_RESUMED = "agent.resumed"
+    CHANNEL_PAUSED = "channel.paused"
+    CHANNEL_RESUMED = "channel.resumed"
+    CHANNEL_PROBLEM = "channel.problem"
+    CHANNEL_CONNECTED = "channel.connected"
+    INTEGRATION_REAUTH_REQUIRED = "integration.reauth_required"
+    CLIENT_BUSINESS_CHANGED = "client.business_changed"
+    AGENT_TESTS_FAILING = "agent.tests.failing"
+    AGENT_SUGGESTIONS_READY = "agent.suggestions.ready"
+    AGENT_CORRECTION_PROPOSED = "agent.correction.proposed"
+    BUILD_BUDGET_WARNING = "build.budget.warning"
+    BUILD_BUDGET_EXHAUSTED = "build.budget.exhausted"
+    MODEL_RETIREMENT = "model.retirement"
+    MODEL_PRICE_CHANGE = "model.price_change"
 
 
 class NotificationAudience(str, enum.Enum):

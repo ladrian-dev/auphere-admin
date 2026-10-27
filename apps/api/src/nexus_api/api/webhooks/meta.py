@@ -74,6 +74,7 @@ from nexus_api.repositories.auphere_channels import (
 )
 from nexus_api.services.channel_routing import config_agent_enabled
 from nexus_api.services.inbox_stream import publish_inbox_event
+from nexus_api.services.meta_reconciliation import record_delivered
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
 from nexus_api.services.payment_reviews import parse_tap, resolve_tap
 from nexus_api.services.whatsapp_templates import invalidate_template_cache
@@ -113,6 +114,12 @@ COEXISTENCE_STREAM_MAXLEN = 10_000
 #
 # Spec 030: las políticas son las del agente de ESE número (o del principal
 # si el número no tiene); otro agente del cliente tiene las suyas.
+#
+# Spec 047 (requisito 2.2): el canal se busca con los MISMOS estados que
+# reconoce ``resolve_channel_tenant`` (``LIVE_CHANNEL_STATUSES``): en pausa y
+# con problemas siguen siendo del cliente, y su entrante se encola para
+# guardarlo. Un desvinculado no cuenta —su número puede ser ya de otro canal
+# del mismo cliente—. El estado viaja para decidir los ticks azules.
 _INBOUND_PRELUDE_SQL = text(
     """
     SELECT
@@ -124,11 +131,13 @@ _INBOUND_PRELUDE_SQL = text(
          FROM channels c
         WHERE c.provider = 'meta'
           AND c.provider_identifier = :identifier
+          AND c.status IN ('active', 'paused', 'degraded')
         LIMIT 1)                                        AS channel_id,
       (SELECT c.config
          FROM channels c
         WHERE c.provider = 'meta'
           AND c.provider_identifier = :identifier
+          AND c.status IN ('active', 'paused', 'degraded')
         LIMIT 1)                                        AS channel_config,
       (SELECT a.policies
          FROM agent_configs a
@@ -138,13 +147,20 @@ _INBOUND_PRELUDE_SQL = text(
                    FROM channels c
                   WHERE c.provider = 'meta'
                     AND c.provider_identifier = :identifier
+                    AND c.status IN ('active', 'paused', 'degraded')
                   LIMIT 1),
                 (SELECT g.id
                    FROM agents g
                   WHERE g.status = 'active'
                   ORDER BY g.created_at, g.id
                   LIMIT 1))
-        LIMIT 1)                                        AS agent_policies
+        LIMIT 1)                                        AS agent_policies,
+      (SELECT c.status::text
+         FROM channels c
+        WHERE c.provider = 'meta'
+          AND c.provider_identifier = :identifier
+          AND c.status IN ('active', 'paused', 'degraded')
+        LIMIT 1)                                        AS channel_status
     """
 )
 
@@ -364,7 +380,7 @@ async def _handle_inbound(
             )
         ).one()
 
-    prior, channel_id, channel_config, agent_policies_raw = row
+    prior, channel_id, channel_config, agent_policies_raw, channel_status = row
     if prior is not None:
         log.info(
             "webhook.meta.dedupe_db_hit",
@@ -538,6 +554,15 @@ async def _handle_inbound(
             channel_id=str(channel_id),
             wamid=wamid,
         )
+    elif channel_status == "paused":
+        # Spec 047: a paused number is still the client's and its inbound is
+        # kept, but nobody answers it — same reason as the send-only line.
+        log.info(
+            "webhook.meta.read_receipt_suppressed_paused_channel",
+            tenant_id=str(tenant_id),
+            channel_id=str(channel_id),
+            wamid=wamid,
+        )
     elif admin_only_suppresses(agent_policies, inbound.sender_identifier):
         log.info(
             "webhook.meta.read_receipt_suppressed_not_admin",
@@ -555,6 +580,10 @@ async def _handle_inbound(
     # pool) so standard-tier bursts can't move their latency.
     tier = await resolve_tenant_tier(session, redis, tenant_id)
     await xadd_capped(redis, stream_for_tier(tier), fields)
+    # Spec 047 (requisito 2.6): what Meta delivered and we enqueued, by channel
+    # and day — only the wamid. The daily reconciliation squares it with what
+    # the base stored.
+    await record_delivered(redis, channel_id=channel_id, wamid=wamid)
 
     log.info(
         "webhook.meta.inbound_enqueued",

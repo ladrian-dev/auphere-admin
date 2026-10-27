@@ -41,6 +41,10 @@ describe("breadcrumb trail (spec 035)", () => {
     expect(crumbsFor("/tenants/new", names).map((c) => c.label)).toEqual(["Clientes", "Nuevo cliente"]);
     expect(crumbsFor("/tenants/t1/capabilities", names).at(-1)?.label).toBe("Habilidades");
     expect(crumbsFor("/tenants/t1/playground", names).at(-1)?.label).toBe("Playground");
+    // Spec 047 (T150): the catalog, the router and its anomalies, the certifications.
+    expect(crumbsFor("/models", names)).toEqual([{ label: "Modelos", href: null }]);
+    expect(crumbsFor("/router/anomalies", names).map((c) => c.label)).toEqual(["Router", "Anomalías"]);
+    expect(crumbsFor("/certifications", names)).toEqual([{ label: "Certificaciones", href: null }]);
   });
 
   it("only the last step is not a link", () => {

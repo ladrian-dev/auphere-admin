@@ -145,6 +145,49 @@ def test_turn_cap_forces_escalation() -> None:
     assert forced_escalation({}, history) is False
 
 
+def test_the_hours_come_from_the_business_profile_not_the_console_copy() -> None:
+    """Spec 047 (T056): with the profile's hours in the bundle, «open now?» is
+    computed from them — night shifts and special dates included — and the old
+    ``policies.console.schedule`` copy is not rendered any more."""
+    from datetime import date
+
+    from nexus_api.services.business import hours as h
+
+    week = h.week_from_days(
+        "daily",
+        {
+            "fri": [{"open": "20:00", "close": "02:00"}],
+            "sat": [{"open": "20:00", "close": "02:00"}],
+        },
+    )
+    christmas = h.SpecialDay(
+        date_from=date(2026, 12, 25), date_to=date(2026, 12, 25), closed=True, name="Navidad"
+    )
+    snapshot = {
+        **h.dump_hours(h.Hours(week=week, specials=(christmas,), timezone="Europe/Madrid")),
+        "locale": "es",
+        "locations": [],
+    }
+    policies = {**POLICIES, h.RUNTIME_KEY: snapshot}
+
+    # Saturday 2026-06-13 01:00 in Madrid (23:00 UTC on Friday): Friday's night shift.
+    block = render_operating_policy_block(policies, now=datetime(2026, 6, 12, 23, 0, tzinfo=UTC))
+    assert "Abrimos viernes y sábados de 20:00 a 02:00 del día siguiente." in block
+    assert "the business is OPEN until Saturday 02:00" in block
+    assert "Monday 09:00-18:00" not in block, "the console copy is not the source any more"
+    assert 'When closed, say: "Cerrado, te escribimos mañana."' in block
+
+    closed = render_operating_policy_block(policies, now=datetime(2026, 12, 25, 21, 0, tzinfo=UTC))
+    assert "the business is CLOSED" in closed
+    assert "Today is a special date (Navidad): closed all day." in closed
+
+    # Without hours in the profile, the console schedule still applies (clients
+    # not migrated yet) and nothing is invented.
+    unknown = {**POLICIES, h.RUNTIME_KEY: {**snapshot, "week": None}}
+    assert "Monday 09:00-18:00" in render_operating_policy_block(unknown)
+    assert render_operating_policy_block({h.RUNTIME_KEY: {**snapshot, "week": None}}) == ""
+
+
 def test_channel_knowledge_block_never_uses_playbook_tag() -> None:
     """WhatsApp inject is the client KB fence only — no partner playbook."""
     out = render_knowledge_block([("Doc", "facts about the clinic")])

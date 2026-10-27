@@ -61,10 +61,14 @@ class WorkerSettings(BaseSettings):
     # Flor y Encanto, 2026-10-05: a customer who writes «Y tulipanes?» and,
     # three seconds later, «y para mañana qué horarios hay?» got two full
     # answers, each with its own product cards. People send one thought in
-    # several bubbles; a person reads them all and answers once. When a
-    # text entry is dequeued, the slot waits this long for the rest of the
-    # thought and folds what arrived into one turn. 0 disables it.
-    runner_coalesce_window_ms: int = 1500
+    # several bubbles; a person reads them all and answers once.
+    #
+    # Spec 047 (requisito 1.1, research D9 y D43): each saved inbound schedules
+    # its conversation's turn this long ahead in the deferred queue, and every
+    # new message pushes it back — one turn for the whole burst, whichever
+    # replica got each bubble. 3 s by default; Auphere sets it per deployment
+    # (``NEXUS_RUNNER_COALESCE_WINDOW_MS``). 0 runs each turn inline.
+    runner_coalesce_window_ms: int = 3000
 
     # ── WP-13: checkpoint retention ─────────────────────────────────────────
     # Keep the newest N checkpoints per conversation thread; purge threads

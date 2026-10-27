@@ -59,6 +59,37 @@ class MediaKind(str, enum.Enum):
     CONTACTS = "contacts"
 
 
+#: Spec 047 (migración 0176, ``contracts/events.md`` §2): por qué una
+#: conversación espera a una persona. Lista cerrada; salvo ``out_of_audience``,
+#: la conversación va a la Bandeja «Espera a una persona».
+WAITING_REASONS: tuple[str, ...] = (
+    "no_balance",
+    "agent_cap",
+    "paused_agent",
+    "paused_channel",
+    "paused_client",
+    "archived_client",
+    "channel_problem",
+    "agent_unpublished",
+    "out_of_audience",
+    "no_model",
+    "provider_failure",
+    "turn_limit",
+    "escalated",
+    "human_takeover",
+    "reception_loop",
+)
+#: Spec 047 (0176): quién escribió un mensaje.
+MESSAGE_ORIGINS: tuple[str, ...] = (
+    "customer",
+    "agent",
+    "business_person",
+    "business_app_echo",
+    "history_import",
+    "system",
+)
+
+
 class Customer(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "customers"
     __table_args__ = (
@@ -164,6 +195,15 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     last_attended_inbound_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Spec 047 (migración 0176). Todo entrante se guarda antes de las puertas;
+    # la puerta que no deja contestar escribe aquí su código (``WAITING_REASONS``)
+    # y la conversación pasa a la Bandeja con él.
+    waiting_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: El último turno que tomó sus mensajes (agrupación de 3 s, requisito 1.1).
+    last_turn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Coexistencia (ola 4): un eco del negocio deja la conversación a una
+    #: persona hasta esta hora.
+    takeover_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
@@ -293,6 +333,10 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # Spec 030: which agent wrote an agent message (several per client).
     agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Spec 047 (migración 0176): who wrote it (``MESSAGE_ORIGINS``), and the turn
+    # that took it. An inbound message has no turn until one takes it.
+    origin: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    turn_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

@@ -11,6 +11,14 @@ Implementation:
 - Not found: raise `TenantNotFound`. The webhook entry-point translates this to
   HTTP 200 + structured log + `channel.unresolved_event` metric (fail-closed:
   no tenant, no processing).
+
+Spec 047 (requisito 2.2, migración 0176): the function recognises the channels
+in ``LIVE_CHANNEL_STATUSES`` — ``active``, ``paused`` and ``degraded``. A number
+that is paused or has problems is still the client's: its message is saved and
+goes to the Inbox with its reason instead of being dropped here. Only a
+``disconnected`` number stops resolving (its number may belong to someone else
+now, spec 021). Outbound sends keep using active channels only
+(``services/channel_routing``).
 """
 
 from __future__ import annotations
@@ -23,6 +31,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.config import get_settings
 from nexus_api.core.errors import TenantNotFound
+
+#: What ``resolve_channel_tenant`` and the Meta webhook prelude recognise as
+#: the client's number (0176).
+LIVE_CHANNEL_STATUSES: tuple[str, ...] = ("active", "paused", "degraded")
 
 
 def _cache_key(provider: str, identifier: str) -> str:
@@ -52,7 +64,7 @@ async def resolve_tenant(
     )
     tenant_id = result.scalar_one_or_none()
     if tenant_id is None:
-        raise TenantNotFound(f"No active channel for provider={provider} identifier={identifier}")
+        raise TenantNotFound(f"No live channel for provider={provider} identifier={identifier}")
     if isinstance(tenant_id, str):
         tenant_id = uuid.UUID(tenant_id)
 

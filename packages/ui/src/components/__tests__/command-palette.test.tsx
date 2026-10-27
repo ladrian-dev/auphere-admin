@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { axeViolations } from "../../test/axe";
 import { CommandPalette, filterCommandItems, type CommandItem } from "../command-palette";
 
 function items(onSelect: (id: string) => void): CommandItem[] {
@@ -52,6 +53,52 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("listbox")).toHaveAttribute("aria-busy", "true");
     rerender(<CommandPalette open onOpenChange={() => {}} query="zzz" onQueryChange={() => {}} items={[]} title="Buscar" error="Falló" />);
     expect(screen.getByRole("alert")).toHaveTextContent("Falló");
+  });
+
+  // Spec 047 (R47.2): las flechas mueven, Intro abre y Escape cierra.
+  it("Escape closes it, and ↑ wraps to the last option", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <CommandPalette open onOpenChange={onOpenChange} query="" onQueryChange={() => {}} items={items(() => {})} title="Buscar" />,
+    );
+    screen.getByRole("combobox").focus();
+    await user.keyboard("{ArrowUp}");
+    expect(screen.getByRole("option", { name: /Nuevo cliente/ })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything());
+  });
+
+  // Spec 047 (R47.2): «agentes, con su cliente». El lector de pantalla tiene que
+  // oír «Recepción, Flor y Encanto», no «RecepciónFlor y Encanto».
+  it("an option's name separates the label from its hint", () => {
+    render(
+      <CommandPalette
+        open
+        onOpenChange={() => {}}
+        query="rec"
+        onQueryChange={() => {}}
+        items={[{ id: "a-1", group: "agents", label: "Recepción", hint: "Flor y Encanto", onSelect: () => {} }]}
+        title="Buscar"
+      />,
+    );
+    expect(screen.getByRole("option")).toHaveAccessibleName("Recepción, Flor y Encanto");
+  });
+
+  it("passes axe while open", async () => {
+    render(
+      <CommandPalette
+        open
+        onOpenChange={() => {}}
+        query="rec"
+        onQueryChange={() => {}}
+        items={items(() => {})}
+        groups={{ clients: "Clientes", actions: "Acciones" }}
+        title="Buscar"
+        hint="↑↓ navegar · ↵ abrir · Esc cerrar"
+      />,
+    );
+    expect(await axeViolations()).toEqual([]);
   });
 
   it("filters case- and diacritic-insensitively", () => {

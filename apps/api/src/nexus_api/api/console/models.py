@@ -51,14 +51,17 @@ def _unknown_model(model_id: str) -> HTTPException:
     )
 
 
-_CATALOG_DISPLAY: dict[str, str] = dict(RESPOND_MODELS)
+def _catalog_display() -> dict[str, str]:
+    """Spec 047: the offer is data, refreshed at start; read it when used."""
+    return dict(RESPOND_MODELS)
+
 
 #: Lo que responde sin binding: el defecto del worker (``llm_respond_model``).
 FALLBACK_MODEL_ID = SOL_MODEL_ID
 
 
 def _fallback_display() -> str:
-    return _CATALOG_DISPLAY.get(FALLBACK_MODEL_ID, FALLBACK_MODEL_ID)
+    return _catalog_display().get(FALLBACK_MODEL_ID, FALLBACK_MODEL_ID)
 
 
 async def _profiles(session: AsyncSession, model_ids: list[str]) -> dict[str, ModelProfile]:
@@ -122,7 +125,7 @@ async def list_console_models(
             model_id=model_id,
             display_name=str(profiles[model_id].display_name)
             if model_id in profiles
-            else _CATALOG_DISPLAY[model_id],
+            else _catalog_display()[model_id],
             relative_cost=costs[model_id],
             weights=weights[model_id],
         )

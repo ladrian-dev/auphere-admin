@@ -82,11 +82,13 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
     ):
         collector.record_llm_usage(
             model="anthropic/claude-haiku-4-5",
+            task="classify",
             provider="anthropic",
             usage={"prompt_tokens": 700, "completion_tokens": 20},
         )
         collector.record_llm_usage(
             model="anthropic/claude-sonnet-4-6",
+            task="tool_turn",
             provider="anthropic",
             usage={
                 "prompt_tokens": 5000,
@@ -186,6 +188,7 @@ async def test_replaying_the_stream_creates_no_duplicates(clean_usage_stream) ->
         async with collector.usage_turn(tenant_id=tenant_id, turn_id=f"turn-{i}"):
             collector.record_llm_usage(
                 model="anthropic/claude-sonnet-4-6",
+                task="tool_turn",
                 provider="anthropic",
                 usage={"prompt_tokens": 1000, "completion_tokens": 100},
             )
@@ -225,6 +228,7 @@ async def test_entries_survive_a_persist_failure_and_land_on_the_next_pass(
     async with collector.usage_turn(tenant_id=tenant_id, turn_id="reintentable"):
         collector.record_llm_usage(
             model="anthropic/claude-sonnet-4-6",
+            task="tool_turn",
             provider="anthropic",
             usage={"prompt_tokens": 100, "completion_tokens": 10},
         )
@@ -263,7 +267,10 @@ async def test_a_poison_entry_goes_to_the_dlq_and_stops_blocking(clean_usage_str
     await redis.xadd(collector.USAGE_STREAM, {"tenant_id": "no-soy-un-uuid", "events": "[]"})
     async with collector.usage_turn(tenant_id=tenant_id, turn_id="bueno"):
         collector.record_llm_usage(
-            model="m", provider="anthropic", usage={"prompt_tokens": 10, "completion_tokens": 1}
+            model="m",
+            provider="anthropic",
+            usage={"prompt_tokens": 10, "completion_tokens": 1},
+            task="answer",
         )
 
     await drain_once(redis, consumer_name="test-metering")

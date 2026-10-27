@@ -83,4 +83,138 @@ export const agentsMessages = {
     en: "That number only sends notices: no agent answers on it.",
   },
   "agents.error.agent_archived": { es: "Ese agente está archivado.", en: "That agent is archived." },
+
+  // Spec 047, historia 2: un solo borrador por agente, una sola barra de
+  // guardado y el aviso de conflicto con los dos cambios.
+  "agents.draft.prompt.title": { es: "Instrucciones", en: "Instructions" },
+  "agents.draft.prompt.help": {
+    es: "Lo que el agente sigue en cada conversación. Se guarda en el borrador del agente. Publicarlo es otro paso.",
+    en: "What the agent follows in every conversation. It is saved to the agent's draft. Publishing is a separate step.",
+  },
+  "agents.draft.prompt.empty": {
+    es: "Escribe las instrucciones antes de guardar.",
+    en: "Write the instructions before saving.",
+  },
+  "agents.draft.context.draft": { es: "Borrador v{n} de {agent}, desde v{base}", en: "Draft v{n} of {agent}, from v{base}" },
+  "agents.draft.context.draftFirst": { es: "Borrador v{n} de {agent}", en: "Draft v{n} of {agent}" },
+  "agents.draft.context.active": {
+    es: "Editas a partir de v{n} de {agent}. El borrador nace al guardar.",
+    en: "You are editing from v{n} of {agent}. The draft is created when you save.",
+  },
+  "agents.draft.context.none": {
+    es: "{agent} todavía no tiene versiones. La primera nace al guardar.",
+    en: "{agent} has no versions yet. The first one is created when you save.",
+  },
+  "agents.draft.readonly": {
+    es: "Puedes leer el borrador, pero tu rol no puede cambiarlo.",
+    en: "You can read the draft, but your role cannot change it.",
+  },
+
+  "agents.draft.bar.region": { es: "Cambios sin guardar", en: "Unsaved changes" },
+  "agents.draft.bar.pending": { es: "Cambios sin guardar en {sections}", en: "Unsaved changes in {sections}" },
+  "agents.draft.bar.and": { es: "y", en: "and" },
+  "agents.draft.bar.note": { es: "Nota del cambio (opcional)", en: "Change note (optional)" },
+  "agents.draft.bar.notePlaceholder": { es: "Qué cambia y por qué", en: "What changes and why" },
+  "agents.draft.bar.discard": { es: "Deshacer cambios", en: "Undo changes" },
+  "agents.draft.bar.save": { es: "Guardar", en: "Save" },
+  "agents.draft.bar.saved": {
+    es: "Guardado en el borrador v{n}. Publícalo cuando esté listo.",
+    en: "Saved to draft v{n}. Publish it when it is ready.",
+  },
+  "agents.draft.bar.failed": {
+    es: "No se pudo guardar. Tus cambios siguen aquí: vuelve a intentarlo.",
+    en: "It could not be saved. Your changes are still here: try again.",
+  },
+  "agents.draft.bar.fix": { es: "Revisa los campos marcados.", en: "Check the highlighted fields." },
+  "agents.draft.section.prompt": { es: "Instrucciones", en: "Instructions" },
+  "agents.draft.section.settings": { es: "Ajustes", en: "Settings" },
+
+  "agents.draft.conflict.title": { es: "Hay cambios más nuevos de {who}", en: "There are newer changes by {who}" },
+  "agents.draft.conflict.titlePublished": {
+    es: "{who} publicó el borrador mientras editabas",
+    en: "{who} published the draft while you were editing",
+  },
+  "agents.draft.conflict.titleDiscarded": {
+    es: "{who} descartó el borrador mientras editabas",
+    en: "{who} discarded the draft while you were editing",
+  },
+  "agents.draft.conflict.titleSomeone": {
+    es: "Alguien guardó cambios mientras editabas",
+    en: "Someone saved changes while you were editing",
+  },
+  "agents.draft.conflict.body": {
+    es: "No se ha guardado nada tuyo ni se ha perdido nada suyo. Elige qué hacer.",
+    en: "Nothing of yours was saved and nothing of theirs was lost. Choose what to do.",
+  },
+  "agents.draft.conflict.theirs": { es: "Sus cambios", en: "Their changes" },
+  "agents.draft.conflict.mine": { es: "Tus cambios, sin guardar", en: "Your changes, not saved" },
+  "agents.draft.conflict.nothing": { es: "Sin cambios de campos", en: "No field changes" },
+  "agents.draft.conflict.both": {
+    es: "Los dos habéis cambiado {fields}. Si guardas los tuyos, ahí quedan los tuyos.",
+    en: "You both changed {fields}. If you save yours, yours stay there.",
+  },
+  "agents.draft.conflict.comparePrompt": {
+    es: "Ver las dos versiones de las instrucciones",
+    en: "See both versions of the instructions",
+  },
+  "agents.draft.conflict.theirPrompt": { es: "La suya", en: "Theirs" },
+  "agents.draft.conflict.myPrompt": { es: "La tuya", en: "Yours" },
+  "agents.draft.conflict.keepMine": { es: "Guardar los míos encima", en: "Save mine on top" },
+  "agents.draft.conflict.keepTheirs": { es: "Quedarme con los suyos", en: "Keep theirs" },
+  "agents.draft.conflict.keptTheirs": {
+    es: "Tienes delante el borrador de {who}. Lo tuyo no se guardó.",
+    en: "You now see {who}'s draft. Yours was not saved.",
+  },
+
+  "agents.draft.field.system_prompt": { es: "Instrucciones", en: "Instructions" },
+  "agents.draft.field.tools": { es: "Herramientas", en: "Tools" },
+  "agents.draft.field.skills": { es: "Habilidades", en: "Skills" },
+  "agents.draft.field.identity": { es: "Identidad", en: "Identity" },
+  "agents.draft.field.tone": { es: "Tono", en: "Tone" },
+  "agents.draft.field.objective": { es: "Objetivo", en: "Goal" },
+  "agents.draft.field.schedule": { es: "Horario", en: "Hours" },
+  "agents.draft.field.languages": { es: "Idiomas", en: "Languages" },
+  "agents.draft.field.escalation": { es: "Escalado", en: "Escalation" },
+  "agents.draft.field.ai_disclosure": { es: "Aviso de IA", en: "AI disclosure" },
+  "agents.draft.field.audience": { es: "A quién responde", en: "Who it answers" },
+  "agents.draft.field.payment_review": { es: "Revisión de pagos", en: "Payment review" },
+  "agents.draft.field.other": { es: "Otros ajustes", en: "Other settings" },
+
+  "agents.history.title": { es: "Versiones de {agent}", en: "Versions of {agent}" },
+  "agents.history.description": {
+    es: "Cada versión dice quién la escribió, cuándo, con qué nota y de cuál partió.",
+    en: "Each version says who wrote it, when, with which note and which one it started from.",
+  },
+  "agents.history.list": { es: "Versiones", en: "Versions" },
+  "agents.history.empty": { es: "Todavía no hay versiones", en: "There are no versions yet" },
+  "agents.history.empty.body": {
+    es: "Escribe las instrucciones y guarda: así nace la primera.",
+    en: "Write the instructions and save: that is how the first one is created.",
+  },
+  "agents.history.error": {
+    es: "No pudimos leer las versiones. El borrador y los ajustes siguen funcionando.",
+    en: "We couldn't read the versions. The draft and the settings still work.",
+  },
+  "agents.history.retry": { es: "Volver a intentarlo", en: "Try again" },
+  "agents.history.number": { es: "v{n}", en: "v{n}" },
+  "agents.history.status.staged": { es: "Borrador", en: "Draft" },
+  "agents.history.status.active": { es: "Activa", en: "Active" },
+  "agents.history.status.archived": { es: "Anterior", en: "Earlier" },
+  "agents.history.status.discarded": { es: "Descartada", en: "Discarded" },
+  "agents.history.written": { es: "{who} · {when}", en: "{who} · {when}" },
+  "agents.history.from": { es: "desde v{n}", en: "from v{n}" },
+  "agents.history.publishedBy": { es: "Publicada por {who} · {when}", en: "Published by {who} · {when}" },
+  "agents.history.noNote": { es: "Sin nota", en: "No note" },
+  "agents.history.saveFirst": {
+    es: "Guarda los cambios antes de publicar: el borrador aún no los tiene.",
+    en: "Save your changes before publishing: the draft does not have them yet.",
+  },
+  "agents.history.discard": { es: "Descartar borrador", en: "Discard draft" },
+  "agents.history.discard.title": { es: "Descartar el borrador v{n}", en: "Discard draft v{n}" },
+  "agents.history.discard.body": {
+    es: "{agent} sigue con la versión activa, que no cambia. El borrador queda en el historial como descartado.",
+    en: "{agent} keeps its active version, which does not change. The draft stays in the history as discarded.",
+  },
+  "agents.history.discard.confirm": { es: "Descartar", en: "Discard" },
+  "agents.history.discarded": { es: "Borrador descartado.", en: "Draft discarded." },
 } as const;

@@ -47,7 +47,7 @@ from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.skills_catalog import list_skills
 from nexus_api.services.templating.seed_templates import load_seed_template
 
-from .agent_drafts import DraftView, ensure_draft, load_view
+from .agent_drafts import DraftView, draft_written, ensure_draft, load_view
 from .capability_names import (
     FUNCTIONS,
     business_name,
@@ -411,7 +411,7 @@ async def update_capability(
                 actor=scope.principal.actor,
             )
 
-    await scope.session.flush()
+    await draft_written(scope, draft)
     await AuditRepository(scope.session).record(
         actor=scope.principal.actor,
         action="console.capability.update",

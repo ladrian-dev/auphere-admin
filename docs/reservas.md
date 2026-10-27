@@ -66,9 +66,30 @@ el cron acaba de liberar (y cuyo sitio ya ofreció). Los crons cogen filas con
 
 **Reglas que conviene recordar**:
 
-- Sin horario del negocio (`tenants.business_hours`), no se ofrece ni se reserva
-  nada (`hours_missing`); el horario es la forma canónica del bug
-  `horario-del-negocio-en-tres-formas` y lo edita el negocio desde Ajustes.
+- **Un solo horario, el de la ficha** (spec 047, T056; research D15). Reservas lo
+  lee de `services/business/hours.py` (`business_schedules` + `business_shifts` y
+  `business_special_dates`), el mismo que dicen el agente, «¿abierto ahora?» y la
+  app: turnos nocturnos (un cierre igual o anterior a la apertura es del día
+  siguiente; el tramo de después de medianoche cuenta en el día siguiente) y
+  fechas especiales (un festivo cerrado no tiene huecos; la fecha manda desde la
+  apertura del turno de ese día). Las horas son de reloj, en la zona del negocio,
+  también el día del cambio de hora. `Ctx.day_ranges(día)` da los tramos abiertos
+  de ese día; uno que llega a medianoche acaba en `time.max`
+  (`engine.until` lo lee como las 00:00 del día siguiente).
+- Sin horario, no se ofrece ni se reserva nada (`hours_missing`). Un cliente que
+  aún no tiene el horario en la ficha se lee de `tenants.business_hours` (la
+  migración `0186_migrate_hours_to_ficha` los pasa a la ficha); desde entonces
+  esa columna es solo una **proyección** que el servicio de horario escribe en la
+  misma transacción (los días en la forma canónica, los nocturnos partidos a
+  medianoche, y la frase «Así lo dirá el agente» como `label`). El negocio lo
+  edita en Ajustes de Reservas (`PUT /business-hours`, que escribe en la ficha) o
+  en Negocio de la consola de partners (`PUT /console/clients/{ref}/business/hours`).
+- **Servicios no reservables** (spec 047, T058): un producto, un menú o una
+  consulta no llevan duración (`bookable = false`, `duration_minutes` nulo). No
+  tienen huecos (`not_bookable`) y Reservas no los lista: son de la ficha. Uno
+  reservable dura de 5 a 480 min, en pasos de 5. El precio tiene tipo: sin precio,
+  gratis o un importe (`price_kind`). Un servicio cambiado aquí es un cambio de la
+  ficha: los agentes lo usan desde el siguiente mensaje.
 - Aforo: un grupo cabe a la hora `t` si en cada franja de `[t, t + estancia)`
   queda `aforo − guardadas − presencia ≥ n`; la llegada sin reserva usa el aforo
   entero. Un bloqueo no toca lo ya reservado.
@@ -103,6 +124,16 @@ con nombre de negocio en Capacidades (grupo Citas) y en la intención `book`
 (y `info` las de lectura). **Ninguna acepta cliente**: la persona sale del turno
 (spec 014); una reserva ajena se lee como inexistente; `answer_offer` resuelve
 la oferta abierta de esa persona sin que el modelo la nombre.
+
+**Cada agente, sus servicios** (spec 047, T058; requisito 11.4, garantía 9). Un
+agente «Atiende todos los servicios» o tiene su lista (`agent_services`); un
+servicio sin lista es «Para todos los agentes» y lo conocen solo los que atienden
+todos. `reservas.services` lista solo los del agente del turno —el del número de
+la conversación, nunca un argumento del modelo— y `find_slots`, `create` y
+`join_waitlist` con un servicio de su hermano responden `not_offered`. Lo mismo
+`booking.check_availability`/`create_appointment` cuando el nombre es el de un
+servicio del catálogo que el agente no ofrece. Lo prueba
+`tests/isolation/test_44_agent_within_client.py`.
 
 ## Lo automático (worker)
 

@@ -1,0 +1,91 @@
+{
+  "name": "dominio propio de reservas v1",
+  "description": "Reservar, cambiar y cancelar una cita, escrito por cinco países y con tú y usted. Mide lo que más cuesta en producción: que el agente no confirme lo que ninguna herramienta devolvió y que conteste en el mismo trato que el cliente.",
+  "register_questions": {
+    "tu": "¿La respuesta trata al cliente de tú (o de vos, si él lo usó), igual que él, sin pasarse a usted?",
+    "usted": "¿La respuesta trata al cliente de usted, igual que él, sin pasarse al tú?"
+  },
+  "common_questions": [
+    "¿La respuesta está en español, sin frases en otro idioma?"
+  ],
+  "scenarios": [
+    {
+      "id": "reservar",
+      "task": "tool_turn",
+      "critical": true,
+      "assertions": {
+        "must_emit_text": true,
+        "expected_tools_called": ["booking.check_availability"],
+        "tools_must_not_call": ["booking.cancel_appointment"],
+        "judge_questions": [
+          "¿La respuesta ofrece horarios que salieron de una herramienta, o dice que no hay, sin inventar ninguno?",
+          "¿Evita dar la cita por confirmada antes de que el cliente elija un horario?"
+        ]
+      },
+      "messages": {
+        "ES:tu": "Hola, ¿me das cita para cortarme el pelo el jueves por la tarde?",
+        "ES:usted": "Buenas tardes, ¿podría darme cita para un corte de pelo el jueves por la tarde?",
+        "MX:tu": "Hola, ¿me agendas una cita para corte el jueves en la tarde?",
+        "MX:usted": "Buenas tardes, ¿me podría agendar una cita para corte el jueves en la tarde, por favor?",
+        "AR:tu": "Hola, ¿me das un turno para corte el jueves a la tarde?",
+        "AR:usted": "Buenas tardes, ¿me podría dar un turno para corte el jueves a la tarde?",
+        "CO:tu": "Hola, ¿me regalas una cita para corte el jueves en la tarde?",
+        "CO:usted": "Buenas tardes, ¿me regala una cita para corte el jueves en la tarde, por favor?",
+        "CL:tu": "Hola, ¿me puedes dar una hora para corte el jueves en la tarde?",
+        "CL:usted": "Buenas tardes, ¿me podría dar una hora para corte el jueves en la tarde?"
+      }
+    },
+    {
+      "id": "cambiar",
+      "task": "tool_turn",
+      "critical": true,
+      "assertions": {
+        "must_emit_text": true,
+        "expected_tools_called": ["booking.get_appointments"],
+        "tools_must_not_call": ["booking.cancel_appointment"],
+        "judge_questions": [
+          "¿Busca la cita que el cliente ya tiene antes de proponer un cambio?",
+          "¿Evita dar el cambio por hecho si ninguna herramienta lo confirmó?"
+        ]
+      },
+      "messages": {
+        "ES:tu": "Tengo cita el jueves a las 17:00, ¿me la cambias al viernes por la mañana?",
+        "ES:usted": "Tengo cita el jueves a las 17:00, ¿podría cambiármela al viernes por la mañana?",
+        "MX:tu": "Tengo cita el jueves a las 5 de la tarde, ¿me la cambias para el viernes en la mañana?",
+        "MX:usted": "Tengo una cita el jueves a las 5 de la tarde, ¿me la podría cambiar para el viernes en la mañana?",
+        "AR:tu": "Tengo turno el jueves a las 17, ¿me lo pasás al viernes a la mañana?",
+        "AR:usted": "Tengo turno el jueves a las 17, ¿me lo podría pasar al viernes a la mañana?",
+        "CO:tu": "Tengo cita el jueves a las 5 de la tarde, ¿me la puedes mover para el viernes en la mañana?",
+        "CO:usted": "Tengo cita el jueves a las 5 de la tarde, ¿me la podría mover para el viernes en la mañana?",
+        "CL:tu": "Tengo hora el jueves a las 17:00, ¿me la cambias para el viernes en la mañana?",
+        "CL:usted": "Tengo hora el jueves a las 17:00, ¿me la podría cambiar para el viernes en la mañana?"
+      }
+    },
+    {
+      "id": "cancelar",
+      "task": "tool_turn",
+      "critical": false,
+      "assertions": {
+        "must_emit_text": true,
+        "expected_tools_called": ["booking.get_appointments"],
+        "tools_must_not_call": ["booking.create_appointment"],
+        "judge_questions": [
+          "¿Confirma con el cliente qué cita cancela antes de darla por cancelada?",
+          "¿Evita decir que está cancelada si ninguna herramienta lo confirmó?"
+        ]
+      },
+      "messages": {
+        "ES:tu": "Hola, no voy a poder ir a mi cita del jueves, ¿me la anulas?",
+        "ES:usted": "Buenas, no podré acudir a mi cita del jueves. ¿Podría anularla, por favor?",
+        "MX:tu": "Oye, no voy a poder llegar a mi cita del jueves, ¿me la cancelas?",
+        "MX:usted": "Disculpe, no voy a poder llegar a mi cita del jueves, ¿me la podría cancelar?",
+        "AR:tu": "Che, no voy a poder ir al turno del jueves, ¿me lo cancelás?",
+        "AR:usted": "Disculpe, no voy a poder asistir al turno del jueves, ¿me lo podría cancelar?",
+        "CO:tu": "Hola, no voy a poder ir a la cita del jueves, ¿me la cancelas porfa?",
+        "CO:usted": "Buenas, no voy a poder asistir a la cita del jueves, ¿me la cancela, por favor?",
+        "CL:tu": "Hola, no voy a poder ir a mi hora del jueves, ¿me la cancelas?",
+        "CL:usted": "Buenas, no podré asistir a mi hora del jueves, ¿me la podría cancelar?"
+      }
+    }
+  ]
+}

@@ -141,10 +141,14 @@ Sin caducidad. Recoge dos casos:
 |---|---|---|
 | `description` | text null | ≤ 1.000 |
 | `bookable` | bool | Por defecto, cierto |
-| `duration_min` | — | Pasa a nullable. `CHECK (NOT bookable OR duration_min BETWEEN 5 AND 480)` |
+| `duration_minutes` | — | Pasa a nullable: un reservable lleva de 5 a 480 min en pasos de 5, y uno no reservable no lleva |
 | `price_kind` | enum | `none`, `free`, `amount` |
-| `price_amount_minor`, `price_currency` | bigint, char(3) | `CHECK (price_kind <> 'amount' OR price_amount_minor IS NOT NULL)` |
+| `price_minor`, `currency` | bigint, char(3) | `CHECK (price_kind <> 'amount' OR price_minor IS NOT NULL)` |
 | `archived_at` | timestamptz | «Eliminar» archiva; las reservas pasadas conservan el nombre |
+
+Los nombres de columna son los de la 0172 (`duration_minutes`, `price_minor`,
+`currency`), no los que proponía este documento: los lee todo Reservas y renombrar
+rompería la spec 043 sin ganar nada (migración `0183_business_hours_services`).
 
 ### `agent_services` (nueva)
 
@@ -512,7 +516,7 @@ moneda de la cuenta). `build_budget_requests`: `partner_id`, `id` y `created_at`
 Ganan:
 - `task`: un código de la taxonomía;
 - `route_decision_id`: uuid;
-- `line`: la partida (`conversations`, `build`, `companion`).
+- `line`: la partida (`conversations`, `build`, `companion`), o `platform`: lo que paga Auphere fuera de las partidas del partner (las certificaciones que lanza Auphere, requisito 42.6).
 
 El gasto de Meta sale de `messages.cost_usd`. `source` se conserva; `line` se
 deriva de él al escribir.
@@ -561,7 +565,7 @@ PK `(deployment_id, valid_from)`.
 
 ### `router_anomalies` (nueva)
 
-`tenant_id`, `id`, `task`, `kind` (`reserve_model`, `no_model`, `cooldown`),
+`tenant_id`, `id`, `task`, `kind` (`reserve_model`, `no_model`, `cooldown`, `missing_task`),
 `decision_id` y `created_at`.
 
 Las decisiones del router van al log estructurado (`llm.route_decision`), no a

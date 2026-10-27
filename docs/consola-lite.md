@@ -384,6 +384,39 @@ del diseño «Consola Customers» (2026-10-22).
   misma que la del partner, con su pista `shell.beta.client.hint`); «lite» ya no
   sale en pantalla.
 
+## Lo que la spec 047 cambió aquí (ola 1: ningún mensaje se pierde)
+
+Spec [`047-la-fabrica-de-agentes`](../specs/047-la-fabrica-de-agentes/spec.md),
+requisitos 1 y 2.
+
+- **Todo entrante se guarda antes de decidir nada** (`dispatcher.accept_inbound`).
+  Ni la bolsa vacía, ni la pausa, ni el número con problemas lo impiden; hasta
+  la 047, sin saldo, el mensaje se perdía sin rastro. El resolutor de números
+  reconoce también los canales en pausa y degradados (migración `0176`); un
+  número con la calidad en amarillo **sigue contestando**.
+- **Si el agente no contesta, la conversación dice por qué**:
+  `conversations.waiting_reason`, con la lista cerrada de `contracts/events.md`
+  §2. Salvo fuera de la audiencia, pasa a «Espera a una persona» (`escalated`)
+  con un evento cuyo motivo es ese código —el `waiting.reason` de la fila— y se
+  marca atendida para que la Bandeja la enseñe. El agente **no** se calla en
+  ella: lo calla la puerta, y en cuanto la puerta se abre y vuelve a contestar,
+  la conversación vuelve al agente sola (`inbox_lifecycle.release_reason`). El
+  escalado del agente es `escalated`; «la lleva una persona», `human_takeover`,
+  sin convertirla en espera.
+- **Avisos**, uno por espera, no por mensaje: con Bandeja, campana, correo y
+  push de «una conversación espera a una persona» con su motivo (sin texto del
+  mensaje); sin Bandeja, la fila `conversation.escalated` que el alertador
+  convierte en la plantilla al dueño (hasta que la ola 4 traiga los
+  destinatarios por canal) y, si el canal tiene `config.wait_message`, ese
+  mensaje como mucho una vez cada 6 h por conversación. Sin saldo, además, los
+  avisos de hoy al partner y al cliente (uno por cliente y día).
+- **Un turno por ráfaga y uno a la vez**: cada entrante programa el turno de su
+  conversación a +3 s (`NEXUS_RUNNER_COALESCE_WINDOW_MS`) en una cola diferida de
+  Redis; el turno toma con el candado de la base todos los mensajes sin
+  `turn_id` y contesta a todos de una vez (`runtime/turns.py`). Un reintento
+  conserva el `turn_id`, y la reserva, el enlace de pago y la respuesta pasan
+  por `turn_effects`: no se repiten (`runtime/turn_effects.py`).
+
 ## Reservas (spec 043)
 
 Módulo `reservas`, entre la Bandeja y el Consumo. Pantalla `/reservas`

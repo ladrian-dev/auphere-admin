@@ -8,6 +8,12 @@ Dos ejes de aislamiento, como ``booking.*``: el negocio lo resuelve la RLS
 (``tool_session``); **la persona, el turno** (``current_customer_or_refuse``).
 Ninguna herramienta acepta un cliente. Una reserva de otra persona se lee igual
 que una que no existe.
+
+Y un tercero desde la spec 047 (requisito 11.4, garantía 9): **los servicios son
+los del agente del turno** —el del número de la conversación (``_turn``), nunca un
+argumento del modelo—. ``services`` solo lista los suyos, y buscar huecos,
+reservar o apuntarse a la espera con un servicio de su hermano responde
+``not_offered``, igual que uno que no existe.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from nexus_api.db.models import (
     ReservationService,
     ReservationStaff,
 )
+from nexus_api.services.business import services_catalog
 from nexus_api.services.reservations import waitlist
 from nexus_api.services.reservations.core import (
     Actor,
@@ -78,7 +85,16 @@ from nexus_mcp.servers.reservas.schemas import (
 )
 
 NOT_ACTIVE = "Reservas no está activo para este negocio."
-REFUSALS = {"slot_taken", "too_large", "too_soon", "too_far", "closed", "hours_missing"}
+REFUSALS = {
+    "slot_taken",
+    "too_large",
+    "too_soon",
+    "too_far",
+    "closed",
+    "hours_missing",
+    "not_bookable",
+    "not_offered",
+}
 
 
 def _now() -> datetime:
@@ -171,14 +187,34 @@ async def _turn(
     return conv.id, agent_id
 
 
+async def _turn_agent(session: AsyncSession) -> uuid.UUID | None:
+    """El agente del turno: el del número de la conversación de la persona. Sin
+    persona (una prueba sin turno), ``None``: el agente principal."""
+    customer_id = get_current_customer()
+    if customer_id is None:
+        return None
+    _conv, agent_id = await _turn(session, customer_id, None)
+    return agent_id
+
+
+async def _offered_service(
+    session: AsyncSession, agent_id: uuid.UUID | None, service_id: uuid.UUID
+) -> ReservationService | None:
+    """El servicio, si es uno que el agente del turno ofrece (garantía 9)."""
+    if not await services_catalog.offers(session, agent_id, service_id):
+        return None
+    return await session.get(ReservationService, service_id)
+
+
 # ── lectura ─────────────────────────────────────────────────────────────────
 
 
 class Services(ToolBase):
     name = "reservas.services"
     description = (
-        "What can be booked: in services mode, the services with duration, price and who "
-        "does each one (use their ids in find_slots/create); in capacity mode, the largest "
+        "What can be booked: in services mode, the services YOU handle, with duration, price "
+        "and who does each one (use their ids in find_slots/create); a service that is not "
+        "bookable has no times — explain how it is ordered. In capacity mode, the largest "
         "group the agent may book."
     )
     input_model = ServicesInput
@@ -190,23 +226,21 @@ class Services(ToolBase):
             ctx = await _ctx(session)
             if ctx.mode == "capacity":
                 return ServicesOutput(mode="capacity", max_party=ctx.settings.max_party)
-            rows = (
-                await session.execute(
-                    sa.select(ReservationService)
-                    .where(ReservationService.archived_at.is_(None))
-                    .order_by(ReservationService.position, ReservationService.name)
-                )
-            ).scalars()
+            agent_id = await _turn_agent(session)
             items: list[ServiceItem] = []
-            for svc in list(rows):
-                staff = await staff_for_service(session, svc)
+            for svc in await services_catalog.services_for_agent(session, agent_id):
+                staff = await staff_for_service(session, svc) if svc.bookable else []
+                kind = services_catalog.price_kind_of(svc)
                 items.append(
                     ServiceItem(
                         id=svc.id,
                         name=svc.name,
+                        bookable=svc.bookable,
                         duration_minutes=svc.duration_minutes,
-                        price=Money(amount_minor=svc.price_minor, currency=svc.currency)
-                        if svc.price_minor is not None
+                        description=svc.description,
+                        price_kind=kind,
+                        price=Money(amount_minor=int(svc.price_minor or 0), currency=svc.currency)
+                        if kind == "amount"
                         else None,
                         staff=[StaffRef(id=s.id, name=s.name) for s in staff],
                     )
@@ -241,9 +275,15 @@ class FindSlots(ToolBase):
                     raise ToolError(
                         "service_id is required in services mode (see reservas.services)"
                     )
-                svc = await session.get(ReservationService, payload.service_id)
-                if svc is None or svc.archived_at is not None:
-                    raise ToolError(f"service {payload.service_id} not found")
+                svc = await _offered_service(
+                    session, await _turn_agent(session), payload.service_id
+                )
+                if svc is None:
+                    return FindSlotsOutput(date=payload.date, closed=True, why_closed="not_offered")
+                if not svc.bookable:
+                    return FindSlotsOutput(
+                        date=payload.date, closed=True, why_closed="not_bookable"
+                    )
                 free = await services_free(
                     session,
                     ctx,
@@ -343,6 +383,12 @@ class Create(ToolBase):
             ctx = await _ctx(session)
             name, phone = await _contact(session, customer_id)
             conversation_id, agent_id = await _turn(session, customer_id, payload.conversation_id)
+            if (
+                ctx.mode == "services"
+                and payload.service_id is not None
+                and await _offered_service(session, agent_id, payload.service_id) is None
+            ):
+                return CreateOutput(refused="not_offered")
             agent_name = (
                 await session.scalar(sa.select(Agent.name).where(Agent.id == agent_id))
                 if agent_id
@@ -527,6 +573,12 @@ class JoinWaitlist(ToolBase):
         customer_id = current_customer_or_refuse("apuntar en la lista de espera")
         async with tool_session() as session:
             ctx = await _ctx(session)
+            if (
+                payload.service_id is not None
+                and await _offered_service(session, await _turn_agent(session), payload.service_id)
+                is None
+            ):
+                raise ToolError("not_offered")
             name, phone = await _contact(session, customer_id)
             reservation_id = None
             if payload.booking_id is not None:

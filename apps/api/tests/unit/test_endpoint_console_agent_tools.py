@@ -197,10 +197,14 @@ async def test_publish_requires_disclosure_decision(client, console_world, db_se
     row = await db_session.scalar(sa.select(AgentConfig).where(AgentConfig.id == cfg.id))
     assert row is not None and row.status is AgentConfigStatus.STAGED
 
-    # Staged from the console → default decision (enabled=true) → publishes.
+    # Written from the console → default decision (enabled=true) → publishes.
     v = await client.post(
         f"/console/clients/{a['ref']}/agent/versions", headers=h(), json={"system_prompt": "p"}
     )
+    # Spec 047 (R3.1): the console writes into the agent's one draft — the
+    # version the backoffice staged — instead of stacking another one.
+    assert v.status_code == 201, v.text
+    assert v.json()["version"] == version
     policies = await db_session.scalar(
         sa.select(AgentConfig.policies).where(
             AgentConfig.tenant_id == a["tenant_id"], AgentConfig.version == v.json()["version"]
@@ -208,9 +212,9 @@ async def test_publish_requires_disclosure_decision(client, console_world, db_se
     )
     assert policies["console"]["ai_disclosure"]["enabled"] is True
     assert policies["console"]["ai_disclosure"]["decided_by"] == "console:owner-a@example.com"
-    # Policies come from the ACTIVE version (none yet) — the seeded staged
-    # one is not copied; the console default is the only console key.
-    assert set(policies) == {"console"}
+    # What the backoffice put in the draft is still there: nothing is lost.
+    assert set(policies) == {"console", "llm"}
+    assert policies["llm"] == {"respond_model": "x"}
     ok = await client.post(
         f"/console/clients/{a['ref']}/agent/versions/{v.json()['version']}/publish", headers=h()
     )

@@ -37,11 +37,13 @@ from nexus_api.db.models import (
 )
 from nexus_api.db.models.reservation import LIVE_STATUSES
 from nexus_api.services import push_events
-from nexus_api.services.business_hours import WEEKDAYS, WeeklyHours, parse_business_hours
+from nexus_api.services.business import hours as business_hours
+from nexus_api.services.business import services_catalog
+from nexus_api.services.business_hours import WEEKDAYS, parse_business_hours
 from nexus_api.services.reservations import engine
 
 #: Moneda por mercado del negocio (los precios de Servicios no son consumo).
-CURRENCY_BY_MARKET = {"CL": "CLP", "AR": "ARS", "MX": "MXN", "CO": "COP", "PE": "PEN", "ES": "EUR"}
+CURRENCY_BY_MARKET = services_catalog.CURRENCY_BY_MARKET
 #: Ventana del «Llegó»: desde 30 min antes de la hora (diseño).
 ARRIVE_EARLY = timedelta(minutes=30)
 #: «Llega tarde» a partir de 15 min (diseño).
@@ -77,12 +79,13 @@ SYSTEM = Actor("system")
 @dataclass
 class Ctx:
     """Lo que hace falta saber del cliente para decidir: sus ajustes, su zona y
-    su horario."""
+    su horario. El horario es el de la ficha (spec 047, research D15), con los
+    turnos nocturnos y las fechas especiales; ``None``, sin horario."""
 
     tenant_id: uuid.UUID
     settings: ReservationSettings
     tz: ZoneInfo
-    hours: WeeklyHours | None
+    hours: business_hours.Hours | None
     currency: str
     business_name: str
 
@@ -91,9 +94,12 @@ class Ctx:
         return self.settings.mode
 
     def day_ranges(self, day: date) -> list[tuple[time, time]]:
+        """Las horas abiertas de ``day``: lo que queda del turno nocturno de la
+        víspera, los turnos de ese día y su fecha especial, si la tiene. Un
+        tramo que llega a medianoche acaba en ``business_hours.END_OF_DAY``."""
         if self.hours is None:
             return []
-        return list(self.hours[WEEKDAYS[day.weekday()]])
+        return business_hours.day_ranges(self.hours, day)
 
     def local(self, at: datetime) -> datetime:
         return at.astimezone(self.tz)
@@ -117,13 +123,13 @@ async def load_ctx(session: AsyncSession, tenant_id: uuid.UUID) -> Ctx | None:
     if settings is None:
         return None
     tenant = await session.get(Tenant, tenant_id)
-    market = (tenant.market or "CL").upper() if tenant else "CL"
+    hours = await business_hours.load_hours(session, tenant_id=tenant_id)
     return Ctx(
         tenant_id=tenant_id,
         settings=settings,
-        tz=_zone(tenant.timezone if tenant else None),
-        hours=parse_business_hours(tenant.business_hours if tenant else None),
-        currency=CURRENCY_BY_MARKET.get(market, "CLP"),
+        tz=_zone(hours.timezone),
+        hours=hours if hours.known else None,
+        currency=await services_catalog.business_currency(session, tenant_id),
         business_name=tenant.name if tenant else "",
     )
 
@@ -169,6 +175,14 @@ async def staff_for_service(
         ).scalars()
     )
     return [s for s in staff if s.id in allowed]
+
+
+def service_duration(service: ReservationService) -> timedelta:
+    """Lo que ocupa un servicio. Uno que no se reserva (un producto, un menú,
+    spec 047) no tiene duración ni huecos: pedirle uno es un no de negocio."""
+    if not service.bookable or service.duration_minutes is None:
+        raise ReservationError(409, "not_bookable")
+    return timedelta(minutes=service.duration_minutes)
 
 
 def staff_ranges(ctx: Ctx, member: ReservationStaff, day: date) -> list[tuple[time, time]]:
@@ -241,7 +255,7 @@ async def services_free(
     if staff_ids:
         able = [s for s in able if s.id in set(staff_ids)]
     step = timedelta(minutes=ctx.settings.slot_step_minutes or 30)
-    duration = timedelta(minutes=service.duration_minutes)
+    duration = service_duration(service)
     out: dict[str, list[uuid.UUID]] = {}
     for member in able:
         busy = await _busy_of_staff(session, ctx, member.id, day, exclude=exclude)
@@ -520,7 +534,7 @@ async def create_booking(
         res.party_size = 1
         res.any_staff = req.any_staff or req.staff_id is None
         res.starts_at = start
-        res.ends_at = start + timedelta(minutes=svc.duration_minutes)
+        res.ends_at = start + service_duration(svc)
     else:
         n = max(1, int(req.party_size))
         rules = capacity_rules(ctx)
@@ -680,7 +694,7 @@ async def move_booking(
             raise ReservationError(409, "slot_taken", first_fit=None)
         res.staff_id = target
         res.starts_at = start
-        res.ends_at = start + timedelta(minutes=svc.duration_minutes)
+        res.ends_at = start + service_duration(svc)
     else:
         n = party_size or res.party_size
         rules = capacity_rules(ctx)

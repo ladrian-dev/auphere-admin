@@ -231,6 +231,9 @@ class LiveMediaProcessor(MediaProcessor):
                 model=settings.llm_transcribe_model,
                 provider=provider_of(settings.llm_transcribe_model),
                 seconds=float(duration),
+                # Spec 047 (requisito 40.1): cada llamada lleva su tarea,
+                # escrita aquí y no heredada del valor por defecto del medidor.
+                task="transcribe",
             )
         else:
             log.warning(
@@ -298,6 +301,8 @@ class LiveMediaProcessor(MediaProcessor):
             model=settings.llm_vision_model,
             provider=provider_of(settings.llm_vision_model),
             usage=usage_fields(response),
+            # Spec 047 (requisito 40.1): cada llamada lleva su tarea.
+            task="vision",
         )
         try:
             text = response.choices[0].message.content

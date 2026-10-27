@@ -29,6 +29,10 @@ La semilla de esta spec (tarea de la fase 1) crea:
 - personas de cada rol (owner, admin, builder, analyst y billing) y una persona
   del cliente para la consola lite y la app.
 
+```bash
+cd apps/api && uv run python scripts/dev_seed_fabrica.py [--password '...']
+```
+
 **Sin credenciales de Meta**, la consola dice «El número lo conecta Auphere»
 (requisito 30.10). Los canales de la semilla se crean ya conectados.
 

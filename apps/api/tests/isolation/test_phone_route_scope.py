@@ -109,6 +109,25 @@ async def test_every_write_with_an_id_is_probed() -> None:
     assert mounted == {(m, p) for m, p, _ in _PHONE_WRITES}
 
 
+async def test_a_lite_route_mounted_tomorrow_must_bring_its_probe() -> None:
+    """Spec 047, T021 (requisito 56.10): las rutas nuevas de ``/console/lite/*``
+    entran aquí solas. Una escritura con id nueva pone en rojo
+    ``test_every_write_with_an_id_is_probed`` hasta tener su caso en
+    ``_PHONE_WRITES``; una lectura con un parámetro nuevo entra en
+    ``_lite_gets`` y su caso parametrizado exige un objeto de la vecina en
+    ``_FOREIGN``."""
+    from tests.isolation.test_lite_route_scope import mounted
+
+    write = ("POST", "/console/lite/agents/{agent_id}/probe-047")
+    read = ("GET", "/console/lite/agents/{agent_id}/probe-047")
+    with mounted(write, read):
+        with pytest.raises(AssertionError):
+            await test_every_write_with_an_id_is_probed()
+        assert read[1] in _lite_gets()
+        assert "agent_id" not in _FOREIGN, "la lectura nueva ya tendría su objeto"
+    await test_every_write_with_an_id_is_probed()
+
+
 @pytest.mark.parametrize(("method", "path", "body"), _PHONE_WRITES)
 async def test_phone_writes_on_a_neighbour_object_are_the_same_404(
     method: str, path: str, body: dict[str, Any] | None, client, db_session, console_world

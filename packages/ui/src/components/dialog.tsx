@@ -40,6 +40,12 @@ function DialogOverlay({
   )
 }
 
+/**
+ * Spec 047 (R47.5): el modal retiene el foco, lo devuelve a quien lo abrió,
+ * se cierra con Escape y lleva el título enlazado. Lo hace Base UI, que es
+ * modal por defecto; `dialog.test.tsx` lo fija para que no se pierda en una
+ * actualización.
+ */
 function DialogContent({
   className,
   children,
@@ -100,6 +106,9 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  // Spec 047 (R47.5): «se cierran con Escape y con su botón», y el botón
+  // habla el idioma de la consola. Decía «Close» en inglés a todo el mundo.
+  const copy = useUiCopy()
   return (
     <div
       data-slot="dialog-footer"
@@ -112,7 +121,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close render={<Button variant="outline" />}>
-          Close
+          {copy.close}
         </DialogPrimitive.Close>
       )}
     </div>

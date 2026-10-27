@@ -124,10 +124,9 @@ async def list_agents(session: AsyncSession, *, include_archived: bool = False) 
                 created_at=a.created_at,
                 channels=channels.get(a.id, []),
                 active_version=active,
-                # A draft counts only if it is newer than what is live.
-                draft_version=draft
-                if draft is not None and (active is None or draft > active)
-                else None,
+                # Spec 047: the agent's one draft, whatever its number — a
+                # change published at once can leave the active one higher.
+                draft_version=draft,
             )
         )
     return out

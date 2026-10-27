@@ -18,9 +18,9 @@ from nexus_api.config import get_settings
 from nexus_api.db.models import Channel, ChannelStatus, ClientPhone, ReservationSettings
 from nexus_api.services import inbox_view
 from nexus_api.services.business_hours import (
-    business_hours_label,
-    parse_business_hours,
-    to_canonical,
+    load_business_hours,
+    week_canonical,
+    week_label,
 )
 
 from .deps import LiteScope, lite_scope
@@ -96,14 +96,13 @@ async def _locale(scope: LiteScope, request: Request) -> str:
 
 
 async def business_of(scope: LiteScope, request: Request) -> LiteBusinessOut:
+    """El horario de la ficha (spec 047): uno solo para el agente, Reservas y la app."""
     tenant = scope.tenant
-    hours = parse_business_hours(tenant.business_hours)
+    hours = await load_business_hours(scope.session, tenant.id)
     return LiteBusinessOut(
-        timezone=tenant.timezone or "UTC",
-        hours=to_canonical(hours) if hours is not None else None,
-        hours_label=business_hours_label(hours, await _locale(scope, request))
-        if hours is not None
-        else None,
+        timezone=hours.timezone or tenant.timezone or "UTC",
+        hours=week_canonical(hours.week),
+        hours_label=week_label(hours.week, await _locale(scope, request)),
     )
 
 

@@ -55,10 +55,10 @@ from nexus_api.db.models import (
     MessageDirection,
     Partner,
     Reservation,
-    Tenant,
 )
 from nexus_api.services import inbox_view, push_texts
-from nexus_api.services.business_hours import is_open_at, parse_business_hours
+from nexus_api.services.business import hours as business_hours
+from nexus_api.services.business_hours import load_business_hours
 from nexus_api.services.push_payloads import Notice, inbox_url, reservas_url, usage_url
 
 log = structlog.get_logger(__name__)
@@ -123,7 +123,9 @@ def _now() -> datetime:
 # ── destinatarios ─────────────────────────────────────────────────────
 
 
-async def _targets(identity: AsyncSession, event: ClientPushEvent) -> list[_Target]:
+async def _targets(
+    identity: AsyncSession, event: ClientPushEvent, session: AsyncSession
+) -> list[_Target]:
     """Los teléfonos activos de las personas del cliente **en este momento**,
     con la razón por la que alguno no recibe nada (R7.2, R9.3, R11.2).
 
@@ -133,7 +135,7 @@ async def _targets(identity: AsyncSession, event: ClientPushEvent) -> list[_Targ
     puede leer."""
     access = await identity.get(ClientAccess, event.tenant_id)
     outside_hours = event.kind not in URGENT_KINDS and await _outside_hours(
-        identity, event.tenant_id
+        session, event.tenant_id
     )
     open_for: dict[uuid.UUID, bool] = {}
     rows = (
@@ -182,16 +184,16 @@ async def _targets(identity: AsyncSession, event: ClientPushEvent) -> list[_Targ
     return out
 
 
-async def _outside_hours(identity: AsyncSession, tenant_id: uuid.UUID) -> bool:
+async def _outside_hours(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
     """¿Es ahora fuera del horario del negocio? Sin horario, nunca (spec 045,
-    R5.5): no se puede saber qué es fuera."""
-    tenant = await identity.get(Tenant, tenant_id)
-    if tenant is None:
-        return False
-    hours = parse_business_hours(tenant.business_hours)
-    if hours is None:
-        return False
-    return not is_open_at(hours, tenant.timezone, _now())
+    R5.5): no se puede saber qué es fuera.
+
+    Spec 047: el horario de la ficha, con los turnos nocturnos y las fechas
+    especiales (un festivo cerrado es fuera de horario). Se lee con la sesión
+    del cliente: las tablas de la ficha tienen la RLS forzada."""
+    hours = await load_business_hours(session, tenant_id)
+    state = business_hours.open_state(hours, _now())
+    return state.known and not state.open
 
 
 async def _token_owned_elsewhere(identity: AsyncSession, phone: ClientPhone) -> bool:
@@ -409,7 +411,7 @@ async def claim(
 async def _plan_event(
     session: AsyncSession, identity: AsyncSession, event: ClientPushEvent, ts: datetime
 ) -> list[Outgoing]:
-    targets = await _targets(identity, event)
+    targets = await _targets(identity, event, session)
     for t in targets:
         await session.execute(
             insert(ClientPushDelivery)

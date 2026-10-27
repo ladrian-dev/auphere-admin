@@ -8,6 +8,7 @@ export type Locale = "es" | "en";
 
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { agentsMessages } from "./lanes/agents";
+import { businessMessages } from "./lanes/business";
 import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
 import { companionMessages } from "./lanes/companion";
@@ -19,6 +20,7 @@ import { onboardingMessages } from "./lanes/onboarding";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
 import { reservasMessages } from "./lanes/reservas";
+import { shellMessages } from "./lanes/shell";
 import { summaryMessages } from "./lanes/summary";
 import { workstationMessages } from "./lanes/workstation";
 
@@ -563,6 +565,8 @@ const messages = {
   ...liteMessages,
   ...inboxMessages,
   ...reservasMessages,
+  ...shellMessages,
+  ...businessMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

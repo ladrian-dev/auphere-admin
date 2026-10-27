@@ -28,12 +28,16 @@ from nexus_api.db.models import (
     ReservationStaff,
     ReservationWaitlist,
 )
+from nexus_api.services.business import hours as ficha_hours
+from nexus_api.services.business import services_catalog
+from nexus_api.services.business.sections import Actor as FichaActor
 from nexus_api.services.business_hours import (
     BusinessHoursError,
-    business_hours_label,
     canonical_business_hours,
     parse_business_hours,
     to_canonical,
+    week_canonical,
+    week_label,
     week_of,
 )
 from nexus_api.services.reservations import calendar_sync, views, waitlist
@@ -118,6 +122,12 @@ def _actor(scope: LiteScope) -> Actor:
     return Actor("person", (m.display_name or m.email)[:120])
 
 
+def _ficha_actor(scope: LiteScope) -> FichaActor:
+    """Quién escribe en la ficha desde aquí (spec 047, requisito 13.5)."""
+    origin = "app" if scope.principal.phone_id is not None else "lite_web"
+    return FichaActor(kind="client_user", id=scope.principal.user_id, origin=origin)
+
+
 async def _ctx(scope: LiteScope) -> Ctx:
     ctx = await load_ctx(scope.session, scope.principal.tenant_id)
     if ctx is None:
@@ -174,7 +184,7 @@ async def _remember(
 
 def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
     s = ctx.settings
-    hours = ctx.hours
+    week = ctx.hours.week if ctx.hours is not None else None
     lang = "es"
     return SettingsOut.model_validate(
         {
@@ -182,9 +192,9 @@ def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
             "capacity_kind": s.capacity_kind,
             "timezone": str(ctx.tz),
             "currency": ctx.currency,
-            "business_hours": to_canonical(hours) if hours else None,
-            "business_hours_label": business_hours_label(hours, lang) if hours else None,
-            "hours_missing": hours is None,
+            "business_hours": week_canonical(week),
+            "business_hours_label": week_label(week, lang),
+            "hours_missing": week is None,
             "slot_step_minutes": s.slot_step_minutes,
             "waitlist": {"enabled": s.waitlist_enabled, "lead_minutes": s.waitlist_lead_minutes},
             "agent": {
@@ -249,17 +259,14 @@ async def put_business_hours(
         ) from None
     if any(len(r) > 2 for r in hours.values()):
         raise HTTPException(status_code=422, detail={"code": "invalid", "message": "max 2 ranges"})
-    # La etiqueta del prompt (la lee ``agent_configs``) no es del negocio: se queda.
-    stored: dict[str, Any] = dict(hours)
-    before = scope.tenant.business_hours
-    if isinstance(before, dict) and isinstance(before.get("label"), str):
-        stored["label"] = before["label"]
-    scope.tenant.business_hours = stored
+    # Spec 047: el horario es el de la ficha (el que dicen el agente y Reservas);
+    # ``tenants.business_hours`` queda como su proyección, en esta transacción.
+    week = ficha_hours.week_from_legacy(hours)
+    await ficha_hours.save_week(scope.session, week, actor=_ficha_actor(scope))
     await scope.session.flush()
-    parsed = parse_business_hours(hours)
     return BusinessHoursOut(
-        business_hours=hours,
-        business_hours_label=business_hours_label(parsed, "es") if parsed else None,
+        business_hours=week_canonical(week) or hours,
+        business_hours_label=week_label(week, "es"),
     )
 
 
@@ -270,14 +277,14 @@ def _staff_out(
     ctx: Ctx, m: ReservationStaff, calendars: dict[uuid.UUID, dict[str, Any]]
 ) -> StaffOut:
     own = parse_business_hours(m.hours) if m.hours else None
-    effective = own or ctx.hours
+    business = week_canonical(ctx.hours.week) if ctx.hours is not None else None
     return StaffOut.model_validate(
         {
             "id": m.id,
             "name": m.name,
             "email": m.email,
             "hours": to_canonical(own) if own else None,
-            "effective_hours": to_canonical(effective) if effective else None,
+            "effective_hours": to_canonical(own) if own else business,
             "position": m.position,
             "archived": m.archived_at is not None,
             "calendar": calendars.get(m.id, {"status": "none"}),
@@ -483,13 +490,25 @@ async def list_services(
 ) -> ServiceListOut:
     ctx = await _ctx(scope)
     _need(ctx, "services")
-    stmt = sa.select(ReservationService).order_by(
-        ReservationService.position, ReservationService.name
+    # Spec 047: los servicios que no se reservan (un producto, un menú) son de
+    # la ficha, no de la agenda: Reservas no los enseña.
+    stmt = (
+        sa.select(ReservationService)
+        .where(ReservationService.bookable.is_(True))
+        .order_by(ReservationService.position, ReservationService.name)
     )
     if not archived:
         stmt = stmt.where(ReservationService.archived_at.is_(None))
     return ServiceListOut(
         items=[await _service_out(scope, s) for s in (await scope.session.execute(stmt)).scalars()]
+    )
+
+
+async def _noted(scope: LiteScope, before: dict[str, Any]) -> None:
+    """Un servicio cambiado en Reservas es un cambio de la ficha: los agentes
+    lo usan desde el siguiente mensaje (spec 047, requisito 8.4)."""
+    await services_catalog.note_reservas_write(
+        scope.session, actor=_ficha_actor(scope), before=before
     )
 
 
@@ -507,12 +526,14 @@ async def create_service(
         found = await scope.session.get(ReservationService, prior)
         if found is not None:
             return await _service_out(scope, found)
+    before = await services_catalog.section_view(scope.session)
     count = await scope.session.scalar(sa.select(sa.func.count()).select_from(ReservationService))
     svc = ReservationService(
         tenant_id=ctx.tenant_id,
         name=body.name.strip(),
         duration_minutes=body.duration_minutes,
         price_minor=body.price_minor,
+        price_kind="amount" if body.price_minor is not None else "none",
         currency=ctx.currency,
         all_staff=True,
         position=int(count or 0) + 1,
@@ -521,13 +542,14 @@ async def create_service(
     await scope.session.flush()
     await _set_service_staff(scope, ctx, svc, body.staff_ids)
     await scope.session.flush()
+    await _noted(scope, before)
     await _remember(redis, scope, "service", idempotency_key, svc.id)
     return await _service_out(scope, svc)
 
 
 async def _svc(scope: LiteScope, service_id: uuid.UUID) -> ReservationService:
     s = await scope.session.get(ReservationService, service_id)
-    if s is None:
+    if s is None or not s.bookable:
         raise HTTPException(status_code=404, detail="Not found")
     return s
 
@@ -538,6 +560,7 @@ async def patch_service(
 ) -> ServiceOut:
     ctx = await _ctx(scope)
     svc = await _svc(scope, service_id)
+    before = await services_catalog.section_view(scope.session)
     data = body.model_dump(exclude_unset=True)
     if data.get("name"):
         svc.name = data["name"].strip()
@@ -545,8 +568,10 @@ async def patch_service(
         svc.duration_minutes = int(data["duration_minutes"])
     if data.get("clear_price"):
         svc.price_minor = None
+        svc.price_kind = "none"
     elif "price_minor" in data:
         svc.price_minor = data["price_minor"]
+        svc.price_kind = "amount" if svc.price_minor is not None else "none"
     if "staff_ids" in data or data.get("all_staff"):
         await _set_service_staff(
             scope, ctx, svc, None if data.get("all_staff") else data.get("staff_ids")
@@ -554,13 +579,17 @@ async def patch_service(
     if data.get("position") is not None:
         svc.position = int(data["position"])
     await scope.session.flush()
+    await _noted(scope, before)
     return await _service_out(scope, svc)
 
 
 @router.post("/services/{service_id}/archive", status_code=204)
 async def archive_service(service_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> Response:
     svc = await _svc(scope, service_id)
+    before = await services_catalog.section_view(scope.session)
     svc.archived_at = _now()
+    await scope.session.flush()
+    await _noted(scope, before)
     return Response(status_code=204)
 
 

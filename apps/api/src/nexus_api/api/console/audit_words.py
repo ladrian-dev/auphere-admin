@@ -177,7 +177,6 @@ _FALLBACK: dict[str, dict[str, str]] = {
     "unknown": {"es": "sin dato", "en": "not recorded"},
 }
 
-_MODELS: dict[str, str] = dict(RESPOND_MODELS)
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
@@ -241,7 +240,8 @@ def _change(after: dict[str, Any], lang: str) -> str:
 def _model(model_id: Any, lang: str) -> str:
     if not model_id:
         return _say("unknown", lang)
-    return _MODELS.get(str(model_id), str(model_id).rsplit("/", 1)[-1])
+    # Spec 047: the offer is data (``model_profiles``); read it when used.
+    return dict(RESPOND_MODELS).get(str(model_id), str(model_id).rsplit("/", 1)[-1])
 
 
 def _cap(after: dict[str, Any], lang: str) -> str:

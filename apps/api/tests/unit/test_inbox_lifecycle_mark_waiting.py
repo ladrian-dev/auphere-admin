@@ -112,6 +112,8 @@ async def test_with_inbox_the_agent_goes_quiet_and_the_client_is_told(
     assert conv.agent_active is False
     assert conv.assigned_user_id is None
     assert conv.takeover_context["reason"] == "escalated"
+    # Spec 047 (contracts/events.md §2): la espera dice por qué.
+    assert conv.waiting_reason == "escalated"
     (event,) = await _events(db_session, c0)
     assert event.kind == "escalated" and event.actor == "agent"
     assert event.payload == {
@@ -126,7 +128,11 @@ async def test_with_inbox_the_agent_goes_quiet_and_the_client_is_told(
     (row,) = await _notifications(db_session, w["partner_id"])
     assert row.audience == "client"
     assert row.external_client_ref == w["ref"]
-    assert row.payload == {"conversation_id": str(c0), "contact": "Contacto 0"}
+    assert row.payload == {
+        "conversation_id": str(c0),
+        "contact": "Contacto 0",
+        "reason": "escalated",
+    }
     (mail,) = mails
     member_email = (
         await db_session.execute(

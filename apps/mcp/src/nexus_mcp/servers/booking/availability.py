@@ -4,11 +4,11 @@ Block D's booking-server is a relational facade. ``check_availability``
 needs to produce a list of free slots for a given date + service. Without
 AgendaPro (Block E) we approximate from the local ``appointments`` table:
 
-- Business hours: the tenant's ``business_hours`` in its ``timezone``, read
-  through ``nexus_api.services.business_hours`` — one reader for every shape
-  ever stored (bug ``horario-del-negocio-en-tres-formas``). A closed day, or a
-  day the stored hours do not name, has no slots. A tenant with no hours at
-  all keeps the historical 10:00-19:00.
+- Business hours: the business profile's hours (spec 047, ``services/business/
+  hours.py``) in its ``timezone`` — night shifts that close the next day and
+  special dates (a closed holiday has no slots) included. A tenant whose hours
+  are not in the profile yet is read from ``tenants.business_hours`` by the same
+  engine. A tenant with no hours at all keeps the historical 10:00-19:00.
 - A day may have several ranges (lunch and dinner); a slot never straddles
   the gap between two of them.
 - Slot duration: argument ``duration_min`` (default 30).
@@ -27,8 +27,10 @@ import uuid
 from datetime import UTC, datetime, time, timedelta
 from datetime import date as Date  # noqa: N812
 
-from nexus_api.db.models import Appointment, AppointmentStatus, Tenant
-from nexus_api.services.business_hours import WEEKDAYS, parse_business_hours
+from nexus_api.db.models import Appointment, AppointmentStatus
+from nexus_api.services.business import hours as business_hours
+from nexus_api.services.business_hours import load_business_hours
+from nexus_api.services.reservations.engine import until
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,26 +47,17 @@ async def _resolve_tenant_hours(
     The tenant has a ``timezone`` (IANA name, e.g. ``America/Santiago``) and an
     optional ``business_hours`` JSONB; the hours are local to the business.
     """
-    tenant = await session.get(Tenant, tenant_id)
-    tz_name = tenant.timezone if tenant else "UTC"
-    hours = parse_business_hours(tenant.business_hours if tenant else None)
-
-    try:
-        from zoneinfo import ZoneInfo
-
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = UTC  # type: ignore[assignment]
-
-    if hours is None:
+    hours = await load_business_hours(session, tenant_id)
+    tz = hours.tz
+    if not hours.known:
         day_ranges = [(DEFAULT_DAY_START, DEFAULT_DAY_END)]
     else:
-        day_ranges = hours[WEEKDAYS[on_date.weekday()]]
+        day_ranges = business_hours.day_ranges(hours, on_date)
 
     return [
         (
-            datetime.combine(on_date, start_t).replace(tzinfo=tz).astimezone(UTC),
-            datetime.combine(on_date, end_t).replace(tzinfo=tz).astimezone(UTC),
+            datetime.combine(on_date, start_t, tzinfo=tz).astimezone(UTC),
+            until(on_date, end_t, tz).astimezone(UTC),
         )
         for start_t, end_t in day_ranges
     ]

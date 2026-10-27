@@ -60,6 +60,18 @@ async def test_promote_then_rollback_swaps_active(db_session, seed_tenants):
                 tools=[],
                 policies={},
             )
+            # Spec 047 (R3.1): staging again before publishing writes into
+            # the same draft — same version, the newest content.
+            again = await svc.stage_new_version(
+                actor="a",
+                system_prompt_rendered="v1, retocada",
+                channels=[],
+                tools=[],
+                policies={},
+            )
+            assert again.id == v1.id and again.version == 1
+            assert again.system_prompt_rendered == "v1, retocada"
+            await svc.promote(v1.version, actor="a")
             v2 = await svc.stage_new_version(
                 actor="a",
                 system_prompt_rendered="v2",
@@ -67,7 +79,7 @@ async def test_promote_then_rollback_swaps_active(db_session, seed_tenants):
                 tools=[],
                 policies={},
             )
-            await svc.promote(v1.version, actor="a")
+            assert v2.version == 2
             await svc.promote(v2.version, actor="a")
             await db_session.refresh(v2)
             assert v2.status == AgentConfigStatus.ACTIVE

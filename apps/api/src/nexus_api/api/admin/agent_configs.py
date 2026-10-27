@@ -35,6 +35,7 @@ from nexus_api.schemas.agent_config import (
 )
 from nexus_api.schemas.evals import PromoteOverrideIn
 from nexus_api.services import AgentConfigService
+from nexus_api.services.agent_config_service import DraftWrite, draft_fields
 from nexus_api.services.evals import has_passing_recent_run
 from nexus_api.services.prompt_improver import (
     SUPPORTED_MODES,
@@ -281,6 +282,11 @@ async def update_runtime_capabilities(
             ),
         )
 
+    # Spec 047 (R3.3): the draft is everyone's; this write moves its revision
+    # like any other, so a console tab that read the old one is told.
+    svc = AgentConfigService(session)
+    await svc.lock_draft(config.agent_id, expected=None)
+    write = DraftWrite(draft=config, created=False, before=draft_fields(config))
     before = {
         "runtime_memory_tool": config.runtime_memory_tool,
         "runtime_outcome_grader": config.runtime_outcome_grader,
@@ -314,6 +320,7 @@ async def update_runtime_capabilities(
             },
         )
     )
+    await svc.finish_draft(write, actor=f"admin:{actor[:8]}")
     # Build the response payload from the body + the row's stable
     # identity fields. We avoid ``model_validate(config)`` because
     # SQLAlchemy may attempt lazy attribute loads on the not-yet-

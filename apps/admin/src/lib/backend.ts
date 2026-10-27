@@ -130,7 +130,7 @@ type FetchOpts = {
   headers?: Record<string, string>;
 };
 
-async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
+export async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
   const url = `${BACKEND_URL}${path}`;
   const init: RequestInit = {
     method: opts.method ?? "GET",

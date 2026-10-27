@@ -114,7 +114,10 @@ async def test_create_tenant_stores_canonical_business_hours(client, admin_heade
     assert hours["monday"] == [{"from": "09:00", "to": "18:00"}]
     assert hours["sunday"] == []
     assert hours["tuesday"] == []
-    assert len(hours) == 7
+    # Spec 047 (T056): it is the projection of the business profile's hours,
+    # with «Así lo dirá el agente» as its label (what the prompt templates read).
+    assert len([d for d in hours if d != "label"]) == 7
+    assert hours["label"] == "Abrimos lunes de 09:00 a 18:00. Cerramos martes a domingo."
 
 
 async def test_update_tenant_canonicalises_and_rejects_garbage(client, admin_headers, seed_tenants):

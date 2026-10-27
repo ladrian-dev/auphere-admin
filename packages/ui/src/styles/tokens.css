@@ -78,9 +78,17 @@
   --color-focus-light: oklch(0.48 0.11 167.3);
 
   /* ── 2. Semantic roles ────────────────────────────────────────────── */
-  --color-primary: var(--color-mountain-meadow);
+  /* Spec 047 (R47.8): el botón primario es el verde profundo con texto claro,
+     unos 6,8:1. Mountain Meadow con texto blanco daba 2,4:1 y con tinta se
+     leía como un aviso más que como la acción de la pantalla. El verde de
+     marca sigue siendo el de los estados positivos y el del tema oscuro. */
+  --color-primary: var(--color-bangladesh-green);
   --color-primary-mid: var(--color-mint);
-  --color-primary-deep: var(--color-bangladesh-green);
+  /* «Deep» es más oscuro que el primario: con el primario ya en Bangladesh, el
+     profundo baja a Pine. La consola de hoy los pinta juntos (dos tramos del
+     gasto, la ocupación de más del 85 %) y no pueden quedar iguales. En el
+     tema oscuro sigue siendo Bangladesh (abajo), como antes. */
+  --color-primary-deep: var(--color-pine);
   --color-primary-bright: var(--color-caribbean-green);
   /* El primario **como texto o icono**. Mountain Meadow sobre bone da 2,09:1:
      vale para rellenar un botón, no para escribir con él. Para un enlace, un
@@ -118,7 +126,9 @@
      mint, six degrees of hue from the positive green, and the two sat in the
      same row meaning different things; it is now a blue-green that reads as
      «not yet», not as «ok». */
-  --color-status-positive: var(--color-primary);
+  /* El verde de marca, nombrado: desde la spec 047 el primario es el profundo
+     y el punto de «Atendiendo» no tiene que oscurecerse con él. */
+  --color-status-positive: var(--color-mountain-meadow);
   --color-status-warning: oklch(0.655 0.097 72.5); /* #B5874A */
   --color-status-danger: oklch(0.519 0.134 28.3); /* #A8443A */
   --color-status-info: oklch(0.62 0.1 215); /* blue-green, not the brand green */
@@ -147,6 +157,14 @@
   --color-surface-raised: var(--color-bg-elevated);
   --color-surface-overlay: var(--color-bg-elevated);
   --color-scrim: oklch(0.161 0.033 115.3 / 0.16);
+
+  /* ── Series de las gráficas de bloques — spec 047, R47.10 ───────────
+     Dos verdes para dos series («Resueltas sin persona» y «Pasadas a una
+     persona»), cada uno a 3:1 o más sobre el fondo y la tarjeta (WCAG 1.4.11),
+     y la pista: lo que dibujan los cuadros vacíos. El tema oscuro los redefine. */
+  --color-series-1: var(--color-bangladesh-green);
+  --color-series-2: var(--color-frog);
+  --color-series-track: oklch(0.161 0.033 115.3 / 0.08);
 
   /* ── Typography ───────────────────────────────────────────────────── */
   /* Inter es la familia del producto (owner, 2026-09-26).
@@ -208,6 +226,15 @@
   --size-sidebar-min: 220px;
   --size-sidebar-max: 320px;
   --size-strip: 52px;
+  /* El menú lateral de la consola nueva (spec 047, R47.1): abierto y plegado.
+     Plegado solo quedan los iconos, cada uno con su nombre como tooltip. */
+  --size-nav: 240px;
+  --size-nav-collapsed: 64px;
+
+  /* Hasta 900 px el menú lateral pasa a barra superior (R47.1). 56,3125 rem =
+     901 px, así que `max-shell:` es «hasta 900» y `shell:` «desde 901». En rem
+     como los demás puntos de ruptura, para que Tailwind los ordene bien. */
+  --breakpoint-shell: 56.3125rem;
 
   /* Leading, named (brand-system §2). Tailwind's `leading-*` reads these. */
   --leading-tight: 1.2;
@@ -305,7 +332,8 @@
   --popover: var(--color-bg-elevated);
   --popover-foreground: var(--color-fg);
   --primary: var(--color-primary);
-  --primary-foreground: var(--color-rich-black);
+  /* Bone sobre el verde profundo: 6,8:1 (R47.8). */
+  --primary-foreground: var(--color-bone);
   --secondary: var(--color-bg-sunken);
   --secondary-foreground: var(--color-fg);
   --muted: var(--color-bg-sunken);
@@ -334,6 +362,13 @@
   --sidebar-border: var(--color-border);
   --sidebar-ring: var(--color-focus-light);
 
+  /* Vidrio (spec 047, R47.9): SOLO la capa que flota sobre el contenido —
+     la barra de pestañas fija, la barra de acción, los menús y los avisos.
+     Nunca una tarjeta ni un formulario. Al 82 % el texto sigue a más de 4,5:1
+     encima de cualquier cosa, también de un botón primario. */
+  --glass-bg: oklch(1 0 0 / 0.82);
+  --glass-blur: 20px;
+
   color-scheme: light;
 }
 
@@ -348,6 +383,13 @@
   --card-foreground: var(--color-bone);
   --popover: var(--color-ink-raised);
   --popover-foreground: var(--color-bone);
+  /* El tema oscuro está diseñado, no invertido (R47.8): sobre tinta, el
+     primario es el verde de marca con texto de tinta (8,3:1). El verde
+     profundo de claro se hundiría en el fondo. `--color-primary` va también
+     aquí porque es el que lee `bg-primary`: si solo cambiase el puente de
+     shadcn, el botón tendría dos colores según quién lo pintase. */
+  --color-primary: var(--color-mountain-meadow);
+  --color-primary-deep: var(--color-bangladesh-green);
   --primary: var(--color-mountain-meadow);
   --primary-foreground: var(--color-rich-black);
   --secondary: var(--color-ink-sunken);
@@ -407,7 +449,25 @@
   --sidebar-border: oklch(0.971 0.006 185.3 / 0.14);
   --sidebar-ring: var(--color-primary);
 
+  /* Las series de las gráficas sobre tinta: la principal es el verde de marca. */
+  --color-series-1: var(--color-mountain-meadow);
+  --color-series-2: var(--color-frog);
+  --color-series-track: oklch(0.971 0.006 185.3 / 0.08);
+
+  --glass-bg: oklch(0.235 0.014 170 / 0.82);
+  --glass-blur: 20px;
+
   color-scheme: dark;
+}
+
+/* «Reducir transparencia» en el sistema: el vidrio pasa a sólido (R47.9 y
+   escenario 3 de la historia 27). Va después de los dos temas para ganarles
+   a igual especificidad. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-bg: var(--popover);
+    --glass-blur: 0px;
+  }
 }
 
 /* ── 4. Tailwind mirror of the bridge ─────────────────────────────────── */
@@ -462,6 +522,15 @@
 
 @utility no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* El vidrio de la capa flotante (spec 047, R47.9). Una sola utilidad para que
+   nadie lo reinvente en un componente: los tokens `--glass-*` deciden el
+   color y el desenfoque, y pasan a sólido con «Reducir transparencia». */
+@utility glass {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
 }
 
 /* ── 5. Base ──────────────────────────────────────────────────────────── */

@@ -355,9 +355,11 @@ async def test_business_hours_edit_canonical(client, shop) -> None:
     assert three.status_code == 422
 
 
-async def test_editing_the_hours_keeps_the_prompt_label(client, db_session, shop) -> None:
-    """La etiqueta del prompt (``business_hours.label``, la lee ``agent_configs``)
-    no la toca el negocio al cambiar su horario desde Reservas."""
+async def test_editing_the_hours_derives_the_prompt_label(client, db_session, shop) -> None:
+    """Spec 047 (T056, research D15) sustituye la regla de la 043: el horario es
+    uno solo, el de la ficha, y la etiqueta del prompt (``business_hours.label``,
+    la lee ``agent_configs``) deja de ser una copia escrita a mano: es la frase
+    «Así lo dirá el agente» del horario que el negocio acaba de guardar."""
     import sqlalchemy as sa
 
     from nexus_api.db.models import Tenant
@@ -379,7 +381,7 @@ async def test_editing_the_hours_keeps_the_prompt_label(client, db_session, shop
     stored = await db_session.scalar(
         sa.select(Tenant.business_hours).where(Tenant.id == shop["tenant_id"])
     )
-    assert stored["label"] == "L 9-18"
+    assert stored["label"] == "Abrimos lunes de 10:00 a 19:00. Cerramos martes a domingo."
     assert stored["monday"] == [{"from": "10:00", "to": "19:00"}]
 
 

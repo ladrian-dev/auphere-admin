@@ -23,12 +23,9 @@ from nexus_api.api.deps import get_redis
 from nexus_api.core.errors import AgentConfigConflict
 from nexus_api.db.models import AgentConfig
 from nexus_api.services.agent_config_service import AgentConfigService
-from nexus_api.services.agent_console_policy import (
-    has_disclosure_decision,
-    with_disclosure_default,
-)
+from nexus_api.services.agent_console_policy import has_disclosure_decision
 
-from .agent_drafts import copy_runtime_fields, draft_diff, draft_screens, load_view
+from .agent_drafts import draft_diff, draft_screens, draft_written, ensure_draft, load_view
 from .deps import ClientScope, agent_scope
 from .schemas import AgentBundleOut, AgentDraftIn, AgentPublishIn, AgentVersionOut, DraftDiffOut
 
@@ -110,39 +107,32 @@ async def stage_version(
     body: AgentDraftIn,
     scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> AgentVersionOut:
-    """Stage a new (non-active) version. Channels, policies and runtime
-    capabilities are copied from the active version so a partner editing
-    the prompt cannot accidentally drop the runtime wiring.
+    """Write the prompt (and, if sent, the tools) into the agent's draft.
 
-    CP-31: a version staged from the console always carries an explicit
-    AI-disclosure decision — the default (``enabled=true``) is written
-    here, attributed to the actor, unless the policies already have one.
+    Spec 047 (R3.1): this used to stage a NEW version copied from the
+    active one, so the settings saved a minute earlier stayed behind in a
+    version nobody would publish. Now it writes into THE draft — created
+    on demand as a full copy of the active version, runtime wiring
+    included — and everything else in it stays.
+
+    Policies are never accepted raw from the console (platform keys such
+    as ``admin_access``/``llm`` live there). CP-31: a draft written from
+    the console always carries an explicit AI-disclosure decision.
     """
-    service = AgentConfigService(scope.session)
-    active = await service.get_active(agent_id=scope.agent_id)
-    actor = scope.principal.actor
-    # Policies are never accepted raw from the console (platform keys such
-    # as ``admin_access``/``llm`` live there); the partner edits ONLY
-    # ``policies.console`` through the validated settings endpoint.
-    policies = dict(active.policies) if active else {}
-    try:
-        cfg = await service.stage_new_version(
-            actor=actor,
-            system_prompt_rendered=body.system_prompt,
-            channels=list(active.channels) if active else [],
-            tools=(body.tools if body.tools is not None else list(active.tools) if active else []),
-            policies=with_disclosure_default(policies, actor=actor),
-            seed_template_ref=active.seed_template_ref if active else None,
-            kg_schema_id=active.kg_schema_id if active else None,
-            agent_id=scope.agent_id or (active.agent_id if active else None),
-        )
-    except AgentConfigConflict as exc:
-        # Unknown tools / invalid combination — the draft is not storable.
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
-    copy_runtime_fields(active, cfg)
-    return _version_out(cfg)
+    if body.tools is not None:
+        try:
+            await AgentConfigService(scope.session)._validate_tools(body.tools)
+        except AgentConfigConflict as exc:
+            # Unknown tools / invalid combination — the draft is not storable.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
+    draft, _created = await ensure_draft(scope)
+    draft.system_prompt_rendered = body.system_prompt
+    if body.tools is not None:
+        draft.tools = list(dict.fromkeys(body.tools))
+    await draft_written(scope, draft)
+    return _version_out(draft)
 
 
 DISCLOSURE_REQUIRED_DETAIL = (

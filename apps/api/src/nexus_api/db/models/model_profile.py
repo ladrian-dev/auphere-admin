@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, Text, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -133,8 +133,44 @@ class ModelProfile(Base):
 
     # ``active`` | ``deprecated``. Un perfil deprecado sigue existiendo
     # (hay consumo histórico que valorar) pero no debería ofrecerse en el
-    # selector del panel.
+    # selector del panel. Spec 047 (0180) añade el ciclo del catálogo:
+    # ``draft`` → ``certifying`` → ``active`` → ``retiring`` → ``retired``, y
+    # ``unavailable`` desde cualquiera (``DEPLOYMENT_STATUSES``).
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+
+    # ── Spec 047 (migración 0180, ``contracts/router-and-catalog.md`` §2) ──
+    #: Lo que se manda al proveedor (``eu.anthropic.…`` en Bedrock).
+    route: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: El juez tiene que ser de otra familia que el juzgado.
+    family: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: ``eu`` | ``us`` | ``global``. «Solo UE» solo usa ``eu``.
+    residency: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="global", server_default="global"
+    )
+    zero_retention: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: ``store=false`` o ``data_retention_mode:none``, según la ruta.
+    retention_how: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    license_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    license_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    license_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    contract_dpa: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    subprocessor_listed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    retire_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    capabilities: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    quota: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    #: La oferta fija de hoy en la consola (Sol, Terra, Luna): lo que era la
+    #: constante ``RESPOND_MODELS``. ``None`` = no se ofrece por su nombre.
+    offer_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

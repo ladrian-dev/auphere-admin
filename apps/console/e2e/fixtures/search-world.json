@@ -1,0 +1,29 @@
+{
+  "clients": [
+    { "ref": "flor-y-encanto", "name": "Flor y Encanto", "niche": "Floristería" },
+    { "ref": "clinica-dental-sonrisa", "name": "Clínica Dental Sonrisa", "niche": "Clínica dental" },
+    { "ref": "cafe-origen", "name": "Café Origen", "niche": "Cafetería de especialidad" }
+  ],
+  "agents": [
+    { "agent_id": "0b7c2e4e-0000-4c1c-9d1f-000000000001", "name": "Recepción", "client_ref": "flor-y-encanto", "client_name": "Flor y Encanto" },
+    { "agent_id": "0b7c2e4e-0000-4c1c-9d1f-000000000002", "name": "Recepcionista", "client_ref": "clinica-dental-sonrisa", "client_name": "Clínica Dental Sonrisa" },
+    { "agent_id": "0b7c2e4e-0000-4c1c-9d1f-000000000003", "name": "Recordatorios", "client_ref": "clinica-dental-sonrisa", "client_name": "Clínica Dental Sonrisa" }
+  ],
+  "screens": [
+    { "key": "home", "href": "/" },
+    { "key": "clients", "href": "/clients" },
+    { "key": "usage", "href": "/usage" },
+    { "key": "audit", "href": "/audit" },
+    { "key": "knowledge", "href": "/knowledge" },
+    { "key": "workstation", "href": "/workstation" },
+    { "key": "team", "href": "/team" },
+    { "key": "billing", "href": "/billing" },
+    { "key": "keys", "href": "/keys" },
+    { "key": "notifications", "href": "/notifications" }
+  ],
+  "actions": [
+    { "key": "new_client", "href": "/clients/new" },
+    { "key": "invite_member", "href": "/team?invite=1" },
+    { "key": "new_api_key", "href": "/keys?new=1" }
+  ]
+}

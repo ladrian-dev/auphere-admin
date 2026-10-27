@@ -14,7 +14,9 @@ import { getT } from "@/i18n/server";
 import { BackendError } from "@/lib/backend";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
 
-import { getAgentBundleCached, getAgentsCached, getClientCached } from "./data";
+import { ClientHeaderV2 } from "@/components/clients/v2/client-header-v2";
+
+import { getAgentBundleCached, getAgentsCached, getClientCached, getClientV2Cached, getConsoleVersionCached } from "./data";
 
 export async function generateMetadata({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
@@ -28,6 +30,23 @@ export default async function ClientLayout({ params, children }: { params: Promi
   const { ref } = await params;
   const principal = await requirePartnerPrincipal(`/clients/${ref}`);
   if (!can(principal.role, "clients:read")) redirect("/");
+  // Spec 047 (T067): con la consola nueva, la cabecera del cliente con sus
+  // pestañas en píldora (Panel · Negocio · Agentes). Las páginas cuelgan de aquí.
+  if ((await getConsoleVersionCached(principal)) === "v2") {
+    let detail;
+    try {
+      detail = await getClientV2Cached(principal, ref);
+    } catch (err) {
+      if (err instanceof BackendError && err.status === 404) notFound();
+      throw err;
+    }
+    return (
+      <div className="grid min-w-0 gap-6">
+        <ClientHeaderV2 client={detail} />
+        {children}
+      </div>
+    );
+  }
   const { t, locale } = await getT(principal.locale);
   let client;
   try {

@@ -13,10 +13,14 @@ from nexus_api.api.console import companion as companion_api
 from nexus_api.api.console import playground as playground_api
 from nexus_api.api.qa import QA_CLASSIFY_MODEL, QA_RESPOND_MODEL
 from nexus_api.config import Settings
+from nexus_api.core import respond_catalog
 from nexus_api.core.respond_catalog import (
     HOP_MODEL_ID_SET,
+    HOP_MODEL_IDS,
     HUMAN_TURN_ERROR,
     RESPOND_MODEL_ID_SET,
+    RESPOND_MODEL_IDS,
+    RESPOND_MODELS,
     SOL_MODEL_ID,
     UnknownCatalogModel,
     hop_models_in_catalog,
@@ -153,3 +157,100 @@ async def test_playground_scrubs_vendor_stack_from_the_stream() -> None:
     assert HUMAN_TURN_ERROR in blob
     for needle in ("litellm", "Anthropic", "claude-", "NEXUS_", "LITELLM_", "sk-"):
         assert needle.lower() not in blob.lower()
+
+
+# ── spec 047, T139: las listas salen de los datos (requisito 39.3) ─────────
+
+
+def _rows(*extra: dict[str, object]) -> list[dict[str, object]]:
+    """Lo que hoy siembran las migraciones (0072, 0076, 0095, 0180), como filas."""
+    labels = dict(respond_catalog.BOOT_OFFER)
+    prices = {"openai/gpt-5.6-sol": 4, "openai/gpt-5.6-terra": 2, "openai/gpt-5.6-luna": 0.2}
+    seeded: list[dict[str, object]] = [
+        {
+            "model_id": m,
+            "status": "active",
+            "offer_label": labels.get(m),
+            "price_input_per_mtok": prices.get(m),
+        }
+        for m in respond_catalog.BOOT_HOP_MODEL_IDS
+    ]
+    return [*seeded, *extra]
+
+
+def test_the_offer_and_the_hop_catalog_are_read_from_model_profiles() -> None:
+    """Una fila nueva se ofrece y se ejecuta sin desplegar; una retirada deja de
+    ejecutarse. Y los nombres que ya importaron los llamadores lo ven: son vistas
+    del catálogo, no copias."""
+    new = {
+        "model_id": "prov/modelo-nuevo",
+        "status": "active",
+        "offer_label": "Nuevo",
+        "price_input_per_mtok": 0.1,
+    }
+    rows = [
+        {**r, "status": "retired"} if r["model_id"] == "anthropic/claude-sonnet-4-6" else r
+        for r in _rows(new)
+    ]
+    try:
+        respond_catalog.refresh_from_rows(rows)
+        assert ("prov/modelo-nuevo", "Nuevo") in RESPOND_MODELS
+        assert "prov/modelo-nuevo" in RESPOND_MODEL_ID_SET
+        assert require_hop_model("prov/modelo-nuevo") == "prov/modelo-nuevo"
+        assert "anthropic/claude-sonnet-4-6" not in HOP_MODEL_ID_SET
+        assert "anthropic/claude-sonnet-4-6" not in HOP_MODEL_IDS
+        with pytest.raises(UnknownCatalogModel):
+            require_hop_model("anthropic/claude-sonnet-4-6")
+        # La oferta va de la más capaz a la más barata (precio de entrada).
+        assert list(RESPOND_MODEL_IDS) == [
+            "openai/gpt-5.6-sol",
+            "openai/gpt-5.6-terra",
+            "openai/gpt-5.6-luna",
+            "prov/modelo-nuevo",
+        ]
+        assert dict(RESPOND_MODELS)["openai/gpt-5.6-terra"] == "Terra"
+    finally:
+        respond_catalog.reset()
+    assert "prov/modelo-nuevo" not in HOP_MODEL_ID_SET
+
+
+def test_only_active_rows_are_offered_and_retiring_ones_still_run() -> None:
+    """«Fijar un modelo» ofrece solo los activos (39.7); uno en retirada sigue
+    ejecutándose hasta su fecha (41.7) y uno en certificación tiene que poder
+    correr su batería."""
+    rows = [
+        {**r, "status": "retiring"} if r["model_id"] == "openai/gpt-5.6-luna" else r
+        for r in _rows()
+    ]
+    rows.append({"model_id": "prov/en-pruebas", "status": "certifying", "offer_label": "Pruebas"})
+    rows.append({"model_id": "prov/borrador", "status": "draft", "offer_label": None})
+    rows.append({"model_id": "prov/fuera", "status": "unavailable", "offer_label": None})
+    try:
+        respond_catalog.refresh_from_rows(rows)
+        assert "openai/gpt-5.6-luna" not in RESPOND_MODEL_ID_SET
+        assert "openai/gpt-5.6-luna" in HOP_MODEL_ID_SET
+        assert "prov/en-pruebas" in HOP_MODEL_ID_SET
+        assert "prov/en-pruebas" not in RESPOND_MODEL_ID_SET
+        assert "prov/borrador" not in HOP_MODEL_ID_SET
+        assert "prov/fuera" not in HOP_MODEL_ID_SET
+    finally:
+        respond_catalog.reset()
+
+
+def test_an_empty_read_keeps_the_last_known_catalog() -> None:
+    """Un catálogo vacío no deja la plataforma sin modelos: es una lectura rota,
+    no una decisión de Auphere."""
+    try:
+        respond_catalog.refresh_from_rows([])
+        assert SOL_MODEL_ID in RESPOND_MODEL_ID_SET
+        assert require_hop_model(SOL_MODEL_ID) == SOL_MODEL_ID
+    finally:
+        respond_catalog.reset()
+
+
+def test_the_boot_lists_are_the_seeded_rows_and_only_a_fallback() -> None:
+    """Hasta la primera lectura se sirve lo que sembraron las migraciones; el
+    guardián ``test_model_catalog_matches_db`` las mantiene iguales a la base."""
+    respond_catalog.reset()
+    assert set(RESPOND_MODEL_ID_SET) == {m for m, _ in respond_catalog.BOOT_OFFER}
+    assert set(HOP_MODEL_ID_SET) == set(respond_catalog.BOOT_HOP_MODEL_IDS)

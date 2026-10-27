@@ -60,7 +60,7 @@ from nexus_api.services.connectors.service import (
 )
 from nexus_api.services.templating.seed_templates import load_seed_template
 
-from .agent_drafts import DraftView, ensure_draft, load_view
+from .agent_drafts import DraftView, draft_written, ensure_draft, load_view
 from .deps import ClientScope, agent_scope, client_sector
 from .schemas_agent_tools import (
     ConnectApiKeyIn,
@@ -194,7 +194,7 @@ async def put_tools(
         ) from exc
     draft, created = await ensure_draft(scope)
     draft.tools = names
-    await scope.session.flush()
+    await draft_written(scope, draft)
     out = await _catalog(scope, await load_view(scope))
     return ToolsSaved(**out.model_dump(), draft_created=created)
 

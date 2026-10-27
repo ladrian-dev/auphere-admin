@@ -34,32 +34,36 @@ async def test_create_staged_assigns_version_1(db_session, seed_tenants):
             assert config.status == AgentConfigStatus.STAGED
 
 
+async def _stage(repo: AgentConfigRepository, prompt: str):
+    return await repo.create_staged(
+        system_prompt_rendered=prompt,
+        channels=[],
+        tools=[],
+        policies={},
+        seed_template_ref=None,
+        kg_schema_id=None,
+        created_by=None,
+    )
+
+
 async def test_create_staged_increments_version(db_session, seed_tenants):
+    """Spec 047: the next version is staged once the draft is published —
+    while the agent has a draft there is no second one (R3.1). Each new draft
+    remembers the version it started from (R3.6)."""
     tid = seed_tenants["a"]
     repo = AgentConfigRepository(db_session)
     with tenant_context(tid):
         async with db_session.begin():
             await _scope(db_session, tid)
-            v1 = await repo.create_staged(
-                system_prompt_rendered="v1",
-                channels=[],
-                tools=[],
-                policies={},
-                seed_template_ref=None,
-                kg_schema_id=None,
-                created_by=None,
-            )
-            v2 = await repo.create_staged(
-                system_prompt_rendered="v2",
-                channels=[],
-                tools=[],
-                policies={},
-                seed_template_ref=None,
-                kg_schema_id=None,
-                created_by=None,
-            )
+            v1 = await _stage(repo, "v1")
+            with pytest.raises(AgentConfigConflict, match="already has a draft"):
+                await _stage(repo, "v2")
+            await repo.promote(v1.version, promoted_by="alice")
+            v2 = await _stage(repo, "v2")
             assert v1.version == 1
             assert v2.version == 2
+            assert (v1.agent_version_number, v2.agent_version_number) == (1, 2)
+            assert v1.base_version_id is None and v2.base_version_id == v1.id
 
 
 async def test_promote_makes_active_and_archives_previous(db_session, seed_tenants):
@@ -68,25 +72,9 @@ async def test_promote_makes_active_and_archives_previous(db_session, seed_tenan
     with tenant_context(tid):
         async with db_session.begin():
             await _scope(db_session, tid)
-            v1 = await repo.create_staged(
-                system_prompt_rendered="v1",
-                channels=[],
-                tools=[],
-                policies={},
-                seed_template_ref=None,
-                kg_schema_id=None,
-                created_by=None,
-            )
-            v2 = await repo.create_staged(
-                system_prompt_rendered="v2",
-                channels=[],
-                tools=[],
-                policies={},
-                seed_template_ref=None,
-                kg_schema_id=None,
-                created_by=None,
-            )
+            v1 = await _stage(repo, "v1")
             await repo.promote(v1.version, promoted_by="alice")
+            v2 = await _stage(repo, "v2")
             await repo.promote(v2.version, promoted_by="bob")
             await db_session.refresh(v1)
             await db_session.refresh(v2)
@@ -131,25 +119,9 @@ async def test_rollback_restores_archived_version(db_session, seed_tenants):
     with tenant_context(tid):
         async with db_session.begin():
             await _scope(db_session, tid)
-            v1 = await repo.create_staged(
-                system_prompt_rendered="v1",
-                channels=[],
-                tools=[],
-                policies={},
-                seed_template_ref=None,
-                kg_schema_id=None,
-                created_by=None,
-            )
-            v2 = await repo.create_staged(
-                system_prompt_rendered="v2",
-                channels=[],
-                tools=[],
-                policies={},
-                seed_template_ref=None,
-                kg_schema_id=None,
-                created_by=None,
-            )
+            v1 = await _stage(repo, "v1")
             await repo.promote(v1.version, promoted_by="a")
+            v2 = await _stage(repo, "v2")
             await repo.promote(v2.version, promoted_by="b")
             await repo.rollback(v1.version, promoted_by="c")
             await db_session.refresh(v1)

@@ -163,6 +163,15 @@ async def persist_inbound_message(
     return msg
 
 
+#: Spec 047 (0176): ``messages.origin`` of a reply, from who wrote it.
+_ORIGIN_BY_ACTOR: dict[str, str] = {
+    "agent": "agent",
+    "system": "system",
+    "member": "business_person",
+    "operator": "business_person",
+}
+
+
 async def persist_outbound_message(
     session: AsyncSession,
     *,
@@ -197,8 +206,23 @@ async def persist_outbound_message(
     ``adapter.send_interactive``. ``content`` should still be set to a
     sensible fallback text (typically the component's ``body``) so the
     operator panel and Langfuse traces have something human-readable.
+
+    Spec 047 (T035, requisito 1.3): inside a channel turn the reply is an
+    effect. Its ``turn_effects`` key and its row go in the caller's
+    transaction together, so a retried turn that writes its answer again gets
+    the row of the first attempt back instead of a second message to the
+    contact. Outside a turn (operator sends, the Playground) nothing changes.
     """
     require_current_tenant()
+    from nexus_worker.runtime.turn_effects import claim_reply, record_reply
+    from nexus_worker.runtime.turns import current_turn
+
+    reply = await claim_reply(session)
+    if reply is not None and reply[1] is not None:
+        prior = await session.get(Message, reply[1])
+        if prior is not None:
+            return prior
+    turn = current_turn()
     msg = Message(
         tenant_id=require_current_tenant(),
         conversation_id=conversation_id,
@@ -219,9 +243,14 @@ async def persist_outbound_message(
         actor_id=actor_id,
         # Spec 030: which of the client's agents wrote it.
         agent_id=agent_id,
+        # Spec 047 (0176): who wrote it and the turn it answers.
+        origin=_ORIGIN_BY_ACTOR.get(actor_kind),
+        turn_id=turn.turn_id if turn is not None else None,
     )
     session.add(msg)
     await session.flush()
     await session.refresh(msg)
+    if reply is not None:
+        await record_reply(session, reply[0], msg.id)
     await _touch_last_message(session, conversation_id, msg.created_at)
     return msg

@@ -58,6 +58,28 @@ operador; el partner la lee en frases).
 - Un cliente directo de Auphere (sin partner) nunca se para por saldo: el
   endpoint responde 422 `no_partner`.
 
+## La tarea, la decisión y la partida de cada consumo (spec 047, ola 1)
+
+- **`usage_records` gana `task`, `route_decision_id` y `line`** (migración
+  `0177`). El colector las lleva en cada evento y `persist_rows` las escribe.
+- **`task`** es la tarea de la taxonomía del router
+  (`contracts/router-and-catalog.md` §1; `collector.LLM_TASKS`, atada por una
+  prueba a la del catálogo). Una llamada a un modelo sin tarea falla con
+  `NEXUS_USAGE_REQUIRE_TASK=1` (las pruebas) y en producción se mide igual y
+  queda como anomalía (`usage.task_missing`): perder la medición sería regalar
+  el gasto. **`route_decision_id`** enlaza con `llm.route_decision`.
+- **`line`** se deriva de `source` al escribir (`USAGE_LINE_BY_SOURCE`):
+  `channel` → «Conversaciones»; el playground (`qa`), el constructor, las
+  pruebas, la lectura de webs, la indexación y las sugerencias → «Construcción y
+  pruebas» (`build`); el Companion → `companion`; las certificaciones que lanza
+  Auphere → `platform`. Las filas de antes quedan en `NULL`.
+- **Construcción y pruebas nunca sale de la bolsa del cliente**: el débito y el
+  contador de presupuesto solo miran `channel`. Un trabajo nuevo de esa partida
+  abre su buffer con `usage_turn(..., source=SOURCE_READER)` (o el suyo) y el id
+  del trabajo como `turn_id`.
+- **Un turno se cobra una vez aunque se reintente**: conserva su `turn_id` en
+  cada intento, y el débito es `channel:{turno}` en el libro.
+
 ## Tarjeta guardada, recarga automática y pospago (spec 041)
 
 - **Tarjeta.** El partner guarda su tarjeta en la página de Stripe (Checkout `mode=setup`) desde Facturación. Auphere guarda solo ids, marca, últimos 4 y caducidad (`partner_billing`).

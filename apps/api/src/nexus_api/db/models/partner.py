@@ -257,6 +257,14 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     # Migration 0086 — activation metric (CP-29): first moment the partner
     # had an ACTIVE client with a published agent. NULL = not yet.
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Migración 0175 — spec 047 (research D38): la consola nueva se activa
+    # partner a partner, desde el admin. NULL = el partner ve la consola de
+    # hoy. No es un módulo de ``console_modules``: es un modo de la consola
+    # con estado de migración. ``_by`` es la persona de Auphere que la activó.
+    console_v2_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    console_v2_enabled_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     # Migration 0087 — usage alerts (CP-24). Monthly cap of channel messages
     # across all the partner's clients (NULL = no cap; v1 only WARNS at 80 %
     # and 100 %, never cuts service), e-mail recipients, and the switch.

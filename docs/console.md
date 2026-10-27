@@ -58,6 +58,39 @@ integraciones y observa lo que pasa. La API decide; la consola pinta y dice
    (`last_sync`), y las etiquetas de sus campos van en el idioma del partner
    (`connectors.field.{slug}.{campo}`).
 
+## Un solo borrador por agente (spec 047, historia 2)
+
+Llega a todos los partners, con la consola de hoy y con la nueva. Cada agente
+tiene **como mucho un borrador** (`uq_agent_configs_one_draft`, migración 0178) y
+todo cambio de comportamiento se escribe en él: las instrucciones, los ajustes,
+las herramientas, las habilidades, el admin y la API de partners
+(`services/agent_config_service.py`). Antes, guardar los ajustes y después el
+prompt dejaba los ajustes en una versión que nadie iba a publicar.
+
+- **Las rutas**: `GET/PATCH/DELETE /console/clients/{ref}/agents/{agent_id}/draft`
+  y el historial `GET …/agents/{agent_id}/versions`
+  (`api/console/agent_draft_routes.py`). `PATCH` y `DELETE` exigen `If-Match` con
+  la `revision` que leyó la pantalla (`agents.draft_revision`); sin él, `428`. Si
+  otra persona escribió entre medias, `412` con `detail.current` (el borrador
+  como está) y `detail.changes` (quién cambió qué campos, en claves como
+  `settings.tone`), y no entra nada.
+- **Las rutas de antes** (`PUT …/agent/settings`, `PUT …/tools`, `PUT …/skills`,
+  `PUT …/capabilities`, `POST …/agent/versions`) escriben en ese mismo borrador
+  y mueven la revisión: otra pestaña con la de antes se entera.
+- **El borrador nace** de la versión activa, o de la última publicada si no hay
+  activa, con todos sus campos (también las capacidades del runtime) y recuerda
+  de cuál partió. **Descartar** lo archiva sin publicarlo: el agente vuelve a su
+  versión activa, que no cambia.
+- **El número** va por agente («v{n} de {agente}», `agent_version_number`); el
+  `version` de cada cliente no cambia y las rutas de antes lo siguen usando.
+- **La pestaña Agente** tiene **una sola barra de guardado**
+  (`components/agent-draft/`): las instrucciones y los ajustes dicen qué tienen
+  pendiente y la barra lo guarda en una escritura, con una nota opcional. El 412
+  abre el aviso «Hay cambios más nuevos de …» con los cambios de cada uno, lo
+  que tocaron los dos y dos salidas: «Guardar los míos encima» o «Quedarme con
+  los suyos». El historial enseña autor, fecha, nota y versión de partida. Su
+  e2e corre aparte: `pnpm exec playwright test -c e2e/agent-draft.config.ts`.
+
 ## Módulos del partner (spec 032)
 
 Auphere decide desde el panel qué secciones tiene la consola de cada partner
@@ -66,6 +99,73 @@ los aplica en tres sitios: el menú (`navForPartner`: módulo **y** permiso del 
 paleta ⌘K y una puerta por sección (`requirePartnerModule` en el `layout.tsx` de cada
 carpeta y en el Panel), que lleva al primer módulo asignado. El Companion es el módulo
 `companion`. Un partner sin ninguna sección de menú se lee como consola apagada.
+
+## La consola nueva, partner a partner (spec 047)
+
+La fábrica de agentes (`specs/047-la-fabrica-de-agentes/`) llega detrás de una
+**activación por partner** (research D38): `partners.console_v2_enabled_at` y
+`_by`, que escribe Auphere (`services/console_v2.py`; auditoría
+`partner.console_v2_enabled` / `_disabled`). `/console/me` devuelve
+`console_version` (`v1` | `v2`) y `app/(console)/layout.tsx` elige el marco:
+- **`v1`** (`components/shell/console-shell-v1.tsx`): el de hoy, sin cambios.
+  Un partner sin activar no ve nada nuevo salvo el sistema visual.
+- **`v2`** (`console-shell-v2.tsx`): barra lateral plegable a 64 px con tooltip y
+  sin etiquetas de grupo (`nav-v2.ts`), migas con el último elemento sin enlace
+  (`crumbs-v2.ts`), la campana con los 5 últimos avisos, «Marcar todo como leído»
+  y «Ver todas», el menú de perfil con el tema (que se queda en móvil) y cada
+  pantalla con su URL en el historial. Las rutas de la v2 viven en `routes-v2.ts`.
+
+**⌘K** busca en `GET /console/search?q=` a través de `app/api/search/route.ts`:
+el principal se resuelve en el servidor y cada llamada lleva su token de 60 s, como
+el puente del Companion. Devuelve clientes y agentes (con su cliente; los agentes
+se leen con el contexto de cada cliente puesto, nunca sin RLS) y **todas** las
+pantallas y acciones que la persona puede hacer, como claves: la consola pone el
+texto (`i18n/lanes/shell.ts`, `shell.search.screen.*` y `shell.search.action.*`) y
+filtra por él. Lo que no se puede hacer no aparece (§V).
+
+**Trabajos largos.** Lo que tarda responde `202 {job_id}` y la consola consulta
+`GET /console/jobs/{job_id}` con espera creciente. La ruta solo recibe el id: la
+función SQL `job_tenant` (SECURITY DEFINER) devuelve el cliente del trabajo, la API
+comprueba que es del partner y solo entonces abre la transacción con ese cliente.
+Un trabajo de otro partner es el mismo 404 opaco que uno inexistente. Nunca sale
+el coste (C9), y un fallo viaja como `error_code`. Un trabajo vivo sin latido
+caduca al leerlo (`timeout`). Los ejecuta `jobs-consumer` en el worker (familia
+runner, stream `nexus:jobs`; research D43).
+
+**Sistema visual** (`@nexus/ui`, spec 047 T005, para las dos consolas, el panel,
+la app de escritorio y la móvil): el primario es el verde profundo, con contraste
+≥ 4,5:1 con su texto; pestañas en píldora; diálogos con trampa y devolución del
+foco; avisos que no se van con el foco o el ratón encima; `money` en `es-ES`, y la
+gráfica de bloques (`block-chart.tsx`) con su tabla equivalente. El vidrio solo
+existe en la capa flotante y se apaga con `prefers-reduced-transparency`.
+
+El e2e del marco nuevo corre aparte, contra una API simulada del contrato:
+`pnpm exec playwright test -c e2e/shell.config.ts`.
+
+**El alta en tres datos** (spec 047, historias 3 y 4). Con la consola nueva,
+«Nuevo cliente» es un modal (`components/clients/client-modal.tsx`; `clients/new`
+lleva a `/clients?new=1`). Pide nombre (1–60), nicho (2–80) e información
+(≤ 2.000), y `POST /console/clients` con ese cuerpo (`ClientNewIn`) **no crea ningún
+agente ni aplica la plantilla por defecto**: el cliente nace `active`, con su ficha
+(`business_profiles`) y su auditoría, en una sola transacción. El cuerpo de antes
+(`external_client_ref`…) sigue igual para los partners sin activar y para la API de
+partners (`docs/partner-integration.md`). La zona, el país y las monedas se deducen
+por este orden: dominio y prefijo, país del partner, navegador; se ven y se cambian
+en «Más ajustes». `POST /console/clients/link-detection` saca de la información las
+webs y las redes (un `@` suelto se propone como Instagram), y
+`GET /console/clients/niche-suggestions` sugiere nichos de los 6 grupos y de los más
+usados, sin sustituir lo escrito.
+
+**La lectura de la web** va en segundo plano (`client_read`, un trabajo de
+`jobs-consumer`, `services/business/reader.py`): hasta 25 páginas del mismo
+dominio, con `robots.txt`, solo direcciones públicas y las guardas de
+`knowledge_indexer.py`; sin web, los perfiles públicos de redes. Lo leído es dato y
+nunca instrucción (§III). Lo que no choca se aplica marcado «Leído de la web ·
+revísalo» (`review=pending`); lo que contradice algo escrito por una persona queda
+como sugerencia (`business_suggestions`). Si falla, dice por qué y el cliente sigue
+usable. Se mide en «Construcción y pruebas» (`source=reader`, `task=read_source`).
+La consola la sigue con `client-read-card.tsx` (`GET …/business/read`); quien la
+lanzó recibe `client.read.done` o `client.read.failed` en la campana.
 
 ## Reglas que no se negocian
 

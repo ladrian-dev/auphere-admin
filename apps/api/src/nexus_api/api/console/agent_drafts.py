@@ -1,26 +1,30 @@
 """Draft handling shared by the agent lanes of the console (CP-11/13/14).
 
 The console never edits an ACTIVE version in place: every structured
-editor (settings, tools, skills) writes onto ONE staged draft — created
-on first write as a full copy of the active version (prompt, channels,
-tools, policies, runtime capabilities), reused on subsequent writes —
-and publishing (CP-12) is what makes it live. That keeps the partner's
-mental model at "edit → one draft → publish", and the runtime's
+editor (settings, tools, skills, prompt) writes onto ONE staged draft —
+created on first write as a full copy of the active version (prompt,
+channels, tools, policies, runtime capabilities), reused on subsequent
+writes — and publishing (CP-12) is what makes it live. That keeps the
+partner's mental model at "edit → one draft → publish", and the runtime's
 guarantees (one ACTIVE, atomic rollback, audit rows) untouched.
 
-"The draft" = the newest STAGED version that is newer than the active
-one (or the newest STAGED at all when nothing is active). Older staged
-versions are leftovers of previous edits and are ignored.
+Spec 047 (requisito 3): "the draft" is THE staged version of the agent —
+there is at most one, the database enforces it. Every write opens it with
+:func:`ensure_draft` (which locks the agent and, with ``If-Match``, checks
+the revision the writer read) and closes it with :func:`draft_written`
+(which moves the revision and says which fields changed).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import AgentConfig, AgentConfigStatus
 from nexus_api.services.agent_audience import audience_of
-from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.agent_config_service import AgentConfigService, DraftWrite
 from nexus_api.services.agent_console_policy import with_disclosure_default
 from nexus_api.services.agent_payment_review import reviewers_of
 
@@ -46,61 +50,57 @@ async def load_view(scope: ClientScope) -> DraftView:
     # without ``?agent=``) — a draft is always one agent's.
     versions = await service.list_versions(agent_id=scope.agent_id)  # newest first
     active = next((v for v in versions if v.status is AgentConfigStatus.ACTIVE), None)
-    draft = _current_draft(versions, active)
+    # Spec 047: the agent's one staged version, whatever its number — a
+    # change published at once (the admins of the partner API) can leave the
+    # active version with a higher number than the draft still pending.
+    draft = next((v for v in versions if v.status is AgentConfigStatus.STAGED), None)
     return DraftView(target=draft or active, active=active, draft=draft)
 
 
-def _current_draft(versions: list[AgentConfig], active: AgentConfig | None) -> AgentConfig | None:
-    for v in versions:
-        if v.status is not AgentConfigStatus.STAGED:
-            continue
-        if active is None or v.version > active.version:
-            return v
-    return None
+#: ``session.info`` key of the writes :func:`ensure_draft` opened and
+#: :func:`draft_written` closes — one per draft, inside one transaction.
+_OPEN_WRITES = "nexus.console.draft_writes"
 
 
-def copy_runtime_fields(src: AgentConfig | None, dst: AgentConfig) -> None:
-    """Fields ``AgentConfigRepository.create_staged`` does not take: the
-    runtime capabilities. Copied so a console draft never silently drops
-    skills / memory / grader / MCP wiring the backoffice turned on."""
-    if src is None:
-        return
-    dst.runtime_skills = list(src.runtime_skills) if src.runtime_skills else None
-    dst.runtime_mcp_servers = list(src.runtime_mcp_servers) if src.runtime_mcp_servers else None
-    dst.runtime_memory_tool = src.runtime_memory_tool
-    dst.runtime_outcome_grader = src.runtime_outcome_grader
-    dst.runtime_mcp_connector = src.runtime_mcp_connector
-    dst.grader_mode = src.grader_mode
-    dst.grader_sample_rate = src.grader_sample_rate
+def _open_writes(session: AsyncSession) -> dict[Any, DraftWrite]:
+    writes: dict[Any, DraftWrite] = session.info.setdefault(_OPEN_WRITES, {})
+    return writes
 
 
-async def ensure_draft(scope: ClientScope) -> tuple[AgentConfig, bool]:
-    """Return ``(draft, created)``. Stages a copy of the active version
-    (or an empty scaffold when there is none) if no current draft exists.
-    Raises ``AgentConfigConflict`` only if the copied tool list is invalid
-    (cannot happen for a copy of a promoted version)."""
-    view = await load_view(scope)
-    if view.draft is not None:
-        return view.draft, False
-    service = AgentConfigService(scope.session)
-    base = view.active
+async def ensure_draft(
+    scope: ClientScope, *, expected_revision: int | None = None
+) -> tuple[AgentConfig, bool]:
+    """Return ``(draft, created)``: the agent's draft, or a new one that
+    copies the active version — or the last saved one — with every field
+    (or an empty scaffold when there is none).
+
+    Locks the agent until the transaction ends, so two writers queue. With
+    ``expected_revision`` (the ``If-Match`` of the request) a stale one gets
+    ``DraftRevisionConflict``. A draft written from the console always
+    carries an AI-disclosure decision (CP-31). Close the write with
+    :func:`draft_written` once the fields are set."""
     actor = scope.principal.actor
-    cfg = await service.stage_new_version(
+    write = await AgentConfigService(scope.session).open_draft(
         actor=actor,
-        system_prompt_rendered=base.system_prompt_rendered if base else "",
-        channels=list(base.channels) if base else [],
-        tools=list(base.tools) if base else [],
-        policies=with_disclosure_default(dict(base.policies) if base else {}, actor=actor),
-        seed_template_ref=base.seed_template_ref if base else None,
-        kg_schema_id=base.kg_schema_id if base else None,
-        agent_id=scope.agent_id or (base.agent_id if base else None),
+        agent_id=scope.agent_id,
+        expected_revision=expected_revision,
+        prepare_policies=lambda policies: with_disclosure_default(policies, actor=actor),
     )
-    copy_runtime_fields(base, cfg)
-    await scope.session.flush()
-    return cfg, True
+    _open_writes(scope.session)[write.draft.id] = write
+    return write.draft, write.created
 
 
-__all__ = ["DraftView", "copy_runtime_fields", "ensure_draft", "load_view"]
+async def draft_written(scope: ClientScope, draft: AgentConfig) -> int | None:
+    """Close the write :func:`ensure_draft` opened on ``draft``: the revision
+    moves and the audit row says which fields changed. ``None`` when the
+    write changed nothing."""
+    write = _open_writes(scope.session).pop(draft.id, None)
+    if write is None:  # pragma: no cover - a programming error, not an input
+        raise RuntimeError("draft_written() without ensure_draft()")
+    return await AgentConfigService(scope.session).finish_draft(write, actor=scope.principal.actor)
+
+
+__all__ = ["DraftView", "draft_written", "ensure_draft", "load_view"]
 
 
 # ── qué cambia el borrador (spec 017, R3.1/R3.2) ───────────────────────

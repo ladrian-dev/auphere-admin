@@ -157,7 +157,7 @@ de API, sistema) y el origen (`console`, `lite_web`, `app`, `admin`, `api`,
 | Conocimiento | `source.added`, `source.removed`, `source.reread`, `knowledge.taught` (alcance) | — |
 | Consumo | `wallet.assigned`, `wallet.lowered`, `wallet.moved`, `wallet.refill_set`, `wallet.currency_changed`, `balance.requested`, `build_budget.extension_requested` | — |
 | Mejora | `suggestion.accepted`, `suggestion.discarded`, `correction.proposed` | — |
-| Operador | `deployment.created`, `deployment.activated`, `deployment.retired`, `deployment.unavailable`, `router.policy_changed`, `certification.run`, `partner.console_v2_enabled`, `partner.build_budget_changed`, `beta.whatsapp_login_country`, `client.sovereign_set` | `deployment.unavailable` |
+| Operador | `deployment.created`, `deployment.activated`, `deployment.retired`, `deployment.unavailable`, `router.policy_changed`, `certification.run`, `partner.console_v2_enabled`, `partner.console_v2_disabled`, `partner.build_budget_changed`, `beta.whatsapp_login_country`, `client.sovereign_set` | `deployment.unavailable` |
 
 La agrupación «{n} más como esta» junta filas seguidas con la misma persona,
 acción, cliente y día (requisito 49.1).
@@ -165,14 +165,16 @@ acción, cliente y día (requisito 49.1).
 ## 5. Eventos de log y trazas (garantía 6)
 
 Todos llevan `tenant_id` y, cuando hay agente, `agent_id`. Ninguno lleva texto de
-mensajes, cuerpos de herramientas ni teléfonos de clientes finales.
+mensajes, cuerpos de herramientas ni teléfonos de clientes finales. Un recuento
+se llama `*_count`: un campo `messages` se lee como texto y el barrido de la
+garantía 6 (`test_49`) lo rechaza.
 
 | Evento | Campos |
 |---|---|
 | `inbound.persisted` | `conversation_id`, `channel_id`, `message_id`, `gate` (`open` o el código de motivo) |
-| `turn.coalesced` | `conversation_id`, `messages` (número), `window_ms` |
+| `turn.coalesced` | `turn_id`, `conversation_id`, `message_count`, `window_ms` |
 | `turn.effect` | `turn_id`, `effect` (`reserve`, `charge`, `send_link`, `reply`), `idempotency_key`, `replayed` |
-| `llm.route_decision` | `turn_id` o `job_id`, `task`, `profile`, `policy_version`, `candidates_rejected` (lista de `{deployment, reason}`), `chosen`, `fallback_used`, `escalated`, `latency_ms`, `cost_micros`, `price_micros` |
+| `llm.route_decision` | `decision_id` (el que enlaza `usage_records.route_decision_id`), `turn_id` o `job_id`, `conversation_id`, `agent_version`, `task`, `profile`, `policy_version`, `candidates_rejected` (lista de `{deployment, reason}`), `chosen`, `fallback_used`, `escalated`, `latency_ms`, `cost_micros`, `price_micros` |
 | `builder.job` | `job_id`, `kind` (`agent_draft`, `client_profile`, `tests`, `fix`, `copilot`), `status`, `duration_ms`, `cost_micros`, `validator_errors` |
 | `suite.run` | `run_id`, `version_id`, `policy`, `passed`, `flaky`, `failed`, `cost_micros` |
 | `gate.decision` | `version_id`, `result` (`published`, `blocked`, `override`), `blocking` (códigos) |

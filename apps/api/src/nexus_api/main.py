@@ -74,6 +74,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         log.exception("companion.reaper.failed")
 
+    # Spec 047 (T139): the offer and what a hop may run are data
+    # (``model_profiles``), not constants. Read them once at start; without the
+    # database the boot seed stays, which is today's catalogue. Best-effort.
+    try:
+        from nexus_api.core import respond_catalog
+        from nexus_api.db.base import get_sessionmaker
+
+        async with get_sessionmaker()() as session:
+            await respond_catalog.refresh_from_db(session)
+    except Exception:
+        log.exception("respond_catalog.refresh_failed")
+
     log.info("api.startup", env=settings.environment, version=__version__)
     try:
         yield

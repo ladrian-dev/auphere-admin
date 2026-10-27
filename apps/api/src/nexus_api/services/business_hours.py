@@ -1,4 +1,17 @@
-"""El horario del negocio: una forma canónica y un lector para las que hay.
+"""El horario del negocio: la fachada de antes sobre la ficha (spec 047, T056).
+
+**Desde la spec 047 el horario vive en la ficha** (``services/business/hours.py``:
+turnos nocturnos, fechas especiales, sedes). Este módulo queda como fachada para
+quien todavía habla la forma de antes:
+
+- :func:`load_business_hours` lee el horario de la ficha (``Hours``);
+- :func:`week_canonical` y :func:`week_label` lo devuelven en la forma canónica
+  de antes y con la etiqueta corta de la app (spec 045);
+- el lector tolerante de abajo sigue entendiendo las formas que llegó a guardar
+  ``tenants.business_hours``, que ahora es una **proyección** de la ficha (y lo
+  que lee ``hours.week_from_legacy`` para la migración 0184).
+
+Lo de antes, tal cual:
 
 ``tenants.business_hours`` es un JSONB que nadie obligó a tener forma, y cada
 pieza que lo tocó eligió la suya (bug ``horario-del-negocio-en-tres-formas``):
@@ -32,11 +45,17 @@ Puro: sin base de datos ni zona horaria. Las horas son locales del negocio.
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Mapping
 from datetime import datetime, time
 from itertools import pairwise
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from nexus_api.services.business.hours import Hours, Week
 
 WEEKDAYS: Final = (
     "monday",
@@ -259,3 +278,44 @@ def is_open_at(hours: WeeklyHours, tz_name: str | None, at: datetime) -> bool:
     local = at.astimezone(_zone(tz_name))
     now_t = local.time().replace(tzinfo=None)
     return any(a <= now_t < b for a, b in hours[WEEKDAYS[local.weekday()]])
+
+
+# ── spec 047: la fachada sobre la ficha ──────────────────────────────────────
+
+
+async def load_business_hours(
+    session: AsyncSession, tenant_id: uuid.UUID, *, location_id: uuid.UUID | None = None
+) -> Hours:
+    """El horario de la ficha (el del negocio o el de una sede), en la sesión
+    del cliente. Lo de antes (``tenants.business_hours``) solo si la ficha aún no
+    tiene horario."""
+    from nexus_api.services.business import hours
+
+    return await hours.load_hours(session, tenant_id=tenant_id, location_id=location_id)
+
+
+def week_canonical(week: Week | None) -> dict[str, list[dict[str, str]]] | None:
+    """La semana de la ficha en la forma canónica de antes, sin la etiqueta: lo
+    que leen la app y la consola lite (los nocturnos, partidos a medianoche)."""
+    from nexus_api.services.business import hours
+
+    projected = hours.legacy_projection(week)
+    return None if projected is None else week_of(projected)
+
+
+def week_label(week: Week | None, locale: str) -> str | None:
+    """La etiqueta corta de la app (spec 045), de la semana de la ficha: un
+    turno nocturno se lee de 20:00 a 02:00, como se escribe."""
+    if week is None:
+        return None
+    ranges: WeeklyHours = {
+        d: [
+            (
+                time(s.open_min // 60, s.open_min % 60),
+                time((s.close_min % 1440) // 60, s.close_min % 60),
+            )
+            for s in week.days[i]
+        ]
+        for i, d in enumerate(WEEKDAYS)
+    }
+    return business_hours_label(ranges, locale)

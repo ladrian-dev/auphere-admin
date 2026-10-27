@@ -59,12 +59,16 @@ function BreadcrumbLink({
   })
 }
 
+/**
+ * La página actual: el último elemento de las migas, que NO es un enlace
+ * (spec 047, R47.1). Antes era un `role="link"` desactivado, y un lector de
+ * pantalla lo anunciaba como «enlace, no disponible»: una promesa de navegar
+ * que no lleva a ninguna parte. `aria-current` ya dice dónde se está.
+ */
 function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
       data-slot="breadcrumb-page"
-      role="link"
-      aria-disabled="true"
       aria-current="page"
       className={cn("font-normal text-foreground", className)}
       {...props}

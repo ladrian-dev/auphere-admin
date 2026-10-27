@@ -54,12 +54,14 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
 from langgraph.graph import END, START, StateGraph
 from nexus_api.core.admin_gate import ROLE_READONLY, sender_role
+from nexus_api.core.llm_proxy import current_llm_proxy_partner
 from nexus_api.core.tenant_context import (
     customer_context,
     tenant_context,
@@ -67,8 +69,10 @@ from nexus_api.core.tenant_context import (
 )
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.services.inbox_stream import publish_inbox_event
+from nexus_api.services.router_catalog import CatalogSnapshot, ProfilePolicy, record_anomaly
 from nexus_mcp import MCPRegistry, build_default_registry
 from nexus_mcp.base import ToolError, ToolNotInWhitelist
+from pydantic import ValidationError
 
 from nexus_worker.guardrails import (
     GRADER_FALLBACK_RESPONSE,
@@ -94,9 +98,32 @@ from nexus_worker.runtime.console_context import (
 from nexus_worker.runtime.grading_policy import decide as grading_decide
 from nexus_worker.runtime.grading_policy import load_read_only_tools, turn_writes
 from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall
-from nexus_worker.runtime.model_resolver import chain_for
+from nexus_worker.runtime.model_resolver import (
+    PINNED_BASE_PROFILE,
+    ClassifyResult,
+    EscalationResult,
+    ModelPolicy,
+    RouteContext,
+    RouteDecision,
+    RouteFacts,
+    TurnBudget,
+    TurnLimitReached,
+    TurnSignals,
+    chain_for,
+    could_route,
+    escalation_for,
+    get_catalog_snapshot,
+    load_route_facts,
+    model_policy_of,
+    pin_after,
+    pinned_for,
+    record_escalation,
+    turn_budget,
+    with_pin,
+)
 from nexus_worker.runtime.state import AgentState, checkpoint_shrink_update
 from nexus_worker.runtime.turn_clock import now_note
+from nexus_worker.runtime.turn_effects import tool_once
 from nexus_worker.runtime.ucm_formatter import (
     format_response_as_ucm,
     shadow_diff_against_legacy,
@@ -557,6 +584,447 @@ async def _view_with_composio(
     return view, available_names
 
 
+# ── Spec 047: the router in the graph (T140) ─────────────────────────────────
+#
+# Who goes through the router, decided per version of the agent
+# (``model_resolver.ModelPolicy``, kept in ``agent_configs.policies`` until the
+# AgentSpec):
+#
+# - **an agent of today** (no ``model_policy``) stays fixed on its model of today
+#   by the path of today — ``respond_with_tools`` with its override, binding and
+#   global fallback, byte for byte (research D24 and D44, story 13). Only its
+#   classifier moves, and only when a deployment certified for ``classify``
+#   passes the filter (D24, T145); while none does — today — the classifier is
+#   the one of today too, and the turn pays no extra read;
+# - **an agent with a profile or a pinned model** routes every conversation call
+#   (``answer`` / ``tool_turn``), its classifier and its escalations through
+#   ``chain_for``. Without a chain inside the client's residency the turn does
+#   not leave it: the conversation goes to the Inbox with ``no_model`` (40.7).
+#
+# The affinity (``pinned_model``) lives in the client's thread checkpoint, per
+# agent (garantía 4); every decision carries the client and the agent and no
+# text (garantía 6); the transport sends every routed call with its zero
+# retention and one request per call (garantía 7).
+
+#: What the customer reads when the router hands the conversation to a person
+#: («Económico» on a signal, the escalation or turn ceiling). The Inbox has the
+#: reason; this only says what happens next.
+_HANDOFF_RESPONSE = (
+    "Voy a pasar tu consulta a una persona del equipo para que te ayude. "
+    "Te escribiremos por aquí en cuanto podamos."
+)
+
+#: The typed classifier (40.5): an object, never a bare label.
+_CLASSIFY_TYPED_PROMPT = (
+    "Classify the LATEST user message. Earlier turns are context only. Reply with a "
+    "JSON object with exactly these keys: intent (one of: "
+    + ", ".join(VALID_INTENTS)
+    + "), needs_tools (true if answering needs to look up or change data), risk "
+    "(low, medium or high: how bad a wrong answer would be), complexity (low, medium "
+    "or high), language (the ISO 639-1 code of the message) and intents (how many "
+    "distinct requests the message makes, 1 to 5)."
+)
+
+#: The isolated escalation subcall (40.4): a summary in, a typed result out.
+_ESCALATION_SYSTEM = (
+    "Eres el asesor de un agente que atiende a los clientes de un negocio. El agente "
+    "tiene dificultades en este turno; te paso un resumen. Devuelve un objeto JSON con "
+    "dos claves: guidance (cómo debe seguir el agente, en pocas frases y en el idioma "
+    "del cliente; sin inventar datos que una herramienta debe dar) y handoff (true si "
+    "debe atenderlo una persona del equipo, false si el agente puede seguir)."
+)
+_ESCALATION_NOTE = (
+    "Nota interna de un asesor, solo para ti: no la cites ni la menciones al cliente. {guidance}"
+)
+
+#: The router's reasons a turn ends in the Inbox (``contracts/events.md`` §2).
+_ROUTER_REASONS = frozenset({"no_model", "provider_failure", "turn_limit", "escalated"})
+
+
+async def _catalog() -> CatalogSnapshot | None:
+    """The platform catalog, or None if it cannot be read (then nobody routes:
+    an agent of today keeps its path; a profiled one gets ``no_model``)."""
+    try:
+        return await get_catalog_snapshot()
+    except Exception as exc:
+        log.warning("router.catalog_unavailable", error=type(exc).__name__)
+        return None
+
+
+async def _route_facts(state: AgentState, agent_id: uuid.UUID | None) -> RouteFacts:
+    return await load_route_facts(
+        _tenant_uuid(state), agent_id, partner_id=current_llm_proxy_partner()
+    )
+
+
+async def _record_router_anomaly(decision: RouteDecision) -> None:
+    """``router_anomalies`` (40.7, 40.8): the reserve model or no model at all,
+    under the client's RLS. Best effort: Auphere seeing it late beats a turn
+    lost to a bookkeeping hiccup."""
+    kind = decision.anomaly
+    if kind is None:
+        return
+    log.warning(
+        "router.anomaly",
+        tenant_id=str(decision.tenant_id),
+        agent_id=None if decision.agent_id is None else str(decision.agent_id),
+        decision_id=str(decision.id),
+        task=decision.task,
+        kind=kind,
+    )
+    try:
+        async with (
+            get_sessionmaker()() as session,
+            tenant_scoped_session(session, decision.tenant_id),
+        ):
+            await record_anomaly(
+                session,
+                tenant_id=decision.tenant_id,
+                task=decision.task,
+                kind=kind,
+                decision_id=decision.id,
+            )
+    except Exception as exc:
+        log.warning(
+            "router.anomaly_not_recorded",
+            tenant_id=str(decision.tenant_id),
+            error=type(exc).__name__,
+        )
+
+
+def _route_context(
+    state: AgentState,
+    bundle: AgentBundle,
+    snapshot: CatalogSnapshot,
+    facts: RouteFacts,
+    *,
+    llm: LLMRouter,
+    policy: ModelPolicy | None,
+    conversation: bool,
+) -> RouteContext:
+    """What the router knows of this turn — ids, constraints, the affinity —
+    and no text. The partner's allowlist is the ceiling of the conversation
+    tasks (39.7); the other tasks follow the platform's catalog."""
+    agent_id = bundle.agent_id or _agent_uuid(state)
+    return RouteContext(
+        tenant_id=_tenant_uuid(state),
+        catalog=snapshot,
+        agent_id=agent_id,
+        agent_version=str(bundle.version_id),
+        turn_id=state.get("inbound_message_id"),
+        conversation_id=state.get("conversation_id"),
+        allowed=facts.partner_allowed if conversation else None,
+        eu_only=facts.eu_only,
+        sovereign=facts.sovereign,
+        agent_certified=facts.agent_certified,
+        pinned=pinned_for(state, agent_id) if conversation else None,
+        agent_pinned_deployment=(
+            policy.deployment if policy is not None and policy.kind == "pinned" else None
+        ),
+        cooled=llm.cooldowns.active(),
+        now=time.time(),
+    )
+
+
+def _turn_budget(profile: ProfilePolicy, state: AgentState) -> TurnBudget:
+    """The turn's ceilings, with what the earlier nodes of this turn spent."""
+    spent = state.get("router_turn") or {}
+    return TurnBudget(
+        max_calls=profile.max_calls_per_turn,
+        cost_ceiling_micros=profile.turn_cost_ceiling_micros,
+        calls=int(spent.get("calls") or 0),
+        cost_micros=int(spent.get("cost_micros") or 0),
+    )
+
+
+def _router_reason(exc: BaseException) -> str:
+    reason = getattr(exc, "reason", None)
+    return reason if isinstance(reason, str) and reason in _ROUTER_REASONS else "provider_failure"
+
+
+async def _classify_routed(
+    state: AgentState,
+    bundle: AgentBundle,
+    history: list[dict[str, str]],
+    llm: LLMRouter,
+) -> tuple[str, dict[str, Any]] | None:
+    """The typed classifier through the router (40.5), apart from the answer
+    model. None = classify as today (see the block comment above)."""
+    policy = model_policy_of(bundle.policies)
+    snapshot = await _catalog()
+    profile = (
+        snapshot.profile(policy.profile if policy is not None else PINNED_BASE_PROFILE)
+        if snapshot is not None
+        else None
+    )
+    if snapshot is None or profile is None or profile.task("classify") is None:
+        if policy is None:
+            return None
+        # A profiled agent never falls back to today's models: they need not be
+        # in its residency. No classification; the handler routes its own task.
+        log.error("router.profile_missing", tenant_id=state.get("tenant_id"), task="classify")
+        return "fallback", {"classification": {}, "router_turn": {}}
+    if policy is None and not could_route(snapshot, "classify"):
+        return None
+    agent_id = bundle.agent_id or _agent_uuid(state)
+    facts = await _route_facts(state, agent_id)
+    ctx = _route_context(state, bundle, snapshot, facts, llm=llm, policy=policy, conversation=False)
+    decision = chain_for("classify", profile, ctx)
+    if policy is None and decision.outcome != "routed":
+        # T145 (research D24): the classifier of every agent moves to the
+        # cheapest certified one — only to one that passed the battery.
+        return None
+    await _record_router_anomaly(decision)
+    budget = _turn_budget(profile, state)
+    classification: dict[str, Any] = {}
+    intent = "fallback"
+    if decision.outcome == "no_model":
+        # Nothing leaves the client's residency; the handler routes its own task.
+        log.warning("classify.no_model", tenant_id=state.get("tenant_id"))
+    else:
+        messages = [
+            {"role": "system", "content": _CLASSIFY_TYPED_PROMPT},
+            *history,
+            {"role": "user", "content": state["user_message"]},
+        ]
+        try:
+            with turn_budget(budget):
+                result = await llm.complete_structured(
+                    decision=decision,
+                    tenant_id=_tenant_uuid(state),
+                    messages=messages,
+                    output=ClassifyResult,
+                    role="classify",
+                )
+            budget.add_cost(result.cost_micros)
+            classification = result.value.model_dump()
+            intent = result.value.intent.strip().lower()
+        except Exception as exc:
+            # Like today's classifier: a failed classification is a ``fallback``
+            # turn, never a stuck message.
+            log.warning(
+                "classify.routed_failed",
+                tenant_id=state.get("tenant_id"),
+                error=type(exc).__name__,
+            )
+    if intent not in VALID_INTENTS:
+        intent = "fallback"
+    return intent, {
+        "classification": classification,
+        "router_turn": {"calls": budget.calls, "cost_micros": budget.cost_micros},
+    }
+
+
+@dataclass
+class _ConversationRoute:
+    """The router's plan for the handler's conversation calls in this turn.
+
+    One decision for the whole ReAct loop: the main loop does not change model
+    (40.3, 40.4). ``decision`` is None when the catalog or the profile cannot be
+    read — a profiled agent then has no model, never today's."""
+
+    policy: ModelPolicy
+    budget: TurnBudget
+    escalations: list[float]
+    decision: RouteDecision | None = None
+    profile: ProfilePolicy | None = None
+    snapshot: CatalogSnapshot | None = None
+    ctx: RouteContext | None = None
+    served: str | None = None
+    escalated: bool = False
+    signals: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def no_model(self) -> bool:
+        return self.decision is None or self.decision.outcome == "no_model"
+
+    def tier(self) -> str | None:
+        if self.snapshot is None:
+            return None
+        key = self.served or (self.decision.chosen if self.decision is not None else None)
+        deployment = self.snapshot.deployments.get(key or "")
+        return None if deployment is None else deployment.capabilities.tier
+
+    def family(self) -> str | None:
+        if self.snapshot is None or self.served is None:
+            return None
+        deployment = self.snapshot.deployments.get(self.served)
+        return None if deployment is None else deployment.family
+
+
+async def _conversation_route(
+    state: AgentState,
+    bundle: AgentBundle,
+    llm: LLMRouter,
+    *,
+    with_tools: bool,
+) -> _ConversationRoute | None:
+    """None for an agent of today: the handler runs exactly as before."""
+    policy = model_policy_of(bundle.policies)
+    if policy is None:
+        return None
+    task = "tool_turn" if with_tools else "answer"
+    escalations = list(state.get("router_escalations") or [])
+    snapshot = await _catalog()
+    profile = snapshot.profile(policy.profile) if snapshot is not None else None
+    if snapshot is None or profile is None or profile.task(task) is None:
+        log.error("router.profile_missing", tenant_id=state.get("tenant_id"), task=task)
+        return _ConversationRoute(
+            policy=policy,
+            budget=TurnBudget(max_calls=0, cost_ceiling_micros=None),
+            escalations=escalations,
+        )
+    agent_id = bundle.agent_id or _agent_uuid(state)
+    facts = await _route_facts(state, agent_id)
+    ctx = _route_context(state, bundle, snapshot, facts, llm=llm, policy=policy, conversation=True)
+    decision = chain_for(task, profile, ctx)
+    await _record_router_anomaly(decision)
+    return _ConversationRoute(
+        policy=policy,
+        budget=_turn_budget(profile, state),
+        escalations=escalations,
+        decision=decision,
+        profile=profile,
+        snapshot=snapshot,
+        ctx=ctx,
+    )
+
+
+def _escalation_messages(
+    state: AgentState,
+    *,
+    intent: str,
+    signals: tuple[str, ...],
+    envelopes: list[dict[str, Any]],
+    draft: str,
+) -> list[dict[str, str]]:
+    """What the escalation subcall sees: a **summary** of the turn — never the
+    agent's prompt, its knowledge or the history (40.4)."""
+    summary = {
+        "intent": intent,
+        "signals": list(signals),
+        "customer_message": (state.get("user_message") or "")[:4000],
+        "draft_answer": draft[:2000],
+        "tool_outcomes": [
+            {
+                "tool": e.get("tool"),
+                "status": e.get("status"),
+                "error": str(e.get("error"))[:300] if e.get("error") else None,
+            }
+            for e in envelopes[-6:]
+        ],
+    }
+    return [
+        {"role": "system", "content": _ESCALATION_SYSTEM},
+        {"role": "user", "content": json.dumps(summary, ensure_ascii=False, sort_keys=True)},
+    ]
+
+
+async def _escalate_if_signalled(
+    route: _ConversationRoute,
+    signals: TurnSignals,
+    *,
+    llm: LLMRouter,
+    state: AgentState,
+    intent: str,
+    messages: list[dict[str, Any]],
+    envelopes: list[dict[str, Any]],
+    draft: str,
+) -> str | None:
+    """The escalation of 40.4, at most once per turn. Returns the reason to hand
+    the conversation to a person (``escalated``, ``turn_limit``, ``no_model``),
+    or None to go on — with the adviser's guidance appended to the thread when
+    the isolated subcall answered. The main loop keeps its model and affinity."""
+    if route.escalated or route.decision is None or route.profile is None or route.ctx is None:
+        return None
+    now = time.time()
+    verdict = escalation_for(
+        signals,
+        origin_task=route.decision.task,
+        profile=route.profile,
+        ctx=route.ctx,
+        current_tier=route.tier(),
+        escalations_at=route.escalations,
+        now=now,
+    )
+    if verdict.action == "none":
+        return None
+    route.escalated = True
+    route.signals = verdict.signals
+    log.info(
+        "router.escalation",
+        tenant_id=state.get("tenant_id"),
+        agent_id=None if route.ctx.agent_id is None else str(route.ctx.agent_id),
+        action=verdict.action,
+        signals=list(verdict.signals),
+        reason=verdict.reason,
+    )
+    if verdict.action == "handoff" or verdict.decision is None:
+        if verdict.decision is not None:
+            await _record_router_anomaly(verdict.decision)
+        return verdict.reason or "escalated"
+    route.escalations = record_escalation(route.escalations, now=now)
+    await _record_router_anomaly(verdict.decision)
+    try:
+        with turn_budget(route.budget):
+            advice = await llm.complete_structured(
+                decision=verdict.decision,
+                tenant_id=_tenant_uuid(state),
+                messages=_escalation_messages(
+                    state, intent=intent, signals=verdict.signals, envelopes=envelopes, draft=draft
+                ),
+                output=EscalationResult,
+                role="escalation",
+            )
+    except TurnLimitReached:
+        return "turn_limit"
+    except Exception as exc:
+        # The subcall is help, not the turn: without it the loop goes on as it was.
+        log.warning(
+            "router.escalation_failed",
+            tenant_id=state.get("tenant_id"),
+            error=type(exc).__name__,
+        )
+        return None
+    route.budget.add_cost(advice.cost_micros)
+    if advice.value.handoff:
+        return "escalated"
+    messages.append(
+        {"role": "system", "content": _ESCALATION_NOTE.format(guidance=advice.value.guidance)}
+    )
+    return None
+
+
+def _intents(state: AgentState) -> int:
+    raw = (state.get("classification") or {}).get("intents")
+    return raw if isinstance(raw, int) and raw > 0 else 1
+
+
+def _route_state_update(route: _ConversationRoute, state: AgentState) -> dict[str, Any]:
+    """What the handler leaves in the thread: the affinity (per agent), the
+    escalations of the hour and what the turn spent."""
+    update: dict[str, Any] = {
+        "router_turn": {
+            "calls": route.budget.calls,
+            "cost_micros": route.budget.cost_micros,
+            "profile": route.profile.profile if route.profile is not None else None,
+            "task": route.decision.task if route.decision is not None else None,
+            "served": route.served,
+            "family": route.family(),
+        },
+        "router_escalations": route.escalations,
+    }
+    decision, ctx = route.decision, route.ctx
+    if decision is None or ctx is None:
+        return update
+    if route.served and decision.outcome in ("routed", "pinned"):
+        pin = pin_after(decision, served=route.served, now=time.time(), previous=ctx.pinned)
+        update["pinned_model"] = with_pin(state.get("pinned_model"), ctx.agent_id, pin)
+    elif decision.pin_broken:
+        update["pinned_model"] = with_pin(state.get("pinned_model"), ctx.agent_id, None)
+    return update
+
+
 # ── Node factories ────────────────────────────────────────────────────────────
 
 
@@ -567,6 +1035,12 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
     the right handler — and therefore the right tool sub-set, the runtime
     plane of garantía 2 — and it loads ``history`` a single time so the
     handler does not have to re-query the DB.
+
+    Spec 047 (T140, requisito 40.5): through the router it is the **typed**
+    classifier — the cheapest deployment certified for ``classify``, apart from
+    the answer model — and it leaves ``classification`` in the state. An agent
+    of today keeps the classifier of today until such a deployment exists
+    (``_classify_routed``).
     """
 
     async def classify(state: AgentState) -> dict[str, Any]:
@@ -580,6 +1054,13 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
                 state.get("conversation_id"),
                 exclude_message_id=state.get("inbound_message_id"),
             )
+            routed = await _classify_routed(state, bundle, history, llm)
+            if routed is not None:
+                intent, routed_update = routed
+                if intent != "escalate" and forced_escalation(bundle.policies, history):
+                    log.info("classify.turn_cap_escalation", tenant_id=str(tenant_id), was=intent)
+                    intent = "escalate"
+                return {"intent": intent, "route": intent, "history": history, **routed_update}
             messages = [
                 {
                     "role": "system",
@@ -911,13 +1392,28 @@ async def _dispatch_tool(
         }
     except ToolError as exc:
         log.warning("tool.error", tool=call.name, intent=intent, error=str(exc))
-        return {
+        failed: dict[str, Any] = {
             "tool": call.name,
             "intent": intent,
             "status": "error",
             "error": str(exc),
             "result": {},
         }
+        if isinstance(exc.__cause__, ValidationError):
+            # Spec 047 (40.4): the tool refused its arguments when validating
+            # them — a signal of difficulty of the graph, not of the text. What
+            # the model reads (``_tool_result_content``) does not change.
+            failed["error_kind"] = "invalid_arguments"
+        return failed
+
+
+#: Spec 047 (requisito 1.4): what the closing iteration of the ReAct loop asks.
+#: The customer gets an answer with what the turn has, never nothing.
+FINAL_ANSWER_NOTE = (
+    "Es tu última respuesta de este turno: no puedes usar más herramientas. "
+    "Contesta ahora al cliente con lo que ya tienes. Si te falta algo, dile qué "
+    "y qué vas a hacer; no prometas nada que no hayas hecho."
+)
 
 
 def make_handler_node(
@@ -1110,19 +1606,65 @@ def make_handler_node(
             _turn_started = time.perf_counter()
             # Why the fallback text was used, if it was. See ``AgentState.turn_failure``.
             turn_failure: dict[str, Any] | None = None
-            for iteration in range(MAX_TOOL_ITERATIONS):
+
+            # Spec 047 (T140): an agent with a profile or a pinned model goes
+            # through the router; an agent of today (``route is None``) runs
+            # exactly the loop of today.
+            route = await _conversation_route(
+                state,
+                bundle,
+                llm,
+                with_tools=bool(available_defs)
+                or memory_tool is not None
+                or bool(applicable_skills),
+            )
+            iterations = MAX_TOOL_ITERATIONS
+            if route is not None and route.no_model:
+                # Without a chain inside the client's residency the turn does
+                # not leave it (40.7): no call, the neutral reply, the Inbox.
+                iterations = 0
+                final_text = _EMPTY_RESPONSE_FALLBACK
+                turn_failure = {"kind": "llm_failed", "reason": "no_model", "detail": None}
+            elif route is not None and _intents(state) > 1:
+                handoff = await _escalate_if_signalled(
+                    route,
+                    TurnSignals(intents=_intents(state)),
+                    llm=llm,
+                    state=state,
+                    intent=intent,
+                    messages=messages,
+                    envelopes=envelopes,
+                    draft=final_text,
+                )
+                if handoff is not None:
+                    iterations = 0
+                    final_text = _HANDOFF_RESPONSE
+                    turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
+            iteration = -1
+            for iteration in range(iterations):
                 # The last iteration is tool-free: the model MUST answer.
                 last = iteration == MAX_TOOL_ITERATIONS - 1
+                tools_arg: list[dict[str, Any]] = list(available_defs)
+                if memory_tool is not None:
+                    # ``to_dict()`` is the Anthropic TypedDict
+                    # ``BetaMemoryTool20250818Param`` ({"type":
+                    # "memory_20250818", "name": "memory"}); LiteLLM
+                    # only cares about the dict shape so we widen.
+                    tools_arg.append(dict(memory_tool.to_dict()))
+                call_extra = None if last else mcp_extra
                 if last:
-                    tools_arg: list[dict[str, Any]] = []
+                    # Spec 047 (requisito 1.4, bug B3 of the 2026-09-19
+                    # audit): the closing call still DECLARES the catalogue —
+                    # without ``tools`` a thread carrying ``tool_calls`` is a
+                    # 400 from Anthropic via LiteLLM — and forbids it with
+                    # ``tool_choice: "none"``, like the Companion's close. The
+                    # note asks for the answer with what the turn has. No
+                    # ``code_execution`` here: with the skills container gone
+                    # Anthropic rejects it.
+                    if tools_arg:
+                        call_extra = {"tool_choice": "none"}
+                    messages.append({"role": "system", "content": FINAL_ANSWER_NOTE})
                 else:
-                    tools_arg = list(available_defs)
-                    if memory_tool is not None:
-                        # ``to_dict()`` is the Anthropic TypedDict
-                        # ``BetaMemoryTool20250818Param`` ({"type":
-                        # "memory_20250818", "name": "memory"}); LiteLLM
-                        # only cares about the dict shape so we widen.
-                        tools_arg.append(dict(memory_tool.to_dict()))
                     if applicable_skills:
                         # code_execution is the container the Skills run
                         # inside. Anthropic requires it to be in tools[]
@@ -1134,21 +1676,36 @@ def make_handler_node(
                         tools_arg.append(dict(_CODE_EXECUTION_TOOL))
 
                 try:
-                    # The tool-free final iteration drops ``code_execution``
-                    # from ``tools`` — so it must ALSO drop the skills
+                    # The closing iteration drops ``code_execution`` from
+                    # ``tools`` — so it must ALSO drop the skills
                     # ``container`` from ``extra``, or Anthropic rejects the
                     # call ("container: skills can only be used when a code
                     # execution tool is enabled"). No tools this turn means
                     # skills/MCP aren't usable anyway.
-                    response = await llm.respond_with_tools(
-                        tenant_id=tenant_id,
-                        role=intent,
-                        messages=messages,
-                        tools=tools_arg,
-                        extra=None if last else mcp_extra,
-                        model_override=respond_model_override,
-                        fallback_override=respond_fallbacks,
-                    )
+                    if route is None:
+                        response = await llm.respond_with_tools(
+                            tenant_id=tenant_id,
+                            role=intent,
+                            messages=messages,
+                            tools=tools_arg,
+                            extra=call_extra,
+                            model_override=respond_model_override,
+                            fallback_override=respond_fallbacks,
+                        )
+                    else:
+                        assert route.decision is not None
+                        with turn_budget(route.budget):
+                            routed_call = await llm.respond_routed(
+                                decision=route.decision,
+                                tenant_id=tenant_id,
+                                role=intent,
+                                messages=messages,
+                                tools=tools_arg,
+                                extra=call_extra,
+                            )
+                        route.budget.add_cost(routed_call.cost_micros)
+                        route.served = routed_call.served
+                        response = routed_call.value
                 except Exception as exc:
                     # The router exhausted retries + fallback. Rather than
                     # let the exception kill the turn (the customer would
@@ -1163,6 +1720,12 @@ def make_handler_node(
                     )
                     final_text = _EMPTY_RESPONSE_FALLBACK
                     turn_failure = {"kind": "llm_failed", "detail": str(exc)}
+                    if route is not None:
+                        # Spec 047: the Inbox reason of the router (``no_model``,
+                        # ``provider_failure``, ``turn_limit``).
+                        turn_failure["reason"] = _router_reason(exc)
+                        if turn_failure["reason"] == "turn_limit":
+                            final_text = _HANDOFF_RESPONSE
                     break
 
                 cleaned_text = _clean_model_text(response.text)
@@ -1176,14 +1739,17 @@ def make_handler_node(
                 # tool_result for a ``srvtoolu_`` id (incident 2026-05-28).
                 client_calls = [c for c in response.tool_calls if not _is_server_side_tool_call(c)]
 
-                # No tools offered, or the model only made server-side calls
-                # (already resolved by Anthropic) → this text is the final answer.
-                if not tools_arg or not client_calls:
+                # No tools offered, the closing call, or the model only made
+                # server-side calls (already resolved by Anthropic) → this
+                # text is the final answer. A tool call on the closing call
+                # (``tool_choice: "none"`` should prevent it) is not run.
+                if last or not tools_arg or not client_calls:
                     break
 
                 # Record the model's tool request, then dispatch each call
                 # and feed the REAL result back into the thread.
                 messages.append(_assistant_tool_message(response, client_calls))
+                batch_start = len(envelopes)
                 for call in client_calls:
                     if call.name == _MEMORY_TOOL_NAME and memory_tool is not None:
                         # Built-in dispatch: the memory tool result is a
@@ -1200,13 +1766,23 @@ def make_handler_node(
                             }
                         )
                         continue
-                    envelope = await _dispatch_tool(
-                        scoped_registry,
-                        call,
-                        available_names,
-                        intent,
-                        conversation_id=state.get("conversation_id"),
-                    )
+
+                    async def _run(call: ToolCall = call) -> dict[str, Any]:
+                        return await _dispatch_tool(
+                            scoped_registry,
+                            call,
+                            available_names,
+                            intent,
+                            conversation_id=state.get("conversation_id"),
+                        )
+
+                    if scoped_registry.is_side_effecting(call.name) and not scoped_registry.dry_run:
+                        # Spec 047 (T035, requisito 1.3): reserve, charge,
+                        # send a link… at most once per turn. A retried turn
+                        # gets the first attempt's answer back.
+                        envelope = await tool_once(tool=call.name, run=_run)
+                    else:
+                        envelope = await _run()
                     envelopes.append(envelope)
                     messages.append(
                         {
@@ -1250,6 +1826,34 @@ def make_handler_node(
                 if interactive_payload is not None:
                     break
 
+                # Spec 047 (40.4): the graph's signals of difficulty — a tool
+                # that refused its arguments, a long tool loop, several
+                # requests in one message — ask for an isolated subcall to a
+                # higher tier. The loop keeps its model; «Económico» and the
+                # hourly ceiling hand the conversation to a person instead.
+                if route is not None:
+                    handoff = await _escalate_if_signalled(
+                        route,
+                        TurnSignals(
+                            tool_args_rejected=any(
+                                e.get("error_kind") == "invalid_arguments"
+                                for e in envelopes[batch_start:]
+                            ),
+                            intents=_intents(state),
+                            tool_iterations=iteration + 1,
+                        ),
+                        llm=llm,
+                        state=state,
+                        intent=intent,
+                        messages=messages,
+                        envelopes=envelopes,
+                        draft=final_text,
+                    )
+                    if handoff is not None:
+                        final_text = _HANDOFF_RESPONSE
+                        turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
+                        break
+
             if not final_text.strip() and interactive_payload is None:
                 log.warning(
                     "handler.empty_response",
@@ -1271,14 +1875,22 @@ def make_handler_node(
                 intent=intent,
                 iterations=iteration + 1,
                 elapsed_ms=round((time.perf_counter() - _turn_started) * 1000),
-                respond_model=respond_model_override or llm.respond_model,
+                respond_model=(
+                    (route.served if route is not None else None)
+                    or respond_model_override
+                    or llm.respond_model
+                ),
                 tool_calls=len(envelopes),
             )
 
+            route_update = _route_state_update(route, state) if route is not None else {}
             return {
+                **route_update,
                 "tool_calls": envelopes,
                 "response": final_text,
-                "response_model": llm.respond_model,
+                "response_model": (
+                    route.served if route is not None and route.served else llm.respond_model
+                ),
                 "turn_failure": turn_failure,
                 # Empty dict (not ``None``) for state-merge stability:
                 # LangGraph keeps the field present on every turn and
@@ -1482,6 +2094,13 @@ def make_grade_outcome_node(
         # NOT on an env var — activation rides STAGED → ACTIVE.
         flags = state.get("agent_runtime_flags") or {}
         tenant_id = _tenant_uuid(state)
+        # Spec 047 (T143): a routed turn grades with its profile's sampling,
+        # its typed risk and a judge of another family. A turn of today: None,
+        # None, None — everything as before.
+        routed_turn = state.get("router_turn") or {}
+        judged_family = routed_turn.get("family") if routed_turn.get("served") else None
+        judge_sampling = await _judge_sampling(routed_turn)
+        risk = (state.get("classification") or {}).get("risk") if routed_turn else None
 
         # WP-21 — ¿ahora o después? El grader es la mayor partida de coste
         # y latencia que no produce la respuesta; graduarlo todo en el
@@ -1503,6 +2122,8 @@ def make_grade_outcome_node(
             # El id del mensaje entrante identifica el turno de forma
             # estable: reintentarlo toma la MISMA decisión de muestreo.
             turn_key=str(state.get("inbound_message_id") or state.get("conversation_id") or ""),
+            judge_sampling=judge_sampling,
+            risk=risk if isinstance(risk, str) else None,
         )
         if decision.mode == "off":
             return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
@@ -1541,6 +2162,13 @@ def make_grade_outcome_node(
         draft = state.get("response", "") or ""
         envelopes = state.get("tool_calls") or []
 
+        # Spec 047 (42.5): the judge is of another family than the model that
+        # wrote the draft. Only said when the turn was routed — a grader of
+        # today does not take the argument.
+        family_kw: dict[str, Any] = (
+            {"judged_family": judged_family} if judged_family is not None else {}
+        )
+
         # First grading attempt against the original draft.
         verdict = await grader.grade(
             tenant_id=tenant_id,
@@ -1548,6 +2176,7 @@ def make_grade_outcome_node(
             rubric_body=rubric_body,
             draft_response=draft,
             tool_envelopes=envelopes,
+            **family_kw,
         )
 
         retries = 0
@@ -1577,6 +2206,7 @@ def make_grade_outcome_node(
                 rubric_body=rubric_body,
                 draft_response=draft,
                 tool_envelopes=envelopes,
+                **family_kw,
             )
             last_feedback = verdict.feedback
 
@@ -1609,6 +2239,18 @@ def make_grade_outcome_node(
         }
 
     return grade_outcome
+
+
+async def _judge_sampling(routed_turn: dict[str, Any]) -> str | float | None:
+    """The judge sampling the profile sets for the turn's conversation task
+    (``router-and-catalog.md`` §3), or None for a turn that was not routed."""
+    profile_name, task = routed_turn.get("profile"), routed_turn.get("task")
+    if not routed_turn.get("served") or not isinstance(profile_name, str) or not task:
+        return None
+    snapshot = await _catalog()
+    profile = snapshot.profile(profile_name) if snapshot is not None else None
+    policy = profile.task(str(task)) if profile is not None else None
+    return None if policy is None else policy.judge_sampling
 
 
 async def _ask_agent_to_rewrite(

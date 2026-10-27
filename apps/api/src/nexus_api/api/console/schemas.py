@@ -25,6 +25,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 # ── principal ──────────────────────────────────────────────────────────
 
+ConsoleVersion = Literal["v1", "v2"]
+
 
 class PartnerBrief(BaseModel):
     slug: str
@@ -56,6 +58,10 @@ class MeOut(BaseModel):
     companion_enabled: bool = False
     #: Spec 032: the modules Auphere gave this partner (sidebar + Companion).
     modules: list[str] = Field(default_factory=list)
+    #: Spec 047 (R55.2, research D38): which console frame this partner sees.
+    #: ``v2`` only once Auphere activated the new console for the partner;
+    #: until then, the console of today.
+    console_version: ConsoleVersion = "v1"
 
 
 # ── clients ────────────────────────────────────────────────────────────
@@ -676,3 +682,86 @@ class BillingOut(BaseModel):
     #: Spec 034: whether the plans exist. Off, the screen shows no plans and
     #: no provider portal — only the credit purchase and the receipts.
     memberships_enabled: bool = False
+
+
+# ── jobs (spec 047, ``contracts/console-api.md`` §Convenciones) ───────────
+
+JobKind = Literal[
+    "client_read",
+    "client_builder",
+    "agent_draft",
+    "tests",
+    "publish",
+    "fix",
+    "copilot",
+    "quality_check",
+    "suggestions",
+]
+JobStatus = Literal["queued", "running", "done", "failed"]
+
+
+class JobAcceptedOut(BaseModel):
+    """``202`` of every route that starts a long job."""
+
+    job_id: uuid.UUID
+
+
+class JobOut(BaseModel):
+    """``GET /console/jobs/{job_id}``. The console polls it (1, 2, 4… 10 s).
+
+    No cost (C9): what a job spent is Auphere's, and the partner sees the
+    «Construcción y pruebas» line in Consumo, not per job. A failure travels
+    as ``error_code`` only; the console owns the words.
+    """
+
+    job_id: uuid.UUID
+    kind: JobKind
+    status: JobStatus
+    #: Under its client; ``None`` for client-level jobs (``client_read``…).
+    agent_id: uuid.UUID | None = None
+    #: The blocks already written and the current step:
+    #: ``{"step": str | None, "blocks": [...]}``.
+    progress: dict[str, Any] = Field(default_factory=dict)
+    #: The builder's open questions, when it needs answers to go on.
+    questions: list[dict[str, Any]] | None = None
+    result: dict[str, Any] | None = None
+    error_code: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+
+
+# ── search, ⌘K (spec 047, R47.2) ───────────────────────────────────────
+
+
+class SearchClientHit(BaseModel):
+    ref: str
+    name: str
+    #: The client's niche; ``None`` until the business profile exists (ola 2).
+    niche: str | None = None
+
+
+class SearchAgentHit(BaseModel):
+    agent_id: uuid.UUID
+    name: str
+    client_ref: str
+    client_name: str
+
+
+class SearchScreenHit(BaseModel):
+    #: Stable key; the console owns the label (``shell.search.screen.<key>``).
+    key: str
+    href: str
+
+
+class SearchActionHit(BaseModel):
+    """Only actions the principal may do (§V: what is not allowed is absent)."""
+
+    key: str
+    href: str
+
+
+class SearchOut(BaseModel):
+    clients: list[SearchClientHit] = Field(default_factory=list)
+    agents: list[SearchAgentHit] = Field(default_factory=list)
+    screens: list[SearchScreenHit] = Field(default_factory=list)
+    actions: list[SearchActionHit] = Field(default_factory=list)

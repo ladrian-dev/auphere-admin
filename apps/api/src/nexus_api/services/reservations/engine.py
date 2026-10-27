@@ -177,6 +177,14 @@ def current_slot(slots: Sequence[Slot], now: datetime) -> datetime | None:
 # ── Servicios ───────────────────────────────────────────────────────────────
 
 
+def until(day: date, hi: time, tz: ZoneInfo) -> datetime:
+    """El final de un tramo del día. ``time.max`` es «hasta medianoche»: el
+    tramo de un turno nocturno (spec 047) que sigue al día siguiente."""
+    if hi == time.max:
+        return datetime.combine(day + timedelta(days=1), time(0, 0), tzinfo=tz)
+    return datetime.combine(day, hi, tzinfo=tz)
+
+
 def intersect(a: Sequence[Range], b: Sequence[Range]) -> list[Range]:
     out: list[Range] = []
     for a0, a1 in a:
@@ -201,7 +209,7 @@ def services_slots(
     out: list[datetime] = []
     for lo, hi in intersect(business, staff):
         cursor = datetime.combine(day, lo, tzinfo=tz)
-        end = datetime.combine(day, hi, tzinfo=tz)
+        end = until(day, hi, tz)
         while cursor + duration <= end:
             slot_end = cursor + duration
             if cursor >= not_before and not any(b0 < slot_end and cursor < b1 for b0, b1 in busy):
@@ -222,4 +230,5 @@ __all__ = [
     "intersect",
     "presence",
     "services_slots",
+    "until",
 ]

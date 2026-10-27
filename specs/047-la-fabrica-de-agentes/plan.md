@@ -52,13 +52,19 @@ responde», sin fusionar):
 ## Contexto técnico
 
 **Lenguaje/versión**:
-- Python ≥ 3.11: FastAPI, SQLAlchemy 2 async, Alembic, Dramatiq, LangGraph ≥ 1.0
+- Python ≥ 3.11: FastAPI, SQLAlchemy 2 async, Alembic, Redis Streams (sin Dramatiq: research D43), LangGraph ≥ 1.0
   y LiteLLM `<1.106`.
 - TypeScript 5.9, con Next.js 16.2 y React 19.2.
 - Expo SDK 58 y React Native 0.88 (Auphere Customers 1.1.0).
 
 **Dependencias nuevas**:
 - **`pgvector`** (Python, MIT), para el tipo `vector` en SQLAlchemy. Es la única.
+  Instalada la 0.5.1 en `apps/api` y `apps/worker`, sin dependencias propias, y
+  leída entera (`docs/licenses/pgvector.md`). El párrafo que la permite: «Permission
+  is hereby granted, free of charge, to any person obtaining a copy of this software
+  and associated documentation files (the "Software"), to deal in the Software
+  without restriction, including without limitation the rights to use, copy, modify,
+  merge, publish, distribute, sublicense, and/or sell copies of the Software».
 - **Bedrock** entra por LiteLLM, con `boto3`, que ya está en `apps/api` y `apps/worker`.
 - **Scaleway** entra por su API compatible con OpenAI, a través de LiteLLM.
 - **El BCE** se lee con `httpx`, que ya está.
@@ -189,8 +195,9 @@ Rutas abreviadas:
 - **Trabajos.**
   - La tabla `jobs`, el servicio `api/services/jobs.py` y `GET /console/jobs/{id}`
     en `api/api/console/jobs.py`.
-  - En el worker, un actor de Dramatiq por tipo de trabajo, que también caduca los
-    trabajos colgados.
+  - En el worker, el consumidor `jobs-consumer` (familia runner, stream
+    `nexus:jobs`) despacha por tipo de trabajo; un trabajo vivo sin latido caduca
+    al leerlo (research D43).
 - **`@nexus/ui`.**
   - Cambian `ui/src/components/{tabs,dialog,sonner,status-badge,command-palette}.tsx`:
     - píldora;
@@ -237,8 +244,8 @@ Rutas abreviadas:
     (`api/api/webhooks/meta.py:116`).
   - Los envíos salientes (`api/services/channel_routing.py`) siguen solo con canales activos.
 - **Agrupación y candado.**
-  - Cada entrante programa el turno de su conversación a +3 s: un mensaje diferido
-    de Dramatiq, deduplicado por conversación.
+  - Cada entrante programa el turno de su conversación a +3 s: una cola diferida
+    de Redis, deduplicada por conversación (research D43).
   - El turno toma con un advisory lock todos los mensajes sin `turn_id`.
   - Los efectos pasan por `turn_effects`, con su clave `turno:acción`.
 - **`wk/runtime/pipeline.py`.**
