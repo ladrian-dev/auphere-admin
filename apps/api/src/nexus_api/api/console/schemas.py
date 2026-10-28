@@ -259,6 +259,11 @@ class AgentPublishIn(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     origin: Literal["draft_bar", "agent_tab"] = Field(default="agent_tab", alias="from")
+    # Spec 047 (T093): the gate is the same everywhere (23.7). «Guardar
+    # igualmente» with a normal test in red; an owner or admin may skip a
+    # critical test or a blocker writing the reason (23.2, 23.3).
+    accept_normal_failures: bool = False
+    override_reason: str | None = Field(default=None, max_length=500)
 
 
 class DraftSettingChangeOut(BaseModel):
@@ -418,15 +423,21 @@ class AuditEntryOut(BaseModel):
     actor: str
     #: Spec 029: who wrote it, so the console draws a face or an icon.
     actor_kind: Literal["person", "companion", "auphere", "api_key", "machine", "system"] = "system"
+    #: Spec 047 (events.md §4): desde dónde (también la consola lite y la app).
+    origin: Literal["console", "lite_web", "app", "admin", "api", "system"] = "system"
     action: str
     #: Spec 029: the vocabulary's category and severity (``critical`` marks
     #: what cannot be undone: deleting a client, revoking a key).
     category: str | None = None
     severity: str = "info"
+    #: Spec 047 (49.1): lo sensible se marca (la gravedad ``critical``).
+    sensitive: bool = False
     target: str
     external_client_ref: str | None
     client_name: str | None
     summary: str
+    #: «{n} más como esta»: filas seguidas iguales (persona, acción, cliente, día).
+    more_like_this: int = 0
 
 
 class AuditPageOut(BaseModel):

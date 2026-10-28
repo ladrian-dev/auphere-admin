@@ -200,11 +200,45 @@ async def promote_agent_config(
                 )
             )
 
+    # Spec 047 (T093, 23.7): the same gate as the console. An operator of
+    # Auphere may skip a critical test or a blocker with the audited reason.
+    from nexus_api.services import publishing
+
     svc = AgentConfigService(session)
+    target = await svc.configs.get_by_version(version)
+    if target is None:
+        # The contract of today: an unknown version is a conflict, not a 404.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=f"version {version} not found"
+        )
+    override = bool(body and body.override)
+    # The operator who promotes takes today's AI-disclosure decision (CP-31:
+    # «yes» by default, attributed to it) when the version carries none.
+    from nexus_api.services.agent_console_policy import with_disclosure_default
+
+    target.policies = with_disclosure_default(
+        dict(target.policies or {}), actor=f"admin:{actor[:8]}"
+    )
     try:
-        config = await svc.promote(version, actor=f"admin:{actor[:8]}")
+        published = await publishing.publish(
+            session,
+            agent_id=target.agent_id,
+            version=target,
+            actor=f"admin:{actor[:8]}",
+            role="operator",
+            partner_id=tenant.partner_id,
+            accept_normal_failures=override,
+            override_reason=(body.reason if body and override else None),
+            origin="admin",
+        )
+    except publishing.GateBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "gate_blocked", "gate": exc.gate.to_json()},
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    config = published.version
     out = AgentConfigOut.model_validate(config)
     # Notify any running worker so its AgentLoader cache picks up the new
     # active version on the next turn. Best-effort; see _publish_promote.

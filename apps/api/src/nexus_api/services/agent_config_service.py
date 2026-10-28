@@ -491,6 +491,14 @@ class AgentConfigService:
             await self.lock_draft(target.agent_id, expected=None)
         before = await self._active_of_version(version)
         config = await self.configs.promote(version, promoted_by=actor)
+        # Spec 047 (25.1): publicar la primera versión saca al agente del borrador.
+        if config.agent_id is not None:
+            from nexus_api.db.models import Agent
+            from nexus_api.services.agent_states import mark_published
+
+            owner = await self.session.get(Agent, config.agent_id)
+            if owner is not None:
+                mark_published(owner)
         after: dict[str, Any] = {
             "version": config.version,
             "agent": str(config.agent_id),

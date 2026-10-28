@@ -248,6 +248,12 @@ async def _seed_agent(
     connector_tools = await _safe_connector_tools_for_tenant(session, tenant.id)
     merged_tools = sorted(set(rendered.tools) | connector_tools)
 
+    # Spec 047 (T093, 23.7): the same gate as the console. The partner that
+    # provisions takes the AI-disclosure decision of today (CP-31: «yes» by
+    # default, attributed to it), so the contract of the partner API holds.
+    from nexus_api.services import publishing
+    from nexus_api.services.agent_console_policy import with_disclosure_default
+
     svc = AgentConfigService(session)
     try:
         config = await svc.stage_new_version(
@@ -255,10 +261,22 @@ async def _seed_agent(
             system_prompt_rendered=rendered.system_prompt,
             channels=[],
             tools=merged_tools,
-            policies=rendered.policies,
+            policies=with_disclosure_default(rendered.policies, actor=actor),
             seed_template_ref=rendered.seed_template_ref,
         )
-        return await svc.promote(config.version, actor=actor)
+        published = await publishing.publish(
+            session,
+            agent_id=config.agent_id,
+            version=config,
+            actor=actor,
+            role="partner_api",
+            partner_id=tenant.partner_id,
+            origin="partner_api",
+        )
+        return published.version
+    except publishing.GateBlocked as exc:
+        reasons = "; ".join(i["message"] for i in exc.gate.hard + exc.gate.overridable)
+        raise ProvisioningError(f"gate_blocked: {reasons}") from exc
     except AgentConfigConflict as exc:
         raise ProvisioningError(str(exc)) from exc
 

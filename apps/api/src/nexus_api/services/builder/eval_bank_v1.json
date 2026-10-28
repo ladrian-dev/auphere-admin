@@ -1,0 +1,702 @@
+[
+ {
+  "id": "b001",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b002",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b003",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b004",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b005",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b006",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b007",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b008",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b009",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b010",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b011",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b012",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b013",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b014",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b015",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b016",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b017",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b018",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b019",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b020",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b021",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b022",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b023",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b024",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b025",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b026",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b027",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b028",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b029",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b030",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b031",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b032",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b033",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b034",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b035",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b036",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b037",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b038",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b039",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b040",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b041",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b042",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b043",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b044",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b045",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b046",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b047",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b048",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b049",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b050",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b051",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b052",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b053",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b054",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b055",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b056",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b057",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b058",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b059",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b060",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b061",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b062",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b063",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b064",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b065",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b066",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b067",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b068",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b069",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b070",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b071",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b072",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b073",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b074",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b075",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b076",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b077",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b078",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b079",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b080",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b081",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b082",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b083",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b084",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b085",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b086",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b087",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b088",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b089",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b090",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b091",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b092",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b093",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b094",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b095",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ },
+ {
+  "id": "b096",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación."
+ },
+ {
+  "id": "b097",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa."
+ },
+ {
+  "id": "b098",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Toma pedidos, envía el catálogo y cobra con enlace de pago."
+ },
+ {
+  "id": "b099",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace."
+ },
+ {
+  "id": "b100",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo."
+ }
+]
