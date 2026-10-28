@@ -424,6 +424,7 @@ def build_default_registry() -> MCPRegistry:
     from nexus_mcp.servers.operator.tools import OPERATOR_TOOLS
     from nexus_mcp.servers.payments.tools import PAYMENTS_TOOLS
     from nexus_mcp.servers.queue.tools import QUEUE_TOOLS
+    from nexus_mcp.servers.reception.tools import RECEPTION_TOOLS
     from nexus_mcp.servers.reservas.tools import RESERVAS_TOOLS
     from nexus_mcp.servers.woocommerce.tools import WOOCOMMERCE_TOOLS
 
@@ -442,6 +443,8 @@ def build_default_registry() -> MCPRegistry:
         *META_CATALOG_TOOLS,
         *PAYMENTS_TOOLS,
         *RESERVAS_TOOLS,
+        # Spec 047 (requisito 53): Recepción que deriva.
+        *RECEPTION_TOOLS,
     ):
         registry.register(tool_cls())
     # Block O: agendapro_public.* are INTERNAL — the transport is

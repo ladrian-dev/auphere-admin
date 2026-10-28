@@ -21,11 +21,12 @@ async def test_list_count(db_session):
     # notification tools (0020) + response.send_interactive (0036) = 29;
     # + catalog.search_products y catalog.get_product (0135, spec 022) = 31;
     # + payments.request_review (0137, spec 025) = 32;
-    # + los nueve reservas.* (0173, spec 043) = 41.
+    # + los nueve reservas.* (0173, spec 043) = 41;
+    # + reception.handoff (0200, spec 047) = 42.
     # The 6 ``agendapro.*`` internal tools were removed by migration
     # 0021 (ADR-017). WooCommerce tools live in connectors, not in the
     # global tool_catalog seed this repo test sees.
-    assert len(items) == 41
+    assert len(items) == 42
 
 
 async def test_get_by_name(db_session):

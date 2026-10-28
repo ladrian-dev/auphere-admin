@@ -10,8 +10,8 @@ Ninguna herramienta acepta un cliente. Una reserva de otra persona se lee igual
 que una que no existe.
 
 Y un tercero desde la spec 047 (requisito 11.4, garantía 9): **los servicios son
-los del agente del turno** —el del número de la conversación (``_turn``), nunca un
-argumento del modelo—. ``services`` solo lista los suyos, y buscar huecos,
+los del agente del turno** —el que contesta en la conversación (``_turn``): el del
+número o, si Recepción la derivó, el de destino; nunca un argumento del modelo—. ``services`` solo lista los suyos, y buscar huecos,
 reservar o apuntarse a la espera con un servicio de su hermano responde
 ``not_offered``, igual que uno que no existe.
 """
@@ -26,8 +26,6 @@ import sqlalchemy as sa
 from nexus_api.core.tenant_context import get_current_customer, require_current_tenant
 from nexus_api.db.models import (
     Agent,
-    AgentStatus,
-    Channel,
     ClientAccess,
     Conversation,
     Customer,
@@ -36,6 +34,7 @@ from nexus_api.db.models import (
     ReservationStaff,
 )
 from nexus_api.services.business import services_catalog
+from nexus_api.services.reception import agent_for_conversation
 from nexus_api.services.reservations import waitlist
 from nexus_api.services.reservations.core import (
     Actor,
@@ -159,7 +158,7 @@ async def _turn(
     session: AsyncSession, customer_id: uuid.UUID, conversation_id: uuid.UUID | None
 ) -> tuple[uuid.UUID | None, uuid.UUID | None]:
     """La conversación del turno (la que nombra el runtime, o la última de esta
-    persona) y el agente de su número."""
+    persona) y el agente que contesta en ella."""
     conv: Conversation | None = None
     if conversation_id is not None:
         conv = await session.get(Conversation, conversation_id)
@@ -174,21 +173,13 @@ async def _turn(
         )
     if conv is None:
         return None, None
-    agent_id = await session.scalar(
-        sa.select(Channel.agent_id).where(Channel.id == conv.channel_id)
-    )
-    if agent_id is None:
-        agent_id = await session.scalar(
-            sa.select(Agent.id)
-            .where(Agent.status == AgentStatus.ACTIVE.value)
-            .order_by(Agent.created_at)
-            .limit(1)
-        )
-    return conv.id, agent_id
+    # Spec 047 (requisito 53): el que contesta en la conversación —el del número
+    # o, si Recepción la derivó, el de destino— con sus servicios.
+    return conv.id, await agent_for_conversation(session, conv)
 
 
 async def _turn_agent(session: AsyncSession) -> uuid.UUID | None:
-    """El agente del turno: el del número de la conversación de la persona. Sin
+    """El agente del turno: el que contesta en la conversación de la persona. Sin
     persona (una prueba sin turno), ``None``: el agente principal."""
     customer_id = get_current_customer()
     if customer_id is None:

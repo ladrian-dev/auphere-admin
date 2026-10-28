@@ -25,6 +25,7 @@ export function Thread({
   contactInitials,
   now,
   onOlder,
+  onCorrect,
 }: {
   items: InboxThreadItem[];
   hasOlder: boolean;
@@ -32,6 +33,8 @@ export function Thread({
   contactInitials: string;
   now: Date;
   onOlder: () => void;
+  /** Spec 047 (52.1): «Corregir esta respuesta» sobre cada respuesta del agente. */
+  onCorrect?: (item: InboxThreadItem) => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -79,7 +82,12 @@ export function Thread({
         return item.type === "event" ? (
           <EventLine key={row.key} item={item} time={clock(item.at, locale)} />
         ) : (
-          <MessageBubble key={row.key} item={item} contactInitials={contactInitials} />
+          <MessageBubble
+            key={row.key}
+            item={item}
+            contactInitials={contactInitials}
+            onCorrect={onCorrect && item.direction === "outbound" && item.author?.kind === "agent" ? () => onCorrect(item) : undefined}
+          />
         );
       })}
     </div>

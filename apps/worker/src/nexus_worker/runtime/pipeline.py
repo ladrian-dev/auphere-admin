@@ -68,6 +68,8 @@ from nexus_api.core.tenant_context import (
     tenant_scoped_session,
 )
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import TurnSource
+from nexus_api.services.activations import ToolPolicy
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.router_catalog import CatalogSnapshot, ProfilePolicy, record_anomaly
 from nexus_mcp import MCPRegistry, build_default_registry
@@ -92,7 +94,7 @@ from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
 from nexus_worker.runtime.console_context import (
     forced_escalation,
     load_gated_tool_names,
-    load_knowledge_block,
+    load_knowledge_for_turn,
     render_operating_policy_block,
 )
 from nexus_worker.runtime.grading_policy import decide as grading_decide
@@ -451,7 +453,44 @@ _CONNECTOR_TOOL_INTENTS: frozenset[str] = frozenset({"book", "queue", "info", "f
 # Namespaced toolkits offered on EVERY intent, ``escalate`` included.
 # ``payments`` (spec 025): the payment review is a hand-off to the team, and
 # the classifier routinely files a receipt under ``escalate``.
-_EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments"})
+# ``reception`` (spec 047, requisito 53): «quiero hablar con ventas» is as often
+# an ``escalate`` as an ``info``; Recepción must be able to hand over on both.
+_EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments", "reception"})
+
+# Spec 047 (requisito 53): Recepción's hand-over is terminal, like the
+# interactive component — once it lands, the target answers, not Recepción.
+_HANDOFF_TOOL_NAME = "reception.handoff"
+
+
+def _reception_note(bundle: AgentBundle) -> str:
+    """What Recepción reads about its targets, in the order of its list: who they
+    are (name and id, the id is what the tool takes) and when to hand over. Only
+    the agents of its list; their own instructions and knowledge never."""
+    lines = [
+        "## Derivar a otro agente",
+        "Eres la recepción de este negocio. Cuando lo que pide el cliente es de uno "
+        f"de estos agentes, pásale la conversación con la herramienta {_HANDOFF_TOOL_NAME} "
+        "y un resumen breve del motivo; él contesta enseguida, en este mismo chat. "
+        "No contestes tú lo que es suyo. Si no es de ninguno, atiéndelo tú.",
+    ]
+    for target in bundle.reception_targets:
+        lines.append(f"- {target.name} (to_agent_id: {target.agent_id}): {target.when}")
+    return "\n".join(lines)
+
+
+def _handed_off(envelopes: list[dict[str, Any]]) -> dict[str, Any]:
+    """The successful hand-over among ``envelopes``, if any: ``{to_agent_id, hop}``."""
+    for envelope in envelopes:
+        result = envelope.get("result") or {}
+        if (
+            envelope.get("tool") == _HANDOFF_TOOL_NAME
+            and envelope.get("status") == "ok"
+            and isinstance(result, dict)
+            and result.get("handed_off") is True
+        ):
+            args = envelope.get("args") or {}
+            return {"to_agent_id": args.get("to_agent_id"), "hop": result.get("hop")}
+    return {}
 
 
 def _agent_uuid(state: AgentState) -> uuid.UUID | None:
@@ -1281,6 +1320,10 @@ def _tool_result_content(envelope: dict[str, Any]) -> str:
             f"ERROR: the tool failed ({envelope.get('error', 'unknown error')}). "
             "Do NOT invent a result — tell the customer it could not be completed."
         )
+    if str(status).startswith("approval_"):
+        # Spec 047 (35.5): the action did NOT run; the message says why and what
+        # to tell the customer.
+        return "NOT DONE: " + str((envelope.get("result") or {}).get("message") or status)
     result = envelope.get("result", {})
     try:
         text = json.dumps(result, ensure_ascii=False, default=str)
@@ -1460,6 +1503,12 @@ def make_handler_node(
             gated = await _load_gated_tools(tenant_id)
             if gated:
                 available_names = tuple(n for n in available_names if n not in gated)
+            # Spec 047 (35.5, 35.6): the agent's activation of each connection —
+            # without one, none of its tools; «Solo leer» drops the writes;
+            # «Preguntar antes de escribir» keeps them behind a durable approval.
+            tool_policy = await _load_tool_policy(tenant_id, _agent_uuid(state))
+            if tool_policy.blocked:
+                available_names = tuple(n for n in available_names if n not in tool_policy.blocked)
             admin_role = sender_role(bundle.policies, state.get("user_id"))
             if admin_role == ROLE_READONLY:
                 available_names = tuple(
@@ -1467,13 +1516,18 @@ def make_handler_node(
                 )
             available_defs = scoped_registry.get_openai_tools(available_names)
             kg_snapshot = await _load_kg_snapshot_text(tenant_id)
-            knowledge = await _load_knowledge_text(tenant_id)
+            knowledge, knowledge_sources = await _load_knowledge(
+                tenant_id, _agent_uuid(state), str(state.get("user_message") or "")
+            )
             messages = _build_handler_messages(
                 state, bundle, intent=intent, kg_snapshot=kg_snapshot, knowledge=knowledge
             )
             if admin_role == ROLE_READONLY:
                 # System prompt is messages[0]; keep the note right after it.
                 messages.insert(1, {"role": "system", "content": _READONLY_ADMIN_NOTE})
+            if bundle.reception_targets and _HANDOFF_TOOL_NAME in available_names:
+                # Spec 047 (53.1): Recepción's list, right after its own prompt.
+                messages.insert(1, {"role": "system", "content": _reception_note(bundle)})
 
             # Built-in Anthropic Memory tool (Fase B). Opt-in per
             # agent_config via the ``runtime_memory_tool`` boolean —
@@ -1489,6 +1543,7 @@ def make_handler_node(
                 memory_tool = NexusPostgresMemoryTool(
                     tenant_id=tenant_id,
                     customer_id=uuid.UUID(customer_id_raw) if customer_id_raw else None,
+                    agent_id=bundle.agent_id if bundle.memory_scope == "own" else None,
                 )
                 # Insert the system addendum BEFORE the conversation
                 # history so it stays inside the cached prefix (see
@@ -1508,6 +1563,11 @@ def make_handler_node(
             # send_interactive is a terminal action, asking the LLM for
             # another iteration only burns tokens.
             interactive_payload: dict[str, Any] | None = None
+            # Spec 047 (requisito 53): Recepción handed the conversation over in
+            # this turn. Terminal too: the target answers (the dispatcher runs
+            # it next), so Recepción says nothing more — not even the fallback.
+            # (``handoff`` below is the router's, to a person: another thing.)
+            reception_handoff: dict[str, Any] = {}
 
             # Fase D — Anthropic Skills attached to this agent_config.
             # Build the ``container`` payload + ``extra_headers`` once,
@@ -1768,6 +1828,10 @@ def make_handler_node(
                         continue
 
                     async def _run(call: ToolCall = call) -> dict[str, Any]:
+                        if call.name in tool_policy.needs_approval:
+                            asked = await _approval_envelope(state, call, intent)
+                            if asked is not None:
+                                return asked
                         return await _dispatch_tool(
                             scoped_registry,
                             call,
@@ -1825,6 +1889,11 @@ def make_handler_node(
                 # ``interactive_payload``).
                 if interactive_payload is not None:
                     break
+                # Spec 047 (requisito 53): the conversation is the target's now.
+                # No further round: the dispatcher runs the target in this turn.
+                reception_handoff = _handed_off(envelopes[batch_start:])
+                if reception_handoff:
+                    break
 
                 # Spec 047 (40.4): the graph's signals of difficulty — a tool
                 # that refused its arguments, a long tool loop, several
@@ -1854,7 +1923,7 @@ def make_handler_node(
                         turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
                         break
 
-            if not final_text.strip() and interactive_payload is None:
+            if not final_text.strip() and interactive_payload is None and not reception_handoff:
                 log.warning(
                     "handler.empty_response",
                     tenant_id=str(tenant_id),
@@ -1897,6 +1966,11 @@ def make_handler_node(
                 # downstream nodes ``if state.get("interactive_payload")``
                 # work uniformly.
                 "interactive_payload": interactive_payload or {},
+                # Spec 047 (requisito 53): Recepción derivó; vacío si no.
+                "reception_handoff": reception_handoff,
+                # Spec 047 (38.3): lo que se usó para contestar; se guarda con
+                # la respuesta en ``turn_sources``.
+                "knowledge_sources": knowledge_sources,
                 # Forward the per-config flags so downstream nodes
                 # (grade_outcome) gate on the bundle without re-loading
                 # it from DB.
@@ -1915,6 +1989,63 @@ def make_handler_node(
     return handler
 
 
+async def _load_tool_policy(tenant_id: uuid.UUID, agent_id: uuid.UUID | None) -> ToolPolicy:
+    """Spec 047 (T128): the connector activations of this agent. Fails closed on
+    what the activations manage: a read error blocks nothing new but logs, and
+    the registry still refuses what is not whitelisted."""
+    from nexus_api.services.activations import tool_policy
+
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session, tenant_scoped_session(session, tenant_id):
+            return await tool_policy(session, tenant_id, agent_id)
+    except Exception as exc:
+        log.warning("tool_policy.load_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
+        return ToolPolicy()
+
+
+async def _approval_envelope(
+    state: AgentState, call: ToolCall, intent: str
+) -> dict[str, Any] | None:
+    """«Preguntar antes de escribir» (35.5): ``None`` when the owner already
+    approved this very action (it runs now, once); otherwise the envelope the
+    model reads — the request went out, is pending, or was denied."""
+    import sqlalchemy as sa
+    from nexus_api.db.models import Agent, Tenant
+    from nexus_api.services.tool_approvals import MESSAGES, gate
+
+    tenant_id = _tenant_uuid(state)
+    conversation = state.get("conversation_id")
+    if not conversation:
+        return {"tool": call.name, "intent": intent, "status": "approval_unavailable", "result": {}}
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        tenant_name = await session.scalar(sa.select(Tenant.name).where(Tenant.id == tenant_id))
+        agent_id = _agent_uuid(state)
+        agent_name = (
+            await session.scalar(sa.select(Agent.name).where(Agent.id == agent_id))
+            if agent_id
+            else None
+        )
+        verdict = await gate(
+            session,
+            conversation_id=uuid.UUID(str(conversation)),
+            tool=call.name,
+            args=dict(call.arguments or {}),
+            tenant_name=str(tenant_name or ""),
+            agent_name=agent_name,
+        )
+    if verdict == "allowed":
+        return None
+    log.info("tool.approval", tool=call.name, verdict=verdict, tenant_id=str(tenant_id))
+    return {
+        "tool": call.name,
+        "intent": intent,
+        "status": f"approval_{verdict}",
+        "result": {"message": MESSAGES[verdict]},
+    }
+
+
 async def _load_gated_tools(tenant_id: uuid.UUID) -> frozenset[str]:
     try:
         return await load_gated_tool_names(tenant_id)
@@ -1923,15 +2054,18 @@ async def _load_gated_tools(tenant_id: uuid.UUID) -> frozenset[str]:
         return frozenset()
 
 
-async def _load_knowledge_text(tenant_id: uuid.UUID) -> str:
-    """CP-15 knowledge block. Best-effort: a failure to read the documents
-    (DB hiccup) degrades to "no knowledge block" and the turn goes on —
-    the customer still gets an answer from the prompt + tools."""
+async def _load_knowledge(
+    tenant_id: uuid.UUID, agent_id: uuid.UUID | None, query: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """CP-15 knowledge block, by layer (spec 047, D14): the business's and this
+    agent's own, never a sibling's — whole if it fits, else the hybrid search.
+    Returns the block and its sources. Best-effort: a failure to read degrades
+    to "no knowledge block" and the turn goes on."""
     try:
-        return await load_knowledge_block(tenant_id)
+        return await load_knowledge_for_turn(tenant_id, agent_id, query)
     except Exception as exc:
         log.warning("knowledge.load_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
-        return ""
+        return "", []
 
 
 async def _load_kg_snapshot_text(tenant_id: uuid.UUID) -> str:
@@ -2086,7 +2220,9 @@ def make_grade_outcome_node(
     """
 
     async def grade_outcome(state: AgentState) -> dict[str, Any]:
-        if grader is None:
+        if grader is None or state.get("reception_handoff"):
+            # Spec 047 (requisito 53): Recepción derivó y no contestó; contesta
+            # el destino en su propia pasada, y esa sí se gradúa.
             return {"outcome_overall": "skipped", "outcome_retries": 0, "outcome_feedback": ""}
 
         # The handler forwarded the per-config flags via state. Gate
@@ -2303,6 +2439,10 @@ def make_ucm_formatter_node(*, enabled: bool) -> NodeFn:
 
     async def ucm_formatter(state: AgentState) -> dict[str, Any]:
         if not enabled:
+            return {}
+        if state.get("reception_handoff") and not str(state.get("response") or "").strip():
+            # Spec 047 (requisito 53): Recepción derivó sin decir nada; no hay
+            # respuesta que envolver (la da el destino en su pasada).
             return {}
 
         response_text = state.get("response", "") or ""
@@ -2538,6 +2678,16 @@ def make_checkpoint_node() -> NodeFn:
                     outcome_feedback=outcome_feedback,
                 )
                 graded_message_id = text_row.id
+                sources = list(state.get("knowledge_sources") or [])
+                if sources:
+                    session.add(
+                        TurnSource(
+                            tenant_id=tenant_id,
+                            message_id=text_row.id,
+                            agent_id=_agent_uuid(state),
+                            sources=sources,
+                        )
+                    )
 
             # Row 2: interactive component, when the agent called
             # ``response.send_interactive`` this turn AND it is not a

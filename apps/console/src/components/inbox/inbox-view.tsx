@@ -39,6 +39,7 @@ import { inboxAttachmentUrl } from "@/lib/inbox-urls";
 
 import { Composer } from "./composer";
 import { ContactPanel } from "./contact-panel";
+import { CorrectionDialog } from "./correction-dialog";
 import { ConversationList, INBOX_AGENT_FILTER_ID } from "./conversation-list";
 import { composerMode, initialsOf, sendErrorOf, type SendError } from "./inbox-model";
 import { reloadPage } from "./reload";
@@ -170,6 +171,8 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
 
   const [selectedId, setSelectedId] = React.useState<string | null>(initial.selectedId);
   const [detail, setDetail] = React.useState<InboxDetail | null>(initial.open?.detail ?? null);
+  // Spec 047 (52.1): la respuesta del agente que se está corrigiendo.
+  const [correcting, setCorrecting] = React.useState<InboxThreadItem | null>(null);
   const [items, setItems] = React.useState<InboxThreadItem[]>(initial.open?.thread.items ?? []);
   const [nextBefore, setNextBefore] = React.useState<string | null>(initial.open?.thread.next_before ?? null);
   const [threadLoading, setThreadLoading] = React.useState(false);
@@ -618,6 +621,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
                 contactInitials={initials}
                 now={now}
                 onOlder={() => void older()}
+                onCorrect={setCorrecting}
               />
               <Composer
                 key={detail.id}
@@ -649,6 +653,9 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
               onNote={setNote}
             />
           </div>
+        ) : null}
+        {detail && correcting ? (
+          <CorrectionDialog key={correcting.id} conversationId={detail.id} message={correcting} onClose={() => setCorrecting(null)} />
         ) : null}
         {detail && !wide ? (
           <Sheet open={sheetOpen && !threadLoading} onOpenChange={(open) => setSheetOpen(open)}>

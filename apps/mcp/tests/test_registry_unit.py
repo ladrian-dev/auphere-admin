@@ -30,7 +30,9 @@ def test_default_registry_has_all_block_d_tools():
     # + catalog.search_products, catalog.get_product (spec 022)
     # + payments.request_review (spec 025)
     # + the nine reservas.* (spec 043)
-    assert len(names) == 70
+    # + reception.handoff (spec 047, requisito 53)
+    assert len(names) == 71
+    assert "reception.handoff" in names
     assert {n for n in names if n.startswith("reservas.")} == {
         "reservas.services",
         "reservas.find_slots",

@@ -26,6 +26,10 @@ export type InboxConversation = {
   last_message: { at: string; author: InboxAuthor; preview: string; has_media: boolean } | null;
   unread: boolean;
   tags: string[];
+  /** Spec 047 (50.7, 53.2): «La atiende {agente}», también con un solo agente o tras una derivación de Recepción. */
+  handled_by_agent?: { id: string; name: string } | null;
+  /** Spec 047 (50.7): why it waits, the code of `events.md` §2. */
+  waiting_reason?: string | null;
 };
 
 /** The agent's last escalation: its reason (it may leave none) and when it happened. */
@@ -58,6 +62,8 @@ export type InboxDetail = {
   waiting_reason: string | null;
   /** Spec 045 (R3.2): when the agent asked for a person; `null` unless `state = "waiting"`. */
   waiting_since: string | null;
+  /** Spec 047 (50.7, 53.2): who answers it now — the agent Recepción handed it to, if any. */
+  handled_by_agent?: { id: string; name: string } | null;
   tags: string[];
   note: { body: string; updated_at: string | null };
   activity: InboxActivity[];

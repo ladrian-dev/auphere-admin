@@ -35,10 +35,12 @@ export function ThreadHeader({
   const t = useT();
   const resolved = detail.state === "resolved";
   // Spec 030: with more than one agent, the one of this number by name.
+  // Spec 047 (53.2): after Recepción hands it over, the agent that answers now.
+  const handler = detail.handled_by_agent ?? detail.agent;
   const attends =
     detail.state === "agent"
-      ? detail.agent
-        ? t("inbox.assigned", { name: detail.agent.name })
+      ? handler
+        ? t("inbox.assigned", { name: handler.name })
         : t("inbox.assigned.agent")
       : detail.assignee
         ? detail.assignee.is_me

@@ -333,6 +333,10 @@ async def resolve(session: AsyncSession, conversation: Conversation, *, actor: s
     conversation.closed_at = _now()
     conversation.assigned_user_id = None
     conversation.waiting_reason = None
+    # Spec 047 (requisito 53): la derivación de Recepción dura lo que la
+    # conversación; la siguiente empieza otra vez en Recepción y sin saltos.
+    conversation.handled_by_agent_id = None
+    conversation.reception_hops = 0
     if not conversation.agent_active:
         conversation_control.resume(conversation)
     await record_event(session, conversation, ConversationEventKind.RESOLVED, actor)

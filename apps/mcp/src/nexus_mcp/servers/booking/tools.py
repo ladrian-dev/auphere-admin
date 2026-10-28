@@ -31,8 +31,8 @@ from nexus_api.db.models import (
     ScheduledJobStatus,
     Tenant,
 )
-from nexus_api.services.agents import agent_for_channel
 from nexus_api.services.business import services_catalog
+from nexus_api.services.reception import agent_for_conversation
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,8 +79,9 @@ def _to_brief(a: Appointment) -> AppointmentBrief:
 #
 # Y un tercero desde la spec 047 (requisito 11.4, garantía 9): un servicio del
 # catálogo de la ficha que el agente del turno no ofrece no se busca ni se
-# reserva. El agente es el del número de la conversación de la persona
-# (``agent_for_channel``), nunca un argumento del modelo. Un nombre que no está
+# reserva. El agente es el que contesta en la conversación de la persona —el
+# del número o, si Recepción la derivó, el de destino— (``agent_for_conversation``),
+# nunca un argumento del modelo. Un nombre que no está
 # en el catálogo (las citas de antes, de texto libre) sigue como siempre.
 
 
@@ -98,13 +99,16 @@ async def _sibling_service(session: AsyncSession, service_name: str) -> bool:
     agent_id = None
     customer_id = get_current_customer()
     if customer_id is not None:
-        channel_id = await session.scalar(
-            select(Conversation.channel_id)
+        conv = await session.scalar(
+            select(Conversation)
             .where(Conversation.customer_id == customer_id)
             .order_by(Conversation.last_message_at.desc().nulls_last())
             .limit(1)
         )
-        agent_id = await agent_for_channel(session, channel_id)
+        # Spec 047 (requisito 53): el agente que contesta en la conversación,
+        # el de destino si Recepción la derivó.
+        if conv is not None:
+            agent_id = await agent_for_conversation(session, conv)
     mine = {s.id for s in await services_catalog.services_for_agent(session, agent_id)}
     return not any(s.id in mine for s in catalog)
 

@@ -140,10 +140,13 @@ class ListItem:
     unread: bool
     tags: list[str]
     # Spec 030: the agent of the conversation's number — only with 2+ agents.
+    # Spec 047 (53.2): who answers now, the target when Recepción handed it over.
     agent: tuple[uuid.UUID, str] | None = None
     # Spec 045 (R3.1): why and since when it waits — only while it waits.
     waiting_reason: str | None = None
     waiting_since: datetime | None = None
+    # Spec 047 (53.2): «La atiende {agente}» — only when Recepción handed it over.
+    handled_by: tuple[uuid.UUID, str] | None = None
 
 
 @dataclass
@@ -189,6 +192,26 @@ def agent_of_channel(agents: list[tuple[uuid.UUID, str]]) -> sa.ColumnElement[uu
     return sa.func.coalesce(
         Channel.agent_id, sa.cast(sa.literal(str(agents[0][0])), PG_UUID(as_uuid=True))
     )
+
+
+def handled_by_col() -> sa.ScalarSelect[uuid.UUID]:
+    """Spec 047 (53.2): the agent Recepción handed the conversation to, while it
+    is alive (an archived one gives it back to the number's agent, as the turn
+    does: ``services.reception.agent_for_conversation``). Correlated with
+    ``Conversation``."""
+    return (
+        sa.select(Agent.id)
+        .where(Agent.id == Conversation.handled_by_agent_id, Agent.lifecycle != "archived")
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+
+
+def agent_of_conversation(
+    agents: list[tuple[uuid.UUID, str]],
+) -> sa.ColumnElement[uuid.UUID | None]:
+    """Who answers in a conversation: Recepción's target, else the number's agent."""
+    return sa.func.coalesce(handled_by_col(), agent_of_channel(agents))
 
 
 async def member_names(session: AsyncSession, tenant_id: uuid.UUID) -> Members:
@@ -244,7 +267,8 @@ async def list_conversations(
     page = ListPage()
     unread = unread_expr(me)
     agents = await client_agents(session)
-    agent_col = agent_of_channel(agents)
+    # Spec 047 (53.2): who answers now — the filter by agent included.
+    agent_col = agent_of_conversation(agents)
     names_by_agent = dict(agents)
     base = (
         sa.select(
@@ -254,6 +278,7 @@ async def list_conversations(
             Channel.type,
             unread.label("unread"),
             agent_col.label("agent_id"),
+            handled_by_col().label("handled_by"),
         )
         .join(Customer, Customer.id == Conversation.customer_id)
         .join(Channel, Channel.id == Conversation.channel_id)
@@ -338,7 +363,7 @@ async def list_conversations(
             waiting_by_conv = await _last_escalations(session, waiting_ids)
 
     show_agents = len(agents) > 1
-    for conv, name, identifier, channel_type, is_unread, agent_id in shown:
+    for conv, name, identifier, channel_type, is_unread, agent_id, handled_by in shown:
         msg = last_by_conv.get(conv.id)
         last = (
             LastMessage(
@@ -369,6 +394,11 @@ async def list_conversations(
                 ),
                 waiting_reason=waiting_by_conv.get(conv.id, (None, None))[0],
                 waiting_since=waiting_by_conv.get(conv.id, (None, None))[1],
+                handled_by=(
+                    (handled_by, names_by_agent.get(handled_by, "—"))
+                    if handled_by is not None
+                    else None
+                ),
             )
         )
 
@@ -506,6 +536,18 @@ class Detail:
     note_updated_at: datetime | None
     activity: list[Activity]
     agent: tuple[uuid.UUID, str] | None = None
+    # Spec 047 (53.2): «La atiende {agente}» — only when Recepción handed it over.
+    handled_by: tuple[uuid.UUID, str] | None = None
+
+
+def _event_detail(event: ConversationEvent) -> str | None:
+    """Lo que la Bandeja dice de un evento: el motivo de un escalado y, de una
+    derivación de Recepción (spec 047, 53.2), a quién pasó."""
+    if event.kind == "escalated" and event.payload.get("reason"):
+        return str(event.payload.get("reason"))
+    if event.kind == "agent_changed" and event.payload.get("to_agent_name"):
+        return str(event.payload.get("to_agent_name"))
+    return None
 
 
 def _event_actor(actor: str, *, me: str, names: Members) -> Author:
@@ -586,8 +628,15 @@ async def detail(
     note = await session.get(ContactNote, conversation.customer_id)
     agents = await client_agents(session)
     agent: tuple[uuid.UUID, str] | None = None
+    # Spec 047 (53.2): Recepción la derivó — la atiende el destino mientras viva.
+    handled_id = await session.scalar(
+        sa.select(Agent.id).where(
+            Agent.id == conversation.handled_by_agent_id, Agent.lifecycle != "archived"
+        )
+    )
+    handled_by = (handled_id, dict(agents).get(handled_id, "—")) if handled_id else None
     if len(agents) > 1:
-        agent_id = (channel.agent_id if channel else None) or agents[0][0]
+        agent_id = handled_id or (channel.agent_id if channel else None) or agents[0][0]
         agent = (agent_id, dict(agents).get(agent_id, "—"))
     now = datetime.now(UTC)
     closes = conversation.last_inbound_at + WINDOW if conversation.last_inbound_at else None
@@ -623,15 +672,12 @@ async def detail(
                 kind=e.kind,
                 at=e.created_at,
                 actor=_event_actor(e.actor, me=me, names=names),
-                detail=(
-                    str(e.payload.get("reason"))[:80]
-                    if e.kind == "escalated" and e.payload.get("reason")
-                    else None
-                ),
+                detail=(_event_detail(e) or "")[:80] or None,
             )
             for e in events
         ],
         agent=agent,
+        handled_by=handled_by,
     )
 
 
@@ -717,11 +763,7 @@ async def thread(
                 at=e.created_at,
                 author=_event_actor(e.actor, me=me, names=names),
                 event_kind=e.kind,
-                detail=(
-                    str(e.payload.get("reason"))
-                    if e.kind == "escalated" and e.payload.get("reason")
-                    else None
-                ),
+                detail=_event_detail(e),
             )
         )
     items.sort(key=lambda i: i.at, reverse=True)

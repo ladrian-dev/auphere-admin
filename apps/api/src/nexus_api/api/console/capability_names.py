@@ -561,6 +561,14 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Asks the business a question without dropping the conversation.",
         "escalation",
     ),
+    # Spec 047 (requisito 53): la pone y la quita la sección «Recepción».
+    ("tool", "reception.handoff"): _t(
+        "Pasar a otro agente",
+        "Hand over to another agent",
+        "Recepción pasa la conversación al agente que toca, en el mismo número.",
+        "Reception hands the conversation to the right agent, on the same number.",
+        "escalation",
+    ),
     # ── Otras ──────────────────────────────────────────────────────────
     ("tool", "client.get_history"): _t(
         "Consultar el historial del cliente",

@@ -55,6 +55,7 @@ Catalog snapshot (2026-05-19) — keep this in sync if a tool is added:
    queue.join_queue
    queue.check_in
    queue.remove_from_queue
+   reception.handoff                            (spec 047, 2026-10-28)
    woocommerce.list_products
    woocommerce.get_product
    woocommerce.list_product_variations
@@ -153,6 +154,7 @@ def _all_side_effecting_public_tools() -> list[ToolBase]:
     from nexus_mcp.servers.notification import NOTIFICATION_TOOLS
     from nexus_mcp.servers.operator import OPERATOR_TOOLS
     from nexus_mcp.servers.queue import QUEUE_TOOLS
+    from nexus_mcp.servers.reception import RECEPTION_TOOLS
 
     classes: list[type[ToolBase]] = []
     classes.extend(BOOKING_TOOLS)
@@ -161,6 +163,9 @@ def _all_side_effecting_public_tools() -> list[ToolBase]:
     classes.extend(NOTIFICATION_TOOLS)
     classes.extend(OPERATOR_TOOLS)
     classes.extend(QUEUE_TOOLS)
+    # Spec 047 (requisito 53): derivar escribe en la conversación; el
+    # Playground no deriva.
+    classes.extend(RECEPTION_TOOLS)
 
     # Woocommerce gets a try/except — the package is a recent addition
     # and the suite must still surface the rest of the catalog if its
@@ -361,6 +366,7 @@ def test_coverage_floor_ninety_five_percent():
         "queue.join_queue",
         "queue.check_in",
         "queue.remove_from_queue",
+        "reception.handoff",
         "woocommerce.list_products",
         "woocommerce.get_product",
         "woocommerce.list_product_variations",

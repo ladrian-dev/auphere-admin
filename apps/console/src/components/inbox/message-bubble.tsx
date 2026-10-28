@@ -1,4 +1,4 @@
-import { AlertTriangle, FileText, ImageIcon, Mic, Video } from "lucide-react";
+import { AlertTriangle, FileText, ImageIcon, Mic, PencilLine, Video } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@nexus/ui";
@@ -15,7 +15,16 @@ import { clock } from "./inbox-model";
  * in its own tone so a glance says who wrote. An outbound says whether it
  * arrived; a failed one says why (R8.4).
  */
-export function MessageBubble({ item, contactInitials }: { item: InboxThreadItem; contactInitials: string }) {
+export function MessageBubble({
+  item,
+  contactInitials,
+  onCorrect,
+}: {
+  item: InboxThreadItem;
+  contactInitials: string;
+  /** Spec 047 (52.1): «Corregir esta respuesta», solo sobre una respuesta del agente. */
+  onCorrect?: () => void;
+}) {
   const t = useT();
   const locale = useLocale();
   const time = clock(item.at, locale);
@@ -68,6 +77,17 @@ export function MessageBubble({ item, contactInitials }: { item: InboxThreadItem
             ? t("inbox.delivery.failed.reason", { reason: item.failure_reason })
             : t("inbox.delivery.failed")}
         </span>
+      ) : null}
+      {onCorrect && author?.kind === "agent" ? (
+        <button
+          type="button"
+          onClick={onCorrect}
+          data-slot="correct-answer"
+          className="inline-flex min-h-6 items-center gap-1 rounded-sm px-1 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <PencilLine className="size-3" aria-hidden="true" />
+          {t("lite.correct.open")}
+        </button>
       ) : null}
     </div>
   );

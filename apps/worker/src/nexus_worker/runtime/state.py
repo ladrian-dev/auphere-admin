@@ -114,6 +114,9 @@ class AgentState(TypedDict, total=False):
     # route to ``adapter.send_interactive``. Empty / unset on turns that
     # produce plain text only.
     interactive_payload: dict[str, Any]
+    # Spec 047 (38.3): las fuentes del conocimiento que usó la respuesta; el
+    # nodo que la guarda las deja en ``turn_sources``.
+    knowledge_sources: list[dict[str, Any]]
 
     # Free-form trace metadata (replaced by the last writer)
     meta: dict[str, Any]
@@ -138,6 +141,11 @@ class AgentState(TypedDict, total=False):
     # coste son del turno entero (40.10), y cada nodo de LangGraph corre en su
     # propio contexto. ``new_state`` lo vacía al empezar cada turno.
     router_turn: dict[str, Any]
+    # Spec 047 (requisito 53) — Recepción derivó en este turno: ``{"to_agent_id",
+    # "hop"}``. El manejador corta su bucle (contesta el destino, no Recepción) y
+    # el juez no gradúa una respuesta que no se dio. ``new_state`` lo vacía: una
+    # derivación es del turno que la hizo.
+    reception_handoff: dict[str, Any]
 
 
 # ── WP-13: checkpoint bloat control ─────────────────────────────────────────
@@ -209,4 +217,5 @@ def new_state(
         # devolvería). La afinidad y los escalados de la hora, en cambio, sí.
         "classification": {},
         "router_turn": {},
+        "reception_handoff": {},
     }

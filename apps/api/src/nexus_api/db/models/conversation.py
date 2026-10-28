@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -204,6 +205,15 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     #: Coexistencia (ola 4): un eco del negocio deja la conversación a una
     #: persona hasta esta hora.
     takeover_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Spec 047 (0191, P3): the agent Recepción handed the conversation to —
+    #: who answers from then on (``services.reception.agent_for_conversation``).
+    #: ``NULL`` = the number's agent. Composite FK to ``agents`` (same client).
+    handled_by_agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: Handoffs so far (CHECK ≥ 0, 0200): the fifth goes to a person
+    #: (``reception_loop``). Back to 0 when the conversation returns to Recepción.
+    reception_hops: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
 
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

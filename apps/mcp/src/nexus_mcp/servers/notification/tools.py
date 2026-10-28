@@ -40,7 +40,7 @@ from nexus_api.db.models import (
     WhatsAppTemplateStatus,
 )
 from nexus_api.repositories.agent_config import AgentConfigRepository
-from nexus_api.services.agents import agent_for_channel
+from nexus_api.services.reception import agent_for_conversation
 from sqlalchemy import String, cast, func, select, text
 
 from nexus_mcp._db import tool_session
@@ -551,8 +551,9 @@ class ReminderPolicy:
 
 
 async def _reminder_policy(session: Any, conversation: Conversation) -> ReminderPolicy:
-    # Spec 030: the agent that answers on THIS number, as payments.request_review.
-    agent_id = await agent_for_channel(session, conversation.channel_id)
+    # Spec 030: the agent that answers on THIS number, as payments.request_review
+    # (spec 047, 53: the target's, when Recepción handed it over).
+    agent_id = await agent_for_conversation(session, conversation)
     active = await AgentConfigRepository(session).get_active(agent_id=agent_id)
     return ReminderPolicy.from_policies(active.policies if active is not None else None)
 
