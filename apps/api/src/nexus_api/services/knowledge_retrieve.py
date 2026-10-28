@@ -63,11 +63,19 @@ def _capped_fenced(
     return preamble + "\n\n" + "\n\n".join(boxes)
 
 
+def _business_layer(model: type[Any]) -> list[Any]:
+    """Spec 047 (D14): el Companion ve la capa del negocio, sin lo quitado; las
+    fuentes propias de un agente son de ese agente."""
+    if model is not KnowledgeDocument:
+        return []
+    return [KnowledgeDocument.agent_id.is_(None), KnowledgeDocument.removed_at.is_(None)]
+
+
 async def _indexed(session: Any, model: type[Any]) -> list[tuple[str, str]]:
     rows = (
         await session.execute(
             select(model.title, model.content_text)
-            .where(model.status == KnowledgeDocumentStatus.INDEXED.value)
+            .where(model.status == KnowledgeDocumentStatus.INDEXED.value, *_business_layer(model))
             .order_by(model.created_at.asc())
         )
     ).all()

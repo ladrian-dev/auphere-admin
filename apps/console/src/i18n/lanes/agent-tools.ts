@@ -257,6 +257,8 @@ export const agentToolsMessages = {
   "knowledge.col.indexed": { es: "Indexado", en: "Indexed" },
   "knowledge.kind.file": { es: "Archivo", en: "File" },
   "knowledge.kind.url": { es: "URL", en: "URL" },
+  // Spec 047 (37.3): lo que se enseñó con «Enseñar» para todo el negocio.
+  "knowledge.kind.note": { es: "Enseñado", en: "Taught" },
   "knowledge.status.pending": { es: "Pendiente", en: "Pending" },
   "knowledge.status.indexed": { es: "Indexado", en: "Indexed" },
   "knowledge.status.failed": { es: "Fallido", en: "Failed" },
@@ -271,6 +273,14 @@ export const agentToolsMessages = {
   "knowledge.delete.title": { es: "Eliminar «{title}»", en: "Delete \"{title}\"" },
   "knowledge.delete.body": { es: "El agente dejará de consultar este documento de inmediato. No se puede deshacer.", en: "The agent stops consulting this document immediately. This cannot be undone." },
   "knowledge.deleted": { es: "«{title}» eliminado.", en: "\"{title}\" deleted." },
+  // Spec 047 (12.2): en un cliente, quitar se deshace durante 10 minutos. La Guía del partner sigue borrando.
+  "knowledge.delete.body.undo": { es: "Ningún agente lo usa desde el siguiente mensaje. Puedes deshacerlo durante 10 minutos.", en: "No agent uses it from the next message. You can undo it for 10 minutes." },
+  "knowledge.deleted.undo": { es: "«{title}» eliminado. Puedes deshacerlo durante 10 minutos.", en: "\"{title}\" deleted. You can undo it for 10 minutes." },
+  "knowledge.undo": { es: "Deshacer", en: "Undo" },
+  "knowledge.restored": { es: "«{title}» vuelve a usarse.", en: "\"{title}\" is used again." },
+  "knowledge.undo.closed": { es: "Han pasado más de 10 minutos: ya no se puede deshacer.", en: "More than 10 minutes have passed: it can no longer be undone." },
+  // Spec 047 (37.1): en Negocio todas las fuentes son de la capa del negocio.
+  "knowledge.layer.business": { es: "Todas estas fuentes las ven todos los agentes de este cliente. Lo que es solo de un agente está en su sección Conocimiento.", en: "Every agent of this client sees all these sources. What belongs to one agent only is in its Knowledge section." },
   "playbook.title": { es: "Guía del partner", en: "Partner playbook" },
   // R5.3: quién la lee, dicho antes que de qué va. Es la confusión que más
   // caro sale — subir al sitio equivocado significa que el agente no ve lo

@@ -427,9 +427,13 @@ async def complete_consent_from_webhook(
         tc.consent_token = None
         tc.consent_token_expires_at = None
         action = "connector.connect_completed"
+        await _apply_pending_activation(session, tc, actor=actor)
     elif upstream_status == "EXPIRED":
         tc.status = TenantConnectorStatus.NEEDS_REAUTH.value
         action = "connector.needs_reauth"
+        # Spec 047 (36.3): «Hay que volver a autorizar» — the tests of the agents
+        # that use it go stale and run again; the partner hears it after commit.
+        await _on_needs_reauth(session, tc, connector)
     elif upstream_status == "FAILED":
         tc.status = TenantConnectorStatus.ERROR.value
         action = "connector.error"
@@ -503,6 +507,55 @@ async def complete_consent_from_webhook(
     )
 
 
+async def _apply_pending_activation(
+    session: AsyncSession, tc: TenantConnector, *, actor: str
+) -> None:
+    """Spec 047 (35.3): connecting from an agent's Integrations tab leaves the
+    agent and the permission on the install; when the authorisation completes,
+    the integration is activated for that agent."""
+    import uuid as _uuid
+
+    from nexus_api.services.activations import ensure_activation
+
+    pending = (tc.config or {}).get("pending_activation")
+    if not isinstance(pending, dict) or not pending.get("agent_id"):
+        return
+    permission = str(pending.get("permission") or "read")
+    if permission not in {"read", "ask_before_write", "read_write"}:
+        permission = "read"
+    await ensure_activation(
+        session,
+        tenant_id=tc.tenant_id,
+        agent_id=_uuid.UUID(str(pending["agent_id"])),
+        install=tc,
+        actor=str(pending.get("by") or actor),
+        permission=permission,  # type: ignore[arg-type]
+    )
+    tc.config = {k: v for k, v in (tc.config or {}).items() if k != "pending_activation"}
+
+
+async def _on_needs_reauth(
+    session: AsyncSession, tc: TenantConnector, connector: Connector
+) -> None:
+    from nexus_api.services.activations import on_needs_reauth
+    from nexus_api.services.business.writes import after_commit
+    from nexus_api.services.channel_config import announce
+
+    await on_needs_reauth(session, tc)
+    tenant_id, slug = tc.tenant_id, connector.slug
+
+    async def _tell() -> None:
+        await announce(
+            tenant_id=tenant_id,
+            kind="integration.reauth_required",
+            severity="warning",
+            data={"integration": slug, "connection_id": str(tc.id)},
+            dedupe_key=f"integration.reauth_required:{tc.id}",
+        )
+
+    after_commit(session, _tell)
+
+
 async def reconcile_connector_status(
     session: AsyncSession,
     *,
@@ -535,6 +588,8 @@ async def reconcile_connector_status(
     connection_id = (tenant_connector.credentials_ref or {}).get("composio_connection_id")
     if not connection_id:
         return None
+    # Spec 047 (36.1): the hour of the last health check, whatever it says.
+    tenant_connector.last_checked_at = datetime.now(UTC)
     try:
         account = await composio.get_account(str(connection_id))
     except ComposioNotFound:
@@ -779,6 +834,17 @@ async def auto_enable_connector_tools(
 
     current = set(base.tools)
     added = [name for name in candidates if name not in current]
+    # Spec 047 (T128): the agent that gets the tools also gets its activation, so
+    # the per-agent rule never takes away what connecting just gave.
+    from nexus_api.services.activations import ensure_activations_for_tools
+
+    await ensure_activations_for_tools(
+        session,
+        tenant_id=tenant_id,
+        agent_id=base.agent_id,
+        tools=set(candidates) | current,
+        actor=actor,
+    )
     if not added:
         return []
 

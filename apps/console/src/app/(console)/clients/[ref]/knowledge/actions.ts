@@ -65,3 +65,13 @@ export async function reindexKnowledgeAction(raw: unknown): Promise<ActionResult
   if (res.ok) revalidatePath(path(body.ref));
   return res;
 }
+
+/** Spec 047 (12.2): deshacer «Eliminar» durante 10 minutos; después, `409 undo_window_closed`. */
+export async function restoreKnowledgeAction(raw: unknown): Promise<ActionResult<KnowledgeDocumentOut>> {
+  const body = z.object({ ref, id: docId }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "knowledge:write")) return forbidden();
+  const res = await run(() => backendFor(principal).restoreKnowledge(body.ref, body.id));
+  if (res.ok) revalidatePath(path(body.ref));
+  return res;
+}

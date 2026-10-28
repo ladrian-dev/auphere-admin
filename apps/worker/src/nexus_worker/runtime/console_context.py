@@ -22,7 +22,7 @@ off after N turns" the classifier's verdict is overridden to
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, cast
 
 import structlog
@@ -35,6 +35,8 @@ from nexus_api.services.agent_console_policy import (
     render_operating_policy,
     turn_cap_reached,
 )
+
+from nexus_worker.runtime.turn_clock import current_now
 
 log = structlog.get_logger(__name__)
 
@@ -74,7 +76,7 @@ def _ficha_hours_lines(
         return None
     if not hours.known:
         return None
-    at = now or datetime.now(UTC)
+    at = now or current_now()
     locale = str(raw.get("locale") or "es")
 
     def state_text(h: business_hours.Hours) -> list[str]:
@@ -212,7 +214,8 @@ def render_knowledge_block(docs: list[tuple[str, str]], *, cap: int = KNOWLEDGE_
 
 
 async def load_knowledge_block(tenant_id: uuid.UUID, *, cap: int = KNOWLEDGE_CHAR_CAP) -> str:
-    """Read the tenant's indexed documents (RLS) and render the block."""
+    """Read the tenant's indexed documents of the **business layer** (RLS) and
+    render the block. An agent's own layer never enters here (spec 047, D14)."""
     from nexus_api.db.models import KnowledgeDocument, KnowledgeDocumentStatus
     from sqlalchemy import select
 
@@ -221,11 +224,34 @@ async def load_knowledge_block(tenant_id: uuid.UUID, *, cap: int = KNOWLEDGE_CHA
         rows = (
             await session.execute(
                 select(KnowledgeDocument.title, KnowledgeDocument.content_text)
-                .where(KnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value)
+                .where(
+                    KnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value,
+                    KnowledgeDocument.agent_id.is_(None),
+                    KnowledgeDocument.removed_at.is_(None),
+                )
                 .order_by(KnowledgeDocument.created_at.asc())
             )
         ).all()
     return render_knowledge_block([(t, c or "") for t, c in rows], cap=cap)
+
+
+async def load_knowledge_for_turn(
+    tenant_id: uuid.UUID, agent_id: uuid.UUID | None, query: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """Spec 047 (D14): the knowledge of this agent's turn — the business layer
+    plus its own, never a sibling's — whole if it fits its budget, else the
+    hybrid search; rendered as the same fenced block, with its sources."""
+    from nexus_api.services.knowledge.retrieval import pick
+
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        chosen = await pick(session, tenant_id, agent_id, query)
+    if not chosen.docs:
+        return "", []
+    # ``pick`` already kept to the budget; the margin is for each source's fence.
+    text_chars = sum(len(text) for _, text in chosen.docs)
+    block = render_knowledge_block(chosen.docs, cap=text_chars + 200 * len(chosen.docs) + 1_000)
+    return block, chosen.sources
 
 
 async def load_gated_tool_names(tenant_id: uuid.UUID) -> frozenset[str]:

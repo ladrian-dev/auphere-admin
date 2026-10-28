@@ -101,6 +101,8 @@ class ConnectorOut(BaseModel):
     auto_enable_destructive: bool
     consent_link_template_name: str | None
     status: str
+    #: Spec 047 (36.4): los ajustes que pide cada activación.
+    settings_schema: dict[str, Any] | None = None
 
 
 class TenantConnectorOut(BaseModel):

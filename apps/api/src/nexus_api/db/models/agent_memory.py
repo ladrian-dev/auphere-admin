@@ -72,6 +72,9 @@ class AgentMemory(UUIDPrimaryKey, TenantScopedMixin, Base):
         ForeignKey("customers.id", ondelete="CASCADE"),
         nullable=True,
     )
+    #: Spec 047 (0193): nula = memoria compartida por los agentes del cliente;
+    #: con agente, la «memoria propia» de ese agente (garantía 9).
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     path: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # Generated column — Postgres computes it from ``content``. Marked

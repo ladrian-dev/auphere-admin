@@ -27,9 +27,11 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -131,6 +133,8 @@ class Connector(UUIDPrimaryKey, TimestampMixin, Base):
     auto_enable_on_connect: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     auto_enable_destructive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     consent_link_template_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Spec 047 (0194): los ajustes que declara la integración (JSON Schema).
+    settings_schema: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=ConnectorStatus.AVAILABLE.value
     )
@@ -169,6 +173,7 @@ class TenantConnector(UUIDPrimaryKey, TimestampMixin, Base):
     __tablename__ = "tenant_connectors"
     __table_args__ = (
         UniqueConstraint("tenant_id", "connector_id", name="uq_tc_tenant_connector"),
+        UniqueConstraint("tenant_id", "id", name="uq_tenant_connectors_tenant_id"),
         CheckConstraint(
             "status IN ('pending', 'connected', 'partial', 'needs_reauth', "
             "'paused', 'disconnected', 'error')",
@@ -201,6 +206,55 @@ class TenantConnector(UUIDPrimaryKey, TimestampMixin, Base):
     consent_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
     consent_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    #: Spec 047 (0194): la hora de la última comprobación de salud (36.1).
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentConnectorActivation(UUIDPrimaryKey, Base):
+    """Spec 047 (0194): una conexión del cliente, activada para un agente con su
+    permiso y sus ajustes (requisito 35.1). Sin activación, el agente no usa la
+    conexión (garantías 2 y 9)."""
+
+    __tablename__ = "agent_connector_activations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_agent_connector_activations_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "agent_id", "connector_id", name="uq_agent_connector_activations_one"
+        ),
+        CheckConstraint(
+            "permission IN ('read', 'ask_before_write', 'read_write')",
+            name="ck_agent_connector_activations_permission",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            ["agents.tenant_id", "agents.id"],
+            name="fk_agent_connector_activations_agent",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "connector_id"],
+            ["tenant_connectors.tenant_id", "tenant_connectors.id"],
+            name="fk_agent_connector_activations_connection",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: La conexión (``tenant_connectors.id``), no la entrada del catálogo.
+    connector_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    permission: Mapped[str] = mapped_column(String(20), nullable=False)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )
 
 
@@ -241,6 +295,7 @@ class TenantConnectorToolOverride(UUIDPrimaryKey, TimestampMixin, Base):
 
 
 __all__ = [
+    "AgentConnectorActivation",
     "Connector",
     "ConnectorAuthKind",
     "ConnectorStatus",

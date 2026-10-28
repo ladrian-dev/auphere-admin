@@ -28,22 +28,38 @@ import {
   formatNumber,
 } from "@nexus/ui";
 
-import { addKnowledgeUrlAction, deleteKnowledgeAction, reindexKnowledgeAction, uploadKnowledgeAction } from "@/app/(console)/clients/[ref]/knowledge/actions";
+import {
+  addKnowledgeUrlAction,
+  deleteKnowledgeAction,
+  reindexKnowledgeAction,
+  restoreKnowledgeAction,
+  uploadKnowledgeAction,
+} from "@/app/(console)/clients/[ref]/knowledge/actions";
 import { useLocale, useT } from "@/i18n/client";
 import { KNOWLEDGE_MAX_UPLOAD_BYTES, type KnowledgeDocumentOut, type KnowledgeListOut } from "@/lib/backend/agent-tools-types";
 
 import { knowledgeErrorKey, knowledgeStatusTone, knowledgeUsageRatio } from "./lib";
 
-type ActionResult<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
+type ActionResult<T> = { ok: true; data: T } | { ok: false; status: number; message: string; code?: string | null };
 
 export type KnowledgeTableActions = {
   upload: (formData: FormData) => Promise<ActionResult<KnowledgeDocumentOut>>;
   addUrl: (body: { url: string; title?: string; ref?: string }) => Promise<ActionResult<KnowledgeDocumentOut>>;
   remove: (body: { id: string; ref?: string }) => Promise<ActionResult<null>>;
   reindex: (body: { id: string; ref?: string }) => Promise<ActionResult<KnowledgeDocumentOut>>;
+  /** Spec 047 (12.2): deshacer «Eliminar» durante 10 minutos. Sin ella (la Guía del partner), eliminar no se deshace. */
+  restore?: (body: { id: string; ref?: string }) => Promise<ActionResult<KnowledgeDocumentOut>>;
 };
 
-type Props = { refId: string; data: KnowledgeListOut; canWrite: boolean; actions?: KnowledgeTableActions; emptyCopy?: { title: string; body: string } };
+type Props = {
+  refId: string;
+  data: KnowledgeListOut;
+  canWrite: boolean;
+  actions?: KnowledgeTableActions;
+  emptyCopy?: { title: string; body: string };
+  /** Spec 047 (37.1): de qué capa son estas fuentes, cuando hay más de una. */
+  layerNote?: string;
+};
 
 const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdown,text/html";
 
@@ -51,7 +67,7 @@ const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdow
  * Knowledge (CP-15): upload + URL forms, prompt-budget meter and the
  * document table (metadata only). Delete asks; reindex is one click.
  */
-export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Props) {
+export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy, layerNote }: Props) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -59,6 +75,8 @@ export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Pr
   const [pending, startTransition] = React.useTransition();
   const ratio = knowledgeUsageRatio(data.indexed_chars, data.prompt_char_cap);
   const over = data.indexed_chars > data.prompt_char_cap && data.prompt_char_cap > 0;
+  // Las fuentes de un cliente se recuperan durante 10 minutos; las de la Guía, no.
+  const restore = actions ? actions.restore : (b: { id: string }) => restoreKnowledgeAction({ ref: refId, id: b.id });
 
   function reindex(doc: KnowledgeDocumentOut) {
     startTransition(async () => {
@@ -77,9 +95,22 @@ export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Pr
       { ref: refId, id: doc.id },
     );
     if (!res.ok) return void toast.error(res.message);
-    toast.success(t("knowledge.deleted", { title: doc.title }));
+    if (restore) {
+      toast.success(t("knowledge.deleted.undo", { title: doc.title }), {
+        action: { label: t("knowledge.undo"), onClick: () => undo(doc) },
+      });
+    } else toast.success(t("knowledge.deleted", { title: doc.title }));
     setDeleting(null);
     router.refresh();
+  }
+  function undo(doc: KnowledgeDocumentOut) {
+    if (!restore) return;
+    startTransition(async () => {
+      const res = await restore({ ref: refId, id: doc.id });
+      if (!res.ok) return void toast.error(res.code === "undo_window_closed" ? t("knowledge.undo.closed") : res.message);
+      toast.success(t("knowledge.restored", { title: doc.title }));
+      router.refresh();
+    });
   }
 
   const forms = canWrite ? (
@@ -91,6 +122,7 @@ export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Pr
 
   return (
     <div className="flex min-w-0 flex-col gap-4" aria-busy={pending}>
+      {layerNote ? <p className="max-w-prose text-sm text-pretty text-muted-foreground" data-slot="knowledge-layer">{layerNote}</p> : null}
       {!canWrite ? <p className="text-xs text-muted-foreground">{t("knowledge.readonly")}</p> : null}
       {forms}
 
@@ -174,7 +206,7 @@ export function KnowledgeTable({ refId, data, canWrite, actions, emptyCopy }: Pr
         open={deleting !== null}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={t("knowledge.delete.title", { title: deleting?.title ?? "" })}
-        description={t("knowledge.delete.body")}
+        description={t(restore ? "knowledge.delete.body.undo" : "knowledge.delete.body")}
         confirmLabel={t("knowledge.delete")}
         cancelLabel={t("common.cancel")}
         destructive

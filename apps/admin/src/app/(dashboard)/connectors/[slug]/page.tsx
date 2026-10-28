@@ -19,6 +19,7 @@ import {
 import { ConnectorAuthBadge } from "@/components/brand/connector-auth-badge";
 import { ConnectorLogo } from "@/components/brand/connector-logo";
 import { AUTH_KIND_HINT, categoryName, connectorState, isChannelOnly } from "@/components/connectors/labels";
+import { SettingsFields } from "@/components/connectors/settings-fields";
 import { CrumbName } from "@/components/shell/crumb-names";
 import { backend, type TenantConnectorStatus } from "@/lib/backend";
 
@@ -78,6 +79,13 @@ export default async function ConnectorPage({ params }: { params: Promise<{ slug
           },
         ]}
       />
+      <Section
+        flat
+        title="Ajustes que pide"
+        description="Lo que cada agente rellena al activarla, en su página de la integración. La API lo valida con este esquema."
+      >
+        <SettingsFields schema={connector.settings_schema} />
+      </Section>
       <Section flat title="Clientes que lo usan">
         {clients.length === 0 ? (
           <EmptyState

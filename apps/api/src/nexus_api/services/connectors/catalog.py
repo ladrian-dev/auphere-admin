@@ -276,6 +276,46 @@ def _project_persisted(row: Connector) -> CatalogConnector:
     )
 
 
+#: Spec 047 (36.2): los ajustes que declara cada integración, por agente. Los que
+#: hoy estaban repartidos (la tienda de WooCommerce, el negocio de Amigable y sus
+#: recordatorios, el calendario) pasan aquí. Una fila del catálogo con su propio
+#: ``settings_schema`` manda sobre esto.
+SETTINGS_SCHEMAS: dict[str, dict[str, Any]] = {
+    "woocommerce": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"store_url": {"type": "string", "format": "uri", "pattern": "^https://"}},
+    },
+    "amigable_cobro": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "business_uuid": {"type": "string", "minLength": 1},
+            "base_url": {"type": "string", "pattern": "^https://"},
+            "reminders": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "enabled": {"type": "boolean"},
+                    "hour_local": {"type": "integer", "minimum": 0, "maximum": 23},
+                    "max_overdue_days": {"type": "integer", "minimum": 1, "maximum": 365},
+                    "max_per_run": {"type": "integer", "minimum": 1, "maximum": 500},
+                },
+            },
+        },
+    },
+    "googlecalendar": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"calendar_id": {"type": "string", "minLength": 1}},
+    },
+}
+
+
+def settings_schema_of(connector: Connector) -> dict[str, Any] | None:
+    return connector.settings_schema or SETTINGS_SCHEMAS.get(connector.slug)
+
+
 async def list_catalog(
     session: AsyncSession,
     composio: ComposioClientProtocol,

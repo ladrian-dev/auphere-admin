@@ -134,7 +134,8 @@ export type KnowledgeErrorCode = (typeof KNOWLEDGE_ERROR_CODES)[number];
 export type KnowledgeStatus = "pending" | "indexed" | "failed";
 export type KnowledgeDocumentOut = {
   id: string;
-  kind: "file" | "url";
+  /** Spec 047 (37.3): `note` es lo que se enseñó con «Enseñar». */
+  kind: "file" | "url" | "note";
   title: string;
   source_url: string | null;
   mime: string;

@@ -47,13 +47,25 @@ import structlog
 from nexus_api.core.errors import IsolationViolation
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Tenant
+from nexus_api.db.models import Agent, Tenant
 from nexus_api.repositories import AgentConfigRepository
 from nexus_api.services.business.hours import RUNTIME_KEY, runtime_snapshot
+from nexus_api.services.reception import targets_of
 
 from nexus_worker.runtime.model_resolver import ModelBinding, load_bindings
 
 log = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class ReceptionTarget:
+    """Spec 047 (requisito 53): un destino de Recepción, con su nombre de hoy y
+    cuándo derivarle. Lo pinta la nota de Recepción en su turno; lo decide la
+    herramienta, que vuelve a leer la lista de la versión publicada."""
+
+    agent_id: uuid.UUID
+    name: str
+    when: str
 
 
 @dataclass(frozen=True)
@@ -90,6 +102,8 @@ class AgentBundle:
     runtime_memory_tool: bool = False
     runtime_outcome_grader: bool = False
     runtime_mcp_connector: bool = False
+    #: Spec 047 (37.4): ``own`` = la memoria del contacto es solo de este agente.
+    memory_scope: str = "shared"
 
     # WP-21 — cuándo corre el grader cuando ``runtime_outcome_grader``
     # está activo. Viaja en el bundle como el resto de flags: activar
@@ -114,6 +128,10 @@ class AgentBundle:
     # Spec 047 (research D4) — the fingerprint of the prompt that answers:
     # ``agent_version_compilations.sha256`` of the compilation, for traces.
     prompt_sha256: str = ""
+
+    # Spec 047 (requisito 53) — the agents this version may hand a conversation
+    # to, when it is «Recepción» (``AgentSpec.reception``). Empty for any other.
+    reception_targets: tuple[ReceptionTarget, ...] = ()
 
 
 #: Cache key: the tenant and the agent; ``None`` = «the principal agent».
@@ -217,50 +235,7 @@ class AgentLoader:
                     f"no active agent_config for tenant {tenant_id}"
                     f" (agent {agent_id or 'principal'}) — refusing to run"
                 )
-            # Misma sesión scopeada: la RLS de ``tenant_model_bindings``
-            # es lo que impide ver la elección de otro tenant.
-            model_bindings = await load_bindings(session, tenant_id)
-            tenant_tz = await session.scalar(
-                sa.select(Tenant.timezone).where(Tenant.id == tenant_id)
-            )
-            # Same scoped session: the profile's tables force RLS.
-            business_hours = await runtime_snapshot(session, tenant_id)
-            return AgentBundle(
-                tenant_id=tenant_id,
-                agent_id=cfg.agent_id,
-                timezone=str(tenant_tz or "UTC"),
-                version=cfg.version,
-                version_id=cfg.id,
-                system_prompt=cfg.system_prompt_rendered,
-                prompt_sha256=hashlib.sha256(cfg.system_prompt_rendered.encode()).hexdigest(),
-                tools=frozenset(cfg.tools or ()),
-                policies={**dict(cfg.policies or {}), RUNTIME_KEY: business_hours},
-                runtime_skills=tuple(
-                    {
-                        "skill_id": str(s.get("skill_id", "")),
-                        "version": str(s.get("version", "latest")),
-                        "channels": tuple(str(c) for c in (s.get("channels") or ())),
-                    }
-                    for s in (cfg.runtime_skills or ())
-                    if isinstance(s, dict) and s.get("skill_id")
-                ),
-                runtime_mcp_servers=tuple(
-                    {
-                        "name": str(s.get("name", "")),
-                        "url": str(s.get("url", "")),
-                        "allowed_tools": tuple(str(t) for t in (s.get("allowed_tools") or ())),
-                        "credential_key": str(s.get("credential_key", "")),
-                    }
-                    for s in (cfg.runtime_mcp_servers or ())
-                    if isinstance(s, dict) and s.get("name") and s.get("url")
-                ),
-                runtime_memory_tool=bool(cfg.runtime_memory_tool),
-                runtime_outcome_grader=bool(cfg.runtime_outcome_grader),
-                runtime_mcp_connector=bool(cfg.runtime_mcp_connector),
-                grader_mode=str(cfg.grader_mode or "sampled"),
-                grader_sample_rate=float(cfg.grader_sample_rate or 0),
-                model_bindings=model_bindings,
-            )
+            return await bundle_of(session, tenant_id, cfg)
 
 
 _default_loader: AgentLoader | None = None
@@ -278,3 +253,82 @@ def get_default_loader() -> AgentLoader:
 def reset_default_loader() -> None:
     global _default_loader
     _default_loader = None
+
+
+async def bundle_of(session: Any, tenant_id: uuid.UUID, cfg: Any) -> AgentBundle:
+    """The whole bundle of ``cfg`` — the active version or any other one (spec
+    047, T085: the playground and the tests run a draft with the same model
+    bindings, flags, agent and timezone the channel would use). Must run inside
+    the client's scoped session."""
+    # Misma sesión scopeada: la RLS de ``tenant_model_bindings``
+    # es lo que impide ver la elección de otro tenant.
+    model_bindings = await load_bindings(session, tenant_id)
+    tenant_tz = await session.scalar(sa.select(Tenant.timezone).where(Tenant.id == tenant_id))
+    # Same scoped session: the profile's tables force RLS.
+    business_hours = await runtime_snapshot(session, tenant_id)
+    return AgentBundle(
+        tenant_id=tenant_id,
+        agent_id=cfg.agent_id,
+        timezone=str(tenant_tz or "UTC"),
+        version=cfg.version,
+        version_id=cfg.id,
+        system_prompt=cfg.system_prompt_rendered,
+        prompt_sha256=hashlib.sha256(cfg.system_prompt_rendered.encode()).hexdigest(),
+        tools=frozenset(cfg.tools or ()),
+        policies={**dict(cfg.policies or {}), RUNTIME_KEY: business_hours},
+        memory_scope=str(
+            ((getattr(cfg, "spec", None) or {}).get("memory") or {}).get("scope") or "shared"
+        ),
+        runtime_skills=tuple(
+            {
+                "skill_id": str(s.get("skill_id", "")),
+                "version": str(s.get("version", "latest")),
+                "channels": tuple(str(c) for c in (s.get("channels") or ())),
+            }
+            for s in (cfg.runtime_skills or ())
+            if isinstance(s, dict) and s.get("skill_id")
+        ),
+        runtime_mcp_servers=tuple(
+            {
+                "name": str(s.get("name", "")),
+                "url": str(s.get("url", "")),
+                "allowed_tools": tuple(str(t) for t in (s.get("allowed_tools") or ())),
+                "credential_key": str(s.get("credential_key", "")),
+            }
+            for s in (cfg.runtime_mcp_servers or ())
+            if isinstance(s, dict) and s.get("name") and s.get("url")
+        ),
+        runtime_memory_tool=bool(cfg.runtime_memory_tool),
+        runtime_outcome_grader=bool(cfg.runtime_outcome_grader),
+        runtime_mcp_connector=bool(cfg.runtime_mcp_connector),
+        grader_mode=str(cfg.grader_mode or "sampled"),
+        grader_sample_rate=float(cfg.grader_sample_rate or 0),
+        model_bindings=model_bindings,
+        reception_targets=await _reception_targets(session, cfg),
+    )
+
+
+async def _reception_targets(session: Any, cfg: Any) -> tuple[ReceptionTarget, ...]:
+    """Spec 047 (requisito 53): los destinos de Recepción de ``cfg``, con su
+    nombre de hoy y en el orden de la lista. Uno que ya no existe para el cliente
+    (la RLS) o que está archivado no se ofrece; uno en pausa sí, y la
+    herramienta dice que no está disponible."""
+    targets = targets_of(getattr(cfg, "spec", None))
+    if not targets:
+        return ()
+    names = dict(
+        (
+            await session.execute(
+                sa.select(Agent.id, Agent.name).where(
+                    Agent.id.in_([t.agent_id for t in targets]), Agent.lifecycle != "archived"
+                )
+            )
+        )
+        .tuples()
+        .all()
+    )
+    return tuple(
+        ReceptionTarget(agent_id=t.agent_id, name=str(names[t.agent_id]), when=t.when)
+        for t in targets
+        if t.agent_id in names
+    )

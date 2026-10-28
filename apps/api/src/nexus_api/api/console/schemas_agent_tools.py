@@ -261,7 +261,7 @@ class SkillsSaved(SkillsOut):
 
 # ── CP-15 · knowledge ──────────────────────────────────────────────────
 
-KnowledgeKind = Literal["file", "url"]
+KnowledgeKind = Literal["file", "url", "note"]
 KnowledgeStatus = Literal["pending", "indexed", "failed"]
 KnowledgeErrorCodeLit = Literal["fetch_failed", "unsupported_type", "too_large", "empty"]
 
@@ -282,6 +282,10 @@ class KnowledgeDocumentOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     indexed_at: datetime | None
+    #: Spec 047 (0193): la capa (nula = la del negocio) y la ventana para restaurar.
+    agent_id: uuid.UUID | None = None
+    removed_at: datetime | None = None
+    restore_until: datetime | None = None
 
 
 class KnowledgeListOut(BaseModel):
