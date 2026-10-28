@@ -171,7 +171,11 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(pipeline, "_record_router_anomaly", anomaly)
     monkeypatch.setattr(pipeline, "_load_recent_history", no_history)
     monkeypatch.setattr(pipeline, "_load_kg_snapshot_text", nothing)
-    monkeypatch.setattr(pipeline, "_load_knowledge_text", nothing)
+
+    async def no_knowledge(*_a: Any, **_k: Any) -> tuple[str, list[Any]]:
+        return "", []
+
+    monkeypatch.setattr(pipeline, "_load_knowledge", no_knowledge)
     monkeypatch.setattr(pipeline, "_load_gated_tools", no_gates)
     monkeypatch.setattr(pipeline, "_dispatch_tool", dispatch)
     # La hora del turno va en el prompt: fija, para comparar dos turnos byte a byte.
