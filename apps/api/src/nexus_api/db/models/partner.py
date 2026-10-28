@@ -183,6 +183,11 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
     # the partner's console playground may burn per UTC calendar month,
     # across all its clients and members. Tokens, not USD (C9). Checked
     # BEFORE every turn; ``qa_cap_notes`` is operator-only.
+    #: Spec 047 (0195): el tope mensual de «Construcción y pruebas», en la moneda
+    #: de la cuenta (50 por defecto, D29).
+    build_budget_default_micros: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=5_000_000, server_default="5000000"
+    )
     qa_monthly_token_cap: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=2_000_000, server_default="2000000"
     )

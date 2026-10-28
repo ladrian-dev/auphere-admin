@@ -345,3 +345,15 @@ __all__ = [
     "resolve_mapping",
     "unknown_client",
 ]
+
+
+async def require_build_room(partner_id: uuid.UUID) -> None:
+    """Spec 047 (46.5): con «Construcción y pruebas» agotada, no se construye, no
+    se prueba y no se abre el playground (402); la edición a mano sigue."""
+    from nexus_api.services.wallet.bags import WalletError
+    from nexus_api.services.wallet.build_budget import require_room_for_partner
+
+    try:
+        await require_room_for_partner(partner_id)
+    except WalletError as exc:
+        raise HTTPException(status_code=exc.status, detail={"code": exc.code}) from None

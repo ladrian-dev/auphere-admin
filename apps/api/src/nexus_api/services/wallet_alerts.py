@@ -148,6 +148,12 @@ async def notify_client_out_of_quota_detached(tenant_id: uuid.UUID) -> ConsoleNo
         if mapping is None:
             return None
         partner_id, ref = mapping
+        # Spec 047 (T161): con bolsas avisa ``client.wallet.empty`` (el cron de
+        # avisos de la bolsa); este aviso queda para la consola de hoy.
+        from nexus_api.services.wallet.turns import bags_on
+
+        if await bags_on(partner_id):
+            return None
         if await allow_channel_turn(tenant_id):
             return None
         partner = await session.get(Partner, partner_id)
@@ -243,6 +249,11 @@ async def evaluate_client_balance_alerts(
     from nexus_api.services.console_home_blocks import days_until
     from nexus_api.services.lite_home import balance_notice, balance_of
 
+    # Spec 047 (T161): con bolsas, los avisos del cliente son ``client.wallet.*``.
+    from nexus_api.services.wallet.turns import bags_on
+
+    if await bags_on(partner_id):
+        return []
     ts = now or datetime.now(UTC)
     _since, until, _elapsed, _days = month_bounds(ts)
     async with session.begin():

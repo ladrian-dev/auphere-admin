@@ -48,6 +48,9 @@ KIND_CREDIT_REVERSAL = "credit_reversal"
 #: like a debit, but Auphere covers it: it never touches the partner's balance,
 #: the client's cap or the reconciliation, and it is not the partner's spend.
 KIND_ABSORBED = "absorbed"
+#: Spec 047 (0195): dinero que sale de la cuenta a una bolsa y que vuelve.
+KIND_BAG_ASSIGN = "bag_assign"
+KIND_BAG_RETURN = "bag_return"
 LEDGER_KINDS: tuple[str, ...] = (
     KIND_DEBIT,
     KIND_CREDIT_ADMIN,
@@ -59,6 +62,8 @@ LEDGER_KINDS: tuple[str, ...] = (
     KIND_CREDIT_MANUAL,
     KIND_CREDIT_REVERSAL,
     KIND_ABSORBED,
+    KIND_BAG_ASSIGN,
+    KIND_BAG_RETURN,
 )
 #: Kinds that add to the purchased balance.
 CREDIT_KINDS: tuple[str, ...] = (KIND_CREDIT_ADMIN, KIND_CREDIT_STRIPE, KIND_CREDIT_MANUAL)
@@ -90,6 +95,10 @@ class PartnerWallet(TimestampMixin, Base):
     )
     purchased_remaining: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     #: Spec 041: credits of postpaid line Auphere granted; 0 = prepaid only.
+    #: Spec 047 (0195): la moneda de la cuenta; los partners de hoy, USD (D26).
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default="USD", server_default="USD"
+    )
     credit_limit: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default="0"
     )

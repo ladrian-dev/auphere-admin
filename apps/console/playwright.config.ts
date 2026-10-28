@@ -35,7 +35,9 @@ export default defineConfig({
       // runs on its own against a mock of the contract:
       //   pnpm exec playwright test -c e2e/shell.config.ts
       //   pnpm exec playwright test -c e2e/clients-v2.config.ts
-      testIgnore: /(lite|shell|new-client)\.spec\.ts/,
+      // Spec 047 (T153): ``money.spec.ts`` (el dinero) también, con su API simulada:
+      //   pnpm exec playwright test -c e2e/money.config.ts
+      testIgnore: /(lite|shell|new-client|money)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/owner.json" },
       dependencies: ["setup"],
     },

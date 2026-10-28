@@ -128,7 +128,18 @@ async def get_wallet(
     used = max(0, pool_size - snap.included_remaining)
     # Spec 027 (D5): the partner reads what is left, in money; the pool size
     # itself does not travel.
+    # Spec 047 (46.1): con bolsas, las cifras de arriba de Consumo en la moneda
+    # de la cuenta (lo asignable sin el pool y lo que hay en bolsas).
+    from nexus_api.services.wallet.turns import bags_on
+    from nexus_api.services.wallet.usage_lines import balances
+
+    figures = await balances(principal.partner.id) if await bags_on(principal.partner.id) else None
     return WalletOut(
+        bags_active=figures is not None,
+        account_currency=figures.currency if figures else None,
+        assignable_micros=figures.available if figures else None,
+        in_bags_micros=figures.in_bags if figures else None,
+        in_bags_approx=figures.approx if figures else None,
         included_remaining_cents=credits_to_cents(snap.included_remaining),
         purchased_remaining_cents=credits_to_cents(snap.purchased_remaining),
         available_cents=credits_to_cents(snap.available),

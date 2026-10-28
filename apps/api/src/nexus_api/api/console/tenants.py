@@ -94,7 +94,6 @@ from nexus_api.services.business import sources as business_sources
 from nexus_api.services.business.links import DetectedLink, detect_links, link_from_choice
 from nexus_api.services.business.profile import (
     COUNTRIES,
-    DEFAULT_WALLET_CURRENCY,
     Deduction,
     deduce_settings,
     eu_by_default,
@@ -386,12 +385,13 @@ async def list_clients(
 # ── spec 047: the new console's list, header and Panel ─────────────────────────
 
 
-def _money(cents: int | None) -> MoneyOut | None:
+def _money(cents: int | None, currency: str = CURRENCY) -> MoneyOut | None:
     """Cents as ``{amount_micros, currency}`` (cien milésimas, exact to the cent:
-    the same rounding as Consumo and the lite console)."""
+    the same rounding as Consumo and the lite console). Spec 047: a bag carries
+    its own currency."""
     if cents is None:
         return None
-    return MoneyOut(amount_micros=int(cents) * 1000, currency=CURRENCY)  # type: ignore[arg-type]
+    return MoneyOut(amount_micros=int(cents) * 1000, currency=currency)  # type: ignore[arg-type]
 
 
 def _visible_out(state: VisibleState) -> VisibleStateOut:
@@ -407,9 +407,9 @@ def _bag_out(bag: blocks.BagBlock | None) -> BagOut | None:
         return None
     return BagOut(
         state=bag.state,  # type: ignore[arg-type]
-        balance=_money(bag.remaining_cents),
-        assigned=_money(bag.cap_cents),
-        spent=_money(bag.spent_cents),
+        balance=_money(bag.remaining_cents, bag.currency),
+        assigned=_money(bag.cap_cents, bag.currency),
+        spent=_money(bag.spent_cents, bag.currency),
         pct_spent=bag.pct_spent,
         pct_left=bag.pct_left,
         days_left=bag.days_left,
@@ -554,8 +554,9 @@ async def _detail_v2(scope: ClientScope) -> ClientDetailOut:
         website=profile.website if profile else None,
         country=profile.country if profile else None,
         price_currency=profile.price_currency if profile else None,
-        wallet_currency=DEFAULT_WALLET_CURRENCY if profile else None,
+        wallet_currency=await _bag_currency(scope, profile.country) if profile else None,
         eu_only=profile.eu_only if profile else None,
+        sovereign=bool(profile.sovereign) if profile else False,
         lifecycle=lifecycle_of(scope.tenant.status),
         revision=revision,
         allowed=blocks.client_actions(  # type: ignore[arg-type]
@@ -563,6 +564,15 @@ async def _detail_v2(scope: ClientScope) -> ClientDetailOut:
             archived=scope.tenant.status is TenantStatus.ARCHIVED,
         ),
     )
+
+
+async def _bag_currency(scope: ClientScope, country: str | None) -> Literal["EUR", "USD"]:
+    """Spec 047 (43.3): la moneda de la bolsa del cliente, la guardada o, si aún no
+    tiene bolsa, la de su país."""
+    from nexus_api.services.wallet.bags import currency_for, currency_of
+
+    found = await currency_of(scope.principal.partner.id, scope.tenant.id)
+    return "EUR" if (found or currency_for(country)) == "EUR" else "USD"
 
 
 def _lifecycle_out(
@@ -1136,7 +1146,13 @@ async def archive(
         )
     except LifecycleError as exc:
         raise _lifecycle_error(exc) from exc
-    return _lifecycle_out(scope.ref, "archived", previous, agents, undo=True)
+    out = _lifecycle_out(scope.ref, "archived", previous, agents, undo=True)
+    from nexus_api.services.wallet.bags import balance_left
+
+    left = await balance_left(scope.principal.partner.id, scope.tenant.id)
+    if left is not None:
+        out.bag_left = MoneyOut(amount_micros=left[0], currency=left[1])  # type: ignore[arg-type]
+    return out
 
 
 @router.post(
@@ -1207,6 +1223,17 @@ async def get_client_panel(
     job = await business_sources.latest_site_read(scope.session)
     website, networks = await business_reader.readable(scope.session)
     visible = {a.agent_id: a.visible for a in detail.agents}
+    # Spec 047 (44.1): el tope de cada agente, en la moneda de la bolsa.
+    from nexus_api.db.models import Agent
+
+    caps: dict[uuid.UUID, int | None] = {
+        agent_id: cap
+        for agent_id, cap in (
+            await scope.session.execute(
+                sa.select(Agent.id, Agent.monthly_cap_micros).where(Agent.tenant_id == tenant.id)
+            )
+        ).all()
+    }
     return ClientPanelOut(
         ref=scope.ref,
         name=tenant.name,
@@ -1242,7 +1269,9 @@ async def get_client_panel(
                 spend_per_conversation=_money(
                     blocks.per_conversation_cents(f.cents, f.conversations)
                 ),
-                cap=None,
+                cap=MoneyOut(amount_micros=int(caps[f.agent_id]), currency=bag.currency)  # type: ignore[arg-type]
+                if caps.get(f.agent_id) is not None
+                else None,
             )
             for f in blocks.top_spenders([f for f in figures if f.visible != "archived"])
         ],

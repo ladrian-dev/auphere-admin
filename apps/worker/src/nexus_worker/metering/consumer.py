@@ -35,7 +35,7 @@ import asyncio
 import contextlib
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -329,10 +329,24 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
     # balance and the client's cap do not move. Unreadable → raise and retry,
     # never a guess about who pays.
     unlimited = await is_unlimited(tenant_id)
+    # Spec 047 (D25): con bolsas, el turno lo paga la bolsa del cliente (con el
+    # cambio del día); la cuenta del partner ya apartó ese dinero al asignar.
+    from nexus_api.services.wallet.turns import bags_on, charge_turn
+
+    with_bags = not unlimited and await bags_on(partner_id)
     for turn, qty in _turn_quota(rows, weights).items():
         if qty <= 0:
             continue
         key = f"channel:{turn}"
+        if with_bags:
+            await charge_turn(
+                partner_id=partner_id,
+                tenant_id=tenant_id,
+                agent_id=uuid.UUID(str(agent_id)) if agent_id else None,
+                amount_usd=qty,
+                usage_ref=key,
+            )
+            continue
         if unlimited:
             await record_absorbed(
                 partner_id=partner_id,
@@ -431,7 +445,40 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
                 await session.execute(_INSERT_SQL, chunk)
                 sent += len(chunk)
         await _debit_channel_wallet(tenant_id, rows)
+        await _record_build_line(tenant_id, rows)
     return sent
+
+
+async def _record_build_line(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
+    """Spec 047 (46.5, D29): lo de la partida «Construcción y pruebas», a precio
+    (coste por 2,2, en cien milésimas), suma a la del partner del mes. La paga
+    Auphere; la partida solo frena al llegar al tope. Nunca rompe la ingesta."""
+    cost = sum(Decimal(str(r.get("cost_usd") or 0)) for r in rows if r.get("line") == "build")
+    if cost <= 0:
+        return
+    partner_id = await _partner_for(tenant_id)
+    if partner_id is None:
+        return
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.services.channel_config import announce
+    from nexus_api.services.wallet import build_budget
+
+    amount = int(cost * Decimal("2.2") * 100_000)
+    try:
+        async with get_sessionmaker()() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            notices = await build_budget.record(session, partner_id, amount)
+    except Exception as exc:
+        log.warning("metering.build_budget_failed", tenant_id=str(tenant_id), error=str(exc))
+        return
+    for kind in notices:
+        await announce(
+            tenant_id=tenant_id,
+            kind=kind,
+            severity="warning" if kind.endswith("warning") else "critical",
+            data={"line": "build"},
+            dedupe_key=f"{kind}:{partner_id}:{datetime.now(UTC).strftime('%Y-%m')}",
+        )
 
 
 _PARTNER_SQL = sa.text("SELECT partner_id FROM partner_tenants WHERE tenant_id = :t LIMIT 1")

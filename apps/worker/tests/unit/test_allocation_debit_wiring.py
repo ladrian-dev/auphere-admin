@@ -56,6 +56,9 @@ def _limited(monkeypatch):
     """Sin Postgres: el cliente no tiene consumo ilimitado (owner, 2026-10-20)
     salvo que el test diga lo contrario."""
     monkeypatch.setattr("nexus_api.metering.wallet.is_unlimited", AsyncMock(return_value=False))
+    # Spec 047 (D25): sin bolsas, el turno lo paga la cuenta del partner (lo de
+    # aquí); con bolsas lo prueba ``tests/integration/wallet``.
+    monkeypatch.setattr("nexus_api.services.wallet.turns.bags_on", AsyncMock(return_value=False))
 
 
 def _event(meter: str, quantity: int, *, seq: int = 1) -> dict:

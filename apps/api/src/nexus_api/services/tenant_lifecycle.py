@@ -344,6 +344,8 @@ class DeleteReport:
     tenant_id: uuid.UUID
     audit_rows_anonymised: int
     checkpoint_rows_deleted: int
+    #: Spec 047: lo que quedaba en la bolsa y volvió a la cuenta.
+    bag_returned_micros: int = 0
 
 
 async def hard_delete_tenant(session: AsyncSession, tenant: Tenant, *, actor: str) -> DeleteReport:
@@ -387,6 +389,14 @@ async def hard_delete_tenant(session: AsyncSession, tenant: Tenant, *, actor: st
 
     slug, name = tenant.slug, tenant.name
     log.warning("tenant.delete.cascade", tenant_id=str(tenant_id), slug=slug, actor=actor)
+
+    # Spec 047 (43.13): la bolsa del cliente vuelve a la cuenta antes de borrar;
+    # su libro se iría con el cliente.
+    returned = 0
+    if tenant.partner_id is not None:
+        from nexus_api.services.wallet.bags import return_all
+
+        returned = await return_all(partner_id=tenant.partner_id, tenant_id=tenant_id, actor=actor)
 
     # Anonymise the trail first (payloads are where personal data lives),
     # then add this deletion's row already without a tenant snapshot. The
@@ -449,6 +459,7 @@ async def hard_delete_tenant(session: AsyncSession, tenant: Tenant, *, actor: st
         tenant_id=tenant_id,
         audit_rows_anonymised=int(anonymised.rowcount or 0),  # type: ignore[attr-defined]
         checkpoint_rows_deleted=checkpoints,
+        bag_returned_micros=returned,
     )
     log.info(
         "tenant.delete.done",

@@ -7,14 +7,17 @@ import { BuyCreditForm } from "@/components/billing/buy-credit-form";
 import { CardSection } from "@/components/billing/card-section";
 import { MembershipSection } from "@/components/billing/membership-section";
 import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-link";
+import { moneyText } from "@/components/money/money-model";
+import { resolveConsoleVersion } from "@/components/shell/console-version";
 import { getT } from "@/i18n/server";
-import { backendFor } from "@/lib/backend";
+import { backendFor, callFor } from "@/lib/backend";
+import { moneyApi } from "@/lib/backend/money";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
 import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.billing");
 
-export default async function BillingPage({ searchParams }: { searchParams: Promise<{ card?: string; invoice?: string }> }) {
+export default async function BillingPage({ searchParams }: { searchParams: Promise<{ card?: string; invoice?: string; recargar?: string }> }) {
   const principal = await requirePartnerPrincipal("/billing");
   if (!can(principal.role, "billing:read")) redirect("/");
   const { t, locale } = await getT(principal.locale);
@@ -29,6 +32,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   // section rather than drawing a card that may not be the real one.
   const card = membership ? null : await backend.billingCard().catch(() => null);
   const params = await searchParams;
+  // Spec 047 (49.3): con la consola nueva, Facturación dice la moneda de la
+  // cuenta y lo que se puede asignar, en esa moneda (la misma cifra que Consumo).
+  const v2 = resolveConsoleVersion(await backend.me().catch(() => null)) === "v2";
+  const account = v2 && can(principal.role, "usage:read") ? await moneyApi(callFor(principal)).usageSummary().catch(() => null) : null;
   const justSaved = params.card === "saved";
   const invoiceMissing = params.invoice === "missing";
   return (
@@ -38,6 +45,24 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         title={t("billing.title")}
         description={t(membership ? "billing.description" : "billing.descriptionFree")}
       />
+      {account ? (
+        <section aria-labelledby="account-h" className="grid max-w-lg gap-2" data-slot="billing-account">
+          <h2 id="account-h" className="text-lg font-semibold">
+            {t("money.billing.title")}
+          </h2>
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid gap-1">
+              <dt className="text-muted-foreground">{t("money.billing.currency")}</dt>
+              <dd className="font-medium">{t(account.currency === "EUR" ? "money.currency.eur" : "money.currency.usd")}</dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="text-muted-foreground">{t("money.figure.available")}</dt>
+              <dd className="font-medium tabular-nums">{moneyText(account.available, "down")}</dd>
+            </div>
+          </dl>
+          <p className="text-xs text-pretty text-muted-foreground">{t("money.billing.hint")}</p>
+        </section>
+      ) : null}
       {membership ? (
         <MembershipSection membership={membership} />
       ) : can(principal.role, "billing:manage") ? (
@@ -46,7 +71,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
             {t("membership.credit.title")}
           </h2>
           <p className="text-sm text-pretty text-muted-foreground">{t("membership.credit.help")}</p>
-          <BuyCreditForm />
+          <BuyCreditForm initialAmount={params.recargar ?? null} />
         </section>
       ) : null}
       {card ? (

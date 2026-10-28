@@ -9,6 +9,7 @@ import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import type { Allocation, UsageSpend, Wallet } from "@/lib/backend/home-usage";
 import { LiteUsage } from "@/components/lite/lite-usage";
+import { resolveConsoleVersion } from "@/components/shell/console-version";
 import {
   can,
   requireClientPrincipal,
@@ -26,11 +27,12 @@ import { UsageControls } from "./controls";
 import { MeterList } from "./meter-list";
 import { SpendChart } from "./spend-chart";
 import { SpendControls } from "./spend-controls";
+import { PartnerUsageV2 } from "./usage-v2";
 import { pageTitle } from "@/i18n/metadata";
 
 export const generateMetadata = () => pageTitle("nav.usage");
 
-type Search = { days?: string; client?: string; source?: string; meter?: string };
+type Search = { days?: string; client?: string; source?: string; meter?: string; line?: string };
 
 
 // When the ledger cannot be read the page says so; it never paints "0 %"
@@ -62,6 +64,11 @@ async function PartnerUsage({
   searchParams: Promise<Search>;
 }) {
   if (!can(principal.role, "usage:read")) redirect("/");
+  // Spec 047 (T159): con la consola nueva, Consumo por partidas y en dinero de la
+  // cuenta, con las bolsas de los clientes. La de hoy sigue con sus topes.
+  if (resolveConsoleVersion(await backendFor(principal).me().catch(() => null)) === "v2") {
+    return <PartnerUsageV2 principal={principal} searchParams={await searchParams} />;
+  }
   const canWrite = can(principal.role, "usage:write");
   // Spec 005: la compra de crédito **sí** existe en producción — es un pago
   // real. La condición vieja la escondía allí porque el endpoint que había

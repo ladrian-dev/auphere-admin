@@ -32,10 +32,20 @@ import { formatMoney } from "@/lib/money";
 const MIN_USD = 5;
 const MAX_USD = 5_000;
 
-export function BuyCreditForm() {
+/**
+ * Spec 047 (45.3): «Recargar mi cuenta» llega con lo que faltaba para asignar
+ * (`?recargar=`): el campo sale con ese importe, dentro de los límites.
+ */
+export function initialCreditAmount(raw: string | number | null | undefined): string {
+  const n = Math.ceil(Number(raw));
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return String(Math.min(MAX_USD, Math.max(MIN_USD, n)));
+}
+
+export function BuyCreditForm({ initialAmount }: { initialAmount?: string | number | null } = {}) {
   const t = useT();
   const locale = useLocale();
-  const [value, setValue] = React.useState("");
+  const [value, setValue] = React.useState(() => initialCreditAmount(initialAmount));
   const [pending, start] = React.useTransition();
 
   const amount = Number(value);

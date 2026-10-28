@@ -25,6 +25,12 @@ class WalletOut(BaseModel):
     #: Spec 004 (R7.1): the share of the included pool already used.
     included_percent_used: float = 0.0
     currency: str = "USD"
+    #: Spec 047 (46.1): con bolsas, en cien milésimas de ``account_currency``.
+    bags_active: bool = False
+    account_currency: str | None = None
+    assignable_micros: int | None = None
+    in_bags_micros: int | None = None
+    in_bags_approx: bool | None = None
 
 
 class AllocationOut(BaseModel):
