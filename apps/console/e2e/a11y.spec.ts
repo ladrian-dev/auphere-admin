@@ -202,6 +202,28 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
     await context.clearCookies({ name: "nexus-console.locale" });
   });
 
+  // Spec 047 (T162): la pantalla del agente con la consola nueva —Recepción,
+  // Rendimiento y Mejoras, y los avisos que llevan a cada una (`?tab=`)— con
+  // la misma auditoría. Un partner con la consola de hoy no la tiene: se anota y
+  // se sigue. La matriz completa (200 %, teclado, «Reducir transparencia»,
+  // estados y alemán) corre contra la API simulada: `e2e/fabrica.config.ts`.
+  test("spec 047: la pantalla del agente, con Recepción, Rendimiento y Mejoras", async ({ page }) => {
+    const agents = `/clients/${encodeURIComponent(ref)}/agents`;
+    await page.goto(agents);
+    await expect(page.locator("main#main")).toBeVisible();
+    if (!new URL(page.url()).pathname.endsWith("/agents")) {
+      test.info().annotations.push({ type: "skipped-part", description: "the partner is on today's console (no v2 agent screen)" });
+      return;
+    }
+    const link = page.locator(`main a[href^="${agents}/"]:not([href$="/new"])`).first();
+    if (!(await link.count())) {
+      test.info().annotations.push({ type: "skipped-part", description: "the client has no agent to audit" });
+      return;
+    }
+    const href = (await link.getAttribute("href"))!.split("#")[0]!.split("?")[0]!;
+    for (const tab of ["", "?tab=performance", "?tab=improvements"]) await auditView(page, `${href}${tab}`);
+  });
+
   test("keyboard: skip link and command palette", async ({ page }) => {
     await page.goto("/");
     await page.keyboard.press("Tab");

@@ -32,6 +32,16 @@ describe("liteNav", () => {
     expect(items.map((i) => i.href)).toEqual(["/", "/inbox", "/reservas", "/usage"]);
     expect(items[2]?.labelKey).toBe("nav.reservas");
   });
+
+  // Spec 047 (T168): Agentes y Negocio go between the Inbox and Reservas, as the API orders them.
+  it("paints Agentes and Negocio with their own labels and paths", () => {
+    const items = liteNav(["panel", "inbox", "agents", "business", "reservas", "usage"]).flatMap((g) => g.items);
+    expect(items.map((i) => i.href)).toEqual(["/", "/inbox", "/agentes", "/negocio", "/reservas", "/usage"]);
+    expect(items[2]?.labelKey).toBe("nav.agents");
+    expect(items[3]?.labelKey).toBe("nav.business");
+    expect(firstModulePath(["agents", "usage"])).toBe("/agentes");
+    expect(firstModulePath(["business"])).toBe("/negocio");
+  });
 });
 
 describe("toResolution keeps the API order", () => {

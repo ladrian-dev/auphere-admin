@@ -39,14 +39,21 @@ class ClientModule(str, enum.Enum):
 
     PANEL = "panel"
     INBOX = "inbox"
+    #: Spec 047 (requisito 50.1): el estado de sus agentes, con pausar y reanudar.
+    AGENTS = "agents"
+    #: Spec 047 (requisito 50.1): horario, fechas especiales, servicios y sedes.
+    BUSINESS = "business"
     #: Spec 043: el modo (Servicios o Aforo) vive en ``reservation_settings``.
     RESERVAS = "reservas"
     USAGE = "usage"
 
 
-#: Orden canónico: el de la barra lateral (Panel, Bandeja de entrada, Reservas,
-#: Consumo).
+#: Orden canónico: el de la barra lateral (Panel, Bandeja de entrada, Agentes,
+#: Negocio, Reservas, Consumo).
 CLIENT_MODULES: tuple[str, ...] = tuple(m.value for m in ClientModule)
+#: Spec 047 (``data-model.md`` §10): los que tiene por defecto el cliente de un
+#: partner con la consola nueva, aunque Auphere no los haya elegido.
+CONSOLE_V2_MODULES: tuple[str, ...] = (ClientModule.AGENTS.value, ClientModule.BUSINESS.value)
 
 
 class ClientMemberStatus(str, enum.Enum):
@@ -69,7 +76,7 @@ class ClientAccess(TimestampMixin, Base):
     __tablename__ = "client_access"
     __table_args__ = (
         CheckConstraint(
-            "modules <@ ARRAY['panel','inbox','usage','reservas']::varchar[]",
+            "modules <@ ARRAY['panel','inbox','usage','reservas','agents','business']::varchar[]",
             name="ck_client_access_modules",
         ),
     )
@@ -88,9 +95,10 @@ class ClientAccess(TimestampMixin, Base):
     )
     updated_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
-    def ordered_modules(self) -> tuple[str, ...]:
-        """Los módulos del cliente en el orden de la barra, sin repetidos."""
-        have = set(self.modules or [])
+    def ordered_modules(self, *, also: tuple[str, ...] = ()) -> tuple[str, ...]:
+        """Los módulos del cliente en el orden de la barra, sin repetidos.
+        ``also``: los que tiene por defecto aunque no estén guardados."""
+        have = set(self.modules or []) | set(also)
         return tuple(m for m in CLIENT_MODULES if m in have)
 
 

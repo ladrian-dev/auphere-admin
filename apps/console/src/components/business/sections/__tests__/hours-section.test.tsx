@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -106,6 +106,8 @@ describe("HoursSection", () => {
     await user.click(screen.getByRole("button", { name: "Guardar horario" }));
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ ref: "barberia-cultor", revision: 4, locationId: null }));
     save.mockResolvedValueOnce({ ok: false, status: 412, message: "conflict", code: "revision_conflict" });
+    // El botón vuelve tras el primer guardado: el segundo clic no puede caer antes.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Guardar horario" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Guardar horario" }));
     expect(await screen.findByText(/Alguien cambió esta sección/)).toBeVisible();
   });

@@ -7,7 +7,12 @@ de desarrollo instalado en el simulador o el emulador.
 maestro test e2e/sign-in.yaml -e EMAIL=valeria@flor.test -e PASSWORD=…   # la persona de prueba (e2e/.env.e2e)
 maestro test e2e/dynamic-tabs.yaml
 maestro test e2e/send-flaky.yaml -e CONVERSATION_ID=<uuid de una conversación que atiende la persona>
+maestro test e2e/agentes-negocio.yaml -e AGENT_NAME=<nombre de un agente publicado del cliente>   # spec 047
 ```
+
+`agentes-negocio.yaml` (spec 047, T169) pausa y reanuda un agente y cambia el
+cierre del lunes, y lo deshace: el cliente necesita los módulos `agents` y
+`business`. Deja el horario como estaba.
 
 La contraseña es la de la cuenta de prueba de la semilla; nunca una real.
 `sign-in.yaml` ya no abre ningún navegador: la entrada es de la app (R1

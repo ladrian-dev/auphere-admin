@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@nexus/ui";
 
 import { InviteButton } from "@/components/team/invite-dialog";
+import { RolesTable } from "@/components/team/roles-table";
 import { TeamLists } from "@/components/team/team-lists";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
@@ -22,6 +23,8 @@ export default async function TeamPage() {
     <>
       <PageHeader eyebrow={t("nav.group.account")} title={t("team.title")} description={t("team.description")} actions={manage ? <InviteButton origin={process.env.NEXUS_CONSOLE_ORIGIN ?? ""} /> : undefined} />
       <TeamLists team={team} manage={manage} />
+      {/* Spec 047 (49.2): «Qué puede hacer cada rol», a la vista para invitar con criterio. */}
+      <RolesTable t={t} />
     </>
   );
 }

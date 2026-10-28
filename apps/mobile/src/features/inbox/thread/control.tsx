@@ -7,7 +7,7 @@ import { Button } from "@/ui/button";
 import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
-import { agoText, type ComposerMode } from "../model";
+import { agoText, waitingReasonText, type ComposerMode } from "../model";
 
 /** How many lines of the agent's reason the foot shows before «Leer más» (R2.3). */
 const REASON_LINES = 2;
@@ -56,7 +56,10 @@ export function ControlCard({
   }
 
   if (mode.kind === "waiting") {
-    const reason = mode.reason ?? t("inbox.composer.waiting.noReason");
+    // Spec 047 (50.7): why it waits, by its code («Agente en pausa»); the agent's own words under it. With a
+    // code and no words, the code says it — never «El agente no dijo por qué» for a pause.
+    const why = waitingReasonText(mode.code, t);
+    const reason = mode.reason ?? (why ? null : t("inbox.composer.waiting.noReason"));
     return (
       <View style={styles.stack} testID="waiting-card">
         <View style={styles.head}>
@@ -73,22 +76,31 @@ export function ControlCard({
               : t("app.inbox.waitingSince.noAgent", { time: agoText(mode.since, now, t) })}
           </Text>
         ) : null}
-        <Text variant="callout" numberOfLines={REASON_LINES} testID="waiting-reason">
-          {reason}
-        </Text>
-        {/* The same words laid out without a limit, only to know whether they fit; nobody sees or hears them. */}
-        <Text
-          variant="callout"
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          pointerEvents="none"
-          style={styles.measure}
-          testID="waiting-reason-measure"
-          onTextLayout={(e) => setOverflows(e.nativeEvent.lines.length > REASON_LINES)}
-        >
-          {reason}
-        </Text>
-        {overflows && onReadMore ? (
+        {why ? (
+          <Text variant="subhead" tone="warningText" testID="waiting-code">
+            {why}
+          </Text>
+        ) : null}
+        {reason ? (
+          <>
+            <Text variant="callout" numberOfLines={REASON_LINES} testID="waiting-reason">
+              {reason}
+            </Text>
+            {/* The same words laid out without a limit, only to know whether they fit; nobody sees or hears them. */}
+            <Text
+              variant="callout"
+              accessible={false}
+              importantForAccessibility="no-hide-descendants"
+              pointerEvents="none"
+              style={styles.measure}
+              testID="waiting-reason-measure"
+              onTextLayout={(e) => setOverflows(e.nativeEvent.lines.length > REASON_LINES)}
+            >
+              {reason}
+            </Text>
+          </>
+        ) : null}
+        {reason && overflows && onReadMore ? (
           <Pressable accessibilityRole="button" onPress={onReadMore} hitSlop={8} style={styles.more}>
             <Text variant="subhead" tone="primaryText">
               {t("app.inbox.readMore")}

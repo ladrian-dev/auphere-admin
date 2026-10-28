@@ -58,6 +58,13 @@ KIND_CONFIG: dict[str, dict[str, str]] = {
         "channel": "reservations_v1",
         "fcm_priority": "normal",
     },
+    # Spec 047: el canal y la categoría que la app 1.2.0 crea.
+    "agents.state": {
+        "interruption": "active",
+        "category": "agents",
+        "channel": "agents_v1",
+        "fcm_priority": "high",
+    },
 }
 
 #: Un aviso que no llega en una hora ya no sirve: espera a una persona *ahora*.
@@ -85,6 +92,12 @@ def inbox_url(conversation_id: object) -> str:
 
 def usage_url() -> str:
     return f"{APP_SCHEME}://usage"
+
+
+def agents_url(agent_id: object, channel_id: object | None = None) -> str:
+    """Spec 047: el agente (y, si lo hay, su número) en la app."""
+    base = f"{APP_SCHEME}://agents/{agent_id}"
+    return f"{base}/channels/{channel_id}" if channel_id else base
 
 
 def reservas_url(booking_id: object) -> str:
@@ -144,4 +157,13 @@ def fcm(notice: Notice, *, token: str) -> dict[str, Any]:
     }
 
 
-__all__ = ["KIND_CONFIG", "TTL_SECONDS", "Notice", "apns", "fcm", "inbox_url", "usage_url"]
+__all__ = [
+    "KIND_CONFIG",
+    "TTL_SECONDS",
+    "Notice",
+    "agents_url",
+    "apns",
+    "fcm",
+    "inbox_url",
+    "usage_url",
+]

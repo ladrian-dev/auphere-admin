@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
-import { Alert, Linking, ScrollView, StyleSheet, Switch, View } from "react-native";
+import { Alert, Linking, Platform, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import { endpoints, type NoticeKind, type Notices } from "@/api/endpoints";
 import { useMe, useNotices } from "@/api/hooks";
@@ -20,6 +21,7 @@ import { Divider, RowButton } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Group } from "@/ui/group";
+import { icons } from "@/ui/icon";
 import { useOnline } from "@/ui/online";
 import { Text } from "@/ui/text";
 import { switchColors } from "@/ui/switch-colors";
@@ -177,6 +179,19 @@ export default function Ajustes() {
           {t("app.notices.privacy")}
         </Text>
       </Card>
+
+      {modules.includes("business") ? (
+        <Group testID="settings-business">
+          {/* Spec 047 (T169): Negocio from Ajustes. On iOS Ajustes is a sheet, and a screen pushed under a sheet
+              would open behind it: the sheet gives way to Negocio instead. On Android it is a screen and pushes. */}
+          <RowButton
+            title={t("negocio.open")}
+            subtitle={t("negocio.open.hint")}
+            icon={icons.business}
+            onPress={() => (Platform.OS === "ios" ? router.replace("/negocio") : router.push("/negocio"))}
+          />
+        </Group>
+      ) : null}
 
       <Group testID="settings-web">
         <RowButton

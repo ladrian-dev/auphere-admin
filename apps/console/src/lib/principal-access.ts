@@ -17,8 +17,13 @@ import type { Role } from "./permissions";
  * in; this module only carries the answer.
  */
 
-/** The client console's modules, in sidebar order (Panel, Bandeja, Reservas, Consumo). */
-export const CLIENT_MODULES = ["panel", "inbox", "reservas", "usage"] as const;
+/**
+ * The client console's modules, in sidebar order (Panel, Bandeja, Agentes,
+ * Negocio, Reservas, Consumo — `ClientModule` in `db/models/client_access.py`).
+ * Spec 047 (R50.1) adds Agentes and Negocio, on by default for the clients of a
+ * partner on the new console.
+ */
+export const CLIENT_MODULES = ["panel", "inbox", "agents", "business", "reservas", "usage"] as const;
 export type ClientModule = (typeof CLIENT_MODULES)[number];
 
 type PrincipalBase = {
@@ -163,10 +168,12 @@ export function firstPartnerModulePath(modules: readonly PartnerModule[]): strin
   return PARTNER_MODULE_PATH[first as Exclude<PartnerModule, "companion">];
 }
 
-/** Where each client module lives (spec 043 adds Reservas). */
+/** Where each client module lives (spec 043 adds Reservas; spec 047, Agentes and Negocio). */
 const CLIENT_MODULE_PATH: Record<ClientModule, string> = {
   panel: "/",
   inbox: "/inbox",
+  agents: "/agentes",
+  business: "/negocio",
   reservas: "/reservas",
   usage: "/usage",
 };
@@ -186,6 +193,8 @@ export function firstModulePath(modules: readonly ClientModule[]): string {
 export function clientModuleOfPath(pathname: string): ClientModule | null {
   if (pathname === "/") return "panel";
   if (pathname === "/inbox") return "inbox";
+  if (pathname === "/agentes") return "agents";
+  if (pathname === "/negocio") return "business";
   if (pathname === "/reservas") return "reservas";
   if (pathname === "/usage") return "usage";
   return null;

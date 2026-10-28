@@ -4,11 +4,13 @@ import Link from "next/link";
 import { Callout, DescriptionList, Section, StatusDot } from "@nexus/ui";
 
 import { backend, type ConversationOut } from "@/lib/backend";
+import { leversBackend } from "@/lib/backend-levers";
 import { fullDateTime, relativeTime } from "@/lib/format";
 import { qaApi, type QAThread } from "@/lib/qa-api";
 import { requireOperator } from "@/lib/session";
 
 import { readinessChecks } from "./readiness";
+import { SovereignCard } from "./sovereign-card";
 
 const CONVERSATION_TONE = { open: "info", escalated: "danger", closed: "muted" } as const;
 const CONVERSATION_LABEL = { open: "Abierta", escalated: "Escalada", closed: "Resuelta" } as const;
@@ -22,12 +24,14 @@ const CONVERSATION_LABEL = { open: "Abierta", escalated: "Escalada", closed: "Re
 export default async function TenantOverview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const operator = await requireOperator();
-  const [tenant, health, conversations, connectors, threads] = await Promise.all([
+  const [tenant, health, conversations, connectors, threads, sovereign] = await Promise.all([
     backend.getTenant(id),
     backend.getTenantHealth(id).catch(() => null),
     backend.listConversations(id, undefined, 6).catch(() => null),
     backend.listTenantConnectors(id).catch(() => null),
     qaApi.listThreads({ operatorId: operator.id, tenantId: id, limit: 3 }).catch(() => [] as QAThread[]),
+    // Spec 047 (T172, 54.6): only Auphere sets it.
+    leversBackend.sovereign(id).catch(() => null),
   ]);
   if (!tenant) return null;
   const partner = tenant.partner_id ? await backend.getPartner(tenant.partner_id).catch(() => null) : null;
@@ -135,6 +139,7 @@ export default async function TenantOverview({ params }: { params: Promise<{ id:
             ]}
           />
         </Section>
+        <SovereignCard tenantId={tenant.id} clientName={tenant.name} state={sovereign} />
         <Section
           title="Pruebas del agente"
           actions={

@@ -36,6 +36,70 @@
         "title": "ActivityOut",
         "type": "object"
       },
+      "AgentOption": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "serves_all": {
+            "title": "Serves All",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "serves_all"
+        ],
+        "title": "AgentOption",
+        "type": "object"
+      },
+      "AgentRef": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "AgentRef",
+        "type": "object"
+      },
+      "AgentRefOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "AgentRefOut",
+        "type": "object"
+      },
       "AgentSettings": {
         "properties": {
           "max_days_ahead": {
@@ -111,6 +175,33 @@
           "share_pct"
         ],
         "title": "AgentUsageOut",
+        "type": "object"
+      },
+      "AgentsOfService": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Agent Ids",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "all_agents",
+              "list"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "agent_ids"
+        ],
+        "title": "AgentsOfService",
         "type": "object"
       },
       "AppConfigOut": {
@@ -515,7 +606,7 @@
           "price": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MoneyOut"
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__MoneyOut"
               },
               {
                 "type": "null"
@@ -762,7 +853,7 @@
           "price": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MoneyOut"
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__MoneyOut"
               },
               {
                 "type": "null"
@@ -1214,7 +1305,7 @@
           "price": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MoneyOut"
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__MoneyOut"
               },
               {
                 "type": "null"
@@ -1621,6 +1712,16 @@
             "title": "Control Version",
             "type": "integer"
           },
+          "handled_by_agent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1656,6 +1757,17 @@
             },
             "title": "Tags",
             "type": "array"
+          },
+          "waiting_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Code"
           },
           "waiting_reason": {
             "anyOf": [
@@ -1737,6 +1849,16 @@
           "contact": {
             "$ref": "#/components/schemas/nexus_api__api__console__lite__inbox__ContactOut"
           },
+          "handled_by_agent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1776,12 +1898,23 @@
           "waiting": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/WaitingOut"
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__inbox__WaitingOut"
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "waiting_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Reason"
           }
         },
         "required": [
@@ -1795,6 +1928,188 @@
           "tags"
         ],
         "title": "ConversationItemOut",
+        "type": "object"
+      },
+      "CorrectionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "enum": [
+              "business",
+              "agent"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "scope"
+        ],
+        "title": "CorrectionIn",
+        "type": "object"
+      },
+      "CorrectionOut": {
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/LiteAgentRefOut"
+          },
+          "applied_change_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Change Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "data",
+              "behavior"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lesson": {
+            "title": "Lesson",
+            "type": "string"
+          },
+          "paraphrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paraphrase"
+          },
+          "pii": {
+            "items": {
+              "$ref": "#/components/schemas/PiiOut"
+            },
+            "title": "Pii",
+            "type": "array"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "business",
+              "agent"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "undone_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undone At"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "status",
+          "kind",
+          "scope",
+          "lesson",
+          "paraphrase",
+          "pii",
+          "agent",
+          "created_at"
+        ],
+        "title": "CorrectionOut",
+        "type": "object"
+      },
+      "CorrectionPatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "lesson": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesson"
+          },
+          "paraphrase": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paraphrase"
+          }
+        },
+        "title": "CorrectionPatchIn",
         "type": "object"
       },
       "CountsOut": {
@@ -2069,6 +2384,160 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HoursIn": {
+        "additionalProperties": false,
+        "properties": {
+          "clear": {
+            "default": false,
+            "title": "Clear",
+            "type": "boolean"
+          },
+          "confirm_loss": {
+            "default": false,
+            "title": "Confirm Loss",
+            "type": "boolean"
+          },
+          "days": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ShiftIn"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "enum": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ]
+            },
+            "title": "Days",
+            "type": "object"
+          },
+          "inherit": {
+            "default": false,
+            "title": "Inherit",
+            "type": "boolean"
+          },
+          "layout": {
+            "default": "daily",
+            "enum": [
+              "blocks",
+              "daily"
+            ],
+            "title": "Layout",
+            "type": "string"
+          }
+        },
+        "title": "HoursIn",
+        "type": "object"
+      },
+      "HoursOut": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "items": {
+              "const": "edit",
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "days": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ShiftOut"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "enum": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ]
+            },
+            "title": "Days",
+            "type": "object"
+          },
+          "inherits": {
+            "title": "Inherits",
+            "type": "boolean"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "layout": {
+            "anyOf": [
+              {
+                "enum": [
+                  "blocks",
+                  "daily"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "read_pending",
+              "pending",
+              "optional"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "state",
+          "allowed",
+          "location_id",
+          "inherits",
+          "layout",
+          "days",
+          "label"
+        ],
+        "title": "HoursOut",
+        "type": "object"
+      },
       "JoinedOut": {
         "properties": {
           "at": {
@@ -2133,6 +2602,171 @@
         "title": "LastMessageOut",
         "type": "object"
       },
+      "LiteAgentCardOut": {
+        "properties": {
+          "allowed": {
+            "items": {
+              "enum": [
+                "pause",
+                "resume"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/LiteAgentChannelOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "open_conversations": {
+            "title": "Open Conversations",
+            "type": "integer"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "paused_by_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused By Kind"
+          },
+          "paused_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused By Name"
+          },
+          "paused_origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Origin"
+          },
+          "visible_state": {
+            "$ref": "#/components/schemas/VisibleOut"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_default",
+          "visible_state",
+          "open_conversations",
+          "channels",
+          "allowed"
+        ],
+        "title": "LiteAgentCardOut",
+        "type": "object"
+      },
+      "LiteAgentChannelOut": {
+        "properties": {
+          "allowed": {
+            "items": {
+              "enum": [
+                "pause",
+                "resume"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "visible_state": {
+            "$ref": "#/components/schemas/VisibleOut"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "identifier",
+          "visible_state",
+          "allowed"
+        ],
+        "title": "LiteAgentChannelOut",
+        "type": "object"
+      },
+      "LiteAgentListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LiteAgentCardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "LiteAgentListOut",
+        "type": "object"
+      },
       "LiteAgentOut": {
         "properties": {
           "id": {
@@ -2150,6 +2784,25 @@
           "name"
         ],
         "title": "LiteAgentOut",
+        "type": "object"
+      },
+      "LiteAgentRefOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "LiteAgentRefOut",
         "type": "object"
       },
       "LiteAttentionOut": {
@@ -2208,6 +2861,11 @@
               }
             ],
             "title": "Cap Cents"
+          },
+          "currency": {
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
           },
           "days_left": {
             "anyOf": [
@@ -2303,6 +2961,108 @@
           "hours_label"
         ],
         "title": "LiteBusinessOut",
+        "type": "object"
+      },
+      "LiteBusinessSectionsOut": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/LiteChangeOut"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "hours": {
+            "$ref": "#/components/schemas/HoursOut"
+          },
+          "locations": {
+            "$ref": "#/components/schemas/LocationsOut"
+          },
+          "provenance": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LiteProvenanceOut"
+            },
+            "title": "Provenance",
+            "type": "object"
+          },
+          "services": {
+            "$ref": "#/components/schemas/ServicesOut"
+          },
+          "special_dates": {
+            "$ref": "#/components/schemas/SpecialDatesOut"
+          }
+        },
+        "required": [
+          "hours",
+          "special_dates",
+          "services",
+          "locations",
+          "provenance",
+          "history"
+        ],
+        "title": "LiteBusinessSectionsOut",
+        "type": "object"
+      },
+      "LiteChangeOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LitePersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
+          "undoable": {
+            "title": "Undoable",
+            "type": "boolean"
+          },
+          "undone_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undone At"
+          }
+        },
+        "required": [
+          "id",
+          "section",
+          "kind",
+          "at",
+          "origin",
+          "undoable"
+        ],
+        "title": "LiteChangeOut",
         "type": "object"
       },
       "LiteChannelOut": {
@@ -2503,6 +3263,99 @@
         "title": "LiteMeOut",
         "type": "object"
       },
+      "LitePauseIn": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          }
+        },
+        "title": "LitePauseIn",
+        "type": "object"
+      },
+      "LitePersonOut": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "LitePersonOut",
+        "type": "object"
+      },
+      "LiteProvenanceOut": {
+        "description": "«Editado por Marta desde la app», «Leído de la web · revísalo»…",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LitePersonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "review": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "LiteProvenanceOut",
+        "type": "object"
+      },
       "LiteReservasOut": {
         "description": "Spec 043: el modo de Reservas (las palabras las pone cada pantalla).",
         "properties": {
@@ -2531,6 +3384,106 @@
           "capacity_kind"
         ],
         "title": "LiteReservasOut",
+        "type": "object"
+      },
+      "LiteServiceIn": {
+        "additionalProperties": false,
+        "description": "Un servicio nuevo. Quién lo hace y qué agentes lo usan son del partner.",
+        "properties": {
+          "bookable": {
+            "default": true,
+            "title": "Bookable",
+            "type": "boolean"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "duration_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Min"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__PriceIn"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LiteServiceIn",
+        "type": "object"
+      },
+      "LiteServicePatchIn": {
+        "additionalProperties": false,
+        "description": "Precio, duración, descripción y si es reservable (``lite-app-api.md`` §2).",
+        "properties": {
+          "bookable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bookable"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "duration_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Min"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__PriceIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "LiteServicePatchIn",
         "type": "object"
       },
       "LiteSpendMonthOut": {
@@ -2598,6 +3551,42 @@
           "projected_cents"
         ],
         "title": "LiteSpendOut",
+        "type": "object"
+      },
+      "LiteUndoOut": {
+        "properties": {
+          "change_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section"
+        ],
+        "title": "LiteUndoOut",
         "type": "object"
       },
       "LiteUsageDetailOut": {
@@ -2692,6 +3681,17 @@
       },
       "LiteUsageSummaryOut": {
         "properties": {
+          "bag_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bag State"
+          },
           "balance": {
             "anyOf": [
               {
@@ -2716,6 +3716,17 @@
             ],
             "title": "By Agent"
           },
+          "days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Left"
+          },
           "errors": {
             "items": {
               "type": "string"
@@ -2732,6 +3743,11 @@
                 "type": "null"
               }
             ]
+          },
+          "partner_name": {
+            "default": "",
+            "title": "Partner Name",
+            "type": "string"
           }
         },
         "required": [
@@ -2810,71 +3826,168 @@
         "title": "LocalSpan",
         "type": "object"
       },
-      "MoneyOut": {
+      "LocationIn": {
+        "additionalProperties": false,
         "properties": {
-          "amount_minor": {
-            "title": "Amount Minor",
-            "type": "integer"
+          "address": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
           },
-          "currency": {
-            "title": "Currency",
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
             "type": "string"
+          },
+          "phone_e164": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone E164"
           }
         },
         "required": [
-          "amount_minor",
-          "currency"
+          "name"
         ],
-        "title": "MoneyOut",
+        "title": "LocationIn",
         "type": "object"
       },
-      "MoveIn": {
+      "LocationOut": {
         "additionalProperties": false,
-        "description": "Lo que no cambia, se omite (la fecha y la hora, también).",
         "properties": {
-          "date": {
+          "address": {
             "anyOf": [
               {
-                "format": "date",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Date"
+            "title": "Address"
           },
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "notify": {
-            "default": true,
-            "title": "Notify",
+          "archived": {
+            "title": "Archived",
             "type": "boolean"
           },
-          "party_size": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
             "anyOf": [
               {
-                "maximum": 1000.0,
-                "minimum": 1.0,
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Party Size"
+            "title": "Label"
           },
-          "staff_id": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "own_hours": {
+            "title": "Own Hours",
+            "type": "boolean"
+          },
+          "phone_e164": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone E164"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "address",
+          "phone_e164",
+          "own_hours",
+          "label",
+          "archived"
+        ],
+        "title": "LocationOut",
+        "type": "object"
+      },
+      "LocationPatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "phone_e164": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone E164"
+          }
+        },
+        "title": "LocationPatchIn",
+        "type": "object"
+      },
+      "LocationsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "items": {
+              "const": "edit",
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "created_id": {
             "anyOf": [
               {
                 "format": "uuid",
@@ -2884,22 +3997,37 @@
                 "type": "null"
               }
             ],
-            "title": "Staff Id"
+            "title": "Created Id"
           },
-          "time": {
-            "anyOf": [
-              {
-                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LocationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "read_pending",
+              "pending",
+              "optional"
             ],
-            "title": "Time"
+            "title": "State",
+            "type": "string"
           }
         },
-        "title": "MoveIn",
+        "required": [
+          "revision",
+          "state",
+          "allowed",
+          "items"
+        ],
+        "title": "LocationsOut",
         "type": "object"
       },
       "NewBookingIn": {
@@ -3104,7 +4232,7 @@
             "items": {
               "type": "string"
             },
-            "maxItems": 6,
+            "maxItems": 7,
             "title": "Kinds",
             "type": "array"
           },
@@ -3169,6 +4297,17 @@
               }
             ],
             "title": "External Client Ref"
+          },
+          "href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Href"
           },
           "id": {
             "format": "uuid",
@@ -3641,6 +4780,45 @@
         "title": "PhoneOut",
         "type": "object"
       },
+      "PiiOut": {
+        "description": "Dónde hay un dato de un cliente final: el campo, el tipo y sus posiciones.",
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "integer"
+          },
+          "field": {
+            "enum": [
+              "lesson",
+              "paraphrase"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "email",
+              "document",
+              "phone",
+              "name"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "field",
+          "kind",
+          "start",
+          "end"
+        ],
+        "title": "PiiOut",
+        "type": "object"
+      },
       "PushIn": {
         "properties": {
           "apns_environment": {
@@ -3844,62 +5022,11 @@
         "title": "SentOut",
         "type": "object"
       },
-      "ServiceIn": {
-        "additionalProperties": false,
-        "properties": {
-          "duration_minutes": {
-            "maximum": 480.0,
-            "minimum": 15.0,
-            "multipleOf": 15.0,
-            "title": "Duration Minutes",
-            "type": "integer"
-          },
-          "name": {
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          },
-          "price_minor": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Price Minor"
-          },
-          "staff_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Staff Ids"
-          }
-        },
-        "required": [
-          "name",
-          "duration_minutes"
-        ],
-        "title": "ServiceIn",
-        "type": "object"
-      },
       "ServiceListOut": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ServiceOut"
+              "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__ServiceOut"
             },
             "title": "Items",
             "type": "array"
@@ -3911,157 +5038,76 @@
         "title": "ServiceListOut",
         "type": "object"
       },
-      "ServiceOut": {
-        "properties": {
-          "archived": {
-            "title": "Archived",
-            "type": "boolean"
-          },
-          "duration_minutes": {
-            "title": "Duration Minutes",
-            "type": "integer"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "position": {
-            "title": "Position",
-            "type": "integer"
-          },
-          "price": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MoneyOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "staff": {
-            "enum": [
-              "all",
-              "some"
-            ],
-            "title": "Staff",
-            "type": "string"
-          },
-          "staff_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Staff Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "duration_minutes",
-          "price",
-          "staff",
-          "staff_ids",
-          "position",
-          "archived"
-        ],
-        "title": "ServiceOut",
-        "type": "object"
-      },
-      "ServicePatchIn": {
+      "ServicesOut": {
         "additionalProperties": false,
         "properties": {
-          "all_staff": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOption"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "allowed": {
+            "items": {
+              "const": "edit",
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "created_id": {
             "anyOf": [
               {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "All Staff"
-          },
-          "clear_price": {
-            "default": false,
-            "title": "Clear Price",
-            "type": "boolean"
-          },
-          "duration_minutes": {
-            "anyOf": [
-              {
-                "maximum": 480.0,
-                "minimum": 15.0,
-                "multipleOf": 15.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Minutes"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "maxLength": 120,
-                "minLength": 1,
+                "format": "uuid",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Name"
+            "title": "Created Id"
           },
-          "position": {
-            "anyOf": [
-              {
-                "maximum": 1000.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Position"
+          "currency": {
+            "title": "Currency",
+            "type": "string"
           },
-          "price_minor": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Price Minor"
+          "exponent": {
+            "title": "Exponent",
+            "type": "integer"
           },
-          "staff_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__ServiceOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "read_pending",
+              "pending",
+              "optional"
             ],
-            "title": "Staff Ids"
+            "title": "State",
+            "type": "string"
           }
         },
-        "title": "ServicePatchIn",
+        "required": [
+          "revision",
+          "state",
+          "allowed",
+          "currency",
+          "exponent",
+          "items",
+          "agents"
+        ],
+        "title": "ServicesOut",
         "type": "object"
       },
       "SettingsOut": {
@@ -4272,6 +5318,62 @@
         "title": "SettingsPatchIn",
         "type": "object"
       },
+      "ShiftIn": {
+        "additionalProperties": false,
+        "properties": {
+          "close": {
+            "pattern": "^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$",
+            "title": "Close",
+            "type": "string"
+          },
+          "open": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Open",
+            "type": "string"
+          },
+          "overnight": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overnight"
+          }
+        },
+        "required": [
+          "open",
+          "close"
+        ],
+        "title": "ShiftIn",
+        "type": "object"
+      },
+      "ShiftOut": {
+        "additionalProperties": false,
+        "properties": {
+          "close": {
+            "title": "Close",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "string"
+          },
+          "overnight": {
+            "title": "Overnight",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "open",
+          "close",
+          "overnight"
+        ],
+        "title": "ShiftOut",
+        "type": "object"
+      },
       "SignInMethodsOut": {
         "properties": {
           "google": {
@@ -4393,6 +5495,262 @@
           "slots"
         ],
         "title": "SlotsOut",
+        "type": "object"
+      },
+      "SpecialDateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "shifts": {
+            "items": {
+              "$ref": "#/components/schemas/ShiftIn"
+            },
+            "maxItems": 6,
+            "title": "Shifts",
+            "type": "array"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "closed"
+        ],
+        "title": "SpecialDateIn",
+        "type": "object"
+      },
+      "SpecialDateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "shifts": {
+            "items": {
+              "$ref": "#/components/schemas/ShiftOut"
+            },
+            "title": "Shifts",
+            "type": "array"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "location_id",
+          "from",
+          "to",
+          "closed",
+          "shifts",
+          "archived"
+        ],
+        "title": "SpecialDateOut",
+        "type": "object"
+      },
+      "SpecialDatePatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "shifts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ShiftIn"
+                },
+                "maxItems": 6,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shifts"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "title": "SpecialDatePatchIn",
+        "type": "object"
+      },
+      "SpecialDatesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "items": {
+              "const": "edit",
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "created_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SpecialDateOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "read_pending",
+              "pending",
+              "optional"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "state",
+          "allowed",
+          "items"
+        ],
+        "title": "SpecialDatesOut",
         "type": "object"
       },
       "StaffCalendarIn": {
@@ -5147,9 +6505,12 @@
         "title": "ValidationError",
         "type": "object"
       },
-      "WaitingOut": {
-        "description": "Spec 045 (R3.1): por qué y desde cuándo espera a una persona.",
+      "VisibleOut": {
         "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
           "reason": {
             "anyOf": [
               {
@@ -5161,17 +6522,16 @@
             ],
             "title": "Reason"
           },
-          "since": {
-            "format": "date-time",
-            "title": "Since",
+          "tone": {
+            "title": "Tone",
             "type": "string"
           }
         },
         "required": [
-          "reason",
-          "since"
+          "code",
+          "tone"
         ],
-        "title": "WaitingOut",
+        "title": "VisibleOut",
         "type": "object"
       },
       "WaitlistEntryOut": {
@@ -5590,6 +6950,33 @@
         "title": "ThreadOut",
         "type": "object"
       },
+      "nexus_api__api__console__lite__inbox__WaitingOut": {
+        "description": "Spec 045 (R3.1): por qué y desde cuándo espera a una persona.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "since"
+        ],
+        "title": "WaitingOut",
+        "type": "object"
+      },
       "nexus_api__api__console__lite__reservas_schemas__ContactOut": {
         "properties": {
           "conversation_id": {
@@ -5633,6 +7020,430 @@
           "conversation_id"
         ],
         "title": "ContactOut",
+        "type": "object"
+      },
+      "nexus_api__api__console__lite__reservas_schemas__MoneyOut": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount_minor",
+          "currency"
+        ],
+        "title": "MoneyOut",
+        "type": "object"
+      },
+      "nexus_api__api__console__lite__reservas_schemas__MoveIn": {
+        "additionalProperties": false,
+        "description": "Lo que no cambia, se omite (la fecha y la hora, también).",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "notify": {
+            "default": true,
+            "title": "Notify",
+            "type": "boolean"
+          },
+          "party_size": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Party Size"
+          },
+          "staff_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Id"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          }
+        },
+        "title": "MoveIn",
+        "type": "object"
+      },
+      "nexus_api__api__console__lite__reservas_schemas__ServiceIn": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_minutes": {
+            "maximum": 480.0,
+            "minimum": 15.0,
+            "multipleOf": 15.0,
+            "title": "Duration Minutes",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "price_minor": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Minor"
+          },
+          "staff_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Ids"
+          }
+        },
+        "required": [
+          "name",
+          "duration_minutes"
+        ],
+        "title": "ServiceIn",
+        "type": "object"
+      },
+      "nexus_api__api__console__lite__reservas_schemas__ServiceOut": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "duration_minutes": {
+            "title": "Duration Minutes",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__MoneyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "staff": {
+            "enum": [
+              "all",
+              "some"
+            ],
+            "title": "Staff",
+            "type": "string"
+          },
+          "staff_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Staff Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "duration_minutes",
+          "price",
+          "staff",
+          "staff_ids",
+          "position",
+          "archived"
+        ],
+        "title": "ServiceOut",
+        "type": "object"
+      },
+      "nexus_api__api__console__lite__reservas_schemas__ServicePatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "all_staff": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Staff"
+          },
+          "clear_price": {
+            "default": false,
+            "title": "Clear Price",
+            "type": "boolean"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "maximum": 480.0,
+                "minimum": 15.0,
+                "multipleOf": 15.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "price_minor": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Minor"
+          },
+          "staff_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Ids"
+          }
+        },
+        "title": "ServicePatchIn",
+        "type": "object"
+      },
+      "nexus_api__api__console__schemas_business_sections__PriceIn": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "kind": {
+            "enum": [
+              "none",
+              "free",
+              "amount"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "PriceIn",
+        "type": "object"
+      },
+      "nexus_api__api__console__schemas_business_sections__PriceOut": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "nexus_api__api__console__schemas_business_sections__ServiceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "agents": {
+            "$ref": "#/components/schemas/AgentsOfService"
+          },
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "bookable": {
+            "title": "Bookable",
+            "type": "boolean"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "duration_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Min"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__PriceOut"
+          },
+          "staff": {
+            "anyOf": [
+              {
+                "const": "all",
+                "type": "string"
+              },
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Staff"
+          },
+          "used_by": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRef"
+            },
+            "title": "Used By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "bookable",
+          "duration_min",
+          "price",
+          "currency",
+          "staff",
+          "agents",
+          "used_by",
+          "archived"
+        ],
+        "title": "ServiceOut",
         "type": "object"
       }
     }
@@ -6036,6 +7847,2538 @@
           }
         },
         "summary": "Request Deletion",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/agents": {
+      "get": {
+        "operationId": "list_agents_console_lite_agents_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteAgentListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agents",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/agents/{agent_id}/pause": {
+      "post": {
+        "description": "Pausar (27.1): sus mensajes se siguen guardando y esperan a una persona con\n«Agente en pausa»; sus números no cambian (25.4).",
+        "operationId": "pause_agent_console_lite_agents__agent_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LitePauseIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteAgentCardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "confirm_required | agent_archived"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Agent",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/agents/{agent_id}/resume": {
+      "post": {
+        "description": "Reanudar devuelve lo de antes (27.3). Solo la pausa de una persona.",
+        "operationId": "resume_agent_console_lite_agents__agent_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteAgentCardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "system_pause"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Agent",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business": {
+      "get": {
+        "operationId": "get_business_console_lite_business_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteBusinessSectionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Business",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/history/{change_id}/undo": {
+      "post": {
+        "description": "Deshacer el último cambio de una sección (13.3). Si alguien escribió\ndespués, ``412`` con lo que cambió; nadie pisa a nadie (13.4). El reintento\ncon la misma ``Idempotency-Key`` responde lo mismo, no ``already_undone``.",
+        "operationId": "undo_change_console_lite_business_history__change_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Change Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteUndoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "unknown_change"
+          },
+          "409": {
+            "description": "already_undone | undo_not_available"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Change",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/hours": {
+      "get": {
+        "description": "El horario de una sede (el suyo o el que hereda) o el del negocio:\n``GET /business`` solo trae el del negocio.",
+        "operationId": "get_hours_console_lite_business_hours_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "location_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoursOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Hours",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      },
+      "put": {
+        "description": "El horario del negocio o de una sede. Devuelve «Así lo dirá el agente»\n(``label``, requisito 10.5).",
+        "operationId": "put_hours_console_lite_business_hours_put",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "location_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoursIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoursOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "blocks_lose_days: by blocks, some weekdays would be lost"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Put Hours",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/locations": {
+      "post": {
+        "operationId": "post_location_console_lite_business_locations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Post Location",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/locations/{location_id}": {
+      "patch": {
+        "operationId": "patch_location_console_lite_business_locations__location_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Location Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Patch Location",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/locations/{location_id}/archive": {
+      "post": {
+        "operationId": "archive_location_console_lite_business_locations__location_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Location Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Archive Location",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/locations/{location_id}/restore": {
+      "post": {
+        "operationId": "restore_location_console_lite_business_locations__location_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Location Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Restore Location",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/services": {
+      "post": {
+        "operationId": "post_service_console_lite_business_services_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiteServiceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Post Service",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/services/{service_id}": {
+      "patch": {
+        "operationId": "patch_service_console_lite_business_services__service_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Service Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiteServicePatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Patch Service",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/services/{service_id}/archive": {
+      "post": {
+        "operationId": "archive_service_console_lite_business_services__service_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Service Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Archive Service",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/special-dates": {
+      "post": {
+        "operationId": "post_special_date_console_lite_business_special_dates_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecialDateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialDatesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Post Special Date",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/special-dates/{special_id}": {
+      "patch": {
+        "operationId": "patch_special_date_console_lite_business_special_dates__special_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "special_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Special Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecialDatePatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialDatesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Patch Special Date",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/business/special-dates/{special_id}/archive": {
+      "post": {
+        "operationId": "archive_special_date_console_lite_business_special_dates__special_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "special_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Special Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecialDatesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "Invalid value"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Archive Special Date",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/channels/{channel_id}/pause": {
+      "post": {
+        "description": "Pausar solo este número (27.1): lo que llega espera a una persona con\n«Canal en pausa».",
+        "operationId": "pause_channel_console_lite_channels__channel_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteAgentChannelOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "channel_disconnected"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Channel",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/channels/{channel_id}/resume": {
+      "post": {
+        "description": "Reanudar el número devuelve el estado de antes de la pausa (27.3).",
+        "operationId": "resume_channel_console_lite_channels__channel_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiteAgentChannelOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Channel",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/corrections/{correction_id}": {
+      "patch": {
+        "description": "Editar la lección o la paráfrasis antes de enviar (52.4).",
+        "operationId": "edit_correction_console_lite_corrections__correction_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "correction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "not_a_draft"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Edit Correction",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/corrections/{correction_id}/send": {
+      "post": {
+        "description": "Un dato se aplica al momento; un comportamiento llega al partner (52.2).",
+        "operationId": "send_correction_console_lite_corrections__correction_id__send_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "correction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "not_a_draft"
+          },
+          "412": {
+            "description": "revision_conflict"
+          },
+          "422": {
+            "description": "pii_present · paraphrase_required · rule_too_long"
+          },
+          "428": {
+            "description": "revision_required"
+          }
+        },
+        "summary": "Send Correction",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/corrections/{correction_id}/undo": {
+      "post": {
+        "description": "Deshacer un dato aplicado (13.3).",
+        "operationId": "undo_correction_console_lite_corrections__correction_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "correction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "not_applied · undo_not_available"
+          },
+          "412": {
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Correction",
         "tags": [
           "console",
           "console-lite"
@@ -8237,6 +12580,135 @@
         ]
       }
     },
+    "/console/lite/inbox/{conversation_id}/messages/{message_id}/corrections": {
+      "post": {
+        "description": "«Corregir esta respuesta» (52.1, 52.2): el borrador, sin aplicar nada.",
+        "operationId": "create_correction_console_lite_inbox__conversation_id__messages__message_id__corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The same Idempotency-Key: the draft already made"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Unknown conversation or message"
+          },
+          "422": {
+            "description": "not_an_agent_reply"
+          }
+        },
+        "summary": "Create Correction",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
     "/console/lite/me": {
       "get": {
         "operationId": "read_me_console_lite_me_get",
@@ -10373,7 +14845,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MoveIn"
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__MoveIn"
               }
             }
           },
@@ -11357,7 +15829,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ServiceIn"
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__ServiceIn"
               }
             }
           },
@@ -11368,7 +15840,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceOut"
+                  "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__ServiceOut"
                 }
               }
             },
@@ -11459,7 +15931,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ServicePatchIn"
+                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__ServicePatchIn"
               }
             }
           },
@@ -11470,7 +15942,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceOut"
+                  "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__ServiceOut"
                 }
               }
             },

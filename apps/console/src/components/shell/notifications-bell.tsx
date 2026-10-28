@@ -209,7 +209,7 @@ export function NotificationsBellMenu({ initialUnread }: { initialUnread: number
             <ul className="flex flex-col">
               {feed.items.map((n) => {
                 const text = notificationText(locale, n);
-                const href = n.external_client_ref ? `/clients/${encodeURIComponent(n.external_client_ref)}` : "/notifications";
+                const href = n.href ?? (n.external_client_ref ? `/clients/${encodeURIComponent(n.external_client_ref)}` : "/notifications");
                 return (
                   <li key={n.id}>
                     <Link

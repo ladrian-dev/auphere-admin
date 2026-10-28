@@ -19,9 +19,13 @@ import { auditView } from "./audit";
 // Spec 031 (T053): «Tus teléfonos» goes through the same matrix as the modules.
 // Spec 043 (T020, T060): Reservas too, in the mode the seeded client has, with
 // each of its tabs and the list view (the default view alone left them unaudited).
+// Spec 047 (T162, T168): Agentes y Negocio. Un cliente sin esos módulos vuelve a
+// su primer módulo, que también se audita; con la consola nueva los tiene.
 const LITE_VIEWS = [
   "/",
   "/inbox",
+  "/agentes",
+  "/negocio",
   "/reservas",
   "/reservas?view=list",
   "/reservas?tab=waitlist",

@@ -35,8 +35,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // A phone app: no web build (Metro would try to bundle one for a browser).
   platforms: ["ios", "android"],
   owner,
-  // Spec 044 (D14): 1.1.0 carries spec 042's native module; `runtimeVersion` follows it.
-  version: "1.1.0",
+  // Spec 047 (T171, 50.8): 1.2.0 brings Agentes, Negocio and «Corregir esta respuesta» through the stores —
+  // new screens and new data shown are never sent over the air (D19). `runtimeVersion` follows it, so no
+  // 1.1.0 install gets 1.2.0's code. Spec 044 (D14): 1.1.0 carried spec 042's native module.
+  version: "1.2.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "auphere-customers",

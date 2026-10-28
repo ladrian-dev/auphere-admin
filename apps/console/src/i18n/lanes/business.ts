@@ -612,6 +612,7 @@ export const businessMessages = {
   "business.services.add": { es: "Añadir servicio", en: "Add service" },
   "business.services.edit": { es: "Editar {name}", en: "Edit {name}" },
   "business.services.name": { es: "Nombre", en: "Name" },
+  "business.services.name.fixed": { es: "El nombre lo cambia quien gestiona tus agentes.", en: "Whoever manages your agents changes the name." },
   "business.services.description": { es: "Descripción", en: "Description" },
   "business.services.bookable": { es: "Se reserva", en: "Bookable" },
   "business.services.not_bookable": { es: "No se reserva", en: "Not bookable" },

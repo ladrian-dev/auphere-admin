@@ -116,7 +116,7 @@ export function BasicsSection({
       ) : (
         <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
           {FIELDS.map((key) => (
-            <div key={key} className="grid min-w-0 gap-0.5">
+            <div key={key} className="grid min-w-0 gap-1">
               <dt className="text-xs text-muted-foreground">{label[key]}</dt>
               <dd className="text-sm text-pretty break-words">{values[key] || "—"}</dd>
             </div>

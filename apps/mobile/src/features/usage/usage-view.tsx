@@ -9,7 +9,7 @@ import { Divider, Meter, RowButton, Segmented } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Group, Row } from "@/ui/group";
-import { icons } from "@/ui/icon";
+import { Icon, icons } from "@/ui/icon";
 import { ErrorState, PartialNotice } from "@/ui/states";
 import { Text } from "@/ui/text";
 
@@ -68,10 +68,12 @@ export function UsageView({
   contact?: Me["balance_contact"] | null;
 }) {
   const n = (v: number) => formatNumber(v, locale);
-  const money = (c: number) => formatMoney(c, locale);
   if (summary === null) return <ErrorState body={t("common.error.backend")} onRetry={onRetry} />;
 
   const balance = summary.balance ?? null;
+  // Spec 047: the bag in its own currency; the spend in the report's (both US$ until a partner changes it).
+  const bagMoney = (c: number) => formatMoney(c, locale, balance?.currency ?? "USD");
+  const money = (c: number) => formatMoney(c, locale, spend?.currency ?? balance?.currency ?? "USD");
   const month = summary.month ?? null;
   const runway = balance?.assigned ? creditRunway(balance.remaining_cents ?? null, balance.days_left ?? null, now) : null;
   const out = balance?.assigned === true && (balance.remaining_cents ?? 0) <= 0;
@@ -83,14 +85,35 @@ export function UsageView({
   const apiDate = balance ? (balance as { runs_out_on?: string | null }).runs_out_on ?? null : null;
   const lastsUntil = balance?.assigned && !out ? (apiDate ?? (balance.days_left != null ? runsOutOn(balance.days_left, today) : null)) : null;
   const whom = contact ? (contact.kind === "auphere" ? t("app.usage.recharge.auphere") : t("app.usage.recharge.partner", { name: contact.name })) : null;
+  // Spec 047 (50.6, `events.md` §1.4): «Queda poco», «No llega a fin de mes» or «Agotada», and whom to ask — no button.
+  const bag = summary.bag_state === "low" || summary.bag_state === "not_enough" || summary.bag_state === "empty" ? summary.bag_state : null;
+  const partner = summary.partner_name || (contact ? (contact.kind === "auphere" ? "Auphere" : contact.name) : null);
 
   return (
     <View style={styles.stack}>
       {summary.errors.length > 0 ? <PartialNotice text={t("lite.usage.partial")} /> : null}
+      {bag ? (
+        <Card tone={bag === "empty" ? "danger" : "warning"} testID="usage-bag">
+          <View style={styles.bagTitle} accessible accessibilityRole="alert">
+            <Icon name={icons.warning} size={18} tone={bag === "empty" ? "dangerText" : "warningText"} />
+            <Text variant="headline" style={styles.flex}>
+              {t(`consumo.bag.${bag}`)}
+            </Text>
+          </View>
+          <Text variant="callout">
+            {bag === "empty" ? t("panel.bag.empty") : summary.days_left != null ? t("panel.bag.days", { days: n(summary.days_left) }) : t("panel.bag.noEstimate")}
+          </Text>
+          {partner ? (
+            <Text variant="callout" tone="mutedForeground">
+              {t("consumo.bag.ask", { partner })}
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
       <Group testID="usage-figures">
         <Row
           label={t("lite.kpi.balance")}
-          value={balance?.assigned && balance.remaining_cents != null ? money(balance.remaining_cents) : "—"}
+          value={balance?.assigned && balance.remaining_cents != null ? bagMoney(balance.remaining_cents) : "—"}
           valueTone={out ? "dangerText" : "foreground"}
           hint={
             balance === null
@@ -113,7 +136,7 @@ export function UsageView({
             </Text>
           </View>
         ) : null}
-        {balance && whom ? (
+        {balance && whom && !bag ? (
           <View style={styles.whom}>
             <Text variant="footnote" tone="mutedForeground">
               {whom}
@@ -238,6 +261,7 @@ const styles = StyleSheet.create({
   stack: { gap: 16 },
   answer: { gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   whom: { paddingHorizontal: 16, paddingVertical: 12 },
+  bagTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
   agent: { gap: 6 },
   agentRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   flex: { flex: 1, minWidth: 0 },

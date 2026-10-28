@@ -25,11 +25,13 @@ from tests.isolation.test_console_scope import _console_routes
 from tests.isolation.test_lite_client_vs_client import (
     _FOREIGN,
     _INBOX_WRITES,
+    _LITE_WRITES,
     _STREAMS,
     NEIGHBOUR_NAME,
     NEIGHBOUR_REF,
     RESERVAS_PREFIX,
     _neighbourhood,
+    probe_write,
 )
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.isolation]
@@ -90,6 +92,7 @@ async def test_phone_reads_never_show_the_neighbour(
 
 _PHONE_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
     *_INBOX_WRITES,
+    *_LITE_WRITES,
     ("DELETE", "/console/lite/phones/{phone_id}", None),
 ]
 
@@ -118,13 +121,13 @@ async def test_a_lite_route_mounted_tomorrow_must_bring_its_probe() -> None:
     ``_FOREIGN``."""
     from tests.isolation.test_lite_route_scope import mounted
 
-    write = ("POST", "/console/lite/agents/{agent_id}/probe-047")
-    read = ("GET", "/console/lite/agents/{agent_id}/probe-047")
+    write = ("POST", "/console/lite/probes/{probe_id}/probe-047")
+    read = ("GET", "/console/lite/probes/{probe_id}/probe-047")
     with mounted(write, read):
         with pytest.raises(AssertionError):
             await test_every_write_with_an_id_is_probed()
         assert read[1] in _lite_gets()
-        assert "agent_id" not in _FOREIGN, "la lectura nueva ya tendría su objeto"
+        assert "probe_id" not in _FOREIGN, "la lectura nueva ya tendría su objeto"
     await test_every_write_with_an_id_is_probed()
 
 
@@ -133,13 +136,4 @@ async def test_phone_writes_on_a_neighbour_object_are_the_same_404(
     method: str, path: str, body: dict[str, Any] | None, client, db_session, console_world
 ) -> None:
     world = await _with_phones(db_session, console_world)
-    headers = world["phone"]["headers"]
-    param = path.split("{", 1)[1].split("}", 1)[0]
-    foreign = await client.request(
-        method, path.replace("{" + param + "}", str(world[param])), headers=headers(), json=body
-    )
-    ghost = await client.request(
-        method, path.replace("{" + param + "}", str(uuid.uuid4())), headers=headers(), json=body
-    )
-    assert foreign.status_code == ghost.status_code == 404, (path, foreign.status_code)
-    assert foreign.content == ghost.content
+    await probe_write(client, world, world["phone"]["headers"], method, path, body)

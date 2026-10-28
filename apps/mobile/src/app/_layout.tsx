@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -102,6 +103,17 @@ function Screens() {
         {/* Only the chevron goes back: the previous screen is a tab group, and its name is nothing to a person. */}
         <Stack.Screen name="conversacion/[id]/index" options={{ ...header, headerShown: true, title: "", headerBackButtonDisplayMode: "minimal" }} />
         <Stack.Screen name="conversacion/[id]/contacto" options={sheets.contacto} />
+        {/* Spec 047 (T176): «Corregir esta respuesta», a tall sheet over the conversation, with room for the keyboard. */}
+        <Stack.Screen name="conversacion/[id]/corregir" options={sheets.correccion} />
+        {/* Spec 047 (T169): an agent and Negocio open above the tabs, from Inicio, Ajustes or a notice. */}
+        <Stack.Screen name="agente/[id]" options={{ ...header, headerShown: true, title: "", headerBackButtonDisplayMode: "minimal" }} />
+        <Stack.Screen
+          name="negocio/index"
+          options={{ ...header, headerShown: true, headerBackButtonDisplayMode: "minimal", ...(Platform.OS === "ios" ? { headerLargeTitleEnabled: true } : {}) }}
+        />
+        <Stack.Screen name="negocio/horario" options={{ ...header, headerShown: true }} />
+        <Stack.Screen name="negocio/servicios" options={{ ...header, headerShown: true }} />
+        <Stack.Screen name="negocio/sedes" options={{ ...header, headerShown: true }} />
         {/* Reservas' sheets (spec 044, D5): above the tabs, like the contact. */}
         <Stack.Screen name="reserva/[id]" options={sheets.reserva} />
         <Stack.Screen name="reserva/llegada" options={sheets.reserva} />

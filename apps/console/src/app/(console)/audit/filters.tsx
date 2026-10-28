@@ -26,7 +26,7 @@ export function AuditFilters({ state, options }: { state: AuditFilterState; opti
   const active = Boolean(state.client || state.actor || state.category || state.days || state.after || state.before);
 
   const go = React.useCallback(
-    (patch: Partial<AuditFilterState>) => {
+    (patch: Partial<Record<keyof AuditFilterState | "person", string>>) => {
       const next = new URLSearchParams(params.toString());
       for (const [k, v] of Object.entries(patch)) {
         if (v) next.set(k, v);
@@ -44,7 +44,7 @@ export function AuditFilters({ state, options }: { state: AuditFilterState; opti
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <Select label={t("hu.audit.client")} all={t("hu.audit.client.all")} value={state.client} options={options.clients} onChange={(client) => go({ client })} />
-        <Select label={t("hu.audit.person")} all={t("hu.audit.person.all")} value={state.actor} options={options.people} onChange={(actor) => go({ actor })} />
+        <Select label={t("hu.audit.person")} all={t("hu.audit.person.all")} value={state.actor} options={options.people} onChange={(person) => go({ person, actor: "" })} />
         <Select label={t("hu.audit.category")} all={t("hu.audit.category.all")} value={state.category} options={options.categories} onChange={(category) => go({ category })} />
         <div role="group" aria-label={t("hu.audit.period")} className="inline-flex rounded-md bg-muted p-1">
           <Segment pressed={!state.days} onClick={() => period("")}>

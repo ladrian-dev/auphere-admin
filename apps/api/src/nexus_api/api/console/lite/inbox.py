@@ -91,6 +91,11 @@ class WaitingOut(BaseModel):
     since: datetime
 
 
+class AgentRefOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
 class ConversationItemOut(BaseModel):
     id: uuid.UUID
     contact: ContactOut
@@ -102,6 +107,10 @@ class ConversationItemOut(BaseModel):
     unread: bool
     tags: list[str]
     waiting: WaitingOut | None = None
+    #: Spec 047 (50.7): «La atiende {agente}», también con un solo agente.
+    handled_by_agent: AgentRefOut | None = None
+    #: Spec 047 (50.7): el código de ``events.md`` §2 mientras espera a una persona.
+    waiting_reason: str | None = None
 
 
 class CountsOut(BaseModel):
@@ -169,8 +178,15 @@ class ConversationDetailOut(BaseModel):
     channel: dict[str, Any]
     contact: ContactDetailOut
     summary: str | None
+    #: El motivo de la espera: el código de ``events.md`` §2 o, si la pidió el
+    #: agente (``escalated``), su disparador («{disparador}»), como en la spec 045.
     waiting_reason: str | None
+    #: Spec 047 (50.7, events.md §2): el código de por qué espera, siempre código
+    #: (el de arriba conserva el texto del disparador para la web de la 045).
+    waiting_code: str | None = None
     waiting_since: datetime | None = None
+    #: Spec 047 (50.7): «La atiende {agente}», también con un solo agente.
+    handled_by_agent: AgentRefOut | None = None
     tags: list[str]
     note: NoteOut
     activity: list[ActivityOut]
@@ -285,11 +301,37 @@ async def _conversation(scope: LiteScope, conversation_id: uuid.UUID) -> Convers
     return conv
 
 
+def _handler(
+    agent: tuple[uuid.UUID, str] | None, agents: list[tuple[uuid.UUID, str]]
+) -> AgentRefOut | None:
+    """Spec 047 (50.7): quién la atiende. Con dos agentes o más lo dice
+    ``inbox_view`` (el agente de su número, o el principal); con uno solo, es ese."""
+    if agent is not None:
+        return AgentRefOut(id=agent[0], name=agent[1])
+    if len(agents) == 1:
+        return AgentRefOut(id=agents[0][0], name=agents[0][1])
+    return None
+
+
+async def _waiting_codes(scope: LiteScope, ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """El código guardado de por qué espera cada conversación (``events.md`` §2)."""
+    if not ids:
+        return {}
+    rows = await scope.session.execute(
+        sa.select(Conversation.id, Conversation.waiting_reason).where(
+            Conversation.id.in_(ids), Conversation.waiting_reason.is_not(None)
+        )
+    )
+    return {cid: str(code) for cid, code in rows.all()}
+
+
 async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetailOut:
     d = await inbox_view.detail(
         scope.session, conv, tenant_id=scope.principal.tenant_id, me=_me(scope)
     )
+    agents = await inbox_view.client_agents(scope.session)
     return ConversationDetailOut(
+        handled_by_agent=_handler(d.agent, agents),
         id=conv.id,
         state=d.state,  # type: ignore[arg-type]
         assignee=_author(d.assignee),
@@ -306,6 +348,7 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
         ),
         summary=d.summary,
         waiting_reason=d.waiting_reason,
+        waiting_code=conv.waiting_reason if conv.waiting_reason else None,
         waiting_since=d.waiting_since,
         tags=d.tags,
         note=NoteOut(body=d.note_body, updated_at=d.note_updated_at),
@@ -386,9 +429,13 @@ async def list_conversations(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="bad cursor"
         ) from None
+    agents = await inbox_view.client_agents(scope.session)
+    codes = await _waiting_codes(scope, [i.id for i in page.items if i.state == "waiting"])
     return ConversationPageOut(
         items=[
             ConversationItemOut(
+                handled_by_agent=_handler(i.agent, agents),
+                waiting_reason=codes.get(i.id),
                 id=i.id,
                 contact=ContactOut(
                     name=i.contact_name, handle=i.contact_handle, initials=_initials(i.contact_name)

@@ -8,8 +8,10 @@ import * as React from "react";
 import { Avatar, AvatarFallback, Button, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, cn } from "@nexus/ui";
 
 import { actorName, foldRepeats, initials, splitActor, whenLabel, type AuditRow } from "@/components/audit/audit-model";
+import { moreLikeThisQuery } from "@/components/audit/audit-query";
 import { RowActions, type RowAction } from "@/components/row-actions";
 import { useLocale, useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
 import type { AuditEntry, AuditPage } from "@/lib/backend";
 
 const subscribe = () => () => {};
@@ -135,13 +137,14 @@ function Row({ row, when, people, categories }: { row: AuditRow; when: (at: stri
 
   const only = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params.toString());
+    next.delete("actor");
     for (const [k, v] of Object.entries(patch)) next.set(k, v);
     return `${pathname}?${next.toString()}`;
   };
   const person = personFilter(item);
   const actions: RowAction[] = [];
   if (item.external_client_ref) actions.push({ label: t("hu.audit.only.client"), href: only({ client: item.external_client_ref }) });
-  if (person) actions.push({ label: t("hu.audit.only.person"), href: only({ actor: person }) });
+  if (person) actions.push({ label: t("hu.audit.only.person"), href: only({ person }) });
   if (item.category) actions.push({ label: t("hu.audit.only.category"), href: only({ category: item.category }) });
   if (item.external_client_ref) actions.push({ label: t("hu.audit.openClient"), href: `/clients/${encodeURIComponent(item.external_client_ref)}` });
 
@@ -164,6 +167,17 @@ function Row({ row, when, people, categories }: { row: AuditRow; when: (at: stri
               a 950 px table scrolled sideways is not readable. */}
           <span className="font-medium md:hidden">{name} </span>
           <span className="text-pretty">{rest}</span>
+          {item.origin && item.origin !== "console" ? (
+            <StatusBadge tone="info" dot={false} className="ml-2 align-middle" data-slot="audit-origin">
+              {t(`audit.v2.origin.${item.origin}` as MessageKey)}
+            </StatusBadge>
+          ) : null}
+          {item.sensitive ? (
+            <StatusBadge tone="danger" className="ml-2 align-middle" title={t("hu.audit.sensitive")} data-slot="audit-sensitive">
+              {t("audit.v2.sensitive")}
+            </StatusBadge>
+          ) : null}
+          {item.more_like_this ? <MoreLikeThis item={item} /> : null}
           {repeats.length > 0 ? (
             <button
               type="button"
@@ -231,5 +245,72 @@ function Who({ kind, name }: { kind: NonNullable<AuditEntry["actor_kind"]>; name
     <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
       <Icon className="size-4" />
     </span>
+  );
+}
+
+/**
+ * «{n} más como esta» (spec 047, 49.1): la API juntó en esta fila las seguidas
+ * iguales (persona, acción, cliente y día). Al abrirlo se piden sin juntar
+ * (`group=false`) y se enseñan debajo, con su hora.
+ */
+function MoreLikeThis({ item }: { item: AuditEntry }) {
+  const t = useT();
+  const locale = useLocale();
+  const id = React.useId();
+  const [open, setOpen] = React.useState(false);
+  const [rows, setRows] = React.useState<AuditEntry[] | null>(null);
+  const [state, setState] = React.useState<"idle" | "loading" | "error">("idle");
+  const count = item.more_like_this ?? 0;
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (!next || rows) return;
+    setState("loading");
+    try {
+      const qs = new URLSearchParams({ ...moreLikeThisQuery(item), lang: locale });
+      const r = await fetch(`/api/audit/page?${qs.toString()}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(String(r.status));
+      const page = (await r.json()) as AuditPage;
+      setRows(page.items.filter((x) => x.id !== item.id && x.at <= item.at).slice(0, count));
+      setState("idle");
+    } catch {
+      setState("error");
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="ml-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => void toggle()}
+        data-slot="audit-more"
+      >
+        {open ? t("hu.audit.repeats.hide") : t("audit.v2.more", { count })}
+      </button>
+      {open ? (
+        <span id={id} className="mt-1 block text-xs text-muted-foreground" role="status">
+          {state === "loading" ? (
+            t("audit.v2.more.loading")
+          ) : state === "error" ? (
+            t("audit.v2.more.error")
+          ) : (
+            <span className="grid gap-1">
+              {(rows ?? []).map((r) => (
+                <span key={r.id} className="block">
+                  <time dateTime={r.at} className="tabular-nums">
+                    {new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(r.at))}
+                  </time>{" "}
+                  · {splitActor(r.summary, r.actor).rest}
+                </span>
+              ))}
+            </span>
+          )}
+        </span>
+      ) : null}
+    </>
   );
 }

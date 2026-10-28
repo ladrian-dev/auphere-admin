@@ -143,6 +143,400 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/lite/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["list_agents_console_lite_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/agents/{agent_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Agent
+         * @description Pausar (27.1): sus mensajes se siguen guardando y esperan a una persona con
+         *     «Agente en pausa»; sus números no cambian (25.4).
+         */
+        post: operations["pause_agent_console_lite_agents__agent_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/agents/{agent_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Agent
+         * @description Reanudar devuelve lo de antes (27.3). Solo la pausa de una persona.
+         */
+        post: operations["resume_agent_console_lite_agents__agent_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Business */
+        get: operations["get_business_console_lite_business_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/history/{change_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Change
+         * @description Deshacer el último cambio de una sección (13.3). Si alguien escribió
+         *     después, ``412`` con lo que cambió; nadie pisa a nadie (13.4). El reintento
+         *     con la misma ``Idempotency-Key`` responde lo mismo, no ``already_undone``.
+         */
+        post: operations["undo_change_console_lite_business_history__change_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Hours
+         * @description El horario de una sede (el suyo o el que hereda) o el del negocio:
+         *     ``GET /business`` solo trae el del negocio.
+         */
+        get: operations["get_hours_console_lite_business_hours_get"];
+        /**
+         * Put Hours
+         * @description El horario del negocio o de una sede. Devuelve «Así lo dirá el agente»
+         *     (``label``, requisito 10.5).
+         */
+        put: operations["put_hours_console_lite_business_hours_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Location */
+        post: operations["post_location_console_lite_business_locations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/locations/{location_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Location */
+        patch: operations["patch_location_console_lite_business_locations__location_id__patch"];
+        trace?: never;
+    };
+    "/console/lite/business/locations/{location_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Location */
+        post: operations["archive_location_console_lite_business_locations__location_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/locations/{location_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Location */
+        post: operations["restore_location_console_lite_business_locations__location_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Service */
+        post: operations["post_service_console_lite_business_services_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/services/{service_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Service */
+        patch: operations["patch_service_console_lite_business_services__service_id__patch"];
+        trace?: never;
+    };
+    "/console/lite/business/services/{service_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Service */
+        post: operations["archive_service_console_lite_business_services__service_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/special-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Special Date */
+        post: operations["post_special_date_console_lite_business_special_dates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/business/special-dates/{special_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Special Date */
+        patch: operations["patch_special_date_console_lite_business_special_dates__special_id__patch"];
+        trace?: never;
+    };
+    "/console/lite/business/special-dates/{special_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Special Date */
+        post: operations["archive_special_date_console_lite_business_special_dates__special_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/channels/{channel_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Channel
+         * @description Pausar solo este número (27.1): lo que llega espera a una persona con
+         *     «Canal en pausa».
+         */
+        post: operations["pause_channel_console_lite_channels__channel_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/channels/{channel_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Channel
+         * @description Reanudar el número devuelve el estado de antes de la pausa (27.3).
+         */
+        post: operations["resume_channel_console_lite_channels__channel_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/corrections/{correction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Correction
+         * @description Editar la lección o la paráfrasis antes de enviar (52.4).
+         */
+        patch: operations["edit_correction_console_lite_corrections__correction_id__patch"];
+        trace?: never;
+    };
+    "/console/lite/corrections/{correction_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Correction
+         * @description Un dato se aplica al momento; un comportamiento llega al partner (52.2).
+         */
+        post: operations["send_correction_console_lite_corrections__correction_id__send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/corrections/{correction_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Correction
+         * @description Deshacer un dato aplicado (13.3).
+         */
+        post: operations["undo_correction_console_lite_corrections__correction_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/lite/home": {
         parameters: {
             query?: never;
@@ -154,6 +548,26 @@ export interface paths {
         get: operations["read_home_console_lite_home_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/inbox/{conversation_id}/messages/{message_id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Correction
+         * @description «Corregir esta respuesta» (52.1, 52.2): el borrador, sin aplicar nada.
+         */
+        post: operations["create_correction_console_lite_inbox__conversation_id__messages__message_id__corrections_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1301,12 +1715,54 @@ export interface components {
             /** Kind */
             kind: string;
         };
+        /** AgentOption */
+        AgentOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Serves All */
+            serves_all: boolean;
+        };
+        /** AgentRef */
+        AgentRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** AgentRefOut */
+        AgentRefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** AgentSettings */
         AgentSettings: {
             /** Max Days Ahead */
             max_days_ahead: number;
             /** Min Notice Minutes */
             min_notice_minutes: number;
+        };
+        /** AgentsOfService */
+        AgentsOfService: {
+            /** Agent Ids */
+            agent_ids: string[];
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "all_agents" | "list";
         };
         /** AgentSpendOut */
         AgentSpendOut: {
@@ -1490,7 +1946,7 @@ export interface components {
             origin: "agent" | "person" | "waitlist" | "walkin";
             /** Party Size */
             party_size: number;
-            price: components["schemas"]["MoneyOut"] | null;
+            price: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__MoneyOut"] | null;
             service: components["schemas"]["BookingServiceOut"] | null;
             staff: components["schemas"]["RefOut"] | null;
             /**
@@ -1566,7 +2022,7 @@ export interface components {
             origin: "agent" | "person" | "waitlist" | "walkin";
             /** Party Size */
             party_size: number;
-            price: components["schemas"]["MoneyOut"] | null;
+            price: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__MoneyOut"] | null;
             service: components["schemas"]["BookingServiceOut"] | null;
             staff: components["schemas"]["RefOut"] | null;
             /**
@@ -1710,7 +2166,7 @@ export interface components {
             origin: "agent" | "person" | "waitlist" | "walkin";
             /** Party Size */
             party_size: number;
-            price: components["schemas"]["MoneyOut"] | null;
+            price: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__MoneyOut"] | null;
             service: components["schemas"]["BookingServiceOut"] | null;
             staff: components["schemas"]["RefOut"] | null;
             /**
@@ -1840,6 +2296,7 @@ export interface components {
             contact: components["schemas"]["ContactDetailOut"];
             /** Control Version */
             control_version: number;
+            handled_by_agent?: components["schemas"]["AgentRefOut"] | null;
             /**
              * Id
              * Format: uuid
@@ -1855,6 +2312,8 @@ export interface components {
             summary: string | null;
             /** Tags */
             tags: string[];
+            /** Waiting Code */
+            waiting_code?: string | null;
             /** Waiting Reason */
             waiting_reason: string | null;
             /** Waiting Since */
@@ -1873,6 +2332,7 @@ export interface components {
                 [key: string]: string;
             };
             contact: components["schemas"]["nexus_api__api__console__lite__inbox__ContactOut"];
+            handled_by_agent?: components["schemas"]["AgentRefOut"] | null;
             /**
              * Id
              * Format: uuid
@@ -1888,7 +2348,68 @@ export interface components {
             tags: string[];
             /** Unread */
             unread: boolean;
-            waiting?: components["schemas"]["WaitingOut"] | null;
+            waiting?: components["schemas"]["nexus_api__api__console__lite__inbox__WaitingOut"] | null;
+            /** Waiting Reason */
+            waiting_reason?: string | null;
+        };
+        /** CorrectionIn */
+        CorrectionIn: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "business" | "agent";
+            /** Text */
+            text: string;
+        };
+        /** CorrectionOut */
+        CorrectionOut: {
+            agent: components["schemas"]["LiteAgentRefOut"];
+            /** Applied Change Id */
+            applied_change_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "data" | "behavior";
+            /** Lesson */
+            lesson: string;
+            /** Paraphrase */
+            paraphrase: string | null;
+            /** Pii */
+            pii: components["schemas"]["PiiOut"][];
+            /** Proposal Id */
+            proposal_id?: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "business" | "agent";
+            /** Sent At */
+            sent_at?: string | null;
+            /** Status */
+            status: string;
+            /** Undone At */
+            undone_at?: string | null;
+        };
+        /** CorrectionPatchIn */
+        CorrectionPatchIn: {
+            /** Lesson */
+            lesson?: string | null;
+            /** Paraphrase */
+            paraphrase?: string | null;
         };
         /** CountsOut */
         CountsOut: {
@@ -1984,6 +2505,58 @@ export interface components {
              */
             platform: "ios" | "android";
         };
+        /** HoursIn */
+        HoursIn: {
+            /**
+             * Clear
+             * @default false
+             */
+            clear: boolean;
+            /**
+             * Confirm Loss
+             * @default false
+             */
+            confirm_loss: boolean;
+            /** Days */
+            days?: {
+                [key: string]: components["schemas"]["ShiftIn"][];
+            };
+            /**
+             * Inherit
+             * @default false
+             */
+            inherit: boolean;
+            /**
+             * Layout
+             * @default daily
+             * @enum {string}
+             */
+            layout: "blocks" | "daily";
+        };
+        /** HoursOut */
+        HoursOut: {
+            /** Allowed */
+            allowed: "edit"[];
+            /** Days */
+            days: {
+                [key: string]: components["schemas"]["ShiftOut"][];
+            };
+            /** Inherits */
+            inherits: boolean;
+            /** Label */
+            label: string | null;
+            /** Layout */
+            layout: ("blocks" | "daily") | null;
+            /** Location Id */
+            location_id: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "complete" | "read_pending" | "pending" | "optional";
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2017,8 +2590,67 @@ export interface components {
             /** Preview */
             preview: string;
         };
+        /** LiteAgentCardOut */
+        LiteAgentCardOut: {
+            /** Allowed */
+            allowed: ("pause" | "resume")[];
+            /** Channels */
+            channels: components["schemas"]["LiteAgentChannelOut"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Open Conversations */
+            open_conversations: number;
+            /** Pause Reason */
+            pause_reason?: string | null;
+            /** Paused At */
+            paused_at?: string | null;
+            /** Paused By Kind */
+            paused_by_kind?: string | null;
+            /** Paused By Name */
+            paused_by_name?: string | null;
+            /** Paused Origin */
+            paused_origin?: string | null;
+            visible_state: components["schemas"]["VisibleOut"];
+        };
+        /** LiteAgentChannelOut */
+        LiteAgentChannelOut: {
+            /** Allowed */
+            allowed: ("pause" | "resume")[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Identifier */
+            identifier: string;
+            /** Type */
+            type: string;
+            visible_state: components["schemas"]["VisibleOut"];
+        };
+        /** LiteAgentListOut */
+        LiteAgentListOut: {
+            /** Items */
+            items: components["schemas"]["LiteAgentCardOut"][];
+        };
         /** LiteAgentOut */
         LiteAgentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** LiteAgentRefOut */
+        LiteAgentRefOut: {
             /**
              * Id
              * Format: uuid
@@ -2045,6 +2677,11 @@ export interface components {
             assigned: boolean;
             /** Cap Cents */
             cap_cents: number | null;
+            /**
+             * Currency
+             * @default USD
+             */
+            currency: string;
             /** Days Left */
             days_left: number | null;
             /**
@@ -2073,6 +2710,43 @@ export interface components {
             hours_label: string | null;
             /** Timezone */
             timezone: string;
+        };
+        /** LiteBusinessSectionsOut */
+        LiteBusinessSectionsOut: {
+            /** History */
+            history: components["schemas"]["LiteChangeOut"][];
+            hours: components["schemas"]["HoursOut"];
+            locations: components["schemas"]["LocationsOut"];
+            /** Provenance */
+            provenance: {
+                [key: string]: components["schemas"]["LiteProvenanceOut"];
+            };
+            services: components["schemas"]["ServicesOut"];
+            special_dates: components["schemas"]["SpecialDatesOut"];
+        };
+        /** LiteChangeOut */
+        LiteChangeOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            by?: components["schemas"]["LitePersonOut"] | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Origin */
+            origin: string;
+            /** Section */
+            section: string;
+            /** Undoable */
+            undoable: boolean;
+            /** Undone At */
+            undone_at?: string | null;
         };
         /** LiteChannelOut */
         LiteChannelOut: {
@@ -2122,6 +2796,36 @@ export interface components {
             reservas?: components["schemas"]["LiteReservasOut"] | null;
             user: components["schemas"]["LiteUserOut"];
         };
+        /** LitePauseIn */
+        LitePauseIn: {
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+        };
+        /** LitePersonOut */
+        LitePersonOut: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * LiteProvenanceOut
+         * @description «Editado por Marta desde la app», «Leído de la web · revísalo»…
+         */
+        LiteProvenanceOut: {
+            /** At */
+            at?: string | null;
+            by?: components["schemas"]["LitePersonOut"] | null;
+            /** Origin */
+            origin?: string | null;
+            /** Review */
+            review?: string | null;
+            /** Source */
+            source: string;
+        };
         /**
          * LiteReservasOut
          * @description Spec 043: el modo de Reservas (las palabras las pone cada pantalla).
@@ -2134,6 +2838,37 @@ export interface components {
              * @enum {string}
              */
             mode: "services" | "capacity";
+        };
+        /**
+         * LiteServiceIn
+         * @description Un servicio nuevo. Quién lo hace y qué agentes lo usan son del partner.
+         */
+        LiteServiceIn: {
+            /**
+             * Bookable
+             * @default true
+             */
+            bookable: boolean;
+            /** Description */
+            description?: string | null;
+            /** Duration Min */
+            duration_min?: number | null;
+            /** Name */
+            name: string;
+            price?: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceIn"];
+        };
+        /**
+         * LiteServicePatchIn
+         * @description Precio, duración, descripción y si es reservable (``lite-app-api.md`` §2).
+         */
+        LiteServicePatchIn: {
+            /** Bookable */
+            bookable?: boolean | null;
+            /** Description */
+            description?: string | null;
+            /** Duration Min */
+            duration_min?: number | null;
+            price?: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceIn"] | null;
         };
         /** LiteSpendMonthOut */
         LiteSpendMonthOut: {
@@ -2154,6 +2889,15 @@ export interface components {
             projected_cents: number;
             /** Series Cents */
             series_cents: number[];
+        };
+        /** LiteUndoOut */
+        LiteUndoOut: {
+            /** Change Id */
+            change_id?: string | null;
+            /** Revision */
+            revision?: number | null;
+            /** Section */
+            section: string;
         };
         /** LiteUsageDetailOut */
         LiteUsageDetailOut: {
@@ -2189,12 +2933,21 @@ export interface components {
         };
         /** LiteUsageSummaryOut */
         LiteUsageSummaryOut: {
+            /** Bag State */
+            bag_state?: string | null;
             balance: components["schemas"]["LiteBalanceOut"] | null;
             /** By Agent */
             by_agent?: components["schemas"]["AgentUsageOut"][] | null;
+            /** Days Left */
+            days_left?: number | null;
             /** Errors */
             errors: string[];
             month: components["schemas"]["LiteUsageMonthOut"] | null;
+            /**
+             * Partner Name
+             * @default
+             */
+            partner_name: string;
         };
         /** LiteUserOut */
         LiteUserOut: {
@@ -2222,33 +2975,59 @@ export interface components {
             /** Start */
             start: string;
         };
-        /** MoneyOut */
-        MoneyOut: {
-            /** Amount Minor */
-            amount_minor: number;
-            /** Currency */
-            currency: string;
+        /** LocationIn */
+        LocationIn: {
+            /** Address */
+            address?: string | null;
+            /** Name */
+            name: string;
+            /** Phone E164 */
+            phone_e164?: string | null;
         };
-        /**
-         * MoveIn
-         * @description Lo que no cambia, se omite (la fecha y la hora, también).
-         */
-        MoveIn: {
-            /** Date */
-            date?: string | null;
-            /** Note */
-            note?: string | null;
+        /** LocationOut */
+        LocationOut: {
+            /** Address */
+            address: string | null;
+            /** Archived */
+            archived: boolean;
             /**
-             * Notify
-             * @default true
+             * Id
+             * Format: uuid
              */
-            notify: boolean;
-            /** Party Size */
-            party_size?: number | null;
-            /** Staff Id */
-            staff_id?: string | null;
-            /** Time */
-            time?: string | null;
+            id: string;
+            /** Label */
+            label: string | null;
+            /** Name */
+            name: string;
+            /** Own Hours */
+            own_hours: boolean;
+            /** Phone E164 */
+            phone_e164: string | null;
+        };
+        /** LocationPatchIn */
+        LocationPatchIn: {
+            /** Address */
+            address?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Phone E164 */
+            phone_e164?: string | null;
+        };
+        /** LocationsOut */
+        LocationsOut: {
+            /** Allowed */
+            allowed: "edit"[];
+            /** Created Id */
+            created_id?: string | null;
+            /** Items */
+            items: components["schemas"]["LocationOut"][];
+            /** Revision */
+            revision: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "complete" | "read_pending" | "pending" | "optional";
         };
         /** NewBookingIn */
         NewBookingIn: {
@@ -2347,6 +3126,19 @@ export interface components {
             /** Next Before */
             next_before: string | null;
         };
+        /**
+         * WaitingOut
+         * @description Spec 045 (R3.1): por qué y desde cuándo espera a una persona.
+         */
+        nexus_api__api__console__lite__inbox__WaitingOut: {
+            /** Reason */
+            reason: string | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+        };
         /** ContactOut */
         nexus_api__api__console__lite__reservas_schemas__ContactOut: {
             /** Conversation Id */
@@ -2355,6 +3147,128 @@ export interface components {
             name: string | null;
             /** Phone */
             phone: string | null;
+        };
+        /** MoneyOut */
+        nexus_api__api__console__lite__reservas_schemas__MoneyOut: {
+            /** Amount Minor */
+            amount_minor: number;
+            /** Currency */
+            currency: string;
+        };
+        /**
+         * MoveIn
+         * @description Lo que no cambia, se omite (la fecha y la hora, también).
+         */
+        nexus_api__api__console__lite__reservas_schemas__MoveIn: {
+            /** Date */
+            date?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Notify
+             * @default true
+             */
+            notify: boolean;
+            /** Party Size */
+            party_size?: number | null;
+            /** Staff Id */
+            staff_id?: string | null;
+            /** Time */
+            time?: string | null;
+        };
+        /** ServiceIn */
+        nexus_api__api__console__lite__reservas_schemas__ServiceIn: {
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Name */
+            name: string;
+            /** Price Minor */
+            price_minor?: number | null;
+            /** Staff Ids */
+            staff_ids?: string[] | null;
+        };
+        /** ServiceOut */
+        nexus_api__api__console__lite__reservas_schemas__ServiceOut: {
+            /** Archived */
+            archived: boolean;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            price: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__MoneyOut"] | null;
+            /**
+             * Staff
+             * @enum {string}
+             */
+            staff: "all" | "some";
+            /** Staff Ids */
+            staff_ids: string[];
+        };
+        /** ServicePatchIn */
+        nexus_api__api__console__lite__reservas_schemas__ServicePatchIn: {
+            /** All Staff */
+            all_staff?: boolean | null;
+            /**
+             * Clear Price
+             * @default false
+             */
+            clear_price: boolean;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Price Minor */
+            price_minor?: number | null;
+            /** Staff Ids */
+            staff_ids?: string[] | null;
+        };
+        /** PriceIn */
+        nexus_api__api__console__schemas_business_sections__PriceIn: {
+            /** Amount Minor */
+            amount_minor?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "none" | "free" | "amount";
+        };
+        nexus_api__api__console__schemas_business_sections__PriceOut: {
+            [key: string]: unknown;
+        };
+        /** ServiceOut */
+        nexus_api__api__console__schemas_business_sections__ServiceOut: {
+            agents: components["schemas"]["AgentsOfService"];
+            /** Archived */
+            archived: boolean;
+            /** Bookable */
+            bookable: boolean;
+            /** Currency */
+            currency: string;
+            /** Description */
+            description: string | null;
+            /** Duration Min */
+            duration_min: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            price: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceOut"];
+            /** Staff */
+            staff: "all" | string[];
+            /** Used By */
+            used_by: components["schemas"]["AgentRef"][];
         };
         /** NoteIn */
         NoteIn: {
@@ -2395,6 +3309,8 @@ export interface components {
             };
             /** External Client Ref */
             external_client_ref?: string | null;
+            /** Href */
+            href?: string | null;
             /**
              * Id
              * Format: uuid
@@ -2576,6 +3492,26 @@ export interface components {
              */
             platform: "ios" | "android";
         };
+        /**
+         * PiiOut
+         * @description Dónde hay un dato de un cliente final: el campo, el tipo y sus posiciones.
+         */
+        PiiOut: {
+            /** End */
+            end: number;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "lesson" | "paraphrase";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "email" | "document" | "phone" | "name";
+            /** Start */
+            start: number;
+        };
         /** PushIn */
         PushIn: {
             /** Apns Environment */
@@ -2651,65 +3587,32 @@ export interface components {
              */
             id: string;
         };
-        /** ServiceIn */
-        ServiceIn: {
-            /** Duration Minutes */
-            duration_minutes: number;
-            /** Name */
-            name: string;
-            /** Price Minor */
-            price_minor?: number | null;
-            /** Staff Ids */
-            staff_ids?: string[] | null;
-        };
         /** ServiceListOut */
         ServiceListOut: {
             /** Items */
-            items: components["schemas"]["ServiceOut"][];
+            items: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ServiceOut"][];
         };
-        /** ServiceOut */
-        ServiceOut: {
-            /** Archived */
-            archived: boolean;
-            /** Duration Minutes */
-            duration_minutes: number;
+        /** ServicesOut */
+        ServicesOut: {
+            /** Agents */
+            agents: components["schemas"]["AgentOption"][];
+            /** Allowed */
+            allowed: "edit"[];
+            /** Created Id */
+            created_id?: string | null;
+            /** Currency */
+            currency: string;
+            /** Exponent */
+            exponent: number;
+            /** Items */
+            items: components["schemas"]["nexus_api__api__console__schemas_business_sections__ServiceOut"][];
+            /** Revision */
+            revision: number;
             /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Position */
-            position: number;
-            price: components["schemas"]["MoneyOut"] | null;
-            /**
-             * Staff
+             * State
              * @enum {string}
              */
-            staff: "all" | "some";
-            /** Staff Ids */
-            staff_ids: string[];
-        };
-        /** ServicePatchIn */
-        ServicePatchIn: {
-            /** All Staff */
-            all_staff?: boolean | null;
-            /**
-             * Clear Price
-             * @default false
-             */
-            clear_price: boolean;
-            /** Duration Minutes */
-            duration_minutes?: number | null;
-            /** Name */
-            name?: string | null;
-            /** Position */
-            position?: number | null;
-            /** Price Minor */
-            price_minor?: number | null;
-            /** Staff Ids */
-            staff_ids?: string[] | null;
+            state: "complete" | "read_pending" | "pending" | "optional";
         };
         /** SettingsOut */
         SettingsOut: {
@@ -2772,6 +3675,24 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ShiftIn */
+        ShiftIn: {
+            /** Close */
+            close: string;
+            /** Open */
+            open: string;
+            /** Overnight */
+            overnight?: boolean | null;
+        };
+        /** ShiftOut */
+        ShiftOut: {
+            /** Close */
+            close: string;
+            /** Open */
+            open: string;
+            /** Overnight */
+            overnight: boolean;
+        };
         /** SignInMethodsOut */
         SignInMethodsOut: {
             /** Google */
@@ -2805,6 +3726,86 @@ export interface components {
             first_fit?: string | null;
             /** Slots */
             slots: components["schemas"]["SlotOut"][];
+        };
+        /** SpecialDateIn */
+        SpecialDateIn: {
+            /** Closed */
+            closed: boolean;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /** Location Id */
+            location_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Shifts */
+            shifts?: components["schemas"]["ShiftIn"][];
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /** SpecialDateOut */
+        SpecialDateOut: {
+            /** Archived */
+            archived: boolean;
+            /** Closed */
+            closed: boolean;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Location Id */
+            location_id: string | null;
+            /** Name */
+            name: string;
+            /** Shifts */
+            shifts: components["schemas"]["ShiftOut"][];
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
+        /** SpecialDatePatchIn */
+        SpecialDatePatchIn: {
+            /** Closed */
+            closed?: boolean | null;
+            /** From */
+            from?: string | null;
+            /** Location Id */
+            location_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Shifts */
+            shifts?: components["schemas"]["ShiftIn"][] | null;
+            /** To */
+            to?: string | null;
+        };
+        /** SpecialDatesOut */
+        SpecialDatesOut: {
+            /** Allowed */
+            allowed: "edit"[];
+            /** Created Id */
+            created_id?: string | null;
+            /** Items */
+            items: components["schemas"]["SpecialDateOut"][];
+            /** Revision */
+            revision: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "complete" | "read_pending" | "pending" | "optional";
         };
         /** StaffCalendarIn */
         StaffCalendarIn: {
@@ -3021,18 +4022,14 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /**
-         * WaitingOut
-         * @description Spec 045 (R3.1): por qué y desde cuándo espera a una persona.
-         */
-        WaitingOut: {
+        /** VisibleOut */
+        VisibleOut: {
+            /** Code */
+            code: string;
             /** Reason */
-            reason: string | null;
-            /**
-             * Since
-             * Format: date-time
-             */
-            since: string;
+            reason?: string | null;
+            /** Tone */
+            tone: string;
         };
         /** WaitlistEntryOut */
         WaitlistEntryOut: {
@@ -3403,6 +4400,1062 @@ export interface operations {
             };
         };
     };
+    list_agents_console_lite_agents_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteAgentListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_agent_console_lite_agents__agent_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LitePauseIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteAgentCardOut"];
+                };
+            };
+            /** @description confirm_required | agent_archived */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_agent_console_lite_agents__agent_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteAgentCardOut"];
+                };
+            };
+            /** @description system_pause */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_business_console_lite_business_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteBusinessSectionsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_change_console_lite_business_history__change_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                change_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteUndoOut"];
+                };
+            };
+            /** @description unknown_change */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description already_undone | undo_not_available */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hours_console_lite_business_hours_get: {
+        parameters: {
+            query?: {
+                location_id?: string | null;
+            };
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoursOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_hours_console_lite_business_hours_put: {
+        parameters: {
+            query?: {
+                location_id?: string | null;
+            };
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoursIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoursOut"];
+                };
+            };
+            /** @description blocks_lose_days: by blocks, some weekdays would be lost */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_location_console_lite_business_locations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationsOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_location_console_lite_business_locations__location_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationsOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    archive_location_console_lite_business_locations__location_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationsOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restore_location_console_lite_business_locations__location_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationsOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_service_console_lite_business_services_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteServiceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_service_console_lite_business_services__service_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                service_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteServicePatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    archive_service_console_lite_business_services__service_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                service_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_special_date_console_lite_business_special_dates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecialDateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialDatesOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_special_date_console_lite_business_special_dates__special_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                special_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecialDatePatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialDatesOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    archive_special_date_console_lite_business_special_dates__special_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                special_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecialDatesOut"];
+                };
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    pause_channel_console_lite_channels__channel_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteAgentChannelOut"];
+                };
+            };
+            /** @description channel_disconnected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_channel_console_lite_channels__channel_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteAgentChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_correction_console_lite_corrections__correction_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description not_a_draft */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    send_correction_console_lite_corrections__correction_id__send_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "If-Match"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description not_a_draft */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_conflict */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description pii_present · paraphrase_required · rule_too_long */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description revision_required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    undo_correction_console_lite_corrections__correction_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description not_applied · undo_not_available */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_home_console_lite_home_get: {
         parameters: {
             query?: never;
@@ -3433,6 +5486,59 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    create_correction_console_lite_inbox__conversation_id__messages__message_id__corrections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionIn"];
+            };
+        };
+        responses: {
+            /** @description The same Idempotency-Key: the draft already made */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description Unknown conversation or message */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not_an_agent_reply */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -4973,7 +7079,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MoveIn"];
+                "application/json": components["schemas"]["nexus_api__api__console__lite__reservas_schemas__MoveIn"];
             };
         };
         responses: {
@@ -5330,7 +7436,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ServiceIn"];
+                "application/json": components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ServiceIn"];
             };
         };
         responses: {
@@ -5340,7 +7446,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServiceOut"];
+                    "application/json": components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ServiceOut"];
                 };
             };
             /** @description Validation Error */
@@ -5369,7 +7475,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ServicePatchIn"];
+                "application/json": components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ServicePatchIn"];
             };
         };
         responses: {
@@ -5379,7 +7485,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServiceOut"];
+                    "application/json": components["schemas"]["nexus_api__api__console__lite__reservas_schemas__ServiceOut"];
                 };
             };
             /** @description Validation Error */

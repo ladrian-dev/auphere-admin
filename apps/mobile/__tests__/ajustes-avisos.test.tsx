@@ -35,6 +35,10 @@ jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ setQueryDat
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: jest.fn() }));
 let mockGlass = false;
 jest.mock("expo-glass-effect", () => ({ isLiquidGlassAvailable: () => mockGlass }));
+// Spec 047 (T169): Ajustes leads to Negocio.
+const mockPush = jest.fn();
+const mockReplace = jest.fn();
+jest.mock("expo-router", () => ({ router: { push: (...a: unknown[]) => mockPush(...a), replace: (...a: unknown[]) => mockReplace(...a) } }));
 
 const Ajustes = require("@/app/ajustes").default;
 
@@ -186,6 +190,30 @@ describe("notices by module (spec 044, R14.1, R14.2)", () => {
   });
 });
 
+describe("«Agentes y números» (spec 047, T170)", () => {
+  beforeEach(() => {
+    mockPermission = "granted";
+    mockSetNotices.mockClear();
+  });
+  afterEach(() => {
+    mockNav = ["panel", "inbox"];
+    mockNotices = { kinds: ["inbox.waiting", "client.balance"] };
+  });
+
+  it("only with Agentes, in its own group; switching it off sends the rest of the set", async () => {
+    await render(<Ajustes />);
+    expect(screen.queryByRole("switch", { name: "Agentes y números" })).toBeNull();
+    mockNav = ["panel", "inbox", "agents"];
+    mockNotices = { kinds: ["inbox.waiting", "agents.state", "client.balance"] };
+    await render(<Ajustes />);
+    expect(screen.getByRole("header", { name: "Agentes" })).toBeTruthy();
+    const agents = screen.getByRole("switch", { name: "Agentes y números" });
+    expect(agents.props.value).toBe(true);
+    await fireEvent(agents, "valueChange", false);
+    expect(mockSetNotices).toHaveBeenCalledWith(["inbox.waiting", "client.balance"], undefined);
+  });
+});
+
 describe("quiet hours (spec 044, R14.3)", () => {
   beforeEach(() => {
     mockPermission = "granted";
@@ -208,5 +236,35 @@ describe("quiet hours (spec 044, R14.3)", () => {
   it("without them in the API, there is no switch", async () => {
     await render(<Ajustes />);
     expect(screen.queryByRole("switch", { name: "Silenciar fuera del horario del negocio" })).toBeNull();
+  });
+});
+
+describe("Negocio from Ajustes (spec 047, T169, 50.1)", () => {
+  afterEach(() => {
+    mockNav = ["panel", "inbox"];
+    mockPush.mockReset();
+    mockReplace.mockReset();
+  });
+
+  it("only with the module, and on iOS the sheet gives way to it (a screen pushed under a sheet would open behind it)", async () => {
+    const { Platform } = require("react-native");
+    await render(<Ajustes />);
+    expect(screen.queryByRole("button", { name: /^Horario, servicios y sedes/ })).toBeNull();
+    mockNav = ["panel", "inbox", "business"];
+    Platform.OS = "ios";
+    await render(<Ajustes />);
+    await fireEvent.press(screen.getByRole("button", { name: /^Horario, servicios y sedes/ }));
+    expect(mockReplace).toHaveBeenCalledWith("/negocio");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("on Android Ajustes is a screen: Negocio goes on top of it", async () => {
+    const { Platform } = require("react-native");
+    mockNav = ["panel", "inbox", "business"];
+    Platform.OS = "android";
+    await render(<Ajustes />);
+    await fireEvent.press(screen.getByRole("button", { name: /^Horario, servicios y sedes/ }));
+    expect(mockPush).toHaveBeenCalledWith("/negocio");
+    Platform.OS = "ios";
   });
 });

@@ -7,7 +7,7 @@ import { useTheme } from "@/theme/theme";
 import { Avatar, Badge } from "@/ui/bits";
 import { Text } from "@/ui/text";
 
-import { agoText, badgeOf, initialsOf, listTime, previewOf } from "../model";
+import { agoText, badgeOf, initialsOf, listTime, previewOf, waitingReasonText } from "../model";
 
 /**
  * One conversation in the list (R5.2): who, when, the last line and its state
@@ -28,7 +28,7 @@ export const ConversationRow = memo(function ConversationRow({
   now: Date;
   t: T;
   locale: Locale;
-  /** The agent's name, only when the client has more than one. */
+  /** The agent's name, only when the client has more than one; `handled_by_agent` (spec 047) says it when the API has it. */
   agentName: string | null;
   /** Spec 044, R10.1: in the waiting group, the agent's reason is the preview and the badge says how long. */
   pinned?: boolean;
@@ -40,7 +40,10 @@ export const ConversationRow = memo(function ConversationRow({
   const base = badgeOf(c, t);
   // Without the time from the API there is no time: the plain badge, never an invented wait (R10.2).
   const badge = pinned && base && c.waiting?.since ? { ...base, label: t("app.inbox.waitingFor", { time: agoText(c.waiting.since, now.getTime(), t) }) } : base;
-  const spoken = [c.contact.name, c.unread ? t("inbox.row.unread") : null, badge?.label, agentName, preview, time]
+  // Spec 047 (50.7): why it waits, from its code, and which agent takes it — while an agent does (not a person).
+  const reason = c.state === "waiting" ? waitingReasonText(c.waiting_reason, t) : null;
+  const handler = c.handled_by_agent && (c.state === "agent" || c.state === "waiting") ? t("bandeja.handledBy", { agent: c.handled_by_agent.name }) : agentName;
+  const spoken = [c.contact.name, c.unread ? t("inbox.row.unread") : null, badge?.label, reason, handler, preview, time]
     .filter(Boolean)
     .join(". ");
   return (
@@ -66,10 +69,11 @@ export const ConversationRow = memo(function ConversationRow({
             {preview}
           </Text>
         ) : null}
-        {badge || agentName || c.unread ? (
+        {badge || reason || handler || c.unread ? (
           <View style={styles.meta}>
             {badge ? <Badge label={badge.label} tone={badge.tone} /> : null}
-            {agentName ? <Badge label={agentName} tone="neutral" /> : null}
+            {reason ? <Badge label={reason} tone="warning" /> : null}
+            {handler ? <Badge label={handler} tone="neutral" /> : null}
             <View style={styles.spacer} />
             {c.unread ? <View style={[styles.dot, { backgroundColor: colors.primary }]} /> : null}
           </View>

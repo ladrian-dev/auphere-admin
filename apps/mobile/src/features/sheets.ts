@@ -16,7 +16,7 @@ import { useHeaderOptions, type ScreenOptions as Options } from "./tab-stack";
  * Before iOS 26 the container is opaque, as it was. On Android the contact is
  * a Material bottom sheet with the app's corners and Ajustes is a screen.
  */
-export function useSheetOptions(): { contacto: Options; ajustes: Options; reserva: Options; reservaForm: Options } {
+export function useSheetOptions(): { contacto: Options; ajustes: Options; reserva: Options; reservaForm: Options; correccion: Options } {
   const t = useT();
   const { colors } = useTheme();
   const header = useHeaderOptions();
@@ -34,6 +34,8 @@ export function useSheetOptions(): { contacto: Options; ajustes: Options; reserv
     // the forms (a new reservation, blocking hours) open tall, with room for the keyboard.
     reserva: { ...sheet, ...opaque, headerShown: false },
     reservaForm: { ...sheet, sheetAllowedDetents: [1], ...opaque, headerShown: false },
+    // Spec 047 (T176): correcting an answer is a form too — tall, with the keyboard's room.
+    correccion: { ...sheet, sheetAllowedDetents: [1], ...opaque, headerShown: false },
     ajustes: {
       ...header,
       ...(Platform.OS === "ios" ? sheet : { presentation: "card" }),

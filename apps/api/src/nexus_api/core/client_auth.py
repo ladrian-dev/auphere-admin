@@ -66,6 +66,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.db.models.client_access import CONSOLE_V2_MODULES
 from nexus_api.desktop_version import MinimumVersion, is_blocked
 
 log = structlog.get_logger(__name__)
@@ -109,6 +110,41 @@ def _forbidden() -> HTTPException:
     # Una sola respuesta para todos los motivos: no se dice si la cuenta no
     # existe, si es de otro partner o si el acceso está apagado.
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No client access")
+
+
+async def _refusal(session: AsyncSession, *, partner_id: uuid.UUID, user_id: str) -> HTTPException:
+    """El 403 de quien no entra. Spec 047 (requisito 6.4): a la persona de un
+    cliente archivado se le dice (``client_archived``) para que la lite y la app
+    lo expliquen; es su propio cliente, no se le revela nada de nadie. Cualquier
+    otro motivo es el mismo 403 sin código."""
+    async with session.begin():
+        membership = await session.scalar(
+            sa.select(ClientMembership).where(
+                ClientMembership.partner_id == partner_id,
+                ClientMembership.user_id == user_id,
+            )
+        )
+        if membership is None or membership.status != ClientMemberStatus.ACTIVE.value:
+            return _forbidden()
+        partner = await session.get(Partner, partner_id)
+        tenant = await session.get(Tenant, membership.tenant_id)
+        mapped = await session.scalar(
+            sa.select(PartnerTenant.tenant_id).where(
+                PartnerTenant.partner_id == partner_id,
+                PartnerTenant.tenant_id == membership.tenant_id,
+            )
+        )
+        if (
+            partner is not None
+            and partner.status == PartnerStatus.ACTIVE.value
+            and tenant is not None
+            and tenant.status == TenantStatus.ARCHIVED
+            and mapped is not None
+        ):
+            return HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail={"code": "client_archived"}
+            )
+    return _forbidden()
 
 
 def _unauthorized() -> HTTPException:
@@ -157,9 +193,13 @@ async def open_client(
     access = await session.get(ClientAccess, tenant_id)
     if access is None or not access.enabled or access.partner_id != partner_id:
         return None
-    modules = access.ordered_modules()
-    if not modules:
+    if not access.ordered_modules():
         return None
+    # Spec 047 (``data-model.md`` §10): con la consola nueva, Agentes y Negocio
+    # vienen por defecto.
+    modules = access.ordered_modules(
+        also=CONSOLE_V2_MODULES if partner.console_v2_enabled_at is not None else ()
+    )
     return OpenClient(
         partner=partner, tenant=tenant, mapping=mapping, access=access, modules=modules
     )
@@ -279,7 +319,7 @@ async def _resolve_phone(
         jti=f"phone:{phone_id}:{claims.generation}",
     )
     if principal is None:
-        raise _forbidden()
+        raise await _refusal(session, partner_id=partner_id, user_id=principal_id)
 
     if datetime.now(UTC) - (last_seen if last_seen.tzinfo else last_seen.replace(tzinfo=UTC)) >= (
         TOUCH_INTERVAL
@@ -338,7 +378,7 @@ def require_client_principal(
             session, partner_id=partner_id, user_id=payload["sub"], jti=payload["jti"]
         )
         if principal is None:
-            raise _forbidden()
+            raise await _refusal(session, partner_id=partner_id, user_id=payload["sub"])
         if any(not principal.has(m) for m in modules):
             raise _forbidden()
 

@@ -95,7 +95,7 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
               <li key={item.id} className="shrink-0">
                 <a
                   href={`#${item.id}`}
-                  className="flex min-h-9 min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="flex min-h-9 min-w-0 items-center justify-between gap-2 rounded-md px-2 py-2 text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   <span className="min-w-0 truncate">{t(item.title)}</span>
                   {state ? (

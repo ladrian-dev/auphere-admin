@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Spec 044, Requisito 19, research D14: version 1.1.0 and a native runtime
- * that follows it — 1.0.0 in TestFlight has no `expo-glass-effect` (spec 042),
- * so no update over the air may ever reach it — and the builds for TestFlight
- * and Play's internal track.
+ * Spec 044, Requisito 19, research D14: a native runtime that follows the
+ * version — 1.0.0 in TestFlight has no `expo-glass-effect` (spec 042), so no
+ * update over the air may ever reach it — and the builds for TestFlight and
+ * Play's internal track. Spec 047 (T171, 50.8): Agentes, Negocio and the
+ * corrections are new screens and new data, so they come as 1.2.0 through the
+ * stores; over the air only fixes.
  */
 const ROOT = join(__dirname, "..");
 const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
@@ -15,12 +17,12 @@ const eas = JSON.parse(read("eas.json")) as {
 };
 
 describe("the app's version (R19.1)", () => {
-  it("is 1.1.0 in the app config and in package.json", () => {
-    expect(read("app.config.ts")).toMatch(/version: "1\.1\.0"/);
-    expect((JSON.parse(read("package.json")) as { version: string }).version).toBe("1.1.0");
+  it("is 1.2.0 in the app config and in package.json (spec 047, T171)", () => {
+    expect(read("app.config.ts")).toMatch(/version: "1\.2\.0"/);
+    expect((JSON.parse(read("package.json")) as { version: string }).version).toBe("1.2.0");
   });
 
-  it("the native runtime follows the version, so 1.0.0 gets nothing over the air", () => {
+  it("the native runtime follows the version, so an older install gets nothing of 1.2.0 over the air", () => {
     expect(read("app.config.ts")).toMatch(/runtimeVersion: \{ policy: "appVersion" \}/);
   });
 });

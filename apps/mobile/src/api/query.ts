@@ -69,8 +69,21 @@ export function invalidateReservas(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: ["inbox", "conversation"] });
 }
 
+/**
+ * Spec 047: an agent or a number paused or resumed — the agents, and Inicio,
+ * whose attention block may follow (an agent paused at its cap, for instance).
+ */
+export function invalidateAgents(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: keys.agents });
+  void qc.invalidateQueries({ queryKey: keys.home });
+}
+
 export const keys = {
   me: ["me"] as const,
+  agents: ["agents"] as const,
+  business: ["business"] as const,
+  /** Under `business`: whatever refreshes the business refreshes it too. */
+  locationHours: (id: string) => ["business", "hours", id] as const,
   appConfig: ["app", "config"] as const,
   home: ["home"] as const,
   usageSummary: ["usage", "summary"] as const,

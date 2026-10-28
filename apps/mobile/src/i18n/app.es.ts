@@ -5,6 +5,7 @@
  */
 import { atenderEs } from "./atender.es";
 import { avisosEs } from "./avisos.es";
+import { fabricaEs } from "./fabrica.es";
 import { mejorasEs } from "./mejoras.es";
 import { reservasEs } from "./reservas.es";
 
@@ -13,6 +14,7 @@ export const appEs = {
   ...mejorasEs,
   ...avisosEs,
   ...atenderEs,
+  ...fabricaEs,
   // ── tabs (R3) ────────────────────────────────────────────────────
   "app.tab.panel": "Inicio",
   "app.tab.inbox": "Bandeja",

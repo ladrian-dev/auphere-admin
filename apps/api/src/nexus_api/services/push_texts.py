@@ -122,6 +122,60 @@ def balance(*, kind: str, days_left: int | None, contact: str, locale: str) -> N
     return NoticeText(title=title, body=body)
 
 
+#: Spec 047: la bolsa dice lo mismo que el saldo de antes.
+WALLET_AS_BALANCE = {
+    "client.wallet.empty": "client.balance_out",
+    "client.wallet.low": "client.balance_low",
+    "client.wallet.not_enough": "client.balance_low",
+}
+
+
+def agents(*, kind: str, agent: str | None, reason: str | None, locale: str) -> NoticeText:
+    """Spec 047 (events.md §3.1): el tope, las pausas y los números de un agente.
+    El nombre del agente y el motivo, nunca nada de un cliente final."""
+    en = _lang(locale) == "en"
+    name = cut(agent or ("Your agent" if en else "Tu agente"), 60)
+    texts = {
+        "agent.cap.warning": (
+            ("Close to its monthly cap", f"{name} has used 80% of its cap.")
+            if en
+            else ("Cerca de su tope del mes", f"{name} lleva el 80 % de su tope.")
+        ),
+        "agent.cap.reached": (
+            ("Paused: monthly cap reached", f"{name} is paused until next month.")
+            if en
+            else ("En pausa: llegó a su tope", f"{name} queda en pausa hasta el mes que viene.")
+        ),
+        "agent.paused": (
+            ("Agent paused", f"{name} is paused.")
+            if en
+            else ("Agente en pausa", f"{name} está en pausa.")
+        ),
+        "agent.resumed": (
+            ("Agent back", f"{name} is answering again.")
+            if en
+            else ("Agente activo", f"{name} vuelve a atender.")
+        ),
+        "channel.paused": (
+            ("Number paused", f"A number of {name} is paused.")
+            if en
+            else ("Número en pausa", f"Un número de {name} está en pausa.")
+        ),
+        "channel.resumed": (
+            ("Number back", f"A number of {name} is answering again.")
+            if en
+            else ("Número activo", f"Un número de {name} vuelve a atender.")
+        ),
+        "channel.problem": (
+            ("A number has a problem", f"A number of {name} needs attention.")
+            if en
+            else ("Un número tiene un problema", f"Un número de {name} necesita atención.")
+        ),
+    }
+    title, body = texts.get(kind, ("Auphere", name))
+    return NoticeText(title=title, body=body)
+
+
 _DAYS = {
     "es": ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"),
     "en": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),

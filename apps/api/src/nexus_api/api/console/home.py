@@ -75,12 +75,20 @@ from .schemas_home_usage import (
     HomeCreditOut,
     HomeIncidentsOut,
     HomeOut,
+    HomePanelOut,
     HomePendingOut,
     HomeSpendOut,
     HomeToReviewOut,
     HomeTrendOut,
     HomeUsageOut,
     IncidentClientOut,
+    PanelAttentionOut,
+    PanelBalanceOut,
+    PanelClientsOut,
+    PanelDailyOut,
+    PanelMoneyOut,
+    PanelSpendOut,
+    PanelSpendShareOut,
     PendingItemOut,
     PortfolioRowOut,
 )
@@ -346,6 +354,11 @@ async def home(
         log.warning("console_home.pending_failed", error=str(exc))
         errors.append("pending_actions")
 
+    # ── spec 047: el Panel de la consola nueva (requisito 48) ───────────
+    panel: HomePanelOut | None = None
+    if principal.partner.console_v2_enabled_at is not None and "clients:read" in perms:
+        panel = await _panel(principal, session, by_tenant, now)
+
     return HomeOut(
         clients=clients,
         conversations_period=conversations,
@@ -358,8 +371,88 @@ async def home(
         credit=credit,
         spend=spend,
         portfolio=portfolio,
+        panel=panel,
         errors=errors,
         generated_in_ms=int((time.perf_counter() - started) * 1000),
+    )
+
+
+async def _panel(
+    principal: ConsolePrincipal,
+    session: AsyncSession,
+    by_tenant: dict[uuid.UUID, tuple[str, str | None, TenantStatus]],
+    now: datetime,
+) -> HomePanelOut:
+    from nexus_api.services.partner_panel import Client, build_panel
+
+    built = await build_panel(
+        session,
+        partner_id=principal.partner.id,
+        clients=[
+            Client(tenant_id=tid, ref=ref, name=name, status=status)
+            for tid, (ref, name, status) in by_tenant.items()
+        ],
+        can_assign="usage:write" in principal.permissions,
+        now=now,
+    )
+    money_ok = "usage:read" in principal.permissions and "money" not in built.errors
+
+    def _m(amount: int) -> PanelMoneyOut:
+        return PanelMoneyOut(amount_micros=amount, currency=built.currency)
+
+    return HomePanelOut(
+        spend=PanelSpendOut(
+            since=built.month_since,
+            until=built.month_until,
+            total=_m(built.spend_total),
+            shares=[
+                PanelSpendShareOut(
+                    kind=s.kind,  # type: ignore[arg-type]
+                    external_client_ref=s.ref,
+                    client_name=s.name,
+                    line=s.line,  # type: ignore[arg-type]
+                    amount=_m(s.amount),
+                    approx=s.approx,
+                )
+                for s in built.spend
+            ],
+        )
+        if money_ok
+        else None,
+        clients=PanelClientsOut(
+            serving=built.serving, not_archived=built.not_archived, onboarding=built.onboarding
+        )
+        if "attention" not in built.errors
+        else None,
+        balance=PanelBalanceOut(
+            available=_m(built.balances.available),
+            in_bags=_m(built.balances.in_bags),
+            in_bags_approx=built.balances.approx,
+        )
+        if money_ok and built.balances is not None
+        else None,
+        conversations_per_day=PanelDailyOut(
+            days=built.days,
+            resolved_without_person=built.resolved,
+            handed_to_person=built.handed,
+        )
+        if "conversations_per_day" not in built.errors
+        else None,
+        attention=[
+            PanelAttentionOut(
+                external_client_ref=row.ref,
+                client_name=row.name,
+                code=row.code,  # type: ignore[arg-type]
+                count=row.count,
+                action=row.action,  # type: ignore[arg-type]
+                href=row.href,
+            )
+            for row in built.attention
+        ]
+        if "attention" not in built.errors
+        else None,
+        all_serving=built.all_serving,
+        errors=built.errors,
     )
 
 

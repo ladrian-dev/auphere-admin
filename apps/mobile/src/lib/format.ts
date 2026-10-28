@@ -5,17 +5,26 @@ import type { Locale } from "@/i18n/t";
  * integer cents of USD from the API, `Intl` with the person's locale.
  * Mirrors `apps/console/src/lib/money.ts` and `@nexus/ui`'s `formatNumber`.
  */
-export function formatMoney(cents: number | null | undefined, locale: Locale): string {
+export function formatMoney(cents: number | null | undefined, locale: Locale, currency = "USD"): string {
   if (cents == null || !Number.isFinite(cents)) return "—";
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).format(cents / 100);
+  return new Intl.NumberFormat(locale, { style: "currency", currency: known(currency) }).format(cents / 100);
 }
 
-export function formatMoneyCompact(cents: number | null | undefined, locale: Locale): string {
+export function formatMoneyCompact(cents: number | null | undefined, locale: Locale, currency = "USD"): string {
   if (cents == null || !Number.isFinite(cents)) return "—";
-  if (Math.abs(cents) < 100_000) return formatMoney(cents, locale);
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(
+  if (Math.abs(cents) < 100_000) return formatMoney(cents, locale, currency);
+  return new Intl.NumberFormat(locale, { style: "currency", currency: known(currency), notation: "compact", maximumFractionDigits: 1 }).format(
     cents / 100,
   );
+}
+
+/**
+ * Spec 047: the balance says its currency (`balance.currency`), in hundredths
+ * of it like the US$ of spec 027. A code `Intl` would refuse falls back to
+ * US$, the console's, rather than breaking the screen.
+ */
+function known(currency: string): string {
+  return /^[A-Z]{3}$/.test(currency) ? currency : "USD";
 }
 
 export function formatNumber(value: number | null | undefined, locale: Locale): string {

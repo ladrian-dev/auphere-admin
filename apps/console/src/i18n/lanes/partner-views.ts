@@ -1,0 +1,46 @@
+/** ES/EN del carril `partner-views` — las vistas del partner con la consola
+ *  nueva (spec 047, historia 28): el Panel (T163, requisito 48) y lo que gana
+ *  Auditoría (T164, requisito 49.1). Sin punto y coma (`words.test.ts`). Las
+ *  cifras de dinero las escribe `money-model.ts`; el texto de cada motivo de
+ *  «Necesita tu atención» es el de `clients.v2.attention.*`. */
+export const partnerViewsMessages = {
+  // ── el Panel (48) ──
+  "panel.v2.partial": { es: "Alguno de los bloques no se pudo leer. Lo demás está al día.", en: "Some blocks could not be read. The rest is up to date." },
+  "panel.v2.period.now": { es: "Ahora", en: "Now" },
+  "panel.v2.period.7d": { es: "Últimos 7 días", en: "Last 7 days" },
+  "panel.v2.period.month": { es: "Del {from} al {to}", en: "From {from} to {to}" },
+  "panel.v2.allServing": { es: "Todos tus clientes están atendiendo.", en: "All your clients are answering." },
+  "panel.v2.attention.none": { es: "Nada que arreglar ahora mismo.", en: "Nothing to fix right now." },
+  "panel.v2.attention.error": { es: "No pudimos leer lo que necesita tu atención.", en: "We could not read what needs your attention." },
+  "panel.v2.fix.fix_channel": { es: "Arreglar el canal", en: "Fix the channel" },
+  "panel.v2.fix.reconnect": { es: "Volver a conectar", en: "Reconnect" },
+  "panel.v2.fix.raise_cap": { es: "Subir el tope", en: "Raise the cap" },
+  "panel.v2.fix.connect_channel": { es: "Conectar un canal", en: "Connect a channel" },
+  "panel.v2.fix.new_agent": { es: "Crear un agente", en: "Create an agent" },
+  "panel.v2.spend.title": { es: "Gasto del mes", en: "This month’s spend" },
+  "panel.v2.spend.split": { es: "Reparto del gasto", en: "Spend split" },
+  "panel.v2.spend.rest": { es: "El resto", en: "The rest" },
+  "panel.v2.spend.none": { es: "Aún no hay gasto este mes.", en: "No spend this month yet." },
+  "panel.v2.spend.more": { es: "Ver en Consumo", en: "See in Usage" },
+  "panel.v2.clients.title": { es: "Clientes", en: "Clients" },
+  "panel.v2.clients.serving": { es: "{serving} de {total} atendiendo", en: "{serving} of {total} answering" },
+  "panel.v2.clients.onboarding": { es: "{n} en alta", en: "{n} being set up" },
+  "panel.v2.balance.title": { es: "Saldo", en: "Balance" },
+  "panel.v2.conversations.title": { es: "Conversaciones por día", en: "Conversations per day" },
+  "panel.v2.conversations.total": { es: "{n} conversaciones", en: "{n} conversations" },
+  "panel.v2.conversations.of": { es: "{n} conversaciones", en: "{n} conversations" },
+  "panel.v2.conversations.resolved": { es: "Resueltas sin persona", en: "Resolved without a person" },
+  "panel.v2.conversations.handed": { es: "Pasadas a una persona", en: "Handed to a person" },
+  "panel.v2.conversations.empty": { es: "Sin conversaciones en estos 7 días.", en: "No conversations in these 7 days." },
+
+  // ── Auditoría (49.1) ──
+  "audit.v2.origin.lite_web": { es: "Desde la web", en: "From the web" },
+  "audit.v2.origin.app": { es: "Desde la app", en: "From the app" },
+  "audit.v2.origin.admin": { es: "Auphere", en: "Auphere" },
+  "audit.v2.origin.api": { es: "API", en: "API" },
+  "audit.v2.origin.system": { es: "Automático", en: "Automatic" },
+  "audit.v2.sensitive": { es: "Sensible", en: "Sensitive" },
+  "audit.v2.more": { es: "{count} más como esta", en: "{count} more like this" },
+  "audit.v2.more.loading": { es: "Cargando las demás…", en: "Loading the rest…" },
+  "audit.v2.more.error": { es: "No pudimos cargar las demás.", en: "We could not load the rest." },
+} as const;

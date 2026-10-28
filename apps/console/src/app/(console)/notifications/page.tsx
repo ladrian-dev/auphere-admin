@@ -23,7 +23,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   return (
     <>
       <PageHeader eyebrow={principal.partnerName} title={t("notif.title")} description={t("notif.subtitle")} />
-      <NotificationsList initial={page} initialFilter={unreadOnly ? "unread" : "all"} clientNames={clientNames} />
+      <NotificationsList initial={page} initialFilter={unreadOnly ? "unread" : "all"} clientNames={clientNames} canAssign={can(principal.role, "usage:write")} />
     </>
   );
 }

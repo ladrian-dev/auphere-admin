@@ -1,6 +1,7 @@
 import type { AppKey } from "./app.es";
 import { atenderEn } from "./atender.en";
 import { avisosEn } from "./avisos.en";
+import { fabricaEn } from "./fabrica.en";
 import { mejorasEn } from "./mejoras.en";
 import { reservasEn } from "./reservas.en";
 
@@ -10,6 +11,7 @@ export const appEn: Record<AppKey, string> = {
   ...mejorasEn,
   ...avisosEn,
   ...atenderEn,
+  ...fabricaEn,
   "app.tab.panel": "Home",
   "app.tab.inbox": "Inbox",
   "app.tab.reservas": "Bookings",

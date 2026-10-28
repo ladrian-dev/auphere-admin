@@ -128,6 +128,8 @@ export default function ConversationScreen() {
   }, [items, act.pending]);
 
   const openContact = () => router.push(`/conversacion/${id}/contacto`);
+  // Spec 047 (T176, 52.1): «Corregir esta respuesta» on an answer of the agent, as a sheet over the thread.
+  const correct = useCallback((messageId: string) => router.push(`/conversacion/${id}/corregir?message=${encodeURIComponent(messageId)}`), [id]);
 
   // One menu, two shapes (R1.4, R2.9): the bar's own menu on iOS, the action sheet behind a button on Android.
   const menu: ConversationMenu | null =
@@ -268,7 +270,7 @@ export default function ConversationScreen() {
           ) : row.item.type === "event" ? (
             <EventLine item={row.item as ThreadItem} t={t} />
           ) : (
-            <MessageBubble item={row.item as ThreadItem} t={t} locale={locale} onOpen={open} />
+            <MessageBubble item={row.item as ThreadItem} t={t} locale={locale} onOpen={open} onCorrect={correct} />
           )
         }
         onEndReachedThreshold={0.3}

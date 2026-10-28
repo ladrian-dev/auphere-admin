@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, CalendarDays, Inbox, LayoutDashboard } from "lucide-react";
+import { BarChart3, Bot, CalendarDays, Inbox, LayoutDashboard, Store } from "lucide-react";
 
 import type { MessageKey } from "@/i18n/messages";
 import type { ClientModule } from "@/lib/principal-access";
@@ -9,13 +9,15 @@ type LiteGroup = { labelKey: MessageKey; items: LiteItem[] };
 
 /**
  * Spec 030: the client console's navigation. One group, the client's modules
- * in the order the API sends — Panel, Bandeja de entrada, Reservas (spec 043),
- * Consumo — and nothing of the partner. Same hrefs as the partner console where the screen is the same
+ * in the order the API sends — Panel, Bandeja de entrada, Agentes y Negocio
+ * (spec 047), Reservas (spec 043), Consumo — and nothing of the partner. Same hrefs as the partner console where the screen is the same
  * (`/` and `/usage`): the page decides what to paint from who is asking.
  */
 const ITEMS: Record<ClientModule, LiteItem> = {
   panel: { href: "/", labelKey: "nav.home", icon: LayoutDashboard, exact: true },
   inbox: { href: "/inbox", labelKey: "nav.inbox", icon: Inbox },
+  agents: { href: "/agentes", labelKey: "nav.agents", icon: Bot },
+  business: { href: "/negocio", labelKey: "nav.business", icon: Store },
   reservas: { href: "/reservas", labelKey: "nav.reservas", icon: CalendarDays },
   usage: { href: "/usage", labelKey: "nav.usage", icon: BarChart3 },
 };

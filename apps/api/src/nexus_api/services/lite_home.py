@@ -79,6 +79,11 @@ class LiteBalance:
     remaining_cents: int | None
     cap_cents: int | None
     days_left: float | None
+    #: Spec 047: la bolsa va en la moneda del cliente (EUR o USD).
+    currency: str = "USD"
+    #: Spec 047 (``events.md`` §1.4): ``ok``, ``low``, ``not_enough`` o ``empty``;
+    #: ``None`` sin bolsa (o con las asignaciones de antes).
+    state: str | None = None
 
 
 def balance_horizon(
@@ -146,6 +151,45 @@ def balance_of(
         cap_cents=credits_to_cents(cap),
         days_left=0.0 if (remaining <= 0 and daily > 0) else days,
     )
+
+
+async def bag_balance(
+    partner_id: uuid.UUID, tenant_id: uuid.UUID, now: datetime
+) -> LiteBalance | None:
+    """Spec 047 (46.7): con bolsas, el saldo del cliente es su bolsa, igual que en
+    la consola del partner (``client_overview``); ``None`` si el partner sigue con
+    ``partner_allocations``."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import ClientWallet
+    from nexus_api.services.wallet import alerts as wallet_alerts
+    from nexus_api.services.wallet.bags import as_client, bags_active
+
+    async with get_sessionmaker()() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        if not await bags_active(session, partner_id):
+            return None
+        await as_client(session, tenant_id)
+        bag = await session.get(ClientWallet, tenant_id)
+        if bag is None or not (bag.balance_micros or bag.month_base_micros):
+            return LiteBalance(
+                assigned=False,
+                remaining_cents=None,
+                cap_cents=None,
+                days_left=None,
+                currency=bag.currency if bag else "USD",
+                state="empty" if bag is not None else None,
+            )
+        pace = await wallet_alerts.pace_per_day(session, bag, now.date())
+        left = wallet_alerts.days_left(bag.balance_micros, pace)
+        return LiteBalance(
+            assigned=True,
+            remaining_cents=credits_to_cents(bag.balance_micros),
+            cap_cents=credits_to_cents(bag.month_base_micros),
+            days_left=0.0 if bag.balance_micros <= 0 else (None if left is None else float(left)),
+            currency=bag.currency,
+            state=await wallet_alerts.bag_state(session, bag, now.date()),
+        )
 
 
 @dataclass(frozen=True)
@@ -272,11 +316,15 @@ async def lite_home(
     try:
         burn = await credit_burn(partner_id, [tenant_id], now - REVIEW_WINDOW)
         burn_7d = burn.get(tenant_id, 0)
-        allocation = (await allocations_for(partner_id, [tenant_id])).get(tenant_id)
-        wallet = await read_wallet(partner_id)
-        if wallet is None:
-            raise RuntimeError("wallet unreadable")
-        out.balance = balance_of(allocation, burn_7d, wallet.purchased_remaining)
+        from_bag = await bag_balance(partner_id, tenant_id, now)
+        if from_bag is not None:
+            out.balance = from_bag
+        else:
+            allocation = (await allocations_for(partner_id, [tenant_id])).get(tenant_id)
+            wallet = await read_wallet(partner_id)
+            if wallet is None:
+                raise RuntimeError("wallet unreadable")
+            out.balance = balance_of(allocation, burn_7d, wallet.purchased_remaining)
     except Exception as exc:
         log.warning("lite_home.balance_failed", error=str(exc))
         out.errors.append("balance")
@@ -321,6 +369,7 @@ __all__ = [
     "AgentSpend",
     "LiteHome",
     "agent_spend",
+    "bag_balance",
     "balance_notice",
     "balance_of",
     "lite_home",

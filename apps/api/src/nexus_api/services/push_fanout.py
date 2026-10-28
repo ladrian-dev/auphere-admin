@@ -59,7 +59,13 @@ from nexus_api.db.models import (
 from nexus_api.services import inbox_view, push_texts
 from nexus_api.services.business import hours as business_hours
 from nexus_api.services.business_hours import load_business_hours
-from nexus_api.services.push_payloads import Notice, inbox_url, reservas_url, usage_url
+from nexus_api.services.push_payloads import (
+    Notice,
+    agents_url,
+    inbox_url,
+    reservas_url,
+    usage_url,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -310,15 +316,18 @@ async def compose(
         )
     if event.kind in _RESERVAS_KINDS:
         return await _reservas_notice(session, event, locale=locale, badge=badge)
-    # client.balance — la fila de la campana es de plataforma: se lee como identidad.
+    # client.balance y agents.state — la fila de la campana es de plataforma: se
+    # lee como identidad.
     if event.notification_id is None:
         return None
     row = await identity.get(ConsoleNotification, event.notification_id)
     if row is None:
         return None
+    if event.kind == "agents.state":
+        return await _agents_notice(session, row, event, locale=locale, badge=badge)
     days = (row.payload or {}).get("days_left")
     text = push_texts.balance(
-        kind=row.kind,
+        kind=push_texts.WALLET_AS_BALANCE.get(row.kind, row.kind),
         days_left=int(days) if isinstance(days, (int, float)) else None,
         contact=await _balance_contact(identity, row.partner_id),
         locale=locale,
@@ -329,6 +338,40 @@ async def compose(
         body=text.body,
         url=usage_url(),
         thread="balance",
+        badge=badge,
+    )
+
+
+async def _agents_notice(
+    session: AsyncSession,
+    row: ConsoleNotification,
+    event: ClientPushEvent,
+    *,
+    locale: str,
+    badge: int,
+) -> Notice | None:
+    """Spec 047: el aviso de un agente o de un número. ``session`` va bajo la RLS
+    del tenant: un agente que ya no existe no avisa."""
+    from nexus_api.db.models import Agent
+
+    payload = row.payload or {}
+    raw = payload.get("agent_id")
+    try:
+        agent_id = uuid.UUID(str(raw))
+    except (TypeError, ValueError):
+        return None
+    agent = await session.get(Agent, agent_id)
+    if agent is None:
+        return None
+    text = push_texts.agents(
+        kind=row.kind, agent=agent.name, reason=payload.get("reason"), locale=locale
+    )
+    return Notice(
+        kind=event.kind,
+        title=text.title,
+        body=text.body,
+        url=agents_url(agent.id, payload.get("channel_id")),
+        thread=f"agent:{agent.id}",
         badge=badge,
     )
 

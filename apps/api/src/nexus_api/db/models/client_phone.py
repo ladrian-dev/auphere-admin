@@ -47,6 +47,9 @@ NOTICE_KINDS: tuple[str, ...] = (
     "reservas.agent_change",
     "reservas.cancelled_today",
     "reservas.waitlist_accepted",
+    # Spec 047 (events.md §3.1): el tope de un agente, sus pausas y las de sus
+    # números, y un número con problemas.
+    "agents.state",
 )
 #: Los que nacen encendidos en un teléfono nuevo: «alguien de la lista de
 #: espera aceptó» nace apagado (diseño).

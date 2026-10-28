@@ -83,7 +83,7 @@ describe("the draft", () => {
   });
 
   it("starts empty without hours", () => {
-    const draft = draftFromHours({ ...HOURS, layout: null, label: null, days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } });
+    const draft = draftFromHours({ ...HOURS, layout: null, days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } });
     expect(draft.layout).toBe("blocks");
     expect(Object.values(draft.days).every((d) => d.length === 0)).toBe(true);
   });

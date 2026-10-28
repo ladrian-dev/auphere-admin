@@ -1,0 +1,80 @@
+# Spec 047 · T169 (requisitos 27, 50.1, 50.2, 50.4) — pausar y reanudar un
+# agente y cambiar el horario desde el teléfono, con «Deshacer». Vale en es y en.
+# Requiere una sesión ya abierta (sign-in.yaml) de una persona de un cliente con
+# los módulos `panel`, `agents` y `business`, y un agente publicado sin
+# conversaciones en curso, o con ellas (la pregunta de 27.8 se contesta sola).
+#   maestro test e2e/agentes-negocio.yaml -e AGENT_NAME=Recepción
+appId: ${APP_ID || "com.auphere.customers.dev"}
+---
+- launchApp
+# Lo primero que pinte: el lanzador de un build de desarrollo, o la app.
+- extendedWaitUntil:
+    visible: "Development Build|Tu negocio, en el bolsillo|Your business, in your pocket|Hola, .*|Hi, .*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Development Build"
+    file: _dev-server.yaml
+- tapOn: "Inicio|Home"
+
+# ── Agentes › el agente: pausar y reanudar ──────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "${AGENT_NAME}"
+    direction: DOWN
+- tapOn: "${AGENT_NAME}"
+- extendedWaitUntil:
+    visible: "Pausar|Pause"
+    timeout: 15000
+- tapOn: "Pausar|Pause"
+# Con conversaciones en curso, la app dice cuántas y pregunta (27.8).
+- runFlow:
+    when:
+      visible: "Pausar igualmente|Pause anyway"
+    commands:
+      - tapOn: "Pausar igualmente|Pause anyway"
+- extendedWaitUntil:
+    visible: "Pausado · a mano|Paused · by hand"
+    timeout: 15000
+- assertVisible: "Lo pausó una persona de tu equipo desde la app.|Someone on your team paused it from the app."
+- tapOn: "Reanudar|Resume"
+- extendedWaitUntil:
+    visible: "Atendiendo|Serving|En prueba|Testing|Listo · sin canal|Ready · no channel"
+    timeout: 15000
+- assertVisible: "Pausar|Pause"
+- back
+
+# ── Negocio › Horario: cambiar el cierre del lunes y deshacerlo ─────────
+- scrollUntilVisible:
+    element:
+      text: "Horario, servicios y sedes|Hours, services and locations"
+    direction: DOWN
+- tapOn: "Horario, servicios y sedes|Hours, services and locations"
+- extendedWaitUntil:
+    visible: "Horario|Opening hours"
+    timeout: 15000
+- tapOn: "Horario|Opening hours"
+- extendedWaitUntil:
+    visible: "Así lo dirá el agente|This is how the agent will say it"
+    timeout: 15000
+# El primer «Cierra (turno 1)» es el del lunes.
+- tapOn:
+    text: "Cierra \\(turno 1\\)|Closes \\(shift 1\\)"
+    index: 0
+- eraseText: 5
+- inputText: "15:30"
+- hideKeyboard
+- assertVisible: "Guarda para ver cómo lo dirá el agente.|Save to see how the agent will say it."
+- scrollUntilVisible:
+    element:
+      text: "Guardar horario|Save hours"
+    direction: DOWN
+- tapOn: "Guardar horario|Save hours"
+- extendedWaitUntil:
+    visible: "Guardado. Los agentes lo usan desde el siguiente mensaje.|Saved. The agents use it from the next message on."
+    timeout: 15000
+# La frase del agente ya es la del horario nuevo; el aviso ofrece «Deshacer» (13.3).
+- tapOn: "Deshacer|Undo"
+- extendedWaitUntil:
+    visible: "Cambio deshecho. Los agentes ya usan lo anterior.|Change undone. The agents already use what was there before."
+    timeout: 15000

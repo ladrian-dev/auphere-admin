@@ -16,6 +16,9 @@ export const CHANNELS = [
   { id: "balance_v1", name: "app.notices.channel.balance", importance: Notifications.AndroidImportance.DEFAULT },
   // Spec 044 (R14.6): Reservas' notices, not urgent — the system's default importance.
   { id: "reservations_v1", name: "avisos.channel.reservations", importance: Notifications.AndroidImportance.DEFAULT },
+  // Spec 047 (T170): `agents.state` — an agent paused, resumed or at its cap, a number paused or with problems.
+  // The bag's three (`client.wallet.*`) travel as `client.balance`, on `balance_v1`.
+  { id: "agents_v1", name: "avisos.channel.agents", importance: Notifications.AndroidImportance.DEFAULT },
 ] as const;
 
 export async function ensureChannels(t: T): Promise<void> {

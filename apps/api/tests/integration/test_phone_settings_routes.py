@@ -75,11 +75,12 @@ async def test_a_destination_has_one_owner(client, db_session, phones) -> None:
     assert two.apns_environment is None
 
 
-async def test_notices_start_with_the_three_kinds_and_can_be_switched(client, phones) -> None:
+async def test_notices_start_with_the_default_kinds_and_can_be_switched(client, phones) -> None:
     headers = phones["one"]["headers"]()
     start = await client.get("/console/lite/phones/current/notices", headers=headers)
+    # Spec 047 (events.md §3.1): ``agents.state`` también viene encendido.
     assert start.json() == {
-        "kinds": ["inbox.waiting", "inbox.message_for_you", "client.balance"],
+        "kinds": ["inbox.waiting", "inbox.message_for_you", "client.balance", "agents.state"],
         "quiet_outside_hours": True,
     }
 
@@ -97,7 +98,7 @@ async def test_notices_start_with_the_three_kinds_and_can_be_switched(client, ph
     other = await client.get(
         "/console/lite/phones/current/notices", headers=phones["two"]["headers"]()
     )
-    assert len(other.json()["kinds"]) == 3
+    assert len(other.json()["kinds"]) == 4
 
 
 async def test_without_reservas_its_kinds_are_hidden_and_kept(client, db_session, phones) -> None:

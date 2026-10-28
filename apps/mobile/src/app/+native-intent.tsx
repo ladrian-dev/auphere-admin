@@ -1,7 +1,8 @@
 /**
  * Links the system hands the app (spec 031, R8.6): a notice's
  * `auphere-customers://inbox/<id>`, `://usage` or `://reservas/<booking_id>`
- * (spec 044; 043 §1), and the sign-in callback,
+ * (spec 044; 043 §1), `://agents/<agent_id>` (spec 047, T170; with
+ * `/channels/<id>` for a number, shown on its agent), and the sign-in callback,
  * which `expo-web-browser` already consumed — it only needs to land somewhere
  * harmless. Never throws: an unknown link goes home.
  */
@@ -15,6 +16,7 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     if (parts[0] === "inbox" && parts[1]) return `/conversacion/${encodeURIComponent(parts[1])}`;
     if (parts[0] === "inbox") return "/bandeja";
     if (parts[0] === "usage") return "/consumo";
+    if (parts[0] === "agents" && parts[1] && /^[0-9a-fA-F-]{36}$/.test(parts[1])) return `/agente/${parts[1]}`;
     // Spec 044, R14.5: a reservation, on its day (a malformed date is dropped, never passed on).
     if (parts[0] === "reservas") {
       const date = url.searchParams.get("date");

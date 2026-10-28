@@ -55,6 +55,8 @@ class LiteBalanceOut(BaseModel):
     # Spec 045 (R4): «cubre N de M días del mes» y «te alcanza hasta…».
     month_days_left: int = 0
     runs_out_on: date | None = None
+    #: Spec 047: la moneda de la bolsa del cliente.
+    currency: str = "USD"
 
 
 def balance_out(balance: LiteBalance, *, tz_name: str | None, now: datetime) -> LiteBalanceOut:
@@ -66,6 +68,7 @@ def balance_out(balance: LiteBalance, *, tz_name: str | None, now: datetime) -> 
         days_left=balance.days_left,
         month_days_left=month_days_left,
         runs_out_on=runs_out_on,
+        currency=balance.currency,
     )
 
 

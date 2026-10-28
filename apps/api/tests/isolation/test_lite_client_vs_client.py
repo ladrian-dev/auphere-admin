@@ -66,8 +66,12 @@ async def _neighbourhood(db_session, console_world) -> dict[str, Any]:
         )
     )
     await db_session.commit()
+    # Spec 047: con Agentes y Negocio, para que sus rutas entren en el barrido.
+    modules = ("panel", "inbox", "usage", "agents", "business")
     for tenant_id in (a["tenant_id"], neighbour):
-        await make_client_access(db_session, partner_id=a["partner_id"], tenant_id=tenant_id)
+        await make_client_access(
+            db_session, partner_id=a["partner_id"], tenant_id=tenant_id, modules=modules
+        )
     member = await add_client_member(
         db_session, partner_id=a["partner_id"], tenant_id=a["tenant_id"]
     )
@@ -107,6 +111,7 @@ async def _neighbourhood(db_session, console_world) -> dict[str, Any]:
     )
     db_session.add_all([media, reply])
     await db_session.commit()
+    spec_047 = await _neighbour_spec_047(db_session, neighbour, inbox["conversations"][0], media.id)
     return {
         "member": member,
         "neighbour": neighbour,
@@ -114,7 +119,70 @@ async def _neighbourhood(db_session, console_world) -> dict[str, Any]:
         "conversation_id": inbox["conversations"][0],
         "message_id": media.id,
         "reply_id": reply.id,
+        **spec_047,
     }
+
+
+async def _neighbour_spec_047(
+    db_session, neighbour: uuid.UUID, conversation_id: uuid.UUID, message_id: uuid.UUID
+) -> dict[str, uuid.UUID]:
+    """Spec 047 (T167, T176): lo de la vecina que las rutas nuevas nombran por id
+    — su agente y su número, una sede, una fecha especial, un servicio, un cambio
+    de su ficha y una corrección."""
+    from datetime import date
+
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models import InboxCorrection, ReservationService
+    from nexus_api.db.models.business import (
+        BusinessChange,
+        BusinessLocation,
+        BusinessSpecialDate,
+    )
+    from tests.integration.clients._client_world import add_agent
+
+    agent = await add_agent(db_session, neighbour, "Agente de la vecina")
+    await db_session.commit()
+    async with tenant_scoped_session(db_session, neighbour):
+        location = BusinessLocation(tenant_id=neighbour, name="Sede de la vecina")
+        special = BusinessSpecialDate(
+            tenant_id=neighbour,
+            name="Festivo de la vecina",
+            date_from=date(2026, 12, 25),
+            date_to=date(2026, 12, 25),
+        )
+        service = ReservationService(
+            tenant_id=neighbour, name="Servicio de la vecina", duration_minutes=30
+        )
+        change = BusinessChange(
+            tenant_id=neighbour, section="locations", kind="edit", origin="lite_web"
+        )
+        db_session.add_all([location, special, service, change])
+        await db_session.flush()
+        correction = InboxCorrection(
+            tenant_id=neighbour,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            agent_id=agent["agent_id"],
+            author_client_user_id="vecina",
+            origin="lite_web",
+            scope="business",
+            kind="data",
+            lesson="Dato de la vecina.",
+            status="draft",
+        )
+        db_session.add(correction)
+        await db_session.flush()
+        ids = {
+            "agent_id": agent["agent_id"],
+            "channel_id": agent["channel_id"],
+            "location_id": location.id,
+            "special_id": special.id,
+            "service_id": service.id,
+            "change_id": change.id,
+            "correction_id": correction.id,
+        }
+    await db_session.commit()
+    return {k: v for k, v in ids.items() if v is not None}
 
 
 #: Para cada parámetro de ruta lite: qué objeto de la vecina se prueba.
@@ -123,6 +191,14 @@ _FOREIGN: dict[str, Callable[[dict[str, Any]], str]] = {
     "conversation_id": lambda w: str(w["conversation_id"]),
     "message_id": lambda w: str(w["message_id"]),
     "reply_id": lambda w: str(w["reply_id"]),
+    # Spec 047.
+    "agent_id": lambda w: str(w["agent_id"]),
+    "channel_id": lambda w: str(w["channel_id"]),
+    "location_id": lambda w: str(w["location_id"]),
+    "special_id": lambda w: str(w["special_id"]),
+    "service_id": lambda w: str(w["service_id"]),
+    "change_id": lambda w: str(w["change_id"]),
+    "correction_id": lambda w: str(w["correction_id"]),
 }
 
 
@@ -207,7 +283,61 @@ _INBOX_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("PUT", "/console/lite/inbox/conversations/{conversation_id}/note", {"body": "x"}),
     ("PATCH", "/console/lite/inbox/replies/{reply_id}", {"body": "x"}),
     ("DELETE", "/console/lite/inbox/replies/{reply_id}", None),
+    # Spec 047 (T176): corregir una respuesta del agente.
+    (
+        "POST",
+        "/console/lite/inbox/{conversation_id}/messages/{message_id}/corrections",
+        {"text": "El aparcamiento está detrás.", "scope": "business"},
+    ),
 ]
+
+#: Spec 047 (T167, T176): las escrituras nuevas con id fuera de la Bandeja, con un
+#: cuerpo válido. Todas llevan ``If-Match`` (las de la ficha y las correcciones lo
+#: exigen; las demás lo ignoran).
+_LITE_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
+    ("POST", "/console/lite/agents/{agent_id}/pause", {"confirm": True}),
+    ("POST", "/console/lite/agents/{agent_id}/resume", None),
+    ("POST", "/console/lite/channels/{channel_id}/pause", None),
+    ("POST", "/console/lite/channels/{channel_id}/resume", None),
+    ("PATCH", "/console/lite/business/special-dates/{special_id}", {"closed": True}),
+    ("POST", "/console/lite/business/special-dates/{special_id}/archive", None),
+    ("PATCH", "/console/lite/business/services/{service_id}", {"duration_min": 30}),
+    ("POST", "/console/lite/business/services/{service_id}/archive", None),
+    ("PATCH", "/console/lite/business/locations/{location_id}", {"address": "Calle Mayor 1"}),
+    ("POST", "/console/lite/business/locations/{location_id}/archive", None),
+    ("POST", "/console/lite/business/locations/{location_id}/restore", None),
+    ("POST", "/console/lite/business/history/{change_id}/undo", None),
+    ("PATCH", "/console/lite/corrections/{correction_id}", {"paraphrase": "Un cliente pregunta."}),
+    ("POST", "/console/lite/corrections/{correction_id}/send", None),
+    ("POST", "/console/lite/corrections/{correction_id}/undo", None),
+]
+_IF_MATCH = {"If-Match": '"1"'}
+
+
+async def probe_write(
+    client,
+    world: dict[str, Any],
+    headers: Callable[[], dict[str, str]],
+    method: str,
+    path: str,
+    body: Any,
+) -> None:
+    """La escritura sobre lo de la vecina responde **igual, byte a byte**, que sobre
+    un id que no existe. Cada parámetro de la ruta se cambia por su objeto de la
+    vecina (o por un id inventado)."""
+    params = [seg[1:-1] for seg in path.split("/") if seg.startswith("{")]
+    foreign_path, ghost_path = path, path
+    for p in params:
+        foreign_path = foreign_path.replace("{" + p + "}", str(world[p]))
+        ghost_path = ghost_path.replace("{" + p + "}", str(uuid.uuid4()))
+    # Los tokens de la consola son de un solo uso: uno por petición.
+    foreign = await client.request(
+        method, foreign_path, headers={**headers(), **_IF_MATCH}, json=body
+    )
+    ghost = await client.request(method, ghost_path, headers={**headers(), **_IF_MATCH}, json=body)
+    assert foreign.status_code == ghost.status_code, (path, foreign.status_code, ghost.status_code)
+    assert foreign.status_code in (404, 412), (path, foreign.status_code, foreign.text[:200])
+    assert foreign.content == ghost.content, path
 
 
 def test_every_inbox_write_with_an_id_is_probed() -> None:
@@ -228,16 +358,17 @@ async def test_inbox_writes_on_a_neighbour_object_are_the_same_404(
     method: str, path: str, body: dict[str, Any] | None, client, db_session, console_world
 ) -> None:
     world = await _neighbourhood(db_session, console_world)
-    headers = world["member"]["headers"]
-    param = path.split("{", 1)[1].split("}", 1)[0]
-    foreign = await client.request(
-        method, path.replace("{" + param + "}", str(world[param])), headers=headers(), json=body
-    )
-    ghost = await client.request(
-        method, path.replace("{" + param + "}", str(uuid.uuid4())), headers=headers(), json=body
-    )
-    assert foreign.status_code == ghost.status_code == 404, (path, foreign.status_code)
-    assert foreign.content == ghost.content
+    await probe_write(client, world, world["member"]["headers"], method, path, body)
+
+
+@pytest.mark.parametrize(("method", "path", "body"), _LITE_WRITES)
+async def test_lite_writes_on_a_neighbour_object_are_the_same_404(
+    method: str, path: str, body: dict[str, Any] | None, client, db_session, console_world
+) -> None:
+    """Spec 047: pausar el agente o el número de la vecina, tocar su ficha o su
+    corrección, igual que tocar algo que no existe."""
+    world = await _neighbourhood(db_session, console_world)
+    await probe_write(client, world, world["member"]["headers"], method, path, body)
 
 
 async def test_an_attachment_to_a_neighbour_conversation_is_the_same_404(

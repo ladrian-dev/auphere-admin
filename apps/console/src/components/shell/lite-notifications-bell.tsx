@@ -35,19 +35,37 @@ import {
  */
 type Props = { modules: readonly ClientModule[] };
 
-const TITLE: Record<string, MessageKey> = {
+export const TITLE: Record<string, MessageKey> = {
   "inbox.waiting": "lite.notif.inbox.waiting",
   "client.balance_low": "lite.notif.client.balance_low",
   "client.balance_out": "lite.notif.client.balance_out",
+  // Spec 047 (events.md §3.1): la bolsa, los topes, las pausas y los números.
+  "client.wallet.low": "lite.notif.client.wallet.low",
+  "client.wallet.not_enough": "lite.notif.client.wallet.not_enough",
+  "client.wallet.empty": "lite.notif.client.wallet.empty",
+  "agent.cap.warning": "lite.notif.agent.cap.warning",
+  "agent.cap.reached": "lite.notif.agent.cap.reached",
+  "agent.paused": "lite.notif.agent.paused",
+  "agent.resumed": "lite.notif.agent.resumed",
+  "channel.paused": "lite.notif.channel.paused",
+  "channel.resumed": "lite.notif.channel.resumed",
+  "channel.problem": "lite.notif.channel.problem",
 };
 
-function hrefFor(n: Notification, modules: readonly ClientModule[]): string | null {
-  if (n.kind === "inbox.waiting") {
-    if (!modules.includes("inbox")) return null;
-    const id = typeof n.data.conversation_id === "string" ? n.data.conversation_id : null;
-    return id ? `/inbox?c=${encodeURIComponent(id)}` : "/inbox";
-  }
-  if (n.kind.startsWith("client.balance_")) return modules.includes("usage") ? "/usage" : modules.includes("panel") ? "/" : null;
+/** El módulo que abre cada página de la lite: sin él, el aviso no enlaza. */
+const MODULE_OF: Record<string, ClientModule> = { "/inbox": "inbox", "/usage": "usage", "/agentes": "agents" };
+
+/** Adónde lleva un aviso: el enlace de la API (ya de la lite) si la persona tiene ese módulo. */
+export function hrefFor(n: Notification, modules: readonly ClientModule[]): string | null {
+  // Los avisos de antes no traen `href`: la conversación que espera, o Consumo.
+  const conversation = typeof n.data.conversation_id === "string" ? n.data.conversation_id : null;
+  const before = n.kind === "inbox.waiting" ? (conversation ? `/inbox?c=${encodeURIComponent(conversation)}` : "/inbox") : n.kind.startsWith("client.balance_") ? "/usage" : null;
+  const href = n.href ?? before;
+  if (!href) return null;
+  const needed = MODULE_OF[href.split("?")[0]!];
+  if (needed && modules.includes(needed)) return href;
+  // Sin Consumo, el saldo se ve en el Panel.
+  if (needed === "usage" && modules.includes("panel")) return "/";
   return null;
 }
 

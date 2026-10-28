@@ -69,12 +69,12 @@ export function LocationsSection({
     <SectionFrame id="business-locations" title={t("business.locations.title")} intro={t("business.locations.intro")} state={locations.state} canWrite={canWrite}>
       <div className="grid min-w-0 gap-4">
         {conflict ? <ConflictNotice /> : null}
-        {live.length === 0 && !showArchived ? <EmptyState title={t("business.locations.empty")} readonly={!canWrite} /> : null}
+        {live.length === 0 && !showArchived ? <EmptyState title={t("business.locations.empty")} readonly /> : null}
         {shown.length ? (
           <ul className="grid min-w-0 gap-2">
             {shown.map((l) => (
               <li key={l.id} className="flex min-w-0 flex-wrap items-start justify-between gap-3 rounded-md border border-border p-3">
-                <div className="grid min-w-0 flex-1 basis-56 gap-0.5">
+                <div className="grid min-w-0 flex-1 basis-56 gap-1">
                   <p className="flex min-w-0 flex-wrap items-center gap-2 font-medium">
                     <span className="min-w-0 break-words">{l.name}</span>
                     {l.archived ? <StatusBadge tone="muted">{t("business.locations.archived")}</StatusBadge> : null}

@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
+from nexus_api.config import get_settings
 from nexus_api.core.client_auth import ClientPrincipal, require_client_principal
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
@@ -31,7 +32,7 @@ from nexus_api.db.models import Agent, AgentStatus, Channel, Conversation, Partn
 from nexus_api.metering.wallet import AgentFilter, allocations_for, credit_burn, read_wallet
 from nexus_api.services.console_home import REVIEW_WINDOW, tenant_snapshots
 from nexus_api.services.console_reporting import month_bounds, partner_mappings
-from nexus_api.services.lite_home import agent_spend, balance_of
+from nexus_api.services.lite_home import agent_spend, bag_balance, balance_of
 
 from ..schemas import UsageBucketOut
 from ..usage import bucket_report, csv_export, spend_report
@@ -63,6 +64,14 @@ class LiteUsageSummaryOut(BaseModel):
     month: LiteUsageMonthOut | None
     by_agent: list[AgentUsageOut] | None = None
     errors: list[str]
+    #: Spec 047 (``lite-app-api.md`` §4, ``events.md`` §1.4): ``ok``, ``low``,
+    #: ``not_enough`` o ``empty``; ``None`` sin bolsa.
+    bag_state: str | None = None
+    #: Días que alcanza al ritmo de los últimos 7; ``None`` con menos de 3 días
+    #: de consumo («Aún no hay datos para estimarlo»).
+    days_left: int | None = None
+    #: A quién pedir saldo: «Pídeselo a {partner}».
+    partner_name: str = ""
 
 
 class LiteSpendOut(BaseModel):
@@ -100,21 +109,25 @@ async def usage_summary(
     errors: list[str] = []
     tid = principal.tenant_id
     balance: LiteBalanceOut | None = None
+    bag_state: str | None = None
+    days_left: int | None = None
     try:
-        burn = await credit_burn(principal.partner.id, [tid], now - REVIEW_WINDOW)
-        allocation = (await allocations_for(principal.partner.id, [tid])).get(tid)
-        wallet = await read_wallet(principal.partner.id)
-        if wallet is None:
-            raise RuntimeError("wallet unreadable")
+        # Spec 047 (46.7): con bolsas, la misma cifra que la consola del partner.
+        raw = await bag_balance(principal.partner.id, tid, now)
+        if raw is None:
+            burn = await credit_burn(principal.partner.id, [tid], now - REVIEW_WINDOW)
+            allocation = (await allocations_for(principal.partner.id, [tid])).get(tid)
+            wallet = await read_wallet(principal.partner.id)
+            if wallet is None:
+                raise RuntimeError("wallet unreadable")
+            raw = balance_of(allocation, burn.get(tid, 0), wallet.purchased_remaining)
         # La zona del negocio, en una lectura propia: esta ruta abre sus
         # transacciones más abajo y la sesión de la petición no puede empezar una.
         async with get_sessionmaker()() as tz_session:
             tenant = await tz_session.get(Tenant, tid)
-        balance = balance_out(
-            balance_of(allocation, burn.get(tid, 0), wallet.purchased_remaining),
-            tz_name=tenant.timezone if tenant is not None else None,
-            now=now,
-        )
+        balance = balance_out(raw, tz_name=tenant.timezone if tenant is not None else None, now=now)
+        bag_state = raw.state
+        days_left = int(raw.days_left) if raw.days_left is not None else None
     except Exception as exc:
         log.warning("lite_usage.balance_failed", error=str(exc))
         errors.append("balance")
@@ -148,7 +161,24 @@ async def usage_summary(
         except Exception as exc:
             log.warning("lite_usage.by_agent_failed", error=str(exc))
             errors.append("by_agent")
-    return LiteUsageSummaryOut(balance=balance, month=month, by_agent=by_agent, errors=errors)
+    return LiteUsageSummaryOut(
+        balance=balance,
+        month=month,
+        by_agent=by_agent,
+        errors=errors,
+        bag_state=bag_state,
+        days_left=days_left,
+        partner_name=_ask_whom(principal),
+    )
+
+
+def _ask_whom(principal: ClientPrincipal) -> str:
+    """«Pídeselo a {partner}» (sin botón de pedir: specs 031 R4.4 y 044 R13.4).
+    El cliente de Auphere se lo pide a Auphere, como en ``/me``."""
+    partner = principal.partner
+    if partner.slug in get_settings().auphere_partner_slug_set:
+        return "Auphere"
+    return partner.name
 
 
 async def _usage_by_agent(

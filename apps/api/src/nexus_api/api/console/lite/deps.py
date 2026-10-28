@@ -28,6 +28,12 @@ from nexus_api.db.models import Tenant
 log = structlog.get_logger(__name__)
 
 
+def origin_of(principal: ClientPrincipal) -> str:
+    """``app`` si la petición llega con la credencial de un teléfono; si no,
+    ``lite_web``."""
+    return "app" if principal.phone_id is not None else "lite_web"
+
+
 @dataclass(frozen=True)
 class LiteScope:
     """La persona de un cliente dentro de una transacción con su tenant fijado."""
@@ -36,6 +42,18 @@ class LiteScope:
     tenant: Tenant
     session: AsyncSession
     _after_commit: list[Callable[[], Awaitable[None]]] = field(default_factory=list, repr=False)
+
+    @property
+    def origin(self) -> str:
+        """Spec 047 (``events.md`` §4): desde dónde escribe la persona, la app
+        (su teléfono) o la consola lite web (la BFF)."""
+        return origin_of(self.principal)
+
+    @property
+    def person_name(self) -> str:
+        """Cómo se llama quien escribe, para el aviso al partner."""
+        member = self.principal.membership
+        return member.display_name or member.email
 
     def after_commit(self, fn: Callable[[], Awaitable[None]]) -> None:
         """``fn`` corre cuando la transacción se confirma, y nunca si hace

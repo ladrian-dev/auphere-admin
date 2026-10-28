@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button, EmptyState, StatusBadge, cn, formatDateTime } from "@nexus/ui";
 
 import { listNotificationsAction, markAllNotificationsReadAction, markNotificationReadAction } from "@/app/(console)/notifications/actions";
+import { BalanceButton } from "@/components/money/balance-button";
 import { useLocale, useT } from "@/i18n/client";
 import type { Notification, NotificationPage } from "@/lib/backend/onboarding";
 
@@ -15,7 +16,24 @@ import { notificationText, severityTone } from "./render";
 
 type Filter = "all" | "unread";
 
-export function NotificationsList({ initial, initialFilter, clientNames }: { initial: NotificationPage; initialFilter: Filter; clientNames?: Record<string, string> }) {
+/** Spec 047 (45.1, 45.7): el aviso «Pedir saldo» lleva «Asignar saldo» en el propio aviso, para quien puede asignar. */
+function balanceRequestRef(n: Notification): string | null {
+  if (n.kind !== "client.balance_request") return null;
+  const fromData = typeof n.data?.external_client_ref === "string" ? n.data.external_client_ref : null;
+  return n.external_client_ref ?? fromData;
+}
+
+export function NotificationsList({
+  initial,
+  initialFilter,
+  clientNames,
+  canAssign = false,
+}: {
+  initial: NotificationPage;
+  initialFilter: Filter;
+  clientNames?: Record<string, string>;
+  canAssign?: boolean;
+}) {
   const t = useT();
   const locale = useLocale();
   const [filter, setFilter] = React.useState<Filter>(initialFilter);
@@ -133,12 +151,25 @@ export function NotificationsList({ initial, initialFilter, clientNames }: { ini
                 <p className={cn("min-w-0 text-sm text-pretty", !n.read && "font-medium")}>{notificationText(locale, n, clientNames)}</p>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
                   <time dateTime={n.created_at}>{formatDateTime(n.created_at, locale)}</time>
-                  {n.external_client_ref ? (
+                  {n.href ? (
+                    <Link className="underline underline-offset-4 hover:text-foreground" href={n.href}>
+                      {t("notif.open")}
+                    </Link>
+                  ) : n.external_client_ref ? (
                     <Link className="underline underline-offset-4 hover:text-foreground" href={`/clients/${encodeURIComponent(n.external_client_ref)}`}>
                       {t("notif.openClient")}
                     </Link>
                   ) : null}
                 </div>
+                {canAssign && balanceRequestRef(n) ? (
+                  <BalanceButton
+                    refId={balanceRequestRef(n)!}
+                    name={clientNames?.[balanceRequestRef(n)!] ?? balanceRequestRef(n)!}
+                    mode="assign"
+                    size="xs"
+                    className="w-fit"
+                  />
+                ) : null}
               </div>
               {!n.read ? (
                 <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={() => markRead(n.id)} aria-label={t("notif.markRead")}>

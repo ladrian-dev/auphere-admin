@@ -7,9 +7,11 @@ import { creditRunway, trendDelta } from "@/lib/panel-model";
 import { Meter, RowButton } from "@/ui/bits";
 import { Card } from "@/ui/card";
 import { Group, Row } from "@/ui/group";
+import { icons } from "@/ui/icon";
 import { ErrorState, PartialNotice } from "@/ui/states";
 import { Text } from "@/ui/text";
 
+import { AgentsGroup, type AgentsRead } from "../agents/agents-group";
 import { DayBars } from "../charts/day-bars";
 import { Attention } from "./attention";
 import { TodayCard, unconfirmedToday, type TodayReservas } from "./today-reservas";
@@ -35,6 +37,10 @@ export function HomeView({
   onInbox,
   reservas = null,
   onReservas,
+  agents = null,
+  onAgent,
+  onBusiness,
+  businessHint = null,
 }: {
   me: Pick<Me, "client" | "nav" | "balance_contact">;
   home: Home | null;
@@ -49,6 +55,13 @@ export function HomeView({
   /** Spec 044, R9.1, R9.4: today in Reservas; `null` without the module (R1.2). */
   reservas?: TodayReservas | null;
   onReservas?: () => void;
+  /** Spec 047 (50.1): the agents with their state; `null` without the module. */
+  agents?: AgentsRead | null;
+  onAgent?: (id: string) => void;
+  /** Spec 047 (50.1): the way into Negocio; absent without the module. */
+  onBusiness?: () => void;
+  /** «Así lo dirá el agente» of the hours, under the way into Negocio, when it is known. */
+  businessHint?: string | null;
 }) {
   const n = (v: number) => formatNumber(v, locale);
   if (home === null) return <ErrorState body={t("common.error.backend")} onRetry={onRetry} />;
@@ -79,11 +92,12 @@ export function HomeView({
         onUsage={onUsage}
         onReservas={onReservas}
       />
+      {agents && onAgent ? <AgentsGroup read={agents} onAgent={onAgent} t={t} /> : null}
       {balance ? (
         <Group testID="home-money">
           <Row
             label={t("lite.kpi.balance")}
-            value={balance.assigned && balance.remaining_cents != null ? formatMoneyCompact(balance.remaining_cents, locale) : "—"}
+            value={balance.assigned && balance.remaining_cents != null ? formatMoneyCompact(balance.remaining_cents, locale, balance.currency) : "—"}
             valueTone={out ? "dangerText" : "foreground"}
             hint={
               !balance.assigned
@@ -129,6 +143,11 @@ export function HomeView({
             </View>
           ) : null}
         </Card>
+      ) : null}
+      {onBusiness ? (
+        <Group title={t("negocio.title")} testID="home-business">
+          <RowButton title={t("negocio.open")} subtitle={businessHint ?? t("negocio.open.hint")} icon={icons.business} onPress={onBusiness} />
+        </Group>
       ) : null}
     </View>
   );

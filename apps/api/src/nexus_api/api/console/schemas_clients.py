@@ -136,6 +136,9 @@ class ClientDetailOut(ClientOut):
     price_currency: str | None = None
     wallet_currency: Literal["EUR", "USD"] | None = None
     eu_only: bool | None = None
+    #: Spec 047 (54.6): la restricción soberana, que fija Auphere; el partner la ve
+    #: como insignia y no la cambia.
+    sovereign: bool = False
     lifecycle: Lifecycle = "active"
     revision: int | None = None
     allowed: list[ClientAction] = Field(default_factory=list)
@@ -174,6 +177,9 @@ class ClientLifecycleOut(BaseModel):
     agents: list[AgentLifecycleOut]
     #: «Deshacer» del aviso: ``restore`` tras archivar.
     undo: Literal["restore"] | None = None
+    #: Spec 047 (43.13): lo que queda en la bolsa al archivar, para ofrecer
+    #: devolverlo a la cuenta (``POST …/bag/lower``). ``None``: no queda nada.
+    bag_left: MoneyOut | None = None
 
 
 class AgentShareOut(BaseModel):

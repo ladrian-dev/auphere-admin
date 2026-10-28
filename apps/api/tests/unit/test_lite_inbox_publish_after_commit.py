@@ -214,4 +214,15 @@ async def test_every_lite_route_that_announces_is_checked() -> None:
     from nexus_api.api.console.lite import reservas as reservas_routes
 
     assert "publish_inbox_event" not in inspect.getsource(reservas_routes)
-    assert announcing - reservas == checked
+    # Spec 047: pausar y reanudar un número reciben su Redis para tirar la caché
+    # del número tras el commit (``after_commit``); no avisan a la Bandeja.
+    from nexus_api.api.console.lite import agents as agents_routes
+
+    numbers = {
+        ("POST", "/console/lite/channels/{channel_id}/pause"),
+        ("POST", "/console/lite/channels/{channel_id}/resume"),
+    }
+    assert numbers <= announcing
+    source = inspect.getsource(agents_routes)
+    assert "publish_inbox_event" not in source and "scope.after_commit(_drop)" in source
+    assert announcing - reservas - numbers == checked

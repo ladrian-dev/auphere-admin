@@ -91,6 +91,31 @@ export function useSuggestedTags(enabled: boolean) {
   return useQuery({ queryKey: keys.tags, queryFn: endpoints.suggestedTags, enabled, staleTime: 60_000 });
 }
 
+/** Whether the client has a module (`/me.nav`): the screens of spec 047 ask for `agents` and `business`. */
+export function useHasModule(module: string): boolean {
+  const me = useMe();
+  return me.data?.nav.includes(module) ?? false;
+}
+
+/** Spec 047 (50.1): the client's agents, with their state, their numbers and what the person can do. */
+/** A location's week (its own or the business's it inherits); nothing while `id` is null. */
+export function useLocationHours(id: string | null) {
+  return useQuery({ queryKey: keys.locationHours(id ?? ""), queryFn: () => endpoints.locationHours(id!), enabled: id !== null });
+}
+
+export function useAgents(enabled = true) {
+  const q = useQuery({ queryKey: keys.agents, queryFn: endpoints.agents, enabled });
+  useForbiddenRereadsMe(q.error);
+  return q;
+}
+
+/** Spec 047 (50.1): the four sections the business edits — hours, special dates, services, locations — with their history. */
+export function useBusiness(enabled = true) {
+  const q = useQuery({ queryKey: keys.business, queryFn: endpoints.business, enabled });
+  useForbiddenRereadsMe(q.error);
+  return q;
+}
+
 /** This phone's notices; with example Reservas (spec 044, D2) they live in memory, as the API would reject its kinds. */
 export function useNotices(enabled: boolean) {
   return useQuery({ queryKey: keys.notices, queryFn: withDemo ? () => withDemo.notices() : endpoints.notices, enabled });

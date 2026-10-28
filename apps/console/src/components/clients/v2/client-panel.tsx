@@ -6,10 +6,12 @@ import Link from "next/link";
 import { Button, Callout, Card, CardContent, EmptyState, MICROS_PER_UNIT, Money, StatusBadge, formatDate, formatMoney } from "@nexus/ui";
 
 import { ClientReadCard } from "@/components/clients/client-read-card";
+import { AgentCapButton } from "@/components/money/agent-cap";
+import { BalanceButton } from "@/components/money/balance-button";
 import { clientHref } from "@/components/shell/routes-v2";
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { ClientPanel as Panel } from "@/lib/backend/client-records";
+import type { ClientPanel as Panel, Money as MoneyValue } from "@/lib/backend/client-records";
 
 import { agentStateText, missingHref, roundDays, stateView } from "./client-v2-model";
 
@@ -24,13 +26,34 @@ const SERIES = ["bg-series-1", "bg-series-2", "bg-accent-mid", "bg-muted-foregro
  * lectura de la web, su tarjeta. Todas las cifras vienen de la API, que las saca
  * de las mismas cuentas que Consumo y la consola lite.
  */
-export function ClientPanelView({ panel, canWrite }: { panel: Panel; canWrite: boolean }) {
+/**
+ * Spec 047 (T159): lo que el Panel sabe del dinero además de la bolsa: la moneda
+ * de la bolsa (para el tope de cada agente), si esta persona puede fijar topes
+ * (`usage:write`) y el relleno mensual, si lo tiene.
+ */
+export type PanelMoney = { currency: "EUR" | "USD"; canSetCap: boolean; refillUpTo: MoneyValue | null };
+
+export function ClientPanelView({
+  panel,
+  canWrite,
+  money,
+  openBalance = false,
+}: {
+  panel: Panel;
+  canWrite: boolean;
+  money?: PanelMoney;
+  /** `?assign=1`: el aviso de saldo (o «Pedir saldo») abre aquí mismo «Asignar saldo» (45.1). */
+  openBalance?: boolean;
+}) {
   const t = useT();
   const locale = useLocale();
   const { bag, month } = panel;
   const days = roundDays(bag.days_left);
   const state = stateView(t, panel.lifecycle, panel.attention, bag);
   const newAgent = panel.allowed.includes("new_agent");
+  // «Asignar saldo» en el sitio (45.1); quien no puede asignar, «Pedir saldo» (45.7).
+  const balanceMode = panel.allowed.includes("assign_balance") ? "assign" : panel.allowed.includes("request_balance") ? "request" : null;
+  const capCurrency = money?.currency ?? bag.balance?.currency ?? null;
 
   return (
     <div className="grid min-w-0 gap-6" data-slot="client-panel">
@@ -105,6 +128,22 @@ export function ClientPanelView({ panel, canWrite }: { panel: Panel; canWrite: b
                 ) : null}
               </>
             )}
+            {money?.refillUpTo ? (
+              <p className="text-xs text-muted-foreground" data-slot="panel-refill">
+                {t("money.panel.refill", { amount: formatMoneyText(money.refillUpTo) })}
+              </p>
+            ) : null}
+            {balanceMode && panel.lifecycle !== "archived" ? (
+              <div className="flex flex-wrap gap-2">
+                <BalanceButton
+                  refId={panel.ref}
+                  name={panel.name}
+                  mode={balanceMode}
+                  variant={bag.state === "ok" ? "outline" : "default"}
+                  defaultOpen={openBalance}
+                />
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -169,7 +208,15 @@ export function ClientPanelView({ panel, canWrite }: { panel: Panel; canWrite: b
                       </td>
                       <td className="py-2 pr-3 text-right tabular-nums">{a.conversations}</td>
                       <td className="py-2 pr-3 text-right">{a.spend_per_conversation ? <Money value={a.spend_per_conversation} /> : "—"}</td>
-                      <td className="py-2 text-right">{a.cap ? <Money value={a.cap} /> : <span className="text-muted-foreground">{t("panel.top.noCap")}</span>}</td>
+                      <td className="py-2 text-right">
+                        {money?.canSetCap && capCurrency ? (
+                          <AgentCapButton refId={panel.ref} agentId={a.agent_id} agentName={a.name} cap={a.cap} currency={capCurrency} canWrite />
+                        ) : a.cap ? (
+                          <Money value={a.cap} />
+                        ) : (
+                          <span className="text-muted-foreground">{t("panel.top.noCap")}</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

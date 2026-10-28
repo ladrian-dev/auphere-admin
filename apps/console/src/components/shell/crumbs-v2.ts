@@ -30,7 +30,7 @@ const SECTION: Record<string, MessageKey> = {
 
 /** Subpáginas con nombre propio dentro de una sección. */
 const SUBPAGE: Record<string, Record<string, MessageKey>> = {
-  usage: { alerts: "shell.crumbs.usageAlerts" },
+  usage: { alerts: "shell.crumbs.usageAlerts", repartir: "money.migration.title" },
 };
 
 function decode(segment: string): string {

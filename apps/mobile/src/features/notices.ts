@@ -3,12 +3,13 @@ import type { MessageKey } from "@/i18n/t";
 import { icons, type IconName } from "@/ui/icon";
 
 /**
- * The kinds of notice (031 R8.1; spec 044, R14.1, R14.2), grouped by the
- * module they come from, and which ones a person can get: the inbox ones only
- * with the Bandeja (031 R9.3), Reservas' only with Reservas. Same words in the
+ * The kinds of notice (031 R8.1; spec 044, R14.1, R14.2; spec 047, T170),
+ * grouped by the module they come from, and which ones a person can get: the
+ * inbox ones only with the Bandeja (031 R9.3), Reservas' only with Reservas,
+ * the agents' only with Agentes. Same words in the
  * permission screen and in Ajustes.
  */
-export type NoticeGroup = "inbox" | "reservas" | "balance";
+export type NoticeGroup = "inbox" | "reservas" | "agents" | "balance";
 
 export type NoticeKindInfo = { kind: NoticeKind; group: NoticeGroup; label: MessageKey; hint: MessageKey; icon: IconName; needs: string | null };
 
@@ -47,12 +48,22 @@ export const NOTICE_KINDS: NoticeKindInfo[] = [
     icon: icons.waitlist,
     needs: "reservas",
   },
+  {
+    // Spec 047 (T170, events.md §3.1): on from the start, and switched on in the phones that existed (API migration).
+    kind: "agents.state",
+    group: "agents",
+    label: "avisos.kind.agents.state",
+    hint: "avisos.kind.agents.state.hint",
+    icon: icons.bot,
+    needs: "agents",
+  },
   { kind: "client.balance", group: "balance", label: "app.notices.kind.client.balance", hint: "app.notices.kind.client.balance.hint", icon: icons.wallet, needs: null },
 ];
 
 export const NOTICE_GROUPS: { group: NoticeGroup; label: MessageKey }[] = [
   { group: "inbox", label: "avisos.group.inbox" },
   { group: "reservas", label: "avisos.group.reservas" },
+  { group: "agents", label: "avisos.group.agents" },
   { group: "balance", label: "avisos.group.balance" },
 ];
 

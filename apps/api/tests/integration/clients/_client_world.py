@@ -91,9 +91,11 @@ async def add_agent(
     published: bool = True,
     channel: str | None = "active",
     created_at: datetime | None = None,
+    audience: str = "everyone",
 ) -> dict[str, uuid.UUID | None]:
     """Un agente del cliente. ``published``: con versión activa. ``channel``:
-    el estado de su WhatsApp (``None``, sin canal)."""
+    el estado de su WhatsApp (``None``, sin canal). ``audience``: a quién responde
+    el número (spec 047, requisito 32; «A todos», como quedan los de antes)."""
     async with tenant_scoped_session(db_session, tenant_id):
         agent = Agent(
             id=uuid.uuid4(),
@@ -133,6 +135,7 @@ async def add_agent(
                 config={"phone_number_id": "TESTS"},
                 status=ChannelStatus(channel),
                 agent_id=agent.id,
+                audience_mode=audience,
             )
             db_session.add(row)
             channel_id = row.id

@@ -50,11 +50,14 @@ export const MessageBubble = memo(function MessageBubble({
   t,
   locale,
   onOpen,
+  onCorrect,
 }: {
   item: ThreadItem;
   t: T;
   locale: Locale;
   onOpen: (messageId: string, mime: string | null) => void;
+  /** Spec 047 (T176, 52.1): «Corregir esta respuesta», under each answer of the agent. */
+  onCorrect?: (messageId: string) => void;
 }) {
   const { colors, radius } = useTheme();
   const out = item.direction === "outbound";
@@ -72,13 +75,16 @@ export const MessageBubble = memo(function MessageBubble({
   const spoken = [who ?? t("inbox.who.contact"), item.text, media ? t(`inbox.media.${media.kind ?? "document"}` as "inbox.media.document") : null, clock(item.at, locale), status]
     .filter(Boolean)
     .join(". ");
+  const correctable = out && item.author?.kind === "agent" && !!item.text && !!onCorrect;
   return (
     <View style={[styles.line, out ? styles.right : styles.left]}>
+      <View style={[styles.column, out ? styles.columnRight : null]}>
       <View
         accessible
         accessibilityLabel={spoken}
         style={[
           styles.bubble,
+          styles.inColumn,
           {
             backgroundColor: out ? colors.positiveBg : colors.card,
             borderColor: out ? colors.positiveBg : colors.border,
@@ -114,9 +120,36 @@ export const MessageBubble = memo(function MessageBubble({
           ) : null}
         </View>
       </View>
+      {correctable ? <CorrectLink label={t("corregir.action")} spoken={t("corregir.action.label")} onPress={() => onCorrect!(item.id)} /> : null}
+      </View>
     </View>
   );
 });
+
+/**
+ * «Corregir» under an answer of the agent (spec 047, T176, 52.1): quiet, so the
+ * thread still reads as a conversation, and a full 44 pt target with its slop;
+ * the screen reader hears «Corregir esta respuesta».
+ */
+function CorrectLink({ label, spoken, onPress }: { label: string; spoken: string; onPress: () => void }) {
+  const { colors, radius } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={spoken}
+      onPress={onPress}
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+      android_ripple={{ color: colors.muted }}
+      style={({ pressed }) => [styles.correct, { borderRadius: radius.full, backgroundColor: pressed ? colors.muted : "transparent" }]}
+      testID="correct-answer"
+    >
+      <Icon name={icons.edit} size={14} tone="primaryText" />
+      <Text variant="footnote" tone="primaryText">
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 function MediaChip({
   id,
@@ -246,6 +279,11 @@ export function PendingBubble({ p, t, onRetry, onDismiss }: { p: Pending; t: T; 
 
 const styles = StyleSheet.create({
   line: { paddingHorizontal: 12, paddingVertical: 3, flexDirection: "row" },
+  column: { maxWidth: "82%", alignItems: "flex-start" },
+  columnRight: { alignItems: "flex-end" },
+  // The column already keeps the 82 % of the line; the bubble fills what it needs of it.
+  inColumn: { maxWidth: "100%" },
+  correct: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 32, minWidth: 44, paddingHorizontal: 10, justifyContent: "center" },
   left: { justifyContent: "flex-start" },
   right: { justifyContent: "flex-end" },
   bubble: { maxWidth: "82%", paddingHorizontal: 12, paddingVertical: 8, gap: 4, borderWidth: StyleSheet.hairlineWidth * 2 },

@@ -446,3 +446,56 @@ async def test_quiet_hours_never_hold_back_a_waiting_conversation(
         shop["valeria_android"]["phone_id"],
         shop["marcos"]["phone_id"],
     }
+
+
+# ── Spec 047 (T170, events.md §3.1): la bolsa, el agente y sus números ─────
+
+
+async def test_the_bag_and_the_agent_reach_the_phone_with_their_screen(
+    db_session, scoped_session_factory, identity, shop
+) -> None:
+    from nexus_api.db.models import ConsoleNotification, NotificationAudience
+    from nexus_api.services.channel_config import announce
+    from tests.integration.clients._client_world import add_agent
+
+    tid = shop["w"]["tenant_id"]
+    agent = await add_agent(db_session, tid, "Ventas")
+    await db_session.commit()
+    await announce(
+        tenant_id=tid,
+        kind="client.wallet.empty",
+        severity="critical",
+        data={"balance_micros": 0, "currency": "USD"},
+        dedupe_key="wallet:1",
+        to_client=True,
+    )
+    await announce(
+        tenant_id=tid,
+        kind="agent.paused",
+        data={"agent_id": str(agent["agent_id"]), "origin": "console"},
+        to_client=True,
+        to_partner=False,
+    )
+    async with db_session.begin():
+        rows = (
+            await db_session.scalars(
+                sa.select(ConsoleNotification).where(
+                    ConsoleNotification.partner_id == shop["w"]["partner_id"],
+                    ConsoleNotification.kind.in_(["client.wallet.empty", "agent.paused"]),
+                )
+            )
+        ).all()
+    audiences = sorted((r.kind, r.audience) for r in rows)
+    assert audiences == [
+        ("agent.paused", NotificationAudience.CLIENT.value),
+        ("client.wallet.empty", NotificationAudience.CLIENT.value),
+        ("client.wallet.empty", NotificationAudience.PARTNER.value),
+    ], "la pausa del partner va solo al cliente; la bolsa, a los dos"
+
+    out = await _claim(scoped_session_factory, identity, tid)
+    by_kind = {o.notice.kind: o.notice for o in out}
+    wallet, agents = by_kind["client.balance"], by_kind["agents.state"]
+    assert wallet.url == "auphere-customers://usage"
+    assert wallet.title == "Te quedaste sin saldo"
+    assert agents.url == f"auphere-customers://agents/{agent['agent_id']}"
+    assert agents.title == "Agente en pausa" and "Ventas" in agents.body

@@ -77,12 +77,12 @@ export function SpecialDatesSection({
       <div className="grid min-w-0 gap-4">
         {conflict ? <ConflictNotice /> : null}
         {dates.items.length === 0 ? (
-          <EmptyState title={t("business.special.empty")} readonly={!canWrite} />
+          <EmptyState title={t("business.special.empty")} readonly />
         ) : (
           <ul className="grid min-w-0 gap-2">
             {dates.items.map((d) => (
               <li key={d.id} className="flex min-w-0 flex-wrap items-start justify-between gap-3 rounded-md border border-border p-3">
-                <div className="grid min-w-0 flex-1 basis-56 gap-0.5">
+                <div className="grid min-w-0 flex-1 basis-56 gap-1">
                   <p className="font-medium text-pretty break-words">
                     <span className="tabular-nums">{when(d)}</span>
                     {d.name ? ` · ${d.name}` : ""}

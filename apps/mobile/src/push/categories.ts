@@ -14,6 +14,8 @@ export const CATEGORIES = [
   { id: "client_balance", placeholder: "app.notices.placeholder.balance" },
   // Spec 044 (R14.6): Reservas' notices, with no actions either.
   { id: "reservations", placeholder: "avisos.placeholder.reservations" },
+  // Spec 047 (T170): `agents.state`, the agents' and numbers' notices; the bag's three use `client_balance`.
+  { id: "agents", placeholder: "avisos.placeholder.agents" },
 ] as const;
 
 export async function ensureCategories(t: T): Promise<void> {

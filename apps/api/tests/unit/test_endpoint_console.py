@@ -719,18 +719,26 @@ async def test_audit_paging_and_filters(client, console_world, db_session) -> No
             )
         )
     await db_session.commit()
-    first = (await client.get("/console/audit?limit=2", headers=a["headers"]())).json()
+    # Spec 047 (48.3): por defecto, lo mismo de la misma persona, cliente y día
+    # va en una fila con «y N más»; ``group=false`` las separa para paginar.
+    grouped = (await client.get("/console/audit", headers=a["headers"]())).json()
+    (row,) = [i for i in grouped["items"] if i["action"] == "console.client.update"]
+    assert row["more_like_this"] == 4
+    first = (await client.get("/console/audit?limit=2&group=false", headers=a["headers"]())).json()
     assert len(first["items"]) == 2 and first["next_cursor"]
     second = (
         await client.get(
-            f"/console/audit?limit=2&cursor={first['next_cursor']}", headers=a["headers"]()
+            f"/console/audit?limit=2&group=false&cursor={first['next_cursor']}",
+            headers=a["headers"](),
         )
     ).json()
     assert len(second["items"]) == 2
     assert {i["id"] for i in first["items"]}.isdisjoint({i["id"] for i in second["items"]})
     bad = await client.get("/console/audit?cursor=%%%", headers=a["headers"]())
     assert bad.status_code == 422
-    by_actor = (await client.get("/console/audit?actor=owner-a", headers=a["headers"]())).json()
+    by_actor = (
+        await client.get("/console/audit?actor=owner-a&group=false", headers=a["headers"]())
+    ).json()
     assert len(by_actor["items"]) == 5
     assert by_actor["items"][0]["client_name"] == "Client A One"
     # analyst may read audit; builder may not

@@ -63,6 +63,11 @@ CATEGORY_LABELS: dict[str, dict[str, str]] = {
     "agents": {"es": "Agentes", "en": "Agents"},
     "auth": {"es": "Acceso", "en": "Access"},
     "billing": {"es": "Facturación", "en": "Billing"},
+    # Spec 047 (events.md §4): la ficha, las integraciones, el constructor y la mejora.
+    "builder": {"es": "Constructor", "en": "Builder"},
+    "business": {"es": "Negocio", "en": "Business"},
+    "improvement": {"es": "Mejora", "en": "Improvement"},
+    "integrations": {"es": "Integraciones", "en": "Integrations"},
     "channels": {"es": "Canales", "en": "Channels"},
     "clients": {"es": "Clientes", "en": "Clients"},
     "critical": {"es": "Incidencias", "en": "Incidents"},
@@ -285,6 +290,44 @@ _ACTOR_KINDS: tuple[tuple[str, ActorKind], ...] = (
 )
 
 
+Origin = Literal["console", "lite_web", "app", "admin", "api", "system"]
+_ORIGINS: frozenset[str] = frozenset({"console", "lite_web", "app", "admin", "api", "system"})
+
+
+def origin_of(row: AuditLog) -> Origin:
+    """Spec 047 (events.md §4): desde dónde se hizo. Lo que la fila dice
+    (``after_json.origin``) manda; si no lo dice, se deduce de quién la escribió."""
+    said = (row.after_json or {}).get("origin")
+    if isinstance(said, str) and said in _ORIGINS:
+        return said  # type: ignore[return-value]
+    kind = actor_kind(row.actor)
+    if row.actor.startswith("client:"):
+        return "lite_web"
+    if kind == "person":
+        return "console"
+    if kind == "auphere":
+        return "admin"
+    if kind == "api_key":
+        return "api"
+    return "system"
+
+
+def group_similar(
+    items: list[AuditEntryOut], keys: list[tuple[str, str, str, str]]
+) -> list[AuditEntryOut]:
+    """«{n} más como esta» (49.1): las filas seguidas con la misma persona,
+    acción, cliente y día se juntan en la primera."""
+    out: list[AuditEntryOut] = []
+    last: tuple[str, str, str, str] | None = None
+    for item, key in zip(items, keys, strict=True):
+        if out and key == last:
+            out[-1].more_like_this += 1
+            continue
+        out.append(item)
+        last = key
+    return out
+
+
 def actor_kind(actor: str) -> ActorKind:
     """Who wrote the row, so the console can draw a face or an icon."""
     for prefix, kind in _ACTOR_KINDS:
@@ -453,7 +496,12 @@ async def list_audit(
     after: datetime | None = Query(default=None),
     before: datetime | None = Query(default=None),
     lang: str = Query(default="en", pattern="^(es|en)$"),
+    person: str | None = Query(default=None, max_length=255, description="Spec 047: = actor"),
+    days: Literal["7", "30", "90", "all"] | None = Query(default=None),
+    group: bool = Query(default=True, description="«{n} más como esta»"),
 ) -> AuditPageOut:
+    actor = actor or person
+    after = _since(days) or after
     partner_id = principal.partner.id
     mappings = await partner_mappings(session, partner_id)
     by_tenant = {m.tenant_id: m for m in mappings}
@@ -491,19 +539,25 @@ async def list_audit(
     has_more = len(rows) > limit
     rows = rows[:limit]
     items: list[AuditEntryOut] = []
+    keys: list[tuple[str, str, str, str]] = []
     for row in rows:
         mapping = by_tenant.get(row.tenant_id) if row.tenant_id else None
         client_name = mapping.client_name if mapping else None
         entry = vocab.get(row.action)
+        keys.append(
+            (row.actor, row.action, str(row.tenant_id or ""), row.created_at.date().isoformat())
+        )
         items.append(
             AuditEntryOut(
                 id=row.id,
                 at=row.created_at,
                 actor=_human_actor(row.actor, emails),
                 actor_kind=actor_kind(row.actor),
+                origin=origin_of(row),
                 action=row.action,
                 category=entry.category if entry else None,
                 severity=entry.severity if entry else "info",
+                sensitive=bool(entry and entry.severity == "critical"),
                 target=row.target,
                 external_client_ref=mapping.external_client_ref if mapping else None,
                 client_name=client_name,
@@ -520,7 +574,18 @@ async def list_audit(
             )
         )
     next_cursor = _encode_cursor(rows[-1].created_at, rows[-1].id) if has_more and rows else None
+    if group:
+        items = group_similar(items, keys)
     return AuditPageOut(items=items, next_cursor=next_cursor)
+
+
+def _since(days: str | None) -> datetime | None:
+    """El periodo de la Auditoría: 7, 30 o 90 días, o todo (49.1)."""
+    if days is None or days == "all":
+        return None
+    from datetime import UTC, timedelta
+
+    return datetime.now(UTC) - timedelta(days=int(days))
 
 
 _CSV_HEADERS: dict[str, list[str]] = {
@@ -541,7 +606,11 @@ async def export_audit_csv(
     before: datetime | None = Query(default=None),
     lang: str = Query(default="en", pattern="^(es|en)$"),
     limit: int = Query(default=10_000, ge=1, le=100_000),
+    person: str | None = Query(default=None, max_length=255),
+    days: Literal["7", "30", "90", "all"] | None = Query(default=None),
 ) -> StreamingResponse:
+    actor = actor or person
+    after = _since(days) or after
     partner_id = principal.partner.id
     mappings = await partner_mappings(session, partner_id)
     by_tenant = {m.tenant_id: m for m in mappings}

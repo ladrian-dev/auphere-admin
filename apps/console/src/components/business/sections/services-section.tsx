@@ -44,8 +44,9 @@ export type ServicesActions = {
   create: Act<{ ref: string; revision: number; body: ServiceBody }>;
   update: Act<{ ref: string; revision: number; id: string; body: ServiceBody }>;
   archive: Act<{ ref: string; revision: number; id: string }>;
-  duplicate: Act<{ ref: string; revision: number; id: string }>;
-  setAgents: Act<{ ref: string; revision: number; id: string; body: { mode: "all_agents" | "list"; agent_ids: string[] } }>;
+  /** Spec 047 (T168): la consola lite no duplica ni elige quién lo ofrece; sin ellas, no se pintan. */
+  duplicate?: Act<{ ref: string; revision: number; id: string }>;
+  setAgents?: Act<{ ref: string; revision: number; id: string; body: { mode: "all_agents" | "list"; agent_ids: string[] } }>;
 };
 
 const SERVER_ACTIONS: ServicesActions = {
@@ -76,11 +77,14 @@ export function ServicesSection({
   services: initial,
   canWrite,
   actions = SERVER_ACTIONS,
+  renameable = true,
 }: {
   refId: string;
   services: Services;
   canWrite: boolean;
   actions?: ServicesActions;
+  /** Spec 047 (T168): en la consola lite el nombre de un servicio que ya existe no se cambia. */
+  renameable?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -124,7 +128,7 @@ export function ServicesSection({
       <div className="grid min-w-0 gap-4">
         {conflict ? <ConflictNotice /> : null}
         {live.length === 0 ? (
-          <EmptyState title={t("business.services.empty")} readonly={!canWrite} />
+          <EmptyState title={t("business.services.empty")} readonly />
         ) : (
           <div className="min-w-0 overflow-x-auto" data-scroll-x>
             <Table>
@@ -157,20 +161,25 @@ export function ServicesSection({
                           <Button variant="ghost" size="icon" aria-label={t("business.services.edit", { name: s.name })} onClick={() => setEditing(s)}>
                             <Pencil aria-hidden="true" />
                           </Button>
-                          <Button variant="ghost" size="icon" aria-label={t("business.services.who", { name: s.name })} onClick={() => setChoosing(s)}>
-                            <Users aria-hidden="true" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled={pending}
-                            aria-label={t("business.services.duplicate", { name: s.name })}
-                            onClick={() =>
-                              run(() => actions.duplicate({ ref: refId, revision: services.revision, id: s.id }), "business.services.duplicated")
-                            }
-                          >
-                            <Copy aria-hidden="true" />
-                          </Button>
+                          {actions.setAgents ? (
+                            <Button variant="ghost" size="icon" aria-label={t("business.services.who", { name: s.name })} onClick={() => setChoosing(s)}>
+                              <Users aria-hidden="true" />
+                            </Button>
+                          ) : null}
+                          {actions.duplicate ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={pending}
+                              aria-label={t("business.services.duplicate", { name: s.name })}
+                              onClick={() => {
+                                const duplicate = actions.duplicate;
+                                if (duplicate) run(() => duplicate({ ref: refId, revision: services.revision, id: s.id }), "business.services.duplicated");
+                              }}
+                            >
+                              <Copy aria-hidden="true" />
+                            </Button>
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -206,6 +215,7 @@ export function ServicesSection({
           service={editing === "new" ? null : editing}
           currency={services.currency}
           exponent={services.exponent}
+          renameable={renameable || editing === "new"}
           onClose={() => setEditing(null)}
           onSave={async (body) => {
             const res =
@@ -219,16 +229,15 @@ export function ServicesSection({
         />
       ) : null}
 
-      {choosing ? (
+      {choosing && actions.setAgents ? (
         <AgentsDialog
           service={choosing}
           agents={services.agents}
           onClose={() => setChoosing(null)}
           onSave={async (body) => {
-            const problem = await apply(
-              await actions.setAgents({ ref: refId, revision: services.revision, id: choosing.id, body }),
-              "business.section.saved",
-            );
+            const setAgents = actions.setAgents;
+            if (!setAgents) return null;
+            const problem = await apply(await setAgents({ ref: refId, revision: services.revision, id: choosing.id, body }), "business.section.saved");
             if (problem === null || problem === "conflict") setChoosing(null);
             return problem;
           }}
@@ -242,12 +251,14 @@ function ServiceDialog({
   service,
   currency,
   exponent,
+  renameable = true,
   onClose,
   onSave,
 }: {
   service: Service | null;
   currency: string;
   exponent: number;
+  renameable?: boolean;
   onClose: () => void;
   onSave: (body: ServiceBody) => Promise<string | null>;
 }) {
@@ -296,8 +307,13 @@ function ServiceDialog({
           <DialogDescription>{t("business.services.intro")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4" noValidate>
-          <Field label={t("business.services.name")} required error={error === "name_required" ? t("business.services.error.name_required") : undefined}>
-            {(a11y) => <Input {...a11y} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />}
+          <Field
+            label={t("business.services.name")}
+            required
+            hint={renameable ? undefined : t("business.services.name.fixed")}
+            error={error === "name_required" ? t("business.services.error.name_required") : undefined}
+          >
+            {(a11y) => <Input {...a11y} value={name} maxLength={120} readOnly={!renameable} onChange={(e) => setName(e.target.value)} />}
           </Field>
           <Field label={t("business.services.description")}>
             {(a11y) => <Textarea {...a11y} value={description} maxLength={1000} onChange={(e) => setDescription(e.target.value)} />}

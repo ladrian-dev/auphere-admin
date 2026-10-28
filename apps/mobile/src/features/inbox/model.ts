@@ -1,5 +1,5 @@
 import type { Author, Conversation, Detail, ThreadItem } from "@/api/endpoints";
-import type { Locale, T } from "@/i18n/t";
+import type { Locale, MessageKey, T } from "@/i18n/t";
 
 /**
  * The Bandeja's pure decisions (spec 031, R5, R6), the same as the console's
@@ -16,17 +16,21 @@ import type { Locale, T } from "@/i18n/t";
  */
 export type ComposerMode =
   | { kind: "resolved" }
-  | { kind: "waiting"; reason: string | null; since?: string | null; agent?: string | null }
+  | { kind: "waiting"; reason: string | null; since?: string | null; agent?: string | null; code?: string }
   | { kind: "agent"; agent?: string | null }
   | { kind: "other"; name: string | null }
   | { kind: "mine"; blocked: "window_closed" | "channel_disconnected" | null; agent?: string | null };
 
 export function composerMode(
-  d: Pick<Detail, "state" | "assignee" | "waiting_reason" | "window" | "channel"> & Partial<Pick<Detail, "agent" | "waiting_since" | "activity">>,
+  d: Pick<Detail, "state" | "assignee" | "waiting_reason" | "window" | "channel"> & Partial<Pick<Detail, "agent" | "waiting_since" | "activity" | "waiting_code">>,
 ): ComposerMode {
   const agent = d.agent?.name ?? null;
   if (d.state === "resolved") return { kind: "resolved" };
-  if (d.state === "waiting" && !d.assignee) return { kind: "waiting", reason: d.waiting_reason ?? null, since: d.waiting_since ?? lastEscalatedAt(d.activity ?? []), agent };
+  if (d.state === "waiting" && !d.assignee) {
+    // Spec 047 (50.7): the code of why it waits (`events.md` §2) next to the agent's own words (045).
+    const code = d.waiting_code ?? undefined;
+    return { kind: "waiting", reason: d.waiting_reason ?? null, since: d.waiting_since ?? lastEscalatedAt(d.activity ?? []), agent, ...(code ? { code } : {}) };
+  }
   if (d.state === "agent") return { kind: "agent", agent };
   if (d.assignee && !d.assignee.is_me) return { kind: "other", name: d.assignee.name ?? null };
   if (!d.channel.connected) return { kind: "mine", blocked: "channel_disconnected", agent };
@@ -155,13 +159,37 @@ export function eventText(kind: string | null | undefined, a: Author | null | un
 
 /** «Atiende: …» under the contact's name. */
 /** Under the name, the state in words (spec 044, R11.2): waits, you, resolved, or the agent that answers. */
-export function attendsLine(d: Pick<Detail, "state" | "assignee" | "agent">, t: T): string {
+export function attendsLine(d: Pick<Detail, "state" | "assignee" | "agent"> & { handled_by_agent?: { name: string } | null }, t: T): string {
   if (d.state === "resolved") return t("app.inbox.attends.resolved");
   if (d.assignee) {
     return d.assignee.is_me ? t("inbox.assigned.you") : t("inbox.assigned", { name: d.assignee.name ?? t("inbox.who.someone") });
   }
   if (d.state === "waiting") return t("app.inbox.attends.waiting");
-  return d.agent ? t("app.inbox.attends.agent", { agent: d.agent.name }) : t("app.inbox.attends.agent.noName");
+  // Spec 047 (50.7): the API says who takes it (`handled_by_agent`); the older `agent` stays the fallback.
+  const agent = d.handled_by_agent ?? d.agent;
+  return agent ? t("app.inbox.attends.agent", { agent: agent.name }) : t("app.inbox.attends.agent.noName");
+}
+
+/** Spec 047 (50.7, `events.md` §2): why a conversation waits, from its code; a code this version does not know says nothing. */
+const WAITING_REASONS = [
+  "no_balance",
+  "agent_cap",
+  "paused_agent",
+  "paused_channel",
+  "paused_client",
+  "archived_client",
+  "channel_problem",
+  "agent_unpublished",
+  "no_model",
+  "provider_failure",
+  "turn_limit",
+  "escalated",
+  "human_takeover",
+  "reception_loop",
+] as const;
+
+export function waitingReasonText(code: string | null | undefined, t: T): string | null {
+  return code && (WAITING_REASONS as readonly string[]).includes(code) ? t(`bandeja.reason.${code}` as MessageKey) : null;
 }
 
 /** A list row's preview: who wrote it, and the text or «Archivo». */

@@ -7,6 +7,7 @@ import { endSession, loadSession, startSession } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import { APP_VERSION, PLATFORM } from "@/config";
 import { useLocale } from "@/i18n/t";
+import { clearDrafts } from "@/lib/drafts";
 import { isOlder } from "@/lib/version";
 
 import { onSessionEvent } from "./events";
@@ -85,6 +86,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       onSessionEvent((e) => {
         if (e.type === "closed") {
           queryClient.clear();
+          clearDrafts();
           setState({ status: "signed-out", closedReason: e.reason ?? "unknown" });
         } else {
           setState({ status: "update-required", reason: e.reason });
@@ -110,6 +112,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (outcome: SignInOutcome) => {
       if (outcome.kind === "ok") {
         queryClient.clear();
+        clearDrafts();
         await startSession(outcome.session);
         setState({ status: "signed-in" });
       } else if (outcome.kind === "update-required") {
@@ -138,6 +141,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await endpoints.signOut().catch(() => undefined);
     await endSession();
     queryClient.clear();
+    clearDrafts();
     setState({ status: "signed-out", closedReason: null });
   }, [queryClient]);
 

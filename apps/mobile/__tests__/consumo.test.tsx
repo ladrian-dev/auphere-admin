@@ -140,7 +140,7 @@ describe("the answer first (R13)", () => {
   });
 
   it("says the month when it is not this one", async () => {
-    await view({ summary: summary({ balance: { assigned: true, remaining_cents: 3013, cap_cents: 5000, days_left: 26.4, month_days_left: 24 } }) });
+    await view({ summary: summary({ balance: { assigned: true, remaining_cents: 3013, cap_cents: 5000, days_left: 26.4, month_days_left: 24, currency: "USD" } }) });
     expect(screen.getByText("Te alcanza hasta el martes 3 de noviembre")).toBeTruthy();
   });
 

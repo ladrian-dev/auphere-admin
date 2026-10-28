@@ -20,10 +20,39 @@ const PREFIXES = [
   "hu.home.chart.title",
   "hu.usage.spend.",
   "common.error.backend",
+  // Spec 047 (50.1, 25.5): the agents' and channels' states, pausing, and the
+  // Negocio sections — the same words the partner's console says.
+  "clients.v2.agent.",
+  "clients.v2.pause.",
+  "builder.channel.state.",
+  "builder.channel.problem.",
+  "builder.life.action.pause",
+  "builder.life.action.resume",
+  "builder.life.pause.",
+  "builder.life.paused",
+  "builder.life.resumed",
+  "business.hours.",
+  "business.special.",
+  "business.services.",
+  "business.locations.",
+  "business.history.",
+  "business.prov.",
+  "business.section.",
+  "panel.bag.days",
+  "panel.bag.empty",
+  "panel.bag.noEstimate",
 ] as const;
 const root = join(import.meta.dirname, "..");
 const i18n = join(root, "../console/src/i18n");
-const SOURCES = ["messages.ts", "lanes/inbox.ts", "lanes/lite.ts", "lanes/home-usage.ts"];
+const SOURCES = [
+  "messages.ts",
+  "lanes/inbox.ts",
+  "lanes/lite.ts",
+  "lanes/home-usage.ts",
+  "lanes/business.ts",
+  "lanes/builder-channels.ts",
+  "lanes/builder-life.ts",
+];
 
 type Entry = { es: string; en: string };
 
@@ -54,7 +83,7 @@ function collect(file: string, into: Map<string, Entry>): void {
 
 const entries = new Map<string, Entry>();
 for (const file of SOURCES) collect(file, entries);
-for (const must of ["inbox.composer.takeover", "inbox.badge.waiting"]) {
+for (const must of ["inbox.composer.takeover", "inbox.badge.waiting", "clients.v2.agent.serving", "business.hours.phrase"]) {
   if (!entries.has(must)) throw new Error(`the console no longer has «${must}»`);
 }
 

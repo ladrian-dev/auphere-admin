@@ -27,6 +27,7 @@ from typing import Any, TypeVar, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import BusinessSection, Tenant
 from nexus_api.db.models.business import BusinessLocation
@@ -116,11 +117,18 @@ def required_revision(if_match: str | None) -> int:
     return int(raw)
 
 
-async def _section(scope: ClientScope, section: str) -> tuple[int, SectionState]:
-    row = await scope.session.get(BusinessSection, (scope.tenant.id, section))
+async def section_meta(
+    session: AsyncSession, tenant_id: uuid.UUID, section: str
+) -> tuple[int, SectionState]:
+    """La revisión y el estado de una sección (los de alta si aún no tiene fila)."""
+    row = await session.get(BusinessSection, (tenant_id, section))
     if row is None:
         return 0, cast(SectionState, INITIAL_STATES[section])
     return row.revision, cast(SectionState, row.state)
+
+
+async def _section(scope: ClientScope, section: str) -> tuple[int, SectionState]:
+    return await section_meta(scope.session, scope.tenant.id, section)
 
 
 def _invalid(code: str, **info: Any) -> HTTPException:
@@ -128,6 +136,29 @@ def _invalid(code: str, **info: Any) -> HTTPException:
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail={"code": code, **{k: v for k, v in info.items() if v is not None}},
     )
+
+
+def domain_refusal(exc: Exception) -> HTTPException | None:
+    """Los «no» del dominio de cada sección, como respuesta (``422`` con su
+    código, ``404`` si no existe). ``None``: no es un «no» del dominio. Lo
+    comparten esta consola y la lite (spec 047, T167)."""
+    if isinstance(exc, hours.HoursError):
+        return _invalid(exc.code, day=exc.day, message=str(exc))
+    if isinstance(
+        exc,
+        (
+            locations.LocationError,
+            services_catalog.ServiceError,
+            faqs.FaqError,
+            profile_edits.InvalidField,
+        ),
+    ):
+        return _invalid(exc.code, field=exc.field)
+    if isinstance(exc, profile_edits.BagCurrencyLocked):
+        return _invalid("wallet_currency_locked", field="wallet_currency")
+    if isinstance(exc, LookupError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return None
 
 
 async def _run(
@@ -154,19 +185,11 @@ async def _run(
             },
             headers={"ETag": etag(exc.current)},
         ) from None
-    except hours.HoursError as exc:
-        raise _invalid(exc.code, day=exc.day, message=str(exc)) from None
-    except (
-        locations.LocationError,
-        services_catalog.ServiceError,
-        faqs.FaqError,
-        profile_edits.InvalidField,
-    ) as exc:
-        raise _invalid(exc.code, field=exc.field) from None
-    except profile_edits.BagCurrencyLocked:
-        raise _invalid("wallet_currency_locked", field="wallet_currency") from None
-    except LookupError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from None
+    except Exception as exc:
+        refusal = domain_refusal(exc)
+        if refusal is None:
+            raise
+        raise refusal from None
     out = await view()
     response.headers["ETag"] = etag(int(getattr(out, "revision", 0)))
     return result, out
@@ -256,18 +279,30 @@ async def _location_or_404(scope: ClientScope, location_id: uuid.UUID | None) ->
 
 
 async def _hours_out(scope: ClientScope, location_id: uuid.UUID | None) -> HoursOut:
-    session = scope.session
-    locale = await hours.business_locale(session, scope.tenant.id)
+    return await hours_view(scope.session, scope.tenant.id, location_id, allowed=_allowed(scope))
+
+
+async def hours_view(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    location_id: uuid.UUID | None,
+    *,
+    allowed: list[Any],
+) -> HoursOut:
+    """El horario del negocio o de una sede, con su frase (también la lite)."""
+    locale = await hours.business_locale(session, tenant_id)
     own = (
         await hours.load_week(session, location_id=location_id) if location_id is not None else None
     )
     effective = await hours.load_hours(session, location_id=location_id)
     week = effective.week
-    revision, state = await _section(scope, "hours" if location_id is None else "locations")
+    revision, state = await section_meta(
+        session, tenant_id, "hours" if location_id is None else "locations"
+    )
     return HoursOut(
         revision=revision,
         state=state,
-        allowed=_allowed(scope),
+        allowed=allowed,
         location_id=location_id,
         inherits=location_id is not None and own is None,
         layout=week.layout if week is not None else None,  # type: ignore[arg-type]
@@ -286,6 +321,38 @@ async def get_hours(
     out = await _hours_out(scope, location_id)
     response.headers["ETag"] = etag(out.revision)
     return out
+
+
+def week_of(body: HoursIn, location_id: uuid.UUID | None) -> hours.Week | None:
+    """La semana que se guarda (``None`` quita el horario o hereda el del
+    negocio). Pasar a bloques con días distintos responde ``409`` con lo que se
+    perdería, hasta que llega ``confirm_loss`` (10.6). También la lite."""
+    if body.inherit or body.clear:
+        if (body.inherit and location_id is None) or (body.clear and location_id is not None):
+            raise _invalid("invalid_target")
+        return None
+    try:
+        week = hours.week_from_days(
+            "daily",
+            {d: [s.model_dump(exclude={"overnight"}) for s in v] for d, v in body.days.items()},
+        )
+        if body.layout == "blocks":
+            lost = hours.blocks_loss(week)
+            if lost and not body.confirm_loss:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "blocks_lose_days",
+                        "lost": lost,
+                        "keeps": [
+                            {"open": s.hhmm()[0], "close": s.hhmm()[1]} for s in week.days[0]
+                        ],
+                    },
+                )
+            week = hours.to_blocks(week)
+    except hours.HoursError as exc:
+        raise _invalid(exc.code, day=exc.day, message=str(exc)) from None
+    return week
 
 
 @router.put(
@@ -310,34 +377,7 @@ async def put_hours(
     que llega ``confirm_loss`` (10.6)."""
     expected = required_revision(if_match)
     await _location_or_404(scope, location_id)
-    week: hours.Week | None
-    if body.inherit or body.clear:
-        if (body.inherit and location_id is None) or (body.clear and location_id is not None):
-            raise _invalid("invalid_target")
-        week = None
-    else:
-        try:
-            week = hours.week_from_days(
-                "daily",
-                {d: [s.model_dump(exclude={"overnight"}) for s in v] for d, v in body.days.items()},
-            )
-            if body.layout == "blocks":
-                lost = hours.blocks_loss(week)
-                if lost and not body.confirm_loss:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail={
-                            "code": "blocks_lose_days",
-                            "lost": lost,
-                            "keeps": [
-                                {"open": s.hhmm()[0], "close": s.hhmm()[1]} for s in week.days[0]
-                            ],
-                        },
-                    )
-                week = hours.to_blocks(week)
-        except hours.HoursError as exc:
-            raise _invalid(exc.code, day=exc.day, message=str(exc)) from None
-    chosen = week
+    chosen = week_of(body, location_id)
     _, out = await _run(
         scope,
         response,
@@ -359,8 +399,25 @@ async def put_hours(
 async def _locations_out(
     scope: ClientScope, *, archived: bool = False, created: uuid.UUID | None = None
 ) -> LocationsOut:
-    session = scope.session
-    locale = await hours.business_locale(session, scope.tenant.id)
+    return await locations_view(
+        scope.session,
+        scope.tenant.id,
+        allowed=_allowed(scope),
+        archived=archived,
+        created=created,
+    )
+
+
+async def locations_view(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    allowed: list[Any],
+    archived: bool = False,
+    created: uuid.UUID | None = None,
+) -> LocationsOut:
+    """Las sedes con la frase de su horario (también la lite)."""
+    locale = await hours.business_locale(session, tenant_id)
     business = await hours.load_hours(session)
     own = await locations.with_own_hours(session)
     items: list[LocationOut] = []
@@ -379,9 +436,9 @@ async def _locations_out(
                 archived=loc.archived_at is not None,
             )
         )
-    revision, state = await _section(scope, "locations")
+    revision, state = await section_meta(session, tenant_id, "locations")
     return LocationsOut(
-        revision=revision, state=state, allowed=_allowed(scope), items=items, created_id=created
+        revision=revision, state=state, allowed=allowed, items=items, created_id=created
     )
 
 
@@ -488,8 +545,26 @@ async def restore_location(
 async def _special_dates_out(
     scope: ClientScope, *, archived: bool = False, created: uuid.UUID | None = None
 ) -> SpecialDatesOut:
+    return await special_dates_view(
+        scope.session,
+        scope.tenant.id,
+        allowed=_allowed(scope),
+        archived=archived,
+        created=created,
+    )
+
+
+async def special_dates_view(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    allowed: list[Any],
+    archived: bool = False,
+    created: uuid.UUID | None = None,
+) -> SpecialDatesOut:
+    """Las fechas especiales con sus turnos (también la lite)."""
     items: list[SpecialDateOut] = []
-    for row, sp in await special_dates.list_special_dates(scope.session, archived=archived):
+    for row, sp in await special_dates.list_special_dates(session, archived=archived):
         shifts = sp.shifts if sp is not None else ()
         items.append(
             SpecialDateOut(
@@ -506,9 +581,9 @@ async def _special_dates_out(
                 archived=row.archived_at is not None,
             )
         )
-    revision, state = await _section(scope, "special_dates")
+    revision, state = await section_meta(session, tenant_id, "special_dates")
     return SpecialDatesOut(
-        revision=revision, state=state, allowed=_allowed(scope), items=items, created_id=created
+        revision=revision, state=state, allowed=allowed, items=items, created_id=created
     )
 
 
@@ -608,7 +683,24 @@ async def archive_special_date(
 async def _services_out(
     scope: ClientScope, *, archived: bool = False, created: uuid.UUID | None = None
 ) -> ServicesOut:
-    session = scope.session
+    return await services_view(
+        scope.session,
+        scope.tenant.id,
+        allowed=_allowed(scope),
+        archived=archived,
+        created=created,
+    )
+
+
+async def services_view(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    allowed: list[Any],
+    archived: bool = False,
+    created: uuid.UUID | None = None,
+) -> ServicesOut:
+    """Los servicios con su precio y su duración (también la lite)."""
     agents = await services_catalog.client_agents(session)
     rows = await services_catalog.agent_rows(session)
     order = {a.id: i for i, a in enumerate(agents)}
@@ -635,12 +727,12 @@ async def _services_out(
                 archived=svc.archived_at is not None,
             )
         )
-    currency = await services_catalog.business_currency(session, scope.tenant.id)
-    revision, state = await _section(scope, "services")
+    currency = await services_catalog.business_currency(session, tenant_id)
+    revision, state = await section_meta(session, tenant_id, "services")
     return ServicesOut(
         revision=revision,
         state=state,
-        allowed=_allowed(scope),
+        allowed=allowed,
         currency=currency,
         exponent=services_catalog.exponent(currency),
         items=items,
@@ -915,4 +1007,15 @@ async def archive_faq(
     return out
 
 
-__all__ = ["router"]
+__all__ = [
+    "domain_refusal",
+    "etag",
+    "hours_view",
+    "locations_view",
+    "required_revision",
+    "router",
+    "section_meta",
+    "services_view",
+    "special_dates_view",
+    "week_of",
+]

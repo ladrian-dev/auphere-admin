@@ -15,7 +15,7 @@ export default function BusinessLoading() {
       <div className="grid min-w-0 gap-6">
         <Skeleton className="h-5 w-2/3 max-w-prose" />
         {Array.from({ length: 5 }, (_, i) => (
-          <Skeleton key={i} className="h-48 w-full rounded-lg" />
+          <Skeleton key={i} className="h-48 w-full rounded-md" />
         ))}
       </div>
     </div>

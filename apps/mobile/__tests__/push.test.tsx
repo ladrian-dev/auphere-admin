@@ -32,7 +32,8 @@ describe("channels and categories", () => {
   it("Android: one PRIVATE channel per kind, with the API's ids", async () => {
     Platform.OS = "android";
     await ensureChannels(t);
-    expect(CHANNELS.map((c) => c.id)).toEqual(["waiting_v1", "messages_v1", "balance_v1", "reservations_v1"]);
+    // Spec 047 (T170): the agents' notices have their own channel; the balance's three stay on `balance_v1`.
+    expect(CHANNELS.map((c) => c.id)).toEqual(["waiting_v1", "messages_v1", "balance_v1", "reservations_v1", "agents_v1"]);
     // Spec 044 (R14.6): Reservas' notices are not urgent — the system's default importance.
     expect(CHANNELS.find((c) => c.id === "reservations_v1")?.importance).toBe(Notifications.AndroidImportance.DEFAULT);
     for (const c of CHANNELS) {
@@ -44,7 +45,7 @@ describe("channels and categories", () => {
     Platform.OS = "ios";
     await ensureCategories(t);
     const calls = (Notifications.setNotificationCategoryAsync as jest.Mock).mock.calls;
-    expect(calls.map((c) => c[0])).toEqual(["inbox_waiting", "inbox_message", "client_balance", "reservations"]);
+    expect(calls.map((c) => c[0])).toEqual(["inbox_waiting", "inbox_message", "client_balance", "reservations", "agents"]);
     for (const [, actions, options] of calls) {
       expect(actions).toEqual([]);
       expect(options.previewPlaceholder).toBeTruthy();

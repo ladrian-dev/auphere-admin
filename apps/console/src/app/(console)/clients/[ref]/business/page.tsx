@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 
+import { ClientBuilderPanel } from "@/components/builder/client-builder-panel";
+import { builderSuggestions } from "@/components/builder/life-model";
 import { BusinessSectionsView } from "@/components/business/sections/business-sections";
 import { getT } from "@/i18n/server";
 import { run } from "@/lib/actions";
 import { callFor } from "@/lib/backend";
 import { businessSectionsApi } from "@/lib/backend/business-sections";
+import { clientRecordsApi } from "@/lib/backend/client-records";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
 
 import { getConsoleVersionCached } from "../data";
@@ -30,19 +33,21 @@ export default async function BusinessPage({ params }: { params: Promise<{ ref: 
   if ((await getConsoleVersionCached(principal)) !== "v2") redirect(`/clients/${encodeURIComponent(ref)}`);
 
   const api = businessSectionsApi(callFor(principal));
-  const [basics, locations, hours, specialDates, services] = await Promise.all([
+  const [basics, locations, hours, specialDates, services, record] = await Promise.all([
     run(() => api.getBasics(ref)),
     run(() => api.getLocations(ref)),
     run(() => api.getHours(ref)),
     run(() => api.getSpecialDates(ref)),
     run(() => api.getServices(ref)),
+    // Spec 047 (T098): lo que el constructor dejó por confirmar en la ficha.
+    run(() => clientRecordsApi(callFor(principal)).getBusiness(ref)),
   ]);
+  const canWrite = can(principal.role, "clients:write");
 
   return (
-    <BusinessSectionsView
-      refId={ref}
-      canWrite={can(principal.role, "clients:write")}
-      data={{ basics, locations, hours, specialDates, services }}
-    />
+    <div className="grid min-w-0 gap-6">
+      <ClientBuilderPanel refId={ref} canWrite={canWrite} suggestions={record.ok ? builderSuggestions(record.data) : null} />
+      <BusinessSectionsView refId={ref} canWrite={canWrite} data={{ basics, locations, hours, specialDates, services }} />
+    </div>
   );
 }

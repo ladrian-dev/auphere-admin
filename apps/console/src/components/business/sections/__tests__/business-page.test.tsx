@@ -21,6 +21,8 @@ vi.mock("@/app/(console)/clients/[ref]/business/actions", () => ({
   archiveServiceAction: vi.fn(),
   duplicateServiceAction: vi.fn(),
   setServiceAgentsAction: vi.fn(),
+  // «Reintentar» de una sección que no cargó: vuelve a leer solo esa.
+  reloadSectionAction: vi.fn(async () => ({ ok: false })),
 }));
 
 const { BusinessSectionsView } = await import("../business-sections");
