@@ -1,10 +1,10 @@
 import { Callout, EmptyState, ErrorState, PageHeader, Section } from "@nexus/ui";
 
-import { ChannelLogo } from "@/components/brand/channel-logo";
-import { AVAILABILITY_LABEL } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
 
+import { CatalogGrid } from "./catalog-grid";
 import { ChannelsTable } from "./channels-table";
+import { ChannelsTabs } from "./channels-tabs";
 
 export const metadata = { title: "Canales" };
 export const dynamic = "force-dynamic";
@@ -19,7 +19,8 @@ export default async function ChannelsPage() {
     backend.getChannelCatalog().catch(() => null),
     backend.listAllChannels().catch(() => null),
   ]);
-  const countOf = (key: string) => all?.channels.filter((c) => c.type === key && c.status !== "disconnected").length ?? 0;
+  const active: Record<string, number> = {};
+  for (const c of all?.channels ?? []) if (c.status !== "disconnected") active[c.type] = (active[c.type] ?? 0) + 1;
 
   return (
     <>
@@ -27,26 +28,14 @@ export default async function ChannelsPage() {
         title="Canales"
         description="Por dónde escriben los clientes de cada negocio. Para conectar uno, entra en el cliente y pulsa «Añadir canal»."
       />
+      <ChannelsTabs current="/channels" />
       {catalog ? (
-        <Section flat title="Catálogo" description="Lo que ya funciona, lo que está en camino y lo que vendrá.">
-          <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            {catalog.map((entry) => {
-              const badge = AVAILABILITY_LABEL[entry.availability];
-              return (
-                <li
-                  key={entry.key}
-                  className="flex flex-col items-start gap-2 rounded-md p-4 ring-1 ring-foreground/10"
-                  aria-disabled={entry.availability === "coming_soon" || undefined}
-                >
-                  <ChannelLogo channel={entry.key} size="lg" />
-                  <span className="text-sm font-medium">{entry.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {badge ?? `${countOf(entry.key)} activos`}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+        <Section
+          flat
+          title="Catálogo"
+          description="Lo que ya funciona, lo que está en camino («Pendiente») y lo que vendrá («Próximamente»). Solo este panel y el catálogo de canales de la consola de partners enseñan lo que todavía no se puede conectar."
+        >
+          <CatalogGrid catalog={catalog} active={active} />
         </Section>
       ) : null}
       <Section flat title="Canales de los clientes">

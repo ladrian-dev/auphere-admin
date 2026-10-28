@@ -189,7 +189,8 @@ export function channelsApi(call: Call) {
 /** Spec 040: one of the client's WhatsApp links. The token is never shown again. */
 export type SignupLinkRow = {
   id: string;
-  mode: "coexistence" | "cloud_api";
+  /** Spec 047 (31.5): un enlace por agente puede ir en «WhatsApp login». */
+  mode: "coexistence" | "cloud_api" | "whatsapp_login";
   state: "valid" | "used" | "revoked" | "expired";
   created_at: string;
   expires_at: string;

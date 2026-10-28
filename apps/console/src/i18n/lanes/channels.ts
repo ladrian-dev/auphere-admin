@@ -7,7 +7,9 @@ export const channelsMessages = {
   "ch.connect": { es: "Conectar WhatsApp", en: "Connect WhatsApp" },
   // ── spec 040: a link the owner opens on their own device ──────────
   "ch.link.open": { es: "Enviar enlace al cliente", en: "Send a link to the client" },
-  "ch.link.title": { es: "Que lo conecte el cliente desde su teléfono", en: "Let the client connect it from their phone" },
+  // Spec 047 (31.3): «desde su teléfono» solo con la bandera, hasta probarlo en iOS y en Android.
+  "ch.link.title": { es: "Que lo conecte el cliente", en: "Let the client connect it" },
+  "ch.link.title.phone": { es: "Que lo conecte el cliente desde su teléfono", en: "Let the client connect it from their phone" },
   "ch.link.body": {
     es: "El dueño del negocio abre el enlace en su teléfono o su computadora, donde ya tiene abierta su cuenta de Meta, y hace él mismo los pasos de WhatsApp. Sus datos de Meta no pasan por tu equipo. El enlace sirve una vez y caduca en 7 días.",
     en: "The business owner opens the link on their phone or computer, where they are already logged in to Meta, and does the WhatsApp steps themselves. Their Meta details never go through your device. The link works once and expires in 7 days.",
@@ -36,6 +38,10 @@ export const channelsMessages = {
   "ch.link.email": { es: "Enviar por correo", en: "Send by e-mail" },
   "ch.link.expires": { es: "Caduca el {date}.", en: "Expires on {date}." },
   "ch.link.message": {
+    es: "Hola. Para conectar el WhatsApp de tu negocio con tu agente, abre este enlace y sigue los pasos de Meta: {url}",
+    en: "Hi. To connect your business WhatsApp to your agent, open this link and follow Meta's steps: {url}",
+  },
+  "ch.link.message.phone": {
     es: "Hola. Para conectar el WhatsApp de tu negocio con tu agente, abre este enlace desde tu teléfono y sigue los pasos de Meta: {url}",
     en: "Hi. To connect your business WhatsApp to your agent, open this link on your phone and follow Meta's steps: {url}",
   },
@@ -51,6 +57,12 @@ export const channelsMessages = {
     en: "You are about to open Meta's window. Pick your business and the number your agent will answer on, and accept the permissions.",
   },
   "connect.start": { es: "Conectar mi WhatsApp", en: "Connect my WhatsApp" },
+  // Spec 047 (31.5): el enlace en la beta «WhatsApp login», que la API solo crea donde Auphere la activó.
+  "connect.body.whatsapp_login": {
+    es: "Vas a conectar tu número con WhatsApp, sin cuenta de Meta. Sigue los pasos que te pida WhatsApp. La verificación del negocio llega después: Meta te escribirá cuando toque.",
+    en: "You are about to connect your number with WhatsApp, with no Meta account. Follow the steps WhatsApp asks for. Business verification comes later: Meta will write to you when it is due.",
+  },
+  "connect.start.whatsapp_login": { es: "Conectar con WhatsApp, sin cuenta de Meta", en: "Connect with WhatsApp, no Meta account" },
   "connect.working": { es: "Conectando…", en: "Connecting…" },
   "connect.done.title": { es: "¡Listo! Tu WhatsApp está conectado", en: "Done! Your WhatsApp is connected" },
   "connect.done.body": { es: "El número {phone} ya está con tu agente. Puedes cerrar esta página.", en: "Number {phone} is now with your agent. You can close this page." },
@@ -65,6 +77,8 @@ export const channelsMessages = {
   "ch.connect.mode": { es: "Modo de conexión", en: "Connection mode" },
   "ch.connect.mode.cloud_api": { es: "Cloud API (número nuevo o migrado)", en: "Cloud API (new or migrated number)" },
   "ch.connect.mode.coexistence": { es: "Coexistencia (mantener la app WhatsApp Business)", en: "Coexistence (keep the WhatsApp Business app)" },
+  // Spec 047 (31.5): un enlace por agente puede ir en la beta «WhatsApp login». Sin prometer «sin Facebook».
+  "ch.connect.mode.whatsapp_login": { es: "WhatsApp login (beta)", en: "WhatsApp login (beta)" },
   "ch.connect.help": { es: "Se abre la ventana de Meta. Elige la empresa, el número y acepta los permisos. Al terminar, el número aparece aquí.", en: "Meta's window opens. Pick the business and the number and accept the permissions. When done, the number shows up here." },
   "ch.connect.start": { es: "Abrir Meta", en: "Open Meta" },
   "ch.connect.working": { es: "Conectando…", en: "Connecting…" },

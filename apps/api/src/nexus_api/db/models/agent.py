@@ -71,6 +71,26 @@ class Agent(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     serves_all_services: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    # Spec 047 (migración 0190): the agent's life — ``draft``, ``published``,
+    # ``paused`` (with its reason) or ``archived`` — and what resuming returns.
+    lifecycle: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default="draft"
+    )
+    pause_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused_by_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    paused_by_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    paused_origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    before_pause: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: Exactly one per client among the non-archived (requisito 26.2).
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    is_reception: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: The monthly cap, in the currency of the client's bag (requisito 44.1).
+    monthly_cap_micros: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
@@ -175,6 +195,14 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     runtime_mcp_connector: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # Spec 047 (migración 0187): the version's AgentSpec v1 (requisito 16.1),
+    # the gate's verdict, the owner/admin reason to skip it, and the undo window.
+    spec: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    gate: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    undo_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AgentService(Base):

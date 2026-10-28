@@ -5,7 +5,18 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -91,6 +102,118 @@ class Channel(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     last_provider_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Spec 047 (migración 0191): the channel's own configuration (requisito 32).
+    problem_reason: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    audience_mode: Mapped[str] = mapped_column(
+        String(12), nullable=False, default="unset", server_default="unset"
+    )
+    config_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    coexistence: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    paused_by_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    paused_by_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    paused_origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChannelAudienceNumber(UUIDPrimaryKey, Base):
+    """Spec 047 (0191): a test number («Solo mi equipo») or an exception («A todos»)."""
+
+    __tablename__ = "channel_audience_numbers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_channel_audience_numbers_tenant_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "channel_id",
+            "kind",
+            "phone_e164",
+            name="uq_channel_audience_numbers_number",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "channel_id"],
+            ["channels.tenant_id", "channels.id"],
+            name="fk_channel_audience_numbers_channel",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    phone_e164: Mapped[str] = mapped_column(String(20), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class ChannelEscalationRecipient(UUIDPrimaryKey, Base):
+    """Spec 047 (0191): who a hand-over on this number tells, and how (requisito 33)."""
+
+    __tablename__ = "channel_escalation_recipients"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_channel_escalation_recipients_tenant_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "channel_id"],
+            ["channels.tenant_id", "channels.id"],
+            name="fk_channel_escalation_recipients_channel",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    via: Mapped[str] = mapped_column(String(12), nullable=False)
+    phone_e164: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    client_user_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    position: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class ChannelConfigChange(UUIDPrimaryKey, Base):
+    """Spec 047 (0191): the history of a channel's configuration, with undo."""
+
+    __tablename__ = "channel_config_changes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_channel_config_changes_tenant_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "channel_id"],
+            ["channels.tenant_id", "channels.id"],
+            name="fk_channel_config_changes_channel",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    before: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    after: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    actor: Mapped[str] = mapped_column(String(160), nullable=False)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)
+    at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    undo_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WhatsappLoginBetaCountry(Base):
+    """Spec 047 (0191), plataforma: dónde Meta habilitó la beta «WhatsApp login»."""
+
+    __tablename__ = "whatsapp_login_beta_countries"
+
+    country: Mapped[str] = mapped_column(String(2), primary_key=True)
+    enabled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    enabled_by: Mapped[str] = mapped_column(String(160), nullable=False)
 
 
 class TenantCredentials(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

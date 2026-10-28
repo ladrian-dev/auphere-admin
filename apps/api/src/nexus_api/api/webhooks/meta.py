@@ -25,6 +25,7 @@ discard.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -52,7 +53,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.config import get_settings
-from nexus_api.core.admin_gate import admin_only_suppresses
+from nexus_api.core.admin_gate import audience_suppresses
 from nexus_api.core.errors import TenantNotFound
 from nexus_api.core.logging_context import bind_tenant
 from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
@@ -61,6 +62,9 @@ from nexus_api.core.streams import stream_for_tier, xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant, resolve_tenant_tier
 from nexus_api.db.models import (
+    AuditLog,
+    Channel,
+    ChannelStatus,
     Message,
     MessageStatus,
     WhatsAppOptOut,
@@ -160,7 +164,28 @@ _INBOUND_PRELUDE_SQL = text(
         WHERE c.provider = 'meta'
           AND c.provider_identifier = :identifier
           AND c.status IN ('active', 'paused', 'degraded')
-        LIMIT 1)                                        AS channel_status
+        LIMIT 1)                                        AS channel_status,
+      (SELECT jsonb_build_object(
+                'mode', c.audience_mode,
+                'test', COALESCE((SELECT jsonb_agg(n.phone_e164)
+                                    FROM channel_audience_numbers n
+                                   WHERE n.channel_id = c.id AND n.kind = 'test'), '[]'::jsonb),
+                'exception', COALESCE((SELECT jsonb_agg(n.phone_e164)
+                                         FROM channel_audience_numbers n
+                                        WHERE n.channel_id = c.id AND n.kind = 'exception'),
+                                      '[]'::jsonb),
+                'strict', c.type = 'whatsapp' AND EXISTS (
+                    SELECT 1 FROM partners p
+                     WHERE p.console_v2_enabled_at IS NOT NULL
+                       AND p.id IN (SELECT t.partner_id FROM tenants t WHERE t.id = c.tenant_id
+                                    UNION ALL
+                                    SELECT pt.partner_id FROM partner_tenants pt
+                                     WHERE pt.tenant_id = c.tenant_id)))
+         FROM channels c
+        WHERE c.provider = 'meta'
+          AND c.provider_identifier = :identifier
+          AND c.status IN ('active', 'paused', 'degraded')
+        LIMIT 1)                                        AS channel_audience
     """
 )
 
@@ -275,6 +300,9 @@ async def meta_webhook(
             elif field == "history":
                 await _handle_history_sync(payload, session=session, redis=redis)
                 handled = True
+            elif field == "account_update":
+                await _handle_account_update(change.get("value"), session=session, redis=redis)
+                handled = True
             else:
                 log.info("webhook.meta.unhandled_field", field=field)
 
@@ -380,7 +408,7 @@ async def _handle_inbound(
             )
         ).one()
 
-    prior, channel_id, channel_config, agent_policies_raw, channel_status = row
+    prior, channel_id, channel_config, agent_policies_raw, channel_status, channel_audience = row
     if prior is not None:
         log.info(
             "webhook.meta.dedupe_db_hit",
@@ -563,7 +591,9 @@ async def _handle_inbound(
             channel_id=str(channel_id),
             wamid=wamid,
         )
-    elif admin_only_suppresses(agent_policies, inbound.sender_identifier):
+    elif audience_suppresses(channel_audience, agent_policies, inbound.sender_identifier):
+        # Spec 047 (requisito 32): «Solo mi equipo», las excepciones de «A
+        # todos» y un número «Sin configurar» no marcan como leído.
         log.info(
             "webhook.meta.read_receipt_suppressed_not_admin",
             tenant_id=str(tenant_id),
@@ -932,6 +962,102 @@ async def _handle_history_sync(
         error_code=hist.error_code,
     )
     return {"status": "enqueued"}
+
+
+#: Spec 047 (30.11): lo que ``account_update`` dice de un número, como motivo de
+#: «Con problemas». Un evento que no está aquí solo queda en el log.
+ACCOUNT_PROBLEMS: dict[str, str] = {
+    # La app de Auphere ya no tiene acceso: hay que volver a conectar.
+    "PARTNER_REMOVED": "auth_expired",
+    # Coexistencia: el negocio dejó de abrir la app (unos 14 días) o la desconectó.
+    "ACCOUNT_OFFBOARDED": "coexistence_inactive",
+    "PARTNER_APP_UNINSTALLED": "coexistence_inactive",
+    # Meta restringió o retiró la cuenta.
+    "ACCOUNT_DELETED": "meta_error",
+    "ACCOUNT_RESTRICTION": "meta_error",
+    "DISABLED_UPDATE": "meta_error",
+}
+
+
+async def _handle_account_update(
+    value: Any,
+    *,
+    session: AsyncSession,
+    redis: Redis,
+) -> dict[str, Any]:
+    """Spec 047 (30.11): Meta dice que un número dejó de funcionar. El canal pasa
+    a «Con problemas» con su motivo y el partner recibe el aviso; lo que llega
+    por él se sigue guardando (``degraded`` se resuelve igual que ``active``)."""
+    from nexus_channels.whatsapp_meta.phone import to_e164
+
+    from nexus_api.services.channel_config import announce
+
+    value = value if isinstance(value, dict) else {}
+    event = str(value.get("event") or "").upper()
+    reason = ACCOUNT_PROBLEMS.get(event)
+    phone = to_e164(str(value.get("phone_number") or ""))
+    if reason is None or not phone:
+        log.info("webhook.meta.account_update_ignored", meta_event=event, has_phone=bool(phone))
+        return {"status": "ignored"}
+    try:
+        tenant_id = await resolve_tenant(session, redis, "meta", phone)
+    except TenantNotFound:
+        counters.incr(CHANNEL_UNRESOLVED_EVENT)
+        log.warning("channel.unresolved_event", provider="meta", identifier=phone)
+        return {"status": "ignored"}
+    if session.in_transaction():
+        await session.rollback()
+    wanted = re.sub(r"\D", "", phone)
+    channel_id: uuid.UUID | None = None
+    agent_id: uuid.UUID | None = None
+    async with tenant_scoped_session(session, tenant_id):
+        for channel in (
+            await session.scalars(
+                select(Channel).where(
+                    Channel.provider == "meta", Channel.status != ChannelStatus.DISCONNECTED
+                )
+            )
+        ).all():
+            if re.sub(r"\D", "", channel.provider_identifier) != wanted:
+                continue
+            if channel.status is ChannelStatus.DEGRADED and channel.problem_reason == reason:
+                return {"status": "unchanged"}
+            channel.status = ChannelStatus.DEGRADED
+            channel.problem_reason = reason
+            session.add(
+                AuditLog(
+                    tenant_id=tenant_id,
+                    actor="meta",
+                    action="channel.problem",
+                    target=f"channel:{channel.id}",
+                    after_json={"event": event, "reason": reason},
+                )
+            )
+            channel_id = channel.id
+            agent_id = channel.agent_id
+            break
+    if channel_id is None:
+        return {"status": "ignored"}
+    data = {"channel_id": str(channel_id), "reason": reason}
+    if agent_id is not None:
+        data["agent_id"] = str(agent_id)
+    # Al partner y a las personas del cliente (events.md §3).
+    await announce(
+        tenant_id=tenant_id,
+        kind="channel.problem",
+        severity="critical",
+        data=data,
+        dedupe_key=f"channel.problem:{channel_id}:{reason}",
+        to_client=True,
+    )
+    log.info(
+        "webhook.meta.account_update_applied",
+        tenant_id=str(tenant_id),
+        channel_id=str(channel_id),
+        meta_event=event,
+        reason=reason,
+    )
+    return {"status": "applied"}
 
 
 def _extract_change_value(payload: dict[str, Any], *, field: str) -> dict[str, Any] | None:

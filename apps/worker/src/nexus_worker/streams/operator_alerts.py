@@ -35,7 +35,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -186,6 +187,14 @@ async def _alert_one(
         )
         return
 
+    if audit_row.action == "conversation.escalated":
+        plan = await _channel_plan(session, audit_row.target)
+        if plan is not None:
+            # Spec 047 (requisito 33): el canal tiene sus destinatarios; cada uno
+            # se entera por su vía y nadie más (ni el dueño ni el operador).
+            await _alert_channel_recipients(session, notif, audit_row, plan, adapters, tenant_id)
+            return
+
     recipient_phone, owner_business_phone, provider = await _resolve_recipient_and_business_phone(
         session, tenant_id
     )
@@ -264,6 +273,197 @@ async def _alert_one(
         audit_log_id=str(audit_row.id),
         template=template,
     )
+
+
+@dataclass(frozen=True)
+class _ChannelPlan:
+    """Lo que un escalado necesita de su canal (requisito 33)."""
+
+    channel_id: uuid.UUID
+    business_phone: str
+    provider: str
+    recipients: list[Any]
+    notify_from: str
+    summary: bool
+
+
+async def _channel_plan(session: AsyncSession, target: str | None) -> _ChannelPlan | None:
+    """Los destinatarios del canal de la conversación escalada, o ``None`` si
+    el canal no tiene: entonces sigue la vía de antes (dueño y revisores)."""
+    from nexus_api.db.models import Channel
+    from nexus_api.services.channel_config import notify_from, recipients_of
+
+    try:
+        conversation_id = uuid.UUID(str(target)) if target else None
+    except ValueError:
+        return None
+    if conversation_id is None:
+        return None
+    channel_id = await session.scalar(
+        sa.select(Conversation.channel_id).where(Conversation.id == conversation_id)
+    )
+    channel = await session.get(Channel, channel_id) if channel_id else None
+    if channel is None:
+        return None
+    recipients = await recipients_of(session, channel.id)
+    if not recipients:
+        return None
+    return _ChannelPlan(
+        channel_id=channel.id,
+        business_phone=channel.provider_identifier,
+        provider=channel.provider,
+        recipients=recipients,
+        notify_from=await notify_from(session, channel),
+        summary=bool((channel.config or {}).get("escalation_summary", True)),
+    )
+
+
+#: El aviso sin resumen: no dice quién ni qué pidió (requisito 33.2).
+_NO_SUMMARY = ["un cliente", "Abre la Bandeja para verla"]
+
+
+async def _alert_channel_recipients(
+    session: AsyncSession,
+    notif: Any,
+    audit_row: AuditLog,
+    plan: _ChannelPlan,
+    adapters: AdapterRegistry,
+    tenant_id: uuid.UUID,
+) -> None:
+    """Un aviso por destinatario y por su vía. La Bandeja ya la tiene
+    ``mark_waiting``; WhatsApp sale del número del canal o del de Auphere
+    (33.3); el resumen es mínimo y nunca llega a una persona del partner (33.4)."""
+    full = await _render_params(session, audit_row, "alert_escalation_v1")
+    errors: list[str] = []
+    attempted = 0
+    for recipient in plan.recipients:
+        if recipient.via == "inbox":
+            continue
+        attempted += 1
+        try:
+            if recipient.via == "whatsapp":
+                params = full if plan.summary else _NO_SUMMARY
+                await _send_whatsapp(plan, recipient.phone_e164, params, adapters, tenant_id)
+            else:
+                partner_person = await _is_partner_person(session, recipient.email)
+                params = full if plan.summary and not partner_person else _NO_SUMMARY
+                await _send_escalation_email(recipient.email, params)
+        except Exception as exc:
+            errors.append(f"{recipient.via}: {type(exc).__name__}: {exc}")
+            log.warning(
+                "operator_alerter.channel_recipient_failed",
+                tenant_id=str(tenant_id),
+                audit_log_id=str(audit_row.id),
+                via=recipient.via,
+                error=errors[-1][:300],
+            )
+    if errors:
+        notif.attempts += 1
+        notif.last_error = " | ".join(errors)[:500]
+    if attempted and len(errors) == attempted:
+        notif.status = OperatorNotificationStatus.FAILED
+        return
+    notif.status = OperatorNotificationStatus.SENT
+    notif.sent_at = datetime.now(UTC)
+    log.info(
+        "operator_alerter.channel_recipients_sent",
+        tenant_id=str(tenant_id),
+        audit_log_id=str(audit_row.id),
+        channel_id=str(plan.channel_id),
+        notify_from=plan.notify_from,
+        recipients=attempted,
+    )
+
+
+async def _send_whatsapp(
+    plan: _ChannelPlan,
+    phone: str,
+    params: list[str],
+    adapters: AdapterRegistry,
+    tenant_id: uuid.UUID,
+) -> None:
+    if plan.notify_from == "channel":
+        adapter = adapters.get(plan.provider)
+        if adapter is None:
+            raise RuntimeError(f"no adapter for provider: {plan.provider}")
+        await _send_alert_template(
+            adapter=adapter,
+            provider=plan.provider,
+            from_phone=plan.business_phone,
+            recipient=phone,
+            template="alert_escalation_v1",
+            body_params=params,
+            tenant_id=tenant_id,
+        )
+        return
+    await send_from_auphere(phone, "alert_escalation_v1", params)
+
+
+async def _auphere_send(phone: str, template: str, params: list[str]) -> None:
+    """Desde el número de avisos de Auphere (el registro de ADR-018). Sesión
+    propia: el registro es global y no se lee desde una sesión del cliente."""
+    from nexus_api.repositories.auphere_channels import AuphereChannelRepository, _to_resolved
+    from nexus_channels.whatsapp_meta import MetaClient
+
+    async with get_sessionmaker()() as session:
+        row = await AuphereChannelRepository(session).get_default(provider="meta")
+        channel = _to_resolved(row) if row is not None else None
+    if channel is None or not channel.can_send:
+        raise RuntimeError("no_auphere_notification_number")
+    settings = get_settings()
+    client = MetaClient(
+        app_secret=settings.meta_app_secret,
+        require_appsecret_proof=settings.meta_require_appsecret_proof,
+    )
+    assert channel.provider_phone_id is not None
+    assert channel.access_token is not None
+    await client.send_template(
+        phone_number_id=channel.provider_phone_id,
+        access_token=channel.access_token,
+        to=phone.lstrip("+"),
+        template_name=template,
+        language="es_CL",
+        components=[{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}],
+    )
+
+
+#: Las pruebas lo sustituyen para no salir a Meta.
+send_from_auphere: Callable[[str, str, list[str]], Awaitable[None]] = _auphere_send
+
+
+async def _is_partner_person(session: AsyncSession, email: str | None) -> bool:
+    """Una persona del partner nunca recibe el resumen (33.4)."""
+    from nexus_api.db.models import PartnerMembership
+
+    if not email:
+        return False
+    found = await session.scalar(
+        sa.select(PartnerMembership.id)
+        .where(sa.func.lower(PartnerMembership.email) == email.lower())
+        .limit(1)
+    )
+    return found is not None
+
+
+async def _send_escalation_email(email: str | None, params: list[str]) -> None:
+    from html import escape
+
+    from nexus_api.services.email import send_email
+
+    if not email:
+        raise RuntimeError("no_email")
+    who, why = params[0], params[1]
+    ok = await send_email(
+        to=email,
+        subject="Una conversación espera a una persona",
+        html=(
+            f"<p>{escape(who)} espera a una persona.</p>"
+            f"<p>Motivo: {escape(why)}</p>"
+            "<p>Ábrela en la Bandeja para atenderla.</p>"
+        ),
+    )
+    if not ok:
+        raise RuntimeError("email_not_sent")
 
 
 def _dedupe(phones: list[str]) -> list[str]:

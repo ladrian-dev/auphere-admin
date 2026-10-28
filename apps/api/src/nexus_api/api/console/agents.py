@@ -171,12 +171,35 @@ async def publish_version(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DISCLOSURE_REQUIRED_DETAIL)
     if not (target.system_prompt_rendered or "").strip():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=EMPTY_PROMPT_DETAIL)
+    # Spec 047 (T093, 23.7): the same gate as «Guardar» in the new console,
+    # the operator panel and the partner API.
+    from nexus_api.services import publishing
+
+    payload = body or AgentPublishIn()
     try:
-        cfg = await service.promote(
-            version, actor=scope.principal.actor, origin=(body or AgentPublishIn()).origin
+        done = await publishing.publish(
+            scope.session,
+            agent_id=target.agent_id,
+            version=target,
+            actor=scope.principal.actor,
+            role=scope.principal.role,
+            partner_id=scope.principal.partner.id,
+            accept_normal_failures=payload.accept_normal_failures,
+            override_reason=payload.override_reason,
+            origin=payload.origin,
         )
+    except publishing.GateBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "gate_blocked", "gate": exc.gate.to_json()},
+        ) from exc
+    except publishing.OverrideForbidden as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail={"code": "override_forbidden"}
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=_conflict_status(exc), detail=str(exc)) from exc
+    cfg = done.version
     await _publish_promote(redis, scope)
     return _version_out(cfg)
 

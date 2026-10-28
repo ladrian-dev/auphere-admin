@@ -33,12 +33,15 @@ export function WhatsAppShareLink({
   modes,
   disabled,
   hasLive = false,
+  fromPhone = false,
 }: {
   refId: string;
   modes: Array<"coexistence" | "cloud_api">;
   disabled?: boolean;
   /** An unused link is out there: the new one replaces it. */
   hasLive?: boolean;
+  /** Spec 047 (31.3): «desde su teléfono» only once it was tested on iOS and Android. */
+  fromPhone?: boolean;
 }) {
   const t = useT();
   const router = useRouter();
@@ -68,7 +71,7 @@ export function WhatsAppShareLink({
     }
   }
 
-  const message = link ? t("ch.link.message", { url: link.url }) : "";
+  const message = link ? t(fromPhone ? "ch.link.message.phone" : "ch.link.message", { url: link.url }) : "";
 
   return (
     <>
@@ -85,7 +88,7 @@ export function WhatsAppShareLink({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("ch.link.title")}</DialogTitle>
+            <DialogTitle>{t(fromPhone ? "ch.link.title.phone" : "ch.link.title")}</DialogTitle>
             <DialogDescription>{t("ch.link.body")}</DialogDescription>
           </DialogHeader>
           {link ? (

@@ -33,6 +33,14 @@ const schema = z.object({
   NEXUS_META_GRAPH_API_VERSION: z.string().default("v22.0"),
   NEXUS_META_CONFIG_ID_WA_CLOUD_API: z.string().optional(),
   NEXUS_META_CONFIG_ID_WA_COEXISTENCE: z.string().optional(),
+  // Spec 047 (31.3): la consola no presenta el enlace del dueño como «desde su
+  // teléfono» hasta que se haya probado en iOS y en Android
+  // (`specs/047-la-fabrica-de-agentes/evidence/enlace-movil.md`). Apagada por
+  // defecto. Se lee en el servidor y llega a la pantalla como prop.
+  NEXUS_OWNER_LINK_FROM_PHONE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   // Lane channels (CP-20): origin of the @auphere/embed iframe app.
 });
 

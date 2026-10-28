@@ -48,13 +48,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
 import structlog
-from nexus_api.core.admin_gate import admin_only_suppresses, sender_is_admin
+from nexus_api.core.admin_gate import admin_only_suppresses, audience_suppresses, sender_is_admin
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
@@ -69,7 +69,8 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.db.models.agent import AgentConfig, AgentConfigStatus
-from nexus_api.services import inbox_lifecycle, push_events
+from nexus_api.services import conversation_control, inbox_lifecycle, push_events, reception
+from nexus_api.services.channel_config import gate_audience
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
 from nexus_api.services.inbox_stream import publish_inbox_event
 
@@ -380,6 +381,18 @@ class TurnFacts:
     ever_had_agent: bool
     agent_active: bool
     out_of_audience: bool
+    #: Spec 047 (0190): el agente del número está en pausa, con este motivo.
+    agent_pause_reason: str | None = None
+
+
+#: El motivo de la Bandeja de cada pausa del agente (``events.md`` §2).
+_AGENT_PAUSE_WAITING: dict[str, str] = {
+    "manual": "paused_agent",
+    "no_balance": "no_balance",
+    "agent_cap": "agent_cap",
+    "client_paused": "paused_client",
+    "client_archived": "archived_client",
+}
 
 
 def gate_for(facts: TurnFacts) -> Gate | None:
@@ -403,6 +416,12 @@ def gate_for(facts: TurnFacts) -> Gate | None:
         # DLQ — a message lost to the Inbox.
         return Gate(
             "agent_unpublished" if facts.ever_had_agent else "no_agent", "agent_unpublished"
+        )
+    if facts.agent_pause_reason is not None:
+        # Spec 047 (27.2): a paused agent does not answer; the message is kept
+        # and goes to the Inbox with the reason of its pause.
+        return Gate(
+            "agent_paused", _AGENT_PAUSE_WAITING.get(facts.agent_pause_reason, "paused_agent")
         )
     if facts.out_of_audience:
         # Spec 024: an admin-only agent ignores everyone else (cobranza).
@@ -494,8 +513,23 @@ async def _load_turn(ref: turns.TurnRef) -> _Turn | None:
         turn_agent_id: uuid.UUID | None = channel_agent_id or await session.scalar(
             sa.select(Agent.id)
             .where(Agent.status == AgentStatus.ACTIVE.value)
-            .order_by(Agent.created_at, Agent.id)
+            .order_by(Agent.is_default.desc(), Agent.created_at, Agent.id)
             .limit(1)
+        )
+        # Spec 047 (requisito 53): Recepción derivó la conversación; desde entonces
+        # contesta el destino, con sus puertas (su pausa, su tope, su versión).
+        # Vuelve a Recepción al resolverla, tras 24 h sin mensajes o si el
+        # destino se archivó.
+        handled = await reception.current_handler(
+            session, conversation, turn_message_ids=ref.message_ids
+        )
+        if handled is not None:
+            turn_agent_id = handled
+        turn_agent = await session.get(Agent, turn_agent_id) if turn_agent_id else None
+        agent_pause_reason = (
+            (turn_agent.pause_reason or "manual")
+            if turn_agent is not None and turn_agent.lifecycle == "paused"
+            else None
         )
         active_agent = (
             await session.execute(
@@ -544,6 +578,18 @@ async def _load_turn(ref: turns.TurnRef) -> _Turn | None:
             }
             for m in rows
         ]
+        # Spec 047 (30.11): el relevo de un eco de la app dura 2 h desde el
+        # último; vencido, este mensaje ya lo atiende el agente. Un relevo sin
+        # plazo (una persona desde la Bandeja) no caduca.
+        if (
+            not conversation.agent_active
+            and conversation.takeover_until is not None
+            and conversation.takeover_until <= datetime.now(UTC)
+        ):
+            conversation_control.resume(conversation)
+            conversation.takeover_until = None
+            if conversation.waiting_reason == "human_takeover":
+                conversation.waiting_reason = None
         # Bloque C — Operator intervention. ``takeover_context`` is populated
         # by ``PATCH .../agent`` when the operator pauses the agent. The first
         # turn after the operator reactivates consumes it to brief the LLM.
@@ -568,7 +614,14 @@ async def _load_turn(ref: turns.TurnRef) -> _Turn | None:
             has_active_agent=active_agent is not None,
             ever_had_agent=ever_had_agent,
             agent_active=conversation.agent_active,
-            out_of_audience=admin_only_suppresses(policies, user_id),
+            # Spec 047 (requisito 32): el canal decide a quién se responde; se
+            # lee en cada turno, así un cambio vale desde el siguiente mensaje.
+            out_of_audience=audience_suppresses(
+                await gate_audience(session, conversation.channel_id),
+                policies,
+                user_id,
+            ),
+            agent_pause_reason=agent_pause_reason,
         )
         return _Turn(
             ref=ref,
@@ -991,6 +1044,41 @@ async def _run_claimed(ref: turns.TurnRef, *, pipeline: Any, provider: str) -> _
     return await _invoke(turn, pipeline=pipeline, provider=provider, budget=budget)
 
 
+@dataclass(frozen=True)
+class _Handover:
+    """Recepción derivó en esta pasada: quién contesta ahora y qué le llega."""
+
+    agent_id: uuid.UUID
+    agent_config_id: uuid.UUID
+    brief: str
+
+
+async def _handed_over(turn: _Turn) -> _Handover | None:
+    """Spec 047 (requisito 53.2): ¿cambió en esta pasada quién contesta en la
+    conversación? Lo dice la base —la herramienta de Recepción ya confirmó—, no
+    el estado del grafo. ``None``: nadie derivó, o el destino ya no puede
+    contestar (sin versión publicada)."""
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, turn.ref.tenant_id):
+        conversation = await session.get(Conversation, turn.ref.conversation_id)
+        if conversation is None:  # pragma: no cover - borrada a mitad de turno
+            return None
+        now_answers = await reception.agent_for_conversation(session, conversation)
+        if now_answers is None or now_answers == turn.agent_id:
+            return None
+        config_id = await session.scalar(
+            sa.select(AgentConfig.id).where(
+                AgentConfig.agent_id == now_answers, AgentConfig.status == AgentConfigStatus.ACTIVE
+            )
+        )
+        if config_id is None:
+            return None
+        payload = await reception.last_handoff(session, conversation.id, to_agent_id=now_answers)
+    return _Handover(
+        agent_id=now_answers, agent_config_id=config_id, brief=reception.brief(payload)
+    )
+
+
 async def _invoke(turn: _Turn, *, pipeline: Any, provider: str, budget: Any) -> _Outcome:
     ref = turn.ref
     user_message = _user_message(turn, await _process_media(turn))
@@ -1000,6 +1088,52 @@ async def _invoke(turn: _Turn, *, pipeline: Any, provider: str, budget: Any) -> 
     if turn.operator_briefing is not None:
         user_message = f"{turn.operator_briefing}\n\n[Mensaje del cliente]\n{user_message}"
 
+    final = await _run_graph(
+        turn,
+        pipeline=pipeline,
+        provider=provider,
+        budget=budget,
+        user_message=user_message,
+        usage_key=str(ref.turn_id),
+    )
+    # Spec 047 (requisito 53.2): si Recepción derivó, en este mismo turno
+    # contesta el destino —mismo número, mismo hilo, mismo mensaje—, con su
+    # versión, sus herramientas y su conocimiento, y con el resumen del motivo.
+    # Cada pasada mide con su agente y su clave (53.7). Como mucho
+    # ``MAX_HOPS`` pasadas más: la siguiente derivación ya la corta la
+    # herramienta y pasa la conversación a una persona.
+    for hop in range(1, reception.MAX_HOPS + 1):
+        handover = await _handed_over(turn)
+        if handover is None:
+            break
+        turn = replace(turn, agent_id=handover.agent_id, agent_config_id=handover.agent_config_id)
+        ref.agent_id = handover.agent_id
+        final = await _run_graph(
+            turn,
+            pipeline=pipeline,
+            provider=provider,
+            budget=budget,
+            user_message=user_message,
+            usage_key=f"{ref.turn_id}:handoff:{hop}",
+            addendum=handover.brief,
+        )
+    return await _close_turn(turn, final)
+
+
+async def _run_graph(
+    turn: _Turn,
+    *,
+    pipeline: Any,
+    provider: str,
+    budget: Any,
+    user_message: str,
+    usage_key: str,
+    addendum: str | None = None,
+) -> dict[str, Any]:
+    """Una pasada del grafo con el agente de ``turn``. ``usage_key`` ancla la
+    medición de la pasada; ``addendum``, lo que el agente lee antes del mensaje
+    (el resumen de Recepción en una derivación)."""
+    ref = turn.ref
     state = new_state(
         tenant_id=ref.tenant_id,
         channel_id=turn.channel_id,
@@ -1011,6 +1145,7 @@ async def _invoke(turn: _Turn, *, pipeline: Any, provider: str, budget: Any) -> 
         # and the channel debit (``channel:{turn}``) across retries.
         inbound_message_id=ref.turn_id,
         user_message=user_message,
+        system_addendum=addendum,
     )
     if turn.agent_id is not None:
         # Spec 030: the pipeline loads THIS agent's prompt, tools and version.
@@ -1040,10 +1175,13 @@ async def _invoke(turn: _Turn, *, pipeline: Any, provider: str, budget: Any) -> 
     # WP-17: el buffer de consumo del turno envuelve la invocación del grafo:
     # ahí dentro caen TODAS las llamadas al LLM (classify, respond, grader,
     # multimodal). Publica al salir, también si el turno revienta: esos tokens
-    # ya se gastaron. El ``turn_id`` es el mismo en cada reintento.
+    # ya se gastaron. El ``turn_id`` es el mismo en cada reintento. Spec 047
+    # (53.7): la pasada del destino de Recepción lleva su propia clave
+    # (``{turno}:handoff:{n}``) y su agente: su gasto es suyo y no se deduplica
+    # contra el de Recepción.
     async with usage_turn(
         tenant_id=ref.tenant_id,
-        turn_id=str(ref.turn_id),
+        turn_id=usage_key,
         conversation_id=ref.conversation_id,
         agent_config_id=turn.agent_config_id,
         agent_id=turn.agent_id,
@@ -1073,7 +1211,13 @@ async def _invoke(turn: _Turn, *, pipeline: Any, provider: str, budget: Any) -> 
         intent=final.get("intent"),
         response_present=bool(final.get("response")),
     )
+    out: dict[str, Any] = final
+    return out
 
+
+async def _close_turn(turn: _Turn, final: dict[str, Any]) -> _Outcome:
+    """Lo que queda del turno tras la última pasada del grafo."""
+    ref = turn.ref
     # Requisito 1.5: el modelo (o su proveedor) falló sin recuperación —el
     # router agotó reintentos y alternativas—. El contacto ya tiene la
     # respuesta neutra del agente; la conversación pasa a una persona con su

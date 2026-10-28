@@ -59,8 +59,10 @@ from nexus_api.services.agent_lifecycle import (
     agent_visible_state,
 )
 from nexus_api.services.attention import Attention, ClientFacts, attention
+from nexus_api.services.channel_config import partner_on_v2
 from nexus_api.services.console_home_blocks import (
     PACE_DAYS,
+    WARN_SPENT_PCT,
     AgentFigures,
     BagBlock,
     bag_block,
@@ -94,21 +96,41 @@ class ClientDetail:
 
 
 def life_of(
-    agent_status: str, *, published: bool, tenant_status: TenantStatus
+    agent_status: str,
+    *,
+    published: bool,
+    tenant_status: TenantStatus,
+    lifecycle: str | None = None,
+    pause_reason: str | None = None,
 ) -> tuple[str, str | None]:
-    """La vida del agente que se enseña, con su motivo de pausa (ver el módulo)."""
-    if agent_status == "archived":
+    """La vida del agente que se enseña, con su motivo de pausa (ver el módulo).
+    La pausa del cliente manda sobre la del agente; la del agente es la guardada
+    (spec 047, 0190)."""
+    if agent_status == "archived" or lifecycle == "archived":
         return "archived", None
     if tenant_status is TenantStatus.ARCHIVED:
         return "paused", "client_archived"
     if tenant_status is TenantStatus.PAUSED:
         return "paused", "client_paused"
+    if lifecycle == "paused":
+        return "paused", pause_reason or "manual"
     return ("published" if published else "draft"), None
 
 
 def _audience(policies: dict[str, Any] | None) -> str:
     mode, _count = count_of(policies or {})
     return "everyone" if mode == "everyone" else "team_only"
+
+
+def channel_audience(
+    stored: str | None, *, strict: bool, published: bool, policies: dict[str, Any] | None
+) -> str:
+    """La audiencia que se enseña de un canal, con la misma regla que la puerta
+    (``admin_gate.audience_suppresses``): la del canal cuando el canal decide
+    (``strict``) o ya tiene una; si no, la del agente, como antes de la 047."""
+    if strict or (stored and stored != "unset"):
+        return stored or "unset"
+    return _audience(policies) if published else "unset"
 
 
 async def read_client(
@@ -121,7 +143,14 @@ async def read_client(
     )
     agents = (
         await session.execute(
-            sa.select(Agent.id, Agent.name, Agent.status, Agent.created_at)
+            sa.select(
+                Agent.id,
+                Agent.name,
+                Agent.status,
+                Agent.created_at,
+                Agent.lifecycle,
+                Agent.pause_reason,
+            )
             .where(Agent.tenant_id == tenant_id)
             .order_by(Agent.created_at, Agent.id)
         )
@@ -139,30 +168,44 @@ async def read_client(
     }
     channels = (
         await session.execute(
-            sa.select(Channel.agent_id, Channel.status).where(
+            sa.select(Channel.agent_id, Channel.status, Channel.audience_mode, Channel.type).where(
                 Channel.tenant_id == tenant_id, customer_facing_channel()
             )
         )
     ).all()
     live = [a for a in agents if a.status != "archived"]
     principal = live[0].id if live else None
-    by_agent: dict[uuid.UUID | None, list[ChannelStatus]] = {}
-    for agent_id, status in channels:
-        by_agent.setdefault(agent_id or principal, []).append(status)
+    by_agent: dict[uuid.UUID | None, list[tuple[ChannelStatus, str, bool]]] = {}
+    v2 = await partner_on_v2(session, tenant_id) if channels else False
+    for agent_id, status, audience_mode, kind in channels:
+        whatsapp = (kind.value if hasattr(kind, "value") else str(kind)) == "whatsapp"
+        by_agent.setdefault(agent_id or principal, []).append(
+            (status, audience_mode, v2 and whatsapp)
+        )
     for a in agents:
         published = a.id in active_versions
-        life, reason = life_of(a.status, published=published, tenant_status=tenant_status)
-        audience = _audience(active_versions.get(a.id)) if published else "unset"
+        life, reason = life_of(
+            a.status,
+            published=published,
+            tenant_status=tenant_status,
+            lifecycle=a.lifecycle,
+            pause_reason=a.pause_reason,
+        )
         facts = AgentFacts(
             life=life,
             pause_reason=reason,
             channels=tuple(
                 ChannelFacts(
                     status=status.value,
-                    audience_mode=audience,
+                    audience_mode=channel_audience(
+                        stored,
+                        strict=strict,
+                        published=published,
+                        policies=active_versions.get(a.id),
+                    ),
                     disconnected_on_request=status is ChannelStatus.DISCONNECTED,
                 )
-                for status in by_agent.get(a.id, [])
+                for status, stored, strict in by_agent.get(a.id, [])
             ),
         )
         out.agents.append(
@@ -256,6 +299,9 @@ async def bags(
     ids = [t for t, _u in tenants]
     if not ids:
         return {}
+    from_wallets = await _bags_from_wallets(partner_id, tenants, now)
+    if from_wallets is not None:
+        return from_wallets
     allocations = await allocations_for(partner_id, ids)
     quota = await quota_state(partner_id, ids)
     wallet = await read_wallet(partner_id)
@@ -277,6 +323,68 @@ async def bags(
             unlimited=unlimited,
             days_to_month_end=to_month_end,
         )
+    return out
+
+
+async def _bags_from_wallets(
+    partner_id: uuid.UUID, tenants: list[tuple[uuid.UUID, bool]], now: datetime
+) -> dict[uuid.UUID, BagBlock] | None:
+    """Spec 047 (46.7): con bolsas, la bolsa del cliente es su ``client_wallets``, en
+    su moneda, con las mismas cifras y estados que Consumo y los avisos
+    (``wallet.alerts``). ``None``: el partner sigue con ``partner_allocations``."""
+    from nexus_api.billing.pricing import credits_to_cents
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.models import ClientWallet
+    from nexus_api.services.wallet import alerts as wallet_alerts
+    from nexus_api.services.wallet.bags import as_client, bags_active
+
+    today = now.date()
+    out: dict[uuid.UUID, BagBlock] = {}
+    async with get_sessionmaker()() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        if not await bags_active(session, partner_id):
+            return None
+        for tenant_id, unlimited in tenants:
+            # La bolsa es del cliente: se lee con su contexto puesto.
+            await as_client(session, tenant_id)
+            bag = await session.get(ClientWallet, tenant_id)
+            if unlimited:
+                out[tenant_id] = BagBlock(
+                    "unlimited", "USD", True, True, None, None, None, None, None, None, False,
+                    (), False,
+                )  # fmt: skip
+                continue
+            if bag is None or not (bag.balance_micros or bag.month_base_micros):
+                # Cliente nuevo o sin nada este mes: «Sin saldo», con «Asignar saldo».
+                out[tenant_id] = BagBlock(
+                    "unassigned", bag.currency if bag else "USD", False, False, None, None,
+                    None, None, None, None, False, ("empty",), True,
+                )  # fmt: skip
+                continue
+            base, balance, spent = bag.month_base_micros, bag.balance_micros, bag.month_spent_micros
+            pace = await wallet_alerts.pace_per_day(session, bag, today)
+            pct_spent = round(spent / base * 100, 1) if base > 0 else None
+            empty = balance <= 0
+            alerts: tuple[str, ...] = ()
+            if empty:
+                alerts = ("empty",)
+            elif pct_spent is not None and pct_spent >= WARN_SPENT_PCT:
+                alerts = ("warn_80",)
+            out[tenant_id] = BagBlock(
+                state=await wallet_alerts.bag_state(session, bag, today),
+                currency=bag.currency,
+                assigned=True,
+                unlimited=False,
+                cap_cents=credits_to_cents(base),
+                remaining_cents=credits_to_cents(balance),
+                spent_cents=credits_to_cents(spent, nearest=True),
+                pct_spent=pct_spent,
+                pct_left=round(balance / base * 100, 1) if base > 0 else None,
+                days_left=wallet_alerts.days_left(balance, pace),
+                days_estimable=pace is not None,
+                alerts=alerts,
+                empty=empty,
+            )
     return out
 
 

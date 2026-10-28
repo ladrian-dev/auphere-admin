@@ -81,7 +81,13 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   ];
   const share =
     choice === "connect" ? (
-      <WhatsAppShareLink refId={ref} modes={linkModes} disabled={!overview.can_connect} hasLive={liveLink} />
+      <WhatsAppShareLink
+        refId={ref}
+        modes={linkModes}
+        disabled={!overview.can_connect}
+        hasLive={liveLink}
+        fromPhone={env().NEXUS_OWNER_LINK_FROM_PHONE}
+      />
     ) : null;
   const connect = (await isDesktopShell()) ? (
     <div className="flex flex-wrap items-center gap-2">
