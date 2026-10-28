@@ -19,6 +19,8 @@ export const PARTNER_TAB_GROUPS: ProfileTabGroup[] = [
       { seg: "modules", label: "Módulos" },
       { seg: "settings", label: "Configuración" },
       { seg: "knowledge", label: "Conocimiento" },
+      // Spec 047 (T172, 55.2): the dry run and the switch of the new console.
+      { seg: "console-v2", label: "Consola nueva" },
     ],
   },
   {
@@ -27,6 +29,8 @@ export const PARTNER_TAB_GROUPS: ProfileTabGroup[] = [
     tabs: [
       { seg: "team", label: "Equipo" },
       { seg: "money", label: "Facturas" },
+      // Spec 047 (T172; 43.1, 46.5): «Construcción y pruebas» and the account currency.
+      { seg: "limits", label: "Tope y moneda" },
     ],
   },
 ];

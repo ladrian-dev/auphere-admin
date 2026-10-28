@@ -6,8 +6,16 @@
  */
 export type Locale = "es" | "en";
 
+import { agentImproveMessages } from "./lanes/agent-improve";
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { agentsMessages } from "./lanes/agents";
+import { builderMessages } from "./lanes/builder";
+import { builderChannelsMessages } from "./lanes/builder-channels";
+import { builderConnectorsMessages } from "./lanes/builder-connectors";
+import { builderKnowledgeMessages } from "./lanes/builder-knowledge";
+import { builderLifeMessages } from "./lanes/builder-life";
+import { builderModelQualityMessages } from "./lanes/builder-model-quality";
+import { builderQualityMessages } from "./lanes/builder-quality";
 import { businessMessages } from "./lanes/business";
 import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
@@ -15,8 +23,12 @@ import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { inboxMessages } from "./lanes/inbox";
 import { liteMessages } from "./lanes/lite";
+import { liteAgentsMessages } from "./lanes/lite-agents";
 import { membershipMessages } from "./lanes/membership";
+import { moneyMessages } from "./lanes/money";
+import { noticesMessages } from "./lanes/notices";
 import { onboardingMessages } from "./lanes/onboarding";
+import { partnerViewsMessages } from "./lanes/partner-views";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
 import { reservasMessages } from "./lanes/reservas";
@@ -567,6 +579,18 @@ const messages = {
   ...reservasMessages,
   ...shellMessages,
   ...businessMessages,
+  ...builderMessages,
+  ...builderQualityMessages,
+  ...builderLifeMessages,
+  ...builderKnowledgeMessages,
+  ...builderChannelsMessages,
+  ...moneyMessages,
+  ...noticesMessages,
+  ...partnerViewsMessages,
+  ...liteAgentsMessages,
+  ...agentImproveMessages,
+  ...builderConnectorsMessages,
+  ...builderModelQualityMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

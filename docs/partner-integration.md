@@ -171,6 +171,19 @@ pasaban silenciosos:
   ninguno, el número quedaría conectado y mudo. Manda al menos un teléfono
   E.164 con 7+ dígitos.
 
+**La misma puerta que la consola (spec 047).** El agente que crea esta
+llamada se publica por la puerta de publicación de la consola
+(`services/publishing.py`): si la puerta lo bloquea, la provisión responde
+`422` con `gate_blocked: …` y los motivos. Como hasta ahora, quien provisiona
+toma la decisión de avisar de que es una IA («sí» por defecto, a nombre del
+partner) y el contrato de esta API no cambia.
+
+**La consola y esta API crean distinto.** «Nuevo cliente» en la consola de
+partners ya no crea ningún agente, aunque el partner tenga plantilla por
+defecto: el cliente nace sin agentes y el partner los construye con el
+constructor. Esta API sí lo crea, porque aquí pides la plantilla de forma
+explícita (`agent_seed_template` o la del partner).
+
 Placeholders obligatorios de `cobranza_v1`:
 
 ```

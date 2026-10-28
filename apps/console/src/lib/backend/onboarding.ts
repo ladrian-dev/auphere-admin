@@ -31,6 +31,8 @@ export type Notification = {
   external_client_ref: string | null;
   read: boolean;
   created_at: string;
+  /** Spec 047 (T165, 49.6): dónde se arregla, si la API lo sabe (`notifications.LINKS`). */
+  href?: string | null;
 };
 export type NotificationPage = { items: Notification[]; next_cursor: string | null; unread: number };
 

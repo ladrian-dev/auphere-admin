@@ -490,7 +490,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ### Pruebas (en rojo primero)
 
-- [ ] T051 [P] [US5] El motor del horario (`T/unit/test_business_hours_engine.py`):
+- [X] T051 [P] [US5] El motor del horario (`T/unit/test_business_hours_engine.py`):
   - por bloques y día por día, con hasta 6 turnos;
   - nocturno si el cierre es igual o anterior a la apertura, y 24 h;
   - fechas especiales: cerrado o con turnos, de un día o de un rango, con nombre;
@@ -499,14 +499,16 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - la frase «Así lo dirá el agente»;
   - sin horario.
   _Requisitos: 10.1, 10.2, 10.3, 10.4, 10.5, 10.7_
-- [ ] T052 [P] [US5] `T/integration/business/test_hours_and_locations.py`:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T052 [P] [US5] `T/integration/business/test_hours_and_locations.py`:
   - pasar de día por día a bloques con días distintos dice qué se pierde y pide
     confirmación;
   - las sedes, con o sin horario propio;
   - sin sedes, el agente no inventa una dirección;
   - deshacer el archivado de una sede.
   _Requisitos: 9.1, 9.2, 9.3, 9.4, 10.6_
-- [ ] T053 [P] [US6] `T/integration/business/test_services.py`:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T053 [P] [US6] `T/integration/business/test_services.py`:
   - **Duración**: un reservable lleva duración (5–480); un no reservable, no.
   - **Precio**: sin precio, gratis o un importe, con los decimales de su moneda.
   - **Quién lo ofrece**:
@@ -517,14 +519,16 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Archivar**: conserva el nombre en las reservas pasadas.
   - **Duplicar**.
   _Requisitos: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
-- [ ] T054 [P] [US5] `T/integration/business/test_next_message_uses_ficha.py`: cambiar
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T054 [P] [US5] `T/integration/business/test_next_message_uses_ficha.py`: cambiar
   el horario o un precio cambia lo que dice el agente desde el siguiente mensaje,
   sin publicar una versión. La compilación nueva es de la misma versión.
   _Requisitos: 8.4, 10.5, 16.2_
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
 
 ### Implementación
 
-- [ ] T055 [US5] Migración `0183_business_hours_services.py`:
+- [X] T055 [US5] Migración `0183_business_hours_services.py`:
   - `business_locations`, `business_schedules`, `business_shifts`,
     `business_special_dates`, `business_special_shifts` y `business_faqs`;
   - los cambios a `reservation_services`;
@@ -532,7 +536,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - `agent_version_compilations`;
   - `business_profiles.content_rev`.
   _Requisitos: 8.1, 9.1, 10.1, 10.3, 11.1, 11.2, 16.2_
-- [ ] T056 [US5] El horario:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T056 [US5] El horario:
   - `api/services/business/hours.py`, motor puro más repositorio;
   - `api/services/business_hours.py` queda como fachada;
   - las proyecciones en `tenants.business_hours` y en la frase, en la misma
@@ -548,15 +553,18 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   Y sus escritores: `admin/tenants.py`, `lite/reservas.py` y `schemas/tenant.py`.
   Actualiza `docs/reservas.md`.
   _Requisitos: 8.2, 10.4, 10.5, 10.7_
-- [ ] T057 [US5] Sedes y fechas especiales: `api/services/business/{locations,special_dates}.py`
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T057 [US5] Sedes y fechas especiales: `api/services/business/{locations,special_dates}.py`
   y las rutas de `api/api/console/business.py` (`console-api.md` §3).
   _Requisitos: 9.1, 9.2, 9.3, 9.4, 10.1, 10.2, 10.3, 10.6_
-- [ ] T058 [US6] Servicios:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T058 [US6] Servicios:
   - `api/services/business/services_catalog.py`, sobre `services/reservations/`;
   - las rutas de servicios, y la de agentes de cada servicio;
   - el filtro por agente en `mcp/servers/{reservas,booking}/tools.py` (garantía 9).
   _Requisitos: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
-- [ ] T059 [US5] La compilación por revisión (D4):
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T059 [US5] La compilación por revisión (D4):
   - cada cambio de la ficha sube `content_rev` y compila de nuevo la versión activa
     de cada agente del cliente;
   - la compilación reescribe su `system_prompt_rendered` en la misma transacción,
@@ -566,7 +574,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - hasta la fase 8, el bloque «Datos vigentes del negocio» se añade al prompt de
     hoy de forma determinista, como datos vallados, aparte de las instrucciones (§III).
   _Requisitos: 8.4, 16.2_
-- [ ] T060 [US5] [US6] Consola Negocio (`con/components/business/`), con
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T060 [US5] [US6] Consola Negocio (`con/components/business/`), con
   Playwright, axe y textos largos:
   - **Datos básicos y Sedes**.
   - **Horarios**:
@@ -579,12 +588,14 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     - duplicar y archivar.
   - **El estado de cada sección.**
   _Requisitos: 8.5, 9.1, 10.1, 10.2, 10.3, 10.5, 10.6, 11.1, 11.2, 11.6, 11.7_
-- [ ] T061 [US5] Migración de datos `0186_migrate_hours_to_ficha.py`:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T061 [US5] Migración de datos `0186_migrate_hours_to_ficha.py`:
   - las tres copias del horario y `policies.console.schedule` pasan a la ficha,
     marcadas «Migrado · revísalo» si vienen del prompt;
   - prueba en `T/integration/test_migration_hours_to_ficha.py` con los cuatro
     formatos de `business_hours`.
   _Requisitos: 8.2, 55.1_
+  Entregado: pendiente de commit, bloque C (Luis). La prueba es `T/integration/test_migration_0186_migrate_hours_to_ficha.py`; verificada el 2026-10-27.
 
 **Checkpoint**: un solo horario, con nocturnos y festivos, que el agente dice bien.
 
@@ -592,7 +603,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ## Fase 7 — Ola 2 · Historias 14 a 17: ciclo de vida, lista, Panel y procedencia (P2)
 
-- [ ] T062 [P] [US14] Pruebas en rojo (`T/integration/clients/test_client_lifecycle.py`):
+- [X] T062 [P] [US14] Pruebas en rojo (`T/integration/clients/test_client_lifecycle.py`):
   - **Editar**: el mismo modal; la zona IANA se valida en el servidor; el agente
     usa el nombre o la zona nuevos desde el siguiente mensaje.
   - **Archivar**:
@@ -606,13 +617,15 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     - responde 409 legal si es una línea de factura o tiene pagos.
   - **Auditoría** con antes y después.
   _Requisitos: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.8_
-- [ ] T063 [US14] El ciclo de vida:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T063 [US14] El ciclo de vida:
   - `api/services/tenant_lifecycle.py`;
   - las rutas de archivar, restaurar y eliminar de `api/api/console/tenants.py`;
   - el aviso al runtime;
   - el modal de edición en la consola.
   _Requisitos: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.8_
-- [ ] T064 [P] [US15] Pruebas en rojo de la lista (`T/integration/clients/test_clients_list.py`):
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T064 [P] [US15] Pruebas en rojo de la lista (`T/integration/clients/test_clients_list.py`):
   - las columnas;
   - la regla única, igual en la lista, el Panel y ⌘K;
   - el orden por atención y por días;
@@ -621,11 +634,13 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - las bolsas de monedas distintas, comparadas por días y por porcentaje;
   - las acciones según el permiso, con «Pedir saldo».
   _Requisitos: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
-- [ ] T065 [US15] La lista:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T065 [US15] La lista:
   - `GET /console/clients`, con `attention.py`;
   - la consola: la tabla con desplazamiento propio hasta 760 px y el menú ⋯ según el permiso.
   _Requisitos: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
-- [ ] T066 [P] [US16] Pruebas en rojo del Panel del cliente (`T/integration/clients/test_client_panel.py`):
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T066 [P] [US16] Pruebas en rojo del Panel del cliente (`T/integration/clients/test_client_panel.py`):
   - la bolsa, lo consumido y su porcentaje;
   - los días al ritmo de 7, solo con 3 días o más de datos;
   - la barra por agente y los avisos;
@@ -635,12 +650,14 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - el cuadre con Consumo y con la lite;
   - la tarjeta de lectura.
   _Requisitos: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7_
-- [ ] T067 [US16] El Panel del cliente:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T067 [US16] El Panel del cliente:
   - `GET /console/clients/{ref}/panel`, con `api/services/console_home_blocks.py`;
   - la pantalla del Panel.
   Hasta la fase 18, la bolsa se lee de `partner_allocations`.
   _Requisitos: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7_
-- [ ] T068 [P] [US17] Pruebas en rojo de procedencia e historial (`T/integration/business/test_provenance_history.py`):
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T068 [P] [US17] Pruebas en rojo de procedencia e historial (`T/integration/business/test_provenance_history.py`):
   - **Procedencia**: los cinco tipos, con su autor y su fecha.
   - **Confirmar un dato leído** lo marca escrito por esa persona.
   - **Historial**: antes y después, y deshacer.
@@ -652,14 +669,16 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Avisos**: cuando edita una persona del cliente, el partner recibe el aviso.
   - **Pruebas**: las afectadas vuelven a pasar en segundo plano.
   _Requisitos: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
-- [ ] T069 [US17] Procedencia e historial:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T069 [US17] Procedencia e historial:
   - `api/services/business/{provenance,history,suggestions}.py` y sus rutas;
   - el aviso `client.business_changed`;
   - el disparo de las pruebas afectadas: un trabajo que, hasta la fase 9, solo marca
     `stale`;
   - en la consola: la procedencia, el historial y el deshacer.
   _Requisitos: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
-- [ ] T070 [P] [US17] Pruebas en rojo de documentos, webs y redes (`T/integration/business/test_sources.py`):
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T070 [P] [US17] Pruebas en rojo de documentos, webs y redes (`T/integration/business/test_sources.py`):
   - **Subir**: archivos de hasta 10 MB, con sus estados, su tamaño y su fecha.
   - **Quitar**: deja de usarse desde el siguiente mensaje, con deshacer de 10 min.
   - **Releer**: cada semana y con «Volver a leer», y los cambios llegan como propuestas.
@@ -667,14 +686,16 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Precios en un documento**: se proponen como servicios.
   - **Fotos de cartas**: se leen con visión y se miden en la partida de construcción.
   _Requisitos: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
-- [ ] T071 [US17] Fuentes del negocio:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T071 [US17] Fuentes del negocio:
   - en `api/services/business/` y `api/api/console/business.py`, sobre
     `services/knowledge_indexer.py`;
   - indexar pasa de la petición a un trabajo;
   - el cron `wk/streams/source_reread_cron.py` (semanal, con sus tres ediciones);
   - en la consola, la sección «Documentos y webs» y Redes.
   _Requisitos: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
-- [ ] T072 [US17] El ClientSpec:
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
+- [X] T072 [US17] El ClientSpec:
   - `api/services/business/client_spec.py`;
   - prueba de contrato: el JSON Schema de Pydantic es igual a
     `contracts/client-spec.schema.json`;
@@ -683,6 +704,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - el validador sin modelo, antes de proponer y al aplicar.
   Escribe `docs/ficha-del-negocio.md`.
   _Requisitos: 8.3_
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 con 281 pruebas en verde.
 
 **Checkpoint**: la ficha es la fuente única, con procedencia, historial y deshacer.
 
@@ -691,7 +713,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ### Pruebas (en rojo primero)
 
-- [ ] T073 [P] [US7] Contrato y validador (`T/unit/test_agent_spec_contract.py`,
+- [X] T073 [P] [US7] Contrato y validador (`T/unit/test_agent_spec_contract.py`,
   `T/unit/test_agent_spec_validator.py`):
   - **Contrato**: el esquema Pydantic es igual a `contracts/agent-spec.schema.json`.
   - **El validador rechaza**:
@@ -701,14 +723,16 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     - datos de otro cliente;
     - un aviso de IA que llega decidido del constructor.
   _Requisitos: 15.4, 16.1, 16.6_
-- [ ] T074 [P] [US7] El compilador (`T/unit/test_agent_spec_compiler.py`):
+  Entregado: pendiente de commit, bloque D (2026-10-27).
+- [X] T074 [P] [US7] El compilador (`T/unit/test_agent_spec_compiler.py`):
   - es determinista;
   - el modo «instrucciones» da el prompt de hoy byte a byte;
   - compila la variante de otra familia;
   - detecta tres incoherencias: capacidades prometidas fuera de sus herramientas,
     contradicciones con la ficha y herramientas que no existen.
   _Requisitos: 16.2, 16.3, 16.4, 16.5_
-- [ ] T075 [P] [US7] El trabajo del borrador (`T/integration/builder/test_agent_draft_job.py`):
+  Entregado: pendiente de commit, bloque D (2026-10-27).
+- [X] T075 [P] [US7] El trabajo del borrador (`T/integration/builder/test_agent_draft_job.py`):
   - **El agente**: se crea al primer borrador, no al abrir la pantalla; el
     abandonado queda en la lista y se puede archivar.
   - **El progreso**: llega por bloques.
@@ -724,28 +748,32 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Medidor y registro**: se mide en la partida de construcción y queda en el
     registro del constructor.
   _Requisitos: 15.7, 15.8, 15.9, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9_
-- [ ] T076 [P] [US7] Las propuestas (`T/integration/builder/test_proposals.py`):
+  Entregado: pendiente de commit, bloque D (2026-10-27).
+- [X] T076 [P] [US7] Las propuestas (`T/integration/builder/test_proposals.py`):
   - son objetos durables con autor, quién decide, estado y `state_hash`;
   - si el estado cambió, aplicar se rechaza (`proposal_stale`);
   - caducan a los 15 min (`proposal_expired`);
   - solo aplica una persona con permiso.
   _Requisitos: 15.2, 15.3_
+  Entregado: pendiente de commit, bloque D (2026-10-27).
 
 ### Implementación
 
-- [ ] T077 [US7] Migración `NNNN_agent_spec_and_testing.py`:
+- [X] T077 [US7] Migración `NNNN_agent_spec_and_testing.py`:
   - `agent_configs.spec`, `gate`, `override_reason`, `undo_until`, `published_by`
     y `published_at`;
   - `proposals`;
   - `agent_test_suites`, `agent_tests`, `agent_test_runs` y `agent_test_results`;
   - `agent_reviews`, `sector_test_catalog` y `builder_eval_runs`.
   _Requisitos: 15.3, 16.1, 21.1, 21.2_
-- [ ] T078 [US7] El AgentSpec, `api/services/agent_spec/{schema,validator,compiler,legacy}.py`.
+  Entregado: pendiente de commit, bloque D (2026-10-27). Migración `0187_agent_spec_and_testing.py`.
+- [X] T078 [US7] El AgentSpec, `api/services/agent_spec/{schema,validator,compiler,legacy}.py`.
   `validator.py` amplía `AgentConfigService._validate_tools`. `api/services/proposal_state.py`
   saca `canonical_hash` y la comprobación de `state_hash` de
   `companion/tools/proposals.py` y de `api/console/companion.py::_revalidate_state_hash`.
   _Requisitos: 15.2, 15.3, 15.4, 16.1, 16.2, 16.3, 16.4, 16.5, 16.6_
-- [ ] T079 [US7] El motor del constructor:
+  Entregado: pendiente de commit, bloque D (2026-10-27). Más `agent_spec/patch.py` (parches sobre punteros); `canonical_hash` sale del Companion a `services/proposal_state.py`.
+- [X] T079 [US7] El motor del constructor:
   - `api/services/builder/agent_draft.py` y `wk/builder/`, con la tarea `build`
     del router;
   - el vallado de lo no confiable (`core/guardrails/untrusted.py`);
@@ -753,10 +781,12 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - el progreso por bloques, las preguntas y el registro de cada uso;
   - no depende del módulo `companion`.
   _Requisitos: 15.1, 15.5, 15.6, 15.9, 17.3, 17.4_
-- [ ] T080 [US7] Las rutas de `api/api/console/agent_builder.py`: `draft-jobs`,
+  Entregado: pendiente de commit, bloque D (2026-10-27). Motor en `api/services/builder/agent_draft.py` y manejador `wk/jobs/handlers/agent_draft.py`; sin modelo (local) usa un generador determinista.
+- [X] T080 [US7] Las rutas de `api/api/console/agent_builder.py`: `draft-jobs`,
   `answers`, el borrador y las propuestas (`console-api.md` §4).
   _Requisitos: 15.2, 17.1, 17.2, 17.5, 17.8, 17.9_
-- [ ] T081 [US7] La pantalla del constructor (`con/app/(console)/clients/[ref]/agents/[agentId]/`,
+  Entregado: pendiente de commit, bloque D (2026-10-27).
+- [X] T081 [US7] La pantalla del constructor (`con/app/(console)/clients/[ref]/agents/[agentId]/`,
   `con/components/builder/`), con Playwright y axe:
   - a la izquierda, la descripción (nombre de 1–40, «¿Qué tiene que hacer?» de
     20–1.024) con ejemplos; a la derecha, el probador;
@@ -765,6 +795,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - las filas «Conectar {integración}»;
   - las alternativas.
   _Requisitos: 17.1, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9_
+  Entregado: pendiente de commit, bloque D (2026-10-27). Pestaña Agentes v2, `agents/new` y `agents/[agentId]` con `con/components/builder/`; vitest+axe (99) y e2e `e2e/builder.e2e.ts` con su mock.
 
 **Checkpoint**: describir un agente da un borrador en menos de 30 s.
 
@@ -774,7 +805,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ### Pruebas (en rojo primero)
 
-- [ ] T082 [P] [US8] El playground (`T/integration/builder/test_playground_draft.py`):
+- [X] T082 [P] [US8] El playground (`T/integration/builder/test_playground_draft.py`):
   - **Qué ejecuta**: el borrador o una versión, con el mismo grafo del canal.
   - **Sin efectos**, con una prueba adversarial que intenta cada herramienta con
     efecto: ningún envío, ninguna reserva real, ningún cambio en conectores ni en
@@ -786,7 +817,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Quién**: owner, admin y builder; el analyst, en solo lectura.
   - **Medidor**: la partida de construcción.
   _Requisitos: 20.1, 20.2, 20.3, 20.4, 20.5, 20.6_
-- [ ] T083 [P] [US8] La suite (`T/integration/builder/test_agent_suite.py`):
+  Entregado: pendiente de commit, bloque D (2026-10-27). `T/integration/builder/test_playground_draft.py`.
+- [X] T083 [P] [US8] La suite (`T/integration/builder/test_agent_suite.py`):
   - **Tipos**: tres (del caso, del sector y añadidas).
   - **Campos**: los de cada prueba, y el estado final comprobado.
   - **Pasadas**: 3; pasa con 3 de 3, y con 1 o 2 es «Inestable».
@@ -796,7 +828,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     pruebas afectadas.
   - **Juez**: una dimensión por criterio, «No sé», y no bloquea sin calibrar.
   _Requisitos: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7, 21.8_
-- [ ] T084 [P] [US8] La revisión (`T/unit/test_agent_review.py`):
+  Entregado: pendiente de commit, bloque D (2026-10-27). `T/integration/builder/test_agent_suite.py`.
+- [X] T084 [P] [US8] La revisión (`T/unit/test_agent_review.py`):
   - **Los hallazgos**:
     - habilidades sin su integración;
     - servicios sin precio o reservables sin duración;
@@ -808,10 +841,11 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     - aviso de IA sin decidir.
   - **Cada uno** con su gravedad y su arreglo, y sin «✓» fijos.
   _Requisitos: 22.1, 22.2, 22.3_
+  Entregado: pendiente de commit, bloque D (2026-10-27). `T/unit/test_agent_review.py`.
 
 ### Implementación
 
-- [ ] T085 [US8] La simulación (`wk/simulation/`):
+- [X] T085 [US8] La simulación (`wk/simulation/`):
   - el cliente simulado, la agenda y la hora simuladas, y los dobles de las
     herramientas con efecto;
   - sobre `services/evals/pipeline_driver.py`, completando el paquete
@@ -819,24 +853,29 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - `wk/runtime/qa_pipeline.py` y `api/api/console/playground.py` ejecutan el
     borrador o una versión.
   _Requisitos: 20.1, 20.2, 20.3, 20.4, 20.5_
-- [ ] T086 [US8] La suite: `api/services/testing/{suites,sector_catalog,judge}.py`,
+  Entregado: pendiente de commit, bloque D (2026-10-27). `wk/simulation/{world,registry,runner}.py`, `agent_loader.bundle_of` (el paquete entero de cualquier versión) y `turn_clock.simulated_clock`; rutas en `api/console/agent_playground.py` (sesiones en Redis, conversación en el canal `qa_playground`).
+- [X] T086 [US8] La suite: `api/services/testing/{suites,sector_catalog,judge}.py`,
   el trabajo `tests` en lotes del cliente, los resultados, sus explicaciones, «No
   aplica» y las marcas de desactualización (T069 deja de solo marcar). En staging,
   la suite completa tarda menos de 4 min p90.
   _Requisitos: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7_
-- [ ] T087 [US8] La calibración del juez: un conjunto etiquetado a mano en español
+  Entregado: pendiente de commit, bloque D (2026-10-27). `api/services/testing/{suites,runs,judge}.py`, el trabajo `tests` (`wk/jobs/handlers/agent_tests.py`) y las rutas `api/console/agent_tests.py`; `writes.mark_tests_stale` ya no solo marca: encola la pasada de las afectadas de cada agente publicado. Queda medir el p90 < 4 min en staging.
+- [X] T087 [US8] La calibración del juez: un conjunto etiquetado a mano en español
   y el informe de calibración en el admin. El juez no bloquea una publicación hasta
   pasar el umbral.
   _Requisitos: 21.8_
-- [ ] T088 [US8] `api/services/agent_spec/review.py`, la ruta de la revisión, y
+  Entregado: pendiente de commit, bloque D (2026-10-27). Conjunto `testing/judge_calibration_es.json`; la calibración es la certificación de la tarea `judge` (`/admin/builder/judge-calibration`). La pantalla del informe en el admin queda con T150/T172.
+- [X] T088 [US8] `api/services/agent_spec/review.py`, la ruta de la revisión, y
   cada arreglo como propuesta.
   _Requisitos: 22.1, 22.2, 22.3_
-- [ ] T089 [US8] Consola, con Playwright y axe:
+  Entregado: pendiente de commit, bloque D (2026-10-27). `agent_spec/review.py` y `GET …/review`; el arreglo de un clic (quitar una herramienta citada que no existe) es una propuesta.
+- [X] T089 [US8] Consola, con Playwright y axe:
   - el playground, con burbujas, el panel de hora y agenda, y «Lo que habría hecho»;
   - la lista de pruebas, con su estado, «Por qué falló», «Arreglar» y «No aplica»;
   - la revisión.
   _Requisitos: 20.2, 20.3, 20.4, 20.5, 21.5, 21.6, 22.2_
-- [ ] T090 [US8] El catálogo de pruebas del sector v1, con 12 pruebas por sector:
+  Entregado: pendiente de commit, bloque D (2026-10-27). `con/components/builder/{agent-playground,test-list,review-panel}.tsx`; vitest+axe y e2e `e2e/agent-quality.e2e.ts`.
+- [X] T090 [US8] El catálogo de pruebas del sector v1, con 12 pruebas por sector:
   - barbería y peluquería;
   - clínica (dental y estética);
   - restaurante y cafetería;
@@ -846,6 +885,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
   Incluye su edición en el admin (`adm/builder/sector-tests/`) y la semilla.
   _Requisitos: 21.1, 54.10_
+  Entregado: pendiente de commit, bloque D (2026-10-27). Migración `0188_sector_tests_v1.py` con `alembic/data/0188_sector_tests_v1.json`, `testing/sector_catalog.py` y `/admin/builder/sector-tests`. La pantalla del admin (`adm/builder/sector-tests/`) queda pendiente.
 
 **Checkpoint**: todo borrador se prueba antes de hablar con nadie.
 
@@ -853,7 +893,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ## Fase 10 — Ola 3 · Historia 9: guardar es publicar, con red (P1)
 
-- [ ] T091 [P] [US9] Pruebas en rojo de la puerta (`T/integration/builder/test_publish_gate.py`):
+- [X] T091 [P] [US9] Pruebas en rojo de la puerta (`T/integration/builder/test_publish_gate.py`):
   - **Las condiciones**:
     - el validador da 0 errores;
     - las críticas pasan 3 de 3;
@@ -868,13 +908,15 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Después**: el siguiente mensaje usa la versión nueva.
   - **La misma puerta** en la consola, el admin y la API de partners.
   _Requisitos: 23.1, 23.2, 23.3, 23.4, 23.5, 23.6, 23.7_
-- [ ] T092 [P] [US9] Pruebas en rojo de las versiones (`T/integration/builder/test_versions.py`):
+  Entregado: pendiente de commit, bloque D (2026-10-27). `T/integration/builder/test_publish_gate.py` (7).
+- [X] T092 [P] [US9] Pruebas en rojo de las versiones (`T/integration/builder/test_versions.py`):
   - deshacer durante 10 min;
   - el historial, con número, autor, fecha, nota, diff y pruebas;
   - restaurar crea un borrador que pasa la puerta;
   - la política de modelo va con la versión.
   _Requisitos: 24.1, 24.2, 24.3, 24.4_
-- [ ] T093 [US9] `api/services/publishing.py`:
+  Entregado: pendiente de commit, bloque D (2026-10-27). `T/integration/builder/test_versions.py`.
+- [X] T093 [US9] `api/services/publishing.py`:
   - el trabajo `publish`: compilar → validar → probar → revisar → decidir → publicar;
   - deshacer y restaurar;
   - los tres sitios que publican la usan: la consola (`api/api/console/agents.py`),
@@ -882,17 +924,20 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     la línea 167) y la API de partners.
   Escribe `docs/agentes.md`.
   _Requisitos: 23.1, 23.2, 23.3, 23.6, 23.7, 24.1, 24.3, 24.4_
-- [ ] T094 [US9] Consola, con e2e:
+  Entregado: pendiente de commit, bloque D (2026-10-27). `api/services/publishing.py`, trabajo `publish` (`wk/jobs/handlers/agent_publish.py`), rutas `api/console/agent_publish.py`; la consola de hoy, el admin y la API de partners publican por la misma puerta. Decisión: la puerta es estricta con agentes «structured» o de partners con la consola nueva; con agentes de antes de partners sin activar, una integración sin conectar o un bloqueante de la revisión se avisan sin bloquear (historia 13). El admin y la API de partners toman la decisión de aviso de IA de hoy (CP-31). `docs/agentes.md` va con T183.
+- [X] T094 [US9] Consola, con e2e:
   - la barra de acción («Guardar», «Guardar y conectar un canal», «Guardar cambios»
     con el diff);
   - el modal de saltar la puerta, solo para owner y admin, con el motivo;
   - el aviso con «Deshacer»;
   - el historial, con «Restaurar».
   _Requisitos: 23.2, 23.3, 23.4, 23.5, 24.1, 24.2, 24.3_
-- [ ] T095 [US9] Migración de datos `NNNN_agent_spec_from_prompts.py`:
+  Entregado: pendiente de commit, bloque D (2026-10-27). `con/components/builder/{publish-bar,agent-history}.tsx`; e2e en `e2e/agent-quality.e2e.ts`.
+- [X] T095 [US9] Migración de datos `NNNN_agent_spec_from_prompts.py`:
   - cada versión activa con prompt propio pasa a un AgentSpec en modo «instrucciones»;
   - una prueba por agente compila y compara los bytes (`T/integration/test_migration_0182_agent_spec.py`).
   _Requisitos: 16.4, 55.1_
+  Entregado: pendiente de commit, bloque D (2026-10-27). Migración `0189_agent_spec_from_prompts.py`; prueba en `T/integration/test_migration_0189_agent_spec_from_prompts.py` (los mismos bytes, con y sin ficha).
 
 **Checkpoint**: ninguna versión llega a clientes reales sin pasar sus pruebas.
 
@@ -900,14 +945,15 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ## Fase 11 — Ola 3 · Historia 18: el constructor del cliente y el copiloto (P2)
 
-- [ ] T096 [P] [US18] Pruebas en rojo (`T/integration/builder/test_client_builder.py`):
+- [X] T096 [P] [US18] Pruebas en rojo (`T/integration/builder/test_client_builder.py`):
   - propone la ficha por secciones, con su procedencia, al terminar la lectura o al
     pedirlo;
   - se acepta, edita o descarta cada sección y cada dato;
   - las preguntas frecuentes y las políticas llegan «Sugerido · confirma»;
   - propone agentes sin crearlos.
   _Requisitos: 18.1, 18.2, 18.3, 18.4_
-- [ ] T097 [P] [US18] Pruebas en rojo del copiloto (`T/integration/builder/test_copilot.py`):
+  Entregado: pendiente de commit, bloque D (2026-10-27). `T/integration/builder/test_client_builder_and_copilot.py`.
+- [X] T097 [P] [US18] Pruebas en rojo del copiloto (`T/integration/builder/test_copilot.py`):
   - las peticiones dan propuestas revisables;
   - «¿por qué dijo…?» cita sus fuentes con enlace (ficha, instrucción, conocimiento
     o herramienta);
@@ -915,20 +961,24 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - «Arreglar» un dato pide el alcance y aplica solo tras confirmar;
   - a un analyst solo le explica.
   _Requisitos: 19.1, 19.2, 19.3, 19.4, 19.5_
-- [ ] T098 [US18] El constructor del cliente: `api/services/builder/client_profile.py`,
+  Entregado: pendiente de commit, bloque D (2026-10-27). En el mismo archivo que T096.
+- [X] T098 [US18] El constructor del cliente: `api/services/builder/client_profile.py`,
   `POST …/business/builder` y la revisión por secciones en la consola.
   _Requisitos: 18.1, 18.2, 18.3, 18.4_
-- [ ] T099 [US18] El copiloto:
+  Entregado: pendiente de commit, bloques D y F (2026-10-27). API y trabajo `client_builder`; en la consola, «Completar con el constructor» en Negocio (`client-builder-panel.tsx`), con sus pruebas y la e2e `agent-life`.
+- [X] T099 [US18] El copiloto:
   - `api/services/builder/{copilot,fixes}.py`;
   - las citas desde `turn_sources` y desde la traza del playground y de las pruebas;
   - la ruta;
   - el panel lateral en la consola.
   _Requisitos: 19.1, 19.2, 19.3, 19.4, 19.5_
-- [ ] T100 [US18] La evaluación del constructor en el admin (`adm/builder/eval/`):
+  Entregado: pendiente de commit, bloques D y F (2026-10-27). `services/builder/{copilot,copilot_model,fixes}.py`, `api/console/agent_copilot.py` y el panel lateral (`copilot-panel.tsx`, «¿Por qué dijo esto?» en el probador y en las pruebas).
+- [X] T100 [US18] La evaluación del constructor en el admin (`adm/builder/eval/`):
   - el banco v1 de 100 descripciones;
   - las métricas: el validador a la primera, la batería sin edición y el p90 del borrador;
   - la comparación con la última vez.
   _Requisitos: 54.4, CE-002, CE-003_
+  Entregado: pendiente de commit, bloque D (2026-10-27). Banco `services/builder/eval_bank_v1.json` (100), `services/builder/evaluation.py` y `/admin/builder/eval`. La pantalla del admin (`adm/builder/eval/`) queda pendiente.
 
 **Checkpoint**: el constructor sirve para clientes y para agentes, y explica lo que hizo.
 
@@ -951,7 +1001,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Cupo lleno**: la tarjeta dice el cupo y no ofrece conectar otro (sin botones apagados, §V).
   - **Sin credenciales de Meta**: «El número lo conecta Auphere».
   _Requisitos: 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.9, 30.10_
-- [ ] T102 [P] [US10] Coexistencia (`T/integration/channels/test_coexistence_events.py`):
+- [X] T102 [P] [US10] Coexistencia (`T/integration/channels/test_coexistence_events.py`):
   - un eco guarda el mensaje como de una persona del negocio, pone `human_takeover`
     2 h y el agente calla;
   - `account_update` con desconexión pasa el canal a «Con problemas» con su motivo,
@@ -959,7 +1009,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - el historial se importa solo si el negocio lo aceptó, y avisa de lo que se pierde;
   - se sincronizan los contactos.
   _Requisitos: 30.8, 30.11, 30.12_
-- [ ] T103 [P] [US10] El enlace del dueño (`T/integration/channels/test_owner_link.py`):
+  Entregado: pendiente de commit, bloque F (2026-10-27). `test_coexistence_events.py` (4).
+- [X] T103 [P] [US10] El enlace del dueño (`T/integration/channels/test_owner_link.py`):
   - **El enlace**: uno por agente y modo, de un solo uso, que caduca a los 7 días y
     se guarda solo como huella.
   - **Uno pendiente**: crear otro ofrece revocar el pendiente.
@@ -970,7 +1021,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     de nuevo o lo revoca.
   - **Guarda**: ningún número de cliente en la cuenta de Meta de Auphere.
   _Requisitos: 31.1, 31.2, 31.4, 31.5, 31.6, 31.7, 31.8_
-- [ ] T104 [P] [US11] La página del canal (`T/integration/channels/test_channel_config.py`):
+  Entregado: pendiente de commit, bloque F (2026-10-27). `test_owner_link.py` (4); la copia en pantalla y la frase «sin Facebook» van con la página (T111).
+- [X] T104 [P] [US11] La página del canal (`T/integration/channels/test_channel_config.py`):
   - **Secciones**: las cinco de la página.
   - **«Solo mi equipo»**: exige un número de prueba, no responde ni marca como
     leídos a los demás, y guarda sus mensajes.
@@ -986,7 +1038,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     conectó, o con las tres opciones.
   - **Permisos del equipo**: siguen en el agente.
   _Requisitos: 32.1, 32.2, 32.3, 32.4, 32.5, 32.6, 32.7, 32.8, 32.9, 32.10_
-- [ ] T105 [P] [US11] El escalado (`T/integration/channels/test_escalation_recipients.py`):
+  Entregado: pendiente de commit, bloque F (2026-10-27). `test_channel_config.py` (12).
+- [X] T105 [P] [US11] El escalado (`T/integration/channels/test_escalation_recipients.py`):
   - **Destinatarios**: hasta 10, con nombre y vía.
   - **Al escalar**: la Bandeja «Espera a una persona» y el aviso a cada uno por su
     vía, con el resumen opcional.
@@ -996,13 +1049,15 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Disparadores**: se ven en solo lectura.
   - **Sin destinatarios**: la revisión lo avisa.
   _Requisitos: 33.1, 33.2, 33.3, 33.4, 33.5, 33.6_
-- [ ] T106 [P] [US11] Mover, pausar y desconectar (`T/integration/channels/test_channel_menu.py`):
+  Entregado: pendiente de commit, bloque F (2026-10-27). `test_escalation_recipients.py` (5).
+- [X] T106 [P] [US11] Mover, pausar y desconectar (`T/integration/channels/test_channel_menu.py`):
   - el menú, con sus opciones;
   - mover se aplica al siguiente mensaje, conserva la configuración y el historial,
     y el destino no tiene que estar atendiendo;
   - desconectar pide confirmación, conserva el historial, queda con «Reintentar» si
     Meta falla y no rompe la suscripción de otro entorno.
   _Requisitos: 34.1, 34.2, 34.3, 34.4_
+  Entregado: pendiente de commit, bloque F (2026-10-27). `test_channel_menu.py` (4); desconectar ya lo cubren las pruebas de `test_endpoint_console_channels.py`.
 - [ ] T107 [P] [US10] [046] El catálogo desde el agente (`T/integration/channels/test_channels_tab.py`).
   Necesita la constitución 1.2.0 (spec 046) en `develop`: hasta entonces, la consola
   no enseña «Próximamente» (§V 1.1.0).
@@ -1016,7 +1071,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ### Implementación
 
-- [ ] T108 [US10] Migración `NNNN_channel_config.py`:
+- [X] T108 [US10] Migración `NNNN_channel_config.py`:
   - `channels.problem_reason`, `audience_mode`, `config_revision`, `coexistence` y
     las columnas de pausa;
   - `channel_audience_numbers`, `channel_escalation_recipients` y `channel_config_changes`;
@@ -1024,6 +1079,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - `whatsapp_login_beta_countries`;
   - `conversations.handled_by_agent_id` y `reception_hops`.
   _Requisitos: 31.1, 31.5, 32.1, 33.1, 30.11_
+  Entregado: pendiente de commit, bloque F (2026-10-27). Migración `0191_channel_config`.
 - [ ] T109 [US10] [046] ES v5:
   - en `ch/whatsapp_meta/signup.py` (`_upsert_channel`), combinar el `config` en vez
     de sustituirlo (línea 473), y el modelo de cuentas de v5;
@@ -1034,7 +1090,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - `con/lib/meta-fb-sdk.ts` a v5.
   Escribe `docs/canales.md`.
   _Requisitos: 30.1, 30.3, 30.5, 30.6, 30.7, 30.9, 30.10_
-- [ ] T110 [US10] La coexistencia:
+- [X] T110 [US10] La coexistencia:
   - los consumidores `wk/streams/meta_{echoes,history,state_sync}_consumer.py`, en
     la familia runner, con sus tres ediciones;
   - el manejo de `account_update` en `api/api/webhooks/meta.py`;
@@ -1042,7 +1098,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - el historial, solo si se aceptó;
   - los contactos.
   _Requisitos: 30.8, 30.11, 30.12_
-- [ ] T111 [US10] El enlace del dueño:
+  Entregado: pendiente de commit, bloque F (2026-10-27). `streams/meta_{echoes,history,state_sync}_consumer.py` sobre `meta_coexistence.py`, en la familia runner con sus tres ediciones; `account_update` en el webhook; el relevo de 2 h lo devuelve el despachador.
+- [X] T111 [US10] El enlace del dueño:
   - `api/services/channel_signup_links.py` con agente, modo, uno pendiente y la
     huella;
   - las rutas (`console/whatsapp.py`, `console/channel_signup.py`);
@@ -1050,22 +1107,26 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - la frase «desde su teléfono» queda detrás de una bandera hasta probarlo en iOS
     y en Android, con la evidencia en `evidence/enlace-movil.md`.
   _Requisitos: 31.1, 31.2, 31.3, 31.4, 31.5, 31.6, 31.7, 31.8_
-- [ ] T112 [US11] La configuración del canal:
+  Entregado: pendiente de commit, bloques F y G (2026-10-27). Servicio y rutas por agente, página `con/app/connect/whatsapp/*` con la beta; «desde su teléfono» tras `NEXUS_OWNER_LINK_FROM_PHONE` (apagada). Falta la evidencia en iOS y Android (`evidence/enlace-movil.md`), que exige un móvil de verdad.
+- [X] T112 [US11] La configuración del canal:
   - `api/services/channel_config.py` y las rutas `api/api/console/channel_config.py`;
   - `api/core/admin_gate.py` lee la audiencia del canal, y se aplica en
     `dispatcher.py:630`, `webhooks/meta.py:541` y `pipeline.py:967`;
   - el historial y el deshacer;
   - el modo prueba al conectar.
   _Requisitos: 32.1, 32.2, 32.3, 32.4, 32.5, 32.6, 32.7, 32.8, 32.9, 32.10_
-- [ ] T113 [US11] El escalado por canal:
+  Entregado: pendiente de commit, bloque F (2026-10-27). `services/channel_config.py`, `api/console/channel_config.py`, `admin_gate.audience_suppresses` en el despachador y el webhook (en la consola nueva el canal decide; fuera, la audiencia del agente). El modo prueba al conectar vale para el enlace del dueño; el alta desde la consola espera a T109.
+- [X] T113 [US11] El escalado por canal:
   - `mcp/servers/escalate/tools.py` avisa a los destinatarios;
   - los avisos por WhatsApp salen del número del canal o del de Auphere;
   - el canal de respaldo con el dueño (ADR-018) pasa a ser una vía;
   - el resumen, mínimo.
   _Requisitos: 33.1, 33.2, 33.3, 33.4, 33.5_
-- [ ] T114 [US11] Mover, pausar y desconectar, en `api/api/console/channels.py` y
+  Entregado: pendiente de commit, bloque F (2026-10-27). El alertador avisa a los destinatarios del canal (WhatsApp desde el canal o desde Auphere, correo; la Bandeja ya la tiene `mark_waiting`); la revisión cuenta los destinatarios de verdad.
+- [X] T114 [US11] Mover, pausar y desconectar, en `api/api/console/channels.py` y
   `agents_list.py`.
   _Requisitos: 34.1, 34.2, 34.3, 34.4_
+  Entregado: pendiente de commit, bloque F (2026-10-27). Mover, pausar y reanudar en `api/console/channel_config.py`; desconectar sigue en `channels.py`.
 - [ ] T115 [US10] [US11] [046] Consola, con Playwright y axe. Necesita la 1.2.0 en
   `develop`, igual que T107:
   - **La pestaña Canales del agente**:
@@ -1075,16 +1136,19 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
     - el modal «Pasar a otro agente».
   - **La página de configuración del canal**, con su barra.
   _Requisitos: 29.1, 29.2, 29.3, 29.4, 30.2, 30.4, 30.6, 31.7, 32.1, 32.9, 34.1_
-- [ ] T116 [US11] Migración de datos `NNNN_audience_to_channels.py`:
+  Avance (2026-10-27): la página del canal con su barra, el menú ⋯, «Pasar a otro agente» y el panel del enlace pendiente (e2e `agent-channels`). Falta lo que depende de la 046: el asistente y el catálogo desde el agente.
+- [X] T116 [US11] Migración de datos `NNNN_audience_to_channels.py`:
   - `admin_only` y `admin_phones` pasan a la audiencia de cada canal: «responde solo
     a N» queda en «Solo mi equipo» con esos números, y «a todos» queda en «A todos»
     con sus excepciones;
   - `admins[]` pasa a `team_access`.
   Prueba con datos de ejemplo.
   _Requisitos: 55.1, 32.10_
-- [ ] T117 [US10] Admin: la beta por país en `adm/channels/`. Rechaza los países de
+  Entregado: pendiente de commit, bloque F (2026-10-27). Migración `0192_audience_to_channels` y `test_migration_0192_audience_to_channels.py`; `admins[]` ya pasó a `team_access` en la 0189.
+- [X] T117 [US10] Admin: la beta por país en `adm/channels/`. Rechaza los países de
   la UE y del EEE.
   _Requisitos: 31.5, 54.7_
+  Entregado: pendiente de commit, bloque G (2026-10-27). API `api/admin/whatsapp_login_beta.py` (UE, EEE y sus territorios con código propio) y la pantalla `adm/channels/whatsapp-login`.
 
 **Checkpoint**: WhatsApp se conecta desde el agente y cada número se configura en su página.
 
@@ -1092,20 +1156,22 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ## Fase 13 — Ola 4 · Historias 19 y 20: varios agentes, estados, pausar y archivar (P2)
 
-- [ ] T118 [P] [US19] Pruebas en rojo de los estados (`T/integration/agents/test_agent_states.py`):
+- [X] T118 [P] [US19] Pruebas en rojo de los estados (`T/integration/agents/test_agent_states.py`):
   - el estado de vida guardado, con sus motivos;
   - los estados del canal;
   - el estado visible derivado;
   - pausar no cambia los canales, y guardar un canal no reanuda;
   - los mismos textos y colores en todas partes.
   _Requisitos: 25.1, 25.2, 25.3, 25.4, 25.5_
-- [ ] T119 [P] [US19] Pruebas en rojo de varios agentes (`T/integration/agents/test_many_agents.py`):
+  Entregado: pendiente de commit, bloque E (2026-10-27). `T/integration/agents/test_agent_lifecycle.py`.
+- [X] T119 [P] [US19] Pruebas en rojo de varios agentes (`T/integration/agents/test_many_agents.py`):
   - las tarjetas, que abren la pestaña que toca a su estado;
   - exactamente un agente por defecto, con el cambio atómico;
   - los enlaces, la API y las rutas sin agente usan el agente por defecto;
   - renombrar.
   _Requisitos: 26.1, 26.2, 26.3, 26.4_
-- [ ] T120 [P] [US20] Pruebas en rojo de pausar y reanudar (`T/integration/agents/test_pause_resume.py`):
+  Entregado: pendiente de commit, bloque E (2026-10-27). En `test_agent_lifecycle.py`.
+- [X] T120 [P] [US20] Pruebas en rojo de pausar y reanudar (`T/integration/agents/test_pause_resume.py`):
   - **Alcance**: agente, canal o cliente.
   - **Los mensajes** se guardan con su motivo.
   - **Reanudar** devuelve el estado anterior.
@@ -1116,32 +1182,37 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Los avisos salientes** siguen según la regla.
   - **Confirmación**: solo con conversaciones en curso, diciendo cuántas.
   _Requisitos: 27.1, 27.2, 27.3, 27.4, 27.5, 27.6, 27.7, 27.8_
-- [ ] T121 [P] [US19] Pruebas en rojo de archivar y restaurar (`T/integration/agents/test_archive_restore.py`):
+  Entregado: pendiente de commit, bloque E (2026-10-27). En `test_agent_lifecycle.py` (la pausa del canal y del cliente: T114 y T063).
+- [X] T121 [P] [US19] Pruebas en rojo de archivar y restaurar (`T/integration/agents/test_archive_restore.py`):
   - archivar pide el destino de cada número, o pausarlo;
   - restaurar deja el agente en pausa;
   - nunca se borra;
   - el agente por defecto pide elegir otro antes.
   _Requisitos: 28.1, 28.2, 28.3, 28.4_
-- [ ] T122 [US19] Migración `NNNN_agent_lifecycle.py`:
+  Entregado: pendiente de commit, bloque E (2026-10-27). En `test_agent_lifecycle.py`.
+- [X] T122 [US19] Migración `NNNN_agent_lifecycle.py`:
   - `agents.lifecycle`: `active` pasa a `published` o a `draft`, según tenga
     versión activa;
   - `pause_*`, `before_pause` e `is_default`, con su relleno (uno por cliente:
     `principal_agent_id`) y el índice único parcial;
   - `is_reception` y `monthly_cap_micros`.
   _Requisitos: 25.1, 26.2_
-- [ ] T123 [US19] [US20] Las transiciones:
+  Entregado: pendiente de commit, bloque E (2026-10-27). Migración `0190_agent_lifecycle.py`.
+- [X] T123 [US19] [US20] Las transiciones:
   - `api/services/agent_lifecycle.py` y `api/services/agents.py`;
   - las rutas `pause`, `resume`, `archive`, `restore`, `default` y renombrar;
   - las rutas de la lite para pausar y reanudar;
   - el despachador respeta la pausa.
   _Requisitos: 25.1, 25.4, 26.2, 26.3, 26.4, 27.1, 27.2, 27.3, 27.4, 27.5, 27.6, 27.7, 28.1, 28.2, 28.3, 28.4_
-- [ ] T124 [US19] Consola:
+  Entregado: pendiente de commit, bloque E (2026-10-27). `api/services/agent_states.py`, rutas `api/console/agent_lifecycle_routes.py`, tarjetas con `visible_state` en `agents_list.py`, la puerta del despachador (`agent_paused` con el motivo de la pausa). Las rutas de la lite para pausar y reanudar van con T167.
+- [X] T124 [US19] Consola:
   - la pestaña Agentes, con sus tarjetas;
   - la cabecera con el estado y el ⋯, y renombrar;
   - pausar y reanudar;
   - el modal de archivar, con el destino de cada número;
   - el cambio de agente por defecto.
   _Requisitos: 26.1, 27.8, 28.1, 28.4_
+  Entregado: pendiente de commit, bloque F (2026-10-27). `agent-cards.tsx`, `agent-menu.tsx`, `archived-agent.tsx`, `life-model.ts`, `lib/backend/agent-life.ts`, e2e `agent-life` (6). La lista acepta `?include_archived=true` para enseñar los archivados.
 
 **Checkpoint**: varios agentes por cliente, con estados que dicen la verdad.
 
@@ -1149,7 +1220,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ## Fase 14 — Ola 5 · Historia 21: integraciones (P2)
 
-- [ ] T125 [P] [US21] Pruebas en rojo de las activaciones (`T/integration/connectors/test_activations.py`):
+- [X] T125 [P] [US21] Pruebas en rojo de las activaciones (`T/integration/connectors/test_activations.py`):
   - la conexión es del cliente, y la activación, del agente;
   - el catálogo con categorías, buscador, logos y cómo se autoriza, con primero lo
     que piden las habilidades;
@@ -1159,7 +1230,8 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - sin activación no hay uso;
   - quitar una activación quita sus herramientas y avisa de las habilidades afectadas.
   _Requisitos: 35.1, 35.2, 35.3, 35.4, 35.5, 35.6, 35.7_
-- [ ] T126 [P] [US21] Pruebas en rojo de la página de cada integración (`T/integration/connectors/test_integration_page.py`):
+  Entregado: pendiente de commit, bloque G (2026-10-27). `tests/integration/connectors/test_activations.py` (6).
+- [X] T126 [P] [US21] Pruebas en rojo de la página de cada integración (`T/integration/connectors/test_integration_page.py`):
   - la cuenta, la salud con la hora de la última comprobación, los agentes con sus
     permisos y los ajustes;
   - los ajustes, declarados y validados;
@@ -1168,13 +1240,15 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - «Desconectar para todos» lista lo afectado y pide confirmación;
   - los ajustes repartidos se migran.
   _Requisitos: 36.1, 36.2, 36.3, 36.4, 36.5_
-- [ ] T127 [US21] Migración `NNNN_connector_activations.py`:
+  Entregado: pendiente de commit, bloque G (2026-10-27). `tests/integration/connectors/test_integration_page.py` (4).
+- [X] T127 [US21] Migración `NNNN_connector_activations.py`:
   - `agent_connector_activations` y `tenant_connectors.last_checked_at`;
   - el `settings_schema` del catálogo;
   - la migración de datos de los ajustes repartidos a la activación de cada agente
     que los usa.
   _Requisitos: 35.1, 36.2, 36.5_
-- [ ] T128 [US21] Las activaciones:
+  Entregado: pendiente de commit, bloque G (2026-10-27). Migración `0194_connector_activations` (con los ajustes repartidos y los recordatorios de cobranza a la activación).
+- [X] T128 [US21] Las activaciones:
   - `api/services/activations.py`;
   - el esquema de ajustes en `services/connectors/catalog.py`;
   - `wk/runtime/agent_loader.py` y `mcp/servers/composio_proxy/proxy.py`
@@ -1183,9 +1257,11 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - la salud en `connector_reconcile_cron.py`;
   - los avisos `integration.reauth_required`.
   _Requisitos: 35.1, 35.4, 35.5, 35.6, 35.7, 36.1, 36.3, 36.4_
-- [ ] T129 [US21] Consola: la pestaña Integraciones (el catálogo, los filtros y las
+  Entregado: pendiente de commit, bloque G (2026-10-27). `services/activations.py`, `services/tool_approvals.py` (aprobación durable por la consulta al dueño de ADR-018), rutas `api/console/agent_integrations.py`, la intersección en el turno (`pipeline._load_tool_policy`), `last_checked_at` y `integration.reauth_required`. La activación manda en la consola nueva y en toda conexión con activaciones; lo de antes sigue.
+- [X] T129 [US21] Consola: la pestaña Integraciones (el catálogo, los filtros y las
   filas con «Conectar» y el permiso) y la página de cada integración.
   _Requisitos: 35.2, 35.3, 36.1, 36.4_
+  Entregado: pendiente de commit, bloque G (2026-10-28). Conectores del agente (`con/components/builder/agent-connectors.tsx`, `?tab=integrations`): búsqueda y categoría, el estado de cada fila, «Lo pide una habilidad», el permiso, «Conectar» (autorizar una vez por cliente y activar; OAuth o la clave), los ajustes del `settings_schema` con los errores en su campo y quitar con confirmación. La página de cada conexión (`clients/[ref]/integrations/[connectionId]`): cuenta, estado, última comprobación, agentes con su permiso, «Reconectar» y «Desconectar para todos» con lo afectado. El aviso `integration.reauth_required` lleva a esa página. Vitest (66 nuevas) y axe.
 
 **Checkpoint**: se autoriza una vez y cada agente usa solo lo suyo.
 
@@ -1193,7 +1269,7 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
 
 ## Fase 15 — Ola 5 · Historia 22: conocimiento del negocio y del agente (P2)
 
-- [ ] T130 [P] [US22] Pruebas en rojo de las capas (`T/integration/knowledge/test_layers.py`):
+- [X] T130 [P] [US22] Pruebas en rojo de las capas (`T/integration/knowledge/test_layers.py`):
   - las dos capas;
   - un agente no recupera, cita ni recibe lo propio de otro;
   - «Enseñar» pide el alcance, se aplica al momento con historial y deshacer, y
@@ -1201,21 +1277,24 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - la regla se extiende a las activaciones, los servicios, los canales y la memoria
     (junto a T014).
   _Requisitos: 37.1, 37.2, 37.3, 37.4, 37.5_
-- [ ] T131 [P] [US22] Pruebas en rojo de la recuperación (`T/integration/knowledge/test_retrieval.py`):
+  Entregado: pendiente de commit, bloque G (2026-10-27). `tests/integration/knowledge/test_layers.py` (4) y `tests/isolation/test_44b_agent_knowledge.py` (3).
+- [X] T131 [P] [US22] Pruebas en rojo de la recuperación (`T/integration/knowledge/test_retrieval.py`):
   - si cabe en el presupuesto, va entero en la compilación;
   - si no, la búsqueda híbrida filtrada por cliente y agente dentro de la consulta,
     con un plan sin índice ANN;
   - las fuentes de cada respuesta;
   - indexar se mide en la partida de construcción.
   _Requisitos: 38.1, 38.2, 38.3, 38.4, 38.5_
-- [ ] T132 [US22] Migración `NNNN_knowledge_layers.py`:
+  Entregado: pendiente de commit, bloque G (2026-10-27). `tests/integration/knowledge/test_retrieval.py` (6), con la de rendimiento (~26 ms p95 con 5.000 fragmentos).
+- [X] T132 [US22] Migración `NNNN_knowledge_layers.py`:
   - `knowledge_documents.agent_id`, `removed_at` y `restore_until`;
   - `knowledge_chunks`, con `vector(1024)` y `tsvector`;
   - `knowledge_revisions`;
   - `agent_memories.agent_id`;
   - `turn_sources`.
   _Requisitos: 37.1, 38.2, 38.3_
-- [ ] T133 [US22] El conocimiento:
+  Entregado: pendiente de commit, bloque G (2026-10-27). Migración `0193_knowledge_layers`; los vectores van en `knowledge_chunk_vectors` (`halfvec(1024)`, en la fila) para que cada vía de la búsqueda recorra solo lo suyo.
+- [X] T133 [US22] El conocimiento:
   - `api/services/knowledge/{layers,retrieval,teach}.py`;
   - los embeddings con la tarea `embed`;
   - la compilación con el conocimiento si cabe;
@@ -1224,9 +1303,11 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - el filtro de la «memoria propia» en `pipeline._load_recent_history`;
   - una prueba de rendimiento: < 30 ms p95 con 5.000 fragmentos.
   _Requisitos: 37.1, 37.2, 37.3, 37.4, 38.1, 38.2, 38.3, 38.4_
-- [ ] T134 [US22] Consola: la pestaña Conocimiento del agente (sus fuentes y
+  Entregado: pendiente de commit, bloque G (2026-10-27). `services/knowledge/{layers,retrieval,teach,embeddings}.py`, `api/console/agent_knowledge.py`, el turno con `load_knowledge_for_turn` y `turn_sources`, la memoria propia en la herramienta de memoria.
+- [X] T134 [US22] Consola: la pestaña Conocimiento del agente (sus fuentes y
   «Enseñar» con alcance), y la capa de cada fuente en Negocio.
   _Requisitos: 37.3, 12.1_
+  Entregado: pendiente de commit, bloque G (2026-10-27). Sección Conocimiento del agente y «Enseñar» con alcance (`agent-knowledge.tsx`, `teach-dialog.tsx`), e2e `agent-channels`.
 
 **Checkpoint**: cada agente sabe lo del negocio y lo suyo, y nada de sus hermanos.
 
@@ -1338,12 +1419,13 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   conversación, la de segundo plano y quién paga.
   _Requisitos: 42.3, 42.4, 42.6_
   Entregado: pendiente de commit, bloque B. La certificación en segundo plano aún no tiene trabajo registrado: necesita la suite (T085).
-- [ ] T145 [US12] Los valores por defecto:
+- [X] T145 [US12] Los valores por defecto:
   - los agentes nuevos nacen en «Automático»;
   - `classify` pasa al certificado más barato para todos, tras pasar la batería (D24);
   - los agentes de hoy quedan fijados.
   En staging se mide el CE-005 y se deja la evidencia.
   _Requisitos: 39.2, 39.11, 40.5, CE-005_
+  Entregado: pendiente de commit, bloque C (Luis; research D45). Queda medir el CE-005 en staging.
 
 **Checkpoint**: cada tarea la hace el modelo certificado más barato.
 
@@ -1351,7 +1433,7 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
 
 ## Fase 17 — Ola 6 · Historias 23 y 24: la calidad del agente y el catálogo completo (P2)
 
-- [ ] T146 [P] [US23] Pruebas en rojo de la pantalla Calidad (`T/integration/models/test_agent_quality.py`):
+- [X] T146 [P] [US23] Pruebas en rojo de la pantalla Calidad (`T/integration/models/test_agent_quality.py`):
   - **Las opciones**: cada una con su línea y su precio estimado en la moneda de la
     bolsa, comparado con el actual. La estimación sale del perfil de 30 días o del
     sector, y después de guardar se ve el real de 7 días.
@@ -1364,26 +1446,32 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - **Agentes migrados**: se les propone «Automático».
   - **Quién**: `agents:write`; la lite y la app no la enseñan.
   _Requisitos: 39.1, 39.4, 39.5, 39.6, 39.7, 39.8, 39.9, 39.10, 39.11, 39.12_
-- [ ] T147 [US23] La calidad: `api/api/console/agent_quality.py` (las estimaciones
+  Entregado: pendiente de commit, bloque G (2026-10-27). `tests/integration/models/test_agent_quality.py` (6).
+- [X] T147 [US23] La calidad: `api/api/console/agent_quality.py` (las estimaciones
   y el trabajo `quality_check`) y la pantalla Agente › Avanzado › Calidad.
   _Requisitos: 39.1, 39.4, 39.5, 39.6, 39.7, 39.9, 39.10, 39.12_
-- [ ] T148 [P] [US24] Pruebas en rojo del ciclo de vida de los modelos (`T/integration/models/test_model_lifecycle.py`):
+  Pantalla entregada (2026-10-28): Avanzado › Calidad (`con/components/builder/agent-model-quality.tsx`, `?tab=quality`): las opciones con su precio estimado por mensaje y la diferencia con la actual, el precio real de 7 días, «Solo UE», la propuesta «Automático» de los agentes migrados y «Fijar un modelo»; «Comprobar la calidad» lanza la comprobación y la sigue; solo una opción comprobada pasa al borrador (y «Guardar» la aplica por la puerta). Quien solo lee lo ve sin controles.
+  Avance (2026-10-27): `services/agent_quality.py`, `api/console/agent_quality.py`, la comprobación como pasada `certification` con su política, y la condición «calidad» de la puerta. Falta la pantalla Agente › Avanzado › Calidad.
+- [X] T148 [P] [US24] Pruebas en rojo del ciclo de vida de los modelos (`T/integration/models/test_model_lifecycle.py`):
   - **Retirada**: se avisa con 30 días o más, se propone el sustituto y, en la
     fecha, el agente pasa a él o a «Automático», con su historial.
   - **Precio**: si sube más de un 10 %, avisa antes de que entre en vigor.
   - **«No disponible»**: se deja de usar desde el siguiente turno.
   _Requisitos: 41.7, 41.8, 41.9_
-- [ ] T149 [US24] El ciclo de vida: el cron `wk/streams/model_lifecycle_cron.py`
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 (`test_model_lifecycle.py` y vitest del admin, 238 en verde).
+- [X] T149 [US24] El ciclo de vida: el cron `wk/streams/model_lifecycle_cron.py`
   (con sus tres ediciones), los avisos `model.retirement` y `model.price_change`, y
   el cambio en la fecha.
   _Requisitos: 41.7, 41.8, 41.9_
-- [ ] T150 [US24] Las pantallas del admin (`adm/models/`, `adm/router/`, `adm/certifications/`),
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 (`test_model_lifecycle.py` y vitest del admin, 238 en verde).
+- [X] T150 [US24] Las pantallas del admin (`adm/models/`, `adm/router/`, `adm/certifications/`),
   con vitest:
   - el catálogo: altas, precios con vigencia, activar, retirar y «No disponible»;
   - el editor de perfiles, con su motivo y su vista previa;
   - las anomalías;
   - las certificaciones, por despliegue y por agente.
   _Requisitos: 40.13, 42.7, 54.1, 54.2, 54.3, 54.9_
+  Entregado: pendiente de commit, bloque C (Luis); verificado el 2026-10-27 (`test_model_lifecycle.py` y vitest del admin, 238 en verde).
 
 **Checkpoint**: el partner elige la calidad y Auphere opera el catálogo sin tocar la base de datos.
 
@@ -1392,7 +1480,7 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
 
 ### Pruebas (en rojo primero)
 
-- [ ] T151 [P] [US25] El libro (`T/integration/wallet/test_bags_ledger.py`; propiedades
+- [X] T151 [P] [US25] El libro (`T/integration/wallet/test_bags_ledger.py`; propiedades
   con Hypothesis para la invariante):
   - **Monedas**:
     - la de la cuenta: USD para los partners de hoy, y solo Auphere la cambia,
@@ -1414,7 +1502,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - **Archivar** ofrece devolver la bolsa; **borrar** la devuelve antes.
   - **Quién**: `usage:write`.
   _Requisitos: 43.1, 43.2, 43.3, 43.4, 43.5, 43.6, 43.7, 43.8, 43.9, 43.10, 43.11, 43.12, 43.13, 43.14, 6.7_
-- [ ] T152 [P] [US25] El tope y los avisos (`T/integration/wallet/test_agent_cap_and_alerts.py`):
+  Entregado: pendiente de commit, bloque F (2026-10-28). `T/integration/wallet/test_bags_ledger.py` (16, con la propiedad de Hypothesis sobre la conservación del dinero). Encontró y arregló: el orden de inserción traspaso→asiento, el último asiento por `seq` (0196), la moneda de la bolsa leída desde la sesión del cliente y la siembra de asignación que apagaba las bolsas.
+- [X] T152 [P] [US25] El tope y los avisos (`T/integration/wallet/test_agent_cap_and_alerts.py`):
   - **El tope**: mensual UTC, en la moneda de la bolsa.
   - **Al 80 %**: un aviso al mes.
   - **Al 100 %**: «Pausado · tope del agente» y la Bandeja; los demás agentes siguen.
@@ -1427,7 +1516,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - **Destinatarios y canales**, y la casilla del 20 %.
   - **Las políticas de Auphere** cumplen el requisito 2 y no llevan a un modelo sin certificar.
   _Requisitos: 44.1, 44.2, 44.3, 44.4, 44.5, 44.6, 44.7, 44.8, 27.4, 27.5_
-- [ ] T153 [P] [US25] El modal y «Pedir saldo» (`T/integration/wallet/test_assign_and_request.py`
+  Entregado: pendiente de commit, bloque F (2026-10-28). `T/integration/wallet/test_agent_cap_and_alerts.py` (10, con la puerta por debajo de 15 ms p95). El agente pausado por su tope vuelve al subirlo o el día 1 (`agent_states.resume_after_cap`). La condición de las políticas de Auphere (44.8) la cubren las pruebas de calidad de T146.
+- [X] T153 [P] [US25] El modal y «Pedir saldo» (`T/integration/wallet/test_assign_and_request.py`
   y `apps/console/e2e/money.spec.ts`):
   - **El modal**: se abre en 6 sitios, sin cambiar de pantalla.
   - **Contenido**:
@@ -1447,7 +1537,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
     - no existe en la lite ni en la app.
   - **Formato** `es-ES`.
   _Requisitos: 45.1, 45.2, 45.3, 45.4, 45.5, 45.6, 45.7, 45.8, 45.9_
-- [ ] T154 [P] [US26] Consumo (`T/integration/wallet/test_usage_lines.py`):
+  Entregado (API): pendiente de commit, bloque F (2026-10-28). `T/integration/wallet/test_assign_and_request.py` (4). `e2e/money.spec.ts` va con T159.
+- [X] T154 [P] [US26] Consumo (`T/integration/wallet/test_usage_lines.py`):
   - **Las tres cifras**: sin pool, en bolsas (aprox.) y el gasto con su proyección.
   - **La tabla** por cliente.
   - **La gráfica** de 7, 30 y 90 días, filtrable, con su tabla.
@@ -1462,10 +1553,10 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - **Todo sale del libro**, con la misma cifra en todas partes.
   - **Las alertas de consumo** siguen como hoy.
   _Requisitos: 46.1, 46.2, 46.3, 46.4, 46.5, 46.6, 46.7, 46.8_
-
+  Entregado: pendiente de commit, bloque F (2026-10-28). `T/integration/wallet/test_usage_lines.py` (5): la misma cifra en Consumo, la gráfica, las bolsas, la partida, la lista de clientes y la lite.
 ### Implementación
 
-- [ ] T155 [US25] Migración `NNNN_client_wallets.py`:
+- [X] T155 [US25] Migración `NNNN_client_wallets.py`:
   - `partner_wallets.currency`;
   - `client_wallets` y `client_wallet_entries`;
   - `wallet_transfers`;
@@ -1474,7 +1565,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - `balance_requests`, `partner_build_budget` y `build_budget_requests`;
   - `wallet_migration_proposals`.
   _Requisitos: 43.1, 43.3, 43.9, 44.1, 45.7, 46.5_
-- [ ] T156 [US25] Las bolsas y el libro:
+  Entregado: pendiente de commit, bloque F. Migraciones `0195_client_wallets.py` y `0196_usage_lines_reporting.py` (lo que el rol de informes lee para las partidas y el `seq` de los asientos).
+- [X] T156 [US25] Las bolsas y el libro:
   - `api/services/wallet/{bags,ledger,fx}.py`;
   - el BCE en `api/services/exchange_rate.py`;
   - los crons `fx_rates_cron.py` y `ledger_reconciliation_cron.py`;
@@ -1482,7 +1574,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
     `wk/metering/consumer.py::_debit_channel_wallet`.
   Actualiza `docs/billing.md`.
   _Requisitos: 43.1, 43.2, 43.3, 43.4, 43.5, 43.6, 43.7, 43.9, 43.10, 43.11, 43.12, 43.13, 43.14_
-- [ ] T157 [US25] La puerta y los avisos:
+  Entregado: pendiente de commit, bloque F. `api/services/wallet/{bags,ledger,fx}.py`; los crons en `wk/streams/wallet_crons.py` (`fx-rates-cron`, `ledger-reconciliation-cron`), con sus tres ediciones. `docs/billing.md` actualizado.
+- [X] T157 [US25] La puerta y los avisos:
   - `allow_channel_turn` y `wk/runtime/budget_gate.py` leen la bolsa y
     `agent_monthly_spend`;
   - pausar y reanudar solos por saldo y por tope;
@@ -1491,7 +1584,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - una prueba de rendimiento: la puerta añade menos de 15 ms p95 al turno.
     Objetivo de `plan.md`.
   _Requisitos: 43.8, 44.1, 44.2, 44.3, 44.4, 44.5, 44.6, 44.7, 44.8, 27.4, 27.5_
-- [ ] T158 [US25] [US26] Las rutas:
+  Entregado: pendiente de commit, bloque F. `allow_channel_turn` lee la bolsa; `wallet/turns.charge_turn` cobra, pausa y avisa; `wallet/alerts.py`; `bag-alerts-cron` y `bag-refill-cron` (con la reanudación del día 1) en `wk/streams/wallet_crons.py`.
+- [X] T158 [US25] [US26] Las rutas:
   - la bolsa: `api/api/console/wallet.py` (bolsas, asignar, bajar, mover, relleno,
     moneda y «Pedir saldo»);
   - la partida de construcción (`api/services/wallet/build_budget.py`), que
@@ -1499,7 +1593,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - Consumo: `api/api/console/usage_lines.py` (partidas, gráfica, detalle y CSV);
   - la lite: `api/api/console/lite/usage.py` y `api/services/lite_home.py`.
   _Requisitos: 45.7, 45.8, 46.1, 46.2, 46.3, 46.4, 46.5, 46.6, 46.7, 46.8_
-- [ ] T159 [US25] [US26] Consola (`con/components/money/`, `con/app/(console)/usage/**`, `billing/**`):
+  Entregado: pendiente de commit, bloque F. Las rutas de la bolsa en `api/console/client_bags.py` (el fichero se llama así porque `wallet.py` ya era el libro de la fase 3); Consumo en `api/console/usage_lines.py`; la lite lee la bolsa (`services/lite_home.bag_balance`) y la lista y el Panel también (`client_overview._bags_from_wallets`); el admin en `api/admin/partner_money.py`.
+- [X] T159 [US25] [US26] Consola (`con/components/money/`, `con/app/(console)/usage/**`, `billing/**`):
   - el modal «Asignar saldo» y los de mover, bajar y relleno;
   - el tope del agente, en Agente › Avanzado y en la fila del agente en el Panel
     del cliente (`PATCH …/agents/{agent_id}`);
@@ -1507,26 +1602,28 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - Facturación, en la moneda de la cuenta;
   - el Panel del cliente, leyendo la bolsa.
   _Requisitos: 45.1, 45.2, 45.3, 45.4, 45.5, 45.6, 45.9, 46.1, 46.2, 46.3, 46.6, 49.3, 14.6_
-- [ ] T160 [US25] «Repartir tu saldo en bolsas»:
+  Entregado: pendiente de commit, bloque G (2026-10-28). `con/components/money/` (modal «Asignar saldo» en sus 6 entradas, mover, bajar, relleno, moneda, «Pedir saldo», tope del agente), Consumo nuevo (`usage/usage-v2.tsx`) y Facturación en la moneda de la cuenta; vitest y `e2e/money.spec.ts` (7/7).
+- [X] T160 [US25] «Repartir tu saldo en bolsas»:
   - la propuesta: lo que le queda a cada cliente este mes;
   - el asistente de la consola;
   - la confirmación;
   - hasta que se confirme, sigue `partner_allocations`;
   - el cambio de moneda de una bolsa con saldo, con su conversión confirmada.
   _Requisitos: 55.3, 6.7, 43.3_
-- [ ] T161 [US25] Los avisos de los partners con la consola nueva:
+  Entregado: pendiente de commit, bloque G. Asistente `usage/repartir` con importes ajustables (`adjust`), y hasta confirmar siguen las asignaciones de antes.
+- [X] T161 [US25] Los avisos de los partners con la consola nueva:
   - `client.out_of_quota`, `client.balance_out` y `qa.cap_reached` se sustituyen
     por los de `events.md` §3;
   - `wallet.low`, `wallet.empty` y los del tope comercial no cambian.
   _Requisitos: 44.6, 46.5_
-
+  Entregado: pendiente de commit, bloque F. Con bolsas callan `client.out_of_quota` (`wallet_alerts.notify_client_out_of_quota_detached`), los avisos de saldo de la lite de antes y `qa.cap_reached` (el playground de hoy pasa a la partida en dinero).
 **Checkpoint**: el dinero se aparta, se mueve y cuadra al céntimo.
 
 ---
 
 ## Fase 19 — Ola 8 · Historias 27 y 28: el marco común y las vistas del partner (P2)
 
-- [ ] T162 [P] [US27] Auditoría de accesibilidad y responsive de todas las pantallas
+- [X] T162 [P] [US27] Auditoría de accesibilidad y responsive de todas las pantallas
   (`apps/console/e2e/a11y.spec.ts`, ampliado):
   - axe sin incidencias graves ni críticas;
   - sin desbordamiento a 390 px;
@@ -1536,7 +1633,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - los cinco estados de cada pantalla, más «reconectando» en las vistas en vivo;
   - textos largos en alemán.
   _Requisitos: 47.5, 47.6, 47.7, 47.9, 47.11, CE-010_
-- [ ] T163 [P] [US28] El Panel del partner: pruebas en rojo e implementación
+  Entregado: pendiente de commit, bloque G (2026-10-28). `con/e2e/fabrica-*` sobre un mock del contrato (Playwright 14/14: lite 8, partner 6): axe, 390 px, 200 %, teclado (foco atrapado, Escape y vuelta del foco, flechas), transparencia y movimiento reducidos, los estados vacío, cargando, error y parcial, «Reconectando…» en la Bandeja y textos largos en alemán. `a11y.spec.ts` gana la pantalla del agente de la 047 y `lite.spec.ts` audita `/agentes` y `/negocio`; esos dos necesitan la API sembrada y no se corrieron aquí.
+- [X] T163 [P] [US28] El Panel del partner: pruebas en rojo e implementación
   (`api/services/console_home_blocks.py`, `api/api/console/home.py`,
   `con/app/(console)/page.tsx`, `con/components/home/`):
   - los bloques, con su periodo;
@@ -1544,7 +1642,9 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - las cifras cuadran con Consumo;
   - sin cuerpos de mensaje.
   _Requisitos: 48.1, 48.2, 48.3, 48.4_
-- [ ] T164 [P] [US28] Auditoría: pruebas en rojo e implementación
+  API entregada: pendiente de commit, bloque G (2026-10-28). Bloque `panel` de `GET /console/home` (`services/partner_panel.py`), con la regla única y la misma función que Consumo; pruebas en `T/integration/clients/test_partner_panel.py` (3). Falta la pantalla (`con/app/(console)/page.tsx`).
+  Pantalla: `con/components/home/partner-panel.tsx` (bloques con su periodo, «Necesita tu atención» con el arreglo en el sitio, «Todos tus clientes están atendiendo»), con sus pruebas.
+- [X] T164 [P] [US28] Auditoría: pruebas en rojo e implementación
   (`api/api/console/audit.py`, `audit_words.py` y las filas de `console_audit_vocabulary`
   en una migración):
   - los filtros, con los clientes archivados;
@@ -1554,7 +1654,9 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - las acciones sensibles;
   - el CSV.
   _Requisitos: 49.1_
-- [ ] T165 [P] [US28] Equipo, API y Notificaciones:
+  API entregada: pendiente de commit, bloque G (2026-10-28). `person`, `days`, `origin`, `sensitive` y «{n} más como esta» (`more_like_this`); el vocabulario de la 047 en la migración 0197; las filas de auditoría del dinero. Pruebas en `T/integration/clients/test_audit_047.py` (3). Falta la pantalla.
+  Pantalla: persona y periodo, origen («Desde la web», «Desde la app»…), «Sensible» y «{n} más como esta», y el CSV con los mismos filtros.
+- [X] T165 [P] [US28] Equipo, API y Notificaciones:
   - la invitación comprueba las pendientes;
   - la tabla de roles;
   - las claves se enseñan una sola vez y luego su prefijo, rotan con 24 h de gracia
@@ -1563,14 +1665,15 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - los tipos nuevos en `NotificationKind`;
   - los permisos y la Guía no cambian.
   _Requisitos: 49.2, 49.4, 49.5, 49.6_
-
+  API entregada: pendiente de commit, bloque G (2026-10-28). Invitaciones, roles y claves ya cumplían (pendientes, 24 h de gracia, revocar al momento, tipo); cada aviso gana `href` (`notifications.LINKS`), con `T/unit/test_notification_links_047.py`. Falta la pantalla de Notificaciones con «Todas» y «Sin leer».
+  Consola entregada (2026-10-28): «Qué puede hacer cada rol» en Equipo (`con/components/team/roles-table.tsx`, desde `lib/permissions.ts`). La pantalla de Notificaciones ya tenía «Todas» y «Sin leer», gravedades y enlaces (`href`); ganan palabras los 21 avisos de la 047 (`con/i18n/lanes/notices.ts`, con el nombre del agente y de quien lo pausó cuando el aviso lo trae) y `render.test.ts` comprueba que ninguno queda «desconocido». La campana de la lite dice los avisos que la API manda al cliente y enlaza a su consola (`notifications.LITE_LINKS`: `/usage`, `/agentes`, `/inbox?c=`), solo si tiene el módulo.
 **Checkpoint**: toda la consola habla el mismo idioma.
 
 ---
 
 ## Fase 20 — Ola 8 · Historia 29: el negocio gestiona lo suyo (P2)
 
-- [ ] T166 [P] [US29] Pruebas en rojo de la API lite (`T/integration/lite/test_lite_agents_business.py`):
+- [X] T166 [P] [US29] Pruebas en rojo de la API lite (`T/integration/lite/test_lite_agents_business.py`):
   - los agentes, con los mismos códigos de estado;
   - pausar y reanudar agentes y canales, con quién y desde dónde, y el aviso al partner;
   - el horario, las fechas especiales, los servicios y las sedes, con `If-Match`,
@@ -1579,39 +1682,46 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - un cliente archivado da 403;
   - la bolsa con `bag_state`, `days_left` y `partner_name`.
   _Requisitos: 50.1, 50.2, 50.3, 50.4, 50.7, 6.4_
-- [ ] T167 [US29] La API lite:
+  Entregado: pendiente de commit, bloque G (2026-10-28). `T/integration/lite/test_lite_agents_business.py` (14); los barridos lite de la vecina con sus objetos nuevos (`T/isolation/test_lite_client_vs_client.py`, `test_phone_route_scope.py`).
+- [X] T167 [US29] La API lite:
   - `ClientModule` gana `agents` y `business`;
   - `api/api/console/lite/{agents,business}.py`;
   - la Bandeja dice quién la lleva (`handled_by_agent`) y por qué espera (`waiting_reason`);
   - se regeneran `mob/src/api/openapi.json` y `schema.gen.ts` (`export_openapi.py`).
   _Requisitos: 50.1, 50.2, 50.3, 50.4, 50.7_
-- [ ] T168 [US29] La consola lite web (`con/app/(console)/agentes/`, `negocio/`,
+  Entregado: pendiente de commit, bloque G. `api/console/lite/{agents,business}.py`; `ClientModule` gana `agents` y `business` (0198; por defecto con la consola nueva); la Bandeja dice quién la lleva y por qué espera (`waiting_code`); `/lite/usage` gana `bag_state`, `days_left` y `partner_name`; quién y cuándo pausó. `mob/src/api/openapi.json` y `schema.gen.ts` regenerados. Decisiones: una pausa del sistema o del partner no la quita una persona del cliente (409 `system_pause`); `client_archived` 403 solo para un miembro activo de un cliente archivado.
+  Ampliado (2026-10-28): las escrituras de Negocio honran `Idempotency-Key` (el reintento responde lo mismo, el alta con el mismo `created_id` y el deshacer sin `already_undone`; un día por cliente, ruta y clave), `GET /console/lite/business/hours?location_id=` lee el horario de una sede, y la tarjeta y la cabecera del agente del partner dicen `is_reception`. Pruebas en `T/integration/lite/test_lite_agents_business.py` y `reception/test_reception_handoff.py`.
+- [X] T168 [US29] La consola lite web (`con/app/(console)/agentes/`, `negocio/`,
   `con/lib/principal-access.ts`, `con/components/shell/lite-nav.ts`), con su guarda
   de páginas, Playwright y axe.
   _Requisitos: 50.1, 50.2_
-- [ ] T169 [US29] La app (`mob/src/app/`):
+  Entregado: pendiente de commit, bloque G (2026-10-28). `con/app/(console)/{agentes,negocio}/` con su guarda (`requireClientPrincipal("agents" | "business")`), los módulos en `principal-access.ts` y `lite-nav.ts`. Agentes: pausar siempre confirma con las conversaciones abiertas (y vuelve a preguntar con el número nuevo si llega `409 confirm_required`), la pausa del sistema dice su motivo y no ofrece «Reanudar», cada número por separado, y «Lo pausó Marta desde la app» con `paused_by_name`. Negocio: las secciones del partner con las acciones de la lite, `If-Match` e `Idempotency-Key` en cada escritura (la API las honra: el reintento responde lo mismo), el horario propio de cada sede (`GET /console/lite/business/hours?location_id=`) y «Últimos cambios» con «Deshacer». Playwright (`e2e/fabrica-lite`) y axe.
+- [X] T169 [US29] La app (`mob/src/app/`):
   - «Agentes» en Inicio y en `agente/[id].tsx`, con pausar y reanudar;
   - la pila «Negocio» (`negocio/{index,horario,servicios,sedes}.tsx`), que se abre
     desde Inicio y desde Ajustes;
   - sin conexión, no guarda y conserva lo escrito.
   Jest y RNTL con `fireEvent` asíncrono, más un flujo de Maestro.
   _Requisitos: 50.1, 50.2, 50.4, 50.5, 50.9_
-- [ ] T170 [US29] Los avisos de la app:
+  Entregado: pendiente de commit, bloque G. «Agentes» en Inicio y `agente/[id].tsx` con pausar y reanudar; la pila `negocio/{index,horario,servicios,sedes}.tsx` desde Inicio y Ajustes, con `If-Match`, 412 sin perder lo escrito y deshacer; sin conexión no guarda y conserva lo escrito. Jest (470 en verde) y el flujo `e2e/agentes-negocio.yaml`. No visto en el simulador: esta máquina no tiene CocoaPods ni compiló nunca iOS.
+  Ampliado (2026-10-28): «Horario de» en Horario elige el negocio o una sede; la sede usa el horario del negocio hasta tener el suyo y se guarda con la revisión de Sedes (`features/business/week-pane.tsx`). Jest 477 en verde.
+- [X] T170 [US29] Los avisos de la app:
   - los tipos de push nuevos y su `routeFor` (`mob/src/push/routing.ts`);
   - en la Bandeja de la app, el agente y el motivo.
   _Requisitos: 50.6, 50.7_
-- [ ] T171 [US29] La versión de la app: 1.2.0 (`mob/app.config.ts`), revisada contra
+  Entregado: pendiente de commit, bloque G. `routeFor` y `+native-intent` con `agents/<id>[/channels/<id>]`; canal `agents_v1` y categoría `agents`; en la API, el tipo de aviso `agents.state` (0201), los textos y `agents_url`, y `announce(..., to_client=True)` para la bolsa, el tope, las pausas del partner y los números con problemas (`T/integration/test_push_fanout.py`).
+- [X] T171 [US29] La versión de la app: 1.2.0 (`mob/app.config.ts`), revisada contra
   las guías de las tiendas. OTA solo para arreglos. Los builds no se lanzan sin que
   Luis lo pida. Actualiza `docs/app-movil.md`.
   _Requisitos: 50.8, 50.9_
-
+  Entregado: pendiente de commit, bloque G. 1.2.0 en `mob/app.config.ts` y `package.json`, revisada contra las guías; `docs/app-movil.md` actualizado. Sin builds ni OTA.
 **Checkpoint**: el negocio pausa, cambia el horario y ve sus agentes desde el teléfono.
 
 ---
 
 ## Fase 21 — Ola 8 · Historia 30: Auphere opera (P2)
 
-- [ ] T172 [P] [US30] El admin, con vitest:
+- [X] T172 [P] [US30] El admin, con vitest:
   - la consola nueva por partner (`adm/partners/[id]/console-v2`: ensayo, activar y
     desactivar);
   - el tope de construcción (`adm/partners/[id]/limits`);
@@ -1622,14 +1732,14 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - solo el admin enseña costes (prueba).
   Actualiza `docs/admin.md`.
   _Requisitos: 54.5, 54.6, 54.8, 54.9, 54.11, 2.6_
-
+  API entregada: pendiente de commit, bloque G (2026-10-28). `api/admin/partner_money.py` (tope de construcción, moneda de la cuenta, «Pedir ampliación»), `api/admin/console_v2.py`, `api/admin/client_controls.py` (restricción soberana y conciliaciones del libro y de Meta), con `T/integration/test_admin_client_controls.py` (2), más el estado de la consola, el motivo de cada escritura, los nombres en los informes y la partida vigente. Pantallas: `adm/partners/[id]/console-v2`, `adm/partners/[id]/limits`, la tarjeta soberana en `adm/tenants/[id]`, `adm/status/` (anomalías y conciliaciones) y el catálogo de canales con «Pendiente» y «Próximamente»; vitest 52 ficheros / 325 pruebas. Abierto: las integraciones no tienen esos dos estados en su catálogo.
 **Checkpoint**: el catálogo, el router y la calidad se operan sin tocar la base de datos.
 
 ---
 
 ## Fase 22 — Ola 9 · Historia 31: rendimiento y sugerencias (P3)
 
-- [ ] T173 [P] [US31] Pruebas en rojo (`T/integration/improvement/test_suggestions.py`):
+- [X] T173 [P] [US31] Pruebas en rojo (`T/integration/improvement/test_suggestions.py`):
   - **Rendimiento**: 30 días.
   - **Conversaciones**: solo metadatos.
   - **Sugerencias**: agrupan al menos 5 conversaciones de al menos 5 contactos, con
@@ -1639,18 +1749,20 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - **Dónde se generan**: en el worker, en el contexto del cliente.
   - **Medidor**: la partida de construcción.
   _Requisitos: 51.1, 51.2, 51.3, 51.4, 51.5, 51.6_
-- [ ] T174 [US31] Las sugerencias:
+  Entregado: pendiente de commit, bloque G. `T/integration/improvement/test_suggestions.py` (9).
+- [X] T174 [US31] Las sugerencias:
   - el cron `wk/streams/weekly_suggestions_cron.py`, con sus tres ediciones;
   - `api/services/improvement/suggestions.py`;
   - las rutas de rendimiento, conversaciones y mejoras;
   - la pestaña Rendimiento.
   _Requisitos: 51.1, 51.2, 51.3, 51.4, 51.5_
-
+  API y worker entregados: pendiente de commit, bloque G. `api/services/improvement/{performance,suggestions}.py`, rutas `api/console/agent_improvement.py` (rendimiento, conversaciones y mejoras), `wk/streams/weekly_suggestions_cron.py` con sus tres ediciones, tabla `agent_suggestions` (0199). Falta la pestaña Rendimiento.
+  Consola entregada (2026-10-28): Rendimiento (30 días por defecto, 7/30/90 también con las flechas, gráfico de bloques y la lista de conversaciones solo con metadatos y «Ver más», que solo sale con `conversations:read`) y Mejoras (aceptar dice en qué revisión del borrador cayó, descartar pide un motivo de 3 a 300 caracteres). `sectionForTab` lleva `performance`, `improvements` y `reception` a su sección.
 ---
 
 ## Fase 23 — Ola 9 · Historia 32: corregir desde la Bandeja (P3)
 
-- [ ] T175 [P] [US32] Pruebas en rojo (`T/integration/improvement/test_corrections.py`):
+- [X] T175 [P] [US32] Pruebas en rojo (`T/integration/improvement/test_corrections.py`):
   - **Dónde**: «Corregir esta respuesta» en la lite y en la app, con el texto y el alcance.
   - **Qué tipo**: dato o comportamiento, a la vista antes de enviar.
   - **Un dato** se aplica al momento, con historial y deshacer.
@@ -1660,17 +1772,19 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - **Datos personales**: se detectan, y bloquean guardar en la capa del negocio.
   - **Procedencia y auditoría**.
   _Requisitos: 52.1, 52.2, 52.3, 52.4, 52.5, 52.6_
-- [ ] T176 [US32] Las correcciones:
+  Entregado: pendiente de commit, bloque G. `T/integration/improvement/test_corrections.py` (9, con la decisión del partner en las mejoras del agente).
+- [X] T176 [US32] Las correcciones:
   - `api/services/improvement/{corrections,paraphrase,pii}.py`;
   - `api/api/console/lite/corrections.py`;
   - en la web y en la conversación de la app (`mob/src/app/conversacion/[id]/`).
   _Requisitos: 52.1, 52.2, 52.3, 52.4, 52.5, 52.6_
-
+  Entregado (API y app): pendiente de commit, bloque G. `api/services/improvement/{corrections,paraphrase,pii}.py`, `api/console/lite/corrections.py`, la tabla `inbox_corrections` (0198) y, en las mejoras del agente, aceptar o descartar una corrección de comportamiento; en la app, `conversacion/[id]/corregir`. Decisiones: el tipo (dato o comportamiento) es una regla determinista; los datos personales bloquean en todos los alcances; se puede deshacer un dato. Falta la web lite.
+  Web lite entregada (2026-10-28): «Corregir esta respuesta» en la Bandeja (`con/components/inbox/correction-dialog.tsx`): el texto y el alcance obligatorio, dato o comportamiento a la vista antes de enviar con la paráfrasis editable, los datos personales con su trozo y su sitio (bloquean el envío hasta quitarlos), los `422` en palabras y deshacer un dato aplicado.
 ---
 
 ## Fase 24 — Ola 9 · Historia 33: Recepción que deriva (P3)
 
-- [ ] T177 [P] [US33] Pruebas en rojo (`T/integration/reception/test_reception_handoff.py`):
+- [X] T177 [P] [US33] Pruebas en rojo (`T/integration/reception/test_reception_handoff.py`):
   - **Marcar**: «Recepción», con sus destinos y cuándo derivar a cada uno.
   - **Derivar**:
     - el mismo número y el mismo hilo;
@@ -1684,7 +1798,8 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - **El gasto**: cuenta en quien responde.
   - **El estado** de cada agente, por separado.
   _Requisitos: 53.1, 53.2, 53.3, 53.4, 53.5, 53.6, 53.7, 53.8_
-- [ ] T178 [US33] Recepción:
+  Entregado: pendiente de commit, bloque G. `T/integration/reception/test_reception_handoff.py` (14) y `wk/tests/unit/test_pipeline_reception.py` (7); el barrido `T/isolation/test_44c_reception.py`.
+- [X] T178 [US33] Recepción:
   - la herramienta `mcp/servers/reception/` (`reception.handoff`), con el registro
     (`mcp/registry.py`);
   - la migración del catálogo `NNNN_reception_tool.py` y su JSON en `alembic/data/`;
@@ -1693,23 +1808,26 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
   - la sección Recepción del AgentSpec en la consola;
   - la enmienda escrita a la spec 030.
   _Requisitos: 53.1, 53.2, 53.3, 53.4, 53.5, 53.6, 53.7, 53.8, 53.9_
-
+  Backend entregado: pendiente de commit, bloque G. `mcp/servers/reception/`, `api/services/reception.py`, el runtime (agente que responde por conversación, saltos, vuelta a Recepción), el catálogo (0200 y `alembic/data/0200_reception_tool.json`), el instantáneo del dry-run y la enmienda a la spec 030. Decisión: a la tercera ida y vuelta (quinto salto) espera a una persona con `reception_loop`. Falta la sección Recepción en la consola.
+  Consola entregada (2026-10-28): la sección Recepción del agente (`con/components/builder/reception-section.tsx`): marcarlo, elegir destinos entre los otros agentes vivos de este cliente (marca los que también son Recepción) y cuándo derivar a cada uno (1 a 300 caracteres, hasta 10), guardado en el borrador con la misma revisión que los bloques. La cabecera dice lo publicado (`is_reception`, nuevo en la tarjeta y la cabecera del agente) y avisa si el borrador lo cambia («Recepción al publicar», «Deja de ser Recepción al publicar»).
 ---
 
 ## Fase 25 — Ola 10 · Historia 13: lo que ya existe sigue funcionando (P1)
 
-- [ ] T179 [P] [US13] Pruebas en rojo del ensayo (`T/integration/migration/test_console_v2_dry_run.py`):
+- [X] T179 [P] [US13] Pruebas en rojo del ensayo (`T/integration/migration/test_console_v2_dry_run.py`):
   - con los datos de ejemplo, cada agente da el mismo resultado en su batería y la
     misma audiencia efectiva en cada número;
   - el informe se escribe;
   - cualquier diferencia bloquea la activación.
   _Requisitos: 55.1, 55.4, CE-009_
-- [ ] T180 [US13] El ensayo y la activación:
+  Entregado: pendiente de commit, bloque G (2026-10-28). `T/integration/migration/test_console_v2_dry_run.py` (3). Decisión: «la misma batería» se comprueba como el mismo prompt compilado byte a byte y el mismo modelo fijado (mismas entradas, mismo comportamiento) más la audiencia efectiva de cada número; correr la batería con el juez queda para el ensayo en staging (T181).
+- [X] T180 [US13] El ensayo y la activación:
   - `api/services/console_v2.py` corre las migraciones de datos en una transacción
     que se deshace, compara y escribe `migration_reports`;
   - las rutas del admin `console-v2/{dry-run,enable,disable}`;
   - desactivar devuelve la consola de hoy hasta que se confirme el reparto.
   _Requisitos: 55.2, 55.4, 55.5_
+  Entregado: pendiente de commit, bloque G (2026-10-28). `services/console_v2.{dry_run,activate,deactivate}`, rutas `api/admin/console_v2.py`, tabla `migration_reports` (0201). El ensayo no cambia nada; activar guarda la audiencia de los números que aún no la tenían.
 - [ ] T181 [US13] El ensayo en staging, con una copia anonimizada de producción de
   Facelad y Amacrux. Evidencia en `evidence/migracion.md`.
   _Requisitos: 55.4, CE-009_
@@ -1722,21 +1840,26 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
 
 ## Fase 26 — Cierre
 
-- [ ] T183 Repasar `docs/`: cada documento de `plan.md` §Documentación está al día,
+- [X] T183 Repasar `docs/`: cada documento de `plan.md` §Documentación está al día,
   y `T/isolation/README.md` lista `test_43`–`test_52`.
   _Requisitos: 55.7_
+  Hecho (2026-10-28): `docs/{console,consola-lite,app-movil,agentes,canales,billing,admin}.md` al día con lo de hoy (avisos, horario por sede, idempotencia, Recepción publicada, Conectores y Calidad); `docs/partner-integration.md` dice que la API de partners publica por la misma puerta y que la consola ya no crea agente al dar de alta. `docs/{reservas,modelos-y-router,ficha-del-negocio}.md` ya estaban. `T/isolation/README.md` lista `test_43`–`test_52`.
 - [ ] T184 Recorrer `quickstart.md` entero, ola por ola, y dejar la evidencia en
   `evidence/`.
   _Requisitos: CE-001, CE-011, CE-013_
-- [ ] T185 Los barridos finales: la garantía 9 (T014) y C8 (T021) sobre todas las
+  Avance (2026-10-28): `evidence/quickstart.md` ata cada paso de §2 y §3 a las pruebas automáticas que lo recorren (comprobadas una a una) y lista lo que solo se ve en staging o en un dispositivo. Una prueba nueva cierra el 7.3 («Tope del agente» en la Bandeja) y el texto del 2.5 se corrigió a «Editado por…». Falta recorrerlo a mano en staging (con T181 y T188).
+- [X] T185 Los barridos finales: la garantía 9 (T014) y C8 (T021) sobre todas las
   rutas y lecturas nuevas, y la suite de aislamiento completa en verde.
   _Requisitos: 56.3, 56.9, 56.10, 56.11, CE-012_
+  Hecho (2026-10-28): la suite de aislamiento entera (3.587) con dos rojos que se corrigieron (`test_49`: `reception.handoff` es también herramienta; `test_50`: los embeddings declarados) y los barridos de la lite y del teléfono (`test_lite_client_vs_client`, `test_phone_route_scope`) en verde tras dar un token por petición. C8 y la garantía 9 cubren las rutas nuevas de hoy (horario por sede, `is_reception`).
 - [ ] T186 `./scripts/verify.sh` en verde (lint, py, js, mobile y locks).
   _Requisitos: 56.11_
-- [ ] T187 `/cso` y `tenant-security-audit` antes de producción: toca el
+  Avance (2026-10-28): **lint** en verde (ruff y mypy estricto en api, worker, channels y mcp). **py**: la API en cuatro bases (8.127; los 17 rojos corregidos o explicados en `evidence/progreso.md`), worker 616, channels 61, mcp 123. **js**: todo en verde (lockfile, `@nexus/ui`, consola y panel con tsc, lint y `next build`, companion-ui y desktop); los vitest de consola y panel dan tiempos agotados de 5 s con la máquina cargada que pasan al repetirlos, y el de `hours-section` se arregló (esperaba un botón aún desactivado). Con dos hilos, la consola entera da 1.540 de 1.540. **mobile**: `pnpm verify` (477), generados y contrato al día; `expo-doctor` no se corrió (descarga). **locks** en rojo a propósito: `apps/api/uv.lock` gana `pgvector` (T022, licencia leída); lo aprueba quien fusiona.
+- [X] T187 `/cso` y `tenant-security-audit` antes de producción: toca el
   aislamiento, entradas no confiables (webs y avisos de Meta), proveedores nuevos y
   una dependencia. Ningún hallazgo HIGH o CRITICAL abierto.
   _Requisitos: 56.1, 41.2_
+  Hecho (2026-10-28): revisión con el método de `security-review` (los skills `/cso` y `tenant-security-audit` no están en esta sesión; repetirlos antes de producción). Ningún hallazgo alto ni crítico; el único bajo que valía la pena (mover un número en «A todos» a un agente de solo administradores) corregido con prueba. `evidence/seguridad.md`.
 - [ ] T188 Medir los criterios de éxito en staging y en el piloto:
   - CE-001: una prueba de uso con 5 partners;
   - CE-002 y CE-003: la evaluación del constructor;

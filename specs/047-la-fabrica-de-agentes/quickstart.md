@@ -68,7 +68,7 @@ cd apps/api && uv run python scripts/dev_seed_fabrica.py [--password '...']
    Marcar uno «Solo Ventas mayoristas».
 5. Desde la app, como Marta: cambiar el horario del sábado. El siguiente mensaje
    del simulador dice el horario nuevo, y el partner ve el aviso y la procedencia
-   «Escrito por Marta desde la app».
+   «Editado por Marta desde la app».
 
 ### Ola 3 — Constructor, playground, pruebas y puerta
 

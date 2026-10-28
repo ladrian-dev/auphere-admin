@@ -106,6 +106,92 @@ AGENT_TABLES: dict[str, Case | Reason] = {
     "agent_model_certifications": Case(
         "test_the_router_never_chooses_with_a_siblings_certification"
     ),
+    "proposals": Reason(
+        "Propuestas del constructor y del copiloto (0187). El runtime que conversa "
+        "no las lee (test_the_agent_runtime_does_not_read_builder_tables). La "
+        "consola aplica una propuesta solo sobre el agente de la ruta: la de un "
+        "hermano es un 404 opaco (tests/integration/builder/test_proposals.py)."
+    ),
+    "agent_test_suites": Reason(
+        "La suite de pruebas de cada agente (0187). Solo la leen la consola, por "
+        "el agente de la ruta, y el trabajo de pruebas de ese agente; el runtime "
+        "no (test_the_agent_runtime_does_not_read_builder_tables)."
+    ),
+    "agent_test_runs": Reason(
+        "Las pasadas de la suite de un agente (0187), con su versión. Las escribe y "
+        "las lee el trabajo de pruebas de ese agente, en el lote de su cliente "
+        "(garantía 7); el runtime no las lee."
+    ),
+    "channel_signup_links": Reason(
+        "El enlace del dueño (0191) guarda el agente al que irá el número. Solo lo "
+        "leen la consola, por el agente de la ruta (el de un hermano es un 404), y "
+        "el alta, que asigna el número a ese agente; ningún agente lo lee "
+        "(tests/integration/channels/test_owner_link.py)."
+    ),
+    # ``handled_by_agent_id`` (0191) es el agente al que Recepción derivó la
+    # conversación, y desde ese turno es el que responde: solo un destino de su
+    # lista y de su cliente, nunca en pausa ni archivado, y con el resumen y no
+    # el conocimiento de Recepción (T178).
+    "conversations": Case(
+        "test_44c_reception::test_reception_never_hands_off_outside_its_list_and_its_client"
+    ),
+    "knowledge_documents": Case(
+        "test_44b_agent_knowledge::test_a_siblings_knowledge_never_reaches_the_prompt_nor_the_search"
+    ),
+    "knowledge_chunks": Case(
+        "test_44b_agent_knowledge::test_a_siblings_knowledge_never_reaches_the_prompt_nor_the_search"
+    ),
+    "knowledge_chunk_vectors": Case(
+        "test_44b_agent_knowledge::test_a_siblings_knowledge_never_reaches_the_prompt_nor_the_search"
+    ),
+    "agent_memories": Case("test_44b_agent_knowledge::test_own_memory_is_never_a_siblings"),
+    "agent_memory_versions": Reason(
+        "El historial de ``agent_memories`` (0193 copia ``agent_id``). Lo escribe el "
+        "disparador y no lo lee ningún agente: la herramienta de memoria lee "
+        "``agent_memories`` con su capa (test_44b_agent_knowledge)."
+    ),
+    "knowledge_revisions": Reason(
+        "Un contador por capa (0193). Solo dice que la capa cambió; no lleva "
+        "contenido y ningún agente lo lee para responder."
+    ),
+    "turn_sources": Reason(
+        "Las fuentes de cada respuesta (0193), escritas por el turno del agente que "
+        "respondió. Las leen el copiloto y las sugerencias del agente de la ruta; "
+        "no entran en el prompt de nadie."
+    ),
+    "agent_connector_activations": Reason(
+        "La activación de una integración en un agente (0194). El turno lee solo las "
+        "filas de su agente (``activations.tool_policy``); una conexión activada en un "
+        "hermano cuenta como gestionada y sus herramientas quedan bloqueadas para este "
+        "(tests/integration/connectors/test_activations.py::"
+        "test_the_runtime_applies_each_permission, el agente «none»)."
+    ),
+    "inbox_corrections": Reason(
+        "Las correcciones que manda una persona del cliente desde la Bandeja (0198). "
+        "Ningún agente las lee: no entran en un prompt, en la búsqueda, en las "
+        "herramientas ni en el constructor. Las leen la persona del cliente (con la "
+        "RLS de todo el cliente) y el partner por el agente de la ruta "
+        "(``corrections.for_partner`` y las mejoras del agente: la de un hermano no "
+        "existe)."
+    ),
+    "agent_suggestions": Reason(
+        "Las sugerencias semanales de un agente (0199): el resultado agregado de leer "
+        "sus conversaciones en el worker, sin ids de conversación ni de contacto. Las "
+        "escribe la pasada de ese agente y solo las lee la consola por el agente de la "
+        "ruta (la de un hermano es un 404: tests/integration/improvement/"
+        "test_suggestions.py). El runtime no las lee ni entran en ningún prompt "
+        "(test_the_agent_runtime_does_not_read_builder_tables)."
+    ),
+    "agent_monthly_spend": Reason(
+        "El gasto del mes de cada agente para su tope (0195). Lo escribe la medición "
+        "con el agente del turno y lo leen la puerta de ese agente y la consola; no "
+        "lleva contenido ni entra en ningún prompt."
+    ),
+    "client_wallet_entries": Reason(
+        "Los asientos de la bolsa del cliente (0195): la bolsa es del cliente y la "
+        "comparten sus agentes a propósito (D25). ``agent_id`` dice qué turno se "
+        "cobró; ningún agente lee el libro."
+    ),
     "qa.threads": Reason(
         "QA Playground de los operadores de Auphere (RLS por ``operator_id``): "
         "``agent_id`` es el agente probado y ningún agente lee estos hilos."
@@ -148,6 +234,12 @@ _CLIENT_DATA = (
 #: herramienta nueva en una familia conocida también tiene que añadirse aquí, y
 #: eso obliga a mirar si lee algo del agente.
 TOOL_FAMILIES: dict[str, tuple[Case | Reason, frozenset[str]]] = {
+    # Spec 047, T178: la única herramienta que nombra un agente, limitada a la
+    # lista de Recepción y a su cliente.
+    "reception": (
+        Case("test_44c_reception::test_reception_never_hands_off_outside_its_list_and_its_client"),
+        frozenset({"reception.handoff"}),
+    ),
     "agent_reads": (
         Case("test_tools_read_the_agent_of_the_turns_number"),
         frozenset(
@@ -302,9 +394,10 @@ TOOL_FAMILIES: dict[str, tuple[Case | Reason, frozenset[str]]] = {
 
 #: Los módulos de servidor que leen el agente del turno. Se detectan en el
 #: código (abajo); declararlos aquí hace que uno nuevo sea una decisión visible.
-AGENT_READING_SERVERS = frozenset({"payments", "notification", "reservas", "booking"})
+AGENT_READING_SERVERS = frozenset({"payments", "notification", "reservas", "booking", "reception"})
 _AGENT_READ = re.compile(
-    r"agent_for_channel|AgentConfigRepository|Channel\.agent_id|principal_agent_id"
+    r"agent_for_channel|agent_for_conversation|AgentConfigRepository|Channel\.agent_id"
+    r"|principal_agent_id"
 )
 
 #: Un argumento que nombra a un agente: el modelo elegiría de quién leer.
@@ -346,14 +439,15 @@ def test_the_servers_that_read_an_agent_are_declared() -> None:
 def test_no_tool_lets_the_model_name_an_agent() -> None:
     """El agente del turno lo pone el servidor, como el cliente y el cliente final.
 
-    Cuando llegue ``reception.handoff`` (requisito 53.3) tendrá que aceptar un
-    destino, limitado a la lista de Recepción: entonces entra aquí con su caso."""
+    ``reception.handoff`` (requisito 53.3) acepta un destino, limitado a la lista de
+    Recepción y a su cliente: es la única, con su caso en ``test_44c_reception``."""
     registry = build_default_registry()
+    allowed = {"reception.handoff": ["to_agent_id"]}
     offenders = {
         d.name: sorted(AGENT_AXIS.intersection((d.parameters or {}).get("properties") or {}))
         for d in registry.get_tool_definitions(registry.names())
     }
-    offenders = {k: v for k, v in offenders.items() if v}
+    offenders = {k: v for k, v in offenders.items() if v and allowed.get(k) != v}
     assert not offenders, f"herramientas que dejan al modelo elegir agente: {offenders}"
 
 
@@ -384,6 +478,31 @@ def test_the_agent_runtime_does_not_read_jobs() -> None:
                 ):
                     readers.append(str(path.relative_to(WORKER_RUNTIME)))
     assert not readers, f"el runtime del agente lee ``jobs``: {readers}"
+
+
+def test_the_agent_runtime_does_not_read_builder_tables() -> None:
+    """Las razones de ``proposals`` y de la suite: el runtime que conversa no
+    importa los modelos del constructor ni de las pruebas (0187)."""
+    builder_models = {
+        "Proposal",
+        "AgentTestSuite",
+        "AgentTest",
+        "AgentTestRun",
+        "AgentTestResult",
+        "AgentReview",
+        "AgentSuggestion",
+    }
+    readers = []
+    for path in WORKER_RUNTIME.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                names = {a.name for a in node.names}
+                if node.module.endswith("models.agent_spec") or (
+                    node.module.endswith("db.models") and names & builder_models
+                ):
+                    readers.append(str(path.relative_to(WORKER_RUNTIME)))
+    assert not readers, f"el runtime del agente lee tablas del constructor: {readers}"
 
 
 # ── el mundo: dos agentes de un cliente y un vecino ────────────────────────

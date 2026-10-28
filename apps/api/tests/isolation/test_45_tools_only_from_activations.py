@@ -248,6 +248,11 @@ TOOL_SOURCES: dict[str, str] = {
 
 #: Campos que no ponen herramientas delante del modelo, con su razón.
 NOT_TOOL_SOURCES: dict[str, str] = {
+    "reception_targets": (
+        "Los destinos de Recepción (nombre, id y cuándo) para su nota; no pone "
+        "herramientas: ``reception.handoff`` sale de ``tools`` y la herramienta relee "
+        "la lista de la versión publicada."
+    ),
     "tenant_id": "Identidad del cliente del bundle.",
     "agent_id": "Identidad del agente del bundle.",
     "version": "Número de la versión cargada.",
@@ -262,6 +267,12 @@ NOT_TOOL_SOURCES: dict[str, str] = {
     "grader_mode": "Cuándo corre el grader.",
     "grader_sample_rate": "Con qué muestreo corre el grader.",
     "model_bindings": "Qué modelo responde; no qué herramientas tiene (garantía 7).",
+    "prompt_sha256": "La huella del system de la versión, para trazas y caché.",
+    "memory_scope": (
+        "Spec 047 (37.4): si la memoria del contacto es compartida o propia. No añade "
+        "herramientas; con «propia» la memoria solo lee y escribe la de este agente "
+        "(test_44b_agent_knowledge)."
+    ),
 }
 
 

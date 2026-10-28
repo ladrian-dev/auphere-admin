@@ -80,6 +80,11 @@ describe("guardas de página", () => {
   it("only a module's own path counts, not a longer one that starts the same", () => {
     expect(clientModuleOfPath("/")).toBe("panel");
     expect(clientModuleOfPath("/inbox")).toBe("inbox");
+    // Spec 047 (T168): Agentes y Negocio de la persona del cliente.
+    expect(clientModuleOfPath("/agentes")).toBe("agents");
+    expect(clientModuleOfPath("/negocio")).toBe("business");
+    expect(clientModuleOfPath("/agentes/x")).toBeNull();
+    expect(clientModuleOfPath("/clients/x/business")).toBeNull();
     expect(clientModuleOfPath("/reservas")).toBe("reservas");
     expect(clientModuleOfPath("/usage")).toBe("usage");
     expect(clientModuleOfPath("/reservas/x")).toBeNull();

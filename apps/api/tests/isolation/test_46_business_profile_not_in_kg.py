@@ -254,7 +254,11 @@ async def test_the_alta_and_the_reading_write_nothing_to_the_graph(
     import sqlalchemy as sa
 
     from nexus_api.db.models import KGEdge
-    from nexus_api.db.models.business import BusinessProfile, BusinessSuggestion
+    from nexus_api.db.models.business import (
+        BusinessLocation,
+        BusinessProfile,
+        BusinessSuggestion,
+    )
     from tests.integration.clients._reader_world import (
         CULTOR_READ,
         FakeExtractor,
@@ -281,9 +285,12 @@ async def test_the_alta_and_the_reading_write_nothing_to_the_graph(
         )
         assert await run_reader(fake_redis, FakeExtractor(reply=CULTOR_READ)) == 1
 
-    # La ficha sí recibió lo leído…
+    # La ficha sí recibió lo leído (aplicado en una ficha vacía, o al lado como
+    # sugerencia si una persona ya lo había escrito)…
     assert await scoped(db_session, tenant_id, sa.select(BusinessProfile))
-    assert await scoped(db_session, tenant_id, sa.select(BusinessSuggestion))
+    assert await scoped(db_session, tenant_id, sa.select(BusinessLocation)) or await scoped(
+        db_session, tenant_id, sa.select(BusinessSuggestion)
+    )
     # …y el grafo del cliente sigue vacío.
     assert await scoped(db_session, tenant_id, sa.select(KGNode)) == []
     assert await scoped(db_session, tenant_id, sa.select(KGEdge)) == []

@@ -83,9 +83,26 @@ from nexus_api.services.client_access import ClientAccessError
 ACTOR = "operator:dev-seed@auphere.local"
 DEFAULT_PASSWORD = "demo-demo-1234"
 DEFAULT_CONSOLE_ORIGIN = "http://localhost:3111"
-#: La persona del cliente entra a Panel, Bandeja y Consumo (la Bandeja pide
-#: un WhatsApp conectado, y Flor y Encanto lo tiene).
-CLIENT_MODULES = ["panel", "inbox", "usage"]
+#: La persona del cliente entra a Panel, Bandeja, Agentes, Negocio y Consumo (la
+#: Bandeja pide un WhatsApp conectado, y Flor y Encanto lo tiene; Agentes y
+#: Negocio llegan con la T167).
+CLIENT_MODULES = ["panel", "inbox", "agents", "business", "usage"]
+#: Cien milésimas por unidad de moneda (las de las bolsas).
+UNIT = 100_000
+#: Un cambio de desarrollo para que las bolsas en EUR funcionen sin el cron del
+#: BCE; solo se escribe si la base no tiene ninguno.
+DEV_EUR_USD = "1.08"
+#: La cuenta de Ladrian Studio (T155): en EUR, con 240 €.
+LADRIAN_ACCOUNT = ("EUR", 240 * UNIT)
+#: Las bolsas del prototipo (T155): moneda y lo asignado, en su moneda.
+BAGS: dict[str, tuple[str, int]] = {
+    "flor-y-encanto": ("USD", 60),
+    "adsl-system": ("USD", 40),
+    "clinica-dental-sonrisa": ("EUR", 30),
+    "cafe-origen": ("EUR", 0),  # «Sin saldo»
+}
+#: El tope del mes de un agente (T157): Ventas mayoristas, 15 USD.
+AGENT_CAPS: dict[tuple[str, str], int] = {("flor-y-encanto", "Ventas mayoristas"): 15 * UNIT}
 
 
 def say(msg: str) -> None:
@@ -149,12 +166,8 @@ LADRIAN = PartnerSpec(
     ),
     max_channels_per_client=3,
 )
-# Crece con la T155 (ola 7, el dinero): la cuenta
-# de Ladrian Studio en EUR (`partner_wallets.currency = 'EUR'`) con 240 € de
-# saldo, y la de Demo USD en USD. Hoy `partner_wallets` no tiene moneda: la
-# cuenta es la que crea el trigger `trg_partners_seed_wallet`, en créditos y
-# sin saldo, como la de cualquier partner nuevo. Con ella llega también el
-# presupuesto de «Construcción y pruebas» (`partner_build_budget`).
+# T155 (ola 7, el dinero): la cuenta de Ladrian Studio en EUR con 240 €
+# (``ensure_money``); la de Demo USD sigue en USD y sin saldo.
 
 DEMO_USD = PartnerSpec(
     slug="demo-usd",
@@ -232,10 +245,9 @@ FLOR = ClientSpec(
 # Crece con la T127 (ola 5, las activaciones): WooCommerce activado en Recepción y
 # Stripe en Cobranza. Con la T132 (ola 5, el conocimiento): las fuentes, la web (14 páginas)
 # y «catalogo-bodas-2026.pdf».
-# Crece con la T155 (ola 7): la bolsa en USD, 60 asignados; tope de
-# 15 USD en Ventas mayoristas.
-# Crece con la T167 (ola 8, la consola lite): Marta gana los módulos `agents` y
-# `business` de la consola lite.
+# T155 y T157 (ola 7): la bolsa en USD, 60 asignados; tope de 15 USD en Ventas
+# mayoristas (``BAGS``, ``AGENT_CAPS``). T167 (ola 8): Marta tiene los módulos
+# ``agents`` y ``business`` de la consola lite (``CLIENT_MODULES``).
 
 ADSL = ClientSpec(
     ref="adsl-system",
@@ -260,8 +272,8 @@ ADSL = ClientSpec(
 )
 # Crece con las T046 y T055 (ola 2): nicho «Proveedor de internet y fibra para
 # hogares», el horario leído de la web y los servicios Fibra 300 Mb, Fibra 600
-# Mb e Instalación (gratis). T127 (ola 5): HubSpot en Soporte. T155
-# (ola 7): bolsa en USD, 40 asignados.
+# Mb e Instalación (gratis). T127 (ola 5): HubSpot en Soporte. T155 (ola 7):
+# bolsa en USD, 40 asignados (``BAGS``).
 # No se siembra: el chat web de Soporte ni el Instagram de Ventas. Hoy solo se
 # usa WhatsApp por Meta, e Instagram sale «Próximamente» en el prototipo.
 
@@ -292,7 +304,7 @@ CLINICA = ClientSpec(
 # EUR, horario día por día en la ficha, servicios Primera visita (gratis),
 # Limpieza, Blanqueamiento y Ortodoncia (sin precio). T127 (ola 5): Google
 # Calendar en Citas. T132 (ola 5): «tarifas-2026.pdf», que falló al leerse.
-# T155 (ola 7): bolsa en EUR, 30 asignados.
+# T155 (ola 7): bolsa en EUR, 30 asignados (``BAGS``).
 
 CAFE = ClientSpec(
     ref="cafe-origen",
@@ -305,7 +317,7 @@ CAFE = ClientSpec(
 # Crece con las T046 y T055 (ola 2): nicho «Cafetería de especialidad con tostador
 # propio», las redes (Instagram y TikTok) y los servicios Espresso, Flat white,
 # Filtro V60, Bolsa de café 250 g y Cata de cafés (sábados, 90 min). T155
-# (ola 7): bolsa en EUR sin asignar, «Sin saldo».
+# (ola 7): bolsa en EUR sin asignar, «Sin saldo» (``BAGS``).
 
 CLIENTS = (FLOR, ADSL, CLINICA, CAFE)
 
@@ -605,6 +617,73 @@ async def ensure_client_person(
     await session.flush()
 
 
+# ── el dinero (T155, T157) ──────────────────────────────────────────────────
+
+
+async def ensure_money(
+    sm: async_sessionmaker[AsyncSession],
+    partner_id: uuid.UUID,
+    clients: dict[str, uuid.UUID],
+    now: datetime,
+) -> None:
+    """La cuenta en EUR de Ladrian Studio, las bolsas de sus clientes y el tope de
+    Ventas mayoristas. Idempotente: las asignaciones llevan su clave."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.models import FxRate, PartnerWallet
+    from nexus_api.services.wallet import bags
+
+    say("\nEl dinero")
+    async with sm() as session, session.begin():
+        if await session.scalar(sa.select(sa.func.count()).select_from(FxRate)) == 0:
+            session.add(FxRate(date=now.date(), base="EUR", quote="USD", rate=DEV_EUR_USD))
+            say(f"  cambio de desarrollo 1 EUR = {DEV_EUR_USD} USD")
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        account = await session.scalar(
+            sa.select(PartnerWallet).where(PartnerWallet.partner_id == partner_id)
+        )
+        currency, purchased = LADRIAN_ACCOUNT
+        if account is not None and account.currency != currency:
+            account.currency = currency
+            account.purchased_remaining = purchased
+        say(f"  cuenta en {currency}")
+        for ref, (bag_currency, amount) in BAGS.items():
+            tenant_id = clients.get(ref)
+            if tenant_id is None:
+                continue
+            bag = await bags.bag_for_update(session, tenant_id, partner_id=partner_id)
+            if bag.currency != bag_currency and bag.balance_micros == 0:
+                await bags.change_currency(
+                    session,
+                    partner_id=partner_id,
+                    tenant_id=tenant_id,
+                    currency=bag_currency,
+                    actor=ACTOR,
+                )
+            if amount:
+                await bags.assign(
+                    session,
+                    partner_id=partner_id,
+                    tenant_id=tenant_id,
+                    amount=amount * UNIT,
+                    idempotency_key=f"seed:{ref}",
+                    actor=ACTOR,
+                    in_bag_currency=True,
+                )
+            say(f"  bolsa de {ref}: {amount} {bag_currency}")
+    for (ref, agent_name), cap in AGENT_CAPS.items():
+        tenant_id = clients.get(ref)
+        if tenant_id is None:
+            continue
+        async with sm() as session, tenant_scoped_session(session, tenant_id):
+            await session.execute(
+                sa.update(Agent)
+                .where(Agent.tenant_id == tenant_id, Agent.name == agent_name)
+                .values(monthly_cap_micros=cap)
+            )
+        say(f"  tope de {agent_name}: {cap // UNIT}")
+
+
 # ── todo junto ──────────────────────────────────────────────────────────────
 
 
@@ -655,6 +734,7 @@ async def seed(*, password: str = DEFAULT_PASSWORD, now: datetime | None = None)
         spec.ref: await _seed_client(sm, partners[LADRIAN.slug], spec, password=password, now=now)
         for spec in CLIENTS
     }
+    await ensure_money(sm, partners[LADRIAN.slug], clients, now)
     return Seeded(partners=partners, clients=clients)
 
 

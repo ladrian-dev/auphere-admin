@@ -23,11 +23,16 @@ const SECTION: Record<string, string> = {
   models: "Modelos",
   router: "Router",
   certifications: "Certificaciones",
+  builder: "Constructor",
 };
 
 /** Pages right under a section that are not a record of it. */
 const PAGE: Record<string, Record<string, string>> = {
   router: { anomalies: "Anomalías" },
+  // Spec 047 (T117): the «WhatsApp login» beta by country.
+  channels: { "whatsapp-login": "Beta «WhatsApp login»" },
+  // Spec 047 (T087, T090, T100).
+  builder: { "sector-tests": "Pruebas del sector", "judge-calibration": "Calibración del juez", eval: "Evaluación" },
 };
 
 /** Tabs and sub-pages, by the section they hang from. */
@@ -53,6 +58,9 @@ const CHILD: Record<string, Record<string, string>> = {
     settings: "Configuración",
     knowledge: "Conocimiento",
     audit: "Auditoría",
+    // Spec 047 (T172).
+    "console-v2": "Consola nueva",
+    limits: "Tope y moneda",
   },
 };
 

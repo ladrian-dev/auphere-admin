@@ -17,6 +17,17 @@ from nexus_api.db.models.agent import (
     AgentVersionCompilation,
 )
 from nexus_api.db.models.agent_memory import AgentMemory
+from nexus_api.db.models.agent_spec import (
+    AgentReview,
+    AgentTest,
+    AgentTestResult,
+    AgentTestRun,
+    AgentTestSuite,
+    BuilderEvalRun,
+    Proposal,
+    SectorTestCatalog,
+)
+from nexus_api.db.models.agent_suggestion import AgentSuggestion
 from nexus_api.db.models.appointment import Appointment, AppointmentStatus
 from nexus_api.db.models.audit import AuditLog
 from nexus_api.db.models.billing import (
@@ -48,9 +59,13 @@ from nexus_api.db.models.business import (
 )
 from nexus_api.db.models.channel import (
     Channel,
+    ChannelAudienceNumber,
+    ChannelConfigChange,
+    ChannelEscalationRecipient,
     ChannelStatus,
     ChannelType,
     TenantCredentials,
+    WhatsappLoginBetaCountry,
 )
 from nexus_api.db.models.channel_signup_link import (
     CHANNEL_SIGNUP_LINK_TTL,
@@ -73,6 +88,17 @@ from nexus_api.db.models.client_phone import (
     ClientPushDelivery,
     ClientPushEvent,
 )
+from nexus_api.db.models.client_wallet import (
+    AgentMonthlySpend,
+    BalanceRequest,
+    BuildBudgetRequest,
+    ClientWallet,
+    ClientWalletEntry,
+    FxRate,
+    PartnerBuildBudget,
+    WalletMigrationProposal,
+    WalletTransfer,
+)
 from nexus_api.db.models.companion import (
     MODE_BUILD,
     MODE_CONSULT,
@@ -91,6 +117,7 @@ from nexus_api.db.models.companion import (
     TeammateTask,
 )
 from nexus_api.db.models.connector import (
+    AgentConnectorActivation,
     Connector,
     ConnectorAuthKind,
     ConnectorStatus,
@@ -141,15 +168,20 @@ from nexus_api.db.models.inbox import (
     InboxRead,
     SavedReply,
 )
+from nexus_api.db.models.inbox_correction import InboxCorrection
 from nexus_api.db.models.isolation_event import IsolationEvent
 from nexus_api.db.models.jobs import JOB_KINDS, JOB_STATUSES, Job
 from nexus_api.db.models.kg import KGEdge, KGNode, KGSchema
 from nexus_api.db.models.knowledge import (
+    KnowledgeChunk,
+    KnowledgeChunkVector,
     KnowledgeDocument,
     KnowledgeDocumentKind,
     KnowledgeDocumentStatus,
     KnowledgeErrorCode,
+    KnowledgeRevision,
     PartnerKnowledgeDocument,
+    TurnSource,
 )
 from nexus_api.db.models.local_workstation import (
     DENIAL_REASONS,
@@ -165,6 +197,7 @@ from nexus_api.db.models.local_workstation import (
     PrincipalLocalExecPref,
 )
 from nexus_api.db.models.membership import MembershipTier, PartnerSubscription
+from nexus_api.db.models.migration_report import MigrationReport
 from nexus_api.db.models.model_profile import (
     MODEL_ROLES,
     ModelProfile,
@@ -337,11 +370,19 @@ __all__ = [
     "Agent",
     "AgentConfig",
     "AgentConfigStatus",
+    "AgentConnectorActivation",
     "AgentMemory",
     "AgentModelCertification",
+    "AgentMonthlySpend",
+    "AgentReview",
     "AgentSale",
     "AgentService",
     "AgentStatus",
+    "AgentSuggestion",
+    "AgentTest",
+    "AgentTestResult",
+    "AgentTestRun",
+    "AgentTestSuite",
     "AgentVersionCompilation",
     "ApiKeyScope",
     "ApiKeyType",
@@ -349,12 +390,15 @@ __all__ = [
     "AppointmentStatus",
     "AuditLog",
     "AuphereOwnerChannel",
+    "BalanceRequest",
     "BillingEvent",
     "BillingPlan",
     "Broadcast",
     "BroadcastRecipient",
     "BroadcastRecipientStatus",
     "BroadcastStatus",
+    "BuildBudgetRequest",
+    "BuilderEvalRun",
     "BusinessChange",
     "BusinessFaq",
     "BusinessFieldProvenance",
@@ -368,6 +412,9 @@ __all__ = [
     "BusinessSpecialShift",
     "BusinessSuggestion",
     "Channel",
+    "ChannelAudienceNumber",
+    "ChannelConfigChange",
+    "ChannelEscalationRecipient",
     "ChannelSignupLink",
     "ChannelStatus",
     "ChannelType",
@@ -380,6 +427,8 @@ __all__ = [
     "ClientPhone",
     "ClientPushDelivery",
     "ClientPushEvent",
+    "ClientWallet",
+    "ClientWalletEntry",
     "CompanionAction",
     "CompanionMessage",
     "CompanionRun",
@@ -408,6 +457,8 @@ __all__ = [
     "EvalRun",
     "EvalRunResult",
     "EvalRunStatus",
+    "FxRate",
+    "InboxCorrection",
     "InboxRead",
     "InvitationStatus",
     "Invoice",
@@ -418,10 +469,13 @@ __all__ = [
     "KGEdge",
     "KGNode",
     "KGSchema",
+    "KnowledgeChunk",
+    "KnowledgeChunkVector",
     "KnowledgeDocument",
     "KnowledgeDocumentKind",
     "KnowledgeDocumentStatus",
     "KnowledgeErrorCode",
+    "KnowledgeRevision",
     "LocalArgumentGrant",
     "LocalExecutable",
     "LocalExecution",
@@ -432,6 +486,7 @@ __all__ = [
     "MessageDirection",
     "MessageStatus",
     "MetaReconciliationRun",
+    "MigrationReport",
     "ModelPrice",
     "ModelProfile",
     "ModelTaskCertification",
@@ -448,6 +503,7 @@ __all__ = [
     "PartnerAllocation",
     "PartnerApiKey",
     "PartnerBilling",
+    "PartnerBuildBudget",
     "PartnerCharge",
     "PartnerDevice",
     "PartnerInvitation",
@@ -466,6 +522,7 @@ __all__ = [
     "PaymentReviewNotice",
     "PrincipalIdentity",
     "PrincipalLocalExecPref",
+    "Proposal",
     "QAAuditLog",
     "QARun",
     "QASideEffectAudit",
@@ -490,6 +547,7 @@ __all__ = [
     "ScheduledJob",
     "ScheduledJobKind",
     "ScheduledJobStatus",
+    "SectorTestCatalog",
     "SignupProvider",
     "SignupRequest",
     "SignupStatus",
@@ -511,12 +569,16 @@ __all__ = [
     "ToolCatalog",
     "ToolStatus",
     "TurnEffect",
+    "TurnSource",
     "UsageEvent",
     "UsageLedger",
     "UsageLedger",
     "UsageRecord",
+    "WalletMigrationProposal",
+    "WalletTransfer",
     "WhatsAppOptOut",
     "WhatsAppTemplateStatus",
+    "WhatsappLoginBetaCountry",
     "WorkflowCron",
     "WorkflowPack",
     "WorkflowRun",

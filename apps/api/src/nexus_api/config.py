@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     # these to ``FB.login({config_id})``.
     meta_config_id_wa_cloud_api: str = "1976547999669619"
     meta_config_id_wa_coexistence: str = "27787800820807899"
+    # Spec 047 (D12): la configuración de ES de la beta «WhatsApp login», cuando
+    # Meta la dé a la app de Auphere. Sin ella, ese modo usa la de Cloud API.
+    meta_config_id_wa_login: str | None = None
     # Business Manager hosting the Meta App (Facelad SpA — Tech Provider).
     meta_business_manager_id: str = "342042661294231"
     # Graph API version pinned at the client level. Bump as Meta rolls
@@ -223,6 +226,12 @@ class Settings(BaseSettings):
     # (queue backlog, DLQ entries, dead workers, cache-ratio collapse, Meta
     # failure bursts). Unset → alerts are logged at ERROR only.
     operator_alert_email: str | None = None
+
+    # Spec 047 (D14): el conocimiento. Lo que cabe entero en el prompt de un agente
+    # (el del negocio más el suyo) y el modelo de embeddings (Titan v2 por el
+    # proxy). Sin modelo, la recuperación es solo por palabras.
+    knowledge_char_budget: int = 20_000
+    knowledge_embedding_model: str | None = None
 
     # Owner backchannel (ADR-018 / architecture/owner-backchannel.md).
     # Auphere backchannel numbers live in the ``auphere_owner_channels``

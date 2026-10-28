@@ -20,6 +20,8 @@ describe("operator panel navigation (spec 031, R2)", () => {
       "Modelos",
       "Router",
       "Certificaciones",
+      // Spec 047 (T087, T090, T100): la calidad del constructor.
+      "Constructor",
       "Estado",
     ]);
   });

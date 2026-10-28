@@ -854,6 +854,8 @@ export type Connector = {
   auto_enable_destructive: boolean;
   consent_link_template_name: string | null;
   status: ConnectorCatalogStatus;
+  /** Spec 047 (36.4): the settings each activation asks for (JSON Schema); null = none. */
+  settings_schema?: Record<string, unknown> | null;
 };
 
 export type TenantConnectorStatus =

@@ -430,11 +430,23 @@ async def test_a_change_by_the_clients_person_tells_the_partner_once_an_hour(
 async def test_a_change_marks_the_agents_tests_stale_in_the_background(
     client: Any, db_session: AsyncSession, world: dict[str, Any]
 ) -> None:
-    """Requisito 13.7. Hasta la fase 9, un trabajo ``tests`` que solo las marca."""
+    """Requisito 13.7 (y 21.7): las pruebas afectadas quedan desactualizadas, y
+    las del agente publicado vuelven a pasar en segundo plano."""
+    from nexus_api.db.models.agent_spec import AgentTest, AgentTestRun
+    from nexus_api.services.testing.suites import add_test, ensure_suite
+
     a = world["a"]
     c = await _cultor(client, db_session, world)
     citas = await add_agent(db_session, c["tenant_id"], "Citas")
-    await add_agent(db_session, c["tenant_id"], "Borrador", published=False, channel=None)
+    borrador = await add_agent(
+        db_session, c["tenant_id"], "Borrador", published=False, channel=None
+    )
+    async with tenant_scoped_session(db_session, c["tenant_id"]):
+        for agent in (citas, borrador):
+            suite = await ensure_suite(db_session, agent["agent_id"])
+            await add_test(
+                db_session, suite, {"name": "Redes", "first_message": "¿Tenéis Instagram?"}
+            )
     rev = _section(await _ficha(client, a["headers"](), c["base"]), "links")["revision"]
     for n, handle in enumerate(("cultor", "cultorbarber")):
         resp = await _put_links(
@@ -444,12 +456,23 @@ async def test_a_change_marks_the_agents_tests_stale_in_the_background(
 
     async with tenant_scoped_session(db_session, c["tenant_id"]):
         jobs = (await db_session.scalars(sa.select(Job).where(Job.kind == "tests"))).all()
-    # Uno por agente publicado, no uno por cambio; el borrador no tiene pruebas que pasar.
+        runs = (await db_session.scalars(sa.select(AgentTestRun))).all()
+        tests = (
+            await db_session.scalars(sa.select(AgentTest).execution_options(populate_existing=True))
+        ).all()
+    # Uno por agente publicado, no uno por cambio; el borrador no habla con nadie.
     assert [j.agent_id for j in jobs] == [citas["agent_id"]]
     (job,) = jobs
-    assert job.status == "done"
-    assert job.result is not None and job.result["stale"] is True
-    assert job.result["sections"] == ["links"] and job.result["runs"] == 0
+    assert job.status == "queued"
+    (run,) = runs
+    assert (run.agent_id, run.reason, run.scope) == (
+        citas["agent_id"],
+        "business_change",
+        "affected",
+    )
+    assert run.summary["sections"] == ["links"]
+    # Las pruebas de los dos agentes quedan desactualizadas.
+    assert all(t.stale for t in tests) and len(tests) == 2
 
 
 async def test_another_client_never_sees_the_ficha(

@@ -45,6 +45,17 @@ describe("breadcrumb trail (spec 035)", () => {
     expect(crumbsFor("/models", names)).toEqual([{ label: "Modelos", href: null }]);
     expect(crumbsFor("/router/anomalies", names).map((c) => c.label)).toEqual(["Router", "Anomalías"]);
     expect(crumbsFor("/certifications", names)).toEqual([{ label: "Certificaciones", href: null }]);
+    // Spec 047 (T117, T087, T090, T100): la beta por país y el constructor.
+    expect(crumbsFor("/channels/whatsapp-login", names)).toEqual([
+      { label: "Canales", href: "/channels" },
+      { label: "Beta «WhatsApp login»", href: null },
+    ]);
+    expect(crumbsFor("/builder/sector-tests", names).map((c) => c.label)).toEqual(["Constructor", "Pruebas del sector"]);
+    expect(crumbsFor("/builder/judge-calibration", names).map((c) => c.label)).toEqual(["Constructor", "Calibración del juez"]);
+    expect(crumbsFor("/builder/eval", names).map((c) => c.label)).toEqual(["Constructor", "Evaluación"]);
+    // Spec 047 (T172): las palancas del partner.
+    expect(crumbsFor("/partners/p1/console-v2", names).map((c) => c.label)).toEqual(["Partners", "Demo Auditoría", "Consola nueva"]);
+    expect(crumbsFor("/partners/p1/limits", names).at(-1)).toEqual({ label: "Tope y moneda", href: null });
   });
 
   it("only the last step is not a link", () => {

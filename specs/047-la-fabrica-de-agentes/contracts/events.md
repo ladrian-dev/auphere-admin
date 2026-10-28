@@ -177,7 +177,7 @@ garantía 6 (`test_49`) lo rechaza.
 | `llm.route_decision` | `decision_id` (el que enlaza `usage_records.route_decision_id`), `turn_id` o `job_id`, `conversation_id`, `agent_version`, `task`, `profile`, `policy_version`, `candidates_rejected` (lista de `{deployment, reason}`), `chosen`, `fallback_used`, `escalated`, `latency_ms`, `cost_micros`, `price_micros` |
 | `builder.job` | `job_id`, `kind` (`agent_draft`, `client_profile`, `tests`, `fix`, `copilot`), `status`, `duration_ms`, `cost_micros`, `validator_errors` |
 | `suite.run` | `run_id`, `version_id`, `policy`, `passed`, `flaky`, `failed`, `cost_micros` |
-| `gate.decision` | `version_id`, `result` (`published`, `blocked`, `override`), `blocking` (códigos) |
+| `gate.decision` | `version_id`, `outcome` (`published`, `blocked`, `override`), `blocking` (códigos). No se llama `result`: la garantía 6 prohíbe ese nombre en los eventos |
 | `wallet.transfer` | `transfer_id`, `kind`, `amount_micros`, `currency`, `fx_rate`, `fx_date` |
 | `channel.echo_takeover` | `conversation_id`, `until` |
 | `reception.handoff` | `conversation_id`, `from_agent_id`, `to_agent_id`, `hop` |

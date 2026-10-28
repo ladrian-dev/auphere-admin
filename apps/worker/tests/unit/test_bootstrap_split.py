@@ -58,6 +58,10 @@ ALL_EXPECTED = {
     # Spec 047 (D43): los trabajos largos. En ``RUNNER_TASK_NAMES``, su
     # ``_spawn`` en ``runner_tasks`` y aquí.
     "jobs-consumer",
+    # Spec 047 (T110): los tres consumidores de coexistencia, en la familia runner.
+    "meta-echoes-consumer",
+    "meta-history-consumer",
+    "meta-state-sync-consumer",
     "isolation-event-drainer",
     "no-show-scrape-cron",
     "cost-rollup-cron",
@@ -90,6 +94,14 @@ ALL_EXPECTED = {
     "meta-reconciliation-cron",
     # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.
     "model-lifecycle-cron",
+    # Spec 047 (T156, T157): el cambio del BCE, el relleno, los avisos y el cuadre.
+    "fx-rates-cron",
+    "bag-refill-cron",
+    "bag-alerts-cron",
+    "ledger-reconciliation-cron",
+    # Spec 047 (T174): las sugerencias semanales. En los tres sitios:
+    # ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
+    "weekly-suggestions-cron",
 }
 
 

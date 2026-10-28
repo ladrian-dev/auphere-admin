@@ -78,7 +78,10 @@ from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.memory_versions_retention import (
     run_memory_versions_retention_cron,
 )
+from nexus_worker.streams.meta_echoes_consumer import run_meta_echoes_consumer
+from nexus_worker.streams.meta_history_consumer import run_meta_history_consumer
 from nexus_worker.streams.meta_reconciliation_cron import run_meta_reconciliation_cron
+from nexus_worker.streams.meta_state_sync_consumer import run_meta_state_sync_consumer
 from nexus_worker.streams.model_lifecycle_cron import run_model_lifecycle_cron
 from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
@@ -101,7 +104,14 @@ from nexus_worker.streams.reservations_cron import run_reservations_cron
 from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
+from nexus_worker.streams.wallet_crons import (
+    run_bag_alerts_cron,
+    run_bag_refill_cron,
+    run_fx_rates_cron,
+    run_ledger_reconciliation_cron,
+)
 from nexus_worker.streams.wallet_renewal_cron import run_wallet_renewal_cron
+from nexus_worker.streams.weekly_suggestions_cron import run_weekly_suggestions_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 from nexus_worker.streams.workflow_pack_cron import run_workflow_pack_cron
 
@@ -133,6 +143,11 @@ RUNNER_TASK_NAMES = frozenset(
         # probar, publicar…). Consumidor de ``nexus:jobs`` que escala en
         # horizontal como los demás; reclama solo sus huérfanos.
         "jobs-consumer",
+        # Spec 047 (T110): la coexistencia. El webhook deja los ecos, el
+        # historial y los contactos de la app en tres streams; estos los leen.
+        "meta-echoes-consumer",
+        "meta-history-consumer",
+        "meta-state-sync-consumer",
     }
 )
 EGRESS_TASK_NAMES = frozenset(
@@ -194,6 +209,14 @@ SCHEDULER_TASK_NAMES = frozenset(
         "meta-reconciliation-cron",
         # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.
         "model-lifecycle-cron",
+        # Spec 047 (T156, T157): el dinero de la consola nueva.
+        "fx-rates-cron",
+        "bag-refill-cron",
+        "bag-alerts-cron",
+        "ledger-reconciliation-cron",
+        # Spec 047 (T174): las sugerencias semanales de cada agente, dentro de su
+        # cliente. Sin persona y con modelo: del planificador, no del runner.
+        "weekly-suggestions-cron",
     }
 )
 
@@ -423,6 +446,24 @@ def runner_tasks(
                 stop=ctx.stop,
             ),
         ),
+        _spawn(
+            "meta-echoes-consumer",
+            run_meta_echoes_consumer(
+                ctx.redis, consumer_name=ws.inbound_consumer_name + ":echoes", stop=ctx.stop
+            ),
+        ),
+        _spawn(
+            "meta-history-consumer",
+            run_meta_history_consumer(
+                ctx.redis, consumer_name=ws.inbound_consumer_name + ":history", stop=ctx.stop
+            ),
+        ),
+        _spawn(
+            "meta-state-sync-consumer",
+            run_meta_state_sync_consumer(
+                ctx.redis, consumer_name=ws.inbound_consumer_name + ":state_sync", stop=ctx.stop
+            ),
+        ),
     ]
 
 
@@ -493,6 +534,11 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("reservation-calendar-cron", run_reservation_calendar_cron(stop=ctx.stop)),
         _spawn("meta-reconciliation-cron", run_meta_reconciliation_cron(stop=ctx.stop)),
         _spawn("model-lifecycle-cron", run_model_lifecycle_cron(stop=ctx.stop, redis=ctx.redis)),
+        _spawn("fx-rates-cron", run_fx_rates_cron(stop=ctx.stop)),
+        _spawn("bag-refill-cron", run_bag_refill_cron(stop=ctx.stop)),
+        _spawn("bag-alerts-cron", run_bag_alerts_cron(stop=ctx.stop)),
+        _spawn("ledger-reconciliation-cron", run_ledger_reconciliation_cron(stop=ctx.stop)),
+        _spawn("weekly-suggestions-cron", run_weekly_suggestions_cron(stop=ctx.stop)),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.

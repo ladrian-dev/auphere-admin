@@ -92,6 +92,17 @@ ALLOWED_FIELDS_BY_SCHEMA: dict[tuple[str, str], str] = {
         "provider error about the partner's product catalogue, never text a "
         "customer wrote."
     ),
+    ("VisibleOut", "reason"): (
+        "Spec 047: the code of why an agent or a channel is paused or has a "
+        "problem (``manual``, ``no_balance``, ``agent_cap``, ``auth_expired``…), "
+        "set by the system or by a console action — never text."
+    ),
+    ("SessionOut", "transcript"): (
+        "Spec 047 (requisito 20): a playground session over the agent's draft, "
+        "with simulated time and agenda. Every «customer» turn is typed by the "
+        "partner's own person testing; the playground has no channel, so no end "
+        "customer can be in it."
+    ),
 }
 
 # Spec 030 (ADR-041): the Inbox of the client console is the ONE place in
@@ -417,6 +428,19 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("POST", "/console/clients/{ref}/playground/threads"): {"title": "x"},
         ("PATCH", "/console/clients/{ref}/playground/threads/{thread_id}"): {"title": "x"},
         ("POST", "/console/clients/{ref}/playground/threads/{thread_id}/runs"): {"prompt": "x"},
+        # Spec 047: el constructor, las pruebas, la publicación y la bolsa.
+        ("POST", "/console/clients/{ref}/agents/draft-jobs"): {"name": "x", "start": "blank"},
+        ("POST", "/console/clients/{ref}/agents/{agent_id}/test-runs"): {"scope": "all"},
+        ("POST", "/console/clients/{ref}/agents/{agent_id}/publish"): {},
+        ("POST", "/console/clients/{ref}/bag/assign"): {
+            "amount": {"amount_micros": 100000, "currency": "USD"}
+        },
+        ("POST", "/console/clients/{ref}/bag/lower"): {
+            "amount": {"amount_micros": 100000, "currency": "USD"}
+        },
+        ("PUT", "/console/clients/{ref}/bag/refill"): {"up_to": None},
+        ("PUT", "/console/clients/{ref}/bag/currency"): {"currency": "USD"},
+        ("POST", "/console/clients/{ref}/bag/request"): {},
     }
     return bodies.get((sorted(route.methods)[0], route.path))
 

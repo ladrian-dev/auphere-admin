@@ -13,7 +13,9 @@ from nexus_api.api.admin import (
     channel_signup_links,
     channels_overview,
     client_access,
+    client_controls,
     connectors,
+    console_v2,
     conversations,
     cost,
     evals,
@@ -29,12 +31,14 @@ from nexus_api.api.admin import (
     partner_knowledge,
     partner_llm,
     partner_models,
+    partner_money,
     partner_wallet,
     partners,
     prompt_library,
     receipts,
     router_policies,
     screenshots,
+    sector_tests,
     signups,
     skills,
     tenant_capabilities,
@@ -46,6 +50,7 @@ from nexus_api.api.admin import (
     tool_catalog,
     unlimited_consumption,
     usage_overview,
+    whatsapp_login_beta,
     whatsapp_templates,
 )
 
@@ -103,3 +108,14 @@ router.include_router(cost.router)
 router.include_router(models_catalog.router)
 router.include_router(router_policies.router)
 router.include_router(certifications.router)
+router.include_router(sector_tests.router)
+router.include_router(sector_tests.calibration_router)
+router.include_router(sector_tests.eval_router)
+# Spec 047 (T117): la beta «WhatsApp login» por país; nunca la UE ni el EEE.
+router.include_router(whatsapp_login_beta.router)
+# Spec 047 (T158): el tope de construcción y la moneda de la cuenta.
+router.include_router(partner_money.router)
+# Spec 047 (T180): el ensayo y la activación de la consola nueva.
+router.include_router(console_v2.router)
+# Spec 047 (T172): la restricción soberana y las conciliaciones.
+router.include_router(client_controls.router)

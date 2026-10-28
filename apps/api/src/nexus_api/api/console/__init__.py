@@ -20,8 +20,19 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from nexus_api.api.console import (
+    agent_builder,
+    agent_copilot,
     agent_draft_routes,
+    agent_improvement,
+    agent_integrations,
+    agent_knowledge,
+    agent_lifecycle_routes,
+    agent_playground,
+    agent_publish,
+    agent_quality,
+    agent_review,
     agent_settings,
+    agent_tests,
     agents,
     agents_list,
     audit,
@@ -32,8 +43,11 @@ from nexus_api.api.console import (
     business_records,
     capabilities,
     capabilities_client,
+    channel_config,
     channel_signup,
     channels,
+    client_bags,
+    client_builder,
     companion,
     conversations,
     diagnostics,
@@ -64,6 +78,7 @@ from nexus_api.api.console import (
     tenants,
     tools,
     usage,
+    usage_lines,
     wallet,
     whatsapp,
     workflow,
@@ -82,10 +97,26 @@ router.include_router(lite.router)
 router.include_router(tenants.router)
 router.include_router(agents.router)
 # Spec 030: los agentes de un cliente y qué agente contesta en cada número.
+# Spec 047 (T080): before ``agents_list`` so ``agents/draft-options`` is not an agent id.
+router.include_router(agent_builder.router)
+router.include_router(agent_lifecycle_routes.router)
+router.include_router(agent_playground.router)
+router.include_router(agent_tests.router)
+router.include_router(agent_review.router)
+router.include_router(agent_publish.router)
+router.include_router(client_builder.router)
+router.include_router(agent_copilot.router)
 router.include_router(agents_list.router)
 router.include_router(channels.router)
+# Spec 047 (T112, T114): la página de cada canal y su menú, después de las
+# rutas fijas de ``channels/…`` (``overview``, ``diagnostics``): ``{channel_id}``
+# las capturaría con un 422.
+router.include_router(diagnostics.router)
+router.include_router(channel_config.router)
 router.include_router(conversations.router)
 router.include_router(usage.router)
+# Spec 047 (T158): Consumo por partidas, junto a lo de hoy.
+router.include_router(usage_lines.router)
 router.include_router(wallet.router)
 router.include_router(models.router)
 router.include_router(audit.router)
@@ -113,7 +144,6 @@ router.include_router(capabilities.router)
 router.include_router(support.router)
 router.include_router(whatsapp.router)
 router.include_router(templates.router)
-router.include_router(diagnostics.router)
 # lane agent-tools (CP-11/13/14/15/31)
 router.include_router(agent_settings.router)
 router.include_router(tools.router)
@@ -122,6 +152,17 @@ router.include_router(skills.router)
 # Spec 017 (R5): herramientas y habilidades, en una sola lectura.
 router.include_router(capabilities_client.router)
 router.include_router(knowledge.router)
+# Spec 047 (T133): la capa de conocimiento de cada agente y «Enseñar».
+router.include_router(agent_knowledge.router)
+# Spec 047 (T128): autorizar una vez por cliente, activar por agente.
+router.include_router(agent_integrations.router)
+# Spec 047 (T147): la pantalla Calidad (perfiles, modelo fijado y su comprobación).
+router.include_router(agent_quality.router)
+# Spec 047 (T174): rendimiento, conversaciones solo con metadatos y las sugerencias.
+router.include_router(agent_improvement.router)
+# Spec 047 (T158): las bolsas de los clientes, el tope del agente y la partida
+# «Construcción y pruebas».
+router.include_router(client_bags.router)
 router.include_router(playbook.router)
 router.include_router(seed_templates.router)
 router.include_router(notifications.router)

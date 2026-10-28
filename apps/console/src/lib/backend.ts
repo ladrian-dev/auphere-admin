@@ -295,6 +295,16 @@ export type ClientAgent = {
   channels: { id: string; display: string }[];
   active_version: number | null;
   draft_version: number | null;
+  /** Spec 047 (25, 26.1): la vida guardada, el estado visible que toda la
+   *  consola enseña igual, si es el agente por defecto y la pestaña que abre.
+   *  Ausentes en respuestas de antes de la ola 4. */
+  lifecycle?: string | null;
+  pause_reason?: string | null;
+  is_default?: boolean;
+  visible_state?: { code: string; tone: string; reason: string | null } | null;
+  opens?: "builder" | "channels" | "overview" | null;
+  /** Spec 047 (35): Recepción según la versión publicada. */
+  is_reception?: boolean;
 };
 
 /** Spec 017 R3.2: qué cambia el borrador respecto a la versión que atiende
@@ -378,6 +388,12 @@ export type AuditEntry = {
   external_client_ref: string | null;
   client_name: string | null;
   summary: string;
+  /** Spec 047 (49.1): desde dónde (la consola, la consola lite, la app, Auphere, la API o solo). */
+  origin?: "console" | "lite_web" | "app" | "admin" | "api" | "system";
+  /** Spec 047 (49.1): lo sensible, marcado. */
+  sensitive?: boolean;
+  /** «{n} más como esta»: filas seguidas iguales que la API juntó en esta. */
+  more_like_this?: number;
 };
 export type AuditPage = { items: AuditEntry[]; next_cursor: string | null };
 export type Member = {
@@ -489,14 +505,24 @@ export type { Opts };
  * are spread into ``backendFor`` below. Keeps this file from being the
  * merge hotspot of every package.
  */
+import { agentConnectorsApi } from "./backend/agent-connectors";
 import { agentDraftApi } from "./backend/agent-draft";
+import { agentImproveApi } from "./backend/agent-improve";
+import { agentKnowledgeApi } from "./backend/agent-knowledge";
+import { agentLifeApi } from "./backend/agent-life";
+import { agentQualityApi } from "./backend/agent-quality";
 import { agentToolsApi } from "./backend/agent-tools";
+import { builderApi } from "./backend/builder";
 import { capabilitiesApi } from "./backend/capabilities";
+import { channelConfigApi } from "./backend/channel-config";
 import { channelsApi } from "./backend/channels";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
 import { inboxApi } from "./backend/inbox";
+import { inboxCorrectionsApi } from "./backend/inbox-corrections";
 import { liteApi } from "./backend/lite";
+import { liteAgentsApi } from "./backend/lite-agents";
+import { modelQualityApi } from "./backend/model-quality";
 import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
@@ -537,6 +563,22 @@ export function backendFor(principal: Principal) {
     ...agentToolsApi(call),
     // Spec 047 (historia 2): the agent's one draft, with If-Match.
     ...agentDraftApi(call),
+    // Spec 047 (historia 7): el constructor de agentes y sus propuestas.
+    ...builderApi(call),
+    // Spec 047 (historias 8 y 9): playground, pruebas, revisión y «Guardar».
+    ...agentQualityApi(call),
+    // Spec 047 (historias 18 a 20): la vida del agente, el copiloto y el constructor del cliente.
+    ...agentLifeApi(call),
+    // Spec 047 (historia 22): el conocimiento propio de cada agente y «Enseñar».
+    ...agentKnowledgeApi(call),
+    // Spec 047 (historias 10 y 11): la página de cada canal, su menú y el enlace del dueño por agente.
+    ...channelConfigApi(call),
+    // Spec 047 (historias 31 y 32): el rendimiento y las mejoras de cada agente.
+    ...agentImproveApi(call),
+    // Spec 047 (historia 21): los conectores de cada agente y la página de cada conexión.
+    ...agentConnectorsApi(call),
+    // Spec 047 (historia 23): Agente › Avanzado › Calidad.
+    ...modelQualityApi(call),
     // Spec 017 (R5): herramientas y habilidades, en una sola lectura.
     ...capabilitiesApi(call),
     ...playgroundApi(call),
@@ -546,6 +588,9 @@ export function backendFor(principal: Principal) {
     // Spec 030: the client console (`/console/lite/*`).
     ...liteApi(call),
     ...inboxApi(call),
+    // Spec 047 (historias 29 y 32): «Agentes», «Negocio» y «Corregir esta respuesta».
+    ...liteAgentsApi(call),
+    ...inboxCorrectionsApi(call),
     // Spec 043: Reservas (`/console/lite/reservas/*`).
     ...reservasApi(call),
     ...modelsApi(call),
@@ -687,7 +732,8 @@ export type BillingCardView = {
 export type ChannelSignupLinkInfo = {
   state: "valid" | "used" | "expired" | "revoked" | "unknown";
   business_name: string | null;
-  mode: "cloud_api" | "coexistence" | null;
+  /** Spec 047 (31.5): `whatsapp_login` solo si Auphere activó la beta para el país del negocio. */
+  mode: "cloud_api" | "coexistence" | "whatsapp_login" | null;
   expires_at: string | null;
   meta_app_id: string | null;
   meta_config_id: string | null;

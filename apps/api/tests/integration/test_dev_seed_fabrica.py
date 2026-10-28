@@ -195,6 +195,38 @@ async def test_la_semilla_deja_el_mundo_del_prototipo(
         u=person.user_id,
     )
     assert crossed == []
+    # T167: la persona del cliente ve Agentes y Negocio en la consola lite.
+    assert {"agents", "business"} <= set(person.modules)
+
+    # T155 y T157: la cuenta de Ladrian en EUR, las bolsas del prototipo y el tope.
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models import Agent, ClientWallet, PartnerWallet
+    from nexus_api.services.wallet.bags import as_client, bags_active
+
+    async with db_session.begin():
+        await apply_partner_to_session(db_session, ladrian.id)
+        account = await db_session.scalar(
+            sa.select(PartnerWallet).where(PartnerWallet.partner_id == ladrian.id)
+        )
+        assert account is not None and account.currency == "EUR"
+        assert await bags_active(db_session, ladrian.id)
+        seen: dict[str, tuple[str, int]] = {}
+        for ref, tenant_id in clients.items():
+            await as_client(db_session, tenant_id)
+            bag = await db_session.get(ClientWallet, tenant_id)
+            if bag is not None:
+                seen[ref] = (bag.currency, bag.balance_micros)
+    names = {spec.ref: spec.name for spec in seed.CLIENTS}
+    assert seen == {
+        names[ref]: (currency, amount * seed.UNIT) for ref, (currency, amount) in seed.BAGS.items()
+    }
+    async with tenant_scoped_session(db_session, clients["Flor y Encanto"]):
+        cap = await db_session.scalar(
+            sa.select(Agent.monthly_cap_micros).where(Agent.name == "Ventas mayoristas")
+        )
+    await db_session.commit()
+    assert cap == 15 * seed.UNIT
 
 
 _COUNTED = (

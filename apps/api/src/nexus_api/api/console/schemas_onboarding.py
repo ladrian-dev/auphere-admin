@@ -55,6 +55,8 @@ class NotificationOut(BaseModel):
     external_client_ref: str | None = None
     read: bool
     created_at: datetime
+    #: Spec 047 (49.5): el enlace a su arreglo.
+    href: str | None = None
 
 
 class NotificationPageOut(BaseModel):

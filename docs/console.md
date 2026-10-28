@@ -167,6 +167,104 @@ usable. Se mide en «Construcción y pruebas» (`source=reader`, `task=read_sour
 La consola la sigue con `client-read-card.tsx` (`GET …/business/read`); quien la
 lanzó recibe `client.read.done` o `client.read.failed` en la campana.
 
+**Agentes y canales.** Cómo nace, se prueba, se publica y vive un agente está en
+`docs/agentes.md`; los números, su audiencia, la coexistencia y el enlace del
+dueño, en `docs/canales.md`; el dinero (bolsas, Consumo por partidas, la partida
+«Construcción y pruebas»), en `docs/billing.md`.
+
+**El Panel** (`GET /console/home`, bloque `panel`, solo con la consola nueva;
+`services/partner_panel.py`): el gasto del mes con los 3 clientes que más gastan,
+el resto y las demás partidas (la misma función que Consumo, así que cuadran), los
+clientes atendiendo sobre los no archivados, el saldo disponible y lo que hay en
+bolsas, las conversaciones por día («Resueltas sin persona» y «Pasadas a una
+persona», contadas por estado, nunca por texto) y «Necesita tu atención»: la
+regla única de `services/attention.py`, de más a menos grave, cada fila con su
+arreglo (`assign_balance` o `request_balance` según quién mire, `fix_channel`,
+`reconnect`, `raise_cap`, `connect_channel`, `new_agent`). Cada bloque dice su
+periodo.
+
+**Auditoría** (`GET /console/audit`): filtra por cliente (también archivados),
+persona (`person`), categoría y periodo (`days=7|30|90|all`); cada fila dice quién
+(`actor_kind`) y desde dónde (`origin`: `console`, `lite_web`, `app`, `admin`,
+`api`, `system`), marca lo sensible (`sensitive`) y junta las filas seguidas con
+la misma persona, acción, cliente y día (`more_like_this`; `group=false` las
+separa). El vocabulario de las acciones de la 047 está en la migración 0197.
+
+**Notificaciones**: cada aviso lleva su enlace al arreglo (`href`, tabla `LINKS` de
+`api/console/notifications.py`, según `events.md` §3). Los que van a un agente
+abren su pantalla con `?tab=`, que `sectionForTab` (`builder-model.ts`) lleva a su
+sección: `performance` a Rendimiento, `improvements` a Mejoras, `tests` a Pruebas,
+`advanced` a Avanzado, `quality` a Avanzado › Calidad (`#agente-calidad`) e
+`integrations` a Conectores (`#agente-conectores`). Cada tipo de aviso de la 047 tiene sus
+palabras en `i18n/lanes/notices.ts` (`render.test.ts` comprueba que ninguno queda
+«desconocido»); si el aviso trae el nombre del agente (`agent`), la variante
+`.agent` lo nombra con quien lo hizo («Marta pausó Recepción»). Un cambio de la
+ficha que deja en rojo pruebas de un agente publicado avisa con
+`agent.tests.failing` (una vez por agente y día, desde el trabajo de pruebas del
+worker). Los avisos que también ve el cliente enlazan, en su campana, a la lite
+(`LITE_LINKS`).
+
+**Rendimiento y Mejoras del agente** (spec 047, historias 31 y 32;
+`components/builder/agent-performance.tsx` y `agent-improvements.tsx`, acciones
+en `clients/[ref]/agents/improve-actions.ts`): Rendimiento enseña los últimos 30
+días —7 y 90 en la píldora, con las flechas— de `GET …/agents/{id}/performance`
+(conversaciones, resueltas sin persona, pasadas a una persona, gasto y gasto
+medio, en bloques con su tabla) y, con `conversations:read`, la lista de
+`GET …/conversations` **solo con metadatos** (fecha, canal, duración, mensajes,
+resultado, motivo del traspaso de `events.md` §2 y gasto), con «Ver más» por
+cursor. Mejoras lista las sugerencias de la semana (a cuántas conversaciones y
+clientes afectan, nunca cuáles) y las correcciones de comportamiento del negocio
+(la lección y la paráfrasis, nunca el mensaje), cada una con su propuesta (el
+diff y la prueba nueva). «Aceptar» dice en qué revisión queda el borrador y la
+pantalla lo vuelve a leer; publicar sigue pasando por «Guardar». «Descartar» pide
+el motivo (3–300). Sin `agents:write` no hay botones; cada parte falla sola.
+
+**Recepción** (spec 047, historia 33; `components/builder/reception-section.tsx`):
+la sección `reception` del AgentSpec en la pantalla del agente —marcarlo,
+elegir a qué agentes vivos de este cliente deriva y cuándo derivar a cada uno
+(1–300 caracteres, hasta 10)— se guarda en el borrador con la misma revisión que
+los bloques; la API pone y quita la herramienta `reception.handoff`. La cabecera
+del agente dice lo que dice la versión publicada (`is_reception`, también en la
+tarjeta de `GET …/agents`) y, si el borrador lo cambia, «Recepción al publicar»
+o «Deja de ser Recepción al publicar». Entre los destinos, los que también son
+Recepción lo dicen.
+
+**Conectores del agente** (spec 047, historia 21, T129;
+`components/builder/agent-connectors.tsx`, acciones en
+`clients/[ref]/agents/connector-actions.ts`): la sección lee al montar
+`GET …/agents/{id}/integrations` (el catálogo, con lo que piden las habilidades
+primero), con buscador y categoría en la propia pantalla. «Conectar» pide el
+permiso y llama a `POST …/connections`: si ya estaba autorizado, lo activa; si es
+OAuth, abre la autorización y la API lo activa al terminar; si pide una clave
+(`409 authorize_with_form`), se guarda con el alta de siempre y después
+`PUT …/activations/{slug}`. El permiso se cambia en la fila («Sin usar en este
+agente» lo quita con confirmación y `DELETE` dice qué habilidades se quedan sin
+él) y los ajustes del `settings_schema` del catálogo, en «Ajustes». Cada conexión
+tiene su página en `/clients/{ref}/integrations/{connectionId}` (`?agent=` para
+volver): cuenta, estado, última comprobación, agentes con su permiso y ajustes,
+«Reconectar» y «Desconectar para todos», que primero lista lo afectado.
+
+**Avanzado › Calidad** (spec 047, historia 23, T147;
+`components/builder/agent-model-quality.tsx`): lee al montar
+`GET …/agents/{id}/quality`. Las opciones son un grupo de radio con su línea, su
+precio estimado por mensaje (con los decimales que hace falta: un mensaje vale
+fracciones de céntimo) y la diferencia con la actual; debajo, el precio real de
+7 días. Una opción sin comprobar pide «Comprobar la calidad»
+(`POST …/quality/check`, un trabajo que se sigue con `GET /console/jobs/{id}`);
+solo lo comprobado se lleva al borrador (`model_policy` del AgentSpec, con la
+revisión de los bloques) y se aplica con «Guardar», que pasa la puerta.
+
+**Equipo**: además de invitar en un modal (el rol por su descripción, el enlace
+para copiar, las invitaciones pendientes), «Qué puede hacer cada rol»
+(`components/team/roles-table.tsx`) sale del mismo mapa de permisos que la API
+(`lib/permissions.ts`), así que no promete lo que un rol no puede hacer.
+
+El e2e de estas pantallas y de las de la consola lite corre contra su API
+simulada: `pnpm exec playwright test -c e2e/fabrica.config.ts` (proyectos `lite` y
+`partner`), con la auditoría de la spec 047 (T162) en cada una: axe, 390 px, 200 %,
+teclado, «Reducir transparencia y movimiento», sus estados y textos largos en
+alemán (`e2e/fabrica-audit.ts`).
+
 ## Reglas que no se negocian
 
 - **Ningún cuerpo lleva `partner_id` ni `tenant_id`**: salen del principal y del

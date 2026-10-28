@@ -73,9 +73,46 @@ Medido en el código el 2026-10-08:
 - Q: ¿Quién tiene Bandeja? → A: **Solo los usuarios de clientes finales, y solo si el cliente tiene su WhatsApp conectado.** El partner sigue sin cuerpos de mensaje.
 - Q: ¿Entra el multiagente en esta spec? → A: **Sí** (owner, sabiendo que toca el runtime): de 1 a N agentes por cliente, con traspaso agente ↔ persona y entre agentes.
 - Q: ¿Qué canales? → A: **Solo WhatsApp por Meta.** Ni YCloud ni TikTok.
-- Q: ¿Qué agente atiende una conversación nueva, y puede un agente pasarla a otro? → A: **La Bandeja sigue el patrón de la de Meta: junta los canales, no reparte un número entre agentes** (owner). Un cliente puede tener más de un agente y un agente puede tener uno o más canales conectados, pero **un número de WhatsApp es de un solo agente**. La conversación la atiende el agente de su número; no hay clasificador ni traspaso entre agentes. El traspaso de la Bandeja es agente ↔ persona.
+- Q: ¿Qué agente atiende una conversación nueva, y puede un agente pasarla a otro? → A: **La Bandeja sigue el patrón de la de Meta: junta los canales, no reparte un número entre agentes** (owner). Un cliente puede tener más de un agente y un agente puede tener uno o más canales conectados, pero **un número de WhatsApp es de un solo agente**. La conversación la atiende el agente de su número; no hay clasificador ni traspaso entre agentes. El traspaso de la Bandeja es agente ↔ persona. **ENMENDADO el 2026-10-28 por la spec 047 (requisito 53, «Recepción que deriva»): el número sigue siendo de un solo agente, que ahora puede ser Recepción y pasar la conversación a otro agente del cliente — ver «Enmienda» abajo.**
 - Q: ¿Dónde se crean y editan los agentes? → A: **Con el flujo que ya existe** (owner): cada agente se configura con el mismo editor de hoy (plantilla → borrador → publicar). Lo que se añade es poder tener más de uno por cliente —hoy no existe, confirmado por el owner— y asignar cada número a un agente.
 - Q: ¿El agente se calla al pedir ayuda? → A: **Se calla si el cliente tiene Bandeja** hasta que una persona toma el control, se la devuelve o la resuelve. Sin Bandeja sigue respondiendo como hoy, porque nadie la atendería. En los dos casos el siguiente mensaje sigue en el mismo hilo.
+
+### Enmienda del 2026-10-28 · Recepción que deriva (spec 047, requisito 53)
+
+**La respuesta «un número = un agente, sin clasificador ni traspaso entre agentes»
+se enmienda en una sola cosa: el traspaso entre agentes vuelve, como herramienta
+de un agente marcado «Recepción».** La decidió el owner en la clarificación de la
+spec 047 («¿Entra el traspaso entre agentes? → Sí, como P3») y resuelve el choque
+con el ADR-041 L7, que lo permitía y que esta spec había cerrado.
+
+**Lo que sigue igual:**
+
+- un número de WhatsApp tiene **un único agente de entrada** (`channels.agent_id`),
+  que ahora puede ser Recepción;
+- **no hay clasificador**: nada decide el agente antes de que conteste el de
+  entrada. Derivar lo decide Recepción en su propio turno, con una herramienta
+  (`reception.handoff`) que queda auditada y respeta la lista blanca (garantía 2);
+- el hilo y su clave (`tenant:channel:user`, garantía 4) no cambian: la
+  conversación sigue en el mismo número y en el mismo hilo;
+- el traspaso de la Bandeja agente ↔ persona es el de esta spec.
+
+**Lo que cambia:**
+
+- Recepción solo deriva a los agentes **de su lista y de su cliente** (garantías 1
+  y 9). Desde ese turno contesta el destino, con su versión, sus herramientas y su
+  conocimiento; recibe un resumen del motivo y nunca lo propio de Recepción.
+- La conversación guarda a quién se derivó (`conversations.handled_by_agent_id`) y
+  cuántas veces (`reception_hops`). La Bandeja dice «La atiende {agente}».
+- A la tercera ida y vuelta, la conversación pasa a una persona
+  (`reception_loop`). Con el destino en pausa o archivado, no deriva.
+- La derivación dura lo que la conversación: resolverla, 24 horas sin mensajes o
+  archivar el destino la devuelven a Recepción.
+- El gasto de cada pasada cuenta en el agente que contestó; cada tope sigue siendo
+  de su agente, y el estado del hilo separa por agente el modelo fijado y la
+  versión.
+
+Detalle en `specs/047-la-fabrica-de-agentes/spec.md` (historia 33, requisito 53) y
+`research.md` (D36).
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 

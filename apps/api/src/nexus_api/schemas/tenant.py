@@ -33,6 +33,7 @@ def _business_hours_in(v: dict[str, Any] | None) -> dict[str, Any] | None:
     except BusinessHoursError as exc:
         raise ValueError(str(exc)) from exc
 
+
 # Slug: lowercase alphanumeric with single hyphens between segments. Mirrors
 # the DNS-safe convention we use across the platform (Cloudflare DNS, Vercel
 # preview deploys). The DB column is UNIQUE so duplicates 409.

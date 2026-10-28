@@ -242,12 +242,17 @@ async def test_the_offer_and_prices_are_data(_clean: Any) -> None:
         ("openai/gpt-5.6-sol", "Sol"),
         ("openai/gpt-5.6-terra", "Terra"),
     ]
+    # Los borradores de Bedrock y Scaleway (0185, T142) entran sin precio a
+    # propósito: se cargan con su fuente desde el panel antes de activarlos.
     without_price = await _exec(
         "SELECT p.model_id FROM model_profiles p "
-        "LEFT JOIN model_prices m ON m.deployment_id = p.id WHERE m.deployment_id IS NULL"
+        "LEFT JOIN model_prices m ON m.deployment_id = p.id "
+        "WHERE m.deployment_id IS NULL AND p.status <> 'draft'"
     )
     assert without_price == []
-    families = await _exec("SELECT DISTINCT family FROM model_profiles ORDER BY 1")
+    families = await _exec(
+        "SELECT DISTINCT family FROM model_profiles WHERE status <> 'draft' ORDER BY 1"
+    )
     assert families == [("anthropic-claude",), ("openai-gpt",)]
 
 

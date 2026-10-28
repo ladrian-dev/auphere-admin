@@ -13,14 +13,20 @@ La Consola Lite ([consola-lite.md](consola-lite.md)) en iOS y Android, para la
 misma persona y con la misma cuenta. Cuatro módulos —Inicio (el Panel),
 Bandeja, Reservas (spec [044](../specs/044-la-app-con-reservas/spec.md)) y
 Consumo—, las pestañas que el cliente tenga y en el orden de la web, y avisos
-normales de lo que necesita a una persona. Convive con la consola web, que no
+normales de lo que necesita a una persona. Desde la 1.2.0 (spec
+[047](../specs/047-la-fabrica-de-agentes/spec.md), requisito 50), además:
+**Agentes** (el estado de cada uno, sus números, pausar y reanudar),
+**Negocio** (horario y fechas especiales, servicios, sedes) y «Corregir esta
+respuesta» en la conversación; ver [más abajo](#agentes-negocio-y-correcciones-spec-047). Convive con la consola web, que no
 cambia: la app no tiene ninguna regla de negocio propia, lee las mismas rutas
 `/console/lite/*`.
 
 Lo que **no** hace: comprar o recargar saldo (decisión del owner, 2026-10-22),
 mover o editar una reserva (044), responder desde el aviso, plantillas de WhatsApp fuera de la ventana de 24 h, deslizar
 para actuar sobre una conversación (todo está en su menú) y el enlace universal
-para entrar (solo esquema propio).
+para entrar (solo esquema propio). Tampoco crear, archivar o publicar agentes,
+cambiar sus instrucciones o su calidad, conectar canales o integraciones ni
+tocar la bolsa (047, 50.3): la app lo dice, no lo ofrece.
 
 ## Arquitectura
 
@@ -230,12 +236,12 @@ Contrato en [push.md](../specs/031-auphere-customers-movil/contracts/push.md).
 4. **Se envía** a APNs (HTTP/2, token ES256) o FCM (HTTP v1, aserción RS256),
    sin relevo de terceros. Lo transitorio se reintenta (15 s·2^(n-1), cinco
    veces); un destino dado de baja se quita del teléfono.
-5. **En el teléfono**: canales de Android `waiting_v1`, `messages_v1` y
-   `balance_v1`, todos privados en la pantalla bloqueada; categorías de iOS sin
+5. **En el teléfono**: canales de Android `waiting_v1`, `messages_v1`,
+   `balance_v1` (y `reservations_v1` y `agents_v1`, de las specs 044 y 047), todos privados en la pantalla bloqueada; categorías de iOS sin
    acciones y con texto neutro para las previsualizaciones ocultas; «espera a
    una persona» va como `time-sensitive`. El aviso de la conversación abierta no
-   se muestra. Tocarlo abre la conversación o Consumo, con la app abierta o
-   cerrada. La placa del icono es lo que espera a una persona.
+   se muestra. Tocarlo abre la conversación, Consumo, una reserva o un agente
+   (spec 047), con la app abierta o cerrada. La placa del icono es lo que espera a una persona.
 
 El permiso se pide después de una pantalla propia que explica los tres tipos y
 deja decir «Ahora no»; Ajustes tiene un interruptor por tipo para ese teléfono
@@ -248,7 +254,7 @@ y, con el permiso negado, lo dice y lleva a los ajustes del teléfono.
 | `apps/api/scripts/export_openapi.py` | la API (solo `/console/lite` y `/app`) | `apps/mobile/src/api/openapi.json` | tubería `test-api` |
 | `scripts/gen-schema.mts` | `openapi.json` | `src/api/schema.gen.ts` | `pnpm gen:check` |
 | `scripts/gen-tokens.mts` | `packages/ui/src/styles/tokens.css` (OKLCH) | `src/theme/tokens.gen.ts` (hex sRGB, claro y oscuro) | `pnpm gen:check` |
-| `scripts/gen-i18n.mts` | `apps/console/src/i18n` (prefijos `inbox.`, `lite.`, `ui.` y los del Panel) | `src/i18n/lite.gen.ts` | `pnpm gen:check` |
+| `scripts/gen-i18n.mts` | `apps/console/src/i18n` (prefijos `inbox.`, `lite.`, `ui.`, los del Panel y, desde la 047, los estados del agente y del canal, la pausa y las secciones de Negocio: `clients.v2.agent.`, `clients.v2.pause.`, `builder.channel.state.`, `builder.life.pause.`, `business.{hours,special,services,locations,history,prov,section}.`, `panel.bag.*`) | `src/i18n/lite.gen.ts` | `pnpm gen:check` |
 
 Las palabras propias de la app (pestañas, entrar, Ajustes, avisos) están en
 `src/i18n/app.{es,en}.ts`. Una regla de ESLint prohíbe escribir un hex en la
@@ -482,6 +488,114 @@ un periodo que se está leyendo nunca enseña el anterior como si fuera él
   negocio» si la API lo trae (045 §5), con el horario de `/me.business`. Canal
   de Android `reservations_v1` y categoría de iOS `reservations`. Un aviso de
   Reservas (`auphere-customers://reservas/{id}`) abre la reserva.
+
+## Agentes, Negocio y correcciones (spec 047)
+
+Contrato: [`specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md`](../specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md)
+(rutas `/console/lite/{agents,channels,business,corrections}/*`, ya en
+`openapi.json`) y [`events.md`](../specs/047-la-fabrica-de-agentes/contracts/events.md)
+(estados, motivos y avisos). Tareas T169, T170, T171 y la parte de la app de T176.
+
+- **Agentes** (módulo `agents` en `/me.nav`): un grupo en Inicio, una fila por
+  agente con su estado en palabras y tono de la consola (`visible_state`, que la
+  app nunca recalcula; 25.5), y `src/app/agente/[id].tsx` en la pila raíz, por
+  encima de las pestañas. La API no lee un agente suelto: la pantalla sale de la
+  misma lista que Inicio (`useAgents`). Enseña qué significa el estado, quién lo
+  pausó, desde dónde y desde cuándo («Lo pausó Marta desde la app. En pausa desde
+  hace 5 min»: `paused_by_name`, `paused_origin`, `paused_at`; sin nombre ni hora
+  si fue el sistema), sus números con su
+  estado y su propia pausa, y **solo** «Pausar» o «Reanudar» si están en
+  `allowed`. Pausar con conversaciones en curso pregunta y dice cuántas (409
+  `confirm_required`, 27.8); una pausa del sistema o del partner no tiene botón:
+  dice por qué y a quién pedírselo (`whyNoResume`, 409 `system_pause`). Lo que
+  la persona no puede hacer va en una frase al pie, nunca como botón.
+- **Negocio** (módulo `business`): `src/app/negocio/{index,horario,servicios,sedes}.tsx`
+  en la pila raíz, desde Inicio y desde Ajustes. En iOS Ajustes es una hoja y una
+  pantalla apilada debajo se abriría detrás: la hoja cede su sitio
+  (`router.replace`); en Android se apila. Índice con lo que guarda cada sección
+  y su procedencia («Editado por Marta desde la app», 13.1) y el último cambio
+  con «Deshacer». Horario: «Así lo dirá el agente» primero (el `label` de la API),
+  la semana día a día con su interruptor y sus turnos (hasta seis), y las fechas
+  especiales con un calendario propio (sin dependencias nuevas). Con sedes,
+  «Horario de» elige el negocio o una sede (`features/business/week-pane.tsx`,
+  `GET /business/hours?location_id=`): la sede usa el del negocio hasta tener el
+  suyo («Usar el horario del negocio») y se guarda con la revisión de Sedes, en
+  su propio borrador. Servicios:
+  precio (sin precio, gratis o importe en la moneda y los decimales del negocio,
+  `exponent`), duración solo si se reserva (la API rechaza
+  `duration_not_allowed`), descripción; el nombre, quién lo hace y qué agentes lo
+  ofrecen son del partner y solo se leen. Sedes: nombre, dirección y teléfono
+  E.164; archivar pregunta y el aviso breve la restaura (`/restore`), porque la
+  lista no trae las archivadas.
+- **Cada escritura** pasa por `useSectionWrite` (`src/features/business/`):
+  `If-Match` con la revisión de la sección e `Idempotency-Key`. Un 412
+  `revision_conflict` mete en la caché la sección como está (`current`), conserva
+  lo escrito y da a elegir: «Guardar lo mío» (con la revisión nueva) o «Ver lo
+  nuevo» (13.4). Al guardar, el aviso breve ofrece «Deshacer» del cambio recién
+  hecho (`POST /business/history/{id}/undo`); 412 y 409 del deshacer se dicen
+  con las frases de la consola.
+- **Sin conexión no se guarda ni se encola nada** (50.5): la barra lo dice, los
+  botones de escribir se apagan y lo escrito vive en un borrador **en memoria**
+  (`src/lib/drafts.ts`, `useDraft`), que sobrevive a salir y volver a la
+  pantalla y se borra al guardar o al cerrar sesión. Nunca va a disco: una
+  corrección puede llevar palabras de un cliente final.
+- **«Corregir esta respuesta»** (T176, requisito 52): bajo cada respuesta del
+  agente en el hilo, un «Corregir» discreto con objetivo de 44 pt
+  (`MessageBubble`), que abre `conversacion/[id]/corregir` como hoja alta. Tres
+  pasos: cómo debió responder y para quién (todo el negocio o solo este agente);
+  antes de enviar, si es **dato** o **comportamiento** y qué pasa con cada uno, con
+  la lección y la paráfrasis editables (lo que verá el partner, nunca el
+  mensaje); los datos personales que la API marca (`pii`) se enseñan con sus
+  palabras y bloquean enviar hasta quitarlos, y lo editado se vuelve a revisar
+  (`PATCH` y luego `send`; un 422 `pii_present` vuelve a la lista). Un dato
+  enviado se puede deshacer; un comportamiento queda como propuesta del partner.
+- **Bandeja** (T170, 50.7): cada fila dice «La atiende {agente}»
+  (`handled_by_agent`, mientras la lleva un agente) y, si espera, el motivo por
+  su código (`waiting_reason` de la lista, `events.md` §2). En la conversación,
+  el agente de `handled_by_agent` bajo el nombre y, en el pie, el motivo por su
+  código (`waiting_code` del detalle) encima de las palabras del agente
+  (`waiting_reason`, de la 045); con código y sin palabras ya no dice «El agente
+  no dijo por qué».
+- **Consumo** (50.6): «Queda poco», «No llega a fin de mes» o «Agotada»
+  (`bag_state`), los días al ritmo de 7 días (`days_left`, o «Aún no hay datos
+  para estimarlo») y «Pídeselo a {partner}» (`partner_name`), sin botón de pedir.
+  El saldo va en la moneda de la bolsa (`balance.currency`).
+- **Avisos** (T170, `events.md` §3.1): un tipo nuevo del teléfono,
+  `agents.state` («Agentes y números»: el tope de un agente, sus pausas y las de
+  sus números, y un número con problemas), con su grupo y su interruptor en
+  Ajustes solo con el módulo `agents`; nace encendido y la API lo encendió en los
+  teléfonos que ya había. Su URL es `auphere-customers://agents/<id>` (con
+  `/channels/<id>` detrás para un número, que se ve en su agente) y `routeFor` la
+  abre en `agente/[id]`; canal de Android `agents_v1` y categoría de iOS
+  `agents`. Los tres de la bolsa (`client.wallet.*`) viajan como
+  `client.balance` (`balance_v1`, `client_balance`, `auphere-customers://usage`
+  → Consumo). Un aviso sin URL o con una que la app no conoce no abre nada.
+- **Accesibilidad** (50.9): todo crece con el texto del teléfono (filas que se
+  apilan, botones que parten la etiqueta), cada control tiene nombre para el
+  lector de pantalla (los de cada número dicen cuál), los estados van en
+  palabras además de en color, y los objetivos son de 48 × 48 (44 pt con su
+  margen en «Corregir»).
+- **Abierto en la API** (la app no lo rodea): las pausas de agentes y números
+  no declaran `If-Match` ni `Idempotency-Key`; `GET /business` no lista
+  servicios y sedes archivados (por eso «Restaurar» sale solo en el aviso de
+  archivar); el 412 de Negocio trae
+  quién por su id, no por su nombre; `PriceOut` y `HoursIn` van poco tipados en
+  el OpenAPI.
+- **Pruebas**: `__tests__/{agentes,negocio,corregir,fabrica-avisos}.test.tsx`
+  (Jest y RNTL con `fireEvent` asíncrono, caché real de React Query) y el flujo
+  de Maestro `e2e/agentes-negocio.yaml` (pausar y reanudar, cambiar el horario
+  y deshacerlo).
+
+## Versión 1.2.0
+
+`version` 1.2.0 (spec 047, T171) y `runtimeVersion` que la sigue: Agentes,
+Negocio y las correcciones son pantallas y datos nuevos, y entran por las
+tiendas (50.8). Por aire, solo arreglos de la 1.2.0. Sin módulos nativos nuevos
+ni permisos nuevos; revisada contra las guías: nada se compra ni se pide dentro
+de la app (App Store 3.1.1; «Pídeselo a {partner}» no lleva botón), ningún
+permiso nuevo del sistema (5.1.1) y la ficha de datos de Play no cambia de
+categoría (el texto de una corrección es contenido del usuario, como un
+mensaje). Los builds no se lanzan sin que Luis lo pida.
 
 ## Versión 1.1.0
 

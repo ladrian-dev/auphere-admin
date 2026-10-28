@@ -59,7 +59,9 @@ control del control: el mismo comprobador, contra una violación plantada, en ro
 | `test_49_new_events_carry_tenant_and_agent.py` | 6 | Lee el catálogo de `contracts/events.md` §5 y barre el código con `ast`: cada emisión lleva `tenant_id` explícito, los siete eventos de la 047 también `agent_id`, ningún campo de texto, teléfono o fuera del contrato, y ningún uso del nombre que el barrido no pueda leer. Hoy no hay emisiones; cada evento entra el día que se escriba |
 | `test_50_provider_retention_and_tenant_batches.py` | 7 | Cada ruta de proveedor del catálogo de plataforma con su regla de retención, comprobada sobre lo que sale del transporte; todo sitio que llama a un proveedor, declarado y sin `store=True`; ninguna API de lotes de proveedor; y cada sitio que arma un lote de evaluación, con su caso de un solo cliente |
 | `test_51_new_tools_take_no_end_customer.py` | 8 | El registro MCP entero, argumento a argumento: ninguno nombra a un cliente final salvo el inventario cerrado (28 entradas, con techo), con sus casos: el runtime sobrescribe `conversation_id`, `reservas.*` descarta una conversación ajena y las herramientas de operador solo están en semillas `admin_only` |
-| `test_52_partner_never_sees_bodies.py` | C8, C1, C9 | Todas las respuestas del partner: ningún campo de coste ni de teléfono salvo los inventariados; ninguna lectura devuelve el coste de modelo sembrado; y cada superficie (Panel hoy; Rendimiento, sugerencias y correcciones cuando se monten) responde con datos de verdad |
+| `test_52_partner_never_sees_bodies.py` | C8, C1, C9 | Todas las respuestas del partner: ningún campo de coste ni de teléfono salvo los inventariados; ninguna lectura devuelve el coste de modelo sembrado; y cada superficie (Panel, Rendimiento, sugerencias y mejoras, correcciones) responde con datos de verdad |
+| `test_44b_agent_knowledge.py` | 9 | El conocimiento y la memoria por agente: lo de un hermano no llega a su prompt ni a su búsqueda; su memoria no es la de otro |
+| `test_44c_reception.py` | 9 | `reception.handoff`, la única herramienta que nombra un agente: solo a los de su lista y de su cliente, nunca en pausa ni archivado, y al destino pasa el resumen, no el conocimiento de Recepción |
 
 Además, en archivos que ya existían:
 
@@ -73,6 +75,15 @@ Además, en archivos que ya existían:
   `/console/lite/*` montada en el test entra sola en los dos barridos, y una
   escritura con id nueva los pone en rojo hasta tener su caso; `/app/*` lo cubre
   la lista cerrada de `test_app_public_routes.py`.
+- `test_lite_client_vs_client.py`: con Agentes y Negocio (T167) y las
+  correcciones (T176), la vecina tiene su agente y su número, una sede, una fecha
+  especial, un servicio, un cambio de su ficha y una corrección; pausar, editar,
+  deshacer o corregir sobre lo suyo responde igual, byte a byte, que sobre un id
+  que no existe, con la credencial web y con la del teléfono.
+- `test_21`, `test_22` y `test_43` con el dinero: la bolsa, sus asientos y las
+  peticiones de saldo son tablas del cliente (política canónica); el libro de la
+  cuenta y los traspasos, del partner. El partner toca una bolsa poniendo el
+  contexto de su cliente en su propia transacción (`wallet/bags.as_client`).
 
 Ayudantes que no son tests: `_tenant_catalog.py` (la lectura del catálogo de
 Postgres que comparten `test_43` y `test_44`) y `_partner_world.py` (el mundo con

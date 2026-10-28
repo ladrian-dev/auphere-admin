@@ -82,11 +82,11 @@ Todas bajo `/console/clients/{ref}`.
 
 | Método y ruta | Qué hace | Requisito |
 |---|---|---|
-| `GET /agents` | Tarjetas: nombre, `visible_state`, propósito, canales, gasto y la pestaña a la que abre | 26.1 |
+| `GET /agents` | Tarjetas: nombre, `visible_state`, propósito, canales, gasto, la pestaña a la que abre e `is_reception` (lo que dice la versión publicada) | 26.1, 35 |
 | `POST /agents/draft-jobs` [`agents:write`] | `{name, description, start: describe \| template \| blank, template_id?}` → `202 {job_id}`. El agente se crea en borrador al primer borrador | 17 |
 | `POST /console/jobs/{job_id}/answers` (ruta absoluta) | Respuestas a las preguntas del constructor, con dónde se guarda cada una (ficha o «Solo este agente») | 17.4, 17.5 |
 | `PUT /default-agent` | `{agent_id}`; atómico | 26.2 |
-| `GET /agents/{agent_id}` | Cabecera, vida, `visible_state`, por defecto, `allowed` | 25 |
+| `GET /agents/{agent_id}` | Cabecera, vida, `visible_state`, por defecto, `allowed`, tope y gasto del mes, `is_reception` | 25, 35, 44.1 |
 | `PATCH /agents/{agent_id}` | Renombrar; tope mensual `{monthly_cap: Money \| null}` | 26.4, 44.1 |
 | `GET /agents/{agent_id}/draft` · `PATCH /agents/{agent_id}/draft` · `DELETE /agents/{agent_id}/draft` | El borrador (AgentSpec + `revision` + vista previa compilada + estado de las pruebas); descartar vuelve a la activa | 3, 16 |
 | `POST /agents/{agent_id}/proposals/{id}/apply` · `/reject` | Aplicar o rechazar una propuesta (`state_hash`, caduca en 15 min) | 15.2, 15.3 |

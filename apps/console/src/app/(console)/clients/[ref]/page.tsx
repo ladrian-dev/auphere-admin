@@ -1,11 +1,13 @@
 import { ClientSummary, type Block, type ConnectedItem } from "@/components/clients/summary/client-summary";
 import { ClientPanelView } from "@/components/clients/v2/client-panel";
 import { PanelError } from "@/components/clients/v2/panel-error";
+import { SeedRequested } from "@/components/money/request-balance";
 import { backendFor, callFor } from "@/lib/backend";
 import { clientRecordsApi } from "@/lib/backend/client-records";
+import { moneyApi } from "@/lib/backend/money";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
 
-import { getClientCached, getConsoleVersionCached } from "./data";
+import { getClientCached, getClientV2Cached, getConsoleVersionCached } from "./data";
 
 /**
  * El Resumen del cliente (spec 018, R1).
@@ -29,17 +31,37 @@ async function block<T>(p: Promise<T>): Promise<Block<T>> {
   }
 }
 
-export default async function ClientOverviewPage({ params }: { params: Promise<{ ref: string }> }) {
+export default async function ClientOverviewPage({ params, searchParams }: { params: Promise<{ ref: string }>; searchParams?: Promise<{ assign?: string }> }) {
   const { ref } = await params;
   const principal = await requirePartnerPrincipal();
   const api = backendFor(principal);
   // Spec 047 (T067, requisito 14): con la consola nueva, el Panel del cliente
   // sustituye al Resumen y a su checklist.
   if ((await getConsoleVersionCached(principal)) === "v2") {
-    const panel = await clientRecordsApi(callFor(principal))
-      .getClientPanel(ref)
-      .catch(() => null);
-    return panel ? <ClientPanelView panel={panel} canWrite={can(principal.role, "clients:write")} /> : <PanelError />;
+    const call = callFor(principal);
+    // Spec 047 (T159): la bolsa la trae el Panel; el relleno y la moneda, sus
+    // propias lecturas. Si fallan, el Panel se pinta igual, sin ellas.
+    const [panel, bags, detail] = await Promise.all([
+      clientRecordsApi(call)
+        .getClientPanel(ref)
+        .catch(() => null),
+      can(principal.role, "usage:read") ? moneyApi(call).listBags().catch(() => null) : null,
+      getClientV2Cached(principal, ref).catch(() => null),
+    ]);
+    if (!panel) return <PanelError />;
+    const bag = bags?.find((b) => b.ref === ref) ?? null;
+    const currency = bag?.balance.currency ?? detail?.wallet_currency ?? panel.bag.balance?.currency ?? null;
+    return (
+      <>
+        {bag && !can(principal.role, "usage:write") ? <SeedRequested items={[bag]} /> : null}
+        <ClientPanelView
+        panel={panel}
+        canWrite={can(principal.role, "clients:write")}
+        money={currency ? { currency, canSetCap: can(principal.role, "usage:write"), refillUpTo: bag?.refill_up_to ?? null } : undefined}
+        openBalance={(await searchParams)?.assign === "1"}
+        />
+      </>
+    );
   }
 
   const [client, usage, conversations, channels, connectors] = await Promise.all([

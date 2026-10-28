@@ -334,6 +334,9 @@ _TRUNCATE_TABLES = (
     # Las tablas de plataforma (precios, taxonomía, perfiles) guardan su semilla.
     "turn_effects",
     "meta_reconciliation_runs",
+    # Spec 047 (0191): los países de la beta de «Iniciar sesión con WhatsApp».
+    # Sin semilla; una prueba que abre un país no lo deja abierto a la siguiente.
+    "whatsapp_login_beta_countries",
     "business_links",
     "business_suggestions",
     "business_changes",

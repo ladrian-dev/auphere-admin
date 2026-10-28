@@ -14,7 +14,7 @@
 La misma consola de partners, abierta a un segundo tipo de persona: el
 **usuario de cliente**, atado a un solo cliente (tenant) de un partner. Ve los
 módulos que Auphere eligió para su cliente —Panel, Bandeja de entrada,
-Consumo— y nada más.
+Agentes, Negocio, Reservas, Consumo— y nada más.
 
 ## Acceso desde el admin
 
@@ -25,7 +25,7 @@ Pestaña **Acceso** en la ficha del tenant del admin
 
 - **Elegible**: el tenant está en `partner_tenants` y no está archivado. Los
   directos de Auphere cuelgan de Auphere Internal Partner.
-- **Módulos por cliente**: `panel`, `inbox`, `reservas`, `usage`, guardados en
+- **Módulos por cliente**: `panel`, `inbox`, `agents`, `business`, `reservas`, `usage`, guardados en
   `client_access.modules` en el orden de la barra. Encendido exige al menos
   uno; la Bandeja exige un WhatsApp conectado **al elegirla**; Reservas exige
   el modo (Servicios o Aforo, y en Aforo el tipo de negocio) la primera vez, y
@@ -416,6 +416,82 @@ requisitos 1 y 2.
   `turn_id` y contesta a todos de una vez (`runtime/turns.py`). Un reintento
   conserva el `turn_id`, y la reserva, el enlace de pago y la respuesta pasan
   por `turn_effects`: no se repiten (`runtime/turn_effects.py`).
+
+## Lo que la spec 047 cambió aquí (ola 8: Agentes y Negocio; ola 9: corregir respuestas)
+
+Spec [`047-la-fabrica-de-agentes`](../specs/047-la-fabrica-de-agentes/spec.md),
+requisitos 50 y 52; contrato [`lite-app-api.md`](../specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md).
+La app (`apps/mobile`) usa las mismas rutas y se describe en [app-movil.md](app-movil.md).
+
+- **Dos módulos nuevos**, `agents` y `business` (`ClientModule`), entre la
+  Bandeja y Reservas. Los clientes de un partner con la consola nueva los tienen
+  por defecto aunque Auphere no los haya elegido. En la consola:
+  `CLIENT_MODULES`, `clientModuleOfPath` (`/agentes` y `/negocio`) y
+  `lite-nav.ts`; cada página llama a `requireClientPrincipal` con su módulo, y
+  `page-guards.test.ts` ata las dos listas.
+- **Agentes** (`/agentes`, `components/lite/lite-agents.tsx`): cada agente con
+  su `visible_state` —los mismos textos y tonos que la consola de partners
+  (`clients.v2.agent.*`)—, si es el principal, cuántas conversaciones tiene en
+  curso y sus números con su estado (`builder.channel.state.*`). «Pausar» se
+  confirma siempre diciendo cuántas conversaciones pasan a la Bandeja; si
+  empezaron más desde que se leyó la lista, la API responde `409
+  confirm_required` con la cifra y la pantalla vuelve a preguntar. Bajo el
+  estado, quién lo pausó y desde dónde («Lo pausó Marta desde la app» con
+  `paused_by_name`; sin nombre, «alguien de tu equipo»; «quien gestiona tus
+  agentes» si fue el partner). Una pausa del sistema (sin saldo, el tope, el cliente
+  en pausa) no ofrece «Reanudar» (`allowed` vacío): se dice cuándo vuelve sola.
+  Cada número se pausa y se reanuda por separado. El aviso de la pausa lleva
+  «Reanudar» (47.6). Crear, archivar, publicar o cambiar un agente no existe
+  aquí (50.3).
+- **Negocio** (`/negocio`, `components/lite/lite-business.tsx`): las mismas
+  secciones que la ficha del partner (`components/business/sections/*`) con
+  acciones propias (`app/(console)/negocio/actions.ts`): el horario (con «Así lo
+  dirá el agente»), las fechas especiales, los servicios (precio, duración,
+  descripción y si es reservable; alta y archivo) y las sedes. Lo que es del
+  partner no se pinta: los datos básicos, quién hace cada servicio, qué agentes
+  lo usan, duplicar y el nombre de un servicio que ya existe
+  (`ServicesSection renameable={false}`). Cada escritura lleva `If-Match` con
+  la revisión de la sección y una `Idempotency-Key` por intento; un 412 se dice
+  sin pisar a nadie. La API honra la clave: el reintento (se cortó la red antes
+  de la respuesta) no escribe otra vez ni choca con su propia revisión, responde
+  la sección como quedó (un alta, con el mismo `created_id`; un deshacer, lo
+  mismo y no `already_undone`). Se guarda un día por cliente, ruta y clave, ya
+  confirmado. «Últimos cambios» lista quién, desde dónde y cuándo, con
+  «Deshacer» en el último cambio de cada sección (y de una corrección desde la
+  Bandeja); deshacer vuelve a leer la ficha entera. Con sedes, «Horario de»
+  elige el negocio o una sede (`GET /console/lite/business/hours?location_id=`):
+  la sede usa el horario del negocio hasta tener el suyo, y su revisión es la de
+  Sedes.
+- **La Bandeja dice quién la lleva**: `handled_by_agent` en la lista y en la
+  conversación; la cabecera del hilo usa ese agente («Atiende: Ventas
+  mayoristas») cuando Recepción la derivó.
+- **«Corregir esta respuesta»** (`components/inbox/correction-dialog.tsx`), sobre
+  cada respuesta del agente en el hilo. Tres pasos: el texto («cómo debió
+  responder, o la regla») y el alcance, que se elige siempre («Todo el negocio»
+  o «Solo este agente»); la revisión, con el tipo a la vista antes de enviar
+  —**un dato** se guarda al momento en la ficha o en lo que sabe el agente y se
+  puede deshacer; **un comportamiento** llega al partner como propuesta en las
+  Mejoras del agente— y la paráfrasis de lo que preguntó el cliente, editable;
+  y el resultado, con «Deshacer» si fue un dato. Si la corrección o la
+  paráfrasis llevan un teléfono, un nombre, un correo o un documento, la
+  pantalla dice cuál y dónde con las posiciones que manda la API (`pii`, nunca
+  el dato) y no deja enviar hasta quitarlo; lo editado se vuelve a comprobar
+  antes de enviar (`PATCH` con `If-Match`). Los `422` (`pii_present`,
+  `paraphrase_required`, `rule_too_long`) se dicen en palabras. El partner
+  nunca recibe el mensaje original.
+- **La campana** dice cada aviso que la API manda al cliente (la bolsa, los
+  topes de los agentes, las pausas y los números, `events.md` §3.1) y lleva a su
+  consola: la API manda un `href` de la lite (`notifications.LITE_LINKS`:
+  `/usage`, `/agentes`, `/inbox?c=…`), nunca uno de `/clients/…`, y la campana
+  solo enlaza si la persona tiene ese módulo (sin Consumo, al Panel).
+- **Sin «Pedir saldo»** ni papeles: toda persona del cliente puede hacer todo
+  lo de arriba.
+- **Pruebas**: vitest (`components/lite/__tests__/lite-agents.test.tsx`,
+  `lite-business.test.tsx`, `components/inbox/__tests__/correction-dialog.test.tsx`)
+  y Playwright contra la API simulada (`e2e/fabrica.config.ts`, proyecto
+  `lite`): axe, 390 px, 200 %, teclado, «Reducir transparencia y movimiento»,
+  los estados de cada pantalla, «Reconectando…» en la Bandeja y textos largos en
+  alemán.
 
 ## Reservas (spec 043)
 

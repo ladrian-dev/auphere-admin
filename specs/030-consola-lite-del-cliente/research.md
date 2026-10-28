@@ -115,6 +115,11 @@ Medido en el código de `develop` @ `6c7b9857` el 2026-10-08. Cada decisión del
 - **Descartado.** Agente de entrada con traspaso por herramienta, y
   clasificador por intención: el owner los descartó («un WhatsApp no va a tener
   más de un agente»).
+- **Enmendado el 2026-10-28 (spec 047, requisito 53).** El agente de entrada con
+  traspaso por herramienta vuelve como «Recepción que deriva»; el clasificador
+  sigue descartado. El hilo ya no es «por agente porque el número lo es»: con
+  Recepción dos agentes comparten hilo, y su estado (modelo fijado, versión) va
+  por agente dentro de la misma clave. Ver la enmienda en `spec.md`.
 
 ## R9 · Admin e identidad del operador (D6)
 

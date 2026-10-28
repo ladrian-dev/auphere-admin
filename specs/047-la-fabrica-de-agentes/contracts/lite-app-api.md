@@ -14,6 +14,10 @@ Reglas que no cambian:
 - **Sin «Pedir saldo»** (specs 031 R4.4 y 044 R13.4).
 - **Escrituras solo con conexión**: la app no encola nada (requisito 50.5).
 - **Cada escritura** lleva `If-Match` (`412` con los cambios) e `Idempotency-Key`.
+  El reintento con la misma clave (la red se cortó antes de la respuesta) no
+  escribe otra vez ni choca con su propia revisión: responde lo mismo (el alta, el
+  mismo `created_id`; el deshacer, lo mismo y no `already_undone`). La clave dura
+  un día por cliente y ruta.
 
 ## 1. Agentes
 
@@ -30,6 +34,7 @@ Lo mismo que la consola de partners (`console-api.md` §3), restringido a:
 | Método y ruta | Qué hace | Requisito |
 |---|---|---|
 | `GET /console/lite/business` | Horario (con turnos y fechas especiales), servicios (precio y duración) y sedes, con su procedencia | 50.1 |
+| `GET /console/lite/business/hours?location_id=` | El horario de una sede (el suyo o el que hereda, `inherits`) o el del negocio, con su `ETag` | 9, 10 |
 | `PUT /console/lite/business/hours?location_id=` | Horario; devuelve la frase «Así lo dirá el agente» | 10, 50.4 |
 | `POST /console/lite/business/special-dates` · `PATCH /…/{id}` · `POST /…/{id}/archive` | Fechas especiales | 10.3 |
 | `PATCH /console/lite/business/services/{id}` | Precio, duración, descripción y si es reservable | 11, 50.1 |

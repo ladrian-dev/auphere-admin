@@ -98,6 +98,8 @@ export type ClientLifecycleResult = {
   previous: Lifecycle | null;
   agents: AgentLifecycle[];
   undo: "restore" | null;
+  /** Spec 047 (43.13): al archivar, lo que queda en su bolsa, para ofrecer devolverlo a la cuenta. */
+  bag_left?: Money | null;
 };
 
 export type MissingSection = "hours" | "services" | "locations" | "sources" | "links";

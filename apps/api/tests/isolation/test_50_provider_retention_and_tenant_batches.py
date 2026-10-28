@@ -358,6 +358,11 @@ PROVIDER_CALL_SITES: dict[str, str] = {
     "api/src/nexus_api/services/prompt_improver/service.py": "Mejora del prompt, a petición.",
     "api/src/nexus_api/services/test_agent/service.py": "Prueba del agente desde el panel.",
     "api/src/nexus_api/core/litellm_smoke.py": "Comprobación de arranque, sin datos de clientes.",
+    "api/src/nexus_api/services/knowledge/embeddings.py": (
+        "Los embeddings del conocimiento (spec 047, T133): los fragmentos de un "
+        "documento de un solo cliente por llamada, sin ``store``; solo si hay "
+        "``knowledge_embedding_model``."
+    ),
 }
 #: APIs de lotes de proveedor: una sola petición con trabajo de varios.
 BATCH_APIS = frozenset(

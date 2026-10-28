@@ -48,6 +48,17 @@ NEEDS_AGENT = frozenset(
         "reception.handoff",
     }
 )
+#: ``reception.handoff`` es también el nombre de la herramienta que lo registra
+#: al usarla (``mcp/servers/reception``): en estos módulos el literal nombra la
+#: herramienta, no el evento.
+TOOL_NAME_USES = frozenset(
+    {
+        ("apps/api/src/nexus_api/services/reception.py", "reception.handoff"),
+        ("apps/api/src/nexus_api/api/console/capability_names.py", "reception.handoff"),
+        ("apps/worker/src/nexus_worker/runtime/pipeline.py", "reception.handoff"),
+    }
+)
+
 #: Campos que pueden llevar texto de un mensaje, de una herramienta o un teléfono.
 FORBIDDEN_FIELDS = frozenset(
     {
@@ -195,6 +206,11 @@ def test_the_catalog_is_read_from_the_contract() -> None:
 def test_every_emission_of_a_catalog_event_honours_the_contract() -> None:
     declared = catalog()
     emissions, stray = sweep(set(declared))
+    tool_names = [
+        s for s in stray if any(s.startswith(f"{p}:") and f"«{v}»" in s for p, v in TOOL_NAME_USES)
+    ]
+    assert len(tool_names) == len(TOOL_NAME_USES), f"usos de la herramienta: {tool_names}"
+    stray = [s for s in stray if s not in tool_names]
     assert not stray, f"el nombre de un evento aparece fuera de una emisión legible: {stray}"
     bad = violations(emissions, declared)
     assert not bad, "eventos de events.md §5 que rompen la garantía 6:\n" + "\n".join(

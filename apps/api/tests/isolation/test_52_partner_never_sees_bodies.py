@@ -69,6 +69,12 @@ PHONE_FIELDS_ALLOWED: dict[tuple[str, str], str] = {
         "de ninguna conversación. Las excepciones de «A todos» (32.3) entran aquí "
         "con la misma regla: los teclea el partner."
     ),
+    ("ChannelPageOut", "identifier"): "El número o el id del canal del negocio (T112).",
+    ("AgentChannelOut", "identifier"): "El número del canal del negocio que usa el agente.",
+    ("RecipientIO", "phone_e164"): (
+        "A quién avisa una escalada (32.5): personas del negocio que el partner o el dueño "
+        "escriben a mano, como los números de «Solo mi equipo»; nunca salen de una conversación."
+    ),
     ("LocationOut", "phone_e164"): (
         "El teléfono de una sede del propio negocio (las sedes de Negocio, requisito 9.1): lo "
         "escribe el partner o lo lee de la web del negocio, nunca de una conversación."
@@ -84,6 +90,7 @@ SURFACES: dict[str, re.Pattern[str]] = {
     ),
     "rendimiento": re.compile(r"/performance"),
     "sugerencias": re.compile(r"/suggestions"),
+    "mejoras": re.compile(r"/improvements$"),
     "correcciones": re.compile(r"/corrections"),
 }
 

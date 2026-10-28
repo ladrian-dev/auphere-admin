@@ -5,6 +5,7 @@ import {
   ChartColumn,
   Cpu,
   FlaskConical,
+  Hammer,
   Handshake,
   MessagesSquare,
   Inbox,
@@ -57,6 +58,9 @@ export const NAV: NavGroup[] = [
       { href: "/models", label: "Modelos", icon: Cpu },
       { href: "/router", label: "Router", icon: Route },
       { href: "/certifications", label: "Certificaciones", icon: BadgeCheck },
+      // Spec 047 (T087, T090, T100): the quality of the agent builder — the
+      // sector tests, the judge's calibration and the builder's evaluation.
+      { href: "/builder", label: "Constructor", icon: Hammer },
     ],
   },
   {
