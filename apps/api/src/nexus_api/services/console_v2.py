@@ -13,9 +13,8 @@ Panel: con fecha, ``v2``.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Final, Literal
-
-import sqlalchemy as sa
 
 from nexus_api.db.models import Partner
 
@@ -33,8 +32,12 @@ def console_version(partner: Partner) -> ConsoleVersion:
 
 def born_on_new_console(partner: Partner) -> Partner:
     """Un partner que nace (desde el panel o dándose de alta solo) ya tiene la
-    consola nueva: no hay nada que activar después."""
-    partner.console_v2_enabled_at = sa.func.now()
+    consola nueva: no hay nada que activar después.
+
+    Una hora de Python y no ``now()`` de SQL: con la expresión, el atributo queda
+    caducado tras el ``flush`` y leerlo después pide un viaje a la base fuera del
+    ``await`` (``MissingGreenlet`` en los scripts de semilla)."""
+    partner.console_v2_enabled_at = datetime.now(UTC)
     partner.console_v2_enabled_by = BORN_ACTOR
     return partner
 

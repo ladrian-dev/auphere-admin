@@ -18,14 +18,16 @@ from __future__ import annotations
 import json
 import subprocess
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+import pytest_asyncio
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from tests.conftest import TEST_DB_URL
+from tests.conftest import _TRUNCATE_TABLES, TEST_DB_URL
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -39,10 +41,13 @@ def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-@pytest.fixture
-def at_head_afterwards() -> Any:
+@pytest_asyncio.fixture
+async def at_head_afterwards() -> AsyncIterator[None]:
     yield
     _alembic("upgrade", "head")
+    # Sin ``db_session`` nadie vacía la base al acabar, y los partners de aquí se
+    # quedarían para el siguiente test que los cuenta (la semilla de la fábrica).
+    await _exec("TRUNCATE TABLE " + ", ".join(_TRUNCATE_TABLES) + " RESTART IDENTITY CASCADE")
 
 
 async def _exec(sql: str, **params: Any) -> list[Any]:
