@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button, Callout, StatusBadge } from "@nexus/ui";
 
 import { builderDraftAction, decideProposalAction, saveAgentSpecAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
+import { agentHeaderAction } from "@/app/(console)/clients/[ref]/agents/life-actions";
 import { DraftConflictNotice } from "@/components/agent-draft/conflict-notice";
 import { AgentCapForm } from "@/components/money/agent-cap";
 import { CrumbName } from "@/components/shell/crumb-names";
@@ -34,7 +35,7 @@ import { AgentModelQuality, type ModelQualityActions } from "./agent-model-quali
 import { AgentPerformancePanel, type PerformanceActions } from "./agent-performance";
 import { AgentPlayground, type PlaygroundActions } from "./agent-playground";
 import { BlockEditor } from "./block-editor";
-import { BlockValue, blockTitleKey } from "./block-view";
+import { AiDisclosureValue, BlockValue, blockTitleKey } from "./block-view";
 import { AGENT_BLOCKS, blockFromSpec, blockOfPointer, isEditable, withBlock, type AgentBlockKey, type Result } from "./builder-model";
 import { CopilotPanel, type CopilotActions, type CopilotHandle } from "./copilot-panel";
 import { receptionOf, type Reception } from "./improve-model";
@@ -123,12 +124,15 @@ export type AgentBuilderActions = {
   save: (body: { ref: string; agent: string; revision: number; spec: AgentSpec }) => Promise<Result<BuilderDraft>>;
   reload: (body: { ref: string; agent: string }) => Promise<Result<{ draft: BuilderDraft; proposals: Proposal[] | null }>>;
   decide: DecideProposal;
+  /** La cabecera (estado visible, por defecto…), que cambia al guardar. */
+  header?: (body: { ref: string; agent: string }) => Promise<Result<AgentHeader>>;
 };
 
 const SERVER_ACTIONS: AgentBuilderActions = {
   save: (body) => saveAgentSpecAction(body),
   reload: (body) => builderDraftAction(body),
   decide: (body) => decideProposalAction(body),
+  header: (body) => agentHeaderAction(body),
 };
 
 /** Lo que la API registra al escribir el AgentSpec: compila el prompt del borrador. */
@@ -334,6 +338,11 @@ export function AgentBuilder({
   /** El borrador cambió fuera de los bloques: se lee otra vez, y todo lo demás. */
   async function refreshAll() {
     await reload();
+    // Guardar cambia el estado visible («Borrador» → «Listo · sin canal»…).
+    if (header && actions.header) {
+      const next = await actions.header({ ref: refId, agent: draft.agent_id });
+      if (next.ok) setHeader(next.data);
+    }
     bump();
   }
 
@@ -761,7 +770,13 @@ function BlockCard({
             </Button>
           ) : null}
         </div>
-        {editing ? children : <BlockValue block={blockFromSpec(spec, block)} refId={refId} />}
+        {editing ? (
+          children
+        ) : block === "ai_disclosure" ? (
+          <AiDisclosureValue value={spec.ai_disclosure} />
+        ) : (
+          <BlockValue block={blockFromSpec(spec, block)} refId={refId} />
+        )}
       </section>
     </li>
   );

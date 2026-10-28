@@ -59,14 +59,19 @@ export function residencyText(t: T, residency: string): string {
   return residency === "eu" || residency === "us" ? t(`modelQuality.residency.${residency}` as MessageKey) : t("modelQuality.residency.global");
 }
 
+/** Lo que el AgentSpec de un agente de antes fija: su modelo de antes (`agent_spec/legacy.py`). */
+const LEGACY_DEPLOYMENT = "nexus/current-binding";
+const isLegacy = (p: CurrentPolicy | ModelPolicy) => p.kind === "legacy" || ("deployment" in p && p.deployment === LEGACY_DEPLOYMENT);
+
 /** El nombre de una política: el perfil, el modelo fijado (por su nombre si se conoce) o el de antes. */
 export function policyName(t: T, policy: CurrentPolicy | ModelPolicy | null | undefined, pinnable: readonly PinnableModel[] = []): string {
-  if (!policy || policy.kind === "legacy") return t("modelQuality.legacy");
+  if (!policy || policy.kind === "legacy" || isLegacy(policy)) return t("modelQuality.legacy");
   if (policy.kind === "profile") return profileName(t, policy.profile);
   return pinnable.find((p) => p.deployment === policy.deployment)?.name ?? policy.deployment;
 }
 
 export function samePolicy(a: CurrentPolicy | ModelPolicy | null | undefined, b: CurrentPolicy | ModelPolicy | null | undefined): boolean {
+  if (a && b && isLegacy(a) && isLegacy(b)) return true;
   if (!a || !b || a.kind !== b.kind) return false;
   if (a.kind === "profile" && b.kind === "profile") return a.profile === b.profile;
   if (a.kind === "pinned" && b.kind === "pinned") return a.deployment === b.deployment;

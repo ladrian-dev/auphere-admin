@@ -70,6 +70,14 @@ describe("the beta screen", () => {
     expect(within(rows[2]!).getByText("Perú")).toBeTruthy();
   });
 
+  it("uses the names the server computed, so the page hydrates (recorrido UI)", () => {
+    // Node y el navegador no nombran igual algunos países con `Intl.DisplayNames`
+    // («RAE de Hong Kong (China)» frente a «Hong Kong»): la hidratación fallaba.
+    const hk: LoginBetaCountry = { ...CHILE, country: "HK" };
+    render(<LoginBetaView countries={[hk]} operatorId={OPERATOR} names={{ HK: "Hong Kong (servidor)" }} />);
+    expect(screen.getAllByText("Hong Kong (servidor)").length).toBeGreaterThan(0);
+  });
+
   it("says when it is on nowhere", () => {
     render(<LoginBetaView countries={[]} operatorId={OPERATOR} />);
     expect(screen.getByText("La beta no está activada en ningún país")).toBeTruthy();

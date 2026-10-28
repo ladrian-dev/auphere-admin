@@ -67,7 +67,7 @@ CATEGORY_LABELS: dict[str, dict[str, str]] = {
     "builder": {"es": "Constructor", "en": "Builder"},
     "business": {"es": "Negocio", "en": "Business"},
     "improvement": {"es": "Mejora", "en": "Improvement"},
-    "integrations": {"es": "Integraciones", "en": "Integrations"},
+    "integrations": {"es": "Conectores", "en": "Connectors"},
     "channels": {"es": "Canales", "en": "Channels"},
     "clients": {"es": "Clientes", "en": "Clients"},
     "critical": {"es": "Incidencias", "en": "Incidents"},

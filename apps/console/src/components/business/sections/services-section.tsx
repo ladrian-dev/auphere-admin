@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Pencil, Archive, Users, Plus } from "lucide-react";
+import { Pencil, Archive, Plus } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -32,6 +32,8 @@ import {
   setServiceAgentsAction,
   updateServiceAction,
 } from "@/app/(console)/clients/[ref]/business/actions";
+import { RowActions, type RowAction } from "@/components/row-actions";
+import { foldsIntoMenu } from "@/components/row-actions-rule";
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { Price, Service, ServiceBody, Services } from "@/lib/backend/business-sections";
@@ -123,6 +125,26 @@ export function ServicesSection({
     });
   }
 
+  const archive = (s: Service) => run(() => actions.archive({ ref: refId, revision: services.revision, id: s.id }), "business.services.archived");
+  const duplicate = actions.duplicate;
+  // La regla de los tres puntos: el partner tiene cuatro acciones por fila
+  // (editar, quién lo ofrece, duplicar y archivar) y van tras «⋯»; la lite, dos.
+  const menu = foldsIntoMenu(2 + (actions.setAgents ? 1 : 0) + (duplicate ? 1 : 0));
+  const rowActions = (s: Service): RowAction[] => [
+    { label: t("business.services.menu.edit"), onSelect: () => setEditing(s), primary: true },
+    ...(actions.setAgents ? [{ label: t("business.services.menu.who"), onSelect: () => setChoosing(s) }] : []),
+    ...(duplicate
+      ? [
+          {
+            label: t("business.services.menu.duplicate"),
+            disabled: pending,
+            onSelect: () => run(() => duplicate({ ref: refId, revision: services.revision, id: s.id }), "business.services.duplicated"),
+          },
+        ]
+      : []),
+    { label: t("business.services.menu.archive"), disabled: pending, onSelect: () => archive(s) },
+  ];
+
   return (
     <SectionFrame id="business-services" title={t("business.services.title")} intro={t("business.services.intro")} state={services.state} canWrite={canWrite}>
       <div className="grid min-w-0 gap-4">
@@ -157,41 +179,24 @@ export function ServicesSection({
                     </TableCell>
                     {canWrite ? (
                       <TableCell className="text-right">
-                        <div className="inline-flex gap-1">
-                          <Button variant="ghost" size="icon" aria-label={t("business.services.edit", { name: s.name })} onClick={() => setEditing(s)}>
-                            <Pencil aria-hidden="true" />
-                          </Button>
-                          {actions.setAgents ? (
-                            <Button variant="ghost" size="icon" aria-label={t("business.services.who", { name: s.name })} onClick={() => setChoosing(s)}>
-                              <Users aria-hidden="true" />
+                        {menu ? (
+                          <RowActions menu ariaLabel={t("business.services.actions", { name: s.name })} actions={rowActions(s)} />
+                        ) : (
+                          <div className="inline-flex gap-1">
+                            <Button variant="ghost" size="icon" aria-label={t("business.services.edit", { name: s.name })} onClick={() => setEditing(s)}>
+                              <Pencil aria-hidden="true" />
                             </Button>
-                          ) : null}
-                          {actions.duplicate ? (
                             <Button
                               variant="ghost"
                               size="icon"
                               disabled={pending}
-                              aria-label={t("business.services.duplicate", { name: s.name })}
-                              onClick={() => {
-                                const duplicate = actions.duplicate;
-                                if (duplicate) run(() => duplicate({ ref: refId, revision: services.revision, id: s.id }), "business.services.duplicated");
-                              }}
+                              aria-label={t("business.services.archive", { name: s.name })}
+                              onClick={() => archive(s)}
                             >
-                              <Copy aria-hidden="true" />
+                              <Archive aria-hidden="true" />
                             </Button>
-                          ) : null}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled={pending}
-                            aria-label={t("business.services.archive", { name: s.name })}
-                            onClick={() =>
-                              run(() => actions.archive({ ref: refId, revision: services.revision, id: s.id }), "business.services.archived")
-                            }
-                          >
-                            <Archive aria-hidden="true" />
-                          </Button>
-                        </div>
+                          </div>
+                        )}
                       </TableCell>
                     ) : null}
                   </TableRow>

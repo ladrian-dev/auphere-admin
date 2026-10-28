@@ -54,8 +54,10 @@ export function ShiftEditor({
         {canWrite
           ? shifts.map((s, i) => {
               const n = i + 1;
-              const openId = `${base}-${s.key}-open`;
-              const closeId = `${base}-${s.key}-close`;
+              // Por la posición, no por `s.key`: la clave sale de un contador
+              // que el servidor y el navegador no comparten (hidratación).
+              const openId = `${base}-${n}-open`;
+              const closeId = `${base}-${n}-close`;
               return (
                 <div key={s.key} className="flex min-w-0 flex-wrap items-center gap-2">
                   <label htmlFor={openId} className="sr-only">

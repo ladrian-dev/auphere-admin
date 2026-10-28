@@ -46,7 +46,7 @@ import {
 } from "./channel-model";
 import { formatClock } from "./knowledge-model";
 import { visibleTone } from "./life-model";
-import { undoOpen } from "./quality-model";
+import { cleanActor, undoOpen } from "./quality-model";
 
 type Ids = { ref: string; channel: string };
 export type ChannelPageActions = {
@@ -835,7 +835,7 @@ function History({ history }: { history: ChannelChange[] | null }) {
         return (
           <li key={change.id} className="grid min-w-0 gap-1 border-l-2 border-border pl-3 text-sm" data-slot="channel-change">
             <span className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="break-all">{t("builder.channel.history.by", { actor: change.actor, date: formatDateTime(change.at, locale) })}</span>
+              <span className="break-all">{t("builder.channel.history.by", { actor: cleanActor(change.actor), date: formatDateTime(change.at, locale) })}</span>
               {change.origin === "undo" || change.origin === "connect" ? (
                 <StatusBadge tone="muted" dot={false}>
                   {t(`builder.channel.history.origin.${change.origin}` as MessageKey)}

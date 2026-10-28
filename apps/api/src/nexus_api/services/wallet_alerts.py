@@ -380,8 +380,14 @@ async def evaluate_partner_wallet_alerts(
     if result.percent_used is None:
         return result
 
-    async with session.begin():
-        result.clients_out = await clients_without_quota(session, partner.id)
+    # Spec 047 (T161): con bolsas, el saldo de cada cliente es su bolsa y su
+    # aviso es ``client.wallet.empty``, como en ``notify_client_out_of_quota_detached``.
+    # El cupo de hoy no tiene filas y decía «sin saldo» con la bolsa llena.
+    from nexus_api.services.wallet.turns import bags_on
+
+    if not await bags_on(partner.id):
+        async with session.begin():
+            result.clients_out = await clients_without_quota(session, partner.id)
     # Spec 016 (R2.2): red de seguridad. El aviso por cliente lo dispara el
     # turno saltado; si el despachador no llegó a avisar, lo hace el cron.
     for ref in result.clients_out:

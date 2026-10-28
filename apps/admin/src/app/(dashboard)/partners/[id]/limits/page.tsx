@@ -50,7 +50,7 @@ export default async function PartnerLimitsPage({ params }: { params: Promise<{ 
       </Section>
       <Section
         title="Moneda de la cuenta"
-        description="Solo Auphere la cambia. Comprar saldo va en la moneda de la cuenta; cambiarla convierte lo que queda al cambio del BCE del día y deja un asiento."
+        description="Solo Auphere la cambia. Comprar saldo va en la moneda de la cuenta. Cambiarla convierte lo que queda al cambio del BCE del día y deja un asiento."
       >
         <AccountCurrencyForm partnerId={partner.id} partnerName={partner.name} current={budget?.currency ?? null} />
       </Section>

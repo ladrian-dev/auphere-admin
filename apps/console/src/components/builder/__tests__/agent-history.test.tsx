@@ -65,6 +65,16 @@ describe("el historial (24.2)", () => {
     expect(toast.success).toHaveBeenCalledWith("Borrador nuevo con la v2. Guárdalo para que atienda.");
   });
 
+  it("dice cada parte con palabras y no enseña claves internas (recorrido UI)", () => {
+    // La v1 de un agente nuevo cambia todo el AgentSpec, también `mode`,
+    // `schema_version` y `test_suite`, que salían tal cual. Las partes sin
+    // palabra (`partKey`) son del formato: no se enseñan.
+    const first = { ...HISTORY[1]!, number: 1, changed: ["identity", "mode", "schema_version", "test_suite", "rules"] };
+    screenWith({ history: [first] });
+    expect(within(entry(1)).getByText("Cambió: Nombre y descripción, Reglas")).toBeVisible();
+    expect(screen.queryByText(/schema_version|test_suite|\bmode\b/)).toBeNull();
+  });
+
   it("quien solo lee no ve «Restaurar»", () => {
     screenWith({ canWrite: false });
     expect(screen.queryByRole("button", { name: /Restaurar/ })).toBeNull();

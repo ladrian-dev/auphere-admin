@@ -163,7 +163,8 @@ export function CorrectionDialog({
       if (sent.code === "pii_present" && Array.isArray(sent.info?.pii)) {
         setDraft({ ...current, pii: sent.info.pii as CorrectionPii[] });
       }
-      if (sent.code === "paraphrase_required") setFieldError({ paraphrase: t("lite.correct.error.paraphrase") });
+      // Falta la paráfrasis: se dice bajo su campo, no también abajo.
+      if (sent.code === "paraphrase_required") return setFieldError({ paraphrase: t("lite.correct.error.paraphrase") });
       conflictOr(sent);
     });
   }

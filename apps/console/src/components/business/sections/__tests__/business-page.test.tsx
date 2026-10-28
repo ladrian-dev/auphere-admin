@@ -91,6 +91,16 @@ describe("BusinessSectionsView", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("the index scrolls sideways on a phone without widening the page", () => {
+    // Recorrido UI de la 047: a 375 px, el estado de cada sección es `sr-only`
+    // (absoluto). Si la tira que se desliza no lo contiene, sale por la derecha
+    // y la página entera se desliza en horizontal (435 px).
+    page();
+    const index = screen.getByRole("navigation", { name: "Secciones de Negocio" });
+    const strip = index.querySelector("[data-scroll-x]");
+    expect(strip?.className).toMatch(/(^|\s)relative(\s|$)/);
+  });
+
   it("empty: each section says what is missing and what the agent will do", () => {
     page();
     expect(screen.getByText(/Sin sedes\. El agente no dará ninguna dirección/)).toBeVisible();

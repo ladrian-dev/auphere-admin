@@ -82,7 +82,7 @@ export default async function ConnectorPage({ params }: { params: Promise<{ slug
       <Section
         flat
         title="Ajustes que pide"
-        description="Lo que cada agente rellena al activarla, en su página de la integración. La API lo valida con este esquema."
+        description="Lo que cada agente rellena al activarlo, en la página del conector. La API lo valida con este esquema."
       >
         <SettingsFields schema={connector.settings_schema} />
       </Section>

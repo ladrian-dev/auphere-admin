@@ -6,7 +6,7 @@ import type { SovereignState } from "@/lib/backend-levers";
 
 /** What the restriction does, the same sentence everywhere. */
 export const SOVEREIGN_WHAT =
-  "Solo proveedores europeos y modelos de pesos abiertos. El router no usa otros para este cliente; el partner la ve como insignia del cliente y no la puede cambiar.";
+  "Solo proveedores europeos y modelos de pesos abiertos. El router no usa otros para este cliente. El partner la ve como insignia del cliente y no la puede cambiar.";
 
 export const SOVEREIGN_ERRORS: Record<string, string> = {
   no_business_profile:

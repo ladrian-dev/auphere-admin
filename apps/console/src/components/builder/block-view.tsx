@@ -22,7 +22,7 @@ import type {
 import { connectByIntegration, integrationName, isCustomTrigger, languageName, skillName } from "./builder-model";
 
 /** El nombre de cada bloque, el mismo en «Nuevo agente» y en la pantalla del agente. */
-export function blockTitleKey(key: BuilderBlockKey): MessageKey {
+export function blockTitleKey(key: BuilderBlockKey | "ai_disclosure"): MessageKey {
   return `builder.block.${key}` as MessageKey;
 }
 
@@ -268,6 +268,20 @@ function EscalationValue({ value }: { value: AgentSpec["escalation"] | undefined
     <div className="grid min-w-0 gap-2 text-sm">
       {triggers.length ? <TextList items={triggers.map((tr) => triggerText(tr, attempts, t))} empty="" /> : null}
       {value?.message ? <p className="text-pretty break-words text-muted-foreground">{t("builder.block.escalation.message", { message: value.message })}</p> : null}
+    </div>
+  );
+}
+
+/** El aviso de IA: sin decidir, o cuándo lo dice y con qué palabras (16.6). */
+export function AiDisclosureValue({ value }: { value: AgentSpec["ai_disclosure"] | undefined }) {
+  const t = useT();
+  if (!value?.decided) return <p className="text-sm text-pretty">{t("builder.block.ai_disclosure.undecided")}</p>;
+  return (
+    <div className="grid min-w-0 gap-1 text-sm">
+      <p className="text-pretty">
+        {value.mode ? t(`builder.block.ai_disclosure.${value.mode}` as MessageKey) : t("builder.block.ai_disclosure.none")}
+      </p>
+      {value.mode && value.text ? <p className="text-pretty break-words text-muted-foreground">{t("builder.block.ai_disclosure.text", { text: value.text })}</p> : null}
     </div>
   );
 }

@@ -67,6 +67,11 @@ Todo lo largo es un **trabajo** (`jobs`, `services/jobs.py`) que corre el worker
 6. si la versión cambia de modelo o de calidad, ese cambio está comprobado
    (`model_policy_unchecked`, sección 6).
 
+El aviso de IA lo decide una persona en la pantalla del agente, en su bloque
+«Aviso de IA» (en el primer mensaje de cada conversación o solo si le preguntan,
+con sus palabras opcionales); «Arreglar en el borrador» del hallazgo lo abre. El
+constructor no lo deja decidido (16.6).
+
 El validador y el aviso de IA no se saltan nunca. Una prueba normal en rojo deja
 «Guardar igualmente»; una crítica, la regresión o un bloqueante solo los salta un
 owner, un admin o Auphere, con motivo (queda en la versión y en la auditoría). La

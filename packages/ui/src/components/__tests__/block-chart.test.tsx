@@ -221,6 +221,15 @@ describe("<BlockChart>", () => {
       expect(document.querySelectorAll('[data-cell="track"]').length).toBe(7 * 12);
     });
 
+    it("vacío de 90 días: la pista no desliza, porque el teclado no llegaría (recorrido UI, axe)", () => {
+      // Solo hay decoración oculta: una caja deslizable sin nada enfocable era
+      // `scrollable-region-focusable` (serio) en la pantalla del agente.
+      render(<Chart columns={days(90).map((c) => ({ ...c, values: [0, 0] }))} />);
+      const scroller = document.querySelector("[data-slot=block-chart] [data-scroll-x]");
+      expect(scroller).not.toBeNull();
+      expect(scroller!.className).not.toMatch(/\boverflow-x-auto\b/);
+    });
+
     it("error: lo dice y deja reintentar", () => {
       const onRetry = vi.fn();
       render(<Chart error="No se pudo cargar la actividad." onRetry={onRetry} />);

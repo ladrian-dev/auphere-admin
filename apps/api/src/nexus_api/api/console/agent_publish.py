@@ -48,7 +48,7 @@ PART_NAMES: dict[str, str] = {
     "services": "Servicios que atiende",
     "skills": "Habilidades",
     "tools": "Lo que puede hacer",
-    "connection_requests": "Integraciones que pide",
+    "connection_requests": "Conectores que pide",
     "escalation": "Cuándo pasa a una persona",
     "rules": "Reglas",
     "team_access": "Personas del equipo",

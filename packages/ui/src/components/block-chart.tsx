@@ -301,7 +301,9 @@ function BlockChart({
         {legend}
         <div className="relative flex min-w-0 gap-2">
           {axis}
-          <div data-scroll-x="" className="relative min-w-0 flex-1 overflow-x-auto">
+          {/* Vacío: solo decoración oculta. No desliza, porque una caja
+              deslizable sin nada enfocable no la alcanza el teclado. */}
+          <div data-scroll-x="" className="relative min-w-0 flex-1 overflow-hidden">
             <div aria-hidden="true" className="grid h-40 gap-px" style={{ ...template, ...minWidth }}>
               {columns.map((c) => (
                 <div key={c.key} className="flex h-full min-w-0 flex-col-reverse gap-px">

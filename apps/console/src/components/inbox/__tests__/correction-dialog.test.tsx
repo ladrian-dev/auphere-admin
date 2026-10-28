@@ -159,7 +159,8 @@ describe("«Corregir esta respuesta» (T176)", { timeout: 30_000 }, () => {
     view({ send });
     const dialog = await write(user, "Todo el negocio");
     await user.click(await within(dialog).findByRole("button", { name: "Guardar el dato" }));
-    expect((await within(dialog).findAllByText("Escribe lo que preguntó el cliente. Es la pregunta que verá el agente.")).length).toBeGreaterThan(0);
+    // Una vez, bajo su campo (recorrido UI: salía también abajo, repetido).
+    expect(await within(dialog).findAllByText("Escribe lo que preguntó el cliente. Es la pregunta que verá el agente.")).toHaveLength(1);
     await user.click(within(dialog).getByRole("button", { name: "Guardar el dato" }));
     expect(await within(dialog).findByText("La regla es demasiado larga. Como mucho 300 caracteres.")).toBeInTheDocument();
   });

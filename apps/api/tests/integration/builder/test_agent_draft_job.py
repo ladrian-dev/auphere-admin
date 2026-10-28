@@ -276,6 +276,29 @@ async def test_a_business_answer_goes_to_the_ficha_and_can_stay_in_this_agent_on
     assert any("ficha" in r for r in body3["result"]["discarded"]["reasons"])
 
 
+async def test_a_business_answer_for_a_client_without_ficha_opens_its_ficha(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    # Recorrido UI de la 047: un cliente de antes de la 047 (sin fila en
+    # ``business_profiles``) respondía 500 al guardar una respuesta de negocio.
+    # Como al editar sus datos básicos, la ficha nace al escribir en ella.
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        await db_session.execute(
+            sa.delete(BusinessProfile).where(BusinessProfile.tenant_id == biz.tenant_id)
+        )
+    await db_session.commit()
+    body, _agent_id = await _built(client, db_session, biz, fake_redis)
+    resp = await client.post(
+        f"/console/jobs/{body['job_id']}/answers",
+        json={"answers": [{"question_id": "cancelacion", "value": "Avisa con 24 horas."}]},
+        headers=biz.headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        profile = await db_session.get(BusinessProfile, biz.tenant_id, populate_existing=True)
+    assert profile is not None and profile.policies["cancellation"] == "Avisa con 24 horas."
+
+
 # ── las integraciones ──────────────────────────────────────────────────────
 
 

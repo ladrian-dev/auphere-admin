@@ -101,11 +101,34 @@ describe("ServicesSection", () => {
   it("duplicates and archives with the revision it read", async () => {
     const user = userEvent.setup();
     const { actions } = section();
-    const ramo = screen.getByRole("row", { name: /Ramo grande/ });
-    await user.click(within(ramo).getByRole("button", { name: "Duplicar Ramo grande" }));
+    const ramo = () => screen.getByRole("row", { name: /Ramo grande/ });
+    await user.click(within(ramo()).getByRole("button", { name: "Acciones de Ramo grande" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Duplicar" }));
     expect(actions.duplicate).toHaveBeenCalledWith(expect.objectContaining({ ref: "flor", id: SERVICES.items[0]?.id, revision: 2 }));
-    await user.click(within(ramo).getByRole("button", { name: "Archivar Ramo grande" }));
+    await user.click(within(ramo()).getByRole("button", { name: "Acciones de Ramo grande" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Archivar" }));
     expect(actions.archive).toHaveBeenCalledWith(expect.objectContaining({ id: SERVICES.items[0]?.id }));
+  });
+
+  it("folds four actions into «⋯», editing first (regla de los tres puntos)", async () => {
+    const user = userEvent.setup();
+    section();
+    const ramo = screen.getByRole("row", { name: /Ramo grande/ });
+    expect(within(ramo).queryByRole("button", { name: /^Editar|^Duplicar|^Archivar|^Quién/ })).toBeNull();
+    await user.click(within(ramo).getByRole("button", { name: "Acciones de Ramo grande" }));
+    const items = (await screen.findAllByRole("menuitem")).map((i) => i.textContent);
+    expect(items).toEqual(["Editar", "Quién lo ofrece", "Duplicar", "Archivar"]);
+    await user.click(screen.getByRole("menuitem", { name: "Editar" }));
+    expect(await screen.findByRole("dialog", { name: /Editar|Ramo grande/ })).toBeTruthy();
+  });
+
+  it("with two actions (the client's console) they stay as buttons", () => {
+    const ok = async (): Promise<R> => ({ ok: true, data: SERVICES });
+    section({ actions: { create: vi.fn(ok), update: vi.fn(ok), archive: vi.fn(ok) } });
+    const ramo = screen.getByRole("row", { name: /Ramo grande/ });
+    expect(within(ramo).getByRole("button", { name: "Editar Ramo grande" })).toBeVisible();
+    expect(within(ramo).getByRole("button", { name: "Archivar Ramo grande" })).toBeVisible();
+    expect(within(ramo).queryByRole("button", { name: "Acciones de Ramo grande" })).toBeNull();
   });
 
   it("adds a bookable service with its duration and price", async () => {
@@ -130,7 +153,8 @@ describe("ServicesSection", () => {
     const user = userEvent.setup();
     const { actions } = section();
     const ramo = screen.getByRole("row", { name: /Ramo grande/ });
-    await user.click(within(ramo).getByRole("button", { name: "Quién ofrece Ramo grande" }));
+    await user.click(within(ramo).getByRole("button", { name: "Acciones de Ramo grande" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Quién lo ofrece" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("radio", { name: "Solo algunos agentes" }));
     const recepcion = within(dialog).getByRole("checkbox", { name: /Recepción/ });
@@ -153,5 +177,6 @@ describe("ServicesSection", () => {
     expect(screen.queryByRole("button", { name: "Añadir servicio" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Duplicar/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Archivar/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Acciones de/ })).toBeNull();
   });
 });

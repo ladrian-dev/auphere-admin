@@ -148,10 +148,12 @@ export function blockFromSpec(spec: AgentSpec, key: Exclude<BuilderBlockKey, "te
 }
 
 /** Los bloques de la pantalla del agente, en el orden del borrador. */
-export const AGENT_BLOCKS = ["identity", "voice", "instructions", "procedures", "services", "skills", "escalation", "rules"] as const;
+// El aviso de IA no lo escribe el constructor (16.6): no está en `BUILDER_BLOCKS`,
+// pero aquí se lee y lo decide una persona.
+export const AGENT_BLOCKS = ["identity", "voice", "instructions", "procedures", "services", "skills", "escalation", "rules", "ai_disclosure"] as const;
 export type AgentBlockKey = (typeof AGENT_BLOCKS)[number];
 
-const EDITABLE: ReadonlySet<string> = new Set<EditableBlock>(["identity", "voice", "instructions", "procedures", "escalation", "rules"]);
+const EDITABLE: ReadonlySet<string> = new Set<EditableBlock>(["identity", "voice", "instructions", "procedures", "escalation", "rules", "ai_disclosure"]);
 export function isEditable(key: string): key is EditableBlock {
   return EDITABLE.has(key);
 }
@@ -170,9 +172,10 @@ export function problemsOf(problems: readonly SpecProblem[], key: string): SpecP
 }
 
 /** El bloque al que apunta un puntero JSON, para decir dónde cambia una propuesta. */
-export function blockOfPointer(pointer: string): BuilderBlockKey | null {
+export function blockOfPointer(pointer: string): BuilderBlockKey | "ai_disclosure" | null {
   const first = pointer.split("/")[1] ?? "";
   if (first === "connection_requests" || first === "tools") return "skills";
+  if (first === "ai_disclosure") return "ai_disclosure";
   return (BUILDER_BLOCKS as readonly string[]).includes(first) ? (first as BuilderBlockKey) : null;
 }
 

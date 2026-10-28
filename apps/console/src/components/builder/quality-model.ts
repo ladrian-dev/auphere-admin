@@ -132,6 +132,11 @@ const PARTS = new Set([
   "prompt",
 ]);
 
+/** `console:luis@…` → `luis@…`: el origen no es de la persona. */
+export function cleanActor(actor: string): string {
+  return actor.replace(/^[a-z_]+:/, "");
+}
+
 /** La clave de una parte del AgentSpec; `null` si la consola no tiene palabra para ella. */
 export function partKey(part: string): MessageKey | null {
   return PARTS.has(part) ? (`builder.part.${part}` as MessageKey) : null;

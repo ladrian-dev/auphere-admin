@@ -485,6 +485,15 @@ async def ensure_agents(
     """Cada agente con una versión activa y, si tiene número, el WhatsApp que
     responde con él. El primero de la lista es el principal (el más antiguo),
     así que su ``created_at`` va por delante."""
+    # Uno por defecto por cliente (``uq_agents_one_default``): al repetir, se
+    # quita a los de la semilla antes de volver a ponerlo en el primero. Un
+    # cliente sin agentes en la semilla no se toca.
+    if spec.agents:
+        await session.execute(
+            sa.update(Agent)
+            .where(Agent.tenant_id == tenant_id, Agent.name.in_([a.name for a in spec.agents]))
+            .values(is_default=False)
+        )
     for position, seed_agent in enumerate(spec.agents):
         agent = await session.scalar(
             sa.select(Agent).where(Agent.tenant_id == tenant_id, Agent.name == seed_agent.name)
@@ -500,6 +509,10 @@ async def ensure_agents(
             session.add(agent)
             await session.flush()
         agent.status = "active"
+        # Como la migración 0190 deja a los agentes de antes: con versión activa,
+        # publicado, y el más antiguo de cada cliente, el agente por defecto.
+        agent.lifecycle = "published"
+        agent.is_default = position == 0
 
         active = await session.scalar(
             sa.select(AgentConfig.id).where(

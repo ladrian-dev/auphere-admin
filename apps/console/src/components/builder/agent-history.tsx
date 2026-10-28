@@ -12,7 +12,7 @@ import type { MessageKey } from "@/i18n/messages";
 import type { HistoryEntry, RestoreResult } from "@/lib/backend/agent-quality-types";
 
 import type { Result } from "./builder-model";
-import { partKey } from "./quality-model";
+import { cleanActor, partKey } from "./quality-model";
 
 type Ids = { ref: string; agent: string };
 export type HistoryActions = {
@@ -134,7 +134,9 @@ function VersionRow({ entry, canRestore, onRestore }: { entry: HistoryEntry; can
   const titleId = React.useId();
   const when = entry.published_at ?? entry.created_at;
   const who = entry.published_by ?? entry.author ?? "";
-  const parts = [...new Set(entry.changed.map((p) => (partKey(p) ? t(partKey(p) as MessageKey) : p)))];
+  // Solo las partes con palabra: `mode` o `schema_version` son del formato,
+  // no algo que el partner cambió (recorrido UI de la 047).
+  const parts = [...new Set(entry.changed.flatMap((p) => (partKey(p) ? [t(partKey(p) as MessageKey)] : [])))];
   const statusKey = (["active", "staged", "archived"].includes(entry.status) ? `builder.history.status.${entry.status}` : null) as MessageKey | null;
   return (
     <li aria-labelledby={titleId} className="grid min-w-0 gap-2 rounded-md border border-border p-3" data-slot="history-entry" data-status={entry.status}>
@@ -167,7 +169,3 @@ function VersionRow({ entry, canRestore, onRestore }: { entry: HistoryEntry; can
   );
 }
 
-/** `console:luis@…` → `luis@…`: el origen no es de la persona. */
-function cleanActor(actor: string): string {
-  return actor.replace(/^[a-z_]+:/, "");
-}

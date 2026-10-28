@@ -26,7 +26,7 @@ export function AnomaliesView({ data }: { data: RouterAnomalies }) {
   const waiting = data.waiting_no_model.reduce((n, w) => n + w.conversations, 0);
   if (!data.items.length && !waiting) {
     return (
-      <EmptyState
+      <EmptyState readonly
         title="Sin anomalías en este periodo"
         description="Ninguna decisión del router cayó en el modelo de reserva ni se quedó sin modelo."
       />

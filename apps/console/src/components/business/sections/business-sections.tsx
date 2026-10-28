@@ -88,7 +88,9 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
   return (
     <div className="grid min-w-0 gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start">
       <nav aria-label={t("business.page.index")} className="min-w-0 lg:sticky lg:top-20">
-        <ul className="flex min-w-0 gap-2 overflow-x-auto pb-1 lg:grid lg:overflow-visible" data-scroll-x>
+        {/* `relative`: el estado `sr-only` de cada sección es absoluto y, sin
+            un contenedor posicionado, ensancha la página a 375 px. */}
+        <ul className="relative flex min-w-0 gap-2 overflow-x-auto pb-1 lg:grid lg:overflow-visible" data-scroll-x>
           {ORDER.map((item) => {
             const state = stateOf(item.key);
             return (

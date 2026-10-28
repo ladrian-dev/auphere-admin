@@ -22,7 +22,7 @@ export default async function SectorTestsPage() {
     <>
       <PageHeader
         title="Pruebas del sector"
-        description="Las 12 pruebas comunes de cada sector, con su versión. Cada agente nuevo las recibe en la versión vigente del sector de su cliente; un cliente de «Otro» no tiene batería común."
+        description="Las 12 pruebas comunes de cada sector, con su versión. Cada agente nuevo las recibe en la versión vigente del sector de su cliente. Un cliente de «Otro» no tiene batería común."
       />
       <BuilderTabs current="/builder/sector-tests" />
       {sectors === null ? (

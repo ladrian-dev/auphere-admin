@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.models import (
     AgentConnectorActivation,
+    Connector,
     Conversation,
     ConversationStatus,
     Customer,
@@ -101,6 +102,34 @@ async def test_one_connection_per_client_and_an_activation_per_agent(
         (ventas, "read_write"),
         (recepcion, "read"),
     }
+
+
+async def test_the_agent_catalog_leaves_out_the_channels(
+    client: Any, db_session: AsyncSession, biz: Biz, seeded_catalog: None, fake_composio: Any
+) -> None:
+    # Recorrido UI de la 047: WhatsApp y TikTok salían en Conectores del agente
+    # como «Sin conectar» aunque el número estuviera conectado. Son canales
+    # (``provider_meta.channel_only``): viven en Canales, como en el admin.
+    await seed_integration(db_session)
+    db_session.add(
+        Connector(
+            slug="canal_test",
+            display_name="Canal Test",
+            vendor="Test",
+            category="messaging",
+            auth_kind="api_key",
+            mcp_server_ref="internal:canal_test",
+            status="available",
+            provider_meta={"channel_only": True},
+        )
+    )
+    await db_session.commit()
+    ventas = await agent_with_spec(db_session, biz, "Ventas")
+    catalog = await client.get(f"{_agent_url(biz, ventas)}/integrations", headers=biz.headers())
+    assert catalog.status_code == 200, catalog.text
+    slugs = {row["slug"] for row in catalog.json()}
+    assert SLUG in slugs
+    assert "canal_test" not in slugs
 
 
 async def test_connecting_without_authorization_authorizes_then_activates(

@@ -38,7 +38,20 @@ export const EU_WHY =
 
 const NAMES = new Intl.DisplayNames(["es"], { type: "region" });
 
-export function countryName(iso2: string): string {
+/**
+ * Los nombres de todos los países, para calcularlos **en el servidor** y pasarlos
+ * a la vista: el ICU de Node y el del navegador no los dicen igual («RAE de Hong
+ * Kong (China)» frente a «Hong Kong») y la página no hidrataba.
+ */
+export type CountryNames = Readonly<Record<string, string>>;
+
+export function countryNames(): CountryNames {
+  return Object.fromEntries(ISO2.map((code) => [code, countryName(code)]));
+}
+
+export function countryName(iso2: string, names?: CountryNames): string {
+  const known = names?.[iso2];
+  if (known) return known;
   try {
     return NAMES.of(iso2) ?? iso2;
   } catch {
@@ -57,10 +70,10 @@ export type CountryOption = { code: string; name: string };
  * those already on) and, apart, the EU and the EEA, which are shown but
  * cannot be picked. Both by their Spanish name.
  */
-export function countryOptions(enabled: readonly string[]): { available: CountryOption[]; blocked: CountryOption[] } {
+export function countryOptions(enabled: readonly string[], names?: CountryNames): { available: CountryOption[]; blocked: CountryOption[] } {
   const on = new Set(enabled.map((c) => c.toUpperCase()));
   const byName = (a: CountryOption, b: CountryOption) => a.name.localeCompare(b.name, "es");
-  const all = ISO2.map((code) => ({ code, name: countryName(code) }));
+  const all = ISO2.map((code) => ({ code, name: countryName(code, names) }));
   return {
     available: all.filter((c) => !EU_EEA.has(c.code) && !on.has(c.code)).sort(byName),
     blocked: all.filter((c) => EU_EEA.has(c.code)).sort(byName),

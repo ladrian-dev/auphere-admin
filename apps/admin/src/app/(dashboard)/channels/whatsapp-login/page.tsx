@@ -3,6 +3,7 @@ import { loginBetaBackend } from "@/lib/backend-whatsapp-beta";
 import { requireOperator } from "@/lib/session";
 
 import { ChannelsTabs } from "../channels-tabs";
+import { countryNames } from "./countries";
 import { LoginBetaView } from "./login-beta-view";
 
 export const metadata = { title: "Beta «WhatsApp login»" };
@@ -28,7 +29,7 @@ export default async function WhatsappLoginBetaPage() {
       {countries === null ? (
         <ErrorState title="No se pudo leer la beta por país" description="La API no respondió. Vuelve a intentarlo en un momento." />
       ) : (
-        <LoginBetaView countries={countries} operatorId={operator.id} />
+        <LoginBetaView countries={countries} operatorId={operator.id} names={countryNames()} />
       )}
     </>
   );

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { StatusBadge, tabsListVariants } from "@nexus/ui";
 
+import { CrumbName } from "@/components/shell/crumb-names";
 import { clientHref, type ClientTab } from "@/components/shell/routes-v2";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
@@ -36,6 +37,8 @@ export function ClientHeaderV2({ client }: { client: ClientDetailV2 }) {
   const tone = client.lifecycle === "archived" ? "muted" : client.lifecycle === "paused" ? "warn" : "positive";
   return (
     <header className="grid min-w-0 gap-4" data-slot="client-header-v2">
+      {/* Las migas dicen el nombre: la referencia la deriva la consola. */}
+      <CrumbName id={client.external_client_ref} label={client.name} />
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="grid min-w-0 gap-1">
           <h1 className="text-2xl font-semibold text-balance break-words">{client.name}</h1>

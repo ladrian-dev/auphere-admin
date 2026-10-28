@@ -54,7 +54,7 @@ export const HISTORY: ChannelChange[] = [
   {
     id: "77777777-7777-4777-8777-777777777771",
     at: "2026-10-27T09:00:00Z",
-    actor: "luis@ladrian.studio",
+    actor: "console:luis@ladrian.studio",
     origin: "console",
     before: {
       audience: { mode: "unset", test_numbers: [], exceptions: [] },

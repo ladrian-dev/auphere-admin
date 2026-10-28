@@ -125,7 +125,7 @@ describe("la pantalla del agente · leer", () => {
     expect(screen.getByText("Sin publicar")).toBeVisible();
     expect(screen.getByText("8 pruebas")).toBeVisible();
     const order = Array.from(container.querySelectorAll("[data-block]")).map((el) => el.getAttribute("data-block"));
-    expect(order).toEqual(["identity", "voice", "instructions", "procedures", "services", "skills", "escalation", "rules"]);
+    expect(order).toEqual(["identity", "voice", "instructions", "procedures", "services", "skills", "escalation", "rules", "ai_disclosure"]);
     expect(within(block("identity")).getByText("Objetivo: Llenar la agenda")).toBeVisible();
     expect(within(block("voice")).getByText("Tú")).toBeVisible();
     expect(within(block("escalation")).getByText("Cuando pide hablar con una persona")).toBeVisible();
@@ -177,6 +177,36 @@ describe("la pantalla del agente · editar en línea (17.7)", () => {
     expect(within(block("rules")).getByText("No des precios por teléfono")).toBeVisible();
     // El foco vuelve a «Editar» del bloque guardado.
     expect(within(block("rules")).getByRole("button", { name: "Editar «Reglas»" })).toHaveFocus();
+  });
+
+  it("el aviso de IA lo decide una persona aquí: sin decidir lo dice, y se guarda decidido (16.6)", async () => {
+    // Recorrido UI de la 047: la puerta exige decidirlo y la pantalla no tenía
+    // dónde. Un agente nuevo no podía publicarse.
+    const user = userEvent.setup();
+    const { actions } = screenWith();
+    expect(within(block("ai_disclosure")).getByText(/Sin decidir/)).toBeVisible();
+    await user.click(within(block("ai_disclosure")).getByRole("button", { name: "Editar «Aviso de IA»" }));
+    const form = screen.getByRole("form", { name: "Editar «Aviso de IA»" });
+    await user.click(within(form).getByRole("radio", { name: /En su primer mensaje/ }));
+    await user.type(within(form).getByRole("textbox", { name: /Con qué palabras/ }), "Soy el asistente de la barbería.");
+    await user.click(within(form).getByRole("button", { name: "Guardar" }));
+    expect(actions.save).toHaveBeenCalledWith({
+      ref: REF,
+      agent: AGENT,
+      revision: 4,
+      spec: { ...SPEC, ai_disclosure: { decided: true, mode: "first_message", text: "Soy el asistente de la barbería." } },
+    });
+    expect(await within(block("ai_disclosure")).findByText(/Lo dice en su primer mensaje/)).toBeVisible();
+  });
+
+  it("el aviso de IA no se guarda sin elegir cuándo lo dice", async () => {
+    const user = userEvent.setup();
+    const { actions } = screenWith();
+    await user.click(within(block("ai_disclosure")).getByRole("button", { name: "Editar «Aviso de IA»" }));
+    const form = screen.getByRole("form", { name: "Editar «Aviso de IA»" });
+    await user.click(within(form).getByRole("button", { name: "Guardar" }));
+    expect(within(form).getByText("Elige cuándo lo dice.")).toBeVisible();
+    expect(actions.save).not.toHaveBeenCalled();
   });
 
   it("comprueba los límites antes de mandar nada", async () => {
@@ -358,6 +388,64 @@ describe("la pantalla del agente · probar y guardar (historias 8 y 9)", () => {
     expect(quality.tests.load).toHaveBeenCalled();
     expect(await screen.findByText("Publicado: v2")).toBeVisible();
     expect(await screen.findByText("No hay cambios sin guardar.")).toBeVisible();
+  });
+});
+
+describe("la pantalla del agente · la cabecera después de guardar", () => {
+  it("vuelve a leer la cabecera: de «Borrador» a lo que es ahora (recorrido UI)", async () => {
+    // Al guardar la primera versión la cabecera seguía en «Borrador» hasta
+    // recargar la página.
+    const user = userEvent.setup();
+    const base = {
+      id: AGENT,
+      name: "Recepción",
+      lifecycle: "draft",
+      pause_reason: null,
+      is_default: true,
+      open_conversations: 0,
+      paused_by_kind: null,
+      paused_origin: null,
+      allowed: ["rename", "archive"] as ("rename" | "archive")[],
+    };
+    const header = vi.fn(async () =>
+      okData({ ...base, lifecycle: "published", visible_state: { code: "ready_no_channel", tone: "info", reason: null } }),
+    );
+    render(
+      <LocaleProvider locale="es">
+        <AgentBuilder
+          refId={REF}
+          draft={draftWith()}
+          proposals={[]}
+          canWrite
+          header={{ ...base, visible_state: { code: "draft", tone: "muted", reason: null } } as never}
+          agents={[]}
+          quality={{ tests: suite(), preview: preview(), history: HISTORY, sessions: [] }}
+          actions={{
+            save: vi.fn(),
+            reload: vi.fn(async () => ({ ok: true as const, data: { draft: draftWith({ revision: 7, exists: false, active_number: 2 }), proposals: [] } })),
+            decide: vi.fn(),
+            header,
+          }}
+          qualityActions={{
+            playground: { open: vi.fn(), send: vi.fn(), setTime: vi.fn(), close: vi.fn() },
+            tests: { load: vi.fn(async () => okData(suite())), run: vi.fn(), poll: vi.fn(), notApplicable: vi.fn(), add: vi.fn() },
+            review: { load: vi.fn(async () => okData(REVIEW)), decide: vi.fn() },
+            publish: {
+              preview: vi.fn(async () => okData(preview({ has_draft: true }))),
+              publish: vi.fn(async () => okData({ job_id: "66666666-6666-4666-8666-666666666666" })),
+              poll: vi.fn(async () => okData(job({ status: "done", result: { number: 1, undo_until: null, gate: {} } }))),
+              undo: vi.fn(),
+            },
+            history: { load: vi.fn(async () => okData(HISTORY)), restore: vi.fn() },
+            wait: noWait,
+          }}
+        />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText("Borrador", { selector: "[data-slot=agent-state] *, [data-slot=agent-state]" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(header).toHaveBeenCalledWith({ ref: REF, agent: AGENT }));
+    expect(await screen.findByText("Listo · sin canal")).toBeVisible();
   });
 });
 

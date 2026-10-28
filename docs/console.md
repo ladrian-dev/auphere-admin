@@ -188,7 +188,9 @@ persona (`person`), categoría y periodo (`days=7|30|90|all`); cada fila dice qu
 (`actor_kind`) y desde dónde (`origin`: `console`, `lite_web`, `app`, `admin`,
 `api`, `system`), marca lo sensible (`sensitive`) y junta las filas seguidas con
 la misma persona, acción, cliente y día (`more_like_this`; `group=false` las
-separa). El vocabulario de las acciones de la 047 está en la migración 0197.
+separa). El vocabulario de las acciones de la 047 está en la migración 0197; la
+0203 cambia «integración» por «conector» en sus frases, y la categoría
+`integrations` se dice «Conectores».
 
 **Notificaciones**: cada aviso lleva su enlace al arreglo (`href`, tabla `LINKS` de
 `api/console/notifications.py`, según `events.md` §3). Los que van a un agente
@@ -233,7 +235,8 @@ Recepción lo dicen.
 `components/builder/agent-connectors.tsx`, acciones en
 `clients/[ref]/agents/connector-actions.ts`): la sección lee al montar
 `GET …/agents/{id}/integrations` (el catálogo, con lo que piden las habilidades
-primero), con buscador y categoría en la propia pantalla. «Conectar» pide el
+primero), con buscador y categoría en la propia pantalla. WhatsApp y TikTok no
+salen: son canales (`provider_meta.channel_only`), como en el admin. «Conectar» pide el
 permiso y llama a `POST …/connections`: si ya estaba autorizado, lo activa; si es
 OAuth, abre la autorización y la API lo activa al terminar; si pide una clave
 (`409 authorize_with_form`), se guarda con el alta de siempre y después

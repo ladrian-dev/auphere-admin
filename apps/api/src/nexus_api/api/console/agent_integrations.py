@@ -165,6 +165,10 @@ async def agent_integrations(
     needle = (q or "").strip().lower()
     out: list[IntegrationOut] = []
     for entry in entries:
+        # WhatsApp y TikTok son canales (``channel_only``): viven en Canales,
+        # como en el admin. Aquí salían «Sin conectar» con el número conectado.
+        if (entry.provider_meta or {}).get("channel_only") is True:
+            continue
         if needle and needle not in f"{entry.slug} {entry.display_name} {entry.vendor}".lower():
             continue
         install = installs.get(entry.slug)

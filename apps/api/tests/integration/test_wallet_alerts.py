@@ -180,6 +180,34 @@ async def test_a_client_out_of_quota_is_reported_even_with_partner_balance(db_se
     assert con_cupo not in out
 
 
+async def test_with_bags_the_safety_net_of_today_says_nothing(db_session) -> None:
+    """Spec 047 (T161), recorrido UI: con la consola nueva y las bolsas, un
+    cliente sin fila en ``partner_allocations`` no está «sin cupo»: su saldo es
+    su bolsa, y el aviso cuando se vacía es ``client.wallet.empty``. El cron
+    avisaba «se ha quedado sin saldo» de clientes con la bolsa llena."""
+    partner = await _partner(db_session, available=CAP)
+    partner.console_v2_enabled_at = datetime.now(UTC)
+    tenant_id = uuid.uuid4()
+    ref = f"con-bolsa-{tenant_id.hex[:8]}"
+    db_session.add(
+        Tenant(
+            id=tenant_id,
+            name="Con bolsa",
+            slug=ref,
+            status=TenantStatus.ACTIVE,
+            partner_id=partner.id,
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        PartnerTenant(partner_id=partner.id, external_client_ref=ref, tenant_id=tenant_id)
+    )
+    await db_session.commit()
+    ev = await evaluate_partner_wallet_alerts(db_session, partner)
+    assert ev.clients_out == []
+    assert "client.out_of_quota" not in await _kinds(db_session, partner.id)
+
+
 async def test_activation_says_when_the_client_cannot_serve(db_session) -> None:
     """D8 — «activado» con la cuota a cero avisa, no felicita."""
     from nexus_api.services.console_notifications import record_client_activation

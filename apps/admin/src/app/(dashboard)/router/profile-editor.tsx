@@ -54,7 +54,7 @@ export function ProfileEditor({ profiles, ceilings, deployments }: Props) {
   const current = profiles.find((p) => p.profile === selected);
   if (!current) {
     return (
-      <EmptyState
+      <EmptyState readonly
         title="No hay perfiles publicados"
         description="La migración 0182 siembra la versión 1 de los cinco perfiles."
       />

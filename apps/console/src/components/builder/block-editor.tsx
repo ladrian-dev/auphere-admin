@@ -57,6 +57,8 @@ export function BlockEditor({
       return <EscalationEditor {...props} />;
     case "rules":
       return <RulesEditor {...props} />;
+    case "ai_disclosure":
+      return <AiDisclosureEditor {...props} />;
   }
 }
 
@@ -523,5 +525,48 @@ function RemoveButton({ what, onClick }: { what: string; onClick: () => void }) 
     <Button type="button" variant="ghost" size="icon-sm" onClick={onClick} aria-label={t("builder.edit.remove", { what })} className="shrink-0">
       <X aria-hidden="true" />
     </Button>
+  );
+}
+
+// ── Aviso de IA ─────────────────────────────────────────────────────────────
+
+const DISCLOSURE_MODES = ["first_message", "on_ask"] as const;
+
+/** Lo decide una persona (16.6): cuándo dice que es una IA y, si quiere, con qué palabras. */
+function AiDisclosureEditor({ spec, busy, label, onSave, onCancel }: EditorProps<"ai_disclosure">) {
+  const t = useT();
+  const base = React.useId();
+  const current = spec.ai_disclosure;
+  const [mode, setMode] = React.useState<"" | (typeof DISCLOSURE_MODES)[number]>(current?.decided ? (current.mode ?? "") : "");
+  const [text, setText] = React.useState(current?.text ?? "");
+  const [errors, setErrors] = React.useState<Errors>({});
+
+  function submit() {
+    const next: Errors = { mode: mode ? undefined : t("builder.field.ai_disclosure.mode.required"), text: maxError(t, text, 200) };
+    setErrors(next);
+    if (hasErrors(next) || !mode) return;
+    onSave({ decided: true, mode, ...(text.trim() ? { text: text.trim() } : {}) });
+  }
+
+  return (
+    <EditorForm label={label} busy={busy} errors={errors} onSubmit={submit} onCancel={onCancel}>
+      <fieldset className="grid min-w-0 gap-2" aria-describedby={errors.mode ? `${base}-mode-error` : undefined}>
+        <legend className="mb-1 text-sm font-medium">{t("builder.field.ai_disclosure.mode")}</legend>
+        {DISCLOSURE_MODES.map((m) => (
+          <label key={m} className="flex min-h-6 items-center gap-2 text-sm">
+            <input type="radio" name={`${base}-mode`} className="size-4 accent-primary" checked={mode === m} onChange={() => setMode(m)} />
+            {t(`builder.field.ai_disclosure.mode.${m}` as MessageKey)}
+          </label>
+        ))}
+        {errors.mode ? (
+          <p id={`${base}-mode-error`} className="text-sm text-destructive">
+            {errors.mode}
+          </p>
+        ) : null}
+      </fieldset>
+      <Field label={t("builder.field.ai_disclosure.text")} optionalLabel={t("builder.edit.optional")} hint={t("builder.field.ai_disclosure.text.hint")} error={errors.text}>
+        {(a11y) => <Input {...a11y} value={text} maxLength={200} autoComplete="off" onChange={(e) => setText(e.target.value)} />}
+      </Field>
+    </EditorForm>
   );
 }

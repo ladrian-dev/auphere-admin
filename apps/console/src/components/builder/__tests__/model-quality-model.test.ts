@@ -58,6 +58,14 @@ describe("Calidad · las políticas", () => {
     expect(samePolicy({ kind: "profile", profile: "auto" }, { kind: "pinned", deployment: "auto" })).toBe(false);
   });
 
+  it("el borrador de un agente de antes fija «nexus/current-binding»: es el modelo de antes (recorrido UI)", () => {
+    // Salía «En el borrador: nexus/current-binding» aunque no cambiaba nada.
+    const legacy = { kind: "pinned" as const, deployment: "nexus/current-binding" };
+    expect(policyName(t, legacy)).toBe("El modelo que tenía antes de la consola nueva");
+    expect(samePolicy(legacy, { kind: "legacy" })).toBe(true);
+    expect(samePolicy({ kind: "legacy" }, legacy)).toBe(true);
+  });
+
   it("lee la política del borrador solo si tiene la forma del esquema", () => {
     expect(draftPolicy({ model_policy: { kind: "profile", profile: "max" } } as unknown as AgentSpec)).toEqual({ kind: "profile", profile: "max" });
     expect(draftPolicy({ model_policy: { kind: "pinned", deployment: "a/b" } } as unknown as AgentSpec)).toEqual({ kind: "pinned", deployment: "a/b" });

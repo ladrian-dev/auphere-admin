@@ -117,7 +117,7 @@ async def test_la_semilla_deja_el_mundo_del_prototipo(
     for name, tenant_id in clients.items():
         agents = await _rows(
             db_session,
-            "SELECT g.id, g.status, "
+            "SELECT g.id, g.status, g.lifecycle, g.is_default, "
             "  (SELECT count(*) FROM agent_configs c "
             "    WHERE c.agent_id = g.id AND c.status = 'active') AS active_versions "
             "FROM agents g WHERE g.tenant_id = :t",
@@ -139,6 +139,11 @@ async def test_la_semilla_deja_el_mundo_del_prototipo(
             continue
         assert agents, f"{name} tiene al menos un agente"
         assert all(a.status == "active" and a.active_versions == 1 for a in agents), name
+        # Como deja la migración 0190 a los agentes de antes (recorrido UI: la
+        # semilla los dejaba en «draft» y sin agente por defecto, así que ni
+        # «Pasar a otro agente» ni el agente por defecto se podían probar).
+        assert all(a.lifecycle == "published" for a in agents), name
+        assert sum(a.is_default for a in agents) == 1, name
         own_agents = {a.id for a in agents}
         whatsapp = [
             c

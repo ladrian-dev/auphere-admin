@@ -157,7 +157,7 @@ export type AgentSpec = {
 };
 
 /** Los bloques que se editan en línea en la pantalla del agente (17.7). */
-export type EditableBlock = "identity" | "voice" | "instructions" | "procedures" | "escalation" | "rules";
+export type EditableBlock = "identity" | "voice" | "instructions" | "procedures" | "escalation" | "rules" | "ai_disclosure";
 
 /** Cuántas pruebas tiene el agente y cuántas hay que volver a ejecutar (17.7). */
 export type DraftTests = { total: number; stale: number; case: number; sector: number };

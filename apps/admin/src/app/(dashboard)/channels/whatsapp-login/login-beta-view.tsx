@@ -28,18 +28,19 @@ import {
 import type { LoginBetaCountry } from "@/lib/backend-whatsapp-beta";
 
 import { setLoginBetaCountryAction } from "./actions";
-import { EU_WHY, REASON_MAX, countryName, countryOptions, enabledByLabel, isEuEea, reasonError } from "./countries";
+import { EU_WHY, REASON_MAX, countryName, countryOptions, enabledByLabel, isEuEea, reasonError, type CountryNames } from "./countries";
 
 const DATE = new Intl.DateTimeFormat("es", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
 
-type Props = { countries: LoginBetaCountry[]; operatorId: string };
+/** `names`: los nombres de los países calculados en el servidor (ver `countryNames`). */
+type Props = { countries: LoginBetaCountry[]; operatorId: string; names?: CountryNames };
 
 /**
  * Spec 047 (T117, 31.5, 54.7): where the owner's link offers «Conectar con
  * WhatsApp, sin cuenta de Meta», and the form to turn it on in a country —
  * never in the EU or the EEA. Every change carries its reason.
  */
-export function LoginBetaView({ countries, operatorId }: Props) {
+export function LoginBetaView({ countries, operatorId, names }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <Section
@@ -62,14 +63,14 @@ export function LoginBetaView({ countries, operatorId }: Props) {
               {countries.map((c) => (
                 <TableRow key={c.country}>
                   <TableCell className="font-medium">
-                    {countryName(c.country)} <code className="text-xs text-muted-foreground">{c.country}</code>
+                    {countryName(c.country, names)} <code className="text-xs text-muted-foreground">{c.country}</code>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-sm">{DATE.format(new Date(c.enabled_at))}</TableCell>
                   <TableCell className="text-sm" title={c.enabled_by}>
                     {enabledByLabel(c.enabled_by, operatorId)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <RemoveCountry country={c.country} />
+                    <RemoveCountry country={c.country} names={names} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -87,15 +88,15 @@ export function LoginBetaView({ countries, operatorId }: Props) {
         title="Activar en un país"
         description="Solo cuando Meta haya habilitado la beta para la app de Auphere en ese país. Se aplica a los enlaces que se creen desde ahora."
       >
-        <EnableForm enabled={countries.map((c) => c.country)} />
+        <EnableForm enabled={countries.map((c) => c.country)} names={names} />
       </Section>
     </div>
   );
 }
 
-function EnableForm({ enabled }: { enabled: string[] }) {
+function EnableForm({ enabled, names }: { enabled: string[]; names?: CountryNames }) {
   const router = useRouter();
-  const { available, blocked } = useMemo(() => countryOptions(enabled), [enabled]);
+  const { available, blocked } = useMemo(() => countryOptions(enabled, names), [enabled, names]);
   const [country, setCountry] = useState("");
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<{ country?: string; reason?: string }>({});
@@ -118,7 +119,7 @@ function EnableForm({ enabled }: { enabled: string[] }) {
         setFailure(result.error);
         return;
       }
-      toast.success(`Beta activada en ${countryName(country)}`);
+      toast.success(`Beta activada en ${countryName(country, names)}`);
       setCountry("");
       setReason("");
       router.refresh();
@@ -188,9 +189,9 @@ function EnableForm({ enabled }: { enabled: string[] }) {
   );
 }
 
-function RemoveCountry({ country }: { country: string }) {
+function RemoveCountry({ country, names }: { country: string; names?: CountryNames }) {
   const router = useRouter();
-  const name = countryName(country);
+  const name = countryName(country, names);
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);

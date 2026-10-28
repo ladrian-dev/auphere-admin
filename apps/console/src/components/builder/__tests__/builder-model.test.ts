@@ -107,6 +107,9 @@ describe("piezas del AgentSpec", () => {
     expect(blockOfPointer("/rules/-")).toBe("rules");
     expect(blockOfPointer("/connection_requests/0")).toBe("skills");
     expect(blockOfPointer("/model_policy")).toBeNull();
+    // El arreglo de «Falta decidir si el agente dice que es una IA» abre su bloque.
+    expect(blockOfPointer("/ai_disclosure")).toBe("ai_disclosure");
+    expect(blockOfPointer("/ai_disclosure/mode")).toBe("ai_disclosure");
   });
 
   it("las plantillas se agrupan en el orden en que llegan, la del partner primero", () => {

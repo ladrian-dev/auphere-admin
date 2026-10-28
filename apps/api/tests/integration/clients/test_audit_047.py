@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
 
 from nexus_api.api.console import audit as audit_module
 from nexus_api.core.tenant_context import tenant_scoped_session
@@ -107,5 +108,26 @@ async def test_the_new_categories_have_names(client: Any, db_session: Any) -> No
     filters = await client.get("/console/audit/filters?lang=es", headers=world.headers())
     assert filters.status_code == 200
     labels = {c["value"]: c["label"] for c in filters.json()["categories"]}
-    for category, label in (("business", "Negocio"), ("integrations", "Integraciones")):
+    # «Integraciones» se dice «Conectores» en todas las pantallas (recorrido UI).
+    for category, label in (("business", "Negocio"), ("integrations", "Conectores")):
         assert labels.get(category) == label
+
+
+async def test_no_audit_phrase_says_integracion(db_session: Any) -> None:
+    """Recorrido UI de la 047: en pantalla es «Conectores», nunca «Integraciones»
+    (tampoco en las frases de Auditoría que sembró la 0197)."""
+    rows = (
+        await db_session.execute(
+            sa.text(
+                "SELECT action, summary_es, summary_en FROM console_audit_vocabulary "
+                "WHERE summary_es ILIKE '%integraci%' OR summary_en ILIKE '%integration%'"
+            )
+        )
+    ).all()
+    assert rows == []
+    activated = await db_session.scalar(
+        sa.text(
+            "SELECT summary_es FROM console_audit_vocabulary WHERE action = 'integration.activated'"
+        )
+    )
+    assert activated == "{actor} activó un conector en un agente de {client}."

@@ -113,7 +113,8 @@ ficha. Sustituye a `partner_allocations` (que era un tope de gasto, no dinero).
   base del mes, una vez al mes, se apaga con la casilla del modal), «No llega a
   fin de mes» (al ritmo de 7 días, con al menos 3 días de consumo) y «Agotada»
   (cada día). Se rearman al subir el saldo. Con bolsas, `client.out_of_quota`, los
-  avisos de saldo de la lite de antes y `qa.cap_reached` no salen (T161).
+  avisos de saldo de la lite de antes y `qa.cap_reached` no salen (T161): ni del
+  turno saltado ni de la red de seguridad del cron (`evaluate_partner_wallet_alerts`).
 - **Borrar un cliente** devuelve antes su bolsa a la cuenta; **archivarlo**
   ofrece devolverla (`bag_left` en la respuesta).
 - **Solo Auphere cambia la moneda de la cuenta**

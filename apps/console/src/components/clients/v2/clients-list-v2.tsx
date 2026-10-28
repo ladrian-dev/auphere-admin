@@ -119,7 +119,7 @@ export function ClientsListV2({
 
       {items.length === 0 ? (
         counts.all === 0 && !q ? (
-          <EmptyState icon={Building2} title={t("clients.v2.empty.title")} description={t("clients.v2.empty.body")} />
+          <EmptyState readonly icon={Building2} title={t("clients.v2.empty.title")} description={t("clients.v2.empty.body")} />
         ) : (
           <p className="text-sm text-muted-foreground" role="status">
             {q ? t("clients.v2.empty.search", { q }) : t("clients.v2.empty.filter")}

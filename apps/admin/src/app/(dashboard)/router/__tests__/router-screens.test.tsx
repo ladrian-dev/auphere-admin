@@ -147,5 +147,7 @@ describe("the anomalies", () => {
   it("has an empty state", () => {
     render(<AnomaliesView data={{ ...ANOMALIES, items: [], waiting_no_model: [] }} />);
     expect(screen.getByText("Sin anomalías en este periodo")).toBeTruthy();
+    // Un vacío de solo lectura (recorrido UI: salía el aviso de desarrollo del sistema de diseño).
+    expect(screen.queryByText(/EmptyState without action/)).toBeNull();
   });
 });

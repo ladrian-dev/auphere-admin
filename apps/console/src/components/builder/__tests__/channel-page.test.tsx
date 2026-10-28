@@ -253,6 +253,8 @@ describe("la página de un canal", () => {
     expect(within(history).getByText("A quién responde: Todavía a nadie → Solo mi equipo")).toBeVisible();
     expect(within(history).getByText("Al conectar")).toBeVisible();
     expect(within(history).getAllByText(/luis@ladrian.studio/)[0]).toBeVisible();
+    // Recorrido UI: el origen («console:») no es de la persona y no se enseña.
+    expect(within(history).queryByText(/console:/)).toBeNull();
   });
 
   it("su ⋯ no repite «Configuración», y pasar el número lleva a su nuevo agente", async () => {

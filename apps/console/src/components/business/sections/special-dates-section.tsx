@@ -162,7 +162,8 @@ function SpecialDateForm({
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const end = to || from;
-    if (!from || end < from) return setError("date_range");
+    if (!from) return setError("no_from");
+    if (end < from) return setError("date_range");
     if (!closed && shifts.length === 0) return setError("no_shifts");
     startTransition(async () => {
       const problem = await onSave({

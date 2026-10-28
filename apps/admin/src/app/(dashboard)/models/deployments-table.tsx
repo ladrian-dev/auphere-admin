@@ -25,7 +25,7 @@ const DATE = new Intl.DateTimeFormat("es", { dateStyle: "medium", timeZone: "UTC
 export function DeploymentsTable({ rows }: { rows: DeploymentRow[] }) {
   if (!rows.length) {
     return (
-      <EmptyState
+      <EmptyState readonly
         title="Ningún despliegue con este estado"
         description="Un despliegue nuevo entra en borrador desde «Nuevo despliegue»."
       />

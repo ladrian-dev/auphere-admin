@@ -258,6 +258,9 @@ async def update_policies(
         from nexus_api.services.business.writes import BuilderWritesOnlyByProposal
 
         raise BuilderWritesOnlyByProposal("the builder proposes")
+    # Una respuesta del constructor puede ser lo primero que se escribe en la
+    # ficha de un cliente de antes de la 047 (recorrido UI: era un 500).
+    await _ensure_profile(session)
     profile = await _profile(session)
     before = dict((await client_spec.section_view(session, "policies"))["policies"] or {})
     current: dict[str, Any] = {} if replace else dict(profile.policies or {})

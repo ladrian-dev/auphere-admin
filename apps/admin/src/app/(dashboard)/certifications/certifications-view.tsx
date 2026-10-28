@@ -62,7 +62,7 @@ export function CertificationsView({ data }: { data: Certifications }) {
             </TableBody>
           </Table>
         ) : (
-          <EmptyState
+          <EmptyState readonly
             title="Ninguna certificación por clase"
             description="Un despliegue no entra en el router hasta pasar la batería común en español de alguna tarea."
           />
@@ -109,7 +109,7 @@ export function CertificationsView({ data }: { data: Certifications }) {
             </TableBody>
           </Table>
         ) : (
-          <EmptyState
+          <EmptyState readonly
             title="Ninguna certificación por agente"
             description="En las tareas de conversación, cada agente certifica con su suite cada despliegue que el router pueda usar con él."
           />
