@@ -41,6 +41,7 @@ from nexus_api.repositories.partner_membership import (
     InvitationError,
     PartnerInvitationRepository,
 )
+from nexus_api.services.console_v2 import born_on_new_console
 
 #: ``partners.slug`` es ``varchar(80)``. Se deja sitio para el sufijo que
 #: desambigua dos empresas con el mismo nombre.
@@ -115,13 +116,15 @@ async def complete_signup(
     if not name:
         raise SignupBirthError("empty_company_name", "company name is required")
 
-    partner = Partner(
-        id=uuid.uuid4(),
-        name=name,
-        slug=await _free_slug(session, slugify(name)),
-        status="active",
-        # La consola es lo único que esta persona puede usar el primer día.
-        console_enabled=True,
+    partner = born_on_new_console(
+        Partner(
+            id=uuid.uuid4(),
+            name=name,
+            slug=await _free_slug(session, slugify(name)),
+            status="active",
+            # La consola es lo único que esta persona puede usar el primer día.
+            console_enabled=True,
+        )
     )
     session.add(partner)
     await session.flush()

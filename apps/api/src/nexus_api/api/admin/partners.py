@@ -45,6 +45,7 @@ from nexus_api.schemas.partner import (
     PartnerUpdateIn,
     PartnerUsageOut,
 )
+from nexus_api.services.console_v2 import born_on_new_console
 
 log = structlog.get_logger(__name__)
 
@@ -164,11 +165,14 @@ async def create_partner(
     try:
         async with session.begin():
             partner = await PartnerRepository(session).create(
-                Partner(
-                    id=uuid.uuid4(),
-                    name=body.name,
-                    slug=body.slug,
-                    contact_email=body.contact_email,
+                # Nace con la consola nueva, la de todos los partners.
+                born_on_new_console(
+                    Partner(
+                        id=uuid.uuid4(),
+                        name=body.name,
+                        slug=body.slug,
+                        contact_email=body.contact_email,
+                    )
                 )
             )
             await session.refresh(partner)

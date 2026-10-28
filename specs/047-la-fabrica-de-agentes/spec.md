@@ -450,7 +450,7 @@ Solo se pasa a un modelo mayor cuando el turno da señales de dificultad, y eso 
 ### Historia 13 — Lo que ya existe sigue funcionando (Prioridad: P1)
 
 Los partners en producción pasan al modelo nuevo sin que sus clientes noten nada:
-- Auphere activa la consola nueva partner a partner;
+- la consola nueva pasa a ser la de todos los partners (Andrés, 2026-10-29; antes se activaba partner a partner);
 - los datos se migran para todos;
 - los agentes que ya existen responden igual, y su batería de evaluación da el mismo resultado;
 - el partner hace una sola vez «Repartir tu saldo en bolsas».
@@ -465,7 +465,7 @@ Los partners en producción pasan al modelo nuevo sin que sus clientes noten nad
 2. **Dado** un agente que «responde solo a 3 números», **cuando** se migra, **entonces** cada uno de sus números queda en «Solo mi equipo» con esos 3.
 3. **Dado** un partner con topes mensuales, **cuando** entra por primera vez en la consola nueva, **entonces** ve el reparto de su saldo en bolsas que se le propone y lo confirma o lo ajusta. Hasta que lo haga, sus clientes siguen respondiendo como hoy.
 4. **Dado** un horario escrito en el prompt, **cuando** se migra, **entonces** aparece en la ficha como «Migrado · revísalo».
-5. **Dado** un partner sin la consola nueva activada, **cuando** entra, **entonces** ve la consola de hoy y todo sigue igual.
+5. ~~**Dado** un partner sin la consola nueva activada, **cuando** entra, **entonces** ve la consola de hoy y todo sigue igual.~~ Retirado el 2026-10-29: todos los partners tienen la consola nueva.
 
 ---
 
@@ -2150,7 +2150,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    - el porcentaje de borradores que pasan el validador a la primera;
    - el porcentaje que pasa la batería del sector sin edición;
    - el tiempo p90 del borrador.
-5. DEBE fijar por partner el tope de «Construcción y pruebas», la consola nueva (requisito 55) y los modelos permitidos.
+5. DEBE fijar por partner el tope de «Construcción y pruebas» y los modelos permitidos. La consola nueva ya no se fija por partner (requisito 55.2).
 6. DEBE fijar por cliente la restricción soberana: solo proveedores europeos y pesos abiertos. El partner la ve como insignia del cliente y no la puede cambiar.
 7. DEBE activar por país la beta «WhatsApp login» cuando Meta la habilite para la app de Auphere, y nunca para números de la UE.
 8. DEBE mantener el catálogo de canales e integraciones. Lo que está «Próximamente» o «Pendiente» se ve aquí y en el catálogo de canales de la consola de partners (constitución 1.2.0); en ningún otro sitio.
@@ -2178,7 +2178,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    - los horarios, los servicios y los datos del negocio que hoy están en tres sitios pasan a la ficha, marcados «Migrado · revísalo» cuando vienen del prompt;
    - los ajustes de integraciones repartidos pasan a su página (requisito 36);
    - los topes mensuales de cada cliente quedan como propuesta de reparto en bolsas.
-2. La consola nueva DEBE activarse partner a partner desde el panel de operador. Un partner sin activar DEBE ver la consola de hoy, y la API DEBE servir a las dos.
+2. ~~La consola nueva DEBE activarse partner a partner desde el panel de operador. Un partner sin activar DEBE ver la consola de hoy, y la API DEBE servir a las dos.~~ La consola nueva DEBE ser la de todos los partners: la migración 0204 la enciende para los que seguían en la de antes (con la audiencia de sus números escrita como la habría escrito la activación) y los partners nuevos nacen con ella. (Andrés, 2026-10-29: ya no se activa partner a partner; la consola nueva es la de todos desde la migración 0204, y lo que el panel enciende o apaga por partner son los módulos, spec 032.) Por eso 55.4 y 55.5 (la prueba en seco y deshacer la activación) se retiran con el interruptor.
 3. WHEN un partner con topes mensuales entra por primera vez en la consola nueva THEN DEBE ver «Repartir tu saldo en bolsas», con una propuesta (lo que le queda este mes a cada cliente) que puede confirmar o ajustar. Hasta que confirme, sus clientes DEBEN seguir respondiendo con el tope de hoy.
 4. Antes de activar un partner, el sistema DEBE correr la batería de evaluación de cada uno de sus agentes y comparar la audiencia efectiva de cada número antes y después. Cualquier diferencia DEBE bloquear la activación de ese partner hasta que se revise.
 5. La activación DEBE poder deshacerse hasta que el partner confirme el reparto: desactivar devuelve la consola de hoy y los datos de antes.

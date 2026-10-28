@@ -54,7 +54,6 @@ describe("breadcrumb trail (spec 035)", () => {
     expect(crumbsFor("/builder/judge-calibration", names).map((c) => c.label)).toEqual(["Constructor", "Calibración del juez"]);
     expect(crumbsFor("/builder/eval", names).map((c) => c.label)).toEqual(["Constructor", "Evaluación"]);
     // Spec 047 (T172): las palancas del partner.
-    expect(crumbsFor("/partners/p1/console-v2", names).map((c) => c.label)).toEqual(["Partners", "Demo Auditoría", "Consola nueva"]);
     expect(crumbsFor("/partners/p1/limits", names).at(-1)).toEqual({ label: "Tope y moneda", href: null });
   });
 

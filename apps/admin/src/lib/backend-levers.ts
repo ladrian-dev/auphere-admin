@@ -2,7 +2,6 @@
  * Spec 047 (T172, historia 30): the operator's levers on a partner and a client,
  * and the reconciliations (`contracts/admin-api.md` §5 and §7):
  *
- * - the new console, partner by partner (`api/admin/console_v2.py`);
  * - the «Construcción y pruebas» cap and the account currency
  *   (`api/admin/partner_money.py`);
  * - the sovereign restriction of a client and the reconciliations of the ledger
@@ -22,68 +21,6 @@ export type Currency = "EUR" | "USD";
 
 /** `amount_micros` in hundred-thousandths of the currency (5_000_000 = 50). */
 export type MoneyMicros = { amount_micros: number; currency: Currency };
-
-// ── the new console (55.2, 55.4, 55.5) ──────────────────────────────────────
-
-/** `services/console_v2.py` (`_agents_of`): one row per agent with an active version. */
-export type DryRunAgent = {
-  tenant_id: string;
-  agent_id: string;
-  version_id: string;
-  same: boolean;
-  /** Absent when `reason` says why there was nothing to compare. */
-  prompt_identical?: boolean;
-  model_pinned?: boolean;
-  /** `no_spec`: the version has no AgentSpec yet. */
-  reason?: string;
-  /** Absent in the reports written before the API named them. */
-  agent_name?: string;
-  /** Only in the reports (`partner_tenants.client_name`), and it can be null. */
-  client_name?: string | null;
-};
-
-export type Audience = { mode: string; numbers: string[]; exceptions?: string[] };
-
-/** `services/console_v2.py` (`_audiences_of`): one row per number (channel). */
-export type DryRunChannel = {
-  tenant_id: string;
-  channel_id: string;
-  before: Audience;
-  after: Audience;
-  /** The channel's audience is still `unset`: the migration would write `after`. */
-  pending_migration: boolean;
-  same: boolean;
-  /** The business's number (`provider_identifier`). */
-  identifier?: string | null;
-  /** Only in the reports, and it can be null. */
-  client_name?: string | null;
-};
-
-export type DryRunResult = {
-  status: "clean" | "diff";
-  agents: DryRunAgent[];
-  channels: DryRunChannel[];
-};
-
-/** `GET …/console-v2/reports`, the newest first (50 at most). */
-export type MigrationReport = {
-  id: string;
-  kind: "dry_run" | "activation";
-  status: "clean" | "diff";
-  agents: DryRunAgent[];
-  channels: DryRunChannel[];
-  /** `operator:{email}`. */
-  created_by: string;
-  /** Why it was run, when the operator said it. */
-  reason?: string | null;
-  created_at: string;
-};
-
-export type ConsoleV2State = {
-  version: "v1" | "v2";
-  enabled_at: string | null;
-  enabled_by: string | null;
-};
 
 // ── the partner's money (43.1, 46.5) ────────────────────────────────────────
 
@@ -168,30 +105,6 @@ const op = (operatorId: string) => ({ "X-Operator-Id": operatorId });
 const partner = (id: string) => `/admin/partners/${encodeURIComponent(id)}`;
 
 export const leversBackend = {
-  /** Which console the partner sees today. */
-  consoleV2State: (partnerId: string) => call<ConsoleV2State>(`${partner(partnerId)}/console-v2`),
-  consoleV2Reports: (partnerId: string) =>
-    call<MigrationReport[]>(`${partner(partnerId)}/console-v2/reports`).then((r) => r ?? []),
-  /** The reason is optional for the dry run and asked by the screen for the switch. */
-  consoleV2DryRun: (partnerId: string, reason: string | null, operatorId: string) =>
-    call<DryRunResult>(`${partner(partnerId)}/console-v2/dry-run`, {
-      method: "POST",
-      body: reason ? { reason } : {},
-      headers: op(operatorId),
-    }),
-  consoleV2Enable: (partnerId: string, reason: string, operatorId: string) =>
-    call<ConsoleV2State>(`${partner(partnerId)}/console-v2/enable`, {
-      method: "POST",
-      body: { reason },
-      headers: op(operatorId),
-    }),
-  consoleV2Disable: (partnerId: string, reason: string, operatorId: string) =>
-    call<ConsoleV2State>(`${partner(partnerId)}/console-v2/disable`, {
-      method: "POST",
-      body: { reason },
-      headers: op(operatorId),
-    }),
-
   buildBudget: (partnerId: string) => call<BuildBudget>(`${partner(partnerId)}/build-budget`),
   setBuildBudget: (partnerId: string, body: { cap: MoneyMicros; reason: string }, operatorId: string) =>
     call<BuildBudgetSaved>(`${partner(partnerId)}/build-budget`, { method: "PUT", body, headers: op(operatorId) }),

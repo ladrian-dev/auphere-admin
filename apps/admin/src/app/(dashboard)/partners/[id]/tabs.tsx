@@ -19,8 +19,6 @@ export const PARTNER_TAB_GROUPS: ProfileTabGroup[] = [
       { seg: "modules", label: "Módulos" },
       { seg: "settings", label: "Configuración" },
       { seg: "knowledge", label: "Conocimiento" },
-      // Spec 047 (T172, 55.2): the dry run and the switch of the new console.
-      { seg: "console-v2", label: "Consola nueva" },
     ],
   },
   {

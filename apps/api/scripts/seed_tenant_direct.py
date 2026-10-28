@@ -43,6 +43,7 @@ from nexus_api.db.models import (
     TenantPlan,
     TenantStatus,
 )
+from nexus_api.services.console_v2 import born_on_new_console
 
 # Partner contenedor para clientes directos. La FK partner_id es not-null,
 # pero lo que decide el tenant es api_keys.tenant_id, no este partner.
@@ -94,7 +95,9 @@ async def main(name: str, slug: str, phone: str) -> None:
             sa.select(Partner).where(Partner.slug == DIRECT_PARTNER_SLUG)
         )
         if partner is None:
-            partner = Partner(id=uuid.uuid4(), name="Auphere Direct", slug=DIRECT_PARTNER_SLUG)
+            partner = born_on_new_console(
+                Partner(id=uuid.uuid4(), name="Auphere Direct", slug=DIRECT_PARTNER_SLUG)
+            )
             session.add(partner)
             await session.flush()
 

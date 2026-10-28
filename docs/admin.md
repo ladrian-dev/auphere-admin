@@ -287,37 +287,19 @@ termina.
 
 ## Palancas del partner y del cliente (spec 047)
 
-T172, historia 30 (requisitos 54.5, 54.6, 54.8, 54.9, 54.11 y 55; `contracts/admin-api.md`
+T172, historia 30 (requisitos 54.5, 54.6, 54.8, 54.9 y 54.11; `contracts/admin-api.md`
 §5). Cada escritura lleva `X-Operator-Id`; la API firma la auditoría como
 `operator:{correo}`. Los rechazos de la API se dicen en palabras (`lib/action-result.ts`).
 Las llamadas viven en `lib/backend-levers.ts`; lo que comparten (el motivo de 3 a 300
 caracteres, quién lo hizo, el dinero en `amount_micros`) en `lib/levers.ts`.
 
-### Consola nueva (`/partners/{id}/console-v2`)
+### Consola nueva: ya no hay interruptor
 
-`api/admin/console_v2.py`, requisitos 55.2, 55.4 y 55.5.
-
-- **Qué consola ve hoy** (`GET …/console-v2`): «Consola de hoy» o «Consola nueva», desde
-  cuándo y quién la activó. Según eso la pantalla ofrece «Activar» o «Volver a la consola
-  de hoy»; si no se pudo leer, las dos.
-- **«Correr el ensayo»** (`POST …/console-v2/dry-run`): no cambia nada y deja su informe.
-  Acepta un motivo opcional.
-- **El informe**: cada agente con su versión activa (si el prompt compilado es idéntico,
-  byte a byte, y si el modelo sigue fijado; «Sin AgentSpec» si la versión todavía no lo
-  tiene) y cada número con a quién responde hoy y a quién respondería con la consola nueva
-  («A todos», «A todos, salvo N números», «Solo mi equipo · números»), qué números entran
-  o salen y si aún está sin migrar. Las diferencias van primero y marcadas. Cada fila trae
-  su nombre de la API (`client_name`, `agent_name`, `identifier`); los informes de antes,
-  sin nombres, enseñan el principio del id.
-- **«Activar la consola nueva»**: solo se puede pulsar con un ensayo sin diferencias de las
-  últimas 24 horas, y la pantalla dice por qué no; la API lo vuelve a comprobar
-  (`dry_run_required`, `dry_run_has_differences`). Pide un **motivo** obligatorio.
-- **«Volver a la consola de hoy»**: con motivo obligatorio. La API lo rechaza si el partner
-  ya confirmó el reparto en bolsas (`wallet_split_confirmed`).
-- **Historial**: ensayos y activaciones, del último al primero (`GET …/console-v2/reports`),
-  con su motivo, y «Ver» abre cualquiera. El informe enseña su motivo encima.
-
-El motivo (de 3 a 300 caracteres, `{reason}`) queda en el informe y en la auditoría.
+Desde el 2026-10-29 la consola nueva es la de todos los partners (migración
+`0204_console_v2_for_all`; un partner nuevo nace con ella). La pestaña «Consola nueva»,
+su ensayo y sus rutas (`/admin/partners/{id}/console-v2…`) se quitaron: lo que el panel
+enciende o apaga por partner son los módulos (spec 032). Los informes de ensayo que ya
+estaban siguen en `migration_reports`.
 
 ### Tope y moneda (`/partners/{id}/limits`)
 

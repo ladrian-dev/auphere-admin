@@ -120,12 +120,13 @@ catálogo están en `docs/modelos-y-router.md`.
   «Preguntar antes de escribir» pide permiso al dueño (`tool_approvals.py`).
 - **Memoria del contacto**: por agente (`agent_memories.agent_id`).
 
-## 8. La consola nueva, partner a partner
+## 8. La consola nueva, la de todos
 
-`services/console_v2.py` y `api/admin/console_v2.py`. Auphere activa la consola
-nueva para cada partner tras un **ensayo** limpio (24 h): por agente, el prompt
-compila los mismos bytes y el modelo sigue fijado; por número, la audiencia
-efectiva es la misma con las reglas de hoy y con las nuevas. Una diferencia
-bloquea la activación. Desactivar devuelve la consola de hoy hasta que el
-partner confirma el reparto en bolsas. Los informes quedan en
-`migration_reports`.
+`services/console_v2.py`. Hasta el 2026-10-29 Auphere la activaba partner a
+partner tras un ensayo limpio desde el panel. Ya no: la migración
+`0204_console_v2_for_all` la encendió para todos los que seguían en la de antes,
+escribiendo antes la audiencia de sus números sin configurar con la regla de la
+0192 («Solo mi equipo» con los números de prueba del agente, o «A todos»), y un
+partner nuevo nace con ella (`born_on_new_console`). El dinero no se mueve solo:
+las bolsas siguen esperando a que el partner confirme el reparto. Los informes
+de ensayo que ya había quedan en `migration_reports`.

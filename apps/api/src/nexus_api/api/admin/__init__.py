@@ -15,7 +15,6 @@ from nexus_api.api.admin import (
     client_access,
     client_controls,
     connectors,
-    console_v2,
     conversations,
     cost,
     evals,
@@ -116,6 +115,5 @@ router.include_router(whatsapp_login_beta.router)
 # Spec 047 (T158): el tope de construcción y la moneda de la cuenta.
 router.include_router(partner_money.router)
 # Spec 047 (T180): el ensayo y la activación de la consola nueva.
-router.include_router(console_v2.router)
 # Spec 047 (T172): la restricción soberana y las conciliaciones.
 router.include_router(client_controls.router)

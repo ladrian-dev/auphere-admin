@@ -190,6 +190,8 @@ class TestElAltaCompleta:
             await db_session.execute(sa.select(Partner).where(Partner.slug == body["partner_slug"]))
         ).scalar_one()
         assert partner.console_enabled is True
+        # La consola nueva es la de todos: nace con ella (Andrés, 2026-10-29).
+        assert partner.console_v2_enabled_at is not None
         assert partner.status == "active", "nada quedó esperando a que alguien apruebe"
 
         membership = (

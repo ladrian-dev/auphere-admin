@@ -79,6 +79,7 @@ from nexus_api.db.models import (
 from nexus_api.services import client_access, console_identity
 from nexus_api.services.business_hours import canonical_business_hours
 from nexus_api.services.client_access import ClientAccessError
+from nexus_api.services.console_v2 import born_on_new_console
 
 ACTOR = "operator:dev-seed@auphere.local"
 DEFAULT_PASSWORD = "demo-demo-1234"
@@ -348,12 +349,14 @@ async def ensure_account(
 async def ensure_partner(session: AsyncSession, spec: PartnerSpec, now: datetime) -> Partner:
     partner = await session.scalar(sa.select(Partner).where(Partner.slug == spec.slug))
     if partner is None:
-        partner = Partner(
-            id=uuid.uuid4(),
-            name=spec.name,
-            slug=spec.slug,
-            contact_email=spec.people[0].email,
-            console_enabled=True,
+        partner = born_on_new_console(
+            Partner(
+                id=uuid.uuid4(),
+                name=spec.name,
+                slug=spec.slug,
+                contact_email=spec.people[0].email,
+                console_enabled=True,
+            )
         )
         session.add(partner)
         await session.flush()  # el trigger trg_partners_seed_wallet crea su cuenta

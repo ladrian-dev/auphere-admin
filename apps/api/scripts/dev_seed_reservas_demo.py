@@ -100,6 +100,7 @@ from nexus_api.db.models.partner_wallet import KIND_CREDIT_ADMIN
 from nexus_api.metering import wallet as book
 from nexus_api.services import client_access, console_identity, inbox_lifecycle
 from nexus_api.services.client_access import ClientAccessError
+from nexus_api.services.console_v2 import born_on_new_console
 from nexus_api.services.reservations import core, engine, waitlist
 from nexus_api.services.reservations.admin import RESERVAS_TOOLS, Choice
 from nexus_api.services.reservations.settings import apply_patch
@@ -568,12 +569,14 @@ async def ensure_account(
 async def ensure_partner(session: AsyncSession, password: str, now: datetime) -> Partner:
     partner = await session.scalar(sa.select(Partner).where(Partner.slug == PARTNER_SLUG))
     if partner is None:
-        partner = Partner(
-            id=uuid.uuid4(),
-            name=PARTNER_NAME,
-            slug=PARTNER_SLUG,
-            contact_email=OWNER_EMAIL,
-            console_enabled=True,
+        partner = born_on_new_console(
+            Partner(
+                id=uuid.uuid4(),
+                name=PARTNER_NAME,
+                slug=PARTNER_SLUG,
+                contact_email=OWNER_EMAIL,
+                console_enabled=True,
+            )
         )
         session.add(partner)
         await session.flush()  # el trigger trg_partners_seed_wallet crea su libro

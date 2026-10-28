@@ -100,15 +100,24 @@ paleta ⌘K y una puerta por sección (`requirePartnerModule` en el `layout.tsx`
 carpeta y en el Panel), que lleva al primer módulo asignado. El Companion es el módulo
 `companion`. Un partner sin ninguna sección de menú se lee como consola apagada.
 
-## La consola nueva, partner a partner (spec 047)
+## La consola nueva, la de todos los partners (spec 047)
 
-La fábrica de agentes (`specs/047-la-fabrica-de-agentes/`) llega detrás de una
-**activación por partner** (research D38): `partners.console_v2_enabled_at` y
-`_by`, que escribe Auphere (`services/console_v2.py`; auditoría
-`partner.console_v2_enabled` / `_disabled`). `/console/me` devuelve
-`console_version` (`v1` | `v2`) y `app/(console)/layout.tsx` elige el marco:
-- **`v1`** (`components/shell/console-shell-v1.tsx`): el de hoy, sin cambios.
-  Un partner sin activar no ve nada nuevo salvo el sistema visual.
+La fábrica de agentes (`specs/047-la-fabrica-de-agentes/`) llegó detrás de una
+**activación por partner** (research D38). Desde el 2026-10-29 es la consola de
+**todos**: la migración `0204_console_v2_for_all` la encendió para cada partner que
+seguía en la de antes (con la audiencia de sus números escrita como lo hacía la
+activación), y un partner nuevo nace con ella
+(`services/console_v2.born_on_new_console`, en el alta, en el panel y en los
+scripts de semilla). El interruptor del panel y sus rutas
+(`/admin/partners/{id}/console-v2…`) ya no existen; lo que el panel enciende o
+apaga por partner son los módulos (spec 032).
+
+`partners.console_v2_enabled_at` sigue siendo la marca que leen la API y el
+worker. `/console/me` devuelve `console_version` (`v1` | `v2`) y
+`app/(console)/layout.tsx` elige el marco:
+- **`v1`** (`components/shell/console-shell-v1.tsx`): el de antes. Solo lo ve un
+  partner sin la marca (en producción ya no hay ninguno) o cuando `/console/me`
+  falla.
 - **`v2`** (`console-shell-v2.tsx`): barra lateral plegable a 64 px con tooltip y
   solo el grupo «Operar» (`nav-v2.ts`; plegada, la etiqueta solo la leen los
   lectores de pantalla). Equipo, Facturación y API («Cuenta») viven en el menú del

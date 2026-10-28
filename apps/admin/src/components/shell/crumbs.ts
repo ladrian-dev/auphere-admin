@@ -59,7 +59,6 @@ const CHILD: Record<string, Record<string, string>> = {
     knowledge: "Conocimiento",
     audit: "Auditoría",
     // Spec 047 (T172).
-    "console-v2": "Consola nueva",
     limits: "Tope y moneda",
   },
 };
