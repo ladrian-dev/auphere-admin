@@ -1,6 +1,6 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { ChevronDown, Download } from "lucide-react";
 
 import { Button, StatusBadge, formatNumber } from "@nexus/ui";
 
@@ -32,15 +32,13 @@ export function UsageDetailPanel({ detail, names, days, client }: { detail: Usag
   const n = (v: number) => formatNumber(v, locale);
   const unpriced = detail ? detail.rows.reduce((sum, r) => sum + r.unpriced, 0) : 0;
   return (
-    <details className="group rounded-md bg-card ring-1 ring-foreground/10" data-slot="usage-detail">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4 text-sm font-medium">
-        <span>
-          {t("money.detail.title")}
-          <span className="block text-xs font-normal text-muted-foreground">{t("money.detail.hint")}</span>
+    <details className="group rounded-lg bg-card ring-1 ring-foreground/10" data-slot="usage-detail">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 [&::-webkit-details-marker]:hidden">
+        <span className="grid min-w-0 gap-1">
+          <span className="text-base font-semibold text-pretty">{t("money.detail.title")}</span>
+          <span className="text-sm text-pretty text-muted-foreground">{t("money.detail.hint")}</span>
         </span>
-        <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90">
-          ›
-        </span>
+        <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-hover) group-open:rotate-180" />
       </summary>
       <div className="flex min-w-0 flex-col gap-4 border-t border-border p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -59,7 +57,7 @@ export function UsageDetailPanel({ detail, names, days, client }: { detail: Usag
         ) : (
           <>
             {unpriced > 0 ? <p className="text-xs text-pretty text-muted-foreground">{t("money.detail.unpricedNote", { n: n(unpriced) })}</p> : null}
-            <div className="max-h-112 min-w-0 overflow-auto rounded-md ring-1 ring-foreground/10" role="region" aria-label={t("money.detail.title")} tabIndex={0}>
+            <div className="max-h-112 min-w-0 overflow-auto rounded-lg ring-1 ring-foreground/10" role="region" aria-label={t("money.detail.title")} tabIndex={0}>
               <table className="w-full min-w-[760px] text-sm">
                 <caption className="sr-only">{t("money.detail.title")}</caption>
                 <thead>

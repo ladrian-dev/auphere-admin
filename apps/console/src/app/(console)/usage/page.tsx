@@ -119,7 +119,7 @@ async function PartnerUsage({
   return (
     <>
       <PageHeader
-        eyebrow={t("nav.group.operate")}
+        size="display"
         title={t("usage.title")}
         description={t("usage.description")}
         actions={

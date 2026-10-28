@@ -110,7 +110,15 @@ La fábrica de agentes (`specs/047-la-fabrica-de-agentes/`) llega detrás de una
 - **`v1`** (`components/shell/console-shell-v1.tsx`): el de hoy, sin cambios.
   Un partner sin activar no ve nada nuevo salvo el sistema visual.
 - **`v2`** (`console-shell-v2.tsx`): barra lateral plegable a 64 px con tooltip y
-  sin etiquetas de grupo (`nav-v2.ts`), migas con el último elemento sin enlace
+  solo el grupo «Operar» (`nav-v2.ts`; plegada, la etiqueta solo la leen los
+  lectores de pantalla). Equipo, Facturación y API («Cuenta») viven en el menú del
+  perfil; el tema es un interruptor junto a la campana (`theme-switch.tsx`); un
+  botón redondo de vidrio vuelve a la miga anterior (`shell-back-button.tsx`, un
+  enlace, no el historial), junto al título de cada página que tiene a dónde volver
+  (`PageHeader back`, la cabecera del cliente y las del agente); el botón del menú
+  queda a plomo con el borde del lienzo, y al plegar solo se desliza el ancho: los
+  iconos no se mueven y los textos se desvanecen (Andrés, 2026-10-28). `nav.ts` no cambia: la app de escritorio compara con él.
+  Migas con el último elemento sin enlace
   (`crumbs-v2.ts`), la campana con los 5 últimos avisos, «Marcar todo como leído»
   y «Ver todas», el menú de perfil con el tema (que se queda en móvil) y cada
   pantalla con su URL en el historial. Las rutas de la v2 viven en `routes-v2.ts`.
@@ -139,6 +147,29 @@ foco; avisos que no se van con el foco o el ratón encima; `money` en `es-ES`, y
 gráfica de bloques (`block-chart.tsx`) con su tabla equivalente. El vidrio solo
 existe en la capa flotante y se apaga con `prefers-reduced-transparency`.
 
+Desde el 2026-10-28 los valores son los del prototipo aprobado «Consola de partners
+v2» (análisis completo en `specs/047-la-fabrica-de-agentes/evidence/prototipo/`):
+- **Vidrio** (utilidad `glass`): 60 % de opacidad (62 en oscuro), desenfoque de
+  22 px, el canto de luz arriba (`--glass-edge`) y la sombra que lo despega
+  (`--glass-shadow`), sumadas a `ring-1` por las variables de Tailwind. Lo llevan la
+  barra de pestañas fija, la barra de guardar flotante, los menús, los avisos y el
+  control segmentado (`segmented-control.tsx`).
+- **Radios**: controles a 8 px (`rounded-md`), tarjetas, menús y avisos a 12
+  (`rounded-lg`), lienzo y diálogos a 16 (`rounded-xl`). El lint `radius-enum`
+  admite `lg` y `xl`.
+- **Título de página**: `text-display` (40 px, −0,03 em), con `PageHeader
+  size="display"` y sin antetítulo en todas las páginas del partner.
+- **Botones y campos**: 36 px (`sm` 32), radio 8.
+- **Insignias**: el fondo suave del tono y el texto en su color legible
+  (`status-*-text`), sin borde. Con un icono dentro (el globo de «Leído de la web»),
+  el icono va en línea con el texto y hace de punto.
+- **Menú lateral**: 256 px, 15 px, el activo en verde suave (`--sidebar-accent`) y
+  el gris al pasar; grupos «Operar» y «Cuenta» de 11 px.
+- **Avisos** abajo en el centro, en vidrio; el tono lo dice su icono.
+- **Chat de prueba**: `--chat-bg` y `--bubble-out`.
+- **Movimiento**: los diálogos suben y crecen un poco al abrirse (`slide-in-from-bottom-2`,
+  `zoom-in-98`) y no se mueven con «reducir movimiento».
+
 El e2e del marco nuevo corre aparte, contra una API simulada del contrato:
 `pnpm exec playwright test -c e2e/shell.config.ts`.
 
@@ -150,8 +181,10 @@ agente ni aplica la plantilla por defecto**: el cliente nace `active`, con su fi
 (`business_profiles`) y su auditoría, en una sola transacción. El cuerpo de antes
 (`external_client_ref`…) sigue igual para los partners sin activar y para la API de
 partners (`docs/partner-integration.md`). La zona, el país y las monedas se deducen
-por este orden: dominio y prefijo, país del partner, navegador; se ven y se cambian
-en «Más ajustes». `POST /console/clients/link-detection` saca de la información las
+por este orden: dominio y prefijo, país del partner, navegador. «Más ajustes» solo
+enseña la zona horaria y la moneda (EUR o USD); el país, la moneda de los precios y
+«Solo UE» se deducen y se mandan sin pedirlos. Los ejemplos de los campos son
+generales, sin aludir a ningún nicho. `POST /console/clients/link-detection` saca de la información las
 webs y las redes (un `@` suelto se propone como Instagram), y
 `GET /console/clients/niche-suggestions` sugiere nichos de los 6 grupos y de los más
 usados, sin sustituir lo escrito.
@@ -181,7 +214,84 @@ persona», contadas por estado, nunca por texto) y «Necesita tu atención»: la
 regla única de `services/attention.py`, de más a menos grave, cada fila con su
 arreglo (`assign_balance` o `request_balance` según quién mire, `fix_channel`,
 `reconnect`, `raise_cap`, `connect_channel`, `new_agent`). Cada bloque dice su
-periodo.
+periodo. La composición es la del prototipo aprobado (`components/home/partner-panel.tsx`):
+«Hola, {nombre}» con el partner y el día (`today-date.tsx`, en el reloj del
+navegador) y «Nuevo cliente»; a la izquierda el gasto del mes con su barra por
+cliente; a la derecha tres cifras (conversaciones de la semana, clientes atendiendo
+y saldo disponible con lo asignado a clientes) y las conversaciones por día; abajo,
+«Necesita tu atención» con «N de M clientes sin problemas», su arreglo y un ⋯ por
+fila. El título grande de la consola nueva es `PageHeader size="display"`.
+
+**La pantalla del agente** (`components/builder/agent-builder.tsx`), como el
+prototipo: el agente es el título de la página, con su estado y «de {cliente}» (en
+las páginas de un agente, del nuevo y de sus canales la ficha del cliente deja su
+cabecera y solo pone su nombre en las migas). Debajo, cuatro pestañas en vidrio:
+Rendimiento (con Mejoras), Configurar y probar (cinco filas, «Qué hace», «Cómo
+habla», «Qué sabe», «Qué puede hacer» y «Cuándo pasa a una persona», que reúnen los
+nueve bloques del AgentSpec, cada una con su lápiz, y «Qué sabe» abre el
+conocimiento propio del agente; debajo, «Más ajustes» plegado con la recepción,
+las pruebas, la revisión, el historial, Avanzado, el copiloto y las propuestas; a la derecha, fija, la tarjeta de pruebas
+y el chat de prueba), Canales y Conectores. Un agente publicado abre en Rendimiento y uno sin publicar en
+Configurar y probar. «Guardar» flota abajo, en vidrio. Las pestañas ocultas siguen
+montadas: cambiar de pestaña no pierde el chat de prueba ni un editor abierto.
+
+**Negocio** (`components/business/sections/*`), como el prototipo: cada sección se
+lee primero y se edita con «Editar» (o «Añadir sede», «Añadir servicio») en su
+cabecera, una sola a la vez (`SectionEditProvider`, `useSectionEdit`). La tarjeta
+solo marca lo que pide algo: «Leído de la web · revísalo» con «Es correcto»
+(`confirmSectionAction`) y «Falta». El índice lleva un círculo por sección y la
+nota de que lo heredan sus agentes. Seis secciones: Datos básicos, Sedes, Horarios
+(con las fechas especiales dentro), Servicios, Documentos y webs
+(`BusinessSources`) y Redes sociales (`BusinessLinks`, con las redes de `GET
+/business`). La consola lite usa las mismas secciones.
+
+**«Necesita tu atención»** (Panel): sin botones sueltos en la fila; el arreglo que
+pide (asignar o pedir saldo, conectar o arreglar un canal…) es la primera opción
+de su «⋯», y el saldo se asigna o se pide sin salir del Panel.
+
+**La gráfica de bloques** (`block-chart.tsx`) tiene la forma del prototipo:
+cuadros redondeados con aire (hasta 32 px con pocas columnas, 20 con un mes, 10 con
+90 días), columnas repartidas a lo ancho, cinco marcas en el eje y «Hoy» en tinta;
+con una semana o dos, cada columna ocupa su parte del ancho con bloques de 16 px de
+alto (sin huecos grandes entre días); al pasar o enfocar, línea guía discontinua, la columna abierta más viva y las demás
+atenuadas, y un aviso de vidrio al lado con el día, el total grande y el reparto.
+Los colores no cambian: cada serie cumple 3:1 sobre el fondo (R47.10). Sigue siendo
+una lista con flechas y una tabla para lectores de pantalla.
+
+**Canales del agente** (`channel-picker.tsx`, `connect-whatsapp-dialog.tsx`): los
+cuatro pasos y las tarjetas de canal del prototipo (WhatsApp se conecta; los demás,
+«Próximamente» o «Pendiente»); WhatsApp abre «Conectar WhatsApp» con Coexistencia o
+Cloud API y «Compartir un enlace»; «Conectar» usa el alta de siempre
+(`runWhatsAppSignup`) y pasa el número a este agente. El logo de la app va donde se
+ve un canal (`brand-logo.tsx`).
+
+**El Panel del cliente** lleva solo Saldo, Este mes y Agentes que más consumen: la
+lectura de la web se sigue en Negocio. La pestaña Agentes va sin número, la campana
+lleva su borde (32 px, como el buscador y el interruptor del tema) y, con el
+lateral plegado, el nombre de cada entrada sale pegado a su icono.
+
+**Un solo botón primario por vista** (Andrés, 2026-10-28): «Nuevo cliente» y
+«Nuevo agente» están en la cabecera, y los vacíos no los repiten. En la lista de
+clientes, la columna Estado dice solo el estado del cliente (lo de sus agentes
+está en su columna), y el Panel del cliente no anuncia lo que falta en la ficha.
+Las redes sociales se escriben con el usuario y la consola enseña el enlace que
+saldrá (las mismas plantillas que `services/business/links.py`), con el logo de
+cada app (`components/brand-logo.tsx`, de Simple Icons, como el panel).
+
+**Pantallas del partner** alineadas con el prototipo el mismo día: la lista de
+clientes (buscador que filtra al escribir, filtro en un selector, columna «Saldo»
+con su barra, archivar sin confirmar y con «Deshacer»), el Panel del cliente (dos
+columnas, la barra del saldo contra lo asignado, los agentes que más consumen),
+el Panel del partner (cifras de 28 px y la semana frente a la anterior), la pestaña
+«Configurar y probar» del agente (cinco filas, la tarjeta de pruebas y el chat de
+prueba a la derecha, «Más ajustes» plegado con lo demás), Consumo, Auditoría, Guía
+del partner, Teammate, Equipo, Facturación, API y Notificaciones.
+
+**El constructor no se ve.** Trabaja por dentro (lee, propone y prepara el primer
+borrador), sin nombre, botón ni tarjeta en la interfaz: Negocio ya no lleva
+«Completar con el constructor» y los textos dicen «borrador» o «sugerido»
+(`i18n/__tests__/words.test.ts` lo vigila). El rol del equipo «Constructor» sigue
+con su nombre.
 
 **Auditoría** (`GET /console/audit`): filtra por cliente (también archivados),
 persona (`person`), categoría y periodo (`days=7|30|90|all`); cada fila dice quién
@@ -195,7 +305,8 @@ separa). El vocabulario de las acciones de la 047 está en la migración 0197; l
 **Notificaciones**: cada aviso lleva su enlace al arreglo (`href`, tabla `LINKS` de
 `api/console/notifications.py`, según `events.md` §3). Los que van a un agente
 abren su pantalla con `?tab=`, que `sectionForTab` (`builder-model.ts`) lleva a su
-sección: `performance` a Rendimiento, `improvements` a Mejoras, `tests` a Pruebas,
+sección, y `tabOfSection` abre la pestaña que la tiene (un enlace `#agente-…` hace lo
+mismo): `performance` a Rendimiento, `improvements` a Mejoras, `tests` a Pruebas,
 `advanced` a Avanzado, `quality` a Avanzado › Calidad (`#agente-calidad`) e
 `integrations` a Conectores (`#agente-conectores`). Cada tipo de aviso de la 047 tiene sus
 palabras en `i18n/lanes/notices.ts` (`render.test.ts` comprueba que ninguno queda

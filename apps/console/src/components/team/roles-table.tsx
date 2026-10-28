@@ -35,9 +35,10 @@ export const ROLE_CAPABILITIES: readonly { key: MessageKey; permission: Permissi
  */
 export function RolesTable({ t }: { t: T }) {
   return (
-    <section aria-labelledby="roles-h" className="flex min-w-0 flex-col gap-3" data-slot="roles-table">
+    // Spec 047 (prototipo): una tarjeta como las otras dos de Equipo.
+    <section aria-labelledby="roles-h" className="flex min-w-0 flex-col gap-4 rounded-lg bg-card p-4 ring-1 ring-foreground/10" data-slot="roles-table">
       <div className="grid gap-1">
-        <h2 id="roles-h" className="text-lg font-semibold">
+        <h2 id="roles-h" className="text-base font-semibold">
           {t("team.roles.title")}
         </h2>
         <p className="text-sm text-pretty text-muted-foreground">{t("team.roles.intro")}</p>
@@ -47,7 +48,7 @@ export function RolesTable({ t }: { t: T }) {
         role="group"
         aria-labelledby="roles-h"
         tabIndex={0}
-        className="min-w-0 overflow-x-auto rounded-md border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="min-w-0 overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         data-scroll-x
       >
         <table data-slot="table" className="w-full caption-bottom text-sm" aria-labelledby="roles-h">
@@ -87,11 +88,12 @@ export function RolesTable({ t }: { t: T }) {
           </TableBody>
         </table>
       </div>
-      <dl className="grid min-w-0 gap-2 sm:grid-cols-2">
+      {/* El `dl` del prototipo: el rol en una columna de 160 px y lo que hace al lado. */}
+      <dl className="grid min-w-0 gap-x-4 gap-y-2 text-sm sm:grid-cols-[160px_minmax(0,1fr)]">
         {ROLE_ORDER.map((role) => (
-          <div key={role} className="grid min-w-0 gap-1">
-            <dt className="text-sm font-medium">{t(roleKey(role))}</dt>
-            <dd className="text-sm text-pretty text-muted-foreground">{t(`role.${role}.desc` as MessageKey)}</dd>
+          <div key={role} className="contents">
+            <dt className="text-muted-foreground">{t(roleKey(role))}</dt>
+            <dd className="text-pretty">{t(`role.${role}.desc` as MessageKey)}</dd>
           </div>
         ))}
       </dl>

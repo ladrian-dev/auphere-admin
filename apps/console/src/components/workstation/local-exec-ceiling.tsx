@@ -17,7 +17,7 @@
  */
 import * as React from "react";
 
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@nexus/ui";
+import { Card, CardContent, CardHeader, CardTitle, SegmentedControl } from "@nexus/ui";
 
 import { setLocalExecCeilingAction } from "@/app/(console)/workstation/actions";
 import { useT } from "@/i18n/client";
@@ -55,21 +55,16 @@ export function LocalExecCeiling({ ceiling, manage }: { ceiling: ExecMode; manag
       <CardContent className="flex min-w-0 flex-col gap-3">
         <p className="text-sm text-pretty text-muted-foreground">{t("team.localExec.description")}</p>
         {manage ? (
-          <div role="group" aria-label={t("team.localExec.title")} className="flex min-w-0 flex-wrap gap-2">
-            {MODES.map((mode) => (
-              <Button
-                key={mode}
-                type="button"
-                size="sm"
-                variant={current === mode ? "default" : "outline"}
-                aria-pressed={current === mode}
-                disabled={pending}
-                onClick={() => choose(mode)}
-              >
-                {t(`team.localExec.${mode}`)}
-              </Button>
-            ))}
-          </div>
+          // El conmutador de vidrio del prototipo. `pressed`: elegir guarda, así
+          // que las flechas solo mueven el foco y se elige con Enter o Espacio.
+          <SegmentedControl
+            type="pressed"
+            aria-label={t("proto.ws.ceiling")}
+            value={current}
+            disabled={pending}
+            onValueChange={choose}
+            options={MODES.map((mode) => ({ value: mode, label: t(`team.localExec.${mode}`) }))}
+          />
         ) : (
           // Spec 016 (R8.3): without the permission the control does not
           // exist — the value is shown, nothing is greyed out.

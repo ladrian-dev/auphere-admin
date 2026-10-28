@@ -59,7 +59,7 @@ export function ProposalList({
   const [busy, setBusy] = React.useState<string | null>(null);
   const [problems, setProblems] = React.useState<Record<string, Problem>>({});
   const open = (proposals ?? []).filter((p) => !gone.has(p.id));
-  const Heading = bare ? "h4" : "h3";
+  const Heading = bare ? "h3" : "h2";
 
   async function run(p: Proposal, decision: "apply" | "reject") {
     setBusy(`${p.id}:${decision}`);

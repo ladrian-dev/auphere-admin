@@ -28,7 +28,7 @@ export function UsageLines({ lines, build, actions = SERVER }: { lines: UsageLin
   return (
     <ul className="grid min-w-0 gap-3 md:grid-cols-2" data-slot="usage-lines">
       {lines.map((l) => (
-        <li key={l.line} id={l.line === "build" ? "construccion" : undefined} className="grid min-w-0 scroll-mt-24 gap-2 rounded-md border border-border bg-card p-4" data-line={l.line}>
+        <li key={l.line} id={l.line === "build" ? "construccion" : undefined} className="grid min-w-0 scroll-mt-24 gap-2 rounded-lg border border-border bg-card p-4" data-line={l.line}>
           <div className="flex min-w-0 items-baseline justify-between gap-3">
             <h3 className="min-w-0 text-sm font-semibold text-pretty">{t(LINE_LABEL[l.line])}</h3>
             <span className="shrink-0 text-base font-semibold whitespace-nowrap tabular-nums">

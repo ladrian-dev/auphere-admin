@@ -12,7 +12,7 @@ import { CH, HISTORY, RECEPCION, REF, VENTAS, fail, ok, page } from "./channel-f
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => router }));
 vi.mock("@/app/(console)/clients/[ref]/agents/channel-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({}));
 
@@ -58,7 +58,7 @@ beforeEach(() => {
 describe("la página de un canal", () => {
   it("tiene sus cinco secciones, el estado visible y los disparadores del agente en solo lectura", async () => {
     const { container } = view();
-    expect(screen.getByRole("heading", { level: 2, name: "Canal +34 611 20 48 93" })).toBeVisible();
+    expect(screen.getByRole("heading", { level: 1, name: "Canal +34 611 20 48 93" })).toBeVisible();
     for (const name of ["A quién responde", "Excepciones", "Escalado a personas", "Mensaje de espera", "Comprobaciones", "Historial"]) {
       expect(screen.getByRole("region", { name })).toBeVisible();
     }

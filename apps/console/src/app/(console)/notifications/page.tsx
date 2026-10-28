@@ -1,7 +1,4 @@
-import { PageHeader } from "@nexus/ui";
-
 import { NotificationsList } from "@/components/notifications/notifications-list";
-import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
 import { pageTitle } from "@/i18n/metadata";
@@ -11,7 +8,6 @@ export const generateMetadata = () => pageTitle("nav.notifications");
 /** Notification centre (CP-29). Every member of the partner may read (partner:read). */
 export default async function NotificationsPage({ searchParams }: { searchParams: Promise<{ unread?: string }> }) {
   const principal = await requirePartnerPrincipal("/notifications");
-  const { t } = await getT(principal.locale);
   const sp = await searchParams;
   const unreadOnly = sp.unread === "1" || sp.unread === "true";
   const api = backendFor(principal);
@@ -22,7 +18,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const clientNames = Object.fromEntries((clients?.items ?? []).map((c) => [c.external_client_ref, c.name]));
   return (
     <>
-      <PageHeader eyebrow={principal.partnerName} title={t("notif.title")} description={t("notif.subtitle")} />
+      {/* La cabecera (con «Marcar todas como leídas») la pinta la lista: depende de las sin leer. */}
       <NotificationsList initial={page} initialFilter={unreadOnly ? "unread" : "all"} clientNames={clientNames} canAssign={can(principal.role, "usage:write")} />
     </>
   );

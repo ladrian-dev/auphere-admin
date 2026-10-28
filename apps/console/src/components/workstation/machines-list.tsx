@@ -1,6 +1,6 @@
 "use client";
 
-import { Laptop } from "lucide-react";
+import { Archive, Laptop, MoreHorizontal, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -12,7 +12,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   ConfirmDialog,
   Dialog,
   DialogContent,
@@ -20,6 +19,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   EmptyState,
   Input,
   Label,
@@ -28,6 +32,7 @@ import {
 } from "@nexus/ui";
 
 import { archiveMachineAction, renameMachineAction } from "@/app/(console)/workstation/actions";
+import { foldsIntoMenu } from "@/components/row-actions-rule";
 import { useLocale, useT } from "@/i18n/client";
 import type { MachineOut } from "@/lib/backend/workstation";
 
@@ -98,6 +103,13 @@ export function MachinesList({
   }
 
   const canEdit = (m: MachineOut) => canPair && (m.mine || manager) && m.archived_at === null;
+  // La regla del «⋯» (row-actions-rule): dos botones por máquina; si la lista
+  // pasa de dos, Renombrar y Archivar van en el menú de cada una (prototipo).
+  const menu = foldsIntoMenu(active.filter(canEdit).length * 2);
+  const startRename = (m: MachineOut) => {
+    setName(m.display_name);
+    setRenaming(m);
+  };
 
   return (
     <section aria-labelledby="ws-machines" className="flex flex-col gap-4">
@@ -127,13 +139,25 @@ export function MachinesList({
         <ul className="flex flex-col gap-4">
           {active.map((m) => (
             <li key={m.id}>
-              <Card>
+              <Card data-slot="machine-card">
                 <CardHeader className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <CardTitle className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="min-w-0 truncate" title={m.display_name}>
-                        {m.display_name}
-                      </span>
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <span aria-hidden="true" data-slot="machine-tile" className="grid size-9 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                      <Laptop className="size-4" />
+                    </span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                      <div className="min-w-0">
+                        <h3 className="min-w-0 truncate text-base leading-snug font-medium" title={m.display_name}>
+                          {m.display_name}
+                        </h3>
+                        <p className="min-w-0 font-mono text-xs break-all text-muted-foreground">
+                          {t("ws.machines.hostname")}: {m.hostname}
+                          {" · "}
+                          {m.owner_user_id === currentUserId
+                            ? t("ws.machines.mine")
+                            : t("ws.machines.owner", { name: m.owner_display_name ?? m.owner_user_id })}
+                        </p>
+                      </div>
                       <StatusBadge tone={m.presence === "presente" ? "positive" : "muted"}>
                         {m.presence === "presente"
                           ? t("workstation.devices.present")
@@ -141,33 +165,40 @@ export function MachinesList({
                             ? t("workstation.devices.absentSince", { when: formatRelative(m.last_heartbeat_at, locale) })
                             : t("workstation.devices.never")}
                       </StatusBadge>
-                    </CardTitle>
-                    <p className="mt-1 min-w-0 break-all font-mono text-xs text-muted-foreground">
-                      {t("ws.machines.hostname")}: {m.hostname}
-                      {" · "}
-                      {m.owner_user_id === currentUserId
-                        ? t("ws.machines.mine")
-                        : t("ws.machines.owner", { name: m.owner_display_name ?? m.owner_user_id })}
-                    </p>
+                    </div>
                   </div>
                   {canEdit(m) ? (
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setName(m.display_name);
-                          setRenaming(m);
-                        }}
-                        aria-label={`${t("ws.machines.rename")}: ${m.display_name}`}
-                      >
-                        {t("ws.machines.rename")}
-                      </Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setArchiving(m)} aria-label={`${t("ws.machines.archive")}: ${m.display_name}`}>
-                        {t("ws.machines.archive")}
-                      </Button>
-                    </div>
+                    menu ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          aria-label={t("proto.ws.machine.actions", { name: m.display_name })}
+                          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-muted"
+                          data-slot="row-actions"
+                        >
+                          <MoreHorizontal aria-hidden="true" className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem onClick={() => startRename(m)}>
+                            <Pencil aria-hidden="true" />
+                            {t("ws.machines.rename")}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem variant="destructive" onClick={() => setArchiving(m)}>
+                            <Archive aria-hidden="true" />
+                            {t("ws.machines.archive")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => startRename(m)} aria-label={`${t("ws.machines.rename")}: ${m.display_name}`}>
+                          {t("ws.machines.rename")}
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setArchiving(m)} aria-label={`${t("ws.machines.archive")}: ${m.display_name}`}>
+                          {t("ws.machines.archive")}
+                        </Button>
+                      </div>
+                    )
                   ) : null}
                 </CardHeader>
                 <CardContent>
@@ -185,7 +216,7 @@ export function MachinesList({
             {showArchived ? t("ws.machines.hideArchived") : t("ws.machines.showArchived")} ({archived.length})
           </Button>
           {showArchived ? (
-            <ul className="divide-y divide-border rounded-md ring-1 ring-foreground/10">
+            <ul className="divide-y divide-border rounded-lg bg-card ring-1 ring-foreground/10">
               {archived.map((m) => (
                 <li key={m.id} className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
                   <span className="min-w-0 truncate" title={m.display_name}>

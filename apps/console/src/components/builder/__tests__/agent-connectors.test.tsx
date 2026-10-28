@@ -67,7 +67,7 @@ describe("la sección Conectores · leer", () => {
     const { container } = panel();
     const list = screen.getByRole("list", { name: "Conectores para este agente" });
     const names = within(list)
-      .getAllByRole("heading", { level: 4 })
+      .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent);
     expect(names).toEqual(["WooCommerce", "Google Calendar", "Amigable Cobro", "HubSpot"]);
     expect(within(row("WooCommerce")).getByText("Lo usa este agente")).toBeVisible();
@@ -89,15 +89,15 @@ describe("la sección Conectores · leer", () => {
     const user = userEvent.setup();
     panel();
     await user.type(screen.getByRole("searchbox", { name: "Buscar un conector" }), "cal");
-    expect(screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent)).toEqual(["Google Calendar"]);
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Google Calendar"]);
     expect(screen.getByText("Se ven 1 de 4")).toBeVisible();
     await user.clear(screen.getByRole("searchbox", { name: "Buscar un conector" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "Categoría" }), "Cobros");
-    expect(screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent)).toEqual(["Amigable Cobro"]);
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Amigable Cobro"]);
     await user.type(screen.getByRole("searchbox", { name: "Buscar un conector" }), "nada");
     expect(screen.getByText("Ningún conector coincide con la búsqueda.")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Quitar los filtros" }));
-    expect(screen.getAllByRole("heading", { level: 4 })).toHaveLength(4);
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
   });
 
   it("con más de dos acciones en la lista, cada fila las lleva en su ⋯, la principal primero", async () => {

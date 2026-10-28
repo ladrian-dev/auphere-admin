@@ -13,7 +13,7 @@ import { AGENT, JOB, REF, fail, noWait, ok, profile, quality } from "./connector
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/agents/model-quality-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/quality-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/connector-actions", () => ({}));
@@ -305,10 +305,10 @@ describe("Calidad y Conectores en la pantalla del agente", () => {
         />
       </LocaleProvider>,
     );
-    const nav = screen.getByRole("navigation", { name: "Partes del agente" });
-    expect(within(nav).getByRole("link", { name: "Conectores" })).toHaveAttribute("href", "#agente-conectores");
-    expect(within(nav).getByRole("link", { name: "Avanzado" })).toHaveAttribute("href", "#agente-avanzado");
-    expect(screen.getByRole("region", { name: "Conectores" })).toHaveAttribute("id", "agente-conectores");
+    // Calidad vive en «Configuración»; los Conectores, en su pestaña.
+    expect(screen.getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Conectores" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: "Avanzado" })).toHaveAttribute("id", "agente-avanzado");
     const calidad = screen.getByRole("region", { name: "Calidad" });
     expect(calidad).toHaveAttribute("id", "agente-calidad");
     expect(calidad.closest("#agente-avanzado")).not.toBeNull();

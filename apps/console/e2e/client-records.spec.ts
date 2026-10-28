@@ -36,7 +36,7 @@ test.describe("Spec 047 — la lista de clientes", () => {
       const res = await page.goto("/clients");
       expect(res?.status()).toBeLessThan(400);
       await expect(page.locator("[data-slot=clients-list-v2]")).toBeVisible();
-      await expect(page.getByRole("link", { name: "Necesitan atención · 3" })).toBeVisible();
+      await expect(page.getByRole("combobox", { name: "Filtrar clientes" })).toContainText("Necesitan atención (3)");
       const table = page.getByRole("region", { name: "Clientes del partner" });
       await expect(table.getByText("Saldo bajo · quedan 4 días")).toBeVisible();
       await expect(table.getByText("Sin saldo").first()).toBeVisible();
@@ -48,8 +48,8 @@ test.describe("Spec 047 — la lista de clientes", () => {
   test("el menú ⋯ de una fila lleva lo permitido", async ({ page }) => {
     await page.goto("/clients");
     await page.getByRole("button", { name: "Acciones de Barbería Cultor" }).click();
-    for (const item of ["Editar", "Asignar saldo", "Nuevo agente", "Archivar", "Eliminar"]) {
-      await expect(page.getByRole("menuitem", { name: item })).toBeVisible();
+    for (const item of ["Editar cliente", "Asignar saldo", "Archivar", "Eliminar…"]) {
+      await expect(page.getByRole("menuitem", { name: item, exact: true })).toBeVisible();
     }
     await page.keyboard.press("Escape");
   });
@@ -75,11 +75,8 @@ test.describe("Spec 047 — el Panel del cliente", () => {
   test("archivar desde la cabecera ofrece «Deshacer»", async ({ page }) => {
     await page.goto("/clients/barberia-cultor");
     await page.getByRole("button", { name: "Acciones de Barbería Cultor" }).click();
+    // Archivar no pregunta (prototipo, 7.4): se deshace desde el aviso.
     await page.getByRole("menuitem", { name: "Archivar" }).click();
-    const dialog = page.getByRole("dialog", { name: "Archivar Barbería Cultor" });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Archivar" }).click();
-    await expect(dialog).toBeHidden();
     const toast = page.getByText("Barbería Cultor archivado. Sus agentes quedan en pausa.");
     await expect(toast).toBeVisible();
     await page.getByRole("button", { name: "Deshacer" }).click();

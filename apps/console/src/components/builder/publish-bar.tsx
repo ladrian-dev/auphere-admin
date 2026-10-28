@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, CircleCheck, LoaderCircle, Play, TriangleAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -23,15 +23,15 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-  StatusDot,
   Textarea,
 } from "@nexus/ui";
 
 import { publishAction, publishPreviewAction, qualityJobAction, undoPublishAction } from "@/app/(console)/clients/[ref]/agents/quality-actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { DiffRow, Gate, PublishBody, PublishPreview, PublishResult, QualityJob } from "@/lib/backend/agent-quality-types";
+import type { DiffRow, Gate, PublishBody, PublishPreview, PublishResult, QualityJob, TestSummary } from "@/lib/backend/agent-quality-types";
 
+import { barState } from "./agent-proto-model";
 import { sleep, type Result } from "./builder-model";
 import { channelsHref, partKey, undoOpen, waitForJob } from "./quality-model";
 
@@ -67,6 +67,13 @@ const UNDO_MAX_MS = 10 * 60 * 1000;
  * o un bloqueante, solo un owner o un admin ve «Guardar igualmente…», que pide
  * el motivo; a los demás no se les enseña un control que no pueden usar (§V).
  * Después de guardar, el aviso trae «Deshacer» mientras dura su ventana.
+ *
+ * Como el prototipo aprobado (§4.5): a la izquierda el estado con su icono, a
+ * la derecha los botones píldora. Con las pruebas de la pantalla dice en qué
+ * punto están («Borrador completo» con «Ejecutar pruebas», «1 de 20 pruebas
+ * falla» con «Guardar igualmente», «20 de 20 pruebas pasan · guardado») y solo
+ * ofrece guardar lo que hay que guardar. La puerta bloqueada se explica en una
+ * hoja lateral («Ver por qué»), no dentro de la barra.
  */
 export function PublishBar({
   refId,
@@ -75,6 +82,9 @@ export function PublishBar({
   hadActive,
   canWrite,
   refreshKey = 0,
+  tests = null,
+  pendingQuestions = 0,
+  onConnect,
   onPublished,
   actions = SERVER_ACTIONS,
   wait = sleep,
@@ -87,6 +97,12 @@ export function PublishBar({
   hadActive: boolean;
   canWrite: boolean;
   refreshKey?: number;
+  /** Las pruebas de la pantalla: en qué punto están y «Ejecutar pruebas». Sin ellas, la barra de siempre. */
+  tests?: { summary: TestSummary | null; running: boolean; canRun: boolean; run: () => void } | null;
+  /** Las preguntas del borrador nuevo sin responder (§4.5, fila 3): se puede probar igualmente. */
+  pendingQuestions?: number;
+  /** Conectar un canal sin salir de la pantalla (la pestaña Canales). Sin él, la página de canales del cliente. */
+  onConnect?: () => void;
   /** Se publicó o se deshizo: el borrador, el historial y las pruebas cambiaron. */
   onPublished?: () => void;
   actions?: PublishActions;
@@ -103,6 +119,7 @@ export function PublishBar({
   const [note, setNote] = React.useState("");
   const [confirmNormal, setConfirmNormal] = React.useState(false);
   const [overrideOpen, setOverrideOpen] = React.useState(false);
+  const [gateOpen, setGateOpen] = React.useState(false);
   const running = step !== null;
 
   const reload = React.useCallback(async () => {
@@ -169,13 +186,17 @@ export function PublishBar({
       });
       onPublished?.();
       await reload();
-      if (action === "save_and_connect") router.push(channelsHref(refId));
+      if (action === "save_and_connect") {
+        if (onConnect) onConnect();
+        else router.push(channelsHref(refId));
+      }
       return;
     }
     if (job.error_code === "gate_blocked") {
       const block = job.progress?.blocks?.find((b) => b.key === "gate") as (Gate & { key: string }) | undefined;
       setGate(block ? { ...EMPTY_GATE, ...block } : EMPTY_GATE);
       setDiffOpen(false);
+      setGateOpen(true);
       return;
     }
     setError(
@@ -208,39 +229,118 @@ export function PublishBar({
   const offerOverride = canSkip && gate.overridable.length > 0 && preview.can_override;
   const offerAnyway = canSkip && gate.overridable.length === 0 && gate.normal_failures.length > 0;
 
+  // Qué dice la barra y qué ofrece; lo que está pasando ahora manda sobre las pruebas.
+  const state = barState({ canWrite, preview, tests: tests ? { summary: tests.summary, running: tests.running, canRun: tests.canRun } : null });
+  const saveButton = (
+    <Button key="save" onClick={save} loading={running} className={PILL}>
+      {t(`builder.publish.${preview.action}` as MessageKey)}
+      {preview.action === "save_and_connect" ? <ArrowRight aria-hidden="true" /> : null}
+    </Button>
+  );
+  let icon: React.ReactNode = null;
+  let text: string;
+  let buttons: React.ReactElement[] = [];
+  switch (state.kind) {
+    case "readonly":
+      text = t("builder.publish.readonly");
+      break;
+    case "running":
+      icon = <LoaderCircle aria-hidden="true" className={`${ICON} animate-spin motion-reduce:animate-none`} />;
+      text = t("agentProto.bar.running");
+      break;
+    case "failing":
+      icon = <TriangleAlert aria-hidden="true" className={`${ICON} text-warning`} />;
+      text = t(state.failing === 1 ? "agentProto.bar.failing.one" : "agentProto.bar.failing.other", { n: state.failing, total: state.total });
+      if (state.save)
+        buttons = [
+          <Button key="anyway" variant="outline" onClick={save} loading={running} className={PILL}>
+            {t("builder.publish.anyway")}
+          </Button>,
+        ];
+      break;
+    case "passing":
+      icon = <CircleCheck aria-hidden="true" className={`${ICON} text-status-positive-text`} />;
+      text = t(state.saved ? "agentProto.bar.passing.saved" : "agentProto.bar.passing", { passed: state.passed, total: state.total });
+      if (state.next === "save") buttons = [saveButton];
+      else if (state.next === "connect" && onConnect)
+        buttons = [
+          <Button key="connect" onClick={onConnect} className={PILL}>
+            {t("agentProto.bar.connect")}
+            <ArrowRight aria-hidden="true" />
+          </Button>,
+        ];
+      break;
+    case "pending":
+      text = state.draft ? t("agentProto.bar.complete") : t("agentProto.bar.notRun");
+      buttons = [
+        <Button key="run" onClick={() => tests?.run()} className={PILL}>
+          <Play aria-hidden="true" />
+          {t("agentProto.bar.run")}
+        </Button>,
+      ];
+      break;
+    case "plain":
+      if (preview.has_draft) {
+        text = t("builder.publish.hint");
+        buttons = [saveButton];
+      } else text = t("builder.publish.nothing");
+      break;
+  }
+  // §4.5, fila 3: con preguntas sin responder y las pruebas sin terminar, se dice que se puede probar igualmente.
+  if (pendingQuestions > 0 && (state.kind === "pending" || state.kind === "plain") && canWrite) {
+    icon = null;
+    text = t(pendingQuestions === 1 ? "agentProto.bar.pending.one" : "agentProto.bar.pending.other", { n: pendingQuestions });
+  }
+  if (running) {
+    icon = <LoaderCircle aria-hidden="true" className={`${ICON} animate-spin motion-reduce:animate-none`} />;
+    text = t(`builder.publish.step.${step}` as MessageKey);
+    buttons = [];
+  } else if (gate && canWrite) {
+    // No pasó la puerta: se dice aquí y se explica en la hoja.
+    icon = <TriangleAlert aria-hidden="true" className={`${ICON} text-warning`} />;
+    text = t("builder.publish.blocked.title");
+    buttons = [
+      <Button key="why" variant="outline" onClick={() => setGateOpen(true)} className={PILL}>
+        {t("agentProto.bar.why")}
+      </Button>,
+      ...buttons.filter((b) => b.key === "run"),
+    ];
+  }
+
   return (
-    <div role="region" aria-label={t("builder.publish.bar")} className="grid min-w-0 gap-3" data-slot="publish-bar">
-      {!canWrite ? (
-        <p className="text-sm text-muted-foreground">{t("builder.publish.readonly")}</p>
-      ) : !preview.has_draft ? (
-        <p className="text-sm text-muted-foreground">{t("builder.publish.nothing")}</p>
-      ) : (
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <Button onClick={save} loading={running}>
-            {t(`builder.publish.${preview.action}` as MessageKey)}
-          </Button>
-          <p role="status" className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-muted-foreground">
-            {running ? <StatusDot tone="info" pulse /> : null}
-            <span className="min-w-0">{running ? t(`builder.publish.step.${step}` as MessageKey) : t("builder.publish.hint")}</span>
-          </p>
-        </div>
-      )}
-
+    <div role="region" aria-label={t("builder.publish.bar")} className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2" data-slot="publish-bar">
       {error ? (
-        <p role="alert" className="text-sm text-destructive text-pretty">
-          {error}
+        <p role="alert" className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-destructive">
+          <CircleAlert aria-hidden="true" className={ICON} />
+          <span className="min-w-0">{error}</span>
         </p>
-      ) : null}
+      ) : (
+        <p role="status" className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-muted-foreground">
+          {icon}
+          <span className="min-w-0">{text}</span>
+        </p>
+      )}
+      {buttons.length ? <div className="ml-auto flex min-w-0 flex-wrap gap-2 max-[560px]:w-full max-[560px]:*:flex-1">{buttons}</div> : null}
 
-      {gate ? (
-        <GateNotice
-          gate={gate}
-          offerAnyway={offerAnyway && canWrite}
-          offerOverride={offerOverride && canWrite}
-          onAnyway={() => setConfirmNormal(true)}
-          onOverride={() => setOverrideOpen(true)}
-        />
-      ) : null}
+      <Sheet open={gateOpen && gate !== null} onOpenChange={setGateOpen}>
+        <SheetContent className="w-full gap-0 sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{t("agentProto.gate.title")}</SheetTitle>
+            <SheetDescription>{t("agentProto.gate.intro")}</SheetDescription>
+          </SheetHeader>
+          <div className="grid min-w-0 gap-4 overflow-y-auto px-4 pb-4">
+            {gate ? (
+              <GateNotice
+                gate={gate}
+                offerAnyway={offerAnyway && canWrite}
+                offerOverride={offerOverride && canWrite}
+                onAnyway={() => setConfirmNormal(true)}
+                onOverride={() => setOverrideOpen(true)}
+              />
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={diffOpen} onOpenChange={setDiffOpen}>
         <SheetContent className="w-full gap-0 sm:max-w-md">
@@ -274,6 +374,7 @@ export function PublishBar({
         cancelLabel={t("builder.publish.cancel")}
         onConfirm={async () => {
           setConfirmNormal(false);
+          setGateOpen(false);
           await publish({ accept_normal_failures: true });
         }}
       />
@@ -285,6 +386,7 @@ export function PublishBar({
           busy={running}
           onConfirm={async (reason) => {
             setOverrideOpen(false);
+            setGateOpen(false);
             await publish({ override_reason: reason, accept_normal_failures: true });
           }}
         />
@@ -292,6 +394,10 @@ export function PublishBar({
     </div>
   );
 }
+
+/** Los botones de la barra flotante son píldoras, como el prototipo. */
+const PILL = "rounded-full";
+const ICON = "size-4 shrink-0";
 
 const EMPTY_GATE: Gate = { conditions: [], hard: [], overridable: [], normal_failures: [], rate: null, reference_rate: null };
 

@@ -216,7 +216,7 @@ Debajo ve «Irá a la ficha:» con dos chips, uno para la web y otro para Instag
 1. **Dado** el modal de alta, **cuando** falta el nombre o el nicho, **entonces** «Crear cliente» está desactivado y el pie dice «Nombre y nicho son obligatorios».
 2. **Dado** un texto con una web, un @usuario y enlaces de Instagram, Facebook, TikTok, LinkedIn, YouTube o X, **cuando** se escribe, **entonces** cada hallazgo aparece como un chip con su destino en la ficha. Un correo electrónico no se toma por una web.
 3. **Dado** un chip de nicho sugerido, **cuando** se pulsa con el campo vacío, **entonces** lo rellena; con texto escrito, lo añade sin borrar lo que había.
-4. **Dado** una web `.cl` detectada, **cuando** se abre «Más ajustes», **entonces** se propone la zona horaria America/Santiago, la moneda de precios CLP y, para la bolsa, la moneda del partner. Todo se puede cambiar antes de crear.
+4. **Dado** una web `.cl` detectada, **cuando** se abre «Más ajustes», **entonces** se propone la zona horaria America/Santiago y, para la bolsa, la moneda del partner; las dos se pueden cambiar antes de crear. La moneda de precios CLP se deduce sin pedirla (revisado el 2026-10-28).
 5. **Dado** un partner con plantilla por defecto, **cuando** crea un cliente, **entonces** no se crea ningún agente ni se publica nada.
 6. **Dado** el cliente recién creado, **cuando** aterriza, **entonces** está en el Panel con la tarjeta «Leyendo cultorbarber.com para completar la ficha: sedes, horario y servicios…» y el aviso «Barbería Cultor creado.».
 
@@ -473,12 +473,11 @@ Los partners en producción pasan al modelo nuevo sin que sus clientes noten nad
 
 «Editar cliente» abre el mismo modal del alta. Se llega desde el menú ⋯ de la cabecera del cliente, desde el menú de su fila en la lista o desde «Editar» en Negocio › Datos básicos.
 
-«Más ajustes» reúne:
+«Más ajustes» reúne solo:
 - zona horaria;
-- moneda de los precios;
-- moneda de la bolsa;
-- «Solo UE» para los datos;
-- archivar y eliminar.
+- moneda, EUR o USD.
+
+El país, la moneda de los precios y «Solo UE» se deducen y no se piden. Archivar y eliminar están en el menú ⋯ del cliente (revisado el 2026-10-28, comentario de Andrés sobre el prototipo).
 
 Archivar pausa todos sus agentes con el motivo «cliente archivado» y se puede deshacer. Eliminar sigue siendo el borrado RGPD de hoy.
 
@@ -808,7 +807,7 @@ Hay un detalle técnico plegado y se puede descargar en CSV.
 ### Historia 27 — El marco común y el sistema visual de la consola (Prioridad: P2)
 
 Toda la consola comparte el mismo marco:
-- un menú lateral plegable, sin etiquetas de grupo;
+- un menú lateral plegable, en dos grupos con su etiqueta, «Operar» y «Cuenta», como el prototipo aprobado (revisado el 2026-10-28);
 - migas de pan;
 - un buscador con ⌘K, que encuentra clientes, agentes, acciones y pantallas;
 - una campana con un desplegable de lo último y «Ver todas»;
@@ -1059,7 +1058,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 2. El sistema DEBE sugerir nichos conocidos (los de las plantillas, agrupados en los 6 grupos de la spec 046 más «Otro», y los más usados) sin restringir el texto. Pulsar una sugerencia DEBE rellenar el campo si está vacío o añadirla al texto que ya hay, y NO DEBE sustituir lo escrito.
 3. WHEN se crea un cliente THEN el sistema NO DEBE crear ningún agente ni publicar ninguna versión, aunque el partner tenga plantilla por defecto.
 4. WHEN se crea un cliente THEN el sistema DEBE llevar a la persona a su Panel y, si se detectó una web o redes, empezar a leerlas en segundo plano (requisito 5).
-5. El sistema DEBE deducir la zona horaria, el país, la moneda de los precios y la moneda de la bolsa, y dejarlos editables antes de crear. Las fuentes van por este orden:
+5. El sistema DEBE deducir la zona horaria, el país, la moneda de los precios y la moneda de la bolsa. Solo la zona horaria y la moneda de la bolsa (EUR o USD) se ven y se cambian antes de crear, en «Más ajustes» (revisado el 2026-10-28). Las fuentes van por este orden:
    1. el dominio de la web y el prefijo de los teléfonos detectados;
    2. el país del partner;
    3. el navegador.
@@ -1346,7 +1345,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
 #### Criterios de aceptación
 
-1. WHEN termina la lectura de la web, o la persona pide «Completar con el constructor», THEN el sistema DEBE proponer la ficha por secciones, cada una con su procedencia.
+1. WHEN termina la lectura de la web THEN el sistema DEBE proponer la ficha por secciones, cada una con su procedencia. (Revisado el 2026-10-28: el constructor trabaja por dentro y no tiene nombre, botón ni tarjeta en la interfaz; Negocio ya no ofrece «Completar con el constructor». Dónde se deciden sus propuestas de ficha queda pendiente de Andrés.)
 2. La persona DEBE poder aceptar, editar o descartar cada sección y cada dato.
 3. El constructor DEBE deducir del nicho y de la información preguntas frecuentes y políticas probables, marcadas «Sugerido · confirma». NO DEBE darlas por ciertas sin confirmación.
 4. El constructor DEBE poder proponer agentes para el cliente a partir de la ficha (por ejemplo, «Recepción para citas»), sin crearlos.
@@ -1975,7 +1974,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 #### Criterios de aceptación
 
 1. Toda pantalla de la consola de partners DEBE compartir el mismo marco:
-   - un menú lateral plegable, sin etiquetas de grupo: Panel, Clientes, Consumo, Auditoría, Guía del partner y Teammate arriba, y Equipo, Facturación y API abajo. Plegado mide 64 px y cada entrada enseña su nombre como tooltip;
+   - un menú lateral plegable, en dos grupos con su etiqueta: «Operar» (Panel, Clientes, Consumo, Auditoría, Guía del partner y Teammate) y «Cuenta» (Equipo, Facturación y API). Plegado mide 64 px, las etiquetas solo las leen los lectores de pantalla y cada entrada enseña su nombre como tooltip (revisado el 2026-10-28: el prototipo aprobado lleva las etiquetas);
    - el menú de perfil, con el tema (Claro, Oscuro o Sistema) y «Cerrar sesión»;
    - migas de pan, donde el último elemento no es un enlace;
    - el buscador ⌘K;

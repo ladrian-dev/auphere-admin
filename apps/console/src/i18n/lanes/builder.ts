@@ -17,8 +17,8 @@ export const builderMessages = {
   "builder.agents.list": { es: "Agentes del cliente", en: "The client’s agents" },
   "builder.agents.empty.title": { es: "Este cliente aún no tiene agentes", en: "This client has no agents yet" },
   "builder.agents.empty.body": {
-    es: "Cuenta qué tiene que hacer y el constructor escribe el primer borrador.",
-    en: "Say what it has to do and the builder writes the first draft.",
+    es: "Cuenta qué tiene que hacer y te escribimos el primer borrador.",
+    en: "Say what it has to do and we write the first draft.",
   },
   "builder.agents.empty.readonly": {
     es: "Cuando alguien de tu equipo cree uno, aparecerá aquí.",
@@ -104,10 +104,10 @@ export const builderMessages = {
   },
   "builder.progress.reading": { es: "Leyendo la ficha del negocio…", en: "Reading the business profile…" },
   "builder.progress.writing": { es: "Escribiendo el borrador · {n} de {total} bloques", en: "Writing the draft · {n} of {total} blocks" },
-  "builder.progress.queued": { es: "Preparando el constructor…", en: "Getting the builder ready…" },
+  "builder.progress.queued": { es: "Preparando el borrador…", en: "Getting the draft ready…" },
   "builder.progress.done": { es: "Borrador listo", en: "Draft ready" },
   "builder.progress.blocks": { es: "Bloques del borrador", en: "Blocks of the draft" },
-  "builder.progress.failed.title": { es: "El constructor no ha respondido", en: "The builder did not answer" },
+  "builder.progress.failed.title": { es: "No se pudo escribir el borrador", en: "The draft could not be written" },
   "builder.progress.failed.body": {
     es: "Empieza desde una plantilla o en blanco. Lo que escribiste sigue aquí.",
     en: "Start from a template or blank. What you typed is still here.",
@@ -244,12 +244,7 @@ export const builderMessages = {
   "builder.field.description": { es: "¿Qué tiene que hacer?", en: "What does it have to do?" },
   "builder.field.goal": { es: "Objetivo", en: "Goal" },
   "builder.field.tone": { es: "Tono", en: "Tone" },
-  "builder.field.tone.placeholder": { es: "Cercano y breve", en: "Warm and brief" },
   "builder.field.languages": { es: "Idiomas", en: "Languages" },
-  "builder.field.languages.hint": {
-    es: "Códigos separados por comas, el principal primero. Por ejemplo: es, en.",
-    en: "Codes separated by commas, the main one first. For example: en, es.",
-  },
   "builder.field.register": { es: "Trato", en: "Form of address" },
   "builder.field.register.none": { es: "Sin decidir", en: "Not decided" },
   "builder.field.greeting": { es: "Saludo", en: "Greeting" },
@@ -283,8 +278,8 @@ export const builderMessages = {
   // ── Las propuestas (15.2, 15.3) ─────────────────────────────────────────
   "builder.proposals.title": { es: "Propuestas", en: "Proposals" },
   "builder.proposals.intro": {
-    es: "Lo que proponen el constructor y el copiloto. Nada cambia hasta que alguien lo aplica, y caducan a los 15 minutos.",
-    en: "What the builder and the copilot propose. Nothing changes until someone applies it, and they expire after 15 minutes.",
+    es: "Cambios propuestos para este agente. Nada cambia hasta que alguien los aplica, y caducan a los 15 minutos.",
+    en: "Changes proposed for this agent. Nothing changes until someone applies them, and they expire after 15 minutes.",
   },
   "builder.proposals.empty": { es: "Ninguna propuesta abierta.", en: "No open proposals." },
   "builder.proposals.error": { es: "No se pudieron cargar las propuestas.", en: "The proposals could not be loaded." },
@@ -293,7 +288,7 @@ export const builderMessages = {
   "builder.proposals.kind.fix": { es: "Arreglo", en: "Fix" },
   "builder.proposals.kind.test_add": { es: "Prueba nueva", en: "New test" },
   "builder.proposals.kind.other": { es: "Propuesta", en: "Proposal" },
-  "builder.proposals.author.builder": { es: "Del constructor", en: "From the builder" },
+  "builder.proposals.author.builder": { es: "Sugerida", en: "Suggested" },
   "builder.proposals.author.copilot": { es: "Del copiloto", en: "From the copilot" },
   "builder.proposals.author.other": { es: "De {who}", en: "From {who}" },
   "builder.proposals.expires": { es: "Caduca: {at}", en: "Expires: {at}" },

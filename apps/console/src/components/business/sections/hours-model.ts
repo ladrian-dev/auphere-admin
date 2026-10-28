@@ -1,4 +1,4 @@
-import { DAYS, type Day, type Hours, type HoursBody, type Layout } from "@/lib/backend/business-sections";
+import { DAYS, type Day, type Hours, type HoursBody, type Layout, type ShiftOut } from "@/lib/backend/business-sections";
 
 /**
  * El modelo del editor del horario — spec 047 (T060, requisito 10). Puro: lo
@@ -77,6 +77,37 @@ export function blockRows(layout: Layout): Row[] {
     ];
   }
   return DAYS.map((d) => ({ key: d, days: [d] }));
+}
+
+/** Una fila de la lectura: un bloque o varios días seguidos con los mismos turnos. */
+export type ReadRow = { key: "weekdays" | Day; days: Day[]; shifts: ShiftOut[] };
+
+const sameOut = (a: readonly ShiftOut[], b: readonly ShiftOut[]) =>
+  a.length === b.length && a.every((s, i) => s.open === b[i]?.open && s.close === b[i]?.close);
+
+/**
+ * La lectura del horario (prototipo aprobado): por bloques, sus tres filas; día
+ * por día, los días seguidos iguales juntos. Si ningún día abre, no hay nada que
+ * leer y la sección lo dice con su frase.
+ */
+export function readRows(hours: Pick<Hours, "layout" | "days">): ReadRow[] {
+  if (!DAYS.some((d) => (hours.days[d] ?? []).length)) return [];
+  const shiftsOf = (d: Day) => hours.days[d] ?? [];
+  if ((hours.layout ?? "blocks") === "blocks") {
+    return blockRows("blocks").map((row) => ({ ...row, shifts: shiftsOf(row.days[0] as Day) }));
+  }
+  const rows: ReadRow[] = [];
+  for (const d of DAYS) {
+    const last = rows[rows.length - 1];
+    if (last && sameOut(last.shifts, shiftsOf(d))) last.days.push(d);
+    else rows.push({ key: d, days: [d], shifts: shiftsOf(d) });
+  }
+  return rows;
+}
+
+/** «09:00 – 14:00 · 16:00 – 20:00»; un nocturno añade «(día siguiente)». */
+export function shiftsText(shifts: readonly Pick<ShiftOut, "open" | "close">[], nextDay: string): string {
+  return shifts.map((s) => `${s.open} – ${s.close}${isOvernight(s.open, s.close) ? ` ${nextDay}` : ""}`).join(" · ");
 }
 
 /** Los turnos de una fila en todos sus días (los bloques comparten turnos). */

@@ -45,7 +45,9 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
 
   function actionsOf(row: ClientUsage): RowAction[] {
     const see: RowAction = { label: t("money.table.see"), href: spendHref(row.ref, days) };
-    if (!canWrite) return [{ label: t("money.request.cta"), onSelect: () => setOpen({ kind: "request", row }), primary: true }, see];
+    // Prototipo: el «⋯» termina siempre en «Abrir ficha del cliente».
+    const record: RowAction = { label: t("proto.usage.openClient"), href: clientHref(row.ref) };
+    if (!canWrite) return [{ label: t("money.request.cta"), onSelect: () => setOpen({ kind: "request", row }), primary: true }, see, record];
     const out: RowAction[] = [
       row.empty
         ? { label: t("money.assign.cta"), onSelect: () => setOpen({ kind: "assign", row }), primary: true }
@@ -55,6 +57,7 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
     out.push(see);
     out.push({ label: t("money.table.refill"), onSelect: () => setOpen({ kind: "refill", row }) });
     if (row.bag) out.push({ label: t("money.table.currency"), onSelect: () => setOpen({ kind: "currency", row }) });
+    out.push(record);
     return out;
   }
 
@@ -67,17 +70,17 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
 
   return (
     <>
-      <div className="relative min-w-0 overflow-x-auto" role="region" aria-label={t("money.table.title")} tabIndex={0} data-slot="usage-clients">
+      <div className="relative min-w-0 overflow-x-auto rounded-lg ring-1 ring-foreground/10" role="region" aria-label={t("money.table.title")} tabIndex={0} data-slot="usage-clients">
         <table className="w-full min-w-[720px] border-collapse text-left text-sm">
           <caption className="sr-only">{t("money.table.title")}</caption>
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
+          <thead className="text-sm text-muted-foreground">
             <tr>
-              <th scope="col" className="px-3 py-2 font-medium">{t("money.table.client")}</th>
-              <th scope="col" className="px-3 py-2 text-right font-medium">{t("money.table.bag")}</th>
-              <th scope="col" className="px-3 py-2 text-right font-medium">{t("money.table.spent")}</th>
-              <th scope="col" className="px-3 py-2 font-medium">{t("money.table.days")}</th>
-              <th scope="col" className="px-3 py-2 font-medium">{t("money.table.refill")}</th>
-              <th scope="col" className="w-12 px-3 py-2 font-medium">
+              <th scope="col" className="px-4 py-3 font-normal">{t("money.table.client")}</th>
+              <th scope="col" className="px-4 py-3 text-right font-normal">{t("money.table.bag")}</th>
+              <th scope="col" className="px-4 py-3 text-right font-normal">{t("money.table.spent")}</th>
+              <th scope="col" className="px-4 py-3 font-normal">{t("money.table.days")}</th>
+              <th scope="col" className="px-4 py-3 font-normal">{t("money.table.refill")}</th>
+              <th scope="col" className="w-12 px-4 py-3 font-normal">
                 <span className="sr-only">{t("money.table.actions")}</span>
               </th>
             </tr>
@@ -86,13 +89,15 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
             {clients.map((row, i) => {
               const name = row.name ?? row.ref;
               return (
-                <tr key={row.ref} className="border-t border-border align-middle" data-client={row.ref}>
-                  <td className="max-w-64 px-3 py-3">
+                <tr key={row.ref} className="border-t border-border align-middle transition-colors hover:bg-muted/50" data-client={row.ref}>
+                  <td className="max-w-64 px-4 py-4">
                     <Link href={clientHref(row.ref)} className="block min-w-0 truncate font-medium underline-offset-4 hover:underline" title={name}>
                       {name}
                     </Link>
+                    {/* La moneda de su bolsa, bajo el nombre (prototipo). */}
+                    {row.bag ? <span className="block text-xs text-muted-foreground">{row.bag.currency}</span> : null}
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-4 py-4 text-right">
                     {row.empty ? (
                       <span className="inline-flex flex-wrap items-center justify-end gap-2">
                         <StatusBadge tone="danger">{t("money.table.noBalance")}</StatusBadge>
@@ -102,12 +107,12 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
                       <span className="whitespace-nowrap tabular-nums">{moneyText(row.bag, "down")}</span>
                     )}
                   </td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{moneyText(row.month_spent)}</td>
-                  <td className="px-3 py-3 text-muted-foreground">{row.empty ? "—" : daysText(t, row.days_left)}</td>
-                  <td className="px-3 py-3 text-muted-foreground">
+                  <td className="px-4 py-4 text-right whitespace-nowrap tabular-nums">{moneyText(row.month_spent)}</td>
+                  <td className="px-4 py-4 text-muted-foreground">{row.empty ? "—" : daysText(t, row.days_left)}</td>
+                  <td className="px-4 py-4 text-muted-foreground">
                     {row.refill_up_to ? t("money.table.refillUpTo", { amount: moneyText(row.refill_up_to) }) : "—"}
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-4 py-4 text-right">
                     <RowActions actions={all[i]!} menu={menu} ariaLabel={t("money.table.actions.aria", { name })} />
                   </td>
                 </tr>

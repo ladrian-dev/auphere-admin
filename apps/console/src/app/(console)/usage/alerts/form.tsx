@@ -36,7 +36,7 @@ export function UsageAlertsForm({ initial, canManage }: { initial: UsageAlerts; 
   }
 
   return (
-    <form onSubmit={submit} className="flex max-w-lg flex-col gap-4" aria-describedby="alerts-help">
+    <form onSubmit={submit} className="flex min-w-0 flex-col gap-4" aria-describedby="alerts-help">
       <p id="alerts-help" className="text-sm text-muted-foreground">
         {t("hu.alerts.thresholds")}
       </p>

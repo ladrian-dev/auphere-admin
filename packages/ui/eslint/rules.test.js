@@ -57,10 +57,12 @@ describe("nexus-ui/radius-enum", () => {
   tester.run("radius-enum", plugin.rules["radius-enum"], {
     valid: [
       'const c = "rounded-md rounded-t-md rounded-full rounded-none rounded-sm rounded hover:rounded-md";',
+      // Spec 047, el prototipo aprobado: tarjetas y menús a 12, lienzo y diálogos a 16.
+      'const c = "rounded-lg rounded-xl rounded-t-lg";',
     ],
     invalid: [
-      { code: 'const c = "rounded-lg";', errors: 1 },
-      { code: 'const c = "rounded-xl rounded-b-2xl";', errors: 2 },
+      { code: 'const c = "rounded-2xl";', errors: 1 },
+      { code: 'const c = "rounded-3xl rounded-b-2xl";', errors: 2 },
       { code: 'const c = "rounded-[2px]";', errors: 1 },
       { code: 'const c = "rounded-4xl";', errors: 1 },
     ],

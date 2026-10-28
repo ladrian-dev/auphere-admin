@@ -52,6 +52,13 @@ describe("el techo de ejecución local", () => {
     expect(button("Nadie ejecuta")).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("es el conmutador de vidrio del prototipo (spec 047)", () => {
+    paint({ ceiling: "ask" as ExecMode });
+    const group = screen.getByRole("group", { name: "Techo de ejecución" });
+    expect(group).toHaveAttribute("data-slot", "segmented-control");
+    expect(group.className).toMatch(/\bglass\b/);
+  });
+
   it("«cada persona decide» es un valor elegido, no la ausencia de uno", () => {
     paint({ ceiling: "always" as ExecMode });
     expect(button("Cada persona decide")).toHaveAttribute("aria-pressed", "true");

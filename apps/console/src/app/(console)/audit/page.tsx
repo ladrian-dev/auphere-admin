@@ -40,11 +40,11 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader
-        eyebrow={t("nav.group.operate")}
+        size="display"
         title={t("audit.title")}
         description={t("audit.description")}
         actions={
-          <Button nativeButton={false} variant="outline" size="sm" render={<a href={`/api/audit/export?${csv.toString()}`} download />}>
+          <Button nativeButton={false} variant="outline" render={<a href={`/api/audit/export?${csv.toString()}`} download />}>
             <Download aria-hidden="true" />
             {t("hu.audit.export")}
           </Button>

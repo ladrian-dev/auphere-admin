@@ -14,6 +14,7 @@ import {
   saveChannelConfigAction,
   undoChannelConfigAction,
 } from "@/app/(console)/clients/[ref]/agents/channel-actions";
+import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
 import { BalanceButton, type BalanceMode } from "@/components/money/balance-button";
 import { CrumbName } from "@/components/shell/crumb-names";
 import { agentHref } from "@/components/shell/routes-v2";
@@ -21,6 +22,7 @@ import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { EscalationTrigger } from "@/lib/backend/builder-types";
 import type { AudienceMode, ChannelChange, ChannelConfigIn, ChannelPage, Recipient } from "@/lib/backend/channel-config-types";
+import { ShellBackButton } from "@/components/shell/shell-back-button";
 
 import { triggerText } from "./block-view";
 import type { Result } from "./builder-model";
@@ -215,8 +217,11 @@ export function ChannelConfigPage({
       {page.agent ? <CrumbName id={page.agent.id} label={page.agent.name} /> : null}
       <header className="grid min-w-0 gap-3">
         <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="grid min-w-0 gap-1">
-            <h2 className="min-w-0 text-xl font-semibold text-balance break-words tabular-nums">{t("builder.channel.page.title", { number: page.identifier })}</h2>
+          <ShellBackButton className="mt-1" />
+          {/* Como la cabecera del prototipo (`agente.md` §8): el logo de la app del canal junto al título. */}
+          {hasBrandLogo(page.type) ? <BrandLogo brand={page.type} size="lg" className="mt-1" /> : null}
+          <div className="grid min-w-0 flex-1 gap-1">
+            <h1 className="min-w-0 text-2xl font-semibold tracking-tighter text-balance break-words tabular-nums sm:text-display">{t("builder.channel.page.title", { number: page.identifier })}</h1>
             <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
               <span>{page.type === "whatsapp" ? t("builder.channels.whatsapp") : page.type}</span>
               <span aria-hidden="true">·</span>
@@ -452,9 +457,9 @@ function PageSection({ id, title, intro, children }: { id: string; title: string
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="grid min-w-0 scroll-mt-24 gap-3 rounded-md border border-border bg-card p-4 sm:p-6">
       <div className="grid min-w-0 gap-1">
-        <h3 id={`${id}-title`} className="text-base font-semibold text-balance">
+        <h2 id={`${id}-title`} className="text-base font-semibold text-balance">
           {title}
-        </h3>
+        </h2>
         {intro ? <p className="max-w-prose text-sm text-pretty text-muted-foreground">{intro}</p> : null}
       </div>
       {children}
@@ -549,7 +554,7 @@ function AudienceSection({
         <Callout tone="info">{t("builder.channel.adminOnly")}</Callout>
       ) : null}
       <div className="grid min-w-0 gap-2">
-        <h4 className="text-sm font-medium">{t("builder.channel.tests.title")}</h4>
+        <h3 className="text-sm font-medium">{t("builder.channel.tests.title")}</h3>
         <NumberList
           label={t("builder.channel.tests.title")}
           numbers={draft.audience.test_numbers}
@@ -802,7 +807,7 @@ function Triggers({ triggers, editHref }: { triggers: ChannelPage["triggers"]; e
   const t = useT();
   return (
     <div className="grid min-w-0 gap-2 rounded-md bg-muted/40 p-3" data-slot="channel-triggers">
-      <h4 className="text-sm font-medium">{t("builder.channel.triggers.title")}</h4>
+      <h3 className="text-sm font-medium">{t("builder.channel.triggers.title")}</h3>
       <p className="text-xs text-muted-foreground">{t("builder.channel.triggers.intro")}</p>
       {triggers.length ? (
         <ul className="grid list-disc gap-1 pl-5 text-sm">

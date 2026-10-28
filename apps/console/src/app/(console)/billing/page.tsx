@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 
-import { Button, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
+import { Button, Card, CardContent, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
 
 import { BillingEmailForm } from "@/components/billing/billing-email-form";
 import { BuyCreditForm } from "@/components/billing/buy-credit-form";
-import { CardSection } from "@/components/billing/card-section";
+import { CardCharges, CardSection } from "@/components/billing/card-section";
 import { MembershipSection } from "@/components/billing/membership-section";
 import { ProviderInvoicesLink } from "@/components/billing/provider-invoices-link";
+import { receiptStatus } from "@/components/billing/receipt-status";
 import { moneyText } from "@/components/money/money-model";
 import { resolveConsoleVersion } from "@/components/shell/console-version";
 import { getT } from "@/i18n/server";
@@ -37,110 +38,107 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const v2 = resolveConsoleVersion(await backend.me().catch(() => null)) === "v2";
   const account = v2 && can(principal.role, "usage:read") ? await moneyApi(callFor(principal)).usageSummary().catch(() => null) : null;
   const justSaved = params.card === "saved";
+  const canManage = can(principal.role, "billing:manage");
+  const showWallet = Boolean(account) || (!membership && canManage);
   const invoiceMissing = params.invoice === "missing";
   return (
     <>
       <PageHeader
-        eyebrow={t("nav.group.account")}
+        size="display"
         title={t("billing.title")}
         description={t(membership ? "billing.description" : "billing.descriptionFree")}
       />
-      {account ? (
-        <section aria-labelledby="account-h" className="grid max-w-lg gap-2" data-slot="billing-account">
-          <h2 id="account-h" className="text-lg font-semibold">
-            {t("money.billing.title")}
-          </h2>
-          <dl className="grid grid-cols-2 gap-3 text-sm">
-            <div className="grid gap-1">
-              <dt className="text-muted-foreground">{t("money.billing.currency")}</dt>
-              <dd className="font-medium">{t(account.currency === "EUR" ? "money.currency.eur" : "money.currency.usd")}</dd>
-            </div>
-            <div className="grid gap-1">
-              <dt className="text-muted-foreground">{t("money.figure.available")}</dt>
-              <dd className="font-medium tabular-nums">{moneyText(account.available, "down")}</dd>
-            </div>
-          </dl>
-          <p className="text-xs text-pretty text-muted-foreground">{t("money.billing.hint")}</p>
-        </section>
-      ) : null}
-      {membership ? (
-        <MembershipSection membership={membership} />
-      ) : can(principal.role, "billing:manage") ? (
-        <section aria-labelledby="credit-h" className="flex max-w-lg flex-col gap-3">
-          <h2 id="credit-h" className="text-lg font-semibold">
-            {t("membership.credit.title")}
-          </h2>
-          <p className="text-sm text-pretty text-muted-foreground">{t("membership.credit.help")}</p>
-          <BuyCreditForm initialAmount={params.recargar ?? null} />
-        </section>
-      ) : null}
-      {card ? (
-        <CardSection
-          view={card}
-          canManage={can(principal.role, "billing:manage")}
-          justSaved={justSaved}
-          invoiceMissing={invoiceMissing}
-        />
-      ) : null}
-      <BillingEmailForm
-        email={billing.billing_email}
-        contactEmail={billing.contact_email ?? null}
-        canManage={can(principal.role, "billing:manage")}
-      />
-      <section aria-labelledby="receipts-h" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="receipts-h" className="text-lg font-semibold">
-            {t("billing.receipts")}
-          </h2>
-          {/* Spec 005 R8.4: la factura del proveedor es el documento fiscal;
-              este recibo explica el consumo. Los dos papeles, y el camino al
-              otro documento donde se busca. */}
-          <ProviderInvoicesLink hasSubscription={membership !== null && membership.tier.code !== "free"} />
+      {membership ? <MembershipSection membership={membership} /> : null}
+      {/* Spec 047 (prototipo): «Saldo de tu cuenta» y «Tarjeta y cobro
+          automático» lado a lado; en pantallas estrechas, una debajo de otra. */}
+      {showWallet || card ? (
+        <div className={showWallet && card ? "grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]" : "grid min-w-0 gap-4"} data-slot="billing-panel">
+          {showWallet ? (
+            <Card aria-labelledby="wallet-h" role="region" data-slot="billing-wallet">
+              <CardContent className="grid min-w-0 gap-4">
+                <h2 id="wallet-h" className="text-base font-semibold">
+                  {t("proto.billing.wallet")}
+                </h2>
+                {account ? (
+                  <div className="flex min-w-0 flex-wrap items-end justify-between gap-x-6 gap-y-2">
+                    <div className="grid gap-1">
+                      <p className="text-xs text-muted-foreground">{t("proto.billing.available")}</p>
+                      <p className="text-2xl font-semibold tracking-tight tabular-nums">{moneyText(account.available, "down")}</p>
+                    </div>
+                    <div className="grid text-sm text-pretty text-muted-foreground sm:text-right">
+                      <p>{t("proto.billing.spentBy")}</p>
+                      <p>{t("proto.billing.keeps")}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-pretty text-muted-foreground">{t("membership.credit.help")}</p>
+                )}
+                {!membership && canManage ? (
+                  <BuyCreditForm initialAmount={params.recargar ?? null} accountCurrency={account?.currency ?? null} label={t("membership.credit.title")} />
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+          {card ? <CardSection view={card} canManage={canManage} justSaved={justSaved} invoiceMissing={invoiceMissing} /> : null}
         </div>
-        {membership ? (
-          <p className="text-muted-foreground text-sm text-pretty">
-            {t("membership.invoices.help")}
-          </p>
-        ) : null}
-        {billing.receipts.length === 0 ? (
-          <EmptyState title={t("billing.receipts.empty")} readonly />
-        ) : (
-          <div className="min-w-0 overflow-x-auto rounded-md ring-1 ring-foreground/10">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="h-10 px-2 font-medium">{t("billing.period")}</th>
-                  <th className="h-10 px-2 font-medium">{t("common.status")}</th>
-                  <th className="h-10 px-2 text-right font-medium">{t("billing.total")}</th>
-                  <th className="h-10 px-2 font-medium">{t("billing.due")}</th>
-                  <th className="h-10 px-2 text-right font-medium">
-                    <span className="sr-only">{t("common.actions")}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {billing.receipts.map((r) => (
-                  <tr key={r.invoice_id} className="border-b last:border-0">
-                    <td className="p-2 font-mono tabular-nums">
-                      {r.period_year}-{String(r.period_month).padStart(2, "0")}
-                    </td>
-                    <td className="p-2">
-                      <StatusBadge tone={r.status === "paid" ? "positive" : r.status === "issued" ? "info" : "muted"}>{r.status}</StatusBadge>
-                    </td>
-                    <td className="p-2 text-right tabular-nums">{formatCurrency(r.total_usd, r.currency, locale)}</td>
-                    <td className="p-2 tabular-nums">{formatDate(r.due_date, locale)}</td>
-                    <td className="p-2 text-right">
-                      <Button nativeButton={false} variant="outline" size="xs" render={<a href={`/api/billing/receipts/${r.invoice_id}`} download title={t("hu.billing.download.title")} />}>
-                        {t("hu.billing.download")}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      ) : null}
+      <BillingEmailForm email={billing.billing_email} contactEmail={billing.contact_email ?? null} canManage={canManage} />
+      {card ? <CardCharges view={card} canManage={canManage} /> : null}
+      <Card aria-labelledby="receipts-h" role="region" data-slot="billing-receipts">
+        <CardContent className="grid min-w-0 gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="receipts-h" className="text-base font-semibold">
+              {t("billing.receipts")}
+            </h2>
+            {/* Spec 005 R8.4: la factura del proveedor es el documento fiscal;
+                este recibo explica el consumo. Los dos papeles, y el camino al
+                otro documento donde se busca. */}
+            <ProviderInvoicesLink hasSubscription={membership !== null && membership.tier.code !== "free"} />
           </div>
-        )}
-      </section>
+          {membership ? <p className="text-sm text-pretty text-muted-foreground">{t("membership.invoices.help")}</p> : null}
+          {billing.receipts.length === 0 ? (
+            <EmptyState title={t("billing.receipts.empty")} readonly />
+          ) : (
+            <div className="min-w-0 overflow-x-auto rounded-lg ring-1 ring-foreground/10">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="h-12 px-4 font-normal">{t("billing.period")}</th>
+                    <th className="h-12 px-4 font-normal">{t("common.status")}</th>
+                    <th className="h-12 px-4 text-right font-normal">{t("billing.total")}</th>
+                    <th className="h-12 px-4 font-normal">{t("billing.due")}</th>
+                    <th className="h-12 px-4 text-right font-normal">
+                      <span className="sr-only">{t("common.actions")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {billing.receipts.map((r) => {
+                    const state = receiptStatus(r.status, t);
+                    return (
+                      <tr key={r.invoice_id} className="border-b last:border-0">
+                        <td className="px-4 py-3 tabular-nums">
+                          {r.period_year}-{String(r.period_month).padStart(2, "0")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge tone={state.tone}>{state.label}</StatusBadge>
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(r.total_usd, r.currency, locale)}</td>
+                        <td className="px-4 py-3 tabular-nums">{formatDate(r.due_date, locale)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Button nativeButton={false} variant="ghost" size="sm" render={<a href={`/api/billing/receipts/${r.invoice_id}`} download title={t("hu.billing.download.title")} />}>
+                            {t("hu.billing.download")}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </>
   );
 }

@@ -23,13 +23,15 @@ vi.mock("../notifications-bell", () => ({
   NotificationsBellMenu: () => <button type="button">Notificaciones</button>,
 }));
 
+const { ShellBackButton } = await import("../shell-back-button");
 const { ConsoleShellV2 } = await import("../console-shell-v2");
 const { CrumbName } = await import("../crumb-names");
 
 /**
  * Spec 047 (R47.1, R47.7, R47.11, R47.12): el marco común de la consola nueva.
- * - Menú lateral plegable, sin etiquetas de grupo: arriba Panel, Clientes,
- *   Consumo, Auditoría, Guía del partner y Teammate; abajo Equipo, Facturación y API.
+ * - Menú lateral plegable, como el prototipo aprobado: «Operar» (Panel, Clientes,
+ *   Consumo, Auditoría, Guía del partner y Teammate) y «Cuenta» (Equipo,
+ *   Facturación y API), cada grupo con su etiqueta; el perfil, al pie.
  *   Plegado mide 64 px y cada entrada enseña su nombre como tooltip.
  * - Migas de pan, donde el último elemento no es un enlace.
  * - El buscador ⌘K y la campana.
@@ -63,14 +65,65 @@ describe("ConsoleShellV2 — el marco", () => {
     document.cookie = "nexus-console.nav=; path=/; max-age=0";
   });
 
-  it("el menú lateral: arriba lo de operar, abajo lo de la cuenta, sin etiquetas de grupo", () => {
+  it("el menú lateral solo lleva «Operar»: Equipo, Facturación y API viven en el perfil (Andrés, 2026-10-28)", () => {
     render(<Shell />);
     const aside = sidebar();
-    const [top, bottom] = within(aside).getAllByRole("list");
-    expect(linksIn(top!)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría", "Guía del partner", "Teammate"]);
-    expect(linksIn(bottom!)).toEqual(["Equipo", "Facturación", "API"]);
-    expect(screen.queryByText("Operar")).toBeNull();
-    expect(screen.queryByText("Cuenta")).toBeNull();
+    const operate = within(aside).getByRole("list", { name: "Operar" });
+    expect(linksIn(operate)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría", "Guía del partner", "Teammate"]);
+    expect(within(aside).queryByRole("list", { name: "Cuenta" })).toBeNull();
+    expect(within(aside).queryByRole("link", { name: "Facturación" })).toBeNull();
+  });
+
+  it("el botón del menú se alinea con el borde del lienzo", () => {
+    render(<Shell />);
+    const header = screen.getByRole("button", { name: "Plegar menú" }).closest("header")!;
+    expect(header.className).toMatch(/shell:pl-0/);
+    expect(screen.getByRole("button", { name: "Plegar menú" }).className).not.toMatch(/-ml-1/);
+  });
+
+  it("el tema es un interruptor junto a la campana", async () => {
+    const user = userEvent.setup();
+    render(<Shell />);
+    const toggle = screen.getByRole("switch", { name: "Modo oscuro" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await user.click(toggle);
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-theme", "dark"));
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await user.click(toggle);
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-theme", "light"));
+  });
+
+  it("un botón redondo de vidrio vuelve a la miga anterior, junto al título y no en la barra; en la portada no está", () => {
+    nav.pathname = "/clients/flor/agents/a-1";
+    const { unmount } = render(
+      <Shell>
+        <CrumbName id="flor" label="Flor y Encanto" />
+        <CrumbName id="a-1" label="Recepción" />
+        <ShellBackButton />
+      </Shell>,
+    );
+    const back = screen.getByRole("link", { name: "Volver a Flor y Encanto" });
+    expect(back).toHaveAttribute("href", "/clients/flor/agents");
+    expect(back.className).toMatch(/(^|\s)glass(\s|$)/);
+    expect(back.className).toMatch(/rounded-full/);
+    // Andrés, 2026-10-28: va con el título de la página, no con las migas.
+    expect(back.closest("header")).toBeNull();
+    expect(back.closest("main")).not.toBeNull();
+    unmount();
+    nav.pathname = "/";
+    render(
+      <Shell>
+        <ShellBackButton />
+      </Shell>,
+    );
+    expect(screen.queryByRole("link", { name: /^Volver a/ })).toBeNull();
+  });
+
+  it("plegado, las etiquetas de grupo no se ven pero los grupos conservan su nombre", () => {
+    render(<Shell collapsed />);
+    expect(within(sidebar()).getByRole("list", { name: "Operar" })).toBeTruthy();
+    // Se desvanece sin cambiar de sitio: el plegado no da saltos (Andrés, 2026-10-28).
+    expect(within(sidebar()).getByText("Operar")).toHaveClass("opacity-0");
   });
 
   it("cada pantalla es un enlace con su URL, y la activa lo dice", () => {
@@ -132,21 +185,24 @@ describe("ConsoleShellV2 — el marco", () => {
     expect(screen.getAllByRole("button", { name: "Notificaciones" })).toHaveLength(1);
   });
 
-  it("el menú de perfil lleva el tema y «Cerrar sesión»", async () => {
+  it("el menú de perfil lleva Equipo, Facturación y API, el idioma y «Cerrar sesión»", async () => {
     const user = userEvent.setup();
     render(<Shell />);
     await user.click(within(sidebar()).getByRole("button", { name: /Luis Matos/ }));
     const menu = await screen.findByRole("menu");
-    const themes = within(menu).getAllByRole("menuitemradio");
-    expect(themes.map((t) => t.textContent?.trim())).toEqual(["Claro", "Oscuro", "Sistema"]);
-    expect(within(menu).getByRole("menuitemradio", { name: "Sistema" })).toHaveAttribute("aria-checked", "true");
-    await user.click(within(menu).getByRole("menuitemradio", { name: "Oscuro" }));
-    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-theme", "dark"));
-    await user.click(within(sidebar()).getByRole("button", { name: /Luis Matos/ }));
-    expect(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Cerrar sesión" })).toBeInTheDocument();
+    for (const [name, href] of [
+      ["Equipo", "/team"],
+      ["Facturación", "/billing"],
+      ["API", "/keys"],
+    ]) {
+      expect(within(menu).getByRole("menuitem", { name })).toHaveAttribute("href", href);
+    }
+    // El tema ya no está aquí: es el interruptor de la barra.
+    expect(within(menu).queryAllByRole("menuitemradio")).toHaveLength(0);
+    expect(within(menu).getByRole("menuitem", { name: "Cerrar sesión" })).toBeInTheDocument();
   });
 
-  it("hasta 900 px: la barra superior conserva el menú, el perfil y el tema", async () => {
+  it("hasta 900 px: la barra superior conserva el menú, el perfil con la cuenta y el tema", async () => {
     const user = userEvent.setup();
     render(<Shell />);
     // El lateral se oculta por CSS a ese ancho y aparece la barra (las clases
@@ -154,14 +210,15 @@ describe("ConsoleShellV2 — el marco", () => {
     expect(sidebar().className).toMatch(/max-shell:hidden/);
     const bar = mobileNav();
     expect(bar.className).toMatch(/shell:hidden/);
-    expect(linksIn(bar)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría", "Guía del partner", "Teammate", "Equipo", "Facturación", "API"]);
+    expect(linksIn(bar)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría", "Guía del partner", "Teammate"]);
     // La fila de entradas se desplaza de lado dentro de su caja, sin desbordar la página.
     expect(bar.querySelector("[data-scroll-x]")).not.toBeNull();
     const profile = document.querySelector<HTMLElement>("[data-slot=shell-mobile-profile]")!;
     expect(profile.className).toMatch(/shell:hidden/);
     await user.click(within(profile).getByRole("button"));
     const menu = await screen.findByRole("menu");
-    expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(3);
+    expect(within(menu).getByRole("menuitem", { name: "Facturación" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Modo oscuro" })).toBeInTheDocument();
   });
 
   it("salta al contenido y el contenido es el `main`", () => {

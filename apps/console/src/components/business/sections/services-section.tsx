@@ -80,6 +80,7 @@ export function ServicesSection({
   canWrite,
   actions = SERVER_ACTIONS,
   renameable = true,
+  confirmable = false,
 }: {
   refId: string;
   services: Services;
@@ -87,6 +88,8 @@ export function ServicesSection({
   actions?: ServicesActions;
   /** Spec 047 (T168): en la consola lite el nombre de un servicio que ya existe no se cambia. */
   renameable?: boolean;
+  /** «Es correcto» de lo leído de la web: solo en la consola del partner. */
+  confirmable?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -95,6 +98,9 @@ export function ServicesSection({
   const [choosing, setChoosing] = React.useState<Service | null>(null);
   const [conflict, setConflict] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
+  const confirm = confirmable
+    ? { refId, section: "services" as const, onConfirmed: () => setServices((prev) => ({ ...prev, state: "complete" as const })) }
+    : undefined;
   const live = services.items.filter((s) => !s.archived);
 
   function price(p: Price, currency: string): string {
@@ -146,7 +152,19 @@ export function ServicesSection({
   ];
 
   return (
-    <SectionFrame id="business-services" title={t("business.services.title")} intro={t("business.services.intro")} state={services.state} canWrite={canWrite}>
+    <SectionFrame
+      id="business-services"
+      title={t("business.services.title")}
+      state={services.state}
+      canWrite={canWrite}
+      confirm={confirm}
+      action={
+        <Button type="button" size="sm" variant="outline" onClick={() => setEditing("new")}>
+          <Plus aria-hidden="true" />
+          {t("business.services.add")}
+        </Button>
+      }
+    >
       <div className="grid min-w-0 gap-4">
         {conflict ? <ConflictNotice /> : null}
         {live.length === 0 ? (
@@ -205,14 +223,6 @@ export function ServicesSection({
             </Table>
           </div>
         )}
-        {canWrite ? (
-          <div>
-            <Button type="button" variant="outline" onClick={() => setEditing("new")}>
-              <Plus aria-hidden="true" />
-              {t("business.services.add")}
-            </Button>
-          </div>
-        ) : null}
       </div>
 
       {editing ? (

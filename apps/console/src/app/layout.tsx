@@ -81,7 +81,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <UiCopyProvider copy={uiCopy}>
           <LocaleProvider locale={locale}>
             {children}
-            <Toaster position="top-right" richColors closeButton />
+            {/* Como el prototipo: el aviso sube abajo, en el centro, en vidrio; el tono lo dice su icono. */}
+            <Toaster position="bottom-center" closeButton />
           </LocaleProvider>
           </UiCopyProvider>
         </ThemeProvider>

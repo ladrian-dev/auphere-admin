@@ -1,10 +1,10 @@
 "use client";
 
-import { CalendarClock, Send } from "lucide-react";
+import { CalendarClock, Clock, Info, Send, SlidersHorizontal, Zap } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Input, Label, NativeSelect, StatusBadge, Textarea } from "@nexus/ui";
+import { Button, Input, Label, NativeSelect, StatusBadge } from "@nexus/ui";
 
 import {
   closePlaygroundAction,
@@ -16,7 +16,7 @@ import { useLocale, useT } from "@/i18n/client";
 import type { PlaygroundReply, PlaygroundSession, PlaygroundTurn, SimBooking } from "@/lib/backend/agent-quality-types";
 
 import type { Result } from "./builder-model";
-import { simTimeLabel, wallTime } from "./quality-model";
+import { simTimeLabel, simTimeShort, wallTime } from "./quality-model";
 
 type Ids = { ref: string; agent: string };
 export type PlaygroundActions = {
@@ -36,13 +36,17 @@ const SERVER_ACTIONS: PlaygroundActions = {
 const MAX_TEXT = 1000;
 
 /**
- * El probador de la pantalla del agente (spec 047, historia 8; requisito 20):
- * conversar con el borrador —o con una versión publicada que se elija— como si
- * fuera un cliente. Las respuestas salen como burbujas de WhatsApp y, si el
- * agente manda más de una seguida, se dice (20.4). Cada acción que habría hecho
- * se cuenta como «Lo que habría hecho: …» (20.3). Encima, la hora simulada en
- * la zona del negocio (se puede cambiar) y la agenda simulada, que cambia con
- * lo que hace el agente (20.2). Nada sale de aquí: ningún envío ni reserva real.
+ * El probador de la pantalla del agente (spec 047, historia 8; requisito 20),
+ * como el chat del prototipo aprobado (§5.2): «Chat de prueba · así lo verá su
+ * cliente», con la hora simulada en la cabecera y la conversación que empieza
+ * al escribir (con el borrador, o con la versión publicada que se elija).
+ *
+ * Las respuestas salen como burbujas de WhatsApp y, si el agente manda más de
+ * una seguida, se dice (20.4). Cada acción que habría hecho se cuenta como «Lo
+ * que habría hecho: …» (20.3). Detrás de «Opciones»: qué versión probar, la
+ * hora simulada en la zona del negocio (se puede cambiar), la agenda simulada
+ * que cambia con lo que hace el agente (20.2) y «Nueva conversación». Nada sale
+ * de aquí: ningún envío ni reserva real.
  *
  * Quien solo lee ve la última conversación de prueba sin poder escribir (20.5).
  */
@@ -69,147 +73,58 @@ export function AgentPlayground({
   actions?: PlaygroundActions;
 }) {
   const t = useT();
+  const locale = useLocale();
   const base = React.useId();
   const ids = { ref: refId, agent: agentId };
   const [session, setSession] = React.useState<PlaygroundSession | null>(() => sessions?.[0] ?? null);
-  const [choosing, setChoosing] = React.useState(false);
   const [version, setVersion] = React.useState<string>(hasDraft || !versions.length ? "draft" : String(versions[0]));
+  const [options, setOptions] = React.useState(false);
   const [opening, setOpening] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const writes = canWrite && (session ? session.allowed.includes("send") : true);
-  const canClose = Boolean(session?.allowed.includes("close"));
-  const canSetTime = Boolean(session?.allowed.includes("set_time"));
-
-  async function start() {
-    setOpening(true);
-    setError(null);
-    if (session && canClose) await actions.close({ ...ids, session: session.session_id });
-    const res = await actions.open({ ...ids, version: version === "draft" ? "draft" : Number(version) });
-    setOpening(false);
-    if (res.ok) {
-      setSession(res.data);
-      setChoosing(false);
-      return;
-    }
-    setError(
-      res.code === "build_budget_exhausted" || res.status === 402
-        ? t("money.build.blocked")
-        : res.status === 401 || res.status === 403
-          ? t("common.forbidden")
-          : t("builder.pg.error.generic"),
-    );
-  }
-
-  const showStart = canWrite && (!session || choosing);
-
-  return (
-    <section aria-labelledby={`${base}-title`} className="grid min-w-0 gap-4" data-slot="agent-playground">
-      <div className="grid min-w-0 gap-1">
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <h3 id={`${base}-title`} className="text-base font-semibold">
-            {t("builder.pg.title")}
-          </h3>
-          {session ? (
-            <StatusBadge tone={session.is_draft ? "info" : "positive"}>
-              {session.is_draft ? t("builder.pg.testing.draft", { n: session.version_number }) : t("builder.pg.testing.version", { n: session.version_number })}
-            </StatusBadge>
-          ) : null}
-        </div>
-        <p className="text-sm text-pretty text-muted-foreground">{t("builder.pg.intro")}</p>
-        {!canWrite ? <p className="text-xs text-muted-foreground">{t("builder.pg.readonly")}</p> : null}
-      </div>
-
-      {showStart ? (
-        <div className="grid min-w-0 gap-2" data-slot="playground-start">
-          <Label htmlFor={`${base}-version`}>{t("builder.pg.version")}</Label>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <NativeSelect id={`${base}-version`} value={version} onChange={(e) => setVersion(e.target.value)} wrapperClassName="min-w-32 flex-1">
-              {hasDraft || !versions.length ? <option value="draft">{t("builder.pg.version.draft")}</option> : null}
-              {versions.map((n) => (
-                <option key={n} value={String(n)}>
-                  {t("builder.pg.version.number", { n })}
-                </option>
-              ))}
-            </NativeSelect>
-            <Button type="button" onClick={() => void start()} loading={opening}>
-              {t("builder.pg.start")}
-            </Button>
-            {session ? (
-              <Button type="button" variant="ghost" onClick={() => setChoosing(false)} disabled={opening}>
-                {t("builder.pg.time.cancel")}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {error ? (
-        <p role="alert" className="text-sm text-destructive text-pretty">
-          {error}
-        </p>
-      ) : null}
-
-      {session ? (
-        <PlaygroundSessionView
-          key={session.session_id}
-          session={session}
-          ids={ids}
-          writes={writes}
-          canSetTime={canSetTime}
-          actions={actions}
-          onWhy={onWhy}
-          onChange={setSession}
-          onExpired={() => {
-            setSession(null);
-            setError(t("builder.pg.error.gone"));
-          }}
-        />
-      ) : !canWrite ? (
-        <p className="text-sm text-pretty text-muted-foreground">{t("builder.pg.none")}</p>
-      ) : null}
-
-      {session && canWrite && !choosing ? (
-        <div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setChoosing(true)}>
-            {t("builder.pg.new")}
-          </Button>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function PlaygroundSessionView({
-  session,
-  ids,
-  writes,
-  canSetTime,
-  actions,
-  onWhy,
-  onChange,
-  onExpired,
-}: {
-  session: PlaygroundSession;
-  ids: Ids;
-  writes: boolean;
-  canSetTime: boolean;
-  actions: PlaygroundActions;
-  onWhy?: (turn: PlaygroundTurn) => void;
-  onChange: (session: PlaygroundSession) => void;
-  onExpired: () => void;
-}) {
-  const t = useT();
-  const base = React.useId();
   const [text, setText] = React.useState("");
   const [pending, setPending] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const endRef = React.useRef<HTMLLIElement>(null);
-  const turns = session.transcript;
+
+  const writes = canWrite && (session ? session.allowed.includes("send") : true);
+  const canClose = Boolean(session?.allowed.includes("close"));
+  const canSetTime = Boolean(session?.allowed.includes("set_time"));
+  const turns = session?.transcript ?? [];
 
   React.useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [turns.length, pending]);
+
+  function failText(res: Extract<Result<unknown>, { ok: false }>): string {
+    return res.code === "build_budget_exhausted" || res.status === 402
+      ? t("money.build.blocked")
+      : res.code === "turn_in_progress"
+        ? t("builder.pg.error.busy")
+        : res.code === "turn_timeout" || res.status === 504
+          ? t("builder.pg.error.timeout")
+          : res.status === 401 || res.status === 403
+            ? t("common.forbidden")
+            : t("builder.pg.error.generic");
+  }
+
+  /** Una conversación nueva con la versión elegida; la anterior se cierra. */
+  async function open(): Promise<PlaygroundSession | null> {
+    if (session && canClose) await actions.close({ ...ids, session: session.session_id });
+    const res = await actions.open({ ...ids, version: version === "draft" ? "draft" : Number(version) });
+    if (res.ok) {
+      setSession(res.data);
+      return res.data;
+    }
+    setError(failText(res));
+    return null;
+  }
+
+  async function restart() {
+    setOpening(true);
+    setError(null);
+    const next = await open();
+    setOpening(false);
+    if (next) setOptions(false);
+  }
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
@@ -217,88 +132,155 @@ function PlaygroundSessionView({
     if (!message || pending) return;
     setPending(message);
     setError(null);
-    const res = await actions.send({ ...ids, session: session.session_id, text: message });
+    // Como el prototipo: sin conversación abierta, la abre el primer mensaje.
+    const current = session ?? (await open());
+    if (!current) {
+      setPending(null);
+      return;
+    }
+    const res = await actions.send({ ...ids, session: current.session_id, text: message });
     setPending(null);
     if (res.ok) {
       setText("");
-      onChange({
-        ...session,
+      setSession({
+        ...current,
         now: res.data.now,
         agenda: res.data.agenda,
-        transcript: [...turns, { role: "customer", bubbles: [message], several_bubbles: false, actions: [] }, res.data.turn],
+        transcript: [...current.transcript, { role: "customer", bubbles: [message], several_bubbles: false, actions: [] }, res.data.turn],
       });
       return;
     }
-    if (res.code === "unknown_session") return onExpired();
-    setError(
-      res.code === "build_budget_exhausted" || res.status === 402
-        ? t("money.build.blocked")
-        : res.code === "turn_in_progress"
-        ? t("builder.pg.error.busy")
-        : res.code === "turn_timeout" || res.status === 504
-          ? t("builder.pg.error.timeout")
-          : res.status === 401 || res.status === 403
-            ? t("common.forbidden")
-            : t("builder.pg.error.generic"),
-    );
+    if (res.code === "unknown_session") {
+      setSession(null);
+      setError(t("builder.pg.error.gone"));
+      return;
+    }
+    setError(failText(res));
   }
 
+  const showOptions = canWrite || session !== null;
+
   return (
-    <div className="grid min-w-0 gap-4">
-      <SimPanel session={session} ids={ids} canSetTime={canSetTime} actions={actions} onChange={onChange} />
-
-      <div className="grid min-w-0 gap-3 rounded-md border border-border bg-muted/40 p-3">
-        <ol aria-label={t("builder.pg.chat")} aria-live="polite" className="grid max-h-[28rem] min-w-0 gap-3 overflow-y-auto" data-slot="playground-chat">
-          {!turns.length && !pending ? <li className="text-sm text-pretty text-muted-foreground">{t("builder.pg.chat.empty")}</li> : null}
-          {turns.map((turn, i) => (
-            <Turn key={i} turn={turn} onWhy={onWhy} />
-          ))}
-          {pending ? (
-            <>
-              <Turn turn={{ role: "customer", bubbles: [pending], several_bubbles: false, actions: [] }} />
-              <li className="text-xs text-muted-foreground" role="status">
-                {t("builder.pg.typing")}
-              </li>
-            </>
+    <section aria-labelledby={`${base}-title`} className="grid min-w-0 overflow-hidden rounded-lg border border-border bg-card" data-slot="agent-playground">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <h2 id={`${base}-title`} className="min-w-0 text-sm font-medium text-pretty">
+          {t("agentProto.chat.title")}
+        </h2>
+        <div className="flex shrink-0 items-center gap-1">
+          {session ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground tabular-nums" data-slot="playground-clock">
+              <Clock aria-hidden="true" className="size-3" />
+              <span className="sr-only">{t("builder.pg.time")}: </span>
+              {simTimeShort(session.now, session.timezone, locale)}
+            </span>
           ) : null}
-          <li ref={endRef} aria-hidden="true" className="h-0" />
-        </ol>
-
-        {writes ? (
-          <form onSubmit={send} className="grid min-w-0 gap-2" data-slot="playground-form">
-            <Label htmlFor={`${base}-text`} className="sr-only">
-              {t("builder.pg.message")}
-            </Label>
-            <div className="flex min-w-0 items-end gap-2">
-              <Textarea
-                id={`${base}-text`}
-                value={text}
-                rows={2}
-                maxLength={MAX_TEXT}
-                placeholder={t("builder.pg.message")}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    e.currentTarget.form?.requestSubmit();
-                  }
-                }}
-                className="min-h-10 flex-1 bg-background"
-              />
-              <Button type="submit" loading={pending !== null} className="shrink-0">
-                <Send aria-hidden="true" />
-                {t("builder.pg.send")}
-              </Button>
-            </div>
-            {error ? (
-              <p role="alert" className="text-xs text-destructive text-pretty">
-                {error}
-              </p>
-            ) : null}
-          </form>
-        ) : null}
+          {showOptions ? (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={t("agentProto.chat.options")}
+              aria-expanded={options}
+              aria-controls={`${base}-options`}
+              onClick={() => setOptions((v) => !v)}
+            >
+              <SlidersHorizontal aria-hidden="true" />
+            </Button>
+          ) : null}
+        </div>
       </div>
-    </div>
+
+      {options ? (
+        <div id={`${base}-options`} className="grid min-w-0 gap-3 border-b border-border p-3" data-slot="playground-options">
+          {session ? (
+            <StatusBadge tone={session.is_draft ? "info" : "positive"}>
+              {session.is_draft ? t("builder.pg.testing.draft", { n: session.version_number }) : t("builder.pg.testing.version", { n: session.version_number })}
+            </StatusBadge>
+          ) : null}
+          {canWrite ? (
+            <div className="grid min-w-0 gap-2" data-slot="playground-start">
+              <Label htmlFor={`${base}-version`}>{t("builder.pg.version")}</Label>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <NativeSelect id={`${base}-version`} value={version} onChange={(e) => setVersion(e.target.value)} wrapperClassName="min-w-32 flex-1">
+                  {hasDraft || !versions.length ? <option value="draft">{t("builder.pg.version.draft")}</option> : null}
+                  {versions.map((n) => (
+                    <option key={n} value={String(n)}>
+                      {t("builder.pg.version.number", { n })}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <Button type="button" size="sm" variant="outline" onClick={() => void restart()} loading={opening}>
+                  {t("builder.pg.new")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {session ? <SimPanel session={session} ids={ids} canSetTime={canSetTime} actions={actions} onChange={setSession} /> : null}
+        </div>
+      ) : null}
+
+      <ol
+        aria-label={t("builder.pg.chat")}
+        aria-live="polite"
+        className="flex h-[300px] min-w-0 flex-col gap-2 overflow-y-auto bg-(--chat-bg) p-4"
+        data-slot="playground-chat"
+      >
+        {!turns.length && !pending ? (
+          <SystemNote icon={<Info aria-hidden="true" className="mt-px size-3 shrink-0" />}>
+            {canWrite ? t("agentProto.chat.empty") : t("builder.pg.none")}
+          </SystemNote>
+        ) : null}
+        {turns.map((turn, i) => (
+          <Turn key={i} turn={turn} onWhy={onWhy} />
+        ))}
+        {pending ? (
+          <>
+            <Turn turn={{ role: "customer", bubbles: [pending], several_bubbles: false, actions: [] }} />
+            <li className="text-xs text-muted-foreground" role="status">
+              {t("builder.pg.typing")}
+            </li>
+          </>
+        ) : null}
+        <li ref={endRef} aria-hidden="true" className="h-0 shrink-0" />
+      </ol>
+
+      {writes ? (
+        <form onSubmit={send} className="flex min-w-0 items-center gap-2 border-t border-border p-3" data-slot="playground-form">
+          <Label htmlFor={`${base}-text`} className="sr-only">
+            {t("builder.pg.message")}
+          </Label>
+          <Input
+            id={`${base}-text`}
+            value={text}
+            maxLength={MAX_TEXT}
+            autoComplete="off"
+            placeholder={t("agentProto.chat.placeholder")}
+            onChange={(e) => setText(e.target.value)}
+            className="min-w-0 flex-1"
+          />
+          <Button type="submit" size="icon" loading={pending !== null} aria-label={t("builder.pg.send")} className="shrink-0">
+            <Send aria-hidden="true" />
+          </Button>
+        </form>
+      ) : (
+        <p className="border-t border-border px-3 py-2 text-xs text-pretty text-muted-foreground">{t("builder.pg.readonly")}</p>
+      )}
+      {error ? (
+        <p role="alert" className="px-3 pb-3 text-xs text-destructive text-pretty">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** Una nota del sistema en el chat: centrada, con borde discontinuo (§5.2). */
+function SystemNote({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <li className="flex max-w-[94%] min-w-0 items-start gap-2 self-center rounded-lg border border-dashed border-input bg-card px-3 py-2 text-xs text-pretty text-muted-foreground">
+      {icon}
+      <span className="min-w-0">{children}</span>
+    </li>
   );
 }
 
@@ -308,13 +290,13 @@ function Turn({ turn, onWhy }: { turn: PlaygroundTurn; onWhy?: (turn: Playground
   const mine = turn.role === "customer";
   const who = mine ? t("builder.pg.customer") : t("builder.pg.agent");
   return (
-    <li className={`grid min-w-0 gap-1 ${mine ? "justify-items-end" : "justify-items-start"}`} data-slot="playground-turn" data-role={turn.role}>
+    <li className={`flex min-w-0 shrink-0 flex-col gap-1 ${mine ? "items-end" : "items-start"}`} data-slot="playground-turn" data-role={turn.role}>
       <span className="sr-only">{who}</span>
       {turn.bubbles.map((bubble, i) => (
         <p
           key={i}
-          className={`max-w-[85%] rounded-md px-3 py-2 text-sm text-pretty break-words whitespace-pre-line shadow-sm ${
-            mine ? "bg-primary text-primary-foreground" : "bg-card text-card-foreground ring-1 ring-foreground/10"
+          className={`max-w-[82%] rounded-lg px-3 py-2 text-sm/snug text-pretty break-words whitespace-pre-line text-foreground shadow-xs ${
+            mine ? "bg-(--bubble-out)" : "bg-card"
           }`}
           data-slot="playground-bubble"
         >
@@ -327,10 +309,11 @@ function Turn({ turn, onWhy }: { turn: PlaygroundTurn; onWhy?: (turn: Playground
         </span>
       ) : null}
       {!mine && turn.actions.length ? (
-        <ul className="grid max-w-[85%] min-w-0 gap-1" data-slot="playground-actions">
+        <ul className="grid max-w-[94%] min-w-0 gap-1 self-center" data-slot="playground-actions">
           {turn.actions.map((a, i) => (
-            <li key={i} className="rounded-md border border-dashed border-border bg-background px-2 py-1 text-xs text-pretty">
-              {t("builder.pg.would", { phrase: a.phrase })}
+            <li key={i} className="flex min-w-0 items-start gap-2 rounded-lg border border-dashed border-input bg-card px-3 py-2 text-xs text-pretty text-muted-foreground">
+              <Zap aria-hidden="true" className="mt-px size-3 shrink-0" />
+              <span className="min-w-0">{t("builder.pg.would", { phrase: a.phrase })}</span>
             </li>
           ))}
         </ul>

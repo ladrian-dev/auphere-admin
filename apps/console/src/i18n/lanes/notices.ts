@@ -73,8 +73,8 @@ export const noticesMessages = {
     en: "Building and testing has used 80% of its monthly cap.",
   },
   "notif.kind.build.budget.exhausted": {
-    es: "Construcción y pruebas llegó a su tope del mes. El constructor se detiene, la edición a mano sigue.",
-    en: "Building and testing reached its monthly cap. The builder stops, editing by hand still works.",
+    es: "Construcción y pruebas llegó a su tope del mes. La creación de agentes se detiene, la edición a mano sigue.",
+    en: "Building and testing reached its monthly cap. Creating agents stops, editing by hand still works.",
   },
 
   // ── los modelos (41.7, 41.8) ──

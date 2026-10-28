@@ -37,7 +37,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
     return (
       <>
         <PageHeader
-          eyebrow={t("nav.clients")}
+          size="display"
           title={t("clients.v2.title")}
           description={t("clients.v2.description")}
           actions={can(principal.role, "clients:write") ? <NewClientButton autoOpen={sp.new === "1"} /> : undefined}
@@ -86,7 +86,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader
-        eyebrow={t("nav.clients")}
+        size="display"
         title={t("clients.title")}
         // Sin contador «{used} de {max}»: añadir un cliente no se cobra y no
         // tiene tope (owner, 2026-09-28), así que un contador solo sembraba
@@ -99,8 +99,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           icon={Building2}
           title={t("clients.empty.title")}
           description={t("clients.empty.body")}
-          action={canWrite && !v2 ? newClient : undefined}
-          readonly={!canWrite}
+          // Sin botón: «Nuevo cliente» ya está en la cabecera (un primario por vista).
+          readonly
         />
       ) : (
         <ClientsTable

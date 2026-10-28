@@ -188,9 +188,9 @@ export function TestList({
       {!suite.tests.length ? <p className="text-sm text-muted-foreground">{t("builder.suite.empty")}</p> : null}
       {groupTests(suite.tests).map((group) => (
         <div key={group.kind} className="grid min-w-0 gap-2">
-          <h4 className="text-sm font-semibold" id={`tests-${group.kind}`}>
+          <h3 className="text-sm font-semibold" id={`tests-${group.kind}`}>
             {t(`builder.suite.kind.${group.kind}` as MessageKey)} · {group.tests.length}
-          </h4>
+          </h3>
           <ul aria-labelledby={`tests-${group.kind}`} className="grid min-w-0 gap-2">
             {group.tests.map((test) => (
               <TestRow

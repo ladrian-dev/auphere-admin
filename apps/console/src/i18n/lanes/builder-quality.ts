@@ -7,7 +7,10 @@
  *  «integración» ni punto y coma (`words.test.ts`): se dice «conector». */
 export const builderQualityMessages = {
   // ── La pantalla del agente: sus partes ──────────────────────────────────
-  "builder.screen.sections": { es: "Partes del agente", en: "Parts of the agent" },
+  "builder.screen.sections": { es: "Secciones del agente", en: "Agent sections" },
+  // El owner, 2026-10-28: la pestaña se llama solo «Configuración».
+  "builder.screen.tab.build": { es: "Configuración", en: "Settings" },
+  "builder.agent.ofClient": { es: "de {name}", en: "for {name}" },
   "builder.screen.blocks": { es: "Borrador", en: "Draft" },
   "builder.screen.tests": { es: "Pruebas", en: "Tests" },
   "builder.screen.review": { es: "Revisión", en: "Review" },
@@ -154,7 +157,7 @@ export const builderQualityMessages = {
   "builder.review.fix.failed": { es: "El arreglo ya no aplica. Revisa otra vez.", en: "The fix no longer applies. Review again." },
 
   // ── «Guardar» y la puerta (requisito 23) ────────────────────────────────
-  "builder.publish.bar": { es: "Guardar el agente", en: "Save the agent" },
+  "builder.publish.bar": { es: "Acciones del agente", en: "Agent actions" },
   "builder.publish.save": { es: "Guardar", en: "Save" },
   "builder.publish.save_and_connect": { es: "Guardar y conectar un canal", en: "Save and connect a channel" },
   "builder.publish.save_changes": { es: "Guardar cambios", en: "Save changes" },

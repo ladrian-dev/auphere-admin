@@ -53,6 +53,19 @@ describe("Las palabras · Habilidades y Conectores", () => {
   });
 });
 
+describe("Las palabras · el constructor trabaja por dentro", () => {
+  it("ninguna frase nombra al constructor (Andrés, 2026-10-28: no se muestra en la interfaz)", () => {
+    // El rol de equipo «Constructor» (`role.builder`, y el Companion que lo
+    // nombra) es una persona, no la herramienta, y las claves `builder.cb.*` ya no las pinta nadie (la tarjeta
+    // «Completar con el constructor» salió de Negocio): quedan fuera.
+    const culpables = visible()
+      .filter(([key]) => !["role.builder", "companion.bubble.disabled.role"].includes(key) && !key.startsWith("builder.cb."))
+      .filter(([, , text]) => /\bconstructor(es)?\b|\bthe builder\b/i.test(text))
+      .map(([key, locale, text]) => `${key} [${locale}] → ${text}`);
+    expect(culpables, "quedan pantallas nombrando al constructor").toEqual([]);
+  });
+});
+
 describe("Las palabras · cómo se puntúan", () => {
   it("ninguna pantalla usa punto y coma", () => {
     // Regla del owner (2026-09-28). No es capricho tipográfico: el punto y
@@ -142,5 +155,20 @@ describe("El alta está en un idioma · spec 019, R9", () => {
       .filter(([, text]) => ESPANOLAS.test(text))
       .map(([key, text]) => `${key} → ${text}`);
     expect(culpables, "el alta mezcla español en inglés").toEqual([]);
+  });
+});
+
+/**
+ * Andrés, 2026-10-28: los ejemplos de los campos son generales, sin aludir a
+ * ningún nicho. Salió «Barbería Cultor» en el alta y «cultorbarber.com/precios»
+ * en Documentos y webs.
+ */
+describe("los ejemplos de los campos no son de ningún nicho", () => {
+  it("ningún placeholder nombra un negocio de ejemplo", () => {
+    const NICHO = /barber|cultor|peluquer|florist|cl[ií]nica|dental|caf[eé]/i;
+    const culpables = visible()
+      .filter(([key, , text]) => /placeholder|\.ph$/i.test(key) && NICHO.test(text))
+      .map(([key, locale, text]) => `${key} (${locale}) → ${text}`);
+    expect(culpables).toEqual([]);
   });
 });

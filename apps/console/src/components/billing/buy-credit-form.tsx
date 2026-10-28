@@ -22,15 +22,22 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Input, Label } from "@nexus/ui";
+import { Button, Input, cn, formatCurrency, formatNumber } from "@nexus/ui";
 
 import { buyCreditAction } from "@/app/(console)/billing/actions";
 import { useLocale, useT } from "@/i18n/client";
-import { formatMoney } from "@/lib/money";
 
-/** Los mismos límites que valida la API, en dólares. */
-const MIN_USD = 5;
-const MAX_USD = 5_000;
+/** Los mismos límites que valida la API, en unidades enteras de la moneda del cobro. */
+const MIN_AMOUNT = 5;
+const MAX_AMOUNT = 5_000;
+/** Las cantidades rápidas del prototipo «Consola de partners v2». */
+const QUICK = [20, 50, 100, 250] as const;
+/**
+ * La moneda en la que cobra el proveedor. Es la de `open_credit_session`
+ * (`apps/api/.../billing/checkout.py`, `"currency": "usd"`): la consola no puede
+ * prometer otra. Si la cuenta va en otra moneda, el formulario lo dice.
+ */
+export const CHECKOUT_CURRENCY = "USD";
 
 /**
  * Spec 047 (45.3): «Recargar mi cuenta» llega con lo que faltaba para asignar
@@ -39,25 +46,37 @@ const MAX_USD = 5_000;
 export function initialCreditAmount(raw: string | number | null | undefined): string {
   const n = Math.ceil(Number(raw));
   if (!Number.isFinite(n) || n <= 0) return "";
-  return String(Math.min(MAX_USD, Math.max(MIN_USD, n)));
+  return String(Math.min(MAX_AMOUNT, Math.max(MIN_AMOUNT, n)));
 }
 
-export function BuyCreditForm({ initialAmount }: { initialAmount?: string | number | null } = {}) {
+/**
+ * Comprar saldo como en el prototipo: cuatro cantidades rápidas, «Otro importe»
+ * y «Comprar», que se apaga fuera de 5 a 5000 en números enteros. Las cifras
+ * salen de `Intl` con la moneda del cobro, nunca de un texto con «US$».
+ */
+export function BuyCreditForm({
+  initialAmount,
+  accountCurrency,
+  label,
+}: { initialAmount?: string | number | null; accountCurrency?: string | null; label?: string } = {}) {
   const t = useT();
   const locale = useLocale();
+  const [quick, setQuick] = React.useState<number | null>(null);
   const [value, setValue] = React.useState(() => initialCreditAmount(initialAmount));
   const [pending, start] = React.useTransition();
+  const id = React.useId();
 
-  const amount = Number(value);
-  const valid = Number.isFinite(amount) && Number.isInteger(amount) && amount >= MIN_USD && amount <= MAX_USD;
-  // Spec 027: lo que se paga es lo que se recibe, en dinero. La consola no
-  // conoce la tasa interna ni habla de unidades.
-  const receives = valid ? amount * 100 : null;
+  const typed = value.trim();
+  const amount = quick ?? Number(typed);
+  const valid = Number.isFinite(amount) && Number.isInteger(amount) && amount >= MIN_AMOUNT && amount <= MAX_AMOUNT && (quick !== null || typed !== "");
+  const invalidTyped = quick === null && typed !== "" && !valid;
+  const money = (n: number) => formatCurrency(n, CHECKOUT_CURRENCY, locale);
+  const range = { min: formatNumber(MIN_AMOUNT, locale), max: formatNumber(MAX_AMOUNT, locale) };
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!valid) {
-      toast.error(t("membership.credit.invalid", { min: MIN_USD, max: MAX_USD }));
+      toast.error(t("proto.billing.credit.invalid", range));
       return;
     }
     start(async () => {
@@ -73,31 +92,61 @@ export function BuyCreditForm({ initialAmount }: { initialAmount?: string | numb
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-2">
-      <Label htmlFor="credit-amount">{t("membership.credit.amount")}</Label>
-      <div className="flex flex-wrap items-center gap-2">
+    <form onSubmit={submit} className="grid min-w-0 gap-2" data-slot="buy-credit">
+      {label ? <p className="text-sm font-medium" id={`${id}-label`}>{label}</p> : null}
+      <div role="group" aria-label={t("proto.billing.quick")} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {QUICK.map((n) => (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={quick === n}
+            onClick={() => {
+              setQuick(n);
+              setValue("");
+            }}
+            className={cn(
+              "h-12 rounded-lg border border-input bg-card text-md font-medium tabular-nums transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              quick === n && "border-primary bg-status-positive-bg ring-1 ring-primary",
+            )}
+          >
+            {money(n)}
+          </button>
+        ))}
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Input
-          id="credit-amount"
+          id={`${id}-amount`}
           name="amount"
           type="number"
           inputMode="numeric"
-          min={MIN_USD}
-          max={MAX_USD}
+          min={MIN_AMOUNT}
+          max={MAX_AMOUNT}
           step={1}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="w-32"
-          aria-describedby="credit-hint"
+          placeholder={t("proto.billing.other")}
+          aria-label={t("proto.billing.other")}
+          onChange={(e) => {
+            setQuick(null);
+            setValue(e.target.value);
+          }}
+          className="min-w-0 flex-1"
+          aria-invalid={invalidTyped || undefined}
+          aria-describedby={`${id}-hint`}
         />
-        <Button type="submit" size="sm" disabled={pending}>
+        <Button type="submit" disabled={pending || !valid}>
           {t("membership.credit.buy")}
         </Button>
       </div>
-      <p id="credit-hint" className="text-muted-foreground text-sm" aria-live="polite">
-        {receives === null
-          ? t("membership.credit.range", { min: MIN_USD, max: MAX_USD })
-          : t("membership.credit.buys", { amount: formatMoney(receives, locale) })}
+      <p id={`${id}-hint`} className={cn("text-sm text-pretty", invalidTyped ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
+        {invalidTyped
+          ? t("proto.billing.credit.invalid", range)
+          : valid
+            ? `${t("membership.credit.buys", { amount: money(amount) })} ${t("proto.billing.secure")}`
+            : t("proto.billing.credit.range", range)}
       </p>
+      {accountCurrency && accountCurrency !== CHECKOUT_CURRENCY ? (
+        <p className="text-xs text-pretty text-muted-foreground">{t("proto.billing.chargedIn", { currency: CHECKOUT_CURRENCY })}</p>
+      ) : null}
     </form>
   );
 }

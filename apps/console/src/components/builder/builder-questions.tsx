@@ -1,12 +1,17 @@
 "use client";
 
+import { CircleCheck, Info, ListChecks } from "lucide-react";
 import * as React from "react";
+import { toast } from "sonner";
 
 import { Button, Input, Label } from "@nexus/ui";
 
+import { answerDraftJobAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { BuilderAnswer, BuilderQuestion, QuestionScope } from "@/lib/backend/builder-types";
+import type { AnswersResult, BuilderAnswer, BuilderQuestion, QuestionScope } from "@/lib/backend/builder-types";
+
+import type { Result } from "./builder-model";
 
 const REGISTERS = new Set(["tu", "usted", "vos"]);
 
@@ -15,178 +20,337 @@ function optionLabel(target: string, option: string, t: (key: MessageKey) => str
   return target === "/voice/register" && REGISTERS.has(option) ? t(`builder.register.${option}` as MessageKey) : option;
 }
 
-type Props = {
-  questions: readonly BuilderQuestion[];
-  busy: boolean;
-  /** La pregunta que la API rechazó (`invalid_answer`), si dijo cuál. */
-  invalid?: string | null;
-  error?: string | null;
-  onSubmit: (answers: BuilderAnswer[]) => void;
-  onSkip: () => void;
+/** Las preguntas que dejó el borrador de «Nuevo agente», tal como las devolvió su trabajo. */
+export type PendingQuestionsView = {
+  job: string;
+  questions: BuilderQuestion[];
+  /** Cuántas descartó y por qué; nunca una cifra fija (17.4). */
+  discarded: { count: number; reasons: string[] };
 };
 
+export type AnswerQuestion = (body: { ref: string; job: string; answers: BuilderAnswer[] }) => Promise<Result<AnswersResult>>;
+
+export const answerQuestion: AnswerQuestion = (body) => answerDraftJobAction(body);
+
+type Answered = Record<string, { value: string; scope: QuestionScope }>;
+
+/** Lo respondido se recuerda en esta pestaña del navegador: al recargar no se vuelve a preguntar. */
+const memoryKey = (job: string) => `nexus.agent-questions.${job}`;
+
+function readMemory(job: string): string | null {
+  try {
+    return window.sessionStorage.getItem(memoryKey(job));
+  } catch {
+    return null;
+  }
+}
+
+function parseMemory(raw: string | null): Answered {
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? (parsed as Answered) : {};
+  } catch {
+    return {};
+  }
+}
+
+const noSubscribe = () => () => {};
+
+function writeMemory(job: string, answered: Answered) {
+  try {
+    window.sessionStorage.setItem(memoryKey(job), JSON.stringify(answered));
+  } catch {
+    // Sin almacenamiento, la pantalla funciona igual: solo no lo recuerda al recargar.
+  }
+}
+
 /**
- * Las preguntas del constructor (spec 047, requisitos 17.4 y 17.5): como mucho
- * cinco, cada una con su porqué y con respuestas cerradas cuando las hay.
+ * Las preguntas que le faltan al borrador recién generado (spec 047, requisitos
+ * 17.4 y 17.5), como el prototipo aprobado (`agente.md` §3.3): encima de la
+ * tabla del agente, «Me faltan {n} datos», lo que se descartó y por qué, y cada
+ * pregunta con su porqué, dónde se guarda su respuesta y sus opciones.
  *
- * Cada una DICE dónde se guarda su respuesta. Un dato del negocio va a la ficha
- * por defecto («lo usarán todos sus agentes») y se puede quedar en «Solo este
- * agente»; lo que es del agente se guarda en él. Se mandan solo las que tienen
- * respuesta, cada una con su `scope`. Lo que no se responde se completa después.
+ * Se responden una a una y en el sitio: elegir una opción la guarda al momento
+ * (`POST /console/jobs/{id}/answers` con esa sola respuesta y su `scope`); la
+ * que no tiene opciones lleva su campo y «Guardar». Respondida, queda con su
+ * respuesta y dónde se guardó. Un dato del negocio va a la ficha por defecto
+ * («lo usarán todos sus agentes») y se puede quedar en «Solo este agente».
+ *
+ * No hay «Cambiar»: la API añade una regla o una pregunta frecuente por cada
+ * respuesta, y responder dos veces la duplicaría. Lo respondido se cambia en su
+ * fila de la tabla. Nunca se nombra al constructor.
  */
-export function BuilderQuestions({ questions, busy, invalid, error, onSubmit, onSkip }: Props) {
+export function PendingQuestions({
+  refId,
+  view,
+  canWrite,
+  answer = answerQuestion,
+  onAnswered,
+  onPending,
+}: {
+  refId: string;
+  view: PendingQuestionsView;
+  canWrite: boolean;
+  answer?: AnswerQuestion;
+  /** Una respuesta guardada: el borrador cambió y hay que volver a leerlo. */
+  onAnswered?: () => void;
+  /** Cuántas quedan sin responder, para la barra flotante. */
+  onPending?: (n: number) => void;
+}) {
   const t = useT();
-  const [values, setValues] = React.useState<Record<string, string>>({});
-  const [agentOnly, setAgentOnly] = React.useState<Record<string, boolean>>({});
-  const [empty, setEmpty] = React.useState(false);
   const titleId = React.useId();
+  const questions = view.questions;
+  // Lo que ya se respondió en esta pestaña (al recargar la página) y lo de ahora.
+  const remembered = React.useSyncExternalStore(
+    noSubscribe,
+    () => readMemory(view.job),
+    () => null,
+  );
+  const [fresh, setAnswered] = React.useState<Answered>({});
+  const answered = React.useMemo(() => ({ ...parseMemory(remembered), ...fresh }), [remembered, fresh]);
+  const [agentOnly, setAgentOnly] = React.useState<Record<string, boolean>>({});
+  const [values, setValues] = React.useState<Record<string, string>>({});
+  const [busy, setBusy] = React.useState<{ id: string; value: string } | null>(null);
+  const [errors, setErrors] = React.useState<Record<string, string | undefined>>({});
+  const [said, setSaid] = React.useState("");
+
+  const pending = questions.filter((q) => !answered[q.id]).length;
+  React.useEffect(() => {
+    onPending?.(pending);
+  }, [pending, onPending]);
 
   function scopeOf(q: BuilderQuestion): QuestionScope {
     if (q.scope === "agent") return "agent";
     return q.can_be_agent_only && agentOnly[q.id] ? "agent" : "business";
   }
 
-  function submit(event: React.FormEvent) {
-    event.preventDefault();
-    const answers = questions.flatMap((q) => {
-      const value = (values[q.id] ?? "").trim();
-      return value ? [{ question_id: q.id, value, scope: scopeOf(q) }] : [];
-    });
-    if (!answers.length) {
-      setEmpty(true);
+  async function save(q: BuilderQuestion, raw: string) {
+    const value = raw.trim();
+    if (!value || busy) return;
+    setBusy({ id: q.id, value });
+    setErrors((prev) => ({ ...prev, [q.id]: undefined }));
+    const scope = scopeOf(q);
+    const res = await answer({ ref: refId, job: view.job, answers: [{ question_id: q.id, value, scope }] });
+    setBusy(null);
+    if (!res.ok) {
+      setErrors((prev) => ({
+        ...prev,
+        [q.id]:
+          res.code === "invalid_answer" || res.code === "unknown_question"
+            ? t("builder.questions.invalid")
+            : res.status === 401 || res.status === 403
+              ? t("common.forbidden")
+              : t("builder.questions.error"),
+      }));
       return;
     }
-    setEmpty(false);
-    onSubmit(answers);
+    const where = res.data.applied.find((a) => a.question_id === q.id)?.scope ?? scope;
+    const next = { ...answered, [q.id]: { value, scope: where } };
+    setAnswered(next);
+    writeMemory(view.job, next);
+    setSaid(`${q.text} ${summary(q, value, where)}`);
+    onAnswered?.();
+    if (questions.every((x) => next[x.id])) {
+      toast.success(t("agentProto.q.toast"), {
+        action: {
+          label: t("agentProto.q.try"),
+          // El chat de prueba está en la columna de al lado: se escribe ahí.
+          onClick: () => document.querySelector<HTMLInputElement>("[data-slot=playground-form] input")?.focus(),
+        },
+      });
+    }
   }
 
+  function summary(q: BuilderQuestion, value: string, scope: QuestionScope): string {
+    return `${optionLabel(q.target, value, t)} · ${scope === "business" ? t("agentProto.q.saved.business") : t("agentProto.q.saved.agent")}`;
+  }
+
+  const total = questions.length + view.discarded.count;
+  const reasons = view.discarded.reasons.filter((r) => r.trim());
+
   return (
-    <form onSubmit={submit} aria-labelledby={titleId} className="grid min-w-0 gap-4" data-slot="builder-questions" noValidate>
-      <div className="grid min-w-0 gap-1">
-        <h4 id={titleId} className="text-base font-semibold text-balance">
-          {t("builder.questions.title")}
-        </h4>
-        <p className="text-sm text-pretty text-muted-foreground">{t("builder.questions.intro")}</p>
+    <section aria-labelledby={titleId} className="grid min-w-0 gap-3" data-slot="pending-questions">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 id={titleId} className="text-base font-semibold text-balance">
+          {pending === 0
+            ? t("agentProto.q.allDone")
+            : pending === 1
+              ? t("agentProto.q.missing.one")
+              : t("agentProto.q.missing.other", { n: pending })}
+        </h2>
+        <span className="text-xs text-muted-foreground">{t("agentProto.q.note")}</span>
       </div>
-      {questions.map((q, i) => (
-        <QuestionField
-          key={q.id}
-          index={i}
-          question={q}
-          value={values[q.id] ?? ""}
-          agentOnly={Boolean(agentOnly[q.id])}
-          scope={scopeOf(q)}
-          invalid={invalid === q.id}
-          onValue={(v) => setValues((prev) => ({ ...prev, [q.id]: v }))}
-          onAgentOnly={(v) => setAgentOnly((prev) => ({ ...prev, [q.id]: v }))}
-        />
-      ))}
-      {empty ? (
-        <p role="alert" className="text-sm text-destructive text-pretty">
-          {t("builder.questions.required")}
-        </p>
+
+      {view.discarded.count > 0 ? (
+        <div className="flex min-w-0 items-start gap-3 rounded-md bg-muted px-3 py-3 text-sm text-muted-foreground" data-slot="questions-validated">
+          <ListChecks aria-hidden="true" className="mt-px size-4 shrink-0" />
+          <div className="grid min-w-0 gap-1">
+            <p className="text-pretty">
+              {view.discarded.count === 1
+                ? t("agentProto.q.validated.one", { total })
+                : t("agentProto.q.validated.other", { total, n: view.discarded.count })}
+              {reasons.length ? ":" : "."}
+            </p>
+            {reasons.length ? (
+              <ul className="grid min-w-0 list-disc gap-1 pl-5">
+                {reasons.map((reason) => (
+                  <li key={reason} className="text-pretty break-words">
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </div>
       ) : null}
-      {error ? (
-        <p role="alert" className="text-sm text-destructive text-pretty">
-          {error}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" loading={busy}>
-          {t("builder.questions.save")}
-        </Button>
-        <Button type="button" variant="outline" onClick={onSkip} disabled={busy}>
-          {t("builder.questions.skip")}
-        </Button>
-      </div>
-    </form>
+
+      {questions.map((q) => {
+        const done = answered[q.id];
+        if (done) {
+          return (
+            <div key={q.id} className="grid min-w-0 gap-1 rounded-lg border border-border bg-card px-4 py-3" data-question={q.id} data-answered="true">
+              <p className="text-xs text-pretty break-words text-muted-foreground">{q.text}</p>
+              <p className="flex min-w-0 items-start gap-2 text-sm">
+                <CircleCheck aria-hidden="true" className="mt-px size-4 shrink-0 text-status-positive-text" />
+                <span className="min-w-0 text-pretty break-words">{summary(q, done.value, done.scope)}</span>
+              </p>
+            </div>
+          );
+        }
+        return (
+          <Question
+            key={q.id}
+            question={q}
+            scope={scopeOf(q)}
+            agentOnly={Boolean(agentOnly[q.id])}
+            value={values[q.id] ?? ""}
+            busy={busy?.id === q.id ? busy.value : null}
+            locked={busy !== null || !canWrite}
+            error={errors[q.id]}
+            onAgentOnly={(v) => setAgentOnly((prev) => ({ ...prev, [q.id]: v }))}
+            onValue={(v) => setValues((prev) => ({ ...prev, [q.id]: v }))}
+            onSave={(v) => void save(q, v)}
+          />
+        );
+      })}
+      <p role="status" className="sr-only">
+        {said}
+      </p>
+    </section>
   );
 }
 
-function QuestionField({
-  index,
+/** Una pregunta sin responder (§3.3, `.q`): su porqué, dónde se guarda y sus opciones o su campo. */
+function Question({
   question: q,
-  value,
-  agentOnly,
   scope,
-  invalid,
-  onValue,
+  agentOnly,
+  value,
+  busy,
+  locked,
+  error,
   onAgentOnly,
+  onValue,
+  onSave,
 }: {
-  index: number;
   question: BuilderQuestion;
-  value: string;
-  agentOnly: boolean;
   scope: QuestionScope;
-  invalid: boolean;
-  onValue: (value: string) => void;
+  agentOnly: boolean;
+  value: string;
+  /** La respuesta que se está guardando, si es de esta pregunta. */
+  busy: string | null;
+  locked: boolean;
+  error?: string;
   onAgentOnly: (value: boolean) => void;
+  onValue: (value: string) => void;
+  onSave: (value: string) => void;
 }) {
   const t = useT();
   const base = React.useId();
+  const textId = `${base}-text`;
   const whyId = `${base}-why`;
   const savesId = `${base}-saves`;
   const errorId = `${base}-error`;
-  const describedBy = [whyId, savesId, invalid ? errorId : null].filter(Boolean).join(" ");
   const options = q.options?.filter((o) => o.trim()) ?? [];
 
   return (
-    <div className="min-w-0 rounded-md border border-border p-3" data-slot="builder-question" data-question={q.id}>
-      <fieldset className="grid min-w-0 gap-3" aria-describedby={describedBy}>
-        <legend className="mb-1 text-sm font-medium text-pretty break-words">
-          <span className="text-muted-foreground tabular-nums">{index + 1}. </span>
-          {q.text}
-        </legend>
-        <p id={whyId} className="text-xs text-pretty text-muted-foreground">
-          {t("builder.questions.why", { why: q.why })}
+    <div
+      role="group"
+      aria-labelledby={textId}
+      aria-describedby={[whyId, savesId, error ? errorId : null].filter(Boolean).join(" ")}
+      className="grid min-w-0 gap-3 rounded-lg border border-warning/50 bg-card px-4 py-3"
+      data-slot="builder-question"
+      data-question={q.id}
+    >
+      <p id={textId} className="text-sm font-medium text-pretty break-words">
+        {q.text}
+      </p>
+      <p id={whyId} className="flex min-w-0 items-start gap-2 text-sm text-muted-foreground">
+        <Info aria-hidden="true" className="mt-px size-4 shrink-0" />
+        <span className="min-w-0 text-pretty break-words">{q.why}</span>
+      </p>
+      <div className="grid min-w-0 gap-2">
+        <p id={savesId} className="text-xs text-pretty" data-slot="question-saves">
+          {scope === "business" ? t("builder.questions.saves.business") : t("builder.questions.saves.agent")}
         </p>
-        {options.length ? (
-          <div className="grid min-w-0 gap-2">
-            {options.map((option) => (
-              <label key={option} className="flex min-h-6 min-w-0 cursor-pointer items-start gap-2 text-sm">
-                <input
-                  type="radio"
-                  name={`${base}-answer`}
-                  value={option}
-                  checked={value === option}
-                  onChange={() => onValue(option)}
-                  className="mt-1 size-4 shrink-0 accent-primary"
-                />
-                <span className="min-w-0 text-pretty break-words">{optionLabel(q.target, option, t)}</span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <div className="grid min-w-0 gap-1">
-            <Label htmlFor={`${base}-input`}>{t("builder.questions.answer")}</Label>
+        {q.scope === "business" && q.can_be_agent_only ? (
+          <label className="inline-flex min-h-6 w-fit cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-primary" checked={agentOnly} disabled={locked} onChange={(e) => onAgentOnly(e.target.checked)} />
+            {t("builder.questions.agentOnly")}
+          </label>
+        ) : null}
+      </div>
+      {options.length ? (
+        <div className="flex min-w-0 flex-wrap gap-2">
+          {options.map((option) => (
+            <Button
+              key={option}
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-pressed={busy === option}
+              loading={busy === option}
+              disabled={locked}
+              onClick={() => onSave(option)}
+              className="h-auto min-h-8 rounded-full py-1 text-left whitespace-normal aria-pressed:border-primary/50 aria-pressed:bg-primary/10"
+            >
+              {optionLabel(q.target, option, t)}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <form
+          className="grid min-w-0 gap-1"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSave(value);
+          }}
+        >
+          <Label htmlFor={`${base}-input`}>{t("builder.questions.answer")}</Label>
+          <div className="flex min-w-0 gap-2">
             <Input
               id={`${base}-input`}
               value={value}
               maxLength={1000}
-              onChange={(e) => onValue(e.target.value)}
-              aria-describedby={describedBy}
-              aria-invalid={invalid || undefined}
               autoComplete="off"
+              readOnly={locked}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? errorId : undefined}
+              onChange={(e) => onValue(e.target.value)}
+              className="min-w-0 flex-1"
             />
+            <Button type="submit" loading={busy !== null} disabled={locked || !value.trim()} className="shrink-0">
+              {t("builder.edit.save")}
+            </Button>
           </div>
-        )}
-        <div className="grid min-w-0 gap-2">
-          <p id={savesId} className="text-xs text-pretty" data-slot="question-saves">
-            {scope === "business" ? t("builder.questions.saves.business") : t("builder.questions.saves.agent")}
-          </p>
-          {q.scope === "business" && q.can_be_agent_only ? (
-            <label className="inline-flex min-h-6 w-fit cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" className="size-4 accent-primary" checked={agentOnly} onChange={(e) => onAgentOnly(e.target.checked)} />
-              {t("builder.questions.agentOnly")}
-            </label>
-          ) : null}
-        </div>
-        {invalid ? (
-          <p id={errorId} role="alert" className="text-xs text-destructive text-pretty">
-            {t("builder.questions.invalid")}
-          </p>
-        ) : null}
-      </fieldset>
+        </form>
+      )}
+      {error ? (
+        <p id={errorId} role="alert" className="text-sm text-pretty text-destructive">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

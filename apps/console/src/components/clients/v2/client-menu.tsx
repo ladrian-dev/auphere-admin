@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
+import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Trash2, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -23,7 +23,7 @@ import type { MessageKey } from "@/i18n/messages";
 import type { ClientAction, ClientDetailV2, ClientEditBody, ClientLifecycleResult, Money } from "@/lib/backend/client-records";
 import type { NewClientBody } from "@/lib/backend/clients-v2";
 
-import { actionHref, errorText, menuActions } from "./client-v2-model";
+import { MENU_LIFECYCLE, actionHref, errorText, menuActions } from "./client-v2-model";
 
 type Failed = { ok: false; status: number; message: string; code?: string | null };
 type Result<T> = { ok: true; data: T } | Failed;
@@ -55,14 +55,26 @@ export function editBody(body: NewClientBody): ClientEditBody {
   return out;
 }
 
+/** El icono de cada acción, como el prototipo (`clientes.md` §2.3). */
+const ICON: Partial<Record<ClientAction, LucideIcon>> = {
+  edit: Pencil,
+  assign_balance: Wallet,
+  request_balance: Wallet,
+  archive: Archive,
+  restore: ArchiveRestore,
+  delete: Trash2,
+};
+
 /**
  * El menú ⋯ de un cliente (spec 047, requisitos 6 y 7.6), el mismo en su fila
  * de la lista y en su cabecera: solo lo que esta persona puede hacer, salvo
  * «Asignar saldo», que para quien no puede pasa a «Pedir saldo». Los dos se
- * abren en el sitio, sin cambiar de pantalla (45.1). «Editar» abre el modal del
- * alta; «Archivar» lo confirma, el aviso trae «Deshacer» y, si quedaba saldo en
- * su bolsa, ofrece devolverlo a la cuenta (43.13); «Eliminar» pide escribir su
- * nombre.
+ * abren en el sitio, sin cambiar de pantalla (45.1). Como el prototipo (§2.3):
+ * cada acción con su icono, «Editar cliente» y el saldo arriba, un separador y
+ * debajo «Archivar» (o «Restaurar») y «Eliminar…» en rojo. «Editar cliente»
+ * abre el modal del alta. «Archivar» no pregunta (D4, 7.4): se deshace con el
+ * «Deshacer» del aviso, que restaura, y si quedaba saldo en su bolsa ofrece
+ * devolverlo a la cuenta (43.13). «Eliminar…» pide escribir su nombre.
  */
 export function ClientMenu({
   refId,
@@ -84,7 +96,6 @@ export function ClientMenu({
   const router = useRouter();
   const act = React.useMemo(() => ({ ...DEFAULT_ACTIONS, ...actions }), [actions]);
   const [editing, setEditing] = React.useState<ClientDetailV2 | null>(null);
-  const [archiving, setArchiving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [balance, setBalance] = React.useState<BalanceMode | null>(null);
@@ -113,7 +124,6 @@ export function ClientMenu({
       toast.error(errorText(t, res.code));
       return;
     }
-    setArchiving(false);
     setEditing(null);
     toast.success(t("clients.v2.archived", { name }), {
       action: { label: t("clients.v2.undo"), onClick: () => void restore() },
@@ -150,37 +160,37 @@ export function ClientMenu({
           <MoreHorizontal aria-hidden="true" className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          {items.map((a) => {
+          {items.map((a, i) => {
             const href = actionHref(a, refId);
-            if (a === "delete") {
-              return (
-                <React.Fragment key={a}>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
-                    {label(a)}
-                  </DropdownMenuItem>
-                </React.Fragment>
-              );
-            }
-            if (a === "assign_balance" || a === "request_balance") {
-              return (
-                <DropdownMenuItem key={a} onClick={() => setBalance(a === "assign_balance" ? "assign" : "request")}>
-                  {label(a)}
-                </DropdownMenuItem>
-              );
-            }
-            if (href) {
-              return (
-                <DropdownMenuItem key={a} render={<Link href={href} />}>
-                  {label(a)}
-                </DropdownMenuItem>
-              );
-            }
-            const onClick = a === "edit" ? () => void openEdit() : a === "archive" ? () => setArchiving(true) : () => void restore();
-            return (
-              <DropdownMenuItem key={a} onClick={onClick}>
+            const Icon = ICON[a];
+            const content = (
+              <>
+                {Icon ? <Icon aria-hidden="true" /> : null}
                 {label(a)}
-              </DropdownMenuItem>
+              </>
+            );
+            // El separador abre el grupo de archivar y eliminar, si hay algo encima.
+            const separator = i > 0 && MENU_LIFECYCLE.has(a) && !MENU_LIFECYCLE.has(items[i - 1]!) ? <DropdownMenuSeparator /> : null;
+            let item: React.ReactNode;
+            if (a === "delete") {
+              item = (
+                <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+                  {content}
+                </DropdownMenuItem>
+              );
+            } else if (a === "assign_balance" || a === "request_balance") {
+              item = <DropdownMenuItem onClick={() => setBalance(a === "assign_balance" ? "assign" : "request")}>{content}</DropdownMenuItem>;
+            } else if (href) {
+              item = <DropdownMenuItem render={<Link href={href} />}>{content}</DropdownMenuItem>;
+            } else {
+              const onClick = a === "edit" ? () => void openEdit() : a === "archive" ? () => void archive() : () => void restore();
+              item = <DropdownMenuItem onClick={onClick}>{content}</DropdownMenuItem>;
+            }
+            return (
+              <React.Fragment key={a}>
+                {separator}
+                {item}
+              </React.Fragment>
             );
           })}
         </DropdownMenuContent>
@@ -219,15 +229,6 @@ export function ClientMenu({
       <BalanceDialogs refId={refId} name={name} open={balance} onClose={() => setBalance(null)} />
       {leftover ? <ReturnBagDialog refId={refId} name={name} amount={leftover} onOpenChange={(o) => !o && setLeftover(null)} /> : null}
 
-      <ConfirmDialog
-        open={archiving}
-        onOpenChange={setArchiving}
-        title={t("clients.v2.archive.title", { name })}
-        description={t("clients.v2.archive.body")}
-        confirmLabel={t("clients.v2.archive.confirm")}
-        cancelLabel={t("business.submit.cancel")}
-        onConfirm={archive}
-      />
       <ConfirmDialog
         open={deleting}
         onOpenChange={(open) => {

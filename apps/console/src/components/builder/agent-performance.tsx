@@ -190,7 +190,7 @@ export function AgentPerformancePanel({
       {page !== undefined ? (
         <div className="grid min-w-0 gap-3" data-slot="agent-conversations">
           <div className="grid gap-1">
-            <h4 className="text-sm font-semibold">{t("improve.conversations.title")}</h4>
+            <h3 className="text-sm font-semibold">{t("improve.conversations.title")}</h3>
             <p className="text-xs text-pretty text-muted-foreground">{t("improve.conversations.privacy")}</p>
           </div>
           {page === null ? (

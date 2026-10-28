@@ -10,8 +10,8 @@ import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { Day, Hours, HoursBody, Layout, Location } from "@/lib/backend/business-sections";
 
-import { blockRows, blocksLoss, bodyFromDraft, draftFromHours, setRow, toBlocks, validateDraft, type HoursDraft, type Row } from "./hours-model";
-import { ConflictNotice, SectionFrame, problemOf, type Result } from "./section-frame";
+import { blockRows, blocksLoss, bodyFromDraft, draftFromHours, readRows, setRow, shiftsText, toBlocks, validateDraft, type HoursDraft, type Row } from "./hours-model";
+import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useSectionEdit, type Result } from "./section-frame";
 import { ShiftEditor } from "./shift-editor";
 
 type Save = (body: { ref: string; revision: number; locationId: string | null; body: HoursBody }) => Promise<Result<Hours>>;
@@ -25,6 +25,10 @@ const ERRORS = new Set(["too_many_shifts", "overlap", "overlap_next_day", "inval
  * turnos, los nocturnos rotulados y la frase «Así lo dirá el agente» que
  * devuelve la API al guardar. Pasar a bloques con días distintos pide
  * confirmación diciendo qué se pierde (10.6).
+ *
+ * Como el prototipo aprobado: se lee (los días agrupados y la frase) y
+ * «Editar» abre el editor con «Guardar horario» y «Cancelar». `children` va al
+ * final de la tarjeta: las fechas especiales viven dentro de Horarios.
  */
 export function HoursSection({
   refId,
@@ -33,6 +37,8 @@ export function HoursSection({
   canWrite,
   save = (b) => saveHoursAction(b),
   load = (b) => loadHoursAction(b),
+  children,
+  confirmable = false,
 }: {
   refId: string;
   hours: Hours;
@@ -40,17 +46,21 @@ export function HoursSection({
   canWrite: boolean;
   save?: Save;
   load?: Load;
+  children?: React.ReactNode;
+  /** «Es correcto» de lo leído de la web: solo en la consola del partner. */
+  confirmable?: boolean;
 }) {
   const t = useT();
   const [hours, setHours] = React.useState(initial);
   const [draft, setDraft] = React.useState<HoursDraft>(() => draftFromHours(initial));
   const [inherit, setInherit] = React.useState(initial.inherits);
-  const [dirty, setDirty] = React.useState(false);
   const [lost, setLost] = React.useState<Day[] | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const base = React.useId();
-  const editable = canWrite && !inherit;
+  const edit = useSectionEdit("business-hours");
+  const editing = canWrite && edit.editing;
+  const editable = editing && !inherit;
   const live = locations.filter((l) => !l.archived);
   const dayName = (d: Day) => t(`business.hours.day.${d}` as MessageKey);
   const rowName = (row: Row) => (row.key === "weekdays" ? t("business.hours.row.weekdays") : dayName(row.key));
@@ -59,22 +69,20 @@ export function HoursSection({
     setHours(next);
     setDraft(draftFromHours(next));
     setInherit(next.inherits);
-    setDirty(false);
     setProblem(null);
   }
 
-  function edit(next: HoursDraft) {
+  function change(next: HoursDraft) {
     setDraft(next);
-    setDirty(true);
     setProblem(null);
   }
 
   function chooseLayout(layout: Layout) {
     if (layout === draft.layout) return;
-    if (layout === "daily") return edit({ ...draft, layout });
+    if (layout === "daily") return change({ ...draft, layout });
     const loss = blocksLoss(draft);
     if (loss.length) setLost(loss);
-    else edit(toBlocks(draft));
+    else change(toBlocks(draft));
   }
 
   function switchLocation(value: string) {
@@ -98,6 +106,7 @@ export function HoursSection({
       const res = await save({ ref: refId, revision: hours.revision, locationId: hours.location_id, body });
       if (res.ok) {
         reset(res.data);
+        edit.close();
         toast.success(t("business.section.saved"));
         return;
       }
@@ -116,12 +125,31 @@ export function HoursSection({
   }
 
   const shown = inherit ? draftFromHours(hours) : draft;
-  const label = dirty ? null : hours.label;
+  const read = readRows(hours);
+  const readName = (row: (typeof read)[number]) =>
+    row.key === "weekdays"
+      ? t("business.hours.row.weekdays")
+      : row.days.length > 1
+        ? t("business.hours.read.range", { from: dayName(row.days[0] as Day), to: dayName(row.days[row.days.length - 1] as Day).toLowerCase() })
+        : dayName(row.key);
+
+  function cancel() {
+    reset(hours);
+    edit.close();
+  }
 
   return (
-    <SectionFrame id="business-hours" title={t("business.hours.title")} intro={t("business.hours.intro")} state={hours.state} canWrite={canWrite}>
+    <SectionFrame
+      id="business-hours"
+      title={t("business.hours.title")}
+      state={hours.state}
+      canWrite={canWrite}
+      confirm={confirmable ? { refId, section: "hours", onConfirmed: () => setHours((prev) => ({ ...prev, state: "complete" })) } : undefined}
+      action={editing ? null : <EditAction label={t("business.section.edit.label", { section: t("business.hours.title") })} onClick={edit.open} />}
+    >
       <div className="grid min-w-0 gap-4">
-        {live.length > 0 ? (
+        {/* Elegir de qué sede es el horario solo hace falta al editarlo. */}
+        {editing && live.length > 0 ? (
           <div className="grid min-w-0 gap-2 sm:max-w-sm">
             <label htmlFor={`${base}-of`} className="text-sm font-medium">
               {t("business.hours.of")}
@@ -137,7 +165,24 @@ export function HoursSection({
           </div>
         ) : null}
 
-        {hours.location_id && canWrite ? (
+        {!editing ? (
+          read.length ? (
+            <div className="grid min-w-0 gap-3">
+              <ReadList
+                rows={read.map((row) => ({
+                  label: readName(row),
+                  value: row.shifts.length ? <span className="tabular-nums">{shiftsText(row.shifts, t("business.hours.read.next_day"))}</span> : t("business.hours.closed"),
+                  muted: !row.shifts.length,
+                }))}
+              />
+              {hours.label ? <p className="text-xs text-pretty text-muted-foreground">{t("business.hours.read.says", { phrase: hours.label })}</p> : null}
+            </div>
+          ) : (
+            <p className="text-sm text-pretty text-muted-foreground">{t("business.hours.phrase.none")}</p>
+          )
+        ) : null}
+
+        {editing && hours.location_id ? (
           <label className="flex min-h-6 items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -145,7 +190,6 @@ export function HoursSection({
               checked={inherit}
               onChange={(e) => {
                 setInherit(e.target.checked);
-                setDirty(true);
               }}
             />
             {t("business.hours.inherit")}
@@ -172,6 +216,7 @@ export function HoursSection({
           </fieldset>
         ) : null}
 
+        {editing ? (
         <div className="grid min-w-0 gap-3">
           {blockRows(shown.layout).map((row) => (
             <ShiftEditor
@@ -179,17 +224,11 @@ export function HoursSection({
               legend={rowName(row)}
               shifts={shown.days[row.days[0] as Day]}
               canWrite={editable}
-              onChange={(next) => edit(setRow(draft, row, next))}
+              onChange={(next) => change(setRow(draft, row, next))}
             />
           ))}
         </div>
-
-        <div className="grid min-w-0 gap-1 rounded-md bg-muted/50 p-3">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{t("business.hours.phrase")}</p>
-          <p className="text-sm text-pretty">
-            {label ?? (dirty ? t("business.hours.phrase.unsaved") : t("business.hours.phrase.none"))}
-          </p>
-        </div>
+        ) : null}
 
         {problem === "conflict" ? <ConflictNotice onReload={() => switchLocation(hours.location_id ?? "")} /> : null}
         {problem && problem !== "conflict" ? (
@@ -198,13 +237,17 @@ export function HoursSection({
           </p>
         ) : null}
 
-        {canWrite ? (
+        {editing ? (
           <div className="flex min-w-0 flex-wrap gap-2">
-            <Button type="button" onClick={() => submit()} disabled={pending}>
+            <Button type="button" size="sm" onClick={() => submit()} disabled={pending}>
               {t("business.hours.save")}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={cancel}>
+              {t("business.section.cancel")}
             </Button>
           </div>
         ) : null}
+        {children}
       </div>
 
       <ConfirmDialog
@@ -215,7 +258,7 @@ export function HoursSection({
         confirmLabel={t("business.hours.loss.confirm")}
         cancelLabel={t("business.section.cancel")}
         onConfirm={() => {
-          edit(toBlocks(draft));
+          change(toBlocks(draft));
           setLost(null);
         }}
       />

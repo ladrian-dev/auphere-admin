@@ -9,15 +9,17 @@ const statusBadgeVariants = cva(
   {
     variants: {
       tone: {
-        positive: "border-status-positive/30 bg-status-positive/10 text-foreground",
-        warning: "border-status-warning/30 bg-status-warning/10 text-foreground",
+        // Spec 047, el prototipo aprobado: fondo suave del tono y el texto en
+        // su color legible (`status-*-text`, ≥ 4,5:1), sin borde.
+        positive: "border-transparent bg-status-positive-bg text-status-positive-text",
+        warning: "border-transparent bg-status-warning-bg text-status-warning-text",
         // `warn` es el nombre del tono en `contracts/events.md` (spec 047): el
         // mismo ámbar que `warning`, para que la consola pinte el código tal
         // como lo manda la API sin traducirlo a mano en cada pantalla.
-        warn: "border-status-warning/30 bg-status-warning/10 text-foreground",
-        danger: "border-status-danger/30 bg-status-danger/10 text-foreground",
-        info: "border-status-info/30 bg-status-info/10 text-foreground",
-        muted: "border-border bg-muted text-muted-foreground",
+        warn: "border-transparent bg-status-warning-bg text-status-warning-text",
+        danger: "border-transparent bg-status-danger-bg text-status-danger-text",
+        info: "border-transparent bg-status-info-bg text-status-info-text",
+        muted: "border-transparent bg-muted text-muted-foreground",
       },
     },
     defaultVariants: { tone: "muted" },
@@ -79,9 +81,17 @@ type StatusBadgeProps = ComponentProps<"span"> &
 function StatusBadge({ className, tone = "muted", dot = true, pulse, children, ...props }: StatusBadgeProps) {
   const resolved: StatusBadgeTone = tone ?? "muted";
   return (
-    <span data-slot="status-badge" data-tone={resolved} className={cn(statusBadgeVariants({ tone: resolved }), className)} {...props}>
+    <span
+      data-slot="status-badge"
+      data-tone={resolved}
+      // Con un icono (el globo de «Leído de la web», el reloj de «Pendiente»…),
+      // el icono hace de punto, como en el prototipo.
+      className={cn(statusBadgeVariants({ tone: resolved }), "[&:has(svg)>[data-slot=status-dot]]:hidden", className)}
+      {...props}
+    >
       {dot ? <StatusDot tone={DOT_TONE[resolved]} pulse={pulse} /> : null}
-      <span className="min-w-0 truncate">{children}</span>
+      {/* `inline-flex`: un `svg` es bloque en la base de Tailwind y, sin esto, saltaba de línea. */}
+      <span className="inline-flex min-w-0 items-center gap-1 truncate [&_svg]:size-3 [&_svg]:shrink-0">{children}</span>
     </span>
   );
 }

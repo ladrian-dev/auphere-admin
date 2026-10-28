@@ -24,14 +24,26 @@ vi.mock("@/app/(console)/clients/[ref]/business/actions", () => ({
   // «Reintentar» de una sección que no cargó: vuelve a leer solo esa.
   reloadSectionAction: vi.fn(async () => ({ ok: false })),
 }));
+const confirmSection = vi.hoisted(() => vi.fn(async () => ({ ok: true, data: { confirmed: 1 } })));
+vi.mock("@/app/(console)/clients/[ref]/client-v2-actions", () => ({
+  confirmSectionAction: confirmSection,
+  putLinksAction: vi.fn(),
+  listSourcesAction: vi.fn(async () => ({ ok: true, data: { items: [], removed: [], max_bytes: 10_000_000, allowed: ["add"] } })),
+  uploadSourceAction: vi.fn(),
+  addSourceUrlAction: vi.fn(),
+  rereadSourceAction: vi.fn(),
+  removeSourceAction: vi.fn(),
+  restoreSourceAction: vi.fn(),
+}));
 
 const { BusinessSectionsView } = await import("../business-sections");
 
 /**
- * Spec 047 (T060, requisito 8.5) — la página Negocio: el índice de secciones, el
- * estado de cada una («Completa», «Leída · revísala», «Pendiente», «Opcional») y
- * los cinco estados: vacío, error, parcial (una sección no carga y las demás sí),
- * ideal; el de carga es `loading.tsx`. Y los textos largos no rompen nada.
+ * Spec 047 (T060, requisito 8.5) — la página Negocio, como el prototipo aprobado
+ * («Consola de partners v2»): el índice con un círculo por sección, cada sección
+ * en lectura con su «Editar», solo dos marcas («Leído de la web · revísalo»,
+ * con «Es correcto», y «Falta»), una sola edición a la vez, y los cinco estados:
+ * vacío, error, parcial, ideal (el de carga es `loading.tsx`).
  */
 
 const meta = { allowed: ["edit" as const] };
@@ -77,18 +89,75 @@ function page(over: Partial<React.ComponentProps<typeof BusinessSectionsView>["d
 }
 
 describe("BusinessSectionsView", () => {
-  it("shows every section with its state, and an index to jump to each", async () => {
+  it("shows every section with its mark, and an index to jump to each", async () => {
     const { container } = page();
     const index = screen.getByRole("navigation", { name: "Secciones de Negocio" });
-    for (const name of ["Datos básicos", "Sedes", "Horario", "Fechas especiales", "Servicios"]) {
+    for (const name of ["Datos básicos", "Sedes", "Horarios", "Servicios"]) {
       expect(within(index).getByRole("link", { name: new RegExp(name) })).toBeVisible();
       expect(screen.getByRole("region", { name })).toBeVisible();
     }
-    expect(within(screen.getByRole("region", { name: "Datos básicos" })).getByText("Completa")).toBeVisible();
-    expect(within(screen.getByRole("region", { name: "Horario" })).getByText("Pendiente")).toBeVisible();
-    expect(within(screen.getByRole("region", { name: "Fechas especiales" })).getByText("Opcional")).toBeVisible();
-    expect(within(screen.getByRole("region", { name: "Servicios" })).getByText("Leída · revísala")).toBeVisible();
+    // El índice dice el estado con un círculo (y su nombre para los lectores de pantalla).
+    expect(within(index).getByRole("link", { name: /Datos básicos.*Completa/ })).toBeVisible();
+    expect(within(index).getByRole("link", { name: /Servicios.*Leída · revísala/ })).toBeVisible();
+    // En la tarjeta, solo lo que pide algo: «Falta» y «Leído de la web · revísalo».
+    expect(within(screen.getByRole("region", { name: "Datos básicos" })).queryByText("Completa")).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Horarios" })).getByText("Falta")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Servicios" })).getByText("Leído de la web · revísalo")).toBeVisible();
+    // Las fechas especiales viven dentro de Horarios.
+    expect(screen.getByRole("region", { name: "Fechas especiales" }).closest("#business-hours")).not.toBeNull();
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("each section is read first, «Editar» opens it, and only one is open at a time", async () => {
+    const user = userEvent.setup();
+    page();
+    const basics = screen.getByRole("region", { name: "Datos básicos" });
+    expect(within(basics).getByText("Barbería Cultor")).toBeVisible();
+    expect(within(basics).queryByRole("textbox")).toBeNull();
+    await user.click(within(basics).getByRole("button", { name: "Editar Datos básicos" }));
+    expect(within(basics).getByRole("textbox", { name: /Nombre/ })).toHaveValue("Barbería Cultor");
+    const hours = screen.getByRole("region", { name: "Horarios" });
+    await user.click(within(hours).getByRole("button", { name: "Editar Horarios" }));
+    // Abrir otra cierra la anterior sin guardar.
+    expect(within(basics).queryByRole("textbox")).toBeNull();
+    expect(within(hours).getByRole("button", { name: "Guardar horario" })).toBeVisible();
+    await user.click(within(hours).getByRole("button", { name: "Cancelar" }));
+    expect(within(hours).queryByRole("button", { name: "Guardar horario" })).toBeNull();
+  });
+
+  it("«Es correcto» confirms what was read from the web", async () => {
+    const user = userEvent.setup();
+    page();
+    const services = screen.getByRole("region", { name: "Servicios" });
+    await user.click(within(services).getByRole("button", { name: "Es correcto" }));
+    expect(confirmSection).toHaveBeenCalledWith({ ref: "barberia-cultor", section: "services" });
+    expect(within(services).queryByText("Leído de la web · revísalo")).toBeNull();
+  });
+
+  it("with the record and the sources, «Documentos y webs» and «Redes sociales» are the last two sections", () => {
+    page({
+      sources: ok({ items: [], removed: [], max_bytes: 10_000_000, allowed: ["add"] }),
+      record: ok({
+        spec: { links: [{ id: "l1", network: "instagram", url: null, handle: "cultorbarber" }] },
+        valid: true,
+        problems: [],
+        sections: [{ section: "links", state: "complete", revision: 3, updated_at: null, updated_by: null, origin: null, pending_suggestions: 0 }],
+        provenance: {},
+        suggestions: [],
+        allowed: ["edit"],
+      }),
+    });
+    const index = screen.getByRole("navigation", { name: "Secciones de Negocio" });
+    expect(within(index).getAllByRole("link").map((a) => a.textContent?.replace(/(Completa|Pendiente|Opcional|Leída · revísala)$/, ""))).toEqual([
+      "Datos básicos",
+      "Sedes",
+      "Horarios",
+      "Servicios",
+      "Documentos y webs",
+      "Redes sociales",
+    ]);
+    expect(screen.getByRole("region", { name: "Documentos y webs" })).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Redes sociales" })).getByDisplayValue("cultorbarber")).toBeVisible();
   });
 
   it("the index scrolls sideways on a phone without widening the page", () => {
@@ -103,7 +172,7 @@ describe("BusinessSectionsView", () => {
 
   it("empty: each section says what is missing and what the agent will do", () => {
     page();
-    expect(screen.getByText(/Sin sedes\. El agente no dará ninguna dirección/)).toBeVisible();
+    expect(screen.getByText("Sin sedes. Si atiende solo online, déjalo vacío.")).toBeVisible();
     expect(screen.getByText(/el agente dirá que no lo sabe/)).toBeVisible();
     expect(screen.getByText(/Todavía no hay servicios/)).toBeVisible();
   });
@@ -114,13 +183,13 @@ describe("BusinessSectionsView", () => {
     const services = screen.getByRole("region", { name: "Servicios" });
     expect(within(services).getByText("No se pudo cargar esta sección.")).toBeVisible();
     expect(within(services).getByRole("button", { name: "Reintentar" })).toBeVisible();
-    expect(screen.getByRole("region", { name: "Horario" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Horarios" })).toBeVisible();
     await user.click(within(services).getByRole("button", { name: "Reintentar" }));
   });
 
   it("error: nothing loaded", () => {
     page({ basics: failed, locations: failed, hours: failed, specialDates: failed, services: failed });
-    expect(screen.getAllByText("No se pudo cargar esta sección.")).toHaveLength(5);
+    expect(screen.getAllByText("No se pudo cargar esta sección.")).toHaveLength(4);
   });
 
   it("long texts wrap instead of overflowing", () => {

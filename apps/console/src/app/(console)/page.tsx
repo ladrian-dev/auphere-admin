@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Bot, Users, Wallet } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bot, Plus, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 
 import { Alert, AlertDescription, Button, EmptyState, HighlightMetric, Metric, PageHeader, Section, formatNumber } from "@nexus/ui";
@@ -8,6 +8,7 @@ import { ConversationsChart } from "@/components/home/conversations-chart";
 import { creditRunway, trendDelta } from "@/components/home/home-model";
 import { PartnerPanel } from "@/components/home/partner-panel";
 import { SpendCard } from "@/components/home/spend-card";
+import { TodayDate } from "@/components/home/today-date";
 import { resolveConsoleVersion } from "@/components/shell/console-version";
 import { getT } from "@/i18n/server";
 import { backendFor, type Me } from "@/lib/backend";
@@ -69,27 +70,31 @@ async function PartnerHome({ principal }: { principal: PartnerPrincipal }) {
   if (resolveConsoleVersion(me) === "v2" && home?.panel) {
     return (
       <>
+        {/* El prototipo aprobado: «Hola, Luis», el partner y el día, y «Nuevo cliente». */}
         <PageHeader
-          eyebrow={principal.partnerName}
-          title={t("home.welcome", { name: principal.name })}
-          size="compact"
+          title={t("home.welcome", { name: principal.name.split(" ")[0] || principal.name })}
+          description={
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
+              <span>{principal.partnerName}</span>
+              <span aria-hidden="true">·</span>
+              <TodayDate />
+            </span>
+          }
+          size="display"
           actions={
             writeClients ? (
               <Button nativeButton={false} render={<Link href="/clients?new=1" />}>
+                <Plus aria-hidden="true" />
                 {t("hu.home.newClient")}
               </Button>
             ) : undefined
           }
         />
         {noClients ? (
-          <EmptyState
-            title={t("clients.empty.title")}
-            description={t("clients.empty.body")}
-            action={writeClients ? <Button nativeButton={false} render={<Link href="/clients?new=1" />}>{t("clients.new")}</Button> : undefined}
-            readonly={!writeClients}
-          />
+          // Sin botón: «Nuevo cliente» ya está en la cabecera (un primario por vista).
+          <EmptyState title={t("clients.empty.title")} description={t("clients.empty.body")} readonly />
         ) : (
-          <PartnerPanel panel={home.panel} />
+          <PartnerPanel panel={home.panel} trend={trend ? { current: trend.current, previous: trend.previous } : null} />
         )}
       </>
     );

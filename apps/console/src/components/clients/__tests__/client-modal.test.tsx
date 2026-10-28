@@ -122,23 +122,32 @@ describe("ClientModal · Nuevo cliente", () => {
     expect(niche).toHaveValue("De barrio con 2 sedes · Floristería");
   });
 
-  it("«Más ajustes» propone lo deducido de una web .cl y deja cambiarlo", async () => {
+  it("«Más ajustes» solo pide la zona horaria y la moneda (EUR o USD), con su resumen en el botón (el prototipo)", async () => {
     const { user, dialog } = setup();
     await user.type(within(dialog).getByRole("textbox", { name: /Información adicional/ }), "flor-y-encanto.cl");
     await within(dialog).findByRole("list", { name: "Enlaces que irán a la ficha" });
-    const toggle = within(dialog).getByRole("button", { name: "Más ajustes" });
+    const toggle = within(dialog).getByRole("button", { name: /Más ajustes/ });
+    expect(toggle).toHaveTextContent("Más ajustes · America/Santiago · USD");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(within(dialog).getByText("Deducido de su web. Puedes cambiarlo.")).toBeInTheDocument();
-    expect(within(dialog).getByRole("combobox", { name: "País" })).toHaveValue("CL");
     expect(within(dialog).getByRole("combobox", { name: "Zona horaria" })).toHaveValue("America/Santiago");
-    expect(within(dialog).getByRole("combobox", { name: /Moneda de los precios/ })).toHaveValue("CLP");
-    expect(within(dialog).getByRole("combobox", { name: /Moneda de la bolsa/ })).toHaveValue("USD");
-    expect(within(dialog).getByRole("switch", { name: "Solo UE" })).not.toBeChecked();
-    // Elegir España propone «Solo UE».
-    await user.selectOptions(within(dialog).getByRole("combobox", { name: "País" }), "ES");
-    expect(within(dialog).getByRole("switch", { name: "Solo UE" })).toBeChecked();
+    const currency = within(dialog).getByRole("combobox", { name: "Moneda" });
+    expect(currency).toHaveValue("USD");
+    expect(within(currency).getAllByRole("option").map((o) => o.getAttribute("value"))).toEqual(["EUR", "USD"]);
+    // El país, la moneda de los precios y «Solo UE» se deducen y no se piden.
+    expect(within(dialog).queryByRole("combobox", { name: "País" })).toBeNull();
+    expect(within(dialog).queryByRole("combobox", { name: /Moneda de los precios/ })).toBeNull();
+    expect(within(dialog).queryByRole("switch", { name: "Solo UE" })).toBeNull();
+    await user.selectOptions(currency, "EUR");
+    expect(toggle).toHaveTextContent("Más ajustes · America/Santiago · EUR");
+  });
+
+  it("los ejemplos de los campos no aluden a ningún nicho", () => {
+    const { dialog } = setup();
+    for (const box of within(dialog).getAllByRole("textbox")) {
+      expect(box.getAttribute("placeholder") ?? "").not.toMatch(/barber|cultor/i);
+    }
   });
 
   it("crear manda los tres datos y lo deducido, con su clave de idempotencia, y avisa a quien abrió", async () => {
@@ -186,8 +195,9 @@ describe("ClientModal · Nuevo cliente", () => {
     const { user, dialog } = setup();
     await user.type(within(dialog).getByRole("textbox", { name: /Información adicional/ }), "flor-y-encanto.cl · @florencanto");
     await within(dialog).findByRole("list", { name: "Enlaces que irán a la ficha" });
-    await user.click(within(dialog).getByRole("button", { name: "Más ajustes" }));
+    await user.click(within(dialog).getByRole("button", { name: /Más ajustes/ }));
     expect(await axeViolations()).toEqual([]);
-    // La lista de zonas IANA del navegador tiene cientos de opciones: axe tarda.
-  }, 30_000);
+    // La lista de zonas IANA del navegador tiene cientos de opciones: axe tarda,
+    // y con toda la suite en paralelo pasaba de 30 s.
+  }, 60_000);
 });

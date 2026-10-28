@@ -22,6 +22,7 @@ import {
 } from "@/app/(console)/negocio/actions";
 import type { Result } from "@/components/builder/builder-model";
 import { HoursSection } from "@/components/business/sections/hours-section";
+import { SectionEditProvider } from "@/components/business/sections/section-frame";
 import { LocationsSection, type LocationsActions } from "@/components/business/sections/locations-section";
 import { ServicesSection, type ServicesActions } from "@/components/business/sections/services-section";
 import { SpecialDatesSection, type SpecialDatesActions } from "@/components/business/sections/special-dates-section";
@@ -169,6 +170,8 @@ export function LiteBusinessView({ initial, actions = SERVER_ACTIONS }: { initia
   }
 
   return (
+    // Una sola sección en edición, y sigue abierta cuando la ficha se vuelve a leer.
+    <SectionEditProvider>
     <div className="grid min-w-0 gap-6" data-slot="lite-business" aria-busy={reloading}>
       <PageHeader title={t("nav.business")} description={t("lite.business.intro")} />
       <nav aria-label={t("lite.business.index")} className="min-w-0">
@@ -212,6 +215,7 @@ export function LiteBusinessView({ initial, actions = SERVER_ACTIONS }: { initia
       </div>
       <ChangeHistory changes={history} onUndo={undo} />
     </div>
+    </SectionEditProvider>
   );
 }
 

@@ -64,11 +64,14 @@ export function BusinessSources({
   initial,
   canWrite,
   actions,
+  bare = false,
 }: {
   refId: string;
   initial?: Sources | null;
   canWrite: boolean;
   actions?: Partial<BusinessSourcesActions>;
+  /** Dentro de la tarjeta de Negocio, que ya pone el título. */
+  bare?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -174,12 +177,15 @@ export function BusinessSources({
     return <StatusBadge tone="positive">{t("business.sources.status.read", { when: formatRelative(s.read_at, locale) })}</StatusBadge>;
   }
 
+  const Wrap = bare ? "div" : "section";
   return (
-    <section className="grid min-w-0 gap-4" aria-labelledby={`${ids.file}-title`} data-slot="business-sources">
+    <Wrap className="grid min-w-0 gap-4" aria-labelledby={bare ? undefined : `${ids.file}-title`} data-slot="business-sources">
       <div className="grid min-w-0 gap-1">
-        <h2 id={`${ids.file}-title`} className="text-base font-semibold text-balance">
-          {t("business.sources.title")}
-        </h2>
+        {bare ? null : (
+          <h2 id={`${ids.file}-title`} className="text-base font-semibold text-balance">
+            {t("business.sources.title")}
+          </h2>
+        )}
         <p className="text-sm text-muted-foreground text-pretty">{t("business.sources.intro")}</p>
       </div>
 
@@ -281,6 +287,6 @@ export function BusinessSources({
           </ul>
         </div>
       ) : null}
-    </section>
+    </Wrap>
   );
 }

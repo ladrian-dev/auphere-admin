@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { BlockChart, NativeSelect, cn } from "@nexus/ui";
+import { BlockChart, NativeSelect, SegmentedControl } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
@@ -34,19 +34,15 @@ export function SpendFilters({ days, client, line, clients }: { days: number; cl
   };
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" data-slot="spend-filters">
-      <div role="group" aria-label={t("money.chart.period")} className="inline-flex max-w-full flex-wrap rounded-md bg-muted p-1">
-        {PERIODS.map((d) => (
-          <button
-            key={d}
-            type="button"
-            aria-pressed={days === d}
-            onClick={() => go({ days: d === 30 ? "" : String(d) })}
-            className={cn("rounded-sm px-3 py-1 text-xs font-medium", days === d ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
-          >
-            {t("money.chart.days", { n: d })}
-          </button>
-        ))}
-      </div>
+      {/* El conmutador de vidrio del prototipo. Cada opción navega: `pressed`,
+          para que las flechas muevan el foco sin cambiar la URL a cada paso. */}
+      <SegmentedControl
+        type="pressed"
+        aria-label={t("money.chart.period")}
+        value={String(days)}
+        onValueChange={(v) => go({ days: v === "30" ? "" : v })}
+        options={PERIODS.map((d) => ({ value: String(d), label: t("money.chart.days", { n: d }) }))}
+      />
       <NativeSelect wrapperClassName="max-w-56" aria-label={t("money.chart.client")} value={client} onChange={(e) => go({ client: e.target.value })}>
         <option value="">{t("money.chart.allClients")}</option>
         {clients.map((c) => (

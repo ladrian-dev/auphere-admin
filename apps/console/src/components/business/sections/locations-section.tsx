@@ -1,10 +1,10 @@
 "use client";
 
-import { Archive, ArchiveRestore, Pencil, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, MapPin, Pencil, Plus } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, EmptyState, Field, Input, StatusBadge } from "@nexus/ui";
+import { Button, Field, Input, StatusBadge } from "@nexus/ui";
 
 import { archiveLocationAction, createLocationAction, updateLocationAction } from "@/app/(console)/clients/[ref]/business/actions";
 import { useT } from "@/i18n/client";
@@ -36,12 +36,15 @@ export function LocationsSection({
   canWrite,
   actions = SERVER_ACTIONS,
   onChange,
+  confirmable = false,
 }: {
   refId: string;
   locations: Locations;
   canWrite: boolean;
   actions?: LocationsActions;
   onChange?: (next: Locations) => void;
+  /** «Es correcto» de lo leído de la web: solo en la consola del partner. */
+  confirmable?: boolean;
 }) {
   const t = useT();
   const [locations, setLocations] = React.useState(initial);
@@ -66,27 +69,48 @@ export function LocationsSection({
   }
 
   return (
-    <SectionFrame id="business-locations" title={t("business.locations.title")} intro={t("business.locations.intro")} state={locations.state} canWrite={canWrite}>
+    <SectionFrame
+      id="business-locations"
+      title={t("business.locations.title")}
+      state={locations.state}
+      canWrite={canWrite}
+      confirm={confirmable ? { refId, section: "locations", onConfirmed: () => setLocations((prev) => ({ ...prev, state: "complete" })) } : undefined}
+      action={
+        editing === null ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => setEditing("new")}>
+            <Plus aria-hidden="true" />
+            {t("business.locations.add")}
+          </Button>
+        ) : null
+      }
+    >
       <div className="grid min-w-0 gap-4">
         {conflict ? <ConflictNotice /> : null}
-        {live.length === 0 && !showArchived ? <EmptyState title={t("business.locations.empty")} readonly /> : null}
+        {live.length === 0 && !showArchived ? <p className="text-sm text-pretty text-muted-foreground">{t("business.locations.empty.read")}</p> : null}
         {shown.length ? (
-          <ul className="grid min-w-0 gap-2">
+          // Como el prototipo: una lista con su baldosa, nombre y dirección.
+          <ul className="grid min-w-0 divide-y divide-border">
             {shown.map((l) => (
-              <li key={l.id} className="flex min-w-0 flex-wrap items-start justify-between gap-3 rounded-md border border-border p-3">
+              <li key={l.id} className="group flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0">
+                <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                  <MapPin className="size-4" />
+                </span>
                 <div className="grid min-w-0 flex-1 basis-56 gap-1">
                   <p className="flex min-w-0 flex-wrap items-center gap-2 font-medium">
                     <span className="min-w-0 break-words">{l.name}</span>
                     {l.archived ? <StatusBadge tone="muted">{t("business.locations.archived")}</StatusBadge> : null}
                   </p>
-                  {l.address ? <p className="text-sm text-pretty break-words">{l.address}</p> : null}
-                  {l.phone_e164 ? <p className="text-sm tabular-nums">{l.phone_e164}</p> : null}
+                  {l.address || l.phone_e164 ? (
+                    <p className="text-xs text-pretty break-words text-muted-foreground">
+                      {[l.address, l.phone_e164].filter(Boolean).join(" · ")}
+                    </p>
+                  ) : null}
                   <p className="text-xs text-pretty text-muted-foreground">
                     {l.own_hours ? `${t("business.locations.own_hours")}: ${l.label ?? ""}` : t("business.locations.inherits")}
                   </p>
                 </div>
                 {canWrite ? (
-                  <div className="flex shrink-0 gap-1">
+                  <div className="flex shrink-0 gap-1 opacity-60 transition-opacity duration-(--duration-hover) group-focus-within:opacity-100 group-hover:opacity-100">
                     {!l.archived ? (
                       <Button variant="ghost" size="icon" aria-label={`${t("business.section.edit")} ${l.name}`} onClick={() => setEditing(l)}>
                         <Pencil aria-hidden="true" />
@@ -111,20 +135,12 @@ export function LocationsSection({
             ))}
           </ul>
         ) : null}
-        <div className="flex min-w-0 flex-wrap items-center gap-4">
-          {canWrite && editing === null ? (
-            <Button type="button" variant="outline" onClick={() => setEditing("new")}>
-              <Plus aria-hidden="true" />
-              {t("business.locations.add")}
-            </Button>
-          ) : null}
-          {locations.items.some((l) => l.archived) ? (
-            <label className="flex min-h-6 items-center gap-2 text-sm">
-              <input type="checkbox" className="size-4 accent-primary" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-              {t("business.locations.show_archived")}
-            </label>
-          ) : null}
-        </div>
+        {locations.items.some((l) => l.archived) ? (
+          <label className="flex min-h-6 items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-primary" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            {t("business.locations.show_archived")}
+          </label>
+        ) : null}
         {editing !== null ? (
           <LocationForm
             location={editing === "new" ? null : editing}

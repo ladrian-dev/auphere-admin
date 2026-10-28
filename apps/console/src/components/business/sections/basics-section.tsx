@@ -9,7 +9,7 @@ import { saveBasicsAction } from "@/app/(console)/clients/[ref]/business/actions
 import { useT } from "@/i18n/client";
 import type { Basics, BasicsBody } from "@/lib/backend/business-sections";
 
-import { ConflictNotice, SectionFrame, problemOf, type Result } from "./section-frame";
+import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useSectionEdit, type Result } from "./section-frame";
 
 type Save = (body: { ref: string; revision: number; body: BasicsBody }) => Promise<Result<Basics>>;
 
@@ -21,6 +21,10 @@ const REQUIRED: ReadonlySet<FieldKey> = new Set(["name", "niche", "timezone"]);
  * «Datos básicos» de Negocio (spec 047, T060; requisito 8.1): nombre, nicho,
  * información (dato no confiable: el agente la lee como dato), web, país, zona
  * horaria, moneda de los precios y «Solo UE». Solo se manda lo que cambió.
+ *
+ * Como el prototipo aprobado: se lee (nombre, nicho, información, web y zona
+ * con la moneda) y «Editar» abre el formulario en la propia tarjeta, con todos
+ * los campos, también el país y «Solo UE», que no se piden en el alta.
  */
 export function BasicsSection({
   refId,
@@ -39,6 +43,14 @@ export function BasicsSection({
   const [euOnly, setEuOnly] = React.useState(initial.eu_only);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
+  const edit = useSectionEdit("business-basics");
+
+  function cancel() {
+    setValues(valuesOf(basics));
+    setEuOnly(basics.eu_only);
+    setProblem(null);
+    edit.close();
+  }
 
   const label: Record<FieldKey, string> = {
     name: t("business.field.name"),
@@ -68,6 +80,7 @@ export function BasicsSection({
         setValues(valuesOf(res.data));
         setEuOnly(res.data.eu_only);
         setProblem(null);
+        edit.close();
         toast.success(t("business.section.saved"));
         return;
       }
@@ -77,8 +90,14 @@ export function BasicsSection({
   }
 
   return (
-    <SectionFrame id="business-basics" title={t("business.basics.title")} intro={t("business.basics.intro")} state={basics.state} canWrite={canWrite}>
-      {canWrite ? (
+    <SectionFrame
+      id="business-basics"
+      title={t("business.basics.title")}
+      state={basics.state}
+      canWrite={canWrite}
+      action={edit.editing ? null : <EditAction label={t("business.section.edit.label", { section: t("business.basics.title") })} onClick={edit.open} />}
+    >
+      {canWrite && edit.editing ? (
         <form onSubmit={submit} className="grid min-w-0 gap-4" noValidate>
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             {FIELDS.filter((k) => k !== "info").map((key) => (
@@ -107,21 +126,25 @@ export function BasicsSection({
               {problem}
             </p>
           ) : null}
-          <div>
-            <Button type="submit" disabled={pending}>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" disabled={pending}>
               {t("business.basics.save")}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={cancel}>
+              {t("business.section.cancel")}
             </Button>
           </div>
         </form>
       ) : (
-        <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
-          {FIELDS.map((key) => (
-            <div key={key} className="grid min-w-0 gap-1">
-              <dt className="text-xs text-muted-foreground">{label[key]}</dt>
-              <dd className="text-sm text-pretty break-words">{values[key] || "—"}</dd>
-            </div>
-          ))}
-        </dl>
+        <ReadList
+          rows={[
+            { label: label.name, value: basics.name },
+            { label: label.niche, value: basics.niche },
+            { label: label.info, value: basics.info || t("business.basics.read.no_info"), muted: !basics.info },
+            { label: label.website, value: basics.website || t("business.basics.read.no_web"), muted: !basics.website },
+            { label: label.timezone, value: basics.price_currency ? `${basics.timezone} · ${basics.price_currency}` : basics.timezone },
+          ]}
+        />
       )}
     </SectionFrame>
   );

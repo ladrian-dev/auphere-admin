@@ -42,6 +42,7 @@ export * from "./components/native-select";
 export * from "./components/page-header";
 export * from "./components/popover";
 export * from "./components/section";
+export * from "./components/segmented-control";
 export * from "./components/select";
 export * from "./components/separator";
 export * from "./components/sheet";

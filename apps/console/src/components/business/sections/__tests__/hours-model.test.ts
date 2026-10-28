@@ -9,6 +9,8 @@ import {
   bodyFromDraft,
   draftFromHours,
   isOvernight,
+  readRows,
+  shiftsText,
   toBlocks,
   validateDraft,
 } from "../hours-model";
@@ -120,5 +122,39 @@ describe("validation", () => {
     expect(validateDraft({ ...draft, days: { ...draft.days, tue: [{ key: "x", open: "9", close: "14:00" }] } })).toEqual([
       { day: "tue", code: "invalid_time" },
     ]);
+  });
+});
+
+/**
+ * La lectura del horario, como el prototipo aprobado: por bloques, «Lunes a
+ * viernes · Sábado · Domingo»; día por día, los días seguidos con los mismos
+ * turnos se juntan («Lunes a jueves»). Sin ningún día abierto, nada que leer.
+ */
+describe("readRows", () => {
+  const S = (open: string, close: string) => ({ open, close, overnight: close <= open });
+  const morning = [S("09:00", "14:00"), S("16:00", "20:00")];
+
+  it("por bloques: tres filas, con los turnos de su primer día", () => {
+    const rows = readRows({ layout: "blocks", days: { mon: morning, tue: morning, wed: morning, thu: morning, fri: morning, sat: [S("09:00", "14:00")], sun: [] } });
+    expect(rows.map((r) => [r.key, r.days.length, r.shifts.length])).toEqual([
+      ["weekdays", 5, 2],
+      ["sat", 1, 1],
+      ["sun", 1, 0],
+    ]);
+  });
+
+  it("día por día: junta los días seguidos iguales", () => {
+    const late = [S("10:00", "22:00")];
+    const rows = readRows({ layout: "daily", days: { mon: morning, tue: morning, wed: morning, thu: morning, fri: late, sat: late, sun: [] } });
+    expect(rows.map((r) => r.days)).toEqual([["mon", "tue", "wed", "thu"], ["fri", "sat"], ["sun"]]);
+  });
+
+  it("sin ningún día abierto no hay filas", () => {
+    expect(readRows({ layout: null, days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } })).toEqual([]);
+  });
+
+  it("los turnos se leen con raya y punto medio, y el nocturno dice que acaba al día siguiente", () => {
+    expect(shiftsText(morning, "(día siguiente)")).toBe("09:00 – 14:00 · 16:00 – 20:00");
+    expect(shiftsText([S("22:00", "06:00")], "(día siguiente)")).toBe("22:00 – 06:00 (día siguiente)");
   });
 });

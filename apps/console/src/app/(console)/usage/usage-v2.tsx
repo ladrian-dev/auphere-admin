@@ -1,13 +1,14 @@
 import Link from "next/link";
 
-import { CircleDollarSign, Users, Wallet as WalletIcon } from "lucide-react";
+import { Bell } from "lucide-react";
 
-import { Button, Callout, ErrorState, Metric, PageHeader, Section } from "@nexus/ui";
+import { Button, Callout, Card, CardContent, ErrorState, PageHeader, Section } from "@nexus/ui";
 
 import { migrationPending, moneyText, parseDays, parseLine } from "@/components/money/money-model";
 import { SpendByDay, SpendFilters } from "@/components/money/spend-by-day";
 import { UsageClientsTable } from "@/components/money/usage-clients-table";
 import { UsageDetailPanel } from "@/components/money/usage-detail";
+import { UsageFigure } from "@/components/money/usage-figure";
 import { UsageLines } from "@/components/money/usage-lines";
 import { SeedRequested } from "@/components/money/request-balance";
 import { getT } from "@/i18n/server";
@@ -61,15 +62,16 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
   return (
     <>
       <PageHeader
-        eyebrow={t("nav.group.operate")}
+        size="display"
         title={t("usage.title")}
-        description={t("money.usage.description")}
+        description={t("usage.description")}
         actions={
           <>
-            <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/usage/alerts" />}>
+            <Button nativeButton={false} variant="outline" render={<Link href="/usage/alerts" />}>
+              <Bell aria-hidden="true" />
               {t("hu.usage.alerts.link")}
             </Button>
-            {can(principal.role, "billing:manage") ? <BuyDialog /> : null}
+            {can(principal.role, "billing:manage") ? <BuyDialog accountCurrency={summary?.currency ?? null} /> : null}
           </>
         }
       />
@@ -93,31 +95,40 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
         <ErrorState title={t("money.usage.error")} />
       ) : (
         <>
+          {/* Las tres cifras del prototipo (`.kpis3`): sin icono, cifra grande y una nota. */}
           <section className="grid gap-4 md:grid-cols-3" aria-label={t("money.figures")} data-slot="usage-figures">
-            <Metric icon={<WalletIcon />} label={t("money.figure.available")} value={moneyText(summary.available, "down")} hint={t("money.figure.available.hint")} />
-            <Metric
-              icon={<Users />}
+            <UsageFigure label={t("money.figure.available")} value={moneyText(summary.available, "down")} hint={t("money.figure.available.hint")} />
+            <UsageFigure
               label={t("money.figure.inBags")}
               value={`${summary.in_bags_approx ? `${t("money.approxPrefix")} ` : ""}${moneyText(summary.in_bags, "down")}`}
-              hint={summary.in_bags_approx ? t("money.figure.inBags.approx") : t("money.figure.inBags.hint")}
+              // Lo repartido sobre lo que hay (repartido + sin repartir), las dos en la moneda de la cuenta.
+              bar={{ value: summary.in_bags.amount_micros, max: summary.in_bags.amount_micros + summary.available.amount_micros }}
+              hint={summary.in_bags_approx ? t("money.figure.inBags.approx") : t("proto.usage.unassigned", { amount: moneyText(summary.available, "down") })}
             />
-            <Metric
-              icon={<CircleDollarSign />}
-              label={t("money.figure.month")}
-              value={moneyText(summary.month_spend)}
-              hint={t("money.figure.month.hint", { amount: moneyText(summary.projected) })}
-            />
+            <UsageFigure label={t("money.figure.month")} value={moneyText(summary.month_spend)} hint={t("money.figure.month.hint", { amount: moneyText(summary.projected) })} />
           </section>
 
-          <Section padded={false} title={t("money.table.title")} description={t("money.table.description")}>
-            <UsageClientsTable clients={clients} canWrite={canWrite} days={days} />
-          </Section>
+          <Card data-slot="usage-balance">
+            <CardContent className="grid min-w-0 gap-4">
+              <div className="grid gap-1">
+                <h2 className="text-base font-semibold">{t("money.table.title")}</h2>
+                <p className="text-sm text-pretty text-muted-foreground">{t("money.table.description")}</p>
+              </div>
+              <UsageClientsTable clients={clients} canWrite={canWrite} days={days} />
+            </CardContent>
+          </Card>
         </>
       )}
 
-      <Section id="gasto" title={t("money.chart.title")} actions={<SpendFilters days={days} client={client} line={line} clients={options} />}>
-        <SpendByDay daily={daily} line={line} currency={currency} />
-      </Section>
+      <Card id="gasto" data-slot="usage-spend" className="scroll-mt-24">
+        <CardContent className="grid min-w-0 gap-4">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">{t("money.chart.title")}</h2>
+            <SpendFilters days={days} client={client} line={line} clients={options} />
+          </div>
+          <SpendByDay daily={daily} line={line} currency={currency} />
+        </CardContent>
+      </Card>
 
       {summary ? (
         <Section title={t("money.lines.title")} description={t("money.lines.description")} flat>

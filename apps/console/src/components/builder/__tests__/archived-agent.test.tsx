@@ -9,7 +9,7 @@ import { LocaleProvider } from "@/i18n/client";
 import { COBROS, REF, header, ok } from "./life-fixtures";
 
 const nav = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => nav }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => nav }));
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/app/(console)/clients/[ref]/agents/life-actions", () => ({}));

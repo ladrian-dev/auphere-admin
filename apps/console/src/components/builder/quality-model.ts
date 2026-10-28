@@ -60,6 +60,20 @@ export function simTimeLabel(now: string, timezone: string, locale: string): str
   }
 }
 
+/** «Mar 11:20» en la zona del negocio: la hora del chat de prueba, como el prototipo. */
+export function simTimeShort(now: string, timezone: string, locale: string): string {
+  const at = new Date(now);
+  if (Number.isNaN(at.getTime())) return now;
+  try {
+    const parts = new Intl.DateTimeFormat(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).formatToParts(at);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+    const day = get("weekday").replace(/\.$/, "");
+    return `${day.charAt(0).toUpperCase()}${day.slice(1)} ${get("hour")}:${get("minute")}`;
+  } catch {
+    return at.toISOString();
+  }
+}
+
 /**
  * La hora de pared de la hora simulada, para el campo `datetime-local`: la API
  * la manda ya en la zona del negocio con su desfase (`2026-10-27T11:20:00+01:00`),

@@ -74,37 +74,86 @@ describe("PartnerPanel", () => {
     expect(plain(spend.textContent)).toContain("1.234,50 €");
     expect(within(spend).getByRole("img", { name: /Flor y Encanto 900,00\s€, El resto 300,00\s€, Companion y teammates 34,50\s€/ })).toBeTruthy();
     const clients = container.querySelector("[data-slot=panel-clients]") as HTMLElement;
-    expect(plain(clients.textContent)).toContain("7 de 9 atendiendo");
-    expect(plain(clients.textContent)).toContain("1 en alta");
-    expect(within(clients).getByText("Ahora")).toBeTruthy();
+    expect(within(clients).getByText("Clientes atendiendo")).toBeTruthy();
+    expect(plain(clients.textContent)).toContain("7");
+    expect(plain(clients.textContent)).toContain("De 9 · 1 en alta");
     const balance = container.querySelector("[data-slot=panel-balance]") as HTMLElement;
+    expect(within(balance).getByText("Saldo disponible")).toBeTruthy();
     expect(plain(balance.textContent)).toContain("60,00 €");
-    expect(plain(balance.textContent)).toContain("aprox. 14,28 €");
+    expect(plain(balance.textContent)).toContain("aprox. 14,28 € asignado a clientes");
+    const count = container.querySelector("[data-slot=panel-count]") as HTMLElement;
+    expect(within(count).getByText("Conversaciones")).toBeTruthy();
+    expect(plain(count.textContent)).toContain("51");
     const conversations = container.querySelector("[data-slot=panel-conversations]") as HTMLElement;
     expect(within(conversations).getByText("Últimos 7 días")).toBeTruthy();
-    expect(within(conversations).getByText("51 conversaciones")).toBeTruthy();
+    // Como el prototipo: el total está en la cifra de arriba, la gráfica no lo repite.
+    expect(within(conversations).queryByText("51 conversaciones", { selector: "p" })).toBeNull();
     expect(within(conversations).getByRole("listbox", { name: "Conversaciones por día" })).toBeTruthy();
     const table = conversations.querySelector("table") as HTMLElement;
     expect(within(table).getAllByRole("row")).toHaveLength(8);
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("«Necesita tu atención»: el saldo se asigna aquí mismo y lo demás lleva a su pantalla", async () => {
+  it("como el prototipo: arriba el gasto y las cifras, luego la gráfica y al final lo que necesita atención", () => {
+    const { container } = show(panel());
+    const order = Array.from(container.querySelectorAll("[data-slot^=panel-]"))
+      .map((el) => el.getAttribute("data-slot"))
+      .filter((slot) => ["panel-spend", "panel-count", "panel-clients", "panel-balance", "panel-conversations", "panel-attention"].includes(slot ?? ""));
+    expect(order).toEqual(["panel-spend", "panel-count", "panel-clients", "panel-balance", "panel-conversations", "panel-attention"]);
+    // 9 clientes, 2 con algo que arreglar: «7 de 9 clientes sin problemas».
+    const attention = screen.getByRole("region", { name: /Necesita tu atención/ });
+    expect(within(attention).getByText("7 de 9 clientes sin problemas.")).toBeTruthy();
+  });
+
+  it("«Necesita tu atención»: el arreglo es la primera opción del «⋯», el saldo se asigna aquí mismo y lo demás lleva a su pantalla", async () => {
     const user = userEvent.setup();
     money.bagContextAction.mockResolvedValue({ ok: false, status: 500, message: "", code: null });
     show(panel());
     const section = screen.getByRole("region", { name: /Necesita tu atención/ });
     const rows = within(section).getAllByRole("listitem");
     expect(within(rows[0]!).getByText("Sin saldo")).toBeTruthy();
-    expect(within(rows[1]!).getByText("Arreglar el canal").closest("a")).toHaveAttribute("href", "/clients/flor-y-encanto/agents");
-    await user.click(within(rows[0]!).getByRole("button", { name: "Asignar saldo" }));
+    // Andrés, 2026-10-28: sin botones sueltos en la fila, todo dentro del «⋯».
+    expect(within(rows[0]!).queryByRole("button", { name: "Asignar saldo" })).toBeNull();
+    await user.click(within(rows[1]!).getByRole("button", { name: /Más acciones de/ }));
+    const channelMenu = await screen.findByRole("menu");
+    const [first] = within(channelMenu).getAllByRole("menuitem");
+    expect(first).toHaveTextContent("Arreglar el canal");
+    expect(first).toHaveAttribute("href", "/clients/flor-y-encanto/agents");
+    await user.keyboard("{Escape}");
+    await user.click(within(rows[0]!).getByRole("button", { name: /Más acciones de/ }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Asignar saldo" }));
     expect(await screen.findByRole("dialog", { name: "Asignar saldo a Barbería Cultor" })).toBeTruthy();
     expect(money.bagContextAction).toHaveBeenCalledWith({ ref: "barberia-cultor" });
   });
 
-  it("quien no asigna ve «Pedir saldo» en la misma fila", () => {
+  it("quien no asigna ve «Pedir saldo» como primera opción del «⋯»", async () => {
+    const user = userEvent.setup();
     show(panel({ attention: [{ external_client_ref: "barberia-cultor", client_name: "Barbería Cultor", code: "no_balance", count: 1, action: "request_balance", href: "/clients/barberia-cultor" }] }));
-    expect(screen.getByRole("button", { name: "Pedir saldo" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Más acciones de/ }));
+    const [first] = within(await screen.findByRole("menu")).getAllByRole("menuitem");
+    expect(first).toHaveTextContent("Pedir saldo");
+  });
+
+  it("como el prototipo: la semana frente a la anterior bajo las conversaciones, y cifras de 28 px", () => {
+    const { container } = render(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={panel()} trend={{ current: 51, previous: 40 }} />
+      </LocaleProvider>,
+    );
+    const count = container.querySelector("[data-slot=panel-count]") as HTMLElement;
+    expect(within(count).getByText("28 % más que los 7 días anteriores")).toBeVisible();
+    expect(within(count).getByText("51").className).toMatch(/text-\[28px\]/);
+  });
+
+  it("«Necesita tu atención» enseña cuatro y deja ver el resto", async () => {
+    const user = userEvent.setup();
+    const row = (n: number) => ({ external_client_ref: `c${n}`, client_name: `Cliente ${n}`, code: "low_balance" as const, count: 1, action: "assign_balance" as const, href: `/clients/c${n}` });
+    show(panel({ attention: [1, 2, 3, 4, 5, 6].map(row) }));
+    const region = screen.getByRole("region", { name: /Necesita tu atención/ });
+    expect(within(region).getAllByRole("listitem")).toHaveLength(4);
+    await user.click(within(region).getByRole("button", { name: "Ver 2 más" }));
+    expect(within(region).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(region).getByRole("button", { name: "Ver menos" })).toBeVisible();
   });
 
   it("sin nada que arreglar: «Todos tus clientes están atendiendo»", () => {

@@ -8,12 +8,15 @@ import {
   arrivedBlocks,
   blockOfPointer,
   describeProblems,
+  draftSteps,
   groupTemplates,
   integrationName,
   nextDelay,
   parseLanguages,
   problemsOf,
   procedureId,
+  tabOfSection,
+  toggleLanguage,
   withBlock,
 } from "../builder-model";
 
@@ -127,5 +130,76 @@ describe("piezas del AgentSpec", () => {
   it("los conectores se llaman por su marca", () => {
     expect(integrationName("agendapro")).toBe("AgendaPro");
     expect(integrationName("mi_crm")).toBe("Mi crm");
+  });
+});
+
+/**
+ * El prototipo aprobado parte la pantalla del agente en cuatro pestañas. Un
+ * aviso (`?tab=`) o un enlace (`#agente-pruebas`) sigue llevando a su sección:
+ * primero se abre la pestaña que la tiene.
+ */
+describe("tabOfSection", () => {
+  it("cada sección, en su pestaña", () => {
+    expect(tabOfSection("agente-rendimiento")).toBe("perf");
+    expect(tabOfSection("agente-mejoras")).toBe("perf");
+    expect(tabOfSection("agente-canales")).toBe("channels");
+    expect(tabOfSection("agente-conectores")).toBe("connectors");
+    for (const id of ["agente-borrador", "agente-pruebas", "agente-revision", "agente-historial", "agente-avanzado", "agente-calidad", "agente-recepcion", "agente-conocimiento", "agente-copiloto", "bloque-voice"]) {
+      expect(tabOfSection(id)).toBe("build");
+    }
+  });
+
+  it("lo que no es de la pantalla del agente no abre ninguna", () => {
+    expect(tabOfSection(null)).toBeNull();
+    expect(tabOfSection("")).toBeNull();
+    expect(tabOfSection("canal-escalado")).toBeNull();
+  });
+});
+
+/**
+ * «Nuevo agente» como el prototipo (§3.2): los cuatro pasos dicen lo que el
+ * trabajo ya contó, nada más. Un paso está hecho cuando el trabajo lo dejó
+ * atrás (pasó a escribir, llegaron las pruebas, llegaron las preguntas, terminó);
+ * el primero sin hacer está en curso y los demás esperan. Lo que la consulta no
+ * llegó a ver se marca de una vez al terminar.
+ */
+describe("draftSteps", () => {
+  const at = (over: Partial<DraftJob>): DraftJob => ({ ...job([]), ...over });
+
+  it("sin trabajo o en cola, el primero está en curso", () => {
+    expect(draftSteps(null)).toEqual(["active", "wait", "wait", "wait"]);
+    expect(draftSteps(at({ status: "queued", progress: null }))).toEqual(["active", "wait", "wait", "wait"]);
+    expect(draftSteps(at({ progress: { step: "reading", blocks: [] } }))).toEqual(["active", "wait", "wait", "wait"]);
+  });
+
+  it("escribiendo, la ficha ya está leída; las pruebas y las preguntas cierran los suyos", () => {
+    expect(draftSteps(at({ progress: { step: "writing", blocks: [] } }))).toEqual(["done", "active", "wait", "wait"]);
+    expect(draftSteps(at({ progress: { step: "writing", blocks: [{ key: "identity" }, { key: "voice" }] } }))).toEqual(["done", "active", "wait", "wait"]);
+    expect(draftSteps(at({ progress: { step: "writing", blocks: [{ key: "identity" }, { key: "tests", count: 8 }] } }))).toEqual([
+      "done",
+      "done",
+      "active",
+      "wait",
+    ]);
+    expect(draftSteps(at({ progress: { step: "writing", blocks: [{ key: "tests", count: 8 }, { key: "questions", count: 2 }] } }))).toEqual([
+      "done",
+      "done",
+      "done",
+      "active",
+    ]);
+  });
+
+  it("terminado, todos hechos aunque la consulta no viera los pasos de en medio", () => {
+    expect(draftSteps(at({ status: "done", progress: { step: "reading", blocks: [] } }))).toEqual(["done", "done", "done", "done"]);
+  });
+});
+
+/** «Idiomas» se marcan: el primero que se marca es el principal; como mucho cinco. */
+describe("toggleLanguage", () => {
+  it("añade al final, quita sin mover el resto y no pasa de cinco", () => {
+    expect(toggleLanguage([], "es")).toEqual(["es"]);
+    expect(toggleLanguage(["es"], "en")).toEqual(["es", "en"]);
+    expect(toggleLanguage(["es", "en", "pt"], "es")).toEqual(["en", "pt"]);
+    expect(toggleLanguage(["es", "en", "pt", "fr", "it"], "de")).toEqual(["es", "en", "pt", "fr", "it"]);
   });
 });

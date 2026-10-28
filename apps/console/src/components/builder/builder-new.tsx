@@ -1,16 +1,16 @@
 "use client";
 
-import { LayoutTemplate, Sparkles } from "lucide-react";
-import Link from "next/link";
+import { CircleAlert, CircleCheck, CircleDashed, CirclePlay, FlaskConical, LoaderCircle, WandSparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
-import { toast } from "sonner";
 
-import { Button, Callout, Field, Input, StatusDot, Textarea, buttonVariants, formatNumber } from "@nexus/ui";
+import { Button, Callout, Field, Input, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, cn, formatNumber } from "@nexus/ui";
 
 import { answerDraftJobAction, draftJobAction, startDraftJobAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
 import { agentHref } from "@/components/shell/routes-v2";
+import { ShellBackButton } from "@/components/shell/shell-back-button";
 import { useLocale, useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
 import type {
   AnswersResult,
   BuilderAnswer,
@@ -20,20 +20,20 @@ import type {
   DraftOptions,
   TemplateOption,
 } from "@/lib/backend/builder-types";
-import { BUILDER_BLOCKS } from "@/lib/backend/builder-types";
 
-import { BlockValue, blockTitleKey } from "./block-view";
-import { BuilderQuestions } from "./builder-questions";
 import {
   LIMITS,
   POLL_FIRST_MS,
   arrivedBlocks,
+  caseTests,
   cleanName,
   describeProblems,
+  draftSteps,
   groupTemplates,
   nextDelay,
   sleep,
   type Result,
+  type StepState,
 } from "./builder-model";
 
 export type BuilderActions = {
@@ -52,32 +52,54 @@ type Phase = "idle" | "starting" | "building" | "done" | "failed";
 type Failure = "unavailable" | "other";
 type Errors = { name?: string; description?: string; template?: string; form?: string };
 
+/** Los cuatro ejemplos del prototipo (§3.1), con textos generales: ni negocios ni personas concretas. */
+const EXAMPLES = ["reception", "sales", "support", "billing"] as const;
+
+/** La barra flotante de vidrio: las mismas clases que en la pantalla del agente (§4.5). */
+const BAR =
+  "glass sticky bottom-4 z-(--z-sticky) min-w-0 rounded-xl p-3 ring-1 ring-foreground/10 min-[560px]:rounded-full min-[560px]:py-2 min-[560px]:pr-2 min-[560px]:pl-4";
+const LINK = "cursor-pointer font-medium text-primary-text underline underline-offset-4 hover:no-underline disabled:cursor-default disabled:opacity-50";
+
 /**
- * «Nuevo agente» (spec 047, historia 7; requisitos 17.1–17.9 y 15.8): una sola
- * pantalla. A la izquierda, la descripción —el nombre (1 a 40), «¿Qué tiene que
- * hacer?» (20 a 1.024) con sus contadores y los ejemplos para empezar— y las
- * alternativas: «Empezar desde una plantilla» (por grupos, la del partner
- * primero y sin elegir sola) y «En blanco». A la derecha, el borrador: los
- * bloques van apareciendo en orden según los cuenta el trabajo, y al terminar,
- * las preguntas que quedan (cada una dice dónde se guarda), las descartadas con
- * su porqué y, en la fila de cada habilidad, «Conectar {conector}».
+ * «Nuevo agente» (spec 047, historia 7; requisitos 17.1–17.9 y 15.8) como el
+ * prototipo aprobado (`specs/047-…/evidence/prototipo/agente.md` §3 y hueco H7):
+ * la misma pantalla del agente —«Nuevo agente», «Borrador · de {cliente}», sus
+ * pestañas (Canales y Conectores llegan cuando el agente exista), dos columnas
+ * y la barra de vidrio abajo—.
+ *
+ * - **Describir** (§3.1): a la izquierda el nombre, «¿Qué tiene que hacer?» y
+ *   cuatro ejemplos que la rellenan (y el nombre, si está vacío); debajo, discreto,
+ *   «Otras formas de empezar»: una plantilla (por grupos, la del partner primero y
+ *   sin elegir sola) o en blanco (17.8, 17.9). A la derecha, «Probar el agente ·
+ *   Aún no». La barra dice qué falta y «Generar borrador» espera a que esté.
+ * - **Preparando** (§3.2): cuatro pasos que siguen al trabajo de verdad, no a un
+ *   reloj: leer la ficha (hasta que el trabajo pasa a escribir), proponer
+ *   instrucciones y habilidades (hasta que llegan las pruebas), escribir las
+ *   pruebas (hasta que llegan las preguntas, con cuántas son del caso) y validar
+ *   las preguntas (hasta que termina). Lo que la consulta no llega a ver se marca
+ *   hecho de una vez al terminar.
+ * - **Listo** (§3.3): la pantalla del agente; si al borrador le faltan datos, con
+ *   las preguntas encima de su tabla (`?job=`), que se responden una a una.
  *
  * El agente nace al terminar el primer borrador, no al abrir esta pantalla
- * (17.2). Si el constructor no responde, se ofrecen la plantilla y el blanco
- * sin perder lo escrito. Al terminar, se va a la pantalla del agente.
+ * (17.2). Si el borrador no se puede escribir, se ofrecen la plantilla y el
+ * blanco sin perder lo escrito (15.8). Nunca se nombra al constructor.
  */
 export function BuilderNew({
   refId,
   options,
   initial,
+  clientName = null,
   actions = SERVER_ACTIONS,
   wait = sleep,
 }: {
   refId: string;
-  /** Lo que trae «Crear este agente» del constructor del cliente (18.4): se rellena, no se crea. */
+  /** Lo que trae «Crear este agente» del cliente (18.4): se rellena, no se crea. */
   initial?: { name?: string; description?: string };
-  /** `null` si `draft-options` no respondió: sin ejemplos ni plantillas, con los límites de siempre. */
+  /** `null` si `draft-options` no respondió: sin plantillas, con los límites de siempre. */
   options: DraftOptions | null;
+  /** El cliente: «de Flor y Encanto» bajo el título y «Leo la ficha de Flor y Encanto…». */
+  clientName?: string | null;
   actions?: BuilderActions;
   wait?: (ms: number) => Promise<void>;
 }) {
@@ -89,7 +111,6 @@ export function BuilderNew({
   const nameRef = React.useRef<HTMLInputElement>(null);
   const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
   const templatesRef = React.useRef<HTMLFieldSetElement>(null);
-  const progressRef = React.useRef<HTMLElement>(null);
 
   const [name, setName] = React.useState(() => (initial?.name ?? "").slice(0, limits.name_max));
   const [description, setDescription] = React.useState(() => (initial?.description ?? "").slice(0, limits.description_max));
@@ -101,17 +122,22 @@ export function BuilderNew({
   const [showTemplates, setShowTemplates] = React.useState(false);
   const [templateId, setTemplateId] = React.useState<string | null>(null);
   const [alt, setAlt] = React.useState<"template" | "blank" | null>(null);
-  const [answering, setAnswering] = React.useState(false);
-  const [answerError, setAnswerError] = React.useState<string | null>(null);
-  const [invalidQuestion, setInvalidQuestion] = React.useState<string | null>(null);
 
-  const locked = phase === "starting" || phase === "building" || phase === "done" || alt !== null;
+  const preparing = phase === "starting" || phase === "building" || phase === "done";
+  const locked = preparing || alt !== null;
   const nameMax = limits.name_max;
-  const nameError = () => t("builder.new.error.name", { max: nameMax });
-  const descriptionError = () =>
-    t("builder.new.error.description", { min: limits.description_min, max: formatNumber(limits.description_max, locale) });
+  const problems = describeProblems(name, description, limits);
+  const ready = !problems.name && !problems.description;
 
-  const goToAgent = React.useCallback((agentId: string) => router.push(agentHref(refId, agentId)), [router, refId]);
+  // Como el prototipo: el foco empieza en el nombre.
+  React.useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+
+  const goToAgent = React.useCallback(
+    (agentId: string, job?: string) => router.push(job ? `${agentHref(refId, agentId)}?job=${encodeURIComponent(job)}` : agentHref(refId, agentId)),
+    [router, refId],
+  );
 
   /** Lo que dijo la API al empezar, en palabras y junto a su campo. */
   const startFailed = React.useCallback(
@@ -156,7 +182,8 @@ export function BuilderNew({
         if (current.status === "done") {
           setPhase("done");
           const agentId = current.result?.agent_id ?? current.agent_id;
-          if (agentId && !(current.result?.questions?.length ?? 0)) goToAgent(agentId);
+          // Con preguntas, la pantalla del agente las enseña encima de su tabla.
+          if (agentId) goToAgent(agentId, current.result?.questions?.length ? current.job_id : undefined);
           return;
         }
         if (current.status === "failed") {
@@ -187,10 +214,10 @@ export function BuilderNew({
   }, [jobId, refId, actions, wait, goToAgent, startFailed]);
 
   function validate(needsDescription: boolean): boolean {
-    const problems = describeProblems(name, description, limits);
     const next: Errors = {};
-    if (problems.name) next.name = nameError();
-    if (needsDescription && problems.description) next.description = descriptionError();
+    if (problems.name) next.name = t("builder.new.error.name", { max: nameMax });
+    if (needsDescription && problems.description)
+      next.description = t("builder.new.error.description", { min: limits.description_min, max: formatNumber(limits.description_max, locale) });
     setErrors(next);
     if (next.name) nameRef.current?.focus();
     else if (next.description) descriptionRef.current?.focus();
@@ -202,6 +229,7 @@ export function BuilderNew({
     if (locked || !validate(true)) return;
     setPhase("starting");
     setFailure(null);
+    setShowTemplates(false);
     setJob(null);
     setJobId(null);
     const res = await actions.start({ ref: refId, name: cleanName(name), description: description.trim(), start: "describe" });
@@ -216,12 +244,10 @@ export function BuilderNew({
     }
     setPhase("building");
     setJobId(res.data.job_id);
-    // En una columna, el borrador queda debajo de la descripción: que se vea llegar.
-    progressRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }
 
   async function startFrom(start: "template" | "blank") {
-    if (locked && phase !== "failed") return;
+    if (locked) return;
     if (!validate(false)) return;
     if (start === "template" && !templateId) {
       setErrors({ template: t("builder.alt.templates.required") });
@@ -252,294 +278,289 @@ export function BuilderNew({
     setJobId(res.data.job_id);
   }
 
-  async function answer(answers: BuilderAnswer[]) {
-    if (!jobId) return;
-    setAnswering(true);
-    setAnswerError(null);
-    setInvalidQuestion(null);
-    const res = await actions.answer({ ref: refId, job: jobId, answers });
-    setAnswering(false);
-    if (res.ok) {
-      toast.success(t("builder.questions.saved"));
-      goToAgent(res.data.agent_id);
-      return;
-    }
-    if (res.code === "invalid_answer" || res.code === "unknown_question") {
-      const id = res.info?.question_id;
-      setInvalidQuestion(typeof id === "string" ? id : null);
-    }
-    setAnswerError(res.status === 401 || res.status === 403 ? t("common.forbidden") : t("builder.questions.error"));
-  }
-
-  function pickExample(example: string) {
-    setDescription(example.slice(0, limits.description_max));
-    setErrors((prev) => ({ ...prev, description: undefined }));
+  /** Un ejemplo sustituye la descripción y, si no hay nombre, pone el suyo (§3.1). */
+  function pickExample(key: (typeof EXAMPLES)[number]) {
+    setDescription(t(`agentProto.new.example.${key}.text` as MessageKey).slice(0, limits.description_max));
+    if (!cleanName(name)) setName(t(`agentProto.new.example.${key}.name` as MessageKey).slice(0, nameMax));
+    setErrors((prev) => ({ ...prev, name: undefined, description: undefined }));
     descriptionRef.current?.focus();
   }
 
-  function openTemplates() {
+  function toggleTemplates() {
+    if (showTemplates) return setShowTemplates(false);
     setShowTemplates(true);
     requestAnimationFrame(() => templatesRef.current?.querySelector<HTMLInputElement>("input[type=radio]")?.focus());
   }
 
-  const blocks = arrivedBlocks(job);
-  const result = phase === "done" ? job?.result ?? null : null;
-  const agentId = result?.agent_id ?? job?.agent_id ?? null;
   const templates = options?.templates ?? [];
-  const nameLen = cleanName(name).length;
-  const descLen = description.trim().length;
+  const title = preparing && cleanName(name) ? cleanName(name) : t("builder.new.title");
 
   return (
-    <div className="grid min-w-0 gap-6" data-slot="builder-new">
-      <div className="grid min-w-0 gap-1">
-        <h2 className="text-xl font-semibold text-balance">{t("builder.new.title")}</h2>
-        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("builder.new.intro")}</p>
-      </div>
+    <div className="grid min-w-0 gap-5" data-slot="builder-new">
+      {/* Como la pantalla del agente: el título, su estado y de qué cliente es. */}
+      <header className="grid min-w-0 gap-2 border-b border-border pb-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <ShellBackButton />
+          <h1 className="min-w-0 text-2xl font-semibold tracking-tighter text-balance break-words sm:text-display">{title}</h1>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+          <StatusBadge tone="muted">{t("clients.v2.agent.draft")}</StatusBadge>
+          {clientName ? (
+            <>
+              <span aria-hidden="true" className="text-muted-foreground">
+                ·
+              </span>
+              <span className="text-base text-muted-foreground">{t("builder.agent.ofClient", { name: clientName })}</span>
+            </>
+          ) : null}
+        </div>
+      </header>
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-2 lg:items-start">
-        {/* ── la descripción ── */}
-        <section aria-labelledby={`${base}-describe`} className="grid min-w-0 gap-4 rounded-md border border-border bg-card p-4 sm:p-6">
-          <h3 id={`${base}-describe`} className="text-base font-semibold">
-            {t("builder.new.describe")}
-          </h3>
-          <form onSubmit={generate} className="grid min-w-0 gap-4" noValidate>
-            <Field label={t("builder.new.name")} hint={t("builder.new.name.hint")} error={errors.name} required>
-              {(a11y) => (
-                <div className="grid min-w-0 gap-1">
-                  <Input
-                    {...a11y}
-                    ref={nameRef}
-                    value={name}
-                    maxLength={nameMax}
-                    readOnly={locked}
-                    autoComplete="off"
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
-                    }}
-                  />
-                  <Counter n={nameLen} max={nameMax} />
-                </div>
-              )}
-            </Field>
-            <Field
-              label={t("builder.new.description")}
-              hint={t("builder.new.description.hint", { min: limits.description_min, max: formatNumber(limits.description_max, locale) })}
-              error={errors.description}
-              required
-            >
-              {(a11y) => (
-                <div className="grid min-w-0 gap-1">
-                  <Textarea
-                    {...a11y}
-                    ref={descriptionRef}
-                    value={description}
-                    rows={6}
-                    maxLength={limits.description_max}
-                    readOnly={locked}
-                    onChange={(e) => {
-                      setDescription(e.target.value);
-                      if (errors.description) setErrors((prev) => ({ ...prev, description: undefined }));
-                    }}
-                  />
-                  <Counter n={descLen} max={limits.description_max} />
-                </div>
-              )}
-            </Field>
+      <Tabs value="build" className="min-w-0 flex-col gap-6">
+        {/* Canales y Conectores son del agente: llegan cuando exista. Sin números (el owner, 2026-10-28). */}
+        <TabsList floating aria-label={t("builder.screen.sections")}>
+          <TabsTrigger value="build">{t("builder.screen.tab.build")}</TabsTrigger>
+          <TabsTrigger value="channels" disabled>
+            {t("builder.screen.channels")}
+          </TabsTrigger>
+          <TabsTrigger value="connectors" disabled>
+            {t("agentConn.title")}
+          </TabsTrigger>
+        </TabsList>
 
-            {options?.examples.length && !locked ? (
-              <div className="grid min-w-0 gap-2">
-                <p className="text-sm font-medium" id={`${base}-examples`}>
-                  {t("builder.new.examples")}
-                </p>
-                <p className="text-xs text-pretty text-muted-foreground">{t("builder.new.examples.hint")}</p>
-                <ul aria-labelledby={`${base}-examples`} className="grid min-w-0 gap-2">
-                  {options.examples.map((example) => (
-                    <li key={example} className="min-w-0">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => pickExample(example)}
-                        className="h-auto min-h-8 w-full justify-start py-2 text-left whitespace-normal"
-                      >
-                        <span className="min-w-0 text-pretty">{example}</span>
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {errors.form ? (
-              <p role="alert" className="text-sm text-destructive text-pretty">
-                {errors.form}
-              </p>
-            ) : null}
-
-            {phase !== "done" ? (
-              <div>
-                <Button type="submit" loading={phase === "starting" || phase === "building"} disabled={alt !== null}>
-                  <Sparkles aria-hidden="true" />
-                  {t("builder.new.generate")}
-                </Button>
-              </div>
-            ) : null}
-          </form>
-
-          {phase !== "done" && phase !== "building" && phase !== "starting" ? (
-            <div className="grid min-w-0 gap-3 border-t border-border pt-4" data-slot="builder-alternatives">
-              <p className="text-sm font-medium">{t("builder.alt.title")}</p>
-              <div className="flex min-w-0 flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-expanded={showTemplates}
-                  aria-controls={`${base}-templates`}
-                  onClick={() => (showTemplates ? setShowTemplates(false) : openTemplates())}
-                  disabled={alt !== null}
-                >
-                  <LayoutTemplate aria-hidden="true" />
-                  {t("builder.alt.template")}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => void startFrom("blank")} loading={alt === "blank"} disabled={alt === "template"}>
-                  {t("builder.alt.blank")}
-                </Button>
-              </div>
-              <p className="text-xs text-pretty text-muted-foreground">{t("builder.alt.blank.hint")}</p>
-              {showTemplates ? (
-                <div id={`${base}-templates`} className="grid min-w-0 gap-3">
-                  {options === null ? (
-                    <p className="text-sm text-pretty text-muted-foreground">{t("builder.alt.templates.error")}</p>
-                  ) : !templates.length ? (
-                    <p className="text-sm text-pretty text-muted-foreground">{t("builder.alt.templates.none")}</p>
-                  ) : (
-                    <>
-                      <TemplatePicker
-                        ref={templatesRef}
-                        templates={templates}
-                        value={templateId}
-                        error={errors.template}
-                        onChange={(id) => {
-                          setTemplateId(id);
-                          setErrors((prev) => ({ ...prev, template: undefined }));
-                        }}
-                      />
-                      <div>
-                        <Button type="button" onClick={() => void startFrom("template")} loading={alt === "template"} disabled={alt === "blank"}>
-                          {t("builder.alt.templates.create")}
-                        </Button>
+        <TabsContent value="build" className="min-w-0">
+          <form onSubmit={generate} noValidate className="grid min-w-0 gap-5">
+            {/* Como el prototipo (§4.1): dos columnas desde 1060 px. */}
+            <div className="grid min-w-0 items-start gap-5 min-[1060px]:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
+              <div className="grid min-w-0 gap-4">
+                {preparing ? (
+                  <DraftSteps job={job} clientName={clientName} />
+                ) : (
+                  <section
+                    aria-labelledby={`${base}-describe`}
+                    className="grid min-w-0 gap-5 rounded-lg border border-border bg-card px-4 py-4 sm:px-5"
+                    data-slot="builder-describe"
+                  >
+                    <h2 id={`${base}-describe`} className="sr-only">
+                      {t("agentProto.new.describe")}
+                    </h2>
+                    {phase === "failed" ? (
+                      <Callout tone="warning" title={failure === "unavailable" ? t("builder.progress.failed.title") : undefined}>
+                        {failure === "unavailable" ? t("builder.progress.failed.body") : t("builder.progress.failed.other")}
+                      </Callout>
+                    ) : null}
+                    <Field label={t("builder.new.name")} error={errors.name} required>
+                      {(a11y) => (
+                        <Input
+                          {...a11y}
+                          ref={nameRef}
+                          value={name}
+                          maxLength={nameMax}
+                          readOnly={locked}
+                          autoComplete="off"
+                          placeholder={t("agentProto.new.name.placeholder")}
+                          onChange={(e) => {
+                            setName(e.target.value);
+                            if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
+                          }}
+                        />
+                      )}
+                    </Field>
+                    <div className="grid min-w-0 gap-3">
+                      <Field label={t("builder.new.description")} error={errors.description} required>
+                        {(a11y) => (
+                          <Textarea
+                            {...a11y}
+                            ref={descriptionRef}
+                            value={description}
+                            rows={5}
+                            maxLength={limits.description_max}
+                            readOnly={locked}
+                            placeholder={t("agentProto.new.description.placeholder")}
+                            onChange={(e) => {
+                              setDescription(e.target.value);
+                              if (errors.description) setErrors((prev) => ({ ...prev, description: undefined }));
+                            }}
+                          />
+                        )}
+                      </Field>
+                      <div role="group" aria-labelledby={`${base}-examples`} className="flex min-w-0 flex-wrap items-center gap-2" data-slot="builder-examples">
+                        <span id={`${base}-examples`} className="text-xs text-muted-foreground">
+                          {t("agentProto.new.examples")}
+                        </span>
+                        {EXAMPLES.map((key) => (
+                          <Button key={key} type="button" size="sm" variant="outline" className="rounded-full" disabled={locked} onClick={() => pickExample(key)}>
+                            {t(`agentProto.new.example.${key}` as MessageKey)}
+                          </Button>
+                        ))}
                       </div>
-                    </>
-                  )}
-                </div>
-              ) : null}
+                    </div>
+
+                    {/* Decisión D4 de `agente.md`: plantilla y en blanco, discretos bajo los ejemplos. */}
+                    <div className="grid min-w-0 gap-3 border-t border-border pt-4" data-slot="builder-alternatives">
+                      <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                        <span>{t("agentProto.new.other")}</span>
+                        <button
+                          type="button"
+                          className={LINK}
+                          aria-expanded={showTemplates}
+                          aria-controls={`${base}-templates`}
+                          disabled={alt !== null}
+                          onClick={toggleTemplates}
+                        >
+                          {t("builder.alt.template")}
+                        </button>
+                        <span aria-hidden="true">·</span>
+                        <button type="button" className={LINK} disabled={alt !== null} aria-busy={alt === "blank" || undefined} onClick={() => void startFrom("blank")}>
+                          {t("builder.alt.blank")}
+                        </button>
+                      </p>
+                      {showTemplates ? (
+                        <div id={`${base}-templates`} className="grid min-w-0 gap-3">
+                          {options === null ? (
+                            <p className="text-sm text-pretty text-muted-foreground">{t("builder.alt.templates.error")}</p>
+                          ) : !templates.length ? (
+                            <p className="text-sm text-pretty text-muted-foreground">{t("builder.alt.templates.none")}</p>
+                          ) : (
+                            <>
+                              <TemplatePicker
+                                ref={templatesRef}
+                                templates={templates}
+                                value={templateId}
+                                error={errors.template}
+                                onChange={(id) => {
+                                  setTemplateId(id);
+                                  setErrors((prev) => ({ ...prev, template: undefined }));
+                                }}
+                              />
+                              <div>
+                                <Button type="button" size="sm" onClick={() => void startFrom("template")} loading={alt === "template"} disabled={alt === "blank"}>
+                                  {t("builder.alt.templates.create")}
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                )}
+              </div>
+              <TryPanel preparing={preparing} />
             </div>
-          ) : null}
-        </section>
 
-        {/* ── el borrador que llega ── */}
-        <section
-          ref={progressRef}
-          aria-labelledby={`${base}-progress`}
-          className="grid min-w-0 gap-4 rounded-md border border-border bg-card p-4 sm:p-6"
-          data-slot="builder-progress"
-        >
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <h3 id={`${base}-progress`} className="text-base font-semibold">
-              {t("builder.progress.title")}
-            </h3>
-            {phase === "done" && agentId ? (
-              <Link href={agentHref(refId, agentId)} className={buttonVariants({ size: "sm", variant: "outline" })}>
-                {t("builder.progress.open")}
-              </Link>
-            ) : null}
-          </div>
-
-          <p role="status" className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-muted-foreground" data-slot="builder-status">
-            {phase === "starting" || phase === "building" ? <StatusDot tone="info" pulse /> : null}
-            <span className="min-w-0">{statusText(phase, job, blocks.length, t)}</span>
-          </p>
-
-          {phase === "failed" ? (
-            <Callout
-              tone="warning"
-              title={failure === "unavailable" ? t("builder.progress.failed.title") : undefined}
-              action={
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={openTemplates}>
-                    {t("builder.alt.template")}
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => void startFrom("blank")} loading={alt === "blank"}>
-                    {t("builder.alt.blank")}
-                  </Button>
-                </div>
-              }
-            >
-              {failure === "unavailable" ? t("builder.progress.failed.body") : t("builder.progress.failed.other")}
-            </Callout>
-          ) : null}
-
-          {blocks.length ? (
-            <ol aria-label={t("builder.progress.blocks")} className="grid min-w-0 gap-3" data-slot="builder-blocks">
-              {blocks.map((block) => (
-                <li key={block.key} className="grid min-w-0 gap-2 border-l-2 border-primary/40 pl-3" data-block={block.key}>
-                  <h4 className="text-sm font-semibold">{t(blockTitleKey(block.key))}</h4>
-                  <BlockValue block={block} refId={refId} />
-                </li>
-              ))}
-            </ol>
-          ) : null}
-
-          {result && result.discarded.count > 0 ? (
-            <div className="grid min-w-0 gap-1 text-sm" data-slot="builder-discarded">
-              <p className="text-pretty">
-                {result.discarded.count === 1 ? t("builder.discarded.one") : t("builder.discarded.other", { n: result.discarded.count })}
-                {result.discarded.reasons.length ? ":" : "."}
-              </p>
-              {result.discarded.reasons.length ? (
-                <ul className="grid min-w-0 list-disc gap-1 pl-5 text-muted-foreground">
-                  {result.discarded.reasons.map((reason) => (
-                    <li key={reason} className="text-pretty">
-                      {reason}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+            {/* La barra flotante de vidrio (§4.5, filas 1 y 2). */}
+            <div data-slot="agent-actionbar" className={BAR}>
+              <div role="region" aria-label={t("builder.publish.bar")} className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                {errors.form ? (
+                  <p role="alert" className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-destructive">
+                    <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+                    <span className="min-w-0">{errors.form}</span>
+                  </p>
+                ) : (
+                  <p role="status" className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-muted-foreground">
+                    {phase === "done" ? (
+                      <CircleCheck aria-hidden="true" className="size-4 shrink-0 text-status-positive-text" />
+                    ) : preparing ? (
+                      <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
+                    ) : null}
+                    <span className="min-w-0">
+                      {phase === "done"
+                        ? t("builder.progress.done")
+                        : preparing
+                          ? t("builder.progress.queued")
+                          : ready
+                            ? t("agentProto.new.bar.ready")
+                            : t("agentProto.new.bar.missing")}
+                    </span>
+                  </p>
+                )}
+                {!preparing ? (
+                  <div className="ml-auto flex min-w-0 gap-2 max-[560px]:w-full max-[560px]:*:flex-1">
+                    <Button type="submit" className="rounded-full" disabled={!ready || alt !== null}>
+                      <WandSparkles aria-hidden="true" />
+                      {t("builder.new.generate")}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          ) : null}
-
-          {result && result.questions.length && agentId ? (
-            <BuilderQuestions
-              questions={result.questions.slice(0, 5)}
-              busy={answering}
-              invalid={invalidQuestion}
-              error={answerError}
-              onSubmit={(answers) => void answer(answers)}
-              onSkip={() => goToAgent(agentId)}
-            />
-          ) : null}
-        </section>
-      </div>
+          </form>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
 
-function statusText(phase: Phase, job: DraftJob | null, arrived: number, t: ReturnType<typeof useT>): string {
-  if (phase === "idle") return t("builder.progress.idle");
-  if (phase === "done") return t("builder.progress.done");
-  if (phase === "failed") return "";
-  if (job?.progress?.step === "writing" || arrived > 0) return t("builder.progress.writing", { n: arrived, total: BUILDER_BLOCKS.length });
-  if (job?.progress?.step === "reading" || job?.status === "running") return t("builder.progress.reading");
-  return t("builder.progress.queued");
+/**
+ * «Preparando el borrador» (§3.2): los cuatro pasos con su icono —hecho, en
+ * curso, pendiente— y lo mismo dicho en palabras para un lector de pantalla.
+ */
+function DraftSteps({ job, clientName }: { job: DraftJob | null; clientName: string | null }) {
+  const t = useT();
+  const id = React.useId();
+  const states = draftSteps(job);
+  const tests = caseTests(job);
+  const texts = [
+    clientName ? t("agentProto.new.step.read", { client: clientName }) : t("agentProto.new.step.read.generic"),
+    t("agentProto.new.step.propose"),
+    tests === null
+      ? t("agentProto.new.step.tests")
+      : tests === 1
+        ? t("agentProto.new.step.tests.one")
+        : t("agentProto.new.step.tests.other", { n: tests }),
+    t("agentProto.new.step.questions"),
+  ];
+  return (
+    <section aria-labelledby={id} className="min-w-0 rounded-lg border border-border bg-card px-4 py-4 sm:px-5" data-slot="builder-steps">
+      <h2 id={id} className="sr-only">
+        {t("agentProto.new.steps")}
+      </h2>
+      <ol aria-labelledby={id} className="grid min-w-0 gap-2">
+        {texts.map((text, i) => {
+          const state = states[i]!;
+          return (
+            <li key={i} data-state={state} className={cn("flex min-w-0 items-center gap-3 text-sm", state === "wait" && "text-muted-foreground")}>
+              <StepIcon state={state} />
+              <span className="min-w-0 text-pretty">
+                <span data-slot="step-text">{text}</span>
+                <span className="sr-only"> · {t(`agentProto.new.step.state.${state}` as MessageKey)}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
 }
 
-function Counter({ n, max }: { n: number; max: number }) {
+function StepIcon({ state }: { state: StepState }) {
+  if (state === "done") return <CircleCheck aria-hidden="true" className="size-4 shrink-0 text-status-positive-text" />;
+  if (state === "active") return <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />;
+  return <CircleDashed aria-hidden="true" className="size-4 shrink-0" />;
+}
+
+/** «Probar el agente · Aún no» (§3.1): el sitio del chat y las pruebas, antes de que haya borrador. */
+function TryPanel({ preparing }: { preparing: boolean }) {
   const t = useT();
-  const locale = useLocale();
+  const id = React.useId();
   return (
-    <span className="justify-self-end text-xs text-muted-foreground tabular-nums" aria-hidden="true">
-      {t("builder.new.count", { n: formatNumber(n, locale), max: formatNumber(max, locale) })}
-    </span>
+    <section aria-labelledby={id} className="grid min-w-0 overflow-hidden rounded-lg border border-border bg-card" data-slot="builder-try">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <h2 id={id} className="inline-flex min-w-0 items-center gap-2 text-sm font-medium">
+          <FlaskConical aria-hidden="true" className="size-4 shrink-0" />
+          {t("agentProto.new.try")}
+        </h2>
+        <StatusBadge tone="muted">{t("agentProto.new.try.notYet")}</StatusBadge>
+      </div>
+      <div className="grid min-w-0 justify-items-center gap-3 px-5 py-7 text-center">
+        <span className="grid size-11 place-items-center rounded-lg bg-muted">
+          <CirclePlay aria-hidden="true" className="size-5 text-muted-foreground" />
+        </span>
+        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{preparing ? t("builder.progress.queued") : t("agentProto.new.try.body")}</p>
+        <p className="max-w-prose text-xs text-pretty text-muted-foreground">{t("agentProto.new.try.note")}</p>
+      </div>
+    </section>
   );
 }
 

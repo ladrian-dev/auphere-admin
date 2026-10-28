@@ -30,10 +30,11 @@ vi.mock("@/app/(console)/clients/new-client-actions", () => ({
 const { ClientMenu, editBody } = await import("../client-menu");
 
 /**
- * Spec 047 (T063, historia 14): el menú ⋯ del cliente. Archivar confirma y el
- * aviso trae «Deshacer», que restaura; eliminar pide escribir el nombre y dice
- * la razón legal cuando no se puede; editar abre el modal del alta con lo de
- * hoy y guarda con la revisión leída.
+ * Spec 047 (T063, historia 14) con el prototipo aprobado (`clientes.md` §2.3,
+ * 7.4 y D4): el menú ⋯ del cliente. Archivar no pregunta: se hace al momento y
+ * el aviso trae «Deshacer», que restaura; eliminar pide escribir el nombre y
+ * dice la razón legal cuando no se puede; editar abre el modal del alta con lo
+ * de hoy y guarda con la revisión leída.
  */
 const ok = <T,>(data: T) => ({ ok: true as const, data });
 const lifecycle = { ref: "barberia-cultor", lifecycle: "archived" as const, previous: "active" as const, agents: [], undo: "restore" as const };
@@ -65,16 +66,15 @@ function menu(actions: Record<string, unknown>, allowed = DETAIL.allowed) {
 describe("ClientMenu", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("archivar confirma, cierra y el aviso trae «Deshacer», que restaura (escenario 3)", async () => {
+  it("archivar no pregunta: archiva al momento y el aviso trae «Deshacer», que restaura (escenario 3)", async () => {
     const user = userEvent.setup();
     const archive = vi.fn(async () => ok(lifecycle));
     const restore = vi.fn(async () => ok({ ...lifecycle, lifecycle: "active" as const, undo: null }));
     menu({ archive, restore });
     await user.click(screen.getByRole("button", { name: "Acciones de Barbería Cultor" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Archivar" }));
-    expect(screen.getByRole("dialog", { name: "Archivar Barbería Cultor" })).toBeTruthy();
     expect(await axeViolations()).toEqual([]);
-    await user.click(screen.getByRole("button", { name: "Archivar" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Archivar" }));
+    expect(screen.queryByRole("dialog", { name: "Archivar Barbería Cultor" })).toBeNull();
     await waitFor(() => expect(archive).toHaveBeenCalledWith({ ref: "barberia-cultor" }));
     expect(toast.success).toHaveBeenCalledWith("Barbería Cultor archivado. Sus agentes quedan en pausa.", expect.objectContaining({ action: expect.anything() }));
     const [, options] = toast.success.mock.calls[0] as [string, { action: { label: string; onClick: () => void } }];
@@ -89,7 +89,7 @@ describe("ClientMenu", () => {
     const remove = vi.fn(async () => ({ ok: false as const, status: 409, message: "x", code: "legal_retention" }));
     menu({ remove });
     await user.click(screen.getByRole("button", { name: "Acciones de Barbería Cultor" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Eliminar" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Eliminar…" }));
     const confirm = screen.getByRole("button", { name: "Eliminar para siempre" });
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
     await user.type(screen.getByRole("textbox"), "Barbería Cultor");
@@ -104,7 +104,7 @@ describe("ClientMenu", () => {
     const update = vi.fn(async () => ok({ ...DETAIL, name: "Cultor Centro", revision: 5 }));
     menu({ update });
     await user.click(screen.getByRole("button", { name: "Acciones de Barbería Cultor" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Editar" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Editar cliente" }));
     const name = await screen.findByLabelText(/Nombre/);
     expect((name as HTMLInputElement).value).toBe("Barbería Cultor");
     await user.clear(name);
@@ -116,6 +116,29 @@ describe("ClientMenu", () => {
     expect(arg.body.name).toBe("Cultor Centro");
     expect(arg.body).not.toHaveProperty("links");
     expect(toast.success).toHaveBeenCalledWith("Cambios guardados. Sus agentes ya los usan.");
+  });
+
+  it("con iconos, sin «Nuevo agente» y con el separador antes de archivar (prototipo §2.3)", async () => {
+    const user = userEvent.setup();
+    menu({});
+    await user.click(screen.getByRole("button", { name: "Acciones de Barbería Cultor" }));
+    await screen.findByRole("menuitem", { name: "Editar cliente" });
+    const menuEl = screen.getByRole("menu");
+    const order = Array.from(menuEl.querySelectorAll("[role=menuitem], [role=separator]")).map((el) =>
+      el.getAttribute("role") === "separator" ? "—" : el.textContent,
+    );
+    expect(order).toEqual(["Editar cliente", "Asignar saldo", "—", "Archivar", "Eliminar…"]);
+    for (const item of screen.getAllByRole("menuitem")) expect(item.querySelector("svg")).toBeTruthy();
+  });
+
+  it("un archivado ofrece «Restaurar», que restaura sin preguntar", async () => {
+    const user = userEvent.setup();
+    const restore = vi.fn(async () => ok({ ...lifecycle, lifecycle: "active" as const, undo: null }));
+    menu({ restore }, ["edit", "restore", "delete"]);
+    await user.click(screen.getByRole("button", { name: "Acciones de Barbería Cultor" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Restaurar" }));
+    await waitFor(() => expect(restore).toHaveBeenCalledWith({ ref: "barberia-cultor" }));
+    expect(toast.success).toHaveBeenCalledWith("Barbería Cultor restaurado. Cada agente vuelve a como estaba.");
   });
 
   it("sin nada permitido no pinta el menú", () => {

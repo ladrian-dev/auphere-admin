@@ -63,11 +63,32 @@ function section(props: Partial<React.ComponentProps<typeof HoursSection>> = {})
   return { ...view, save, load };
 }
 
+/** Como el prototipo: se lee primero; el editor se abre con «Editar». */
+async function editing(props: Partial<React.ComponentProps<typeof HoursSection>> = {}) {
+  const user = userEvent.setup();
+  const view = section(props);
+  await user.click(screen.getByRole("button", { name: "Editar Horarios" }));
+  return { ...view, user };
+}
+
 describe("HoursSection", () => {
-  it("shows the phrase the agent will say and the night shift label", async () => {
+  it("reads first: the days grouped and the phrase the agent will say", async () => {
     const { container } = section();
-    expect(screen.getByText("Así lo dirá el agente")).toBeVisible();
-    expect(screen.getByText(DAILY.label as string)).toBeVisible();
+    expect(screen.getByText(`Así lo dirá el agente: «${DAILY.label as string}»`)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Guardar horario" })).toBeNull();
+    expect(screen.getAllByText("Cerrado").length).toBeGreaterThan(0);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("«Cancelar» closes the editor without saving", async () => {
+    const { user, save } = await editing();
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Editar Horarios" })).toBeVisible();
+  });
+
+  it("the editor shows the night shift label", async () => {
+    const { container } = await editing();
     const friday = screen.getByRole("group", { name: "Viernes" });
     expect(within(friday).getByText("Nocturno · cierra al día siguiente")).toBeVisible();
     expect(within(screen.getByRole("group", { name: "Sábado" })).getByText("Cerrado")).toBeVisible();
@@ -75,8 +96,7 @@ describe("HoursSection", () => {
   });
 
   it("asks before switching to blocks and says which days would be lost", async () => {
-    const user = userEvent.setup();
-    section();
+    const { user } = await editing();
     await user.click(screen.getByRole("radio", { name: "Por bloques" }));
     const dialog = await screen.findByRole("dialog", { name: "Pasar a «Por bloques»" });
     expect(within(dialog).getByText(/martes, viernes/)).toBeVisible();
@@ -90,8 +110,7 @@ describe("HoursSection", () => {
   });
 
   it("allows up to six shifts a day", async () => {
-    const user = userEvent.setup();
-    section();
+    const { user } = await editing();
     const tuesday = screen.getByRole("group", { name: "Martes" });
     const add = within(tuesday).getByRole("button", { name: "Añadir turno" });
     for (let i = 0; i < 5; i++) await user.click(add);
@@ -101,20 +120,19 @@ describe("HoursSection", () => {
   });
 
   it("saves with the revision it read and tells a conflict apart", async () => {
-    const user = userEvent.setup();
-    const { save } = section();
+    const { user, save } = await editing();
     await user.click(screen.getByRole("button", { name: "Guardar horario" }));
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ ref: "barberia-cultor", revision: 4, locationId: null }));
+    // Guardado, vuelve a la lectura.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Editar Horarios" })).toBeVisible());
     save.mockResolvedValueOnce({ ok: false, status: 412, message: "conflict", code: "revision_conflict" });
-    // El botón vuelve tras el primer guardado: el segundo clic no puede caer antes.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Guardar horario" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Editar Horarios" }));
     await user.click(screen.getByRole("button", { name: "Guardar horario" }));
     expect(await screen.findByText(/Alguien cambió esta sección/)).toBeVisible();
   });
 
   it("edits a location's own hours or uses the business's", async () => {
-    const user = userEvent.setup();
-    const { load } = section();
+    const { user, load } = await editing();
     await user.selectOptions(screen.getByRole("combobox", { name: "Horario de" }), CENTRO.id);
     expect(load).toHaveBeenCalledWith(expect.objectContaining({ locationId: CENTRO.id }));
     expect(await screen.findByRole("checkbox", { name: "Usar el horario del negocio" })).toBeChecked();
@@ -124,7 +142,8 @@ describe("HoursSection", () => {
     section({ canWrite: false });
     expect(screen.queryByRole("button", { name: "Guardar horario" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Añadir turno" })).toBeNull();
-    expect(screen.getAllByText("09:00–14:00").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Editar Horarios" })).toBeNull();
+    expect(screen.getAllByText(/09:00 – 14:00/).length).toBeGreaterThan(0);
   });
 
   it("without hours says what the agent will do", () => {

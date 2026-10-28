@@ -49,7 +49,7 @@ const tabsListVariants = cva(
       // El fondo es el vidrio cuando flota y el gris de siempre cuando no:
       // nunca los dos, que se pisarían.
       floating: {
-        true: "glass sticky top-2 z-(--z-sticky) shadow-md ring-1 ring-foreground/10",
+        true: "glass sticky top-2 z-(--z-sticky) ring-1 ring-foreground/10",
         false: "bg-muted",
       },
     },
@@ -84,7 +84,7 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
       className={cn(
         // 32 px de alto: por encima del objetivo mínimo de 24 (WCAG 2.5.8).
         "relative inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors duration-(--duration-hover) ease-(--ease-out) outline-none group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "data-active:bg-card data-active:text-foreground data-active:shadow-sm",
+        "data-active:bg-(--tab-on) data-active:text-foreground data-active:shadow-sm",
         className
       )}
       {...props}

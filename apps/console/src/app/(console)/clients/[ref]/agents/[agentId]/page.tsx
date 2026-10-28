@@ -3,15 +3,17 @@ import { notFound, redirect } from "next/navigation";
 import { AgentBuilder } from "@/components/builder/agent-builder";
 import { sectionForTab } from "@/components/builder/builder-model";
 import { ArchivedAgent } from "@/components/builder/archived-agent";
+import { metaSignupConfig } from "@/components/channels/connect-choice";
 import { clientHref } from "@/components/shell/routes-v2";
 import { getT } from "@/i18n/server";
 import { run } from "@/lib/actions";
-import { backendFor } from "@/lib/backend";
+import { backendFor, callFor } from "@/lib/backend";
+import { businessSectionsApi } from "@/lib/backend/business-sections";
 import type { ChannelPage } from "@/lib/backend/channel-config-types";
 import { env } from "@/lib/env";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
 
-import { getConsoleVersionCached } from "../../data";
+import { getClientV2Cached, getConsoleVersionCached } from "../../data";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -46,15 +48,24 @@ export async function generateMetadata() {
  * Conocimiento (sus fuentes y «Enseñar»); con `channels:read`, la sección
  * Canales (sus números, el ⋯ de cada uno con lo que permite su página y el
  * enlace del dueño). Lo que no se puede leer se dice en su sección.
+ *
+ * Como el prototipo aprobado, «Qué sabe» resume la ficha del negocio («5
+ * servicios · 1 sede · horario (de la ficha)»): se leen sus servicios, sedes y
+ * horario. Si alguna no llega, la fila dice solo lo del agente.
+ *
+ * «Nuevo agente» termina aquí (prototipo §3.3): con `?job=` se lee su trabajo
+ * y, si es de este agente y dejó preguntas, salen encima de la tabla para
+ * responderlas una a una. Si el trabajo no se puede leer, la pantalla sigue sin ellas.
  */
 export default async function AgentScreenPage({
   params,
   searchParams,
 }: {
   params: Promise<{ ref: string; agentId: string }>;
-  searchParams?: Promise<{ tab?: string }>;
+  searchParams?: Promise<{ tab?: string; job?: string }>;
 }) {
   const { ref, agentId } = await params;
+  const query = (await searchParams) ?? {};
   const principal = await requirePartnerPrincipal(`/clients/${ref}/agents/${agentId}`);
   if (!can(principal.role, "clients:read")) redirect("/");
   if ((await getConsoleVersionCached(principal)) !== "v2") {
@@ -79,7 +90,8 @@ export default async function AgentScreenPage({
   const readsMoney = can(principal.role, "usage:read");
   // Spec 047 (historia 31): la lista de conversaciones (solo metadatos) es de quien puede leerlas.
   const readsConversations = can(principal.role, "conversations:read");
-  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements] = await Promise.all([
+  const biz = businessSectionsApi(callFor(principal));
+  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements, client, bizServices, bizLocations, bizHours] = await Promise.all([
     run(() => api.getBuilderDraft(ref, agentId)),
     run(() => api.listProposals(ref, agentId)),
     run(() => api.getAgentTests(ref, agentId)),
@@ -92,7 +104,18 @@ export default async function AgentScreenPage({
     run(() => api.getAgentPerformance(ref, agentId, 30)),
     readsConversations ? run(() => api.listAgentConversations(ref, agentId)) : null,
     run(() => api.listImprovements(ref, agentId)),
+    // El nombre del cliente bajo el título («de Flor y Encanto»): la misma lectura que el layout.
+    getClientV2Cached(principal, ref).catch(() => null),
+    run(() => biz.getServices(ref)),
+    run(() => biz.getLocations(ref)),
+    run(() => biz.getHours(ref)),
   ]);
+  // Las preguntas que dejó el borrador de «Nuevo agente», si el trabajo es de este agente.
+  const job = typeof query.job === "string" && UUID_RE.test(query.job) && can(principal.role, "agents:write") ? await run(() => api.getDraftJob(query.job!)) : null;
+  const questions =
+    job?.ok && job.data.kind === "agent_draft" && job.data.status === "done" && (job.data.result?.agent_id ?? job.data.agent_id) === agentId && job.data.result?.questions.length
+      ? { job: job.data.job_id, questions: job.data.result.questions.slice(0, 5), discarded: job.data.result.discarded ?? { count: 0, reasons: [] } }
+      : null;
   if (!draft.ok) {
     if (draft.status === 404 || draft.status === 422) notFound();
     throw new Error(`agent draft ${draft.status}`);
@@ -104,6 +127,14 @@ export default async function AgentScreenPage({
     const read = await Promise.all(channels.data.channels.map((c) => run(() => api.getChannelPage(ref, c.id))));
     channels.data.channels.forEach((c, i) => (pages[c.id] = ok(read[i]!)));
   }
+  const business =
+    bizServices.ok && bizLocations.ok && bizHours.ok
+      ? {
+          services: bizServices.data.items.filter((x) => !x.archived).length,
+          locations: bizLocations.data.items.filter((x) => !x.archived).length,
+          hours: bizHours.data.label != null || Object.values(bizHours.data.days).some((shifts) => shifts.length > 0),
+        }
+      : null;
   const h = header.ok ? header.data : null;
   const currency = h?.cap_currency ?? null;
   const advanced =
@@ -128,7 +159,14 @@ export default async function AgentScreenPage({
       knowledge={knowledge ? { data: ok(knowledge), canWrite: can(principal.role, "knowledge:write") } : undefined}
       channels={
         channels
-          ? { data: ok(channels), pages, canWrite: can(principal.role, "channels:write"), fromPhone: env().NEXUS_OWNER_LINK_FROM_PHONE }
+          ? {
+              data: ok(channels),
+              pages,
+              canWrite: can(principal.role, "channels:write"),
+              fromPhone: env().NEXUS_OWNER_LINK_FROM_PHONE,
+              // «Conectar WhatsApp» desde la pestaña Canales: el mismo alta de Meta que la página de canales del cliente.
+              meta: metaSignupConfig(env()),
+            }
           : undefined
       }
       advanced={advanced}
@@ -139,7 +177,10 @@ export default async function AgentScreenPage({
       // router, y ninguno de los dos frena el resto de la pantalla.
       connectors={{ canWrite: can(principal.role, "agents:write") }}
       modelQuality={{ canWrite: can(principal.role, "agents:write") }}
-      initialSection={sectionForTab((await searchParams)?.tab)}
+      initialSection={sectionForTab(query.tab)}
+      questions={questions}
+      clientName={client?.name ?? null}
+      business={business}
     />
   );
 }

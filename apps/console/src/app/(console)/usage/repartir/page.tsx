@@ -8,6 +8,7 @@ import { getT } from "@/i18n/server";
 import { backendFor, callFor } from "@/lib/backend";
 import { moneyApi } from "@/lib/backend/money";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
+import { ShellBackButton } from "@/components/shell/shell-back-button";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -35,7 +36,7 @@ export default async function MigrationPage() {
   const names = Object.fromEntries((summary?.clients ?? []).map((c) => [c.ref, c.name ?? c.ref]));
   return (
     <>
-      <PageHeader eyebrow={t("usage.title")} title={t("money.migration.title")} description={t("money.migration.description")} />
+      <PageHeader size="display" back={<ShellBackButton />} title={t("money.migration.title")} description={t("money.migration.description")} />
       {proposal ? (
         <MigrationWizard proposal={proposal} names={names} canConfirm={can(principal.role, "usage:write")} currency={account?.account_currency ?? null} />
       ) : (

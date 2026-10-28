@@ -49,6 +49,41 @@ export function arrivedBlocks(job: DraftJob | null): BuilderBlock[] {
   });
 }
 
+export type StepState = "done" | "active" | "wait";
+
+/**
+ * Los cuatro pasos de «Preparando el borrador» (prototipo §3.2), leídos del
+ * trabajo y de nada más: leer la ficha (hasta que el trabajo pasa a escribir),
+ * proponer instrucciones y habilidades (hasta que llegan las pruebas), escribir
+ * las pruebas (hasta que llegan las preguntas) y validar las preguntas (hasta
+ * que termina). El primero sin hacer está en curso; lo que la consulta no llegó
+ * a ver se marca hecho de una vez cuando el trabajo termina.
+ */
+export function draftSteps(job: DraftJob | null): [StepState, StepState, StepState, StepState] {
+  const finished = job?.status === "done";
+  const keys = new Set(arrivedBlocks(job).map((b) => b.key));
+  const done = [
+    finished || job?.progress?.step === "writing" || keys.size > 0,
+    finished || keys.has("tests") || keys.has("questions"),
+    finished || keys.has("questions"),
+    finished,
+  ];
+  const first = done.indexOf(false);
+  return done.map((d, i) => (d ? "done" : i === first ? "active" : "wait")) as [StepState, StepState, StepState, StepState];
+}
+
+/** Las pruebas del caso que contó el trabajo (el bloque `tests`); `null` si aún no llegaron. */
+export function caseTests(job: DraftJob | null): number | null {
+  const block = arrivedBlocks(job).find((b) => b.key === "tests");
+  return typeof block?.count === "number" ? block.count : null;
+}
+
+/** Marcar o desmarcar un idioma: se añade al final (el primero es el principal), como mucho cinco. */
+export function toggleLanguage(codes: readonly string[], code: string): string[] {
+  if (codes.includes(code)) return codes.filter((c) => c !== code);
+  return codes.length >= 5 ? [...codes] : [...codes, code];
+}
+
 /** Lo que escribió la persona, ya recortado como lo recorta la API. */
 export function cleanName(name: string): string {
   return name.split(/\s+/).filter(Boolean).join(" ");
@@ -239,4 +274,25 @@ const TAB_SECTION: Record<string, string> = {
 
 export function sectionForTab(tab: string | null | undefined): string | null {
   return tab ? (TAB_SECTION[tab] ?? null) : null;
+}
+
+/**
+ * Las cuatro pestañas de la pantalla del agente, como el prototipo aprobado
+ * («Consola de partners v2»): Rendimiento · Configuración · Canales ·
+ * Conectores. Todo lo demás (bloques, conocimiento, pruebas, revisión,
+ * historial, Avanzado) vive en «Configuración».
+ */
+export type AgentTab = "perf" | "build" | "channels" | "connectors";
+
+const SECTION_TAB: Record<string, AgentTab> = {
+  "agente-rendimiento": "perf",
+  "agente-mejoras": "perf",
+  "agente-canales": "channels",
+  "agente-conectores": "connectors",
+};
+
+/** La pestaña que tiene una sección (`agente-…`, `bloque-…`); `null` si no es de la pantalla. */
+export function tabOfSection(id: string | null | undefined): AgentTab | null {
+  if (!id) return null;
+  return SECTION_TAB[id] ?? (id.startsWith("agente-") || id.startsWith("bloque-") ? "build" : null);
 }

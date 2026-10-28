@@ -1,16 +1,17 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Callout, StatusBadge } from "@nexus/ui";
+import { Callout, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@nexus/ui";
 
 import { builderDraftAction, decideProposalAction, saveAgentSpecAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
 import { agentHeaderAction } from "@/app/(console)/clients/[ref]/agents/life-actions";
 import { DraftConflictNotice } from "@/components/agent-draft/conflict-notice";
 import { AgentCapForm } from "@/components/money/agent-cap";
+import type { MetaSignupConfig } from "@/components/channels/whatsapp-connect";
 import { CrumbName } from "@/components/shell/crumb-names";
 import { useT } from "@/i18n/client";
 import type { DraftChange } from "@/lib/backend/agent-draft-types";
@@ -24,6 +25,7 @@ import type { AgentConnector } from "@/lib/backend/agent-connectors-types";
 import type { AgentChannels, ChannelPage } from "@/lib/backend/channel-config-types";
 import type { ModelPolicy, ModelQuality } from "@/lib/backend/model-quality-types";
 import type { Currency, Money } from "@/lib/backend/money-types";
+import { ShellBackButton } from "@/components/shell/shell-back-button";
 
 import { AgentChannelsPanel, type AgentChannelsActions } from "./agent-channels";
 import { AgentConnectorsPanel, type AgentConnectorsActions } from "./agent-connectors";
@@ -34,9 +36,12 @@ import { AgentMenu, type AgentLifeActions } from "./agent-menu";
 import { AgentModelQuality, type ModelQualityActions } from "./agent-model-quality";
 import { AgentPerformancePanel, type PerformanceActions } from "./agent-performance";
 import { AgentPlayground, type PlaygroundActions } from "./agent-playground";
+import { inMore, rowOfBlock, rowOfSection, type AgentRow } from "./agent-proto-model";
+import { AgentRows, type BusinessSummary, type OpenRow } from "./agent-rows";
 import { BlockEditor } from "./block-editor";
-import { AiDisclosureValue, BlockValue, blockTitleKey } from "./block-view";
-import { AGENT_BLOCKS, blockFromSpec, blockOfPointer, isEditable, withBlock, type AgentBlockKey, type Result } from "./builder-model";
+import { PendingQuestions, answerQuestion, type AnswerQuestion, type PendingQuestionsView } from "./builder-questions";
+import { blockTitleKey } from "./block-view";
+import { AGENT_BLOCKS, blockOfPointer, isEditable, tabOfSection, withBlock, type AgentBlockKey, type AgentTab, type Result } from "./builder-model";
 import { CopilotPanel, type CopilotActions, type CopilotHandle } from "./copilot-panel";
 import { receptionOf, type Reception } from "./improve-model";
 import { visibleText, visibleTone } from "./life-model";
@@ -44,8 +49,9 @@ import { draftPolicy } from "./model-quality-model";
 import { ProposalList, type DecideProposal } from "./proposals";
 import { PublishBar, type PublishActions } from "./publish-bar";
 import { ReceptionBadge, ReceptionSection } from "./reception-section";
-import { ReviewPanel, type ReviewActions } from "./review-panel";
+import { ReviewPanel, useAgentReview, type ReviewActions } from "./review-panel";
 import { TestList, type TestListActions } from "./test-list";
+import { TestsBox, useTestRun } from "./tests-box";
 
 /** Lo que la pantalla lee además del borrador (historias 8 y 9); `null` lo que no se pudo leer. */
 export type AgentQuality = {
@@ -82,6 +88,8 @@ export type AgentChannelsView = {
   canWrite: boolean;
   /** Spec 047 (31.3): «desde su teléfono», solo con la bandera. */
   fromPhone: boolean;
+  /** El alta de Meta de este entorno, para «Conectar WhatsApp» desde la pestaña (`agente.md` §10.1). */
+  meta?: MetaSignupConfig | null;
 };
 /**
  * Spec 047 (historia 31): Rendimiento —las cifras de 30 días, nulas si no se
@@ -99,20 +107,6 @@ export type AgentConnectorsView = { data?: AgentConnector[] | null; canWrite: bo
 /** Spec 047 (historia 23): Avanzado › Calidad. `data` en `undefined` se lee al montar. */
 export type AgentModelQualityView = { data?: ModelQuality | null; canWrite: boolean };
 
-const SECTIONS = [
-  { id: "agente-borrador", label: "builder.screen.blocks", part: "draft" },
-  { id: "agente-conocimiento", label: "builder.screen.knowledge", part: "knowledge" },
-  { id: "agente-canales", label: "builder.screen.channels", part: "channels" },
-  { id: "agente-conectores", label: "agentConn.title", part: "connectors" },
-  { id: "agente-recepcion", label: "reception.title", part: "reception" },
-  { id: "agente-rendimiento", label: "improve.performance.title", part: "performance" },
-  { id: "agente-mejoras", label: "improve.title", part: "improvements" },
-  { id: "agente-pruebas", label: "builder.screen.tests", part: "quality" },
-  { id: "agente-revision", label: "builder.screen.review", part: "quality" },
-  { id: "agente-historial", label: "builder.screen.history", part: "quality" },
-  { id: "agente-avanzado", label: "money.advanced.title", part: "advanced" },
-] as const;
-
 /**
  * Spec 047 (44.1): Agente › Avanzado, con el tope mensual del agente en la
  * moneda de la bolsa de su cliente, y lo gastado este mes. `cap` en `undefined`
@@ -126,6 +120,8 @@ export type AgentBuilderActions = {
   decide: DecideProposal;
   /** La cabecera (estado visible, por defecto…), que cambia al guardar. */
   header?: (body: { ref: string; agent: string }) => Promise<Result<AgentHeader>>;
+  /** Responder una pregunta que dejó el borrador de «Nuevo agente». */
+  answer?: AnswerQuestion;
 };
 
 const SERVER_ACTIONS: AgentBuilderActions = {
@@ -133,6 +129,7 @@ const SERVER_ACTIONS: AgentBuilderActions = {
   reload: (body) => builderDraftAction(body),
   decide: (body) => decideProposalAction(body),
   header: (body) => agentHeaderAction(body),
+  answer: answerQuestion,
 };
 
 /** Lo que la API registra al escribir el AgentSpec: compila el prompt del borrador. */
@@ -160,6 +157,14 @@ type Conflict = { current: BuilderDraft; changes: DraftChange[]; block: Editable
  * publicación) cada parte se vuelve a leer.
  *
  * Quien solo lee lo ve todo, sin «Editar» ni «Aplicar» (§V).
+ *
+ * «Configuración» es la pantalla del prototipo aprobado
+ * (`specs/047-…/evidence/prototipo/agente.md` §4 y §5): a la izquierda la
+ * tabla de cinco filas —cada una con los editores de sus bloques— y, plegado
+ * debajo, «Más ajustes» con todo lo que el prototipo no enseña (Recepción, cada
+ * prueba, la revisión entera, el historial, Avanzado, el copiloto y las
+ * propuestas); a la derecha, pegada al bajar, la tarjeta de pruebas y el chat
+ * de prueba; abajo, la barra flotante de vidrio.
  */
 export function AgentBuilder({
   refId,
@@ -177,6 +182,9 @@ export function AgentBuilder({
   connectors,
   modelQuality,
   initialSection = null,
+  clientName = null,
+  business = null,
+  questions = null,
   actions = SERVER_ACTIONS,
   qualityActions = {},
 }: {
@@ -205,6 +213,15 @@ export function AgentBuilder({
   modelQuality?: AgentModelQualityView;
   /** Spec 047 (49.6): la sección a la que llega un aviso (`?tab=`), ya traducida a su id. */
   initialSection?: string | null;
+  /** El cliente del agente: «de Flor y Encanto» bajo el título. */
+  clientName?: string | null;
+  /** Lo que dice la ficha del negocio para «Qué sabe» (servicios, sedes, horario). */
+  business?: BusinessSummary | null;
+  /**
+   * Las preguntas que dejó el borrador de «Nuevo agente» (`?job=`), encima de la
+   * tabla mientras falten (prototipo §3.3). Sin ellas, no se pintan.
+   */
+  questions?: PendingQuestionsView | null;
   actions?: AgentBuilderActions;
   qualityActions?: AgentQualityActions;
 }) {
@@ -212,7 +229,10 @@ export function AgentBuilder({
   const [draft, setDraft] = React.useState(initial);
   const [proposals, setProposals] = React.useState(initialProposals);
   const [proposalsVersion, setProposalsVersion] = React.useState(0);
-  const [editing, setEditing] = React.useState<EditableBlock | null>(null);
+  // La fila abierta de la tabla y el bloque que se edita dentro (uno a la vez).
+  const [openRow, setOpenRow] = React.useState<OpenRow | null>(null);
+  // «Más ajustes»: plegado, salvo que un enlace lleve a algo de dentro.
+  const [moreOpen, setMoreOpen] = React.useState(() => inMore(initialSection));
   const [saving, setSaving] = React.useState(false);
   const [problems, setProblems] = React.useState<SpecProblem[]>([]);
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -223,13 +243,52 @@ export function AgentBuilder({
   const bump = () => setRefreshKey((k) => k + 1);
   const router = useRouter();
   const [header, setHeader] = React.useState(initialHeader ?? null);
+  // Las preguntas sin responder, para la barra flotante.
+  const [pendingQuestions, setPendingQuestions] = React.useState(questions?.questions.length ?? 0);
+  const writable = canWrite && draft.allowed.includes("edit");
+  const spec = draft.spec;
 
-  // Un aviso que lleva a una sección (`?tab=advanced`…): se lleva a la vista al abrir.
+  // Un agente que ya atiende abre en Rendimiento; uno sin publicar, en
+  // «Configuración». Un aviso (`?tab=advanced`…) o un enlace
+  // (`#agente-pruebas`) abre la pestaña de su sección y la lleva a la vista.
+  // La pestaña elegida vale mientras el ancla no cambie: un enlace nuevo manda.
+  const hash = React.useSyncExternalStore(subscribeHash, readHash, () => "");
+  const [chosen, setChosen] = React.useState<{ tab: AgentTab; hash: string } | null>(null);
+  const tab: AgentTab =
+    (chosen && chosen.hash === hash ? chosen.tab : null) ??
+    tabOfSection(hash) ??
+    tabOfSection(initialSection) ??
+    (initial.active_number != null && (performance || improvements) ? "perf" : "build");
+  function setTab(next: AgentTab) {
+    setChosen({ tab: next, hash });
+  }
+  // La sección a la que hay que ir cuando su pestaña ya esté a la vista.
+  const scrollTo = React.useRef<string | null>(initialSection);
+  const followed = React.useRef("");
+  // Pintar otra vez para que el efecto lleve la vista a `id` (aunque nada más cambie).
+  const [tick, nudge] = React.useReducer((n: number) => n + 1, 0);
+  function go(id: string) {
+    scrollTo.current = id;
+    nudge();
+  }
   React.useEffect(() => {
-    if (!initialSection) return;
-    const target = document.getElementById(initialSection);
-    if (target && typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "start" });
-  }, [initialSection]);
+    if (hash && hash !== followed.current && tabOfSection(hash)) {
+      followed.current = hash;
+      scrollTo.current = hash;
+    }
+    const id = scrollTo.current;
+    if (!id) return;
+    // Lo plegado se abre primero; se baja hasta ello en la pintura siguiente.
+    if (inMore(id) && !moreOpen) return setMoreOpen(true);
+    const row = rowOfSection(id);
+    if (row && openRow?.row !== row) {
+      const block = id.startsWith("bloque-") ? id.slice("bloque-".length) : null;
+      return setOpenRow({ row, block: block && writable && isEditable(block) ? block : null });
+    }
+    scrollTo.current = null;
+    const el = document.getElementById(id) ?? (row ? document.getElementById(`fila-${row}`) : null);
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+  }, [hash, moreOpen, openRow, writable, tick, tab]);
   const copilot = React.useRef<CopilotHandle>(null);
 
   /** La vida del agente cambió (pausa, nombre, por defecto…); archivado, la página es otra. */
@@ -239,17 +298,16 @@ export function AgentBuilder({
     if (next.lifecycle === "archived") router.refresh();
   }
 
-  /** «¿Por qué dijo esto?»: lo pregunta el copiloto y la vista va a él. */
+  /** «¿Por qué dijo esto?»: lo pregunta el copiloto, que vive en «Más ajustes», y la vista va a él. */
   function askWhy(context: { answer?: string; actions?: { tool: string; phrase: string }[]; test_id?: string }, about: string) {
     copilot.current?.ask(t("builder.copilot.why"), context, about);
-    document.getElementById("agente-copiloto")?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    setMoreOpen(true);
+    go("agente-copiloto");
   }
 
-  const writable = canWrite && draft.allowed.includes("edit");
-  const spec = draft.spec;
-
-  function open(block: EditableBlock | null) {
-    setEditing(block);
+  /** Abrir una fila (con el editor de uno de sus bloques) o cerrarla. */
+  function open(row: AgentRow | null, block: EditableBlock | null = null) {
+    setOpenRow(row ? { row, block } : null);
     setProblems([]);
     setSaveError(null);
     setConflict(null);
@@ -266,7 +324,8 @@ export function AgentBuilder({
     if (res.ok) {
       setDraft(res.data);
       setConflict(null);
-      setEditing(null);
+      // Como el prototipo: guardar cierra la fila.
+      setOpenRow(null);
       bump();
       toast.success(t("builder.edit.saved"));
       return;
@@ -346,219 +405,206 @@ export function AgentBuilder({
     bump();
   }
 
-  /** Abrir un bloque desde un arreglo y llevar la vista a él. */
+  /** Abrir un bloque desde un arreglo (su fila, con su editor) y llevar la vista a él. */
   function openAt(key: string | null) {
     const block = (AGENT_BLOCKS as readonly string[]).includes(key ?? "") ? (key as AgentBlockKey) : null;
-    if (block && writable && isEditable(block)) open(block);
-    const target = document.getElementById(block ? `bloque-${block}` : "agente-borrador");
-    target?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    const row = block ? rowOfBlock(block) : null;
+    if (row) open(row, block && writable && isEditable(block) ? block : null);
+    setTab("build");
+    go(block ? `bloque-${block}` : "agente-borrador");
   }
+
+  /** Un conector que falta: la pestaña Conectores, sin salir de la pantalla. */
+  const connectTo = connectors
+    ? () => {
+        setTab("connectors");
+        go("agente-conectores");
+      }
+    : undefined;
+  /** «Conectar un canal»: la pestaña Canales. Sin ella, la barra lleva a la página de canales del cliente. */
+  const channelsTab = channels
+    ? () => {
+        setTab("channels");
+        go("agente-canales");
+      }
+    : undefined;
+
+  // Las pruebas y la revisión de la columna derecha; «Más ajustes» y la barra leen lo mismo.
+  const testRun = useTestRun({
+    refId,
+    agentId: draft.agent_id,
+    initial: quality?.tests ?? null,
+    canWrite: writable,
+    refreshKey,
+    onChanged: () => void refreshAll(),
+    actions: qualityActions.tests,
+    wait: qualityActions.wait,
+    enabled: Boolean(quality),
+  });
+  const review = useAgentReview({
+    refId,
+    agentId: draft.agent_id,
+    refreshKey,
+    onApplied: () => void refreshAll(),
+    actions: qualityActions.review,
+    enabled: Boolean(quality),
+  });
 
   const versions = (quality?.history ?? [])
     .filter((v) => v.status === "active" || (v.status === "archived" && v.published_at))
     .map((v) => v.number);
 
-  const blocks = spec ? (
-    <ol aria-label={t("builder.agent.blocks")} className="grid min-w-0 gap-4">
-      {AGENT_BLOCKS.map((key) => (
-        <BlockCard
-          key={key}
-          refId={refId}
+  /** El editor de un bloque dentro de su fila, con lo que dijo la API al guardar. */
+  function editor(key: EditableBlock) {
+    if (!spec) return null;
+    return (
+      <div className="grid min-w-0 gap-3">
+        {conflict ? (
+          <DraftConflictNotice current={conflict.current} changes={conflict.changes} mine={SPEC_FIELDS} busy={saving} onKeepMine={keepMine} onKeepTheirs={keepTheirs} />
+        ) : null}
+        {problems.length ? (
+          <Callout tone="danger" title={t("builder.edit.problems")}>
+            <ul className="grid list-disc gap-1 pl-5" data-slot="spec-problems">
+              {problems.map((p, i) => (
+                <li key={`${p.pointer}-${i}`} className="break-words">
+                  {p.message || p.code}
+                </li>
+              ))}
+            </ul>
+          </Callout>
+        ) : null}
+        {saveError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {saveError}
+          </p>
+        ) : null}
+        <BlockEditor
           block={key}
           spec={spec}
-          editing={editing === key}
-          canEdit={writable && isEditable(key)}
-          onEdit={() => open(isEditable(key) ? key : null)}
-        >
-          {editing === key && isEditable(key) ? (
-            <div className="grid min-w-0 gap-3">
-              {conflict ? (
-                <DraftConflictNotice
-                  current={conflict.current}
-                  changes={conflict.changes}
-                  mine={SPEC_FIELDS}
-                  busy={saving}
-                  onKeepMine={keepMine}
-                  onKeepTheirs={keepTheirs}
-                />
-              ) : null}
-              {problems.length ? (
-                <Callout tone="danger" title={t("builder.edit.problems")}>
-                  <ul className="grid list-disc gap-1 pl-5" data-slot="spec-problems">
-                    {problems.map((p, i) => (
-                      <li key={`${p.pointer}-${i}`} className="break-words">
-                        {p.message || p.code}
-                      </li>
-                    ))}
-                  </ul>
-                </Callout>
-              ) : null}
-              {saveError ? (
-                <p role="alert" className="text-sm text-destructive">
-                  {saveError}
-                </p>
-              ) : null}
-              <BlockEditor
-                block={key}
-                spec={spec}
-                busy={saving}
-                label={t("builder.edit.label", { block: t(blockTitleKey(key)) })}
-                onSave={(value) => void save(key, value)}
-                onCancel={() => open(null)}
-              />
-            </div>
-          ) : null}
-        </BlockCard>
-      ))}
-    </ol>
+          busy={saving}
+          label={t("builder.edit.label", { block: t(blockTitleKey(key)) })}
+          onSave={(value) => void save(key, value)}
+          onCancel={() => open(null)}
+        />
+      </div>
+    );
+  }
+
+  const blocks = spec ? (
+    // Como el prototipo: cinco filas con su lápiz; los 9 bloques del AgentSpec dentro.
+    <AgentRows
+      refId={refId}
+      spec={spec}
+      canEdit={writable}
+      open={openRow}
+      onOpen={(row, block) => open(row, block)}
+      onClose={() => open(null)}
+      editor={editor}
+      knowledge={
+        knowledge ? (
+          <AgentKnowledgePanel
+            refId={refId}
+            agentId={draft.agent_id}
+            agentName={header?.name ?? draft.agent_name}
+            knowledge={knowledge.data}
+            canWrite={knowledge.canWrite}
+            onTaught={() => void refreshAll()}
+            actions={qualityActions.knowledge}
+          />
+        ) : undefined
+      }
+      sources={knowledge?.data ? knowledge.data.items.length : null}
+      business={business}
+      onConnect={connectTo}
+    />
   ) : (
     <Callout tone="info">{t("builder.agent.noSpec")}</Callout>
   );
 
+  const openProposals = proposals?.length ?? 0;
+
+  // El owner (2026-10-28): las pestañas del agente no llevan números.
+  const tabs: { id: AgentTab; label: string }[] = [
+    ...(performance || improvements ? [{ id: "perf" as const, label: t("improve.performance.title") }] : []),
+    { id: "build", label: t("builder.screen.tab.build") },
+    ...(channels ? [{ id: "channels" as const, label: t("builder.screen.channels") }] : []),
+    ...(connectors ? [{ id: "connectors" as const, label: t("agentConn.title") }] : []),
+  ];
+  const shown = tabs.some((x) => x.id === tab) ? tab : "build";
+  // Como el prototipo: «Publicado · de Flor y Encanto», justo después del estado.
+  const ofClient = clientName ? (
+    <>
+      <span aria-hidden="true" className="text-muted-foreground">
+        ·
+      </span>
+      <span className="text-base text-muted-foreground">{t("builder.agent.ofClient", { name: clientName })}</span>
+    </>
+  ) : null;
+
   return (
     <div className="grid min-w-0 gap-6" data-slot="agent-builder">
       <CrumbName id={draft.agent_id} label={draft.agent_name} />
-      <header className="grid min-w-0 gap-3">
-        <div className="grid min-w-0 gap-2">
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <h2 className="min-w-0 text-xl font-semibold text-balance break-words">{header?.name ?? draft.agent_name}</h2>
-            {header ? (
-              <AgentMenu
-                refId={refId}
-                header={header}
-                agents={agents}
-                onHeader={onHeader}
-                onArchived={onHeader}
-                actions={qualityActions.life}
-              />
-            ) : null}
+      {/* Como el prototipo aprobado: el agente es el título de la página, con su
+          estado y de qué cliente es, y debajo sus pestañas en vidrio. */}
+      <header className="grid min-w-0 gap-2 border-b border-border pb-5">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <ShellBackButton />
+            <h1 className="min-w-0 text-2xl font-semibold tracking-tighter text-balance break-words sm:text-display">{header?.name ?? draft.agent_name}</h1>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-            {header ? (
-              <>
-                {/* Spec 047 (25.5): el estado visible de la API, el mismo en toda la consola. */}
-                <StatusBadge tone={visibleTone(header.visible_state)} data-slot="agent-state">
-                  {visibleText(t, header.visible_state)}
-                </StatusBadge>
-                {header.is_default ? <span className="text-muted-foreground">{t("builder.agents.principal")}</span> : null}
-                <ReceptionBadge published={header.is_reception} drafted={receptionOf(spec).enabled} />
-                {draft.exists && draft.number && draft.active_number ? <StatusBadge tone="info">{t("builder.agent.draft", { n: draft.number })}</StatusBadge> : null}
-              </>
-            ) : (
-              <>
-                {draft.exists && draft.number ? <StatusBadge tone="info">{t("builder.agent.draft", { n: draft.number })}</StatusBadge> : null}
-                {draft.active_number ? (
-                  <StatusBadge tone="positive">{t("builder.agent.published", { n: draft.active_number })}</StatusBadge>
-                ) : (
-                  <StatusBadge tone="muted">{t("builder.agent.unpublished")}</StatusBadge>
-                )}
-              </>
-            )}
-            {!draft.exists && draft.active_number ? <span className="text-muted-foreground">{t("builder.agent.noDraft")}</span> : null}
-            <TestsLine tests={draft.tests} />
-          </div>
-          {header?.visible_state.code === "paused" ? <Callout tone="warning">{t("builder.life.paused")}</Callout> : null}
-        </div>
-        {quality ? (
-          <div className="min-w-0 rounded-md border border-border bg-card p-3">
-            <PublishBar
+          {header ? (
+            <AgentMenu
               refId={refId}
-              agentId={draft.agent_id}
-              preview={quality.preview}
-              hadActive={draft.active_number !== null}
-              canWrite={writable}
-              refreshKey={refreshKey}
-              onPublished={() => void refreshAll()}
-              actions={qualityActions.publish}
-              wait={qualityActions.wait}
+              header={header}
+              agents={agents}
+              onHeader={onHeader}
+              onArchived={onHeader}
+              actions={qualityActions.life}
             />
-          </div>
-        ) : null}
-        {quality || knowledge || channels || connectors || advanced || modelQuality || performance || improvements || spec ? (
-          <nav aria-label={t("builder.screen.sections")} className="min-w-0">
-            <ul className="flex min-w-0 gap-2 overflow-x-auto pb-1" data-scroll-x>
-              {SECTIONS.filter(
-                (s) =>
-                  s.part === "draft" ||
-                  (s.part === "quality" && quality) ||
-                  (s.part === "knowledge" && knowledge) ||
-                  (s.part === "channels" && channels) ||
-                  (s.part === "connectors" && connectors) ||
-                  (s.part === "reception" && spec) ||
-                  (s.part === "performance" && performance) ||
-                  (s.part === "improvements" && improvements) ||
-                  (s.part === "advanced" && (advanced || modelQuality)),
-              ).map((section) => (
-                <li key={section.id} className="shrink-0">
-                  <a
-                    href={`#${section.id}`}
-                    className="inline-flex min-h-8 items-center rounded-full px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                  >
-                    {t(section.label)}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        ) : null}
+          ) : null}
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+          {header ? (
+            <>
+              {/* Spec 047 (25.5): el estado visible de la API, el mismo en toda la consola. */}
+              <StatusBadge tone={visibleTone(header.visible_state)} data-slot="agent-state">
+                {visibleText(t, header.visible_state)}
+              </StatusBadge>
+              {ofClient}
+              {header.is_default ? <span className="text-muted-foreground">{t("builder.agents.principal")}</span> : null}
+              <ReceptionBadge published={header.is_reception} drafted={receptionOf(spec).enabled} />
+              {draft.exists && draft.number && draft.active_number ? <StatusBadge tone="info">{t("builder.agent.draft", { n: draft.number })}</StatusBadge> : null}
+            </>
+          ) : (
+            <>
+              {draft.exists && draft.number ? <StatusBadge tone="info">{t("builder.agent.draft", { n: draft.number })}</StatusBadge> : null}
+              {draft.active_number ? (
+                <StatusBadge tone="positive">{t("builder.agent.published", { n: draft.active_number })}</StatusBadge>
+              ) : (
+                <StatusBadge tone="muted">{t("builder.agent.unpublished")}</StatusBadge>
+              )}
+              {ofClient}
+            </>
+          )}
+          {!draft.exists && draft.active_number ? <span className="text-muted-foreground">{t("builder.agent.noDraft")}</span> : null}
+          <TestsLine tests={draft.tests} />
+        </div>
+        {header?.visible_state.code === "paused" ? <Callout tone="warning">{t("builder.life.paused")}</Callout> : null}
       </header>
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start">
-        <div className="grid min-w-0 gap-8">
-          <div id="agente-borrador" className="min-w-0 scroll-mt-24">
-            {blocks}
-          </div>
-          {knowledge ? (
-            <ScreenSection id="agente-conocimiento" title={t("builder.screen.knowledge")}>
-              <AgentKnowledgePanel
-                refId={refId}
-                agentId={draft.agent_id}
-                agentName={header?.name ?? draft.agent_name}
-                knowledge={knowledge.data}
-                canWrite={knowledge.canWrite}
-                onTaught={() => void refreshAll()}
-                actions={qualityActions.knowledge}
-              />
-            </ScreenSection>
-          ) : null}
-          {channels ? (
-            <ScreenSection id="agente-canales" title={t("builder.screen.channels")}>
-              <AgentChannelsPanel
-                refId={refId}
-                agentId={draft.agent_id}
-                channels={channels.data}
-                pages={channels.pages}
-                canWrite={channels.canWrite}
-                fromPhone={channels.fromPhone}
-                actions={qualityActions.channels}
-              />
-            </ScreenSection>
-          ) : null}
-          {connectors ? (
-            <ScreenSection id="agente-conectores" title={t("agentConn.title")}>
-              <AgentConnectorsPanel
-                refId={refId}
-                agentId={draft.agent_id}
-                connectors={connectors.data}
-                canWrite={connectors.canWrite}
-                spec={spec}
-                actions={qualityActions.connectors}
-              />
-            </ScreenSection>
-          ) : null}
-          {spec ? (
-            <ScreenSection id="agente-recepcion" title={t("reception.title")}>
-              <ReceptionSection
-                key={draft.revision}
-                agentId={draft.agent_id}
-                reception={receptionOf(spec)}
-                agents={agents}
-                canWrite={writable}
-                onSave={saveReception}
-                onReload={() => void reload()}
-              />
-            </ScreenSection>
-          ) : null}
+      <Tabs value={shown} onValueChange={(value) => setTab(value as AgentTab)} className="min-w-0 flex-col gap-6">
+        <TabsList floating aria-label={t("builder.screen.sections")}>
+          {tabs.map((x) => (
+            <TabsTrigger key={x.id} value={x.id}>
+              {x.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* Las pestañas ocultas siguen montadas: el chat de prueba o un editor
+            abierto no se pierden al cambiar de pestaña. */}
+        {performance || improvements ? (
+          <TabsContent value="perf" keepMounted className="grid min-w-0 gap-8">
           {performance ? (
             <ScreenSection id="agente-rendimiento" title={t("improve.performance.title")}>
               <AgentPerformancePanel
@@ -581,130 +627,263 @@ export function AgentBuilder({
               />
             </ScreenSection>
           ) : null}
-          {quality ? (
-            <>
-              <ScreenSection id="agente-pruebas" title={t("builder.screen.tests")}>
-                <TestList
-                  refId={refId}
-                  agentId={draft.agent_id}
-                  suite={quality.tests}
-                  canWrite={writable}
-                  refreshKey={refreshKey}
-                  onFix={() => openAt("instructions")}
-                  onWhy={(test) => askWhy({ test_id: test.id }, t("builder.copilot.about.test", { name: test.name }))}
-                  onChanged={() => void refreshAll()}
-                  actions={qualityActions.tests}
-                  wait={qualityActions.wait}
-                />
-              </ScreenSection>
-              <ScreenSection id="agente-revision" title={t("builder.screen.review")}>
-                <ReviewPanel
-                  refId={refId}
-                  agentId={draft.agent_id}
-                  canWrite={writable}
-                  refreshKey={refreshKey}
-                  onEdit={(pointer) => openAt(pointer ? blockOfPointer(pointer) : null)}
-                  onApplied={() => void refreshAll()}
-                  actions={qualityActions.review}
-                />
-              </ScreenSection>
-              <ScreenSection id="agente-historial" title={t("builder.screen.history")}>
-                <AgentHistory
-                  refId={refId}
-                  agentId={draft.agent_id}
-                  history={quality.history}
-                  canWrite={writable}
-                  refreshKey={refreshKey}
-                  onRestored={() => void refreshAll()}
-                  actions={qualityActions.history}
-                />
-              </ScreenSection>
-            </>
-          ) : null}
-          {advanced || modelQuality ? (
-            <ScreenSection id="agente-avanzado" title={t("money.advanced.title")}>
-              {advanced ? (
-                <AgentCapForm
-                  refId={refId}
-                  agentId={draft.agent_id}
-                  agentName={header?.name ?? draft.agent_name}
-                  cap={advanced.cap}
-                  spent={advanced.spent ?? null}
-                  currency={advanced.currency}
-                  canWrite={advanced.canWrite}
-                />
-              ) : null}
-              {modelQuality ? (
-                // Agente › Avanzado › Calidad (39.4): `?tab=quality` llega aquí.
-                <section id="agente-calidad" aria-labelledby="agente-calidad-title" className="grid min-w-0 scroll-mt-24 gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
-                  <h4 id="agente-calidad-title" className="text-sm font-semibold">
-                    {t("modelQuality.title")}
-                  </h4>
-                  <AgentModelQuality
+          </TabsContent>
+        ) : null}
+
+        <TabsContent value="build" keepMounted className="grid min-w-0 gap-5">
+          {/* Como el prototipo (§4.1): dos columnas desde 1060 px; la derecha, pegada al bajar. */}
+          <div className={quality ? "grid min-w-0 items-start gap-5 min-[1060px]:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]" : "grid min-w-0 gap-5"}>
+            <div className="grid min-w-0 gap-4">
+              {questions && questions.questions.length ? (
+                // Como el prototipo (§3.3): lo que le falta al borrador, encima de la tabla.
+                <div id="agente-preguntas" className="min-w-0 scroll-mt-24">
+                  <PendingQuestions
                     refId={refId}
-                    agentId={draft.agent_id}
-                    quality={modelQuality.data}
-                    canWrite={modelQuality.canWrite && writable}
-                    drafted={draftPolicy(spec)}
-                    onUse={spec && writable ? saveModelPolicy : undefined}
-                    actions={qualityActions.modelQuality}
-                    wait={qualityActions.wait}
+                    view={questions}
+                    canWrite={writable}
+                    answer={actions.answer ?? answerQuestion}
+                    onAnswered={() => void refreshAll()}
+                    onPending={setPendingQuestions}
                   />
-                </section>
+                </div>
               ) : null}
+              <div id="agente-borrador" className="min-w-0 scroll-mt-24">
+                {blocks}
+              </div>
+              <MoreSettings open={moreOpen} onToggle={() => setMoreOpen((v) => !v)} proposals={openProposals}>
+                {spec ? (
+                  <ScreenSection id="agente-recepcion" title={t("reception.title")}>
+                    <ReceptionSection
+                      key={draft.revision}
+                      agentId={draft.agent_id}
+                      reception={receptionOf(spec)}
+                      agents={agents}
+                      canWrite={writable}
+                      onSave={saveReception}
+                      onReload={() => void reload()}
+                    />
+                  </ScreenSection>
+                ) : null}
+                {quality ? (
+                  <>
+                    <ScreenSection id="agente-pruebas" title={t("builder.screen.tests")}>
+                      <TestList
+                        refId={refId}
+                        agentId={draft.agent_id}
+                        suite={quality.tests}
+                        canWrite={writable}
+                        refreshKey={refreshKey}
+                        onFix={() => openAt("instructions")}
+                        onWhy={(test) => askWhy({ test_id: test.id }, t("builder.copilot.about.test", { name: test.name }))}
+                        onChanged={() => void refreshAll()}
+                        actions={qualityActions.tests}
+                        wait={qualityActions.wait}
+                      />
+                    </ScreenSection>
+                    <ScreenSection id="agente-revision" title={t("builder.screen.review")}>
+                      <ReviewPanel
+                        refId={refId}
+                        agentId={draft.agent_id}
+                        canWrite={writable}
+                        refreshKey={refreshKey}
+                        onEdit={(pointer) => openAt(pointer ? blockOfPointer(pointer) : null)}
+                        onApplied={() => void refreshAll()}
+                        source={review}
+                      />
+                    </ScreenSection>
+                    <ScreenSection id="agente-historial" title={t("builder.screen.history")}>
+                      <AgentHistory
+                        refId={refId}
+                        agentId={draft.agent_id}
+                        history={quality.history}
+                        canWrite={writable}
+                        refreshKey={refreshKey}
+                        onRestored={() => void refreshAll()}
+                        actions={qualityActions.history}
+                      />
+                    </ScreenSection>
+                  </>
+                ) : null}
+                {advanced || modelQuality ? (
+                  <ScreenSection id="agente-avanzado" title={t("money.advanced.title")}>
+                    {advanced ? (
+                      <AgentCapForm
+                        refId={refId}
+                        agentId={draft.agent_id}
+                        agentName={header?.name ?? draft.agent_name}
+                        cap={advanced.cap}
+                        spent={advanced.spent ?? null}
+                        currency={advanced.currency}
+                        canWrite={advanced.canWrite}
+                      />
+                    ) : null}
+                    {modelQuality ? (
+                      // Agente › Avanzado › Calidad (39.4): `?tab=quality` llega aquí.
+                      <section id="agente-calidad" aria-labelledby="agente-calidad-title" className="grid min-w-0 scroll-mt-24 gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+                        <h3 id="agente-calidad-title" className="text-sm font-semibold">
+                          {t("modelQuality.title")}
+                        </h3>
+                        <AgentModelQuality
+                          refId={refId}
+                          agentId={draft.agent_id}
+                          quality={modelQuality.data}
+                          canWrite={modelQuality.canWrite && writable}
+                          drafted={draftPolicy(spec)}
+                          onUse={spec && writable ? saveModelPolicy : undefined}
+                          actions={qualityActions.modelQuality}
+                          wait={qualityActions.wait}
+                        />
+                      </section>
+                    ) : null}
+                  </ScreenSection>
+                ) : null}
+                {quality && spec ? (
+                  <div id="agente-copiloto" className="min-w-0 scroll-mt-24 rounded-lg border border-border bg-card p-4 sm:p-6">
+                    <CopilotPanel
+                      ref={copilot}
+                      refId={refId}
+                      agentId={draft.agent_id}
+                      canWrite={writable}
+                      onChanged={() => void refreshAll()}
+                      actions={qualityActions.copilot}
+                    />
+                  </div>
+                ) : null}
+                {spec ? (
+                  <div id="agente-propuestas" className="min-w-0 scroll-mt-24 rounded-lg border border-border bg-card p-4 sm:p-6">
+                    <ProposalList
+                      key={proposalsVersion}
+                      refId={refId}
+                      agentId={draft.agent_id}
+                      proposals={proposals}
+                      canWrite={writable}
+                      decide={actions.decide}
+                      onApplied={() => void refreshAll()}
+                      onRetry={() => void reload()}
+                    />
+                  </div>
+                ) : null}
+              </MoreSettings>
+            </div>
+            {quality ? (
+              // Como el prototipo (§5), con el orden que pidió el owner (2026-10-28): el
+              // chat de prueba arriba y, justo debajo, las pruebas con «Ejecutar todas».
+              // Pegada al bajar, nunca más alta que lo que deja la barra flotante
+              // (arriba 120 px, abajo la barra con su margen): la barra no tapa el
+              // chat; si no cabe todo, lo de abajo se desplaza dentro de la columna.
+              <aside
+                aria-label={t("agentProto.aside")}
+                className="grid min-w-0 content-start gap-3 min-[1060px]:sticky min-[1060px]:top-30 min-[1060px]:max-h-[calc(100dvh-13rem)] min-[1060px]:overflow-y-auto min-[1060px]:overscroll-contain"
+              >
+                <AgentPlayground
+                  refId={refId}
+                  agentId={draft.agent_id}
+                  sessions={quality.sessions}
+                  versions={versions}
+                  hasDraft={draft.exists}
+                  canWrite={writable}
+                  onWhy={
+                    spec
+                      ? (turn) =>
+                          askWhy(
+                            { answer: turn.bubbles.join("\n"), actions: turn.actions },
+                            t("builder.copilot.about.answer", { answer: excerpt(turn.bubbles.join(" ")) }),
+                          )
+                      : undefined
+                  }
+                  actions={qualityActions.playground}
+                />
+                <TestsBox
+                  refId={refId}
+                  tests={testRun}
+                  review={review}
+                  canWrite={writable}
+                  onFix={() => openAt("instructions")}
+                  onWhy={spec ? (test) => askWhy({ test_id: test.id }, t("builder.copilot.about.test", { name: test.name })) : undefined}
+                  onEdit={(pointer) => openAt(pointer ? blockOfPointer(pointer) : null)}
+                  onConnect={connectTo ? () => connectTo() : undefined}
+                  onAll={() => {
+                    setMoreOpen(true);
+                    go("agente-pruebas");
+                  }}
+                />
+              </aside>
+            ) : null}
+          </div>
+          {quality ? (
+            // La barra flotante de vidrio (§4.5): el estado a la izquierda, los botones píldora a la derecha.
+            <div
+              data-slot="agent-actionbar"
+              className="glass sticky bottom-4 z-(--z-sticky) min-w-0 rounded-xl p-3 ring-1 ring-foreground/10 min-[560px]:rounded-full min-[560px]:py-2 min-[560px]:pr-2 min-[560px]:pl-4"
+            >
+              <PublishBar
+                refId={refId}
+                agentId={draft.agent_id}
+                preview={quality.preview}
+                hadActive={draft.active_number !== null}
+                canWrite={writable}
+                refreshKey={refreshKey}
+                tests={{ summary: testRun.suite?.summary ?? null, running: testRun.running !== null, canRun: testRun.canRun, run: () => void testRun.run("all") }}
+                pendingQuestions={pendingQuestions}
+                onConnect={channelsTab}
+                onPublished={() => void refreshAll()}
+                actions={qualityActions.publish}
+                wait={qualityActions.wait}
+              />
+            </div>
+          ) : null}
+        </TabsContent>
+
+        {channels ? (
+          <TabsContent value="channels" keepMounted className="grid min-w-0 gap-6">
+          {channels ? (
+            // Como el prototipo (`agente.md` §7): sin marco ni título propio, el asistente y la lista son las tarjetas.
+            <div id="agente-canales" className="min-w-0 scroll-mt-24">
+              <AgentChannelsPanel
+                refId={refId}
+                agentId={draft.agent_id}
+                channels={channels.data}
+                pages={channels.pages}
+                canWrite={channels.canWrite}
+                fromPhone={channels.fromPhone}
+                clientName={clientName}
+                meta={channels.meta ?? null}
+                actions={qualityActions.channels}
+              />
+            </div>
+          ) : null}
+          </TabsContent>
+        ) : null}
+
+        {connectors ? (
+          <TabsContent value="connectors" keepMounted className="grid min-w-0 gap-6">
+          {connectors ? (
+            <ScreenSection id="agente-conectores" title={t("agentConn.title")}>
+              <AgentConnectorsPanel
+                refId={refId}
+                agentId={draft.agent_id}
+                connectors={connectors.data}
+                canWrite={connectors.canWrite}
+                spec={spec}
+                actions={qualityActions.connectors}
+              />
             </ScreenSection>
           ) : null}
-        </div>
-        <aside className="grid min-w-0 gap-4">
-          {quality ? (
-            <div className="min-w-0 rounded-md border border-border bg-card p-4">
-              <AgentPlayground
-                refId={refId}
-                agentId={draft.agent_id}
-                sessions={quality.sessions}
-                versions={versions}
-                hasDraft={draft.exists}
-                canWrite={writable}
-                onWhy={(turn) =>
-                  askWhy(
-                    { answer: turn.bubbles.join("\n"), actions: turn.actions },
-                    t("builder.copilot.about.answer", { answer: excerpt(turn.bubbles.join(" ")) }),
-                  )
-                }
-                actions={qualityActions.playground}
-              />
-            </div>
-          ) : null}
-          {quality && spec ? (
-            <div id="agente-copiloto" className="min-w-0 scroll-mt-24 rounded-md border border-border bg-card p-4">
-              <CopilotPanel
-                ref={copilot}
-                refId={refId}
-                agentId={draft.agent_id}
-                canWrite={writable}
-                onChanged={() => void refreshAll()}
-                actions={qualityActions.copilot}
-              />
-            </div>
-          ) : null}
-          {spec ? (
-            <div id="agente-propuestas" className="min-w-0 scroll-mt-24 rounded-md border border-border bg-card p-4">
-              <ProposalList
-                key={proposalsVersion}
-                refId={refId}
-                agentId={draft.agent_id}
-                proposals={proposals}
-                canWrite={writable}
-                decide={actions.decide}
-                onApplied={() => void refreshAll()}
-                onRetry={() => void reload()}
-              />
-            </div>
-          ) : null}
-        </aside>
-      </div>
+          </TabsContent>
+        ) : null}
+      </Tabs>
     </div>
   );
+}
+
+/** El ancla de la URL (`#agente-pruebas` → `agente-pruebas`), como almacén externo. */
+function subscribeHash(onChange: () => void) {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+}
+
+function readHash(): string {
+  return decodeURIComponent(window.location.hash.slice(1));
 }
 
 /** Las primeras palabras de una respuesta, para decir de cuál se pregunta. */
@@ -715,70 +894,47 @@ function excerpt(text: string, max = 80): string {
 /** Una parte de la pantalla del agente con su título (h3) y su ancla. */
 function ScreenSection({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="grid min-w-0 scroll-mt-24 gap-3 rounded-md border border-border bg-card p-4 sm:p-6">
-      <h3 id={`${id}-title`} className="text-base font-semibold">
+    <section id={id} aria-labelledby={`${id}-title`} className="grid min-w-0 scroll-mt-24 gap-3 rounded-lg border border-border bg-card p-4 sm:p-6">
+      <h2 id={`${id}-title`} className="text-base font-semibold">
         {title}
-      </h3>
+      </h2>
       {children}
     </section>
   );
 }
 
-function BlockCard({
-  refId,
-  block,
-  spec,
-  editing,
-  canEdit,
-  onEdit,
-  children,
-}: {
-  refId: string;
-  block: AgentBlockKey;
-  spec: AgentSpec;
-  editing: boolean;
-  canEdit: boolean;
-  onEdit: () => void;
-  children: React.ReactNode;
-}) {
+/**
+ * «Más ajustes» (§12): lo que el prototipo no enseña, plegado bajo la tabla.
+ * Cerrado de entrada; un enlace a algo de dentro (`?tab=`, `#agente-…`) lo abre.
+ * Lo de dentro sigue montado cerrado: nada de lo que se estaba haciendo se pierde.
+ */
+function MoreSettings({ open, onToggle, proposals, children }: { open: boolean; onToggle: () => void; proposals: number; children: React.ReactNode }) {
   const t = useT();
-  const titleId = React.useId();
-  const title = t(blockTitleKey(block));
-  const editRef = React.useRef<HTMLButtonElement>(null);
-  const wasEditing = React.useRef(editing);
-  // Al cerrar el editor (guardado o cancelado), el foco vuelve a «Editar».
-  React.useEffect(() => {
-    if (wasEditing.current && !editing) editRef.current?.focus();
-    wasEditing.current = editing;
-  }, [editing]);
+  const id = React.useId();
   return (
-    <li className="min-w-0">
-      <section
-        id={`bloque-${block}`}
-        aria-labelledby={titleId}
-        className="grid min-w-0 scroll-mt-24 gap-3 rounded-md border border-border bg-card p-4 sm:p-6"
-        data-block={block}
+    <div className="grid min-w-0 gap-4" data-slot="more-settings">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={onToggle}
+        className="flex w-full min-w-0 cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:px-5"
       >
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <h3 id={titleId} className="text-base font-semibold text-balance">
-            {title}
-          </h3>
-          {canEdit && !editing ? (
-            <Button ref={editRef} size="sm" variant="ghost" onClick={onEdit} aria-label={t("builder.edit.label", { block: title })}>
-              <Pencil aria-hidden="true" />
-              {t("builder.edit")}
-            </Button>
-          ) : null}
-        </div>
-        {editing ? (
-          children
-        ) : block === "ai_disclosure" ? (
-          <AiDisclosureValue value={spec.ai_disclosure} />
-        ) : (
-          <BlockValue block={blockFromSpec(spec, block)} refId={refId} />
-        )}
-      </section>
-    </li>
+        <span className="grid min-w-0 gap-1">
+          <span className="inline-flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium">
+            {t("agentProto.more")}
+            {proposals ? (
+              <StatusBadge tone="info">{proposals === 1 ? t("agentProto.more.proposals.one") : t("agentProto.more.proposals.other", { n: proposals })}</StatusBadge>
+            ) : null}
+          </span>
+          <span className="text-xs text-pretty text-muted-foreground">{t("agentProto.more.hint")}</span>
+        </span>
+        <ChevronDown aria-hidden="true" className={`size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`} />
+      </button>
+      <div id={id} hidden={!open} className="grid min-w-0 gap-4">
+        {children}
+      </div>
+    </div>
   );
 }
 

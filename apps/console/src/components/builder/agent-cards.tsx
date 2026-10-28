@@ -1,14 +1,14 @@
 "use client";
 
-import { Bot, ChevronRight, Plus } from "lucide-react";
+import { Bot, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
-import { Callout, EmptyState, StatusBadge, buttonVariants } from "@nexus/ui";
+import { Callout, EmptyState, StatusBadge } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import type { ClientAgent } from "@/lib/backend";
 
-import { cardHref, isDefault, newAgentHref, visibleText, visibleTone } from "./life-model";
+import { cardHref, isDefault, visibleText, visibleTone } from "./life-model";
 
 /**
  * La pestaña Agentes de un cliente con la consola nueva (spec 047, historias 7
@@ -26,19 +26,9 @@ export function AgentCards({ refId, agents, canWrite }: { refId: string; agents:
   const listed = agents ? [...agents].sort((a, b) => Number(a.status === "archived") - Number(b.status === "archived")) : [];
   return (
     <div className="grid min-w-0 gap-4" data-slot="agent-cards">
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-        <div className="grid min-w-0 flex-1 basis-64 gap-1">
-          <h2 className="text-xl font-semibold text-balance">{t("builder.agents.title")}</h2>
-          <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("builder.agents.intro")}</p>
-        </div>
-        {canWrite && listed.length ? (
-          <Link href={newAgentHref(refId)} className={buttonVariants({ className: "shrink-0" })}>
-            <Plus aria-hidden="true" />
-            {t("builder.agents.new")}
-          </Link>
-        ) : null}
-      </div>
-
+      {/* Sin título ni «Nuevo agente» propios: como el prototipo, la pestaña es
+          la lista, y el botón primario está una sola vez, en la cabecera del
+          cliente (Andrés, 2026-10-28). */}
       {agents === null ? (
         <Callout tone="danger">{t("builder.agents.error")}</Callout>
       ) : !listed.length ? (
@@ -46,14 +36,6 @@ export function AgentCards({ refId, agents, canWrite }: { refId: string; agents:
           icon={Bot}
           title={t("builder.agents.empty.title")}
           description={canWrite ? t("builder.agents.empty.body") : t("builder.agents.empty.readonly")}
-          action={
-            canWrite ? (
-              <Link href={newAgentHref(refId)} className={buttonVariants()}>
-                <Plus aria-hidden="true" />
-                {t("builder.agents.new")}
-              </Link>
-            ) : undefined
-          }
           readonly={!canWrite}
         />
       ) : (

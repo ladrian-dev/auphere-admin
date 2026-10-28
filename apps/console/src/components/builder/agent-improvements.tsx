@@ -190,9 +190,9 @@ function ImprovementRow({ item, actions, menu, problem }: { item: Improvement; a
               {item.kind === "suggestion" && item.week ? t("improve.week", { date: formatDate(item.week, locale) }) : t(originKey(item.origin))}
             </span>
           </div>
-          <h4 id={titleId} className="text-sm font-semibold text-pretty break-words">
+          <h3 id={titleId} className="text-sm font-semibold text-pretty break-words">
             {item.topic}
-          </h4>
+          </h3>
           <p className="text-xs text-muted-foreground">{improvementReach(t, item)}</p>
         </div>
         {actions.length && menu ? <RowActions actions={actions} menu ariaLabel={t("improve.actions", { topic: item.topic })} /> : null}

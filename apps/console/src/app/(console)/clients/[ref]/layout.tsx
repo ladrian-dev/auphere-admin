@@ -40,9 +40,12 @@ export default async function ClientLayout({ params, children }: { params: Promi
       if (err instanceof BackendError && err.status === 404) notFound();
       throw err;
     }
+    // Como el prototipo: desde cuándo atiende. Si no se puede leer, la cabecera no
+    // lo dice. La pestaña Agentes va sin número (Andrés, 2026-10-28).
+    const legacy = await getClientCached(principal, ref).catch(() => null);
     return (
       <div className="grid min-w-0 gap-6">
-        <ClientHeaderV2 client={detail} />
+        <ClientHeaderV2 client={detail} servingSince={legacy?.serving_since ?? null} />
         {children}
       </div>
     );

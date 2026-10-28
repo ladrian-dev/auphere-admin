@@ -26,6 +26,10 @@ type Actions = NonNullable<React.ComponentProps<typeof AgentPlayground>["actions
  * WhatsApp y el aviso de varias seguidas, «Lo que habría hecho», la hora
  * simulada en la zona del negocio (que se cambia) y la agenda simulada que
  * cambia con lo que hace el agente. Quien solo lee lo ve sin escribir.
+ *
+ * Como el prototipo aprobado (§5.2): «Chat de prueba · así lo verá su
+ * cliente», la conversación empieza al escribir, y la versión, la hora y la
+ * agenda simuladas y «Nueva conversación» van detrás de «Opciones».
  */
 
 const REPLY = {
@@ -61,20 +65,40 @@ function screenWith(props: Partial<React.ComponentProps<typeof AgentPlayground>>
 beforeEach(() => toast.success.mockClear());
 
 describe("el probador (20.2, 20.3, 20.4)", () => {
-  it("empieza con el borrador o con una versión publicada", async () => {
+  it("como el prototipo: la conversación empieza al escribir, con el borrador", async () => {
     const user = userEvent.setup();
-    const { actions } = screenWith();
+    const { actions, container } = screenWith();
+    expect(screen.getByRole("heading", { level: 2, name: "Chat de prueba · así lo verá su cliente" })).toBeVisible();
+    expect(screen.getByText(/Escribe como lo haría un cliente/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Empezar una conversación" })).toBeNull();
+    const box = screen.getByRole("textbox", { name: "Mensaje del cliente" });
+    expect(box).toHaveAttribute("placeholder", "Escribe como un cliente");
+    await user.type(box, "¿cuánto cuesta?");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    expect(actions.open).toHaveBeenCalledWith({ ref: REF, agent: AGENT, version: "draft" });
+    await waitFor(() => expect(actions.send).toHaveBeenCalledWith({ ref: REF, agent: AGENT, session: SESSION, text: "¿cuánto cuesta?" }));
+    const chat = screen.getByRole("list", { name: "Conversación de prueba" });
+    expect(await within(chat).findByText("¡Claro! Mañana a las 11 tengo hueco.")).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("la versión se elige en «Opciones» y vale para la conversación siguiente", async () => {
+    const user = userEvent.setup();
+    const { actions } = screenWith({ sessions: [session()] });
+    await user.click(screen.getByRole("button", { name: "Opciones del chat de prueba" }));
+    expect(screen.getByText("Probando el borrador v3")).toBeVisible();
     const select = screen.getByRole("combobox", { name: "Qué versión probar" });
     expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Borrador", "v2", "v1"]);
     await user.selectOptions(select, "2");
-    await user.click(screen.getByRole("button", { name: "Empezar una conversación" }));
+    await user.click(screen.getByRole("button", { name: "Nueva conversación" }));
+    expect(actions.close).toHaveBeenCalledWith({ ref: REF, agent: AGENT, session: SESSION });
     expect(actions.open).toHaveBeenCalledWith({ ref: REF, agent: AGENT, version: 2 });
-    expect(await screen.findByText("Probando el borrador v3")).toBeVisible();
   });
 
   it("las respuestas son burbujas, dice si fueron varias y qué habría hecho, y la agenda cambia", async () => {
     const user = userEvent.setup();
     const { actions, container } = screenWith({ sessions: [session()] });
+    await user.click(screen.getByRole("button", { name: "Opciones del chat de prueba" }));
     expect(screen.getByText("Corte · 28/10/2026 a las 10:00")).toBeVisible();
     await user.type(screen.getByRole("textbox", { name: "Mensaje del cliente" }), "quiero reservar mañana a las 11");
     await user.click(screen.getByRole("button", { name: "Enviar" }));
@@ -94,6 +118,9 @@ describe("el probador (20.2, 20.3, 20.4)", () => {
   it("la hora se dice en la zona del negocio y se cambia en su hora de pared", async () => {
     const user = userEvent.setup();
     const { actions, container } = screenWith({ sessions: [session()] });
+    // Como el prototipo, la hora simulada se ve en la cabecera del chat.
+    expect(screen.getByText(/^mar 11:20$/i, { selector: "[data-slot=playground-clock] *, [data-slot=playground-clock]" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Opciones del chat de prueba" }));
     const now = container.querySelector("[data-slot=playground-now]") as HTMLElement;
     expect(now.textContent).toMatch(/mar.*27.*oct.*11:20/);
     expect(screen.getByText("En la zona del negocio (Europe/Madrid)")).toBeVisible();
@@ -132,6 +159,9 @@ describe("el probador (20.2, 20.3, 20.4)", () => {
     expect(screen.getByText("Los domingos está cerrado.")).toBeVisible();
     expect(screen.getByText(/Solo lectura/)).toBeVisible();
     expect(screen.queryByRole("textbox")).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Opciones del chat de prueba" }));
+    expect(screen.getByText("En la zona del negocio (Europe/Madrid)")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Cambiar la hora" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Nueva conversación" })).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { axeViolations } from "@nexus/ui/test/axe";
 
 import { LocaleProvider } from "@/i18n/client";
-import type { Gate } from "@/lib/backend/agent-quality-types";
+import type { Gate, TestSummary } from "@/lib/backend/agent-quality-types";
 
 import { AGENT, JOB, REF, fail, job, noWait, ok, preview } from "./quality-fixtures";
 
@@ -216,5 +216,94 @@ describe("la puerta (23.1, 23.2, 23.3)", () => {
     screenWith({}, { publish: vi.fn(async () => fail(409, "no_draft")) });
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("No hay borrador que guardar.")).toBeVisible();
+  });
+});
+
+/**
+ * Como el prototipo aprobado (§4.5): a la izquierda el estado con su icono, a
+ * la derecha los botones píldora, y lo que dice depende de las pruebas.
+ */
+describe("la barra flotante · como el prototipo", () => {
+  const summary = (over: Partial<TestSummary> = {}): TestSummary => ({
+    passed: 0,
+    flaky: 0,
+    failed: 0,
+    unknown: 0,
+    not_run: 0,
+    not_applicable: 0,
+    total: 5,
+    stale: 0,
+    critical_failed: [],
+    rate: null,
+    ...over,
+  });
+  const tests = (over: Partial<TestSummary> = {}, running = false) => ({ summary: summary(over), running, canRun: true, run: vi.fn() });
+
+  it("sin ejecutar: «Borrador completo» y «Ejecutar pruebas», que las lanza", async () => {
+    const user = userEvent.setup();
+    const t = tests({ passed: 2, not_run: 3 });
+    const { container } = screenWith({ tests: t });
+    const bar = screen.getByRole("region", { name: "Acciones del agente" });
+    expect(within(bar).getByRole("status")).toHaveTextContent("Borrador completo");
+    expect(within(bar).queryByRole("button", { name: /Guardar/ })).toBeNull();
+    const run = within(bar).getByRole("button", { name: "Ejecutar pruebas" });
+    expect(run.className).toMatch(/rounded-full/);
+    await user.click(run);
+    expect(t.run).toHaveBeenCalled();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("en marcha: lo dice y no ofrece nada", () => {
+    screenWith({ tests: tests({ not_run: 5 }, true) });
+    expect(screen.getByRole("status")).toHaveTextContent("Ejecutando pruebas…");
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("con una que falla: lo dice y deja «Guardar igualmente»", async () => {
+    const user = userEvent.setup();
+    const { actions } = screenWith({ tests: tests({ passed: 4, failed: 1 }) });
+    expect(screen.getByRole("status")).toHaveTextContent("1 de 5 pruebas falla · tiene «Arreglar» en Pruebas");
+    await user.click(screen.getByRole("button", { name: "Guardar igualmente" }));
+    expect(actions.publish).toHaveBeenCalledWith({ ref: REF, agent: AGENT });
+  });
+
+  it("todas pasan y sin canal: «Guardar y conectar un canal» lleva a la pestaña Canales", async () => {
+    const user = userEvent.setup();
+    const onConnect = vi.fn();
+    screenWith({ tests: tests({ passed: 5 }), preview: preview({ action: "save_and_connect" }), onConnect });
+    expect(screen.getByRole("status")).toHaveTextContent("5 de 5 pruebas pasan");
+    await user.click(screen.getByRole("button", { name: "Guardar y conectar un canal" }));
+    await waitFor(() => expect(onConnect).toHaveBeenCalled());
+    expect(nav.push).not.toHaveBeenCalled();
+  });
+
+  it("guardado y sin canal: dice «guardado» y ofrece conectar uno", async () => {
+    const user = userEvent.setup();
+    const onConnect = vi.fn();
+    screenWith({ tests: tests({ passed: 5 }), preview: preview({ has_draft: false, has_channels: false }), onConnect });
+    expect(screen.getByRole("status")).toHaveTextContent("5 de 5 pruebas pasan · guardado");
+    await user.click(screen.getByRole("button", { name: "Conectar un canal" }));
+    expect(onConnect).toHaveBeenCalled();
+  });
+
+  it("guardado y con canal: nada que hacer", () => {
+    screenWith({ tests: tests({ passed: 5 }), preview: preview({ has_draft: false, has_channels: true }) });
+    expect(screen.getByRole("status")).toHaveTextContent("5 de 5 pruebas pasan · guardado");
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("si la puerta no deja guardar, lo dice en la barra y «Ver por qué» lo explica", async () => {
+    const user = userEvent.setup();
+    const g = gate({ hard: [{ condition: "ai_disclosure", code: "ai_disclosure_undecided", message: "Falta decidir si el agente dice que es una IA." }] });
+    screenWith({ tests: tests({ passed: 5 }) }, { poll: vi.fn(async () => blocked(g)) });
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    const sheet = await screen.findByRole("dialog", { name: "Por qué no se guardó" });
+    expect(within(sheet).getByText("Falta decidir si el agente dice que es una IA.")).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const bar = screen.getByRole("region", { name: "Acciones del agente" });
+    expect(within(bar).getByText("No se guardó: no pasa la puerta")).toBeVisible();
+    await user.click(within(bar).getByRole("button", { name: "Ver por qué" }));
+    expect(await screen.findByRole("dialog", { name: "Por qué no se guardó" })).toBeVisible();
   });
 });

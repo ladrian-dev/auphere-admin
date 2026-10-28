@@ -81,7 +81,7 @@ export function MachineClients({
                 {client.name ?? client.ref}
               </span>
               {client.needs_directory ? (
-                <StatusBadge tone="muted">{t("ws.clients.dirPending")}</StatusBadge>
+                <StatusBadge tone="warn">{t("ws.clients.dirPending")}</StatusBadge>
               ) : (
                 <span className="inline-flex min-w-0 items-center gap-1 font-mono text-xs text-muted-foreground">
                   <FolderOpen className="size-3 shrink-0" aria-hidden="true" />

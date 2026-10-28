@@ -44,12 +44,15 @@ export function SpecialDatesSection({
   locations,
   canWrite,
   actions = SERVER_ACTIONS,
+  nested = false,
 }: {
   refId: string;
   specialDates: SpecialDates;
   locations: readonly Location[];
   canWrite: boolean;
   actions?: SpecialDatesActions;
+  /** Dentro de la tarjeta de Horarios: el prototipo no tiene sección propia. */
+  nested?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -73,7 +76,7 @@ export function SpecialDatesSection({
   }
 
   return (
-    <SectionFrame id="business-special-dates" title={t("business.special.title")} intro={t("business.special.intro")} state={dates.state} canWrite={canWrite}>
+    <SectionFrame id="business-special-dates" title={t("business.special.title")} state={nested ? null : dates.state} canWrite={canWrite} nested={nested}>
       <div className="grid min-w-0 gap-4">
         {conflict ? <ConflictNotice /> : null}
         {dates.items.length === 0 ? (

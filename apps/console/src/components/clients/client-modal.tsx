@@ -16,7 +16,6 @@ import {
   Field,
   Input,
   NativeSelect,
-  Switch,
   Textarea,
 } from "@nexus/ui";
 
@@ -28,7 +27,6 @@ import {
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type {
-  DeductionSource,
   DetectedLink,
   LinkDetection,
   Network,
@@ -38,13 +36,11 @@ import type {
 } from "@/lib/backend/clients-v2";
 
 import {
-  COUNTRIES,
   EMPTY_SETTINGS,
   INFO_MAX,
   NAME_MAX,
   NICHE_MAX,
   NO_EDITS,
-  PRICE_CURRENCIES,
   canSubmit,
   displayName,
   draftProblems,
@@ -53,7 +49,6 @@ import {
   newClientBody,
   newIdempotencyKey,
   shownChips,
-  sourceKey,
   timezoneOptions,
   visibleSuggestions,
   applyDeduction,
@@ -117,7 +112,6 @@ export function ClientModal({ mode, open, onOpenChange, initial, onCreated, onSa
   const [info, setInfo] = React.useState(initial?.info ?? "");
   const [settings, setSettings] = React.useState<Settings>({ ...EMPTY_SETTINGS, ...initial?.settings });
   const [touched, setTouched] = React.useState<Set<SettingKey>>(() => new Set(mode === "edit" ? (Object.keys(EMPTY_SETTINGS) as SettingKey[]) : []));
-  const [source, setSource] = React.useState<DeductionSource | null>(null);
   const [links, setLinks] = React.useState<DetectedLink[]>([]);
   const [edits, setEdits] = React.useState<ChipEdits>(NO_EDITS);
   const [detecting, setDetecting] = React.useState(false);
@@ -143,7 +137,6 @@ export function ClientModal({ mode, open, onOpenChange, initial, onCreated, onSa
           if (mine !== seq.current) return;
           if (res.ok) {
             setLinks(res.data.links);
-            setSource(res.data.deduced.source);
             setSettings((current) => applyDeduction(current, res.data.deduced, touched));
             setDetectFailed(false);
           } else {
@@ -298,10 +291,11 @@ export function ClientModal({ mode, open, onOpenChange, initial, onCreated, onSa
               onClick={() => setMore((v) => !v)}
             >
               {t("business.settings.toggle")}
+              {/* Como el prototipo: lo que se va a guardar, sin abrir. */}
+              <span className="font-normal text-muted-foreground">{` · ${settings.timezone.replaceAll("_", " ")} · ${settings.wallet_currency}`}</span>
               <ChevronDown aria-hidden="true" className={more ? "rotate-180 transition-transform motion-reduce:transition-none" : "transition-transform motion-reduce:transition-none"} />
             </Button>
             <div id={ids.more} hidden={!more} className={more ? "grid min-w-0 gap-3 sm:grid-cols-2" : "hidden"}>
-              {source ? <p className="text-xs text-muted-foreground text-pretty sm:col-span-2">{t(sourceKey(source))}</p> : null}
               <MoreSettings settings={settings} locale={locale} onChange={touch} t={t} />
             </div>
           </section>
@@ -397,6 +391,11 @@ function LinkChips({
   );
 }
 
+/**
+ * «Más ajustes», como el prototipo aprobado: la zona horaria y la moneda (euros
+ * o dólares). El país, la moneda de los precios y «Solo UE» se deducen de lo
+ * escrito y se cambian después en Datos básicos.
+ */
 function MoreSettings({
   settings,
   locale,
@@ -408,27 +407,9 @@ function MoreSettings({
   onChange: <K extends SettingKey>(key: K, value: Settings[K]) => void;
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
 }) {
-  const euId = React.useId();
   const zones = React.useMemo(() => timezoneOptions(settings.timezone), [settings.timezone]);
-  const countries = React.useMemo(
-    () => [...COUNTRIES].map((code) => ({ code, name: displayName(locale, "region", code) })).sort((a, b) => a.name.localeCompare(b.name, locale)),
-    [locale],
-  );
-  const currencies = React.useMemo(() => Array.from(new Set([...PRICE_CURRENCIES, ...(settings.price_currency ? [settings.price_currency] : [])])), [settings.price_currency]);
   return (
     <>
-      <Field label={t("business.settings.country")}>
-        {(a11y) => (
-          <NativeSelect {...a11y} value={settings.country ?? ""} onChange={(e) => onChange("country", e.target.value || null)} wrapperClassName="w-full">
-            <option value="">{t("business.settings.countryNone")}</option>
-            {countries.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
-            ))}
-          </NativeSelect>
-        )}
-      </Field>
       <Field label={t("business.settings.timezone")}>
         {(a11y) => (
           <NativeSelect {...a11y} value={settings.timezone} onChange={(e) => onChange("timezone", e.target.value)} wrapperClassName="w-full">
@@ -440,19 +421,7 @@ function MoreSettings({
           </NativeSelect>
         )}
       </Field>
-      <Field label={t("business.settings.priceCurrency")} hint={t("business.settings.priceCurrency.hint")}>
-        {(a11y) => (
-          <NativeSelect {...a11y} value={settings.price_currency ?? ""} onChange={(e) => onChange("price_currency", e.target.value || null)} wrapperClassName="w-full">
-            <option value="">{t("business.settings.priceCurrencyNone")}</option>
-            {currencies.map((c) => (
-              <option key={c} value={c}>
-                {`${c} · ${displayName(locale, "currency", c)}`}
-              </option>
-            ))}
-          </NativeSelect>
-        )}
-      </Field>
-      <Field label={t("business.settings.walletCurrency")} hint={t("business.settings.walletCurrency.hint")}>
+      <Field label={t("business.settings.currency")} hint={t("business.settings.walletCurrency.hint")}>
         {(a11y) => (
           <NativeSelect {...a11y} value={settings.wallet_currency} onChange={(e) => onChange("wallet_currency", e.target.value as Settings["wallet_currency"])} wrapperClassName="w-full">
             {(["EUR", "USD"] as const).map((c) => (
@@ -463,15 +432,6 @@ function MoreSettings({
           </NativeSelect>
         )}
       </Field>
-      <div className="flex min-w-0 items-start justify-between gap-3 sm:col-span-2">
-        <div className="grid min-w-0 gap-1">
-          <span id={euId} className="text-sm font-medium">
-            {t("business.settings.euOnly")}
-          </span>
-          <span className="text-xs text-muted-foreground text-pretty">{t("business.settings.euOnly.hint")}</span>
-        </div>
-        <Switch aria-labelledby={euId} checked={settings.eu_only} onCheckedChange={(checked) => onChange("eu_only", checked)} />
-      </div>
     </>
   );
 }

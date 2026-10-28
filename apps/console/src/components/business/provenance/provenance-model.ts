@@ -4,7 +4,7 @@ import type { Provenance, Section } from "@/lib/backend/client-records";
 /**
  * Spec 047 (T069, requisito 13.1) — de dónde viene un dato de la ficha, en
  * palabras: «Escrito por ti», «Leído de la web · revísalo», «Migrado ·
- * revísalo», «Propuesto por el constructor», «Editado por Marta desde la app».
+ * revísalo», «Sugerido · confírmalo», «Editado por Marta desde la app».
  * La API manda la procedencia; aquí solo se elige la frase.
  */
 

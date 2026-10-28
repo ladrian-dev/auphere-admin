@@ -87,30 +87,18 @@ export const membershipMessages = {
     en: "Save a card on Stripe's secure page: its number never goes through Auphere. With it you can top up automatically or pay at the end of the month.",
   },
   "card.none": { es: "No hay ninguna tarjeta guardada.", en: "No card saved." },
-  "card.saved": { es: "{brand} terminada en {last4} · caduca {month}/{year}", en: "{brand} ending in {last4} · expires {month}/{year}" },
   "card.savedOther": { es: "Método de pago guardado: {method}", en: "Saved payment method: {method}" },
   "card.method.unknown": { es: "sin detalles de Stripe", en: "no details from Stripe" },
   "card.add": { es: "Añadir tarjeta", en: "Add a card" },
-  "card.replace": { es: "Cambiar tarjeta", en: "Change card" },
   "card.remove": { es: "Quitar tarjeta", en: "Remove card" },
   "card.remove.title": { es: "Quitar la tarjeta", en: "Remove the card" },
   "card.remove.body": { es: "Sin tarjeta, el cobro vuelve a ser manual: tendrás que comprar saldo a mano.", en: "Without a card, charging goes back to manual: you will buy balance by hand." },
   "card.justSaved": { es: "Tarjeta guardada. Puede tardar unos segundos en aparecer aquí.", en: "Card saved. It may take a few seconds to show here." },
   "card.mode": { es: "Cómo se cobra", en: "How you are charged" },
-  "card.mode.manual": { es: "Manual: compro saldo cuando lo necesito", en: "Manual: I buy balance when I need it" },
-  "card.mode.auto_recharge": { es: "Recarga automática: cuando el saldo baja de un mínimo", en: "Automatic top-up: when the balance drops below a minimum" },
-  "card.mode.postpaid": { es: "Pospago: pago lo consumido el día 1 de cada mes", en: "Postpaid: I pay what I used on the 1st of each month" },
-  "card.mode.postpaid.locked": {
-    es: "El pospago lo activa Auphere con una línea de crédito. Escríbenos si lo necesitas.",
-    en: "Postpaid is enabled by Auphere with a credit line. Write to us if you need it.",
-  },
   "card.mode.postpaid.line": {
     es: "Tu línea de crédito es de {limit}. Si se agota, los agentes se pausan hasta el cobro. Ahora debes {owed}.",
     en: "Your credit line is {limit}. If it runs out, the agents pause until the charge. You owe {owed} now.",
   },
-  "card.threshold": { es: "Cuando el saldo baje de (US$)", en: "When the balance drops below (US$)" },
-  "card.amount": { es: "Recargar (US$)", en: "Top up (US$)" },
-  "card.amount.min": { es: "La recarga mínima es de US$5.", en: "The minimum top-up is US$5." },
   "card.save": { es: "Guardar", en: "Save" },
   "card.saving": { es: "Guardando…", en: "Saving…" },
   "card.saveDone": { es: "Cobro guardado.", en: "Charging saved." },
@@ -142,21 +130,17 @@ export const membershipMessages = {
   },
   "card.error.card_required": { es: "Primero añade una tarjeta.", en: "Add a card first." },
   "card.error.no_credit_line": { es: "El pospago necesita una línea de crédito de Auphere.", en: "Postpaid needs a credit line from Auphere." },
-  "card.error.amount_too_small": { es: "La recarga mínima es de US$5.", en: "The minimum top-up is US$5." },
   "card.error.threshold_required": { es: "Indica el mínimo de saldo.", en: "Enter the minimum balance." },
   "card.error.provider": { es: "Stripe no aceptó la petición: {reason}", en: "Stripe did not accept the request: {reason}" },
   "card.error.unavailable": {
     es: "El cobro con tarjeta no está disponible ahora. Prueba de nuevo en un rato.",
     en: "Card charging is not available right now. Try again in a while.",
   },
-  "membership.credit.amount": { es: "Importe en dólares", en: "Amount in dollars" },
   "membership.credit.buy": { es: "Comprar", en: "Buy" },
   // Se dice qué compra ese dinero ANTES de pagarlo: «50 $» no significa nada
   // por sí solo, y la relación con lo que consume un turno es justo lo que el
   // partner no tiene por qué saber de memoria.
   "membership.credit.buys": { es: "Recibirás {amount} de saldo.", en: "You will receive {amount} of balance." },
-  "membership.credit.range": { es: "Entre {min} y {max} dólares, en números enteros.", en: "Between {min} and {max} dollars, whole numbers." },
-  "membership.credit.invalid": { es: "El importe tiene que estar entre {min} y {max} dólares.", en: "The amount must be between {min} and {max} dollars." },
   "membership.credit.help": { es: "El saldo comprado no caduca mientras tu cuenta siga viva, y es lo que gastan los agentes de tus clientes.", en: "Purchased balance does not expire while your account is alive, and it is what your clients' agents spend." },
 
   // ── facturas del proveedor ─────────────────────────────────────────

@@ -26,7 +26,7 @@ const { ProvenanceLabel } = await import("../provenance/provenance-label");
 const { provenanceText, sectionNeedsReview, sectionProvenance } = await import("../provenance/provenance-model");
 const { SectionHistory } = await import("../history/section-history");
 const { BusinessSources, nextDelay } = await import("../sources/business-sources");
-const { BusinessLinks, linksFrom, rowsFrom } = await import("../sources/business-links");
+const { BusinessLinks, handleOf, linksFrom, profileUrl, rowsFrom } = await import("../sources/business-links");
 const { t } = await import("@/i18n/messages");
 
 /**
@@ -62,7 +62,7 @@ describe("la procedencia", () => {
     );
     expect(provenanceText(es, prov({ source: "web", review: "pending" }), null)).toBe("Leído de la web · revísalo");
     expect(provenanceText(es, prov({ source: "migrated", review: "pending" }), null)).toBe("Migrado · revísalo");
-    expect(provenanceText(es, prov({ source: "builder" }), null)).toBe("Propuesto por el constructor");
+    expect(provenanceText(es, prov({ source: "builder" }), null)).toBe("Sugerido · confírmalo");
     expect(provenanceText(es, prov({ source: "inbox_correction" }), null)).toBe("Corregido desde la Bandeja");
   });
 
@@ -244,17 +244,30 @@ describe("documentos y webs", () => {
 describe("redes", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("Instagram y Facebook están siempre; se guarda con la revisión", async () => {
+  it("Instagram y Facebook están siempre, con su logo; se escribe el usuario y se ve su enlace", async () => {
     const user = userEvent.setup();
-    const save = vi.fn(async () => ok({ links: [{ id: "l1", network: "instagram" as const, url: "https://www.instagram.com/cultorbarber", handle: "@cultorbarber" }], revision: 3 }));
+    const save = vi.fn(async () => ok({ links: [{ id: "l1", network: "instagram" as const, url: "https://www.instagram.com/jhondoe", handle: "@jhondoe" }], revision: 3 }));
     const { container } = wrap(<BusinessLinks refId="cultor" links={[]} revision={2} canWrite save={save} />);
-    expect(screen.getByLabelText("Usuario en Instagram")).toBeTruthy();
+    expect(container.querySelector("[data-brand=instagram]")).not.toBeNull();
+    expect(container.querySelector("[data-brand=facebook]")).not.toBeNull();
     expect(screen.getByLabelText("Usuario en Facebook")).toBeTruthy();
     expect(await axeViolations(container)).toEqual([]);
-    await user.type(screen.getByLabelText("Usuario en Instagram"), "@cultorbarber");
+    // Andrés, 2026-10-28: «Mi Instagram es @Jhondoe» → https://www.instagram.com/jhondoe
+    await user.type(screen.getByLabelText("Usuario en Instagram"), "@Jhondoe");
+    expect(screen.getByRole("link", { name: "https://www.instagram.com/jhondoe" })).toHaveAttribute("href", "https://www.instagram.com/jhondoe");
     await user.click(screen.getByRole("button", { name: "Guardar redes" }));
-    await waitFor(() => expect(save).toHaveBeenCalledWith({ ref: "cultor", revision: 2, links: [{ network: "instagram", handle: "@cultorbarber" }] }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ref: "cultor", revision: 2, links: [{ network: "instagram", handle: "jhondoe" }] }));
     expect(toast.success).toHaveBeenCalledWith("Redes guardadas. Los agentes ya las usan.");
+  });
+
+  it("un usuario que no vale lo dice y no se guarda", async () => {
+    const user = userEvent.setup();
+    const save = vi.fn();
+    wrap(<BusinessLinks refId="cultor" links={[]} revision={2} canWrite save={save} />);
+    await user.type(screen.getByLabelText("Usuario en Instagram"), "mi negocio!");
+    await user.click(screen.getByRole("button", { name: "Guardar redes" }));
+    expect(await screen.findByText("Solo letras, números, puntos y guiones bajos.")).toBeVisible();
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("si otra persona guardó antes, lo dice (412)", async () => {
@@ -265,12 +278,30 @@ describe("redes", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Alguien cambió las redes")));
   });
 
-  it("de las filas a la API y de vuelta", () => {
-    const rows = rowsFrom([{ id: "w", network: "web", url: "https://cultorbarber.com", handle: null }]);
-    expect(rows.map((r) => r.network)).toEqual(["instagram", "facebook", "web"]);
-    expect(linksFrom([...rows.slice(0, 2), { key: "t", network: "tiktok", value: "https://www.tiktok.com/@cultor" }, rows[2]!])).toEqual([
-      { network: "tiktok", url: "https://www.tiktok.com/@cultor" },
-      { network: "web", url: "https://cultorbarber.com" },
+  it("de las filas a la API y de vuelta: el usuario de cada red y su enlace", () => {
+    const rows = rowsFrom([
+      { id: "w", network: "web", url: "https://cultorbarber.com", handle: null },
+      { id: "i", network: "instagram", url: "https://www.instagram.com/cultor", handle: "@cultor" },
+      { id: "l", network: "linkedin", url: "https://www.linkedin.com/company/cultor-barber", handle: null },
     ]);
+    expect(rows.map((r) => [r.network, r.value])).toEqual([
+      ["instagram", "cultor"],
+      ["facebook", ""],
+      ["web", "https://cultorbarber.com"],
+      ["linkedin", "cultor-barber"],
+    ]);
+    expect(linksFrom([...rows, { key: "t", network: "tiktok", value: "https://www.tiktok.com/@Cultor" }])).toEqual([
+      { network: "instagram", handle: "cultor" },
+      { network: "web", url: "https://cultorbarber.com" },
+      { network: "linkedin", url: "https://www.linkedin.com/company/cultor-barber" },
+      { network: "tiktok", handle: "cultor" },
+    ]);
+    expect(handleOf(" @Jhon.Doe ")).toBe("jhon.doe");
+    expect(handleOf("https://www.instagram.com/jhondoe/")).toBe("jhondoe");
+    expect(profileUrl("tiktok", "cultor")).toBe("https://www.tiktok.com/@cultor");
+    expect(profileUrl("youtube", "cultor")).toBe("https://www.youtube.com/@cultor");
+    expect(profileUrl("x", "cultor")).toBe("https://x.com/cultor");
+    expect(profileUrl("threads", "cultor")).toBe("https://www.threads.net/@cultor");
+    expect(profileUrl("facebook", "cultor")).toBe("https://www.facebook.com/cultor");
   });
 });

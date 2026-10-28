@@ -136,10 +136,10 @@ export const CopilotPanel = React.forwardRef<
   return (
     <section aria-labelledby={`${base}-title`} className="grid min-w-0 gap-3" data-slot="copilot-panel">
       <div className="grid min-w-0 gap-1">
-        <h3 id={`${base}-title`} className="inline-flex items-center gap-2 text-base font-semibold">
+        <h2 id={`${base}-title`} className="inline-flex items-center gap-2 text-base font-semibold">
           <Sparkles aria-hidden="true" className="size-4 text-muted-foreground" />
           {t("builder.copilot.title")}
-        </h3>
+        </h2>
         <p className="text-sm text-pretty text-muted-foreground">{canWrite ? t("builder.copilot.intro") : t("builder.copilot.readonly")}</p>
       </div>
 

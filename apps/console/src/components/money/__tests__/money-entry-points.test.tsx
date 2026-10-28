@@ -140,7 +140,7 @@ describe("Consumo · la tabla por cliente (46.2, 45.6)", () => {
     wrap(<UsageClientsTable canWrite days={7} clients={[client(), client({ ref: "barberia", name: "Barbería Cultor" })]} />);
     await user.click(screen.getByRole("button", { name: "Acciones de Flor y Encanto" }));
     const items = (await screen.findAllByRole("menuitem")).map((i) => i.textContent);
-    expect(items).toEqual(["Cambiar saldo", "Mover saldo a otro cliente", "Ver su gasto", "Relleno mensual", "Cambiar la moneda"]);
+    expect(items).toEqual(["Cambiar saldo", "Mover saldo a otro cliente", "Ver su gasto", "Relleno mensual", "Cambiar la moneda", "Abrir ficha del cliente"]);
     expect(screen.getByRole("menuitem", { name: "Ver su gasto" })).toHaveAttribute("href", "/usage?client=flor-y-encanto&days=7#gasto");
     // «tope» es solo del agente (45.6).
     expect(items.join(" ")).not.toMatch(/tope/i);
@@ -165,12 +165,12 @@ describe("Consumo · la tabla por cliente (46.2, 45.6)", () => {
     expect(nav.push).not.toHaveBeenCalled();
   });
 
-  it("quien no puede asignar ve «Pedir saldo» y «Ver su gasto», nada más", async () => {
+  it("quien no puede asignar ve «Pedir saldo», «Ver su gasto» y la ficha, nada más", async () => {
     const user = userEvent.setup();
     wrap(<UsageClientsTable canWrite={false} days={30} clients={[client(), client({ ref: "barberia", name: "Barbería Cultor", bag: null, empty: true })]} />);
     expect(screen.queryByRole("button", { name: "Asignar saldo" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Acciones de Flor y Encanto" }));
-    expect((await screen.findAllByRole("menuitem")).map((i) => i.textContent)).toEqual(["Pedir saldo", "Ver su gasto"]);
+    expect((await screen.findAllByRole("menuitem")).map((i) => i.textContent)).toEqual(["Pedir saldo", "Ver su gasto", "Abrir ficha del cliente"]);
   });
 });
 
@@ -322,8 +322,8 @@ describe("el ⋯ del cliente abre el dinero en el sitio (45.1)", () => {
     money.lowerBalanceAction.mockResolvedValue(ok({}));
     wrap(<ClientMenu refId="flor-y-encanto" name="Flor y Encanto" allowed={["edit", "assign_balance", "archive"]} actions={{ archive }} />);
     await user.click(screen.getByRole("button", { name: "Acciones de Flor y Encanto" }));
+    // Como el prototipo, archivar no pregunta: se hace al momento y se deshace con «Deshacer».
     await user.click(await screen.findByRole("menuitem", { name: "Archivar" }));
-    await user.click(screen.getByRole("button", { name: "Archivar" }));
     const offer = await screen.findByRole("dialog", { name: "Devolver a la cuenta" });
     expect(plain(offer.textContent)).toContain("A Flor y Encanto le quedan 12,34 USD en su bolsa.");
     await user.click(within(offer).getByRole("button", { name: "Devolver a la cuenta" }));

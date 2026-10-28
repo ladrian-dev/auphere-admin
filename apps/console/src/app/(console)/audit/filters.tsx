@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { Button, Input, NativeSelect, cn } from "@nexus/ui";
+import { Button, Input, NativeSelect, SegmentedControl } from "@nexus/ui";
 
 import { PERIODS, type AuditFilterState } from "@/components/audit/audit-query";
 import { useLocale, useT } from "@/i18n/client";
@@ -46,21 +46,21 @@ export function AuditFilters({ state, options }: { state: AuditFilterState; opti
         <Select label={t("hu.audit.client")} all={t("hu.audit.client.all")} value={state.client} options={options.clients} onChange={(client) => go({ client })} />
         <Select label={t("hu.audit.person")} all={t("hu.audit.person.all")} value={state.actor} options={options.people} onChange={(person) => go({ person, actor: "" })} />
         <Select label={t("hu.audit.category")} all={t("hu.audit.category.all")} value={state.category} options={options.categories} onChange={(category) => go({ category })} />
-        <div role="group" aria-label={t("hu.audit.period")} className="inline-flex rounded-md bg-muted p-1">
-          <Segment pressed={!state.days} onClick={() => period("")}>
-            {t("hu.audit.period.all")}
-          </Segment>
-          {PERIODS.map((d) => (
-            <Segment key={d} pressed={state.days === String(d)} onClick={() => period(String(d))}>
-              {t("hu.audit.period.days", { n: d })}
-            </Segment>
-          ))}
-          <Segment pressed={custom} onClick={() => period("custom")}>
-            {t("hu.audit.period.custom")}
-          </Segment>
-        </div>
+        {/* El conmutador de vidrio del prototipo. `pressed`: cada opción navega,
+            así que las flechas solo mueven el foco y elegir es Enter o Espacio. */}
+        <SegmentedControl
+          type="pressed"
+          aria-label={t("hu.audit.period")}
+          value={state.days || "all"}
+          onValueChange={(v) => period(v === "all" ? "" : v)}
+          options={[
+            { value: "all", label: t("hu.audit.period.all") },
+            ...PERIODS.map((d) => ({ value: String(d), label: t("hu.audit.period.days", { n: d }) })),
+            { value: "custom", label: t("hu.audit.period.custom") },
+          ]}
+        />
         {active ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => router.push(pathname, { scroll: false })}>
+          <Button type="button" variant="link" size="sm" className="px-1" onClick={() => router.push(pathname, { scroll: false })}>
             {t("hu.audit.clear")}
           </Button>
         ) : null}
@@ -117,18 +117,5 @@ function Select({
         </option>
       ))}
     </NativeSelect>
-  );
-}
-
-function Segment({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      onClick={onClick}
-      className={cn("rounded-sm px-3 py-1 text-xs font-medium", pressed ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
-    >
-      {children}
-    </button>
   );
 }

@@ -64,7 +64,7 @@ function UnreadBadge({ unread }: { unread: number | null }) {
   return (
     <span
       aria-hidden="true"
-      className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 font-mono text-xs leading-none text-primary-foreground tabular-nums"
+      className="absolute -top-2 -right-2 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs leading-none font-semibold text-primary-foreground tabular-nums ring-2 ring-background"
     >
       {unread > 99 ? "99+" : unread}
     </span>
@@ -165,7 +165,8 @@ export function NotificationsBellMenu({ initialUnread }: { initialUnread: number
       }}
     >
       <PopoverTrigger
-        render={<Button variant="ghost" size="icon-sm" className="relative" aria-label={label} />}
+        // Como el prototipo: la campana con su borde a la vista, de la altura del buscador.
+        render={<Button variant="outline" size="icon-sm" className="relative" aria-label={label} />}
       >
         <Bell className="size-4" aria-hidden="true" />
         <UnreadBadge unread={unread} />

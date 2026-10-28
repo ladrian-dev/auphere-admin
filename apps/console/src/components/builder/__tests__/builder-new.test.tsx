@@ -8,7 +8,7 @@ import { LocaleProvider } from "@/i18n/client";
 import type { BuilderBlock, DraftJob, DraftJobResult, DraftOptions } from "@/lib/backend/builder-types";
 
 const nav = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => nav }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => nav }));
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/app/(console)/clients/[ref]/agents/builder-actions", () => ({
@@ -21,11 +21,18 @@ const { BuilderNew } = await import("../builder-new");
 type Actions = NonNullable<React.ComponentProps<typeof BuilderNew>["actions"]>;
 
 /**
- * Spec 047 (historia 7, T081) — «Nuevo agente»: los límites y los ejemplos a la
- * izquierda, los bloques que llegan en orden a la derecha, las preguntas que
- * dicen dónde se guardan (y mandan su `scope`), las filas «Conectar», las
- * preguntas descartadas con su porqué y, si el constructor no responde, la
- * plantilla y el blanco sin perder lo escrito.
+ * «Nuevo agente» como el prototipo aprobado (`agente.md` §3, hueco H7; el
+ * owner, 2026-10-28: «no se parece al prototipo»): la misma pantalla del agente
+ * —«Nuevo agente», «Borrador · de {cliente}», sus pestañas, dos columnas y la
+ * barra de vidrio— con la descripción a la izquierda (nombre, «¿Qué tiene que
+ * hacer?» y cuatro ejemplos que la rellenan) y «Probar el agente · Aún no» a la
+ * derecha. «Generar borrador» espera a que haya nombre y una frase.
+ *
+ * Al generar, cuatro pasos que siguen al trabajo de verdad (leer la ficha,
+ * proponer, escribir las pruebas, validar las preguntas). Al terminar, la
+ * pantalla del agente; si faltan datos, con las preguntas encima (`?job=`).
+ * Si el borrador no se puede escribir, la plantilla y el blanco, sin perder lo
+ * escrito. Nunca se nombra al constructor.
  */
 
 const REF = "barberia-cultor";
@@ -135,215 +142,188 @@ function screenWith(actions: Partial<Actions>, options: DraftOptions | null = OP
   const full: Actions = {
     start: vi.fn(async () => ({ ok: true as const, data: { job_id: JOB, status: "queued" as const, agent_id: null } })),
     poll: vi.fn(async () => ({ ok: true as const, data: jobWith({}) })),
-    answer: vi.fn(async () => ({ ok: true as const, data: { applied: [], agent_id: AGENT, draft_revision: 3, tests_stale: 8 } })),
+    answer: vi.fn(),
     ...actions,
   };
   const view = render(
     <LocaleProvider locale="es">
-      <BuilderNew refId={REF} options={options} actions={full} wait={() => new Promise((resolve) => setTimeout(resolve, 0))} />
+      <BuilderNew
+        refId={REF}
+        clientName="Barbería Cultor"
+        options={options}
+        actions={full}
+        wait={() => new Promise((resolve) => setTimeout(resolve, 0))}
+      />
     </LocaleProvider>,
   );
   return { ...view, actions: full };
 }
 
+const nameBox = () => screen.getByRole("textbox", { name: /Nombre/ });
+const descriptionBox = () => screen.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ });
+const bar = () => screen.getByRole("region", { name: "Acciones del agente" });
+const generate = () => within(bar()).getByRole("button", { name: "Generar borrador" });
+
 async function describeAgent(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByRole("textbox", { name: /Nombre/ }), NAME);
-  await user.type(screen.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ }), DESCRIPTION);
+  await user.type(nameBox(), NAME);
+  await user.type(descriptionBox(), DESCRIPTION);
 }
 
-const blockOrder = () =>
-  Array.from(document.querySelectorAll("[data-slot=builder-blocks] [data-block]")).map((el) => el.getAttribute("data-block"));
+/** El estado de cada paso de «Cómo va el borrador», en orden. */
+const stepStates = () =>
+  within(screen.getByRole("list", { name: "Cómo va el borrador" }))
+    .getAllByRole("listitem")
+    .map((li) => li.getAttribute("data-state"));
 
 beforeEach(() => {
   nav.push.mockClear();
   toast.success.mockClear();
 });
 
-describe("«Nuevo agente» · la descripción (17.1)", () => {
-  it("dice los límites, cuenta los caracteres y pasa axe", async () => {
+describe("«Nuevo agente» · describir (§3.1)", () => {
+  it("es la pantalla del agente: título, «Borrador · de {cliente}», pestañas, la descripción y «Aún no»; pasa axe", async () => {
     const { container } = screenWith({});
-    const name = screen.getByRole("textbox", { name: /Nombre/ });
-    const description = screen.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ });
-    expect(name).toHaveAttribute("maxLength", "40");
-    expect(description).toHaveAttribute("maxLength", "1024");
-    expect(screen.getByText("0 de 40")).toBeInTheDocument();
-    expect(screen.getByText("0 de 1024")).toBeInTheDocument();
-    expect(screen.getByText(/Entre 20 y 1024 caracteres/)).toBeInTheDocument();
-    await userEvent.setup().type(name, "Recepción");
-    expect(screen.getByText("9 de 40")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Nuevo agente" })).toBeVisible();
+    expect(screen.getByText("Borrador")).toBeVisible();
+    expect(screen.getByText("de Barbería Cultor")).toBeVisible();
+    const tabs = screen.getByRole("tablist", { name: "Secciones del agente" });
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Configuración", "Canales", "Conectores"]);
+    expect(within(tabs).getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
+    expect(within(tabs).getByRole("tab", { name: /Canales/ })).toHaveAttribute("aria-disabled", "true");
+
+    const describe = screen.getByRole("region", { name: "Describe el agente" });
+    expect(within(describe).getByRole("textbox", { name: /Nombre/ })).toHaveAttribute("maxLength", "40");
+    expect(within(describe).getByRole("textbox", { name: /Nombre/ })).toHaveAttribute("placeholder", "Recepción");
+    expect(within(describe).getByRole("textbox", { name: /¿Qué tiene que hacer\?/ })).toHaveAttribute("maxLength", "1024");
+    expect(within(describe).getByRole("group", { name: "Empieza con un ejemplo:" })).toBeVisible();
+    // Como el prototipo: sin contadores.
+    expect(screen.queryByText("0 de 40")).toBeNull();
+
+    const tryIt = screen.getByRole("region", { name: "Probar el agente" });
+    expect(within(tryIt).getByText("Aún no")).toBeVisible();
+    expect(within(tryIt).getByText("Disponible en cuanto generes el borrador y le pongas sus parámetros.")).toBeVisible();
+    expect(within(tryIt).getByText("Chat simulado con agenda y hora de prueba. Nada llega a clientes reales.")).toBeVisible();
+
+    expect(bar().closest("[data-slot=agent-actionbar]")?.className).toMatch(/(^|\s)glass(\s|$)/);
+    expect(within(bar()).getByRole("status")).toHaveTextContent("Nombre y una descripción de al menos una frase");
+    expect(generate()).toBeDisabled();
+    expect(document.body.textContent).not.toMatch(/constructor/i);
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("no empieza nada con una descripción corta o sin nombre, y lo dice junto al campo", async () => {
-    const user = userEvent.setup();
-    const { actions } = screenWith({});
-    await user.type(screen.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ }), "Muy corta");
-    await user.click(screen.getByRole("button", { name: "Generar borrador" }));
-    expect(actions.start).not.toHaveBeenCalled();
-    expect(screen.getByText("Escribe un nombre de 1 a 40 caracteres.")).toBeVisible();
-    expect(screen.getByText(/Cuéntalo en 20 a 1024 caracteres/)).toBeVisible();
-    expect(screen.getByRole("textbox", { name: /Nombre/ })).toHaveFocus();
-  });
-
-  it("un ejemplo se copia en «¿Qué tiene que hacer?»", async () => {
+  it("«Generar borrador» se habilita con un nombre y una frase", async () => {
     const user = userEvent.setup();
     screenWith({});
-    await user.click(screen.getByRole("button", { name: OPTIONS.examples[0] }));
-    const description = screen.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ });
-    expect(description).toHaveValue(OPTIONS.examples[0]);
-    expect(description).toHaveFocus();
+    await user.type(nameBox(), NAME);
+    expect(generate()).toBeDisabled();
+    await user.type(descriptionBox(), "Muy corta");
+    expect(generate()).toBeDisabled();
+    await user.clear(descriptionBox());
+    await user.type(descriptionBox(), DESCRIPTION);
+    expect(within(bar()).getByRole("status")).toHaveTextContent("Listo para generar el borrador");
+    expect(generate()).toBeEnabled();
   });
 
-  it("«Crear este agente» del constructor del cliente llega con su nombre y su descripción (18.4)", () => {
+  it("un ejemplo rellena la descripción con un texto general y el nombre si estaba vacío", async () => {
+    const user = userEvent.setup();
+    screenWith({});
+    const examples = screen.getByRole("group", { name: "Empieza con un ejemplo:" });
+    expect(within(examples).getAllByRole("button").map((b) => b.textContent)).toEqual(["Recepción y citas", "Ventas", "Soporte", "Cobros"]);
+    await user.click(within(examples).getByRole("button", { name: "Recepción y citas" }));
+    expect(nameBox()).toHaveValue("Recepción");
+    expect((descriptionBox() as HTMLTextAreaElement).value).toMatch(/^Atiende el WhatsApp del negocio: da citas/);
+    expect(generate()).toBeEnabled();
+    // Un nombre escrito no se pisa; la descripción se sustituye.
+    await user.clear(nameBox());
+    await user.type(nameBox(), "Mostrador");
+    await user.click(within(examples).getByRole("button", { name: "Cobros" }));
+    expect(nameBox()).toHaveValue("Mostrador");
+    expect((descriptionBox() as HTMLTextAreaElement).value).toMatch(/^Recuerda los pagos pendientes/);
+    // Textos generales: ni negocios ni personas concretas.
+    expect((descriptionBox() as HTMLTextAreaElement).value).not.toMatch(/Marta|barber|clínica/i);
+  });
+
+  it("«Crear este agente» del cliente llega con su nombre y su descripción (18.4)", () => {
     render(
       <LocaleProvider locale="es">
         <BuilderNew refId={REF} options={OPTIONS} initial={{ name: NAME, description: DESCRIPTION }} actions={{ start: vi.fn(), poll: vi.fn(), answer: vi.fn() }} />
       </LocaleProvider>,
     );
-    expect(screen.getByRole("textbox", { name: /Nombre/ })).toHaveValue(NAME);
-    expect(screen.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ })).toHaveValue(DESCRIPTION);
+    expect(nameBox()).toHaveValue(NAME);
+    expect(descriptionBox()).toHaveValue(DESCRIPTION);
   });
 
   it("un nombre ocupado se dice en el nombre", async () => {
     const user = userEvent.setup();
     screenWith({ start: vi.fn(async () => ({ ok: false as const, status: 409, message: "", code: "name_taken" })) });
     await describeAgent(user);
-    await user.click(screen.getByRole("button", { name: "Generar borrador" }));
+    await user.click(generate());
     expect(await screen.findByText("Ya hay un agente con ese nombre en este cliente. Elige otro.")).toBeVisible();
+    expect(nameBox()).toHaveValue(NAME);
   });
 });
 
-describe("«Nuevo agente» · el borrador por bloques (17.3)", () => {
-  it("pinta los bloques en orden según llegan y, sin preguntas, va al agente", async () => {
+describe("«Nuevo agente» · preparando el borrador (§3.2)", () => {
+  it("los cuatro pasos siguen al trabajo y, con preguntas, va a la pantalla del agente con ellas", async () => {
     const user = userEvent.setup();
     const { poll, release } = gatedPoll([
       jobWith({ progress: { step: "reading", blocks: [] } }),
-      jobWith({ progress: { step: "writing", blocks: ALL_BLOCKS.slice(0, 1) } }),
-      jobWith({ progress: { step: "writing", blocks: ALL_BLOCKS.slice(0, 4) } }),
-      jobWith({
-        status: "done",
-        agent_id: AGENT,
-        progress: { step: "writing", blocks: ALL_BLOCKS },
-        result: { ...RESULT, questions: [], discarded: { count: 0, reasons: [] } },
-      }),
+      jobWith({ progress: { step: "writing", blocks: ALL_BLOCKS.slice(0, 2) } }),
+      jobWith({ progress: { step: "writing", blocks: ALL_BLOCKS.slice(0, 9) } }),
+      jobWith({ status: "done", agent_id: AGENT, progress: { step: "writing", blocks: ALL_BLOCKS }, result: RESULT }),
     ]);
-    const { actions } = screenWith({ poll });
+    const { actions, container } = screenWith({ poll });
     await describeAgent(user);
-    await user.click(screen.getByRole("button", { name: "Generar borrador" }));
+    await user.click(generate());
     expect(actions.start).toHaveBeenCalledWith({ ref: REF, name: NAME, description: DESCRIPTION, start: "describe" });
 
-    await release();
-    expect(await screen.findByText("Leyendo la ficha del negocio…")).toBeVisible();
-    expect(blockOrder()).toEqual([]);
+    // La cabecera ya dice su nombre; la barra, que se prepara, sin botones.
+    expect(await screen.findByRole("heading", { level: 1, name: NAME })).toBeVisible();
+    expect(within(bar()).getByRole("status")).toHaveTextContent("Preparando el borrador…");
+    expect(within(bar()).queryByRole("button")).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Probar el agente" })).getByText("Preparando el borrador…")).toBeVisible();
+    const steps = screen.getByRole("list", { name: "Cómo va el borrador" });
+    expect(within(steps).getAllByRole("listitem").map((li) => li.querySelector("[data-slot=step-text]")?.textContent)).toEqual([
+      "Leo la ficha de Barbería Cultor como datos, nunca como permisos",
+      "Propongo instrucciones y habilidades",
+      "Escribo las pruebas del caso y sumo las del sector",
+      "Valido qué preguntas hacen falta de verdad",
+    ]);
+    expect(stepStates()).toEqual(["active", "wait", "wait", "wait"]);
 
     await release();
-    await waitFor(() => expect(blockOrder()).toEqual(["identity"]));
-    expect(screen.getByText("Escribiendo el borrador · 1 de 10 bloques")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Qué hace" })).toBeVisible();
+    expect(stepStates()).toEqual(["active", "wait", "wait", "wait"]);
+    await release();
+    await waitFor(() => expect(stepStates()).toEqual(["done", "active", "wait", "wait"]));
+    await release();
+    await waitFor(() => expect(stepStates()).toEqual(["done", "done", "active", "wait"]));
+    // El número sale del trabajo, no es fijo.
+    expect(within(steps).getByText("Escribo 8 pruebas del caso y sumo las del sector")).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
 
     await release();
-    await waitFor(() => expect(blockOrder()).toEqual(["identity", "voice", "instructions", "procedures"]));
-
-    await release();
-    await waitFor(() =>
-      expect(blockOrder()).toEqual(["identity", "voice", "instructions", "procedures", "services", "skills", "escalation", "rules", "tests", "questions"]),
-    );
+    await waitFor(() => expect(stepStates()).toEqual(["done", "done", "done", "done"]));
     expect(poll).toHaveBeenCalledWith({ ref: REF, job: JOB });
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`));
-    // Sin descartes no hay línea de descartes: ni «0 preguntas».
-    expect(document.querySelector("[data-slot=builder-discarded]")).toBeNull();
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}?job=${JOB}`));
   });
 
-  it("la habilidad que pide un conector sin conectar lleva «Conectar» en su fila (17.6)", async () => {
+  it("sin preguntas, va a la pantalla del agente sin más", async () => {
     const user = userEvent.setup();
-    // El trabajo termina con preguntas: la pantalla se queda y la fila se puede mirar.
-    const finished = jobWith({ status: "done", agent_id: AGENT, progress: { step: "writing", blocks: ALL_BLOCKS }, result: RESULT });
+    const finished = jobWith({
+      status: "done",
+      agent_id: AGENT,
+      progress: { step: "writing", blocks: ALL_BLOCKS },
+      result: { ...RESULT, questions: [], discarded: { count: 0, reasons: [] } },
+    });
     screenWith({ poll: vi.fn(async () => ({ ok: true as const, data: finished })) });
     await describeAgent(user);
-    await user.click(screen.getByRole("button", { name: "Generar borrador" }));
-    const link = await screen.findByRole("link", { name: "Conectar Stripe" });
-    expect(link).toHaveAttribute("href", `/clients/${REF}/integrations`);
-    const row = link.closest("[data-slot=builder-skill]") as HTMLElement;
-    expect(within(row).getByText("Stripe")).toBeVisible();
-    expect(within(row).getByText("Para cobrar con enlace")).toBeVisible();
-    // La habilidad que no necesita nada no lleva botón.
-    const reservas = screen.getByText("Reservas").closest("[data-slot=builder-skill]") as HTMLElement;
-    expect(within(reservas).queryByRole("link")).toBeNull();
-  });
-});
-
-describe("«Nuevo agente» · las preguntas (17.4, 17.5)", () => {
-  async function done(user: ReturnType<typeof userEvent.setup>, answer?: Actions["answer"]) {
-    const finished = jobWith({ status: "done", agent_id: AGENT, progress: { step: "writing", blocks: ALL_BLOCKS }, result: RESULT });
-    const view = screenWith({ poll: vi.fn(async () => ({ ok: true as const, data: finished })), ...(answer ? { answer } : {}) });
-    await describeAgent(user);
-    await user.click(screen.getByRole("button", { name: "Generar borrador" }));
-    await screen.findByRole("form", { name: "Lo que falta para terminarlo" });
-    return view;
-  }
-
-  it("cada pregunta dice su porqué y dónde se guarda, y las descartadas dicen por qué", async () => {
-    const user = userEvent.setup();
-    const { container } = await done(user);
-    const business = container.querySelector("[data-question=cancelacion]") as HTMLElement;
-    expect(within(business).getByText("Por qué: El agente lo dirá al confirmar cada cita.")).toBeVisible();
-    expect(within(business).getByText("Se guarda en la ficha: lo usarán todos sus agentes.")).toBeVisible();
-    expect(within(business).getByRole("radio", { name: "24 horas antes" })).toBeVisible();
-    await user.click(within(business).getByRole("checkbox", { name: "Solo este agente" }));
-    expect(within(business).getByText("Se guarda solo en este agente.")).toBeVisible();
-
-    const agent = container.querySelector("[data-question=saludo]") as HTMLElement;
-    expect(within(agent).getByText("Se guarda solo en este agente.")).toBeVisible();
-    expect(within(agent).queryByRole("checkbox")).toBeNull();
-
-    const discarded = container.querySelector("[data-slot=builder-discarded]") as HTMLElement;
-    expect(within(discarded).getByText("Se descartaron 2 preguntas:")).toBeVisible();
-    expect(within(discarded).getByText("Ya estaba en la ficha del negocio.")).toBeVisible();
-    expect(await axeViolations(container)).toEqual([]);
-  });
-
-  it("manda solo lo respondido, cada respuesta con su `scope`, y va al agente", async () => {
-    const user = userEvent.setup();
-    const answer = vi.fn(async () => ({ ok: true as const, data: { applied: [], agent_id: AGENT, draft_revision: 3, tests_stale: 8 } }));
-    const { container } = await done(user, answer);
-    const business = container.querySelector("[data-question=cancelacion]") as HTMLElement;
-    await user.click(within(business).getByRole("radio", { name: "2 horas antes" }));
-    await user.click(screen.getByRole("button", { name: "Guardar respuestas" }));
-    expect(answer).toHaveBeenLastCalledWith({
-      ref: REF,
-      job: JOB,
-      answers: [{ question_id: "cancelacion", value: "2 horas antes", scope: "business" }],
-    });
+    await user.click(generate());
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`));
-
-    await user.click(within(business).getByRole("checkbox", { name: "Solo este agente" }));
-    const agent = container.querySelector("[data-question=saludo]") as HTMLElement;
-    await user.type(within(agent).getByRole("textbox", { name: "Tu respuesta" }), "¡Hola! Soy Recepción.");
-    await user.click(screen.getByRole("button", { name: "Guardar respuestas" }));
-    expect(answer).toHaveBeenLastCalledWith({
-      ref: REF,
-      job: JOB,
-      answers: [
-        { question_id: "cancelacion", value: "2 horas antes", scope: "agent" },
-        { question_id: "saludo", value: "¡Hola! Soy Recepción.", scope: "agent" },
-      ],
-    });
-  });
-
-  it("sin respuestas no se manda nada, y se puede seguir sin responder", async () => {
-    const user = userEvent.setup();
-    const answer = vi.fn();
-    await done(user, answer);
-    await user.click(screen.getByRole("button", { name: "Guardar respuestas" }));
-    expect(answer).not.toHaveBeenCalled();
-    expect(screen.getByText("Responde al menos una pregunta o sigue sin responder.")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Seguir sin responder" }));
-    expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`);
   });
 });
 
-describe("«Nuevo agente» · las alternativas (17.8, 17.9, 15.8)", () => {
-  it("sin constructor: ofrece plantilla y blanco y no pierde lo escrito", async () => {
+describe("«Nuevo agente» · otras formas de empezar (17.8, 17.9, 15.8)", () => {
+  it("si el borrador no se puede escribir: lo dice, no pierde lo escrito y ofrece las plantillas", async () => {
     const user = userEvent.setup();
     const failed = jobWith({
       status: "failed",
@@ -356,13 +336,14 @@ describe("«Nuevo agente» · las alternativas (17.8, 17.9, 15.8)", () => {
       .mockResolvedValueOnce({ ok: true, data: { job_id: "33333333-3333-4333-8333-333333333333", status: "done", agent_id: AGENT } });
     const { container } = screenWith({ start, poll: vi.fn(async () => ({ ok: true as const, data: failed })) });
     await describeAgent(user);
-    await user.click(screen.getByRole("button", { name: "Generar borrador" }));
+    await user.click(generate());
 
     const alert = await screen.findByRole("alert");
-    expect(within(alert).getByText("El constructor no ha respondido")).toBeVisible();
+    expect(within(alert).getByText("No se pudo escribir el borrador")).toBeVisible();
     expect(within(alert).getByText(/Lo que escribiste sigue aquí/)).toBeVisible();
-    expect(screen.getByRole("textbox", { name: /Nombre/ })).toHaveValue(NAME);
-    expect(screen.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ })).toHaveValue(DESCRIPTION);
+    expect(screen.getByRole("heading", { level: 1, name: "Nuevo agente" })).toBeVisible();
+    expect(nameBox()).toHaveValue(NAME);
+    expect(descriptionBox()).toHaveValue(DESCRIPTION);
 
     // Las plantillas se abren solas, la del partner primero y sin elegir.
     const picker = container.querySelector("[data-slot=builder-templates]") as HTMLElement;
@@ -382,12 +363,14 @@ describe("«Nuevo agente» · las alternativas (17.8, 17.9, 15.8)", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("«En blanco» crea el agente con el nombre y va a él", async () => {
+  it("«En blanco», discreto bajo los ejemplos, crea el agente con el nombre y va a él", async () => {
     const user = userEvent.setup();
     const start = vi.fn(async () => ({ ok: true as const, data: { job_id: JOB, status: "done" as const, agent_id: AGENT } }));
     screenWith({ start });
-    await user.type(screen.getByRole("textbox", { name: /Nombre/ }), "Ventas");
-    await user.click(screen.getByRole("button", { name: "En blanco" }));
+    const other = document.querySelector("[data-slot=builder-alternatives]") as HTMLElement;
+    expect(within(other).getByText("Otras formas de empezar:")).toBeVisible();
+    await user.type(nameBox(), "Ventas");
+    await user.click(within(other).getByRole("button", { name: "En blanco" }));
     expect(start).toHaveBeenCalledWith({ ref: REF, name: "Ventas", start: "blank" });
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`));
   });

@@ -233,7 +233,7 @@ export const agentToolsMessages = {
   "knowledge.readonly": { es: "Tu rol solo permite ver el conocimiento.", en: "Your role can only view knowledge." },
   "knowledge.empty.title": { es: "Este cliente aún no tiene conocimiento", en: "This client has no knowledge yet" },
   "playbook.empty.title": { es: "Tu guía está vacía", en: "Your playbook is empty" },
-  "playbook.empty.body": { es: "Sube las reglas y documentos comunes a todos tus clientes (PDF, TXT, MD o HTML hasta 10 MB) o añade una URL pública.", en: "Upload the rules and documents shared by all your clients (PDF, TXT, MD or HTML up to 10 MB) or add a public URL." },
+  "playbook.empty.body": { es: "Sube las reglas y documentos comunes a todos tus clientes o añade una URL pública.", en: "Upload the rules and documents shared by all your clients, or add a public URL." },
   "knowledge.empty.body": { es: "Sube un PDF, TXT, MD o HTML (hasta 10 MB) o añade una URL pública.", en: "Upload a PDF, TXT, MD or HTML (up to 10 MB) or add a public URL." },
   "knowledge.usage": { es: "{used} de {cap} caracteres indexados en el prompt", en: "{used} of {cap} indexed characters in the prompt" },
   "knowledge.usage.label": { es: "Uso del presupuesto del prompt", en: "Prompt budget usage" },
@@ -285,5 +285,5 @@ export const agentToolsMessages = {
   // R5.3: quién la lee, dicho antes que de qué va. Es la confusión que más
   // caro sale — subir al sitio equivocado significa que el agente no ve lo
   // que debía, o que ve lo que no era para él.
-  "playbook.description": { es: "Lo que lee el Companion, el asistente de esta consola, para ayudarte con todos tus clientes. Ningún agente de WhatsApp la ve: no llega a la conversación con el cliente final. El texto extraído no sale de aquí.", en: "What the Companion, this console's assistant, reads to help you across all your clients. No WhatsApp agent sees it: it never reaches the conversation with the end client. Extracted text never leaves this page." },
+  "playbook.description": { es: "Lo que lee el Companion, el asistente de esta consola, para ayudarte con todos tus clientes. Ningún agente de WhatsApp la ve: no llega a la conversación con el cliente final.", en: "What the Companion, this console's assistant, reads to help you across all your clients. No WhatsApp agent sees it: it never reaches the conversation with the end client." },
 } as const;

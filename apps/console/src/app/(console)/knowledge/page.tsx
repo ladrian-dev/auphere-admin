@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@nexus/ui";
+
 import { KnowledgeTable } from "@/components/agent-tools/knowledge-table";
 import { pageTitle } from "@/i18n/metadata";
 import { getT } from "@/i18n/server";
@@ -10,19 +12,23 @@ import { addPlaybookUrlAction, deletePlaybookAction, reindexPlaybookAction, uplo
 
 export const generateMetadata = () => pageTitle("nav.knowledge");
 
-/** Partner playbook at /console/knowledge. Client KB stays under the client. */
+/**
+ * Partner playbook at /console/knowledge. Client KB stays under the client.
+ *
+ * Spec 047 (prototipo «Consola de partners v2»): la cabecera grande de las demás
+ * páginas, «Subir archivo» y «Añadir URL» lado a lado y la tarjeta «Documentos»
+ * (la variante `playbook` de la tabla, que el conocimiento del cliente no usa).
+ */
 export default async function PlaybookPage() {
   const principal = await requirePartnerPrincipal();
   if (!can(principal.role, "playbook:read")) redirect("/");
   const { t } = await getT(principal.locale);
   const data = await backendFor(principal).listPlaybook();
   return (
-    <section className="flex min-w-0 flex-col gap-4" aria-label={t("playbook.title")}>
-      <div className="flex min-w-0 flex-col gap-1">
-        <h1 className="text-base font-medium text-balance">{t("playbook.title")}</h1>
-        <p className=" text-sm text-pretty text-muted-foreground">{t("playbook.description")}</p>
-      </div>
+    <>
+      <PageHeader size="display" title={t("playbook.title")} description={t("playbook.description")} />
       <KnowledgeTable
+        variant="playbook"
         refId=""
         data={data}
         canWrite={can(principal.role, "playbook:write")}
@@ -34,6 +40,6 @@ export default async function PlaybookPage() {
           reindex: reindexPlaybookAction,
         }}
       />
-    </section>
+    </>
   );
 }

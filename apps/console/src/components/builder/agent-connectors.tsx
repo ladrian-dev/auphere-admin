@@ -381,7 +381,7 @@ export function AgentConnectorsPanel({
                 <div className="flex min-w-0 items-start gap-3">
                   <ConnectorLogo refId={refId} slug={c.slug} name={c.name} logo={c.logo} />
                   <div className="grid min-w-0 flex-1 gap-1">
-                    <h4 className="min-w-0 font-medium break-words">{c.name}</h4>
+                    <h3 className="min-w-0 font-medium break-words">{c.name}</h3>
                     {desc ? <p className="text-sm text-pretty text-muted-foreground">{t(desc)}</p> : null}
                     <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <StateLine connector={c} />

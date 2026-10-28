@@ -38,35 +38,36 @@ const CHECKS = new Set([
   "ai_disclosure",
 ]);
 
+/** La revisión leída y lo que se puede hacer con ella; la comparten la tarjeta de pruebas y «Más ajustes». */
+export type ReviewSource = {
+  review: AgentReview | null;
+  state: "loading" | "ready" | "failed";
+  applying: string | null;
+  load: () => Promise<void>;
+  apply: (proposalId: string) => Promise<void>;
+};
+
 /**
- * La revisión automática (spec 047, historia 8; requisito 22): cada
- * comprobación con su resultado de verdad —nada de «✓» fijos (22.3)— y cada
- * hallazgo con su gravedad («Bloquea» o «Avisa») y su arreglo en un clic
- * cuando lo hay (22.2): ir a Conectores, a Servicios, a Horario o al canal;
- * abrir el bloque del borrador; o aplicar la propuesta que trae.
- *
- * Se lee al abrir la pantalla y cada vez que cambia el borrador. Quien solo lee
- * ve los hallazgos y sus enlaces, pero no aplica nada.
+ * Lee la revisión al abrir la pantalla y cada vez que cambia el borrador. Leerla
+ * la corre, y correrla crea propuestas: por eso se lee **una** vez por cambio y
+ * la comparten la tarjeta de pruebas y la sección completa.
  */
-export function ReviewPanel({
+export function useAgentReview({
   refId,
   agentId,
-  canWrite,
   refreshKey = 0,
-  onEdit,
   onApplied,
   actions = SERVER_ACTIONS,
+  enabled = true,
 }: {
   refId: string;
   agentId: string;
-  canWrite: boolean;
   refreshKey?: number;
-  /** Un arreglo «edit»: abrir el bloque del borrador al que apunta. */
-  onEdit?: (pointer: string | null) => void;
-  /** Una propuesta aplicada cambió el borrador. */
   onApplied?: () => void;
   actions?: ReviewActions;
-}) {
+  /** Sin pruebas ni revisión en la pantalla, no se lee. */
+  enabled?: boolean;
+}): ReviewSource {
   const t = useT();
   const [review, setReview] = React.useState<AgentReview | null>(null);
   const [state, setState] = React.useState<"loading" | "ready" | "failed">("loading");
@@ -82,6 +83,7 @@ export function ReviewPanel({
 
   // Al abrir la pantalla y cada vez que cambia el borrador.
   React.useEffect(() => {
+    if (!enabled) return;
     let live = true;
     void fetchReview().then((res) => {
       if (live) show(res);
@@ -89,7 +91,7 @@ export function ReviewPanel({
     return () => {
       live = false;
     };
-  }, [fetchReview, show, refreshKey]);
+  }, [fetchReview, show, refreshKey, enabled]);
 
   async function load() {
     setState("loading");
@@ -107,6 +109,58 @@ export function ReviewPanel({
     }
     toast.error(t("builder.review.fix.failed"));
   }
+
+  return { review, state, applying, load, apply };
+}
+
+/**
+ * La revisión automática (spec 047, historia 8; requisito 22): cada
+ * comprobación con su resultado de verdad —nada de «✓» fijos (22.3)— y cada
+ * hallazgo con su gravedad («Bloquea» o «Avisa») y su arreglo en un clic
+ * cuando lo hay (22.2): ir a Conectores, a Servicios, a Horario o al canal;
+ * abrir el bloque del borrador; o aplicar la propuesta que trae.
+ *
+ * Se lee al abrir la pantalla y cada vez que cambia el borrador; con `source`,
+ * la lee quien la monta (la pantalla del agente la comparte con la tarjeta de
+ * pruebas). Quien solo lee ve los hallazgos y sus enlaces, pero no aplica nada.
+ */
+export function ReviewPanel({
+  source,
+  ...props
+}: {
+  refId: string;
+  agentId: string;
+  canWrite: boolean;
+  refreshKey?: number;
+  /** Un arreglo «edit»: abrir el bloque del borrador al que apunta. */
+  onEdit?: (pointer: string | null) => void;
+  /** Una propuesta aplicada cambió el borrador. */
+  onApplied?: () => void;
+  actions?: ReviewActions;
+  /** La revisión ya leída por quien monta el panel. */
+  source?: ReviewSource;
+}) {
+  return source ? <ReviewView {...props} source={source} /> : <OwnReview {...props} />;
+}
+
+function OwnReview(props: { refId: string; agentId: string; canWrite: boolean; refreshKey?: number; onEdit?: (pointer: string | null) => void; onApplied?: () => void; actions?: ReviewActions }) {
+  const source = useAgentReview(props);
+  return <ReviewView {...props} source={source} />;
+}
+
+function ReviewView({
+  refId,
+  canWrite,
+  onEdit,
+  source,
+}: {
+  refId: string;
+  canWrite: boolean;
+  onEdit?: (pointer: string | null) => void;
+  source: ReviewSource;
+}) {
+  const t = useT();
+  const { review, state, applying, load, apply } = source;
 
   return (
     <div className="grid min-w-0 gap-4" data-slot="review-panel" aria-busy={state === "loading" || undefined}>
@@ -127,9 +181,9 @@ export function ReviewPanel({
       {review ? (
         <>
           <div className="grid min-w-0 gap-2">
-            <h4 className="text-sm font-semibold" id="review-checks">
+            <h3 className="text-sm font-semibold" id="review-checks">
               {t("builder.review.checks")}
-            </h4>
+            </h3>
             <ul aria-labelledby="review-checks" className="grid min-w-0 gap-1" data-slot="review-checks">
               {review.checks.map((check) => (
                 <CheckRow key={check.check} check={check} />
@@ -137,9 +191,9 @@ export function ReviewPanel({
             </ul>
           </div>
           <div className="grid min-w-0 gap-2">
-            <h4 className="text-sm font-semibold" id="review-findings">
+            <h3 className="text-sm font-semibold" id="review-findings">
               {t("builder.review.findings")}
-            </h4>
+            </h3>
             {review.findings.length ? (
               <ul aria-labelledby="review-findings" className="grid min-w-0 gap-2" data-slot="review-findings">
                 {review.findings.map((finding, i) => (

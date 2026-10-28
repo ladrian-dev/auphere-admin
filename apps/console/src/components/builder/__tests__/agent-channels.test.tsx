@@ -12,6 +12,7 @@ import { CH, CH2, LINK, RECEPCION, REF, VENTAS, channels, fail, ok, page } from 
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/agents/channel-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({}));
 

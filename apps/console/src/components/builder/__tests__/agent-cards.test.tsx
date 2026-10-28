@@ -63,19 +63,15 @@ describe("la pestaña Agentes", () => {
     expect(within(ventas!).getByText("Sin canal")).toBeVisible();
     expect(within(cobros!).getByText("Con cambios sin publicar")).toBeVisible();
     expect(within(cobros!).getByText("2 canales")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Nuevo agente" })).toHaveAttribute("href", `/clients/${REF}/agents/new`);
+    // Un solo botón primario por vista: «Nuevo agente» está en la cabecera del cliente (Andrés, 2026-10-28).
+    expect(screen.queryByRole("link", { name: "Nuevo agente" })).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("quien solo lee no ve «Nuevo agente»", () => {
-    cards(AGENTS, false);
-    expect(screen.queryByRole("link", { name: "Nuevo agente" })).toBeNull();
-  });
-
-  it("sin agentes, el vacío ofrece crear el primero; sin permiso, solo lo dice", async () => {
+  it("sin agentes, el vacío lo dice (el botón está en la cabecera); sin permiso, solo lo dice", async () => {
     const { container, unmount } = cards([]);
     expect(screen.getByText("Este cliente aún no tiene agentes")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Nuevo agente" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Nuevo agente" })).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
     unmount();
     cards([], false);

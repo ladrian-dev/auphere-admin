@@ -56,7 +56,6 @@ export default async function ClientOverviewPage({ params, searchParams }: { par
         {bag && !can(principal.role, "usage:write") ? <SeedRequested items={[bag]} /> : null}
         <ClientPanelView
         panel={panel}
-        canWrite={can(principal.role, "clients:write")}
         money={currency ? { currency, canSetCap: can(principal.role, "usage:write"), refillUpTo: bag?.refill_up_to ?? null } : undefined}
         openBalance={(await searchParams)?.assign === "1"}
         />

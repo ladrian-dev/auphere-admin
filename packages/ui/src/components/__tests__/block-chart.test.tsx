@@ -112,6 +112,13 @@ describe("<BlockChart>", () => {
     expect(columns[0]!.querySelectorAll('[data-cell="track"]').length).toBeGreaterThan(0);
   });
 
+  it("con pocas columnas (una semana) cada una ocupa su parte del ancho, sin huecos grandes (Andrés, 2026-10-28)", () => {
+    render(<Chart />);
+    const grid = screen.getByRole("listbox");
+    expect(grid.style.gridTemplateColumns).toBe("repeat(7, minmax(0, 1fr))");
+    expect(grid.style.justifyContent).not.toBe("space-between");
+  });
+
   it("dos series en dos tonos, con su leyenda", () => {
     render(<Chart />);
     const legend = document.querySelector<HTMLElement>("[data-slot=block-chart-legend]")!;

@@ -226,17 +226,56 @@ function BlockChart({
     );
   }
 
-  const template = { gridTemplateColumns: `repeat(${Math.max(n, 1)}, minmax(0, 1fr))` };
-  const minWidth = { minWidth: n * MIN_COLUMN_PX };
+  // Como el prototipo aprobado (`waffleChart`): cuadros redondeados con aire.
+  // Con un mes o más, cuadrados de hasta 20 px (10 con 90 días) repartidos a lo
+  // ancho. Con una semana, cada columna ocupa su parte del ancho con bloques de
+  // 16 px de alto: siete columnas de 20 px dejaban huecos enormes entre días.
+  const wide = n <= 14;
+  const dense = n > 60;
+  const cellMax = dense ? 10 : 20;
+  const gap = dense ? 2 : 3;
+  const template: React.CSSProperties = wide
+    ? { gridTemplateColumns: `repeat(${Math.max(n, 1)}, minmax(0, 1fr))`, columnGap: 8 }
+    : { gridTemplateColumns: `repeat(${Math.max(n, 1)}, minmax(0, ${cellMax}px))`, justifyContent: "space-between", columnGap: gap };
+  const minWidth = { minWidth: n * (MIN_COLUMN_PX + gap) };
+  const cellShape: React.CSSProperties = wide ? { borderRadius: 4, height: 16 } : { borderRadius: "22%", aspectRatio: "1 / 1" };
 
-  function cellsOf(col: BlockChartColumn) {
-    if (!col.values) return Array.from({ length: rows }, (_, r) => <span key={r} data-cell="missing" className="min-h-0 flex-1 border border-dashed border-border" />);
+  /** Los cuadros de una columna; con una abierta, las demás se atenúan y la suya se aviva. */
+  function cellsOf(col: BlockChartColumn, state: "rest" | "active" | "dim" = "rest") {
+    if (!col.values) {
+      return Array.from({ length: rows }, (_, r) => (
+        <span key={r} data-cell="missing" style={cellShape} className="block w-full border border-dashed border-border" />
+      ));
+    }
     const filled = blockChartCells(col.values, max, rows);
     const out: React.ReactNode[] = [];
     filled.forEach((count, s) => {
-      for (let k = 0; k < count; k++) out.push(<span key={`${s}-${k}`} data-cell={String(s)} className={cn("min-h-0 flex-1", SERIES_BG[s] ?? "bg-accent-mid")} />);
+      for (let k = 0; k < count; k++) {
+        out.push(
+          <span
+            key={`${s}-${k}`}
+            data-cell={String(s)}
+            style={cellShape}
+            className={cn(
+              "block w-full transition-[opacity,filter] duration-150 motion-reduce:transition-none",
+              SERIES_BG[s] ?? "bg-accent-mid",
+              state === "dim" && "opacity-55",
+              state === "active" && "brightness-125",
+            )}
+          />,
+        );
+      }
     });
-    while (out.length < rows) out.push(<span key={`t-${out.length}`} data-cell="track" className="min-h-0 flex-1 bg-series-track" />);
+    while (out.length < rows) {
+      out.push(
+        <span
+          key={`t-${out.length}`}
+          data-cell="track"
+          style={cellShape}
+          className={cn("block w-full transition-colors duration-150 motion-reduce:transition-none", state === "active" ? "bg-foreground/10" : "bg-series-track")}
+        />,
+      );
+    }
     return out;
   }
 
@@ -263,19 +302,26 @@ function BlockChart({
     run();
   }
 
+  // Cinco marcas, como el prototipo. `pb-7` deja fuera la fila de las fechas
+  // (8 + 16 px) y el relleno del desplazamiento (4 px): el eje mide lo que la rejilla.
   const axis = (
-    <div aria-hidden="true" className="flex h-40 shrink-0 flex-col justify-between text-right text-xs text-muted-foreground tabular-nums">
-      <span>{fmt(max)}</span>
-      <span>{fmt(max / 2)}</span>
-      <span>{fmt(0)}</span>
+    <div aria-hidden="true" className="flex shrink-0 flex-col justify-between pb-7 text-right text-xs leading-none text-muted-foreground tabular-nums">
+      {[1, 0.75, 0.5, 0.25, 0].map((f) => (
+        <span key={f}>{fmt(max * f)}</span>
+      ))}
     </div>
   );
 
   const xLabels = (
-    <div aria-hidden="true" className="mt-1 grid gap-px text-xs text-muted-foreground" style={{ ...template, ...minWidth }}>
+    <div aria-hidden="true" className="mt-2 grid h-4 text-xs leading-4 text-muted-foreground" style={{ ...template, ...minWidth }}>
       {columns.map((c, i) => (
-        <span key={c.key} className="min-w-0 overflow-visible whitespace-nowrap">
-          {labels.has(i) ? <span data-axis-label="">{c.label}</span> : null}
+        <span key={c.key} className="flex min-w-0 justify-center overflow-visible whitespace-nowrap">
+          {labels.has(i) ? (
+            // «Hoy», la última, en tinta y más fuerte.
+            <span data-axis-label="" className={i === n - 1 ? "font-semibold text-foreground" : undefined}>
+              {c.label}
+            </span>
+          ) : null}
         </span>
       ))}
     </div>
@@ -304,9 +350,9 @@ function BlockChart({
           {/* Vacío: solo decoración oculta. No desliza, porque una caja
               deslizable sin nada enfocable no la alcanza el teclado. */}
           <div data-scroll-x="" className="relative min-w-0 flex-1 overflow-hidden">
-            <div aria-hidden="true" className="grid h-40 gap-px" style={{ ...template, ...minWidth }}>
+            <div aria-hidden="true" className="grid" style={{ ...template, ...minWidth }}>
               {columns.map((c) => (
-                <div key={c.key} className="flex h-full min-w-0 flex-col-reverse gap-px">
+                <div key={c.key} className="flex min-w-0 flex-col-reverse" style={{ gap }}>
                   {cellsOf(c)}
                 </div>
               ))}
@@ -324,7 +370,8 @@ function BlockChart({
   const shown = current?.values ?? null;
   const shownTotal = shown ? totalOf(shown) : 0;
   const share = (v: number) => (shownTotal > 0 ? formatPercent(v / shownTotal, locale) : "—");
-  const align = left == null || !wrapRef.current ? "center" : left < wrapRef.current.clientWidth * 0.2 ? "start" : left > wrapRef.current.clientWidth * 0.8 ? "end" : "center";
+  // A la derecha de la columna; en la segunda mitad, a su izquierda (prototipo).
+  const side = left != null && wrapRef.current && left > wrapRef.current.clientWidth / 2 ? "left" : "right";
 
   return (
     <figure data-slot="block-chart" className={cn("@container/blocks flex min-w-0 flex-col gap-3", className)}>
@@ -351,7 +398,7 @@ function BlockChart({
               onBlur={(e) => {
                 if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
               }}
-              className="grid h-40 cursor-default gap-px"
+              className="grid cursor-default outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
               style={{ ...template, ...minWidth }}
             >
               {columns.map((c, i) => {
@@ -370,9 +417,14 @@ function BlockChart({
                     data-active={(isActive && open) || undefined}
                     onMouseEnter={() => move(i)}
                     onClick={() => move(i)}
-                    className="flex h-full min-w-0 flex-col-reverse gap-px data-active:opacity-80"
+                    className="relative flex min-w-0 flex-col-reverse"
+                    style={{ gap }}
                   >
-                    {cellsOf(c)}
+                    {/* La línea guía de la columna abierta, como el prototipo. */}
+                    {isActive && open ? (
+                      <span aria-hidden="true" className="pointer-events-none absolute -inset-y-1 left-1/2 border-l border-dashed border-foreground/35" />
+                    ) : null}
+                    {cellsOf(c, !open ? "rest" : isActive ? "active" : "dim")}
                   </div>
                 );
               })}
@@ -384,20 +436,19 @@ function BlockChart({
           <div
             id={tipId}
             role="tooltip"
-            data-align={align}
+            data-side={side}
             style={left == null ? undefined : { left }}
             className={cn(
-              "z-(--z-popover) mt-2 w-max max-w-64 rounded-md bg-popover p-3 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10",
-              "@md/blocks:absolute @md/blocks:bottom-full @md/blocks:mt-0 @md/blocks:mb-2",
-              align === "center" && "@md/blocks:-translate-x-1/2",
-              align === "end" && "@md/blocks:-translate-x-full",
+              "glass z-(--z-popover) mt-2 w-max max-w-64 min-w-44 rounded-lg p-3 text-xs text-popover-foreground ring-1 ring-foreground/10",
+              "@md/blocks:pointer-events-none @md/blocks:absolute @md/blocks:top-0 @md/blocks:mt-0",
+              side === "right" ? "@md/blocks:translate-x-4" : "@md/blocks:-translate-x-[calc(100%+16px)]",
             )}
           >
-            <p className="text-sm font-medium text-balance">{current.title}</p>
+            <p className="text-xs text-muted-foreground">{current.title}</p>
             {shown ? (
               <>
-                <p className="mt-1 tabular-nums">{copy.totalOf(fmt(shownTotal))}</p>
-                <ul className="mt-2 flex flex-col gap-1">
+                <p className="mt-1 text-lg leading-tight font-semibold tabular-nums">{copy.totalOf(fmt(shownTotal))}</p>
+                <ul className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
                   {series.map((s, i) => (
                     <li key={s.key} className="flex min-w-0 items-center gap-2">
                       <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", SERIES_BG[i] ?? "bg-accent-mid")} />

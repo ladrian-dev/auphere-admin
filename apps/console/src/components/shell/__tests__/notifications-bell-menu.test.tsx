@@ -51,6 +51,8 @@ async function openBell() {
   const user = userEvent.setup();
   render(<Bell />);
   const trigger = await screen.findByRole("button", { name: /Notificaciones/ });
+  // Como el prototipo: la campana lleva su borde a la vista (Andrés, 2026-10-28).
+  expect(trigger.className).toMatch(/\bborder-border\b/);
   await user.click(trigger);
   const panel = await screen.findByRole("dialog", { name: "Notificaciones" });
   return { user, trigger, panel };

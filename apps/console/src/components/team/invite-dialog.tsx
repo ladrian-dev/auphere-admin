@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Copy } from "lucide-react";
+import { Copy, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -18,13 +18,12 @@ import {
   DialogTitle,
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
   Input,
-  NativeSelect,
+  cn,
 } from "@nexus/ui";
 
 import { inviteAction } from "@/app/(console)/team/actions";
@@ -70,10 +69,11 @@ export function InviteButton({ origin }: { origin: string }) {
           setOpen(true);
         }}
       >
+        <UserPlus aria-hidden="true" />
         {t("team.invite")}
       </Button>
       <Dialog open={open} onOpenChange={(o) => setOpen(o)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("team.invite.title")}</DialogTitle>
             <DialogDescription>{t("team.invite.body")}</DialogDescription>
@@ -110,34 +110,47 @@ export function InviteButton({ origin }: { origin: string }) {
                     <FormItem>
                       <FormLabel>{t("common.email")}</FormLabel>
                       <FormControl>
-                        <Input type="email" autoComplete="off" {...field} />
+                        <Input type="email" autoComplete="off" placeholder={t("proto.team.email.placeholder")} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                {/* Spec 047 (prototipo): el rol en opciones con su descripción, no en un desplegable. */}
                 <FormField
                   control={form.control}
                   name="role"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t("common.role")}</FormLabel>
-                      <FormControl>
-                        <NativeSelect {...field} wrapperClassName="w-full">
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {t(roleKey(r))}
-                            </option>
-                          ))}
-                        </NativeSelect>
-                      </FormControl>
-                      <FormDescription>{t(`role.${field.value}.desc` as "role.owner.desc")}</FormDescription>
-                      <FormMessage />
-                    </FormItem>
+                    <fieldset className="grid gap-2">
+                      <legend className="mb-2 text-sm font-medium">{t("common.role")}</legend>
+                      {ROLES.map((r) => (
+                        <label
+                          key={r}
+                          className={cn(
+                            "flex cursor-pointer items-start gap-3 rounded-md border border-input p-3 text-sm",
+                            field.value === r && "border-primary ring-1 ring-primary",
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name={field.name}
+                            value={r}
+                            checked={field.value === r}
+                            onChange={() => field.onChange(r)}
+                            onBlur={field.onBlur}
+                            className="mt-1 size-4 shrink-0 accent-primary"
+                          />
+                          <span className="flex min-w-0 flex-col">
+                            <span className="font-medium">{t(roleKey(r))}</span>
+                            <span className="text-pretty text-muted-foreground">{t(`role.${r}.desc` as "role.owner.desc")}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
                   )}
                 />
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
                     {t("common.cancel")}
                   </Button>
                   <Button type="submit" disabled={pending}>

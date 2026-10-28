@@ -106,10 +106,10 @@ function view(data: LiteBusiness | null, over: Partial<Actions> = {}) {
 describe("«Negocio» de la consola lite (T168)", { timeout: 60_000 }, () => {
   it("pinta el horario, las fechas especiales, los servicios, las sedes y los últimos cambios, y pasa axe", async () => {
     const { container } = view(business());
-    for (const name of ["Horario", "Fechas especiales", "Servicios", "Sedes", "Últimos cambios"]) {
+    for (const name of ["Horarios", "Fechas especiales", "Servicios", "Sedes", "Últimos cambios"]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
-    expect(screen.getByText("De lunes a sábado, de 10:00 a 20:00")).toBeInTheDocument();
+    expect(screen.getByText(/De lunes a sábado, de 10:00 a 20:00/)).toBeInTheDocument();
     // Lo que es del partner no se ofrece (50.3).
     expect(screen.queryByRole("button", { name: /Duplicar/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Quién lo ofrece|Quién ofrece/ })).toBeNull();
@@ -143,7 +143,9 @@ describe("«Negocio» de la consola lite (T168)", { timeout: 60_000 }, () => {
   it("guardar el horario manda la revisión que leyó la pantalla", async () => {
     const user = userEvent.setup();
     const { actions } = view(business());
-    await user.click(within(screen.getByRole("region", { name: "Horario" })).getByRole("button", { name: /Guardar/ }));
+    // Como el prototipo: el horario se lee primero y «Editar» abre el editor.
+    await user.click(within(screen.getByRole("region", { name: "Horarios" })).getByRole("button", { name: "Editar Horarios" }));
+    await user.click(within(screen.getByRole("region", { name: "Horarios" })).getByRole("button", { name: /Guardar/ }));
     await waitFor(() => expect(actions.saveHours).toHaveBeenCalled());
     expect(vi.mocked(actions.saveHours).mock.calls[0]![0]).toMatchObject({ revision: 4, location_id: null, body: { layout: "daily" } });
   });
@@ -162,10 +164,12 @@ describe("«Negocio» de la consola lite (T168)", { timeout: 60_000 }, () => {
     });
     const own: Hours = { ...data.hours, revision: 9, location_id: CENTRO, inherits: false, label: "Sábados de 10:00 a 14:00" };
     const { actions } = view(data, { loadHours: vi.fn(async () => ok(own)), saveHours: vi.fn(async () => ok(own)) });
-    const hours = screen.getByRole("region", { name: "Horario" });
+    const hours = screen.getByRole("region", { name: "Horarios" });
+    await user.click(within(hours).getByRole("button", { name: "Editar Horarios" }));
     await user.selectOptions(within(hours).getByLabelText("Horario de"), "Centro");
     await waitFor(() => expect(actions.loadHours).toHaveBeenCalledWith({ location_id: CENTRO }));
-    await user.click(within(hours).getByRole("button", { name: /Guardar/ }));
+    // La ficha se vuelve a pintar con lo leído; el editor sigue abierto.
+    await user.click(within(await screen.findByRole("region", { name: "Horarios" })).getByRole("button", { name: /Guardar/ }));
     await waitFor(() => expect(actions.saveHours).toHaveBeenCalled());
     expect(vi.mocked(actions.saveHours).mock.calls[0]![0]).toMatchObject({ revision: 9, location_id: CENTRO });
   });
@@ -193,6 +197,6 @@ describe("«Negocio» de la consola lite (T168)", { timeout: 60_000 }, () => {
     expect(screen.getByText("No pudimos leer tu negocio")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
     await waitFor(() => expect(actions.reload).toHaveBeenCalled());
-    expect(await screen.findByRole("region", { name: "Horario" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Horarios" })).toBeInTheDocument();
   });
 });

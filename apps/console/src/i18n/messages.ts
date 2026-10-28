@@ -6,7 +6,9 @@
  */
 export type Locale = "es" | "en";
 
+import { accountProtoMessages } from "./lanes/account-proto";
 import { agentImproveMessages } from "./lanes/agent-improve";
+import { agentProtoMessages } from "./lanes/agent-proto";
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { agentsMessages } from "./lanes/agents";
 import { builderMessages } from "./lanes/builder";
@@ -17,8 +19,11 @@ import { builderLifeMessages } from "./lanes/builder-life";
 import { builderModelQualityMessages } from "./lanes/builder-model-quality";
 import { builderQualityMessages } from "./lanes/builder-quality";
 import { businessMessages } from "./lanes/business";
+import { businessProtoMessages } from "./lanes/business-proto";
 import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
+import { channelsProtoMessages } from "./lanes/channels-proto";
+import { clientsProtoMessages } from "./lanes/clients-proto";
 import { companionMessages } from "./lanes/companion";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { inboxMessages } from "./lanes/inbox";
@@ -72,6 +77,8 @@ const core = {
   "shell.theme.light": { es: "Claro", en: "Light" },
   "shell.theme.dark": { es: "Oscuro", en: "Dark" },
   "shell.theme.system": { es: "Sistema", en: "System" },
+  "shell.theme.switch": { es: "Modo oscuro", en: "Dark mode" },
+  "shell.back": { es: "Volver a {name}", en: "Back to {name}" },
   "shell.language": { es: "Idioma", en: "Language" },
   "shell.skip": { es: "Saltar al contenido", en: "Skip to content" },
   "shell.partner": { es: "Partner", en: "Partner" },
@@ -494,7 +501,7 @@ const core = {
   "team.invite.alreadyMember": { es: "Ese correo ya es miembro de este partner.", en: "That e-mail is already a member of this partner." },
   "team.members": { es: "Miembros", en: "Members" },
   "team.invitations": { es: "Invitaciones pendientes", en: "Pending invitations" },
-  "team.invitations.empty": { es: "No hay invitaciones pendientes", en: "No pending invitations" },
+  "team.invitations.empty": { es: "No hay invitaciones pendientes.", en: "No pending invitations." },
   "team.you": { es: "tú", en: "you" },
   "team.changeRole": { es: "Cambiar rol", en: "Change role" },
   "team.suspend": { es: "Suspender", en: "Suspend" },
@@ -517,7 +524,6 @@ const core = {
   "keys.empty.body": { es: "Crea una clave para aprovisionar clientes o enviar difusiones desde tu sistema.", en: "Create a key to provision clients or send broadcasts from your system." },
   "keys.type": { es: "Tipo", en: "Type" },
   "keys.scopes": { es: "Permisos", en: "Scopes" },
-  "keys.lastUsed": { es: "Último uso", en: "Last used" },
   "keys.never": { es: "Nunca", en: "Never" },
   "keys.rotate": { es: "Rotar", en: "Rotate" },
   "keys.revoke": { es: "Revocar", en: "Revoke" },
@@ -526,7 +532,7 @@ const core = {
   "keys.created.title": { es: "Guarda esta clave ahora", en: "Save this key now" },
   "keys.created.body": { es: "No volverá a mostrarse. Si la pierdes, rota la clave.", en: "It will not be shown again. If you lose it, rotate the key." },
   "keys.create.title": { es: "Nueva clave de API", en: "New API key" },
-  "keys.create.body": { es: "Elige tipo y permisos. Las claves ligadas a un solo cliente (envío de mensajes) se crean desde la ficha del cliente.", en: "Pick type and scopes. Keys bound to a single client (message sending) are created from the client page." },
+  "keys.create.body": { es: "Elige tipo y permisos.", en: "Choose type and permissions." },
   "keys.rotate.title": { es: "Rotar la clave {prefix}", en: "Rotate key {prefix}" },
   "keys.rotate.body": { es: "Se crea una clave nueva y la actual sigue funcionando 24 h para que despliegues sin corte.", en: "A new key is created, and the current one keeps working for 24 h so you can deploy without downtime." },
   "keys.revoke.title": { es: "Revocar la clave {prefix}", en: "Revoke key {prefix}" },
@@ -591,6 +597,11 @@ const messages = {
   ...agentImproveMessages,
   ...builderConnectorsMessages,
   ...builderModelQualityMessages,
+  ...clientsProtoMessages,
+  ...agentProtoMessages,
+  ...accountProtoMessages,
+  ...businessProtoMessages,
+  ...channelsProtoMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

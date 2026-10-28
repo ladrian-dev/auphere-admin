@@ -170,10 +170,6 @@ export const moneyMessages = {
   "money.panel.refill": { es: "Se rellena cada mes hasta {amount}.", en: "Topped up every month to {amount}." },
 
   // ── Consumo (46) ──
-  "money.usage.description": {
-    es: "Lo que tienes, lo que has repartido entre tus clientes y en qué se va, en la moneda de tu cuenta.",
-    en: "What you have, what you have shared out among your clients and where it goes, in your account’s currency.",
-  },
   "money.usage.error": { es: "No pudimos leer tu saldo. Vuelve a intentarlo en un momento.", en: "We could not read your balance. Try again in a moment." },
   "money.figures": { es: "Tu saldo", en: "Your balance" },
   "money.figure.available": { es: "Saldo disponible", en: "Available balance" },
@@ -245,8 +241,8 @@ export const moneyMessages = {
     en: "Paid by the business, to Meta: templates and service messages beyond the free 1,000 a month. It is an estimate and does not come out of the bag.",
   },
   "money.line.build.payer": {
-    es: "La paga Auphere hasta tu tope del mes: el constructor, el playground, las pruebas, la lectura de webs y documentos y las sugerencias.",
-    en: "Paid by Auphere up to your monthly cap: the builder, the playground, tests, reading sites and documents and suggestions.",
+    es: "La paga Auphere hasta tu tope del mes: crear y mejorar agentes, el playground, las pruebas, la lectura de webs y documentos y las sugerencias.",
+    en: "Paid by Auphere up to your monthly cap: creating and improving agents, the playground, tests, reading sites and documents and suggestions.",
   },
   "money.line.companion.payer": {
     es: "La paga tu cuenta, después de lo incluido: el asistente de la consola y los teammates.",
@@ -255,12 +251,12 @@ export const moneyMessages = {
   "money.build.cap.label": { es: "Construcción y pruebas este mes", en: "Building and testing this month" },
   "money.build.cap.value": { es: "{spent} de {cap} · {pct} %", en: "{spent} of {cap} · {pct} %" },
   "money.build.warning": {
-    es: "Va por más del 80 % del tope de este mes. Al llegar al 100 % se paran el constructor, las pruebas y el playground.",
-    en: "Over 80 % of this month’s cap. At 100 % the builder, tests and playground stop.",
+    es: "Va por más del 80 % del tope de este mes. Al llegar al 100 % se paran la creación de agentes, las pruebas y el playground.",
+    en: "Over 80 % of this month’s cap. At 100 % creating agents, tests and playground stop.",
   },
   "money.build.exhausted": {
-    es: "Se acabó este mes. El constructor, las pruebas y el playground se paran hasta el día 1. La edición a mano sigue.",
-    en: "Used up this month. The builder, tests and playground stop until the 1st. Editing by hand carries on.",
+    es: "Se acabó este mes. La creación de agentes, las pruebas y el playground se paran hasta el día 1. La edición a mano sigue.",
+    en: "Used up this month. Creating agents, tests and playground stop until the 1st. Editing by hand carries on.",
   },
   "money.build.blocked": {
     es: "Se acabó la partida «Construcción y pruebas» de este mes. Pide más en Consumo › «Pedir ampliación». La edición a mano sigue disponible.",
@@ -270,10 +266,10 @@ export const moneyMessages = {
   "money.build.requested": { es: "Pedido a Auphere. Te avisamos cuando suba el tope.", en: "Asked Auphere. We will tell you when the cap goes up." },
   "money.build.already": { es: "Ya se pidió hoy. Mañana se puede volver a pedir.", en: "Already asked today. It can be asked again tomorrow." },
 
-  "money.detail.title": { es: "Detalle técnico", en: "Technical detail" },
+  "money.detail.title": { es: "Detalle técnico: mensajes, uso del modelo y multimedia", en: "Technical detail: messages, model usage and media" },
   "money.detail.hint": {
-    es: "Los medidores por cliente, agente, partida y origen.",
-    en: "The meters by client, agent, line and source.",
+    es: "Lo que mide la plataforma por dentro, por cliente y medidor. Para revisar con detalle o exportar.",
+    en: "What the platform measures inside, by client and meter. To review in detail or export.",
   },
   "money.detail.period": { es: "Últimos {days} días", en: "Last {days} days" },
   "money.detail.csv": { es: "Descargar CSV", en: "Download CSV" },
@@ -283,14 +279,6 @@ export const moneyMessages = {
   "money.detail.unpricedNote": { es: "{n} registros aún no tienen precio: no cuentan en el gasto.", en: "{n} records are not priced yet: they do not count towards spend." },
   "money.detail.empty": { es: "Nada medido en este periodo.", en: "Nothing measured in this period." },
   "money.detail.error": { es: "No pudimos leer el detalle.", en: "We could not read the detail." },
-
-  // ── Facturación (49.3) ──
-  "money.billing.title": { es: "Tu cuenta", en: "Your account" },
-  "money.billing.currency": { es: "Moneda de la cuenta", en: "Account currency" },
-  "money.billing.hint": {
-    es: "Lo que puedes asignar a tus clientes. La moneda de la cuenta la cambia Auphere.",
-    en: "What you can assign to your clients. Auphere changes the account currency.",
-  },
 
   // ── «Repartir tu saldo en bolsas» (55.3) ──
   "money.migration.title": { es: "Repartir tu saldo en bolsas", en: "Share your balance into bags" },

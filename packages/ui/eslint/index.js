@@ -11,7 +11,7 @@
  *   nexus-ui/spacing-scale     — Tailwind spacing/sizing utilities stay on
  *                                 the 4 px grid: integer steps only (no
  *                                 `gap-1.5`), arbitrary `[Npx]` multiples of 4.
- *   nexus-ui/radius-enum       — `rounded-*` ∈ {none, sm, md, full}.
+ *   nexus-ui/radius-enum       — `rounded-*` ∈ {none, sm, md, lg, xl, full}.
  *   nexus-ui/no-palette-colors — no `text-slate-500`, `bg-zinc-100`, … the
  *                                 default Tailwind palette is not the brand.
  *
@@ -44,7 +44,7 @@ const PALETTE_RE =
   /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|decoration|accent|caret|shadow|divide|placeholder)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|[1-9]00|950)\b/;
 
 const RADIUS_RE = /(?:^|[\s"'`:])((?:[a-z0-9-]+:)*rounded(?:-(?:t|b|l|r|s|e|tl|tr|bl|br|ss|se|es|ee))?(?:-([a-z0-9[\]]+))?)(?=[\s"'`]|$)/g;
-const RADIUS_OK = new Set([undefined, "none", "sm", "md", "full"]);
+const RADIUS_OK = new Set([undefined, "none", "sm", "md", "lg", "xl", "full"]);
 
 function classTokens(text) {
   return text.split(/\s+/).filter(Boolean);
@@ -130,7 +130,7 @@ const radiusEnum = {
     type: "problem",
     docs: { description: "Radius is an enum: rounded-none | rounded-sm | rounded-md | rounded-full." },
     schema: [],
-    messages: { off: "\"{{ token }}\" is outside the radius enum {none, sm(4), md(8), full}." },
+    messages: { off: "\"{{ token }}\" is outside the radius enum {none, sm(4), md(8), lg(12), xl(16), full}." },
   },
   create(context) {
     return forEachStringNode(context, (node, value) => {

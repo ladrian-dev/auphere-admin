@@ -21,16 +21,18 @@ describe("Button", () => {
         <Button size="lg">lg</Button>
       </>,
     );
+    // El prototipo aprobado (spec 047): 36 px el normal, 32 el pequeño, radio 8.
     expect(screen.getByRole("button", { name: "xs" })).toHaveClass("h-6");
-    expect(screen.getByRole("button", { name: "sm" })).toHaveClass("h-7");
-    expect(screen.getByRole("button", { name: "md" })).toHaveClass("h-8");
-    expect(screen.getByRole("button", { name: "lg" })).toHaveClass("h-9");
+    expect(screen.getByRole("button", { name: "sm" })).toHaveClass("h-8");
+    expect(screen.getByRole("button", { name: "md" })).toHaveClass("h-9");
+    expect(screen.getByRole("button", { name: "lg" })).toHaveClass("h-10");
+    expect(screen.getByRole("button", { name: "md" })).toHaveClass("rounded-md");
   });
   it("lets className win over the variant (tailwind-merge)", () => {
-    render(<Button className="h-9">x</Button>);
+    render(<Button className="h-10">x</Button>);
     const el = screen.getByRole("button");
-    expect(el).toHaveClass("h-9");
-    expect(el).not.toHaveClass("h-8");
+    expect(el).toHaveClass("h-10");
+    expect(el).not.toHaveClass("h-9");
   });
 });
 
@@ -72,6 +74,18 @@ describe("PageHeader", () => {
     render(<PageHeader eyebrow="Clientes" title="Clínica X" actions={<Button>Publicar</Button>} />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Clínica X");
     expect(screen.getByRole("button", { name: "Publicar" })).toBeInTheDocument();
+  });
+
+  it("back: el botón de volver va en la fila del título", () => {
+    render(<PageHeader title="Alertas de consumo" back={<a href="/usage">Volver</a>} size="display" />);
+    const back = screen.getByRole("link", { name: "Volver" });
+    expect(back.parentElement).toBe(screen.getByRole("heading", { level: 1 }).parentElement);
+  });
+
+  it("display: el título grande del prototipo de la consola nueva", () => {
+    render(<PageHeader title="Hola, Luis" description="Ladrian Studio" size="display" />);
+    expect(screen.getByRole("heading", { level: 1 }).className).toMatch(/text-display/);
+    expect(screen.getByText("Ladrian Studio")).toBeInTheDocument();
   });
 });
 

@@ -3,7 +3,7 @@
 import { Plus, X } from "lucide-react";
 import * as React from "react";
 
-import { Button, Field, Input, NativeSelect, Textarea, formatNumber } from "@nexus/ui";
+import { Button, Field, Input, NativeSelect, Textarea, cn, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
@@ -18,7 +18,7 @@ import type {
 } from "@/lib/backend/builder-types";
 import { ESCALATION_CODES } from "@/lib/backend/builder-types";
 
-import { INSTRUCTIONS_MAX, cleanName, isCustomTrigger, parseLanguages, procedureId, sectionsChars } from "./builder-model";
+import { INSTRUCTIONS_MAX, cleanName, isCustomTrigger, languageName, parseLanguages, procedureId, sectionsChars, toggleLanguage } from "./builder-model";
 
 type T = ReturnType<typeof useT>;
 
@@ -95,7 +95,7 @@ function EditorForm({
   const t = useT();
   const formRef = React.useRef<HTMLFormElement>(null);
   React.useEffect(() => {
-    formRef.current?.querySelector<HTMLElement>("input, textarea")?.focus();
+    formRef.current?.querySelector<HTMLElement>("input, textarea, select")?.focus();
   }, []);
   return (
     <form
@@ -175,28 +175,63 @@ function IdentityEditor({ spec, busy, label, onSave, onCancel }: EditorProps<"id
 
 const REGISTERS: readonly ("" | Register)[] = ["", "tu", "usted", "vos"];
 
+/** Los tonos de la lista (el owner, 2026-10-28: «el tono puede ser opciones»). Se guardan con su palabra. */
+const TONES = ["warm", "kind", "professional", "formal", "direct", "playful"] as const;
+
+/**
+ * Los idiomas que se marcan, cada uno con su nombre en su idioma (el owner: «necesito
+ * seleccionar idiomas, no escribirlos»). Se guardan con el código del AgentSpec.
+ */
+const LANGUAGES: readonly { code: string; name: string }[] = [
+  { code: "es", name: "Español" },
+  { code: "en", name: "English" },
+  { code: "pt", name: "Português" },
+  { code: "fr", name: "Français" },
+  { code: "it", name: "Italiano" },
+  { code: "de", name: "Deutsch" },
+  { code: "ca", name: "Català" },
+];
+
+/** Un código que no está en la lista («pt-BR»), con su nombre en el idioma de la consola. */
+function otherLanguage(code: string, locale: string): string {
+  const name = languageName(code, locale);
+  return name.charAt(0).toLocaleUpperCase(locale) + name.slice(1);
+}
+
 function VoiceEditor({ spec, busy, label, onSave, onCancel }: EditorProps<"voice">) {
   const t = useT();
+  const locale = useLocale();
   const base = React.useId();
   const voice = spec.voice ?? {};
   const [tone, setTone] = React.useState(voice.tone ?? "");
-  const [languages, setLanguages] = React.useState((voice.languages ?? []).join(", "));
+  const [codes, setCodes] = React.useState<string[]>(() => [...new Set(voice.languages ?? [])]);
   const [register, setRegister] = React.useState<"" | Register>(voice.register ?? "");
   const [greeting, setGreeting] = React.useState(voice.greeting ?? "");
   const [errors, setErrors] = React.useState<Errors>({});
 
+  // El tono que ya tenía, si no es uno de la lista, sigue elegible.
+  const tones = TONES.map((key) => t(`agentProto.tone.${key}` as MessageKey));
+  const [initialTone] = React.useState(() => (voice.tone ?? "").trim());
+  const customTone = initialTone && !tones.includes(initialTone) ? initialTone : null;
+  // Los de la lista y, detrás, los que ya tenía y no están en ella.
+  const [extra] = React.useState(() => (voice.languages ?? []).filter((code) => !LANGUAGES.some((l) => l.code === code)));
+  const options = [...LANGUAGES, ...extra.map((code) => ({ code, name: otherLanguage(code, locale) }))];
+  const nameOf = (code: string) => options.find((o) => o.code === code)?.name ?? code;
+  const hintId = `${base}-languages-hint`;
+
   function submit() {
-    const codes = parseLanguages(languages);
+    // Las mismas reglas de siempre: códigos válidos y como mucho cinco.
+    const checked = parseLanguages(codes.join(","));
     const next: Errors = {
       tone: maxError(t, tone, 200),
-      languages: codes === null ? t("builder.error.languages") : undefined,
+      languages: checked === null ? t("builder.error.languages") : undefined,
       greeting: maxError(t, greeting, 300),
     };
     setErrors(next);
-    if (hasErrors(next) || codes === null) return;
+    if (hasErrors(next) || checked === null) return;
     const value: NonNullable<AgentSpec["voice"]> = {};
     if (tone.trim()) value.tone = tone.trim();
-    if (codes.length) value.languages = codes;
+    if (checked.length) value.languages = checked;
     if (register) value.register = register;
     if (greeting.trim()) value.greeting = greeting.trim();
     onSave(value);
@@ -206,12 +241,59 @@ function VoiceEditor({ spec, busy, label, onSave, onCancel }: EditorProps<"voice
     <EditorForm label={label} busy={busy} errors={errors} onSubmit={submit} onCancel={onCancel}>
       <Field label={t("builder.field.tone")} optionalLabel={t("builder.edit.optional")} error={errors.tone}>
         {(a11y) => (
-          <Input {...a11y} value={tone} maxLength={200} placeholder={t("builder.field.tone.placeholder")} autoComplete="off" onChange={(e) => setTone(e.target.value)} />
+          <NativeSelect {...a11y} value={tone} onChange={(e) => setTone(e.target.value)} wrapperClassName="w-full sm:max-w-xs">
+            <option value="">{t("agentProto.tone.none")}</option>
+            {customTone ? <option value={customTone}>{customTone}</option> : null}
+            {tones.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </NativeSelect>
         )}
       </Field>
-      <Field label={t("builder.field.languages")} hint={t("builder.field.languages.hint")} error={errors.languages}>
-        {(a11y) => <Input {...a11y} value={languages} maxLength={60} autoComplete="off" onChange={(e) => setLanguages(e.target.value)} />}
-      </Field>
+      <fieldset className="grid min-w-0 gap-2" aria-describedby={hintId} data-slot="voice-languages">
+        <legend className="mb-1 text-sm font-medium">{t("builder.field.languages")}</legend>
+        <div className="flex min-w-0 flex-wrap gap-2">
+          {options.map(({ code, name }) => {
+            const checked = codes.includes(code);
+            return (
+              <label
+                key={code}
+                className={cn(
+                  "inline-flex h-8 min-w-0 cursor-pointer items-center gap-2 rounded-full border px-3 text-sm transition-colors has-disabled:cursor-not-allowed has-disabled:opacity-50",
+                  checked ? "border-primary/50 bg-primary/10" : "border-input bg-card hover:bg-muted",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 shrink-0 accent-primary"
+                  checked={checked}
+                  disabled={!checked && codes.length >= 5}
+                  onChange={() => setCodes((prev) => toggleLanguage(prev, code))}
+                />
+                <span lang={code}>{name}</span>
+                {codes[0] === code ? (
+                  <span aria-hidden="true" className="text-xs text-muted-foreground">
+                    {t("agentProto.languages.mainTag")}
+                  </span>
+                ) : null}
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-sm" data-slot="voice-main-language">
+          {codes.length ? t("agentProto.languages.main", { name: nameOf(codes[0]!) }) : t("agentProto.languages.none")}
+        </p>
+        <p id={hintId} className="text-xs text-pretty text-muted-foreground">
+          {t("agentProto.languages.hint")}
+        </p>
+        {errors.languages ? (
+          <p role="alert" className="text-xs text-destructive">
+            {errors.languages}
+          </p>
+        ) : null}
+      </fieldset>
       <fieldset className="grid min-w-0 gap-2">
         <legend className="mb-1 text-sm font-medium">{t("builder.field.register")}</legend>
         <div className="flex min-w-0 flex-wrap gap-4">

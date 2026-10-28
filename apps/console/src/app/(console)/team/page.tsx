@@ -21,7 +21,7 @@ export default async function TeamPage() {
   const manage = can(principal.role, "team:manage");
   return (
     <>
-      <PageHeader eyebrow={t("nav.group.account")} title={t("team.title")} description={t("team.description")} actions={manage ? <InviteButton origin={process.env.NEXUS_CONSOLE_ORIGIN ?? ""} /> : undefined} />
+      <PageHeader size="display" title={t("team.title")} description={t("team.description")} actions={manage ? <InviteButton origin={process.env.NEXUS_CONSOLE_ORIGIN ?? ""} /> : undefined} />
       <TeamLists team={team} manage={manage} />
       {/* Spec 047 (49.2): «Qué puede hacer cada rol», a la vista para invitar con criterio. */}
       <RolesTable t={t} />

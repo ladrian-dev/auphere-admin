@@ -35,6 +35,35 @@ export function channelStateText(t: T, state: ChannelVisibleState): string {
   return STATES.has(state.code) ? t(`builder.channel.state.${state.code}` as MessageKey) : state.code;
 }
 
+/** Estados de un número que ya tiene decidido a quién responde (el paso «¡Listo!» del asistente, §7.1). */
+const CONFIGURED = new Set(["team_only", "everyone", "paused", "problem"]);
+export function isConfiguredState(state: ChannelVisibleState): boolean {
+  return CONFIGURED.has(state.code);
+}
+
+/**
+ * La línea de cada número en la lista de la pestaña Canales (`agente.md` §7.2):
+ * «WhatsApp · responde solo a 1 número de prueba · escala a Marta». Sin su
+ * página, solo el canal.
+ */
+export function channelSummary(t: T, type: string, page: Pick<ChannelPage, "config"> | null): string {
+  const parts = [type === "whatsapp" ? t("builder.channels.whatsapp") : type];
+  if (!page) return parts[0]!;
+  const { audience, escalation } = page.config;
+  if (audience.mode === "team_only") {
+    const n = audience.test_numbers.length;
+    parts.push(n === 1 ? t("channels.proto.row.team.one") : t("channels.proto.row.team.other", { n }));
+  } else if (audience.mode === "everyone") {
+    const n = audience.exceptions.length;
+    parts.push(n === 0 ? t("channels.proto.row.everyone") : n === 1 ? t("channels.proto.row.everyone.one") : t("channels.proto.row.everyone.other", { n }));
+  } else {
+    parts.push(t("channels.proto.row.unset"));
+  }
+  const names = escalation.recipients.map((r) => r.name.trim()).filter(Boolean);
+  if (names.length) parts.push(t("channels.proto.row.escalates", { names: names.join(", ") }));
+  return parts.join(" · ");
+}
+
 // ── las rutas ───────────────────────────────────────────────────────────────
 
 /** La página de un canal cuelga de su agente (las migas ya lo esperan así). */

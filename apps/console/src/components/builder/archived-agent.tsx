@@ -9,6 +9,7 @@ import { Button, Callout, StatusBadge } from "@nexus/ui";
 import { CrumbName } from "@/components/shell/crumb-names";
 import { useT } from "@/i18n/client";
 import type { AgentHeader } from "@/lib/backend/agent-life-types";
+import { ShellBackButton } from "@/components/shell/shell-back-button";
 
 import { LIFE_ACTIONS, type AgentLifeActions } from "./agent-menu";
 import { visibleText, visibleTone } from "./life-model";
@@ -48,7 +49,10 @@ export function ArchivedAgent({
     <div className="grid min-w-0 gap-4" data-slot="archived-agent">
       <CrumbName id={header.id} label={header.name} />
       <header className="grid min-w-0 gap-2">
-        <h2 className="text-xl font-semibold text-balance break-words">{header.name}</h2>
+        <div className="flex min-w-0 items-center gap-3">
+          <ShellBackButton />
+          <h1 className="min-w-0 text-2xl font-semibold tracking-tighter text-balance break-words sm:text-display">{header.name}</h1>
+        </div>
         <div>
           <StatusBadge tone={visibleTone(header.visible_state)}>{visibleText(t, header.visible_state)}</StatusBadge>
         </div>
