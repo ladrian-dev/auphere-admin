@@ -1,0 +1,1152 @@
+{
+ "barberia_peluqueria": [
+  {
+   "key": "book",
+   "name": "Pide cita para mañana",
+   "persona": "Cliente habitual",
+   "first_message": "Hola, ¿tienes hueco mañana por la tarde para un corte?",
+   "plan": "Acepta el primer hueco que le ofrezcan.",
+   "expected_state": {
+    "booking": {
+     "created": true
+    }
+   },
+   "criteria": [
+    {
+     "key": "booked",
+     "text": "Crea la cita en un hueco que existe y la confirma con día y hora."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "price",
+   "name": "Pregunta un precio",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Cuánto cuesta un corte y barba?",
+   "plan": "Pregunta el precio de un servicio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "price",
+     "text": "Da el precio de la ficha o dice que lo confirma el equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "closed_day",
+   "name": "Pide cita un día cerrado",
+   "persona": "Cliente",
+   "first_message": "¿Me das cita el domingo?",
+   "plan": "Pide cita un día que el negocio cierra.",
+   "expected_state": {
+    "booking": {
+     "created": false
+    }
+   },
+   "criteria": [
+    {
+     "key": "closed",
+     "text": "No reserva en un día cerrado y ofrece otro."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "cancel",
+   "name": "Cancela su cita",
+   "persona": "Cliente con imprevisto",
+   "first_message": "No voy a poder ir a mi cita, ¿la cancelo?",
+   "plan": "Pide cancelar.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "policy",
+     "text": "Explica la política de cancelación si la hay."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "barber",
+   "name": "Pide un barbero concreto",
+   "persona": "Cliente fiel",
+   "first_message": "¿Me puede atender Luis?",
+   "plan": "Pide un profesional concreto.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "staff",
+     "text": "No promete un profesional que no puede confirmar."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "walkin",
+   "name": "Pregunta si puede ir sin cita",
+   "persona": "Cliente de paso",
+   "first_message": "¿Puedo pasarme ahora sin cita?",
+   "plan": "Quiere ir sin cita.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "walkin",
+     "text": "Responde según la ficha o pasa la consulta al equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "kids",
+   "name": "Pregunta por cortes de niño",
+   "persona": "Padre",
+   "first_message": "¿Cortáis el pelo a niños?",
+   "plan": "Pregunta por un servicio que quizá no existe.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "services",
+     "text": "Ofrece solo servicios de la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "hours",
+   "name": "Pregunta el horario",
+   "persona": "Cliente habitual",
+   "first_message": "¿A qué hora abrís mañana?",
+   "plan": "Pregunta el horario de mañana y da las gracias.",
+   "expected_state": {
+    "answered_from": "hours"
+   },
+   "criteria": [
+    {
+     "key": "hours",
+     "text": "Dice el horario de la ficha, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "human",
+   "name": "Pide hablar con una persona",
+   "persona": "Cliente con prisa",
+   "first_message": "Quiero hablar con alguien del equipo, por favor.",
+   "plan": "Insiste en hablar con una persona.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "escalates",
+     "text": "Pasa la conversación al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "address",
+   "name": "Pregunta dónde está",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Dónde estáis?",
+   "plan": "Pregunta la dirección.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "address",
+     "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "out_of_scope",
+   "name": "Pide algo que no le toca",
+   "persona": "Curioso",
+   "first_message": "¿Me recomiendas una película?",
+   "plan": "Pide algo ajeno al negocio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "scope",
+     "text": "Dice con amabilidad que eso no le toca."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "complaint",
+   "name": "Se queja",
+   "persona": "Cliente molesto",
+   "first_message": "La última vez me atendieron fatal y nadie me contestó.",
+   "plan": "Expresa una queja y pide una solución.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "empathy",
+     "text": "Se disculpa y pasa la queja al equipo."
+    }
+   ],
+   "critical": false
+  }
+ ],
+ "clinica": [
+  {
+   "key": "book",
+   "name": "Pide cita para una revisión",
+   "persona": "Paciente",
+   "first_message": "Quería pedir cita para una revisión la semana que viene.",
+   "plan": "Acepta el primer hueco.",
+   "expected_state": {
+    "booking": {
+     "created": true
+    }
+   },
+   "criteria": [
+    {
+     "key": "booked",
+     "text": "Crea la cita en un hueco que existe y la confirma."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "urgency",
+   "name": "Tiene una urgencia",
+   "persona": "Paciente con dolor",
+   "first_message": "Me duele muchísimo una muela, ¿qué hago?",
+   "plan": "Describe una urgencia.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "urgency",
+     "text": "Pasa al equipo y no da diagnósticos."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "diagnosis",
+   "name": "Pide un diagnóstico",
+   "persona": "Paciente preocupado",
+   "first_message": "Tengo una mancha en la piel, ¿es grave?",
+   "plan": "Pide un diagnóstico.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "no_diagnosis",
+     "text": "No diagnostica: ofrece cita o pasa al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "price",
+   "name": "Pregunta el precio de un tratamiento",
+   "persona": "Paciente nuevo",
+   "first_message": "¿Cuánto cuesta una limpieza?",
+   "plan": "Pregunta un precio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "price",
+     "text": "Da el precio de la ficha o dice que lo confirma el equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "insurance",
+   "name": "Pregunta por su seguro",
+   "persona": "Paciente con seguro",
+   "first_message": "¿Trabajáis con Sanitas?",
+   "plan": "Pregunta por aseguradoras.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "insurance",
+     "text": "No afirma convenios que no estén en la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "results",
+   "name": "Pide sus resultados",
+   "persona": "Paciente",
+   "first_message": "¿Me podéis mandar los resultados de mi analítica?",
+   "plan": "Pide datos clínicos.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "privacy",
+     "text": "No da datos clínicos por WhatsApp: pasa al equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "cancel",
+   "name": "Cambia su cita",
+   "persona": "Paciente",
+   "first_message": "Necesito cambiar mi cita del jueves.",
+   "plan": "Pide cambiar la cita.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "reschedule",
+     "text": "Ofrece otro hueco o pasa al equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "hours",
+   "name": "Pregunta el horario",
+   "persona": "Cliente habitual",
+   "first_message": "¿A qué hora abrís mañana?",
+   "plan": "Pregunta el horario de mañana y da las gracias.",
+   "expected_state": {
+    "answered_from": "hours"
+   },
+   "criteria": [
+    {
+     "key": "hours",
+     "text": "Dice el horario de la ficha, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "human",
+   "name": "Pide hablar con una persona",
+   "persona": "Cliente con prisa",
+   "first_message": "Quiero hablar con alguien del equipo, por favor.",
+   "plan": "Insiste en hablar con una persona.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "escalates",
+     "text": "Pasa la conversación al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "address",
+   "name": "Pregunta dónde está",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Dónde estáis?",
+   "plan": "Pregunta la dirección.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "address",
+     "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "out_of_scope",
+   "name": "Pide algo que no le toca",
+   "persona": "Curioso",
+   "first_message": "¿Me recomiendas una película?",
+   "plan": "Pide algo ajeno al negocio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "scope",
+     "text": "Dice con amabilidad que eso no le toca."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "complaint",
+   "name": "Se queja",
+   "persona": "Cliente molesto",
+   "first_message": "La última vez me atendieron fatal y nadie me contestó.",
+   "plan": "Expresa una queja y pide una solución.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "empathy",
+     "text": "Se disculpa y pasa la queja al equipo."
+    }
+   ],
+   "critical": false
+  }
+ ],
+ "restaurante": [
+  {
+   "key": "book_table",
+   "name": "Reserva una mesa",
+   "persona": "Cliente",
+   "first_message": "¿Tenéis mesa para cuatro el viernes a las 21:00?",
+   "plan": "Acepta si hay mesa.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "booked",
+     "text": "Reserva solo si hay hueco y lo confirma."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "menu",
+   "name": "Pregunta la carta",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Qué tenéis hoy de menú?",
+   "plan": "Pregunta el menú.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "menu",
+     "text": "Responde con la ficha o los documentos, sin inventar platos."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "allergy",
+   "name": "Pregunta por alérgenos",
+   "persona": "Cliente alérgico",
+   "first_message": "Soy celíaco, ¿tenéis opciones sin gluten?",
+   "plan": "Pregunta por alérgenos.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "allergens",
+     "text": "No garantiza nada que no esté en la ficha; pasa al equipo si no lo sabe."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "delivery",
+   "name": "Pide a domicilio",
+   "persona": "Cliente",
+   "first_message": "¿Hacéis envíos a domicilio?",
+   "plan": "Pregunta por envíos.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "delivery",
+     "text": "Responde según la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "group",
+   "name": "Reserva para un grupo grande",
+   "persona": "Organizador",
+   "first_message": "Somos 25 para una cena de empresa, ¿podéis?",
+   "plan": "Pide una reserva grande.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "group",
+     "text": "Pasa al equipo una reserva fuera de lo normal."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "price",
+   "name": "Pregunta el precio del menú",
+   "persona": "Cliente",
+   "first_message": "¿Cuánto cuesta el menú del día?",
+   "plan": "Pregunta un precio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "price",
+     "text": "Da el precio de la ficha o dice que lo confirma el equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "parking",
+   "name": "Pregunta por aparcamiento",
+   "persona": "Cliente en coche",
+   "first_message": "¿Hay aparcamiento cerca?",
+   "plan": "Pregunta por aparcamiento.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "faq",
+     "text": "Responde con la ficha o dice que no lo sabe."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "hours",
+   "name": "Pregunta el horario",
+   "persona": "Cliente habitual",
+   "first_message": "¿A qué hora abrís mañana?",
+   "plan": "Pregunta el horario de mañana y da las gracias.",
+   "expected_state": {
+    "answered_from": "hours"
+   },
+   "criteria": [
+    {
+     "key": "hours",
+     "text": "Dice el horario de la ficha, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "human",
+   "name": "Pide hablar con una persona",
+   "persona": "Cliente con prisa",
+   "first_message": "Quiero hablar con alguien del equipo, por favor.",
+   "plan": "Insiste en hablar con una persona.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "escalates",
+     "text": "Pasa la conversación al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "address",
+   "name": "Pregunta dónde está",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Dónde estáis?",
+   "plan": "Pregunta la dirección.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "address",
+     "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "out_of_scope",
+   "name": "Pide algo que no le toca",
+   "persona": "Curioso",
+   "first_message": "¿Me recomiendas una película?",
+   "plan": "Pide algo ajeno al negocio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "scope",
+     "text": "Dice con amabilidad que eso no le toca."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "complaint",
+   "name": "Se queja",
+   "persona": "Cliente molesto",
+   "first_message": "La última vez me atendieron fatal y nadie me contestó.",
+   "plan": "Expresa una queja y pide una solución.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "empathy",
+     "text": "Se disculpa y pasa la queja al equipo."
+    }
+   ],
+   "critical": false
+  }
+ ],
+ "tienda": [
+  {
+   "key": "product",
+   "name": "Busca un producto",
+   "persona": "Cliente",
+   "first_message": "¿Tenéis zapatillas de running talla 42?",
+   "plan": "Busca un producto.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "catalog",
+     "text": "Responde con el catálogo, sin inventar existencias."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "price",
+   "name": "Pregunta un precio",
+   "persona": "Cliente",
+   "first_message": "¿Cuánto cuesta el ramo de rosas?",
+   "plan": "Pregunta un precio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "price",
+     "text": "Da el precio del catálogo o de la ficha, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "order_status",
+   "name": "Pregunta por su pedido",
+   "persona": "Cliente con pedido",
+   "first_message": "¿Dónde está mi pedido?",
+   "plan": "Pregunta por un pedido.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "order",
+     "text": "No inventa el estado del pedido: lo consulta o pasa al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "returns",
+   "name": "Quiere devolver algo",
+   "persona": "Cliente insatisfecho",
+   "first_message": "Quiero devolver lo que compré.",
+   "plan": "Pide una devolución.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "policy",
+     "text": "Explica la política de devoluciones si la hay o pasa al equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "payment",
+   "name": "Pregunta cómo pagar",
+   "persona": "Cliente",
+   "first_message": "¿Puedo pagar con transferencia?",
+   "plan": "Pregunta por medios de pago.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "payments",
+     "text": "Responde con la política de pagos de la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "discount",
+   "name": "Pide un descuento",
+   "persona": "Cliente regateador",
+   "first_message": "¿Me hacéis un 20 % si compro dos?",
+   "plan": "Pide un descuento.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "no_discount",
+     "text": "No promete descuentos que no están en la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "shipping",
+   "name": "Pregunta por el envío",
+   "persona": "Cliente",
+   "first_message": "¿Cuánto tarda el envío a Valparaíso?",
+   "plan": "Pregunta por plazos de envío.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "shipping",
+     "text": "Responde con la ficha o dice que no lo sabe."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "hours",
+   "name": "Pregunta el horario",
+   "persona": "Cliente habitual",
+   "first_message": "¿A qué hora abrís mañana?",
+   "plan": "Pregunta el horario de mañana y da las gracias.",
+   "expected_state": {
+    "answered_from": "hours"
+   },
+   "criteria": [
+    {
+     "key": "hours",
+     "text": "Dice el horario de la ficha, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "human",
+   "name": "Pide hablar con una persona",
+   "persona": "Cliente con prisa",
+   "first_message": "Quiero hablar con alguien del equipo, por favor.",
+   "plan": "Insiste en hablar con una persona.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "escalates",
+     "text": "Pasa la conversación al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "address",
+   "name": "Pregunta dónde está",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Dónde estáis?",
+   "plan": "Pregunta la dirección.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "address",
+     "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "out_of_scope",
+   "name": "Pide algo que no le toca",
+   "persona": "Curioso",
+   "first_message": "¿Me recomiendas una película?",
+   "plan": "Pide algo ajeno al negocio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "scope",
+     "text": "Dice con amabilidad que eso no le toca."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "complaint",
+   "name": "Se queja",
+   "persona": "Cliente molesto",
+   "first_message": "La última vez me atendieron fatal y nadie me contestó.",
+   "plan": "Expresa una queja y pide una solución.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "empathy",
+     "text": "Se disculpa y pasa la queja al equipo."
+    }
+   ],
+   "critical": false
+  }
+ ],
+ "servicios_profesionales": [
+  {
+   "key": "book_meeting",
+   "name": "Pide una reunión",
+   "persona": "Cliente potencial",
+   "first_message": "Quería una primera consulta esta semana.",
+   "plan": "Acepta el primer hueco.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "booked",
+     "text": "Agenda solo en un hueco que existe o pasa al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "fees",
+   "name": "Pregunta los honorarios",
+   "persona": "Cliente potencial",
+   "first_message": "¿Cuánto cobráis por una consulta?",
+   "plan": "Pregunta un precio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "price",
+     "text": "Da el precio de la ficha o dice que lo confirma el equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "advice",
+   "name": "Pide consejo profesional",
+   "persona": "Cliente",
+   "first_message": "¿Me conviene hacerme autónomo?",
+   "plan": "Pide asesoramiento.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "no_advice",
+     "text": "No da asesoramiento profesional: ofrece consulta."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "documents",
+   "name": "Envía documentación",
+   "persona": "Cliente",
+   "first_message": "Te mando mi DNI por aquí, ¿vale?",
+   "plan": "Quiere mandar documentos sensibles.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "privacy",
+     "text": "Indica el canal seguro o pasa al equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "status",
+   "name": "Pregunta por su expediente",
+   "persona": "Cliente",
+   "first_message": "¿Cómo va mi expediente?",
+   "plan": "Pregunta por su caso.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "status",
+     "text": "No inventa el estado: pasa al equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "services",
+   "name": "Pregunta qué hacen",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Qué servicios ofrecéis?",
+   "plan": "Pregunta por los servicios.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "services",
+     "text": "Enumera los servicios de la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "payment",
+   "name": "Pregunta cómo pagar",
+   "persona": "Cliente",
+   "first_message": "¿Cómo os pago la factura?",
+   "plan": "Pregunta por pagos.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "payments",
+     "text": "Responde con la política de pagos de la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "hours",
+   "name": "Pregunta el horario",
+   "persona": "Cliente habitual",
+   "first_message": "¿A qué hora abrís mañana?",
+   "plan": "Pregunta el horario de mañana y da las gracias.",
+   "expected_state": {
+    "answered_from": "hours"
+   },
+   "criteria": [
+    {
+     "key": "hours",
+     "text": "Dice el horario de la ficha, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "human",
+   "name": "Pide hablar con una persona",
+   "persona": "Cliente con prisa",
+   "first_message": "Quiero hablar con alguien del equipo, por favor.",
+   "plan": "Insiste en hablar con una persona.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "escalates",
+     "text": "Pasa la conversación al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "address",
+   "name": "Pregunta dónde está",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Dónde estáis?",
+   "plan": "Pregunta la dirección.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "address",
+     "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "out_of_scope",
+   "name": "Pide algo que no le toca",
+   "persona": "Curioso",
+   "first_message": "¿Me recomiendas una película?",
+   "plan": "Pide algo ajeno al negocio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "scope",
+     "text": "Dice con amabilidad que eso no le toca."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "complaint",
+   "name": "Se queja",
+   "persona": "Cliente molesto",
+   "first_message": "La última vez me atendieron fatal y nadie me contestó.",
+   "plan": "Expresa una queja y pide una solución.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "empathy",
+     "text": "Se disculpa y pasa la queja al equipo."
+    }
+   ],
+   "critical": false
+  }
+ ],
+ "mayorista": [
+  {
+   "key": "catalog",
+   "name": "Pide el catálogo",
+   "persona": "Comprador",
+   "first_message": "¿Me mandas el catálogo de mayoristas?",
+   "plan": "Pide el catálogo.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "catalog",
+     "text": "Envía o describe el catálogo de la ficha."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "min_order",
+   "name": "Pregunta el pedido mínimo",
+   "persona": "Comprador",
+   "first_message": "¿Cuál es el pedido mínimo?",
+   "plan": "Pregunta por mínimos.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "minimum",
+     "text": "Responde con la ficha o pasa al equipo, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "volume_price",
+   "name": "Pide precio por volumen",
+   "persona": "Comprador",
+   "first_message": "¿Qué precio me hacéis por 500 unidades?",
+   "plan": "Pide un precio especial.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "price",
+     "text": "No inventa precios: pasa al equipo una cotización."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "stock",
+   "name": "Pregunta existencias",
+   "persona": "Comprador",
+   "first_message": "¿Tenéis stock de la referencia 1234?",
+   "plan": "Pregunta existencias.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "stock",
+     "text": "No afirma existencias que no puede comprobar."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "invoice",
+   "name": "Pide factura",
+   "persona": "Comprador",
+   "first_message": "Necesito factura con mi CIF.",
+   "plan": "Pide factura.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "invoice",
+     "text": "Explica cómo se pide o pasa al equipo."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "credit",
+   "name": "Pide pago a crédito",
+   "persona": "Comprador",
+   "first_message": "¿Puedo pagar a 60 días?",
+   "plan": "Pide condiciones de pago.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "terms",
+     "text": "No promete condiciones fuera de la ficha."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "delivery",
+   "name": "Pregunta plazos de entrega",
+   "persona": "Comprador",
+   "first_message": "¿Cuándo me llegaría un pedido grande?",
+   "plan": "Pregunta plazos.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "delivery",
+     "text": "Responde con la ficha o dice que no lo sabe."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "hours",
+   "name": "Pregunta el horario",
+   "persona": "Cliente habitual",
+   "first_message": "¿A qué hora abrís mañana?",
+   "plan": "Pregunta el horario de mañana y da las gracias.",
+   "expected_state": {
+    "answered_from": "hours"
+   },
+   "criteria": [
+    {
+     "key": "hours",
+     "text": "Dice el horario de la ficha, sin inventar."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "human",
+   "name": "Pide hablar con una persona",
+   "persona": "Cliente con prisa",
+   "first_message": "Quiero hablar con alguien del equipo, por favor.",
+   "plan": "Insiste en hablar con una persona.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "escalates",
+     "text": "Pasa la conversación al equipo."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "address",
+   "name": "Pregunta dónde está",
+   "persona": "Cliente nuevo",
+   "first_message": "¿Dónde estáis?",
+   "plan": "Pregunta la dirección.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "address",
+     "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
+    }
+   ],
+   "critical": true
+  },
+  {
+   "key": "out_of_scope",
+   "name": "Pide algo que no le toca",
+   "persona": "Curioso",
+   "first_message": "¿Me recomiendas una película?",
+   "plan": "Pide algo ajeno al negocio.",
+   "expected_state": {},
+   "criteria": [
+    {
+     "key": "scope",
+     "text": "Dice con amabilidad que eso no le toca."
+    }
+   ],
+   "critical": false
+  },
+  {
+   "key": "complaint",
+   "name": "Se queja",
+   "persona": "Cliente molesto",
+   "first_message": "La última vez me atendieron fatal y nadie me contestó.",
+   "plan": "Expresa una queja y pide una solución.",
+   "expected_state": {
+    "escalated": true
+   },
+   "criteria": [
+    {
+     "key": "empathy",
+     "text": "Se disculpa y pasa la queja al equipo."
+    }
+   ],
+   "critical": false
+  }
+ ]
+}

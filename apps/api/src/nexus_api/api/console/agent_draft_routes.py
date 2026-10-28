@@ -42,6 +42,7 @@ from nexus_api.services.agent_config_service import (
 )
 from nexus_api.services.agent_console_policy import merge_console_policy
 from nexus_api.services.agent_payment_review import Reviewer, ReviewerError, apply_reviewers
+from nexus_api.services.agent_spec.schema import dump
 
 from .agent_drafts import draft_screens, draft_written, ensure_draft, load_view
 from .agent_settings import _audience_out, _payment_review_out, _settings_of
@@ -54,6 +55,7 @@ from .schemas_agent_draft import (
     DraftAction,
     DraftChangeOut,
     DraftConflictOut,
+    DraftTestsOut,
 )
 
 router = APIRouter(prefix="/clients/{ref}/agents/{agent_id}")
@@ -170,6 +172,33 @@ async def draft_out(scope: ClientScope) -> AgentDraftOut:
         payment_review=_payment_review_out(target),
         screens=draft_screens(view),
         allowed=allowed,
+        spec=_spec_doc(target, agent),
+        tests=await _tests_out(scope, agent.id),
+    )
+
+
+def _spec_doc(target: AgentConfig | None, agent: Agent) -> dict[str, Any] | None:
+    from .agent_spec_drafts import spec_of
+
+    try:
+        spec = spec_of(target, agent)
+    except Exception:  # pragma: no cover - a stored spec that no longer validates
+        return dict(target.spec) if target is not None and target.spec else None
+    return dump(spec) if spec is not None else None
+
+
+async def _tests_out(scope: ClientScope, agent_id: uuid.UUID) -> DraftTestsOut | None:
+    from nexus_api.services.testing.suites import get_suite, list_tests
+
+    suite = await get_suite(scope.session, agent_id)
+    if suite is None:
+        return None
+    tests = [t for t in await list_tests(scope.session, suite) if t.not_applicable_reason is None]
+    return DraftTestsOut(
+        total=len(tests),
+        stale=sum(1 for t in tests if t.stale),
+        case=sum(1 for t in tests if t.kind == "case"),
+        sector=sum(1 for t in tests if t.kind == "sector"),
     )
 
 
@@ -269,6 +298,8 @@ async def patch_draft(
 ) -> AgentDraftOut:
     """Write into the draft, creating it from the active version if needed."""
     expected = _required_revision(if_match)
+    if body.spec is not None:
+        return await _patch_spec(body, response, scope, expected)
     service = AgentConfigService(scope.session)
     if body.tools is not None:
         try:
@@ -294,6 +325,46 @@ async def patch_draft(
     if body.note is not None:
         draft.note = body.note.strip() or None
     await draft_written(scope, draft)
+    out = await draft_out(scope)
+    response.headers["ETag"] = etag(out.revision)
+    return out
+
+
+async def _patch_spec(
+    body: AgentDraftPatchIn, response: Response, scope: ClientScope, expected: int
+) -> AgentDraftOut:
+    """The AgentSpec as a whole: validated without a model (15.4, 16.1) and
+    compiled into the draft's prompt (16.2). Its tests stop counting (17.7)."""
+    from nexus_api.services.agent_spec.validator import (
+        load_context,
+        problems_out,
+        validate_spec,
+    )
+
+    from .agent_spec_drafts import current_spec, write_spec
+
+    assert body.spec is not None
+    before, _cfg = await current_spec(scope)
+    legacy_chars = (
+        len(before.instructions.legacy_text or "")
+        if before is not None and before.mode == "instructions" and before.instructions
+        else None
+    )
+    ctx = await load_context(
+        scope.session, partner_id=scope.principal.partner.id, legacy_chars=legacy_chars
+    )
+    spec, problems = validate_spec(body.spec, ctx, author="person")
+    if spec is None or problems:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "spec_invalid", "problems": problems_out(problems)},
+        )
+    try:
+        draft = await write_spec(scope, spec, expected_revision=expected)
+    except DraftRevisionConflict as exc:
+        raise await _conflict(scope, exc.expected) from None
+    if body.note is not None:
+        draft.note = body.note.strip() or None
     out = await draft_out(scope)
     response.headers["ETag"] = etag(out.revision)
     return out

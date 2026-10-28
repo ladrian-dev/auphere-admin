@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,6 +27,15 @@ from .schemas_agent_tools import AudienceIn, AudienceOut, PaymentReviewIn, Payme
 DraftScreen = Literal["settings", "capabilities", "knowledge", "prompt"]
 DraftAction = Literal["edit", "discard"]
 VersionStatus = Literal["staged", "active", "archived"]
+
+
+class DraftTestsOut(BaseModel):
+    """How many tests the agent has and how many must run again (17.7)."""
+
+    total: int
+    stale: int
+    case: int
+    sector: int
 
 
 class AgentDraftOut(BaseModel):
@@ -59,6 +68,10 @@ class AgentDraftOut(BaseModel):
     #: The screens of the agent where the draft differs from the active version.
     screens: list[DraftScreen] = Field(default_factory=list)
     allowed: list[DraftAction] = Field(default_factory=list)
+    # Spec 047 (T080, requisito 16): the version's AgentSpec — a version of
+    # before the 047 reads in «instructions» mode — and the state of its tests.
+    spec: dict[str, Any] | None = None
+    tests: DraftTestsOut | None = None
 
 
 class AgentDraftPatchIn(BaseModel):
@@ -74,6 +87,9 @@ class AgentDraftPatchIn(BaseModel):
     payment_review: PaymentReviewIn | None = None
     #: The change note of this version (R3.6); ``""`` clears it.
     note: str | None = Field(default=None, max_length=500)
+    # Spec 047: the whole AgentSpec, validated without a model (15.4). It is
+    # compiled into ``system_prompt`` and wins over ``system_prompt``/``tools``.
+    spec: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _says_something(self) -> AgentDraftPatchIn:
@@ -84,6 +100,7 @@ class AgentDraftPatchIn(BaseModel):
             self.audience,
             self.payment_review,
             self.note,
+            self.spec,
         )
         if all(value is None for value in sent):
             raise ValueError("send at least one change")

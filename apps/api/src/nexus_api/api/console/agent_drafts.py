@@ -68,7 +68,7 @@ def _open_writes(session: AsyncSession) -> dict[Any, DraftWrite]:
 
 
 async def ensure_draft(
-    scope: ClientScope, *, expected_revision: int | None = None
+    scope: ClientScope, *, expected_revision: int | None = None, disclosure_default: bool = True
 ) -> tuple[AgentConfig, bool]:
     """Return ``(draft, created)``: the agent's draft, or a new one that
     copies the active version — or the last saved one — with every field
@@ -84,7 +84,13 @@ async def ensure_draft(
         actor=actor,
         agent_id=scope.agent_id,
         expected_revision=expected_revision,
-        prepare_policies=lambda policies: with_disclosure_default(policies, actor=actor),
+        # Spec 047: un borrador escrito como AgentSpec trae su propia decisión
+        # del aviso de IA (16.6), y sin ella queda sin decidir.
+        prepare_policies=(
+            (lambda policies: with_disclosure_default(policies, actor=actor))
+            if disclosure_default
+            else None
+        ),
     )
     _open_writes(scope.session)[write.draft.id] = write
     return write.draft, write.created
@@ -97,6 +103,17 @@ async def draft_written(scope: ClientScope, draft: AgentConfig) -> int | None:
     write = _open_writes(scope.session).pop(draft.id, None)
     if write is None:  # pragma: no cover - a programming error, not an input
         raise RuntimeError("draft_written() without ensure_draft()")
+    # Spec 047 (T128): connector tools put on the list by today's screens keep
+    # working — they get their activation (not on the new console).
+    from nexus_api.services.activations import ensure_activations_for_tools
+
+    await ensure_activations_for_tools(
+        scope.session,
+        tenant_id=scope.tenant.id,
+        agent_id=draft.agent_id,
+        tools=list(draft.tools or []),
+        actor=scope.principal.actor,
+    )
     return await AgentConfigService(scope.session).finish_draft(write, actor=scope.principal.actor)
 
 

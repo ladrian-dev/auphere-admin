@@ -24,10 +24,11 @@ cambio:
    ``client.business_changed`` en la campana, agrupado por cliente y hora. Se
    emite **después de confirmar** (:func:`after_commit`): un cambio que no se
    guardó no avisa a nadie.
-8. **Las pruebas afectadas** (requisito 13.7): las de cada agente publicado del
-   cliente vuelven a pasar. Hasta la fase 9 no hay pruebas que correr: queda un
-   trabajo ``tests`` terminado que las marca ``stale`` (uno por agente, que se
-   va completando con las secciones que cambian; nunca uno por tecla).
+8. **Las pruebas afectadas** (requisito 13.7): quedan desactualizadas en todos
+   los agentes del cliente, y las de cada agente publicado vuelven a pasar en
+   segundo plano: una pasada ``tests`` de las afectadas por agente, que se va
+   completando con las secciones que cambian mientras espera (nunca una por
+   tecla).
 
 El servicio de cada sección (horario, sedes, servicios…) valida su dominio y
 escribe sus filas; después llama aquí. ``before``/``after`` son la vista de la
@@ -472,68 +473,87 @@ def _jsonable(value: Mapping[str, Any] | list[Any] | None) -> dict[str, Any] | N
 # ── las pruebas afectadas (requisito 13.7) ─────────────────────────────────────
 
 
-async def mark_tests_stale(session: AsyncSession, *, sections: Sequence[str]) -> int:
-    """Las pruebas de cada agente publicado del cliente quedan desactualizadas.
-
-    Hasta la fase 9 no hay suites que correr: cada agente tiene **un** trabajo
-    ``tests`` terminado con ``{stale: true, runs: 0, sections}``, que se completa
-    con las secciones que van cambiando. La fase 9 lo cambia por la pasada de
-    verdad en segundo plano (y el aviso ``agent.tests.failing`` si alguna falla).
-    Devuelve cuántos agentes quedaron marcados."""
-    from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus, Job
-    from nexus_api.services.jobs import create_job, finish_job, start_job
+async def mark_tests_stale(
+    session: AsyncSession, *, sections: Sequence[str], only_agent: uuid.UUID | None = None
+) -> int:
+    """Las pruebas afectadas de cada agente del cliente quedan desactualizadas
+    (21.7) y las de cada agente **publicado** vuelven a pasar en segundo plano
+    (13.7): una pasada de las afectadas, con su versión activa, encolada al
+    confirmar. Una por agente, no una por cambio: si ya hay una en cola, se le
+    suman las secciones. ``only_agent``: lo que cambió solo lo ve ese agente (su
+    capa de conocimiento, 37.3). Devuelve cuántos agentes publicados quedaron en
+    cola."""
+    from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus
+    from nexus_api.db.models.agent_spec import AgentTestRun
+    from nexus_api.services.jobs import create_job
+    from nexus_api.services.testing.runs import create_run
+    from nexus_api.services.testing.suites import get_suite, list_tests, mark_stale
 
     tenant_id = require_current_tenant()
-    agent_ids = (
-        await session.scalars(
-            sa.select(Agent.id)
-            .where(
-                Agent.tenant_id == tenant_id,
-                Agent.status == "active",
-                sa.exists().where(
+    agents = (
+        await session.execute(
+            sa.select(Agent.id, AgentConfig)
+            .outerjoin(
+                AgentConfig,
+                sa.and_(
                     AgentConfig.agent_id == Agent.id,
                     AgentConfig.status == AgentConfigStatus.ACTIVE,
                 ),
             )
+            .where(
+                Agent.tenant_id == tenant_id,
+                Agent.status == "active",
+                Agent.id == only_agent if only_agent is not None else sa.true(),
+            )
             .order_by(Agent.created_at, Agent.id)
         )
     ).all()
-    for agent_id in agent_ids:
-        marker = await session.scalar(
-            sa.select(Job)
+    queued = 0
+    for agent_id, active in agents:
+        await mark_stale(session, agent_id, sections=sections)
+        if active is None:
+            continue  # un borrador no habla con nadie: no hay nada que volver a pasar
+        suite = await get_suite(session, agent_id)
+        if suite is None or not any(t.stale for t in await list_tests(session, suite)):
+            continue
+        pending = await session.scalar(
+            sa.select(AgentTestRun)
             .where(
-                Job.tenant_id == tenant_id,
-                Job.agent_id == agent_id,
-                Job.kind == "tests",
-                Job.status == "done",
-                Job.result["stale"].as_boolean().is_(True),
-                Job.result["runs"].as_integer() == 0,
+                AgentTestRun.tenant_id == tenant_id,
+                AgentTestRun.agent_id == agent_id,
+                AgentTestRun.reason == "business_change",
+                AgentTestRun.status == "queued",
             )
-            .order_by(Job.created_at.desc())
-            .limit(1)
             .with_for_update()
         )
-        if marker is not None:
-            result = dict(marker.result or {})
-            merged = sorted({*result.get("sections", []), *sections})
-            if merged != result.get("sections"):
-                result["sections"] = merged
-                marker.result = result
-                marker.updated_at = sa.func.now()
+        if pending is not None:
+            summary = dict(pending.summary or {})
+            summary["sections"] = sorted({*summary.get("sections", []), *sections})
+            pending.summary = summary
             continue
         job = await create_job(session, kind="tests", agent_id=agent_id, created_by=None)
-        await start_job(session, job.id)
-        await finish_job(
+        run = await create_run(
             session,
-            job.id,
-            result={
-                "stale": True,
-                "runs": 0,
-                "trigger": "business_changed",
-                "sections": sorted(set(sections)),
-            },
+            agent_id=agent_id,
+            scope="affected",
+            reason="business_change",
+            job_id=job.id,
+            version=active,
         )
-    return len(agent_ids)
+        run.summary = {"sections": sorted(set(sections))}
+        _enqueue_after_commit(session, job)
+        queued += 1
+    return queued
+
+
+def _enqueue_after_commit(session: AsyncSession, job: Any) -> None:
+    async def push() -> None:
+        from nexus_api.core import redis_client
+        from nexus_api.services.jobs import enqueue_job
+
+        await enqueue_job(redis_client.get_redis(), job)
+
+    after_commit(session, push)
 
 
 # ── el aviso al partner (requisito 13.6) ───────────────────────────────────────
