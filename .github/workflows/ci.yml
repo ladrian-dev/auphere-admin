@@ -263,12 +263,10 @@ jobs:
       - name: "mobile — typecheck + lint + jest + generated files"
         working-directory: apps/mobile
         run: pnpm verify
-      # Catches what tsc and jest cannot: a native peer dependency missing
-      # (expo-symbols without expo-font crashed Android, 2026-10-20) or a
-      # package off the SDK's versions.
-      - name: "mobile — expo-doctor"
-        working-directory: apps/mobile
-        run: npx expo-doctor
+      # No expo-doctor here (2026-10-28): it compares the app with the SDK
+      # patches Expo publishes every few weeks, so it went red on its own
+      # (2026-10-22 and 2026-10-28) and blocked deploy-staging with no change
+      # of ours. Run `npx expo-doctor` by hand when the app's dependencies change.
 
   # ADR-017 / migration 0021 — the AgendaPro admin browser MCP (Node
   # subprocess) was removed. The ``test-mcp-node`` job that built +

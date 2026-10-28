@@ -127,9 +127,9 @@ run_mobile() {
   step "app · jest"                     pnpm --dir "$M" test --ci
   step "app · generados al dia"         pnpm --dir "$M" gen:check
   step "app · contrato OpenAPI al dia"  uv run --directory "$API" python scripts/export_openapi.py --check
-  # Lo que tsc y jest no ven: una dependencia nativa par que falta (expo-symbols
-  # sin expo-font tumbaba Android) o un paquete fuera de las versiones del SDK.
-  step "app · expo-doctor"              bash -c "cd '$M' && npx --yes expo-doctor"
+  # Sin expo-doctor (2026-10-28): compara la app con los parches del SDK que
+  # Expo publica cada pocas semanas y se ponía en rojo solo. Se corre a mano
+  # (``npx expo-doctor``) cuando cambian las dependencias de la app.
 }
 
 # Constitución §VIII (spec 017, T-LIC): ninguna dependencia nueva entra sin
