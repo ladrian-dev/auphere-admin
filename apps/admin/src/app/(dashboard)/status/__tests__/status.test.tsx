@@ -125,3 +125,18 @@ describe("the reconciliations", () => {
     expect(screen.getByText("Meta y la base coinciden")).toBeTruthy();
   });
 });
+
+describe("la versión de Meta caduca (spec 050, 3.6)", () => {
+  it("avisa con los días que quedan y qué hay que hacer", async () => {
+    const { GraphVersionCallout } = await import("../graph-version-callout");
+    render(<GraphVersionCallout version="v22.0" expiresOn="2027-05-20" daysLeft={19} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("La versión v22.0 de Meta caduca en 19 días");
+    expect(screen.getByRole("alert")).toHaveTextContent("2027-05-20");
+  });
+
+  it("si ya caducó, lo dice sin rodeos", async () => {
+    const { GraphVersionCallout } = await import("../graph-version-callout");
+    render(<GraphVersionCallout version="v22.0" expiresOn="2027-05-20" daysLeft={-3} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Meta ya no sirve la versión v22.0");
+  });
+});

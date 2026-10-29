@@ -1227,6 +1227,10 @@ export type AdminInstance = {
   schema_revision: string | null;
   commit: string;
   checks: Record<string, string>;
+  /** Spec 050 (3.6): the Graph version, and its expiry when it is 60 days away or less. */
+  meta_graph_version?: string;
+  meta_graph_expires_on?: string | null;
+  meta_graph_days_left?: number | null;
 };
 
 export type PartnerCreateInput = {

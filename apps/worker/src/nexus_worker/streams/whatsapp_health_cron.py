@@ -26,11 +26,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import sqlalchemy as sa
 import structlog
-from nexus_api.config import get_settings
+from nexus_api.config import get_settings, graph_version_notice
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
@@ -60,7 +60,9 @@ async def run_whatsapp_health_cron(
     """Background task. Returns when ``stop`` is set."""
     log.info("whatsapp_health.start", tick_seconds=tick_seconds)
     sm = get_sessionmaker()
+    warned_on: date | None = None
     while not stop.is_set():
+        warned_on = warn_if_graph_version_expiring(warned_on)
         try:
             tenant_ids = await _list_active_tenants(sm)
             for tid in tenant_ids:
@@ -74,6 +76,28 @@ async def run_whatsapp_health_cron(
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
     log.info("whatsapp_health.stopped")
+
+
+def warn_if_graph_version_expiring(
+    warned_on: date | None, *, today: date | None = None
+) -> date | None:
+    """Spec 050 (3.6): once a day, an error-level log while the Graph
+    version dies within 60 days; the panel's Estado page says the same.
+    Returns the day it last warned."""
+    day = today or datetime.now(tz=UTC).date()
+    if warned_on == day:
+        return warned_on
+    version = get_settings().meta_graph_api_version
+    notice = graph_version_notice(version, day)
+    if notice is None:
+        return warned_on
+    log.error(
+        "meta.graph_version_expiring",
+        version=version,
+        expires_on=notice[0].isoformat(),
+        days_left=notice[1],
+    )
+    return day
 
 
 async def _list_active_tenants(sm: sa.orm.sessionmaker) -> list[uuid.UUID]:  # type: ignore[type-arg]

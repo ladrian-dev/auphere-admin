@@ -9,6 +9,7 @@ import { modelsBackend } from "@/lib/backend-models";
 
 import { AnomaliesView } from "../router/anomalies/anomalies-view";
 import { DAY_OPTIONS, anomalyTotals, daysLabel, parseDays, sinceFor } from "./anomalies";
+import { GraphVersionCallout } from "./graph-version-callout";
 import { LedgerDiffs, MetaDiffs } from "./reconciliations-view";
 
 export const metadata = { title: "Estado" };
@@ -46,8 +47,12 @@ export default async function StatusPage({ searchParams }: { searchParams: Promi
                 { key: "env", term: "Entorno", detail: ENV_LABEL[instance.environment] ?? instance.environment },
                 { key: "schema", term: "Versión del esquema", detail: instance.schema_revision ?? "No se pudo leer", mono: true },
                 { key: "commit", term: "Commit de la API", detail: instance.commit === "unknown" ? "Sin dato (build local)" : instance.commit.slice(0, 12), mono: true },
+                ...(instance.meta_graph_version
+                  ? [{ key: "graph", term: "Versión de la API de Meta", detail: instance.meta_graph_version, mono: true }]
+                  : []),
               ]}
             />
+            {instance.meta_graph_expires_on ? <GraphVersionCallout version={instance.meta_graph_version ?? ""} expiresOn={instance.meta_graph_expires_on} daysLeft={instance.meta_graph_days_left ?? 0} /> : null}
           </Section>
           <Section title="Dependencias">
             <ul className="flex flex-col divide-y divide-border">

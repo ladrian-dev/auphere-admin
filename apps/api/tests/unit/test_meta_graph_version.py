@@ -26,6 +26,8 @@ SOURCES = [
     REPO / "apps" / "admin" / "src",
 ]
 VERSION = re.compile(r"""["'/]v(2\d)\.0\b""")
+#: Where versions are named on purpose: the setting and its expiry table.
+ALLOWED = {REPO / "apps" / "api" / "src" / "nexus_api" / "config.py"}
 
 
 def test_the_default_is_v26() -> None:
@@ -56,8 +58,60 @@ def test_no_other_version_is_written_by_hand() -> None:
                 continue
             if "node_modules" in path.parts or path.name.endswith((".test.ts", ".test.tsx")):
                 continue
+            if path in ALLOWED:
+                continue
             for n, line in enumerate(path.read_text(errors="ignore").splitlines(), 1):
                 for m in VERSION.finditer(line):
                     if m.group(1) != "26":
                         offenders.append(f"{path.relative_to(REPO)}:{n}: {line.strip()[:90]}")
     assert offenders == []
+
+
+# ── 3.6: the operator hears about an expiring version ───────────────────────
+
+
+def test_the_notice_starts_sixty_days_before_expiry() -> None:
+    from datetime import date
+
+    from nexus_api.config import graph_version_notice
+
+    assert graph_version_notice("v22.0", date(2027, 3, 20)) is None  # 61 days left
+    assert graph_version_notice("v22.0", date(2027, 3, 21)) == (date(2027, 5, 20), 60)
+    assert graph_version_notice("v22.0", date(2027, 6, 1)) == (date(2027, 5, 20), -12)
+    # A version without a published date has more than two years left.
+    assert graph_version_notice("v26.0", date(2028, 12, 1)) is None
+
+
+def test_the_health_cron_warns_once_a_day(monkeypatch) -> None:
+    from datetime import date
+
+    from nexus_worker.streams import whatsapp_health_cron as cron
+
+    events: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        cron.log, "error", lambda event, **kw: events.append({"event": event, **kw})
+    )
+    monkeypatch.setattr(cron, "get_settings", lambda: Settings(meta_graph_api_version="v22.0"))
+
+    day = date(2027, 5, 1)
+    warned = cron.warn_if_graph_version_expiring(None, today=day)
+    warned = cron.warn_if_graph_version_expiring(warned, today=day)
+    assert warned == day
+    assert events == [
+        {
+            "event": "meta.graph_version_expiring",
+            "version": "v22.0",
+            "expires_on": "2027-05-20",
+            "days_left": 19,
+        }
+    ]
+    assert cron.warn_if_graph_version_expiring(None, today=date(2027, 1, 1)) is None
+
+
+@pytest.mark.asyncio
+async def test_the_status_page_learns_the_version(client, admin_headers) -> None:
+    r = await client.get("/admin/instance", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["meta_graph_version"] == "v26.0"
+    assert body["meta_graph_expires_on"] is None and body["meta_graph_days_left"] is None

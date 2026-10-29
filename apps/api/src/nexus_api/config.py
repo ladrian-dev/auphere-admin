@@ -1,3 +1,4 @@
+from datetime import date
 from functools import lru_cache
 from typing import Literal
 
@@ -8,6 +9,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # module constant so the production secret guard can compare against it
 # without duplicating the literal.
 _DEV_FERNET_KEY = "RQ8j4zYQ3W3ofSt7pUJoKxTYwhZ8JkRdJ-T_Wc1G3xs="
+
+
+#: Spec 050 (3.6): when Meta stops serving each Graph version
+#: (``docs/graph-api/changelog/versions``). A version not listed has more
+#: than two years left; add it here when Meta publishes its date.
+META_GRAPH_VERSION_EXPIRES: dict[str, date] = {
+    "v21.0": date(2027, 1, 21),
+    "v22.0": date(2027, 5, 20),
+    "v25.0": date(2028, 7, 29),
+}
+#: Days before expiry the operator starts hearing about it.
+META_GRAPH_VERSION_NOTICE_DAYS = 60
+
+
+def graph_version_notice(version: str, today: date) -> tuple[date, int] | None:
+    """``(expires_on, days_left)`` when ``version`` dies within the notice
+    window (or already died), else ``None``. Pure."""
+    expires = META_GRAPH_VERSION_EXPIRES.get(version)
+    if expires is None:
+        return None
+    days_left = (expires - today).days
+    return (expires, days_left) if days_left <= META_GRAPH_VERSION_NOTICE_DAYS else None
 
 
 class Settings(BaseSettings):
