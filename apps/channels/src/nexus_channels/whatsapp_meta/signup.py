@@ -170,9 +170,13 @@ class EmbeddedSignupOrchestrator:
         # number is already registered as part of the QR-binding flow.
         # Calling /register against a Coexistence number returns
         # CallingNotAllowed and breaks the WABA, so the branch is hard.
+        known_pin = await self._known_pin(phone_number_id)
+        pin: str | None = None
         if not is_coex:
             assert phone_number_id is not None  # ensured for Cloud API by frontend
-            pin = _generate_pin()
+            # A number registered before keeps its two-step PIN: sending a
+            # different one makes Meta refuse the register.
+            pin = known_pin or generate_two_step_pin()
             try:
                 await self._client.register_phone(
                     phone_number_id=phone_number_id,
@@ -235,6 +239,7 @@ class EmbeddedSignupOrchestrator:
             verify_token=verify_token,
             mode=payload.mode,
             external_user_id_enrolled=False,
+            two_step_pin=pin or known_pin,
         )
         await self._persist_credentials(credentials, channel_id=channel_id)
 
@@ -297,11 +302,15 @@ class EmbeddedSignupOrchestrator:
                 )
             phone_number_id = first["id"]
 
+        known_pin = await self._known_pin(phone_number_id)
+        pin: str | None = None
         if attempt_register:
             try:
+                attempt = known_pin or generate_two_step_pin()
                 await self._client.register_phone(
-                    phone_number_id=phone_number_id, access_token=token, pin=_generate_pin()
+                    phone_number_id=phone_number_id, access_token=token, pin=attempt
                 )
+                pin = attempt
             except Exception as exc:
                 log.warning(
                     "meta.connect_owned.register_skipped",
@@ -353,6 +362,7 @@ class EmbeddedSignupOrchestrator:
             verify_token=verify_token,
             mode=mode,
             external_user_id_enrolled=False,
+            two_step_pin=pin or known_pin,
         )
         await self._persist_credentials(credentials, channel_id=channel_id)
 
@@ -413,6 +423,23 @@ class EmbeddedSignupOrchestrator:
             return
         await self._credentials.upsert(credentials)
 
+    async def _known_pin(self, phone_number_id: str | None) -> str | None:
+        """The two-step PIN stored for this number at an earlier connect."""
+        if not phone_number_id:
+            return None
+        rows = await self._session.execute(
+            select(Channel.config_encrypted).where(
+                Channel.provider == "meta",
+                Channel.config["phone_number_id"].astext == phone_number_id,
+            )
+        )
+        for payload in rows.scalars():
+            if payload:
+                pin = MetaCredentials.from_payload(payload).two_step_pin
+                if pin:
+                    return pin
+        return None
+
     async def _upsert_channel(
         self,
         *,
@@ -470,7 +497,10 @@ class EmbeddedSignupOrchestrator:
             self._session.add(row)
             await self._session.flush()
         else:
-            row.config = config
+            # Spec 050 (3.3): merge, never replace. What Meta says about the
+            # number is refreshed; what the partner set up on it (catalog,
+            # history import, escalation, wait message…) stays.
+            row.config = {**(row.config or {}), **config}
             row.status = ChannelStatus.ACTIVE
             row.last_provider_synced_at = now
             await self._session.flush()
@@ -481,7 +511,7 @@ class EmbeddedSignupOrchestrator:
 # ── helpers ────────────────────────────────────────────────────────────────
 
 
-def _generate_pin() -> str:
+def generate_two_step_pin() -> str:
     """6-digit PIN used to re-register a phone number under our app.
 
     The PIN is stored implicitly inside Meta — it isn't echoed back to us.

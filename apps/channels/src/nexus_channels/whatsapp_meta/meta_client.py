@@ -362,6 +362,24 @@ class MetaClient:
             json_body={"messaging_product": "whatsapp", "pin": pin},
         )
 
+    async def set_two_step_pin(
+        self,
+        *,
+        phone_number_id: str,
+        access_token: str,
+        pin: str,
+    ) -> dict[str, Any]:
+        """Spec 050: set (or change) the number's two-step verification PIN.
+
+        Meta's ``POST /{phone_number_id}`` with ``{"pin": …}``. The caller
+        stores the PIN encrypted; Meta never returns it.
+        """
+        return await self._post(
+            f"/{phone_number_id}",
+            access_token=access_token,
+            json_body={"pin": pin},
+        )
+
     async def deregister_phone(
         self,
         *,

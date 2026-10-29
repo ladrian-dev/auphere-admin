@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Literal
 
@@ -53,6 +53,10 @@ class MetaCredentials:
     mode: Literal["cloud_api", "coexistence"] = "cloud_api"
     bisuat_expires_at: datetime | None = None
     external_user_id_enrolled: bool = False
+    #: Spec 050: the number's two-step verification PIN (Cloud API). Meta
+    #: never echoes it back, and a later ``/register`` must send the same
+    #: one, so it lives here, encrypted with the rest. Never in a response.
+    two_step_pin: str | None = field(default=None, repr=False)
 
     def to_payload(self) -> bytes:
         """Serialise to bytes for ``FernetEncrypted`` (the type expects
@@ -78,6 +82,9 @@ class MetaCredentials:
             mode=raw.get("mode", "cloud_api"),
             bisuat_expires_at=expires,
             external_user_id_enrolled=bool(raw.get("external_user_id_enrolled", False)),
+            two_step_pin=raw.get("two_step_pin")
+            if isinstance(raw.get("two_step_pin"), str)
+            else None,
         )
 
 

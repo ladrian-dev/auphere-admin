@@ -2144,6 +2144,13 @@ export const backend = {
       { method: "DELETE" },
     ),
 
+  /** Spec 050: new two-step PIN for a Cloud API number. The PIN never comes back. */
+  rotateWhatsAppPin: (tenantId: string, channelId: string) =>
+    call<{ status: "rotated"; channel_id: string }>(
+      `/admin/tenants/${tenantId}/channels/${channelId}/two-step-pin`,
+      { method: "POST" },
+    ),
+
   metaTestSend: (tenantId: string, body: MetaTestSendInput) =>
     call<MetaTestSendResult>(
       `/admin/tenants/${tenantId}/integrations/meta/test-send`,
