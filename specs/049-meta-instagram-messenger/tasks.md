@@ -4,7 +4,7 @@ Cada tarea nombra los requisitos que cubre. [P] = paralelizable.
 
 ## Fase 1 — Base
 
-- [x] T001 Migración `0175_meta_social_channels`: `messenger` en el enum `channel_type`, `partners.beta_channels` y el vocabulario de auditoría. _Req: 5.1, 5.5_
+- [x] T001 Migración `0205_meta_social_channels`: `messenger` en el enum `channel_type`, `partners.beta_channels` y el vocabulario de auditoría. _Req: 5.1, 5.5_
 - [x] T002 [P] `ChannelType.MESSENGER` en el modelo, en `nexus_channels.base` y en `schemas/agent_config.py`. _Req: 2.1_
 - [x] T003 [P] Ajustes en `config.py`: `meta_config_id_instagram`, `meta_config_id_messenger`, `meta_social_graph_version`, `meta_webhook_peer_url` y `meta_social_enabled`. _Req: 1.7, 5.1_
 

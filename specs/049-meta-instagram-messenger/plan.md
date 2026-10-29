@@ -15,7 +15,7 @@ Comparten el webhook `/webhook/meta`, el canje del código del inicio de sesión
 
 - **Lenguaje:** Python 3.12 (FastAPI, SQLAlchemy 2 async, Alembic, httpx) · TypeScript / Next.js (consola y panel).
 - **Dependencias:** ninguna nueva.
-- **Almacenamiento:** PostgreSQL. Migración `0175_meta_social_channels`.
+- **Almacenamiento:** PostgreSQL. Migración `0205_meta_social_channels`.
 - **API de Meta:** Graph `v26.0` (la de los webhooks). Configuraciones de Facebook Login for Business:
   - Instagram `1157578836735566`;
   - Messenger `2188508105420190`.
@@ -53,7 +53,7 @@ Comparten el webhook `/webhook/meta`, el canje del código del inicio de sesión
 
 - **Credenciales:** cifradas en `channels.config_encrypted`, con el mismo `FernetEncrypted` de WhatsApp. Se guarda `{token, client_business_id}`, y en Messenger además `page_token`.
 - **Datos públicos** en `channels.config`: `username`, `name`, `picture_url`, `comments` y `last_health`.
-- **Migración `0175`:**
+- **Migración `0205`:**
   - `ALTER TYPE channel_type ADD VALUE 'messenger'`;
   - `partners.beta_channels varchar[] DEFAULT '{}'`, con check `<@ ARRAY['instagram','messenger']`;
   - las palabras nuevas del vocabulario de auditoría: `channel.instagram.connect`, `channel.messenger.connect`, `channel.meta_social.disconnect`, `channel.meta_social.purge` y `customer.meta_social.erase`.
@@ -142,7 +142,7 @@ En la bandeja (`lite/inbox.py` y la de partners), `_can_send` admite 7 días en 
 ## Estructura
 
 ```text
-apps/api/alembic/versions/0175_meta_social_channels.py
+apps/api/alembic/versions/0205_meta_social_channels.py
 apps/channels/src/nexus_channels/meta_social/{__init__,graph,webhook_adapter,adapter,connect,exceptions,text}.py
 apps/channels/tests/test_meta_social_*.py
 apps/api/src/nexus_api/api/webhooks/{meta,meta_social}.py

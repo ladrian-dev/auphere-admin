@@ -246,7 +246,7 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
         server_default=text(_NAV_DEFAULT_SQL),
     )
 
-    # Migration 0175 — spec 049: channels switched on for this partner before
+    # Migration 0205 — spec 049: channels switched on for this partner before
     # the provider approves them for everyone. Absent means the partner does
     # not see the channel at all.
     beta_channels: Mapped[list[str]] = mapped_column(

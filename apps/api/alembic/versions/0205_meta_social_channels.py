@@ -1,7 +1,7 @@
 """Instagram and Messenger channels (spec 049)
 
-Revision ID: 0175_meta_social_channels
-Revises: 0174_reservation_calendars
+Revision ID: 0205_meta_social_channels
+Revises: 0204_console_v2_for_all
 Create Date: 2026-10-29
 
 Three pieces, none of them a new table:
@@ -29,8 +29,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "0175_meta_social_channels"
-down_revision: str | Sequence[str] | None = "0174_reservation_calendars"
+revision: str = "0205_meta_social_channels"
+down_revision: str | Sequence[str] | None = "0204_console_v2_for_all"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
