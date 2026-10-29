@@ -1,0 +1,44 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "34600000001",
+              "phone_number_id": "106540352242922"
+            },
+            "messages": [
+              {
+                "from": "34611000001",
+                "from_user_id": "ES.100000000000000001",
+                "id": "wamid.CT1",
+                "timestamp": "1761760500",
+                "type": "contacts",
+                "contacts": [
+                  {
+                    "name": {
+                      "formatted_name": "Luis Pérez",
+                      "first_name": "Luis"
+                    },
+                    "phones": [
+                      {
+                        "phone": "+34 633 000 003",
+                        "type": "CELL",
+                        "wa_id": "34633000003"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
