@@ -82,6 +82,13 @@ _RATE_LIMIT_CODES: Final = frozenset({4, 80004})
 log = structlog.get_logger(__name__)
 
 
+def recipient_field(to: str) -> dict[str, str]:
+    """Spec 050: a phone goes in ``to``; a business-scoped user id (BSUID,
+    ``CC.…``, which a phone never contains) goes in ``recipient``. Meta lets
+    a person with a username be messaged without their number."""
+    return {"recipient": to} if "." in to else {"to": to}
+
+
 class MetaClient:
     """Thin async client. Reuse one instance per worker process — it owns
     an ``httpx`` connection pool. Construct with :func:`build_meta_client`
@@ -141,7 +148,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "text",
             "text": {"body": body, "preview_url": preview_url},
         }
@@ -174,7 +181,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "template",
             "template": {
                 "name": template_name,
@@ -202,7 +209,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "interactive",
             "interactive": interactive,
         }
@@ -242,7 +249,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": media_type,
             media_type: media,
         }
@@ -267,7 +274,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "reaction",
             "reaction": {"message_id": target_message_id, "emoji": emoji},
         }

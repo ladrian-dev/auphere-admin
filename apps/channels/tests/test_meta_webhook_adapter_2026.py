@@ -133,3 +133,33 @@ def test_unsupported_with_errors_keeps_the_code() -> None:
     [msg] = list(iter_inbound_messages(load("message_unsupported_error")))
     assert msg.kind == InboundMessageKind.UNSUPPORTED
     assert msg.error_codes == [131051]
+
+
+# ── sending to a BSUID ──────────────────────────────────────────────────────
+
+
+def test_a_phone_goes_in_to_and_a_bsuid_in_recipient() -> None:
+    from nexus_channels.whatsapp_meta.meta_client import recipient_field
+
+    assert recipient_field("34611000001") == {"to": "34611000001"}
+    assert recipient_field("ES.200000000000000002") == {"recipient": "ES.200000000000000002"}
+
+
+async def test_the_client_sends_a_bsuid_as_recipient() -> None:
+    import httpx
+
+    from nexus_channels.whatsapp_meta.meta_client import MetaClient
+
+    bodies: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"messages": [{"id": "wamid.X"}]})
+
+    client = MetaClient("secret", transport=httpx.MockTransport(handler))
+    await client.send_text(
+        phone_number_id="PN", access_token="T", to="ES.200000000000000002", body="hola"
+    )
+    await client.send_text(phone_number_id="PN", access_token="T", to="34611000001", body="hola")
+    assert "recipient" in bodies[0] and "to" not in bodies[0]
+    assert bodies[1]["to"] == "34611000001" and "recipient" not in bodies[1]

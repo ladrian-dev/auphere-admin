@@ -101,6 +101,10 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         user_id=fields["user_id"],
         content=fields["content"],
         customer_name=fields.get("customer_name"),
+        # Spec 050: the identity Meta gave (phone and/or BSUID, username).
+        customer_phone=fields.get("customer_phone"),
+        customer_bsuid=fields.get("customer_bsuid"),
+        customer_username=fields.get("customer_username"),
         provider=fields.get("provider", "meta"),
         kind=fields.get("kind", "text"),
         provider_message_id=fields.get("provider_message_id"),

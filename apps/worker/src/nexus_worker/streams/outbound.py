@@ -133,6 +133,7 @@ _NO_RETRY_CODES: frozenset[str] = frozenset(
         "131051",
         "131052",
         "131053",
+        "131062",  # authentication template to a BSUID: Meta needs a phone (spec 050)
         "133015",  # number can't be registered
         "368",
     }
@@ -512,6 +513,7 @@ async def _send_one(
             Channel.provider,
             Customer.identifier,
             Channel.config,
+            Customer.phone,
         )
         .join(Conversation, Conversation.channel_id == Channel.id)
         .join(Customer, Customer.id == Conversation.customer_id)
@@ -546,7 +548,11 @@ async def _send_one(
             message_id=str(msg.id),
         )
         return
-    channel_id, business_phone, channel_type, provider, recipient, channel_config = row
+    channel_id, business_phone, channel_type, provider, recipient, channel_config, phone = row
+    # Spec 050: a person first seen by BSUID who later shared their number is
+    # written to by number; one known only by BSUID, by BSUID (``recipient``).
+    if channel_type == ChannelType.WHATSAPP and phone:
+        recipient = phone
     # Meta Commerce catalog linked to this WABA — used to resolve native
     # product-card messages. Resolved server-side; the LLM never sees it.
     catalog_id = (channel_config or {}).get("catalog_id")

@@ -204,6 +204,12 @@ class InboundEvent:
     user_id: str  # external identifier (phone number, etc.)
     content: str
     customer_name: str | None = None
+    # Spec 050: how Meta identifies the person. ``user_id`` stays the phone
+    # when there is one (today's key); a BSUID-only person arrives with
+    # ``user_id`` = BSUID.
+    customer_phone: str | None = None
+    customer_bsuid: str | None = None
+    customer_username: str | None = None
     provider: str = "meta"
     # Block N: native WhatsApp metadata propagated end-to-end so the
     # persisted ``Message`` row carries the full picture (and the
@@ -320,7 +326,12 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
                 )
 
         customer = await _upsert_customer(
-            session, identifier=event.user_id, name=event.customer_name
+            session,
+            identifier=event.user_id,
+            name=event.customer_name,
+            bsuid=event.customer_bsuid,
+            phone=event.customer_phone,
+            username=event.customer_username,
         )
         conversation = await upsert_conversation_for_customer(
             session, channel_id=event.channel_id, customer_id=customer.id
