@@ -29,7 +29,6 @@ discard.
 from __future__ import annotations
 
 import json
-import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -48,7 +47,6 @@ from nexus_channels.whatsapp_meta import (
     parse_inbound,
     parse_message_echo,
     parse_status_callback,
-    parse_template_status,
     split_into_elements,
     verify_meta_signature,
 )
@@ -69,13 +67,9 @@ from nexus_api.core.streams import stream_for_tier, xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant, resolve_tenant_tier
 from nexus_api.db.models import (
-    AuditLog,
-    Channel,
-    ChannelStatus,
     Message,
     MessageStatus,
     WhatsAppOptOut,
-    WhatsAppTemplateStatus,
 )
 from nexus_api.repositories.auphere_channels import (
     ResolvedAuphereChannel,
@@ -83,12 +77,12 @@ from nexus_api.repositories.auphere_channels import (
 from nexus_api.repositories.auphere_channels import (
     resolve_channel_for_inbound_cached as resolve_owner_channel_for_inbound,
 )
+from nexus_api.services import whatsapp_account_events
 from nexus_api.services.channel_routing import config_agent_enabled
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.meta_reconciliation import record_delivered
 from nexus_api.services.owner_channel_flow import handle_owner_inbound
 from nexus_api.services.payment_reviews import parse_tap, resolve_tap
-from nexus_api.services.whatsapp_templates import invalidate_template_cache
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -330,8 +324,10 @@ async def _dispatch_element(
         else:
             await _handle_inbound(payload, session=session, redis=redis)
         return True
-    if field == "message_template_status_update":
-        await _handle_template_status(payload, session=session)
+    if field in whatsapp_account_events.TEMPLATE_FIELDS | whatsapp_account_events.ACCOUNT_FIELDS:
+        # Spec 050 (D5): templates and the account's health, attributed by
+        # number or by WABA and applied under each business's RLS.
+        await whatsapp_account_events.handle(field, payload, session=session, redis=redis)
         return True
     if field == "smb_message_echoes":
         await _handle_message_echo(payload, session=session, redis=redis)
@@ -341,9 +337,6 @@ async def _dispatch_element(
         return True
     if field == "history":
         await _handle_history_sync(payload, session=session, redis=redis)
-        return True
-    if field == "account_update":
-        await _handle_account_update(value, session=session, redis=redis)
         return True
     log.info("webhook.meta.unhandled_field", field=field)
     return False
@@ -869,48 +862,6 @@ def _map_status(meta_status: str) -> MessageStatus | None:
 # ── template approval state ────────────────────────────────────────────────
 
 
-async def _handle_template_status(
-    payload: dict[str, Any],
-    *,
-    session: AsyncSession,
-) -> dict[str, Any]:
-    update = parse_template_status(payload)
-    if update is None or not update.template_name:
-        return {"status": "ignored"}
-    now = datetime.now(tz=UTC)
-    # The table is NOT tenant-scoped — keyed by (waba_id, template_name,
-    # language) so the same template across tenants stays consistent.
-    stmt = pg_insert(WhatsAppTemplateStatus).values(
-        waba_id=update.waba_id,
-        template_name=update.template_name,
-        language=update.language,
-        status=update.new_status,
-        reason=update.reason,
-        last_event_payload=payload,
-        last_event_at=now,
-    )
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["waba_id", "template_name", "language"],
-        set_={
-            "status": stmt.excluded.status,
-            "reason": stmt.excluded.reason,
-            "last_event_payload": stmt.excluded.last_event_payload,
-            "last_event_at": stmt.excluded.last_event_at,
-        },
-    )
-    await session.execute(stmt)
-    # A template that Meta just paused or rejected must stop being sent
-    # now, not when the send-path cache happens to expire.
-    invalidate_template_cache(update.waba_id)
-    log.info(
-        "webhook.meta.template_status",
-        waba_id=update.waba_id,
-        template_name=update.template_name,
-        new_status=update.new_status,
-    )
-    return {"status": "ok"}
-
-
 # ── Coexistence-only events ────────────────────────────────────────────────
 #
 # Each handler:
@@ -1068,102 +1019,6 @@ async def _handle_history_sync(
         error_code=hist.error_code,
     )
     return {"status": "enqueued"}
-
-
-#: Spec 047 (30.11): lo que ``account_update`` dice de un número, como motivo de
-#: «Con problemas». Un evento que no está aquí solo queda en el log.
-ACCOUNT_PROBLEMS: dict[str, str] = {
-    # La app de Auphere ya no tiene acceso: hay que volver a conectar.
-    "PARTNER_REMOVED": "auth_expired",
-    # Coexistencia: el negocio dejó de abrir la app (unos 14 días) o la desconectó.
-    "ACCOUNT_OFFBOARDED": "coexistence_inactive",
-    "PARTNER_APP_UNINSTALLED": "coexistence_inactive",
-    # Meta restringió o retiró la cuenta.
-    "ACCOUNT_DELETED": "meta_error",
-    "ACCOUNT_RESTRICTION": "meta_error",
-    "DISABLED_UPDATE": "meta_error",
-}
-
-
-async def _handle_account_update(
-    value: Any,
-    *,
-    session: AsyncSession,
-    redis: Redis,
-) -> dict[str, Any]:
-    """Spec 047 (30.11): Meta dice que un número dejó de funcionar. El canal pasa
-    a «Con problemas» con su motivo y el partner recibe el aviso; lo que llega
-    por él se sigue guardando (``degraded`` se resuelve igual que ``active``)."""
-    from nexus_channels.whatsapp_meta.phone import to_e164
-
-    from nexus_api.services.channel_config import announce
-
-    value = value if isinstance(value, dict) else {}
-    event = str(value.get("event") or "").upper()
-    reason = ACCOUNT_PROBLEMS.get(event)
-    phone = to_e164(str(value.get("phone_number") or ""))
-    if reason is None or not phone:
-        log.info("webhook.meta.account_update_ignored", meta_event=event, has_phone=bool(phone))
-        return {"status": "ignored"}
-    try:
-        tenant_id = await resolve_tenant(session, redis, "meta", phone)
-    except TenantNotFound:
-        counters.incr(CHANNEL_UNRESOLVED_EVENT)
-        log.warning("channel.unresolved_event", provider="meta", identifier=phone)
-        return {"status": "ignored"}
-    if session.in_transaction():
-        await session.rollback()
-    wanted = re.sub(r"\D", "", phone)
-    channel_id: uuid.UUID | None = None
-    agent_id: uuid.UUID | None = None
-    async with tenant_scoped_session(session, tenant_id):
-        for channel in (
-            await session.scalars(
-                select(Channel).where(
-                    Channel.provider == "meta", Channel.status != ChannelStatus.DISCONNECTED
-                )
-            )
-        ).all():
-            if re.sub(r"\D", "", channel.provider_identifier) != wanted:
-                continue
-            if channel.status is ChannelStatus.DEGRADED and channel.problem_reason == reason:
-                return {"status": "unchanged"}
-            channel.status = ChannelStatus.DEGRADED
-            channel.problem_reason = reason
-            session.add(
-                AuditLog(
-                    tenant_id=tenant_id,
-                    actor="meta",
-                    action="channel.problem",
-                    target=f"channel:{channel.id}",
-                    after_json={"event": event, "reason": reason},
-                )
-            )
-            channel_id = channel.id
-            agent_id = channel.agent_id
-            break
-    if channel_id is None:
-        return {"status": "ignored"}
-    data = {"channel_id": str(channel_id), "reason": reason}
-    if agent_id is not None:
-        data["agent_id"] = str(agent_id)
-    # Al partner y a las personas del cliente (events.md §3).
-    await announce(
-        tenant_id=tenant_id,
-        kind="channel.problem",
-        severity="critical",
-        data=data,
-        dedupe_key=f"channel.problem:{channel_id}:{reason}",
-        to_client=True,
-    )
-    log.info(
-        "webhook.meta.account_update_applied",
-        tenant_id=str(tenant_id),
-        channel_id=str(channel_id),
-        meta_event=event,
-        reason=reason,
-    )
-    return {"status": "applied"}
 
 
 def _extract_change_value(payload: dict[str, Any], *, field: str) -> dict[str, Any] | None:
