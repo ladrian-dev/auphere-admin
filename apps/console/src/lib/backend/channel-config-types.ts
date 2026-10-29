@@ -9,6 +9,8 @@
  * Ninguna respuesta lleva mensajes de clientes finales ni costes.
  */
 
+import type { MetaSocialOffer } from "./channels";
+
 /** A quién responde el agente en este número (32.1): sin decidir, solo el equipo o todos. */
 export type AudienceMode = "unset" | "team_only" | "everyone";
 /** Por dónde se avisa a una persona cuando el agente escala (33.1). */
@@ -90,7 +92,12 @@ export type OwnerLinkMode = "coexistence" | "cloud_api" | "whatsapp_login";
 /** El enlace del dueño pendiente: se ve su modo y su caducidad, nunca el enlace (31.7). */
 export type PendingOwnerLink = { id: string; mode: OwnerLinkMode | string; expires_at: string };
 
-export type AgentChannels = { channels: AgentChannel[]; pending_link: PendingOwnerLink | null };
+export type AgentChannels = {
+  channels: AgentChannel[];
+  pending_link: PendingOwnerLink | null;
+  /** Spec 049: Instagram / Messenger this partner may connect, or none. */
+  meta_social?: MetaSocialOffer | null;
+};
 
 /** El enlace recién creado: la URL va **solo** en esta respuesta (31.1). */
 export type OwnerLink = { id: string; url: string; mode: OwnerLinkMode | string; expires_at: string };

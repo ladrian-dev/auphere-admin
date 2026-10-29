@@ -47,7 +47,8 @@ export function isConfiguredState(state: ChannelVisibleState): boolean {
  * página, solo el canal.
  */
 export function channelSummary(t: T, type: string, page: Pick<ChannelPage, "config"> | null): string {
-  const parts = [type === "whatsapp" ? t("builder.channels.whatsapp") : type];
+  const kinds: Record<string, string> = { whatsapp: t("builder.channels.whatsapp"), instagram: "Instagram", messenger: "Messenger" };
+  const parts = [kinds[type] ?? type];
   if (!page) return parts[0]!;
   const { audience, escalation } = page.config;
   if (audience.mode === "team_only") {

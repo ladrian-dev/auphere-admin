@@ -38,33 +38,31 @@ const LOGIN_ERRORS = {
 } as const satisfies Record<string, MessageKey>;
 
 /**
- * Spec 049 — «Conectar Instagram» / «Conectar Messenger». Opens Facebook
+ * Spec 049 — the Instagram / Messenger connection, as a hook: opens Facebook
  * Login for Business with the channel's configuration, hands the single-use
  * code to the server and, when the business granted several accounts or
- * Pages, asks which one. The page renders it only for the channels the
- * partner has (``overview.meta_social``): absent otherwise (§V).
+ * Pages, asks which one (`dialog`). The old Channels page wraps it in a
+ * button; the new console's channel wizard calls `start` from its card.
  */
-export function MetaSocialConnect({
+export function useMetaSocialConnect({
   refId,
   offer,
-  kind,
-  variant = "outline",
+  onConnected,
 }: {
   refId: string;
-  offer: MetaSocialOffer;
-  kind: MetaSocialKind;
-  variant?: "default" | "outline";
+  offer: MetaSocialOffer | null;
+  onConnected?: (res: MetaSocialConnectResult) => void | Promise<void>;
 }) {
   const t = useT();
   const router = useRouter();
   const [working, setWorking] = React.useState(false);
-  const [choice, setChoice] = React.useState<{ nonce: string; accounts: MetaSocialAccount[] } | null>(null);
-  const configId = offer.channels.find((c) => c.kind === kind)?.config_id;
+  const [choice, setChoice] = React.useState<{ kind: MetaSocialKind; nonce: string; accounts: MetaSocialAccount[] } | null>(null);
 
-  function done(res: MetaSocialConnectResult) {
+  async function done(res: MetaSocialConnectResult) {
     const name = res.channel?.username ? `@${res.channel.username}` : (res.channel?.display_name ?? "");
-    toast.success(t("ch.social.done", { name }));
     setChoice(null);
+    await onConnected?.(res);
+    toast.success(t("ch.social.done", { name }));
     router.refresh();
   }
 
@@ -73,18 +71,19 @@ export function MetaSocialConnect({
     toast.error(t(key ?? "common.error.backend"));
   }
 
-  async function start() {
-    if (!configId) return;
+  async function start(kind: MetaSocialKind) {
+    const configId = offer?.channels.find((c) => c.kind === kind)?.config_id;
+    if (!offer || !configId) return;
     setWorking(true);
     try {
       const code = await loginForCode({ appId: offer.app_id, version: offer.graph_version, configId });
       const res = await metaSocialConnectAction({ ref: refId, kind, code });
       if (!res.ok) return void refused(res.code);
       if (res.data.status === "choose" && res.data.nonce) {
-        setChoice({ nonce: res.data.nonce, accounts: res.data.accounts });
+        setChoice({ kind, nonce: res.data.nonce, accounts: res.data.accounts });
         return;
       }
-      done(res.data);
+      await done(res.data);
     } catch (err) {
       toast.error(t(LOGIN_ERRORS[err instanceof SignupError ? err.code : "meta_error"]));
     } finally {
@@ -96,30 +95,24 @@ export function MetaSocialConnect({
     if (!choice) return;
     setWorking(true);
     try {
-      const res = await metaSocialCompleteAction({ ref: refId, kind, nonce: choice.nonce, accountId: account.id });
+      const res = await metaSocialCompleteAction({ ref: refId, kind: choice.kind, nonce: choice.nonce, accountId: account.id });
       if (!res.ok) {
         setChoice(null);
         return void refused(res.code);
       }
-      done(res.data);
+      await done(res.data);
     } finally {
       setWorking(false);
     }
   }
 
-  if (!configId) return null;
-  const Icon = kind === "instagram" ? AtSign : MessagesSquare;
-  return (
+  const dialog = (
     <>
-      <Button variant={variant} onClick={start} disabled={working} aria-busy={working}>
-        <Icon aria-hidden="true" />
-        {t(kind === "instagram" ? "ch.social.connect.instagram" : "ch.social.connect.messenger")}
-      </Button>
       <MetaWindowVeil open={working && !choice} />
       <Dialog open={choice !== null} onOpenChange={(o) => !o && !working && setChoice(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t(kind === "instagram" ? "ch.social.choose.instagram" : "ch.social.choose.messenger")}</DialogTitle>
+            <DialogTitle>{t(choice?.kind === "messenger" ? "ch.social.choose.messenger" : "ch.social.choose.instagram")}</DialogTitle>
             <DialogDescription>{t("ch.social.choose.body")}</DialogDescription>
           </DialogHeader>
           <ul className="flex flex-col gap-2">
@@ -136,6 +129,38 @@ export function MetaSocialConnect({
           </ul>
         </DialogContent>
       </Dialog>
+    </>
+  );
+  return { start, working, dialog };
+}
+
+/**
+ * «Conectar Instagram» / «Conectar Messenger» on the Channels page. The page
+ * renders it only for the channels the partner has (``overview.meta_social``):
+ * absent otherwise (§V).
+ */
+export function MetaSocialConnect({
+  refId,
+  offer,
+  kind,
+  variant = "outline",
+}: {
+  refId: string;
+  offer: MetaSocialOffer;
+  kind: MetaSocialKind;
+  variant?: "default" | "outline";
+}) {
+  const t = useT();
+  const { start, working, dialog } = useMetaSocialConnect({ refId, offer });
+  if (!offer.channels.some((c) => c.kind === kind)) return null;
+  const Icon = kind === "instagram" ? AtSign : MessagesSquare;
+  return (
+    <>
+      <Button variant={variant} onClick={() => void start(kind)} disabled={working} aria-busy={working}>
+        <Icon aria-hidden="true" />
+        {t(kind === "instagram" ? "ch.social.connect.instagram" : "ch.social.connect.messenger")}
+      </Button>
+      {dialog}
     </>
   );
 }

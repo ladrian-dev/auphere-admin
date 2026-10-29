@@ -73,6 +73,18 @@ def connector(session: AsyncSession, redis: Redis) -> MetaSocialConnector:
     )
 
 
+#: ``channels.problem_reason`` (spec 047, closed list) for each reason an
+#: Instagram / Messenger channel needs attention, so the new console shows
+#: the same «problem» state it shows for a WhatsApp number.
+PROBLEM_REASON_OF: dict[str, str] = {
+    "token_revoked": "auth_expired",
+    "permission_lost": "auth_expired",
+    "no_credentials": "auth_expired",
+    "messages_disabled": "meta_error",
+    "subscribe_failed": "meta_error",
+}
+
+
 #: The step the business takes for each reason the connection stops.
 REASON_HELP: dict[str, str] = {
     "code_exchange_failed": "Meta did not accept the login. Try connecting again.",

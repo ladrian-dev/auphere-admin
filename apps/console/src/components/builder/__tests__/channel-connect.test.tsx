@@ -13,12 +13,17 @@ import { CH, HISTORY, LINK, RECEPCION, REF, channels, fail, ok, page } from "./c
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
-const sdk = vi.hoisted(() => ({ loginWithMeta: vi.fn(), whatsappSignupAction: vi.fn() }));
+const sdk = vi.hoisted(() => ({ loginWithMeta: vi.fn(), whatsappSignupAction: vi.fn(), loginForCode: vi.fn(), metaSocialConnectAction: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => router }));
 vi.mock("@/app/(console)/clients/[ref]/agents/channel-actions", () => ({}));
-vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({ whatsappSignupAction: sdk.whatsappSignupAction, listCatalogsAction: vi.fn() }));
-vi.mock("@/lib/meta-fb-sdk", () => ({ loginWithMeta: sdk.loginWithMeta, SignupError: class extends Error {} }));
+vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
+  whatsappSignupAction: sdk.whatsappSignupAction,
+  listCatalogsAction: vi.fn(),
+  metaSocialConnectAction: sdk.metaSocialConnectAction,
+  metaSocialCompleteAction: vi.fn(),
+}));
+vi.mock("@/lib/meta-fb-sdk", () => ({ loginWithMeta: sdk.loginWithMeta, loginForCode: sdk.loginForCode, SignupError: class extends Error {} }));
 
 const { AgentChannelsPanel } = await import("../agent-channels");
 const { ChannelConfigPage } = await import("../channel-page");
@@ -326,3 +331,29 @@ describe("el alta de Meta que ya tiene la consola, con el modo elegido", () => {
     expect(out).toEqual({ ok: false, code: "quota", text: t("channels.proto.error.quota") });
   });
 });
+
+describe("spec 049: Instagram y Messenger para un partner con el canal en beta", () => {
+  const OFFER = { app_id: "123", graph_version: "v26.0", channels: [{ kind: "instagram" as const, config_id: "cfg-ig" }] };
+
+  it("Instagram se conecta desde su tarjeta y queda en este agente; Messenger sigue sin poder empezar", async () => {
+    sdk.loginForCode.mockResolvedValueOnce("CODE");
+    sdk.metaSocialConnectAction.mockResolvedValueOnce({
+      ok: true,
+      data: { status: "connected", channel: { id: CH3, username: "demo.store", display_name: "Demo" }, nonce: null, accounts: [] },
+    });
+    const { actions } = panel(empty({ meta_social: OFFER }));
+
+    const instagram = within(grid()).getByRole("button", { name: /Instagram/ });
+    expect(within(grid()).getAllByRole("button")).toHaveLength(2);
+    const cards = within(grid()).getAllByRole("listitem");
+    expect(cards[1]!.firstElementChild).toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.click(instagram);
+
+    await waitFor(() => expect(sdk.metaSocialConnectAction).toHaveBeenCalledWith({ ref: REF, kind: "instagram", code: "CODE" }));
+    expect(sdk.loginForCode).toHaveBeenCalledWith({ appId: "123", version: "v26.0", configId: "cfg-ig" });
+    await waitFor(() => expect(actions.connect!.move).toHaveBeenCalledWith({ ref: REF, channel: CH3, to: RECEPCION }));
+    expect(toast.success).toHaveBeenCalledWith("@demo.store conectado. El agente ya atiende sus mensajes.");
+  });
+});
+

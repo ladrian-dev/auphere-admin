@@ -32,6 +32,7 @@ from typing import Any, Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from nexus_channels.meta_social import META_SOCIAL_PROVIDERS
 from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 
@@ -46,10 +47,12 @@ from nexus_api.db.models import (
     ChannelStatus,
 )
 from nexus_api.services import channel_config as svc
+from nexus_api.services import meta_social_service
 from nexus_api.services.agent_lifecycle import ChannelFacts, channel_visible_state
 
 from .agent_draft_routes import agent_in_path, etag, parse_revision
 from .deps import ClientScope, client_scope
+from .schemas_channels import MetaSocialOfferOut
 
 router = APIRouter(prefix="/clients/{ref}")
 
@@ -171,9 +174,25 @@ class AgentChannelOut(BaseModel):
 class AgentChannelsOut(BaseModel):
     channels: list[AgentChannelOut]
     pending_link: dict[str, Any] | None = None
+    #: Spec 049: Instagram / Messenger this partner may connect (with the
+    #: Facebook Login for Business configuration each opens); ``None`` when
+    #: the partner does not have them — the wizard keeps them unavailable.
+    meta_social: MetaSocialOfferOut | None = None
 
 
 # ── ayudas ─────────────────────────────────────────────────────────────────
+
+
+def _identifier(channel: Channel) -> str:
+    """What the partner recognises: the number for WhatsApp; for Instagram
+    the @username and for Messenger the Page name (spec 049), never the
+    opaque Meta id."""
+    if channel.provider in META_SOCIAL_PROVIDERS:
+        cfg = channel.config or {}
+        if cfg.get("username"):
+            return f"@{cfg['username']}"
+        return str(cfg.get("name") or channel.provider_identifier)
+    return channel.provider_identifier
 
 
 def _kind(channel: Channel) -> str:
@@ -263,7 +282,7 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
     return ChannelPageOut(
         id=channel.id,
         type=_kind(channel),
-        identifier=channel.provider_identifier,
+        identifier=_identifier(channel),
         status=_status(channel),
         problem_reason=channel.problem_reason,
         visible_state=visible_of(channel),
@@ -570,13 +589,18 @@ async def agent_channels(
             AgentChannelOut(
                 id=c.id,
                 type=_kind(c),
-                identifier=c.provider_identifier,
+                identifier=_identifier(c),
                 visible_state=visible_of(c),
                 allowed=allowed_of(c),
             )
             for c in rows
         ],
         pending_link=pending,
+        meta_social=(
+            MetaSocialOfferOut.model_validate(meta_social_service.offer(scope.principal.partner))
+            if meta_social_service.enabled_kinds(scope.principal.partner)
+            else None
+        ),
     )
 
 

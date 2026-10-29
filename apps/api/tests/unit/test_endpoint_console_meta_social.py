@@ -330,3 +330,19 @@ async def test_admin_switches_the_beta_on_for_one_partner(
         json={"channels": ["telegram"]},
     )
     assert bad.status_code == 422
+
+
+def test_the_new_console_names_the_account_not_the_meta_id() -> None:
+    """Spec 049 in the v2 agent channels: @username / Page name, never the id."""
+    from nexus_api.api.console.channel_config import _identifier
+
+    ig = Channel(
+        provider="meta_instagram", provider_identifier=IG_ID, config={"username": "demo.store"}
+    )
+    page = Channel(
+        provider="meta_messenger", provider_identifier=PAGE_ID, config={"name": "Demo Store"}
+    )
+    wa = Channel(provider="meta", provider_identifier="+34600000001", config={"username": "x"})
+    assert _identifier(ig) == "@demo.store"
+    assert _identifier(page) == "Demo Store"
+    assert _identifier(wa) == "+34600000001"

@@ -326,6 +326,7 @@ class MetaSocialConnector:
             }
             row.config = {**config, **public}
             row.status = ChannelStatus.ACTIVE
+            row.problem_reason = None
             row.last_provider_synced_at = now
         await self._session.flush()
         return cast(uuid.UUID, row.id)

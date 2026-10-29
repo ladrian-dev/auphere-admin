@@ -77,6 +77,7 @@ from nexus_api.db.models import (
 )
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
+from nexus_api.services.meta_social_service import PROBLEM_REASON_OF
 from nexus_api.services.meta_window import PERSON_ACTORS, decide, private_reply_allowed
 from nexus_channels.base import ChannelCapabilityError
 from nexus_channels.meta_social import COMMENT_PREFIX, META_SOCIAL_PROVIDERS
@@ -994,6 +995,7 @@ async def _flag_meta_social_channel(
     if channel is None:
         return
     channel.status = ChannelStatus.DEGRADED
+    channel.problem_reason = PROBLEM_REASON_OF.get(reason, "meta_error")
     channel.config = {**(channel.config or {}), "needs_attention": reason}
     log.warning(
         "outbound.dispatcher.meta_social_needs_attention", channel_id=str(channel_id), reason=reason
