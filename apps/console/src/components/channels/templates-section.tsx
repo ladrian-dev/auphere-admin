@@ -37,6 +37,16 @@ const STATUS_TONE: Record<string, "positive" | "warning" | "danger" | "info" | "
 };
 const KNOWN_STATUS = new Set(Object.keys(STATUS_TONE));
 
+const QUALITY_TONE: Record<string, "positive" | "warning" | "danger"> = { GREEN: "positive", YELLOW: "warning", RED: "danger" };
+
+/** Spec 050: Meta's quality score in words, toned; «—» when Meta has none yet. */
+function qualityText(t: ReturnType<typeof useT>, score: string | null) {
+  const key = (score ?? "").toUpperCase();
+  const tone = QUALITY_TONE[key];
+  if (!tone) return <span className="text-muted-foreground">—</span>;
+  return <StatusBadge tone={tone}>{t(`builder.channel.account.quality.${key}` as "builder.channel.account.quality.GREEN")}</StatusBadge>;
+}
+
 /**
  * Templates (HSM) of the client's number: state, quality, Meta's literal
  * rejection reason + suggested action; create (``TemplateComposer``) and delete.
@@ -112,11 +122,20 @@ export function TemplatesSection({ refId, list, error, manage }: { refId: string
                         {row.name}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{row.language}</TableCell>
-                      <TableCell>{row.category ? t(`tpl.category.${row.category}` as "tpl.category.UTILITY") : "—"}</TableCell>
+                      <TableCell>
+                        <span className="grid gap-1">
+                          <span>{row.category ? t(`tpl.category.${row.category}` as "tpl.category.UTILITY") : "—"}</span>
+                          {row.pending_category ? (
+                            <span className="text-xs text-status-warning-text" data-slot="pending-category">
+                              {t("tpl.category.pending", { category: t(`tpl.category.${row.pending_category}` as "tpl.category.UTILITY") })}
+                            </span>
+                          ) : null}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         <StatusBadge tone={STATUS_TONE[st] ?? "muted"}>{t(statusKey)}</StatusBadge>
                       </TableCell>
-                      <TableCell className="font-mono text-xs">{row.quality_score ?? "—"}</TableCell>
+                      <TableCell>{qualityText(t, row.quality_score)}</TableCell>
                       <TableCell className="max-w-72">
                         {row.rejection_reason ? (
                           <span className="block truncate font-mono text-xs" title={row.rejection_reason}>

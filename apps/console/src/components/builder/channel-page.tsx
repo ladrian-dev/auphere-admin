@@ -26,6 +26,7 @@ import { ShellBackButton } from "@/components/shell/shell-back-button";
 
 import { triggerText } from "./block-view";
 import type { Result } from "./builder-model";
+import { ChannelAccount, hasAccountFacts } from "./channel-account";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
 import {
   MAX_RECIPIENTS,
@@ -210,6 +211,10 @@ export function ChannelConfigPage({
   const errorIn = (section: SaveError["section"]) => (error && error.section === section ? error : null);
   const fix = error ? fixLink(error.fix, targets) : null;
   const disconnected = page.status === "disconnected";
+  const account = hasAccountFacts(t, locale, page.whatsapp) ? page.whatsapp : null;
+  const sections = account
+    ? [...SECTIONS.slice(0, 4), { id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }, ...SECTIONS.slice(4)]
+    : SECTIONS;
 
   return (
     <div className="grid min-w-0 gap-6" data-slot="channel-page">
@@ -269,7 +274,7 @@ export function ChannelConfigPage({
         {!canWrite ? <p className="text-sm text-muted-foreground">{t("builder.channel.page.readonly")}</p> : null}
         <nav aria-label={t("builder.channel.page.sections")} className="min-w-0">
           <ul className="flex min-w-0 gap-2 overflow-x-auto pb-1" data-scroll-x>
-            {SECTIONS.map((s) => (
+            {sections.map((s) => (
               <li key={s.id} className="shrink-0">
                 <a
                   href={`#${s.id}`}
@@ -413,6 +418,12 @@ export function ChannelConfigPage({
           </div>
         ) : null}
       </form>
+
+      {account ? (
+        <PageSection id="canal-cuenta" title={t("builder.channel.account.title")} intro={t("builder.channel.account.intro")}>
+          <ChannelAccount account={account} />
+        </PageSection>
+      ) : null}
 
       <PageSection id="canal-comprobaciones" title={t("builder.channel.checks.title")} intro={t("builder.channel.checks.intro")}>
         <ul className="grid min-w-0 gap-2" aria-label={t("builder.channel.checks.title")}>

@@ -117,6 +117,8 @@ export type TemplateRow = {
   category: string | null;
   status: string | null;
   quality_score: string | null;
+  /** Spec 050: the category Meta announced and applies in about a day. */
+  pending_category?: string | null;
   components: Array<Record<string, unknown>>;
   /** Meta's literal rejection text (their verdict on the partner's template). */
   rejection_reason: string | null;

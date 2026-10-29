@@ -364,6 +364,7 @@ export const channelsMessages = {
   "tpl.category.MARKETING": { es: "Marketing", en: "Marketing" },
   "tpl.category.UTILITY": { es: "Utilidad", en: "Utility" },
   "tpl.category.AUTHENTICATION": { es: "Autenticación", en: "Authentication" },
+  "tpl.category.pending": { es: "Meta la pasa a {category} en un día", en: "Meta moves it to {category} within a day" },
   "tpl.category.UTILITY.help": {
     es: "Avisos de algo que el cliente ya pidió o pagó, como pedidos, pagos o citas. Meta la aprueba antes y cuesta menos.",
     en: "Notices about something the customer already ordered or paid, like orders, payments or appointments. Meta approves it sooner and it costs less.",

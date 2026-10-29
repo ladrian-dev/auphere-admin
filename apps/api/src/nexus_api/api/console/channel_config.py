@@ -45,6 +45,7 @@ from nexus_api.db.models import (
     ChannelConfigChange,
     ChannelSignupLink,
     ChannelStatus,
+    ChannelType,
 )
 from nexus_api.services import channel_config as svc
 from nexus_api.services import meta_social_service
@@ -120,6 +121,61 @@ class AgentRefOut(BaseModel):
     name: str
 
 
+class WhatsAppAlertOut(BaseModel):
+    type: str | None = None
+    severity: str | None = None
+    status: str | None = None
+    at: str | None = None
+
+
+class WhatsAppAccountOut(BaseModel):
+    """Spec 050 (4.1, 4.2, 4.4, 8.4): what Meta says about the number, as the
+    webhook and the health cron left it in ``channels.config``. Read only."""
+
+    verified_name: str | None = None
+    name_status: str | None = None
+    name_decision: str | None = None
+    requested_name: str | None = None
+    name_rejection_reason: str | None = None
+    username: str | None = None
+    username_status: str | None = None
+    quality_rating: str | None = None
+    messaging_limit: str | None = None
+    account_review: str | None = None
+    #: Only the alerts still active, newest first.
+    alerts: list[WhatsAppAlertOut] = Field(default_factory=list)
+
+
+def whatsapp_account_of(channel: Channel) -> WhatsAppAccountOut | None:
+    """Pure: the account facts of a Meta WhatsApp number, or ``None``."""
+    if channel.type is not ChannelType.WHATSAPP or channel.provider != "meta":
+        return None
+    cfg = channel.config or {}
+
+    def text(key: str) -> str | None:
+        value = cfg.get(key)
+        return value if isinstance(value, str) and value else None
+
+    alerts = [
+        WhatsAppAlertOut.model_validate(a)
+        for a in reversed(cfg.get("alerts") or [])
+        if isinstance(a, dict) and str(a.get("status") or "").upper() == "ACTIVE"
+    ]
+    return WhatsAppAccountOut(
+        verified_name=text("verified_name"),
+        name_status=text("name_status"),
+        name_decision=text("name_decision"),
+        requested_name=text("requested_name"),
+        name_rejection_reason=text("name_rejection_reason"),
+        username=text("username"),
+        username_status=text("username_status"),
+        quality_rating=text("quality_rating"),
+        messaging_limit=text("messaging_limit"),
+        account_review=text("account_review"),
+        alerts=alerts,
+    )
+
+
 class ChannelPageOut(BaseModel):
     id: uuid.UUID
     type: str
@@ -143,6 +199,8 @@ class ChannelPageOut(BaseModel):
     undo_until: datetime | None = None
     move_targets: list[AgentRefOut] = Field(default_factory=list)
     allowed: list[Action] = Field(default_factory=list)
+    #: Spec 050: the Meta account facts of a WhatsApp number; ``None`` otherwise.
+    whatsapp: WhatsAppAccountOut | None = None
 
 
 class ChangeOut(BaseModel):
@@ -297,6 +355,7 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
         undo_until=await _undo_until(scope, channel),
         move_targets=move_targets,
         allowed=allowed,
+        whatsapp=whatsapp_account_of(channel),
     )
 
 

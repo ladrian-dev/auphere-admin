@@ -311,3 +311,35 @@ async def test_the_business_username_is_written(
         "barberiacultor",
         "approved",
     )
+
+
+async def test_the_channel_page_shows_what_meta_said(
+    client: Any, db_session: AsyncSession, world: dict[str, Any]
+) -> None:
+    biz: Biz = world["biz"]
+    for name in (
+        "business_username_approved",
+        "phone_number_name_rejected",
+        "business_capability_update",
+        "account_alerts_info",
+        "account_alerts_critical",
+        "account_review_rejected",
+    ):
+        await _post(client, _load(name))
+    resp = await client.get(
+        f"/console/clients/{biz.ref}/channels/{world['channel']}", headers=biz.headers()
+    )
+    assert resp.status_code == 200, resp.text
+    account = resp.json()["whatsapp"]
+    assert account["username"] == "barberiacultor"
+    assert (account["name_decision"], account["name_rejection_reason"]) == (
+        "REJECTED",
+        "NAME_FORMAT_UNACCEPTABLE",
+    )
+    assert account["messaging_limit"] == "TIER_2K"
+    assert account["account_review"] == "REJECTED"
+    # Active alerts only, newest first.
+    assert [a["type"] for a in account["alerts"]] == [
+        "INCREASED_CAPABILITIES_ELIGIBILITY_FAILED",
+        "PROFILE_PICTURE_LOST",
+    ]

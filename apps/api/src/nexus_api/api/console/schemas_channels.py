@@ -215,6 +215,9 @@ class TemplateRowOut(BaseModel):
     category: str | None = None
     status: str | None = None
     quality_score: str | None = None
+    #: Spec 050: Meta announced a new category (``template_category_update``)
+    #: and applies it in about a day. ``None`` when nothing is pending.
+    pending_category: str | None = None
     components: list[dict[str, Any]] = Field(default_factory=list)
     #: Meta's literal rejection text (see module docstring). ``None`` unless
     #: the webhook recorded a REJECTED/PAUSED/DISABLED event with a reason.

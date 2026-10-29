@@ -49,6 +49,24 @@ export type AgentRef = { id: string; name: string };
 /** Un disparador del escalado del agente, en solo lectura (33.5). */
 export type ChannelTrigger = string | { custom: string };
 
+/** Spec 050: an alert Meta raised on the account, still active. */
+export type WhatsAppAlert = { type: string | null; severity: string | null; status: string | null; at: string | null };
+
+/** Spec 050: what Meta says about a WhatsApp number (webhook and health check). Read only. */
+export type WhatsAppAccount = {
+  verified_name: string | null;
+  name_status: string | null;
+  name_decision: string | null;
+  requested_name: string | null;
+  name_rejection_reason: string | null;
+  username: string | null;
+  username_status: string | null;
+  quality_rating: string | null;
+  messaging_limit: string | null;
+  account_review: string | null;
+  alerts: WhatsAppAlert[];
+};
+
 export type ChannelPage = {
   id: string;
   type: string;
@@ -69,6 +87,8 @@ export type ChannelPage = {
   move_targets: AgentRef[];
   /** Solo lo que esta persona puede hacer (§V). */
   allowed: ChannelAction[];
+  /** Spec 050: la cuenta en Meta de un número de WhatsApp; ausente en los demás. */
+  whatsapp?: WhatsAppAccount | null;
 };
 
 /** Una fila del historial del canal, con el antes y el después (32.7). */
