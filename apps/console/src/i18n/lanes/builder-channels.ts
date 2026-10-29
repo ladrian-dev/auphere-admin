@@ -20,6 +20,8 @@ export const builderChannelsMessages = {
   "builder.channel.problem.auth_expired": { es: "hay que volver a autorizar", en: "needs authorising again" },
   "builder.channel.problem.coexistence_inactive": { es: "la app lleva días sin abrirse", en: "the app has not been opened for days" },
   "builder.channel.problem.meta_error": { es: "error de Meta", en: "Meta error" },
+  "builder.channel.problem.account_review": { es: "Meta no aprobó la revisión de la cuenta", en: "Meta did not approve the account review" },
+  "builder.channel.problem.account_alert": { es: "Meta envió una alerta sobre la cuenta", en: "Meta sent an alert about the account" },
   "builder.channel.problem.unknown": { es: "sin motivo", en: "no reason" },
 
   // ── La sección Canales del agente (29) ──────────────────────────────────

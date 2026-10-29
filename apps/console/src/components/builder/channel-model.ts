@@ -24,7 +24,7 @@ type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 // ── el estado visible ───────────────────────────────────────────────────────
 
 const STATES = new Set(["pending_link", "disconnected", "problem", "paused", "unconfigured", "team_only", "everyone"]);
-const PROBLEMS = new Set(["quality", "auth_expired", "coexistence_inactive", "meta_error"]);
+const PROBLEMS = new Set(["quality", "auth_expired", "coexistence_inactive", "meta_error", "account_review", "account_alert"]);
 
 /** «Solo mi equipo», «Con problemas · calidad baja»… El texto lo pone la consola, el estado la API. */
 export function channelStateText(t: T, state: ChannelVisibleState): string {
