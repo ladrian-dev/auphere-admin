@@ -19,7 +19,7 @@ Block B introduces the foundation tests; block C will replace the contract-only 
 | `test_9_channel_credentials_scoped.py` | extra — `tenant_credentials` RLS + Fernet | Live |
 | `test_10_repos_reject_explicit_tenant.py` | extra — repo contract introspection | Static |
 | `test_15_tiktok_channel_isolation.py` | extra — TikTok channel resolution + OAuth state | Live |
-| `test_49_meta_social_channel_isolation.py` | extra — Instagram / Messenger resolution, disconnect, per-channel credential (spec 049) | Live |
+| `test_meta_social_channel_isolation.py` | extra — Instagram / Messenger resolution, disconnect, per-channel credential (spec 049) | Live |
 
 10 tests minimum; running this directory by itself blocks merge if any fail.
 

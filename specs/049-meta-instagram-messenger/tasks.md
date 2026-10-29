@@ -37,7 +37,7 @@ Cada tarea nombra los requisitos que cubre. [P] = paralelizable.
 
 ## Fase 5 — Aislamiento y verificación
 
-- [x] T040 `tests/isolation/test_49_meta_social_channel_isolation.py` (resolución exacta, una cuenta en un solo cliente, desconexión inmediata, credencial por canal) y `test_endpoint_webhook_meta_social.py` (el cliente sale del canal, nunca del evento). _Req: 1.1, 2.2, 2.3_
+- [x] T040 `tests/isolation/test_meta_social_channel_isolation.py` (resolución exacta, una cuenta en un solo cliente, desconexión inmediata, credencial por canal) y `test_endpoint_webhook_meta_social.py` (el cliente sale del canal, nunca del evento). _Req: 1.1, 2.2, 2.3_
 - [x] T041 `scripts/verify.sh` en verde (lint, mypy estricto, py y js).
 - [ ] T042 Despliegue en staging; webhook de Instagram y Page apuntado a staging (con permiso del owner); DM de ida y vuelta con cuentas con rol. _Req: CE-001, CE-002_
 
