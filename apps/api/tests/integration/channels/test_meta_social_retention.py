@@ -14,7 +14,6 @@ from typing import Any
 
 import httpx
 import pytest
-import pytest_asyncio
 from nexus_channels.meta_social import MetaSocialClient
 from nexus_channels.meta_social.credentials import SocialCredentials
 from nexus_worker.streams.meta_social_cron import tick_tenant
@@ -48,7 +47,14 @@ APP_ID = "957213733862330"
 async def _world(db_session, *, disconnected_days: int | None = None) -> dict[str, Any]:
     tid = uuid.uuid4()
     db_session.add(
-        Tenant(id=tid, name="Ret", slug=f"ret-{tid.hex[:6]}", plan=TenantPlan.PRO, status=TenantStatus.ACTIVE, owner_phone="+56999990088")
+        Tenant(
+            id=tid,
+            name="Ret",
+            slug=f"ret-{tid.hex[:6]}",
+            plan=TenantPlan.PRO,
+            status=TenantStatus.ACTIVE,
+            owner_phone="+56999990088",
+        )
     )
     await db_session.commit()
     cfg: dict[str, Any] = {"name": "Demo Page"}
@@ -63,7 +69,9 @@ async def _world(db_session, *, disconnected_days: int | None = None) -> dict[st
         provider_identifier=PAGE_ID + tid.hex[:3],
         status=status,
         config=cfg,
-        config_encrypted=None if disconnected_days is not None else SocialCredentials(token="SU", page_token="PT").to_payload(),
+        config_encrypted=None
+        if disconnected_days is not None
+        else SocialCredentials(token="SU", page_token="PT").to_payload(),
     )
     db_session.add(channel)
     await db_session.commit()
@@ -72,7 +80,12 @@ async def _world(db_session, *, disconnected_days: int | None = None) -> dict[st
         customer = Customer(tenant_id=tid, identifier=psid, name=f"Name {psid}", preferences={})
         db_session.add(customer)
         await db_session.commit()
-        conv = Conversation(tenant_id=tid, channel_id=channel.id, customer_id=customer.id, status=ConversationStatus.OPEN)
+        conv = Conversation(
+            tenant_id=tid,
+            channel_id=channel.id,
+            customer_id=customer.id,
+            status=ConversationStatus.OPEN,
+        )
         db_session.add(conv)
         await db_session.commit()
         db_session.add(
@@ -87,7 +100,12 @@ async def _world(db_session, *, disconnected_days: int | None = None) -> dict[st
         )
         await db_session.commit()
         people.append(customer.id)
-    return {"tenant_id": tid, "channel_id": channel.id, "people": people, "page": channel.provider_identifier}
+    return {
+        "tenant_id": tid,
+        "channel_id": channel.id,
+        "people": people,
+        "page": channel.provider_identifier,
+    }
 
 
 async def _contents(tenant_id: uuid.UUID) -> dict[str, str]:
@@ -116,19 +134,38 @@ async def test_channel_is_anonymised_30_days_after_disconnect(db_session, fake_r
     erased = await _contents(old["tenant_id"])
     assert set(erased.values()) == {ERASED_TEXT}
     assert all(identifier.startswith("erased:") for identifier in erased)
-    assert set((await _contents(recent["tenant_id"])).values()) == {"private text of PSID_1", "private text of PSID_2"}
+    assert set((await _contents(recent["tenant_id"])).values()) == {
+        "private text of PSID_1",
+        "private text of PSID_2",
+    }
 
     sm = get_sessionmaker()
     async with sm() as s, tenant_scoped_session(s, old["tenant_id"]):
         channel = await s.get(Channel, old["channel_id"])
         assert channel is not None and channel.config.get("purged_at")
-        audits = (await s.execute(select(AuditLog).where(AuditLog.action == "channel.meta_social.purge"))).scalars().all()
+        audits = (
+            (
+                await s.execute(
+                    select(AuditLog).where(AuditLog.action == "channel.meta_social.purge")
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(audits) == 1
 
     # Once: a second tick changes nothing and writes no second audit row.
     await tick_tenant(old["tenant_id"], client=client, redis=fake_redis, app_id=APP_ID)
     async with sm() as s, tenant_scoped_session(s, old["tenant_id"]):
-        audits = (await s.execute(select(AuditLog).where(AuditLog.action == "channel.meta_social.purge"))).scalars().all()
+        audits = (
+            (
+                await s.execute(
+                    select(AuditLog).where(AuditLog.action == "channel.meta_social.purge")
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(audits) == 1
 
 
@@ -154,7 +191,9 @@ async def test_health_resubscribes_a_dropped_page(db_session, fake_redis):
 
 async def test_health_flags_a_revoked_token(db_session, fake_redis):
     world = await _world(db_session)
-    revoked = _graph(lambda r: httpx.Response(400, json={"error": {"message": "revoked", "code": 190}}))
+    revoked = _graph(
+        lambda r: httpx.Response(400, json={"error": {"message": "revoked", "code": 190}})
+    )
 
     await tick_tenant(world["tenant_id"], client=revoked, redis=fake_redis, app_id=APP_ID)
 
@@ -191,4 +230,7 @@ async def test_operator_erases_one_person_only(client, db_session, admin_headers
     contents = await _contents(world["tenant_id"])
     assert contents["PSID_2"] == "private text of PSID_2"
     assert [v for k, v in contents.items() if k.startswith("erased:")] == [ERASED_TEXT]
-    assert set((await _contents(other["tenant_id"])).values()) == {"private text of PSID_1", "private text of PSID_2"}
+    assert set((await _contents(other["tenant_id"])).values()) == {
+        "private text of PSID_1",
+        "private text of PSID_2",
+    }

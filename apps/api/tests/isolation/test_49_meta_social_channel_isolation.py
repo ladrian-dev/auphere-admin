@@ -33,7 +33,9 @@ IG_A = "17841400000000a01"
 IG_B = "17841400000000b01"
 
 
-async def _add(db_session, tenant_id: uuid.UUID, identifier: str, *, provider: str = "meta_instagram") -> uuid.UUID:
+async def _add(
+    db_session, tenant_id: uuid.UUID, identifier: str, *, provider: str = "meta_instagram"
+) -> uuid.UUID:
     channel_id = uuid.uuid4()
     async with db_session.begin():
         await set_tenant(db_session, tenant_id)
@@ -41,7 +43,9 @@ async def _add(db_session, tenant_id: uuid.UUID, identifier: str, *, provider: s
             Channel(
                 id=channel_id,
                 tenant_id=tenant_id,
-                type=ChannelType.INSTAGRAM if provider == "meta_instagram" else ChannelType.MESSENGER,
+                type=ChannelType.INSTAGRAM
+                if provider == "meta_instagram"
+                else ChannelType.MESSENGER,
                 provider=provider,
                 provider_identifier=identifier,
                 status=ChannelStatus.ACTIVE,
@@ -87,7 +91,9 @@ async def test_a_disconnected_channel_stops_resolving(db_session, tenants_ab):
     async with db_session.begin():
         await set_tenant(db_session, a)
         await db_session.execute(
-            update(Channel).where(Channel.id == channel_id).values(status=ChannelStatus.DISCONNECTED)
+            update(Channel)
+            .where(Channel.id == channel_id)
+            .values(status=ChannelStatus.DISCONNECTED)
         )
     assert await _resolve(db_session, "meta_instagram", IG_A) is None
 

@@ -118,7 +118,9 @@ async def _set_last_dm(info: dict[str, Any], ago: timedelta | None) -> None:
         )
 
 
-async def _inbound(info: dict[str, Any], *, provider_message_id: str, context: str | None = None) -> None:
+async def _inbound(
+    info: dict[str, Any], *, provider_message_id: str, context: str | None = None
+) -> None:
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, info["tenant_id"]):
         session.add(
@@ -160,7 +162,9 @@ async def _read(info: dict[str, Any], message_id: uuid.UUID) -> Message:
 
 
 async def _drain(info: dict[str, Any], adapter: Any) -> None:
-    await _drain_tenant(get_sessionmaker(), info["tenant_id"], {"meta_instagram": adapter}, batch_size=10)
+    await _drain_tenant(
+        get_sessionmaker(), info["tenant_id"], {"meta_instagram": adapter}, batch_size=10
+    )
 
 
 async def test_agent_within_24h_is_a_plain_response(ig):
