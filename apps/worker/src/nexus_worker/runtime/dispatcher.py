@@ -326,8 +326,11 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
             session, channel_id=event.channel_id, customer_id=customer.id
         )
         # ``conversations.last_inbound_at`` feeds the 24h window check in
-        # notification.send_text.
-        conversation.last_inbound_at = datetime.now(UTC)
+        # notification.send_text. Spec 049: on Instagram a comment is not a
+        # direct message and does not open the DM window — only the private
+        # reply may answer it.
+        if not (event.context_message_id or "").startswith("comment:"):
+            conversation.last_inbound_at = datetime.now(UTC)
         inbound_msg = await persist_inbound_message(
             session,
             conversation_id=conversation.id,
@@ -344,11 +347,54 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
         )
         inbound_msg.origin = "customer"
         await session.flush()
-        return AcceptedInbound(
+        accepted = AcceptedInbound(
             event.tenant_id,
             event.channel_id,
             conversation_id=conversation.id,
             message_id=inbound_msg.id,
+        )
+        # Spec 049: Instagram / Messenger events carry no name; it is read
+        # once per person, after this transaction (a Graph call).
+        needs_profile = customer.name is None
+        customer_id = customer.id
+
+    if needs_profile and event.provider in _profile_fetchers:
+        await fill_profile(event, customer_id=customer_id)
+    return accepted
+
+
+# Spec 049: provider → ``fetch_profile(recipient, tenant_id, channel_id)``,
+# injected by bootstrap like the media fetcher.
+_profile_fetchers: dict[str, Any] = {}
+
+
+def set_profile_fetcher(provider: str, fetcher: Any | None) -> None:
+    if fetcher is None:
+        _profile_fetchers.pop(provider, None)
+    else:
+        _profile_fetchers[provider] = fetcher
+
+
+async def fill_profile(event: InboundEvent, *, customer_id: uuid.UUID) -> None:
+    """Best-effort: no name, no harm — the inbox shows a generic one."""
+    fetcher = _profile_fetchers.get(event.provider)
+    if fetcher is None:
+        return
+    try:
+        name = await fetcher(
+            recipient=event.user_id, tenant_id=event.tenant_id, channel_id=event.channel_id
+        )
+    except Exception as exc:
+        log.info("pipeline.profile_unavailable", provider=event.provider, error=type(exc).__name__)
+        return
+    if not name:
+        return
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, event.tenant_id):
+        await session.execute(
+            sa.update(Customer)
+            .where(Customer.id == customer_id, Customer.name.is_(None))
+            .values(name=name)
         )
 
 

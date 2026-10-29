@@ -134,7 +134,9 @@ async def _forward(body: bytes, signature: str | None, *, provider: str) -> bool
             },
         )
     except httpx.HTTPError as exc:
-        log.warning("webhook.meta_social.forward_failed", provider=provider, error=type(exc).__name__)
+        log.warning(
+            "webhook.meta_social.forward_failed", provider=provider, error=type(exc).__name__
+        )
         return False
     log.info("webhook.meta_social.forwarded", provider=provider, status=resp.status_code)
     return resp.status_code < 400
@@ -162,7 +164,9 @@ async def _enqueue(
         return False
 
     async with tenant_scoped_session(session, tenant_id):
-        prior = await session.scalar(select(Message.id).where(Message.provider_message_id == event_id))
+        prior = await session.scalar(
+            select(Message.id).where(Message.provider_message_id == event_id)
+        )
         channel = await ChannelRepository(session).get_by_provider_identifier(
             event.provider, event.account_id
         )
@@ -191,7 +195,13 @@ async def _enqueue(
     }
     if inbound.sender_name:
         fields["customer_name"] = inbound.sender_name
-    if inbound.media is not None and inbound.kind.value in {"audio", "image", "document", "video", "sticker"}:
+    if inbound.media is not None and inbound.kind.value in {
+        "audio",
+        "image",
+        "document",
+        "video",
+        "sticker",
+    }:
         fields["media_kind"] = inbound.kind.value
         fields["media_provider_id"] = inbound.media.provider_media_id
     if inbound.context_message_id:

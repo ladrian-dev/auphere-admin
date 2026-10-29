@@ -36,6 +36,17 @@ from nexus_api.core.otel_metrics import ensure_queue_gauges, install_metrics
 from nexus_api.core.redis_client import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import Channel
+from nexus_channels.base import ChannelCapabilityError
+from nexus_channels.meta_social import (
+    PROVIDER_INSTAGRAM,
+    PROVIDER_MESSENGER,
+    URL_MEDIA_PREFIX,
+    MetaSocialChannelAdapter,
+    MetaSocialClient,
+    SendContext,
+)
+from nexus_channels.meta_social.credentials import SocialCredentialsRepository
 from nexus_channels.tiktok_bm import TikTokChannelAdapter, TikTokClient
 from nexus_channels.tiktok_bm.credentials import TikTokCredentialsRepository
 from nexus_channels.whatsapp_meta import MetaChannelAdapter, MetaClient
@@ -306,14 +317,68 @@ def build_context(service_name: str) -> WorkerContext:
     tiktok_adapter = TikTokChannelAdapter(
         tiktok_client, credentials_loader=_load_tiktok_credentials
     )
-    channel_adapters = {"meta": meta_adapter, "tiktok": tiktok_adapter}
+    # Spec 049 — Instagram and Messenger. One Graph client, two adapters; the
+    # token is resolved per CHANNEL (each account / Page has its own).
+    social_client = MetaSocialClient(
+        nexus_settings.meta_app_secret,
+        version=nexus_settings.meta_social_graph_api_version,
+        require_appsecret_proof=nexus_settings.meta_require_appsecret_proof,
+    )
+
+    async def _load_social_context(*, tenant_id: uuid.UUID, channel_id: uuid.UUID) -> SendContext:
+        async with sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
+            channel = await cred_session.get(Channel, channel_id)
+            creds = await SocialCredentialsRepository(cred_session).get(channel_id)
+            if channel is None or creds is None:
+                raise ChannelCapabilityError("the Instagram / Messenger channel has no credential")
+            public_reply = (channel.config or {}).get("comment_public_reply")
+            return SendContext(
+                account_id=channel.provider_identifier,
+                token=creds.send_token,
+                public_comment_reply=public_reply
+                if isinstance(public_reply, str) and public_reply.strip()
+                else None,
+            )
+
+    instagram_adapter = MetaSocialChannelAdapter(
+        social_client, provider=PROVIDER_INSTAGRAM, context_loader=_load_social_context
+    )
+    messenger_adapter = MetaSocialChannelAdapter(
+        social_client, provider=PROVIDER_MESSENGER, context_loader=_load_social_context
+    )
+    channel_adapters = {
+        "meta": meta_adapter,
+        "tiktok": tiktok_adapter,
+        PROVIDER_INSTAGRAM: instagram_adapter,
+        PROVIDER_MESSENGER: messenger_adapter,
+    }
 
     # WP-11 (D10): the runner resolves inbound media (webhook publishes only
     # the provider media id). The Meta adapter's fetch_media_bytes carries
-    # the per-channel credential scoping already.
+    # the per-channel credential scoping already. Instagram / Messenger
+    # attachments arrive as ``url:`` CDN links and go to their adapter.
     from nexus_worker.multimodal.media_fetch import set_media_fetcher
 
-    set_media_fetcher(meta_adapter.fetch_media_bytes)
+    async def _fetch_media(
+        *, media_id: str, tenant_id: uuid.UUID, channel_id: uuid.UUID | None = None
+    ) -> tuple[bytes, str | None, str | None]:
+        fetched: tuple[bytes, str | None, str | None]
+        if media_id.startswith(URL_MEDIA_PREFIX):
+            fetched = await instagram_adapter.fetch_media_bytes(
+                media_id=media_id, tenant_id=tenant_id, channel_id=channel_id
+            )
+        else:
+            fetched = await meta_adapter.fetch_media_bytes(
+                media_id=media_id, tenant_id=tenant_id, channel_id=channel_id
+            )
+        return fetched
+
+    set_media_fetcher(_fetch_media)
+
+    from nexus_worker.runtime.dispatcher import set_profile_fetcher
+
+    set_profile_fetcher(PROVIDER_INSTAGRAM, instagram_adapter.fetch_profile)
+    set_profile_fetcher(PROVIDER_MESSENGER, messenger_adapter.fetch_profile)
 
     # Los dos ticks azules también salen de aquí, no del webhook: el
     # handler decidía Y enviaba, y esa llamada a Meta dentro del ack hacía
