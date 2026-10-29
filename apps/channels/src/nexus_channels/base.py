@@ -53,7 +53,9 @@ class InteractiveReply(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["button", "list"]
+    # ``template_button``: a quick-reply button of a WhatsApp template
+    # (spec 050); ``context_message_id`` is the template message.
+    kind: Literal["button", "list", "template_button"]
     payload_id: str
     title: str | None = None
     description: str | None = None
@@ -131,8 +133,18 @@ class InboundMessage(BaseModel):
     # The DB columns behind these (``channels.provider_identifier``,
     # ``customers.identifier``) are already String(255), so the Pydantic bound
     # was the only thing that would have rejected a legitimate TikTok event.
-    sender_identifier: str = Field(min_length=1, max_length=128)
+    sender_identifier: str = Field(min_length=1, max_length=160)
     sender_name: str | None = None
+    # Spec 050 — WhatsApp identity. ``sender_identifier`` is the phone when
+    # Meta sends one (today's key, unchanged) and the BSUID otherwise. Both
+    # are assigned by the platform, never by the model.
+    sender_phone: str | None = None
+    sender_bsuid: str | None = None
+    username: str | None = None
+    # Click-to-WhatsApp ad the person came from: data for the agent, never an
+    # instruction.
+    referral: dict[str, Any] | None = None
+    error_codes: list[int] = Field(default_factory=list)
     text: str | None = None
     interactive: InteractiveReply | None = None
     media: MediaReference | None = None

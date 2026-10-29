@@ -76,6 +76,11 @@ class StatusUpdate:
     conversation_id: str | None = None
     pricing_category: str | None = None
     pricing_model: str | None = None
+    # Spec 050: BSUID of the recipient (always sent by Meta) and the 2025-2026
+    # per-message pricing fields.
+    recipient_user_id: str | None = None
+    pricing_billable: bool | None = None
+    pricing_type: str | None = None
     error_code: int | None = None
     error_title: str | None = None
     error_message: str | None = None
@@ -92,6 +97,32 @@ class TemplateStatusUpdate:
     new_status: str  # APPROVED | PENDING | REJECTED | FLAGGED | PAUSED | DISABLED
     reason: str | None = None
     timestamp: datetime | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class IdentityChange:
+    """A ``system`` message: the person changed number or Meta rotated their
+    BSUID (spec 050). Updates the customer; never starts an agent turn."""
+
+    kind: str  # "user_changed_number" | "user_changed_user_id"
+    business_phone: str | None
+    user_id: str | None
+    previous_user_id: str | None
+    new_phone: str | None
+    provider_message_id: str
+
+
+@dataclass(slots=True, frozen=True)
+class Element:
+    """One element of a webhook batch, as a self-contained envelope.
+
+    Meta batches several messages, statuses or echoes per ``change``. The
+    route dispatches one envelope per element so every handler sees exactly
+    one item and nothing past the first is lost (spec 050, D1).
+    """
+
+    field: str
+    payload: dict[str, Any]
 
 
 # ── Coexistence-only webhook fields ────────────────────────────────────────
@@ -252,6 +283,55 @@ def is_opt_out_text(body: str | None) -> tuple[bool, str | None]:
     return False, None
 
 
+# ── batches ─────────────────────────────────────────────────────────────────
+
+#: List keys inside ``value`` that hold one element each, per field.
+_ELEMENT_LISTS: dict[str, tuple[str, ...]] = {
+    "messages": ("messages", "statuses"),
+    "smb_message_echoes": ("message_echoes", "messages"),
+}
+
+
+def split_into_elements(payload: dict[str, Any]) -> Iterator[Element]:
+    """Yield one envelope per element of the batch.
+
+    For ``messages`` and ``smb_message_echoes`` each message or status gets
+    its own envelope, keeping ``metadata`` and ``contacts`` so the handler
+    can resolve the business and name the person. Every other field is one
+    element per ``change``, passed through whole.
+    """
+    obj = payload.get("object")
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            field = str(change.get("field") or "")
+            value = _dict(change.get("value"))
+            lists = [k for k in _ELEMENT_LISTS.get(field, ()) if isinstance(value.get(k), list)]
+            if not lists:
+                yield Element(field, _envelope(obj, entry, field, value))
+                continue
+            for key in lists:
+                for item in value[key]:
+                    if not isinstance(item, dict):
+                        continue
+                    single = {k: v for k, v in value.items() if k not in _ELEMENT_LISTS[field]}
+                    single[key] = [item]
+                    yield Element(field, _envelope(obj, entry, field, single))
+            # A batch-level ``errors[]`` (rate limit, …) travels on its own.
+            if isinstance(value.get("errors"), list) and value["errors"]:
+                yield Element(field, _envelope(obj, entry, field, {"errors": value["errors"]}))
+
+
+def _envelope(obj: Any, entry: dict[str, Any], field: str, value: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "object": obj,
+        "entry": [{"id": entry.get("id"), "changes": [{"field": field, "value": value}]}],
+    }
+
+
 # ── parse_inbound ───────────────────────────────────────────────────────────
 
 
@@ -296,21 +376,61 @@ def iter_inbound_messages(payload: dict[str, Any]) -> Iterator[InboundMessage]:
                 else None
             )
             contacts = value.get("contacts") or []
-            contact_name = _first_contact_name(contacts)
             for message in value.get("messages") or []:
-                if not isinstance(message, dict):
+                if not isinstance(message, dict) or message.get("type") == "system":
                     continue
+                contact = _contact_for(contacts, message)
                 inbound = _build_inbound(
                     message=message,
                     business_phone=business_phone,
-                    contact_name=contact_name,
+                    contact_name=_contact_name(contact) or _first_contact_name(contacts),
+                    contact=contact,
                 )
                 if inbound is not None:
                     yield inbound
 
 
+def iter_identity_changes(payload: dict[str, Any]) -> Iterator[IdentityChange]:
+    """``system`` messages: number changes and BSUID rotations (spec 050)."""
+    if payload.get("object") != INBOUND_OBJECT:
+        return
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict) or change.get("field") != "messages":
+                continue
+            value = _dict(change.get("value"))
+            metadata = _dict(value.get("metadata"))
+            business_phone = _to_e164(metadata.get("display_phone_number"))
+            for message in value.get("messages") or []:
+                if not isinstance(message, dict) or message.get("type") != "system":
+                    continue
+                system = _dict(message.get("system"))
+                kind = system.get("type")
+                if kind not in {"user_changed_number", "user_changed_user_id"}:
+                    continue
+                yield IdentityChange(
+                    kind=str(kind),
+                    business_phone=business_phone,
+                    user_id=_str(system.get("user_id")),
+                    previous_user_id=_str(system.get("previous_user_id")),
+                    new_phone=_digits(system.get("wa_id")),
+                    provider_message_id=str(message.get("id") or ""),
+                )
+
+
 def parse_status_callback(payload: dict[str, Any]) -> StatusUpdate | None:
-    """Return the first ``statuses[]`` entry as a :class:`StatusUpdate`."""
+    """Return the first ``statuses[]`` entry as a :class:`StatusUpdate`.
+
+    The route hands it one-status envelopes (``split_into_elements``)."""
+    for status in iter_status_callbacks(payload):
+        return status
+    return None
+
+
+def iter_status_callbacks(payload: dict[str, Any]) -> Iterator[StatusUpdate]:
+    """Every ``statuses[]`` entry of the envelope."""
     for entry in payload.get("entry") or []:
         if not isinstance(entry, dict):
             continue
@@ -326,8 +446,7 @@ def parse_status_callback(payload: dict[str, Any]) -> StatusUpdate | None:
             for status in value.get("statuses") or []:
                 if not isinstance(status, dict):
                     continue
-                return _build_status(status, waba_id=waba_id or "", pnid=pnid or "")
-    return None
+                yield _build_status(status, waba_id=waba_id or "", pnid=pnid or "")
 
 
 def parse_message_echo(payload: dict[str, Any]) -> MessageEcho | None:
@@ -483,14 +602,20 @@ def _build_inbound(
     message: dict[str, Any],
     business_phone: str | None,
     contact_name: str | None,
+    contact: dict[str, Any] | None = None,
 ) -> InboundMessage | None:
     raw_type = message.get("type")
     if not isinstance(raw_type, str):
         return None
     msg_id = message.get("id")
-    sender = message.get("from")
+    # Spec 050: ``from`` (phone) is optional since 2026 — a person with a
+    # username may arrive with only ``from_user_id`` (BSUID). The phone stays
+    # the key when present, so nothing that exists today changes.
+    phone = _digits(message.get("from")) or _digits((contact or {}).get("wa_id"))
+    bsuid = _str(message.get("from_user_id")) or _str((contact or {}).get("user_id"))
+    sender = phone or bsuid
     ts_raw = message.get("timestamp")
-    if not (isinstance(msg_id, str) and isinstance(sender, str) and ts_raw is not None):
+    if not (isinstance(msg_id, str) and sender and ts_raw is not None):
         return None
     try:
         received_at = datetime.fromtimestamp(int(ts_raw), tz=UTC)
@@ -510,6 +635,9 @@ def _build_inbound(
         kind = InboundMessageKind.UNSUPPORTED
         fields = {}
 
+    profile = _dict((contact or {}).get("profile"))
+    referral = message.get("referral") if isinstance(message.get("referral"), dict) else None
+    errors = _list(message.get("errors"))
     return InboundMessage(
         kind=kind,
         provider="meta",
@@ -517,6 +645,13 @@ def _build_inbound(
         provider_identifier=business_phone or "",
         sender_identifier=sender,
         sender_name=contact_name,
+        sender_phone=phone,
+        sender_bsuid=bsuid,
+        username=_str(profile.get("username")),
+        referral=dict(referral) if referral else None,
+        error_codes=[
+            e["code"] for e in errors if isinstance(e, dict) and isinstance(e.get("code"), int)
+        ],
         text=fields.get("text"),
         interactive=fields.get("interactive"),
         media=fields.get("media"),
@@ -653,10 +788,23 @@ def _normalise_body(
         }
 
     if raw_type == "contacts":
-        # The runtime doesn't have a structured Contacts shape yet — keep
-        # as UNSUPPORTED so the agent surfaces it to the user as "I got
-        # your contact card" rather than crashing.
-        return InboundMessageKind.CONTACTS, {}
+        # Spec 050: the agent reads the cards — name and phones as text.
+        return InboundMessageKind.CONTACTS, {"text": _contacts_text(message.get("contacts"))}
+
+    if raw_type == "button":
+        # A quick-reply button of a template. ``context.id`` is the template
+        # message, already captured by the caller.
+        button = _dict(message.get("button"))
+        payload_id = _str(button.get("payload")) or _str(button.get("text"))
+        if payload_id:
+            return InboundMessageKind.INTERACTIVE, {
+                "interactive": InteractiveReply(
+                    kind="template_button",
+                    payload_id=payload_id[:255],
+                    title=_str(button.get("text")),
+                )
+            }
+        return None, {}
 
     return None, {}
 
@@ -693,6 +841,11 @@ def _build_status(
         pricing_model=(
             pricing.get("pricing_model") if isinstance(pricing.get("pricing_model"), str) else None
         ),
+        recipient_user_id=_str(status.get("recipient_user_id")),
+        pricing_billable=(
+            pricing.get("billable") if isinstance(pricing.get("billable"), bool) else None
+        ),
+        pricing_type=_str(pricing.get("type")),
         error_code=err.get("code") if isinstance(err.get("code"), int) else None,
         error_title=err.get("title") if isinstance(err.get("title"), str) else None,
         error_message=err.get("message") if isinstance(err.get("message"), str) else None,
@@ -700,6 +853,64 @@ def _build_status(
 
 
 # ── small helpers ───────────────────────────────────────────────────────────
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _str(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _digits(value: Any) -> str | None:
+    """Meta's phone as digits (no ``+``), the shape ``customers.identifier``
+    has always had."""
+    if not isinstance(value, str):
+        return None
+    digits = "".join(ch for ch in value if ch.isdigit())
+    return digits or None
+
+
+def _contact_for(contacts: list[Any], message: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``contacts[]`` entry of this message's sender: by BSUID, then by
+    phone, then the only one there is."""
+    entries = [c for c in contacts if isinstance(c, dict)]
+    bsuid, phone = message.get("from_user_id"), message.get("from")
+    for c in entries:
+        if bsuid and c.get("user_id") == bsuid:
+            return c
+    for c in entries:
+        if phone and c.get("wa_id") == phone:
+            return c
+    return entries[0] if len(entries) == 1 else None
+
+
+def _contact_name(contact: dict[str, Any] | None) -> str | None:
+    profile = (contact or {}).get("profile")
+    if isinstance(profile, dict):
+        return _str(profile.get("name"))
+    return None
+
+
+def _contacts_text(cards: Any) -> str | None:
+    lines = []
+    for card in cards if isinstance(cards, list) else []:
+        if not isinstance(card, dict):
+            continue
+        name = _dict(card.get("name"))
+        label = _str(name.get("formatted_name")) or _str(name.get("first_name")) or "?"
+        phones = [
+            _str(p.get("phone")) or _str(p.get("wa_id"))
+            for p in card.get("phones") or []
+            if isinstance(p, dict)
+        ]
+        lines.append(" · ".join([label, *[p for p in phones if p]]))
+    return "\n".join(lines) or None
 
 
 def _first_contact_name(contacts: list[Any]) -> str | None:
