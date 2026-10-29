@@ -405,8 +405,10 @@ class MetaClient:
         phone_number_id: str,
         access_token: str,
         fields: str = (
+            # Spec 050: ``messaging_limit_tier`` is deprecated since v24;
+            # the limit is ``whatsapp_business_manager_messaging_limit``.
             "display_phone_number,verified_name,quality_rating,"
-            "messaging_limit_tier,name_status,code_verification_status"
+            "whatsapp_business_manager_messaging_limit,name_status,code_verification_status"
         ),
     ) -> dict[str, Any]:
         return await self._get(

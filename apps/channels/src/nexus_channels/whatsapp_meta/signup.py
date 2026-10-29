@@ -225,7 +225,8 @@ class EmbeddedSignupOrchestrator:
             mode=payload.mode,
             quality_rating=phone_info.get("quality_rating"),
             verified_name=phone_info.get("verified_name"),
-            messaging_tier=phone_info.get("messaging_limit_tier"),
+            messaging_tier=phone_info.get("whatsapp_business_manager_messaging_limit")
+            or phone_info.get("messaging_limit_tier"),
         )
 
         # 6) Persist credentials
@@ -348,7 +349,8 @@ class EmbeddedSignupOrchestrator:
             mode=mode,
             quality_rating=phone_info.get("quality_rating"),
             verified_name=phone_info.get("verified_name"),
-            messaging_tier=phone_info.get("messaging_limit_tier"),
+            messaging_tier=phone_info.get("whatsapp_business_manager_messaging_limit")
+            or phone_info.get("messaging_limit_tier"),
             catalog_id=catalog_id,
         )
 
