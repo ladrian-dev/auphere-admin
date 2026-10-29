@@ -1036,6 +1036,14 @@ export type PartnerAccessOut = {
   catalog: { id: PartnerModule; kind: "nav" | "assistant" }[];
 };
 
+/** Spec 049: channels switched on for one partner before Meta approves them for all. */
+export type BetaChannel = "instagram" | "messenger";
+export type PartnerBetaChannelsOut = {
+  channels: BetaChannel[];
+  catalog: BetaChannel[];
+  general_availability: boolean;
+};
+
 /** Spec 035: the messaging channels Auphere knows, and whether each can start. */
 export type ChannelAvailability = "available" | "beta" | "pending" | "coming_soon";
 export type ChannelCatalogEntry = {
@@ -2543,6 +2551,17 @@ export const backend = {
     call<PartnerAccessOut>(`/admin/partners/${partnerId}/access`, {
       method: "PUT",
       body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  // Spec 049: Instagram / Messenger in beta, per partner.
+  getPartnerBetaChannels: (partnerId: string) =>
+    call<PartnerBetaChannelsOut>(`/admin/partners/${partnerId}/beta-channels`),
+
+  setPartnerBetaChannels: (partnerId: string, channels: BetaChannel[], operatorId: string) =>
+    call<PartnerBetaChannelsOut>(`/admin/partners/${partnerId}/beta-channels`, {
+      method: "PUT",
+      body: { channels },
       headers: { "X-Operator-Id": operatorId },
     }),
 

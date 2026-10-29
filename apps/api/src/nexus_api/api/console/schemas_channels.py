@@ -101,6 +101,27 @@ class ChannelDetailOut(ChannelOut):
     catalog: CatalogOut | None = None
     catalog_state: CatalogState = "none"
     catalog_error: CatalogErrorOut | None = None
+    #: Spec 049 — Instagram / Messenger: the account or Page as the business
+    #: knows it, and why it needs attention (``token_revoked``,
+    #: ``messages_disabled``, …), if it does.
+    display_name: str | None = None
+    username: str | None = None
+    picture_url: str | None = None
+    needs_attention: str | None = None
+    needs_attention_help: str | None = None
+    comments_enabled: bool | None = None
+    comment_public_reply: str | None = None
+
+
+class MetaSocialChannelOfferOut(BaseModel):
+    kind: Literal["instagram", "messenger"]
+    config_id: str
+
+
+class MetaSocialOfferOut(BaseModel):
+    app_id: str
+    graph_version: str
+    channels: list[MetaSocialChannelOfferOut] = Field(default_factory=list)
 
 
 class ChannelsOverviewOut(BaseModel):
@@ -116,6 +137,10 @@ class ChannelsOverviewOut(BaseModel):
     roles_required: bool
     #: True when this deployment has Meta credentials for the tenant.
     meta_connected: bool
+    #: Spec 049 — Instagram / Messenger this partner may connect, with the
+    #: Facebook Login for Business configuration each opens. Empty when the
+    #: partner does not have them (the console then draws nothing).
+    meta_social: MetaSocialOfferOut | None = None
 
 
 class ChannelRoleIn(BaseModel):

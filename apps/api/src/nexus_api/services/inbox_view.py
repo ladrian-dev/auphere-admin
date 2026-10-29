@@ -38,6 +38,7 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
 )
+from nexus_api.services.meta_window import person_window
 
 #: El canal del Playground: pruebas del partner, nunca conversaciones del negocio.
 PLAYGROUND_PROVIDER = "qa_playground"
@@ -639,7 +640,10 @@ async def detail(
         agent_id = handled_id or (channel.agent_id if channel else None) or agents[0][0]
         agent = (agent_id, dict(agents).get(agent_id, "—"))
     now = datetime.now(UTC)
-    closes = conversation.last_inbound_at + WINDOW if conversation.last_inbound_at else None
+    # Spec 049: on Instagram and Messenger a person can still answer for 7
+    # days (HUMAN_AGENT); the composer stays open that long.
+    window = person_window(channel.type.value) if channel is not None else WINDOW
+    closes = conversation.last_inbound_at + window if conversation.last_inbound_at else None
     payload: dict[str, Any] = last_escalation.payload if last_escalation is not None else {}
     return Detail(
         conversation=conversation,

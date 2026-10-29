@@ -68,6 +68,7 @@ ALL_EXPECTED = {
     "isolation-watcher",
     "whatsapp-health-cron",
     "tiktok-token-refresh-cron",
+    "meta-social-cron",
     "async-booking-cron",
     "continuous-eval-cron",
     "memory-versions-retention-cron",

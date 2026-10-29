@@ -92,6 +92,7 @@ from nexus_worker.streams.memory_versions_retention import (
 from nexus_worker.streams.meta_echoes_consumer import run_meta_echoes_consumer
 from nexus_worker.streams.meta_history_consumer import run_meta_history_consumer
 from nexus_worker.streams.meta_reconciliation_cron import run_meta_reconciliation_cron
+from nexus_worker.streams.meta_social_cron import run_meta_social_cron
 from nexus_worker.streams.meta_state_sync_consumer import run_meta_state_sync_consumer
 from nexus_worker.streams.model_lifecycle_cron import run_model_lifecycle_cron
 from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
@@ -193,6 +194,8 @@ SCHEDULER_TASK_NAMES = frozenset(
         "isolation-watcher",
         "whatsapp-health-cron",
         "tiktok-token-refresh-cron",
+        # Spec 049: Instagram / Messenger health (resubscribe) and 30-day erasure.
+        "meta-social-cron",
         "async-booking-cron",
         "continuous-eval-cron",
         "memory-versions-retention-cron",
@@ -626,6 +629,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("whatsapp-health-cron", run_whatsapp_health_cron(stop=ctx.stop)),
         _spawn("tiktok-token-refresh-cron", run_tiktok_token_refresh_cron(stop=ctx.stop)),
+        _spawn("meta-social-cron", run_meta_social_cron(stop=ctx.stop, redis=ctx.redis)),
         _spawn("async-booking-cron", run_async_booking_cron(stop=ctx.stop)),
         _spawn(
             "continuous-eval-cron",

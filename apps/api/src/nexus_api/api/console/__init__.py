@@ -59,6 +59,7 @@ from nexus_api.api.console import (
     knowledge,
     lite,
     me,
+    meta_social,
     models,
     notifications,
     onboarding,
@@ -107,6 +108,8 @@ router.include_router(agent_publish.router)
 router.include_router(client_builder.router)
 router.include_router(agent_copilot.router)
 router.include_router(agents_list.router)
+# Spec 049: before ``channels`` so ``/{kind}/connect`` is never read as a channel id.
+router.include_router(meta_social.router)
 router.include_router(channels.router)
 # Spec 047 (T112, T114): la página de cada canal y su menú, después de las
 # rutas fijas de ``channels/…`` (``overview``, ``diagnostics``): ``{channel_id}``

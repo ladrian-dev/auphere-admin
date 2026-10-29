@@ -102,3 +102,80 @@ async def set_partner_access(
             return _out(view)
     except PartnerAccessError as exc:
         raise _error(exc) from None
+
+
+# ── Spec 049: channels in beta for this partner ─────────────────────────────
+
+BetaChannelLiteral = Literal["instagram", "messenger"]
+
+
+class BetaChannelsOut(BaseModel):
+    channels: list[str]
+    #: Every channel that can be switched on, in display order.
+    catalog: list[str]
+    #: True once Meta approved the permissions and every partner has them.
+    general_availability: bool
+
+
+class BetaChannelsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channels: list[BetaChannelLiteral] = Field(max_length=2)
+
+
+def _beta_out(channels: list[str]) -> BetaChannelsOut:
+    from nexus_api.config import get_settings
+    from nexus_api.services.meta_social_service import KINDS
+
+    return BetaChannelsOut(
+        channels=[k for k in KINDS if k in channels],
+        catalog=list(KINDS),
+        general_availability=get_settings().meta_social_general_availability,
+    )
+
+
+@router.get("/{partner_id}/beta-channels", response_model=BetaChannelsOut)
+async def get_beta_channels(
+    partner_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+) -> BetaChannelsOut:
+    from nexus_api.db.models import Partner
+
+    async with session.begin():
+        partner = await session.get(Partner, partner_id)
+        if partner is None:
+            raise HTTPException(status_code=404, detail={"code": "partner_not_found"})
+        return _beta_out(list(partner.beta_channels or []))
+
+
+@router.put("/{partner_id}/beta-channels", response_model=BetaChannelsOut)
+async def set_beta_channels(
+    partner_id: uuid.UUID,
+    body: BetaChannelsIn,
+    operator: OperatorAccount = Depends(require_operator),
+    session: AsyncSession = Depends(get_db_session),
+) -> BetaChannelsOut:
+    """Spec 049, requirement 5.5: until Meta approves Instagram and Messenger
+    for everyone, only the partners switched on here see them."""
+    from nexus_api.db.models import AuditLog, Partner
+
+    async with session.begin():
+        partner = await session.get(Partner, partner_id, with_for_update=True)
+        if partner is None:
+            raise HTTPException(status_code=404, detail={"code": "partner_not_found"})
+        before = sorted(partner.beta_channels or [])
+        after: list[str] = sorted(set(body.channels))
+        if before != after:
+            partner.beta_channels = after
+            session.add(
+                AuditLog(
+                    tenant_id=None,
+                    actor=operator_actor(operator),
+                    action="partner_access.updated",
+                    target=f"partner:{partner_id}",
+                    before_json={"beta_channels": before},
+                    after_json={"beta_channels": after},
+                )
+            )
+        await session.flush()
+        return _beta_out(after)

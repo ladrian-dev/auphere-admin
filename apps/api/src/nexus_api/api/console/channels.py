@@ -25,6 +25,7 @@ from urllib.parse import urlsplit
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
+from nexus_channels.meta_social import META_SOCIAL_PROVIDERS
 from nexus_channels.whatsapp_meta.credentials import (
     ChannelCredentialsRepository,
     MetaCredentials,
@@ -43,6 +44,7 @@ from nexus_api.core.tenant_resolver import invalidate_tenant_cache
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Connector
 from nexus_api.repositories.audit import AuditRepository
+from nexus_api.services import meta_social_service
 from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
 from nexus_api.services.meta_signup_service import build_meta_client as _build_meta_client
 
@@ -59,6 +61,7 @@ from .schemas_channels import (
     ChannelDetailOut,
     ChannelRoleIn,
     ChannelsOverviewOut,
+    MetaSocialOfferOut,
 )
 
 log = structlog.get_logger(__name__)
@@ -160,6 +163,19 @@ def _detail(
         catalog=_catalog_of(cfg),
         catalog_state=catalog_state or ("linked" if cfg.get("catalog_id") else "none"),
         catalog_error=_catalog_error_of(cfg),
+        display_name=_s("name"),
+        username=_s("username"),
+        picture_url=_s("picture_url"),
+        needs_attention=_s("needs_attention"),
+        needs_attention_help=(
+            meta_social_service.REASON_HELP.get(str(cfg.get("needs_attention")))
+            if cfg.get("needs_attention")
+            else None
+        ),
+        comments_enabled=(
+            cfg.get("comments_enabled") is not False if ch.type is ChannelType.INSTAGRAM else None
+        ),
+        comment_public_reply=_s("comment_public_reply"),
     )
 
 
@@ -187,6 +203,9 @@ async def count_connected_channels(session: AsyncSession) -> int:
             .where(
                 Channel.status != ChannelStatus.DISCONNECTED,
                 Channel.provider.not_in(INTERNAL_PROVIDERS),
+                # Spec 049: the quota is WhatsApp numbers; an Instagram
+                # account or a Page does not take a number's slot.
+                Channel.provider.not_in(tuple(META_SOCIAL_PROVIDERS)),
             )
         )
         or 0
@@ -228,7 +247,11 @@ async def channels_overview(
     redis: Redis = Depends(get_redis),
 ) -> ChannelsOverviewOut:
     rows = await _all_channels(scope.session)
-    used = sum(1 for c in rows if c.status is not ChannelStatus.DISCONNECTED)
+    used = sum(
+        1
+        for c in rows
+        if c.status is not ChannelStatus.DISCONNECTED and c.provider not in META_SOCIAL_PROVIDERS
+    )
     limit = scope.principal.partner.max_channels_per_client
     creds = await MetaCredentialsRepository(scope.session).get()
     logos = await channel_logos(scope.session)
@@ -240,6 +263,11 @@ async def channels_overview(
         can_connect=used < limit,
         roles_required=roles_required(rows),
         meta_connected=creds is not None,
+        meta_social=(
+            MetaSocialOfferOut.model_validate(meta_social_service.offer(scope.principal.partner))
+            if meta_social_service.enabled_kinds(scope.principal.partner)
+            else None
+        ),
     )
 
 
@@ -752,6 +780,8 @@ async def disconnect_channel(
     ch = await scope.session.get(Channel, channel_id)
     if ch is None:  # RLS esconde las filas de otro tenant → el mismo 404
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
+    if ch.provider in META_SOCIAL_PROVIDERS:
+        return await _disconnect_meta_social(scope, ch, redis)
     tenant_id = scope.tenant.id
     sm = get_sessionmaker()
 
@@ -935,3 +965,28 @@ async def disconnect_channel(
 
 
 __all__ = ["count_connected_channels", "roles_required", "router"]
+
+
+async def _disconnect_meta_social(
+    scope: ClientScope, ch: Channel, redis: Redis
+) -> ChannelDetailOut:
+    """Spec 049, requirement 5.3: stop receiving and sending now, drop the
+    token now; the data of the channel is erased 30 days later
+    (``meta_social_retention_cron``). One transaction: there is no Meta-side
+    state to retry — a failed unsubscribe is logged and the app stops
+    acting on the account either way."""
+    before = ch.status.value
+    if ch.status is not ChannelStatus.DISCONNECTED:
+        await meta_social_service.connector(scope.session, redis).disconnect(ch)
+    cfg = ch.config or {}
+    await AuditRepository(scope.session).record(
+        actor=scope.principal.actor,
+        action="channel.meta_social.disconnect",
+        target=f"channel:{ch.id}",
+        before={"status": before},
+        after={
+            "status": ChannelStatus.DISCONNECTED.value,
+            "display_name": (f"@{cfg['username']}" if cfg.get("username") else cfg.get("name")),
+        },
+    )
+    return _detail(ch, await channel_logos(scope.session))

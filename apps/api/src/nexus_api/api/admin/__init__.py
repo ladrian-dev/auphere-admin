@@ -22,6 +22,7 @@ from nexus_api.api.admin import (
     integrations,
     isolation,
     meta_signup,
+    meta_social,
     model_bindings,
     models_catalog,
     overview,
@@ -65,6 +66,8 @@ router.include_router(unlimited_consumption.router)
 router.include_router(agent_configs.router)
 # Spec 030: los agentes de un cliente.
 router.include_router(agents.router)
+# Spec 049: erase one person's Instagram / Messenger data.
+router.include_router(meta_social.router)
 router.include_router(conversations.router)
 router.include_router(tool_catalog.router)
 router.include_router(integrations.router)
