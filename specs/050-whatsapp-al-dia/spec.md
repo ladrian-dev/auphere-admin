@@ -136,7 +136,7 @@ El partner ve por cliente y por número cuántos mensajes cobró Meta y de qué 
 
 ### Historia 7 — El perfil del negocio, desde la consola (Prioridad: P3)
 
-El partner edita desde la consola la foto, la descripción, la dirección, el correo, las webs y el sector del perfil de WhatsApp del cliente, y ve el estado del nombre visible.
+El partner edita desde la consola la foto, la descripción, la dirección, el correo, las webs y el sector del perfil de WhatsApp del cliente, y ve el estado del nombre visible. En coexistencia Meta no deja editar el perfil por API: ahí la sección no existe.
 
 **Por qué esta prioridad**: hoy obliga a entrar en el administrador de Meta. Es comodidad, no riesgo.
 
@@ -145,7 +145,7 @@ El partner edita desde la consola la foto, la descripción, la dirección, el co
 **Escenarios de aceptación**:
 
 1. **Dado** un número conectado por Cloud API, **cuando** el partner guarda el perfil, **entonces** WhatsApp lo muestra.
-2. **Dado** un número en coexistencia, **cuando** se abre el perfil, **entonces** la consola dice que se edita desde la app de WhatsApp Business y no ofrece el formulario.
+2. **Dado** un número en coexistencia, **cuando** se abre su página, **entonces** no hay sección Perfil (constitución §V: la ausencia se diseña).
 
 ---
 
@@ -204,7 +204,7 @@ Un negocio que ya alimenta su catálogo desde su tienda (WooCommerce, Shopify) l
   - Meta rechaza un producto por política o por la imagen: el producto se queda, marcado con el motivo y la forma de corregirlo, y el agente no lo ofrece.
   - Se borra en Meta un catálogo que estaba enlazado: el número deja de enviar tarjetas, el agente responde con texto y la sección ofrece volver a crearlo o enlazar otro.
   - Dos personas editan el mismo producto a la vez: la segunda ve que cambió y no pisa el cambio sin querer.
-- **Sin disponibilidad.** Lo que un número no admite (perfil en coexistencia, plantillas de autenticación sin el permiso del negocio) no se ofrece apagado: no aparece, y la ficha del número dice por qué cuando el partner lo busca (constitución §V).
+- **Sin disponibilidad.** Lo que un número no admite (perfil en coexistencia, plantillas de autenticación sin el permiso del negocio) no se ofrece apagado ni se explica: simplemente no aparece (constitución §V).
 
 ## Requisitos *(obligatorio)*
 
@@ -316,7 +316,7 @@ Un negocio que ya alimenta su catálogo desde su tienda (WooCommerce, Shopify) l
 #### Criterios de aceptación
 
 1. WHERE el número está conectado por Cloud API EL sistema DEBE permitir leer y editar foto, descripción, información, dirección, correo, webs y sector.
-2. WHERE el número está en coexistencia EL sistema NO DEBE ofrecer el formulario, y DEBE decir que se edita desde la app.
+2. WHERE el número está en coexistencia EL sistema NO DEBE mostrar la sección Perfil.
 3. Cada cambio DEBE quedar en la auditoría con quién lo hizo.
 
 ### Requisito 10 — Material de revisión de Meta

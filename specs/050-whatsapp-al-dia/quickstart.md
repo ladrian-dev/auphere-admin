@@ -62,7 +62,7 @@ Aislamiento: `tests/isolation/` (ver [plan.md](plan.md), «Las tres puertas»).
 | # | Escenario | Resultado esperado |
 |---|---|---|
 | 29 | Editar la descripción y la foto (Cloud API) | WhatsApp las muestra; queda auditado |
-| 30 | Abrir el perfil de un número en coexistencia | Explicación, sin formulario |
+| 30 | Abrir la página de un número en coexistencia | No hay sección Perfil |
 
 ## Comprobación de cada iteración
 

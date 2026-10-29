@@ -39,7 +39,7 @@ Unicidad nueva: `(tenant_id, channel_id, customer_id) WHERE opted_in_at IS NULL`
 
 | Columna | Tipo | Notas |
 |---|---|---|
-| `tenant_id` | existente | **Se rellena** (hoy queda nulo), con la atribución por WABA. RLS como el resto |
+| `tenant_id` | existente | **Se rellena** (hoy queda nulo), con la atribución por WABA. La tabla sigue **sin RLS**: también guarda las plantillas de la WABA de Auphere (canal del dueño), que no son de ningún negocio. Se lee siempre filtrando por `waba_id` del canal del negocio |
 | `category` | existente | Se escribe con `message_template_category` / `new_category` |
 | `previous_category` | `varchar(32)` nulo | De `template_category_update` |
 | `quality` | `varchar(12)` nulo | `GREEN`, `YELLOW`, `RED` o `UNKNOWN` |

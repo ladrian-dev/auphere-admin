@@ -85,5 +85,5 @@ Base: `/channels/{channel_id}/catalog`.
 
 ## Iteración 4 — Perfil
 
-- `GET /channels/{channel_id}/whatsapp-profile` → `{about, address, description, email, websites[], vertical, picture_url, editable}`. `editable=false` en coexistencia.
+- `GET /channels/{channel_id}/whatsapp-profile` → `{about, address, description, email, websites[], vertical, picture_url}`. En coexistencia, 404: la sección no existe.
 - `PUT /channels/{channel_id}/whatsapp-profile` con los mismos campos y sus límites (about ≤ 139, description ≤ 512, websites ≤ 2), más `picture_upload_id?` → 200; 409 `coexistence`.

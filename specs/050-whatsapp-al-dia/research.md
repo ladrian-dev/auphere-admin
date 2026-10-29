@@ -229,7 +229,7 @@ Con N mensajes en un lote, el primero se procesa N veces (el dedupe lo frena) y 
 **Decisión.**
 1. **Perfil.**
    - Sección en la página del número de la consola nueva: leer y editar con la barra de guardado.
-   - En coexistencia, la sección explica que se edita desde la app.
+   - En coexistencia, la sección no aparece (constitución §V).
    - La foto depende de D7.3 (Resumable Upload).
 2. **PIN.**
    - `MetaCredentials` gana `two_step_pin`, cifrado como el resto.

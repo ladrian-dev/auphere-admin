@@ -6,6 +6,9 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
 
 ## Fase 1 — Base de la iteración 1 (bloquea todo)
 
+- [x] T000 El agente compara el estado de la plantilla sin distinguir mayúsculas (`apps/mcp/src/nexus_mcp/servers/notification/tools.py`, prueba `apps/mcp/tests/test_template_approved_guard.py`).
+  _Requisitos: 4.5_ · Entregado: `c3bffbee` (develop), 2026-10-29
+
 - [ ] T001 Cargas firmadas de Meta en `apps/channels/tests/fixtures/meta_webhooks/`. Una por campo de [webhook-events.md](contracts/webhook-events.md), con las formas de [research.md](research.md):
   - lote de 5 mensajes y 5 estados;
   - mensaje solo con BSUID (`from_user_id`, sin `from`);
@@ -56,15 +59,18 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
   - un lote de 5 mensajes da 5 entradas en el stream; uno de 5 estados, 5 estados aplicados;
   - un elemento roto no corta el resto y responde 200;
   - mensaje solo con BSUID: se encola con `user_id` = BSUID y `customer_bsuid`;
+  - estados `warning` y `deleted` y mensaje revocado se reflejan en la conversación;
+  - un campo desconocido se registra sin datos personales y responde 200;
   - WhatsApp de hoy sigue igual: `test_endpoint_webhook_meta_inbound.py` en verde.
 
-  _Requisitos: 1.1, 1.2, 1.7, 2.1, CE-002, CE-008_
+  _Requisitos: 1.1, 1.2, 1.4, 1.6, 1.7, 2.1, CE-002, CE-008_
 - [ ] T007 [US1] Router (`apps/api/src/nexus_api/api/webhooks/meta.py`) hasta verde:
   - recorre elementos con fallo aislado (`webhook.meta.element_failed`);
   - el stream lleva `customer_bsuid`, `customer_phone` y `customer_username`;
-  - el dedupe es por elemento.
+  - el dedupe es por elemento;
+  - `_map_status` gana `warning` y `deleted`.
 
-  _Requisitos: 1.1, 1.2, 1.7_
+  _Requisitos: 1.1, 1.2, 1.4, 1.6, 1.7_
 - [ ] T008 [US1] Pruebas en rojo de identidad (`apps/worker/tests/unit/test_customer_identity.py`):
   - las reglas 1 a 4 de [data-model.md](data-model.md): por BSUID, por teléfono con BSUID añadido, alta con `identifier = phone ?? bsuid`;
   - conflicto: gana el BSUID, no se funde nada y se escribe el log;
@@ -86,9 +92,10 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
   - el mismo BSUID en dos tenants son dos personas;
   - un BSUID nunca resuelve a otro tenant;
   - dos personas de un mismo tenant no se funden aunque compartan un dato parcial;
-  - el `user_id` del hilo no cambia al añadir un BSUID.
+  - el `user_id` del hilo no cambia al añadir un BSUID;
+  - ninguna herramienta del agente acepta `bsuid` ni `phone` como argumento: barrido de los esquemas del registro MCP.
 
-  _Requisitos: 2.3, Garantías 1, 4 y 8, CE-007_
+  _Requisitos: 2.3, 2.7, Garantías 1, 4 y 8, CE-007_
 
 ## Fase 3 — Historia 2: conexión vigente (P1, antes del 2026-11-16)
 
@@ -98,7 +105,7 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
   - se aceptan los seis eventos de v4 y el `FINISH` de v5 (`messaging_account_ids` → WABA).
 
   _Requisitos: 3.1, 3.4_
-- [ ] T014 [US2] `signupExtras` y `parseSignupMessage` en `apps/console/src/lib/meta-fb-sdk.ts` y `apps/admin/src/lib/meta-fb-sdk.ts`, con prueba de paridad entre los dos. Callers: `components/builder/connect-whatsapp-dialog.tsx`, `components/channels/whatsapp-connect.tsx`, `app/connect/whatsapp/*` (enlace del dueño y beta de inicio de sesión con WhatsApp) y `admin/.../meta-signup-dialog.tsx`. `FINISH_ONLY_WABA` y `FINISH_GRANT_ONLY_API_ACCESS` dicen qué falta.
+- [ ] T014 [US2] (El alta con token propio de Auphere no usa el registro integrado: solo depende de T017.) `signupExtras` y `parseSignupMessage` en `apps/console/src/lib/meta-fb-sdk.ts` y `apps/admin/src/lib/meta-fb-sdk.ts`, con prueba de paridad entre los dos. Callers: `components/builder/connect-whatsapp-dialog.tsx`, `components/channels/whatsapp-connect.tsx`, `app/connect/whatsapp/*` (enlace del dueño y beta de inicio de sesión con WhatsApp) y `admin/.../meta-signup-dialog.tsx`. `FINISH_ONLY_WABA` y `FINISH_GRANT_ONLY_API_ACCESS` dicen qué falta.
   _Requisitos: 3.1, 3.4_
 - [ ] T015 [US2] Interruptor `meta_embedded_signup_version` (por defecto `v4`) en `apps/api/src/nexus_api/config.py`. Se entrega a los navegadores en el overview, en el enlace del dueño (`api/console/channel_signup.py`) y en `partners_clients.py`, junto a `graph_version`.
   _Requisitos: 3.1, 3.5_
@@ -177,7 +184,7 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
 
 ## Fase 6 — Cierre de la iteración 1
 
-- [ ] T031 `NODE_OPTIONS=--experimental-require-module ./scripts/verify.sh lint` y las suites de las fases 1 a 5, por fichero. Subir a `develop`, CI en verde y staging: escenarios 1 a 14 de [quickstart.md](quickstart.md).
+- [ ] T031 `NODE_OPTIONS=--experimental-require-module ./scripts/verify.sh lint` y las suites de las fases 1 a 5, por fichero. Subir a `develop`, CI en verde y staging: escenarios 1 a 14 de [quickstart.md](quickstart.md). Medir CE-003 (respuesta a BSUID en menos de un minuto) y CE-006 (aviso en menos de 5 minutos).
   _Requisitos: CE-001–CE-008_
 - [ ] T032 KB: nota de sesión y actualización de `kb/Auphere/nexus/whatsapp-connector/04-webhooks.md` y `02-embedded-signup.md` (v4/v5, BSUID, eventos).
   _Requisitos: §IX_
@@ -225,7 +232,7 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
   _Requisitos: 11.1, 11.2, 11.5–11.10_
 - [ ] T053 [US9] Herramientas de catálogo derivadas del canal en el cargador del turno, filtrando agotado, oculto y rechazado. Prueba de aislamiento `apps/api/tests/isolation/test_catalog_tools_per_channel.py`.
   _Requisitos: 11.9, 11.12, Garantía 1_
-- [ ] T054 [US9] Revisión de diseño sobre la pantalla real (`design:design-critique` / `impeccable`) y corrección de lo que salga.
+- [ ] T054 [US9] Revisión de diseño sobre la pantalla real (`design:design-critique` / `impeccable`) y corrección de lo que salga. Medir CE-009 (de cero a la primera tarjeta en menos de 5 minutos) y CE-010.
   _Requisitos: 11.2_
 - [ ] T055 [US8] Kit de revisión de `catalog_management` y `business_management`:
   - número de demo por Cloud API;
@@ -237,7 +244,7 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
 
 ## Iteración 4 — Historia 7 (P3, perfil) *(por bloques)*
 
-- [ ] T060 [US7] `GET/PUT /channels/{id}/whatsapp-profile` con sus límites y coexistencia (409). Foto por Resumable Upload. Sección «Perfil» en la página del canal. Auditoría con los nombres de los campos cambiados. Con sus pruebas.
+- [ ] T060 [US7] `GET/PUT /channels/{id}/whatsapp-profile` con sus límites; en coexistencia la sección no existe y la API responde 409. Foto por Resumable Upload. Sección «Perfil» en la página del canal. Auditoría con los nombres de los campos cambiados. Con sus pruebas.
   _Requisitos: 9.1–9.3_
 
 ## Dependencias y orden

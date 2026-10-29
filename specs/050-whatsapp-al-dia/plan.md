@@ -41,7 +41,7 @@ WhatsApp es el canal principal. El plan lo pone al día con Meta 2026 en cuatro 
 | II | Superficie | ☑ | `0`, la misma de WhatsApp |
 | III | Lo leído es dato | ☑ | El `referral` (titular, cuerpo), los nombres de perfil y los mensajes de sistema llegan como datos del turno, nunca como mensaje de sistema del operador |
 | IV | Acción `mutates` | ☑ | Rotar el PIN, levantar una baja, crear y borrar productos y editar el perfil dejan auditoría con la persona. Borrar un producto pide confirmación con su nombre. Ninguna acción la hace el agente solo |
-| V | Estados honestos | ☑ | Plantillas con estado, calidad y motivo. Canal con `problem_reason` y su origen. Catálogo en solo lectura con el porqué. Perfil en coexistencia sin formulario y con explicación. Estados de vacío, carga, error y parcial en Catálogo |
+| V | Estados honestos | ☑ | Plantillas con estado, calidad y motivo. Canal con `problem_reason` y su origen. Catálogo en solo lectura con el porqué. Perfil en coexistencia: la sección no existe. Estados de vacío, carga, error y parcial en Catálogo |
 | VI | Por API | ☑ | Todo por Graph y por la API de la consola |
 | VII | Test primero | ☑ | Cada criterio EARS nace como test (ver `tasks.md`); el parser con cargas firmadas de cada campo; nada de `skip` |
 | VIII | Licencias | ☑ | Ninguna dependencia nueva |
@@ -119,7 +119,7 @@ WhatsApp es el canal principal. El plan lo pone al día con Meta 2026 en cuatro 
 
 ### Iteración 4 — Perfil
 
-`GET/PUT /channels/{id}/whatsapp-profile`, con la foto por Resumable Upload y una sección «Perfil» en la página del canal. En coexistencia no hay formulario: solo la explicación.
+`GET/PUT /channels/{id}/whatsapp-profile`, con la foto por Resumable Upload y una sección «Perfil» en la página del canal. En coexistencia la sección no existe (§V).
 
 ## Estructura
 
