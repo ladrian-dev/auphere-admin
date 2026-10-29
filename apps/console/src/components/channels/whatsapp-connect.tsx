@@ -12,7 +12,7 @@ import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { CatalogList, WhatsAppSignupResult } from "@/lib/backend/channels";
 import { actionErrorText } from "@/lib/action-error";
-import { SignupError, loginWithMeta, type SignupMode } from "@/lib/meta-fb-sdk";
+import { SignupError, loginWithMeta, type SignupErrorCode, type SignupMode, type SignupVersion } from "@/lib/meta-fb-sdk";
 
 import { CatalogPicker, offerCatalogAfterSignup } from "./catalog-picker";
 
@@ -20,6 +20,8 @@ import { CatalogPicker, offerCatalogAfterSignup } from "./catalog-picker";
 export type MetaSignupConfig = {
   appId: string | null;
   graphVersion: string;
+  /** Spec 050: which Embedded Signup Meta renders (`v4` until v5 passes staging). */
+  signupVersion?: SignupVersion;
   configIdCloudApi: string | null;
   configIdCoexistence: string | null;
 };
@@ -68,7 +70,9 @@ const SDK_FAILURE_KEY = {
   timeout: "ch.connect.timeout",
   no_code: "ch.connect.noCode",
   meta_error: "common.error.backend",
-} as const satisfies Record<string, MessageKey>;
+  no_number: "ch.connect.noNumber",
+  grant_only: "ch.connect.grantOnly",
+} as const satisfies Record<SignupErrorCode, MessageKey>;
 
 /** What the whole signup ended in: the new number, or why not (`code`) in words (`text`). */
 export type WhatsAppSignupOutcome = { ok: true; data: WhatsAppSignupResult } | { ok: false; code: string; text: string };
@@ -83,7 +87,7 @@ export async function runWhatsAppSignup({ refId, meta, mode, t }: { refId: strin
   const configId = mode === "coexistence" ? meta.configIdCoexistence : meta.configIdCloudApi;
   if (!meta.appId || !configId) return { ok: false, code: "not_configured", text: t("ch.connect.byAuphere.body") };
   try {
-    const envelope = await loginWithMeta({ appId: meta.appId, version: meta.graphVersion, configId, mode });
+    const envelope = await loginWithMeta({ appId: meta.appId, version: meta.graphVersion, configId, mode, signupVersion: meta.signupVersion });
     const res = await whatsappSignupAction({ ref: refId, mode, ...envelope });
     if (res.ok) return { ok: true, data: res.data };
     // R1.4 / R4.2: the number is someone else's, or its previous owner

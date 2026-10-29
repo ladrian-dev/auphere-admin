@@ -6,7 +6,7 @@ import * as React from "react";
 import { Button } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import { SignupError, loginWithMeta, type SignupMode } from "@/lib/meta-fb-sdk";
+import { SignupError, loginWithMeta, type SignupMode, type SignupVersion } from "@/lib/meta-fb-sdk";
 
 import { ownerConnectAction } from "./actions";
 
@@ -37,12 +37,14 @@ export function OwnerConnect({
   appId,
   configId,
   version,
+  signupVersion,
 }: {
   name: string;
   mode: OwnerLinkMode;
   appId: string;
   configId: string;
   version: string;
+  signupVersion?: SignupVersion;
 }) {
   const t = useT();
   const [working, setWorking] = React.useState(false);
@@ -53,7 +55,7 @@ export function OwnerConnect({
     setError(null);
     setWorking(true);
     try {
-      const envelope = await loginWithMeta({ appId, version, configId, mode: sdkModeOf(mode) });
+      const envelope = await loginWithMeta({ appId, version, configId, mode: sdkModeOf(mode), signupVersion });
       // The token is not here: the server action reads it from the cookie.
       const res = await ownerConnectAction(envelope);
       if (res.ok) {
@@ -74,7 +76,16 @@ export function OwnerConnect({
     } catch (err) {
       // Closing Meta's window is not an error worth shouting about.
       if (err instanceof SignupError && err.code === "cancelled") return;
-      setError(err instanceof SignupError && err.code === "sdk_failed" ? t("ch.connect.sdkFailed") : t("connect.error.generic"));
+      const code = err instanceof SignupError ? err.code : null;
+      setError(
+        code === "sdk_failed"
+          ? t("ch.connect.sdkFailed")
+          : code === "no_number"
+            ? t("ch.connect.noNumber")
+            : code === "grant_only"
+              ? t("ch.connect.grantOnly")
+              : t("connect.error.generic"),
+      );
     } finally {
       setWorking(false);
     }

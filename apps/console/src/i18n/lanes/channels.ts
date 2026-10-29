@@ -101,6 +101,14 @@ export const channelsMessages = {
   "ch.connect.cancelled": { es: "La conexión se canceló antes de terminar.", en: "The connection was cancelled before finishing." },
   "ch.connect.timeout": { es: "Meta no respondió a tiempo. Vuelve a intentarlo.", en: "Meta did not answer in time. Try again." },
   "ch.connect.noCode": { es: "Meta no devolvió el código de autorización.", en: "Meta did not return the authorization code." },
+  "ch.connect.noNumber": {
+    es: "La cuenta de WhatsApp quedó creada, pero sin número. Vuelve a abrir Meta y añade el número que quieres conectar.",
+    en: "The WhatsApp account was created, but without a number. Open Meta again and add the number you want to connect.",
+  },
+  "ch.connect.grantOnly": {
+    es: "Meta dio acceso a la cuenta, pero no compartió ningún número. Vuelve a abrir Meta y elige el número.",
+    en: "Meta gave access to the account, but shared no number. Open Meta again and pick the number.",
+  },
   "ch.empty.title": { es: "Este cliente aún no tiene ningún canal", en: "This client has no channels yet" },
   "ch.empty.description": { es: "Conecta el número de WhatsApp del cliente con la cuenta de Meta del propio cliente. Auphere no ve la contraseña de nadie.", en: "Connect the client's WhatsApp number with the client's own Meta account. Auphere never sees anyone's password." },
   "ch.card.whatsapp": { es: "WhatsApp", en: "WhatsApp" },

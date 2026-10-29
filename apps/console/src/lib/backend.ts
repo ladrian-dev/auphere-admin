@@ -738,6 +738,8 @@ export type ChannelSignupLinkInfo = {
   meta_app_id: string | null;
   meta_config_id: string | null;
   meta_graph_version: string | null;
+  /** Spec 050: the Embedded Signup version (`meta_embedded_signup_version`). */
+  meta_signup_version?: "v4" | "v5" | null;
 };
 
 export type ChannelSignupLinkDone = {

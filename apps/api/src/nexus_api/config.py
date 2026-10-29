@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -145,6 +146,10 @@ class Settings(BaseSettings):
     # Graph API version pinned at the client level. Bump as Meta rolls
     # new majors — keep the pin so the deprecation surface is explicit.
     meta_graph_api_version: str = "v22.0"
+    # Spec 050 (D3): the Embedded Signup the browsers open. v4 is Meta's
+    # current one; v5 (coexistence on by default, ``FINISH`` without
+    # ``waba_id``) is switched on in staging once the five paths pass.
+    meta_embedded_signup_version: Literal["v4", "v5"] = "v4"
     # Webhook callback URL passed to ``subscribed_apps`` per tenant.
     # Defaults to the production webhooks subdomain; override in dev via
     # ``NEXUS_META_WEBHOOK_CALLBACK_URL`` (an ngrok tunnel pointing to

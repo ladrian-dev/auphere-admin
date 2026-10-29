@@ -25,12 +25,14 @@ export function connectChoice({ manage, meta }: { manage: boolean; meta: MetaSig
 export function metaSignupConfig(env: {
   NEXUS_META_APP_ID?: string;
   NEXUS_META_GRAPH_API_VERSION: string;
+  NEXUS_META_EMBEDDED_SIGNUP_VERSION?: "v4" | "v5";
   NEXUS_META_CONFIG_ID_WA_CLOUD_API?: string;
   NEXUS_META_CONFIG_ID_WA_COEXISTENCE?: string;
 }): MetaSignupConfig {
   return {
     appId: env.NEXUS_META_APP_ID ?? null,
     graphVersion: env.NEXUS_META_GRAPH_API_VERSION,
+    signupVersion: env.NEXUS_META_EMBEDDED_SIGNUP_VERSION ?? "v4",
     configIdCloudApi: env.NEXUS_META_CONFIG_ID_WA_CLOUD_API ?? null,
     configIdCoexistence: env.NEXUS_META_CONFIG_ID_WA_COEXISTENCE ?? null,
   };

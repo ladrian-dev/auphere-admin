@@ -615,6 +615,8 @@ async def test_partner_signup_config_exposes_ids(client, db_session) -> None:
     assert cfg["app_id"]
     assert cfg["coexistence_config_id"]
     assert cfg["cloud_api_config_id"]
+    # Spec 050: the partner learns which Embedded Signup to open.
+    assert cfg["embedded_signup_version"] == "v4"
 
 
 async def test_partner_sets_and_reads_admins(client, db_session) -> None:

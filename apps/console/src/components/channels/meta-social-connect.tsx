@@ -11,7 +11,7 @@ import { metaSocialCompleteAction, metaSocialConnectAction } from "@/app/(consol
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { MetaSocialAccount, MetaSocialConnectResult, MetaSocialKind, MetaSocialOffer } from "@/lib/backend/channels";
-import { SignupError, loginForCode } from "@/lib/meta-fb-sdk";
+import { SignupError, loginForCode, type SignupErrorCode } from "@/lib/meta-fb-sdk";
 
 import { MetaWindowVeil } from "./whatsapp-connect";
 
@@ -35,7 +35,9 @@ const LOGIN_ERRORS = {
   timeout: "ch.connect.timeout",
   no_code: "ch.connect.noCode",
   meta_error: "common.error.backend",
-} as const satisfies Record<string, MessageKey>;
+  no_number: "ch.connect.noNumber",
+  grant_only: "ch.connect.grantOnly",
+} as const satisfies Record<SignupErrorCode, MessageKey>;
 
 /**
  * Spec 049 — the Instagram / Messenger connection, as a hook: opens Facebook
