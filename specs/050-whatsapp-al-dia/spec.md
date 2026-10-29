@@ -166,14 +166,14 @@ El equipo puede demostrar, con una cuenta de revisor y un número por Cloud API,
 
 ### Historia 9 — El catálogo de WhatsApp sin salir de Auphere (Prioridad: P2)
 
-Un restaurante, una peluquería o una tienda sin web quiere que el agente enseñe sus productos con tarjetas de WhatsApp. Hoy necesita crear el catálogo en el Administrador de comercio de Meta, cargarlo allí y enlazarlo. Con esta historia lo hace desde la página del número en la consola, en el mismo sitio donde configura a quién responde el agente:
+Cualquier negocio, sea del tipo que sea, puede querer que el agente enseñe sus productos o servicios con tarjetas de WhatsApp. Hoy necesita crear el catálogo en el Administrador de comercio de Meta, cargarlo allí y enlazarlo. Con esta historia lo hace desde la página del número en la consola, en el mismo sitio donde configura a quién responde el agente. La sección está en **todos** los números; quien no la necesita no la configura:
 - si no tiene catálogo, lo crea;
 - añade, edita, oculta o borra sus productos, con foto, precio y disponibilidad;
 - el agente los usa al momento.
 
 Un negocio que ya alimenta su catálogo desde su tienda (WooCommerce, Shopify) lo ve y lo enlaza, pero no lo edita aquí: la verdad está en su tienda.
 
-**Por qué esta prioridad**: da a los negocios sin comercio electrónico lo que hoy solo tienen los que sí lo tienen, y es el uso que la revisión de Meta pide demostrar. No es una pantalla para la revisión: es la forma de que un negocio pequeño venda por WhatsApp sin aprender otra herramienta.
+**Por qué esta prioridad**: lleva a todos los clientes una función que hoy solo tienen los que ya alimentan su catálogo desde una tienda. Además es el uso que la revisión de Meta pide demostrar. No es una pantalla para la revisión: es la forma de vender por WhatsApp sin aprender otra herramienta.
 
 **Prueba independiente**: con un número de prueba por Cloud API y un negocio sin catálogo, crear el catálogo desde la consola, añadir tres productos y preguntar por uno al número. Llega su tarjeta. Después editar el precio, volver a preguntar y comprobar que llega el precio nuevo.
 
@@ -336,16 +336,18 @@ Un negocio que ya alimenta su catálogo desde su tienda (WooCommerce, Shopify) l
 
 #### Criterios de aceptación
 
-1. La gestión DEBE vivir en la página de configuración del número en la consola nueva, como una sección más de su índice («Catálogo»). DEBE usar los componentes, la barra de guardado, los estados y las reglas de accesibilidad del sistema de diseño de la consola (spec 047, prototipo `agente.md` §8), sin pantallas ni patrones propios.
-2. WHERE el número no tiene catálogo EL sistema DEBE ofrecer crearlo en el portafolio del negocio y enlazarlo al número en un solo paso.
-3. El sistema DEBE permitir crear, editar, ocultar y borrar productos: nombre, descripción, foto, precio con moneda, disponibilidad y enlace opcional. El identificador del producto DEBE generarse solo y no pedirse.
-4. WHEN se guarda un producto THEN el sistema DEBE mostrar su estado en Meta y, si Meta lo rechaza, el motivo y cómo corregirlo.
-5. IF el catálogo se alimenta desde una tienda o un archivo del negocio THEN el sistema DEBE mostrarlo en solo lectura, diciendo de dónde viene, y NO DEBE ofrecer editarlo.
-6. WHERE el número está en coexistencia EL sistema DEBE explicar que el catálogo se gestiona desde la app y mantener el enlace manual de hoy.
-7. Borrar un producto DEBE pedir confirmación con su nombre. Cada creación, cambio y borrado DEBE quedar en la auditoría con la persona.
-8. WHEN un producto cambia THEN el agente DEBE usar el dato nuevo en su siguiente respuesta, y NO DEBE ofrecer productos ocultos, agotados ni rechazados.
-9. La lista DEBE tener buscador y filtro por disponibilidad, y estados de vacío, carga, error y parcial (constitución §V).
-10. Solo quien tiene permiso de escritura en los canales del cliente DEBE poder editar. Quien solo lee DEBE ver el catálogo sin controles de edición.
+1. La sección DEBE estar disponible en **todos** los números de WhatsApp de cualquier cliente, sin depender del tipo de negocio, la plantilla del agente ni el plan. Es opcional: un número sin catálogo funciona igual que hoy, y la sección solo invita a crearlo.
+2. La gestión DEBE vivir en la página de configuración del número en la consola nueva, como una sección más de su índice («Catálogo»). DEBE usar los componentes, la barra de guardado, los estados y las reglas de accesibilidad del sistema de diseño de la consola (spec 047, prototipo `agente.md` §8), sin pantallas ni patrones propios.
+3. WHERE el número no tiene catálogo EL sistema DEBE ofrecer crearlo en el portafolio del negocio y enlazarlo al número en un solo paso.
+4. El sistema DEBE permitir crear, editar, ocultar y borrar productos: nombre, descripción, foto, precio con moneda, disponibilidad y enlace opcional. El identificador del producto DEBE generarse solo y no pedirse.
+5. WHEN se guarda un producto THEN el sistema DEBE mostrar su estado en Meta y, si Meta lo rechaza, el motivo y cómo corregirlo.
+6. IF el catálogo se alimenta desde una tienda o un archivo del negocio THEN el sistema DEBE mostrarlo en solo lectura, diciendo de dónde viene, y NO DEBE ofrecer editarlo.
+7. WHERE el número está en coexistencia EL sistema DEBE explicar que el catálogo se gestiona desde la app y mantener el enlace manual de hoy.
+8. Borrar un producto DEBE pedir confirmación con su nombre. Cada creación, cambio y borrado DEBE quedar en la auditoría con la persona.
+9. WHEN un producto cambia THEN el agente DEBE usar el dato nuevo en su siguiente respuesta, y NO DEBE ofrecer productos ocultos, agotados ni rechazados.
+10. La lista DEBE tener buscador y filtro por disponibilidad, y estados de vacío, carga, error y parcial (constitución §V).
+11. Solo quien tiene permiso de escritura en los canales del cliente DEBE poder editar. Quien solo lee DEBE ver el catálogo sin controles de edición.
+12. WHEN un número tiene un catálogo enlazado THEN el agente que atiende ese número DEBE poder buscar productos y enviar sus tarjetas, sin cambiar de plantilla ni de versión del agente. Sin catálogo, el agente no tiene esas capacidades y no las menciona.
 
 ### Entidades clave
 
