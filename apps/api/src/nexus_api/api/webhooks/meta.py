@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -52,7 +51,6 @@ from nexus_channels.whatsapp_meta import (
 )
 from redis.asyncio import Redis
 from sqlalchemy import select, text, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
@@ -67,9 +65,9 @@ from nexus_api.core.streams import stream_for_tier, xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant, resolve_tenant_tier
 from nexus_api.db.models import (
+    Channel,
     Message,
     MessageStatus,
-    WhatsAppOptOut,
 )
 from nexus_api.repositories.auphere_channels import (
     ResolvedAuphereChannel,
@@ -77,7 +75,7 @@ from nexus_api.repositories.auphere_channels import (
 from nexus_api.repositories.auphere_channels import (
     resolve_channel_for_inbound_cached as resolve_owner_channel_for_inbound,
 )
-from nexus_api.services import whatsapp_account_events
+from nexus_api.services import whatsapp_account_events, whatsapp_opt_outs
 from nexus_api.services.channel_routing import config_agent_enabled
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.meta_reconciliation import record_delivered
@@ -329,6 +327,9 @@ async def _dispatch_element(
         # number or by WABA and applied under each business's RLS.
         await whatsapp_account_events.handle(field, payload, session=session, redis=redis)
         return True
+    if field == "user_preferences":
+        await _handle_user_preferences(payload, session=session, redis=redis)
+        return True
     if field == "smb_message_echoes":
         await _handle_message_echo(payload, session=session, redis=redis)
         return True
@@ -546,18 +547,21 @@ async def _handle_inbound(
 
     content = _render_content(inbound)
 
-    # Opt-out detection — keyword-based, provider-agnostic.
+    # Opt-out detection — keyword-based, provider-agnostic. Spec 050 (D6): a
+    # stop word is an opt-out of marketing, and the message still reaches the
+    # Inbox, marked, without a turn of the agent (the worker sees
+    # ``opted_out``).
     opted_out = False
     if inbound.text is not None:
         matched, kw = is_opt_out_text(inbound.text)
         if matched:
             opted_out = True
-            await _record_opt_out(
+            await _record_keyword_opt_out(
                 session=session,
                 tenant_id=tenant_id,
                 channel_id=channel_id,
-                recipient_phone=inbound.sender_identifier,
-                reason="keyword_stop",
+                phone=inbound.sender_phone,
+                bsuid=inbound.sender_bsuid,
                 keyword=kw,
                 source_wamid=wamid,
             )
@@ -610,19 +614,6 @@ async def _handle_inbound(
     if opted_out:
         fields["opted_out"] = "true"
 
-    if opted_out:
-        # Persist the opt-out but do NOT enqueue — the dispatcher would
-        # otherwise generate an outbound reply that violates the opt-out the
-        # user just expressed. The operator panel still sees the message via
-        # the persisted opt-out + audit log.
-        log.info(
-            "webhook.meta.opted_out_skip_enqueue",
-            tenant_id=str(tenant_id),
-            wamid=wamid,
-            recipient=inbound.sender_identifier,
-        )
-        return {"status": "opted_out"}
-
     # Politeness: mark as read so the customer sees the two blue checks.
     #
     # La DECISIÓN se toma aquí (es donde están el canal y las políticas del
@@ -651,7 +642,10 @@ async def _handle_inbound(
     # 2. A send-only channel: the agent will not answer and there is no
     #    human inbox behind it either. Blue ticks on a line nobody watches
     #    tell the customer they were heard when they were not.
-    if not config_agent_enabled(channel_config):
+    if opted_out:
+        # Nobody answers a stop word: no blue ticks claiming somebody read it.
+        log.info("webhook.meta.read_receipt_suppressed_opted_out", tenant_id=str(tenant_id))
+    elif not config_agent_enabled(channel_config):
         log.info(
             "webhook.meta.read_receipt_suppressed_send_only_channel",
             tenant_id=str(tenant_id),
@@ -1084,31 +1078,90 @@ def _render_content(inbound: InboundMessage) -> str:
 # ── helpers ────────────────────────────────────────────────────────────────
 
 
-async def _record_opt_out(
+async def _record_keyword_opt_out(
     *,
     session: AsyncSession,
     tenant_id: uuid.UUID,
     channel_id: uuid.UUID,
-    recipient_phone: str,
-    reason: str,
+    phone: str | None,
+    bsuid: str | None,
     keyword: str | None,
     source_wamid: str,
 ) -> None:
-    """Idempotent UPSERT on (tenant_id, channel_id, recipient_phone)."""
+    """Spec 050 (D6): a stop word is an opt-out of marketing (idempotent)."""
     async with tenant_scoped_session(session, tenant_id):
-        stmt = pg_insert(WhatsAppOptOut).values(
+        customer = await whatsapp_opt_outs.find_customer(session, phone=phone, bsuid=bsuid)
+        await whatsapp_opt_outs.record(
+            session,
             tenant_id=tenant_id,
             channel_id=channel_id,
-            recipient_phone=recipient_phone,
-            reason=reason,
-            trigger_keyword=keyword,
+            customer_id=customer.id if customer else None,
+            phone=phone,
+            scope="marketing",
+            source="keyword",
+            reason="keyword_stop",
+            actor="customer",
+            keyword=keyword,
             source_wamid=source_wamid,
-            opted_out_at=datetime.now(tz=UTC),
         )
-        stmt = stmt.on_conflict_do_nothing(
-            index_elements=["tenant_id", "channel_id", "recipient_phone"]
+
+
+async def _handle_user_preferences(
+    payload: dict[str, Any], *, session: AsyncSession, redis: Redis
+) -> dict[str, Any]:
+    """Spec 050 (D6): Meta says a person stopped (or resumed) marketing
+    messages from this number, in WhatsApp itself."""
+    business_phone = extract_business_phone(payload)
+    if not business_phone:
+        return {"status": "ignored"}
+    try:
+        tenant_id = await resolve_tenant(session, redis, "meta", business_phone)
+    except TenantNotFound:
+        counters.incr(CHANNEL_UNRESOLVED_EVENT)
+        log.warning("channel.unresolved_event", provider="meta", field="user_preferences")
+        return {"status": "ignored"}
+    if session.in_transaction():
+        await session.rollback()
+    value = payload["entry"][0]["changes"][0].get("value") or {}
+    prefs = [p for p in value.get("user_preferences") or [] if isinstance(p, dict)]
+    applied = 0
+    async with tenant_scoped_session(session, tenant_id):
+        channel_id = await session.scalar(
+            select(Channel.id).where(
+                Channel.provider == "meta", Channel.provider_identifier == business_phone
+            )
         )
-        await session.execute(stmt)
+        if channel_id is None:
+            return {"status": "ignored"}
+        for pref in prefs:
+            if pref.get("category") != "marketing_messages":
+                continue
+            phone = str(pref.get("wa_id") or "") or None
+            bsuid = str(pref.get("user_id") or "") or None
+            customer = await whatsapp_opt_outs.find_customer(session, phone=phone, bsuid=bsuid)
+            customer_id = customer.id if customer else None
+            if pref.get("value") == "stop":
+                row = await whatsapp_opt_outs.record(
+                    session,
+                    tenant_id=tenant_id,
+                    channel_id=channel_id,
+                    customer_id=customer_id,
+                    phone=phone or (customer.phone if customer else None),
+                    scope="marketing",
+                    source="meta",
+                    reason="user_request",
+                    actor="meta",
+                )
+                applied += row is not None
+            elif pref.get("value") == "resume":
+                applied += await whatsapp_opt_outs.lift_from_meta(
+                    session,
+                    channel_id=channel_id,
+                    customer_id=customer_id,
+                    phone=phone or (customer.phone if customer else None),
+                )
+    log.info("webhook.meta.user_preferences", tenant_id=str(tenant_id), applied=applied)
+    return {"status": "applied" if applied else "unchanged"}
 
 
 __all__ = ["router"]

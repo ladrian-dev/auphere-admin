@@ -238,6 +238,9 @@ class InboundEvent:
     # runtime/read_receipts.py: dentro del ack costaba ~40% del tiempo de
     # respuesta al webhook de Meta.
     mark_read: bool = False
+    # Spec 050 (D6): the message is a stop word. It is kept and reaches the
+    # Inbox, marked, but no turn answers it.
+    opted_out: bool = False
 
 
 # ── 1. Guardar ────────────────────────────────────────────────────────────────
@@ -255,6 +258,8 @@ class AcceptedInbound:
     duplicate: bool = False
     #: ``tenant_unknown``: no hay cliente al que guardárselo.
     skipped: str | None = None
+    #: Spec 050: guardado, pero sin turno (una palabra de baja).
+    no_turn: bool = False
 
 
 _PRIOR_INBOUND_SQL = sa.text(
@@ -323,6 +328,7 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
                     conversation_id=prior[1],
                     message_id=prior[0],
                     duplicate=True,
+                    no_turn=event.opted_out,
                 )
 
         customer = await _upsert_customer(
@@ -357,12 +363,32 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
             context_message_id=event.context_message_id,
         )
         inbound_msg.origin = "customer"
+        if event.opted_out:
+            # Spec 050 (D6): the webhook recorded the opt-out by phone; here
+            # the person is known, so it is theirs (and a BSUID-only person,
+            # whom the webhook could not record, gets it now).
+            from nexus_api.services import whatsapp_opt_outs
+
+            inbound_msg.skipped_reason = "opted_out"
+            await whatsapp_opt_outs.record(
+                session,
+                tenant_id=event.tenant_id,
+                channel_id=event.channel_id,
+                customer_id=customer.id,
+                phone=customer.phone,
+                scope="marketing",
+                source="keyword",
+                reason="keyword_stop",
+                actor="customer",
+                source_wamid=event.provider_message_id,
+            )
         await session.flush()
         accepted = AcceptedInbound(
             event.tenant_id,
             event.channel_id,
             conversation_id=conversation.id,
             message_id=inbound_msg.id,
+            no_turn=event.opted_out,
         )
         # Spec 049: Instagram / Messenger events carry no name; it is read
         # once per person, after this transaction (a Graph call).
@@ -1333,6 +1359,8 @@ async def _process_inbound(
     accepted = await accept_inbound(event)
     if accepted.skipped is not None or accepted.conversation_id is None:
         return {"skipped": accepted.skipped or "tenant_unknown"}
+    if accepted.no_turn:
+        return {"skipped": "opted_out", "conversation_id": str(accepted.conversation_id)}
     result = await run_turn(
         tenant_id=event.tenant_id,
         conversation_id=accepted.conversation_id,

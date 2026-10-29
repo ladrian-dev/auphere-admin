@@ -25,6 +25,7 @@ from nexus_api.api.admin import (
     meta_social,
     model_bindings,
     models_catalog,
+    opt_outs,
     overview,
     partner_access,
     partner_billing,
@@ -80,6 +81,8 @@ router.include_router(prompt_library.router)
 router.include_router(meta_signup.router)
 # Spec 050: rotate a number's two-step PIN.
 router.include_router(whatsapp_pin.router)
+# Spec 050: a business's WhatsApp opt-outs, and lifting one.
+router.include_router(opt_outs.router)
 router.include_router(tiktok_authorize.router)
 router.include_router(skills.router)
 router.include_router(audit.router)

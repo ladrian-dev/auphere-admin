@@ -1222,6 +1222,23 @@ export type TenantHealth = {
   connectors_attention: number;
 };
 
+/** Spec 050 (5.5): one WhatsApp opt-out of a business, newest first. */
+export type OptOut = {
+  id: string;
+  channel_id: string;
+  channel_identifier: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  phone: string | null;
+  scope: "marketing" | "all" | string;
+  source: "meta" | "keyword" | "operator" | string;
+  reason: string;
+  opted_out_at: string;
+  opted_in_at: string | null;
+  lifted_by: string | null;
+  liftable: boolean;
+};
+
 export type AdminInstance = {
   environment: string;
   schema_revision: string | null;
@@ -2147,6 +2164,15 @@ export const backend = {
       `/admin/tenants/${tenantId}/whatsapp/templates/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
+
+  listOptOuts: (tenantId: string) =>
+    call<OptOut[]>(`/admin/tenants/${tenantId}/opt-outs`).then((r) => r ?? []),
+
+  liftOptOut: (tenantId: string, optOutId: string, reason: string) =>
+    call<OptOut>(`/admin/tenants/${tenantId}/opt-outs/${optOutId}/lift`, {
+      method: "POST",
+      body: { reason },
+    }),
 
   /** Spec 050: new two-step PIN for a Cloud API number. The PIN never comes back. */
   rotateWhatsAppPin: (tenantId: string, channelId: string) =>

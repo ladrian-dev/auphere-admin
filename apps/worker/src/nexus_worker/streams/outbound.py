@@ -73,8 +73,9 @@ from nexus_api.db.models import (
     MessageStatus,
     Tenant,
     TenantStatus,
-    WhatsAppOptOut,
+    WhatsAppTemplateStatus,
 )
+from nexus_api.services import whatsapp_opt_outs
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 from nexus_api.services.meta_social_service import PROBLEM_REASON_OF
@@ -514,6 +515,7 @@ async def _send_one(
             Customer.identifier,
             Channel.config,
             Customer.phone,
+            Customer.id,
         )
         .join(Conversation, Conversation.channel_id == Channel.id)
         .join(Customer, Customer.id == Conversation.customer_id)
@@ -548,7 +550,16 @@ async def _send_one(
             message_id=str(msg.id),
         )
         return
-    channel_id, business_phone, channel_type, provider, recipient, channel_config, phone = row
+    (
+        channel_id,
+        business_phone,
+        channel_type,
+        provider,
+        recipient,
+        channel_config,
+        phone,
+        customer_id,
+    ) = row
     # Spec 050: a person first seen by BSUID who later shared their number is
     # written to by number; one known only by BSUID, by BSUID (``recipient``).
     if channel_type == ChannelType.WHATSAPP and phone:
@@ -619,18 +630,23 @@ async def _send_one(
     # which the 48h window enforces on its own). Running this query for a
     # TikTok channel would compare an ``open_id`` against a phone column —
     # never matching, but implying a protection that isn't there.
+    #
+    # Spec 050 (D6): an opt-out of marketing (Meta's ``user_preferences`` or a
+    # stop word) blocks marketing templates and broadcasts only — the agent
+    # still answers the person and a utility reminder still goes. One from
+    # before spec 050 (``scope='all'``) blocks everything, as it always did.
     opted_out = (
-        await session.scalar(
-            sa.select(WhatsAppOptOut.id).where(
-                WhatsAppOptOut.channel_id == channel_id,
-                WhatsAppOptOut.recipient_phone == recipient,
-                WhatsAppOptOut.opted_in_at.is_(None),
-            )
+        await whatsapp_opt_outs.blocks(
+            session,
+            channel_id=channel_id,
+            customer_id=customer_id,
+            phone=phone or recipient,
+            marketing=await _is_marketing(session, msg, channel_config),
         )
         if channel_type == ChannelType.WHATSAPP
-        else None
+        else False
     )
-    if opted_out is not None:
+    if opted_out:
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
         msg.failure_code = "opted_out"
@@ -739,6 +755,30 @@ async def _send_one(
         attempts=msg.attempts,
         latency_ms=msg.latency_ms,
     )
+
+
+async def _is_marketing(
+    session: AsyncSession, msg: Message, channel_config: dict[str, Any] | None
+) -> bool:
+    """Spec 050 (D6): a broadcast, or a template of category MARKETING. The
+    category travels in the payload when the sender knew it; otherwise it is
+    the one Meta gave the template (``whatsapp_template_status``)."""
+    tp = msg.template_payload or {}
+    if not tp:
+        return False
+    if tp.get("broadcast"):
+        return True
+    category = tp.get("category")
+    if not category and tp.get("name"):
+        waba_id = (channel_config or {}).get("waba_id")
+        category = await session.scalar(
+            sa.select(WhatsAppTemplateStatus.category).where(
+                WhatsAppTemplateStatus.waba_id == str(waba_id or ""),
+                WhatsAppTemplateStatus.template_name == str(tp["name"]),
+                WhatsAppTemplateStatus.language == str(tp.get("language") or "es"),
+            )
+        )
+    return str(category or "").upper() == "MARKETING"
 
 
 async def _dispatch_message(

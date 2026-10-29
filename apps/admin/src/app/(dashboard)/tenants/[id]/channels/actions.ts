@@ -60,3 +60,15 @@ export async function revokeSignupLinkAction(tenantId: string, linkId: string): 
     return { ok: false, error: toError(err) };
   }
 }
+
+/** Spec 050 (5.5): lift a stop word's or an operator's opt-out, with a reason. */
+export async function liftOptOutAction(tenantId: string, optOutId: string, reason: string): Promise<Result<null>> {
+  await requireOperator();
+  try {
+    await backend.liftOptOut(tenantId, optOutId, reason);
+    revalidatePath(`/tenants/${tenantId}/channels`);
+    return { ok: true, data: null };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
