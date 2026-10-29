@@ -110,7 +110,7 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 - ¿Qué pasa si el cliente tiene apagada la opción «Herramientas conectadas» en Instagram? Las llamadas fallan en silencio: la conexión lo detecta y se lo dice al operador, con el paso exacto para encenderla.
 - ¿Qué pasa si llega el mismo evento dos veces (Meta reintenta)? Se procesa una sola vez.
 - ¿Qué pasa con un evento con firma inválida o de una cuenta no conectada? Se rechaza o se ignora sin tocar datos de ningún cliente.
-- ¿Qué pasa si la cuenta o la Página se desconecta o pierde el permiso? El canal pasa a «requiere atención», el agente deja de intentar enviar y el operador lo ve.
+- ¿Qué pasa si la cuenta o la Página se desconecta o pierde el permiso? El canal pasa a «requiere atención», el agente deja de intentar enviar y el operador lo ve. Si la desconexión es definitiva, corre el plazo de 30 días para borrar o anonimizar sus datos (Requisito 5.3).
 - ¿Qué pasa con adjuntos (imagen, audio, vídeo, documento)? Se reciben y se pasan al agente; los que Instagram o Messenger no admiten al enviar se degradan a texto con aviso.
 - ¿Qué pasa con las reacciones, las lecturas y los mensajes editados? Se registran sin disparar al agente.
 - ¿Qué ve el partner o el cliente cuando Instagram o Messenger **no está disponible** para su cuenta? Nada: ni botón apagado ni explicación (constitución §V). Solo el panel de operador muestra el estado.
@@ -173,9 +173,10 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 
 1. WHEN el operador conecta una cuenta o Página de un cliente THEN el sistema DEBE guardar su acceso cifrado, registrar el canal y suscribir los eventos, y el canal DEBE aparecer en la lista de Canales del cliente con su estado.
 2. IF falta algo que impide funcionar (cuenta personal, mensajes desactivados, «Herramientas conectadas» apagado, permiso no concedido) THEN el sistema DEBE decir cuál y cómo corregirlo, y NO DEBE dejar el canal como activo.
-3. WHEN el operador desconecta el canal THEN el sistema DEBE dejar de recibir y de enviar por él, y conservar el historial.
+3. WHEN el operador o el negocio desconecta el canal, o el negocio quita el acceso de Auphere desde Facebook o Instagram, THEN el sistema DEBE dejar de recibir y de enviar por él al instante, borrar sus tokens de acceso en ese momento, y eliminar o anonimizar los mensajes y datos de perfil recibidos por ese canal en un plazo máximo de 30 días, salvo lo que la ley obligue a conservar (política de privacidad, sección «Cómo pedir que borremos tus datos»).
 4. El sistema DEBE pedir en la conexión solo los permisos que usa, y NO DEBE pedir publicar contenido ni gestionar anuncios.
 5. WHERE el canal no está disponible para un partner o cliente EL sistema NO DEBE mostrarlo en la consola de partners ni en la lite.
+6. WHEN un cliente final pide por correo que se borren sus datos de un canal de Meta THEN el sistema DEBE permitir al operador localizar a esa persona por canal y negocio, borrar sus mensajes y su perfil en un plazo máximo de 30 días, avisar al negocio y dejar en la auditoría quién lo pidió, quién lo ejecutó y cuándo.
 
 ### Requisito 6 — Material de revisión de Meta
 
