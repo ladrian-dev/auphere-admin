@@ -145,7 +145,8 @@ class Settings(BaseSettings):
     meta_business_manager_id: str = "342042661294231"
     # Graph API version pinned at the client level. Bump as Meta rolls
     # new majors — keep the pin so the deprecation surface is explicit.
-    meta_graph_api_version: str = "v22.0"
+    # Spec 050: every MetaClient and both browsers read this one.
+    meta_graph_api_version: str = "v26.0"
     # Spec 050 (D3): the Embedded Signup the browsers open. v4 is Meta's
     # current one; v5 (coexistence on by default, ``FINISH`` without
     # ``waba_id``) is switched on in staging once the five paths pass.

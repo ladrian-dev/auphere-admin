@@ -68,7 +68,9 @@ from nexus_channels.whatsapp_meta.exceptions import (
 )
 from nexus_channels.whatsapp_meta.signature import appsecret_proof
 
-META_GRAPH_VERSION: Final = "v22.0"
+#: The library's default. Callers pass ``version=settings.meta_graph_api_version``
+#: (spec 050): one version for the server and the browsers.
+META_GRAPH_VERSION: Final = "v26.0"
 META_GRAPH_BASE_URL: Final = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
 
 # OAuthException subcodes / codes that mean "user must re-authenticate".
@@ -103,7 +105,8 @@ class MetaClient:
         require_appsecret_proof: bool = True,
         max_retries: int = 3,
         timeout: float = 15.0,
-        base_url: str = META_GRAPH_BASE_URL,
+        version: str | None = None,
+        base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not app_secret:
@@ -111,6 +114,8 @@ class MetaClient:
         self._app_secret = app_secret
         self._require_appsecret_proof = require_appsecret_proof
         self._max_retries = max_retries
+        if base_url is None:
+            base_url = f"https://graph.facebook.com/{version or META_GRAPH_VERSION}"
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=timeout,

@@ -300,6 +300,7 @@ def build_context(service_name: str) -> WorkerContext:
     meta_client = MetaClient(
         app_secret=nexus_settings.meta_app_secret,
         require_appsecret_proof=nexus_settings.meta_require_appsecret_proof,
+        version=nexus_settings.meta_graph_api_version,
     )
     meta_adapter = MetaChannelAdapter(meta_client, credentials_loader=_load_meta_credentials)
 

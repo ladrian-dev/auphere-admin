@@ -414,6 +414,7 @@ async def _auphere_send(phone: str, template: str, params: list[str]) -> None:
     client = MetaClient(
         app_secret=settings.meta_app_secret,
         require_appsecret_proof=settings.meta_require_appsecret_proof,
+        version=settings.meta_graph_api_version,
     )
     assert channel.provider_phone_id is not None
     assert channel.access_token is not None

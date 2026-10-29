@@ -132,6 +132,7 @@ def _build_meta_client() -> MetaClient:
     return MetaClient(
         app_secret=settings.meta_app_secret,
         require_appsecret_proof=settings.meta_require_appsecret_proof,
+        version=settings.meta_graph_api_version,
     )
 
 
