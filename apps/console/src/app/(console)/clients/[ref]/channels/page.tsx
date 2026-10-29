@@ -8,6 +8,7 @@ import { ChannelsList } from "@/components/channels/channels-list";
 import { TemplatesSection } from "@/components/channels/templates-section";
 import { f2ChannelCounter, f2VisibleChannels } from "@/components/channels/visible-channels";
 import { connectChoice, metaSignupConfig } from "@/components/channels/connect-choice";
+import { MetaSocialConnect } from "@/components/channels/meta-social-connect";
 import { WhatsAppConnect } from "@/components/channels/whatsapp-connect";
 import { PendingSignupLinks } from "@/components/channels/pending-signup-links";
 import { WhatsAppShareLink } from "@/components/channels/whatsapp-share-link";
@@ -51,7 +52,10 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
     const owner = agents.find((a) => a.channels.some((c) => c.id === ch.id))?.id ?? principalAgent;
     if (owner) agentOf[ch.id] = owner;
   }
-  const visible = f2VisibleChannels(overview.channels);
+  // Spec 049: Instagram / Messenger exist on this page only for the partners
+  // Auphere switched on — the API sends `meta_social` to nobody else.
+  const social = overview.meta_social ?? null;
+  const visible = f2VisibleChannels(overview.channels, social ? social.channels.map((c) => c.kind) : []);
   const { n, m } = f2ChannelCounter(overview.channels);
   // Templates are a partial state: a 409 (not connected) is "no list", any
   // other failure is shown inline with retry — the cards still render.
@@ -103,6 +107,15 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
     <WhatsAppConnectByAuphere />
   ) : null;
 
+  const socialConnect =
+    manage && social && !(await isDesktopShell()) ? (
+      <>
+        {social.channels.map((c) => (
+          <MetaSocialConnect key={c.kind} refId={ref} offer={social} kind={c.kind} />
+        ))}
+      </>
+    ) : null;
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -116,6 +129,7 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
             {t("ch.links.diagnostics")}
           </Button>
           {manage && visible.length > 0 ? connect : null}
+          {visible.length > 0 ? socialConnect : null}
         </div>
       </div>
       {!manage ? <p className="text-xs text-muted-foreground">{t("ch.forbidden.write")}</p> : null}
@@ -141,7 +155,14 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
             icon={MessageCircle}
             title={t("ch.empty.title")}
             description={t("ch.empty.description")}
-            action={manage ? connect : undefined}
+            action={
+              manage ? (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {connect}
+                  {socialConnect}
+                </div>
+              ) : undefined
+            }
             readonly={!manage}
           />
         }

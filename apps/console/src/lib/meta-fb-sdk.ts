@@ -234,3 +234,27 @@ export async function loginWithMeta(opts: {
   const [code, data] = await Promise.all([codePromise, dataPromise]);
   return { code, ...data };
 }
+
+/**
+ * Spec 049 — Facebook Login for Business for Instagram (Unified Login) and
+ * Messenger. Same popup, same `config_id` + `response_type=code` as the
+ * WhatsApp signup, but no `WA_EMBEDDED_SIGNUP` message: what the business
+ * granted is read by the server after it exchanges the code. Resolves with
+ * the single-use code.
+ */
+export async function loginForCode(opts: { appId: string; version: string; configId: string }): Promise<string> {
+  const sdk = await loadFbSdk(opts.appId, opts.version);
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SignupError("timeout")), TIMEOUT_MS);
+    withCenteredPopup(() =>
+      sdk.login(
+        (response) => {
+          clearTimeout(timer);
+          if (response.authResponse?.code) resolve(response.authResponse.code);
+          else reject(new SignupError(response.status === "not_authorized" ? "cancelled" : "no_code"));
+        },
+        { config_id: opts.configId, response_type: "code", override_default_response_type: true },
+      ),
+    );
+  });
+}

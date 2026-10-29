@@ -5,7 +5,14 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
-import type { CatalogList, ChannelDetail, TemplateCreated, TestSendResult, WhatsAppSignupResult } from "@/lib/backend/channels";
+import type {
+  CatalogList,
+  ChannelDetail,
+  MetaSocialConnectResult,
+  TemplateCreated,
+  TestSendResult,
+  WhatsAppSignupResult,
+} from "@/lib/backend/channels";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /** Server Actions of lane `channels` (CP-17..19). Zod on the server, `run()`
@@ -167,5 +174,31 @@ export async function revokeWhatsappSignupLinkAction(raw: unknown): Promise<Acti
   if (!can(principal.role, "channels:write")) return forbidden();
   const res = await run(() => backendFor(principal).revokeWhatsappSignupLink(body.ref, body.id));
   if (res.ok) revalidatePath(`/clients/${body.ref}/channels`);
+  return res;
+}
+
+// ── Instagram y Messenger (spec 049) ─────────────────────────────────
+
+const metaSocialKind = z.enum(["instagram", "messenger"]);
+
+/** The single-use code from Facebook Login for Business. The server reads
+ *  what the business granted; with several accounts it answers «choose». */
+export async function metaSocialConnectAction(raw: unknown): Promise<ActionResult<MetaSocialConnectResult>> {
+  const body = z.object({ ref, kind: metaSocialKind, code: z.string().min(1).max(2048) }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).metaSocialConnect(body.ref, body.kind, body.code));
+  if (res.ok && res.data.status === "connected") revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+export async function metaSocialCompleteAction(raw: unknown): Promise<ActionResult<MetaSocialConnectResult>> {
+  const body = z
+    .object({ ref, kind: metaSocialKind, nonce: z.string().min(8).max(64), accountId: z.string().min(1).max(64) })
+    .parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).metaSocialComplete(body.ref, body.kind, body.nonce, body.accountId));
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }
