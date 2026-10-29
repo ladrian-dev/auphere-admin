@@ -160,7 +160,10 @@ async def _assert_template_approved(
         # emitted a webhook for this name). Permissive default — better
         # to try the send and let Cloud API tell us.
         return
-    if row.status == "approved":
+    # Meta's webhook writes the status as it sends it (``"APPROVED"``); compare
+    # without case, or every approved template that ever got a status webhook
+    # would be refused here.
+    if (row.status or "").lower() == "approved":
         return
     reason = f" ({row.reason})" if row.reason else ""
     raise ToolError(
