@@ -23,7 +23,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ChannelType = Literal["whatsapp", "instagram", "telegram", "email", "web", "tiktok"]
+ChannelType = Literal["whatsapp", "instagram", "messenger", "telegram", "email", "web", "tiktok"]
 
 
 class InboundMessageKind(str, enum.Enum):
@@ -70,7 +70,10 @@ class MediaReference(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider_media_id: str = Field(min_length=1, max_length=255)
+    # 2048, not 255: Instagram and Messenger attachments arrive as a CDN URL
+    # (``url:https://…fbcdn.net/…``) instead of a media id. Never persisted;
+    # it travels in the stream to the runner's media fetcher.
+    provider_media_id: str = Field(min_length=1, max_length=2048)
     mime_type: str | None = None
     sha256: str | None = None
     caption: str | None = None

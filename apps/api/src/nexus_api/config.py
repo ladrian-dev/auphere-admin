@@ -155,6 +155,23 @@ class Settings(BaseSettings):
     # this stays True in every environment that talks to the real API.
     meta_require_appsecret_proof: bool = True
 
+    # Spec 049 — Instagram (Unified Login) and Messenger. Same Meta App, two
+    # more Facebook Login for Business configurations; both issue a business
+    # integration system-user token that does not expire. Public values.
+    meta_config_id_instagram: str = "1157578836735566"
+    meta_config_id_messenger: str = "2188508105420190"
+    # The version the Instagram and Page webhooks are subscribed at.
+    meta_social_graph_api_version: str = "v26.0"
+    # Meta allows ONE callback URL per object per app for ``instagram`` and
+    # ``page`` (no ``override_callback_uri`` like WhatsApp's). Staging and
+    # production share the app, so whichever receives an event for an
+    # account it does not own forwards it, body and signature untouched, to
+    # the other. Empty disables forwarding (dev).
+    meta_webhook_peer_url: str = ""
+    # After Meta approves the permissions: every partner sees Instagram and
+    # Messenger, not only the ones in ``partners.beta_channels``.
+    meta_social_general_availability: bool = False
+
     # TikTok Business Messaging API — single Auphere developer app, same
     # Tech-Provider shape as Meta: every tenant authorises *this* app over
     # their own Business Account.
@@ -628,6 +645,20 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}
+
+    @property
+    def meta_webhook_peer(self) -> str | None:
+        """Where an Instagram or Page event for an account this environment
+        does not own is forwarded (spec 049). Explicit setting first; then
+        production ↔ staging by environment; nothing in dev."""
+        if self.meta_webhook_peer_url:
+            return self.meta_webhook_peer_url
+        env = self.environment.lower()
+        if env in {"prod", "production"}:
+            return "https://api.staging.auphere.com/webhook/meta"
+        if env == "staging":
+            return "https://webhooks.auphere.com/webhook/meta"
+        return None
 
     @property
     def is_dev(self) -> bool:

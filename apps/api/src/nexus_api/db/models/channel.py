@@ -42,6 +42,10 @@ class ChannelType(str, enum.Enum):
     # Migration 0059 — TikTok Business Messaging. ``provider="tiktok"``,
     # ``provider_identifier`` is the Business Account ``business_id``.
     TIKTOK = "tiktok"
+    # Migration 0175 — spec 049. Instagram uses ``provider="meta_instagram"``
+    # (the value above, there since 0001); Messenger ``provider="meta_messenger"``
+    # and the Page id as ``provider_identifier``.
+    MESSENGER = "messenger"
 
 
 class ChannelStatus(str, enum.Enum):
