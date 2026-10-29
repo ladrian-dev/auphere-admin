@@ -159,8 +159,33 @@ El equipo puede demostrar, con una cuenta de revisor y un número por Cloud API,
 
 **Escenarios de aceptación**:
 
-1. **Dado** el guion de `catalog_management`, **cuando** se sigue, **entonces** se ve conceder el permiso y [NEEDS CLARIFICATION: ¿qué demostramos con el catálogo? La guía pide crear, editar y borrar un catálogo o sus productos desde la app, y hoy solo listamos, enlazamos y leemos].
+1. **Dado** el guion de `catalog_management`, **cuando** se sigue, **entonces** se ve conceder el permiso y, en la consola, crear el catálogo del negocio, añadir un producto, editarlo y borrarlo (Historia 9), y la tarjeta de ese producto llega por WhatsApp.
 2. **Dado** el guion de `business_management`, **cuando** se sigue, **entonces** se ve el uso real (catálogos del portafolio del negocio) y la descripción nombra el permiso del que depende.
+
+---
+
+### Historia 9 — El catálogo de WhatsApp sin salir de Auphere (Prioridad: P2)
+
+Un restaurante, una peluquería o una tienda sin web quiere que el agente enseñe sus productos con tarjetas de WhatsApp. Hoy necesita crear el catálogo en el Administrador de comercio de Meta, cargarlo allí y enlazarlo. Con esta historia lo hace desde la página del número en la consola, en el mismo sitio donde configura a quién responde el agente:
+- si no tiene catálogo, lo crea;
+- añade, edita, oculta o borra sus productos, con foto, precio y disponibilidad;
+- el agente los usa al momento.
+
+Un negocio que ya alimenta su catálogo desde su tienda (WooCommerce, Shopify) lo ve y lo enlaza, pero no lo edita aquí: la verdad está en su tienda.
+
+**Por qué esta prioridad**: da a los negocios sin comercio electrónico lo que hoy solo tienen los que sí lo tienen, y es el uso que la revisión de Meta pide demostrar. No es una pantalla para la revisión: es la forma de que un negocio pequeño venda por WhatsApp sin aprender otra herramienta.
+
+**Prueba independiente**: con un número de prueba por Cloud API y un negocio sin catálogo, crear el catálogo desde la consola, añadir tres productos y preguntar por uno al número. Llega su tarjeta. Después editar el precio, volver a preguntar y comprobar que llega el precio nuevo.
+
+**Escenarios de aceptación**:
+
+1. **Dado** un número sin catálogo, **cuando** el partner abre la sección Catálogo, **entonces** ve qué gana el negocio con uno y un único botón para crearlo. Al crearlo queda enlazado al número.
+2. **Dado** un catálogo creado desde Auphere, **cuando** el partner añade un producto con nombre, foto, precio y disponibilidad, **entonces** aparece en la lista con su estado en Meta («en revisión», «visible», «rechazado» con el motivo) y el agente puede enseñarlo en cuanto Meta lo acepta.
+3. **Dado** un producto, **cuando** el partner cambia su precio o lo marca como agotado, **entonces** la tarjeta de WhatsApp lo refleja y el agente deja de ofrecerlo si está agotado.
+4. **Dado** un producto, **cuando** el partner lo borra, **entonces** se le pide confirmación con el nombre del producto, desaparece del catálogo y el agente deja de ofrecerlo.
+5. **Dado** un catálogo que alimenta la tienda del negocio, **cuando** el partner lo abre, **entonces** ve sus productos sin poder editarlos, con la frase «Se gestiona desde {tienda}» y un enlace a la tienda.
+6. **Dado** un número en coexistencia, **cuando** el partner abre la sección, **entonces** ve que el catálogo se gestiona desde la app de WhatsApp Business y puede apuntar el catálogo que ya tiene, como hoy.
+7. **Dado** un catálogo con decenas de productos, **cuando** el partner lo abre, **entonces** puede buscarlos y filtrarlos por disponibilidad sin que la página se vuelva lenta.
 
 ---
 
@@ -175,6 +200,10 @@ El equipo puede demostrar, con una cuenta de revisor y un número por Cloud API,
 - **Ventana de 24 h.** Fuera de ella, el agente solo puede usar plantillas aprobadas. El rechazo se explica sin reintentos.
 - **Precio.** Un mensaje que Meta no cobra se registra como no cobrado, no como «sin dato».
 - **Conexión.** Alguien abre el registro con una versión vieja guardada en caché: la consola la detecta y recarga la configuración vigente.
+- **Catálogo.**
+  - Meta rechaza un producto por política o por la imagen: el producto se queda, marcado con el motivo y la forma de corregirlo, y el agente no lo ofrece.
+  - Se borra en Meta un catálogo que estaba enlazado: el número deja de enviar tarjetas, el agente responde con texto y la sección ofrece volver a crearlo o enlazar otro.
+  - Dos personas editan el mismo producto a la vez: la segunda ve que cambió y no pisa el cambio sin querer.
 - **Sin disponibilidad.** Lo que un número no admite (perfil en coexistencia, plantillas de autenticación sin el permiso del negocio) no se ofrece apagado: no aparece, y la ficha del número dice por qué cuando el partner lo busca (constitución §V).
 
 ## Requisitos *(obligatorio)*
@@ -301,6 +330,23 @@ El equipo puede demostrar, con una cuenta de revisor y un número por Cloud API,
 3. El kit DEBE incluir las instrucciones del revisor actualizadas para WhatsApp, catálogo, Instagram y Messenger.
 4. El envío NO DEBE incluir permisos sin uso: `whatsapp_business_manage_events` y `ads_read` quedan fuera.
 
+### Requisito 11 — Catálogo de productos en la consola
+
+**Historia de usuario:** Como partner, quiero crear y mantener el catálogo de productos del número de mi cliente desde su página en la consola, para que el agente enseñe tarjetas de producto sin usar herramientas de Meta.
+
+#### Criterios de aceptación
+
+1. La gestión DEBE vivir en la página de configuración del número en la consola nueva, como una sección más de su índice («Catálogo»). DEBE usar los componentes, la barra de guardado, los estados y las reglas de accesibilidad del sistema de diseño de la consola (spec 047, prototipo `agente.md` §8), sin pantallas ni patrones propios.
+2. WHERE el número no tiene catálogo EL sistema DEBE ofrecer crearlo en el portafolio del negocio y enlazarlo al número en un solo paso.
+3. El sistema DEBE permitir crear, editar, ocultar y borrar productos: nombre, descripción, foto, precio con moneda, disponibilidad y enlace opcional. El identificador del producto DEBE generarse solo y no pedirse.
+4. WHEN se guarda un producto THEN el sistema DEBE mostrar su estado en Meta y, si Meta lo rechaza, el motivo y cómo corregirlo.
+5. IF el catálogo se alimenta desde una tienda o un archivo del negocio THEN el sistema DEBE mostrarlo en solo lectura, diciendo de dónde viene, y NO DEBE ofrecer editarlo.
+6. WHERE el número está en coexistencia EL sistema DEBE explicar que el catálogo se gestiona desde la app y mantener el enlace manual de hoy.
+7. Borrar un producto DEBE pedir confirmación con su nombre. Cada creación, cambio y borrado DEBE quedar en la auditoría con la persona.
+8. WHEN un producto cambia THEN el agente DEBE usar el dato nuevo en su siguiente respuesta, y NO DEBE ofrecer productos ocultos, agotados ni rechazados.
+9. La lista DEBE tener buscador y filtro por disponibilidad, y estados de vacío, carga, error y parcial (constitución §V).
+10. Solo quien tiene permiso de escritura en los canales del cliente DEBE poder editar. Quien solo lee DEBE ver el catálogo sin controles de edición.
+
 ### Entidades clave
 
 - **Número de WhatsApp (canal)**: de un negocio (RLS por tenant). Gana su nombre de usuario, el estado del nombre visible, el límite y tramo de su portafolio, el estado de revisión de la cuenta y el PIN de dos pasos (cifrado).
@@ -309,6 +355,7 @@ El equipo puede demostrar, con una cuenta de revisor y un número por Cloud API,
 - **Plantilla**: del negocio y su cuenta de WhatsApp. Estado, calidad, categoría, tipo de cabecera, botones, carrusel y motivo del último cambio.
 - **Precio del mensaje**: por mensaje saliente, si se cobra, el tipo y la categoría.
 - **Origen de anuncio**: por conversación, el anuncio de clic a WhatsApp del que vino la persona.
+- **Catálogo y producto**: del portafolio del negocio en Meta, enlazado a un número (RLS por tenant a través del canal). Del catálogo se guarda su origen (creado en Auphere, tienda o archivo). De cada producto, su estado en Meta y el motivo del último rechazo. La fuente de verdad del producto es Meta.
 
 ## Criterios de éxito *(obligatorio)*
 
@@ -320,6 +367,8 @@ El equipo puede demostrar, con una cuenta de revisor y un número por Cloud API,
 - **CE-006**: el partner ve un aviso de un cambio de plantilla o de cuenta menos de 5 minutos después de que Meta lo envíe.
 - **CE-007**: cero mezclas de personas o de negocios en la batería de aislamiento con identificadores de Meta y números.
 - **CE-008**: WhatsApp no cambia para quien ya lo usa: las conversaciones existentes siguen en su hilo y los envíos de hoy salen igual.
+- **CE-009**: un negocio sin catálogo llega desde la página del número a su primera tarjeta de producto en WhatsApp en menos de 5 minutos, sin abrir ninguna herramienta de Meta.
+- **CE-010**: un cambio de precio o de disponibilidad se refleja en la siguiente respuesta del agente en el 100 % de los casos de prueba.
 
 ## Fuera de alcance
 
@@ -338,3 +387,4 @@ El equipo puede demostrar, con una cuenta de revisor y un número por Cloud API,
 - La consola en uso es la nueva (spec 047): todo lo visible se diseña ahí.
 - Los eventos se inyectan en staging con cargas firmadas para probar sin esperar a Meta.
 - La spec cubre todo lo anterior y el plan lo parte en iteraciones por prioridad. P1 va primero, por el riesgo de perder mensajes y por la fecha de Meta.
+- **Catálogo** (decisión del owner, 2026-10-29, opción A): se construye la gestión de productos en la consola, con el diseño nuevo y como función de producto, no como pantalla para la revisión. Necesita `catalog_management` (y `business_management` para crear el catálogo en el portafolio). Hasta la aprobación de Meta funciona para cuentas con rol en la app, así que el material de revisión se graba con ella.
