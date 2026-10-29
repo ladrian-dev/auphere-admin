@@ -42,12 +42,14 @@ from nexus_channels.whatsapp_meta import (
     extract_business_phone,
     extract_phone_number_id,
     is_opt_out_text,
+    iter_identity_changes,
     parse_app_state_sync,
     parse_history_sync,
     parse_inbound,
     parse_message_echo,
     parse_status_callback,
     parse_template_status,
+    split_into_elements,
     verify_meta_signature,
 )
 from redis.asyncio import Redis
@@ -287,43 +289,99 @@ async def meta_webhook(
                 payload, channel=owner_channel, session=session, redis=redis
             )
 
-    # Route by ``field`` within the first change. Real Meta batches carry
-    # one field per change; mixed-field batches are spec-allowed but never
-    # observed in practice. Iterate so we surface the right handler.
+    # Spec 050 (D1): one envelope per element. Meta batches several
+    # messages, statuses or echoes per change; every handler below reads
+    # the FIRST item of what it is given, so it is given exactly one. A
+    # failing element is logged and the rest of the batch goes on: Meta
+    # gets its 200 either way (only a bad signature is a non-2xx).
     handled = False
-    for entry in payload.get("entry") or []:
-        if not isinstance(entry, dict):
-            continue
-        for change in entry.get("changes") or []:
-            if not isinstance(change, dict):
-                continue
-            field = change.get("field")
-            if field == "messages":
-                value = change.get("value") or {}
-                if isinstance(value, dict) and value.get("statuses"):
-                    await _handle_status_callback(payload, session=session, redis=redis)
-                else:
-                    await _handle_inbound(payload, session=session, redis=redis)
-                handled = True
-            elif field == "message_template_status_update":
-                await _handle_template_status(payload, session=session)
-                handled = True
-            elif field == "smb_message_echoes":
-                await _handle_message_echo(payload, session=session, redis=redis)
-                handled = True
-            elif field == "smb_app_state_sync":
-                await _handle_app_state_sync(payload, session=session, redis=redis)
-                handled = True
-            elif field == "history":
-                await _handle_history_sync(payload, session=session, redis=redis)
-                handled = True
-            elif field == "account_update":
-                await _handle_account_update(change.get("value"), session=session, redis=redis)
-                handled = True
-            else:
-                log.info("webhook.meta.unhandled_field", field=field)
+    for element in split_into_elements(payload):
+        try:
+            handled = (
+                await _dispatch_element(
+                    element.field, element.payload, session=session, redis=redis
+                )
+                or handled
+            )
+        except Exception as exc:
+            if session.in_transaction():
+                await session.rollback()
+            log.warning(
+                "webhook.meta.element_failed", field=element.field, error=type(exc).__name__
+            )
 
     return {"status": "ok" if handled else "ignored"}
+
+
+async def _dispatch_element(
+    field: str, payload: dict[str, Any], *, session: AsyncSession, redis: Redis
+) -> bool:
+    """Route one single-element envelope. Returns whether it was handled."""
+    value = payload["entry"][0]["changes"][0].get("value") or {}
+    if field == "messages":
+        if isinstance(value, dict) and value.get("statuses"):
+            await _handle_status_callback(payload, session=session, redis=redis)
+        elif isinstance(value, dict) and value.get("errors") and not value.get("messages"):
+            # A batch-level error (rate limit…): nothing to apply, only to see.
+            codes = [e.get("code") for e in value["errors"] if isinstance(e, dict)]
+            log.warning("webhook.meta.batch_error", codes=codes)
+        elif any(True for _ in iter_identity_changes(payload)):
+            await _handle_identity_change(payload, session=session, redis=redis)
+        else:
+            await _handle_inbound(payload, session=session, redis=redis)
+        return True
+    if field == "message_template_status_update":
+        await _handle_template_status(payload, session=session)
+        return True
+    if field == "smb_message_echoes":
+        await _handle_message_echo(payload, session=session, redis=redis)
+        return True
+    if field == "smb_app_state_sync":
+        await _handle_app_state_sync(payload, session=session, redis=redis)
+        return True
+    if field == "history":
+        await _handle_history_sync(payload, session=session, redis=redis)
+        return True
+    if field == "account_update":
+        await _handle_account_update(value, session=session, redis=redis)
+        return True
+    log.info("webhook.meta.unhandled_field", field=field)
+    return False
+
+
+async def _handle_identity_change(
+    payload: dict[str, Any], *, session: AsyncSession, redis: Redis
+) -> None:
+    """Spec 050: a person changed number, or Meta rotated their BSUID. The
+    customer row follows; no agent turn, no message row."""
+    from nexus_api.db.models import Customer
+
+    for change in iter_identity_changes(payload):
+        if not change.business_phone:
+            continue
+        try:
+            tenant_id = await resolve_tenant(session, redis, "meta", change.business_phone)
+        except TenantNotFound:
+            continue
+        if session.in_transaction():
+            await session.rollback()
+        bind_tenant(tenant_id)
+        async with tenant_scoped_session(session, tenant_id):
+            if change.kind == "user_changed_number" and change.user_id and change.new_phone:
+                await session.execute(
+                    update(Customer)
+                    .where(Customer.bsuid == change.user_id)
+                    .values(phone=change.new_phone)
+                )
+            elif (
+                change.kind == "user_changed_user_id" and change.previous_user_id and change.user_id
+            ):
+                await session.execute(
+                    update(Customer)
+                    .where(Customer.bsuid == change.previous_user_id)
+                    .values(bsuid=change.user_id)
+                )
+        log.info("webhook.meta.identity_change", tenant_id=str(tenant_id), kind=change.kind)
 
 
 # ── owner backchannel ──────────────────────────────────────────────────────
@@ -522,6 +580,14 @@ async def _handle_inbound(
     }
     if inbound.sender_name:
         fields["customer_name"] = inbound.sender_name
+    # Spec 050: the person's identity as Meta gave it. ``user_id`` stays the
+    # phone when there is one; the worker links the BSUID to the customer.
+    if inbound.sender_phone:
+        fields["customer_phone"] = inbound.sender_phone
+    if inbound.sender_bsuid:
+        fields["customer_bsuid"] = inbound.sender_bsuid
+    if inbound.username:
+        fields["customer_username"] = inbound.username
     if media_kind_value:
         fields["media_kind"] = media_kind_value
     if media_provider_id:
@@ -670,6 +736,21 @@ async def _handle_status_callback(
         await session.rollback()
     bind_tenant(tenant_id)
 
+    if status_update.status in ANNOTATED_STATUSES:
+        note = f"meta_{status_update.status}"
+        if status_update.error_code is not None:
+            note += f":{status_update.error_code}"
+        async with tenant_scoped_session(session, tenant_id):
+            await session.execute(
+                update(Message)
+                .where(Message.provider_message_id == status_update.wamid)
+                .values(last_error=note)
+            )
+        log.info(
+            "webhook.meta.status_annotated", tenant_id=str(tenant_id), status=status_update.status
+        )
+        return {"status": "annotated"}
+
     # Map Meta's status enum onto the canonical ``MessageStatus``.
     new_status = _map_status(status_update.status)
     if new_status is None:
@@ -767,11 +848,19 @@ _STATUSES_BELOW: dict[MessageStatus, tuple[MessageStatus, ...]] = {
 }
 
 
+#: Spec 050: statuses that do not move the message but are recorded —
+#: ``warning`` (delivered with a problem, e.g. a catalog item unavailable) and
+#: ``deleted`` (the message was deleted).
+ANNOTATED_STATUSES = frozenset({"warning", "deleted"})
+
+
 def _map_status(meta_status: str) -> MessageStatus | None:
     mapping = {
         "sent": MessageStatus.SENT,
         "delivered": MessageStatus.DELIVERED,
         "read": MessageStatus.READ,
+        # A voice note listened to (2025-11): it was read.
+        "played": MessageStatus.READ,
         "failed": MessageStatus.FAILED,
     }
     return mapping.get(meta_status)
