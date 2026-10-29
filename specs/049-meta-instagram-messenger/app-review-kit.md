@@ -2,29 +2,29 @@
 
 Spec 049, Requisito 6. App de Meta `957213733862330` (negocio Facelad, verificado). Fecha: 2026-10-29.
 
-> **Qué se puede grabar hoy y qué no.** Meta pide ver cada permiso **en uso**. Instagram y Messenger todavía no tienen adapter, así que sus vídeos se graban cuando exista el round trip de la Historia 1 y 2. Hoy solo se puede dejar listo: cuentas de prueba, guiones, descripciones y comprobaciones previas.
+> **Qué se puede grabar hoy y qué no.** Meta pide ver cada permiso **en uso**. Los vídeos se graban en la **consola de partners** (donde el revisor conectará sus cuentas) cuando exista el round trip de las Historias 1 y 2, en staging o producción. Revisado el 2026-10-29 contra la documentación oficial: ver [auditoria-docs-oficiales.md](auditoria-docs-oficiales.md).
 
 ## 1. Reglas de grabación (valen para todos los vídeos)
 
 | Regla | Valor |
 |---|---|
 | Resolución y duración | 1080p o más; 1 a 3 minutos por permiso |
-| Audio | Sin audio. Pantalla y rótulos en pantalla |
+| Audio | Sin audio. **Rótulos o subtítulos** que expliquen cada paso (Meta los pide) |
 | Idioma | Inglés (interfaz de Meta en inglés durante la grabación) |
 | Un vídeo por permiso | No reutilizar el mismo vídeo ni copiar descripciones entre permisos |
 | Narrativa | Desde el negocio: «a customer writes, the business replies», no técnica |
-| Recorrido mínimo | Cuenta sin sesión → login → pantalla de permisos de Meta con el permiso visible → uso del permiso → resultado visible |
+| Recorrido mínimo | Cuenta sin sesión → login → **botón de inicio de sesión de Meta visible y conforme a su guía de marca** → pantalla de permisos de Meta con el permiso visible → uso del permiso → resultado visible |
 | Datos | Solo cuentas de prueba. Sin teléfonos, correos ni nombres reales |
 | Secretos | Nunca en pantalla: ni tokens (`EAA…`), ni `META_APP_SECRET`, ni `paging.next` de las respuestas de la API |
 | Cómo grabar en Mac | `Cmd + Shift + 5` → «Grabar pantalla seleccionada». Cerrar notificaciones antes |
 
 ## 2. Activos de prueba (preparar una vez)
 
-- [ ] Cuenta de Instagram **profesional** (Business o Creator) de prueba, con mensajes habilitados y **«Herramientas conectadas» activado** (Ajustes → Mensajes y respuestas del story → Herramientas conectadas).
+- [ ] Cuenta de Instagram **profesional** (Business o Creator) de prueba, **real** (Unified Login no admite usuarios de prueba de Meta), dentro de un **portfolio de negocio**, con **«Permitir acceso a los mensajes»** activado (Ajustes → Mensajes y respuestas del story → Herramientas conectadas). Sin él la API devuelve `(#200)`.
 - [ ] Segunda cuenta de Instagram, personal, que hará de «cliente final».
-- [ ] Página de Facebook de prueba, administrada por la persona evaluadora.
-- [ ] Roles en la app (Roles → Roles / Evaluadores) para las cuentas de prueba. Con rol, los permisos funcionan sin aprobación.
-- [ ] Cliente de prueba en el panel de Auphere con un agente simple (saludo + horario), nunca un cliente real.
+- [ ] Página de Facebook de prueba, **publicada**, administrada por la persona evaluadora, con las tareas MESSAGING y MODERATE.
+- [ ] Roles en la app: evaluador de Facebook para la persona evaluadora y **evaluador de Instagram** para la cuenta profesional (Roles → Evaluadores de Instagram; la cuenta acepta la invitación en Instagram). Con rol, los permisos funcionan sin aprobación.
+- [ ] Partner de revisión en la consola de partners con Instagram y Messenger habilitados y un cliente de prueba con un agente simple (saludo + horario), nunca un cliente real.
 - [ ] Revisor de Meta: instrucciones de prueba y una cuenta que no exija 2FA ni SMS (App settings → Basic → «Provide testing instructions»).
 - [ ] Direcciones de privacidad, condiciones y eliminación de datos abren sin error y mencionan datos de Instagram y Messenger (App settings → Basic). Meta revisa la app entera en cada envío.
 
@@ -36,9 +36,9 @@ Los nombres con prefijo `instagram_business_` pertenecen a Instagram Login; con 
 
 **Use case description (EN):** Auphere lets small businesses answer their Instagram customers with an assistant. After the business owner connects their professional Instagram account, we read the account's username and profile picture to show the owner which account is connected and to label the conversations in their inbox.
 
-**Screencast:** 1) Open Auphere admin, client «Demo Beauty». 2) Add channel → Instagram → log in with the test account. 3) Show the permission screen from Meta with basic profile access. 4) Return to Auphere: the connected account appears with username and photo.
+**Screencast:** 1) Open the Auphere partner console, client «Meta Review Demo» → Channels. 2) Connect Instagram → log in with the test account (Instagram or Facebook). 3) Show the permission screen from Meta with basic profile access. 4) Return to Auphere: the connected account appears with username and photo.
 
-**Prueba de llamada:** `GET /me?fields=user_id,username` con el token del canal.
+**Prueba de llamada:** `GET /me/assigned_instagram_accounts` y `GET /{IG_ID}?fields=username,profile_picture_url` con el token del canal. **No** `GET /me`: con un token de usuario del sistema `/me` devuelve el usuario del sistema, no la cuenta.
 
 ### 3.2 `instagram_manage_messages`
 
@@ -46,7 +46,7 @@ Los nombres con prefijo `instagram_business_` pertenecen a Instagram Login; con 
 
 **Screencast:** 1) Personal account sends «Hi, what time do you open?» to the test business account. 2) Auphere inbox shows the message with the Instagram label. 3) The assistant's reply arrives in Instagram on the personal account. 4) Show the conversation in the inbox with both messages.
 
-**Prueba de llamada:** envío real de la respuesta (`POST …/messages`) y lectura del mensaje entrante por webhook.
+**Prueba de llamada:** envío real de la respuesta (`POST /{IG_ID}/messages`) y lectura del mensaje entrante por webhook.
 
 ### 3.3 `instagram_manage_comments`
 
@@ -54,7 +54,7 @@ Los nombres con prefijo `instagram_business_` pertenecen a Instagram Login; con 
 
 **Screencast:** 1) Personal account comments «Price?» on a post of the test account. 2) Comment shows up in Auphere. 3) The reply appears under the comment in Instagram. 4) The private message arrives in the personal account's DMs.
 
-**Prueba de llamada:** `POST /{comment-id}/replies` y envío del DM referido al comentario.
+**Prueba de llamada:** `POST /{comment-id}/replies` (respuesta pública) y `POST /{IG_ID}/messages` con `recipient.comment_id` (respuesta privada; una por comentario, dentro de 7 días).
 
 ### 3.4 Human Agent (función, etiqueta `human_agent`)
 
@@ -62,7 +62,15 @@ Los nombres con prefijo `instagram_business_` pertenecen a Instagram Login; con 
 
 **Screencast:** 1) Show a conversation whose last customer message is older than 24 hours. 2) The assistant cannot reply (blocked, clear reason). 3) A team member presses «Take over», writes a reply. 4) The reply is delivered to the customer. 5) The audit log shows who took over.
 
-**Aviso:** Meta revoca el permiso si detecta uso sin persona real. El guion tiene que mostrar a la persona.
+**Aviso:** Meta revoca el permiso si detecta uso sin persona real. El guion tiene que mostrar a la persona y, si se usa el traspaso de conversación, que **la propiedad del hilo pasa a la bandeja** al escalar.
+
+### 3.4b Business Asset User Profile Access (función)
+
+**Use case description (EN):** When a customer writes to the business on Instagram or Messenger, Auphere reads the customer's name and profile picture so the business team can recognise who they are talking to in the inbox. We read only people who wrote to the business first, and we do not use the data for anything else.
+
+**Screencast:** 1) A customer writes to the test account. 2) The Auphere inbox shows the conversation with the customer's name and photo.
+
+**Prueba de llamada:** `GET /{IGSID}?fields=name,profile_pic` (Instagram) y `GET /{PSID}?fields=first_name,last_name,profile_pic` (Messenger) con el token del canal.
 
 ### 3.5 `pages_messaging`
 
@@ -84,9 +92,9 @@ Los nombres con prefijo `instagram_business_` pertenecen a Instagram Login; con 
 
 ### 3.8 `pages_read_engagement`
 
-**Use case description (EN):** We read the Page name and profile picture to show which Page is connected and the sender's name in the inbox.
+**Use case description (EN):** We read the Page name and profile picture to show the business owner which Page is connected to Auphere.
 
-**Screencast:** inbox with Page name and the sender's display name.
+**Screencast:** the connected Page card in the Channels list with the Page name and picture.
 
 ### 3.9 `business_management`
 
@@ -106,7 +114,7 @@ Los nombres con prefijo `instagram_business_` pertenecen a Instagram Login; con 
 
 ## 4. Orden de envío recomendado
 
-1. Esperar a que los contadores de Meta suban (≥ 1 llamada por permiso en 30 días).
+1. Esperar a que los contadores de Meta suban (≥ 1 llamada por permiso en 30 días; Meta tarda hasta 2 días en contarla).
 2. Grabar los vídeos en orden: 3.2 → 3.3 → 3.4 → 3.1 → Messenger (3.5–3.8) → 3.9 → 3.10.
 3. Revisar cada vídeo: sin secretos, sin datos reales, 1–3 min.
 4. Pegar cada descripción en su permiso (texto distinto para cada uno) y subir su vídeo.
@@ -120,3 +128,5 @@ Los nombres con prefijo `instagram_business_` pertenecen a Instagram Login; con 
 - [ ] Instrucciones de prueba para el revisor, con cuentas listas.
 - [ ] Privacidad, condiciones y eliminación de datos revisados.
 - [ ] Los permisos de WhatsApp aprobados no se tocan.
+- [ ] Messenger (lista oficial de revisión): Página publicada, webhook que responde 200 en menos de 20 s, tiempo medio de respuesta menor de 1 minuto, `messaging_policy_enforcement` suscrito en Página.
+- [ ] La configuración «Auphere Messenger» incluye `pages_read_engagement`.

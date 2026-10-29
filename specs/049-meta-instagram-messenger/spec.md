@@ -1,6 +1,6 @@
 # Especificación: Instagram y Messenger como canales de Auphere
 
-**Rama**: `049-meta-instagram-messenger` · **Creada**: 2026-10-29 · **Estado**: Aprobada para plan
+**Rama**: `049-meta-instagram-messenger` (trabajo en `develop`) · **Creada**: 2026-10-29 · **Revisada**: 2026-10-29 tras la auditoría contra la documentación oficial ([auditoria-docs-oficiales.md](auditoria-docs-oficiales.md)) · **Estado**: Aprobada para plan
 
 **Entrada**: owner, 2026-10-29 — «Adapter de canales Meta: Instagram (Unified Login) y Messenger en Auphere. Un parser compartido para `object=instagram` y `object=page` en `/webhook/meta`, adapters con ChannelAdapter, respuesta del agente por DM, comentarios a DM, takeover humano con Human Agent, y preparar el material de App Review de Meta (llamadas de prueba y screencasts por permiso)». Configuración de Instagram (Unified Login, Config ID `1157578836735566`) y webhooks de Instagram y Page ya creados y verificados en la app de Meta el 2026-10-29.
 
@@ -21,12 +21,14 @@ Medido el 2026-10-29 en la app de Meta y en el código:
 - El backend solo procesa eventos de WhatsApp. Un evento de Instagram o de Page que llegue hoy se registra como campo no tratado y se descarta.
 - Los perfiles de capacidades de ambos canales ya existen; falta todo lo demás (identidad, envío, conexión de cuentas, ventana de mensajería, traspaso a humano).
 - Meta exige, por permiso, una llamada real en los últimos 30 días y un screencast de la función en uso. Sin canal funcionando no hay nada que grabar: por eso el material de revisión es parte de esta spec y no un paso aparte.
+- El revisor de Meta usa sus propias cuentas y tiene que **conceder y usar** cada permiso. El panel de operador enseña todos los clientes: el revisor no puede entrar ahí. La conexión vive donde vivirá en producción, la **consola de partners**, como WhatsApp (decisión del owner, 2026-10-29).
+- Para `object=instagram` y `object=page` Meta admite **una sola URL de webhook por app**; no existe el `override_callback_uri` que WhatsApp usa por WABA para separar staging de producción. Staging tiene que recibir eventos reales (decisión del owner): lo que llega a un entorno y no es suyo se reenvía, intacto y firmado, al otro.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
 ### Historia 1 — Un cliente final escribe por Instagram y el agente responde (Prioridad: P1)
 
-El operador conecta la cuenta profesional de Instagram de un cliente de Auphere. Una persona escribe un mensaje directo a esa cuenta y el agente del cliente le contesta en la misma conversación.
+El partner (o el operador por él) conecta, desde la consola de partners, la cuenta profesional de Instagram de un cliente. Una persona escribe un mensaje directo a esa cuenta y el agente del cliente le contesta en la misma conversación.
 
 **Por qué esta prioridad**: es el valor central del canal y lo que Meta pide demostrar para `instagram_manage_messages`. Todo lo demás se apoya en esto.
 
@@ -43,7 +45,7 @@ El operador conecta la cuenta profesional de Instagram de un cliente de Auphere.
 
 ### Historia 2 — Lo mismo por Messenger (Prioridad: P1)
 
-El operador conecta la Página de Facebook de un cliente. Una persona escribe a la Página por Messenger y el agente le contesta.
+El partner conecta, desde la consola de partners, la Página de Facebook de un cliente. Una persona escribe a la Página por Messenger y el agente le contesta.
 
 **Por qué esta prioridad**: Meta revisa Messenger aparte (`pages_messaging` y compañía); comparte con Instagram casi toda la mecánica y se entrega en la misma ronda.
 
@@ -67,7 +69,7 @@ Una persona comenta una publicación del negocio. El agente responde al comentar
 **Escenarios de aceptación**:
 
 1. **Dado** una publicación de la cuenta conectada, **cuando** alguien la comenta, **entonces** el agente puede responder al comentario en público.
-2. **Dado** un comentario que pide información, **cuando** el agente decide continuar en privado, **entonces** envía un DM a esa persona referido a su comentario.
+2. **Dado** un comentario que pide información, **cuando** el agente decide continuar en privado, **entonces** envía un DM a esa persona referido a su comentario (una sola vez por comentario y dentro de los 7 días desde que se publicó).
 3. **Dado** un comentario del propio negocio, **cuando** llega, **entonces** no dispara al agente.
 
 ---
@@ -108,12 +110,16 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 
 - ¿Qué pasa si la persona no ha escrito primero? Meta no permite iniciar la conversación: el envío se rechaza con un motivo claro.
 - ¿Qué pasa si el cliente tiene apagada la opción «Herramientas conectadas» en Instagram? Las llamadas fallan en silencio: la conexión lo detecta y se lo dice al operador, con el paso exacto para encenderla.
-- ¿Qué pasa si llega el mismo evento dos veces (Meta reintenta)? Se procesa una sola vez.
+- ¿Qué pasa si llega el mismo evento dos veces? Meta reintenta hasta 36 horas y agrupa hasta 1000 eventos por envío: se procesa una sola vez, con deduplicación durable (no solo de minutos).
+- ¿Qué pasa si el negocio no tiene portfolio de negocio en Meta? El inicio de sesión unificado lo exige: la conexión lo detecta y dice cómo crearlo.
+- ¿Qué pasa si la respuesta del agente es más larga de lo que admite Instagram (1000 bytes por mensaje)? Se parte en varios mensajes sin cortar palabras.
+- ¿Qué pasa con un evento de una cuenta conectada en el otro entorno (staging o producción)? Se reenvía a ese entorno sin tocarlo; si no es de ninguno, se ignora.
+- ¿Qué pasa si Meta desuscribe la Página por fallos de entrega? La comprobación periódica lo detecta y vuelve a suscribirla; si no puede, el canal pasa a «requiere atención».
 - ¿Qué pasa con un evento con firma inválida o de una cuenta no conectada? Se rechaza o se ignora sin tocar datos de ningún cliente.
 - ¿Qué pasa si la cuenta o la Página se desconecta o pierde el permiso? El canal pasa a «requiere atención», el agente deja de intentar enviar y el operador lo ve. Si la desconexión es definitiva, corre el plazo de 30 días para borrar o anonimizar sus datos (Requisito 5.3).
 - ¿Qué pasa con adjuntos (imagen, audio, vídeo, documento)? Se reciben y se pasan al agente; los que Instagram o Messenger no admiten al enviar se degradan a texto con aviso.
 - ¿Qué pasa con las reacciones, las lecturas y los mensajes editados? Se registran sin disparar al agente.
-- ¿Qué ve el partner o el cliente cuando Instagram o Messenger **no está disponible** para su cuenta? Nada: ni botón apagado ni explicación (constitución §V). Solo el panel de operador muestra el estado.
+- ¿Qué ve el partner o el cliente cuando Instagram o Messenger **no está disponible** para su partner? Nada: ni botón apagado ni explicación (constitución §V). Hasta la aprobación de Meta solo lo ven los partners habilitados por el operador (el de revisión y los internos de prueba); el panel de operador muestra el estado.
 
 ## Requisitos *(obligatorio)*
 
@@ -129,6 +135,8 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 4. WHEN llega un evento ya procesado THEN el sistema DEBE tratarlo una sola vez.
 5. WHEN llega un campo que el sistema no trata THEN el sistema DEBE responder éxito a Meta, registrarlo y no fallar.
 6. El sistema DEBE seguir procesando los eventos de WhatsApp exactamente igual que antes.
+7. IF el evento es de una cuenta o Página conectada en el otro entorno THEN el sistema DEBE reenviarlo a ese entorno con el cuerpo y la firma originales, sin procesarlo ni guardarlo, y el entorno destino DEBE verificar la firma como si viniera de Meta.
+8. El sistema DEBE responder a Meta en menos de 20 segundos, procesando el evento fuera de la petición.
 
 ### Requisito 2 — Conversar con el agente por mensaje directo
 
@@ -142,6 +150,8 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 4. WHEN el agente responde con botones o respuestas rápidas THEN el sistema DEBE mostrarlos con las capacidades de cada canal y degradar a texto lo que el canal no admita, con el texto de reserva obligatorio.
 5. IF el mensaje es un eco de la propia cuenta THEN el sistema NO DEBE enviarlo al agente.
 6. WHEN el agente responde THEN el consumo DEBE entrar en el medidor del partner con el canal indicado.
+7. WHEN una respuesta supera el límite de longitud del canal THEN el sistema DEBE partirla en mensajes consecutivos sin cortar palabras.
+8. WHERE Meta lo permite (función «Business Asset User Profile Access») EL sistema DEBE mostrar en la bandeja el nombre y la foto de la persona; si la llamada falla, DEBE mostrar un nombre genérico y no bloquear la conversación.
 
 ### Requisito 3 — Respetar las reglas de mensajería de Meta
 
@@ -162,20 +172,21 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 
 1. WHEN una persona comenta una publicación de una cuenta conectada THEN el sistema DEBE ofrecer el comentario al agente como entrada distinta de un DM.
 2. WHEN el agente responde un comentario THEN el sistema DEBE publicarlo como respuesta a ese comentario.
-3. WHEN el agente pasa a mensaje directo THEN el sistema DEBE enviarlo referido al comentario de origen, una sola vez por comentario.
+3. WHEN el agente pasa a mensaje directo THEN el sistema DEBE enviarlo referido al comentario de origen, una sola vez por comentario y solo dentro de los 7 días desde que se publicó el comentario; fuera de ese plazo DEBE rechazarlo con un motivo claro.
 4. IF el comentario es del propio negocio THEN el sistema NO DEBE enviarlo al agente.
 
 ### Requisito 5 — Conectar y desconectar cuentas
 
-**Historia de usuario:** Como operador, quiero conectar la cuenta de Instagram o la Página de un cliente desde el panel, para que empiece a atender.
+**Historia de usuario:** Como partner, quiero conectar la cuenta de Instagram o la Página de un cliente desde la consola de partners, igual que su WhatsApp, para que empiece a atender.
 
 #### Criterios de aceptación
 
-1. WHEN el operador conecta una cuenta o Página de un cliente THEN el sistema DEBE guardar su acceso cifrado, registrar el canal y suscribir los eventos, y el canal DEBE aparecer en la lista de Canales del cliente con su estado.
-2. IF falta algo que impide funcionar (cuenta personal, mensajes desactivados, «Herramientas conectadas» apagado, permiso no concedido) THEN el sistema DEBE decir cuál y cómo corregirlo, y NO DEBE dejar el canal como activo.
-3. WHEN el operador o el negocio desconecta el canal, o el negocio quita el acceso de Auphere desde Facebook o Instagram, THEN el sistema DEBE dejar de recibir y de enviar por él al instante, borrar sus tokens de acceso en ese momento, y eliminar o anonimizar los mensajes y datos de perfil recibidos por ese canal en un plazo máximo de 30 días, salvo lo que la ley obligue a conservar (política de privacidad, sección «Cómo pedir que borremos tus datos»).
+1. WHEN el partner conecta, con el inicio de sesión de Meta, una cuenta o Página de un cliente THEN el sistema DEBE guardar su acceso cifrado, registrar el canal y suscribir los eventos, y el canal DEBE aparecer en la lista de Canales del cliente con su estado.
+2. IF falta algo que impide funcionar (cuenta personal, sin portfolio de negocio, mensajes desactivados, «Permitir acceso a los mensajes» apagado, permiso no concedido, Página sin la tarea de mensajes) THEN el sistema DEBE decir cuál y cómo corregirlo, y NO DEBE dejar el canal como activo.
+3. WHEN el partner, el operador o el negocio desconecta el canal, o el negocio quita la app de Auphere de su portfolio o mueve la cuenta a otro portfolio, THEN el sistema DEBE dejar de recibir y de enviar por él al instante, borrar sus tokens de acceso en ese momento, y eliminar o anonimizar los mensajes y datos de perfil recibidos por ese canal en un plazo máximo de 30 días, salvo lo que la ley obligue a conservar (política de privacidad, sección «Cómo pedir que borremos tus datos»).
 4. El sistema DEBE pedir en la conexión solo los permisos que usa, y NO DEBE pedir publicar contenido ni gestionar anuncios.
-5. WHERE el canal no está disponible para un partner o cliente EL sistema NO DEBE mostrarlo en la consola de partners ni en la lite.
+5. WHERE el canal no está habilitado para un partner EL sistema NO DEBE mostrarlo en la consola de partners ni en la lite. El operador lo habilita por partner desde el panel; hasta la aprobación de Meta solo lo tienen el partner de revisión y los internos.
+7. El sistema DEBE comprobar periódicamente cada canal conectado (token válido, suscripción a eventos activa) y volver a suscribirlo si Meta lo desuscribió.
 6. WHEN un cliente final pide por correo que se borren sus datos de un canal de Meta THEN el sistema DEBE permitir al operador localizar a esa persona por canal y negocio, borrar sus mensajes y su perfil en un plazo máximo de 30 días, avisar al negocio y dejar en la auditoría quién lo pidió, quién lo ejecutó y cuándo.
 
 ### Requisito 6 — Material de revisión de Meta
@@ -185,8 +196,8 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 #### Criterios de aceptación
 
 1. El sistema DEBE tener una cuenta profesional de prueba, una Página de prueba y una persona evaluadora con todo preparado, y un procedimiento para reproducirlas.
-2. WHEN se sigue el guion de un permiso THEN DEBE producirse al menos una llamada exitosa con ese permiso en la app y un vídeo de 1 a 3 minutos, sin audio, en inglés, en alta definición y con una descripción de uso propia, no copiada de otro permiso.
-3. El kit DEBE cubrir `instagram_business_manage_messages` o `instagram_manage_messages` según la vía de acceso, `instagram_manage_comments`, `instagram_basic`, `pages_messaging`, `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement`, `business_management` y la función Human Agent.
+2. WHEN se sigue el guion de un permiso THEN DEBE producirse al menos una llamada exitosa con ese permiso en la app (con 2 días de margen antes del envío, lo que tarda Meta en contarla) y un vídeo de 1 a 3 minutos, sin audio, con rótulos, en inglés, en 1080p, con el botón de inicio de sesión de Meta visible, y una descripción de uso propia, no copiada de otro permiso.
+3. El kit DEBE cubrir `instagram_business_manage_messages` o `instagram_manage_messages` según la vía de acceso, `instagram_manage_comments`, `instagram_basic`, `pages_messaging`, `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement`, `business_management`, la función Human Agent y la función Business Asset User Profile Access.
 4. El kit DEBE incluir la comprobación previa de las direcciones de privacidad, condiciones y eliminación de datos, y de las instrucciones de prueba de la app.
 5. IF alguna llamada de prueba sale con credenciales o secretos visibles THEN el vídeo NO DEBE publicarse.
 
@@ -216,15 +227,15 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 - **Iniciar conversaciones en frío** — Meta no lo permite en estos canales; solo se contempla comentario a mensaje directo y anuncios con destino al DM, y estos últimos no se construyen aquí.
 - **Cuentas personales de Instagram** — solo profesionales.
 - **Facebook Login para el cliente final** — el acceso lo da el negocio, no su cliente.
-- **Mostrar el canal en la consola de partners o lite** — hasta que Meta apruebe; hasta entonces es solo del panel de operador.
+- **Abrir el canal a todos los partners** — hasta que Meta apruebe; hasta entonces solo los habilitados (Req. 5.5).
 
 ## Supuestos
 
 - Se usa el **inicio de sesión unificado** de Instagram (decisión del owner, 2026-10-29), que sustituye a la elección de ADR-030 (Instagram Login). El ADR se enmienda o se sustituye antes del plan.
 - Messenger tiene su ADR (**ADR-049, aceptado el 2026-10-29**) y ADR-030 está enmendado (enmienda 1, aceptada el mismo día). El owner confirmó: Messenger en la misma ronda que Instagram, primera conexión por el operador, revisión de Meta aparte de la de catálogo y publicar contenido fuera de alcance.
 - El acceso de cada cuenta es un token de usuario del sistema que no caduca, así que no hace falta el trabajo programado de renovación a 60 días que preveía ADR-030. Si Meta cambia eso en la revisión, se reabre.
-- El webhook de Instagram y el de Página ya están verificados y suscritos con los campos de mensajes, comentarios, menciones, traspasos y ecos.
-- La primera conexión de cuentas es **del operador desde el panel** (como el WhatsApp «propio»); el registro integrado para el partner viene después, cuando Meta apruebe.
+- El webhook de Instagram y el de Página ya están verificados y suscritos con los campos de mensajes, comentarios, menciones, traspasos y ecos. Falta suscribir `messaging_policy_enforcement` en Página (lo pide la revisión de Messenger). Los ecos de Instagram llegan dentro de `messages` con `is_echo`.
+- La conexión es **del partner desde la consola de partners** (decisión del owner, 2026-10-29), con el mismo inicio de sesión de Facebook for Business que el registro integrado de WhatsApp. Sustituye a «primera conexión por el operador».
 - El agente y su prompt son los de siempre: el canal solo cambia lo que renderiza (capacidades ya definidas para ambos).
 - La cuenta de Facelad (verificada) es la dueña de la app; las cuentas de prueba usan roles de la app, que no requieren aprobación.
 - La solicitud actual de revisión (catálogo y gestión de negocio) sigue sin enviarse; esta spec decide si los permisos de Instagram y Messenger van en el mismo envío o en uno posterior, sin tocar los aprobados de WhatsApp.
