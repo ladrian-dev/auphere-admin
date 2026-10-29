@@ -1,4 +1,8 @@
-"""Meta WhatsApp Cloud API webhook endpoint.
+"""Meta webhook endpoint: WhatsApp Cloud API, plus Instagram and Messenger.
+
+Instagram (``object=instagram``) and Page (``object=page``) events share the
+callback and the signature check and are routed to :mod:`meta_social`
+(spec 049). Everything below is the WhatsApp path, unchanged.
 
 Speaks Meta's wire format directly. The route handles:
 
@@ -52,6 +56,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
+from nexus_api.api.webhooks.meta_social import FORWARDED_HEADER, handle_meta_social
 from nexus_api.config import get_settings
 from nexus_api.core.admin_gate import audience_suppresses
 from nexus_api.core.errors import TenantNotFound
@@ -229,6 +234,7 @@ async def meta_webhook_handshake(
 async def meta_webhook(
     request: Request,
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
+    x_auphere_forwarded: str | None = Header(default=None, alias=FORWARDED_HEADER),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
 ) -> dict[str, Any]:
@@ -248,8 +254,19 @@ async def meta_webhook(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid JSON") from exc
 
+    if payload.get("object") in {"instagram", "page"}:
+        # Spec 049: Instagram DMs and comments, Messenger. Same signature,
+        # own routing (and the forward to the other environment).
+        return await handle_meta_social(
+            payload,
+            body=body,
+            signature=x_hub_signature_256,
+            forwarded=x_auphere_forwarded == "1",
+            session=session,
+            redis=redis,
+        )
+
     if payload.get("object") != "whatsapp_business_account":
-        # Could be an Instagram webhook (when we add IG later) — not ours yet.
         log.info("webhook.meta.non_whatsapp_object", object=payload.get("object"))
         return {"status": "ignored"}
 
