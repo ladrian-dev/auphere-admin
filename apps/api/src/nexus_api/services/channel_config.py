@@ -744,6 +744,25 @@ async def pause_channel(
     return True
 
 
+def health_degraded(channel: Channel) -> bool:
+    """¿El número está degradado? En pausa lo dice el estado que devolverá
+    reanudar, no ``status``."""
+    if channel.status is ChannelStatus.PAUSED:
+        return (channel.config or {}).get("before_pause") == ChannelStatus.DEGRADED.value
+    return channel.status is ChannelStatus.DEGRADED
+
+
+def set_health(channel: Channel, *, degraded: bool) -> None:
+    """Degradar o sanar el número sin pisar una pausa del partner: en pausa se
+    cambia lo que devolverá reanudar y el estado sigue en ``paused`` (el cron
+    de salud y los eventos de cuenta lo despausaban; QA 2026-10-30, INC-06)."""
+    target = ChannelStatus.DEGRADED if degraded else ChannelStatus.ACTIVE
+    if channel.status is ChannelStatus.PAUSED:
+        channel.config = {**(channel.config or {}), "before_pause": target.value}
+    else:
+        channel.status = target
+
+
 async def resume_channel(
     session: AsyncSession, channel: Channel, *, origin: str, actor: str
 ) -> bool:

@@ -28,6 +28,7 @@ from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import AuditLog, Channel, ChannelStatus, Tenant
+from nexus_api.services.channel_config import health_degraded, set_health
 from nexus_api.services.meta_social_retention import due_for_purge, purge_channel
 from nexus_api.services.meta_social_service import PROBLEM_REASON_OF
 from nexus_channels.meta_social import META_SOCIAL_PROVIDERS, MetaSocialClient
@@ -118,18 +119,19 @@ async def tick_tenant(
                 continue
             channel.last_health_check_at = now
             cfg = dict(channel.config or {})
+            # A paused channel stays paused: set_health changes what resuming returns.
             if health.ok:
-                if channel.status is ChannelStatus.DEGRADED and cfg.get("needs_attention"):
+                if health_degraded(channel) and cfg.get("needs_attention"):
                     cfg.pop("needs_attention", None)
                     channel.config = cfg
-                    channel.status = ChannelStatus.ACTIVE
+                    set_health(channel, degraded=False)
                     channel.problem_reason = None
                 if health.resubscribed:
                     log.info("meta_social_cron.resubscribed", channel_id=str(channel.id))
             elif cfg.get("needs_attention") != health.reason:
                 cfg["needs_attention"] = health.reason
                 channel.config = cfg
-                channel.status = ChannelStatus.DEGRADED
+                set_health(channel, degraded=True)
                 channel.problem_reason = PROBLEM_REASON_OF.get(str(health.reason), "meta_error")
                 session.add(
                     AuditLog(

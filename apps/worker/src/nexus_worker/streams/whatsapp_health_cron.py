@@ -41,6 +41,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.services.channel_config import health_degraded, set_health
 from nexus_channels.whatsapp_meta import MetaClient
 from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
 from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
@@ -119,16 +120,17 @@ def apply_phone_snapshot(channel: Channel, payload: dict[str, Any]) -> None:
     source = cfg.get("problem_source")
     mine = source == "quality" or (source is None and channel.problem_reason in (None, "quality"))
     level = quality.upper() if isinstance(quality, str) else ""
-    if level in {"YELLOW", "RED"}:
-        if channel.status is not ChannelStatus.DEGRADED or mine:
-            channel.status = ChannelStatus.DEGRADED
-            channel.problem_reason = "quality"
-            cfg["problem_source"] = "quality"
-    elif level == "GREEN" and channel.status is ChannelStatus.DEGRADED and mine:
-        channel.status = ChannelStatus.ACTIVE
-        channel.problem_reason = None
-        cfg.pop("problem_source", None)
     channel.config = cfg
+    # A paused number stays paused: set_health changes what resuming returns.
+    if level in {"YELLOW", "RED"}:
+        if not health_degraded(channel) or mine:
+            set_health(channel, degraded=True)
+            channel.problem_reason = "quality"
+            channel.config = {**(channel.config or {}), "problem_source": "quality"}
+    elif level == "GREEN" and health_degraded(channel) and mine:
+        set_health(channel, degraded=False)
+        channel.problem_reason = None
+        channel.config = {k: v for k, v in (channel.config or {}).items() if k != "problem_source"}
 
 
 def warn_if_graph_version_expiring(

@@ -64,7 +64,6 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Channel,
-    ChannelStatus,
     ChannelType,
     Conversation,
     Customer,
@@ -76,6 +75,7 @@ from nexus_api.db.models import (
     WhatsAppTemplateStatus,
 )
 from nexus_api.services import whatsapp_opt_outs
+from nexus_api.services.channel_config import set_health
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
 from nexus_api.services.meta_social_service import PROBLEM_REASON_OF
@@ -1040,7 +1040,7 @@ async def _flag_meta_social_channel(
     channel = await session.get(Channel, channel_id)
     if channel is None:
         return
-    channel.status = ChannelStatus.DEGRADED
+    set_health(channel, degraded=True)  # a paused channel stays paused
     channel.problem_reason = PROBLEM_REASON_OF.get(reason, "meta_error")
     channel.config = {**(channel.config or {}), "needs_attention": reason}
     log.warning(

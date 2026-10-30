@@ -39,6 +39,7 @@ from nexus_api.core.metrics import CHANNEL_UNRESOLVED_EVENT, counters
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant
 from nexus_api.db.models import AuditLog, Channel, ChannelStatus, WhatsAppTemplateStatus
+from nexus_api.services.channel_config import health_degraded, set_health
 from nexus_api.services.whatsapp_templates import invalidate_template_cache
 
 log = structlog.get_logger(__name__)
@@ -368,9 +369,9 @@ def _config(channel: Channel, **updates: Any) -> bool:
 
 
 def _set_problem(channel: Channel, reason: str) -> bool:
-    if channel.status is ChannelStatus.DEGRADED and channel.problem_reason == reason:
+    if health_degraded(channel) and channel.problem_reason == reason:
         return False
-    channel.status = ChannelStatus.DEGRADED
+    set_health(channel, degraded=True)
     channel.problem_reason = reason
     _config(channel, problem_source="account")
     return True
@@ -379,13 +380,13 @@ def _set_problem(channel: Channel, reason: str) -> bool:
 def _clear_problem(channel: Channel, reasons: frozenset[str]) -> bool:
     cfg = channel.config or {}
     source = cfg.get("problem_source")
-    if channel.status is not ChannelStatus.DEGRADED or channel.problem_reason not in reasons:
+    if not health_degraded(channel) or channel.problem_reason not in reasons:
         return False
     if source not in (None, "account"):
         return False
-    channel.status = ChannelStatus.ACTIVE
+    set_health(channel, degraded=False)
     channel.problem_reason = None
-    channel.config = {k: v for k, v in cfg.items() if k != "problem_source"}
+    channel.config = {k: v for k, v in (channel.config or {}).items() if k != "problem_source"}
     return True
 
 

@@ -59,6 +59,22 @@ def test_a_legacy_degraded_row_without_source_is_still_cleared() -> None:
     assert ch.status is ChannelStatus.ACTIVE
 
 
+def test_a_paused_number_stays_paused_whatever_the_quality() -> None:
+    """QA 2026-10-30 (INC-06): the cron turned a partner's pause into
+    DEGRADED and then ACTIVE, and the agent answered again. Now the pause
+    stays and the reading changes what resuming will return."""
+    ch = _channel(status=ChannelStatus.PAUSED, before_pause="active")
+    apply_phone_snapshot(ch, {"quality_rating": "RED"})
+    assert ch.status is ChannelStatus.PAUSED
+    assert ch.problem_reason == "quality"
+    assert ch.config["before_pause"] == "degraded"
+    apply_phone_snapshot(ch, {"quality_rating": "GREEN"})
+    assert ch.status is ChannelStatus.PAUSED
+    assert ch.problem_reason is None
+    assert ch.config["before_pause"] == "active"
+    assert "problem_source" not in ch.config
+
+
 def test_it_reads_the_messaging_limit_and_the_name_status() -> None:
     ch = _channel()
     apply_phone_snapshot(
