@@ -133,6 +133,12 @@ class MetaSocialChannelAdapter:
         human_agent: bool = False,
     ) -> SendResult:
         body, options = _quick_replies_from_interactive(interactive)
+        if _is_comment(context_message_id) and options:
+            # A comment only takes ONE private text reply: the options go as
+            # lines of that text, not as quick replies Meta would refuse (QA
+            # 2026-10-30, INC-21).
+            body = "\n".join([body, *(f"• {o['title']}" for o in options)]).strip()
+            options = []
         if not options:
             return await self.send_text(
                 from_phone=from_phone,
@@ -290,8 +296,25 @@ class MetaSocialChannelAdapter:
         tenant_id: uuid.UUID,
         channel_id: uuid.UUID,
         human_agent: bool = False,
+        context_message_id: str | None = None,
         **_: Any,
     ) -> SendResult:
+        if _is_comment(context_message_id):
+            # The private reply to a comment is text only (QA 2026-10-30,
+            # INC-21): the caption goes as that reply; without one there is
+            # nothing Meta would take.
+            if not caption:
+                raise ChannelCapabilityError(
+                    "A private reply to a comment is text only: send the media in the DM thread."
+                )
+            return await self.send_text(
+                from_phone="",
+                recipient=recipient,
+                text=caption,
+                tenant_id=tenant_id,
+                channel_id=channel_id,
+                context_message_id=context_message_id,
+            )
         ctx = await self._load(tenant_id=tenant_id, channel_id=channel_id)
         result = await self._send(
             ctx,
@@ -334,6 +357,10 @@ class MetaSocialChannelAdapter:
                     error=type(exc).__name__,
                 )
         return result
+
+
+def _is_comment(context_message_id: str | None) -> bool:
+    return bool(context_message_id) and str(context_message_id).startswith(COMMENT_PREFIX)
 
 
 def _quick_replies_from_interactive(block: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:

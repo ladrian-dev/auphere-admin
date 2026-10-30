@@ -162,6 +162,52 @@ async def test_interactive_becomes_quick_replies() -> None:
     ]
 
 
+async def test_in_a_comment_turn_buttons_and_media_become_the_one_private_reply() -> None:
+    """QA 2026-10-30 (INC-21): quick replies and attachments ignored the
+    comment context and went as a DM by ``recipient.id``, which Meta refuses."""
+    rec = Recorder()
+    adapter = _adapter(PROVIDER_INSTAGRAM, rec)
+    block = {
+        "type": "button",
+        "body": {"text": "Pick one"},
+        "action": {"buttons": [{"type": "reply", "reply": {"id": "a", "title": "Morning"}}]},
+    }
+    await adapter.send_interactive(
+        from_phone="ACC",
+        recipient="IGSID",
+        interactive=block,
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:C_9",
+    )
+    body = rec.calls[-1][3]
+    assert body["recipient"] == {"comment_id": "C_9"}
+    assert body["message"] == {"text": "Pick one\n• Morning"}
+
+    await adapter.send_image(
+        from_phone="ACC",
+        recipient="IGSID",
+        link="https://s3/x.jpg",
+        caption="Our menu",
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:C_10",
+    )
+    body = rec.calls[-1][3]
+    assert body["recipient"] == {"comment_id": "C_10"}
+    assert body["message"] == {"text": "Our menu"}
+
+    with pytest.raises(ChannelCapabilityError):
+        await adapter.send_audio(
+            from_phone="ACC",
+            recipient="IGSID",
+            link="https://s3/x.ogg",
+            tenant_id=TENANT,
+            channel_id=CHANNEL,
+            context_message_id="comment:C_11",
+        )
+
+
 async def test_templates_do_not_exist_here() -> None:
     with pytest.raises(ChannelCapabilityError):
         await _adapter(PROVIDER_INSTAGRAM, Recorder()).send_template()
