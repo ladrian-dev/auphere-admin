@@ -1,11 +1,11 @@
 "use client";
 
-import { AtSign, MessagesSquare } from "lucide-react";
+import { AtSign, CircleAlert, MessagesSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@nexus/ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@nexus/ui";
 
 import { metaSocialCompleteAction, metaSocialConnectAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
@@ -59,6 +59,9 @@ export function useMetaSocialConnect({
   const router = useRouter();
   const [working, setWorking] = React.useState(false);
   const [choice, setChoice] = React.useState<{ kind: MetaSocialKind; nonce: string; accounts: MetaSocialAccount[] } | null>(null);
+  // A failure stays on screen with «Intentar de nuevo», as WhatsApp's veil
+  // does, instead of a toast that goes away (QA 2026-10-30).
+  const [failure, setFailure] = React.useState<{ kind: MetaSocialKind; key: MessageKey } | null>(null);
 
   async function done(res: MetaSocialConnectResult) {
     const name = res.channel?.username ? `@${res.channel.username}` : (res.channel?.display_name ?? "");
@@ -68,26 +71,27 @@ export function useMetaSocialConnect({
     router.refresh();
   }
 
-  function refused(code: string | null | undefined) {
+  function refused(kind: MetaSocialKind, code: string | null | undefined) {
     const key = code ? META_SOCIAL_REASONS[code] : undefined;
-    toast.error(t(key ?? "common.error.backend"));
+    setFailure({ kind, key: key ?? "common.error.backend" });
   }
 
   async function start(kind: MetaSocialKind) {
     const configId = offer?.channels.find((c) => c.kind === kind)?.config_id;
     if (!offer || !configId) return;
+    setFailure(null);
     setWorking(true);
     try {
       const code = await loginForCode({ appId: offer.app_id, version: offer.graph_version, configId });
       const res = await metaSocialConnectAction({ ref: refId, kind, code });
-      if (!res.ok) return void refused(res.code);
+      if (!res.ok) return void refused(kind, res.code);
       if (res.data.status === "choose" && res.data.nonce) {
         setChoice({ kind, nonce: res.data.nonce, accounts: res.data.accounts });
         return;
       }
       await done(res.data);
     } catch (err) {
-      toast.error(t(LOGIN_ERRORS[err instanceof SignupError ? err.code : "meta_error"]));
+      setFailure({ kind, key: LOGIN_ERRORS[err instanceof SignupError ? err.code : "meta_error"] });
     } finally {
       setWorking(false);
     }
@@ -99,8 +103,9 @@ export function useMetaSocialConnect({
     try {
       const res = await metaSocialCompleteAction({ ref: refId, kind: choice.kind, nonce: choice.nonce, accountId: account.id });
       if (!res.ok) {
+        const kind = choice.kind;
         setChoice(null);
-        return void refused(res.code);
+        return void refused(kind, res.code);
       }
       await done(res.data);
     } finally {
@@ -111,7 +116,29 @@ export function useMetaSocialConnect({
   const dialog = (
     <>
       <MetaWindowVeil open={working && !choice} />
-      <Dialog open={choice !== null} onOpenChange={(o) => !o && !working && setChoice(null)}>
+      <Dialog open={failure !== null} onOpenChange={(o) => !o && setFailure(null)}>
+        <DialogContent showCloseButton={false} className="justify-items-center gap-4 p-8 text-center sm:max-w-120" data-slot="meta-social-failure">
+          <CircleAlert aria-hidden="true" className="size-8 text-destructive" />
+          <DialogHeader className="items-center">
+            <DialogTitle className="text-xl leading-tight font-semibold text-balance">{t("channels.proto.veil.failed")}</DialogTitle>
+            <DialogDescription className="max-w-prose text-pretty">{failure ? t(failure.key) : null}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button variant="ghost" onClick={() => setFailure(null)}>
+              {t("common.close")}
+            </Button>
+            <Button onClick={() => failure && void start(failure.kind)}>{t("channels.proto.veil.retry")}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={choice !== null}
+        onOpenChange={(o) => {
+          if (o || working) return;
+          setChoice(null);
+          toast.info(t("ch.social.choose.cancelled"));
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t(choice?.kind === "messenger" ? "ch.social.choose.messenger" : "ch.social.choose.instagram")}</DialogTitle>
@@ -129,6 +156,18 @@ export function useMetaSocialConnect({
               </li>
             ))}
           </ul>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={working}
+              onClick={() => {
+                setChoice(null);
+                toast.info(t("ch.social.choose.cancelled"));
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

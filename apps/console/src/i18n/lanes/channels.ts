@@ -443,7 +443,11 @@ export const channelsMessages = {
     es: "El negocio compartió más de una. El agente atenderá solo la que elijas. Si quieres otra, conéctala aparte.",
     en: "The business shared more than one. The agent will only answer the one you pick. To add another, connect it separately.",
   },
-  "ch.social.done": { es: "{name} conectado. El agente ya atiende sus mensajes.", en: "{name} connected. The agent now answers its messages." },
+  "ch.social.done": {
+    es: "{name} conectado. Configura a quién responde para que el agente empiece.",
+    en: "{name} connected. Choose who it answers so the agent starts.",
+  },
+  "ch.social.choose.cancelled": { es: "No se conectó nada.", en: "Nothing was connected." },
   "ch.social.card.instagram": { es: "Instagram", en: "Instagram" },
   "ch.social.card.messenger": { es: "Messenger", en: "Messenger" },
   "ch.social.card.comments": { es: "Comentarios", en: "Comments" },

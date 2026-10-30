@@ -2,6 +2,7 @@
 
 import { MessageCircle, Plus } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -78,6 +79,7 @@ export function AgentChannelsPanel({
   actions?: AgentChannelsActions;
 }) {
   const t = useT();
+  const router = useRouter();
   const [data, setData] = React.useState(initial);
   const [pages, setPages] = React.useState(initialPages);
   const [unlinked, setUnlinked] = React.useState<Unlinked[]>([]);
@@ -114,9 +116,13 @@ export function AgentChannelsPanel({
     const id = res.channel?.id;
     if (!id) return;
     const reloaded = await reload();
-    if (reloaded.ok && reloaded.data.channels.some((c) => c.id === id)) return;
-    const moved = await connect.move({ ref: refId, channel: id, to: agentId });
-    if (moved.ok) await reload();
+    if (!(reloaded.ok && reloaded.data.channels.some((c) => c.id === id))) {
+      const moved = await connect.move({ ref: refId, channel: id, to: agentId });
+      if (moved.ok) await reload();
+    }
+    // Like a WhatsApp number: straight to its page to say who it answers
+    // (QA 2026-10-30: it stayed on the picker saying «the agent answers»).
+    router.push(channelHref(refId, agentId, id));
   }
 
   const social = useMetaSocialConnect({ refId, offer: data?.meta_social ?? null, onConnected: placeSocial });
