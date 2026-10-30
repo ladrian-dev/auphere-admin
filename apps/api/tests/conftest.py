@@ -1266,6 +1266,35 @@ async def register_machine(
     }
 
 
+async def poll_until_work(
+    client: Any, token: str, running: asyncio.Task[Any], *, within: float = 10.0
+) -> list[dict[str, Any]]:
+    """Sondea ``/device/poll`` como la aplicación de escritorio hasta que haya
+    trabajo, y lo devuelve ya entregado (un segundo sondeo no lo trae).
+
+    Sustituye a un ``asyncio.sleep(0.2)`` fijo. ``running`` encola en su propia
+    transacción y eso no tarda un tiempo fijo: en un CI cargado, la máquina
+    sondeaba antes de que hubiera trabajo, nadie contestaba y la petición
+    esperaba ``local_exec_wait_seconds`` (900 s) para acabar «expirada». Si
+    ``running`` termina sin encolar nada, o vence el plazo, falla en el acto y
+    no deja la petición viva colgando la limpieza de la base.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + within
+    while True:
+        polled = await client.get("/device/poll", headers={"Authorization": f"Bearer {token}"})
+        assert polled.status_code == 200, polled.text
+        work: list[dict[str, Any]] = polled.json()["work"]
+        if work:
+            return work
+        if running.done():
+            pytest.fail(f"terminó sin encolar trabajo para la máquina: {running.result()!r}")
+        if loop.time() >= deadline:
+            running.cancel()
+            pytest.fail(f"la máquina no recibió trabajo en {within} s")
+        await asyncio.sleep(0.05)
+
+
 async def give_recharged_balance(partner_id: uuid.UUID, credits: int = 1_000_000) -> None:
     """Spec 033 (R5.1): a client's turn opens only with RECHARGED balance —
     the pocket that pays it. Suites that want a served client give its
