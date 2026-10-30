@@ -39,6 +39,7 @@ import {
   toTemplateName,
   type BodyIssue,
   type ButtonDraft,
+  type TemplateDraft,
 } from "./template-rules";
 
 type Category = "UTILITY" | "MARKETING";
@@ -84,24 +85,27 @@ export function TemplateComposer({
   open,
   onOpenChange,
   onCreated,
+  initial = null,
 }: {
   refId: string;
   open: boolean;
   onOpenChange: (o: boolean) => void;
   /** For a screen that keeps the list in its own state (the number's page). */
   onCreated?: () => void;
+  /** «Duplicar y corregir»: start from a template Meta rejected. Read once (remount with a key to change it). */
+  initial?: TemplateDraft | null;
 }) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  const [category, setCategory] = React.useState<Category>("UTILITY");
-  const [name, setName] = React.useState("");
-  const [language, setLanguage] = React.useState("es");
-  const [header, setHeader] = React.useState("");
-  const [body, setBody] = React.useState("");
-  const [footer, setFooter] = React.useState("");
-  const [buttons, setButtons] = React.useState<ButtonDraft[]>([]);
-  const [examples, setExamples] = React.useState<Record<string, string>>({});
+  const [category, setCategory] = React.useState<Category>(initial?.category ?? "UTILITY");
+  const [name, setName] = React.useState(initial?.name ?? "");
+  const [language, setLanguage] = React.useState(initial?.language ?? "es");
+  const [header, setHeader] = React.useState(initial?.header ?? "");
+  const [body, setBody] = React.useState(initial?.body ?? "");
+  const [footer, setFooter] = React.useState(initial?.footer ?? "");
+  const [buttons, setButtons] = React.useState<ButtonDraft[]>(initial?.buttons ?? []);
+  const [examples, setExamples] = React.useState<Record<string, string>>(initial?.examples ?? {});
   const [customVar, setCustomVar] = React.useState("");
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [touched, setTouched] = React.useState(false);

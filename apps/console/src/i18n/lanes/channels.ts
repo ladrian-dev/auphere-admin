@@ -243,6 +243,7 @@ export const channelsMessages = {
     es: "Los mensajes que el negocio puede enviar primero, fuera de las 24 horas. Meta revisa cada plantilla: aquí ves su estado y, si la rechaza, el motivo y qué hacer.",
     en: "The messages the business can send first, outside the 24 hours. Meta reviews each template: here you see its state and, if it is rejected, the reason and what to do.",
   },
+  "tpl.duplicate": { es: "Duplicar y corregir", en: "Duplicate and fix" },
   "tpl.loading": { es: "Pidiendo las plantillas a Meta…", en: "Asking Meta for the templates…" },
   "tpl.notConnected": { es: "Conecta WhatsApp para gestionar plantillas.", en: "Connect WhatsApp to manage templates." },
   "tpl.empty": { es: "Este número aún no tiene plantillas.", en: "This number has no templates yet." },

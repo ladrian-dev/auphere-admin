@@ -69,3 +69,32 @@ describe("Reglas de una plantilla de WhatsApp", () => {
     expect(missingPieces({ name: "aviso", body: "Hola {{nombre}}, gracias.", examples: { nombre: "Ana" }, buttons: [] })).toEqual([]);
   });
 });
+
+describe("draftFromComponents (QA 2026-10-30)", () => {
+  it("rebuilds header, body, footer, buttons and examples from Meta's components", async () => {
+    const { draftFromComponents, languageLabel } = await import("../template-rules");
+    const draft = draftFromComponents({
+      name: "promo",
+      language: "es_MX",
+      category: "MARKETING",
+      components: [
+        { type: "HEADER", format: "TEXT", text: "Oferta" },
+        { type: "BODY", text: "Hola {{1}}", example: { body_text: [["Ana"]] } },
+        { type: "FOOTER", text: "Baja: responde STOP" },
+        { type: "BUTTONS", buttons: [{ type: "URL", text: "Ver", url: "https://x.example" }] },
+      ],
+    });
+    expect(draft).toEqual({
+      name: "promo_v2",
+      language: "es_MX",
+      category: "MARKETING",
+      header: "Oferta",
+      body: "Hola {{1}}",
+      footer: "Baja: responde STOP",
+      buttons: [{ type: "URL", label: "Ver", url: "https://x.example" }],
+      examples: { "1": "Ana" },
+    });
+    expect(languageLabel("es_MX")).toBe("Español de México");
+    expect(languageLabel("xx")).toBe("xx");
+  });
+});
