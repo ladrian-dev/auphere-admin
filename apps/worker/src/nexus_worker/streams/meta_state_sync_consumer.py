@@ -22,7 +22,7 @@ import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 
-from nexus_worker.persistence.messages import upsert_customer
+from nexus_worker.persistence.messages import identity_of, upsert_customer
 from nexus_worker.streams.meta_coexistence import digits, run_consumer, tenant_of
 
 log = structlog.get_logger(__name__)
@@ -59,7 +59,9 @@ async def handle_state_sync(fields: dict[str, str]) -> str:
         for phone, name in contacts_of(value):
             if len(phone) < 7:
                 continue
-            customer = await upsert_customer(session, identifier=phone, name=name)
+            customer = await upsert_customer(
+                session, identifier=phone, **identity_of(phone), name=name
+            )
             if name and not customer.name:
                 customer.name = name
             synced += 1

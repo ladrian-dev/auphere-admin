@@ -28,7 +28,11 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Message, MessageDirection, MessageStatus
 
-from nexus_worker.persistence.messages import upsert_conversation_for_customer, upsert_customer
+from nexus_worker.persistence.messages import (
+    identity_of,
+    upsert_conversation_for_customer,
+    upsert_customer,
+)
 from nexus_worker.streams.meta_coexistence import (
     digits,
     find_channel,
@@ -90,7 +94,7 @@ async def handle_history(fields: dict[str, str]) -> str:
         for contact, messages in threads_of(value):
             if not contact or not messages:
                 continue
-            customer = await upsert_customer(session, identifier=contact)
+            customer = await upsert_customer(session, identifier=contact, **identity_of(contact))
             conversation = await upsert_conversation_for_customer(
                 session, channel_id=channel.id, customer_id=customer.id, reopened_by="history"
             )

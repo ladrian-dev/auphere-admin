@@ -27,7 +27,11 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Message, MessageDirection, MessageStatus
 from nexus_api.services import conversation_control
 
-from nexus_worker.persistence.messages import upsert_conversation_for_customer, upsert_customer
+from nexus_worker.persistence.messages import (
+    identity_of,
+    upsert_conversation_for_customer,
+    upsert_customer,
+)
 from nexus_worker.streams.meta_coexistence import (
     digits,
     find_channel,
@@ -63,7 +67,7 @@ async def handle_echo(fields: dict[str, str]) -> str:
         )
         if channel is None:
             return "no_channel"
-        customer = await upsert_customer(session, identifier=recipient)
+        customer = await upsert_customer(session, identifier=recipient, **identity_of(recipient))
         conversation = await upsert_conversation_for_customer(
             session, channel_id=channel.id, customer_id=customer.id, reopened_by=BUSINESS_APP
         )

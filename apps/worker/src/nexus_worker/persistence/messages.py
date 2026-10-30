@@ -32,6 +32,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 log = structlog.get_logger(__name__)
 
 
+def identity_of(identifier: str) -> dict[str, str]:
+    """Spec 050: what a bare WhatsApp identifier is. A BSUID (``CC.…``) has a
+    dot, which a phone never does."""
+    return {"bsuid": identifier} if "." in identifier else {"phone": identifier}
+
+
 async def upsert_customer(
     session: AsyncSession,
     *,
