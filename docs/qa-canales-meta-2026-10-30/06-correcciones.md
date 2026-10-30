@@ -72,3 +72,47 @@ Regresión local de la segunda tanda (sobre `91600ea0`):
 ## Hallazgo nuevo al corregir
 
 - **INC-37 (P2, Instagram y Messenger):** un DM que llega a un canal en pausa o degradado se descarta (`webhook.meta_social.channel_not_active`), en lugar de guardarse para una persona como en WhatsApp. Ver `apps/api/src/nexus_api/api/webhooks/meta_social.py`, en `_enqueue_once`. Pendiente.
+
+## Tercera tanda (2026-10-30, noche): decisiones del owner y diseño de los flujos
+
+### Decisiones del owner (2026-10-30)
+
+| Decisión | Qué se hizo |
+|---|---|
+| Se graba en **staging** | `app-review-reviewer-instructions.md` y `app-review-reviewer-setup.md` apuntan a `console.staging.auphere.com` y siguen la ruta de la consola v2 (agente → Canales → el número). Son borradores del owner sin versionar: quedan modificados y sin commit |
+| Apuntar temporalmente los webhooks de Instagram y Page a staging | Pasos en `07-webhooks-a-staging.md`. Los hace el owner en el panel de Meta (app compartida). WhatsApp no se toca |
+| La baja del cliente **no** bloquea recordatorios: decide la tienda | `9ec70d14` (+ `9ccab143`): la publicidad la bloquea cualquier baja; todo lo demás (respuestas, recordatorios de cita y de pago, plantillas de utilidad), solo una baja que puso el negocio (`source=operator`). Mismo criterio en los cron de cobranza y reservas |
+| Mostrar nombre y foto de quien escribe | `5d8a359b` (ver abajo). Hace falta pedir a Meta la función **Business Asset User Profile Access** y grabar su vídeo (V-PROF-1) |
+
+### Foto de quien escribe por Instagram o Messenger (`5d8a359b`)
+
+- El adaptador pide `profile_pic` junto con el nombre y descarga la imagen solo de dominios de Meta (como mucho 2 MB, solo imágenes).
+- El worker la guarda en nuestro almacenamiento, porque el enlace de Meta caduca, y apunta la clave en `customers.avatar_s3_key` (migración `0212`). Pregunta una sola vez por persona.
+- La API de la bandeja dice `has_avatar` y sirve la foto en `/inbox/conversations/{id}/avatar`:
+  - con RLS: la conversación de otro cliente da 404;
+  - **ningún enlace de almacenamiento llega al navegador**, porque la consola la pide por su BFF, como los adjuntos.
+- La consola la enseña en la lista, la cabecera y la ficha del contacto; si no hay foto o falla, salen las iniciales.
+- El borrado de una persona la quita.
+- La app móvil solo tiene el contrato regenerado; sigue enseñando iniciales.
+
+### Diseño de los flujos (auditoría del 2026-10-30)
+
+| # | Arreglo | Commit |
+|---|---|---|
+| 1 | **Plantillas de WhatsApp en la página del número.** Solo vivían en una pantalla a la que no lleva ninguna pestaña; ahora se listan, crean y borran desde el número, con su entrada en el índice | `fcf9618a` |
+| 2 | El asistente de 4 pasos marca el paso real (antes decía «¡Listo!» mientras se elegía), y la página del canal dice «Paso 3 de 4 · Configurar el canal» hasta que se configura | `41c77542` |
+| 3 | Compositor: fuera «Autenticación», que Meta solo acepta con formato fijo de código. Enviar incompleto marca y enfoca el primer campo en vez de apagar el botón. Categorías con radios nativos. El contador ya no anuncia cada tecla. Textos de «acción sugerida» sin códigos | `5c0dd0a2` |
+| 4 | Instagram/Messenger terminan como WhatsApp: el fallo se queda en pantalla con «Intentar de nuevo», el selector de cuentas tiene «Cancelar», y al conectar se abre la página del canal | `1b1439b1` |
+| 5 | Una plantilla se abre entera (estado, motivo completo de Meta, qué hacer, vista previa) y una rechazada se puede **«Duplicar y corregir»**. El idioma se ve en palabras | `f92290f7` |
+| 6 | El diálogo de conexión de WhatsApp solo enseña lo que se puede usar: sin modos apagados, y sin Meta configurado solo el aviso y el enlace del dueño. Nota de la tarjeta corregida (Cloud API no conserva la app) | `8af7a685` |
+| 7 | Página del canal en orden de lectura: Comprobaciones, A quién responde, lo propio del canal (Comentarios, Catálogo, Plantillas), Escalado y Cuenta. Índice igual, títulos h3, sin teléfonos de prueba en Instagram/Messenger. «Conectar canal» del siguiente paso y de salud lleva a Agentes | `c6baecd6` |
+
+Detectado al hacerlo y ya corregido:
+- `9ccab143`: el lint de CI pasa mypy con la configuración de cada paquete, y el worker veía `Any`.
+- `587763f1`: la prueba de conexión no simulaba la acción nueva de plantillas.
+
+### Pendiente de esta parte
+
+- **Verlo en el navegador.** La máquina local estaba saturada (carga media ~200) y la consola local no llegaba a pintar. Las comprobaciones son con vitest, axe, typecheck y lint. Falta mirarlo en staging cuando llegue el despliegue.
+- La pantalla antigua `/clients/{ref}/channels` sigue existiendo, con el diagnóstico y los enlaces pendientes del dueño. Llevar esas dos piezas a la v2 y retirarla es trabajo aparte.
+- Mostrar la foto en la app móvil.
