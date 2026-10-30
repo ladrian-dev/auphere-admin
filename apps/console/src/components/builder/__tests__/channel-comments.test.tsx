@@ -87,4 +87,19 @@ describe("los comentarios de un canal de Instagram", () => {
     view(page(), vi.fn());
     expect(screen.queryByRole("region", { name: "Comentarios" })).toBeNull();
   });
+
+  it("en Instagram no se ofrece «Solo mi equipo» (son teléfonos): se activa para todos (INC-08)", () => {
+    const base = page();
+    view(
+      instagram({
+        visible_state: { code: "unconfigured", tone: "neutral", reason: null },
+        config: { ...base.config, audience: { mode: "unset", test_numbers: [], exceptions: [] } },
+      }),
+      vi.fn(),
+    );
+    expect(screen.queryByRole("radio", { name: /Solo mi equipo/ })).toBeNull();
+    expect(screen.getByRole("radio", { name: /A todos/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Activar solo para mi equipo" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Activar para todos" })).toBeInTheDocument();
+  });
 });

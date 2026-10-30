@@ -232,7 +232,10 @@ def _stored(config: Mapping[str, Any]) -> dict[str, Any]:
 
 async def gate_audience(session: AsyncSession, channel_id: uuid.UUID) -> dict[str, Any] | None:
     """Lo que la puerta del turno necesita del canal (``admin_gate``):
-    ``strict`` es un número de WhatsApp de un partner en la consola nueva."""
+    ``strict`` es un canal de Meta (WhatsApp, Instagram o Messenger) de un
+    partner en la consola nueva. Instagram y Messenger seguían con el
+    ``admin_access`` de la versión aunque la página dijera otra cosa (QA
+    2026-10-30, INC-08)."""
     channel = await session.get(Channel, channel_id)
     if channel is None:
         return None
@@ -241,13 +244,22 @@ async def gate_audience(session: AsyncSession, channel_id: uuid.UUID) -> dict[st
         "mode": channel.audience_mode,
         "test": numbers["test"],
         "exception": numbers["exception"],
-        "strict": _is_whatsapp(channel) and await partner_on_v2(session, channel.tenant_id),
+        "strict": _audience_applies(channel) and await partner_on_v2(session, channel.tenant_id),
     }
 
 
 def _is_whatsapp(channel: Channel) -> bool:
     kind = channel.type.value if hasattr(channel.type, "value") else str(channel.type)
     return kind == "whatsapp"
+
+
+#: Los canales donde manda la audiencia de la página del canal.
+AUDIENCE_CHANNELS: Final = frozenset({"whatsapp", "instagram", "messenger"})
+
+
+def _audience_applies(channel: Channel) -> bool:
+    kind = channel.type.value if hasattr(channel.type, "value") else str(channel.type)
+    return kind in AUDIENCE_CHANNELS
 
 
 async def partner_on_v2(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
@@ -543,6 +555,10 @@ async def validate(session: AsyncSession, channel: Channel, payload: ConfigIn) -
     wait = (payload.wait_message or "").strip() or None
     if wait is not None and len(wait) > WAIT_MESSAGE_MAX:
         raise ChannelConfigError("wait_message_too_long", 422, limit=WAIT_MESSAGE_MAX)
+    if payload.mode == "team_only" and not _is_whatsapp(channel):
+        # Los números de prueba son teléfonos; en Instagram y Messenger quien
+        # escribe es un IGSID o un PSID y nunca casaría.
+        raise ChannelConfigError("team_only_needs_whatsapp", 422)
     if payload.mode == "team_only" and not tests:
         raise ChannelConfigError("channel_test_numbers_required", 422)
     if payload.mode == "everyone":

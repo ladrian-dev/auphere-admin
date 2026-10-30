@@ -191,6 +191,8 @@ export function saveErrorOf(t: T, res: Failure): SaveError {
   switch (res.code) {
     case "channel_test_numbers_required":
       return { section: "audience", text: t("builder.channel.tests.required"), fix: null };
+    case "team_only_needs_whatsapp":
+      return { section: "audience", text: t("builder.channel.tests.whatsappOnly"), fix: null };
     case "invalid_phone":
       return { section: "general", text: t("builder.channel.number.invalid", { value: String(info.value ?? "") }), fix: null };
     case "too_many_recipients":

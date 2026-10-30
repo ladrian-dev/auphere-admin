@@ -213,6 +213,10 @@ export const builderChannelsMessages = {
     es: "«Solo mi equipo» necesita al menos un número de prueba.",
     en: "“Only my team” needs at least one test number.",
   },
+  "builder.channel.tests.whatsappOnly": {
+    es: "«Solo mi equipo» usa números de teléfono y solo funciona en WhatsApp. Aquí elige «A todos».",
+    en: "“Only my team” uses phone numbers and only works on WhatsApp. Choose “Everyone” here.",
+  },
   "builder.channel.number.field": { es: "Número nuevo", en: "New number" },
   "builder.channel.number.hint": {
     es: "Con el prefijo del país, por ejemplo +34 611 20 48 93.",

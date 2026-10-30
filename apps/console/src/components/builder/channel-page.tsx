@@ -165,6 +165,8 @@ export function ChannelConfigPage({
   const dirty = writable && isDirty(draft, saved);
   const canUndo = writable && undoOpen(page.undo_until);
   const everyone = draft.audience.mode === "everyone";
+  // «Solo mi equipo» y «Excepciones» son teléfonos: solo casan en WhatsApp.
+  const phones = page.type === "whatsapp";
   const targets: FixTargets = {
     agent: agentHref(refId, owner),
     tests: `${agentHref(refId, owner)}#agente-pruebas`,
@@ -275,7 +277,7 @@ export function ChannelConfigPage({
         <nav aria-label={t("builder.channel.page.sections")} className="grid min-w-0 content-start gap-3 min-[860px]:sticky min-[860px]:top-24 min-[860px]:self-start">
           <ul className="flex min-w-0 flex-wrap gap-1 min-[860px]:grid">
             {[
-              ...NAV.filter((s) => s.id !== "canal-excepciones" || everyone),
+              ...NAV.filter((s) => s.id !== "canal-excepciones" || (everyone && phones)),
               // Spec 050 (4.1): la cuenta en Meta, cuando Meta dice algo de ella.
               ...(account ? [{ id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }] : []),
               ...(page.instagram_comments ? [{ id: "canal-comentarios", label: "builder.channel.comments.title" as MessageKey }] : []),
@@ -346,13 +348,14 @@ export function ChannelConfigPage({
                 draft={draft}
                 writable={writable}
                 adminOnly={page.admin_only_template}
+                phones={phones}
                 onMode={(mode) => set((d) => ({ ...d, audience: { ...d.audience, mode } }))}
                 onTests={(list) => set((d) => ({ ...d, audience: { ...d.audience, test_numbers: list } }))}
               />
               <InlineError error={errorIn("audience")} targets={targets} balance={balance} refId={refId} />
             </PageSection>
 
-            {everyone ? (
+            {everyone && phones ? (
               <PageSection id="canal-excepciones" title={t("builder.channel.exceptions.title")} intro={t("builder.channel.exceptions.intro")}>
                 <NumberList
                   label={t("builder.channel.exceptions.title")}
@@ -518,22 +521,24 @@ export function ChannelConfigPage({
                       <Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={close} disabled={busy}>
                         {t("builder.channel.bar.later")}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={everyone ? "outline" : "default"}
-                        className="rounded-full"
-                        loading={busy && !everyone}
-                        disabled={busy}
-                        onClick={() => void save(page.revision, "team_only")}
-                      >
-                        {t("builder.channel.bar.activateTeam")}
-                      </Button>
+                      {phones ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={everyone ? "outline" : "default"}
+                          className="rounded-full"
+                          loading={busy && !everyone}
+                          disabled={busy}
+                          onClick={() => void save(page.revision, "team_only")}
+                        >
+                          {t("builder.channel.bar.activateTeam")}
+                        </Button>
+                      ) : null}
                       {page.admin_only_template ? null : (
                         <Button
                           type="button"
                           size="sm"
-                          variant={everyone ? "default" : "outline"}
+                          variant={everyone || !phones ? "default" : "outline"}
                           className="rounded-full"
                           loading={busy && everyone}
                           disabled={busy}
@@ -645,12 +650,15 @@ function AudienceSection({
   draft,
   writable,
   adminOnly,
+  phones,
   onMode,
   onTests,
 }: {
   draft: ChannelConfigIn;
   writable: boolean;
   adminOnly: boolean;
+  /** WhatsApp: «Solo mi equipo» con sus números de prueba. Instagram y Messenger no tienen teléfono. */
+  phones: boolean;
   onMode: (mode: AudienceMode) => void;
   onTests: (list: string[]) => void;
 }) {
@@ -658,7 +666,7 @@ function AudienceSection({
   const base = React.useId();
   const mode = draft.audience.mode;
   // 32.5: con plantilla de solo administradores, «A todos» no se ofrece, y se dice por qué.
-  const modes = MODES.filter((m) => !(adminOnly && m === "everyone" && mode !== "everyone"));
+  const modes = MODES.filter((m) => !(adminOnly && m === "everyone" && mode !== "everyone") && !(m === "team_only" && !phones && mode !== "team_only"));
   return (
     <div className="grid min-w-0 gap-4">
       {writable ? (
