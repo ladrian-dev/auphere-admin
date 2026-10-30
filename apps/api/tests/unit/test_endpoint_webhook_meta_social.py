@@ -89,6 +89,7 @@ async def _seed(
     provider: str = "meta_instagram",
     identifier: str = IG_ID,
     config: dict | None = None,
+    status: str = "active",
 ) -> None:
     from nexus_api.db.models import Channel, ChannelStatus, ChannelType
 
@@ -105,7 +106,7 @@ async def _seed(
                 else ChannelType.MESSENGER,
                 provider=provider,
                 provider_identifier=identifier,
-                status=ChannelStatus.ACTIVE,
+                status=ChannelStatus(status),
                 config=config or {"account_id": identifier},
             )
         )
@@ -236,6 +237,26 @@ async def test_a_failed_enqueue_lets_metas_retry_through(
     again = await client.post("/webhook/meta", content=body, headers=headers)
     assert again.json()["status"] == "ok"
     assert [e for e in await _entries(fake_redis) if e.get("provider_message_id") == "m_retry"]
+
+
+async def test_a_paused_channel_keeps_the_message_and_a_disconnected_one_does_not(
+    client, db_session, fake_redis, seed_tenants, no_peer
+):
+    """QA 2026-10-30 (INC-37): a DM to a paused channel was dropped by the
+    webhook. As on WhatsApp it is enqueued and the worker keeps it for a
+    person; only a disconnected channel drops it."""
+    await _seed(db_session, seed_tenants["a"], status="paused")
+    body, headers = _signed(_dm(mid="m_paused"))
+    r = await client.post("/webhook/meta", content=body, headers=headers)
+    assert r.json()["status"] == "ok"
+    assert [e for e in await _entries(fake_redis) if e.get("provider_message_id") == "m_paused"]
+
+    await _seed(
+        db_session, seed_tenants["b"], identifier="17841400000000999", status="disconnected"
+    )
+    body, headers = _signed(_dm(mid="m_gone", account="17841400000000999"))
+    r = await client.post("/webhook/meta", content=body, headers=headers)
+    assert not [e for e in await _entries(fake_redis) if e.get("provider_message_id") == "m_gone"]
 
 
 async def test_comment_carries_its_reference(client, db_session, fake_redis, seed_tenants, no_peer):
