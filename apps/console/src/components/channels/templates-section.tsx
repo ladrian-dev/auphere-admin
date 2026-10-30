@@ -54,7 +54,23 @@ function qualityText(t: ReturnType<typeof useT>, score: string | null) {
  * section says so instead of erroring; `error` is a backend failure the
  * user can retry.
  */
-export function TemplatesSection({ refId, list, error, manage }: { refId: string; list: TemplateList | null; error: string | null; manage: boolean }) {
+export function TemplatesSection({
+  refId,
+  list,
+  error,
+  manage,
+  onChanged,
+  sectionId = "tpl",
+}: {
+  refId: string;
+  list: TemplateList | null;
+  error: string | null;
+  manage: boolean;
+  /** For a screen that keeps the list in its own state (the number's page): reload after a change. */
+  onChanged?: () => void;
+  /** The anchor of the section (the number's page links to it from its index). */
+  sectionId?: string;
+}) {
   const t = useT();
   const router = useRouter();
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -68,14 +84,15 @@ export function TemplatesSection({ refId, list, error, manage }: { refId: string
       toast.success(t("tpl.deleted"));
       setDeleting(null);
       router.refresh();
+      onChanged?.();
     });
   }
 
   return (
-    <section className="flex min-w-0 flex-col gap-3" aria-labelledby="tpl-title" aria-busy={pending}>
+    <section id={sectionId} className="flex min-w-0 scroll-mt-24 flex-col gap-3" aria-labelledby={`${sectionId}-title`} aria-busy={pending}>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 id="tpl-title" className="text-base font-medium">
+          <h2 id={`${sectionId}-title`} className="text-base font-medium">
             {t("tpl.title")}
           </h2>
           <p className=" text-sm text-muted-foreground">{t("tpl.description")}</p>
@@ -89,7 +106,7 @@ export function TemplatesSection({ refId, list, error, manage }: { refId: string
           <span className="min-w-0 truncate" title={error}>
             {error}
           </span>
-          <Button variant="outline" size="sm" onClick={() => router.refresh()}>
+          <Button variant="outline" size="sm" onClick={() => (onChanged ? onChanged() : router.refresh())}>
             {t("common.retry")}
           </Button>
         </div>
@@ -172,7 +189,7 @@ export function TemplatesSection({ refId, list, error, manage }: { refId: string
         destructive
         onConfirm={() => (deleting ? remove(deleting.name) : undefined)}
       />
-      <TemplateComposer refId={refId} open={createOpen} onOpenChange={setCreateOpen} />
+      <TemplateComposer refId={refId} open={createOpen} onOpenChange={setCreateOpen} onCreated={onChanged} />
     </section>
   );
 }

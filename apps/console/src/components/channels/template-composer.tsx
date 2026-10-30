@@ -76,7 +76,18 @@ function Counter({ value, max }: { value: string; max: number }) {
  * button the composer says what is still missing instead of just greying
  * it out.
  */
-export function TemplateComposer({ refId, open, onOpenChange }: { refId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function TemplateComposer({
+  refId,
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  refId: string;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  /** For a screen that keeps the list in its own state (the number's page). */
+  onCreated?: () => void;
+}) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -156,6 +167,7 @@ export function TemplateComposer({ refId, open, onOpenChange }: { refId: string;
       reset();
       onOpenChange(false);
       router.refresh();
+      onCreated?.();
     });
   }
 

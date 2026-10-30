@@ -239,7 +239,11 @@ export const channelsMessages = {
 
   // ── templates ────────────────────────────────────────────────────
   "tpl.title": { es: "Plantillas de mensaje", en: "Message templates" },
-  "tpl.description": { es: "Las plantillas (HSM) las revisa Meta. Aquí ves el estado real y, si una fue rechazada, el motivo literal de Meta y qué hacer.", en: "Templates (HSM) are reviewed by Meta. Here you see the real state and, when one is rejected, Meta's literal reason and what to do." },
+  "tpl.description": {
+    es: "Los mensajes que el negocio puede enviar primero, fuera de las 24 horas. Meta revisa cada plantilla: aquí ves su estado y, si la rechaza, el motivo y qué hacer.",
+    en: "The messages the business can send first, outside the 24 hours. Meta reviews each template: here you see its state and, if it is rejected, the reason and what to do.",
+  },
+  "tpl.loading": { es: "Pidiendo las plantillas a Meta…", en: "Asking Meta for the templates…" },
   "tpl.notConnected": { es: "Conecta WhatsApp para gestionar plantillas.", en: "Connect WhatsApp to manage templates." },
   "tpl.empty": { es: "Este número aún no tiene plantillas.", en: "This number has no templates yet." },
   "tpl.new": { es: "Nueva plantilla", en: "New template" },
