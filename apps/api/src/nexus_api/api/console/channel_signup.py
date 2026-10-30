@@ -53,6 +53,7 @@ class LinkInfoOut(BaseModel):
     meta_app_id: str | None = None
     meta_config_id: str | None = None
     meta_graph_version: str | None = None
+    meta_signup_version: str | None = None
 
 
 class LinkSignupIn(BaseModel):
@@ -117,6 +118,7 @@ async def link_info(
         )
         or None,
         meta_graph_version=settings.meta_graph_api_version,
+        meta_signup_version=settings.meta_embedded_signup_version,
     )
 
 

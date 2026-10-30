@@ -21,8 +21,10 @@ from nexus_api.api.admin import (
     impersonate,
     isolation,
     meta_signup,
+    meta_social,
     model_bindings,
     models_catalog,
+    opt_outs,
     overview,
     partner_access,
     partner_billing,
@@ -50,6 +52,7 @@ from nexus_api.api.admin import (
     unlimited_consumption,
     usage_overview,
     whatsapp_login_beta,
+    whatsapp_pin,
     whatsapp_templates,
 )
 
@@ -65,6 +68,8 @@ router.include_router(unlimited_consumption.router)
 router.include_router(agent_configs.router)
 # Spec 030: los agentes de un cliente.
 router.include_router(agents.router)
+# Spec 049: erase one person's Instagram / Messenger data.
+router.include_router(meta_social.router)
 router.include_router(conversations.router)
 router.include_router(tool_catalog.router)
 router.include_router(connectors.router)
@@ -73,6 +78,10 @@ router.include_router(isolation.router)
 router.include_router(evals.router)
 router.include_router(prompt_library.router)
 router.include_router(meta_signup.router)
+# Spec 050: rotate a number's two-step PIN.
+router.include_router(whatsapp_pin.router)
+# Spec 050: a business's WhatsApp opt-outs, and lifting one.
+router.include_router(opt_outs.router)
 router.include_router(tiktok_authorize.router)
 router.include_router(skills.router)
 router.include_router(audit.router)

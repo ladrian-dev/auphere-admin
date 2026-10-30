@@ -25,11 +25,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
-from nexus_api.config import get_settings
+from nexus_api.config import get_settings, graph_version_notice
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
@@ -59,7 +60,9 @@ async def run_whatsapp_health_cron(
     """Background task. Returns when ``stop`` is set."""
     log.info("whatsapp_health.start", tick_seconds=tick_seconds)
     sm = get_sessionmaker()
+    warned_on: date | None = None
     while not stop.is_set():
+        warned_on = warn_if_graph_version_expiring(warned_on)
         try:
             tenant_ids = await _list_active_tenants(sm)
             for tid in tenant_ids:
@@ -73,6 +76,81 @@ async def run_whatsapp_health_cron(
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
     log.info("whatsapp_health.stopped")
+
+
+def _limit(value: Any) -> str | None:
+    """``whatsapp_business_manager_messaging_limit`` as a ``TIER_*`` string."""
+    if isinstance(value, str) and value:
+        return value
+    if isinstance(value, dict):
+        for key in ("current_limit", "limit", "tier"):
+            if isinstance(value.get(key), str):
+                return str(value[key])
+    return None
+
+
+def apply_phone_snapshot(channel: Channel, payload: dict[str, Any]) -> None:
+    """Spec 050 (4.2, 8.4): what ``GET /{phone_number_id}`` says, on the channel.
+
+    The snapshot fields are refreshed. A YELLOW / RED reading degrades the
+    number with ``problem_reason = "quality"`` and ``problem_source =
+    "quality"`` unless an account problem is already there; GREEN clears only
+    a problem the cron set (or a pre-050 one without a source). An account
+    problem is cleared by its own opposite event, never by quality.
+    """
+    cfg = dict(channel.config or {})
+    quality = payload.get("quality_rating") or payload.get("qualityRating")
+    display = payload.get("display_phone_number") or payload.get("display_name")
+    verified = payload.get("verified_name") or payload.get("verifiedName")
+    limit = _limit(payload.get("whatsapp_business_manager_messaging_limit")) or _limit(
+        payload.get("messaging_limit_tier")
+    )
+    if quality:
+        cfg["quality_rating"] = quality
+    if display:
+        cfg["display_name"] = display
+    if verified:
+        cfg["verified_name"] = verified
+    if limit:
+        cfg["messaging_limit"] = limit
+    if isinstance(payload.get("name_status"), str):
+        cfg["name_status"] = payload["name_status"]
+
+    source = cfg.get("problem_source")
+    mine = source == "quality" or (source is None and channel.problem_reason in (None, "quality"))
+    level = quality.upper() if isinstance(quality, str) else ""
+    if level in {"YELLOW", "RED"}:
+        if channel.status is not ChannelStatus.DEGRADED or mine:
+            channel.status = ChannelStatus.DEGRADED
+            channel.problem_reason = "quality"
+            cfg["problem_source"] = "quality"
+    elif level == "GREEN" and channel.status is ChannelStatus.DEGRADED and mine:
+        channel.status = ChannelStatus.ACTIVE
+        channel.problem_reason = None
+        cfg.pop("problem_source", None)
+    channel.config = cfg
+
+
+def warn_if_graph_version_expiring(
+    warned_on: date | None, *, today: date | None = None
+) -> date | None:
+    """Spec 050 (3.6): once a day, an error-level log while the Graph
+    version dies within 60 days; the panel's Estado page says the same.
+    Returns the day it last warned."""
+    day = today or datetime.now(tz=UTC).date()
+    if warned_on == day:
+        return warned_on
+    version = get_settings().meta_graph_api_version
+    notice = graph_version_notice(version, day)
+    if notice is None:
+        return warned_on
+    log.error(
+        "meta.graph_version_expiring",
+        version=version,
+        expires_on=notice[0].isoformat(),
+        days_left=notice[1],
+    )
+    return day
 
 
 async def _list_active_tenants(sm: sa.orm.sessionmaker) -> list[uuid.UUID]:  # type: ignore[type-arg]
@@ -131,6 +209,7 @@ async def _check_channel(
     client = MetaClient(
         app_secret=settings.meta_app_secret,
         require_appsecret_proof=settings.meta_require_appsecret_proof,
+        version=settings.meta_graph_api_version,
     )
     try:
         try:
@@ -152,34 +231,11 @@ async def _check_channel(
         await client.close()
 
     prior_quality = cfg.get("quality_rating")
-    new_quality = payload.get("quality_rating") or payload.get("qualityRating")
-    new_display = payload.get("display_phone_number") or payload.get("display_name")
-    new_verified = payload.get("verified_name") or payload.get("verifiedName")
-
-    # Persist refreshed snapshot.
-    cfg = dict(cfg)
-    if new_quality:
-        cfg["quality_rating"] = new_quality
-    if new_display:
-        cfg["display_name"] = new_display
-    if new_verified:
-        cfg["verified_name"] = new_verified
-    channel.config = cfg
+    old_status = channel.status
+    apply_phone_snapshot(channel, payload)
+    new_quality = (channel.config or {}).get("quality_rating")
     channel.last_health_check_at = datetime.now(UTC)
     channel.last_provider_synced_at = datetime.now(UTC)
-
-    # Mark the channel DEGRADED on a YELLOW / RED transition so the
-    # operator panel surfaces it. The original status is restored
-    # automatically on the next GREEN reading.
-    old_status = channel.status
-    if isinstance(new_quality, str) and new_quality.upper() in {"YELLOW", "RED"}:
-        channel.status = ChannelStatus.DEGRADED
-    elif (
-        isinstance(new_quality, str)
-        and new_quality.upper() == "GREEN"
-        and channel.status == ChannelStatus.DEGRADED
-    ):
-        channel.status = ChannelStatus.ACTIVE
 
     if prior_quality != new_quality or old_status != channel.status:
         audit = AuditLog(

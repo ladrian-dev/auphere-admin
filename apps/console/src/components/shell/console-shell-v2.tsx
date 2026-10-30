@@ -68,7 +68,10 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
 
   return (
     <TooltipProvider>
-      <div data-shell="v2" className="flex h-svh min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground shell:flex-row">
+      {/* `relative` aquí y en el lienzo: sin un padre posicionado, lo que es
+          `absolute` (los `sr-only` de las gráficas y las tablas) se coloca contra
+          el documento, lo alarga y todo el marco subía con la rueda. */}
+      <div data-shell="v2" className="relative flex h-svh min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground shell:flex-row">
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-(--z-toast) focus:rounded-sm focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
@@ -176,7 +179,7 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
           </nav>
 
           {/* El contenido, el único que hace scroll. */}
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card max-shell:mx-2 max-shell:mb-2 shell:mr-4 shell:mb-4">
+          <div data-slot="shell-canvas" className="relative min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card max-shell:mx-2 max-shell:mb-2 shell:mr-4 shell:mb-4">
             <main
               id="main"
               tabIndex={-1}

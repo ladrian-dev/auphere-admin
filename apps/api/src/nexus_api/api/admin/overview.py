@@ -273,13 +273,18 @@ class InstanceOut(BaseModel):
     #: Commit the API image was built from (``NEXUS_GIT_SHA``); "unknown" locally.
     commit: str
     checks: dict[str, str]
+    #: Spec 050 (3.6): the Graph version every Meta call uses.
+    meta_graph_version: str = ""
+    #: Set only when that version dies within 60 days (or already did).
+    meta_graph_expires_on: str | None = None
+    meta_graph_days_left: int | None = None
 
 
 @instance_router.get("", response_model=InstanceOut)
 async def get_instance(session: AsyncSession = Depends(get_db_session)) -> InstanceOut:
     import os
 
-    from nexus_api.config import get_settings
+    from nexus_api.config import get_settings, graph_version_notice
     from nexus_api.health import _check_redis
 
     checks: dict[str, str] = {}
@@ -294,9 +299,14 @@ async def get_instance(session: AsyncSession = Depends(get_db_session)) -> Insta
         checks["redis"] = "ok"
     except Exception as exc:
         checks["redis"] = f"error: {type(exc).__name__}"
+    settings = get_settings()
+    notice = graph_version_notice(settings.meta_graph_api_version, datetime.now(tz=UTC).date())
     return InstanceOut(
-        environment=get_settings().environment,
+        environment=settings.environment,
         schema_revision=revision,
         commit=os.environ.get("NEXUS_GIT_SHA", "unknown"),
         checks=checks,
+        meta_graph_version=settings.meta_graph_api_version,
+        meta_graph_expires_on=notice[0].isoformat() if notice else None,
+        meta_graph_days_left=notice[1] if notice else None,
     )

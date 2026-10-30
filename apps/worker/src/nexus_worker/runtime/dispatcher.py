@@ -204,6 +204,12 @@ class InboundEvent:
     user_id: str  # external identifier (phone number, etc.)
     content: str
     customer_name: str | None = None
+    # Spec 050: how Meta identifies the person. ``user_id`` stays the phone
+    # when there is one (today's key); a BSUID-only person arrives with
+    # ``user_id`` = BSUID.
+    customer_phone: str | None = None
+    customer_bsuid: str | None = None
+    customer_username: str | None = None
     provider: str = "meta"
     # Block N: native WhatsApp metadata propagated end-to-end so the
     # persisted ``Message`` row carries the full picture (and the
@@ -232,6 +238,9 @@ class InboundEvent:
     # runtime/read_receipts.py: dentro del ack costaba ~40% del tiempo de
     # respuesta al webhook de Meta.
     mark_read: bool = False
+    # Spec 050 (D6): the message is a stop word. It is kept and reaches the
+    # Inbox, marked, but no turn answers it.
+    opted_out: bool = False
 
 
 # ── 1. Guardar ────────────────────────────────────────────────────────────────
@@ -249,6 +258,8 @@ class AcceptedInbound:
     duplicate: bool = False
     #: ``tenant_unknown``: no hay cliente al que guardárselo.
     skipped: str | None = None
+    #: Spec 050: guardado, pero sin turno (una palabra de baja).
+    no_turn: bool = False
 
 
 _PRIOR_INBOUND_SQL = sa.text(
@@ -317,17 +328,26 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
                     conversation_id=prior[1],
                     message_id=prior[0],
                     duplicate=True,
+                    no_turn=event.opted_out,
                 )
 
         customer = await _upsert_customer(
-            session, identifier=event.user_id, name=event.customer_name
+            session,
+            identifier=event.user_id,
+            name=event.customer_name,
+            bsuid=event.customer_bsuid,
+            phone=event.customer_phone,
+            username=event.customer_username,
         )
         conversation = await upsert_conversation_for_customer(
             session, channel_id=event.channel_id, customer_id=customer.id
         )
         # ``conversations.last_inbound_at`` feeds the 24h window check in
-        # notification.send_text.
-        conversation.last_inbound_at = datetime.now(UTC)
+        # notification.send_text. Spec 049: on Instagram a comment is not a
+        # direct message and does not open the DM window — only the private
+        # reply may answer it.
+        if not (event.context_message_id or "").startswith("comment:"):
+            conversation.last_inbound_at = datetime.now(UTC)
         inbound_msg = await persist_inbound_message(
             session,
             conversation_id=conversation.id,
@@ -343,12 +363,75 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
             context_message_id=event.context_message_id,
         )
         inbound_msg.origin = "customer"
+        if event.opted_out:
+            # Spec 050 (D6): the webhook recorded the opt-out by phone; here
+            # the person is known, so it is theirs (and a BSUID-only person,
+            # whom the webhook could not record, gets it now).
+            from nexus_api.services import whatsapp_opt_outs
+
+            inbound_msg.skipped_reason = "opted_out"
+            await whatsapp_opt_outs.record(
+                session,
+                tenant_id=event.tenant_id,
+                channel_id=event.channel_id,
+                customer_id=customer.id,
+                phone=customer.phone,
+                scope="marketing",
+                source="keyword",
+                reason="keyword_stop",
+                actor="customer",
+                source_wamid=event.provider_message_id,
+            )
         await session.flush()
-        return AcceptedInbound(
+        accepted = AcceptedInbound(
             event.tenant_id,
             event.channel_id,
             conversation_id=conversation.id,
             message_id=inbound_msg.id,
+            no_turn=event.opted_out,
+        )
+        # Spec 049: Instagram / Messenger events carry no name; it is read
+        # once per person, after this transaction (a Graph call).
+        needs_profile = customer.name is None
+        customer_id = customer.id
+
+    if needs_profile and event.provider in _profile_fetchers:
+        await fill_profile(event, customer_id=customer_id)
+    return accepted
+
+
+# Spec 049: provider → ``fetch_profile(recipient, tenant_id, channel_id)``,
+# injected by bootstrap like the media fetcher.
+_profile_fetchers: dict[str, Any] = {}
+
+
+def set_profile_fetcher(provider: str, fetcher: Any | None) -> None:
+    if fetcher is None:
+        _profile_fetchers.pop(provider, None)
+    else:
+        _profile_fetchers[provider] = fetcher
+
+
+async def fill_profile(event: InboundEvent, *, customer_id: uuid.UUID) -> None:
+    """Best-effort: no name, no harm — the inbox shows a generic one."""
+    fetcher = _profile_fetchers.get(event.provider)
+    if fetcher is None:
+        return
+    try:
+        name = await fetcher(
+            recipient=event.user_id, tenant_id=event.tenant_id, channel_id=event.channel_id
+        )
+    except Exception as exc:
+        log.info("pipeline.profile_unavailable", provider=event.provider, error=type(exc).__name__)
+        return
+    if not name:
+        return
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, event.tenant_id):
+        await session.execute(
+            sa.update(Customer)
+            .where(Customer.id == customer_id, Customer.name.is_(None))
+            .values(name=name)
         )
 
 
@@ -1276,6 +1359,8 @@ async def _process_inbound(
     accepted = await accept_inbound(event)
     if accepted.skipped is not None or accepted.conversation_id is None:
         return {"skipped": accepted.skipped or "tenant_unknown"}
+    if accepted.no_turn:
+        return {"skipped": "opted_out", "conversation_id": str(accepted.conversation_id)}
     result = await run_turn(
         tenant_id=event.tenant_id,
         conversation_id=accepted.conversation_id,

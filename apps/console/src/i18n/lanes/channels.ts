@@ -101,6 +101,14 @@ export const channelsMessages = {
   "ch.connect.cancelled": { es: "La conexión se canceló antes de terminar.", en: "The connection was cancelled before finishing." },
   "ch.connect.timeout": { es: "Meta no respondió a tiempo. Vuelve a intentarlo.", en: "Meta did not answer in time. Try again." },
   "ch.connect.noCode": { es: "Meta no devolvió el código de autorización.", en: "Meta did not return the authorization code." },
+  "ch.connect.noNumber": {
+    es: "La cuenta de WhatsApp quedó creada, pero sin número. Vuelve a abrir Meta y añade el número que quieres conectar.",
+    en: "The WhatsApp account was created, but without a number. Open Meta again and add the number you want to connect.",
+  },
+  "ch.connect.grantOnly": {
+    es: "Meta dio acceso a la cuenta, pero no compartió ningún número. Vuelve a abrir Meta y elige el número.",
+    en: "Meta gave access to the account, but shared no number. Open Meta again and pick the number.",
+  },
   "ch.empty.title": { es: "Este cliente aún no tiene ningún canal", en: "This client has no channels yet" },
   "ch.empty.description": { es: "Conecta el número de WhatsApp del cliente con la cuenta de Meta del propio cliente. Auphere no ve la contraseña de nadie.", en: "Connect the client's WhatsApp number with the client's own Meta account. Auphere never sees anyone's password." },
   "ch.card.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
@@ -356,6 +364,7 @@ export const channelsMessages = {
   "tpl.category.MARKETING": { es: "Marketing", en: "Marketing" },
   "tpl.category.UTILITY": { es: "Utilidad", en: "Utility" },
   "tpl.category.AUTHENTICATION": { es: "Autenticación", en: "Authentication" },
+  "tpl.category.pending": { es: "Meta la pasa a {category} en un día", en: "Meta moves it to {category} within a day" },
   "tpl.category.UTILITY.help": {
     es: "Avisos de algo que el cliente ya pidió o pagó, como pedidos, pagos o citas. Meta la aprueba antes y cuesta menos.",
     en: "Notices about something the customer already ordered or paid, like orders, payments or appointments. Meta approves it sooner and it costs less.",
@@ -415,4 +424,66 @@ export const channelsMessages = {
   "diag.test.sent": { es: "Enviado (id {wamid}).", en: "Sent (id {wamid})." },
   "diag.test.invalid": { es: "Introduce un número con prefijo, p. ej. +34600000000.", en: "Enter a number with country code, e.g. +34600000000." },
 
+  // ── spec 049: Instagram y Messenger ───────────────────────────────
+  "ch.social.connect.instagram": { es: "Conectar Instagram", en: "Connect Instagram" },
+  "ch.social.connect.messenger": { es: "Conectar Messenger", en: "Connect Messenger" },
+  "ch.social.choose.instagram": { es: "¿Qué cuenta de Instagram conectas?", en: "Which Instagram account do you connect?" },
+  "ch.social.choose.messenger": { es: "¿Qué Página de Facebook conectas?", en: "Which Facebook Page do you connect?" },
+  "ch.social.choose.body": {
+    es: "El negocio compartió más de una. El agente atenderá solo la que elijas. Si quieres otra, conéctala aparte.",
+    en: "The business shared more than one. The agent will only answer the one you pick. To add another, connect it separately.",
+  },
+  "ch.social.done": { es: "{name} conectado. El agente ya atiende sus mensajes.", en: "{name} connected. The agent now answers its messages." },
+  "ch.social.card.instagram": { es: "Instagram", en: "Instagram" },
+  "ch.social.card.messenger": { es: "Messenger", en: "Messenger" },
+  "ch.social.card.comments": { es: "Comentarios", en: "Comments" },
+  "ch.social.card.comments.on": { es: "El agente responde por mensaje privado", en: "The agent answers in a private message" },
+  "ch.social.card.comments.off": { es: "El agente no los atiende", en: "The agent does not answer them" },
+  "ch.social.disconnect": { es: "Desconectar", en: "Disconnect" },
+  "ch.social.disconnect.title": { es: "Desconectar {name}", en: "Disconnect {name}" },
+  "ch.social.disconnect.body": {
+    es: "El agente deja de recibir y de responder sus mensajes desde ya, y borramos el acceso de Auphere. Los mensajes recibidos por este canal se borran en 30 días. Para volver a usarlo, conéctalo otra vez.",
+    en: "The agent stops receiving and answering its messages right away, and Auphere's access is deleted. The messages received through this channel are erased in 30 days. To use it again, connect it again.",
+  },
+  "ch.social.disconnect.confirm": { es: "Desconectar", en: "Disconnect" },
+  "ch.social.disconnect.done": { es: "{name} desconectado.", en: "{name} disconnected." },
+  "ch.social.attention.title": { es: "Necesita atención", en: "Needs attention" },
+  "ch.social.attention.token_revoked": {
+    es: "Meta retiró el acceso de Auphere (se quitó la app del negocio o se movió la cuenta). Vuelve a conectarlo.",
+    en: "Meta withdrew Auphere's access (the app was removed from the business or the account moved). Connect it again.",
+  },
+  "ch.social.attention.permission_lost": {
+    es: "Falta un permiso que el agente necesita. Vuelve a conectarlo y acepta todos los pasos.",
+    en: "A permission the agent needs is missing. Connect it again and accept every step.",
+  },
+  "ch.social.attention.messages_disabled": {
+    es: "La cuenta tiene apagado «Permitir acceso a los mensajes». En Instagram: Configuración → Mensajes y respuestas a historias → Herramientas conectadas.",
+    en: "The account has «Allow access to messages» off. In Instagram: Settings → Messages and story replies → Connected tools.",
+  },
+  "ch.social.attention.subscribe_failed": {
+    es: "Meta no nos deja recibir sus mensajes. Lo reintentamos solos, y si sigue así, vuelve a conectarlo.",
+    en: "Meta does not let us receive its messages. We retry on our own, and if it persists, connect it again.",
+  },
+  "ch.social.reason.code_exchange_failed": { es: "Meta no aceptó el inicio de sesión. Vuelve a intentarlo.", en: "Meta did not accept the login. Try again." },
+  "ch.social.reason.no_business_portfolio": {
+    es: "La cuenta tiene que pertenecer a un portfolio de negocio de Meta. Créalo en business.facebook.com y vuelve a conectar.",
+    en: "The account has to belong to a Meta business portfolio. Create one at business.facebook.com and connect again.",
+  },
+  "ch.social.reason.no_instagram_account": {
+    es: "No se compartió ninguna cuenta profesional de Instagram. Vuelve a conectar y marca la cuenta.",
+    en: "No professional Instagram account was shared. Connect again and select the account.",
+  },
+  "ch.social.reason.no_page": { es: "No se compartió ninguna Página. Vuelve a conectar y marca la Página.", en: "No Page was shared. Connect again and select the Page." },
+  "ch.social.reason.messages_disabled": {
+    es: "Activa en Instagram: Configuración → Mensajes y respuestas a historias → Herramientas conectadas → Permitir acceso a los mensajes, y vuelve a conectar.",
+    en: "Turn on in Instagram: Settings → Messages and story replies → Connected tools → Allow access to messages, and connect again.",
+  },
+  "ch.social.reason.missing_permission": { es: "No se concedió un permiso. Vuelve a conectar y acepta todos los pasos.", en: "A permission was not granted. Connect again and accept every step." },
+  "ch.social.reason.page_messaging_task_missing": {
+    es: "Quien inició sesión no puede gestionar los mensajes de esa Página. Pide a un administrador de la Página que la conecte.",
+    en: "The person who logged in cannot manage that Page's messages. Ask a Page admin to connect it.",
+  },
+  "ch.social.reason.already_connected_elsewhere": { es: "Esa cuenta ya está conectada a otro cliente.", en: "That account is already connected to another client." },
+  "ch.social.reason.subscribe_failed": { es: "Meta no nos dejó recibir sus mensajes. Inténtalo en un minuto.", en: "Meta did not let us receive its messages. Try again in a minute." },
+  "ch.social.reason.pending_expired": { es: "La elección caducó. Vuelve a conectar.", en: "The selection expired. Connect again." },
 } as const;

@@ -64,6 +64,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Channel,
+    ChannelStatus,
     ChannelType,
     Conversation,
     Customer,
@@ -72,11 +73,16 @@ from nexus_api.db.models import (
     MessageStatus,
     Tenant,
     TenantStatus,
-    WhatsAppOptOut,
+    WhatsAppTemplateStatus,
 )
+from nexus_api.services import whatsapp_opt_outs
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
+from nexus_api.services.meta_social_service import PROBLEM_REASON_OF
+from nexus_api.services.meta_window import PERSON_ACTORS, decide, private_reply_allowed
 from nexus_channels.base import ChannelCapabilityError
+from nexus_channels.meta_social import COMMENT_PREFIX, META_SOCIAL_PROVIDERS
+from nexus_channels.whatsapp_meta.exceptions import TokenInvalidatedError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_worker.metering.collector import record_channel_message, record_media_unit
@@ -93,7 +99,11 @@ AdapterRegistry = Mapping[str, Any]
 # Channel types the dispatcher knows how to drive. Anything else is parked
 # ``failed`` rather than pushed at an adapter that may not implement the
 # method — a channel with no transport is a config error, not a send error.
-_DISPATCHABLE_CHANNEL_TYPES = frozenset({ChannelType.WHATSAPP, ChannelType.TIKTOK})
+_DISPATCHABLE_CHANNEL_TYPES = frozenset(
+    {ChannelType.WHATSAPP, ChannelType.TIKTOK, ChannelType.INSTAGRAM, ChannelType.MESSENGER}
+)
+# Spec 049: the channels whose sends pass Meta's messaging windows first.
+_META_SOCIAL_TYPES = frozenset({ChannelType.INSTAGRAM, ChannelType.MESSENGER})
 
 log = structlog.get_logger(__name__)
 
@@ -124,6 +134,7 @@ _NO_RETRY_CODES: frozenset[str] = frozenset(
         "131051",
         "131052",
         "131053",
+        "131062",  # authentication template to a BSUID: Meta needs a phone (spec 050)
         "133015",  # number can't be registered
         "368",
     }
@@ -503,6 +514,8 @@ async def _send_one(
             Channel.provider,
             Customer.identifier,
             Channel.config,
+            Customer.phone,
+            Customer.id,
         )
         .join(Conversation, Conversation.channel_id == Channel.id)
         .join(Customer, Customer.id == Conversation.customer_id)
@@ -537,7 +550,20 @@ async def _send_one(
             message_id=str(msg.id),
         )
         return
-    channel_id, business_phone, channel_type, provider, recipient, channel_config = row
+    (
+        channel_id,
+        business_phone,
+        channel_type,
+        provider,
+        recipient,
+        channel_config,
+        phone,
+        customer_id,
+    ) = row
+    # Spec 050: a person first seen by BSUID who later shared their number is
+    # written to by number; one known only by BSUID, by BSUID (``recipient``).
+    if channel_type == ChannelType.WHATSAPP and phone:
+        recipient = phone
     # Meta Commerce catalog linked to this WABA — used to resolve native
     # product-card messages. Resolved server-side; the LLM never sees it.
     catalog_id = (channel_config or {}).get("catalog_id")
@@ -570,6 +596,30 @@ async def _send_one(
         )
         return
 
+    # Spec 049: Instagram and Messenger only accept what Meta's windows
+    # allow — the agent within 24 h, a person up to 7 days with the
+    # HUMAN_AGENT tag, one private reply per comment within 7 days. Decided
+    # here, from who wrote the row, before the adapter is reached.
+    extra: dict[str, Any] = {}
+    if channel_type in _META_SOCIAL_TYPES:
+        gate, refusal = await _meta_social_gate(session, msg)
+        if refusal is not None:
+            msg.status = MessageStatus.FAILED
+            msg.failed_at = datetime.now(UTC)
+            msg.failure_code = refusal
+            msg.last_error = (
+                "outside the window Meta allows: the agent answers within 24 h, a person "
+                "up to 7 days after the customer's last message"
+            )
+            log.info(
+                "outbound.dispatcher.meta_window_closed",
+                tenant_id=str(tenant_id),
+                message_id=str(msg.id),
+                actor_kind=msg.actor_kind,
+            )
+            return
+        extra = gate
+
     # Opt-out check (Block N). The recipient's number may have STOP'd us —
     # park the row failed instead of sending. The audit log + operator alert
     # already happened at opt-out registration time.
@@ -580,18 +630,23 @@ async def _send_one(
     # which the 48h window enforces on its own). Running this query for a
     # TikTok channel would compare an ``open_id`` against a phone column —
     # never matching, but implying a protection that isn't there.
+    #
+    # Spec 050 (D6): an opt-out of marketing (Meta's ``user_preferences`` or a
+    # stop word) blocks marketing templates and broadcasts only — the agent
+    # still answers the person and a utility reminder still goes. One from
+    # before spec 050 (``scope='all'``) blocks everything, as it always did.
     opted_out = (
-        await session.scalar(
-            sa.select(WhatsAppOptOut.id).where(
-                WhatsAppOptOut.channel_id == channel_id,
-                WhatsAppOptOut.recipient_phone == recipient,
-                WhatsAppOptOut.opted_in_at.is_(None),
-            )
+        await whatsapp_opt_outs.blocks(
+            session,
+            channel_id=channel_id,
+            customer_id=customer_id,
+            phone=phone or recipient,
+            marketing=await _is_marketing(session, msg, channel_config),
         )
         if channel_type == ChannelType.WHATSAPP
-        else None
+        else False
     )
-    if opted_out is not None:
+    if opted_out:
         msg.status = MessageStatus.FAILED
         msg.failed_at = datetime.now(UTC)
         msg.failure_code = "opted_out"
@@ -614,7 +669,21 @@ async def _send_one(
             channel_id=channel_id,
             catalog_id=catalog_id,
             catalog_thumbnail=catalog_thumbnail,
+            extra=extra,
         )
+    except TokenInvalidatedError as exc:
+        if provider not in META_SOCIAL_PROVIDERS:
+            await _handle_send_exception(session=session, msg=msg, exc=exc, tenant_id=tenant_id)
+            return
+        # An Instagram / Messenger token belongs to ONE channel: flag that
+        # channel, never the tenant's WhatsApp credential.
+        await _flag_meta_social_channel(session, channel_id=channel_id, reason="token_revoked")
+        msg.attempts += 1
+        msg.status = MessageStatus.FAILED
+        msg.failed_at = datetime.now(UTC)
+        msg.failure_code = "token_revoked"
+        msg.last_error = f"{type(exc).__name__}: {exc}"[:500]
+        return
     except MediaStorageError as exc:
         # Media couldn't be resolved to a presigned URL. Park failed.
         msg.attempts += 1
@@ -638,6 +707,9 @@ async def _send_one(
         )
         return
 
+    # Instagram and Messenger are metered under their own provider; the
+    # rest keeps the label it always had.
+    meter_provider = provider if provider in META_SOCIAL_PROVIDERS else "meta"
     msg.status = MessageStatus.SENT
     msg.last_error = None
     msg.trace_id = result.provider_message_id
@@ -647,14 +719,14 @@ async def _send_one(
     msg.latency_ms = msg.latency_ms or _ms_since(msg.created_at)
     # WP-05: outbound_delivery_ms — time from row creation to provider accept.
     if msg.latency_ms is not None:
-        record_outbound_delivery(provider="meta", duration_ms=float(msg.latency_ms))
+        record_outbound_delivery(provider=meter_provider, duration_ms=float(msg.latency_ms))
     # WP-17: un saliente aceptado por el proveedor es un ``channel.message``
     # facturable. Se emite aquí y no en el callback de estado porque aquí
     # es donde el envío ocurre de verdad; lo que el callback añade después
     # es el PRECIO de Meta, que hoy no se persiste (queda para WP-18/19).
     await record_channel_message(
         tenant_id=tenant_id,
-        provider="meta",
+        provider=meter_provider,
         provider_message_id=msg.provider_message_id,
         conversation_id=msg.conversation_id,
     )
@@ -664,7 +736,7 @@ async def _send_one(
         await record_media_unit(
             tenant_id=tenant_id,
             kind=msg.media_kind,
-            provider="meta",
+            provider=meter_provider,
             provider_message_id=msg.provider_message_id,
             conversation_id=msg.conversation_id,
         )
@@ -685,6 +757,30 @@ async def _send_one(
     )
 
 
+async def _is_marketing(
+    session: AsyncSession, msg: Message, channel_config: dict[str, Any] | None
+) -> bool:
+    """Spec 050 (D6): a broadcast, or a template of category MARKETING. The
+    category travels in the payload when the sender knew it; otherwise it is
+    the one Meta gave the template (``whatsapp_template_status``)."""
+    tp = msg.template_payload or {}
+    if not tp:
+        return False
+    if tp.get("broadcast"):
+        return True
+    category = tp.get("category")
+    if not category and tp.get("name"):
+        waba_id = (channel_config or {}).get("waba_id")
+        category = await session.scalar(
+            sa.select(WhatsAppTemplateStatus.category).where(
+                WhatsAppTemplateStatus.waba_id == str(waba_id or ""),
+                WhatsAppTemplateStatus.template_name == str(tp["name"]),
+                WhatsAppTemplateStatus.language == str(tp.get("language") or "es"),
+            )
+        )
+    return str(category or "").upper() == "MARKETING"
+
+
 async def _dispatch_message(
     *,
     adapter: Any,
@@ -695,8 +791,15 @@ async def _dispatch_message(
     channel_id: uuid.UUID,
     catalog_id: str | None = None,
     catalog_thumbnail: str | None = None,
+    extra: Mapping[str, Any] | None = None,
 ) -> SendResult:
-    """Route the pending row to the right adapter call."""
+    """Route the pending row to the right adapter call.
+
+    ``extra`` carries channel-specific keywords (spec 049: ``human_agent``)
+    and is empty for every other channel, so their adapters see the exact
+    call they always did.
+    """
+    extra = dict(extra or {})
     context = msg.context_message_id
 
     # -1) HSM template rows (migration 0049, ADR-028) — written by the
@@ -760,6 +863,7 @@ async def _dispatch_message(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 context_message_id=payload.get("context_message_id") or context,
+                **extra,
             )
         # Product cards: the Facebook-for-WooCommerce catalog keys each item by
         # the raw WooCommerce product id (verified against Meta's catalog), so
@@ -779,6 +883,7 @@ async def _dispatch_message(
             tenant_id=tenant_id,
             channel_id=channel_id,
             context_message_id=quote_wamid,
+            **extra,
         )
 
     # 1) Reactions take priority — same row can't carry media + a reaction.
@@ -807,6 +912,7 @@ async def _dispatch_message(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 context_message_id=context,
+                **extra,
             )
         if kind == "audio":
             return await adapter.send_audio(
@@ -816,6 +922,7 @@ async def _dispatch_message(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 context_message_id=context,
+                **extra,
             )
         if kind == "video":
             return await adapter.send_video(
@@ -826,6 +933,7 @@ async def _dispatch_message(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 context_message_id=context,
+                **extra,
             )
         if kind == "document":
             return await adapter.send_document(
@@ -837,6 +945,7 @@ async def _dispatch_message(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 context_message_id=context,
+                **extra,
             )
         # Sticker / location / contacts: location and contacts live in
         # tool_calls as structured JSON; sticker reuses send_image with
@@ -851,6 +960,91 @@ async def _dispatch_message(
         tenant_id=tenant_id,
         channel_id=channel_id,
         context_message_id=context,
+        **extra,
+    )
+
+
+async def _meta_social_gate(
+    session: AsyncSession, msg: Message
+) -> tuple[dict[str, Any], str | None]:
+    """Decide how an Instagram / Messenger row may leave (spec 049, R3/R4).
+
+    Returns ``(extra keywords for the adapter, refusal)``:
+
+    - The agent's answer to a **comment** turn leaves as the private reply
+      to that comment (``context_message_id="comment:<id>"``) — once per
+      comment, within 7 days. The comment is the conversation's last inbound
+      before this row.
+    - Anything else is a direct message: within 24 h of the person's last
+      DM; a person (not the agent) up to 7 days, with ``HUMAN_AGENT``.
+    """
+    now = datetime.now(UTC)
+    if msg.actor_kind not in PERSON_ACTORS and not (msg.context_message_id or "").startswith(
+        COMMENT_PREFIX
+    ):
+        last_in = (
+            await session.execute(
+                sa.select(Message.context_message_id, Message.created_at)
+                .where(
+                    Message.conversation_id == msg.conversation_id,
+                    Message.direction == MessageDirection.INBOUND,
+                    Message.created_at <= msg.created_at,
+                )
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+        ).first()
+        if last_in is not None and (last_in[0] or "").startswith(COMMENT_PREFIX):
+            answered = await session.scalar(
+                sa.select(Message.id).where(
+                    Message.conversation_id == msg.conversation_id,
+                    Message.direction == MessageDirection.OUTBOUND,
+                    Message.context_message_id == last_in[0],
+                    Message.status.in_(
+                        [MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ]
+                    ),
+                )
+            )
+            if answered is None:
+                if not private_reply_allowed(now=now, comment_at=last_in[1]):
+                    return {}, "window_closed"
+                msg.context_message_id = last_in[0]
+                return {}, None
+
+    if (msg.context_message_id or "").startswith(COMMENT_PREFIX):
+        comment_at = await session.scalar(
+            sa.select(Message.created_at).where(
+                Message.conversation_id == msg.conversation_id,
+                Message.provider_message_id == msg.context_message_id,
+            )
+        )
+        if comment_at is None or not private_reply_allowed(now=now, comment_at=comment_at):
+            return {}, "window_closed"
+        return {}, None
+
+    last_dm_at = await session.scalar(
+        sa.select(Conversation.last_inbound_at).where(Conversation.id == msg.conversation_id)
+    )
+    decision = decide(now=now, last_dm_at=last_dm_at, actor_kind=msg.actor_kind)
+    if not decision.allowed:
+        return {}, decision.reason or "window_closed"
+    return {"human_agent": decision.human_agent}, None
+
+
+async def _flag_meta_social_channel(
+    session: AsyncSession, *, channel_id: uuid.UUID, reason: str
+) -> None:
+    """Mark an Instagram / Messenger channel as needing attention. The
+    console shows the reason; the health cron clears it once Meta answers
+    again."""
+    channel = await session.get(Channel, channel_id)
+    if channel is None:
+        return
+    channel.status = ChannelStatus.DEGRADED
+    channel.problem_reason = PROBLEM_REASON_OF.get(reason, "meta_error")
+    channel.config = {**(channel.config or {}), "needs_attention": reason}
+    log.warning(
+        "outbound.dispatcher.meta_social_needs_attention", channel_id=str(channel_id), reason=reason
     )
 
 

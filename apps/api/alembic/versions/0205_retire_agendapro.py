@@ -1,7 +1,7 @@
 """Spec 048: AgendaPro se va del todo y ``booking.*`` queda retirada.
 
 Revision ID: 0205_retire_agendapro
-Revises: 0204_console_v2_for_all
+Revises: 0207_template_status_check (encadenada tras las de las specs 049 y 050 al sincronizar con develop)
 
 Ningún cliente usa AgendaPro (owner, 2026-10-29). Antes de tocar nada, la
 migración **lo comprueba**: si un cliente tiene la URL pública de AgendaPro
@@ -49,7 +49,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0205_retire_agendapro"
-down_revision: str | Sequence[str] | None = "0204_console_v2_for_all"
+down_revision: str | Sequence[str] | None = "0207_template_status_check"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -20,6 +20,7 @@ import { MetaConnectOwnedDialog } from "../../_integrations/meta-connect-owned-d
 import { MetaWhatsAppSetupDialog } from "../../_integrations/meta-signup-dialog";
 import { MetaTestSendDialog } from "../../_integrations/meta-test-send-dialog";
 import { TikTokConnectDialog } from "../../_integrations/tiktok-connect-dialog";
+import { WhatsAppPinDialog } from "../../_integrations/whatsapp-pin-dialog";
 import { WhatsAppTemplatesDialog } from "../../_integrations/whatsapp-templates-dialog";
 import { ChannelAgentForm } from "./channel-agent-form";
 import { ChannelSettings } from "./channel-settings";
@@ -194,6 +195,9 @@ export default async function ChannelDetailPage({
           ) : null}
           <div className="flex flex-wrap gap-2">
             {isWhatsApp && channel.status !== "disconnected" ? <MetaTestSendDialog tenantId={id} /> : null}
+            {isWhatsApp && channel.provider === "meta" && channel.status !== "disconnected" && channel.config.mode !== "coexistence" ? (
+              <WhatsAppPinDialog tenantId={id} channelId={channel.id} />
+            ) : null}
             {connector && connector.status === "paused" ? (
               <ResumeConnectorButton
                 tenantId={id}

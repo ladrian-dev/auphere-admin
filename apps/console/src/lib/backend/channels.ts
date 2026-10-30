@@ -42,6 +42,30 @@ export type ChannelDetail = {
   catalog: Catalog | null;
   catalog_state: CatalogState;
   catalog_error: CatalogError | null;
+  /** Spec 049 — Instagram / Messenger: the account or Page and why it needs
+   *  attention, if it does (with the step to fix it). */
+  display_name?: string | null;
+  username?: string | null;
+  picture_url?: string | null;
+  needs_attention?: string | null;
+  needs_attention_help?: string | null;
+  comments_enabled?: boolean | null;
+  comment_public_reply?: string | null;
+};
+
+/** Spec 049: Instagram / Messenger this partner may connect. */
+export type MetaSocialKind = "instagram" | "messenger";
+export type MetaSocialOffer = {
+  app_id: string;
+  graph_version: string;
+  channels: { kind: MetaSocialKind; config_id: string }[];
+};
+export type MetaSocialAccount = { id: string; name: string; username: string | null; picture_url: string | null };
+export type MetaSocialConnectResult = {
+  status: "connected" | "choose";
+  channel: ChannelDetail | null;
+  nonce: string | null;
+  accounts: MetaSocialAccount[];
 };
 
 export type ChannelsOverview = {
@@ -51,6 +75,7 @@ export type ChannelsOverview = {
   can_connect: boolean;
   roles_required: boolean;
   meta_connected: boolean;
+  meta_social?: MetaSocialOffer | null;
 };
 
 export type WhatsAppSignupBody = {
@@ -92,6 +117,8 @@ export type TemplateRow = {
   category: string | null;
   status: string | null;
   quality_score: string | null;
+  /** Spec 050: the category Meta announced and applies in about a day. */
+  pending_category?: string | null;
   components: Array<Record<string, unknown>>;
   /** Meta's literal rejection text (their verdict on the partner's template). */
   rejection_reason: string | null;
@@ -180,6 +207,14 @@ export function channelsApi(call: Call) {
       call<TemplateCreated>(`${base(ref)}/whatsapp/templates`, { method: "POST", body }),
     deleteTemplate: (ref: string, name: string) =>
       call<{ name: string; deleted: boolean }>(`${base(ref)}/whatsapp/templates/${enc(name)}`, { method: "DELETE" }),
+    /** Spec 049: the code from Facebook Login for Business → the channel. */
+    metaSocialConnect: (ref: string, kind: MetaSocialKind, code: string) =>
+      call<MetaSocialConnectResult>(`${base(ref)}/${kind}/connect`, { method: "POST", body: { code } }),
+    metaSocialComplete: (ref: string, kind: MetaSocialKind, nonce: string, accountId: string) =>
+      call<MetaSocialConnectResult>(`${base(ref)}/${kind}/connect/complete`, {
+        method: "POST",
+        body: { nonce, account_id: accountId },
+      }),
     channelDiagnostics: (ref: string) => call<Diagnostics>(`${base(ref)}/diagnostics`),
     channelTestSend: (ref: string, to: string) =>
       call<TestSendResult>(`${base(ref)}/diagnostics/test-send`, { method: "POST", body: { to } }),

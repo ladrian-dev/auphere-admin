@@ -106,7 +106,12 @@ def merge_rows(
                 language=tpl.language,
                 category=tpl.category,
                 status=st,
-                quality_score=tpl.quality_score,
+                quality_score=tpl.quality_score or (v.quality if v is not None else None),
+                pending_category=(
+                    v.pending_category
+                    if v is not None and v.pending_category and v.pending_category != tpl.category
+                    else None
+                ),
                 components=tpl.components,
                 rejection_reason=rejection or None,
                 suggested_action=suggested_action_for(st, rejection),

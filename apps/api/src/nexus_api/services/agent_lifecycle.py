@@ -45,6 +45,10 @@ PROBLEM_REASONS: tuple[str, ...] = (
     "auth_expired",
     "coexistence_inactive",
     "meta_error",
+    # Spec 050 (migration 0206): Meta's review of the WhatsApp account
+    # rejected or deferred, and a critical account alert still active.
+    "account_review",
+    "account_alert",
 )
 
 #: Los estados visibles, en el orden en que se evalúan sus reglas.

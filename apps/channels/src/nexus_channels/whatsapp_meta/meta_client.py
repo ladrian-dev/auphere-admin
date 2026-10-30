@@ -68,7 +68,9 @@ from nexus_channels.whatsapp_meta.exceptions import (
 )
 from nexus_channels.whatsapp_meta.signature import appsecret_proof
 
-META_GRAPH_VERSION: Final = "v22.0"
+#: The library's default. Callers pass ``version=settings.meta_graph_api_version``
+#: (spec 050): one version for the server and the browsers.
+META_GRAPH_VERSION: Final = "v26.0"
 META_GRAPH_BASE_URL: Final = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
 
 # OAuthException subcodes / codes that mean "user must re-authenticate".
@@ -80,6 +82,13 @@ _TOKEN_INVALIDATED_CODES: Final = frozenset({102, 190, 463, 467})
 _RATE_LIMIT_CODES: Final = frozenset({4, 80004})
 
 log = structlog.get_logger(__name__)
+
+
+def recipient_field(to: str) -> dict[str, str]:
+    """Spec 050: a phone goes in ``to``; a business-scoped user id (BSUID,
+    ``CC.…``, which a phone never contains) goes in ``recipient``. Meta lets
+    a person with a username be messaged without their number."""
+    return {"recipient": to} if "." in to else {"to": to}
 
 
 class MetaClient:
@@ -96,7 +105,8 @@ class MetaClient:
         require_appsecret_proof: bool = True,
         max_retries: int = 3,
         timeout: float = 15.0,
-        base_url: str = META_GRAPH_BASE_URL,
+        version: str | None = None,
+        base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not app_secret:
@@ -104,6 +114,8 @@ class MetaClient:
         self._app_secret = app_secret
         self._require_appsecret_proof = require_appsecret_proof
         self._max_retries = max_retries
+        if base_url is None:
+            base_url = f"https://graph.facebook.com/{version or META_GRAPH_VERSION}"
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=timeout,
@@ -141,7 +153,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "text",
             "text": {"body": body, "preview_url": preview_url},
         }
@@ -174,7 +186,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "template",
             "template": {
                 "name": template_name,
@@ -202,7 +214,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "interactive",
             "interactive": interactive,
         }
@@ -242,7 +254,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": media_type,
             media_type: media,
         }
@@ -267,7 +279,7 @@ class MetaClient:
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            **recipient_field(to),
             "type": "reaction",
             "reaction": {"message_id": target_message_id, "emoji": emoji},
         }
@@ -350,6 +362,24 @@ class MetaClient:
             json_body={"messaging_product": "whatsapp", "pin": pin},
         )
 
+    async def set_two_step_pin(
+        self,
+        *,
+        phone_number_id: str,
+        access_token: str,
+        pin: str,
+    ) -> dict[str, Any]:
+        """Spec 050: set (or change) the number's two-step verification PIN.
+
+        Meta's ``POST /{phone_number_id}`` with ``{"pin": …}``. The caller
+        stores the PIN encrypted; Meta never returns it.
+        """
+        return await self._post(
+            f"/{phone_number_id}",
+            access_token=access_token,
+            json_body={"pin": pin},
+        )
+
     async def deregister_phone(
         self,
         *,
@@ -375,8 +405,10 @@ class MetaClient:
         phone_number_id: str,
         access_token: str,
         fields: str = (
+            # Spec 050: ``messaging_limit_tier`` is deprecated since v24;
+            # the limit is ``whatsapp_business_manager_messaging_limit``.
             "display_phone_number,verified_name,quality_rating,"
-            "messaging_limit_tier,name_status,code_verification_status"
+            "whatsapp_business_manager_messaging_limit,name_status,code_verification_status"
         ),
     ) -> dict[str, Any]:
         return await self._get(

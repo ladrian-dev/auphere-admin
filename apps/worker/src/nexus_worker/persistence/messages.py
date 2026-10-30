@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import structlog
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import (
     Conversation,
@@ -28,22 +29,82 @@ from nexus_api.services import inbox_lifecycle
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+log = structlog.get_logger(__name__)
+
+
+def identity_of(identifier: str) -> dict[str, str]:
+    """Spec 050: what a bare WhatsApp identifier is. A BSUID (``CC.…``) has a
+    dot, which a phone never does."""
+    return {"bsuid": identifier} if "." in identifier else {"phone": identifier}
+
 
 async def upsert_customer(
     session: AsyncSession,
     *,
     identifier: str,
     name: str | None = None,
+    bsuid: str | None = None,
+    phone: str | None = None,
+    username: str | None = None,
 ) -> Customer:
+    """Find or create the person behind an inbound (spec 050, D2).
+
+    ``identifier`` keeps its meaning and is never rewritten: the phone when
+    the person had one at creation, the BSUID otherwise. Resolution:
+
+    1. by ``bsuid``;
+    2. by phone (``phone`` column or a phone-shaped ``identifier``) — and,
+       since Meta gave both together, the BSUID is attached to that row;
+    3. by ``identifier`` (every channel that is not WhatsApp, and rows from
+       before the BSUID existed);
+    4. otherwise a new row.
+
+    Two existing rows are never merged: if the BSUID and the phone point at
+    different people, the BSUID's wins and the conflict is logged.
+    """
     require_current_tenant()
-    stmt = select(Customer).where(Customer.identifier == identifier)
-    existing = (await session.execute(stmt)).scalar_one_or_none()
-    if existing is not None:
-        return existing
+    found: Customer | None = None
+    phone_taken = False
+    if bsuid:
+        found = await session.scalar(select(Customer).where(Customer.bsuid == bsuid))
+        if found is not None and phone and found.phone != phone:
+            other = await session.scalar(
+                select(Customer.id)
+                .where((Customer.phone == phone) | (Customer.identifier == phone))
+                .where(Customer.id != found.id)
+                .limit(1)
+            )
+            if other is not None:
+                # Two people Meta now describes as one: keep both untouched.
+                phone_taken = True
+                log.warning("customer.identity_conflict", reason="bsuid_and_phone_differ")
+    if found is None and phone:
+        found = await session.scalar(
+            select(Customer)
+            .where((Customer.phone == phone) | (Customer.identifier == phone))
+            .order_by(Customer.created_at)
+            .limit(1)
+        )
+    if found is None:
+        found = await session.scalar(select(Customer).where(Customer.identifier == identifier))
+    if found is not None:
+        changed = False
+        if bsuid and found.bsuid is None:
+            found.bsuid, changed = bsuid, True
+        if phone and found.phone is None and not phone_taken:
+            found.phone, changed = phone, True
+        if username and found.username != username:
+            found.username, changed = username, True
+        if changed:
+            await session.flush()
+        return found
     customer = Customer(
         tenant_id=require_current_tenant(),
         identifier=identifier,
         name=name,
+        bsuid=bsuid,
+        phone=phone,
+        username=username,
         preferences={},
     )
     session.add(customer)

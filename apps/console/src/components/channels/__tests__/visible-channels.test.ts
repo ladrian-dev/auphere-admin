@@ -42,6 +42,19 @@ describe("F2 visible channels", () => {
     ).toEqual({ n: 1, m: 1 });
   });
 
+  it("spec 049: Instagram and Messenger appear only for a partner that has them", () => {
+    const channels = [
+      { type: "whatsapp", status: "active" },
+      { type: "instagram", status: "active" },
+      { type: "messenger", status: "degraded" },
+      { type: "instagram", status: "disconnected" },
+    ];
+    expect(f2VisibleChannels(channels).map((c) => c.type)).toEqual(["whatsapp"]);
+    expect(f2VisibleChannels(channels, ["instagram", "messenger"]).map((c) => c.type)).toEqual(["whatsapp", "instagram", "messenger"]);
+    // They never take the WhatsApp slot.
+    expect(f2ChannelCounter(channels)).toEqual({ n: 1, m: 1 });
+  });
+
   it("signup CTA stays disabled in this hop", () => {
     expect(f2SignupEnabled()).toBe(false);
   });

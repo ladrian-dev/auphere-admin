@@ -318,6 +318,9 @@ async def test_templates_join_meta_list_with_literal_rejection_reason(
             language="en_US",
             status="approved",
             reason="OLD_REASON_MUST_NOT_SHOW",
+            # Spec 050: the webhook's quality and an announced recategorisation.
+            quality="YELLOW",
+            pending_category="MARKETING",
         )
     )
     await db_session.commit()
@@ -353,6 +356,10 @@ async def test_templates_join_meta_list_with_literal_rejection_reason(
     assert by_name["hello_world"]["suggested_action"] == "none"
     assert by_name["nueva"]["suggested_action"] == "wait_review"
     assert "reason" not in r.text.replace("rejection_reason", "")
+    # Meta's live list has no quality for hello_world: the webhook's shows.
+    assert by_name["hello_world"]["quality_score"] == "YELLOW"
+    assert by_name["hello_world"]["pending_category"] == "MARKETING"
+    assert by_name["promo_verano"]["pending_category"] is None
 
 
 async def test_template_create_and_delete_hit_meta_and_audit(

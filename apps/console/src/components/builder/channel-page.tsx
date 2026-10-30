@@ -25,6 +25,7 @@ import type { AudienceMode, ChannelChange, ChannelConfigIn, ChannelPage, Recipie
 
 import { triggerText } from "./block-view";
 import type { Result } from "./builder-model";
+import { ChannelAccount, hasAccountFacts } from "./channel-account";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
 import {
   MAX_RECIPIENTS,
@@ -246,6 +247,7 @@ export function ChannelConfigPage({
   const errorIn = (section: SaveError["section"]) => (error && error.section === section ? error : null);
   const fix = error ? fixLink(error.fix, targets) : null;
   const disconnected = page.status === "disconnected";
+  const account = hasAccountFacts(t, locale, page.whatsapp) ? page.whatsapp : null;
   const method = page.method === "coexistence" || page.method === "cloud_api" ? t(`channels.proto.connect.${page.method}` as MessageKey) : null;
   const headLine = [
     page.type === "whatsapp" ? t("builder.channels.whatsapp") : page.type,
@@ -260,7 +262,11 @@ export function ChannelConfigPage({
       <div className="grid min-w-0 gap-6 min-[860px]:grid-cols-[calc(var(--spacing)*50)_minmax(0,1fr)]">
         <nav aria-label={t("builder.channel.page.sections")} className="grid min-w-0 content-start gap-3 min-[860px]:sticky min-[860px]:top-24 min-[860px]:self-start">
           <ul className="flex min-w-0 flex-wrap gap-1 min-[860px]:grid">
-            {NAV.filter((s) => s.id !== "canal-excepciones" || everyone).map((s) => (
+            {[
+              ...NAV.filter((s) => s.id !== "canal-excepciones" || everyone),
+              // Spec 050 (4.1): la cuenta en Meta, cuando Meta dice algo de ella.
+              ...(account ? [{ id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }] : []),
+            ].map((s) => (
               <li key={s.id} className="min-w-0">
                 <a
                   href={`#${s.id}`}
@@ -388,6 +394,12 @@ export function ChannelConfigPage({
                 })}
               </ul>
             </PageSection>
+
+            {account ? (
+              <PageSection id="canal-cuenta" title={t("builder.channel.account.title")} intro={t("builder.channel.account.intro")}>
+                <ChannelAccount account={account} />
+              </PageSection>
+            ) : null}
 
             {/* «Más ajustes» (H5): lo que el prototipo no enseña, plegado. */}
             <div className="grid min-w-0 gap-4" data-slot="channel-more">

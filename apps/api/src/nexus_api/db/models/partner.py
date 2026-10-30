@@ -246,6 +246,16 @@ class Partner(UUIDPrimaryKey, TimestampMixin, Base):
         server_default=text(_NAV_DEFAULT_SQL),
     )
 
+    # Migration 0205 — spec 049: channels switched on for this partner before
+    # the provider approves them for everyone. Absent means the partner does
+    # not see the channel at all.
+    beta_channels: Mapped[list[str]] = mapped_column(
+        ARRAY(String(16)),
+        nullable=False,
+        default=list,
+        server_default=text("ARRAY[]::varchar[]"),
+    )
+
     def ordered_console_modules(self) -> list[str]:
         """The modules in canonical order, unknown values dropped.
 

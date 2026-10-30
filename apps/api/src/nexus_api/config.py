@@ -1,4 +1,6 @@
+from datetime import date
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -7,6 +9,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # module constant so the production secret guard can compare against it
 # without duplicating the literal.
 _DEV_FERNET_KEY = "RQ8j4zYQ3W3ofSt7pUJoKxTYwhZ8JkRdJ-T_Wc1G3xs="
+
+
+#: Spec 050 (3.6): when Meta stops serving each Graph version
+#: (``docs/graph-api/changelog/versions``). A version not listed has more
+#: than two years left; add it here when Meta publishes its date.
+META_GRAPH_VERSION_EXPIRES: dict[str, date] = {
+    "v21.0": date(2027, 1, 21),
+    "v22.0": date(2027, 5, 20),
+    "v25.0": date(2028, 7, 29),
+}
+#: Days before expiry the operator starts hearing about it.
+META_GRAPH_VERSION_NOTICE_DAYS = 60
+
+
+def graph_version_notice(version: str, today: date) -> tuple[date, int] | None:
+    """``(expires_on, days_left)`` when ``version`` dies within the notice
+    window (or already died), else ``None``. Pure."""
+    expires = META_GRAPH_VERSION_EXPIRES.get(version)
+    if expires is None:
+        return None
+    days_left = (expires - today).days
+    return (expires, days_left) if days_left <= META_GRAPH_VERSION_NOTICE_DAYS else None
 
 
 class Settings(BaseSettings):
@@ -144,7 +168,12 @@ class Settings(BaseSettings):
     meta_business_manager_id: str = "342042661294231"
     # Graph API version pinned at the client level. Bump as Meta rolls
     # new majors — keep the pin so the deprecation surface is explicit.
-    meta_graph_api_version: str = "v22.0"
+    # Spec 050: every MetaClient and both browsers read this one.
+    meta_graph_api_version: str = "v26.0"
+    # Spec 050 (D3): the Embedded Signup the browsers open. v4 is Meta's
+    # current one; v5 (coexistence on by default, ``FINISH`` without
+    # ``waba_id``) is switched on in staging once the five paths pass.
+    meta_embedded_signup_version: Literal["v4", "v5"] = "v4"
     # Webhook callback URL passed to ``subscribed_apps`` per tenant.
     # Defaults to the production webhooks subdomain; override in dev via
     # ``NEXUS_META_WEBHOOK_CALLBACK_URL`` (an ngrok tunnel pointing to
@@ -154,6 +183,23 @@ class Settings(BaseSettings):
     # ``Require App Secret Proof`` ON in the Meta App since 2026-05-21, so
     # this stays True in every environment that talks to the real API.
     meta_require_appsecret_proof: bool = True
+
+    # Spec 049 — Instagram (Unified Login) and Messenger. Same Meta App, two
+    # more Facebook Login for Business configurations; both issue a business
+    # integration system-user token that does not expire. Public values.
+    meta_config_id_instagram: str = "1157578836735566"
+    meta_config_id_messenger: str = "2188508105420190"
+    # The version the Instagram and Page webhooks are subscribed at.
+    meta_social_graph_api_version: str = "v26.0"
+    # Meta allows ONE callback URL per object per app for ``instagram`` and
+    # ``page`` (no ``override_callback_uri`` like WhatsApp's). Staging and
+    # production share the app, so whichever receives an event for an
+    # account it does not own forwards it, body and signature untouched, to
+    # the other. Empty disables forwarding (dev).
+    meta_webhook_peer_url: str = ""
+    # After Meta approves the permissions: every partner sees Instagram and
+    # Messenger, not only the ones in ``partners.beta_channels``.
+    meta_social_general_availability: bool = False
 
     # TikTok Business Messaging API — single Auphere developer app, same
     # Tech-Provider shape as Meta: every tenant authorises *this* app over
@@ -628,6 +674,20 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}
+
+    @property
+    def meta_webhook_peer(self) -> str | None:
+        """Where an Instagram or Page event for an account this environment
+        does not own is forwarded (spec 049). Explicit setting first; then
+        production ↔ staging by environment; nothing in dev."""
+        if self.meta_webhook_peer_url:
+            return self.meta_webhook_peer_url
+        env = self.environment.lower()
+        if env in {"prod", "production"}:
+            return "https://api.staging.auphere.com/webhook/meta"
+        if env == "staging":
+            return "https://webhooks.auphere.com/webhook/meta"
+        return None
 
     @property
     def is_dev(self) -> bool:

@@ -101,6 +101,10 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         user_id=fields["user_id"],
         content=fields["content"],
         customer_name=fields.get("customer_name"),
+        # Spec 050: the identity Meta gave (phone and/or BSUID, username).
+        customer_phone=fields.get("customer_phone"),
+        customer_bsuid=fields.get("customer_bsuid"),
+        customer_username=fields.get("customer_username"),
         provider=fields.get("provider", "meta"),
         kind=fields.get("kind", "text"),
         provider_message_id=fields.get("provider_message_id"),
@@ -122,6 +126,7 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         # significa "no marcar" (canal send-only, remitente no admin en
         # línea de coexistencia, o una entrada anterior a este cambio).
         mark_read=fields.get("mark_read") == "1",
+        opted_out=fields.get("opted_out") == "true",
     )
 
 
@@ -543,6 +548,9 @@ async def _save_and_schedule(
     accepted = await accept_inbound(event)
     if accepted.skipped is not None or accepted.conversation_id is None:
         return {"skipped": accepted.skipped or "tenant_unknown"}
+    if accepted.no_turn:
+        # Spec 050 (D6): a stop word is kept for the Inbox, never answered.
+        return {"skipped": "opted_out", "conversation_id": str(accepted.conversation_id)}
     await turns.schedule_turn(
         redis,
         queue=turns.due_queue(stream),

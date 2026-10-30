@@ -119,7 +119,7 @@ async def test_inbound_text_enqueues(client, db_session, fake_redis, seed_tenant
     assert mine[0]["tenant_id"] == str(tenant_id)
 
 
-async def test_inbound_stop_records_optout_and_skips_enqueue(
+async def test_inbound_stop_records_a_marketing_optout_and_reaches_the_inbox(
     client, db_session, fake_redis, seed_tenants
 ):
     tenant_id = seed_tenants["a"]
@@ -144,9 +144,12 @@ async def test_inbound_stop_records_optout_and_skips_enqueue(
     )
     assert r.status_code == 200, r.text
 
-    # NOT enqueued — the dispatcher must never reply to an opted-out user.
+    # Spec 050 (D6): enqueued, marked, so the Inbox keeps it; the worker
+    # persists it without a turn and no blue ticks claim anyone read it.
     entries = await _inbound_entries(fake_redis)
-    assert all(e.get("provider_message_id") != "wamid.stop-1" for e in entries)
+    [entry] = [e for e in entries if e.get("provider_message_id") == "wamid.stop-1"]
+    assert entry["opted_out"] == "true"
+    assert "mark_read" not in entry
 
     # Opt-out row persisted under the tenant.
     async with db_session.begin():
@@ -158,7 +161,8 @@ async def test_inbound_stop_records_optout_and_skips_enqueue(
         count = await db_session.scalar(
             text(
                 "SELECT count(*) FROM whatsapp_opt_outs "
-                "WHERE recipient_phone = :r AND opted_in_at IS NULL"
+                "WHERE recipient_phone = :r AND opted_in_at IS NULL "
+                "AND scope = 'marketing' AND source = 'keyword'"
             ),
             {"r": sender},
         )

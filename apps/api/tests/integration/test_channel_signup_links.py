@@ -69,6 +69,7 @@ async def test_operator_link_connects_on_the_owners_device(
     assert body["mode"] == "coexistence"
     assert body["business_name"]
     assert body["meta_config_id"]
+    assert body["meta_signup_version"] == "v4"  # spec 050: v5 waits for staging
 
     number = f"+5691{uuid.uuid4().int % 10**7:07d}"
     fake = _FakeMeta(number)
@@ -111,6 +112,7 @@ async def test_operator_link_connects_on_the_owners_device(
         "meta_app_id": None,
         "meta_config_id": None,
         "meta_graph_version": None,
+        "meta_signup_version": None,
     }
 
 

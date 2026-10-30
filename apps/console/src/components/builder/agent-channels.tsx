@@ -9,10 +9,11 @@ import { Button, Callout, StatusBadge } from "@nexus/ui";
 
 import { agentChannelsAction } from "@/app/(console)/clients/[ref]/agents/channel-actions";
 import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
+import { useMetaSocialConnect } from "@/components/channels/meta-social-connect";
 import type { MetaSignupConfig } from "@/components/channels/whatsapp-connect";
 import { useT } from "@/i18n/client";
 import type { AgentChannel, AgentChannels, ChannelPage } from "@/lib/backend/channel-config-types";
-import type { WhatsAppSignupResult } from "@/lib/backend/channels";
+import type { MetaSocialConnectResult, WhatsAppSignupResult } from "@/lib/backend/channels";
 
 import type { Result } from "./builder-model";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
@@ -107,6 +108,20 @@ export function AgentChannelsPanel({
     return res;
   }
 
+  /** Spec 049: the connected Instagram account or Page goes to this agent,
+   *  the same way a number connected from here does (34.2). */
+  async function placeSocial(res: MetaSocialConnectResult) {
+    const id = res.channel?.id;
+    if (!id) return;
+    const reloaded = await reload();
+    if (reloaded.ok && reloaded.data.channels.some((c) => c.id === id)) return;
+    const moved = await connect.move({ ref: refId, channel: id, to: agentId });
+    if (moved.ok) await reload();
+  }
+
+  const social = useMetaSocialConnect({ refId, offer: data?.meta_social ?? null, onConnected: placeSocial });
+  const socialKinds = (data?.meta_social?.channels ?? []).map((c) => c.kind);
+
   if (!data) {
     return (
       <Callout
@@ -152,6 +167,10 @@ export function AgentChannelsPanel({
   }
 
   function pick(kind: ChannelKind["id"]) {
+    if ((kind === "instagram" || kind === "messenger") && socialKinds.includes(kind)) {
+      void social.start(kind);
+      return;
+    }
     if (kind !== "whatsapp") return;
     if (data?.pending_link) {
       toast.warning(t("channels.proto.linkPending"));
@@ -161,9 +180,17 @@ export function AgentChannelsPanel({
   }
 
   const list = data.channels;
-  const step: WizardStep = stage !== null || connecting ? 1 : list.length > 0 && list.every((c) => isConfiguredState(c.visible_state)) ? 3 : 0;
+  const step: WizardStep =
+    stage !== null || connecting || social.working ? 1 : list.length > 0 && list.every((c) => isConfiguredState(c.visible_state)) ? 3 : 0;
+  const count = (kind: string) => list.filter((c) => c.type === kind).length;
   const wizard = canWrite ? (
-    <ChannelWizard step={step} connected={{ whatsapp: list.filter((c) => c.type === "whatsapp").length }} onConnect={pick} headingRef={wizardTitle} />
+    <ChannelWizard
+      step={step}
+      connected={{ whatsapp: count("whatsapp"), instagram: count("instagram"), messenger: count("messenger") }}
+      onConnect={pick}
+      headingRef={wizardTitle}
+      available={socialKinds}
+    />
   ) : null;
 
   return (
@@ -257,6 +284,8 @@ export function AgentChannelsPanel({
           disconnect={actions.menu?.disconnect}
         />
       ))}
+
+      {canWrite ? social.dialog : null}
 
       {canWrite ? (
         <ConnectWhatsApp

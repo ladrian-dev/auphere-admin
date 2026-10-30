@@ -391,3 +391,47 @@ describe("la página de un canal", () => {
     expect(screen.getByText("+34611204893")).toBeVisible();
   });
 });
+
+describe("la cuenta en Meta (spec 050, 4.1, 4.2, 4.4 y 8.4)", () => {
+  const account = {
+    verified_name: "Barbería Cultor",
+    name_status: "APPROVED",
+    name_decision: "REJECTED",
+    requested_name: "Barbería Cultor SL",
+    name_rejection_reason: "NAME_FORMAT_UNACCEPTABLE",
+    username: "barberiacultor",
+    username_status: "approved",
+    quality_rating: "YELLOW",
+    messaging_limit: "TIER_2K",
+    account_review: "REJECTED",
+    alerts: [{ type: "INCREASED_CAPABILITIES_ELIGIBILITY_FAILED", severity: "CRITICAL", status: "ACTIVE", at: null }],
+  };
+
+  it("enseña el nombre y la decisión de Meta, el usuario, la calidad, el límite, la revisión y las alertas", async () => {
+    const { container } = view(page({ whatsapp: account }));
+    const region = screen.getByRole("region", { name: "La cuenta en Meta" });
+    expect(within(region).getByText("Meta rechazó «Barbería Cultor SL». Motivo: Name format unacceptable")).toBeVisible();
+    expect(within(region).getByText("@barberiacultor")).toBeVisible();
+    expect(within(region).getByText("Media")).toBeVisible();
+    expect(within(region).getByText(/2\.?000 personas al día/)).toBeVisible();
+    expect(within(region).getByText("Rechazada")).toBeVisible();
+    expect(within(region).getByText("Crítica")).toBeVisible();
+    expect(within(region).getByText("Increased capabilities eligibility failed")).toBeVisible();
+    expect(screen.getByRole("link", { name: "La cuenta en Meta" })).toHaveAttribute("href", "#canal-cuenta");
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("un nombre en revisión y un usuario pendiente lo dicen", () => {
+    view(page({ whatsapp: { ...account, name_decision: "PENDING", username_status: "pending", alerts: [] } }));
+    expect(screen.getByText("«Barbería Cultor SL», en revisión en Meta")).toBeVisible();
+    expect(screen.getByText("@barberiacultor, pendiente en Meta")).toBeVisible();
+  });
+
+  it("sin nada que decir, la sección no aparece", () => {
+    const empty = Object.fromEntries(Object.keys(account).map((k) => [k, k === "alerts" ? [] : null])) as unknown as typeof account;
+    view(page({ whatsapp: empty }));
+    expect(screen.queryByRole("region", { name: "La cuenta en Meta" })).toBeNull();
+    view(page({ whatsapp: null }));
+    expect(screen.queryAllByRole("region", { name: "La cuenta en Meta" })).toHaveLength(0);
+  });
+});

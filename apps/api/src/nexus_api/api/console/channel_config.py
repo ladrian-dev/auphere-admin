@@ -32,6 +32,7 @@ from typing import Any, Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from nexus_channels.meta_social import META_SOCIAL_PROVIDERS
 from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 
@@ -44,12 +45,15 @@ from nexus_api.db.models import (
     ChannelConfigChange,
     ChannelSignupLink,
     ChannelStatus,
+    ChannelType,
 )
 from nexus_api.services import channel_config as svc
+from nexus_api.services import meta_social_service
 from nexus_api.services.agent_lifecycle import ChannelFacts, channel_visible_state
 
 from .agent_draft_routes import agent_in_path, etag, parse_revision
 from .deps import ClientScope, client_scope
+from .schemas_channels import MetaSocialOfferOut
 
 router = APIRouter(prefix="/clients/{ref}")
 
@@ -117,6 +121,61 @@ class AgentRefOut(BaseModel):
     name: str
 
 
+class WhatsAppAlertOut(BaseModel):
+    type: str | None = None
+    severity: str | None = None
+    status: str | None = None
+    at: str | None = None
+
+
+class WhatsAppAccountOut(BaseModel):
+    """Spec 050 (4.1, 4.2, 4.4, 8.4): what Meta says about the number, as the
+    webhook and the health cron left it in ``channels.config``. Read only."""
+
+    verified_name: str | None = None
+    name_status: str | None = None
+    name_decision: str | None = None
+    requested_name: str | None = None
+    name_rejection_reason: str | None = None
+    username: str | None = None
+    username_status: str | None = None
+    quality_rating: str | None = None
+    messaging_limit: str | None = None
+    account_review: str | None = None
+    #: Only the alerts still active, newest first.
+    alerts: list[WhatsAppAlertOut] = Field(default_factory=list)
+
+
+def whatsapp_account_of(channel: Channel) -> WhatsAppAccountOut | None:
+    """Pure: the account facts of a Meta WhatsApp number, or ``None``."""
+    if channel.type is not ChannelType.WHATSAPP or channel.provider != "meta":
+        return None
+    cfg = channel.config or {}
+
+    def text(key: str) -> str | None:
+        value = cfg.get(key)
+        return value if isinstance(value, str) and value else None
+
+    alerts = [
+        WhatsAppAlertOut.model_validate(a)
+        for a in reversed(cfg.get("alerts") or [])
+        if isinstance(a, dict) and str(a.get("status") or "").upper() == "ACTIVE"
+    ]
+    return WhatsAppAccountOut(
+        verified_name=text("verified_name"),
+        name_status=text("name_status"),
+        name_decision=text("name_decision"),
+        requested_name=text("requested_name"),
+        name_rejection_reason=text("name_rejection_reason"),
+        username=text("username"),
+        username_status=text("username_status"),
+        quality_rating=text("quality_rating"),
+        messaging_limit=text("messaging_limit"),
+        account_review=text("account_review"),
+        alerts=alerts,
+    )
+
+
 class ChannelPageOut(BaseModel):
     id: uuid.UUID
     type: str
@@ -143,6 +202,8 @@ class ChannelPageOut(BaseModel):
     undo_until: datetime | None = None
     move_targets: list[AgentRefOut] = Field(default_factory=list)
     allowed: list[Action] = Field(default_factory=list)
+    #: Spec 050: the Meta account facts of a WhatsApp number; ``None`` otherwise.
+    whatsapp: WhatsAppAccountOut | None = None
 
 
 class ChangeOut(BaseModel):
@@ -174,9 +235,25 @@ class AgentChannelOut(BaseModel):
 class AgentChannelsOut(BaseModel):
     channels: list[AgentChannelOut]
     pending_link: dict[str, Any] | None = None
+    #: Spec 049: Instagram / Messenger this partner may connect (with the
+    #: Facebook Login for Business configuration each opens); ``None`` when
+    #: the partner does not have them — the wizard keeps them unavailable.
+    meta_social: MetaSocialOfferOut | None = None
 
 
 # ── ayudas ─────────────────────────────────────────────────────────────────
+
+
+def _identifier(channel: Channel) -> str:
+    """What the partner recognises: the number for WhatsApp; for Instagram
+    the @username and for Messenger the Page name (spec 049), never the
+    opaque Meta id."""
+    if channel.provider in META_SOCIAL_PROVIDERS:
+        cfg = channel.config or {}
+        if cfg.get("username"):
+            return f"@{cfg['username']}"
+        return str(cfg.get("name") or channel.provider_identifier)
+    return channel.provider_identifier
 
 
 def _kind(channel: Channel) -> str:
@@ -280,7 +357,7 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
     return ChannelPageOut(
         id=channel.id,
         type=_kind(channel),
-        identifier=channel.provider_identifier,
+        identifier=_identifier(channel),
         method=method_of(channel),
         status=_status(channel),
         problem_reason=channel.problem_reason,
@@ -296,6 +373,7 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
         undo_until=await _undo_until(scope, channel),
         move_targets=move_targets,
         allowed=allowed,
+        whatsapp=whatsapp_account_of(channel),
     )
 
 
@@ -588,13 +666,18 @@ async def agent_channels(
             AgentChannelOut(
                 id=c.id,
                 type=_kind(c),
-                identifier=c.provider_identifier,
+                identifier=_identifier(c),
                 visible_state=visible_of(c),
                 allowed=allowed_of(c),
             )
             for c in rows
         ],
         pending_link=pending,
+        meta_social=(
+            MetaSocialOfferOut.model_validate(meta_social_service.offer(scope.principal.partner))
+            if meta_social_service.enabled_kinds(scope.principal.partner)
+            else None
+        ),
     )
 
 

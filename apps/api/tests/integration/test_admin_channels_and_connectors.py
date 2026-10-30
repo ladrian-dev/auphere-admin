@@ -35,19 +35,29 @@ async def _channel(
         )
 
 
-async def test_the_catalog_names_six_channels_with_their_state(
+async def test_the_catalog_names_seven_channels_with_their_state(
     client, admin_headers, monkeypatch
 ) -> None:
     monkeypatch.setattr(get_settings(), "tiktok_enabled", False, raising=False)
+    monkeypatch.setattr(get_settings(), "meta_social_general_availability", False, raising=False)
     res = await client.get("/admin/channel-catalog", headers=admin_headers)
     assert res.status_code == 200, res.text
     by_key = {c["key"]: c for c in res.json()}
-    assert list(by_key) == ["whatsapp", "tiktok", "instagram", "telegram", "x", "threads"]
+    assert list(by_key) == [
+        "whatsapp",
+        "tiktok",
+        "instagram",
+        "messenger",
+        "telegram",
+        "x",
+        "threads",
+    ]
     assert by_key["whatsapp"]["availability"] == "available"
     assert by_key["tiktok"]["availability"] == "pending"
-    assert {by_key[k]["availability"] for k in ("instagram", "telegram", "x", "threads")} == {
-        "coming_soon"
-    }
+    # Spec 049: built, waiting for Meta; connected from the partner console.
+    assert by_key["instagram"]["availability"] == "pending"
+    assert by_key["messenger"]["availability"] == "pending"
+    assert {by_key[k]["availability"] for k in ("telegram", "x", "threads")} == {"coming_soon"}
 
     monkeypatch.setattr(get_settings(), "tiktok_enabled", True, raising=False)
     on = {

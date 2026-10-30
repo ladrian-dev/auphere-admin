@@ -9,6 +9,8 @@
  * Ninguna respuesta lleva mensajes de clientes finales ni costes.
  */
 
+import type { MetaSocialOffer } from "./channels";
+
 /** A quién responde el agente en este número (32.1): sin decidir, solo el equipo o todos. */
 export type AudienceMode = "unset" | "team_only" | "everyone";
 /** Por dónde se avisa a una persona cuando el agente escala (33.1). */
@@ -47,6 +49,24 @@ export type AgentRef = { id: string; name: string };
 /** Un disparador del escalado del agente, en solo lectura (33.5). */
 export type ChannelTrigger = string | { custom: string };
 
+/** Spec 050: an alert Meta raised on the account, still active. */
+export type WhatsAppAlert = { type: string | null; severity: string | null; status: string | null; at: string | null };
+
+/** Spec 050: what Meta says about a WhatsApp number (webhook and health check). Read only. */
+export type WhatsAppAccount = {
+  verified_name: string | null;
+  name_status: string | null;
+  name_decision: string | null;
+  requested_name: string | null;
+  name_rejection_reason: string | null;
+  username: string | null;
+  username_status: string | null;
+  quality_rating: string | null;
+  messaging_limit: string | null;
+  account_review: string | null;
+  alerts: WhatsAppAlert[];
+};
+
 export type ChannelPage = {
   id: string;
   type: string;
@@ -73,6 +93,8 @@ export type ChannelPage = {
   move_targets: AgentRef[];
   /** Solo lo que esta persona puede hacer (§V). */
   allowed: ChannelAction[];
+  /** Spec 050: la cuenta en Meta de un número de WhatsApp; ausente en los demás. */
+  whatsapp?: WhatsAppAccount | null;
 };
 
 /** Una fila del historial del canal, con el antes y el después (32.7). */
@@ -96,7 +118,12 @@ export type OwnerLinkMode = "coexistence" | "cloud_api" | "whatsapp_login";
 /** El enlace del dueño pendiente: se ve su modo y su caducidad, nunca el enlace (31.7). */
 export type PendingOwnerLink = { id: string; mode: OwnerLinkMode | string; expires_at: string };
 
-export type AgentChannels = { channels: AgentChannel[]; pending_link: PendingOwnerLink | null };
+export type AgentChannels = {
+  channels: AgentChannel[];
+  pending_link: PendingOwnerLink | null;
+  /** Spec 049: Instagram / Messenger this partner may connect, or none. */
+  meta_social?: MetaSocialOffer | null;
+};
 
 /** El enlace recién creado: la URL va **solo** en esta respuesta (31.1). */
 export type OwnerLink = { id: string; url: string; mode: OwnerLinkMode | string; expires_at: string };

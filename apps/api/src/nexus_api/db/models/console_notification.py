@@ -101,6 +101,16 @@ class NotificationKind(str, enum.Enum):
     BUILD_BUDGET_EXHAUSTED = "build.budget.exhausted"
     MODEL_RETIREMENT = "model.retirement"
     MODEL_PRICE_CHANGE = "model.price_change"
+    # Spec 050 — Meta changed something on the client's WhatsApp that stops or
+    # will stop sends. payload: {external_client_ref, template_name?, phone?,
+    # reason?, quality?, category?}
+    TEMPLATE_PAUSED = "template.paused"
+    TEMPLATE_DISABLED = "template.disabled"
+    TEMPLATE_QUALITY_DROPPED = "template.quality_dropped"
+    TEMPLATE_RECATEGORIZED = "template.recategorized"
+    CHANNEL_ACCOUNT_REVIEW = "channel.account_review"
+    CHANNEL_ACCOUNT_ALERT = "channel.account_alert"
+    CHANNEL_NAME_REJECTED = "channel.name_rejected"
 
 
 class NotificationAudience(str, enum.Enum):

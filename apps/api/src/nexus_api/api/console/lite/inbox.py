@@ -46,6 +46,7 @@ from nexus_api.services import conversation_control, inbox_lifecycle, inbox_view
 from nexus_api.services import lite_send_idempotency as idempotency
 from nexus_api.services.conversation_control import VersionMismatch
 from nexus_api.services.inbox_stream import publish_inbox_event
+from nexus_api.services.meta_window import person_window
 
 from .deps import LiteScope, lite_scope
 
@@ -673,9 +674,11 @@ async def _can_send(scope: LiteScope, conv: Conversation) -> Channel:
     if conv.agent_active or conv.assigned_user_id != _me(scope):
         raise _conflict("not_assigned_to_you")
     now = datetime.now(UTC)
-    if conv.last_inbound_at is None or conv.last_inbound_at + inbox_view.WINDOW <= now:
-        raise _conflict("window_closed")
     channel = await scope.session.get(Channel, conv.channel_id)
+    # Spec 049: a person on Instagram / Messenger has 7 days (HUMAN_AGENT).
+    window = person_window(channel.type.value) if channel is not None else inbox_view.WINDOW
+    if conv.last_inbound_at is None or conv.last_inbound_at + window <= now:
+        raise _conflict("window_closed")
     if channel is None or channel.status != ChannelStatus.ACTIVE:
         raise _conflict("channel_disconnected")
     return channel

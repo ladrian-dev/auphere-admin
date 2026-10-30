@@ -2,6 +2,8 @@
 // Source: apps/console/src/i18n/{messages.ts,lanes/inbox.ts,lanes/lite.ts,lanes/home-usage.ts,lanes/business.ts,lanes/builder-channels.ts,lanes/builder-life.ts} (inbox. lite. ui. hu.home.kpi. hu.home.chart.title hu.usage.spend. common.error.backend clients.v2.agent. clients.v2.pause. builder.channel.state. builder.channel.problem. builder.life.action.pause builder.life.action.resume builder.life.pause. builder.life.paused builder.life.resumed business.hours. business.special. business.services. business.locations. business.history. business.prov. business.section. panel.bag.days panel.bag.empty panel.bag.noEstimate) · generator: scripts/gen-i18n.ts
 
 export const liteMessages = {
+  "builder.channel.problem.account_alert": { es: "Meta envió una alerta sobre la cuenta", en: "Meta sent an alert about the account" },
+  "builder.channel.problem.account_review": { es: "Meta no aprobó la revisión de la cuenta", en: "Meta did not approve the account review" },
   "builder.channel.problem.auth_expired": { es: "hay que volver a autorizar", en: "needs authorising again" },
   "builder.channel.problem.coexistence_inactive": { es: "la app lleva días sin abrirse", en: "the app has not been opened for days" },
   "builder.channel.problem.meta_error": { es: "error de Meta", en: "Meta error" },

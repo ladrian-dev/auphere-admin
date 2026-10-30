@@ -43,7 +43,6 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
     MessageStatus,
-    WhatsAppOptOut,
 )
 from nexus_api.schemas.broadcasts import (
     BroadcastAcceptedOut,
@@ -52,6 +51,7 @@ from nexus_api.schemas.broadcasts import (
     BroadcastStatusOut,
     RejectedRecipientOut,
 )
+from nexus_api.services import whatsapp_opt_outs
 from nexus_api.services.channel_routing import (
     CHANNEL_ROLE_NOTIFICATIONS,
     ChannelResolutionError,
@@ -301,14 +301,11 @@ async def create_broadcast(
         # stores or customers/opt-outs fork per format.
         wa_identifier = e164.removeprefix("+")
 
-        opted_out = await session.scalar(
-            sa.select(WhatsAppOptOut.id).where(
-                WhatsAppOptOut.channel_id == channel.id,
-                WhatsAppOptOut.recipient_phone == wa_identifier,
-                WhatsAppOptOut.opted_in_at.is_(None),
-            )
+        # Spec 050 (D6): a broadcast is marketing for any opt-out.
+        opted_out = await whatsapp_opt_outs.blocks(
+            session, channel_id=channel.id, phone=wa_identifier, marketing=True
         )
-        if opted_out is not None:
+        if opted_out:
             _reject("opted_out", phone=e164, variables=recipient.variables)
             continue
 
@@ -328,6 +325,8 @@ async def create_broadcast(
                 "name": payload.template_name,
                 "language": payload.language,
                 "params": {"body": dict(recipient.variables)},
+                "category": resolved.template.category,
+                "broadcast": True,
             },
         )
         session.add(message)

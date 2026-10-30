@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     SmallInteger,
     String,
@@ -97,8 +98,17 @@ class Customer(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         UniqueConstraint("tenant_id", "identifier", name="uq_customers_tenant_identifier"),
     )
 
+    # The phone (digits) when the person had one at creation, the BSUID
+    # otherwise. Never rewritten: it keys the agent's thread and everything
+    # that already points at the person (spec 050, D2).
     identifier: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Migration 0206 — spec 050: Meta's business-scoped user id (``CC.…``),
+    # the phone when known and the WhatsApp username. Meta assigns them; the
+    # model never passes them.
+    bsuid: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     preferences: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     kg_node_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -368,6 +378,14 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         UniqueConstraint(
             "tenant_id", "channel_id", "recipient_phone", name="uq_optout_tenant_channel_phone"
         ),
+        # Garantía 1: (tenant_id, customer_id) → customers (tenant_id, id). A
+        # deleted customer lets go of the column; the opt-out stays by phone.
+        ForeignKeyConstraint(
+            ["tenant_id", "customer_id"],
+            ["customers.tenant_id", "customers.id"],
+            name="fk_optout_customer",
+            ondelete="SET NULL (customer_id)",
+        ),
     )
 
     channel_id: Mapped[uuid.UUID] = mapped_column(
@@ -376,7 +394,15 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         nullable=False,
         index=True,
     )
-    recipient_phone: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Nullable since 0206: a person known only by BSUID has no phone.
+    recipient_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Migration 0206 — spec 050: who opted out, of what, and through which path.
+    # ``marketing`` blocks marketing templates and broadcasts only; ``all``
+    # (every row before 0206) blocks every send but the opt-out confirmation.
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    scope: Mapped[str] = mapped_column(String(12), nullable=False, default="marketing")
+    source: Mapped[str] = mapped_column(String(12), nullable=False, default="keyword")
+    lifted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reason: Mapped[str] = mapped_column(String(40), nullable=False)
     trigger_keyword: Mapped[str | None] = mapped_column(String(80), nullable=True)
     source_wamid: Mapped[str | None] = mapped_column(String(160), nullable=True)
@@ -415,6 +441,11 @@ class WhatsAppTemplateStatus(UUIDPrimaryKey, TimestampMixin, Base):
     template_name: Mapped[str] = mapped_column(String(120), nullable=False)
     language: Mapped[str] = mapped_column(String(20), nullable=False)
     category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Migration 0206 — spec 050: recategorisation (announced and applied) and
+    # Meta's quality score. ``status`` is Meta's value as sent (uppercase).
+    previous_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    pending_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    quality: Mapped[str | None] = mapped_column(String(12), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_event_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

@@ -33,7 +33,7 @@ from tests.conftest import _TRUNCATE_TABLES, TEST_DB_URL
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _API = Path(__file__).resolve().parents[2]
-_BEFORE = "0204_console_v2_for_all"
+_BEFORE = "0207_template_status_check"
 _BOOKING = (
     "booking.check_availability",
     "booking.create_appointment",

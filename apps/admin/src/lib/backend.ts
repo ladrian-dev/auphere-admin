@@ -1034,6 +1034,14 @@ export type PartnerAccessOut = {
   catalog: { id: PartnerModule; kind: "nav" | "assistant" }[];
 };
 
+/** Spec 049: channels switched on for one partner before Meta approves them for all. */
+export type BetaChannel = "instagram" | "messenger";
+export type PartnerBetaChannelsOut = {
+  channels: BetaChannel[];
+  catalog: BetaChannel[];
+  general_availability: boolean;
+};
+
 /** Spec 035: the messaging channels Auphere knows, and whether each can start. */
 export type ChannelAvailability = "available" | "beta" | "pending" | "coming_soon";
 export type ChannelCatalogEntry = {
@@ -1212,11 +1220,32 @@ export type TenantHealth = {
   connectors_attention: number;
 };
 
+/** Spec 050 (5.5): one WhatsApp opt-out of a business, newest first. */
+export type OptOut = {
+  id: string;
+  channel_id: string;
+  channel_identifier: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  phone: string | null;
+  scope: "marketing" | "all" | string;
+  source: "meta" | "keyword" | "operator" | string;
+  reason: string;
+  opted_out_at: string;
+  opted_in_at: string | null;
+  lifted_by: string | null;
+  liftable: boolean;
+};
+
 export type AdminInstance = {
   environment: string;
   schema_revision: string | null;
   commit: string;
   checks: Record<string, string>;
+  /** Spec 050 (3.6): the Graph version, and its expiry when it is 60 days away or less. */
+  meta_graph_version?: string;
+  meta_graph_expires_on?: string | null;
+  meta_graph_days_left?: number | null;
 };
 
 export type PartnerCreateInput = {
@@ -2121,6 +2150,22 @@ export const backend = {
       { method: "DELETE" },
     ),
 
+  listOptOuts: (tenantId: string) =>
+    call<OptOut[]>(`/admin/tenants/${tenantId}/opt-outs`).then((r) => r ?? []),
+
+  liftOptOut: (tenantId: string, optOutId: string, reason: string) =>
+    call<OptOut>(`/admin/tenants/${tenantId}/opt-outs/${optOutId}/lift`, {
+      method: "POST",
+      body: { reason },
+    }),
+
+  /** Spec 050: new two-step PIN for a Cloud API number. The PIN never comes back. */
+  rotateWhatsAppPin: (tenantId: string, channelId: string) =>
+    call<{ status: "rotated"; channel_id: string }>(
+      `/admin/tenants/${tenantId}/channels/${channelId}/two-step-pin`,
+      { method: "POST" },
+    ),
+
   metaTestSend: (tenantId: string, body: MetaTestSendInput) =>
     call<MetaTestSendResult>(
       `/admin/tenants/${tenantId}/integrations/meta/test-send`,
@@ -2528,6 +2573,17 @@ export const backend = {
     call<PartnerAccessOut>(`/admin/partners/${partnerId}/access`, {
       method: "PUT",
       body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  // Spec 049: Instagram / Messenger in beta, per partner.
+  getPartnerBetaChannels: (partnerId: string) =>
+    call<PartnerBetaChannelsOut>(`/admin/partners/${partnerId}/beta-channels`),
+
+  setPartnerBetaChannels: (partnerId: string, channels: BetaChannel[], operatorId: string) =>
+    call<PartnerBetaChannelsOut>(`/admin/partners/${partnerId}/beta-channels`, {
+      method: "PUT",
+      body: { channels },
       headers: { "X-Operator-Id": operatorId },
     }),
 

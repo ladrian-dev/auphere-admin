@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 
-import { BackendError, backend, type PartnerAccessOut, type PartnerModule } from "@/lib/backend";
+import {
+  BackendError,
+  backend,
+  type BetaChannel,
+  type PartnerAccessOut,
+  type PartnerBetaChannelsOut,
+  type PartnerModule,
+} from "@/lib/backend";
 import { requireOperator } from "@/lib/session";
 
 import { ACCESS_ERRORS } from "./messages";
@@ -33,6 +40,22 @@ export async function setPartnerAccessAction(
   const operator = await requireOperator();
   try {
     const data = await backend.setPartnerAccess(partnerId, body, operator.id);
+    revalidatePath(`/partners/${partnerId}`, "layout");
+    if (!data) return { ok: false, error: "Respuesta vacía del backend" };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+/** Spec 049: Instagram / Messenger for this partner before Meta approves them for all. */
+export async function setPartnerBetaChannelsAction(
+  partnerId: string,
+  channels: BetaChannel[],
+): Promise<Result<PartnerBetaChannelsOut>> {
+  const operator = await requireOperator();
+  try {
+    const data = await backend.setPartnerBetaChannels(partnerId, channels, operator.id);
     revalidatePath(`/partners/${partnerId}`, "layout");
     if (!data) return { ok: false, error: "Respuesta vacía del backend" };
     return { ok: true, data };

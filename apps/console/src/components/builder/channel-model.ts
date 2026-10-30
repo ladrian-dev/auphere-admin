@@ -24,7 +24,7 @@ type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 // ── el estado visible ───────────────────────────────────────────────────────
 
 const STATES = new Set(["pending_link", "disconnected", "problem", "paused", "unconfigured", "team_only", "everyone"]);
-const PROBLEMS = new Set(["quality", "auth_expired", "coexistence_inactive", "meta_error"]);
+const PROBLEMS = new Set(["quality", "auth_expired", "coexistence_inactive", "meta_error", "account_review", "account_alert"]);
 
 /** «Solo mi equipo», «Con problemas · calidad baja»… El texto lo pone la consola, el estado la API. */
 export function channelStateText(t: T, state: ChannelVisibleState): string {
@@ -47,7 +47,8 @@ export function isConfiguredState(state: ChannelVisibleState): boolean {
  * página, solo el canal.
  */
 export function channelSummary(t: T, type: string, page: Pick<ChannelPage, "config"> | null): string {
-  const parts = [type === "whatsapp" ? t("builder.channels.whatsapp") : type];
+  const kinds: Record<string, string> = { whatsapp: t("builder.channels.whatsapp"), instagram: "Instagram", messenger: "Messenger" };
+  const parts = [kinds[type] ?? type];
   if (!page) return parts[0]!;
   const { audience, escalation } = page.config;
   if (audience.mode === "team_only") {

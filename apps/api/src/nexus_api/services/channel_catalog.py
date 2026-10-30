@@ -8,7 +8,8 @@ code can actually do and how it is configured:
 * ``beta`` — built and switched on, still young: TikTok with ``tiktok_enabled``.
 * ``pending`` — built, waiting for the provider: TikTok without the flag
   (the TikTok app is under the platform's review).
-* ``coming_soon`` — not built: Instagram (ADR, plan), Telegram, X, Threads.
+* ``pending`` also: Instagram and Messenger (spec 049) until Meta approves them.
+* ``coming_soon`` — not built: Telegram, X, Threads.
 
 Only the operator panel shows ``pending`` and ``coming_soon`` (constitution
 §V, amendment 1.1.0). Neither can be started.
@@ -34,9 +35,16 @@ class ChannelEntry:
     note: str | None = None
 
 
+_META_SOCIAL_NOTE = (
+    "Pendiente de la revisión de Meta. Se conecta desde la consola de partners, "
+    "para los partners con el canal en beta."
+)
+
+
 def channel_catalog() -> list[ChannelEntry]:
     settings = get_settings()
     tiktok_on = bool(settings.tiktok_enabled)
+    ga = bool(settings.meta_social_general_availability)
     return [
         ChannelEntry(
             key="whatsapp",
@@ -51,12 +59,22 @@ def channel_catalog() -> list[ChannelEntry]:
             availability="beta" if tiktok_on else "pending",
             note=None if tiktok_on else "Pendiente de la aprobación de TikTok.",
         ),
+        # Spec 049: built. The connection is the partner's, from its console
+        # (where the Meta reviewer tests it), only for partners switched on in
+        # «Módulos → Canales en beta» until Meta approves the permissions.
         ChannelEntry(
             key="instagram",
             name="Instagram",
             description="Mensajes directos y respuestas a comentarios de Instagram.",
-            availability="coming_soon",
-            note="Diseñado (ADR-030); se construye en su propia spec.",
+            availability="beta" if ga else "pending",
+            note=None if ga else _META_SOCIAL_NOTE,
+        ),
+        ChannelEntry(
+            key="messenger",
+            name="Messenger",
+            description="Mensajes a la Página de Facebook del negocio.",
+            availability="beta" if ga else "pending",
+            note=None if ga else _META_SOCIAL_NOTE,
         ),
         ChannelEntry(
             key="telegram",

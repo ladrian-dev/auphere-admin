@@ -7,6 +7,7 @@ import { ChannelLogo } from "@/components/brand/channel-logo";
 import { CHANNEL_NAME, CHANNEL_STATUS, ROLE_LABEL } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
 
+import { OptOuts } from "./opt-outs";
 import { PendingLinks } from "./pending-links";
 
 export const dynamic = "force-dynamic";
@@ -30,9 +31,10 @@ export default async function TenantChannelsPage({
 }) {
   const { id } = await params;
   const tiktok = (await searchParams).tiktok;
-  const [channels, links] = await Promise.all([
+  const [channels, links, optOuts] = await Promise.all([
     backend.listChannels(id).catch(() => null),
     backend.listSignupLinks(id).catch(() => []),
+    backend.listOptOuts(id).catch(() => null),
   ]);
   const visible = channels?.filter((c) => c.provider !== "qa_playground") ?? null;
   const result = tiktok ? (TIKTOK_RESULT[tiktok] ?? { tone: "error" as const, text: `TikTok respondió con un error (${tiktok}).` }) : null;
@@ -105,6 +107,7 @@ export default async function TenantChannelsPage({
           })}
         </ul>
       )}
+      {optOuts !== null && visible?.some((c) => c.type === "whatsapp") ? <OptOuts tenantId={id} rows={optOuts} /> : null}
     </div>
   );
 }

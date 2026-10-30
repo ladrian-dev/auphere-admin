@@ -30,7 +30,8 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   NEXUS_META_APP_ID: z.string().optional(),
-  NEXUS_META_GRAPH_API_VERSION: z.string().default("v22.0"),
+  NEXUS_META_GRAPH_API_VERSION: z.string().default("v26.0"),
+  NEXUS_META_EMBEDDED_SIGNUP_VERSION: z.enum(["v4", "v5"]).default("v4"),
   NEXUS_META_CONFIG_ID_WA_CLOUD_API: z.string().optional(),
   NEXUS_META_CONFIG_ID_WA_COEXISTENCE: z.string().optional(),
   // Spec 047 (31.3): la consola no presenta el enlace del dueño como «desde su

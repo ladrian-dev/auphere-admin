@@ -58,14 +58,19 @@ export function ChannelWizard({
   connected,
   onConnect,
   headingRef,
+  available = [],
 }: {
   step: WizardStep;
   connected: Partial<Record<ChannelKind["id"], number>>;
   onConnect: (kind: ChannelKind["id"]) => void;
   headingRef?: React.Ref<HTMLHeadingElement>;
+  /** Spec 049: channels switched on for this partner (Instagram, Messenger
+   *  in beta): their card connects instead of saying «soon». */
+  available?: readonly ChannelKind["id"][];
 }) {
   const t = useT();
   const titleId = React.useId();
+  const kinds = CHANNEL_KINDS.map((k) => (available.includes(k.id) ? { ...k, state: "open" as const } : k));
   return (
     <section
       aria-labelledby={titleId}
@@ -110,7 +115,7 @@ export function ChannelWizard({
         </h2>
         <p className="mt-1 max-w-prose text-sm text-pretty text-muted-foreground">{t("channels.proto.pick.intro")}</p>
         <ul aria-label={t("channels.proto.pick.list")} className="mt-5 grid auto-rows-fr grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-4">
-          {CHANNEL_KINDS.map((kind) => (
+          {kinds.map((kind) => (
             <li key={kind.id} className="min-w-0">
               <ChannelCard kind={kind} count={connected[kind.id] ?? 0} onConnect={onConnect} />
             </li>

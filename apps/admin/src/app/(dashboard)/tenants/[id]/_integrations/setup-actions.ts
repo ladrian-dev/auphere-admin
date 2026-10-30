@@ -141,6 +141,21 @@ export async function metaTestSendAction(
  * why this action returns a URL rather than a connected channel — and why
  * the connector row is installed by the callback, not by the panel.
  */
+/** Spec 050: rotate the number's two-step PIN (Cloud API only). */
+export async function rotateWhatsAppPinAction(
+  tenantId: string,
+  channelId: string,
+): Promise<ActionResult<null>> {
+  await requireOperator();
+  try {
+    await backend.rotateWhatsAppPin(tenantId, channelId);
+    revalidatePath(`/tenants/${tenantId}/channels/${channelId}`);
+    return { ok: true, data: null };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
 export async function tiktokAuthorizeUrlAction(
   tenantId: string,
 ): Promise<ActionResult<{ authorize_url: string }>> {
