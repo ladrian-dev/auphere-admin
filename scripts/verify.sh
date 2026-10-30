@@ -47,6 +47,13 @@ step() {
 }
 
 run_lint() {
+  # Lo primero, como en la tubería: ``ci.yml`` instala cada paquete con
+  # ``uv export --locked``, que muere si su ``uv.lock`` no concuerda con su
+  # ``pyproject``. Aquí las pruebas corren todas con el entorno de la API, así
+  # que un lock desfasado de channels o mcp no se notaba (2026-10-22).
+  for pkg in "${PKGS[@]}"; do
+    step "uv.lock al dia · $pkg" uv lock --check --directory "$ROOT/apps/$pkg"
+  done
   for pkg in "${PKGS[@]}"; do
     step "ruff check · $pkg" uv run --directory "$API" \
       ruff check "$ROOT/apps/$pkg/src" "$ROOT/apps/$pkg/tests"

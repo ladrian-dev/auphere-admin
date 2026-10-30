@@ -67,8 +67,12 @@ jobs:
         # Se instala desde el LOCK, no resolviendo de cero. Resolver en cada
         # run hacía que CI corriese con versiones distintas de las locales:
         # así llegaron mypy 2.3 y redis 8.1 sin que nadie los pidiera, con
-        # una tarde de CI en rojo detrás. ``--frozen`` falla si el lock no
+        # una tarde de CI en rojo detrás. ``--locked`` falla si el lock no
         # concuerda con el pyproject, que es justo la señal que queremos.
+        # ``--frozen`` NO la da: exporta el lock tal cual aunque esté
+        # desfasado, y así channels y mcp se estuvieron probando sin el
+        # ``httpx[http2]`` que el worker ya pedía (2026-10-22). Las imágenes
+        # ya exportan con ``--locked`` desde el mismo día.
         #
         # El export se hace DENTRO de cada paquete a propósito: las
         # dependencias de ruta salen como rutas relativas (``-e ../worker``)
@@ -77,7 +81,7 @@ jobs:
           set -euo pipefail
           for pkg in api worker channels mcp; do
             ( cd "apps/$pkg" \
-              && uv export --frozen --extra dev --no-emit-project --no-hashes \
+              && uv export --locked --extra dev --no-emit-project --no-hashes \
                    > "/tmp/ci-$pkg-requirements.txt" \
               && uv pip install --system -r "/tmp/ci-$pkg-requirements.txt" )
           done
@@ -289,7 +293,7 @@ jobs:
           set -euo pipefail
           for pkg in api worker channels mcp; do
             ( cd "apps/$pkg" \
-              && uv export --frozen --extra dev --no-emit-project --no-hashes \
+              && uv export --locked --extra dev --no-emit-project --no-hashes \
                    > "/tmp/lint-$pkg-requirements.txt" \
               && uv pip install --system -r "/tmp/lint-$pkg-requirements.txt" )
           done
