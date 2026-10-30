@@ -264,31 +264,35 @@ async def meta_webhook(
         log.info("webhook.meta.non_whatsapp_object", object=payload.get("object"))
         return {"status": "ignored"}
 
-    # Owner backchannel detection — events whose ``phone_number_id`` belongs
-    # to a registered Auphere owner-channel number are NOT tenant traffic.
-    # Route inbound text to the owner flow; drop everything else (status
-    # callbacks on the backchannel carry no state we track).
-    phone_number_id = extract_phone_number_id(payload)
-    if phone_number_id:
-        # Variante cacheada: para el 100% del tráfico de tenants la
-        # respuesta es "no es un número de Auphere", y averiguarlo costaba
-        # un ida y vuelta a Postgres por mensaje entrante.
-        owner_channel = await resolve_owner_channel_for_inbound(
-            session, redis, provider_phone_id=phone_number_id
-        )
-        if owner_channel is not None:
-            return await _handle_owner_channel_event(
-                payload, channel=owner_channel, session=session, redis=redis
-            )
-
     # Spec 050 (D1): one envelope per element. Meta batches several
     # messages, statuses or echoes per change; every handler below reads
     # the FIRST item of what it is given, so it is given exactly one. A
     # failing element is logged and the rest of the batch goes on: Meta
     # gets its 200 either way (only a bad signature is a non-2xx).
     handled = False
+    owner_result: dict[str, Any] | None = None
     for element in split_into_elements(payload):
         try:
+            # Owner backchannel detection, per element: an event whose
+            # ``phone_number_id`` belongs to a registered Auphere owner-channel
+            # number is NOT tenant traffic. It used to be decided once, by the
+            # FIRST number of the POST, so a batch mixing the owner number and
+            # a client's sent the client's events to the owner flow (QA
+            # 2026-10-30, INC-20). The lookup is cached: for tenant traffic
+            # the answer is «not an Auphere number» without a Postgres trip.
+            phone_number_id = extract_phone_number_id(element.payload)
+            owner_channel = (
+                await resolve_owner_channel_for_inbound(
+                    session, redis, provider_phone_id=phone_number_id
+                )
+                if phone_number_id
+                else None
+            )
+            if owner_channel is not None:
+                owner_result = await _handle_owner_channel_event(
+                    element.payload, channel=owner_channel, session=session, redis=redis
+                )
+                continue
             handled = (
                 await _dispatch_element(
                     element.field, element.payload, session=session, redis=redis
@@ -302,7 +306,10 @@ async def meta_webhook(
                 "webhook.meta.element_failed", field=element.field, error=type(exc).__name__
             )
 
-    return {"status": "ok" if handled else "ignored"}
+    if owner_result is not None and not handled:
+        # Only the owner channel in this POST: its own answer, as before.
+        return owner_result
+    return {"status": "ok" if handled or owner_result is not None else "ignored"}
 
 
 async def _dispatch_element(
