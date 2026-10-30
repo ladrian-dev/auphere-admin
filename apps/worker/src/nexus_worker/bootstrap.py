@@ -668,6 +668,9 @@ async def run_service(
         egress=egress,
         metering=metering,
     )
+    from nexus_api.services.email import log_delivery_mode
+
+    log_delivery_mode(service_name)
     # One heartbeat per PROCESS, outside the leader gate: a hot-standby
     # scheduler must keep beating or the dead-worker alert pages for a
     # replica that is doing exactly its job.

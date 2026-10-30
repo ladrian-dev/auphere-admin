@@ -268,11 +268,6 @@ class Settings(BaseSettings):
             name.strip() for name in self.expected_worker_services.split(",") if name.strip()
         )
 
-    # WP-06 (plataforma v2, Fase 0): destination for platform-level alerts
-    # (queue backlog, DLQ entries, dead workers, cache-ratio collapse, Meta
-    # failure bursts). Unset → alerts are logged at ERROR only.
-    operator_alert_email: str | None = None
-
     # Spec 047 (D14): el conocimiento. Lo que cabe entero en el prompt de un agente
     # (el del negocio más el suyo) y el modelo de embeddings (Titan v2 por el
     # proxy). Sin modelo, la recuperación es solo por palabras.
@@ -565,28 +560,35 @@ class Settings(BaseSettings):
             )
         )
 
-    # Transactional email (Resend HTTP API) — used for the monthly partner
-    # receipt. When the key is unset/placeholder the email step no-ops with a
-    # warning, so the receipt is still generated and visible in the panel.
+    # Transactional email (Resend HTTP API, spec 051). Every email is a kind of
+    # ``services/email_catalog.py`` sent through a template published in
+    # Resend; the body lives there, the subject and variables here.
     resend_api_key: str = "dev-resend-key-change-me"
-    receipt_from_email: str = "Auphere <facturacion@auphere.com>"
-    #: El alta tiene **su propio** remitente y no hereda el de los recibos.
-    #: Salía de «facturación» sin que nadie lo decidiera —``send_email`` cae a
-    #: ``receipt_from_email`` cuando quien llama no pasa remitente—, y el primer
-    #: correo que recibe alguien que no te conoce no puede venir de ahí: todavía
-    #: no hay nada que facturar, invita a marcarlo como no deseado y ensucia la
-    #: reputación de la dirección que sí tiene que llegar cuando haya recibos.
+    #: Spec 051, R1. ``resend`` lo envía todo; ``access`` solo los correos de
+    #: acceso (alta, invitaciones, contraseña) y el resto queda en el registro
+    #: (``email.suppressed``); ``log`` no envía nada. ``auto`` es ``resend`` en
+    #: producción, ``access`` en staging y ``log`` en local y CI. Staging
+    #: llevaba la clave de Resend en su secreto y escribía a personas reales
+    #: alertas, recibos y avisos: **la clave ya no decide qué sale, decide
+    #: esto**. ``resend`` en staging es para probar una plantilla a propósito, y
+    #: el arranque lo deja dicho. Producción con ``log`` o ``access`` no
+    #: arranca (guardia de abajo): es lo que permite que un enlace de un solo
+    #: uso acabe en un registro sin que nunca sea el de producción.
+    email_delivery: Literal["auto", "resend", "access", "log"] = "auto"
+    #: Recibos y cobros. Las direcciones de Auphere van en inglés (spec 051,
+    #: revisión del owner del 2026-10-30).
+    receipt_from_email: str = "Auphere <billing@auphere.com>"
+    #: El remitente de todo lo que no es un cobro. **No hereda el de los
+    #: recibos**: el alta salía de facturación por herencia (spec 006), y el
+    #: primer correo que recibe alguien que no te conoce no puede venir de ahí.
+    #: Tampoco es un «no-reply» desde la spec 051: con ``email_reply_to`` en
+    #: soporte, un remitente que dice «no respondas» se contradice.
     #: **El dominio tiene que estar verificado en el proveedor** o el envío se
     #: rechaza con un 403 (pasó en staging el 2026-09-14).
-    signup_from_email: str = "Auphere <no-reply@auphere.com>"
-    #: Sumidero SMTP local (spec 011, D-4). **Vacía en producción, y no es un
-    #: descuido**: el repliegue sólo se enciende cuando NO hay clave de Resend
-    #: y SÍ hay esto, combinación que producción no tiene. Por eso no entra en
-    #: la guardia de arranque de secretos de fábrica: no es un secreto, y
-    #: puesta en producción no haría nada porque el proveedor gana.
-    #: En local, ``smtp://mailhog:1025`` — el contenedor lleva en
-    #: ``docker-compose.yml`` sin conectar a nada desde que se eligió Resend.
-    smtp_url: str = ""
+    notifications_from_email: str = "Auphere <notifications@auphere.com>"
+    #: A dónde llega una respuesta a cualquier correo (spec 051, D3). Un buzón
+    #: que alguien lee: el correo lo firma «el equipo de Auphere».
+    email_reply_to: str = "support@auphere.com"
     #: A quién escribe alguien a quien le han cambiado la contraseña sin
     #: pedirlo (spec 011, R4.2). **Sin defecto a propósito**: no se inventa una
     #: dirección que quizá nadie lee, y la del operador es la de una persona,
@@ -600,9 +602,23 @@ class Settings(BaseSettings):
     security_contact_email: str = ""
 
     @property
-    def email_enabled(self) -> bool:
+    def email_mode(self) -> Literal["resend", "access", "log"]:
+        """El modo resuelto (spec 051, R1.1) según el entorno."""
+        if self.email_delivery == "auto":
+            if self.is_prod:
+                return "resend"
+            return "access" if self.environment.lower() == "staging" else "log"
+        return self.email_delivery
+
+    @property
+    def email_delivers(self) -> bool:
+        """Hay un proveedor que de verdad envía: un modo que envía y clave real.
+
+        Es la pregunta que separa «este entorno no manda correo» (no es una
+        avería) de «el proveedor dijo que no» (sí lo es), spec 006 §5 ter.
+        """
         key = self.resend_api_key
-        return bool(key) and not key.startswith("dev-")
+        return self.email_mode != "log" and bool(key) and not key.startswith("dev-")
 
     # ── Partner console (PLAN-CONSOLE-V1, CP-03) ────────────────────────
     #
@@ -791,6 +807,12 @@ class Settings(BaseSettings):
         # destino, y su ausencia sólo se paga en producción.
         if not self.security_contact_email.strip():
             offenders.append("NEXUS_SECURITY_CONTACT_EMAIL")
+        # Spec 051 (R1.3). Un correo retenido escribe sus enlaces de un solo
+        # uso en los registros. Es aceptable fuera de producción porque
+        # producción no puede retener nada; y retener aquí dejaría a partners
+        # sin recibos ni avisos sin que nada lo dijera.
+        if self.email_delivery in {"log", "access"}:
+            offenders.append("NEXUS_EMAIL_DELIVERY")
         if offenders:
             raise ValueError(
                 "Refusing to boot in production with dev placeholder secrets: "

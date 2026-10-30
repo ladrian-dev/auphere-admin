@@ -1,9 +1,10 @@
-"""Platform watcher (WP-06, plataforma v2 Fase 0) — alerts with a recipient.
+"""Platform watcher (WP-06, plataforma v2 Fase 0) — platform-level alerts.
 
 Evaluates the platform-level alert conditions that no existing cron covers
-and delivers each one to a human: email to ``NEXUS_OPERATOR_ALERT_EMAIL``
-(plus ERROR log always), and — for the tenant-scoped burst — an audit_log
-row that the operator alerter turns into the approved WhatsApp template.
+and records each one as an ERROR ``platform_alert`` log, which the monitoring
+picks up; for the tenant-scoped burst it also writes an audit_log row that the
+operator alerter turns into the approved WhatsApp template. Since spec 051
+(requirement 9.1) none of them is emailed.
 
 The eight Fase-0 alerts and where they live:
 
@@ -75,6 +76,9 @@ def _expected_services() -> tuple[str, ...]:
 
 # One notification per condition per this window (seconds).
 DEDUP_TTL_S = 3_600
+#: Spec 051: every internal alert says ``[Auphere]``, like the others; the
+#: old ``[Nexus]`` prefix is gone.
+SUBJECT_PREFIX = "[Auphere] "
 
 
 @dataclass
@@ -109,7 +113,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                         Alert(
                             kind="queue_backlog",
                             dedup_key=f"nexus:alert:sent:queue_backlog:{watched}:{hour_window}",
-                            subject="[Nexus] Cola inbound atascada",
+                            subject="[Auphere] Cola inbound atascada",
                             detail=(
                                 f"La entrada más vieja de {watched} lleva "
                                 f"{oldest_s:.0f}s pendiente ({pending} entradas en el PEL)."
@@ -126,7 +130,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                 Alert(
                     kind="dlq_entries",
                     dedup_key=f"nexus:alert:sent:dlq:{hour_window}",
-                    subject="[Nexus] Mensajes en la DLQ",
+                    subject="[Auphere] Mensajes en la DLQ",
                     detail=(
                         f"{dlq_len} entradas en {DLQ_STREAM}. Cada una es un mensaje "
                         "de cliente que agotó sus reintentos — revisar y reinyectar."
@@ -148,7 +152,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                         Alert(
                             kind="turn_error_burst",
                             dedup_key=f"nexus:alert:sent:turn_errors:{tenant_str}:{window}",
-                            subject="[Nexus] Ráfaga de errores de turno",
+                            subject="[Auphere] Ráfaga de errores de turno",
                             detail=(
                                 f"El tenant {tenant_str} lleva {count} turnos fallidos "
                                 "en la ventana de 10 minutos."
@@ -180,7 +184,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                     Alert(
                         kind="worker_dead",
                         dedup_key=f"nexus:alert:sent:worker_dead:{service}:{hour_window}",
-                        subject=f"[Nexus] Servicio sin latido: {service}",
+                        subject=f"[Auphere] Servicio sin latido: {service}",
                         detail=(
                             f"{service} no reporta heartbeat desde hace "
                             f"{silent_for:.0f}s (umbral {HEARTBEAT_DEAD_AFTER_S:.0f}s)."
@@ -201,7 +205,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                     Alert(
                         kind="cache_ratio_low",
                         dedup_key=f"nexus:alert:sent:cache_ratio:{hour_window}",
-                        subject="[Nexus] Prompt cache degradado",
+                        subject="[Auphere] Prompt cache degradado",
                         detail=(
                             f"Cache read ratio {ratio:.2f} (< {CACHE_RATIO_THRESHOLD}) "
                             f"con {total} tokens en la hora. Hay un invalidador "
@@ -223,7 +227,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                     Alert(
                         kind="meta_failure_burst",
                         dedup_key=f"nexus:alert:sent:metafail:{code}:{window}",
-                        subject=f"[Nexus] Fallos de envío Meta (código {code})",
+                        subject=f"[Auphere] Fallos de envío Meta (código {code})",
                         detail=(
                             f"{count} envíos fallidos con el código {code} en la "
                             "ventana de 10 minutos."
@@ -272,18 +276,9 @@ async def _notify(alert: Alert) -> None:
     if alert.tenant_id is not None:
         with contextlib.suppress(Exception):
             await _write_tenant_audit_row(alert)
-    from nexus_api.config import get_settings
-
-    settings = get_settings()
-    if settings.operator_alert_email:
-        from nexus_api.services.email import send_email
-
-        with contextlib.suppress(Exception):
-            await send_email(
-                to=settings.operator_alert_email,
-                subject=alert.subject,
-                html=f"<p>{alert.detail}</p><p>kind: <code>{alert.kind}</code></p>",
-            )
+    # Spec 051 (requisito 9.1): sin correo. La salud de la plataforma la vigila
+    # la monitorización sobre este ``platform_alert`` de nivel error; un correo
+    # por hora con la misma DLQ enterraba lo que sí había que leer.
 
 
 async def process_tick(redis: Redis, *, now: float | None = None) -> list[Alert]:

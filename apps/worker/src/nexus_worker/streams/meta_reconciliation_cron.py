@@ -5,8 +5,9 @@ guardado. El webhook anota el ``wamid`` de cada entrante que encola
 (``nexus_api.services.meta_reconciliation``); este cron lo busca en
 ``messages``. Lo que Meta entregó y la base no tiene se perdió por el camino
 —el stream, el consumidor, la DLQ— y es exactamente lo que el requisito 2 dice
-que no puede pasar: Auphere se entera (``ops.meta_reconciliation``, admin y
-correo, una vez al día).
+que no puede pasar: Auphere se entera (``ops.meta_reconciliation``, en el admin
+y en el registro con nivel de error, una vez al día). Desde la spec 051
+(requisito 9.2) no hay correo: lo recoge la monitorización.
 
 - **Por ``wamid``, no por hora.** Un mensaje entregado a las 23:59:59 y guardado
   a las 00:00:01 está guardado; se busca con una hora de margen a cada lado.
@@ -35,7 +36,6 @@ import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, MetaReconciliationRun, Tenant
-from nexus_api.services.email import send_email
 from nexus_api.services.meta_reconciliation import delivered_key
 from redis.asyncio import Redis
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -70,13 +70,6 @@ class ReconciliationReport:
     channels_with_diff: int = 0
     missing: int = 0
     diffs: list[dict[str, Any]] = field(default_factory=list)
-
-
-def _alert_email() -> str | None:
-    from nexus_api.config import get_settings
-
-    email: str | None = get_settings().operator_alert_email
-    return email
 
 
 def _decode(values: Any) -> list[str]:
@@ -183,35 +176,16 @@ async def reconcile_day(day: date, *, redis: Redis | None = None) -> Reconciliat
 
 
 async def _alert(report: ReconciliationReport) -> None:
-    """``ops.meta_reconciliation``: admin (el log, y la fila para T172) y correo."""
+    """``ops.meta_reconciliation``: el registro con nivel de error, que recoge
+    la monitorización, y la fila de cada canal para el admin (T172)."""
     log.error(
         "ops.meta_reconciliation",
         day=report.day.isoformat(),
         missing=report.missing,
         channels_with_diff=report.channels_with_diff,
         channels=report.diffs,
+        hint="Revisa la DLQ del stream de entrantes y el consumidor.",
     )
-    to = _alert_email()
-    if not to:
-        return
-    rows = "".join(
-        f"<li>cliente <code>{d['tenant_id']}</code> · canal <code>{d['channel_id']}</code>: "
-        f"{d['missing']} sin guardar</li>"
-        for d in report.diffs
-    )
-    with contextlib.suppress(Exception):
-        await send_email(
-            to=to,
-            subject=(
-                f"[Auphere] Conciliación con Meta {report.day.isoformat()}: "
-                f"{report.missing} mensajes sin guardar"
-            ),
-            html=(
-                "<p>Meta entregó mensajes que la base no tiene. Revisa la DLQ del "
-                "stream de entrantes y el consumidor.</p>"
-                f"<ul>{rows}</ul>"
-            ),
-        )
 
 
 async def run_meta_reconciliation_cron(

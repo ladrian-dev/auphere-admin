@@ -95,10 +95,10 @@ def test_every_public_route_has_a_probe() -> None:
 async def test_without_credentials_nothing_of_a_client_comes_back(
     client, db_session, console_world, route: tuple[str, str], monkeypatch
 ) -> None:
-    async def _no_mail(**_: Any) -> bool:
+    async def _no_mail(*_: Any, **__: Any) -> bool:
         return True
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _no_mail)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _no_mail)
     w = console_world["a"]
     email = f"sonda-{uuid.uuid4().hex[:6]}@cliente.test"
     await add_client_member(

@@ -184,3 +184,48 @@ async def test_the_burst_row_carries_a_target_so_it_is_written(monkeypatch) -> N
     assert len(added) == 1
     assert added[0].target == f"tenant:{tenant}"
     assert added[0].action == "platform.turn_error_burst"
+
+
+async def test_every_subject_says_auphere_not_nexus(delivered) -> None:
+    """Spec 051 (catálogo §20): las alertas de plataforma dejan ``[Nexus]``."""
+    redis = fakeaioredis.FakeRedis()
+    await redis.xadd(pw.DLQ_STREAM, {"dlq_error": "boom"})
+    window = int(time.time()) // 600
+    await redis.set(f"nexus:alert:turn_errors:{uuid.uuid4()}:{window}", "6")
+    await redis.set(f"nexus:alert:metafail:131047:{window}", "50")
+
+    out = await pw.process_tick(redis)
+
+    assert {a.kind for a in out} >= {"dlq_entries", "turn_error_burst", "meta_failure_burst"}
+    for alert in out:
+        assert alert.subject.startswith("[Auphere] "), alert.subject
+        assert "[Nexus]" not in alert.subject
+
+
+async def test_an_alert_is_logged_and_never_emailed(monkeypatch) -> None:
+    """Spec 051, R9.1: la salud de la plataforma la vigila la monitorización
+    (Datadog) por el registro; el correo enterraba lo que sí había que leer."""
+    from structlog.testing import capture_logs
+
+    sent: list[dict] = []
+
+    async def _send(kind, **kw) -> bool:
+        sent.append({"kind": kind, **kw})
+        return True
+
+    monkeypatch.setattr("nexus_api.services.email.send_template", _send)
+    alert = pw.Alert(
+        kind="dlq_entries",
+        dedup_key="k",
+        subject="[Auphere] Mensajes en la DLQ",
+        detail="3 entradas en la DLQ",
+        count=3,
+    )
+
+    with capture_logs() as logs:
+        await pw._notify(alert)
+
+    assert sent == []
+    [event] = [e for e in logs if e["event"] == "platform_alert"]
+    assert event["log_level"] == "error"
+    assert (event["kind"], event["detail"]) == ("dlq_entries", "3 entradas en la DLQ")

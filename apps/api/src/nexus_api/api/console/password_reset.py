@@ -12,7 +12,7 @@ Lo que gobierna este fichero entero
 **Pedir un enlace responde siempre lo mismo.** Cuatro caminos, una respuesta:
 
 1. la dirección **no tiene cuenta**;
-2. el **envío falló** — ``send_email`` no lanza, devuelve ``False``;
+2. el **envío falló** — ``send_template`` no lanza, devuelve ``False``;
 3. se pasó el **tope** de peticiones;
 4. tiene cuenta y todo fue bien.
 

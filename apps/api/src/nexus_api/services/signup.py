@@ -164,32 +164,62 @@ async def complete_signup(
 async def send_signup_mail(*, email: str, token: str | None, locale: str = "es") -> bool:
     """Dos correos distintos, una sola respuesta HTTP.
 
-    Con ``token`` es el enlace del alta; sin él, la dirección ya tiene cuenta y
-    lo que llega es «ya tienes cuenta, entra por aquí». Quien llamó no puede
-    distinguir los dos casos: la diferencia sólo la ve quien abre el buzón, que
-    es precisamente el dueño de la dirección.
+    Con ``token`` es el enlace del alta (``signup_link``); sin él, la dirección
+    ya tiene cuenta y lo que llega es «ya tienes una cuenta, inicia sesión»
+    (``signup_existing``). Quien llamó no puede distinguir los dos casos: la
+    diferencia sólo la ve quien abre el buzón, que es precisamente el dueño de
+    la dirección. Por eso los dos tipos comparten remitente en el catálogo
+    (spec 051, R5.3): si vinieran de sitios distintos, el remitente delataría
+    cuál tocó.
 
     **Vive aquí y no en el router de la consola** desde que el panel de operador
     puede reenviar el enlace (R8.2). Dos sitios que mandan el mismo correo con
     dos plantillas distintas es cómo se empieza a tener dos productos.
+
+    El idioma es el del formulario, con la regla de la spec 051: inglés solo si
+    se pide inglés. Antes era al revés —todo lo que no fuera ``es`` salía en
+    inglés— y el alta era el único correo que lo hacía así.
     """
     from nexus_api.config import get_settings
-    from nexus_api.services.email import send_email
+    from nexus_api.services.email import send_template
+    from nexus_api.services.email_catalog import EmailKind, console_link, email_locale
 
-    settings = get_settings()
-    base = settings.console_base_url.rstrip("/")
+    lang = email_locale(locale)
+    # ``send_template`` nunca lanza. Devuelve False tanto si este entorno no
+    # envía como si el proveedor rechazó, y **quien llama tiene que
+    # distinguirlo** con ``settings.email_delivers``: lo primero es una
+    # decisión de despliegue, lo segundo una avería. El remitente no se pasa:
+    # sale de la ficha del tipo, que no es la de los cobros.
     if token is not None:
-        subject = "Crea tu cuenta de Auphere" if locale == "es" else "Create your Auphere account"
-        link = f"{base}/signup/{token}"
-        body = f'<p><a href="{link}">{link}</a></p>'
-    else:
-        subject = "Ya tienes cuenta en Auphere" if locale == "es" else "You already have an account"
-        body = f'<p><a href="{base}/login">{base}/login</a></p>'
-    # ``send_email`` nunca lanza. Devuelve False tanto si no hay proveedor como
-    # si el proveedor rechazó, y **quien llama tiene que distinguirlo**: lo
-    # primero es una decisión de despliegue, lo segundo una avería.
-    # Remitente **explícito**: sin él, ``send_email`` hereda el de los recibos
-    # y el alta acaba saliendo de «facturación».
-    return await send_email(
-        to=email, subject=subject, html=body, from_addr=settings.signup_from_email
+        return await send_template(
+            EmailKind.SIGNUP_LINK,
+            to=email,
+            subject=(
+                "Confirm your email to create your Auphere account"
+                if lang == "en"
+                else "Confirma tu correo para crear tu cuenta en Auphere"
+            ),
+            variables={
+                "EXPIRES_IN": _hours(get_settings().signup_token_ttl_hours, lang),
+                "SIGNUP_URL": console_link(f"/signup/{token}"),
+            },
+            locale=lang,
+        )
+    return await send_template(
+        EmailKind.SIGNUP_EXISTING,
+        to=email,
+        subject=(
+            "You already have an Auphere account"
+            if lang == "en"
+            else "Ya tienes una cuenta en Auphere"
+        ),
+        variables={"LOGIN_URL": console_link("/login"), "FORGOT_URL": console_link("/forgot")},
+        locale=lang,
     )
+
+
+def _hours(n: int, lang: str) -> str:
+    """«24 horas» / «24 hours», en singular para una."""
+    if lang == "en":
+        return f"{n} hour" if n == 1 else f"{n} hours"
+    return f"{n} hora" if n == 1 else f"{n} horas"

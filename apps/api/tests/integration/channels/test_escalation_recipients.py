@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -38,6 +39,7 @@ from nexus_api.services import channel_config
 from nexus_api.services.agent_spec.review import load_input, review
 from nexus_api.services.agent_spec.schema import AgentSpec
 from nexus_api.services.channel_config import ChannelConfigError, ConfigIn, Recipient
+from nexus_api.services.email_catalog import EmailKind
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -53,13 +55,18 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
     async def _auphere(phone: str, template: str, params: list[str]) -> None:
         out["auphere"].append((phone, template, params))
 
-    async def _email(*, to: str, subject: str, html: str, **_kw: Any) -> bool:
-        out["email"].append((to, subject, html))
+    async def _email(kind: EmailKind, **kw: Any) -> bool:
+        out["email"].append({"kind": kind, **kw})
         return True
 
     monkeypatch.setattr(operator_alerts, "send_from_auphere", _auphere)
-    monkeypatch.setattr("nexus_api.services.email.send_email", _email)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _email)
     return out
+
+
+def _shown(mail: dict[str, Any]) -> str:
+    """Todo lo que lee quien abre el correo: el asunto y las variables."""
+    return json.dumps([mail["subject"], mail["variables"]], ensure_ascii=False)
 
 
 async def _configure(
@@ -176,9 +183,18 @@ async def test_each_recipient_hears_by_its_way_from_the_channel_number(
     assert call["from_phone"] == info["business_phone"]
     assert call["recipient"] == "+34600555001"
     assert call["params"] == {"body": ["Lucía", "Quiere hablar con el dueño"]}
-    # El correo, con el mismo resumen mínimo.
-    assert [to for to, _s, _h in sent["email"]] == ["recepcion@cultor.es"]
-    assert "Lucía" in sent["email"][0][2] and "Quiere hablar con el dueño" in sent["email"][0][2]
+    # El correo, con el mismo resumen mínimo (spec 051, catálogo §17).
+    [mail] = sent["email"]
+    assert mail["to"] == ["recepcion@cultor.es"]
+    assert mail["kind"] == EmailKind.CONVERSATION_ESCALATED
+    assert mail["subject"] == "Una conversación con Lucía necesita tu atención"
+    assert mail["variables"]["CONTACT"] == "Lucía"
+    assert mail["variables"]["REASON_LINE"] == (
+        "El motivo que ha indicado el agente es: «Quiere hablar con el dueño»."
+    )
+    assert mail["variables"]["INBOX_URL"].endswith("/inbox")
+    assert mail["variables"]["INBOX_URL"].startswith("http"), "R2.6: enlace absoluto"
+    assert mail["tenant_id"] == info["tenant_id"], "garantía 6: el correo lleva el negocio"
     # Ni el dueño de antes ni el número de Auphere: el canal tiene los suyos.
     assert sent["auphere"] == []
     sm = get_sessionmaker()
@@ -220,8 +236,14 @@ async def test_the_summary_is_optional_and_never_reaches_a_partner_person(
     await _configure(info, [Recipient(name="Ana", via="email", email=partner_person)])
     await _escalate(info, "Reclama un cobro")
     await _process_pending(get_sessionmaker(), {"meta": fake_adapter})
-    html = sent["email"][0][2]
-    assert "Lucía" not in html and "Reclama un cobro" not in html, "nunca a una persona del partner"
+    [mail] = sent["email"]
+    shown = _shown(mail)
+    assert "Lucía" not in shown and "Reclama un cobro" not in shown, (
+        "nunca a una persona del partner"
+    )
+    assert mail["variables"]["CONTACT"] == "un cliente"
+    assert mail["variables"]["REASON_LINE"] == "Abre la conversación para ver los detalles."
+    assert mail["subject"] == "Una conversación con un cliente necesita tu atención"
 
     sent["email"].clear()
     await _configure(

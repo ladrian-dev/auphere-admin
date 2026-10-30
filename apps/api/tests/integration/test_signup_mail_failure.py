@@ -12,10 +12,12 @@ pidiendo las dos altas y exigiendo la misma respuesta.
 
 Hay una distinción que sí importa:
 
-- **Sin proveedor configurado** (desarrollo) → 202. No es una avería, es una
-  decisión de despliegue: ese entorno no manda correo y nunca prometió hacerlo.
-- **Con proveedor configurado que rechaza** → 502. Eso es una avería, y
-  callársela convierte el alta en un callejón sin salida silencioso.
+- **Sin proveedor que envíe** (desarrollo, o staging en modo registro desde la
+  spec 051) → 202. No es una avería, es una decisión de despliegue: ese entorno
+  no manda correo y nunca prometió hacerlo.
+- **Con proveedor que envía y rechaza** (``settings.email_delivers``: modo
+  ``resend`` y clave real) → 502. Eso es una avería, y callársela convierte el
+  alta en un callejón sin salida silencioso.
 """
 
 from __future__ import annotations
@@ -45,23 +47,35 @@ def _signup_on(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 def _provider_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Proveedor configurado que dice que no — el 403 real de staging."""
+    """Proveedor que envía y dice que no — el 403 real de staging."""
+    monkeypatch.setattr(get_settings(), "email_delivery", "resend", raising=False)
     monkeypatch.setattr(get_settings(), "resend_api_key", "re_una_clave_de_verdad", raising=False)
+    assert get_settings().email_delivers
 
-    async def _fake(**_kwargs: Any) -> bool:
+    async def _fake(*_args: Any, **_kwargs: Any) -> bool:
         return False
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
 
 
 def _no_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Entorno sin correo: el propio `send_email` avisa y devuelve False."""
+    """Entorno sin clave: el propio ``send_template`` avisa y devuelve False.
+
+    Sin doble a propósito: es el camino real de un entorno que no envía.
+    """
+    monkeypatch.setattr(get_settings(), "email_delivery", "resend", raising=False)
     monkeypatch.setattr(get_settings(), "resend_api_key", "", raising=False)
+    assert not get_settings().email_delivers
 
-    async def _fake(**_kwargs: Any) -> bool:
-        return False
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+def _log_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Staging y local desde la spec 051: el correo queda en el registro.
+
+    Aunque haya clave: en modo registro la clave ya no decide nada.
+    """
+    monkeypatch.setattr(get_settings(), "email_delivery", "log", raising=False)
+    monkeypatch.setattr(get_settings(), "resend_api_key", "re_una_clave_de_verdad", raising=False)
+    assert not get_settings().email_delivers
 
 
 class TestUnCorreoQueNoSaleNoSeAnunciaComoEnviado:
@@ -115,5 +129,18 @@ class TestUnCorreoQueNoSaleNoSeAnunciaComoEnviado:
             "/console/signup",
             json={"email": f"dev-{uuid.uuid4().hex[:8]}@agencia.com"},
             headers=_svc("203.0.113.43"),
+        )
+        assert r.status_code == 202
+
+    async def test_en_modo_registro_sigue_siendo_202(
+        self, client: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Staging no envía y no está averiado: el enlace queda en el registro
+        (``email.suppressed``) para poder completar el alta leyéndolo."""
+        _log_mode(monkeypatch)
+        r = await client.post(
+            "/console/signup",
+            json={"email": f"staging-{uuid.uuid4().hex[:8]}@agencia.com"},
+            headers=_svc("203.0.113.44"),
         )
         assert r.status_code == 202

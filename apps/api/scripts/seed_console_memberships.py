@@ -21,8 +21,10 @@ Uso (lee NEXUS_DATABASE_URL del entorno):
 
 Opciones: ``--role`` (owner por defecto), ``--reissue`` (revoca la
 pendiente y emite otra), ``--console-origin https://console.auphere.com``
-(prefijo del enlace impreso), ``--email`` (intenta enviar el enlace con
-``services/email.py``; best-effort — el enlace se imprime SIEMPRE).
+(origen del enlace; sin él, el de la consola del entorno,
+``console_base_url``), ``--email`` (manda la invitación de equipo del
+catálogo, ``team_invite`` de la spec 051, en el idioma de la cuenta de la
+persona si ya tiene una; best-effort — el enlace se imprime SIEMPRE).
 
 ``--set-password '…'`` es el atajo de **desarrollo y piloto**: crea el
 principal y la membresía directamente, sin invitación ni enlace. Sirve
@@ -41,6 +43,7 @@ import asyncio
 import os
 import sys
 from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -56,6 +59,60 @@ from nexus_api.db.models import (
 from nexus_api.repositories.partner_membership import PartnerInvitationRepository
 
 ACCEPT_PATH = "/invite/{token}"
+
+
+def invitation_link(token: str, console_origin: str) -> str:
+    """El enlace **absoluto** de aceptación.
+
+    Con ``--console-origin``, ese origen; sin él, el de la consola del entorno.
+    Antes, sin origen, se imprimía y se enviaba la ruta relativa, que ningún
+    cliente de correo sabe abrir.
+    """
+    from nexus_api.services.email_catalog import console_link
+
+    path = ACCEPT_PATH.format(token=token)
+    return f"{console_origin.rstrip('/')}{path}" if console_origin else console_link(path)
+
+
+async def email_invitation(
+    *,
+    email: str,
+    partner: Any,
+    role: str,
+    accept_url: str,
+    expires_at: datetime,
+    locale: str,
+) -> bool:
+    """La invitación de equipo del catálogo (``team_invite``).
+
+    Aquí no invita una persona del partner sino Auphere. El asunto no nombra a
+    quien invita: «El equipo de Auphere te ha invitado a… en Auphere» repetía
+    la marca y sonaba a plantilla. Nunca lanza: devuelve si salió.
+    """
+    from nexus_api.services.email import send_template
+    from nexus_api.services.email_catalog import ROLE_LABELS, EmailKind, format_day
+
+    inviter = "Auphere"
+    subject = (
+        f"You're invited to join {partner.name} on Auphere"
+        if locale == "en"
+        else f"Te han invitado a unirte a {partner.name} en Auphere"
+    )
+    sent: bool = await send_template(
+        EmailKind.TEAM_INVITE,
+        to=email,
+        subject=subject,
+        variables={
+            "INVITER": inviter,
+            "PARTNER_NAME": partner.name,
+            "ROLE_LABEL": ROLE_LABELS[locale].get(role, role),
+            "EXPIRES_ON": format_day(expires_at.date(), locale),
+            "ACCEPT_URL": accept_url,
+        },
+        locale=locale,
+        partner_id=partner.id,
+    )
+    return sent
 
 
 async def _seed_with_password(
@@ -225,33 +282,37 @@ async def main() -> int:
         invitation, token = await PartnerInvitationRepository(session).create(
             partner_id=partner.id, email=email, role=args.role, invited_by=None
         )
-        accept_path = ACCEPT_PATH.format(token=token)
-        link = (
-            f"{args.console_origin.rstrip('/')}{accept_path}"
-            if args.console_origin
-            else accept_path
-        )
+        link = invitation_link(token, args.console_origin)
         print(
             f"✓ invitation {invitation.id} ({args.role}) for {email}, expires {invitation.expires_at:%Y-%m-%d}"
         )
         print(f"  accept link: {link}")
 
         if args.email:
-            from nexus_api.services.email import send_email
+            from nexus_api.config import get_settings
+            from nexus_api.services import console_identity
+            from nexus_api.services.email_catalog import email_locale
 
-            sent = await send_email(
-                to=email,
-                subject=f"Invitación a la consola de {partner.name}",
-                html=(
-                    f"<p>{args.display_name or email}, te han invitado como <b>{args.role}</b> "
-                    f"a la consola de partner de <b>{partner.name}</b> en Auphere.</p>"
-                    f'<p><a href="{link}">Aceptar invitación</a> (el enlace caduca el '
-                    f"{invitation.expires_at:%Y-%m-%d}).</p>"
-                ),
+            # El idioma de la cuenta de la persona si ya tiene una; si no,
+            # español: aquí no hay una persona que invite cuyo idioma valga.
+            account = await console_identity.get_by_email(session, email)
+            sent = await email_invitation(
+                email=email,
+                partner=partner,
+                role=args.role,
+                accept_url=link,
+                expires_at=invitation.expires_at,
+                locale=email_locale(account.locale) if account else "es",
             )
-            print(
-                f"  e-mail {'sent' if sent else 'NOT sent (email disabled or provider error) — send the link by hand'}"
-            )
+            if get_settings().email_mode == "log":
+                # Modo registro (staging, local): ``send_template`` dice True,
+                # pero nadie lo recibe. Decirlo evita esperar un correo que no
+                # va a llegar.
+                print("  e-mail only logged (email_delivery=log) — send the link by hand")
+            else:
+                print(
+                    f"  e-mail {'sent' if sent else 'NOT sent (provider error or no real key) — send the link by hand'}"
+                )
     await engine.dispose()
     return 0
 

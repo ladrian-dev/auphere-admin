@@ -4,7 +4,9 @@ Requisito 2.6. El webhook anota, por canal y día, el ``wamid`` de cada entrante
 que Meta le entrega y que encola (solo el identificador: nunca el cuerpo ni el
 teléfono). El cron diario compara ese conjunto con los entrantes guardados en
 ``messages``: una diferencia es un mensaje que se perdió entre el webhook y la
-base —el stream, el consumidor, la DLQ— y Auphere tiene que enterarse.
+base —el stream, el consumidor, la DLQ— y Auphere tiene que enterarse. Desde
+la spec 051 (requisito 9.2) se entera por el registro, con nivel de error, que
+recoge la monitorización: ya no hay correo.
 
 Cada pasada deja su fila en ``meta_reconciliation_runs`` (la vista del admin es
 T172) y es idempotente: el mismo día no se cuadra ni se avisa dos veces.
@@ -33,6 +35,7 @@ from nexus_api.db.models import (
     MetaReconciliationRun,
 )
 from nexus_api.services import meta_reconciliation
+from nexus_api.services.email_catalog import EmailKind
 
 from ._turn_world import make_world
 
@@ -89,11 +92,11 @@ async def test_a_message_lost_between_the_webhook_and_the_base_is_reported(
     await _store(world, ["wamid.a", "wamid.b"], NOON)
     sent: list[dict[str, Any]] = []
 
-    async def _email(**kw: Any) -> None:
-        sent.append(kw)
+    async def _email(kind: EmailKind, **kw: Any) -> bool:
+        sent.append({"kind": kind, **kw})
+        return True
 
-    monkeypatch.setattr(cron, "send_email", _email)
-    monkeypatch.setattr(cron, "_alert_email", lambda: "ops@auphere.test")
+    monkeypatch.setattr("nexus_api.services.email.send_template", _email)
 
     with capture_logs() as logs:
         report = await cron.reconcile_day(DAY, redis=fake_redis)
@@ -104,10 +107,11 @@ async def test_a_message_lost_between_the_webhook_and_the_base_is_reported(
     assert report.channels_with_diff == 1
     alerts = [e for e in logs if e.get("event") == "ops.meta_reconciliation"]
     assert len(alerts) == 1
+    assert alerts[0]["log_level"] == "error", "la monitorización lo recoge por el nivel"
     assert alerts[0]["missing"] == 1
     assert str(world.tenant_id) in json.dumps(alerts[0]["channels"])
     assert "hola" not in json.dumps(alerts[0], default=str), "nunca el cuerpo de un mensaje"
-    assert len(sent) == 1 and sent[0]["to"] == "ops@auphere.test"
+    assert sent == [], "spec 051, R9.2: la monitorización no va por correo"
 
 
 async def test_the_same_day_is_reconciled_once(db_session, fake_redis, monkeypatch) -> None:
@@ -117,17 +121,20 @@ async def test_the_same_day_is_reconciled_once(db_session, fake_redis, monkeypat
     )
     sent: list[dict[str, Any]] = []
 
-    async def _email(**kw: Any) -> None:
-        sent.append(kw)
+    async def _email(kind: EmailKind, **kw: Any) -> bool:
+        sent.append({"kind": kind, **kw})
+        return True
 
-    monkeypatch.setattr(cron, "send_email", _email)
-    monkeypatch.setattr(cron, "_alert_email", lambda: "ops@auphere.test")
+    monkeypatch.setattr("nexus_api.services.email.send_template", _email)
 
-    await cron.reconcile_day(DAY, redis=fake_redis)
-    await cron.reconcile_day(DAY, redis=fake_redis)
+    with capture_logs() as logs:
+        await cron.reconcile_day(DAY, redis=fake_redis)
+        await cron.reconcile_day(DAY, redis=fake_redis)
 
     assert len(await _runs(world)) == 1
-    assert len(sent) == 1, "un aviso al día"
+    alerts = [e for e in logs if e.get("event") == "ops.meta_reconciliation"]
+    assert len(alerts) == 1, "un aviso al día"
+    assert sent == []
 
 
 async def test_a_day_that_squares_leaves_its_row_and_tells_nobody(
@@ -141,10 +148,11 @@ async def test_a_day_that_squares_leaves_its_row_and_tells_nobody(
     await _store(world, ["wamid.ok"], datetime(2026, 10, 27, 0, 0, 30, tzinfo=UTC))
     sent: list[Any] = []
 
-    async def _email(**kw: Any) -> None:
-        sent.append(kw)
+    async def _email(kind: EmailKind, **kw: Any) -> bool:
+        sent.append({"kind": kind, **kw})
+        return True
 
-    monkeypatch.setattr(cron, "send_email", _email)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _email)
 
     report = await cron.reconcile_day(DAY, redis=fake_redis)
 

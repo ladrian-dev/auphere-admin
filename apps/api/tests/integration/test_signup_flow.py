@@ -20,6 +20,7 @@ import sqlalchemy as sa
 from nexus_api.config import get_settings
 from nexus_api.db.models import AuditLog, Partner, PartnerMembership, SignupRequest, SignupStatus
 from nexus_api.repositories.signup import SignupRequestRepository
+from nexus_api.services.email_catalog import EmailKind
 from tests.conftest import mint_console_token
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -47,11 +48,11 @@ def _mail_sink(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     """Recoge los correos en vez de mandarlos. Devuelve la lista viva."""
     sent: list[dict[str, Any]] = []
 
-    async def _fake(**kwargs: Any) -> bool:
-        sent.append(kwargs)
+    async def _fake(kind: Any, **kwargs: Any) -> bool:
+        sent.append({"kind": kind, **kwargs})
         return True
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
     return sent
 
 
@@ -84,6 +85,8 @@ class TestNadieAveriguaQueCorreosExisten:
         # quien abre el buzón, que es el dueño de la dirección.
         assert len(sent) == 2
         assert sent[0]["subject"] != sent[1]["subject"]
+        # Dos tipos del catálogo (spec 051): el enlace y «ya tienes cuenta».
+        assert [c["kind"] for c in sent] == [EmailKind.SIGNUP_LINK, EmailKind.SIGNUP_EXISTING]
 
     async def test_los_cuatro_tokens_muertos_dan_el_mismo_cuerpo(
         self, client: Any, db_session: Any

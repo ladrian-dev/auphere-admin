@@ -28,11 +28,13 @@ from nexus_api.db.models import (
     MessageDirection,
     MessageStatus,
     Partner,
+    PartnerInvitation,
     PartnerMembership,
     PartnerTenant,
     Tenant,
     TenantStatus,
 )
+from nexus_api.services.email_catalog import EmailKind, console_link, format_day
 from tests.conftest import add_console_member, mint_console_token
 
 pytestmark = pytest.mark.asyncio
@@ -466,9 +468,24 @@ async def test_usage_is_units_by_source_and_never_cost(client, console_world, db
 # ── team (CP-26) ───────────────────────────────────────────────────────
 
 
-async def test_team_invite_accept_and_owner_protection(client, console_world, db_session) -> None:
+def _invite_mail_sink(monkeypatch, *, works: bool = True) -> list[dict]:
+    """Records ``send_template`` calls instead of sending (spec 051)."""
+    sent: list[dict] = []
+
+    async def _fake(kind, **kwargs) -> bool:
+        sent.append({"kind": kind, **kwargs})
+        return works
+
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
+    return sent
+
+
+async def test_team_invite_accept_and_owner_protection(
+    client, console_world, db_session, monkeypatch
+) -> None:
     a = console_world["a"]
     h = a["headers"]
+    sent = _invite_mail_sink(monkeypatch)
     inv = await client.post(
         "/console/team/invitations",
         headers=h(),
@@ -476,7 +493,20 @@ async def test_team_invite_accept_and_owner_protection(client, console_world, db
     )
     assert inv.status_code == 201, inv.text
     token = inv.json()["accept_path"].removeprefix("/invite/")
-    assert inv.json()["email"] == "new@example.com" and inv.json()["email_sent"] is False
+    # ``email_sent`` is what ``send_template`` answered.
+    assert inv.json()["email"] == "new@example.com" and inv.json()["email_sent"] is True
+    # Spec 051: the e-mail carries a clickable, absolute link — it used to
+    # carry only the relative path inside a ``<code>``.
+    [mail] = sent
+    assert mail["kind"] is EmailKind.TEAM_INVITE
+    assert mail["to"] == "new@example.com"
+    assert mail["partner_id"] == a["partner_id"], (
+        "isolation guarantee 6: the email names its partner"
+    )
+    accept_url = mail["variables"]["ACCEPT_URL"]
+    assert accept_url.startswith(("http://", "https://"))
+    assert accept_url.endswith(f"/invite/{token}")
+    assert accept_url == console_link(f"/invite/{token}")
     dup = await client.post(
         "/console/team/invitations", headers=h(), json={"email": "new@example.com", "role": "admin"}
     )
@@ -579,6 +609,90 @@ async def test_team_invite_accept_and_owner_protection(client, console_world, db
     assert r.status_code == 200
     r = await client.delete(f"/console/team/members/{new_id}", headers=h())
     assert r.status_code == 403
+
+
+async def test_team_invite_email_speaks_the_inviters_language(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Spec 051 §1: subject and variables from the catalogue, in Spanish when
+    nobody has said otherwise. ``email_sent`` mirrors ``send_template``."""
+    a = console_world["a"]
+    sent = _invite_mail_sink(monkeypatch, works=False)
+    email = f"admin-{uuid.uuid4().hex[:6]}@example.com"
+    inv = await client.post(
+        "/console/team/invitations", headers=a["headers"](), json={"email": email, "role": "admin"}
+    )
+    assert inv.status_code == 201, inv.text
+    assert inv.json()["email_sent"] is False
+    expires_at = await db_session.scalar(
+        sa.select(PartnerInvitation.expires_at).where(PartnerInvitation.email == email)
+    )
+    [mail] = sent
+    assert mail["kind"] is EmailKind.TEAM_INVITE
+    assert mail["locale"] == "es"
+    assert mail["subject"] == "Owner A te ha invitado a unirte a Console Partner A en Auphere"
+    assert mail["variables"]["INVITER"] == "Owner A"
+    assert mail["variables"]["PARTNER_NAME"] == "Console Partner A"
+    assert mail["variables"]["ROLE_LABEL"] == "Administrador"
+    assert mail["variables"]["EXPIRES_ON"] == format_day(expires_at.date(), "es")
+    assert set(mail["variables"]) == {
+        "INVITER",
+        "PARTNER_NAME",
+        "ROLE_LABEL",
+        "EXPIRES_ON",
+        "ACCEPT_URL",
+    }
+
+
+async def _console_account(db_session, *, email: str, locale: str) -> None:
+    await db_session.execute(
+        sa.text(
+            "INSERT INTO console_auth.principals (id, email, password_hash, locale) "
+            "VALUES (:i, :e, 'scrypt$x', :l)"
+        ),
+        {"i": str(uuid.uuid4()), "e": email, "l": locale},
+    )
+    await db_session.commit()
+
+
+async def test_team_invite_uses_the_invitees_account_language(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """Someone who already has a console account reads it in their language,
+    whatever the inviter's is."""
+    a = console_world["a"]
+    sent = _invite_mail_sink(monkeypatch)
+    email = f"has-account-{uuid.uuid4().hex[:6]}@example.com"
+    await _console_account(db_session, email=email, locale="en")
+    inv = await client.post(
+        "/console/team/invitations",
+        headers=a["headers"](),
+        json={"email": email.upper(), "role": "admin"},
+    )
+    assert inv.status_code == 201, inv.text
+    [mail] = sent
+    assert mail["locale"] == "en"
+    assert mail["subject"] == "Owner A invited you to join Console Partner A on Auphere"
+    assert mail["variables"]["ROLE_LABEL"] == "Admin"
+
+
+async def test_team_invite_without_account_uses_the_inviters_language(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """No account yet: the inviter's language is the best guess we have."""
+    b = console_world["b"]
+    sent = _invite_mail_sink(monkeypatch)
+    await _console_account(db_session, email="owner-b@example.com", locale="en")
+    inv = await client.post(
+        "/console/team/invitations",
+        headers=b["headers"](),
+        json={"email": f"fresh-{uuid.uuid4().hex[:6]}@example.com", "role": "analyst"},
+    )
+    assert inv.status_code == 201, inv.text
+    [mail] = sent
+    assert mail["locale"] == "en"
+    assert mail["variables"]["ROLE_LABEL"] == "Analyst"
+    assert mail["partner_id"] == b["partner_id"]
 
 
 async def test_invitation_revoke_and_expiry(client, console_world, db_session) -> None:
