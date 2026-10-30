@@ -17,12 +17,10 @@ from nexus_api.db.models._mixins import TenantScopedMixin, TimestampMixin, UUIDP
 class ScheduledJobKind(str, enum.Enum):
     REMINDER = "reminder"
     HEALTH_CHECK = "health_check"
+    # Spec 048: nothing writes these two any more (their crons are gone and
+    # 0205 cancelled what was pending). They stay because Postgres cannot
+    # drop a value from an enum without rebuilding the type.
     NO_SHOW_SCRAPE = "no_show_scrape"
-    # Block O / ADR-017: per-tenant async booking against AgendaPro's
-    # public link. The cron drains these as fast as it can; ``run_at``
-    # is set to ``now()`` at enqueue time and only delayed if a retry
-    # is scheduled. Payload carries the wizard parameters (slot_token,
-    # service name, customer name/email, idempotency_key).
     ASYNC_BOOKING = "async_booking"
 
 

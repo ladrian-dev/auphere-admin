@@ -230,10 +230,8 @@ class TenantCredentials(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base)
 
     integration: Mapped[str] = mapped_column(String(64), nullable=False)
     encrypted_payload: Mapped[bytes] = mapped_column(FernetEncrypted, nullable=False)
-    # Bloque E: si el health check del context Browserbase falla y el
-    # re-login automático tampoco logra recuperarlo, se setea a true y se
-    # escala al operador. ``booking.create_appointment`` chequea esto antes
-    # de delegar a ``agendapro.*`` — si está true, cae al camino local.
+    # Las credenciales ya no sirven y hace falta volver a autorizarlas: se
+    # escala al operador.
     needs_reauth: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_health_check_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

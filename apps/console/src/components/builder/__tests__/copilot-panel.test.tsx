@@ -145,3 +145,60 @@ describe("el copiloto (19.1, 19.2)", () => {
     expect(citationHref(REF, null)).toBeNull();
   });
 });
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (T228; requisitos 65.3 y 65.4;
+ * `contracts/console-api.md` §11): el copiloto dice lo que la petición
+ * necesitaba y no tenemos (`missing_capabilities`) y no propone esa parte.
+ * Nada de eso lleva «Conectar {X}».
+ */
+describe("el copiloto · solo lo que tenemos (65.3)", () => {
+  const NOPE: CopilotAnswer = {
+    text: "No tenemos herramienta para emitir facturas: si se lo piden, el agente pasa la conversación al equipo.",
+    citations: [],
+    proposals: [],
+    fix: null,
+    missing_capabilities: [
+      { kind: "integration", key: "quickbooks", label: "quickbooks", reason: "integration_unknown", source: "connection_request", pointer: null },
+      { kind: "action", key: "invoice", label: "emitir facturas", reason: "no_tool", source: "text", pointer: null },
+    ],
+  };
+
+  it("debajo de su respuesta, lo que falta con su `label`, sin «Conectar»; pasa axe", async () => {
+    const user = userEvent.setup();
+    const { container } = panelWith({}, { ask: vi.fn(async () => ok(NOPE)) });
+    await user.type(screen.getByRole("textbox", { name: "Mensaje para el copiloto" }), "que emita facturas con QuickBooks");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    const reply = (await screen.findByText(/No tenemos herramienta para emitir facturas: si se lo piden/)).closest("[data-slot=copilot-reply]") as HTMLElement;
+    const notice = reply.querySelector("[data-slot=missing-capabilities]") as HTMLElement;
+    expect(within(notice).getByText("quickbooks")).toBeVisible();
+    expect(within(notice).getByText("emitir facturas")).toBeVisible();
+    expect(within(reply).queryByRole("button", { name: /Conectar|Quitar la promesa/ })).toBeNull();
+    expect(within(reply).queryByRole("link", { name: /Conectar/ })).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("si no falta nada (o la respuesta no lo dice), no sale nada", async () => {
+    const user = userEvent.setup();
+    const { container } = panelWith({}, { ask: vi.fn(async () => ok({ ...WHY, missing_capabilities: [] })) });
+    await user.type(screen.getByRole("textbox", { name: "Mensaje para el copiloto" }), "¿por qué?");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await screen.findByText(/Dijo que el domingo abrís/);
+    expect(container.querySelector("[data-slot=missing-capabilities]")).toBeNull();
+  });
+
+  it("«Enviar» no se pulsa dos veces mientras piensa", async () => {
+    const user = userEvent.setup();
+    let answer: (value: ReturnType<typeof ok<CopilotAnswer>>) => void = () => undefined;
+    const ask = vi.fn<Actions["ask"]>(() => new Promise((resolve) => (answer = resolve)));
+    panelWith({}, { ask });
+    await user.type(screen.getByRole("textbox", { name: "Mensaje para el copiloto" }), "que cobre por adelantado");
+    const send = screen.getByRole("button", { name: "Enviar" });
+    await user.click(send);
+    expect(send).toBeDisabled();
+    await user.click(send);
+    expect(ask).toHaveBeenCalledTimes(1);
+    await act(async () => answer(ok(NOPE)));
+    expect(await screen.findByText("emitir facturas")).toBeVisible();
+  });
+});

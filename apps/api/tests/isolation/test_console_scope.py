@@ -103,6 +103,33 @@ ALLOWED_FIELDS_BY_SCHEMA: dict[tuple[str, str], str] = {
         "partner's own person testing; the playground has no channel, so no end "
         "customer can be in it."
     ),
+    ("TestOut", "transcript"): (
+        "Spec 047, enmienda (61.6): the conversation of one run of the agent's "
+        "own test, between the draft and Auphere's simulated customer over a "
+        "simulated agenda, without a channel: no end customer takes part in it. "
+        "What it CAN carry of one (T217, security review of 2026-10-30): a test "
+        "created from a weekly suggestion (``kind = conversation``, "
+        "``services/improvement/suggestions.py``) has its ``first_message``, "
+        "``persona`` and ``plan`` written by a model that read the week's real "
+        "conversations, masked only for names, phones, e-mails and documents; "
+        "the simulated customer then speaks from them, and ``TestOut`` serves "
+        "those three fields too. Contained by: the model is told never to copy "
+        "a real message; ``_store`` drops the suggestion whose texts carry a "
+        "contact's data (``Contacts.found_in``) or whose test copies a message "
+        "of the batch almost literally (word n-grams, ``copies_a_message``); "
+        "and only members of the partner that owns the client, with "
+        "``agents:read``, read it. The residue that stays: a paraphrase that is "
+        "not literal and names no one."
+    ),
+    ("TestAttemptOut", "transcript"): (
+        "Every pass of the last run of a test: the same conversations as "
+        "``TestOut.transcript`` (which is one of them), with the same residue "
+        "and the same containment. Typed so this walk reads it."
+    ),
+    ("TestTurnOut", "text"): (
+        "One turn of those conversations: what the simulated customer or the "
+        "draft said. See ``TestOut.transcript``."
+    ),
 }
 
 # Spec 030 (ADR-041): the Inbox of the client console is the ONE place in
@@ -329,6 +356,21 @@ def test_closed_vocabularies_and_the_inbox_are_the_only_ways_out() -> None:
     assert _offenders("/console/lite/inbox/x", walk("Leak")) == {"Leak.tenant_id"}
 
 
+def test_every_pass_of_a_test_is_seen_by_the_walk(openapi: dict[str, Any]) -> None:
+    """Spec 047, T217 (security review of 2026-10-30): the passes of a test
+    (``TestOut.attempts``) carry the same conversations as ``TestOut.transcript``.
+    Typed, the walk reads them, word for word, and their exceptions are explicit
+    in ``ALLOWED_FIELDS_BY_SCHEMA``; an untyped ``dict`` would hide them."""
+    components = openapi["components"]["schemas"]
+    suite = openapi["paths"]["/console/clients/{ref}/agents/{agent_id}/tests"]["get"]
+    fields = _route_response_fields(suite, components)
+    for pair in (("TestOut", "transcript"), ("TestAttemptOut", "transcript")):
+        assert pair in fields, sorted(fields)
+        assert pair in ALLOWED_FIELDS_BY_SCHEMA, pair
+    assert ("TestTurnOut", "text") in fields
+    assert ("TestTurnOut", "text") in ALLOWED_FIELDS_BY_SCHEMA
+
+
 def test_the_body_check_would_catch_a_leak(openapi: dict[str, Any]) -> None:
     """Control of the control: a schema with ``content`` is detected."""
     fake = {"properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/X"}}}}
@@ -403,10 +445,6 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/skills"): {"skills": []},
         ("PUT", "/console/clients/{ref}/allocation"): {"cap_cents": 1},
         ("PUT", "/console/clients/{ref}/model"): {"model_id": "openai/gpt-5.6-sol"},
-        # Spec 016 (R6): la agenda pública de AgendaPro.
-        ("PUT", "/console/clients/{ref}/integrations/agendapro/public-url"): {
-            "public_url": "https://demo.site.agendapro.com/cl/sucursal"
-        },
         ("PUT", "/console/clients/{ref}/workflow"): {
             "trigger": "event",
             "steps": ["end"],

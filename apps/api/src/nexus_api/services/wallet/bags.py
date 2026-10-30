@@ -203,6 +203,20 @@ async def _country_of(tenant_id: uuid.UUID) -> str | None:
     return country
 
 
+def empty_bag(tenant_id: uuid.UUID, partner_id: uuid.UUID, currency: str) -> ClientWallet:
+    """Una bolsa vacía en ``currency``. El alta la crea con la moneda elegida
+    (requisito 43.3); ``bag_for_update`` la crea con la del país si aún no existe."""
+    return ClientWallet(
+        tenant_id=tenant_id,
+        partner_id=partner_id,
+        currency=currency,
+        balance_micros=0,
+        month=month_of(),
+        month_base_micros=0,
+        month_spent_micros=0,
+    )
+
+
 async def bag_for_update(
     session: AsyncSession, tenant_id: uuid.UUID, *, partner_id: uuid.UUID | None = None
 ) -> ClientWallet:
@@ -216,15 +230,7 @@ async def bag_for_update(
         if partner_id is None:
             raise WalletError("unknown_client", 404)
         country = await _country_of(tenant_id)
-        bag = ClientWallet(
-            tenant_id=tenant_id,
-            partner_id=partner_id,
-            currency=currency_for(country),
-            balance_micros=0,
-            month=month_of(),
-            month_base_micros=0,
-            month_spent_micros=0,
-        )
+        bag = empty_bag(tenant_id, partner_id, currency_for(country))
         session.add(bag)
         await session.flush()
         bag = await session.scalar(

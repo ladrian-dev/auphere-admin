@@ -154,10 +154,24 @@ export const builderChannelsMessages = {
   "builder.ownerLink.revoked": { es: "Enlace revocado.", en: "Link revoked." },
 
   // ── La página del canal (32 y 33) ───────────────────────────────────────
-  "builder.channel.page.title": { es: "Canal {number}", en: "Channel {number}" },
-  "builder.channel.page.agent": { es: "Lo atiende {name}", en: "{name} answers it" },
   "builder.channel.page.noAgent": { es: "Lo atiende el agente por defecto", en: "The default agent answers it" },
-  "builder.channel.page.sections": { es: "Partes de la configuración", en: "Parts of the settings" },
+  "builder.channel.page.sections": { es: "Secciones de la configuración", en: "Sections of the settings" },
+  // H5 (63.1): la configuración dentro del agente, como el prototipo (`agente.md` §8).
+  "builder.channel.page.note": {
+    es: "Todo esto es del canal. Si el agente atiende en otro canal, allí tiene su propia configuración.",
+    en: "All of this belongs to the channel. If the agent answers on another channel, it has its own settings there.",
+  },
+  "builder.channel.head.of": { es: "canal de {name}", en: "channel of {name}" },
+  "builder.channel.more": { es: "Más ajustes", en: "More settings" },
+  "builder.channel.more.hint": { es: "Mensaje de espera e historial de cambios.", en: "Waiting message and change history." },
+  "builder.channel.bar.label": { es: "Guardar configuración", en: "Save settings" },
+  "builder.channel.bar.unset": { es: "El canal aún no responde: guarda para activarlo.", en: "The channel does not answer yet: save to turn it on." },
+  "builder.channel.bar.later": { es: "Decidir luego", en: "Decide later" },
+  "builder.channel.bar.activateTeam": { es: "Activar solo para mi equipo", en: "Turn on for my team only" },
+  "builder.channel.bar.activateAll": { es: "Activar para todos", en: "Turn on for everyone" },
+  "builder.channel.saved.team": { es: "{agent} responde por {number} solo a tu equipo.", en: "{agent} answers on {number} to your team only." },
+  "builder.channel.saved.everyone": { es: "{agent} responde por {number} a todos.", en: "{agent} answers on {number} to everyone." },
+  "builder.channel.saved.agent": { es: "El agente", en: "The agent" },
   "builder.channel.page.readonly": {
     es: "Tu rol solo permite ver esta configuración.",
     en: "Your role can only view these settings.",
@@ -217,7 +231,6 @@ export const builderChannelsMessages = {
     en: "Numbers the agent never answers, a supplier for example. Their messages are kept with no automatic reply.",
   },
   "builder.channel.exceptions.empty": { es: "Sin excepciones.", en: "No exceptions." },
-  "builder.channel.exceptions.unused": { es: "Solo cuentan cuando responde «A todos».", en: "They only count when it answers “Everyone”." },
 
   "builder.channel.escalation.title": { es: "Escalado a personas", en: "Hand-over to people" },
   "builder.channel.escalation.intro": {
@@ -329,7 +342,7 @@ export const builderChannelsMessages = {
   "builder.channel.fix.assign_balance": { es: "Asignar saldo", en: "Assign balance" },
 
   // ── La barra de guardar, deshacer y el conflicto (32.7) ─────────────────
-  "builder.channel.bar.dirty": { es: "Tienes cambios sin guardar.", en: "You have unsaved changes." },
+  "builder.channel.bar.dirty": { es: "Los cambios se aplican al guardar.", en: "Changes apply when you save." },
   "builder.channel.bar.clean": { es: "Todo guardado.", en: "Everything saved." },
   "builder.channel.bar.save": { es: "Guardar", en: "Save" },
   "builder.channel.bar.discard": { es: "Descartar", en: "Discard" },

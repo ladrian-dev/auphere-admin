@@ -118,7 +118,7 @@ async def test_without_lite_access_only_the_partner_hears(db_session, console_wo
 
 
 async def test_a_balance_that_will_not_last_is_said_once_a_month(
-    db_session, console_world, mails
+    db_session, console_world, mails, month_end_far
 ) -> None:
     w = console_world["a"]
     await make_client_access(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])

@@ -51,12 +51,6 @@ from nexus_channels.tiktok_bm import TikTokChannelAdapter, TikTokClient
 from nexus_channels.tiktok_bm.credentials import TikTokCredentialsRepository
 from nexus_channels.whatsapp_meta import MetaChannelAdapter, MetaClient
 from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
-from nexus_mcp.servers.agendapro_public.transport import (
-    build_default_pool_from_env as build_agendapro_public_pool_from_env,
-)
-from nexus_mcp.servers.agendapro_public.transport import (
-    set_default_transport as set_agendapro_public_transport,
-)
 
 from nexus_worker.billing.expire_credit_cron import run_expire_credit_cron
 from nexus_worker.billing.process_event import run_billing_event_consumer
@@ -75,7 +69,6 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.signup.expire_signups_cron import run_expire_signups_cron
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
-from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.checkpoint_retention_cron import run_checkpoint_retention_cron
 from nexus_worker.streams.claimer import run_stream_claimer
 from nexus_worker.streams.cobranza_reminder_cron import run_cobranza_reminder_cron
@@ -95,7 +88,6 @@ from nexus_worker.streams.meta_reconciliation_cron import run_meta_reconciliatio
 from nexus_worker.streams.meta_social_cron import run_meta_social_cron
 from nexus_worker.streams.meta_state_sync_consumer import run_meta_state_sync_consumer
 from nexus_worker.streams.model_lifecycle_cron import run_model_lifecycle_cron
-from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
 from nexus_worker.streams.outbound import run_outbound_dispatcher
 from nexus_worker.streams.owner_consultation_timeout_cron import (
@@ -189,14 +181,12 @@ SCHEDULER_TASK_NAMES = frozenset(
         # Spec 006: barre las solicitudes de alta que nadie llegó a usar.
         "expire-signups-cron",
         "isolation-event-drainer",
-        "no-show-scrape-cron",
         "cost-rollup-cron",
         "isolation-watcher",
         "whatsapp-health-cron",
         "tiktok-token-refresh-cron",
         # Spec 049: Instagram / Messenger health (resubscribe) and 30-day erasure.
         "meta-social-cron",
-        "async-booking-cron",
         "continuous-eval-cron",
         "memory-versions-retention-cron",
         "owner-consultation-timeout-sweep",
@@ -251,7 +241,6 @@ class WorkerContext:
     stop: asyncio.Event
     meta_client: MetaClient
     channel_adapters: dict[str, Any]
-    agendapro_public_pool: Any
     outcome_grader: OutcomeGrader | None
     _cleanup: list[Any] = field(default_factory=list)
 
@@ -392,11 +381,6 @@ def build_context(service_name: str) -> WorkerContext:
 
     set_read_receipt_sender("meta", meta_adapter.mark_as_read)
 
-    # Block O: AgendaPro public-link Node MCP subprocess pool (lazy —
-    # tolerates missing Node binary in dev/test).
-    agendapro_public_pool = build_agendapro_public_pool_from_env()
-    set_agendapro_public_transport(agendapro_public_pool)
-
     # Fase C — outcome grader, independent provider so the guardrail call
     # doesn't ride the agent's retry chain.
     outcome_grader: OutcomeGrader | None = None
@@ -423,7 +407,6 @@ def build_context(service_name: str) -> WorkerContext:
         stop=stop,
         meta_client=meta_client,
         channel_adapters=channel_adapters,
-        agendapro_public_pool=agendapro_public_pool,
         outcome_grader=outcome_grader,
     )
 
@@ -447,8 +430,6 @@ async def pipeline_scope(ctx: WorkerContext) -> AsyncIterator[Any]:
 async def shutdown_context(ctx: WorkerContext) -> None:
     with contextlib.suppress(Exception):
         await ctx.meta_client.close()
-    with contextlib.suppress(Exception):
-        await ctx.agendapro_public_pool.shutdown()
     langfuse_shutdown()
 
 
@@ -617,10 +598,6 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("expire-signups-cron", run_expire_signups_cron(stop=ctx.stop)),
         _spawn("isolation-event-drainer", isolation_event_drainer(ctx.stop)),
         _spawn(
-            "no-show-scrape-cron",
-            run_no_show_scrape_cron(stop=ctx.stop, tick_seconds=ws.no_show_scrape_tick_seconds),
-        ),
-        _spawn(
             "cost-rollup-cron",
             run_cost_rollup_cron(stop=ctx.stop, tick_seconds=ws.cost_rollup_tick_seconds),
         ),
@@ -631,7 +608,6 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("whatsapp-health-cron", run_whatsapp_health_cron(stop=ctx.stop)),
         _spawn("tiktok-token-refresh-cron", run_tiktok_token_refresh_cron(stop=ctx.stop)),
         _spawn("meta-social-cron", run_meta_social_cron(stop=ctx.stop, redis=ctx.redis)),
-        _spawn("async-booking-cron", run_async_booking_cron(stop=ctx.stop)),
         _spawn(
             "continuous-eval-cron",
             run_continuous_eval_cron(

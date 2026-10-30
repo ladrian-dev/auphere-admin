@@ -65,6 +65,49 @@ class ToolPolicy:
 
     blocked: frozenset[str] = frozenset()
     needs_approval: frozenset[str] = frozenset()
+    #: Spec 047, enmienda del 2026-10-30 (65.11, garantía 2): la política no se
+    #: pudo leer. El turno no ofrece ninguna herramienta de conector.
+    closed: bool = False
+
+
+#: Los servidores de la casa: sus herramientas no dependen de ningún conector del
+#: cliente (la agenda depende del módulo Reservas, que su servidor comprueba; el
+#: catálogo de Meta, del canal). Es una lista de permitidos: un servidor nuevo
+#: cuenta como de conector hasta que se añade aquí, así que una política que no se
+#: puede leer nunca lo deja pasar. ``tests/isolation/test_44_agent_within_client.py``
+#: barre el catálogo: ninguna herramienta con ``connector_id`` es de la casa.
+NATIVE_TOOLKITS: Final = frozenset(
+    {
+        "booking",
+        "catalog",
+        "client",
+        "commission",
+        "escalate",
+        "notification",
+        "operator",
+        "payments",
+        "queue",
+        "reception",
+        "reservas",
+        "response",
+    }
+)
+
+
+def needs_connector(name: str) -> bool:
+    """La herramienta es de un conector: de un servidor que no es de la casa, sin
+    servidor en el nombre (las de WooCommerce de antes) o de Composio (en
+    mayúsculas)."""
+    toolkit, dot, action = name.partition(".")
+    return not (dot and action and toolkit in NATIVE_TOOLKITS and name == name.lower())
+
+
+def allowed_names(names: tuple[str, ...], policy: ToolPolicy) -> tuple[str, ...]:
+    """Las herramientas que el turno puede ofrecer con ``policy``: sin las
+    bloqueadas y, si la política no se pudo leer, sin ninguna de conector."""
+    return tuple(
+        n for n in names if n not in policy.blocked and not (policy.closed and needs_connector(n))
+    )
 
 
 @dataclass
@@ -83,11 +126,15 @@ async def tool_policy(
     Dentro de la sesión del cliente."""
     from nexus_api.services.channel_config import partner_on_v2
 
+    # Spec 047, enmienda del 2026-10-29 (requisito 62.2, D53): también las
+    # herramientas de un conector que el cliente aún no conectó (``connection_id``
+    # nulo). Un AgentSpec puede guardarlas «pendientes de conexión»; el turno no
+    # las ve hasta que la conexión exista y esté activada para el agente.
     rows = (
         await session.execute(
             sa.select(ToolCatalog.name, ToolCatalog.read_only, TenantConnector.id)
             .join(Connector, Connector.id == ToolCatalog.connector_id)
-            .join(
+            .outerjoin(
                 TenantConnector,
                 sa.and_(
                     TenantConnector.connector_id == Connector.id,
@@ -124,6 +171,12 @@ async def tool_policy(
     blocked: set[str] = set()
     approval: set[str] = set()
     for name, read_only, connection_id in rows:
+        if connection_id is None:
+            # Sin conexión no hay nada que activar: en la consola nueva, nunca;
+            # fuera de ella, como hasta ahora (lo de antes no cambia).
+            if strict:
+                blocked.add(name)
+            continue
         if not (strict or connection_id in managed):
             continue
         permission = activations.get(connection_id)
@@ -221,6 +274,13 @@ async def activate(
         )
     )
     await session.flush()
+    # Spec 047, enmienda del 2026-10-29 (requisito 62.3, D62): lo que el agente
+    # puede hacer cambió (sus herramientas pendientes ya cuentan, o cambió el
+    # permiso): sus pruebas dejan de valer hasta volver a pasarlas.
+    if before != {"permission": permission, "settings": dict(settings)}:
+        from nexus_api.services.testing.suites import mark_stale
+
+        await mark_stale(session, agent_id)
     return row
 
 
@@ -481,6 +541,7 @@ async def on_needs_reauth(session: AsyncSession, install: TenantConnector) -> in
 
 __all__ = [
     "LIVE",
+    "NATIVE_TOOLKITS",
     "PERMISSIONS",
     "ActivationError",
     "AffectedSkills",
@@ -488,12 +549,14 @@ __all__ = [
     "ToolPolicy",
     "activate",
     "affected_skills",
+    "allowed_names",
     "connection_of",
     "deactivate",
     "disconnect_impact",
     "ensure_activation",
     "ensure_activations_for_tools",
     "needed_by",
+    "needs_connector",
     "on_needs_reauth",
     "tool_policy",
     "users_of",

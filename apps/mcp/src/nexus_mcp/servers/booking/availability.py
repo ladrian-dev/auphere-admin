@@ -1,8 +1,8 @@
 """Local availability search.
 
 Block D's booking-server is a relational facade. ``check_availability``
-needs to produce a list of free slots for a given date + service. Without
-AgendaPro (Block E) we approximate from the local ``appointments`` table:
+needs to produce a list of free slots for a given date + service. We
+compute them from the local ``appointments`` table:
 
 - Business hours: the business profile's hours (spec 047, ``services/business/
   hours.py``) in its ``timezone`` — night shifts that close the next day and
@@ -17,8 +17,9 @@ AgendaPro (Block E) we approximate from the local ``appointments`` table:
   When ``barber_id`` is None we list slots with ``barber_id=null`` if the
   shop has at least one un-allocated time at that point.
 
-This is honest enough for Phase 1 dev/testing. When Block E lands
-``CheckAvailability`` will delegate to AgendaPro for tenants that use it.
+Spec 048: ``booking.*`` is retired — new agents book with ``reservas.*``,
+the agenda the business sees. This stays only for the versions that still
+name it, until the final removal.
 """
 
 from __future__ import annotations

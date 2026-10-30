@@ -63,7 +63,14 @@ export function crumbsFor(pathname: string, names: Readonly<Record<string, strin
 
     out.push({ href: `${base}/agents`, label: client });
     const agentName = names[decode(agentId)];
-    out.push({ href: `${base}/agents/${agentId}`, label: agentName ? { text: agentName } : { key: "shell.crumbs.agent" } });
+    // Spec 047 (63.1): la configuración de un canal dentro del agente (`?canal=`)
+    // anuncia su número; el agente vuelve a su pestaña Canales.
+    const openChannel = !sub ? names[`canal@${decode(agentId)}`] : undefined;
+    out.push({
+      href: openChannel ? `${base}/agents/${agentId}?tab=channels` : `${base}/agents/${agentId}`,
+      label: agentName ? { text: agentName } : { key: "shell.crumbs.agent" },
+    });
+    if (openChannel) out.push({ href: null, label: { key: "shell.crumbs.channel", vars: { name: openChannel } } });
     if (sub === "channels" && channelId) {
       const channel = names[decode(channelId)];
       out.push({

@@ -26,7 +26,7 @@ async def _seed_audit(
     audit = AuditLog(
         tenant_id=tenant_id,
         actor="system:test",
-        action="integration.agendapro.bootstrap",
+        action="integration.browser.bootstrap",
         target=f"tenant:{tenant_id}",
         before_json=None,
         after_json=after_json,

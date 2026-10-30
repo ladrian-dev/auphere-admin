@@ -52,7 +52,7 @@ control del control: el mismo comprobador, contra una violación plantada, en ro
 | Archivo | Garantía | Qué barre |
 |---|---|---|
 | `test_43_force_and_composite_fk_sweep.py` | 1 | `pg_class`/`pg_policy`/`pg_constraint` en todos los esquemas: toda tabla con `tenant_id` tiene RLS ENABLE + FORCE, la política de cliente canónica con `USING` y `WITH CHECK` explícitos, ninguna otra política permisiva, y toda FK entre tablas de cliente es compuesta `(tenant_id, x)`. Lo de antes que no cumple está en un inventario cerrado (77 entradas, con techo y sin entradas podridas) que ninguna tabla creada por una migración ≥ 0175 puede usar |
-| `test_44_agent_within_client.py` | 9 | Toda tabla con `agent_id` o FK a `agents`, y toda herramienta del registro MCP: cada una con su caso adversarial o su razón. Casos de hoy: el cargador y el prompt compilado de un agente no llevan nada de su hermano; cada número resuelve su agente y su configuración; las herramientas que leen un agente (`payments.request_review`, `notification.schedule_reminder`, `reservas.create`/`answer_offer`) leen el del número de la conversación. Ninguna herramienta deja al modelo elegir agente |
+| `test_44_agent_within_client.py` | 9 | Toda tabla con `agent_id` o FK a `agents`, y toda herramienta del registro MCP: cada una con su caso adversarial o su razón. Casos de hoy: el cargador y el prompt compilado de un agente no llevan nada de su hermano; cada número resuelve su agente y su configuración; las herramientas que leen un agente (`payments.request_review`, `notification.schedule_reminder`, `reservas.create`/`answer_offer`) leen el del número de la conversación. Ninguna herramienta deja al modelo elegir agente. Y las dos cosas que no se pueden leer cierran: la política de herramientas (D76) y el bloqueo por herramienta de la consola (T217: ninguna herramienta, `pipeline.without_gated`) |
 | `test_45_tools_only_from_activations.py` | 2 y 9 | Cada herramienta del registro, fuera de la lista, ni llega al modelo ni se ejecuta; el registro repartido entre dos hermanos, en cada intención; las herramientas dinámicas de Composio solo de conexiones vivas del cliente, filtradas por la lista del agente y con su credencial; y cada campo del `AgentBundle` clasificado como fuente de herramientas (con caso) o no. Las activaciones por agente del bloque F entran por ese último barrido |
 | `test_46_business_profile_not_in_kg.py` | 3 | Todo el código de producto con `ast`: quién escribe en `kg_nodes`/`kg_edges` (hoy nadie, y nunca un módulo de la ficha) y quién lee el grafo, cada lector con su caso por cliente (la instantánea del turno, `commission.*`) |
 | `test_47_router_state_in_checkpoint.py` | 4 | Todas las claves de `AgentState`, escritas con el `TenantScopedPostgresSaver` real: vuelven enteras a su hilo y ni el hilo del vecino (mismo canal y número), ni su GUC, ni una sesión sin GUC las ven. Más un turno real con el saver real. `pinned_model` y el estado por agente entran solos cuando estén en `AgentState` |
@@ -61,6 +61,8 @@ control del control: el mismo comprobador, contra una violación plantada, en ro
 | `test_50_provider_retention_and_tenant_batches.py` | 7 | Cada ruta de proveedor del catálogo de plataforma con su regla de retención, comprobada sobre lo que sale del transporte; todo sitio que llama a un proveedor, declarado y sin `store=True`; ninguna API de lotes de proveedor; y cada sitio que arma un lote de evaluación, con su caso de un solo cliente |
 | `test_51_new_tools_take_no_end_customer.py` | 8 | El registro MCP entero, argumento a argumento: ninguno nombra a un cliente final salvo el inventario cerrado (28 entradas, con techo), con sus casos: el runtime sobrescribe `conversation_id`, `reservas.*` descarta una conversación ajena y las herramientas de operador solo están en semillas `admin_only` |
 | `test_52_partner_never_sees_bodies.py` | C8, C1, C9 | Todas las respuestas del partner: ningún campo de coste ni de teléfono salvo los inventariados; ninguna lectura devuelve el coste de modelo sembrado; y cada superficie (Panel, Rendimiento, sugerencias y mejoras, correcciones) responde con datos de verdad |
+| `test_53_amendment_tables.py` | 1 | Las tablas de la enmienda del 2026-10-29 (`generated_guides`, `suggested_agents`): FK compuestas, ni escribir ni leer las del otro cliente |
+| `test_54_sector_guides.py` | 1 y 5 | La guía generada de un cliente no llega a otro con la misma etiqueta; lo que entra a generar una guía es la etiqueta y la guía genérica; `sector_guides` (de plataforma) no tiene columna de cliente y `nexus_app` solo la lee; `sector_test_catalog`, también solo la lee (0210, T217) |
 | `test_44b_agent_knowledge.py` | 9 | El conocimiento y la memoria por agente: lo de un hermano no llega a su prompt ni a su búsqueda; su memoria no es la de otro |
 | `test_44c_reception.py` | 9 | `reception.handoff`, la única herramienta que nombra un agente: solo a los de su lista y de su cliente, nunca en pausa ni archivado, y al destino pasa el resumen, no el conocimiento de Recepción |
 
@@ -71,7 +73,10 @@ Además, en archivos que ya existían:
   base con cuerpos de mensaje, transcripciones, llamadas a herramientas, notas y
   nombres y teléfonos de clientes finales; ninguna respuesta los lleva. `_fill`
   rellena los parámetros con objetos reales de ese cliente y, los que no conoce,
-  con un UUID.
+  con un UUID. Las conversaciones de las pruebas del agente (`TestOut.transcript`,
+  `TestAttemptOut.transcript`, `TestTurnOut.text`) están tipadas y exceptuadas por
+  esquema, con su residuo escrito: una prueba de una sugerencia semanal la escribe
+  un modelo que leyó conversaciones reales (T217).
 - `test_lite_route_scope.py` y `test_phone_route_scope.py`: una ruta de
   `/console/lite/*` montada en el test entra sola en los dos barridos, y una
   escritura con id nueva los pone en rojo hasta tener su caso; `/app/*` lo cubre

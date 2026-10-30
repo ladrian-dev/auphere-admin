@@ -153,3 +153,74 @@ describe("la lista de pruebas (21.5)", () => {
     expect(actions.add).toHaveBeenCalledWith({ ref: REF, agent: AGENT, test: { name: "Pide factura", first_message: "¿Me hacéis factura?", critical: true } });
   });
 });
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (T228; requisitos 65.8 y 65.9;
+ * `contracts/console-api.md` §11): una prueba del sector que pide lo que el
+ * agente no tiene llega ya «No aplica», con su razón, sin que nadie la marque.
+ * Se ve como «No aplica» y se reactiva como hoy. Un agente estructurado sin
+ * ninguna prueba que le aplique no se guarda: la lista lo dice.
+ */
+describe("la lista de pruebas · solo lo que tenemos (65.8, 65.9)", () => {
+  const AUTO = TESTS.map((x) =>
+    x.name === "Pide cita para un perro" ? { ...x, not_applicable_reason: "No aplica: este agente no tiene herramienta para reservar citas." } : x,
+  );
+
+  it("la que llega «No aplica» se ve así, con su razón y sin repetir «No aplica»", async () => {
+    const { container } = screenWith({ suite: suite({ tests: AUTO }) });
+    const dog = row("Pide cita para un perro");
+    expect(within(dog).getByText("No aplica")).toBeVisible();
+    expect(within(dog).getByText("No aplica: este agente no tiene herramienta para reservar citas.")).toBeVisible();
+    expect(within(dog).queryByText(/No aplica: No aplica/)).toBeNull();
+    expect(within(dog).queryByRole("button", { name: /Ejecutar/ })).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("«Vuelve a aplicar» no se pulsa dos veces y, si no se puede, lo dice en su fila", async () => {
+    const user = userEvent.setup();
+    let answer: (value: ReturnType<typeof fail>) => void = () => undefined;
+    const notApplicable = vi.fn<Actions["notApplicable"]>(() => new Promise((resolve) => (answer = resolve)));
+    screenWith({ suite: suite({ tests: AUTO }) }, { notApplicable });
+    const dog = row("Pide cita para un perro");
+    const again = within(dog).getByRole("button", { name: "Vuelve a aplicar" });
+    await user.click(again);
+    expect(again).toBeDisabled();
+    await user.click(again);
+    expect(notApplicable).toHaveBeenCalledTimes(1);
+    expect(notApplicable).toHaveBeenCalledWith({ ref: REF, agent: AGENT, test: TESTS[4]!.id, reason: "" });
+    answer(fail(500));
+    expect(await within(dog).findByRole("alert")).toHaveTextContent("No se pudo volver a activar. Inténtalo de nuevo.");
+    expect(within(dog).getByRole("button", { name: "Vuelve a aplicar" })).toBeEnabled();
+  });
+
+  it("un estructurado sin ninguna prueba que le aplique lo dice; con alguna, o uno de antes, no", () => {
+    const none = suite({
+      summary: { passed: 0, flaky: 0, failed: 0, unknown: 0, not_run: 0, not_applicable: 1, total: 1, stale: 0, critical_failed: [], rate: null },
+      tests: [AUTO[4]!],
+    });
+    const { unmount } = screenWith({ suite: none, structured: true });
+    expect(screen.getByRole("alert")).toHaveTextContent("Ninguna prueba aplica a este agente. Añade una que le aplique: sin ella no se puede guardar.");
+    expect(screen.getByRole("button", { name: "Añadir una prueba" })).toBeVisible();
+    unmount();
+    const empty = screenWith({ suite: suite({ summary: { ...none.summary, not_applicable: 0, total: 0 }, tests: [] }), structured: true });
+    expect(screen.getByText(/Ninguna prueba aplica a este agente/)).toBeVisible();
+    empty.unmount();
+    const other = screenWith({ suite: none, structured: false });
+    expect(screen.queryByText(/Ninguna prueba aplica a este agente/)).toBeNull();
+    other.unmount();
+    screenWith({ structured: true });
+    expect(screen.queryByText(/Ninguna prueba aplica a este agente/)).toBeNull();
+  });
+
+  it("«Añadir una prueba» se puede abrir desde fuera (la puerta), con el foco en su primer campo", () => {
+    const { rerender } = screenWith();
+    expect(screen.queryByRole("form", { name: "Añadir una prueba" })).toBeNull();
+    rerender(
+      <LocaleProvider locale="es">
+        <TestList refId={REF} agentId={AGENT} suite={suite()} canWrite actions={{} as Actions} wait={noWait} addRequest={1} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("form", { name: "Añadir una prueba" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: /Nombre de la prueba/ })).toHaveFocus();
+  });
+});

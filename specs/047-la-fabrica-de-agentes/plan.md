@@ -616,6 +616,160 @@ Rutas abreviadas:
 | `docs/ficha-del-negocio.md` (nuevo) | Ficha, ClientSpec, procedencia y lectura |
 | `apps/api/tests/isolation/README.md` | La garantía 9 y los barridos `test_43`–`test_52` |
 
+## Enmienda del 2026-10-29 · Ola 11 · Lista para staging
+
+Requisitos 57 a 64 (`spec.md`, bloque R) y decisiones D46–D55 (`research.md`,
+parte 6b). Nota de KB: `research/2026-10-29-auditoria-del-constructor/_index.md`.
+Las tareas son la fase 27 de `tasks.md`. Va **después de la spec 048** (retirar
+AgendaPro y `booking.*`), porque las guías del sector salen de las plantillas ya
+pasadas a Reservas.
+
+### Constitution Check de la enmienda
+
+| # | Principio | ¿Cumple? | Prueba / justificación |
+|---|---|---|---|
+| I | Aislamiento | ☑ | Tablas nuevas por cliente (la guía generada y sus pruebas, las conversaciones de las pruebas): RLS FORCE y FK compuestas; entran solas en `test_43`. La guía generada es **del cliente**, nunca compartida (D47); un barrido nuevo comprueba que el prompt del constructor no lleva nada de otro cliente. Las herramientas pendientes no cambian la garantía 2: el runtime ve la intersección con las activaciones (D53), y `test_44` lo barre |
+| II | Superficie | ☑ | `0`. El navegador de respaldo no es una superficie de entrada: es un servicio interno sin ruta pública que solo llama el worker, con token y las mismas guardas de direcciones públicas que el lector (D50) |
+| III | Lo leído es dato | ☑ | El JSON-LD, la página renderizada, la etiqueta del sector y la salida del cliente simulado son datos no confiables: van vallados y se validan contra esquemas cerrados (la lista de claves de sector, la extracción solo de datos del negocio). Prueba adversarial: un JSON-LD y una página renderizada que dan órdenes |
+| IV | Acción `mutates` | ☑ | El constructor del cliente solo propone; aceptar, editar o descartar lo hace una persona, con auditoría. Los agentes sugeridos no se crean solos |
+| V | Estados honestos | ☑ | «Calidad» deja de ofrecer lo que no atiende (D55). Las redes que no dejan leer se dicen como tales. La guía y las pruebas generadas llevan «Generada». Cinco estados en cada vista nueva |
+| VI | Por API | ☑ | Todo por `/console/*` y `/admin/*` |
+| VII | Test primero | ☑ | Cada criterio, con su test en rojo antes (fase 27) |
+| VIII | Licencias | ☑ | Playwright (Apache-2.0) y Chromium (BSD-3-Clause), solo en el servicio de renderizado; párrafo citado en la tarea que lo añade. Ninguna dependencia nueva en la API ni en el worker |
+| IX | KB | ☑ | `[[research/2026-10-29-auditoria-del-constructor/_index]]` · ADR-049 §Enmiendas |
+
+**Medidor.** Identificar el sector, generar la guía, el constructor del cliente,
+la extracción con su reintento, el cliente simulado y el juez van a «Construcción
+y pruebas», con su tarea en `usage_records`. El renderizado no llama a ningún
+modelo; su coste es de máquina y no se repercute (como la lectura de hoy).
+
+### Diseño
+
+- **Sector (R57).** Columnas nuevas en la ficha del cliente (`business_profiles`
+  o donde viva el nicho): `sector_key`, `sector_label`, `sector_confidence`,
+  `sector_source`, `sector_decided_by`. Un trabajo `sector_identify` en el worker,
+  encolado al alta, al terminar `client_read` y al cambiar nicho o información;
+  una sola llamada con salida JSON validada contra la lista cerrada de claves.
+  `sectors.py` queda como respaldo con palabras enteras. Todo lo que hoy llama a
+  `sector_of_niche` lee el sector guardado.
+- **Guías (R58).** `services/builder/guides/` con una guía por sector, en datos,
+  derivada de las plantillas ya pasadas a Reservas por la 048. `build_messages`
+  añade la guía y el patrón del papel. Tabla por cliente `generated_guides` (guía y
+  12 pruebas, `status = generated`). Admin: listado de etiquetas sin guía y
+  «Convertir en guía de Auphere». «Desde una plantilla» pasa por el mismo
+  `write_new_agent`. El banco de evaluación gana sectores sin guía y nombres reales,
+  y mide las pruebas del sector.
+- **Lectura (R59).** `reader.py`: el parser guarda el JSON-LD y los microdatos; un
+  extractor determinista los pasa a la extracción con procedencia `structured`;
+  `sitemap.xml` para elegir páginas; lectura con `asyncio.Semaphore(4)`; redes
+  permitidas también con web; reintento de la extracción. Sin relectura periódica:
+  se retira `source_reread_cron` (y su nombre del contrato de crons), y las rutas
+  que cambian la web o las redes encolan `client_read` si el valor cambió. El
+  Panel monta la tarjeta de lectura.
+- **Navegador de respaldo (R59.2).** `apps/renderer/` (Python 3.11, FastAPI,
+  Playwright con Chromium): `POST /render` con token, una página por petición,
+  20 s y 2 MB como mucho. Chromium sale por un proxy local que resuelve y conecta él
+  mismo y rechaza direcciones no públicas en cada conexión (también tras
+  redirecciones y en los recursos de la página), así que el rebinding de DNS no
+  sirve. Imagen y servicio propios en Terraform, apagados por defecto
+  (`renderer_enabled = false`); el worker lo usa solo si `NEXUS_RENDERER_URL` está
+  puesta.
+- **Constructor del cliente (R60).** Al terminar `client_read` (y al cambiar el
+  sector) se encola `client_profile` con la huella de la ficha como clave de
+  idempotencia; reintentos con espera creciente (3). Sus propuestas se guardan como
+  sugerencias de sección (`business_suggestions`) para Políticas y Preguntas
+  frecuentes, y los agentes sugeridos, aparte. Negocio gana las secciones
+  «Políticas» y «Preguntas frecuentes»; Agentes, las tarjetas «Sugerido».
+- **Pruebas de varios turnos (R61).** `agent_tests.py::_attempt` pasa a un bucle:
+  turno del agente (`run_turn` con la agenda simulada) → turno del cliente simulado
+  (modelo de simulación, con persona, plan y la conversación) → condición de
+  parada. `world.final_state()` se amplía con las citas de Reservas, el escalado y
+  los enlaces de pago. La conversación se guarda en el resultado de cada pasada.
+  Modelos: `NEXUS_LLM_CUSTOMER_SIM_MODEL` y `NEXUS_LLM_JUDGE_MODEL` (configuración
+  de plataforma, R64).
+- **Herramientas pendientes (R62).** `sanitize` deja de quitar las herramientas no
+  conectadas: las guarda en `spec.tools` con su petición en `connection_requests`.
+  El validador acepta una herramienta del catálogo permitida al partner aunque no
+  esté conectada. Al activar un conector para un agente, sus pruebas afectadas se
+  marcan desactualizadas. En la consola, «Conectar {X}» abre `ConnectDialog` en el
+  sitio.
+- **Pantallas (R63).** Las de `evidence/prototipo/agente.md` §H5, §H9 y §H10.
+- **Modelos (R64).** `agent-model-quality.tsx` se desmonta y Avanzado enseña una
+  línea; la ruta de cambiar la política responde 409 `model_policy_managed`.
+
+### Documentación de la enmienda (mismo commit que el cambio)
+
+| Documento | Cambio |
+|---|---|
+| `docs/ficha-del-negocio.md` | Sector, lectura (JSON-LD, sitemap, redes, navegador), sin relectura periódica, constructor del cliente, Políticas y Preguntas frecuentes |
+| `docs/agentes.md` | Guía × papel × ficha, guías generadas, herramientas pendientes, pruebas de varios turnos |
+| `docs/console.md` | Canal dentro del agente, Rendimiento, Conectores, sin «Calidad» |
+| `docs/modelos-y-router.md` | La restricción del requisito 64 |
+| `docs/admin.md` | Sectores sin guía y «Convertir en guía» |
+| `docs/renderer.md` (nuevo) | El servicio de renderizado, sus guardas y cómo encenderlo |
+
+## Enmienda del 2026-10-30 · Solo lo que tenemos
+
+**Qué cubre:** el requisito 65 y la precisión del 58.2 (`spec.md`). Las decisiones del owner están en Clarifications, sesión 2026-10-30. Las tareas son la fase 28 de `tasks.md`.
+
+**Orden:** va después del paso 4 de la fase 27 (T201, T202 y T206), que ya cubre:
+- 65.1 en las guías: patrones combinables, ninguno filtra herramientas;
+- 65.2 para `reservas.*`;
+- 65.7 para el constructor: lo que hace cada herramienta;
+- 65.13.
+
+Lo que T201 deje hecho se marca en la fase 28 con su referencia y no se repite.
+
+### Constitution Check de la enmienda
+
+| # | Principio | ¿Cumple? | Prueba / justificación |
+|---|---|---|---|
+| I | Aislamiento | ☑ | Sin tablas nuevas. 65.11 cierra un fallo abierto de la garantía 2, con su caso en `tests/isolation/` |
+| II | Superficie | ☑ | `0`. `PUT /console/clients/{ref}/tools` se cierra para agentes estructurados |
+| III | Lo leído es dato | ☑ | Sin cambios |
+| IV | Acción `mutates` | ☑ | El constructor sigue proponiendo; nada se publica solo |
+| V | Estados honestos | ☑ | Es el objeto de la enmienda: «No tenemos herramienta para: …» y promesas que bloquean |
+| VI | Por API | ☑ | Todo por `/console/*` |
+| VII | Test primero | ☑ | Fase 28: pruebas en rojo antes |
+| VIII | Licencias | ☑ | Sin dependencias nuevas |
+| IX | KB | ☑ | Nota de coordinación `evidence/enmienda-2026-10-29.md` |
+
+### Diseño (dónde, según la auditoría del 2026-10-30)
+
+Rutas relativas a `apps/api/src/nexus_api` salvo que se diga otra cosa.
+
+- **65.2.** En `load_context` (`services/agent_spec/validator.py`) y `api/console/capability_names.py`, `reservas.*` con `ClientAccess.reservas_on` apagado cuentan como no conectadas y sin activación. La simulación (`apps/worker/src/nexus_worker/simulation/registry.py`) respeta el módulo.
+- **65.3 y 65.4.**
+  - `sanitize` (`services/builder/agent_draft.py`) quita las integraciones que no son conectores ofrecidos y las anota como `capability_missing`.
+  - El validador da `integration_unknown`.
+  - La consola pinta lo descartado (`apps/console/src/lib/backend/builder-types.ts`, `components/builder/block-view.tsx`).
+- **65.5.**
+  - `promises_without_tool` (`services/agent_spec/compiler.py`) compara con lo que hace cada herramienta según `capability_names`, no con su prefijo.
+  - `services/agent_spec/review.py` le da gravedad «bloquea».
+  - `services/publishing.py` la mete en la puerta.
+- **65.6.** El compilador gana una sección fija «Lo que no haces», con las alternativas de las habilidades.
+- **65.7.**
+  - El copiloto (`services/builder/copilot_model.py`, y las reglas sin modelo de `copilot.py`) y las sugerencias (`services/builder/client_profile.py`) reciben las herramientas disponibles con lo que hace cada una.
+  - El esquema de las sugerencias admite cualquier papel o ninguno.
+- **65.8.**
+  - Cada prueba del sector declara las familias de herramientas que necesita, en su catálogo (`services/testing/sector_catalog.py` y sus datos).
+  - `add_sector_tests` marca «No aplica» sola.
+  - Si hace falta una columna, va en una migración nueva sobre la cabeza de entonces.
+- **65.9.** En `services/publishing.py`, «sin pruebas» deja de contar como aprobado para un agente estructurado.
+- **65.10.** `api/console/tools.py` responde 409 `structured_agent` para un agente con AgentSpec.
+- **65.11.** `_load_tool_policy` (`apps/worker/src/nexus_worker/runtime/pipeline.py`) falla cerrado: sin política, ninguna herramienta de conector.
+- **65.12.** `services/builder/agent_draft.py`:
+  - una ficha que no carga da `facts_unavailable`, en vez de seguir con `Facts(name="")`;
+  - un modelo sin instrucciones cuenta como fallo del constructor.
+
+**Fuera de la enmienda, como seguimiento:**
+- los nombres de herramientas de Composio en el AgentSpec;
+- el enrutado del turno por intenciones de vertical.
+
+**Documentación**, en el mismo cambio:
+- `docs/agentes.md`: el requisito 65;
+- `docs/console.md`: «No tenemos herramienta para: …».
+
 ## Estructura
 
 ```text

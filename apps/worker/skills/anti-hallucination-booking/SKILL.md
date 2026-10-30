@@ -24,15 +24,16 @@ el agente NO afirma — informa que está procesando o pide aclaración.
 Tres ramas posibles, en orden de preferencia:
 
 1. **Tienes el tool result en contexto** (acabaste de llamar
-   `booking.create_appointment` y devolvió `status: "confirmed"`):
+   `reservas.create` —o `booking.create_appointment` en un agente que aún
+   no pasó a Reservas— y devolvió la reserva hecha):
    - Confirma con datos exactos del tool result.
    - Tono cálido pero conciso. Máximo 1 emoji.
    - Ejemplo: "Listo, tu turno quedó agendado el viernes a las 16:00
      con corte fade. Te esperamos."
 
 2. **No tienes tool result pero puedes obtenerlo**:
-   - Llama `booking.check_availability` y luego
-     `booking.create_appointment`.
+   - Llama `reservas.find_slots` y luego `reservas.create` (o
+     `booking.check_availability` y `booking.create_appointment`).
    - Si ambos exitosos, ramo 1.
 
 3. **No puedes ejecutar la tool** (connector caído, falta de
@@ -81,17 +82,17 @@ del grader y baja la latencia del turno.
 ### Ejemplo 1 — flujo correcto
 
 Usuario: "Quiero reservar corte para el viernes a las 16."
-Agente (tool 1: `booking.check_availability(time="viernes 16h")`)
-  → result: `{available: true}`
-Agente (tool 2: `booking.create_appointment(...)`)
-  → result: `{status: "confirmed", id: "apt_123"}`
+Agente (tool 1: `reservas.find_slots(date="viernes", ...)`)
+  → result: `{slots: ["16:00", ...]}`
+Agente (tool 2: `reservas.create(...)`)
+  → result: `{status: "confirmed", id: "res_123"}`
 Agente al cliente: "Listo, te agendé el viernes a las 16:00. Te esperamos 🙂"
 
 ### Ejemplo 2 — flujo con falla
 
 Usuario: "Confirmame ya, el sábado a las 10."
-Agente (tool 1: `booking.create_appointment(...)`)
-  → result: `{status: "error", error: "connector_timeout"}`
+Agente (tool 1: `reservas.create(...)`)
+  → result: `{status: "error", error: "timeout"}`
 Agente al cliente: "Estoy procesando tu reserva del sábado a las 10,
 hay una pausa técnica del momento. En cuanto pueda confirmarte te
 escribo. ¿Te parece?"
@@ -99,7 +100,7 @@ escribo. ¿Te parece?"
 ### Ejemplo 3 — flujo tentativo
 
 Usuario: "Confirmame ya el turno del miércoles 15, no esperes."
-Agente: (sin tools previas, sin AgendaPro conectado para este tenant)
+Agente: (sin tools previas, sin agenda disponible para este agente)
 Agente al cliente: "Voy a procesar tu reserva del miércoles a las 15:00.
 La persona del salón te confirma en un rato cuando vea el calendario.
 Mientras tanto, ¿hay algo más que necesites?"

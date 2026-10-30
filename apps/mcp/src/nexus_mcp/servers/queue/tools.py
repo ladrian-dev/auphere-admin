@@ -15,8 +15,8 @@ The estimated-wait calculation combines:
   status is ``served`` (Postgres). If there's no history yet we fall back
   to a sensible default (12 minutes).
 
-The barber argument is informational in Block D — Block E will refine
-estimates when AgendaPro supplies real per-barber average pace.
+The barber argument is informational: there is no per-barber pace to refine
+the estimate with.
 """
 
 from __future__ import annotations

@@ -229,7 +229,7 @@ export function BusinessSources({
           </Button>
         </div>
       ) : data === undefined || data === null ? (
-        <div className="grid gap-2" aria-busy="true" aria-label={t("business.sources.loading")}>
+        <div role="status" className="grid gap-2" aria-busy="true" aria-label={t("business.sources.loading")}>
           <Skeleton className="h-14 w-full" />
           <Skeleton className="h-14 w-full" />
         </div>

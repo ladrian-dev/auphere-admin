@@ -104,8 +104,8 @@ export function describeProblems(
 
 /** Los nombres de marca que no salen de poner mayúscula a la clave. */
 const BRANDS: Record<string, string> = {
-  agendapro: "AgendaPro",
   google_calendar: "Google Calendar",
+  googlecalendar: "Google Calendar",
   gcal: "Google Calendar",
   mercadopago: "Mercado Pago",
   mercado_pago: "Mercado Pago",
@@ -118,7 +118,7 @@ const BRANDS: Record<string, string> = {
   paypal: "PayPal",
 };
 
-/** «agendapro» → «AgendaPro»; «mi_crm» → «Mi crm». */
+/** «googlecalendar» → «Google Calendar»; «mi_crm» → «Mi crm». */
 export function integrationName(key: string): string {
   return BRANDS[key] ?? humanize(key);
 }
@@ -169,10 +169,24 @@ export function procedureId(title: string, taken: ReadonlySet<string>): string {
   }
 }
 
-/** Los conectores que faltan, con las habilidades que los piden en su fila (17.6). */
-export function connectByIntegration(connect: readonly ConnectRequest[] | undefined): Map<string, string> {
+/**
+ * Spec 047, enmienda del 2026-10-30 (65.3): lo que nunca lleva «Conectar {X}».
+ * Reservas es un módulo del cliente, no un conector: encendido o apagado, no se
+ * «conecta».
+ */
+export const NEVER_CONNECT: ReadonlySet<string> = new Set(["reservas"]);
+
+/**
+ * Los conectores que faltan, con las habilidades que los piden en su fila
+ * (17.6). Solo los que se pueden conectar (65.3): nunca Reservas ni lo que la
+ * API dice que no ofrecemos (`notOffered`, de `missing_capabilities`).
+ */
+export function connectByIntegration(connect: readonly ConnectRequest[] | undefined, notOffered: ReadonlySet<string> = new Set()): Map<string, string> {
   const out = new Map<string, string>();
-  for (const c of connect ?? []) if (c?.integration && !out.has(c.integration)) out.set(c.integration, c.reason);
+  for (const c of connect ?? []) {
+    if (!c?.integration || out.has(c.integration) || NEVER_CONNECT.has(c.integration) || notOffered.has(c.integration)) continue;
+    out.set(c.integration, c.reason);
+  }
   return out;
 }
 
@@ -255,8 +269,9 @@ export function groupTemplates<T extends { group: string }>(templates: readonly 
 /**
  * Spec 047 (49.6): los avisos enlazan a la pantalla del agente con `?tab=`
  * (`notifications.LINKS` de la API). Cada pestaña es una sección de la pantalla:
- * la página la lleva a la vista al abrirse. «Calidad» vive en Avanzado, con su
- * propia ancla (`model.retirement`, `model.price_change`, T147); las
+ * la página la lleva a la vista al abrirse. «Calidad» (`model.retirement`,
+ * `model.price_change`, T147) cae en Avanzado, en la línea que dice que el
+ * modelo lo gestiona Auphere (64.1; D55); las
  * sugerencias de la semana (`agent.suggestions.ready`) llevan a Rendimiento y
  * las correcciones del negocio (`agent.correction.proposed`), a Mejoras (T174).
  * `integrations` (y `connectors`) llevan a los Conectores del agente (T129).
@@ -266,6 +281,7 @@ const TAB_SECTION: Record<string, string> = {
   quality: "agente-calidad",
   integrations: "agente-conectores",
   connectors: "agente-conectores",
+  channels: "agente-canales",
   tests: "agente-pruebas",
   performance: "agente-rendimiento",
   improvements: "agente-mejoras",

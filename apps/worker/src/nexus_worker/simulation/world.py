@@ -189,13 +189,37 @@ class World:
         self.actions.append(Action(tool=tool, phrase=phrase, args=dict(args or {})))
 
     def final_state(self) -> dict[str, Any]:
-        """Lo que una prueba comprueba al final (requisito 21.3)."""
+        """Lo que una prueba comprueba al final (requisitos 21.3 y 61.4): las citas
+        que quedan en la agenda simulada de Reservas (servicio, día y hora en la zona
+        del negocio), el escalado (a quién y por qué) y si se pidió un pago."""
         confirmed = [b for b in self.bookings if b.status == "confirmed"]
-        return {
-            "booking": {"created": bool(confirmed), "count": len(confirmed)},
+        items = []
+        for b in confirmed:
+            local = datetime.fromisoformat(b.starts_at).astimezone(self.tz)
+            items.append(
+                {
+                    "service": b.service_name,
+                    "service_id": b.service_id,
+                    "date": local.date().isoformat(),
+                    "time": local.strftime("%H:%M"),
+                }
+            )
+        handoffs = [a for a in self.actions if a.tool == "escalate.escalate_to_human"]
+        reason = next(
+            (str(a.args.get("reason")) for a in reversed(handoffs) if a.args.get("reason")),
+            None,
+        )
+        state: dict[str, Any] = {
+            "booking": {"created": bool(confirmed), "count": len(confirmed), "items": items},
             "escalated": self.escalated,
             "actions": [a.tool for a in self.actions],
+            "payment": {"requested": any(a.tool.startswith("payments.") for a in self.actions)},
         }
+        if self.escalated or handoffs:
+            # Las pruebas no tienen destinatarios: el escalado va «al equipo» del
+            # canal (requisito 33); el motivo es el que dio el agente.
+            state["escalation"] = {"to": "team", "reason": reason}
+        return state
 
     # ── serializar ─────────────────────────────────────────────────────────
 

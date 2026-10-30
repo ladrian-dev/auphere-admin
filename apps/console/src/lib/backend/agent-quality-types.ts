@@ -50,6 +50,18 @@ export const TEST_STATUSES: readonly TestStatus[] = ["passed", "flaky", "failed"
 
 export type TestCriterion = { key: string; text: string };
 
+/**
+ * Enmienda del 2026-10-29 (requisito 61; `contracts/console-api.md` §10): cada
+ * pasada es una conversación con un cliente simulado. Un turno, lo que dijo
+ * cada uno; en el del agente, lo que habría hecho, ya en palabras del negocio.
+ */
+export type TestTurn = { role: "customer" | "agent"; text: string; actions: string[] };
+/** Por qué terminó la conversación: plan cumplido, despedida, paso a una persona o 8 turnos. */
+export type TestStop = "plan_done" | "goodbye" | "handoff" | "turn_limit";
+export const TEST_STOPS: readonly TestStop[] = ["plan_done", "goodbye", "handoff", "turn_limit"];
+/** Una pasada (requisito 21.4) con su conversación. */
+export type TestAttempt = { passed?: boolean | null; transcript?: TestTurn[] | null; stop?: TestStop | null };
+
 export type AgentTest = {
   id: string;
   /** `case` (del caso), `sector` (de la batería del nicho), `person` (añadida)… */
@@ -70,6 +82,16 @@ export type AgentTest = {
   decided: number;
   /** Lo que se comprobó: el estado final, no lo que dijo el agente (21.3, 21.5). */
   why_failed: string | null;
+  /**
+   * La conversación de la pasada que se enseña en «Por qué falló» y por qué
+   * terminó (61.6). Ausentes en respuestas de antes de la fase 27; la consola
+   * acepta también las pasadas en `attempts`.
+   */
+  transcript?: TestTurn[] | null;
+  stop?: TestStop | null;
+  attempts?: TestAttempt[] | null;
+  /** `generated`: una prueba de la guía generada para este cliente (58.4). */
+  origin?: string | null;
 };
 
 export type TestSummary = Record<TestStatus, number> & {

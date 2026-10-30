@@ -196,9 +196,9 @@ describe("la puerta (23.1, 23.2, 23.3)", () => {
     const dialog = await screen.findByRole("dialog", { name: "Guardar saltando la puerta" });
     await user.click(within(dialog).getByRole("button", { name: "Guardar con este motivo" }));
     expect(within(dialog).getByText("Escribe el motivo, con al menos 3 caracteres.")).toBeVisible();
-    await user.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "AgendaPro se conecta mañana");
+    await user.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "Google Calendar se conecta mañana");
     await user.click(within(dialog).getByRole("button", { name: "Guardar con este motivo" }));
-    expect(publish).toHaveBeenLastCalledWith({ ref: REF, agent: AGENT, override_reason: "AgendaPro se conecta mañana", accept_normal_failures: true });
+    expect(publish).toHaveBeenLastCalledWith({ ref: REF, agent: AGENT, override_reason: "Google Calendar se conecta mañana", accept_normal_failures: true });
   });
 
   it("sin permiso para saltarla, se explica y no hay control (§V)", async () => {
@@ -305,5 +305,59 @@ describe("la barra flotante · como el prototipo", () => {
     expect(within(bar).getByText("No se guardó: no pasa la puerta")).toBeVisible();
     await user.click(within(bar).getByRole("button", { name: "Ver por qué" }));
     expect(await screen.findByRole("dialog", { name: "Por qué no se guardó" })).toBeVisible();
+  });
+});
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (T228; requisitos 65.5 y 65.9;
+ * `contracts/console-api.md` §11 «La puerta»): un estructurado sin ninguna
+ * prueba que le aplique no se guarda y nadie lo salta (`gate.hard`,
+ * `no_applicable_tests`); una promesa sin herramienta es un bloqueante de la
+ * revisión que se arregla quitándola, en su punto.
+ */
+describe("la puerta · solo lo que tenemos (65.5, 65.9)", () => {
+  const noTests = gate({
+    conditions: [{ condition: "critical_tests", ok: false }],
+    hard: [{ condition: "critical_tests", code: "no_applicable_tests", message: "Este agente no tiene ninguna prueba que aplique: añade una antes de guardar." }],
+  });
+
+  it("sin pruebas que apliquen: lo dice con sus palabras, nadie lo salta y «Añadir una prueba» lleva a añadirla; pasa axe", async () => {
+    const user = userEvent.setup();
+    const onAddTest = vi.fn();
+    const { container } = screenWith({ preview: preview({ can_override: true }), onAddTest }, { poll: vi.fn(async () => blocked(noTests)) });
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    const notice = await screen.findByRole("alert");
+    expect(within(notice).getByText("Este agente no tiene ninguna prueba que le aplique. Añade una antes de guardar.")).toBeVisible();
+    expect(within(notice).queryByRole("button", { name: /Guardar igualmente/ })).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+    await user.click(within(notice).getByRole("button", { name: "Añadir una prueba" }));
+    expect(onAddTest).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Por qué no se guardó" })).toBeNull());
+  });
+
+  it("sin dónde añadirla (quien la monta no lo ofrece), solo lo dice", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { poll: vi.fn(async () => blocked(noTests)) });
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    const notice = await screen.findByRole("alert");
+    expect(within(notice).getByText(/no tiene ninguna prueba que le aplique/)).toBeVisible();
+    expect(within(notice).queryByRole("button")).toBeNull();
+  });
+
+  it("una promesa sin herramienta: se enseña como bloqueante y su arreglo lleva al texto que promete", async () => {
+    const user = userEvent.setup();
+    const onEdit = vi.fn();
+    const promise = gate({
+      conditions: [{ condition: "review", ok: false }],
+      overridable: [{ condition: "review", code: "promises_without_tool", message: "El procedimiento «Cobrar» promete cobrar y ninguna herramienta lo hace.", pointer: "/procedures/1/steps" }],
+    });
+    screenWith({ preview: preview({ can_override: false }), onEdit }, { poll: vi.fn(async () => blocked(promise)) });
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    const notice = await screen.findByRole("alert");
+    expect(within(notice).getByText("El procedimiento «Cobrar» promete cobrar y ninguna herramienta lo hace.")).toBeVisible();
+    await user.click(within(notice).getByRole("button", { name: "Arreglar en el borrador" }));
+    expect(onEdit).toHaveBeenCalledWith("/procedures/1/steps");
+    // Ningún «Conectar»: no hay conector que lo haga.
+    expect(screen.queryByRole("button", { name: /Conectar/ })).toBeNull();
   });
 });

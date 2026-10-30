@@ -128,7 +128,7 @@ describe("piezas del AgentSpec", () => {
   });
 
   it("los conectores se llaman por su marca", () => {
-    expect(integrationName("agendapro")).toBe("AgendaPro");
+    expect(integrationName("googlecalendar")).toBe("Google Calendar");
     expect(integrationName("mi_crm")).toBe("Mi crm");
   });
 });

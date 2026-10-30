@@ -71,6 +71,12 @@ export type ChannelPage = {
   id: string;
   type: string;
   identifier: string;
+  /**
+   * Cómo se conectó el número («Coexistencia» o «Cloud API») para la cabecera
+   * del canal (63.1). **La API aún no lo manda** (hueco H5): sin él, la
+   * cabecera dice «WhatsApp · canal de {agente}».
+   */
+  method?: "coexistence" | "cloud_api" | string | null;
   status: string;
   problem_reason: string | null;
   visible_state: ChannelVisibleState;

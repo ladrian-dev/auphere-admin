@@ -30,7 +30,7 @@ from nexus_api.db.models import Conversation, Reservation, ScheduledJob
 from tests.conftest import add_console_member
 
 from ..business._business_world import Biz, new_business, write
-from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft
+from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft, turn_reservas_on
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -41,6 +41,8 @@ WEEK = {d: [{"open": "10:00", "close": "20:00"}] for d in ("mon", "tue", "wed", 
 @pytest.fixture
 async def biz(client: Any, db_session: AsyncSession, console_world: dict[str, Any]) -> Biz:
     biz = await new_business(client, db_session, console_world, name="Barbería Cultor")
+    # La barbería tiene Reservas encendido: sin él, la agenda cuenta como sin activar (D67).
+    await turn_reservas_on(db_session, biz)
     await write(client, biz, "PUT", "/hours", {"layout": "daily", "days": WEEK}, revision=0)
     await write(
         client,

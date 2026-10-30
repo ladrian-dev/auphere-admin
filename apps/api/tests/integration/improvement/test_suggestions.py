@@ -92,12 +92,18 @@ class FakeModel:
     )
     calls: list[list[dict[str, str]]] = field(default_factory=list)
     tenants: list[uuid.UUID | None] = field(default_factory=list)
+    #: El partner atado al proxy en cada llamada: con el proxy obligatorio
+    #: (staging), sin él la llamada no sale.
+    partners: list[uuid.UUID | None] = field(default_factory=list)
 
     async def __call__(self, messages: list[dict[str, str]]) -> str:
         from nexus_worker.metering.collector import record_llm_usage
 
+        from nexus_api.core.llm_proxy import current_llm_proxy_partner
+
         self.calls.append(messages)
         self.tenants.append(get_current_tenant())
+        self.partners.append(current_llm_proxy_partner())
         record_llm_usage(
             model="anthropic/claude-haiku-5-5",
             provider="anthropic",
@@ -581,6 +587,83 @@ async def test_a_suggestion_carries_a_paraphrase_a_diff_and_a_test(
         assert str(conv) not in resp.text
 
 
+#: Lo que contó de verdad un cliente final, sin nombre ni teléfono: el enmascarado
+#: no lo toca y el modelo lo lee tal cual.
+REAL_STORY = (
+    "Mi hija tiene alergia a la penicilina y la última vez le pusieron una inyección "
+    "que la dejó fatal toda la semana"
+)
+
+
+async def test_a_test_that_copies_a_real_message_is_dropped(
+    db_session: AsyncSession, world: World
+) -> None:
+    """Spec 047, T217 (revisión de seguridad del 2026-10-30): la prueba de una
+    sugerencia la escribe un modelo que leyó conversaciones reales. Si su primer
+    mensaje, su persona o su plan copian casi al pie de la letra un mensaje del
+    lote, la sugerencia no se guarda: esa prueba acabaría en «Por qué falló»."""
+    now = datetime.now(UTC)
+    tenant = world.biz.tenant_id
+    seeded = await seed(db_session, tenant, world.channel_id, at=last_week(now), contacts=5)
+    async with tenant_scoped_session(db_session, tenant):
+        first = await db_session.get(Conversation, seeded.conversations[0])
+        assert first is not None
+        db_session.add(
+            Message(
+                id=uuid.uuid4(),
+                tenant_id=tenant,
+                conversation_id=first.id,
+                direction=MessageDirection.INBOUND,
+                status=MessageStatus.DELIVERED,
+                content=REAL_STORY + ".",
+                origin="customer",
+                created_at=first.created_at + timedelta(seconds=30),
+            )
+        )
+    await db_session.commit()
+
+    def rule(text: str) -> list[dict[str, Any]]:
+        return [{"op": "add", "path": "/rules/-", "value": text}]
+
+    copied = "¡" + REAL_STORY.upper() + "!"  # otra caja y otra puntuación
+
+    def topics(refs: list[str]) -> list[dict[str, Any]]:
+        return [
+            parking(refs),
+            parking(
+                refs,
+                key="primer_mensaje",
+                ops=rule("Pregunta por alergias antes de reservar."),
+                test={**PARKING_TEST, "first_message": copied},
+            ),
+            parking(
+                refs,
+                key="persona",
+                ops=rule("Pregunta por alergias al dar cita."),
+                test={**PARKING_TEST, "persona": f"Una madre que cuenta: {REAL_STORY}"},
+            ),
+            parking(
+                refs,
+                key="plan",
+                ops=rule("Ofrece pasar con el equipo si hay alergias."),
+                test={**PARKING_TEST, "plan": f"Cuenta que {REAL_STORY.lower()} y pide cita."},
+            ),
+            # Una frase corta y corriente que también dijo alguien no es una copia.
+            parking(
+                refs,
+                key="corriente",
+                ops=rule("Di que el parking está en la calle de atrás."),
+                test={**PARKING_TEST, "first_message": "Hola, ¿dónde puedo aparcar?"},
+            ),
+        ]
+
+    model = FakeModel(topics=topics)
+    assert await generate(model, now=now) == 2
+    assert REAL_STORY in model.prompt, "el modelo leyó el mensaje de verdad"
+    keys = {r.topic_key for r in await suggestions_of(tenant, world.agent_id)}
+    assert keys == {"aparcamiento", "corriente"}
+
+
 # ── Aceptar: al borrador, y por la puerta ───────────────────────────────────
 
 
@@ -765,6 +848,10 @@ async def test_suggestions_are_generated_in_the_worker_inside_each_client(
     # Una llamada por agente, cada una con el cliente puesto y solo con lo suyo.
     assert len(model.calls) == 3
     assert sorted(map(str, model.tenants)) == sorted(map(str, [tenant, tenant, b["tenant_id"]]))
+    # Cada llamada sale con la clave de su partner y nunca con la de otro
+    # (fallo el-constructor-no-llega-al-modelo-en-staging).
+    partner_of = {tenant: world.biz.partner_id, b["tenant_id"]: b["partner_id"]}
+    assert model.partners == [partner_of[t] for t in model.tenants if t is not None]
     prompts = ["\n".join(m["content"] for m in call) for call in model.calls]
     for prompt, seen_tenant in zip(prompts, model.tenants, strict=True):
         groups = [

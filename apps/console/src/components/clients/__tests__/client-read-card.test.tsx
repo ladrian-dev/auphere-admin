@@ -61,10 +61,20 @@ function card(props: Partial<React.ComponentProps<typeof ClientReadCard>> = {}) 
 describe("ClientReadCard", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("cargando: un esqueleto del tamaño de la tarjeta", () => {
+  it("cargando: un esqueleto del tamaño de la tarjeta, que se anuncia y pasa axe", async () => {
     const load = vi.fn(() => new Promise<never>(() => {}));
     card({ actions: { load } });
-    expect(screen.getByLabelText("Cargando cómo va la lectura…")).toHaveAttribute("aria-busy", "true");
+    const skeleton = screen.getByRole("status", { name: "Cargando cómo va la lectura…" });
+    expect(skeleton).toHaveAttribute("aria-busy", "true");
+    expect(await axeViolations()).toEqual([]);
+  });
+
+  it("leyendo: si una consulta falla, lo dice sin quitar lo que ya se sabía, y sigue mirando (T218)", async () => {
+    const load = vi.fn(async () => ({ ok: false as const, status: 502, message: "upstream" }));
+    card({ initial: read(job()), actions: { load } });
+    expect(screen.getByText("3 páginas leídas")).toBeInTheDocument();
+    expect(await screen.findByText("No pudimos saber cómo va la lectura.", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText("Leyendo cultorbarber.com para completar la ficha: sedes, horario y servicios…")).toBeInTheDocument();
   });
 
   it("vacío: sin trabajo de lectura no pinta nada", async () => {
@@ -101,8 +111,59 @@ describe("ClientReadCard", () => {
     };
     card({ initial: read(job({ status: "done", result: partial }), null) });
     expect(screen.getByText(/Leímos sus redes: 1 pregunta frecuente/)).toBeInTheDocument();
-    expect(screen.getByText("Instagram no se deja leer.")).toBeInTheDocument();
+    // Una lectura de antes de la enmienda (sin `networks`): el «blocked» de una red se dice igual.
+    expect(screen.getByText("Instagram no deja leer perfiles sin cuenta.")).toBeInTheDocument();
     expect(screen.getByText("Traducido de inglés.")).toBeInTheDocument();
+  });
+
+  it("hecha (59.4, 59.7): qué se leyó, qué falta revisar y, por red, la que no deja leer sin contarla como fallo", async () => {
+    const done = job({ status: "done", result: RESULT, finished_at: "2026-10-26T10:01:00Z" });
+    const { container } = card({
+      initial: {
+        job: done,
+        website: "cultorbarber.com",
+        structured: true,
+        networks: [
+          { network: "web", status: "read" },
+          { network: "tiktok", status: "read" },
+          { network: "instagram", status: "blocked_by_network", reason: "login_required" },
+          { network: "facebook", status: "failed", reason: "unreachable" },
+        ],
+      },
+    });
+    expect(screen.getByText("Lo que leímos")).toBeInTheDocument();
+    expect(screen.getByText("También leímos TikTok.")).toBeInTheDocument();
+    expect(screen.getByText("21 datos por revisar en Negocio.")).toBeInTheDocument();
+    expect(screen.getByText("Incluye los datos que su web publica para los buscadores, los más fiables.")).toBeInTheDocument();
+    expect(screen.getByText("Instagram no deja leer perfiles sin cuenta.")).toBeInTheDocument();
+    expect(screen.getByText("No pudimos leer Facebook: no responde.")).toBeInTheDocument();
+    // Una red que no deja leer no tiñe la tarjeta de aviso: la lectura terminó.
+    expect(container.querySelector("[data-slot=client-read-card]")).toHaveAttribute("data-tone", "info");
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("las redes también se leen del resultado del trabajo", () => {
+    const result = { ...RESULT, networks: [{ network: "x", status: "blocked_by_network" }], structured: false };
+    card({ initial: read(job({ status: "done", result: result as unknown as Record<string, unknown> })) });
+    expect(screen.getByText("X no deja leer perfiles sin cuenta.")).toBeInTheDocument();
+    expect(screen.queryByText(/buscadores/)).toBeNull();
+  });
+
+  it("nada que revisar: no lo dice", () => {
+    card({ initial: read(job({ status: "done", result: { ...RESULT, applied: 0, suggested: 0 } })) });
+    expect(screen.queryByText(/por revisar/)).toBeNull();
+  });
+
+  it("fallida: también dice qué redes no dejan leer", () => {
+    card({
+      initial: {
+        job: job({ status: "failed", error_code: "unreachable", finished_at: "x" }),
+        website: "cultorbarber.com",
+        networks: [{ network: "instagram", status: "blocked_by_network" }],
+      },
+    });
+    expect(screen.getByText("No pudimos leer cultorbarber.com: no responde.")).toBeInTheDocument();
+    expect(screen.getByText("Instagram no deja leer perfiles sin cuenta.")).toBeInTheDocument();
   });
 
   it("fallida: dice por qué y ofrece reintentar, que vuelve a «leyendo»", async () => {
@@ -152,6 +213,48 @@ describe("client-read-model", () => {
 
   it("espera 1, 2, 4… hasta 10 s", () => {
     expect([0, 1, 2, 3, 4, 9].map(pollDelay)).toEqual([1000, 2000, 4000, 8000, 10000, 10000]);
+  });
+
+  it("las redes: las del contrato nuevo mandan; sin ellas, las fuentes de antes (59.4)", () => {
+    const fresh = readView({
+      job: job({ status: "done", result: RESULT }),
+      website: "cultorbarber.com",
+      networks: [
+        { network: "web", status: "read" },
+        { network: "instagram", status: "blocked_by_network" },
+        { network: "tiktok", status: "failed", reason: "weird_code" },
+      ],
+    });
+    expect(fresh).toMatchObject({
+      kind: "done",
+      networks: [
+        { network: "web", status: "read", reason: null },
+        { network: "instagram", status: "blocked_by_network", reason: null },
+        { network: "tiktok", status: "failed", reason: "other" },
+      ],
+      toReview: 21,
+      structured: false,
+    });
+    const legacy = readView(
+      read(
+        job({
+          status: "done",
+          result: {
+            ...RESULT,
+            sources: [
+              { network: "instagram", value: "@x", status: "failed", failure: "blocked", pages: 0 },
+              { network: "web", value: "x.com", status: "failed", failure: "timeout", pages: 0 },
+            ],
+          },
+        }),
+      ),
+    );
+    expect(legacy).toMatchObject({
+      networks: [
+        { network: "instagram", status: "blocked_by_network", reason: null },
+        { network: "web", status: "failed", reason: "timeout" },
+      ],
+    });
   });
 
   it("un código que no conoce se dice como un fallo nuestro", () => {

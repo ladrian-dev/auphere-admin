@@ -581,8 +581,8 @@ async def test_dispatch_refuses_outside_whitelist(db_session, two_tenants, mcp_r
 
 async def test_flow1_booking_with_preferred_barber_smoke(db_session, two_tenants, mcp_registry):
     """Exercises the canonical flow 1 from verticals/barbershop_v1.md
-    using only the booking + client + notification servers (AgendaPro is
-    Block E)."""
+    using only the booking + client + notification servers (``booking.*``
+    is retired by spec 048 but still runs for the versions that name it)."""
     a = two_tenants["a"]
     await seed_reminder_policy(db_session, tenant_id=a, templates=["reminder_24h"])
     cust = await seed_customer(db_session, tenant_id=a, identifier="+56-99-flow1")

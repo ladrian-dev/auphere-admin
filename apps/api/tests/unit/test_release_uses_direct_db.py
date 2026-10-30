@@ -35,7 +35,8 @@ from nexus_api.db.base import get_direct_engine, reset_engine_cache
 DIRECT = "postgresql+asyncpg://u:p@aurora.internal:5432/nexus"
 POOLER = "postgresql+asyncpg://u:p@pgbouncer.staging.internal:5432/nexus"
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "seed_connectors.py"
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+SCRIPT = SCRIPTS / "seed_connectors.py"
 
 
 @pytest.fixture(autouse=True)
@@ -90,3 +91,42 @@ def test_the_seeder_asks_for_the_direct_engine():
 
     source = SCRIPT.read_text()
     assert "get_engine()" not in source, "el sembrador del release no debe ir por el pooler"
+
+
+# ── Spec 048 (T028): the automatic pass to Reservas, in the same task ──────
+
+AUTO_PASS = SCRIPTS / "pass_booking_to_reservas.py"
+RELEASE = SCRIPTS / "release.sh"
+
+
+def test_the_auto_pass_asks_for_the_direct_engine():
+    """It runs in the release task, like the seeder: it goes to the direct database."""
+    spec = importlib.util.spec_from_file_location("pass_booking_to_reservas_wiring", AUTO_PASS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.get_direct_engine is get_direct_engine
+
+    source = AUTO_PASS.read_text()
+    assert "get_engine()" not in source
+    assert "get_sessionmaker()" not in source
+
+
+def test_release_runs_the_pass_after_the_migrations_and_never_aborts_on_it():
+    """After ``alembic upgrade head`` and the seeding (requirement 3.1), and a
+    failure of the pass never stops the deploy (3.7): the script exits 0 even if
+    a client fails, and ``release.sh`` goes on even if the whole script crashes."""
+    lines = [line.strip() for line in RELEASE.read_text().splitlines()]
+    code = [line for line in lines if line and not line.startswith(("#", "echo "))]
+
+    def at(fragment: str) -> int:
+        found = [i for i, line in enumerate(code) if fragment in line]
+        assert len(found) == 1, (fragment, found)
+        return found[0]
+
+    alembic = at("alembic upgrade head")
+    seed = at("scripts/seed_connectors.py")
+    auto = at("scripts/pass_booking_to_reservas.py")
+    assert alembic < seed < auto
+    call = code[auto]
+    assert call.startswith("if ! ") or "||" in call, call

@@ -29,7 +29,7 @@ import {
 import { publishAction, publishPreviewAction, qualityJobAction, undoPublishAction } from "@/app/(console)/clients/[ref]/agents/quality-actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { DiffRow, Gate, PublishBody, PublishPreview, PublishResult, QualityJob, TestSummary } from "@/lib/backend/agent-quality-types";
+import type { DiffRow, Gate, GateItem, PublishBody, PublishPreview, PublishResult, QualityJob, TestSummary } from "@/lib/backend/agent-quality-types";
 
 import { barState } from "./agent-proto-model";
 import { sleep, type Result } from "./builder-model";
@@ -74,6 +74,12 @@ const UNDO_MAX_MS = 10 * 60 * 1000;
  * falla» con «Guardar igualmente», «20 de 20 pruebas pasan · guardado») y solo
  * ofrece guardar lo que hay que guardar. La puerta bloqueada se explica en una
  * hoja lateral («Ver por qué»), no dentro de la barra.
+ *
+ * Enmienda del 2026-10-30 (T228; 65.5 y 65.9): un estructurado sin ninguna
+ * prueba que le aplique (`no_applicable_tests`, en `hard`) se dice con las
+ * palabras de la consola y «Añadir una prueba» lleva a añadirla; un bloqueante
+ * con su punto (una promesa sin herramienta) lleva a él con «Arreglar en el
+ * borrador». Ninguno ofrece «Conectar»: no hay conector que lo haga.
  */
 export function PublishBar({
   refId,
@@ -85,6 +91,8 @@ export function PublishBar({
   tests = null,
   pendingQuestions = 0,
   onConnect,
+  onAddTest,
+  onEdit,
   onPublished,
   actions = SERVER_ACTIONS,
   wait = sleep,
@@ -103,6 +111,10 @@ export function PublishBar({
   pendingQuestions?: number;
   /** Conectar un canal sin salir de la pantalla (la pestaña Canales). Sin él, la página de canales del cliente. */
   onConnect?: () => void;
+  /** Spec 047 (65.9): «Añadir una prueba» cuando la puerta no guarda un agente sin pruebas que le apliquen. */
+  onAddTest?: () => void;
+  /** Spec 047 (65.5): llevar al punto del borrador de un bloqueante que lo trae. */
+  onEdit?: (pointer: string) => void;
   /** Se publicó o se deshizo: el borrador, el historial y las pruebas cambiaron. */
   onPublished?: () => void;
   actions?: PublishActions;
@@ -336,6 +348,22 @@ export function PublishBar({
                 offerOverride={offerOverride && canWrite}
                 onAnyway={() => setConfirmNormal(true)}
                 onOverride={() => setOverrideOpen(true)}
+                onAddTest={
+                  canWrite && onAddTest
+                    ? () => {
+                        setGateOpen(false);
+                        onAddTest();
+                      }
+                    : undefined
+                }
+                onEdit={
+                  canWrite && onEdit
+                    ? (pointer) => {
+                        setGateOpen(false);
+                        onEdit(pointer);
+                      }
+                    : undefined
+                }
               />
             ) : null}
           </div>
@@ -429,12 +457,16 @@ function GateNotice({
   offerOverride,
   onAnyway,
   onOverride,
+  onAddTest,
+  onEdit,
 }: {
   gate: Gate;
   offerAnyway: boolean;
   offerOverride: boolean;
   onAnyway: () => void;
   onOverride: () => void;
+  onAddTest?: () => void;
+  onEdit?: (pointer: string) => void;
 }) {
   const t = useT();
   return (
@@ -474,11 +506,60 @@ function GateNotice({
             </ul>
           </div>
         ) : null}
-        <Items title={t("builder.publish.blocked.hard")} items={gate.hard.map((h) => h.message)} />
-        <Items title={t("builder.publish.blocked.overridable")} items={gate.overridable.map((o) => o.message)} />
+        <GateItems title={t("builder.publish.blocked.hard")} items={gate.hard} onAddTest={onAddTest} onEdit={onEdit} />
+        <GateItems title={t("builder.publish.blocked.overridable")} items={gate.overridable} onAddTest={onAddTest} onEdit={onEdit} />
         <Items title={t("builder.publish.blocked.normal")} items={gate.normal_failures} />
       </div>
     </Callout>
+  );
+}
+
+/**
+ * Lo que no deja guardar, cada cosa con su arreglo cuando lo hay (65.5, 65.9):
+ * sin pruebas que le apliquen, con las palabras de la consola y «Añadir una
+ * prueba»; con su punto en el borrador, «Arreglar en el borrador».
+ */
+function GateItems({
+  title,
+  items,
+  onAddTest,
+  onEdit,
+}: {
+  title: string;
+  items: readonly GateItem[];
+  onAddTest?: () => void;
+  onEdit?: (pointer: string) => void;
+}) {
+  const t = useT();
+  if (!items.length) return null;
+  return (
+    <div className="grid min-w-0 gap-1">
+      <p className="text-xs font-medium">{title}</p>
+      <ul className="grid min-w-0 list-disc gap-2 pl-5">
+        {items.map((item, i) => {
+          const noTests = item.code === "no_applicable_tests";
+          const pointer = typeof item.pointer === "string" && item.pointer ? item.pointer : null;
+          return (
+            <li key={`${item.code}-${i}`} className="min-w-0 text-pretty break-words" data-code={item.code}>
+              <span>{noTests ? t("builder.publish.noApplicableTests") : item.message}</span>
+              {noTests && onAddTest ? (
+                <span className="mt-1 block">
+                  <Button size="sm" variant="outline" onClick={onAddTest}>
+                    {t("builder.suite.add")}
+                  </Button>
+                </span>
+              ) : !noTests && pointer && onEdit ? (
+                <span className="mt-1 block">
+                  <Button size="sm" variant="outline" onClick={() => onEdit(pointer)}>
+                    {t("builder.review.fix.edit")}
+                  </Button>
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

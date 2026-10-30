@@ -14,9 +14,12 @@ Por cada entrada:
    empezó, terminó, caducó o no existe— no se corre: se lee la fila (con su
    caducidad perezosa, que da por ``timeout`` el de una réplica muerta) y se
    acusa;
-4. el manejador corre con **su plazo**; mientras, el consumidor late cada
-   ``heartbeat_s`` para que la caducidad de la API no lo dé por muerto. Si no
-   termina a tiempo se cancela y el trabajo queda ``failed``/``timeout``;
+4. el manejador corre con **su plazo** y con **la clave del partner** del
+   cliente atada al proxy de modelos (``llm_proxy_partner_scope``): con el proxy
+   obligatorio (staging) una llamada sin partner no sale, y así ningún manejador
+   tiene que acordarse. Mientras, el consumidor late cada ``heartbeat_s`` para
+   que la caducidad de la API no lo dé por muerto. Si no termina a tiempo se
+   cancela y el trabajo queda ``failed``/``timeout``;
 5. se escribe el final —``done`` con su resultado, o ``failed`` con su código—
    y **solo entonces** se acusa. Si escribirlo falla, la entrada se queda en
    el PEL y la recoge la reclamación.
@@ -53,6 +56,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
+from nexus_api.core.llm_proxy import llm_proxy_partner_scope
 from nexus_api.services.jobs import JOBS_STREAM
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -174,8 +178,16 @@ async def _beat(store: JobStore, ctx: JobContext, every: float) -> None:
 
 async def _run(spec: HandlerSpec, ctx: JobContext, store: JobStore, heartbeat_s: float) -> _Ending:
     beat = asyncio.create_task(_beat(store, ctx, heartbeat_s))
+    # El partner del cliente, atado al proxy de modelos para todo el trabajo. La
+    # tarea que crea ``wait_for`` copia el contexto: llega al manejador y a lo que
+    # este lance en paralelo, y nunca a otro trabajo.
+    partner_id = ctx.job.partner_id
+    scope = (
+        llm_proxy_partner_scope(partner_id) if partner_id is not None else contextlib.nullcontext()
+    )
     try:
-        raw = await asyncio.wait_for(spec.handler(ctx), timeout=spec.timeout_s)
+        with scope:
+            raw = await asyncio.wait_for(spec.handler(ctx), timeout=spec.timeout_s)
     except TimeoutError:
         return _Ending(error_code=TIMEOUT)
     except JobFailed as failure:

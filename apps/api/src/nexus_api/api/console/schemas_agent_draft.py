@@ -38,6 +38,17 @@ class DraftTestsOut(BaseModel):
     sector: int
 
 
+class MissingCapabilityOut(BaseModel):
+    """Something the agent needs and we do not have (``agent_spec/missing.py``)."""
+
+    kind: Literal["integration", "module", "tool", "action"]
+    key: str
+    label: str
+    reason: Literal["integration_unknown", "module_off", "not_linked", "tool_unknown", "no_tool"]
+    source: Literal["skill", "connection_request", "tool", "text"]
+    pointer: str | None = None
+
+
 class AgentDraftOut(BaseModel):
     """The draft of one agent — or, without one, the version it would start
     from — with the revision every write has to send back in ``If-Match``.
@@ -72,6 +83,10 @@ class AgentDraftOut(BaseModel):
     # before the 047 reads in «instructions» mode — and the state of its tests.
     spec: dict[str, Any] | None = None
     tests: DraftTestsOut | None = None
+    #: Spec 047, enmienda del 2026-10-30 (65.4): «No tenemos herramienta para: …».
+    #: What the builder left out (kept on the version) plus what the AgentSpec now
+    #: promises with no tool (``contracts/console-api.md`` §11).
+    missing_capabilities: list[MissingCapabilityOut] = Field(default_factory=list)
 
 
 class AgentDraftPatchIn(BaseModel):

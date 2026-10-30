@@ -41,8 +41,8 @@ log = structlog.get_logger(__name__)
 #: ``contracts/events.md`` §5, ``turn.effect``: qué clase de efecto es.
 _EFFECT_BY_PREFIX: tuple[tuple[str, str], ...] = (
     ("reservas.", "reserve"),
+    # Spec 048: retired, but it still books for the versions that name it.
     ("booking.", "reserve"),
-    ("agendapro", "reserve"),
     ("queue.", "reserve"),
     ("woocommerce.build_checkout_link", "send_link"),
     ("payments.", "send_link"),

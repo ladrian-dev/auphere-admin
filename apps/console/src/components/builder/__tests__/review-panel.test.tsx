@@ -61,7 +61,7 @@ describe("la revisión (22.2, 22.3)", () => {
     const user = userEvent.setup();
     const { actions, onEdit, onApplied } = screenWith();
     await screen.findByRole("list", { name: "Hallazgos" });
-    expect(within(finding("La habilidad Reservas necesita AgendaPro y no está conectada.")).getByRole("link", { name: "Ir a Conectores" })).toHaveAttribute(
+    expect(within(finding("La habilidad Reservas necesita Google Calendar y no está conectada.")).getByRole("link", { name: "Ir a Conectores" })).toHaveAttribute(
       "href",
       `/clients/${REF}/integrations`,
     );
@@ -95,5 +95,40 @@ describe("la revisión (22.2, 22.3)", () => {
     );
     expect(await screen.findByText("No se pudo revisar.")).toBeVisible();
     expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (T228; requisito 65.5;
+ * `contracts/console-api.md` §11 «La puerta»): en un agente estructurado,
+ * `promises_without_tool` llega con `severity: "block"` y `fix {kind: "edit",
+ * pointer}`. Se enseña como bloqueo y el arreglo lleva al texto que promete,
+ * sin «Conectar»: no hay conector que lo haga.
+ */
+describe("la revisión · promesas sin herramienta (65.5)", () => {
+  const PROMISE = {
+    ...REVIEW,
+    findings: [
+      {
+        code: "promises_without_tool",
+        severity: "block" as const,
+        message: "El procedimiento «Cobrar» promete cobrar y ninguna herramienta lo hace.",
+        pointer: "/procedures/1/steps",
+        fix: { kind: "edit" as const, pointer: "/procedures/1/steps" },
+      },
+    ],
+  };
+
+  it("bloquea y «Arreglar en el borrador» lleva al punto, sin «Conectar»", async () => {
+    const user = userEvent.setup();
+    const { onEdit, container } = screenWith({}, { load: vi.fn(async () => ok(PROMISE)) });
+    await screen.findByRole("list", { name: "Hallazgos" });
+    const row = finding("El procedimiento «Cobrar» promete cobrar y ninguna herramienta lo hace.");
+    expect(within(row).getByText("Bloquea")).toBeVisible();
+    expect(within(row).queryByRole("link")).toBeNull();
+    expect(within(row).queryByRole("button", { name: /Conectar/ })).toBeNull();
+    await user.click(within(row).getByRole("button", { name: "Arreglar en el borrador" }));
+    expect(onEdit).toHaveBeenCalledWith("/procedures/1/steps");
+    expect(await axeViolations(container)).toEqual([]);
   });
 });

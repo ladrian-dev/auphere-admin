@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -147,13 +147,6 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         default=1440,
         server_default="1440",
     )
-
-    # Migration 0021 — public AgendaPro link (ADR-017). The new public
-    # browser MCP reads this URL to scrape availability and create
-    # appointments; modify / cancel / get_appointments are not supported
-    # via the public flow and escalate to the owner backchannel.
-    # Optional — only set on tenants whose booking provider is AgendaPro.
-    agendapro_public_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Migration 0164 (owner, 2026-10-20). A partner's client whose agent never
     # stops for lack of balance: the turn passes without balance or cap and

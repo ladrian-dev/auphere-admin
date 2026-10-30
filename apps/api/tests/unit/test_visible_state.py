@@ -101,7 +101,15 @@ def test_a_problem_carries_its_reason(reason: str) -> None:
 
 
 def test_the_problem_reasons_are_the_closed_list() -> None:
-    assert PROBLEM_REASONS == ("quality", "auth_expired", "coexistence_inactive", "meta_error")
+    # Spec 050 (migración 0206) añadió la revisión de la cuenta y la alerta crítica.
+    assert PROBLEM_REASONS == (
+        "quality",
+        "auth_expired",
+        "coexistence_inactive",
+        "meta_error",
+        "account_review",
+        "account_alert",
+    )
 
 
 def test_only_a_problem_carries_a_reason() -> None:

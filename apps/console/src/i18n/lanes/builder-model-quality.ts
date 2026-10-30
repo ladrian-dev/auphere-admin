@@ -4,6 +4,8 @@
  *  opción son de la consola, no las de la API. Sin punto y coma (`words.test.ts`). */
 export const builderModelQualityMessages = {
   "modelQuality.title": { es: "Calidad", en: "Quality" },
+  // Spec 047 (64.1; D55): mientras Auphere gestiona los modelos, Avanzado solo dice esto.
+  "modelQuality.managed": { es: "El modelo de este agente lo gestiona Auphere.", en: "Auphere manages this agent's model." },
   "modelQuality.intro": {
     es: "Cuánta calidad paga este agente. Cada opción dice su precio estimado por mensaje. El cambio va al borrador y se aplica al guardar, si pasa las pruebas.",
     en: "How much quality this agent pays for. Each option shows its estimated price per message. The change goes to the draft and applies when you save, if it passes the tests.",

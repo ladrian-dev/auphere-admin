@@ -101,6 +101,15 @@ class ClientAccess(TimestampMixin, Base):
         have = set(self.modules or []) | set(also)
         return tuple(m for m in CLIENT_MODULES if m in have)
 
+    @property
+    def reservas_on(self) -> bool:
+        """Spec 048 (plan, decision 16): the Reservas module is on when it is on
+        the list, whether or not the client's people can sign in (``enabled``).
+        Reservas is the agents' agenda, so turning it on must not open anyone's
+        access; ``enabled`` only says who can sign in. What the agent's tools,
+        the waitlist offers and the operator's Acceso tab look at."""
+        return ClientModule.RESERVAS.value in (self.modules or [])
+
 
 class ClientMembership(UUIDPrimaryKey, TimestampMixin, Base):
     __tablename__ = "client_memberships"

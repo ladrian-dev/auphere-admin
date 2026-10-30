@@ -145,10 +145,9 @@ async def tenant_has_catalog(session: AsyncSession) -> bool:
 
 
 async def _connector_by_slug(scope: ClientScope, slug: str) -> tuple[str, str] | None:
-    """(nombre visible, estado) de una integración que no se enlaza por
-    `connector_id`. Hoy solo AgendaPro, y «conectada» significa que el
-    cliente tiene pegada la URL pública de su agenda — no que exista una
-    fila de conector, que para ella nunca se crea."""
+    """(nombre visible, estado) de una integración que el catálogo no enlaza
+    por `connector_id` (``requires`` en ``capability_names``). Sin fila de
+    conector no hay nada conectado: la pantalla avisa de que falta."""
     display = (
         await scope.session.execute(
             sa.select(Connector.display_name).where(Connector.slug == slug).limit(1)
@@ -157,10 +156,7 @@ async def _connector_by_slug(scope: ClientScope, slug: str) -> tuple[str, str] |
     # La dependencia la dice el código de la herramienta, no el catálogo: si
     # la ficha del conector no está sembrada en este entorno, se nombra por
     # su slug antes que callar que hace falta.
-    display = display or slug
-    if slug == "agendapro":
-        return display, "connected" if scope.tenant.agendapro_public_url else "none"
-    return display, "none"
+    return display or slug, "none"
 
 
 async def _all_capabilities(
@@ -178,9 +174,8 @@ async def _all_capabilities(
         tags = list(tool.capability_tags or [])
         connected = install_status in _CONNECTED
         # Una herramienta puede necesitar una integración que el catálogo no
-        # enlaza: AgendaPro se conecta pegando la URL de la agenda, así que
-        # sus dos herramientas figuran como nativas. Sin esto la pantalla las
-        # daría por utilizables y mentiría.
+        # enlaza (el catálogo de Meta del canal, por ejemplo). Sin esto la
+        # pantalla la daría por utilizable y mentiría.
         if slug is None:
             needed = requires_connector(tool.name, "tool")
             if needed == CHANNEL_CATALOG:
@@ -309,6 +304,42 @@ async def list_capabilities(
     )
 
 
+async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool:
+    """D79 (65.10): an agent with a structured AgentSpec changes its tools through
+    that document and the validator, like ``PATCH …/draft``. ``write_spec``
+    recompiles the prompt and leaves ``draft.tools`` equal to the document. What we
+    do not have is dropped and noted (65.3), never written. Returns whether the tool
+    was on before."""
+    from nexus_api.services.agent_spec import missing
+    from nexus_api.services.agent_spec.schema import dump
+    from nexus_api.services.agent_spec.validator import (
+        load_context,
+        problems_out,
+        validate_spec,
+    )
+
+    from .agent_spec_drafts import current_spec, write_spec
+
+    spec, _target = await current_spec(scope)
+    assert spec is not None
+    tools = list(spec.tools or [])
+    was = key in tools
+    if enabled == was:
+        return was
+    doc = dump(spec)
+    doc["tools"] = [*tools, key] if enabled else [t for t in tools if t != key]
+    ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
+    doc, lacking = missing.strip_doc(doc, ctx)
+    checked, problems = validate_spec(doc, ctx, author="person")
+    if checked is None or problems:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "spec_invalid", "problems": problems_out(problems)},
+        )
+    await write_spec(scope, checked, expected_revision=None, lacking=lacking)
+    return was
+
+
 @router.put(
     "",
     response_model=CapabilityUpdatedOut,
@@ -346,9 +377,13 @@ async def update_capability(
 
     draft, created = await ensure_draft(scope)
     before: dict[str, Any] = {}
+    spec_written = False
 
     if body.enabled is not None:
-        if body.kind == "tool":
+        if body.kind == "tool" and draft.spec and draft.spec.get("mode") == "structured":
+            before["enabled"] = await _set_spec_tool(scope, body.key, enabled=body.enabled)
+            spec_written = True
+        elif body.kind == "tool":
             names = list(draft.tools or [])
             before["enabled"] = body.key in names
             if body.enabled and body.key not in names:
@@ -411,7 +446,8 @@ async def update_capability(
                 actor=scope.principal.actor,
             )
 
-    await draft_written(scope, draft)
+    if not spec_written:
+        await draft_written(scope, draft)
     await AuditRepository(scope.session).record(
         actor=scope.principal.actor,
         action="console.capability.update",

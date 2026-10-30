@@ -146,6 +146,7 @@ from .deps import (
     client_setup_detail,
     health_for_tenant,
     out_of_quota,
+    require_build_room,
     resolve_mapping,
     serving_since,
 )
@@ -787,6 +788,7 @@ def _new_client(body: ClientNewIn) -> tuple[NewClient, str]:
             price_currency=price_currency,
             eu_only=eu_only,
             links=links,
+            wallet_currency=body.wallet_currency,
         ),
         wallet,
     )
@@ -874,6 +876,12 @@ async def create_client(
             redis=redis,
             idempotency_key=idempotency_key,
         )
+    if body.seed_template:
+        # Spec 047, enmienda del 2026-10-30 (65.10): on the new console a client
+        # never comes with an agent mounted from a template; nothing is created.
+        from .seed_templates import refuse_on_new_console
+
+        refuse_on_new_console(principal.partner, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
     provision_in = ClientProvisionIn(
         external_client_ref=body.external_client_ref,
         name=body.name,
@@ -975,7 +983,10 @@ async def get_client_read(
     "/{ref}/business/read",
     response_model=JobAcceptedOut,
     status_code=status.HTTP_202_ACCEPTED,
-    responses={409: {"description": "nothing_to_read: no web and no networks."}},
+    responses={
+        402: {"description": "build_budget_exhausted: «Construcción y pruebas» is spent."},
+        409: {"description": "nothing_to_read: no web and no networks."},
+    },
 )
 async def start_client_read(
     ref: str = ClientRef,
@@ -985,7 +996,11 @@ async def start_client_read(
 ) -> JobAcceptedOut:
     """«Reintentar» / «Volver a leer» (requisitos 5.7 y 12.3). A reading still
     running is returned, not started twice. The job is enqueued after its row
-    is committed, so this route opens its own scoped transaction."""
+    is committed, so this route opens its own scoped transaction.
+
+    Spec 047, T217: reading spends «Construcción y pruebas», which Auphere pays up
+    to the partner's cap — spent, ``402 build_budget_exhausted`` (46.5)."""
+    await require_build_room(principal.partner.id)
     mapping = await resolve_mapping(session, principal, ref)
     try:
         async with tenant_scoped_session(session, mapping.tenant_id):

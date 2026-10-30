@@ -269,7 +269,9 @@ async def test_not_enough_reads_the_last_seven_days_and_needs_three(
     client: Any, db_session: Any
 ) -> None:
     world = await _funded(client, db_session, amount=UNIT)
-    today = datetime.now(UTC).date()
+    # El día 10 del mes en curso: «no llega» compara con lo que falta para fin de
+    # mes, y los últimos días de cada mes la prueba fallaba (CI del 2026-10-30).
+    today = datetime.now(UTC).date().replace(day=10)
     async with db_session.begin():
         await apply_partner_to_session(db_session, world.partner_id)
         await as_client(db_session, world.us.tenant_id)

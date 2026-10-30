@@ -13,7 +13,10 @@ y deja el final en la fila. Aquí, sin base (la fila es un almacén en memoria):
 - **el reintento por reclamación**: lo que una réplica muerta dejó en su PEL lo
   recoge otra, como hace ``stream-claimer`` con los mensajes;
 - **el bucle**: varios trabajos a la vez —uno largo no retiene a uno corto— y,
-  al parar, lo que sigue en marcha queda ``failed``/``interrupted``.
+  al parar, lo que sigue en marcha queda ``failed``/``interrupted``;
+- **el partner**: el manejador corre con la clave del partner del cliente atada
+  (fallo ``el-constructor-no-llega-al-modelo-en-staging``): con el proxy
+  obligatorio, sin ella ninguna llamada a un modelo sale.
 
 La misma ronda contra Postgres está en ``apps/api/tests/integration/test_jobs_consumer.py``.
 """
@@ -27,6 +30,7 @@ from typing import Any
 
 import pytest
 from fakeredis import aioredis as fakeaioredis
+from nexus_api.core.llm_proxy import current_llm_proxy_partner
 from nexus_api.db.models import Job
 from nexus_api.services.jobs import JOBS_STREAM, enqueue_job
 
@@ -56,6 +60,7 @@ pytestmark = pytest.mark.asyncio
 class _Row:
     tenant_id: uuid.UUID
     kind: str
+    partner_id: uuid.UUID | None = None
     status: str = "queued"
     progress: dict[str, Any] = field(default_factory=lambda: {"step": None, "blocks": []})
     result: dict[str, Any] | None = None
@@ -73,9 +78,16 @@ class FakeStore:
         self.rows: dict[uuid.UUID, _Row] = {}
         self.fail_finish = False
 
-    def add(self, kind: str = "client_read", status: str = "queued") -> Job:
+    def add(
+        self,
+        kind: str = "client_read",
+        status: str = "queued",
+        partner_id: uuid.UUID | None = None,
+    ) -> Job:
         job = Job(id=uuid.uuid4(), tenant_id=uuid.uuid4(), kind=kind)
-        self.rows[job.id] = _Row(tenant_id=job.tenant_id, kind=kind, status=status)
+        self.rows[job.id] = _Row(
+            tenant_id=job.tenant_id, kind=kind, status=status, partner_id=partner_id
+        )
         return job
 
     def _row(self, tenant_id: uuid.UUID, job_id: uuid.UUID, *statuses: str) -> _Row | None:
@@ -89,7 +101,9 @@ class FakeStore:
         if row is None:
             return None
         row.status = "running"
-        return StartedJob(job_id=job_id, tenant_id=tenant_id, kind=row.kind)
+        return StartedJob(
+            job_id=job_id, tenant_id=tenant_id, kind=row.kind, partner_id=row.partner_id
+        )
 
     async def heartbeat(self, tenant_id: uuid.UUID, job_id: uuid.UUID) -> bool:
         row = self._row(tenant_id, job_id, "running")
@@ -143,10 +157,12 @@ class FakeStore:
         return row.status
 
 
-async def _setup(kind: str = "client_read") -> tuple[Any, FakeStore, Job]:
+async def _setup(
+    kind: str = "client_read", partner_id: uuid.UUID | None = None
+) -> tuple[Any, FakeStore, Job]:
     redis = fakeaioredis.FakeRedis()
     store = FakeStore()
-    job = store.add(kind)
+    job = store.add(kind, partner_id=partner_id)
     await enqueue_job(redis, job)
     return redis, store, job
 
@@ -343,6 +359,64 @@ async def test_the_handler_reports_progress_by_blocks() -> None:
         "step": "purpose",
         "blocks": [{"key": "purpose", "value": "Citas"}],
     }
+
+
+# ── el partner del trabajo ─────────────────────────────────────────────────
+
+
+async def test_a_job_runs_with_its_clients_partner_bound() -> None:
+    """Con el proxy obligatorio (staging), cada llamada a un modelo sale con la
+    clave virtual del partner. El consumidor la ata antes del manejador, para
+    todos los tipos, y llega también a lo que el manejador lanza en paralelo."""
+    partner = uuid.uuid4()
+    redis, store, job = await _setup(kind="agent_draft", partner_id=partner)
+    seen: list[uuid.UUID | None] = []
+
+    async def _now() -> uuid.UUID | None:
+        return current_llm_proxy_partner()
+
+    async def handler(ctx: JobContext) -> None:
+        seen.append(current_llm_proxy_partner())
+        seen.extend(await asyncio.gather(_now(), asyncio.create_task(_now())))
+
+    await drain_once(redis, registry=_registry("agent_draft", handler), store=store)
+
+    assert store.rows[job.id].status == "done"
+    assert seen == [partner, partner, partner]
+    assert current_llm_proxy_partner() is None, "the scope does not outlive the job"
+
+
+async def test_two_jobs_side_by_side_keep_their_own_partner() -> None:
+    """Garantía 7: dos trabajos a la vez de dos partners nunca cruzan claves."""
+    redis = fakeaioredis.FakeRedis()
+    store = FakeStore()
+    partner_a, partner_b = uuid.uuid4(), uuid.uuid4()
+    job_a = store.add("tests", partner_id=partner_a)
+    job_b = store.add("tests", partner_id=partner_b)
+    await enqueue_job(redis, job_a)
+    await enqueue_job(redis, job_b)
+    seen: dict[uuid.UUID, uuid.UUID | None] = {}
+
+    async def handler(ctx: JobContext) -> None:
+        await asyncio.sleep(0.01)
+        seen[ctx.job_id] = current_llm_proxy_partner()
+
+    await drain_once(redis, registry=_registry("tests", handler), store=store)
+    assert seen == {job_a.id: partner_a, job_b.id: partner_b}
+
+
+async def test_a_job_of_a_client_without_partner_runs_without_a_key() -> None:
+    """Un cliente sin partner (Demo Farmacia) no hereda ninguna clave: sin
+    proxy obligatorio va al vendor, y con él falla ruidoso, como hasta ahora."""
+    redis, store, job = await _setup()
+    seen: list[uuid.UUID | None] = []
+
+    async def handler(ctx: JobContext) -> None:
+        seen.append(current_llm_proxy_partner())
+
+    await drain_once(redis, registry=_registry("client_read", handler), store=store)
+    assert store.rows[job.id].status == "done"
+    assert seen == [None]
 
 
 # ── el reintento por reclamación ───────────────────────────────────────────

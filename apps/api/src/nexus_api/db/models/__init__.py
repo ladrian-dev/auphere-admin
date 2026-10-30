@@ -24,7 +24,9 @@ from nexus_api.db.models.agent_spec import (
     AgentTestRun,
     AgentTestSuite,
     BuilderEvalRun,
+    GeneratedGuide,
     Proposal,
+    SectorGuide,
     SectorTestCatalog,
 )
 from nexus_api.db.models.agent_suggestion import AgentSuggestion
@@ -56,6 +58,7 @@ from nexus_api.db.models.business import (
     BusinessSpecialDate,
     BusinessSpecialShift,
     BusinessSuggestion,
+    SuggestedAgent,
 )
 from nexus_api.db.models.channel import (
     Channel,
@@ -458,6 +461,7 @@ __all__ = [
     "EvalRunResult",
     "EvalRunStatus",
     "FxRate",
+    "GeneratedGuide",
     "InboxCorrection",
     "InboxRead",
     "InvitationStatus",
@@ -547,10 +551,12 @@ __all__ = [
     "ScheduledJob",
     "ScheduledJobKind",
     "ScheduledJobStatus",
+    "SectorGuide",
     "SectorTestCatalog",
     "SignupProvider",
     "SignupRequest",
     "SignupStatus",
+    "SuggestedAgent",
     "SupportTicket",
     "SupportTicketEvent",
     "Teammate",

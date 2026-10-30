@@ -90,7 +90,22 @@ export type ReadResult = {
   translated_from: string | null;
 };
 
-export type ClientRead = { job: Job | null; website: string | null; networks: Network[] };
+/**
+ * Enmienda del 2026-10-29 (requisito 59.4; `contracts/console-api.md` §10): cómo
+ * fue cada red. `blocked_by_network` es una red que no deja leer perfiles sin
+ * cuenta (Instagram, Facebook, LinkedIn, X): no es un fallo de la lectura.
+ * `reason`, en una que falló, es del vocabulario de `ReadFailure`.
+ */
+export type NetworkReadStatus = "read" | "blocked_by_network" | "failed";
+export type NetworkRead = { network: Network; status: NetworkReadStatus; reason?: string | null };
+
+/**
+ * La tarjeta de lectura. `networks` era la lista de redes por leer (`Network[]`)
+ * y, con la enmienda, trae cómo fue cada una (`NetworkRead[]`); `structured`
+ * dice si se leyeron los datos estructurados de la web (JSON-LD o microdatos).
+ * Las dos cosas pueden venir también en el `result` del trabajo.
+ */
+export type ClientRead = { job: Job | null; website: string | null; networks: (Network | NetworkRead)[]; structured?: boolean };
 
 export function clientsV2Api(call: Call) {
   const enc = encodeURIComponent;

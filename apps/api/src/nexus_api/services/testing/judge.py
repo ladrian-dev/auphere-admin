@@ -27,6 +27,8 @@ from typing import Any, Final, Literal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.core.guardrails.untrusted import inert
+
 Verdict = Literal["pass", "fail", "unknown"]
 
 #: El acuerdo mínimo con las etiquetas humanas para que el juez bloquee.
@@ -111,14 +113,31 @@ JUDGE_SYSTEM: Final = (
 )
 
 
+#: Las etiquetas del bloque del juez: nada de lo que va dentro puede abrirlas ni
+#: cerrarlas (T217).
+JUDGE_TAGS: Final = ("conversacion", "acciones", "criterios")
+
+
 def judge_messages(
     *,
     criteria: Sequence[Mapping[str, Any]],
     transcript: Sequence[Mapping[str, Any]],
     actions: Sequence[str],
 ) -> list[dict[str, str]]:
-    lines = [f"{t.get('role')}: {' / '.join(t.get('bubbles') or [])}" for t in transcript]
-    crit = "\n".join(f"- {c.get('key')}: {c.get('text')}" for c in criteria)
+    """Lo que lee el juez. La conversación la escribieron el borrador y el cliente
+    simulado, y los criterios y las acciones salen de la prueba y de lo que hizo el
+    agente: todo es dato, y cada trozo pasa por ``inert`` (spec 047, T217) para que
+    un turno no pueda cerrar ``<conversacion>`` y escribirle al juez sus criterios."""
+
+    def safe(value: Any) -> str:
+        return inert(str(value or ""), JUDGE_TAGS)
+
+    lines = [
+        f"{safe(t.get('role'))}: {' / '.join(safe(b) for b in t.get('bubbles') or [])}"
+        for t in transcript
+    ]
+    crit = "\n".join(f"- {safe(c.get('key'))}: {safe(c.get('text'))}" for c in criteria)
+    actions = [safe(a) for a in actions]
     user = (
         "<conversacion>\n" + "\n".join(lines) + "\n</conversacion>\n"
         "<acciones>\n" + "\n".join(actions) + "\n</acciones>\n"

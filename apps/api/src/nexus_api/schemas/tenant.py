@@ -61,7 +61,6 @@ class TenantOut(BaseModel):
     owner_phone: str | None
     owner_email: str | None
     cost_alert_threshold_usd_per_day: Decimal
-    agendapro_public_url: str | None = None
     # Billing (migrations 0054/0057). ``partner_id`` NULL = direct Auphere
     # client. ``billing_plan_id`` gives the subscription; ``price_override_cents``
     # wins over the plan's price; ``billing_effective_from`` is the first month

@@ -49,7 +49,8 @@ const SERVER_ACTIONS: BuilderActions = {
 };
 
 type Phase = "idle" | "starting" | "building" | "done" | "failed";
-type Failure = "unavailable" | "other";
+/** `facts`: la ficha del negocio no se pudo leer (65.12); sin ella no hay borrador ni plantilla. */
+type Failure = "unavailable" | "facts" | "other";
 type Errors = { name?: string; description?: string; template?: string; form?: string };
 
 /** Los cuatro ejemplos del prototipo (§3.1), con textos generales: ni negocios ni personas concretas. */
@@ -84,6 +85,13 @@ const LINK = "cursor-pointer font-medium text-primary-text underline underline-o
  * El agente nace al terminar el primer borrador, no al abrir esta pantalla
  * (17.2). Si el borrador no se puede escribir, se ofrecen la plantilla y el
  * blanco sin perder lo escrito (15.8). Nunca se nombra al constructor.
+ *
+ * Enmienda del 2026-10-30 (T228; 65.12): si la ficha del negocio no se puede
+ * leer (`facts_unavailable`: el trabajo falla, o 503 al empezar desde una
+ * plantilla) no hay borrador. Se dice, sin perder lo escrito, con «Reintentar»
+ * —que repite lo que se intentó, sin doble envío— y sin ofrecer «Desde una
+ * plantilla», que también la lee. Si al borrador le falta algo que no tenemos,
+ * la pantalla del agente se abre con su trabajo (`?job=`).
  */
 export function BuilderNew({
   refId,
@@ -122,6 +130,8 @@ export function BuilderNew({
   const [showTemplates, setShowTemplates] = React.useState(false);
   const [templateId, setTemplateId] = React.useState<string | null>(null);
   const [alt, setAlt] = React.useState<"template" | "blank" | null>(null);
+  // Lo último que se intentó, para que «Reintentar» lo repita (65.12).
+  const [lastStart, setLastStart] = React.useState<"describe" | "template">("describe");
 
   const preparing = phase === "starting" || phase === "building" || phase === "done";
   const locked = preparing || alt !== null;
@@ -182,8 +192,10 @@ export function BuilderNew({
         if (current.status === "done") {
           setPhase("done");
           const agentId = current.result?.agent_id ?? current.agent_id;
-          // Con preguntas, la pantalla del agente las enseña encima de su tabla.
-          if (agentId) goToAgent(agentId, current.result?.questions?.length ? current.job_id : undefined);
+          // Con preguntas, la pantalla del agente las enseña encima de su tabla; con
+          // lo que no tenemos (65.4), lee también lo que dejó el trabajo.
+          const withJob = Boolean(current.result?.questions?.length || current.result?.missing_capabilities?.length);
+          if (agentId) goToAgent(agentId, withJob ? current.job_id : undefined);
           return;
         }
         if (current.status === "failed") {
@@ -195,6 +207,13 @@ export function BuilderNew({
             startFailed({ ok: false, status: 422, message: "", code: current.error_code });
             setFailure(null);
             setPhase("idle");
+            return;
+          }
+          if (current.error_code === "facts_unavailable") {
+            // 65.12: sin la ficha no hay borrador, y una plantilla también la lee.
+            setFailure("facts");
+            setShowTemplates(false);
+            setPhase("failed");
             return;
           }
           const unavailable = current.error_code === "builder_unavailable";
@@ -226,7 +245,13 @@ export function BuilderNew({
 
   async function generate(event: React.FormEvent) {
     event.preventDefault();
+    await describe();
+  }
+
+  /** «Generar borrador»: el trabajo que escribe el borrador a partir de lo que se describió. */
+  async function describe() {
     if (locked || !validate(true)) return;
+    setLastStart("describe");
     setPhase("starting");
     setFailure(null);
     setShowTemplates(false);
@@ -234,6 +259,11 @@ export function BuilderNew({
     setJobId(null);
     const res = await actions.start({ ref: refId, name: cleanName(name), description: description.trim(), start: "describe" });
     if (!res.ok) {
+      if (res.code === "facts_unavailable") {
+        setFailure("facts");
+        setPhase("failed");
+        return;
+      }
       startFailed(res);
       setPhase("idle");
       return;
@@ -254,6 +284,7 @@ export function BuilderNew({
       templatesRef.current?.querySelector<HTMLInputElement>("input[type=radio]")?.focus();
       return;
     }
+    if (start === "template") setLastStart("template");
     setAlt(start);
     const text = description.trim();
     const res = await actions.start({
@@ -265,6 +296,13 @@ export function BuilderNew({
     });
     if (!res.ok) {
       setAlt(null);
+      if (res.code === "facts_unavailable") {
+        // 65.12: 503 al empezar desde una plantilla, que también lee la ficha.
+        setFailure("facts");
+        setShowTemplates(false);
+        setPhase("failed");
+        return;
+      }
       startFailed(res);
       return;
     }
@@ -292,8 +330,16 @@ export function BuilderNew({
     requestAnimationFrame(() => templatesRef.current?.querySelector<HTMLInputElement>("input[type=radio]")?.focus());
   }
 
+  /** «Reintentar» cuando no se pudo leer la ficha: lo mismo que se intentó. */
+  function retry() {
+    if (locked) return;
+    if (lastStart === "template") void startFrom("template");
+    else void describe();
+  }
+
   const templates = options?.templates ?? [];
   const title = preparing && cleanName(name) ? cleanName(name) : t("builder.new.title");
+  const noFacts = phase === "failed" && failure === "facts";
 
   return (
     <div className="grid min-w-0 gap-5" data-slot="builder-new">
@@ -344,7 +390,19 @@ export function BuilderNew({
                     <h2 id={`${base}-describe`} className="sr-only">
                       {t("agentProto.new.describe")}
                     </h2>
-                    {phase === "failed" ? (
+                    {noFacts ? (
+                      <Callout
+                        tone="warning"
+                        title={clientName ? t("builder.facts.title.named", { client: clientName }) : t("builder.facts.title")}
+                        action={
+                          <Button type="button" size="sm" variant="outline" loading={alt !== null} onClick={retry}>
+                            {t("builder.suite.retry")}
+                          </Button>
+                        }
+                      >
+                        {t("builder.facts.body")}
+                      </Callout>
+                    ) : phase === "failed" ? (
                       <Callout tone="warning" title={failure === "unavailable" ? t("builder.progress.failed.title") : undefined}>
                         {failure === "unavailable" ? t("builder.progress.failed.body") : t("builder.progress.failed.other")}
                       </Callout>
@@ -400,22 +458,27 @@ export function BuilderNew({
                     <div className="grid min-w-0 gap-3 border-t border-border pt-4" data-slot="builder-alternatives">
                       <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                         <span>{t("agentProto.new.other")}</span>
-                        <button
-                          type="button"
-                          className={LINK}
-                          aria-expanded={showTemplates}
-                          aria-controls={`${base}-templates`}
-                          disabled={alt !== null}
-                          onClick={toggleTemplates}
-                        >
-                          {t("builder.alt.template")}
-                        </button>
-                        <span aria-hidden="true">·</span>
+                        {/* 65.12: sin la ficha, una plantilla tampoco se puede preparar. */}
+                        {noFacts ? null : (
+                          <>
+                            <button
+                              type="button"
+                              className={LINK}
+                              aria-expanded={showTemplates}
+                              aria-controls={`${base}-templates`}
+                              disabled={alt !== null}
+                              onClick={toggleTemplates}
+                            >
+                              {t("builder.alt.template")}
+                            </button>
+                            <span aria-hidden="true">·</span>
+                          </>
+                        )}
                         <button type="button" className={LINK} disabled={alt !== null} aria-busy={alt === "blank" || undefined} onClick={() => void startFrom("blank")}>
                           {t("builder.alt.blank")}
                         </button>
                       </p>
-                      {showTemplates ? (
+                      {showTemplates && !noFacts ? (
                         <div id={`${base}-templates`} className="grid min-w-0 gap-3">
                           {options === null ? (
                             <p className="text-sm text-pretty text-muted-foreground">{t("builder.alt.templates.error")}</p>

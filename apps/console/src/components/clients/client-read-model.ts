@@ -1,25 +1,69 @@
 import type { MessageKey } from "@/i18n/messages";
 import type { Job } from "@/lib/backend";
-import type { ClientRead, Network, ReadFailure, ReadResult } from "@/lib/backend/clients-v2";
+import type { ClientRead, Network, NetworkRead, NetworkReadStatus, ReadFailure, ReadResult } from "@/lib/backend/clients-v2";
 
 /**
  * Spec 047 (T050, requisitos 5.5, 5.7 y 14.7) — qué dice la tarjeta de lectura
  * del Panel según el trabajo `client_read`. Puro: el componente solo pinta.
  *
  * - **leyendo**: el trabajo está en cola o en marcha;
- * - **hecho**: lo encontrado, «Leído de la web · revísalo», con «Revisar»; si
- *   alguna red no se dejó leer, se dice cuál;
+ * - **hecho**: lo encontrado, lo que falta revisar con «Revisar» y, por red, lo
+ *   que se leyó, la que no deja leer perfiles sin cuenta (que no es un fallo,
+ *   59.4) y la que falló, con su motivo (59.7);
  * - **fallido**: el motivo, con «Reintentar» (el cliente sigue usable);
  * - **nada**: sin web ni redes no hay tarjeta (el Panel dice lo que falta).
  */
 
+/** Cómo fue una red, con el motivo ya del vocabulario de la consola. */
+export type NetworkLine = { network: Network; status: NetworkReadStatus; reason: ReadFailure | "other" | null };
+
 export type ReadView =
   | { kind: "none" }
   | { kind: "reading"; site: string | null; pages: number }
-  | { kind: "done"; site: string | null; result: ReadResult; blocked: Network[] }
-  | { kind: "failed"; site: string | null; reason: ReadFailure | "other" };
+  | { kind: "done"; site: string | null; result: ReadResult; networks: NetworkLine[]; toReview: number; structured: boolean }
+  | { kind: "failed"; site: string | null; reason: ReadFailure | "other"; networks: NetworkLine[] };
 
 const KNOWN: ReadonlySet<string> = new Set(["unreachable", "blocked", "no_text", "too_large", "extract_failed", "timeout", "nothing_to_read"]);
+const STATUSES: ReadonlySet<string> = new Set(["read", "blocked_by_network", "failed"]);
+
+function isNetworkRead(value: unknown): value is NetworkRead {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.network === "string" && typeof v.status === "string" && STATUSES.has(v.status);
+}
+
+function reasonOf(code: unknown): ReadFailure | "other" {
+  return typeof code === "string" && KNOWN.has(code) ? (code as ReadFailure) : "other";
+}
+
+/**
+ * Las redes de la enmienda (59.4): las de `GET …/business/read` si ya traen su
+ * estado; si no, las del `result` del trabajo; y, para una lectura de antes,
+ * las fuentes fallidas de siempre (un «blocked» de una red social es que no
+ * deja leer, no un fallo).
+ */
+export function networkLines(data: ClientRead): NetworkLine[] {
+  const result = (data.job?.result ?? {}) as Record<string, unknown>;
+  const fromTop = (data.networks ?? []).filter(isNetworkRead);
+  const fromJob = Array.isArray(result.networks) ? (result.networks as unknown[]).filter(isNetworkRead) : [];
+  const fresh = fromTop.length ? fromTop : fromJob;
+  if (fresh.length) {
+    return fresh.map((n) => ({ network: n.network, status: n.status, reason: n.status === "failed" ? reasonOf(n.reason) : null }));
+  }
+  const sources = Array.isArray(result.sources) ? (result.sources as ReadResult["sources"]) : [];
+  return sources
+    .filter((s) => s.status === "failed")
+    .map((s) =>
+      s.failure === "blocked" && s.network !== "web"
+        ? { network: s.network, status: "blocked_by_network" as const, reason: null }
+        : { network: s.network, status: "failed" as const, reason: reasonOf(s.failure) },
+    );
+}
+
+function structuredOf(data: ClientRead): boolean {
+  if (typeof data.structured === "boolean") return data.structured;
+  return (data.job?.result as Record<string, unknown> | null)?.structured === true;
+}
 
 function pagesOf(job: Job): number {
   const blocks = Array.isArray(job.progress?.blocks) ? (job.progress.blocks as Record<string, unknown>[]) : [];
@@ -32,8 +76,7 @@ export function readView(data: ClientRead | null): ReadView {
   const { job, website } = data;
   if (job.status === "queued" || job.status === "running") return { kind: "reading", site: website, pages: pagesOf(job) };
   if (job.status === "failed") {
-    const code = job.error_code ?? "";
-    return { kind: "failed", site: website, reason: KNOWN.has(code) ? (code as ReadFailure) : "other" };
+    return { kind: "failed", site: website, reason: reasonOf(job.error_code), networks: networkLines(data) };
   }
   const result = (job.result ?? {}) as Partial<ReadResult>;
   const full: ReadResult = {
@@ -44,8 +87,15 @@ export function readView(data: ClientRead | null): ReadView {
     suggested: result.suggested ?? 0,
     translated_from: result.translated_from ?? null,
   };
-  const blocked = full.sources.filter((s) => s.status === "failed").map((s) => s.network);
-  return { kind: "done", site: full.website ?? website, result: full, blocked };
+  return {
+    kind: "done",
+    site: full.website ?? website,
+    result: full,
+    networks: networkLines(data),
+    // Lo aplicado queda «Leído de la web · revísalo» y lo propuesto, al lado: las dos cosas se revisan.
+    toReview: Math.max(0, full.applied) + Math.max(0, full.suggested),
+    structured: structuredOf(data),
+  };
 }
 
 export function isLive(view: ReadView): boolean {

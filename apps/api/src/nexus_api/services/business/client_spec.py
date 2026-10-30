@@ -148,6 +148,27 @@ class WeekSchedule(_Strict):
     label: str | SkipJsonSchema[None] = Field(default=None, json_schema_extra=_RO)
 
 
+class Sector(_Strict):
+    """El sector del negocio (spec 047, enmienda del 2026-10-29, requisito 57.1):
+    lo identifica el sistema o lo fija una persona (``services/business/sector.py``).
+    ``has_guide`` es de solo lectura: si el sector tiene guía de Auphere."""
+
+    key: Literal[
+        "barberia_peluqueria",
+        "clinica",
+        "restaurante",
+        "tienda",
+        "servicios_profesionales",
+        "mayorista",
+        "otro",
+    ]
+    label: str = Field(min_length=1, max_length=40)
+    confidence: Annotated[float, Field(ge=0, le=1)] | SkipJsonSchema[None] = None
+    source: Literal["niche", "info", "web", "person", "fallback"] | SkipJsonSchema[None] = None
+    decided_by: Literal["system", "person"] | SkipJsonSchema[None] = None
+    has_guide: bool | SkipJsonSchema[None] = Field(default=None, json_schema_extra=_RO)
+
+
 class Business(_Strict):
     name: str = Field(min_length=1, max_length=60)
     niche: str = Field(min_length=2, max_length=80)
@@ -159,6 +180,8 @@ class Business(_Strict):
     wallet_currency: Literal["EUR", "USD"]
     eu_only: bool | SkipJsonSchema[None] = None
     sovereign: bool | SkipJsonSchema[None] = Field(default=None, json_schema_extra=_RO)
+    #: Sin sector todavía (se está identificando), no va en el documento.
+    sector: Sector | SkipJsonSchema[None] = None
 
 
 class Location(_Strict):
@@ -402,6 +425,12 @@ async def _business_view(session: AsyncSession, tenant_id: uuid.UUID) -> dict[st
     }
     if profile.info:
         out["info"] = profile.info
+    # Spec 047, enmienda del 2026-10-29 (requisito 57.1): sin sector todavía, no va.
+    from nexus_api.services.business.sector import sector_out_for
+
+    sector = await sector_out_for(session, profile.sector)
+    if sector is not None:
+        out["sector"] = sector
     return out
 
 

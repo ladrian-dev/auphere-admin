@@ -178,8 +178,6 @@ export type Tenant = {
   owner_phone: string | null;
   owner_email: string | null;
   cost_alert_threshold_usd_per_day: string;
-  /** ADR-017: public AgendaPro URL used by the new public browser MCP. */
-  agendapro_public_url: string | null;
   /** Set when the client pays a flat monthly plan (Facturación tab). */
   billing_plan_id?: string | null;
   /** The partner this client belongs to; ``null`` = a direct Auphere client. */
@@ -1724,10 +1722,11 @@ export const backend = {
       body,
     }),
 
-  promoteAgentConfig: (tenantId: string, version: number) =>
+  /** Promoting from the panel skips the gate (spec 047, R23): the API asks why. */
+  promoteAgentConfig: (tenantId: string, version: number, reason: string) =>
     call<AgentConfig>(
       `/admin/tenants/${tenantId}/agent-config/${version}/promote`,
-      { method: "POST" },
+      { method: "POST", body: { reason } },
     ),
 
   rollbackAgentConfig: (tenantId: string, version: number) =>
@@ -2065,20 +2064,6 @@ export const backend = {
     call<ToolWithInstallStatus[]>(
       `/admin/tenants/${tenantId}/tool-catalog?include_deprecated=${includeDeprecated}`,
     ).then((r) => r ?? []),
-
-  // AgendaPro public link (ADR-017). The legacy bootstrap + health-check
-  // endpoints were removed in migration 0021 — the agent now consumes
-  // AgendaPro only via the tenant's public booking URL.
-  setAgendaProPublicUrl: (tenantId: string, publicUrl: string | null) =>
-    call<{
-      integration: string;
-      public_url: string | null;
-      updated_at: string;
-      audit_log_id: string;
-    }>(`/admin/tenants/${tenantId}/integrations/agendapro/public-url`, {
-      method: "PATCH",
-      body: { public_url: publicUrl },
-    }),
 
   getIsolationMetrics: (tenantId: string) =>
     call<IsolationMetricsOut>(

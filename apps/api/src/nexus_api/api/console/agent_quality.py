@@ -235,7 +235,14 @@ async def check_quality(
     body: CheckIn, scope: ClientScope = Depends(agent_in_path("agents:write"))
 ) -> dict[str, str]:
     """«Comprobando la calidad…» (39.9): la suite del agente con esa política.
-    Lo paga el partner, en «Construcción y pruebas»."""
+    Lo paga el partner, en «Construcción y pruebas».
+
+    Suspendido por el requisito 64 (enmienda del 2026-10-29, D55): mientras la
+    gestión de modelos no llegue al panel de operador, la consola no comprueba ni
+    cambia la política de modelo: ``409 model_policy_managed``."""
+    from nexus_api.services.agent_spec.model_policy import refuse_model_policy_change
+
+    refuse_model_policy_change()
     from nexus_api.services.business.writes import _enqueue_after_commit
     from nexus_api.services.jobs import create_job
     from nexus_api.services.testing.runs import create_run, target_version

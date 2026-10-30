@@ -209,7 +209,7 @@ async def test_attention_says_the_balance_is_out(client, db_session, console_wor
 
 
 async def test_attention_warns_when_the_balance_will_not_last(
-    client, db_session, console_world
+    client, db_session, console_world, month_end_far
 ) -> None:
     w = console_world["a"]
     await _fund(db_session, w["partner_id"], 5_000_000)

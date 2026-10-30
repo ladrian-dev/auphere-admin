@@ -268,10 +268,20 @@ async def compile_version(
     session: AsyncSession, cfg: AgentConfig, agent: Agent, *, content_rev: int
 ) -> bool:
     """Compila ``cfg`` contra la ficha de la revisión ``content_rev``. Devuelve si
-    su prompt cambió. Repetir la misma revisión no duplica la historia."""
-    prompt = compile_prompt(
-        instructions_of(cfg.system_prompt_rendered), await load_facts(session, agent)
-    )
+    su prompt cambió. Repetir la misma revisión no duplica la historia.
+
+    Con AgentSpec se compila desde él, como al escribir el borrador: el prompt es
+    «cuerpo + ficha + capa del agente», y cortar en la marca de la ficha tiraría
+    la capa del agente (bug «la ficha borra lo que sabe el agente»). Sin AgentSpec
+    (versiones de antes de la 047), el prompt es «instrucciones + ficha»."""
+    facts = await load_facts(session, agent)
+    if cfg.spec:
+        from nexus_api.services.agent_spec.compiler import compile_spec
+        from nexus_api.services.agent_spec.schema import AgentSpec
+
+        prompt = compile_spec(AgentSpec.model_validate(cfg.spec), facts)
+    else:
+        prompt = compile_prompt(instructions_of(cfg.system_prompt_rendered), facts)
     digest = sha256(prompt)
     await session.execute(
         insert(AgentVersionCompilation)

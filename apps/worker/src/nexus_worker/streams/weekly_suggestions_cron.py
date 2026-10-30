@@ -8,9 +8,10 @@ proponen mejoras agregadas. Lo que hay detrás es de la API
 (``nexus_api.services.improvement.suggestions``); aquí solo lo que es del worker:
 
 - **el modelo**: el de la tarea ``summarize`` por el proveedor de siempre
-  (``runtime/llm.py``), con el modelo del constructor. Con ``llm_use_inmemory``
-  (local y pruebas) no hay modelo y no se propone nada; las pruebas pasan uno de
-  mentira por ``complete_factory``;
+  (``runtime/llm.py``), con el modelo del constructor y la clave del partner
+  del cliente atada al proxy (``llm_proxy_partner_scope``). Con
+  ``llm_use_inmemory`` (local y pruebas) no hay modelo y no se propone nada; las
+  pruebas pasan uno de mentira por ``complete_factory``;
 - **el medidor**: cada pasada va en el turno de uso de su trabajo
   (``job:{id}``) con ``source = suggestions``: la partida «Construcción y
   pruebas», nunca la bolsa del cliente. Con la partida agotada, ese partner no
@@ -33,6 +34,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 import structlog
+from nexus_api.core.llm_proxy import llm_proxy_partner_scope
 from nexus_api.services.improvement import suggestions as svc
 
 from nexus_worker.metering.collector import SOURCE_SUGGESTIONS, usage_turn
@@ -104,13 +106,14 @@ async def suggestions_tick(
             )
             if batch is None:
                 continue
-            async with usage_turn(
-                tenant_id=due.tenant_id,
-                turn_id=f"job:{batch.job_id}",
-                source=SOURCE_SUGGESTIONS,
-                agent_id=due.agent_id,
-            ):
-                report = await svc.generate(batch, complete=complete, now=now)
+            with llm_proxy_partner_scope(due.partner_id):
+                async with usage_turn(
+                    tenant_id=due.tenant_id,
+                    turn_id=f"job:{batch.job_id}",
+                    source=SOURCE_SUGGESTIONS,
+                    agent_id=due.agent_id,
+                ):
+                    report = await svc.generate(batch, complete=complete, now=now)
         except asyncio.CancelledError:
             raise
         except Exception as exc:

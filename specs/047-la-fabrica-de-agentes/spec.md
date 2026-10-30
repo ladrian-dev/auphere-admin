@@ -1,6 +1,6 @@
 # Especificación: la fábrica de agentes — un cliente es un negocio y un agente es quien lo atiende
 
-**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos.
+**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos. **Enmendada el 2026-10-29** (lista para staging, rama `047-lista-para-staging`): §Clarifications, sesión 2026-10-29, y requisitos 57 a 64.
 
 > **Número.** Iba a ser la 046, pero ese número ya lo usa la spec de Andrés «un alta que termina en un agente que responde» (2026-10-24, rama `046-alta-que-responde`). Esta spec reutiliza su iteración 1a. Por decisión del owner del 2026-10-26, sustituye sus iteraciones 2 y 3, y «activar» pasa a ser por canal: ver §Clarifications y §Dependencias y enmiendas.
 
@@ -134,6 +134,49 @@ Esta spec cierra todo eso. Las fuentes completas, con citas `ruta:línea`, está
   - Su modelo pasa a «fijado» con el mismo modelo.
   - Su conocimiento pasa a la capa del negocio.
   - El constructor puede proponer modernizarlos, pero nunca lo hace solo.
+
+### Session 2026-10-29 (enmienda: lista para staging)
+
+La auditoría del constructor del 2026-10-29, hecha con la spec ya fusionada en `develop`, encontró que hoy no fabrica agentes especializados de forma fiable y que sus pruebas comprueban menos de lo que aparentan. Nota de KB: `research/2026-10-29-auditoria-del-constructor/_index.md`. Esta sesión recoge lo que decidió el owner y lo que se decidió con criterio a partir de sus respuestas. Las decisiones están en `research.md` (D46–D55), los requisitos nuevos son los 57 a 64, y las tareas, la fase 27 de `tasks.md`. Los fallos que no cambian ningún requisito van por el flujo de bugs (`.specify/bugs/`).
+
+**Decisiones del owner:**
+
+- Q: ¿Cómo se sabe el sector de un negocio? → A: **Lo identifica el sistema con inteligencia y queda en la ficha** (owner). Una regla de palabras no vale: «despacho» caía en clínica porque contiene «spa». Requisito 57.
+- Q: ¿Se vuelve a leer la web cada semana? → A: **No** (owner). Se relee cuando cambia la web o una red, o cuando se añade una fuente. Enmienda el requisito 12.3. Requisito 59.
+- Q: ¿Se lanza el constructor del cliente (requisito 18)? → A: **Sí, eficiente y estable** (owner). Requisito 60.
+- Q: ¿Pruebas de varios turnos con cliente simulado? → A: **Sí** (owner). Requisito 61.
+- Q: ¿Quién elige el modelo y cómo se gestiona el catálogo? → A: **Más adelante, desde el panel de operador** (owner: «todo lo referente a los modelos es una funcionalidad que agregaremos luego en el admin panel»). Mientras tanto la consola no ofrece perfiles ni modelos. Requisito 64.
+- Q: ¿Qué huecos del prototipo se cierran? → A: **H5, H9 y H10; H8 no** (owner). Requisito 63.
+- Q: ¿Sigue AgendaPro? → A: **No; se retira del todo y la agenda es Reservas** (owner). Va en la spec 048.
+
+**Decididas en esta enmienda** (el owner aceptó las recomendaciones el 2026-10-29; se pueden reabrir):
+
+- Q: ¿Cómo se especializa un agente? → A: **Guía del sector × papel × ficha.** Las plantillas verticales pasan a ser guías del sector que el constructor recibe como ejemplo de oficio, no el agente. Dos negocios del mismo sector comparten guía y se distinguen por su ficha, su descripción y su tono. Sin guía para el sector, el constructor genera una para ese cliente, con sus 12 pruebas, marcadas «generadas». Requisito 58 (D47).
+- Q: ¿Navegador para las webs que pintan con JavaScript? → A: **Sí, solo de respaldo y fuera de la imagen del worker.** Requisito 59 (D50).
+- Q: ¿Qué pasa con una herramienta cuyo conector aún no está conectado? → A: **El agente la guarda como «pendiente de conexión»**: no la ve hasta que se conecte y se active para él, y «Conectar {X}» conecta en el sitio. Enmienda el requisito 15.4. Requisito 62 (D53).
+
+### Session 2026-10-30 (enmienda: solo lo que tenemos)
+
+El 2026-10-30, una auditoría de solo lectura del constructor encontró que hoy puede publicar agentes con capacidades que no tenemos:
+- `reservas.*` con Reservas apagado;
+- integraciones inventadas que acaban en «Conectar X»;
+- promesas sin herramienta que solo avisan;
+- patrones que prometen cobrar con enlace, cuando ninguna herramienta lo hace.
+
+Detalle en `plan.md` §«Enmienda del 2026-10-30».
+
+**Decisiones del owner:**
+
+- Q: ¿Un agente tiene un papel fijo (recepción, ventas, cobros, soporte)? → A: **No** (owner: «No tenemos definición exacta de qué va a hacer el agente; dos agentes distintos pueden usar la agenda»). Los papeles son sugerencias. Precisa el requisito 58.2. Requisito 65.
+- Q: ¿Qué agentes puede crear un cliente? → A: **Cualquiera que necesite, con las herramientas que tenemos y sin inventar** (owner: «que el cliente pueda crear un agente para cualquier cosa que necesite, mientras nosotros tengamos todas las herramientas; no alucinar e inventar cosas que no tenemos»). Requisito 65.
+- Q: Al encender Reservas, ¿se prepara solo el borrador del agente de recepción? → A: **No: el de cada agente activo, como hoy, sin publicarlo** (owner).
+
+**Decididas en esta enmienda** (se pueden reabrir):
+
+- Q: ¿Una promesa sin herramienta bloquea o avisa? → A: **Bloquea la publicación.** Enmienda la gravedad de ese caso en 16.5 y 22.1.
+- Q: ¿Se publica un agente estructurado sin ninguna prueba aplicable? → A: **No.** Requisito 65.9.
+- Q: ¿Se pueden usar las herramientas de Composio en agentes estructurados? → A: **Fuera de esta enmienda.** El AgentSpec no admite sus nombres. El constructor deja de ofrecerlas hasta que una spec decida el formato.
+- Q: ¿Se toca el enrutado del turno por intenciones de vertical, que esconde herramientas a un turno clasificado como `fallback`? → A: **Fuera de esta enmienda.** Queda como seguimiento.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -1075,7 +1118,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 1. WHEN se escribe la información adicional THEN el sistema DEBE detectar webs, @usuarios y enlaces de Instagram, Facebook, TikTok, LinkedIn, YouTube, X y Threads, y enseñar cada hallazgo como un chip con su destino en la ficha.
 2. El sistema NO DEBE tomar un correo electrónico por una web. Un @usuario suelto DEBE proponerse como Instagram, con la opción de cambiar la red.
 3. WHEN se crea o se edita un cliente con una web THEN el sistema DEBE leer en segundo plano hasta 25 páginas públicas del mismo dominio, respetando `robots.txt` y con las mismas guardas de direcciones públicas y de tamaño que ya usa Conocimiento.
-4. WHERE no hay web pero sí redes, el sistema DEBE leer de los perfiles públicos lo que cada red permita sin cuenta (biografía, fijados y destacados), según sus condiciones y su `robots.txt`. Si una red no lo permite, no se lee, y la ficha lo dice.
+4. WHERE no hay web pero sí redes, el sistema DEBE leer de los perfiles públicos lo que cada red permita sin cuenta (biografía, fijados y destacados), según sus condiciones y su `robots.txt`. Si una red no lo permite, no se lee, y la ficha lo dice. (Enmendado el 2026-10-29: también cuando hay web; ver requisito 59.3.)
 5. WHEN termina la lectura THEN el sistema DEBE:
    - proponer como datos «Leído de la web · revísalo» las sedes, el horario, los servicios (nombre, duración, precio y moneda), las políticas y las preguntas frecuentes;
    - avisar a la persona de lo que encontró.
@@ -1211,7 +1254,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
 1. El sistema DEBE permitir subir archivos de hasta 10 MB (PDF, Word, fotos de cartas, TXT, MD y HTML) y añadir páginas web. De cada fuente DEBE enseñar su estado (leyendo, leído o no se pudo leer, con el motivo), su tamaño y cuándo se leyó.
 2. WHEN se quita una fuente THEN los agentes NO DEBEN usarla desde el siguiente mensaje, y el sistema DEBE permitir deshacerlo durante 10 minutos.
-3. El sistema DEBE volver a leer las webs cada semana y cuando se pulse «Volver a leer». Los cambios DEBEN llegar como propuestas pendientes de revisar.
+3. ~~El sistema DEBE volver a leer las webs cada semana y cuando se pulse «Volver a leer».~~ (Enmendado el 2026-10-29: sin relectura periódica; ver requisito 59.6.) Los cambios DEBEN llegar como propuestas pendientes de revisar.
 4. El sistema DEBE guardar las redes con su enlace y su usuario. Instagram y Facebook están siempre presentes; TikTok, LinkedIn, YouTube, X y Threads se pueden añadir.
 5. WHEN un documento contiene servicios con precio THEN el sistema DEBE proponerlos para Servicios como pendientes de revisar, sin cambiar los que ya existen.
 6. Las fotos de cartas DEBEN leerse con un modelo con visión, y su coste DEBE medirse en la partida «Construcción y pruebas».
@@ -1278,7 +1321,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    IF ese estado cambió THEN aplicarla DEBE rechazarse por caducada. Una propuesta sin decidir DEBE caducar a los 15 minutos.
 4. Un validador sin modelo DEBE comprobar cada propuesta antes de enseñarla y otra vez al aplicarla:
    - el esquema y sus límites;
-   - que las herramientas estén en el catálogo, permitidas al partner y conectadas al cliente;
+   - que las herramientas estén en el catálogo, permitidas al partner y conectadas al cliente (enmendado el 2026-10-29: o marcadas «pendientes de conexión»; ver requisito 62.4);
    - que no haya ninguna clave de plataforma;
    - que ninguna herramienta de cara al cliente final reciba un cliente final como argumento;
    - que el texto no lleve datos de otro cliente.
@@ -1342,6 +1385,8 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 ### Requisito 18 — El constructor del cliente
 
 **Historia de usuario:** Como partner, quiero que el constructor me proponga la ficha y los agentes que un negocio necesita, para empezar con una base razonable.
+
+> Enmendado el 2026-10-29 por el requisito 60: el constructor del cliente se lanza al terminar la lectura y sus propuestas se deciden en Negocio y en Agentes.
 
 #### Criterios de aceptación
 
@@ -1657,7 +1702,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 2. Los ajustes de cada integración DEBEN declararse en el catálogo (por ejemplo, el calendario por defecto o la URL de la tienda) y validarse.
 3. WHEN caduca la autorización o el servicio devuelve un error de credenciales THEN el sistema DEBE marcarla «Hay que volver a autorizar», avisar al partner y reflejarlo en las pruebas de los agentes afectados.
 4. «Desconectar para todos» DEBE listar los agentes y las habilidades afectadas y pedir confirmación.
-5. Los ajustes que hoy están repartidos (la URL de AgendaPro, los ajustes de WooCommerce y de Amigable, y los recordatorios) DEBEN pasar a la página de su integración.
+5. Los ajustes que hoy están repartidos (la URL de AgendaPro, los ajustes de WooCommerce y de Amigable, y los recordatorios) DEBEN pasar a la página de su integración. (Enmendado el 2026-10-29: AgendaPro se retira con la spec 048.)
 
 ### Bloque I — Conocimiento
 
@@ -1690,6 +1735,8 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 ### Requisito 39 — Perfiles de calidad y modelo fijado
 
 **Historia de usuario:** Como partner, quiero elegir para cada agente cuánta calidad pago, sin saber de modelos, para que cada agente cueste lo que vale su trabajo.
+
+> Suspendido en la consola el 2026-10-29 por el requisito 64 (owner): los criterios 4, 5, 7, 9 y 11 no se enseñan al partner hasta que exista la gestión de modelos en el panel de operador.
 
 #### Criterios de aceptación
 
@@ -2205,6 +2252,190 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 10. Las rutas nuevas de `/console/lite/*` y `/app/*` DEBEN estar en el test de alcance de la consola lite. Un test DEBE comprobar que una persona de un cliente no alcanza nada de otro cliente del mismo partner.
 11. Un test en rojo de aislamiento DEBE bloquear la fusión.
 
+### Bloque R — Enmienda del 2026-10-29: lista para staging
+
+Estos requisitos salen de la auditoría del 2026-10-29 (§Clarifications, sesión 2026-10-29). Cada uno dice qué criterio anterior enmienda. Donde chocan, mandan estos.
+
+### Requisito 57 — El sector del negocio se identifica con inteligencia
+
+**Historia de usuario:** Como partner, quiero que el sistema entienda a qué se dedica el negocio aunque lo escriba a mi manera, para que sus agentes y sus pruebas sean los de su oficio.
+
+#### Criterios de aceptación
+
+1. La ficha DEBE guardar el sector del negocio con:
+   - la clave de una guía del sector de Auphere, o «otro» si no hay guía para él;
+   - una etiqueta legible («Barbería», «Despacho de abogados», «Gimnasio»);
+   - la confianza;
+   - de dónde salió (nicho, información, web leída o una persona);
+   - quién lo decidió (el sistema o una persona).
+2. WHEN se crea un cliente, WHEN termina la lectura de sus fuentes y WHEN cambian su nicho o su información THEN el sistema DEBE identificar el sector con un modelo, a partir del nicho, la información y lo leído, y guardarlo en la ficha. La identificación DEBE ir en segundo plano y NO DEBE retrasar el alta.
+3. IF una persona fijó el sector THEN el sistema NO DEBE cambiarlo solo. WHEN lo identificado después es distinto THEN DEBE proponerlo al lado del valor actual, como cualquier dato leído (requisito 5.8).
+4. IF no hay modelo disponible THEN el sistema DEBE usar la regla de palabras de respaldo, guardar el resultado con confianza baja y volver a identificarlo con el modelo cuando lo haya. La regla de respaldo DEBE comparar palabras enteras, no fragmentos.
+5. La pestaña Negocio DEBE enseñar el sector y su etiqueta, y permitir corregirlo eligiendo entre los sectores con guía o escribiendo una etiqueta libre («otro»).
+6. Las pruebas del sector (requisito 21.1), las preguntas del constructor y su guía (requisito 58) DEBEN salir del sector guardado, nunca de volver a clasificar el nicho.
+7. Lo que se envía al modelo para identificar el sector es dato no confiable (§III): el resultado DEBE validarse contra la lista cerrada de claves, y una etiqueta libre DEBE limpiarse y limitarse a 40 caracteres.
+8. Identificar el sector DEBE medirse en «Construcción y pruebas».
+
+Enmienda: el requisito 21.1 («la batería común de su nicho») pasa a leerse «de su sector».
+
+### Requisito 58 — Guía del sector × papel × ficha
+
+**Historia de usuario:** Como partner, quiero que el agente de una barbería sepa de barberías y el de un despacho sepa de despachos, y que dos barberías tengan agentes distintos, para no entregar un asistente genérico.
+
+#### Criterios de aceptación
+
+1. Cada sector con guía DEBE tener una guía de Auphere, salida de su plantilla vertical, con: qué preguntar al negocio, los procedimientos típicos (llegar sin cita, no presentarse, señal, cambios y cancelaciones…), los riesgos que hay que pasar a una persona, las herramientas que suele necesitar y sus pruebas del sector.
+2. WHEN el constructor genera un borrador THEN DEBE recibir:
+   - la guía del sector guardado en la ficha;
+   - los patrones de oficio que encajan con la descripción (Recepción, Ventas, Cobros, Soporte u otros). Son ejemplos combinables: un agente puede seguir varios o ninguno, y ningún patrón decide sus herramientas ni sus pruebas (requisito 65.1);
+   - la ficha del negocio, vallada como dato.
+   La guía y el patrón son ejemplos de oficio de Auphere (requisito 15.6). La identidad del agente DEBE salir de la ficha, la descripción y los canales.
+3. Dos clientes del mismo sector con fichas distintas DEBEN obtener borradores distintos: servicios, horarios, sedes, políticas y tono los de cada uno.
+4. WHERE el sector no tiene guía, el constructor DEBE generar una guía para ese cliente y sus 12 pruebas del sector, marcadas «Generada» en la consola. Generarla DEBE usar solo la etiqueta del sector y la guía genérica de Auphere, nunca datos de otro cliente (garantía 5). La guía generada y sus pruebas DEBEN ser del cliente (garantía 1).
+5. El panel de operador DEBE listar los sectores sin guía que más se repiten y permitir a Auphere convertir una guía generada, revisada y sin datos del cliente, en guía de Auphere.
+6. «Empezar desde una plantilla» (requisito 17.8) DEBE crear el agente como el constructor: un AgentSpec estructurado con las pruebas del caso y del sector, no un agente en modo «instrucciones».
+7. La evaluación del constructor (requisito 54) DEBE incluir sectores con y sin guía, con nombres y fichas distintos, y medir si los borradores pasan sus pruebas del sector, no solo si pasan el validador.
+
+### Requisito 59 — Leer la web y las redes de verdad
+
+**Historia de usuario:** Como partner, quiero que la ficha salga de lo que el negocio ya publica, también si su web se pinta con JavaScript o si solo tiene redes, para no teclearlo.
+
+#### Criterios de aceptación
+
+1. WHEN se lee una web THEN el sistema DEBE:
+   - leer primero los datos estructurados de schema.org (JSON-LD y microdatos: nombre, dirección, teléfono, horario, servicios, precios), sin modelo, y darlos como la procedencia más fiable;
+   - usar el `sitemap.xml` cuando exista para elegir las páginas;
+   - leer varias páginas a la vez, con un máximo de concurrencia por sitio, sin pasar de 25 páginas ni de 3 minutos.
+2. IF una página trae menos texto del que hace falta para leerla y el sistema tiene configurado el navegador de respaldo THEN DEBE pedirla a ese navegador, con las mismas guardas de direcciones públicas, `robots.txt`, tamaño y tiempo. El navegador NO DEBE correr en la imagen del worker.
+3. El sistema DEBE leer también las redes permitidas cuando hay web, no solo cuando falta. Enmienda el requisito 5.4.
+4. IF una red no permite leer su perfil THEN la ficha DEBE decir cuál y por qué («Instagram no deja leer perfiles sin cuenta»), sin contarlo como un fallo de la lectura.
+5. IF la extracción devuelve algo que no valida THEN el sistema DEBE reintentarla una vez con el error. Si vuelve a fallar, la lectura DEBE terminar como «Sin datos útiles», con el motivo.
+6. El sistema NO DEBE volver a leer las fuentes de forma periódica. DEBE volver a leerlas WHEN cambia la web o una red del cliente, WHEN se añade una fuente o WHEN una persona pulsa «Volver a leer». Los cambios DEBEN llegar como propuestas pendientes de revisar. Enmienda el requisito 12.3.
+7. WHEN termina la lectura de un cliente THEN el Panel del cliente DEBE enseñar la tarjeta de lectura: qué se leyó, qué se encontró, qué falta revisar y qué no se pudo leer y por qué (requisito 5.5).
+
+### Requisito 60 — El constructor del cliente, en marcha
+
+**Historia de usuario:** Como partner, quiero que, al terminar de leer las fuentes, el sistema me proponga las políticas, las preguntas frecuentes y los agentes que el negocio necesita, para empezar con una base razonable.
+
+#### Criterios de aceptación
+
+1. WHEN termina la lectura de las fuentes de un cliente, o WHEN cambia su sector THEN el sistema DEBE lanzar el constructor del cliente en segundo plano.
+2. El lanzamiento DEBE ser idempotente: para la misma ficha (la misma huella) NO DEBE generar dos veces, y una propuesta igual a otra pendiente NO DEBE duplicarse.
+3. IF el modelo no responde THEN el trabajo DEBE reintentarse con espera creciente, como mucho 3 veces, y después quedar como fallido con su motivo, sin bloquear nada del cliente.
+4. La pestaña Negocio DEBE tener las secciones «Políticas» y «Preguntas frecuentes», que enseñan y editan lo que hoy ya entra en el prompt de todos los agentes.
+5. Las propuestas del constructor DEBEN aparecer en su sección, marcadas «Sugerido · confirma» y con su procedencia, y cada una DEBE poder aceptarse, editarse o descartarse. Lo descartado NO DEBE volver a proponerse para la misma ficha.
+6. Los agentes sugeridos DEBEN aparecer en la pestaña Agentes como tarjetas «Sugerido», con «Crear este agente», que abre «Nuevo agente» con la descripción rellena. NO DEBEN crearse solos.
+7. Ninguna propuesta DEBE entrar en el prompt de un agente hasta que una persona la acepte.
+8. Generar DEBE medirse en «Construcción y pruebas» (requisito 15.7).
+
+Enmienda el requisito 18 entero, incluida su revisión del 2026-10-28: las propuestas de la ficha se deciden en Negocio.
+
+### Requisito 61 — Pruebas de varios turnos con un cliente simulado
+
+**Historia de usuario:** Como partner, quiero que las pruebas conversen con el agente como lo haría un cliente, para saber si de verdad reserva, cobra y pasa a una persona cuando toca.
+
+#### Criterios de aceptación
+
+1. Cada ejecución de una prueba DEBE ser una conversación entre el agente y un cliente simulado que sigue la persona y el plan de la prueba (requisito 21.2), empezando por su primer mensaje.
+2. El cliente simulado DEBE responder a lo que el agente pregunte (confirmar una hora, dar un nombre, elegir un servicio) según su plan, y NO DEBE inventar datos fuera de él.
+3. La conversación DEBE terminar cuando el plan se cumple, cuando el cliente simulado se despide, cuando el agente pasa la conversación a una persona, o al llegar a 8 turnos del cliente. Llegar al tope sin cumplir el plan DEBE contar como fallo, con ese motivo.
+4. La prueba DEBE comprobar el estado final en la agenda simulada de Reservas (la cita existe, con el servicio, la hora y el cliente esperados), el escalado (a quién y por qué) y el enlace de pago, además de lo que dice el agente (requisito 21.3).
+5. El cliente simulado y el juez NO DEBEN ser el mismo modelo que responde como agente. El juez DEBE poder configurarse por separado, y el sistema DEBE avisar al operador si es de la misma familia que el modelo que responde.
+6. La conversación de una prueba DEBE guardarse para enseñarla en «Por qué falló», turno a turno.
+7. Las tres pasadas (requisito 21.4) DEBEN seguir siendo independientes: cada una empieza con la agenda simulada sembrada de nuevo.
+8. El coste de las pruebas DEBE medirse en «Construcción y pruebas», y el sistema DEBE estimarlo antes de ejecutar la suite entera.
+
+Enmienda los requisitos 21.2, 21.3 y 21.8 en lo que decían de un solo turno.
+
+### Requisito 62 — Herramientas pendientes de conexión y «Conectar» en el sitio
+
+**Historia de usuario:** Como partner, quiero que al conectar la integración que pide una habilidad el agente pueda usarla, para no tener que rehacer el agente.
+
+#### Criterios de aceptación
+
+1. WHEN una habilidad del borrador necesita una integración que el cliente aún no tiene conectada THEN el AgentSpec DEBE guardar sus herramientas como «pendientes de conexión», junto con la petición de conexión.
+2. El runtime NO DEBE ver una herramienta pendiente hasta que su conexión exista y esté activada para ese agente (garantías 2 y 9). Las herramientas que ve DEBEN seguir siendo la intersección de la lista del agente con sus activaciones.
+3. «Conectar {X}», en la fila de la habilidad (requisito 17.6) y en el fallo de una prueba, DEBE abrir la conexión en el sitio, sin salir de la pantalla, y al terminar activarla para el agente con el permiso elegido. Las pruebas afectadas DEBEN marcarse desactualizadas.
+4. El validador DEBE aceptar una herramienta pendiente si está en el catálogo y permitida al partner, aunque no esté conectada al cliente. Enmienda el requisito 15.4.
+5. La pestaña Conectores DEBE ordenar primero, y marcar, las integraciones que piden las habilidades del agente (requisito 35.2).
+
+### Requisito 63 — Las pantallas del agente, como el prototipo (H5, H9 y H10)
+
+**Historia de usuario:** Como partner, quiero que el canal, el rendimiento y los conectores de un agente se vean y funcionen como en el diseño aprobado, para no perder el contexto del agente al configurarlo.
+
+#### Criterios de aceptación
+
+1. **El canal (H5).** La configuración de un canal DEBE pintarse dentro del agente, en su pestaña Canales, con la cabecera y las pestañas del agente arriba. DEBE:
+   - enseñar la cabecera del canal con su logo y «WhatsApp · {método} · canal de {agente}»;
+   - plantear «¿A quién responde?» con dos modos, «Solo mi equipo» y «A todos»;
+   - enseñar «Excepciones» solo con «A todos»;
+   - enseñar el escalado en filas de una línea;
+   - dejar «Mensaje de espera» e «Historial» en «Más ajustes»;
+   - un canal «Sin configurar» DEBE ofrecer en la barra «Activar solo para mi equipo», «Activar para todos» y «Decidir luego» (requisito 32.9); uno configurado, «Guardar» y «Descartar».
+   Enmienda el requisito 32.1 en dónde se pinta la página.
+2. **Rendimiento (H9).** La pestaña DEBE:
+   - existir solo cuando el agente tiene una versión guardada;
+   - enseñar arriba, en dos columnas, «Últimos 30 días» (conversaciones, resueltas sin persona y consumido de la bolsa, con el tope si lo hay) y «Sugerencias de esta semana» con «Ver» en cada una;
+   - dejar la gráfica y la tabla de conversaciones debajo.
+   Un agente «Listo · sin canal» DEBE abrir en Canales, no en Rendimiento. Enmienda el requisito 51.1 en la composición.
+3. **Conectores (H10).** La pestaña DEBE enseñar una sola tarjeta con filas, un buscador sin etiqueta visible y un filtro segmentado con recuentos («Todos», «Conectados» y cada categoría). Cada fila lleva el logo, el nombre con su categoría, una nota («lo necesita una habilidad de este agente» cuando aplica, y cómo se autoriza) y «Conectar» o «Conectado» con «Quitar». El permiso DEBE ajustarse dentro de «Ajustes», no a la vista.
+4. Las tres pantallas DEBEN cumplir los cinco estados (cargando, vacío, error, parcial e ideal), WCAG 2.2 AA y el sistema visual de la consola (requisito 47).
+
+### Requisito 64 — Los modelos los gestiona Auphere hasta tener su panel
+
+**Historia de usuario:** Como partner, no quiero ver opciones de calidad que no pueden atender a mi agente.
+
+#### Criterios de aceptación
+
+1. Mientras no exista la gestión de modelos, precios y selección desde el panel de operador, la consola NO DEBE enseñar «Calidad» ni «Fijar un modelo». En su lugar, Agente › Avanzado DEBE decir, en una línea, que el modelo lo gestiona Auphere.
+2. Los agentes DEBEN seguir respondiendo con su modelo de hoy (D44 y D45). El constructor, la lectura, el sector, el cliente simulado y el juez DEBEN usar los modelos que fije la configuración de la plataforma.
+3. La API DEBE rechazar con un código propio un cambio de política de modelo pedido desde la consola mientras dure esta restricción.
+4. WHEN se construya la gestión de modelos THEN esta restricción DEBE retirarse en la spec que la construya, y los requisitos 39 y 41 volverán a aplicarse a la consola.
+
+Enmienda los requisitos 39.4, 39.5, 39.7, 39.9 y 39.11 mientras dure.
+
+### Requisito 65 — Solo lo que tenemos: propósito libre y ninguna capacidad inventada
+
+**Historia de usuario:** Como partner, quiero crear un agente para cualquier cosa que necesite el negocio, y que el constructor use solo herramientas que existen. Así no descubro con un cliente que el agente promete lo que no puede hacer.
+
+#### Criterios de aceptación
+
+1. El sistema DEBE permitir crear un agente para cualquier propósito descrito con texto libre. Ningún papel, plantilla ni sector DEBE decidir sus herramientas, sus pruebas ni las reglas del validador. Los papeles son sugerencias, y los patrones, ejemplos combinables (58.2).
+2. Una herramienta solo está disponible para un cliente si cumple las tres condiciones:
+   - existe en el catálogo;
+   - su conector está conectado o tiene activación (62.1);
+   - su módulo está encendido.
+
+   WHERE una herramienta no está disponible THEN:
+   - `sanitize` DEBE quitarla;
+   - el validador y la puerta DEBEN rechazarla;
+   - la simulación de las pruebas DEBE responder como el turno.
+
+   En particular, `reservas.*` solo está disponible si Reservas está encendido para el cliente (spec 048, decisión 16).
+3. WHEN el constructor o el copiloto proponen una habilidad o una petición de conexión con una integración que no es un conector ofrecido THEN el sistema DEBE quitarla y anotarla como capacidad que falta, sin «Conectar {X}».
+4. WHEN un borrador queda con capacidades que faltan THEN:
+   - la consola DEBE decirlo con «No tenemos herramienta para: …»;
+   - el agente DEBE quedar con su alternativa (pasar a una persona), no con la promesa.
+5. La revisión de «instrucciones que prometen capacidades fuera de sus herramientas» (16.5 y 22.1):
+   - DEBE comparar con lo que hace cada herramienta según el catálogo, no con su prefijo;
+   - DEBE tener gravedad «bloquea».
+6. El prompt compilado DEBE incluir una sección fija de límites:
+   - el agente solo hace acciones con sus herramientas;
+   - si le piden otra cosa, lo dice y pasa a una persona;
+   - cada habilidad lleva su alternativa.
+7. Sobre lo que reciben el constructor, el copiloto y las sugerencias:
+   - los tres DEBEN recibir las herramientas disponibles para el cliente, con lo que hace cada una;
+   - los patrones y las guías NO DEBEN nombrar acciones que no tengan herramienta en el catálogo;
+   - las sugerencias NO DEBEN proponer un agente cuya tarea principal necesite una capacidad que falta.
+8. WHEN se añaden las pruebas del sector a un agente THEN cada prueba que necesita herramientas que el agente no tiene DEBE quedar «No aplica», con su razón y sin que una persona lo marque. La puerta NO DEBE bloquear por ellas.
+9. La puerta NO DEBE publicar un agente estructurado sin ninguna prueba aplicable, y DEBE decir que se añada una. Enmienda el requisito 23.1.
+10. Las herramientas de un agente estructurado DEBEN cambiar solo a través de su AgentSpec y del validador. `PUT /console/clients/{ref}/tools` DEBE responder 409 para un agente estructurado.
+11. IF el turno no puede leer la política de herramientas del cliente THEN NO DEBE ofrecer ninguna herramienta de conector (garantía 2, 62.2).
+12. IF la ficha no se puede cargar, o el modelo no devuelve instrucciones, THEN el constructor NO DEBE generar un borrador genérico. DEBE fallar con un código propio que la consola explique, como cuando el constructor no está disponible (15.8).
+13. El constructor NO DEBE recibir herramientas cuyo nombre el AgentSpec no admite.
+
+Enmienda los requisitos 16.5, 22.1 y 23.1, y precisa el 58.2.
+
 ### Entidades clave *(la feature toca datos)*
 
 **Del partner.** Las alcanza la pertenencia del partner (`partner_id`) en la API de la consola, cubierta por `test_console_scope.py`.
@@ -2276,6 +2507,9 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 - **Llamadas de voz**: no las pide nadie.
 - **Mercado de plantillas entre partners**: no lo pide nadie.
 - **La Guía del partner y el Companion**: no cambian. Solo el constructor deja de depender del módulo `companion`.
+- **La gestión de modelos, precios y selección desde el panel de operador** (owner, 2026-10-29): llega en otra spec. Hasta entonces rige el requisito 64.
+- **H8, la cabecera del agente con «Pausar» a la vista** (owner, 2026-10-29).
+- **Leer Instagram y Facebook con la API de Meta y el login del dueño**: fase posterior; hoy la ficha dice que no se pudieron leer (requisito 59.4).
 
 ## Supuestos
 
@@ -2297,6 +2531,8 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
   - **Se sustituye** (owner, 2026-10-26): su iteración 2 («Encender tu agente», 5 pasos y 6 grupos de plantillas) y su iteración 3 (el Companion propone el alta) quedan cubiertas por el alta en tres datos, el constructor, el playground sobre el borrador y la página del canal de esta spec. El modo prueba de la 046 es el «Solo mi equipo» de esta (requisito 32.9), y su «Encender» es «Activar para todos».
   - **Se enmienda** (owner, 2026-10-26): su requisito 4 decía que activar un cliente exige agente publicado, canal que conversa y saldo. Ahora no se activa el cliente, que siempre está activo (requisito 4.7): se activa cada canal, y «A todos» exige agente publicado y saldo (requisito 32.8). Su tarea T011 no se construye. La enmienda está escrita también en la spec 046.
 - **KB**: `architecture/agent-isolation.md` gana la garantía 9, y se escribe `decisions/ADR-049-la-fabrica-de-agentes.md`.
+- **Spec 048, retirar AgendaPro** (2026-10-29): sale el conector AgendaPro y las herramientas `booking.*`; la agenda de todos los agentes es Reservas (`reservas.*`). Las guías del sector (requisito 58) salen de las plantillas ya pasadas a Reservas, así que la 048 va antes que las tareas de la guía (fase 27).
+- **Enmienda del 2026-10-29** (requisitos 57 a 64): la sustenta `research/2026-10-29-auditoria-del-constructor/_index.md` y la recoge ADR-049 §Enmiendas.
 - **Spec 016 H4**: el modelo del agente pasa a la versión.
 - **Spec 024**: la audiencia pasa al canal.
 - **Spec 030**: R14.10 (conocimiento propio por agente) y la clarificación «un número = un agente» (Recepción).

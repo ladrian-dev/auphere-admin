@@ -383,3 +383,91 @@ describe("«Nuevo agente» · otras formas de empezar (17.8, 17.9, 15.8)", () =>
     expect(screen.queryByRole("button", { name: "Crear desde esta plantilla" })).toBeNull();
   });
 });
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (T228; requisito 65.12;
+ * `contracts/console-api.md` §11): si la ficha del negocio no se puede leer
+ * no se escribe ningún borrador (`facts_unavailable`). La consola lo dice,
+ * ofrece reintentar y no ofrece «Desde una plantilla», que también la lee.
+ */
+describe("«Nuevo agente» · sin la ficha no hay borrador (65.12)", () => {
+  const factsFailed = jobWith({
+    status: "failed",
+    error_code: "facts_unavailable",
+    progress: { step: "reading", blocks: [], input: { name: NAME, description: DESCRIPTION } },
+  });
+
+  it("el trabajo falla: lo dice con el cliente, no pierde lo escrito, «Reintentar» vuelve a empezar y no hay plantillas; pasa axe", async () => {
+    const user = userEvent.setup();
+    const start = vi.fn<Actions["start"]>(async () => ({ ok: true, data: { job_id: JOB, status: "queued", agent_id: null } }));
+    const poll = vi
+      .fn<Actions["poll"]>()
+      .mockResolvedValueOnce({ ok: true, data: factsFailed })
+      .mockResolvedValue({ ok: true, data: jobWith({ status: "done", agent_id: AGENT, result: { ...RESULT, questions: [] } }) });
+    const { container } = screenWith({ start, poll });
+    await describeAgent(user);
+    await user.click(generate());
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("No pudimos leer la ficha de Barbería Cultor")).toBeVisible();
+    expect(within(alert).getByText(/Sin ella no se puede preparar el borrador/)).toBeVisible();
+    expect(nameBox()).toHaveValue(NAME);
+    expect(descriptionBox()).toHaveValue(DESCRIPTION);
+    // Ni las plantillas se abren ni se ofrecen: también leen la ficha.
+    expect(container.querySelector("[data-slot=builder-templates]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Empezar desde una plantilla" })).toBeNull();
+    expect(screen.getByRole("button", { name: "En blanco" })).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+
+    const retry = within(alert).getByRole("button", { name: "Reintentar" });
+    await user.click(retry);
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(start).toHaveBeenLastCalledWith({ ref: REF, name: NAME, description: DESCRIPTION, start: "describe" });
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`));
+  });
+
+  it("desde una plantilla responde 503: lo mismo, y «Reintentar» repite la plantilla elegida sin doble envío", async () => {
+    const user = userEvent.setup();
+    let answer: (value: Awaited<ReturnType<Actions["start"]>>) => void = () => undefined;
+    const start = vi
+      .fn<Actions["start"]>()
+      .mockResolvedValueOnce({ ok: false, status: 503, message: "", code: "facts_unavailable" })
+      .mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    screenWith({ start });
+    await user.type(nameBox(), NAME);
+    await user.click(screen.getByRole("button", { name: "Empezar desde una plantilla" }));
+    await user.click(screen.getByRole("radio", { name: "Clínica" }));
+    await user.click(screen.getByRole("button", { name: "Crear desde esta plantilla" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("No pudimos leer la ficha de Barbería Cultor")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Crear desde esta plantilla" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Empezar desde una plantilla" })).toBeNull();
+
+    const retry = within(alert).getByRole("button", { name: "Reintentar" });
+    await user.click(retry);
+    expect(start).toHaveBeenLastCalledWith({ ref: REF, name: NAME, start: "template", template_id: "clinic_v1" });
+    expect(retry).toBeDisabled();
+    await user.click(retry);
+    expect(start).toHaveBeenCalledTimes(2);
+    await act(async () => answer({ ok: true, data: { job_id: JOB, status: "done", agent_id: AGENT } }));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`));
+  });
+
+  it("con lo que no tenemos, va a la pantalla del agente con el trabajo (`?job=`), aunque no haya preguntas", async () => {
+    const user = userEvent.setup();
+    const finished = jobWith({
+      status: "done",
+      agent_id: AGENT,
+      result: {
+        ...RESULT,
+        questions: [],
+        missing_capabilities: [{ kind: "integration", key: "quickbooks", label: "quickbooks", reason: "integration_unknown", source: "skill", pointer: null }],
+      },
+    });
+    screenWith({ poll: vi.fn(async () => ({ ok: true as const, data: finished })) });
+    await describeAgent(user);
+    await user.click(generate());
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}?job=${JOB}`));
+  });
+});

@@ -12,12 +12,12 @@ Lo que se construye y cómo vive en la API
   que cae en la partida «Construcción y pruebas» y nunca en la bolsa del cliente
   (requisito 15.7). El turno es ``job:{id}``: reprocesar no duplica nada;
 - el **fallo con nombre**: sin borrador que enseñar, ``builder_unavailable``, y
-  la consola ofrece «Desde una plantilla» y «En blanco» (15.8).
+  la consola ofrece «Desde una plantilla» y «En blanco» (15.8). Si la ficha no se
+  pudo leer, ``facts_unavailable`` (65.12): ningún borrador genérico.
 """
 
 from __future__ import annotations
 
-import os
 import uuid
 from collections.abc import Callable
 
@@ -30,6 +30,7 @@ from nexus_api.services.builder.agent_draft import (
     Complete,
     DraftInputInvalid,
     DraftRequest,
+    FactsUnavailable,
     build_agent_draft,
 )
 
@@ -55,9 +56,10 @@ CompleteFactory = Callable[[uuid.UUID], Complete | None]
 
 
 def build_model() -> str:
-    from nexus_worker.config import get_worker_settings
+    """El de la plataforma (requisito 64.2): ``NEXUS_LLM_BUILD_MODEL`` o el de responder."""
+    from nexus_worker.platform_models import platform_model
 
-    return os.environ.get("NEXUS_LLM_BUILD_MODEL") or get_worker_settings().llm_respond_model
+    return platform_model("build")
 
 
 def default_complete(tenant_id: uuid.UUID) -> Complete | None:
@@ -110,6 +112,13 @@ def make_agent_draft_handler(*, complete_factory: CompleteFactory | None = None)
                 )
         except DraftInputInvalid as exc:  # p. ej. el nombre se ocupó mientras tanto
             raise JobFailed(exc.code) from exc
+        except FactsUnavailable as exc:
+            log.info(
+                "jobs.agent_draft.facts_unavailable",
+                tenant_id=str(ctx.tenant_id),
+                job_id=str(ctx.job_id),
+            )
+            raise JobFailed(FactsUnavailable.code) from exc
         except BuilderUnavailable as exc:
             log.info(
                 "jobs.agent_draft.unavailable",

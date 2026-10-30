@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import AgentConfig, AgentConfigStatus
-from nexus_api.db.models.agent_spec import AgentTest, AgentTestResult, AgentTestRun
+from nexus_api.db.models.agent_spec import TEST_STOPS, AgentTest, AgentTestResult, AgentTestRun
 from nexus_api.services.testing.suites import ensure_suite, list_tests
 
 RUNS: Final = 3
@@ -38,6 +38,9 @@ class TestOutcome:
     passes: int
     decided: int
     why_failed: str | None = None
+    #: Spec 047, enmienda (61.6): cada pasada de la última ejecución, con su
+    #: conversación turno a turno y por qué terminó (``served_attempt``).
+    attempts: tuple[dict[str, Any], ...] = ()
 
 
 def status_of(attempts: Sequence[bool | None]) -> TestStatus:
@@ -96,10 +99,36 @@ async def latest_results(
     return out
 
 
+def served_turns(transcript: Sequence[Any]) -> list[dict[str, Any]]:
+    """La conversación de una pasada como la enseña «Por qué falló»:
+    ``[{"role": "customer" | "agent", "text", "actions": [frase]}]``. Las de antes
+    de la enmienda solo traían ``bubbles``."""
+    out: list[dict[str, Any]] = []
+    for turn in transcript or ():
+        if not isinstance(turn, Mapping) or turn.get("role") not in {"customer", "agent"}:
+            continue
+        text = turn.get("text")
+        if not isinstance(text, str):
+            text = " ".join(str(b) for b in turn.get("bubbles") or [])
+        actions = [str(a) for a in turn.get("actions") or [] if isinstance(a, str)]
+        out.append({"role": turn["role"], "text": text, "actions": actions})
+    return out
+
+
+def served_attempt(result: AgentTestResult) -> dict[str, Any]:
+    return {
+        "attempt": result.attempt,
+        "passed": result.passed,
+        "transcript": served_turns(result.transcript),
+        "stop": result.stop,
+    }
+
+
 def outcome_of(test: AgentTest, results: Sequence[AgentTestResult]) -> TestOutcome:
     if test.not_applicable_reason:
         return TestOutcome(test.id, "not_applicable", 0, 0)
-    attempts = [r.passed for r in sorted(results, key=lambda r: r.attempt)]
+    ordered = sorted(results, key=lambda r: r.attempt)
+    attempts = [r.passed for r in ordered]
     status = status_of(attempts)
     return TestOutcome(
         test.id,
@@ -107,6 +136,7 @@ def outcome_of(test: AgentTest, results: Sequence[AgentTestResult]) -> TestOutco
         passes=sum(1 for a in attempts if a),
         decided=sum(1 for a in attempts if a is not None),
         why_failed=why_failed(results) if status in {"failed", "flaky"} else None,
+        attempts=tuple(served_attempt(r) for r in ordered),
     )
 
 
@@ -173,6 +203,40 @@ def tests_in_scope(
     return live
 
 
+async def live_run(session: AsyncSession, agent_id: uuid.UUID) -> AgentTestRun | None:
+    """La pasada viva del agente, si la hay: la de un trabajo ``tests`` en cola o en
+    marcha, con la caducidad perezosa de ``jobs.get_job``. Spec 047, T217: como
+    mucho una a la vez por agente; quien pide otra recibe esta."""
+    from nexus_api.db.models.jobs import LIVE_JOB_STATUSES, Job
+    from nexus_api.services import jobs as jobs_service
+
+    tenant_id = require_current_tenant()
+    candidates = (
+        await session.scalars(
+            sa.select(Job.id)
+            .where(
+                Job.tenant_id == tenant_id,
+                Job.agent_id == agent_id,
+                Job.kind == "tests",
+                Job.status.in_(LIVE_JOB_STATUSES),
+            )
+            .order_by(Job.created_at.desc(), Job.id.desc())
+        )
+    ).all()
+    for job_id in candidates:
+        job = await jobs_service.get_job(session, job_id)
+        if job is None or job.status not in LIVE_JOB_STATUSES:
+            continue
+        run = await session.scalar(
+            sa.select(AgentTestRun).where(
+                AgentTestRun.tenant_id == tenant_id, AgentTestRun.job_id == job.id
+            )
+        )
+        if run is not None:
+            return run
+    return None
+
+
 async def create_run(
     session: AsyncSession,
     *,
@@ -214,7 +278,9 @@ async def record_attempt(
     explanation: str | None,
     final_state: dict[str, Any],
     transcript: list[dict[str, Any]],
+    stop: str | None = None,
 ) -> None:
+    """Una pasada, con su conversación y por qué terminó (61.3, 61.6)."""
     session.add(
         AgentTestResult(
             tenant_id=run.tenant_id,
@@ -226,6 +292,7 @@ async def record_attempt(
             explanation=explanation,
             final_state=final_state,
             transcript=transcript,
+            stop=stop if stop in TEST_STOPS else None,
         )
     )
     await session.flush()
@@ -280,6 +347,7 @@ __all__ = [
     "create_run",
     "finish_run",
     "latest_results",
+    "live_run",
     "outcome_of",
     "record_attempt",
     "status_of",

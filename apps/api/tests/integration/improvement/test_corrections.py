@@ -62,9 +62,14 @@ class FakeParaphraser:
     contacto dentro: lo que salga sin ellos lo quitó el servicio, no el modelo."""
 
     seen: list[str] = field(default_factory=list)
+    #: El partner atado al proxy cuando se llamó al modelo.
+    partners: list[uuid.UUID | None] = field(default_factory=list)
 
     async def __call__(self, customer_text: str) -> str:
+        from nexus_api.core.llm_proxy import current_llm_proxy_partner
+
         self.seen.append(customer_text)
+        self.partners.append(current_llm_proxy_partner())
         return "Lucía Pérez (+34 612 345 678, lucia@correo.es) pregunta dónde se puede aparcar."
 
 
@@ -197,6 +202,15 @@ async def test_the_draft_says_its_kind_and_a_paraphrase_without_personal_data(
         assert leaked not in para, leaked
     # El borrador no repite el mensaje del cliente.
     assert QUESTION not in str(draft)
+
+
+async def test_the_paraphrase_goes_out_with_the_partners_key(
+    client: Any, inbox: Inbox, fake_paraphraser: FakeParaphraser
+) -> None:
+    """Con el proxy obligatorio (staging) el modelo de la paráfrasis solo sale con
+    la clave del partner del cliente (fallo el-constructor-no-llega-al-modelo-en-staging)."""
+    await _draft(client, inbox, "El aparcamiento está en la calle de atrás.")
+    assert fake_paraphraser.partners == [inbox.biz.partner_id]
 
     rule = await _draft(client, inbox, "No des citas los festivos.", scope="agent")
     assert rule["kind"] == "behavior"

@@ -14,8 +14,10 @@ import type { AgentTest, QualityJob, ReviewFinding, TestRunAccepted, TestRunScop
 
 import { findingsByCheck, testsState } from "./agent-proto-model";
 import { integrationName, sleep, type Result } from "./builder-model";
-import { isFailing, reviewFixLink, waitForJob } from "./quality-model";
+import { canConnect } from "./missing-model";
+import { failedConversation, isFailing, reviewFixLink, waitForJob } from "./quality-model";
 import type { ReviewSource } from "./review-panel";
+import { TestConversation } from "./test-conversation";
 
 type Ids = { ref: string; agent: string };
 export type TestRunActions = {
@@ -144,6 +146,7 @@ export function TestsBox({
   onWhy,
   onEdit,
   onConnect,
+  notOffered,
   onAll,
 }: {
   refId: string;
@@ -159,6 +162,8 @@ export function TestsBox({
   onEdit: (pointer: string | null) => void;
   /** Un conector que falta: la pestaña Conectores, sin salir de la pantalla. */
   onConnect?: (integration: string) => void;
+  /** Spec 047 (65.3): lo que la API dice que no ofrecemos; nunca lleva «Conectar {X}». */
+  notOffered?: ReadonlySet<string>;
   /** «Ver las N pruebas»: la lista completa, en «Más ajustes». */
   onAll: () => void;
 }) {
@@ -194,6 +199,7 @@ export function TestsBox({
   // La que falla y tiene su resultado al día; las críticas primero.
   const failing = running ? [] : suite.tests.filter((x) => isFailing(x.status) && !x.stale).sort((a, b) => Number(b.critical) - Number(a.critical));
   const first = failing[0];
+  const conversation = first ? failedConversation(first) : null;
 
   return (
     <section id="agente-pruebas-resumen" aria-labelledby={titleId} className="grid min-w-0 scroll-mt-24 overflow-hidden rounded-lg border border-border bg-card" data-slot="tests-box">
@@ -226,6 +232,15 @@ export function TestsBox({
         <div role="alert" className="mx-4 mb-4 grid min-w-0 gap-2 rounded-md bg-status-danger-bg p-3 text-sm" data-slot="tests-fail">
           <p className="text-sm font-medium text-pretty break-words">{t("agentProto.tests.fail.title", { name: first.name })}</p>
           <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{first.why_failed || t("builder.suite.why.none")}</p>
+          {conversation ? (
+            // Enmienda del 2026-10-29 (61.6): la conversación con el cliente simulado, turno a turno.
+            <details className="min-w-0" data-slot="tests-fail-conversation">
+              <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{t("builder.suite.conversation.show")}</summary>
+              <div className="mt-2 min-w-0">
+                <TestConversation transcript={conversation.transcript} stop={conversation.stop} />
+              </div>
+            </details>
+          ) : null}
           {failing.length > 1 ? (
             <p className="text-xs text-muted-foreground">
               {failing.length === 2 ? t("agentProto.tests.fail.more.one") : t("agentProto.tests.fail.more.other", { n: failing.length - 1 })}
@@ -253,7 +268,7 @@ export function TestsBox({
       ) : null}
 
       {review?.review && !running ? (
-        <ReviewChecks refId={refId} source={review} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} />
+        <ReviewChecks refId={refId} source={review} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} notOffered={notOffered} />
       ) : null}
 
       {suite.tests.length ? (
@@ -296,12 +311,14 @@ function ReviewChecks({
   canWrite,
   onEdit,
   onConnect,
+  notOffered,
 }: {
   refId: string;
   source: ReviewSource;
   canWrite: boolean;
   onEdit: (pointer: string | null) => void;
   onConnect?: (integration: string) => void;
+  notOffered?: ReadonlySet<string>;
 }) {
   const t = useT();
   const review = source.review!;
@@ -349,7 +366,7 @@ function ReviewChecks({
             )}
             <span className="min-w-0 text-pretty break-words">
               {finding.message}{" "}
-              <FindingFix refId={refId} finding={finding} source={source} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} />
+              <FindingFix refId={refId} finding={finding} source={source} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} notOffered={notOffered} />
             </span>
           </li>
         ));
@@ -360,7 +377,12 @@ function ReviewChecks({
 
 const LINK = "cursor-pointer font-medium text-primary-text underline underline-offset-4 hover:no-underline disabled:cursor-default disabled:opacity-50";
 
-/** El arreglo de un hallazgo, como enlace en línea: conectar, ir a la ficha, abrir el bloque o aplicar la propuesta. */
+/**
+ * El arreglo de un hallazgo, como enlace en línea: conectar, ir a la ficha,
+ * abrir el bloque o aplicar la propuesta. Enmienda del 2026-10-30 (65.3): a lo
+ * que no ofrecemos (Reservas, o lo que la API dice que falta) no se le pone
+ * «Conectar {X}» ni se manda a Conectores: no hay nada que conectar.
+ */
 function FindingFix({
   refId,
   finding,
@@ -368,6 +390,7 @@ function FindingFix({
   canWrite,
   onEdit,
   onConnect,
+  notOffered,
 }: {
   refId: string;
   finding: ReviewFinding;
@@ -375,11 +398,13 @@ function FindingFix({
   canWrite: boolean;
   onEdit: (pointer: string | null) => void;
   onConnect?: (integration: string) => void;
+  notOffered?: ReadonlySet<string>;
 }) {
   const t = useT();
   const fix = finding.fix;
   if (!fix) return null;
   if (fix.kind === "link") {
+    if (fix.target === "integrations" && typeof fix.integration === "string" && !canConnect(fix.integration, notOffered)) return null;
     if (fix.target === "integrations" && typeof fix.integration === "string" && onConnect) {
       const integration = fix.integration;
       return (

@@ -94,3 +94,90 @@ def test_scope_allowlist_has_no_stale_entries() -> None:
     invokers = _pipeline_invokers()
     stale = [rel for rel in _ALLOWED_WITHOUT_SCOPE if rel not in invokers or invokers[rel]]
     assert not stale, f"Stale _ALLOWED_WITHOUT_SCOPE entries: {stale}"
+
+
+# ── Fallo el-constructor-no-llega-al-modelo-en-staging ──────────────────────
+#
+# Lo mismo para cada sitio que construye un proveedor de modelos de verdad
+# (``LiteLLMProvider(...)``): con el proxy obligatorio (staging), una llamada sin
+# quien la pague —un partner, o Auphere en ``llm_proxy_platform_scope``— no sale.
+# La 047 añadió seis trabajos, el copiloto, la paráfrasis, las sugerencias y la
+# evaluación del operador sin abrir ninguno de los dos, y las pruebas, sin proxy,
+# no lo vieron. Este barrido recorre el código; los trabajos los recorre, además,
+# corriéndolos, ``tests/integration/test_jobs_reach_the_model_behind_the_proxy.py``.
+
+_SCOPES = ("llm_proxy_partner_scope", "llm_proxy_platform_scope")
+
+#: Los trabajos corren dentro del ámbito que abre ``jobs-consumer`` con el partner
+#: del cliente del trabajo (``nexus_worker/jobs/consumer.py``), en la misma tarea.
+_COVERED_BY_JOBS_CONSUMER = "apps/worker/src/nexus_worker/jobs/handlers/"
+
+_PROVIDERS_WITHOUT_SCOPE: dict[str, str] = {
+    "apps/worker/src/nexus_worker/bootstrap.py": (
+        "Builds the long-lived providers of the runner, the owner fan-out and the "
+        "deferred grader. Each consumer opens the partner scope per unit of work "
+        "(runtime/dispatcher.py, streams/owner_fanout.py, streams/grade_consumer.py)."
+    ),
+    "apps/api/src/nexus_api/services/evals/pipeline_driver.py": (
+        "Driven by api/admin/evals.py, which awaits run_eval inside "
+        "llm_proxy_partner_scope in the same task."
+    ),
+}
+
+
+def _constructs_provider(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if name == "LiteLLMProvider":
+            return True
+    return False
+
+
+def _provider_sites() -> dict[str, bool]:
+    """Repo-relative path → whether it opens a payer scope, for every file that
+    builds a ``LiteLLMProvider``."""
+    found: dict[str, bool] = {}
+    for root in _SCAN_ROOTS:
+        for path in sorted((_REPO_ROOT / root).rglob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:  # pragma: no cover
+                continue
+            if _constructs_provider(tree):
+                rel = path.relative_to(_REPO_ROOT).as_posix()
+                found[rel] = any(scope in source for scope in _SCOPES)
+    return found
+
+
+def test_every_model_call_site_opens_a_payer_scope() -> None:
+    sites = _provider_sites()
+    assert sites, "AST scan found no LiteLLMProvider — scan roots moved?"
+    missing = [
+        rel
+        for rel, has_scope in sites.items()
+        if not has_scope
+        and rel not in _PROVIDERS_WITHOUT_SCOPE
+        and not rel.startswith(_COVERED_BY_JOBS_CONSUMER)
+    ]
+    assert not missing, (
+        "model call sites without llm_proxy_partner_scope / llm_proxy_platform_scope "
+        f"(under the mandatory proxy every call dies): {missing}. Open the partner's "
+        "scope, Auphere's for operator calls, or allowlist with the reason."
+    )
+
+
+def test_the_job_handlers_are_covered_by_the_consumer() -> None:
+    consumer = (_REPO_ROOT / "apps/worker/src/nexus_worker/jobs/consumer.py").read_text(
+        encoding="utf-8"
+    )
+    assert "llm_proxy_partner_scope" in consumer
+
+
+def test_provider_allowlist_has_no_stale_entries() -> None:
+    sites = _provider_sites()
+    stale = [rel for rel in _PROVIDERS_WITHOUT_SCOPE if rel not in sites or sites[rel]]
+    assert not stale, f"Stale _PROVIDERS_WITHOUT_SCOPE entries: {stale}"

@@ -63,13 +63,11 @@ ALL_EXPECTED = {
     "meta-history-consumer",
     "meta-state-sync-consumer",
     "isolation-event-drainer",
-    "no-show-scrape-cron",
     "cost-rollup-cron",
     "isolation-watcher",
     "whatsapp-health-cron",
     "tiktok-token-refresh-cron",
     "meta-social-cron",
-    "async-booking-cron",
     "continuous-eval-cron",
     "memory-versions-retention-cron",
     "owner-consultation-timeout-sweep",
@@ -129,7 +127,6 @@ def _dummy_ctx() -> SimpleNamespace:
         loader=object(),
         channel_adapters={},
         meta_client=object(),
-        agendapro_public_pool=object(),
         outcome_grader=None,
     )
 
@@ -165,3 +162,31 @@ async def test_combined_families_have_one_heartbeat() -> None:
         t.cancel()
     with contextlib.suppress(Exception):
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def test_agendapro_left_the_worker() -> None:
+    """Spec 048 (requisito 1.3): no AgendaPro process group, no async booking
+    and no no-show scraping — neither in the name contract nor in the
+    context the three services share."""
+    import dataclasses
+
+    gone = {"no-show-scrape-cron", "async-booking-cron"}
+    every = (
+        bootstrap.RUNNER_TASK_NAMES | bootstrap.SCHEDULER_TASK_NAMES | bootstrap.EGRESS_TASK_NAMES
+    )
+    assert not every & gone
+    fields = {f.name for f in dataclasses.fields(bootstrap.WorkerContext)}
+    assert "agendapro_public_pool" not in fields
+
+
+def test_there_is_no_weekly_reread() -> None:
+    """Spec 047, enmienda del 2026-10-29 (requisito 59.6, D48): sources are read
+    again when they change, never on a weekly cron — neither in the name contract
+    nor as a module someone could wire back."""
+    import importlib.util
+
+    every = (
+        bootstrap.RUNNER_TASK_NAMES | bootstrap.SCHEDULER_TASK_NAMES | bootstrap.EGRESS_TASK_NAMES
+    )
+    assert "source-reread-cron" not in every
+    assert importlib.util.find_spec("nexus_worker.streams.source_reread_cron") is None

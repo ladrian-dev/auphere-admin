@@ -1873,6 +1873,537 @@ Puede ir en paralelo con las fases 5 a 15: toca el runtime y el admin.
 
 ---
 
+## Fase 27 — Enmienda del 2026-10-29: lista para staging (requisitos 57 a 64)
+
+Sale de la auditoría del 2026-10-29 (`research.md` D46–D55; KB
+`research/2026-10-29-auditoria-del-constructor/_index.md`). Va **después de la spec
+048** (las guías salen de las plantillas ya pasadas a Reservas). Los fallos que no
+cambian requisitos van por su flujo, en `.specify/bugs/`:
+`la-ficha-borra-lo-que-sabe-el-agente`, `el-alta-descarta-la-moneda-de-la-bolsa`,
+`el-playground-consulta-al-dueno-de-verdad`, `restaurar-un-borrador-publica-sin-puerta`
+y `el-constructor-no-llega-al-modelo-en-staging`. Este último va **primero**: sin él,
+nada de esta fase llega al modelo en staging.
+
+### Pruebas (en rojo primero)
+
+- [X] T189 [P] `T/integration/business/test_sector_identify.py`: el sector se identifica
+  en segundo plano al alta, al terminar la lectura y al cambiar el nicho o la
+  información; la salida se valida contra la lista cerrada y la etiqueta se limpia y se
+  corta a 40; uno fijado por una persona solo recibe una propuesta; sin modelo, la regla
+  de palabras enteras da confianza baja y «Despacho de abogados» no es clínica; se mide
+  en «Construcción y pruebas».
+  _Requisitos: 57.1, 57.2, 57.3, 57.4, 57.7, 57.8_
+  Hecho (2026-10-29): `T/integration/business/test_sector_identify.py` (10), en rojo antes:
+  al alta en cola sin esperar, el modelo lo guarda, la lista cerrada y la etiqueta
+  limpia y cortada, otra vez al cambiar nicho o información y al terminar la lectura,
+  lo de una persona solo se propone (y aceptarlo), «Otro» y `sector_unknown`, sin
+  modelo palabras enteras («Despacho de abogados» no es clínica), y se mide.
+- [X] T190 [P] `T/unit/test_sector_consumers.py`: `add_sector_tests` y el constructor del
+  cliente leen el sector guardado y nunca vuelven a clasificar el nicho.
+  _Requisitos: 57.6_
+  Hecho (2026-10-29): `T/unit/test_sector_consumers.py` (5), en rojo antes: barrido AST
+  de los consumidores, pruebas del sector y constructor del cliente del sector
+  guardado (con una persona que fijó otro), y el de respaldo se guarda una vez.
+- [X] T191 [P] `T/integration/builder/test_guide_role_ficha.py`: `build_messages` lleva la
+  guía del sector guardado, el patrón del papel y la ficha vallada; dos clientes del
+  mismo sector con fichas distintas dan entradas distintas; sin guía se genera una por
+  cliente con 12 pruebas «Generada», y un barrido comprueba que su entrada no lleva
+  nada de otro cliente; «Desde una plantilla» crea un AgentSpec estructurado con pruebas
+  del caso y del sector.
+  _Requisitos: 58.1, 58.2, 58.3, 58.4, 58.6_
+  Hecho (2026-10-30): `T/integration/builder/test_guide_role_ficha.py` (7: guía del
+  sector guardado y no del nicho, patrones y ficha vallada; dos fichas, dos entradas;
+  la guía generada solo con la etiqueta, con barrido de datos del cliente y de otro, 12
+  pruebas `origin: generated` y reutilizada; reintento y genérica; la convertida en vez
+  de generar, con «Con guía» en la consola; «Desde una plantilla» estructurado; la
+  agenda solo con Reservas encendido), `T/unit/test_builder_guides.py` (10) y
+  `T/isolation/test_54_sector_guides.py` (2), en rojo antes salvo la línea de «Con guía»
+  y la prueba de la agenda reescrita tras la corrección de Luis (D67), que se vieron
+  después. `T/integration/builder/test_sector_guides_admin.py` (6) para R58.5 y
+  `T/unit/test_builder_eval_bank.py` (2) para 58.7, en rojo antes.
+- [X] T192 [P] `T/unit/test_reader_structured.py` y `T/integration/business/test_reader_v2.py`:
+  JSON-LD y microdatos sin modelo y con su procedencia; `sitemap.xml`; como mucho 4
+  páginas a la vez, 25 en total y 3 minutos; redes permitidas también con web; las que
+  lo prohíben salen como «no deja leer», no como fallo; la extracción que no valida se
+  reintenta una vez; el navegador solo se pide con poco texto y si está configurado;
+  un JSON-LD que da órdenes no cambia nada fuera de los datos del negocio.
+  _Requisitos: 59.1, 59.2, 59.3, 59.4, 59.5_
+  Hecho (2026-10-30): `T/unit/test_reader_structured.py` (7, en rojo antes: JSON-LD y
+  microdatos sin modelo, el JSON-LD que da órdenes, el roto, `openingHours`, lo
+  estructurado manda, el sitemap sin entidades) y `T/integration/business/test_reader_v2.py`
+  (8: estructurados y `structured`, el sitemap, como mucho 4 a la vez, redes con web y
+  `blocked_by_network`, reintento con el error, dos veces mal es `extract_failed`, el
+  navegador solo con poco texto y con las guardas, sin navegador sigue `no_text`),
+  escritas **después** del código de la lectura: no se vieron en rojo.
+- [X] T193 [P] `T/integration/business/test_reread_on_change.py` y
+  `apps/worker/tests/unit/test_bootstrap_split.py`: no hay cron de relectura; cambiar la
+  web o una red encola una lectura solo si el valor cambió, y no cuando escribe el
+  propio lector; añadir una fuente la encola; «Volver a leer» sigue.
+  _Requisitos: 59.6_
+  Hecho (2026-10-29): `T/integration/business/test_reread_on_change.py` (5) y
+  `test_there_is_no_weekly_reread` en `test_bootstrap_split.py`, en rojo antes. Se
+  quitaron de `test_sources.py` las dos pruebas de la pasada semanal (12.3 enmendado).
+- [X] T194 [P] `T/integration/builder/test_client_builder_launch.py`: el constructor del
+  cliente se encola al terminar la lectura y al cambiar el sector; no genera dos veces
+  para la misma huella; reintenta 3 veces con espera creciente y queda fallido con su
+  motivo; sus propuestas son sugerencias de sección; lo descartado no vuelve; nada entra
+  en el prompt sin aceptarse.
+  _Requisitos: 60.1, 60.2, 60.3, 60.5, 60.7, 60.8_
+  Hecho (2026-10-29): `T/integration/builder/test_client_builder_launch.py` (6), en rojo
+  antes: al cambiar el sector y una vez por ficha, tras la lectura por el sector, tres
+  reintentos con 2, 4 y 8 s y `builder_unavailable`, sugerencias de sección y agentes
+  aparte, lo descartado no vuelve, un agente que ya existe no se ofrece, y se mide.
+- [X] T195 [P] `apps/worker/tests/unit/test_agent_tests_multiturn.py`: cada pasada es una
+  conversación con un cliente simulado que sigue su persona y su plan; para al cumplir
+  el plan, al despedirse, al pasar a una persona o a los 8 turnos (fallo con motivo);
+  comprueba la cita en Reservas, el escalado y el enlace de pago; guarda la conversación;
+  las tres pasadas empiezan con la agenda sembrada de nuevo; el cliente simulado y el
+  juez no son el modelo que responde y hay aviso si el juez es de su familia; el coste se
+  estima antes.
+  _Requisitos: 61.1, 61.2, 61.3, 61.4, 61.5, 61.6, 61.7, 61.8_
+  Hecho (2026-10-30): `apps/worker/tests/unit/test_agent_tests_multiturn.py` (8) y
+  `T/unit/test_suite_estimate.py` (2), en rojo antes; y en
+  `T/integration/builder/test_agent_suite.py` tres nuevas (la conversación servida turno
+  a turno con su `stop` y la cita en Reservas, ocho turnos sin plan fallan con ese motivo,
+  `dry_run` estima sin encolar), escritas después del código. La agenda sembrada de nuevo
+  en cada pasada la cubre `_attempt` (una siembra por pasada).
+- [X] T196 [P] `T/unit/test_pending_tools.py` y `T/isolation/test_44_agent_within_client.py`:
+  el borrador conserva las herramientas sin conexión como pendientes, con su petición; el
+  validador las acepta si están en el catálogo y permitidas; el runtime no las ve sin
+  conexión y activación (barrido); activar marca desactualizadas las pruebas afectadas.
+  _Requisitos: 62.1, 62.2, 62.3, 62.4_
+  Hecho (2026-10-29): `T/unit/test_pending_tools.py` (3) y, en `test_44`,
+  `test_a_pending_tool_never_reaches_the_turn_without_connection_and_activation`
+  (barre toda herramienta de conector del catálogo), en rojo antes.
+  `test_agent_spec_validator.py` deja de esperar `tool_not_connected` de un conector.
+- [X] T197 [P] `T/integration/test_model_policy_managed.py`: cambiar la política de modelo
+  desde la consola responde 409 `model_policy_managed`.
+  _Requisitos: 64.3_
+  Hecho (2026-10-29): `T/integration/test_model_policy_managed.py` (2), en rojo antes.
+- [X] T198 [P] Consola, vitest: el sector en Negocio; Políticas y Preguntas frecuentes con
+  propuestas; tarjetas «Sugerido» en Agentes; la tarjeta de lectura en el Panel; el canal
+  dentro del agente (H5); Rendimiento (H9); Conectores (H10) con «Conectar {X}» en el
+  sitio; Avanzado sin «Calidad»; «Por qué falló» turno a turno.
+  _Requisitos: 57.5, 59.7, 60.4, 60.5, 60.6, 61.6, 62.3, 62.5, 63.1, 63.2, 63.3, 64.1_
+  En parte (2026-10-29): hechas las de H5, H9, H10, H11 y Avanzado (62.3, 62.5, 63.1–63.3,
+  64.1) con T211–T214.
+  Hecho (2026-10-29): las de T209, T210 y T215, escritas antes y vistas en rojo:
+  `components/business/sections/__tests__/negocio-enmienda.test.tsx` (sector, Políticas,
+  Preguntas frecuentes y sus cinco estados), `components/clients/__tests__/client-read-card.test.tsx`
+  y `clients/v2/__tests__/client-panel.test.tsx` (la tarjeta por red, en el Panel),
+  `components/builder/__tests__/agent-cards.test.tsx` (los sugeridos) y
+  `components/builder/__tests__/test-conversation.test.tsx` («Por qué falló» y «Generada»).
+
+### Implementación
+
+- [X] T199 Migración: `business_profiles.sector` (JSONB); tabla `generated_guides` por
+  cliente (RLS FORCE, FK compuesta `(tenant_id, id)`); la conversación de cada pasada en
+  el intento de la prueba.
+  _Requisitos: 57.1, 58.4, 61.6_
+  Hecho (2026-10-29): `0206_sector_guides_builder` (revisa la 0205):
+  `business_profiles.sector` (JSONB con su forma comprobada), `generated_guides` y
+  `suggested_agents` (RLS FORCE, FK compuestas a `jobs`), `agent_tests.generated_guide_id`
+  (FK compuesta), `agent_test_results.stop` (la conversación ya vivía en `transcript`),
+  `sector_identify` en `jobs.kind` y la frase `suggested_agent.dismissed`. Sube y baja
+  (`T/integration/test_migration_0206_sector_guides.py`); caso adversarial de cada tabla
+  en `T/isolation/test_53_amendment_tables.py`. `data-model.md` §10b. Decisiones D58 a D65.
+- [X] T200 El sector: trabajo `sector_identify` en el worker, con su prompt y su
+  validación; `sectors.py` como respaldo con palabras enteras; encolarlo al alta, al
+  terminar `client_read` y en `update_basics`; `Business.sector` en el ClientSpec, en
+  `contracts/client-spec.schema.json` y en `BasicsIn`/`BasicsOut`; los consumidores leen
+  el sector guardado.
+  _Requisitos: 57.1, 57.2, 57.3, 57.4, 57.6, 57.7, 57.8_
+  Hecho (2026-10-29): `services/business/sector.py` (lectura pública: `stored` y
+  `sector_key`; `ensure_stored`, `request_identification`, `identify_sector`) y el
+  trabajo `wk/jobs/handlers/sector_identify.py` (modelo `sector` de la plataforma, rol
+  `classify`, `source = builder`); se encola al alta, tras la lectura, al cambiar nicho
+  o información y al abrir Datos básicos sin sector o con el de respaldo (D59).
+  `sectors.py`: lista cerrada y regla de palabras enteras. `Business.sector` en el
+  ClientSpec y en `client-spec.schema.json`; `sector` en `BasicsIn`/`BasicsOut`;
+  `GET /console/sectors`; la propuesta `/business/sector`. Las pruebas del sector y el
+  constructor del cliente leen el guardado. D58 y D59.
+- [X] T201 Las guías: `services/builder/guides/` derivadas de las plantillas (tras la 048);
+  patrones del papel; `build_messages` y `prompts/agent_draft.md`; la guía generada por
+  cliente y sus 12 pruebas; «Desde una plantilla» por `write_new_agent`; en el panel de
+  operador, los sectores sin guía que más se repiten y «Convertir en guía de Auphere»; el
+  banco de evaluación con sectores sin guía, nombres reales y pruebas del sector.
+  _Requisitos: 58.1, 58.2, 58.3, 58.4, 58.5, 58.6, 58.7_
+  Hecho (2026-10-30): `services/builder/guides/` (`guides.yaml` y `catalog.py`: las seis
+  de las plantillas, herramientas de sus `tools.required` sin `booking.*`, y la genérica
+  con 12 pruebas; `roles.py`: patrones combinables; `generated.py`; `resolve.py`;
+  `client_data.py`; `promotion.py`), `build_messages` y `prompts/agent_draft.md` (guía
+  vallada, patrones, catálogo con lo que hace cada herramienta y sin nombres inválidos),
+  la guía generada en el trabajo `agent_draft` y sus pruebas en `add_sector_tests`
+  (`origin` en `GET …/tests`), «Desde una plantilla» por `draft_from_template` y
+  `write_new_agent`, la agenda solo con Reservas encendido (`load_context`,
+  `requires_module`, registro simulado), `has_guide` para una etiqueta convertida.
+  Panel: contrato `contracts/admin-sector-guides.md` y `api/admin/sector_guides.py`
+  (la pantalla de `apps/admin` la hace otra sesión). Migración `0207_sector_guides`
+  (tabla de plataforma, D66). Banco `eval_bank_v2.json` (120) y `by_guide`. D66, D67,
+  D68 y D71. **Falta**: correr la batería del sector desde la evaluación del panel
+  (`battery` sin cablear: `sector_pass_unedited_pct` sale vacío) y la pantalla del
+  panel.
+- [X] T202 La lectura: `reader.py` con JSON-LD y microdatos, `sitemap.xml`, semáforo de 4,
+  redes con web, motivos de las redes y reintento de la extracción.
+  _Requisitos: 59.1, 59.3, 59.4, 59.5_
+  Hecho (2026-10-30): `services/business/structured.py` (JSON-LD y microdatos a la forma
+  de la extracción, sin modelo) y en `reader.py`: `merge_extractions` (lo estructurado
+  manda), `sitemap_pages`/`sitemap_locations`, lotes de 4 con semáforo dentro de 25
+  páginas y 3 minutos, redes también con web y `BLOCKING_NETWORKS`/`blocked_by_network`,
+  `_extract_with_retry`, y el navegador de respaldo conectado (`default_render`, T203)
+  solo con poco texto. El resultado añade `networks`, `structured` y
+  `extraction_retried`. `docs/ficha-del-negocio.md` y `docs/renderer.md`. D69.
+- [X] T203 El navegador de respaldo: `apps/renderer/` (FastAPI y Playwright, con un proxy
+  local que resuelve y rechaza direcciones no públicas en cada conexión), su Dockerfile,
+  su servicio en Terraform apagado por defecto, el cliente en el lector con
+  `NEXUS_RENDERER_URL` y `NEXUS_RENDERER_TOKEN`, las licencias citadas y
+  `docs/renderer.md`.
+  _Requisitos: 59.2_
+  Hecho (2026-10-29): `apps/renderer/` (FastAPI, Playwright 1.64.1, Python 3.11, su
+  `uv.lock`): `POST /render` con token en tiempo constante, 20 s y 2 MB; Chromium sale por
+  un proxy HTTP/CONNECT en el mismo proceso (`--proxy-bypass-list=<-loopback>`) que resuelve
+  una vez, rechaza toda dirección no pública (tabla IANA explícita, IPv4 dentro de IPv6
+  incluida) y puertos que no sean 80/443, y conecta a la IP comprobada. 189 pruebas sin
+  navegador (rojo antes, verde después; mutaciones del *bypass* y de marcar la IP, cazadas).
+  `Dockerfile` sobre `mcr.microsoft.com/playwright/python:v1.64.1-noble` fijada por
+  *digest*, sin root; **no construida** en local. `infra/terraform/20-services/renderer.tf`
+  apagado (`renderer_enabled = false`), con su SG (solo el runner entra, solo 80/443 sale),
+  token generado en Secrets Manager, Cloud Map y sin task role; el runner recibe
+  `NEXUS_RENDERER_URL`/`NEXUS_RENDERER_TOKEN` en `taskdefs.tf` solo encendido. `terraform fmt`
+  y `validate` en verde. El cliente `services/business/renderer_client.py` (y
+  `tests/unit/test_renderer_client.py`, con la tabla de direcciones contra
+  `assert_public_url`) **no está conectado al lector: eso es la T202**; sus pruebas no se
+  han corrido (la suite de la API estaba ocupada), solo ruff y `mypy --strict`. `verify.sh`
+  (lint, py, locks) y el job `test-renderer` de `ci.yml`. `docs/renderer.md`. Licencias en
+  `docs/licenses/renderer.md`: Playwright, Apache-2.0 — «each Contributor hereby grants to
+  You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright
+  license to reproduce, prepare Derivative Works of, publicly display, publicly perform,
+  sublicense, and distribute the Work and such Derivative Works in Source or Object form»;
+  Chromium, BSD-3-Clause — «Redistribution and use in source and binary forms, with or
+  without modification, are permitted provided that the following conditions are met»;
+  FastAPI, MIT; uvicorn, BSD-3-Clause. Pendiente fuera del código: el repositorio
+  `nexus-renderer` en ECR (`bootstrap`) y construir la imagen en los despliegues.
+- [X] T204 Sin relectura periódica: borrar `source_reread_cron.py` y `reread_due`; encolar
+  la lectura al cambiar la web o una red (`update_basics`, `put_links`) y al añadir una
+  fuente, sin reaccionar a lo que escribe el lector.
+  _Requisitos: 59.6_
+  Hecho (2026-10-29): fuera `wk/streams/source_reread_cron.py` (nunca estuvo en el
+  contrato de `bootstrap.py`) y `reread_due`; `profile_edits` encola la lectura cuando
+  una persona pone otra web o añade una red, nunca por lo que escribe el lector (D63).
+- [X] T205 El constructor del cliente: encolarlo tras `client_read` y al cambiar el sector,
+  con la huella de la ficha como clave; reintentos; guardar los agentes sugeridos y
+  servirlos a la consola.
+  _Requisitos: 60.1, 60.2, 60.3, 60.6, 60.7, 60.8_
+  Hecho (2026-10-29): `client_profile.launch_client_builder` (huella = `state_hash` del
+  ClientSpec, sin repetir la misma ficha, respeta «Construcción y pruebas»), lanzado
+  por `sector_identify` tras la lectura o al cambiar el sector, y por una persona al
+  cambiar el sector; tres reintentos con espera creciente; lo descartado no vuelve;
+  `services/builder/suggested_agents.py` y `GET /console/clients/{ref}/suggested-agents`
+  y `POST …/{id}/dismiss` (`api/console/suggested_agents.py`). D60 y D61.
+- [X] T206 Las pruebas de varios turnos: `_attempt` en bucle con el cliente simulado
+  (`NEXUS_LLM_CUSTOMER_SIM_MODEL`), `final_state()` ampliado (Reservas, escalado y
+  enlaces de pago), la conversación guardada y servida a «Por qué falló», el juez
+  configurable con aviso de familia y la estimación del coste.
+  _Requisitos: 61.1, 61.2, 61.3, 61.4, 61.5, 61.6, 61.7, 61.8_
+  Hecho (2026-10-30): `wk/simulation/customer.py` (`converse`, el cliente vallado y su
+  respuesta cerrada, ocho turnos, `other_model`, `judge_warnings`), `_attempt` y
+  `run_suite` con el cliente simulado (`default_customer`, rol `customer_sim` → tarea
+  `answer`; también en la puerta de publicar), `World.final_state()` con
+  `booking.items`, `escalation` y `payment` (no hay herramienta de enlaces de pago: se
+  comprueba si se pidió un pago), `stop` en cada pasada, y `GET …/tests` con
+  `transcript`, `stop` y `attempts`; `POST …/test-runs` con `dry_run`
+  (`services/testing/estimate.py`). El juez que es el modelo que respondió no cuenta; el
+  de su familia se avisa en `summary.warnings` y en el log. `docs/agentes.md` y
+  `docs/modelos-y-router.md`. D70 y D71.
+- [X] T207 Las herramientas pendientes: `sanitize` las conserva; el validador las acepta;
+  activar un conector marca desactualizadas las pruebas afectadas.
+  _Requisitos: 62.1, 62.2, 62.3, 62.4_
+  Hecho (2026-10-29): `sanitize` las conserva con su petición y el validador las acepta
+  cuando su integración es un conector con activación (`catalog.*` sigue pidiendo
+  conectar antes: no hay activación que la retenga en el turno); `activations.tool_policy` bloquea en la consola nueva las de un
+  conector sin conexión del cliente; activar (o cambiar el permiso) deja las pruebas
+  del agente desactualizadas. D62.
+- [X] T208 Los modelos: 409 `model_policy_managed` desde la consola; los modelos del
+  constructor, la lectura, el sector, el cliente simulado y el juez, por configuración de
+  plataforma.
+  _Requisitos: 64.2, 64.3_
+  Hecho (2026-10-29): `services/agent_spec/model_policy.py`: `409 model_policy_managed`
+  en `PATCH …/draft` con otra política y en `POST …/quality/check`;
+  `nexus_worker/platform_models.py`, la tabla de los modelos de la plataforma, que
+  leen el borrador, la lectura, el sector y el juez (y la T206 para el cliente
+  simulado). Y `ChannelPage.method` (H5, D56). D64.
+- [X] T209 Consola, Negocio: el sector en Datos básicos; las secciones «Políticas» y
+  «Preguntas frecuentes», con las propuestas «Sugerido · confirma» y aceptar, editar o
+  descartar.
+  _Requisitos: 57.5, 60.4, 60.5_
+  Hecho (2026-10-29): Datos básicos enseña el sector con «Con guía» o «Generada»,
+  «Identificando el sector…» con `null`, la propuesta del sistema (`/business/sector`) al
+  lado con «Aceptar»/«Descartar», y «Editar» con el selector de `GET /console/sectors` más
+  «Otro» (etiqueta 1–40; `sector_unknown` en palabras) (`basics-section.tsx`). Secciones
+  nuevas «Políticas» (`policies-section.tsx`, `PUT …/policies`) y «Preguntas frecuentes»
+  (`faqs-section.tsx`: confirmadas con «Editar»/«Quitar», «Añadir pregunta» y «Por
+  confirmar») detrás de Servicios; lo sugerido de `GET /business` (`/policies/{clave}`,
+  `/faqs/-`) y las preguntas `suggested: true` salen en su sección con «Sugerido ·
+  confirma», su procedencia sin nombrar al constructor y aceptar/editar/descartar
+  (`suggestion-card.tsx`, `proposals-model.ts`). Acciones en `business/actions.ts`; la página
+  pide políticas, preguntas y sectores. Decisiones en D57. **Falta en la API**: `sector` en
+  `GET`/`PUT …/basics` y en `GET /business`, `GET /console/sectors` y las propuestas
+  `/business/sector` (T200); el lanzamiento solo del constructor del cliente (T205). Las
+  rutas de políticas y preguntas ya existían.
+- [X] T210 Consola: la tarjeta de lectura en el Panel; las tarjetas «Sugerido» en Agentes,
+  con «Crear este agente».
+  _Requisitos: 59.4, 59.7, 60.6_
+  Hecho (2026-10-29): `ClientReadCard` montada arriba a la izquierda del Panel del cliente
+  mientras se lee y al terminar («Lo que leímos»: lo encontrado, otras redes leídas, datos
+  estructurados, «{n} datos por revisar en Negocio» con «Revisar», y una frase por red: «X
+  no deja leer perfiles sin cuenta.» sin tono de aviso, o el motivo si falló)
+  (`client-panel.tsx`, `client-read-card.tsx`, `client-read-model.ts`). Agentes: tarjetas
+  «Sugerido» detrás de los agentes, con «Crear este agente» (abre «Nuevo agente» con
+  `?name=&description=`, que ya los leía) y «Descartar» (`agent-cards.tsx`,
+  `lib/backend/suggested-agents.ts`, `agents/suggested-actions.ts`). El e2e
+  `agent-life.e2e.ts` pasa de «Completar con el constructor» a este recorrido (no
+  ejecutado). Decisiones en D57. **Falta en la API**: `networks` con su estado y
+  `structured` en la lectura (T202), `GET /console/clients/{ref}/suggested-agents` y su
+  `…/{id}/dismiss` (T205).
+- [X] T211 Consola: el canal dentro del agente (H5).
+  _Requisitos: 63.1, 63.4_
+  Hecho (2026-10-29): `channel-page.tsx` se pinta en la pestaña Canales con `?canal=`
+  (`channelHref`; la ruta `agents/{id}/channels/{channelId}` redirige con 308 y la página
+  del agente lee el canal, su historial y el saldo); índice a la izquierda, cabecera con logo
+  y «WhatsApp · canal de {agente}», dos modos, «Excepciones» solo con «A todos», escalado en
+  filas de una línea, «Mensaje de espera» e «Historial» en «Más ajustes», y la barra con
+  «Activar solo para mi equipo» / «Activar para todos» / «Decidir luego» o «Guardar» /
+  «Descartar». Migas con el canal (`crumbs-v2.ts`). Pruebas en `channel-page.test.tsx` y
+  `agent-builder.test.tsx`. Falta en la API el método de conexión (`ChannelPage.method`): sin
+  él la cabecera no dice «Coexistencia» ni «Cloud API» (D56).
+- [X] T212 Consola: Rendimiento (H9).
+  _Requisitos: 63.2, 63.4_
+  Hecho (2026-10-29): la pestaña solo con versión guardada; «Listo · sin canal» abre en
+  Canales; «Últimos 30 días» (tres cifras, tope si lo hay) y «Sugerencias de esta semana» con
+  «Ver» en dos columnas; gráfica y conversaciones debajo (`agent-performance.tsx`,
+  `agent-improvements.tsx`, `agent-builder.tsx`; `agent-improve.test.tsx`).
+- [X] T213 Consola: Conectores (H10), con «Conectar {X}» en el sitio desde la habilidad y
+  desde el fallo de una prueba, y primero lo que piden las habilidades.
+  _Requisitos: 62.3, 62.5, 63.3, 63.4_
+  Hecho (2026-10-29): una tarjeta con filas, buscador sin etiqueta a la vista, filtro
+  segmentado con recuentos, el permiso dentro de «Ajustes» (`agent-connectors.tsx`,
+  `connector-model.ts` con `orderConnectors` y `filterCounts`, `connector-parts.tsx` con
+  `PermissionRadios`); «Conectar {X}» de la habilidad o del arreglo de una prueba abre el
+  diálogo en el sitio y la línea pasa a «{X} · conectado» (`agent-rows.tsx`). Pruebas en
+  `agent-connectors.test.tsx`, `connector-model.test.ts` y `agent-builder.test.tsx`.
+- [X] T214 Consola: Avanzado sin «Calidad» ni «Fijar un modelo», con su línea.
+  _Requisitos: 64.1_
+  Hecho (2026-10-29): `agent-model-quality.tsx` sin montar (se queda con su prueba para
+  64.4); Avanzado dice «El modelo de este agente lo gestiona Auphere.» en `#agente-calidad`,
+  adonde siguen llegando los avisos. Prueba en `agent-builder.test.tsx`.
+- [X] T215 Consola: «Por qué falló» turno a turno; «Generada» en la guía y en sus pruebas.
+  _Requisitos: 58.4, 61.6_
+  Hecho (2026-10-29): «Por qué falló» (lista de pruebas) y «Ver la conversación» (tarjeta de
+  pruebas) enseñan lo comprobado y la conversación con el cliente simulado con las burbujas
+  del chat de prueba, «Lo que habría hecho: …» y por qué terminó
+  (`test-conversation.tsx`; `failedConversation` en `quality-model.ts`, que toma
+  `transcript`/`stop` de la prueba o la primera pasada fallida de `attempts`). «Generada» en
+  cada prueba con `origin: "generated"`, una línea bajo «Del sector» y, para la guía, en el
+  sector de Datos básicos (T209). Decisiones en D57. La API ya sirve `transcript`,
+  `stop` y `attempts` (T206, D70) y `origin` (T201) en `GET …/agents/{id}/tests`.
+
+## Fase 28 · Solo lo que tenemos (requisito 65)
+
+Va después de T201, T202 y T206, con una sola sesión en `apps/api`. Diseño en `plan.md` §«Enmienda del 2026-10-30». Si T201 ya cubrió un criterio, la tarea se marca con su referencia y no se repite.
+
+### Pruebas primero
+
+- [X] T220 [P] Disponibilidad de `reservas.*`:
+  - con Reservas apagado, `sanitize` la quita;
+  - la puerta da `tool_not_connected`;
+  - la simulación responde como el turno;
+  - con Reservas encendido, pasa.
+  _Requisitos: 65.2_
+  Hecho (2026-10-30), por T201 (D67):
+  - `test_guide_role_ficha.py::test_the_agenda_only_when_reservas_is_on_for_the_client`
+    cubre `sanitize`, `tool_not_connected` en el validador de la puerta y el caso con
+    Reservas encendido;
+  - `apps/worker/tests/unit/test_simulated_registry_connectors.py::test_the_agenda_answers_not_active_without_the_reservas_module`
+    cubre la simulación.
+
+  Añadido en esta fase: con Reservas apagado, `reservas` ya no queda como petición
+  de conexión, sino como `module_off` en `missing_capabilities`
+  (`test_only_what_we_have.py`, unitaria e integración).
+- [X] T221 [P] Integraciones inventadas:
+  - una habilidad o una `connection_request` con una integración que no es un conector ofrecido sale de `sanitize` como capacidad que falta;
+  - el validador da `integration_unknown`;
+  - la respuesta del borrador la lista.
+  _Requisitos: 65.3, 65.4_
+  Hecho (2026-10-30): `tests/unit/test_only_what_we_have.py` y
+  `tests/integration/builder/test_only_what_we_have.py`, escritas antes de
+  implementar. También el borrador de antes de la enmienda, que se limpia sin
+  rechazar nada (D72). Cambian dos pruebas que daban por bueno «Conectar
+  channel_catalog»: `test_pending_tools.py` y
+  `test_agent_draft_job.py::test_a_skill_without_its_integration_says_what_is_missing`.
+- [X] T222 [P] Promesas que bloquean la puerta:
+  - «emite la factura» o «cobra con tarjeta» con `payments.request_review` como única herramienta;
+  - «reserva una cita» con `reservas.services` como única herramienta de agenda.
+  _Requisitos: 65.5_
+  Hecho (2026-10-30): las dos de la tarea, además de enviar, cambiar y tomar
+  pedidos, lo que no es promesa, la gravedad, el puntero en la puerta y el pin de
+  `TOOL_ACTIONS` contra `capability_names` (unitarias y
+  `test_a_promise_without_a_tool_blocks_the_gate`).
+- [X] T223 [P] El prompt compilado lleva la sección de límites y las alternativas de las habilidades.
+  _Requisitos: 65.6_
+  Hecho (2026-10-30):
+  `test_only_what_we_have.py::test_the_compiled_prompt_has_the_limits_and_each_skills_alternative`.
+- [X] T224 [P] Pruebas del sector y puerta:
+  - en una barbería, un agente sin herramientas de agenda recibe las pruebas de cita como «No aplica», con razón, y la puerta no bloquea por ellas;
+  - la puerta no publica un agente estructurado sin ninguna prueba aplicable.
+  _Requisitos: 65.8, 65.9_
+  Hecho (2026-10-30): unitarias (`needs_of`, `not_applicable_reason`, el catálogo
+  con `needs`), integración (barbería sin agenda y con agenda, «En blanco» sin
+  pruebas) y `test_migration_0208_sector_test_needs.py`.
+- [X] T225 [P] Herramientas, política y borrador genérico:
+  - `PUT /console/clients/{ref}/tools` da 409 para un agente estructurado;
+  - si `_load_tool_policy` falla, quedan fuera las herramientas de conector (caso en `tests/isolation/`);
+  - una ficha que no carga, o un modelo sin instrucciones, da un código propio y ningún borrador.
+  _Requisitos: 65.10, 65.11, 65.12_
+  Hecho (2026-10-30):
+  - `test_44_agent_within_client.py::test_without_its_tool_policy_the_turn_offers_no_connector_tool`,
+    que barre el catálogo;
+  - `test_a_closed_policy_keeps_only_tools_that_need_no_connector`;
+  - integración: `PUT …/tools`, `PATCH …/draft` con `tools`, las rutas de plantillas
+    de antes, `facts_unavailable` y un modelo sin instrucciones.
+- [X] T226 [P] Copiloto y sugerencias:
+  - reciben las herramientas disponibles con lo que hace cada una;
+  - no sale ninguna sugerencia que necesite una capacidad que falta;
+  - las sugerencias admiten cualquier papel o ninguno.
+  _Requisitos: 65.7_
+  Hecho (2026-10-30): unitarias (`feasible_agents`, `clean`, guías y patrones sin
+  acciones que no existen) e integración (el copiloto con modelo y sin él, el
+  constructor del cliente con y sin modelo). Cambia
+  `test_sector_consumers.py::test_the_client_builder_reads_the_stored_sector`:
+  sin Reservas ya no sugiere «Citas».
+
+### Implementación
+
+- [X] T227 API y worker: los criterios 65.2 a 65.12, según el diseño del plan.
+  _Requisitos: 65.2–65.12_
+  Hecho (2026-10-30):
+  - 65.1, 65.2 (`load_context`, `requires_module`, registro simulado), 65.7 para
+    el constructor y 65.13: por T201, D67;
+  - 65.2: `Context.usable` y `available_tools`;
+  - 65.3 y 65.4: `sanitize`, `services/agent_spec/missing.py`,
+    `integration_unknown` en el validador, `missing_capabilities` en el trabajo y
+    en `AgentDraftOut` (guardado en `policies["builder"]`), y los borradores de
+    antes limpios al leer y al escribir (D72);
+  - 65.5: `capability_names.TOOL_ACTIONS` y `compiler.PROMISES`; bloquea en un
+    agente estructurado, con su puntero en la puerta (D73);
+  - 65.6: «Lo que no haces» en `compile_spec`;
+  - 65.7: `available_lines` para el copiloto y el constructor del cliente,
+    `feasible_agents`, el papel opcional (D77);
+  - 65.8: `SectorTest.needs`, `add_sector_tests(tools=…)` y la migración
+    `0208_sector_test_needs` (D74);
+  - 65.9: `no_applicable_tests` en `gate.hard`;
+  - 65.10: `409 structured_agent` en `PUT …/tools` y en `PATCH …/draft` con
+    `tools`, y `seed_template_retired` en las tres rutas de plantillas de antes
+    para la consola nueva (D75);
+  - 65.11: `ToolPolicy.closed` y `activations.allowed_names` en el turno (D76);
+  - 65.12: `FactsUnavailable` y `no_instructions` (D77).
+
+  Contrato para la consola en `contracts/console-api.md` §11.
+- [ ] T228 Consola:
+  - «No tenemos herramienta para: …» en el borrador, con sus cinco estados;
+  - ningún «Conectar {X}» para una integración que no existe;
+  - las tarjetas «Sugerido» sin papel obligatorio.
+  _Requisitos: 65.3, 65.4, 65.7_
+- [ ] T229 La documentación: `docs/agentes.md` y `docs/console.md`.
+  _Requisitos: 65_
+  En parte (2026-10-30):
+  - hecho `docs/agentes.md`: §2 «Solo lo que tenemos», las pruebas del sector,
+    la puerta y la política que cierra;
+  - hecho `needs` en `contracts/admin-sector-guides.md`;
+  - falta `docs/console.md`, que es de la sesión de la consola (T228).
+
+### Cierre de la fase
+
+- [X] T216 La documentación de `plan.md` §Documentación de la enmienda.
+  Hecho (2026-10-30): cada tarea actualizó su documento en el mismo cambio
+  (`docs/ficha-del-negocio.md`, `agentes.md`, `console.md`, `modelos-y-router.md`,
+  `admin.md`, `renderer.md`, `reservas.md`) y los contratos.
+- [X] T217 La suite de aislamiento entera en verde y una revisión de seguridad del
+  renderizado (SSRF, rebinding de DNS) y de las entradas nuevas no confiables.
+  _Requisitos: 56.1, 59.2_
+  En parte (2026-10-30): la suite de aislamiento entera, en verde dentro de
+  `verify.sh`. Las tres rutas de pruebas del agente sirven `TestOut.transcript`,
+  la conversación con el cliente simulado, sin canal; queda permitido por esquema en
+  `test_console_scope.py`. Falta: la revisión de seguridad.
+  2026-10-30, revisión de seguridad: arreglados, cada uno con su prueba vista en rojo
+  (D78; 048, decisión 26): la excepción de `TestOut.transcript` dice su residuo (las
+  pruebas de una sugerencia las escribe un modelo que leyó conversaciones reales),
+  `attempts` y sus turnos van tipados y exceptuados por esquema, y `suggestions._store`
+  descarta la prueba que copia un mensaje del lote (n-gramas); una pasada viva por
+  agente (`POST …/test-runs` devuelve la viva), `402` en «Volver a leer», el sector sin
+  partida sin modelo, la suite que se para entre pruebas con `stopped:
+  build_budget_exhausted` y una identificación por hora desde `PUT …/basics` (lo de
+  dentro de la hora queda pendiente para el GET); el lector resuelve una vez, valida
+  todas las IPs con la tabla del renderer (copiada en `core/public_addresses.py`,
+  con prueba de que coinciden) y conecta a la validada, solo por 80 y 443
+  (`core/public_http.py`, también en `fetch_url` y el worker); cada turno, criterio,
+  acción, persona y plan que leen el juez y el cliente simulado pasa por
+  `untrusted.inert`; `POST …/agent/versions` con `tools` da `409 structured_agent`;
+  el bloqueo por herramienta que no se lee no ofrece ninguna (`test_44`); un JSON-LD
+  que tumba `json.loads` se salta; la etiqueta del sector no exime al nombre del
+  cliente ni al de una sede; `nexus_app` solo lee `sector_test_catalog` (0210,
+  `test_54`); y el paso a Reservas da el mapa 1:1 más `reservas.services`, no las
+  nueve. Queda: `PUT …/capabilities` sigue escribiendo `draft.tools` de un agente
+  estructurado, porque la consola nueva llega a esa pantalla desde las citas del
+  copiloto (D79; resuelta el mismo día: por el AgentSpec y el validador); el renderer en producción (Chromium y su salida a la
+  VPC), pendiente de infraestructura; y `verify.sh` entero (T219).
+  Hecho (2026-10-30): la revisión no dio hallazgos críticos ni altos, y la suite de
+  aislamiento está en verde tras los arreglos. Lo que queda es
+  o de infraestructura (el renderer, que está apagado).
+- [ ] T218 Los gates de UI sobre las pantallas tocadas: cinco estados, WCAG 2.2 AA,
+  responsive y tokens.
+  _Requisitos: 63.4_
+  En parte (2026-10-29): consola revisada (Negocio con el sector, Políticas, Preguntas
+  frecuentes y «Sugerido · confirma»; la tarjeta de lectura del Panel; los sugeridos de
+  Agentes; el canal dentro del agente, Rendimiento, Conectores, Avanzado y «Por qué
+  falló») con `ui-states-checklist`, `a11y-audit`, `responsive-audit` y `design-tokens`,
+  en estático y en vivo contra los mocks de e2e (360, 768 y 1440 px, claro y oscuro, axe
+  WCAG 2.2 AA y textos largos en alemán: sin desbordes ni violaciones). Arreglado, con su
+  prueba vista en rojo: el nombre accesible de «Crear este agente» (2.5.3) y un papel
+  desconocido que tiraba la pestaña Agentes; el esqueleto de Negocio con la rejilla de la
+  página (`sections/layout.ts`) y anunciado; «Recargar» tras un 412 en Políticas y
+  Preguntas frecuentes; la propuesta de sector sin doble envío; la tarjeta de lectura y
+  «Documentos y webs» cargando con `role="status"` (axe `aria-prohibited-attr`) y el
+  tropiezo al consultar dicho mientras se lee; un `?canal=` que no se lee lo dice en
+  Canales; foco no tapado por la barra de vidrio del canal (2.4.11); anillo de 2 px en
+  los `summary`; esqueletos de Conectores y Rendimiento a su tamaño. Queda en
+  `packages/ui`: `summary` fuera del anillo global de foco de `tokens.css` y `text-[15px]`
+  de los títulos de sección sin token. Falta el panel de operador.
+  2026-10-30: `summary` ya está en el anillo global de foco de `tokens.css`. La
+  pantalla «Sectores sin guía» del panel salió con sus cinco estados, `tsc`, `eslint`
+  y vitest en verde, pero sin pasada en vivo.
+- [ ] T219 `./scripts/verify.sh` en verde.
+  En parte (2026-10-30). En verde: lint, `mypy --strict`, worker, MCP, canales,
+  renderer, consola, panel, `@nexus/ui`, `next build` y la app. La API: 8539 pruebas
+  en verde y 9 en rojo.
+  - Seis eran de la ronda y ya están arreglados:
+    - las frases de auditoría de las guías (migración `0209`);
+    - `TestOut.transcript` en el barrido de cuerpos;
+    - la prueba de calidad, como `xfail` estricto mientras rija el requisito 64.
+  - Tres dependen de la fecha y no son de la ronda: `test_client_balance_alerts`,
+    `test_lite_home::…balance_will_not_last` y `test_agent_cap_and_alerts::…seven_days`.
+    El aviso de saldo solo salta si el saldo se acaba antes de fin de mes, así que
+    fallan los últimos días de cada mes.
+  Segunda pasada, tras la T217 (`lint` y `py`):
+  - lint, worker, MCP, canales y renderer en verde, después de un `no-any-return` de
+    `mypy` en `client_read.py`, ya arreglado;
+  - API: 8580 pruebas en verde y 4 en rojo, que son las tres del saldo por la fecha y
+    `test_local_dispatch::…handed_out_twice`, que solo falla bajo carga (sola pasa
+    12/12).
+
+  `js` no se repitió: la T217 no tocó la consola ni el panel.
+
+---
+
 ## Dependencias y orden
 
 - **Fase 1** bloquea todo. **Fase 2** (las puertas) se escribe en rojo al principio

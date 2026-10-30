@@ -16,6 +16,13 @@ wizard applies a seed once, edits happen in the editor.
 The staged policies always carry an explicit
 ``console.ai_disclosure = {enabled: true}`` decision (CP-31 default), so
 publishing right after the wizard does not stall on the disclosure rule.
+
+Spec 047, amendment of 2026-10-30 (65.10, research D75): these routes mount a
+template in «instructions» mode, around the builder and the validator. The new
+console never calls them — it creates an agent from a template with
+``POST …/agents/draft-jobs`` (``start: "template"``, a structured AgentSpec) — so
+for a partner on it they answer ``410 seed_template_retired``
+(:func:`refuse_on_new_console`). They go with the old console.
 """
 
 from __future__ import annotations
@@ -46,6 +53,24 @@ from .schemas import AgentVersionOut
 from .schemas_onboarding import FromSeedIn, SeedPlaceholderOut, SeedTemplateOut
 
 router = APIRouter()
+
+SEED_TEMPLATE_RETIRED = "seed_template_retired"
+
+
+def refuse_on_new_console(scope_partner: Any, *, status_code: int = status.HTTP_410_GONE) -> None:
+    """Spec 047, amendment of 2026-10-30 (65.10): on the new console an agent from
+    a template is born structured through the builder, never mounted here."""
+    from nexus_api.services import console_v2
+
+    if console_v2.console_version(scope_partner) == "v2":
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "code": SEED_TEMPLATE_RETIRED,
+                "message": "Crea el agente desde la pestaña Agentes, «Desde una plantilla».",
+            },
+        )
+
 
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z][a-zA-Z0-9_.]*)\}")
 _PENDING_RE = re.compile(r"<<[^>]*>>")
@@ -260,6 +285,7 @@ async def stage_from_seed(
     responses={
         404: {"description": "Unknown client or seed template."},
         409: {"description": "The client already has agent versions."},
+        410: {"description": "seed_template_retired: the new console uses the builder."},
         422: {"description": "A required placeholder is missing."},
     },
 )
@@ -267,9 +293,16 @@ async def stage_agent_from_seed(
     body: FromSeedIn,
     scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> AgentVersionOut:
+    refuse_on_new_console(scope.principal.partner)
     return await stage_from_seed(
         scope.session, scope, seed_template=body.seed_template, placeholders=body.placeholders
     )
 
 
-__all__ = ["describe_placeholders", "router", "stage_from_seed"]
+__all__ = [
+    "SEED_TEMPLATE_RETIRED",
+    "describe_placeholders",
+    "refuse_on_new_console",
+    "router",
+    "stage_from_seed",
+]

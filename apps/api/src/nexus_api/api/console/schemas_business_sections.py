@@ -60,6 +60,25 @@ class _Section(_Out):
 # ── datos básicos ──────────────────────────────────────────────────────────
 
 
+class SectorIn(_In):
+    """Spec 047, enmienda del 2026-10-29 (requisito 57.5; contrato §10): el sector
+    que fija una persona. La clave se valida contra la lista cerrada en el
+    servicio (``422 sector_unknown``); con ``otro``, la etiqueta es obligatoria."""
+
+    key: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
+    label: Annotated[str, StringConstraints(max_length=40)] | None = None
+
+
+class SectorOut(_Out):
+    key: str
+    label: str
+    confidence: float
+    source: Literal["niche", "info", "web", "person", "fallback"]
+    decided_by: Literal["system", "person"]
+    #: Si el sector tiene guía de Auphere; si no, la consola dice «Generada» (58.4).
+    has_guide: bool
+
+
 class BasicsIn(_In):
     name: Annotated[str, StringConstraints(min_length=1, max_length=60)] | None = None
     niche: Annotated[str, StringConstraints(min_length=2, max_length=80)] | None = None
@@ -69,6 +88,7 @@ class BasicsIn(_In):
     timezone: Annotated[str, StringConstraints(max_length=64)] | None = None
     price_currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] | None = None
     eu_only: bool | None = None
+    sector: SectorIn | None = None
 
 
 class BasicsOut(_Section):
@@ -80,6 +100,8 @@ class BasicsOut(_Section):
     timezone: str
     price_currency: str | None
     eu_only: bool
+    #: ``None`` mientras se identifica (contrato §10).
+    sector: SectorOut | None = None
 
 
 # ── horario ────────────────────────────────────────────────────────────────

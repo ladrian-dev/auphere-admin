@@ -15,9 +15,8 @@ Tick: 1 hour by default. The Cloud API rate limit on this endpoint is
 generous (per-WABA, not per-phone), so we can re-check every tenant once
 an hour without burning the budget.
 
-Pattern: shared with ``health_check_cron`` (AgendaPro) — RLS-free tenant
-discovery, then per-tenant scoped session for the channel update +
-audit log insert. The per-tenant BISUAT is resolved INSIDE the scoped
+Pattern: RLS-free tenant discovery, then per-tenant scoped session for the
+channel update + audit log insert. The per-tenant BISUAT is resolved INSIDE the scoped
 session (RLS is the only authority on which credentials row is read).
 """
 

@@ -33,14 +33,17 @@ from nexus_api.db.models.agent_spec import AgentTest, AgentTestSuite
 from nexus_api.db.models.business import BusinessFieldProvenance, BusinessProfile
 
 from ..business._business_world import Biz, new_business
-from ._builder_world import RECEPTION, FakeBuilder, job_row, run_jobs, start_draft
+from ._builder_world import RECEPTION, FakeBuilder, job_row, run_jobs, start_draft, turn_reservas_on
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 @pytest.fixture
 async def biz(client: Any, db_session: AsyncSession, console_world: dict[str, Any]) -> Biz:
-    return await new_business(client, db_session, console_world, name="Barbería Cultor")
+    biz = await new_business(client, db_session, console_world, name="Barbería Cultor")
+    # La barbería tiene Reservas encendido: sin él, la agenda cuenta como sin activar (D67).
+    await turn_reservas_on(db_session, biz)
+    return biz
 
 
 def _client_url(biz: Biz) -> str:
@@ -302,27 +305,47 @@ async def test_a_business_answer_for_a_client_without_ficha_opens_its_ficha(
 # ── las integraciones ──────────────────────────────────────────────────────
 
 
-async def test_a_skill_without_its_integration_offers_connect(
+async def test_a_skill_without_its_integration_says_what_is_missing(
     client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
 ) -> None:
+    """Spec 047, enmienda del 2026-10-30 (65.3): el catálogo de Meta se enlaza en
+    Canales; no es un conector que se conecte desde el agente. Antes salía
+    «Conectar channel_catalog»; ahora, lo que falta, sin «Conectar»."""
     reply = copy.deepcopy(RECEPTION)
-    # booking.* lee la agenda de AgendaPro, que este cliente no tiene enlazada.
-    reply["tools"] = ["booking.check_availability", "booking.create_appointment", "reservas.create"]
-    reply["skills"] = [{"key": "agenda", "enabled": True, "integration": "agendapro"}]
+    # catalog.* lee el catálogo de Meta del canal, que este cliente no tiene.
+    reply["tools"] = ["catalog.search_products", "catalog.get_product", "reservas.create"]
+    reply["skills"] = [{"key": "catalogo", "enabled": True, "integration": "channel_catalog"}]
     body, agent_id = await _built(client, db_session, biz, fake_redis, reply)
     result = body["result"]
-    assert {c["integration"] for c in result["connect"]} == {"agendapro"}
+    assert result["connect"] == []
+    assert ("channel_catalog", "not_linked") in {
+        (m["key"], m["reason"]) for m in result["missing_capabilities"]
+    }
     assert {d["tool"] for d in result["dropped_tools"]} >= {
-        "booking.check_availability",
-        "booking.create_appointment",
+        "catalog.search_products",
+        "catalog.get_product",
     }
     draft = await _draft(db_session, biz.tenant_id, agent_id)
-    assert "booking.create_appointment" not in draft.tools
-    assert draft.spec["connection_requests"][0]["integration"] == "agendapro"
-    row = next(s for s in draft.spec["skills"] if s.get("integration") == "agendapro")
-    assert row.get("fallback")
+    assert "catalog.search_products" not in draft.tools
+    assert not draft.spec.get("connection_requests")
+    assert not [s for s in draft.spec.get("skills") or [] if s.get("integration")]
     skills_block = next(b for b in body["progress"]["blocks"] if b["key"] == "skills")
-    assert skills_block["connect"][0]["integration"] == "agendapro"
+    assert skills_block["connect"] == []
+
+
+async def test_the_builder_never_keeps_a_retired_booking_tool(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """Spec 048 (CE-004): ni aunque el modelo la proponga, un agente nuevo no
+    nace con ``booking.*``."""
+    reply = copy.deepcopy(RECEPTION)
+    reply["tools"] = ["booking.check_availability", "booking.create_appointment", "reservas.create"]
+    body, agent_id = await _built(client, db_session, biz, fake_redis, reply)
+    dropped = {d["tool"] for d in body["result"]["dropped_tools"]}
+    assert dropped >= {"booking.check_availability", "booking.create_appointment"}
+    draft = await _draft(db_session, biz.tenant_id, agent_id)
+    assert not [t for t in draft.tools if t.startswith("booking.")]
+    assert "reservas.create" in draft.tools
 
 
 # ── lo escrito es dato ─────────────────────────────────────────────────────

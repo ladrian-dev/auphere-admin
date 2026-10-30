@@ -1,12 +1,9 @@
 """Operator alerter — turns audit_log events into operator WhatsApp templates.
 
-Five events trigger an alert in Phase 1:
+Four events trigger an alert in Phase 1:
 
 - ``conversation.escalated`` — written by ``escalate.escalate_to_human``
   (block D). Template: ``alert_escalation_v1``.
-- ``integration.agendapro.needs_reauth`` — written by the AgendaPro
-  health-check service when re-login fails (block E + H cron).
-  Template: ``alert_needs_reauth_v1``.
 - ``cost.daily_threshold_exceeded`` — written by the cost rollup cron
   (block H) when ``messages.cost_usd`` for today crosses the tenant's
   ``cost_alert_threshold_usd_per_day``. Template: ``alert_cost_threshold_v1``.
@@ -68,7 +65,6 @@ AdapterRegistry = Mapping[str, Any]
 
 _ACTION_TO_TEMPLATE: dict[str, str] = {
     "conversation.escalated": "alert_escalation_v1",
-    "integration.agendapro.needs_reauth": "alert_needs_reauth_v1",
     "cost.daily_threshold_exceeded": "alert_cost_threshold_v1",
     # WP-20 — corte duro. Reutiliza la plantilla de coste ya aprobada
     # por Meta: la señal operativa es la misma ("se gastó el

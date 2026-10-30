@@ -10,6 +10,8 @@ import {
   categoriesOf,
   connectionHref,
   filterConnectors,
+  filterCounts,
+  orderConnectors,
   rowActions,
   rowState,
   settingFields,
@@ -39,11 +41,11 @@ describe("los conectores · el estado y las acciones de cada fila", () => {
     expect(rowState(connector({ connection: { id: CONN_WOO, status: "disconnected", last_checked_at: null } }))).toBe("not_connected");
   });
 
-  it("cada fila trae lo suyo, la principal primero, y quien solo lee solo ve la página", () => {
+  it("cada fila trae lo suyo, la principal primero: conectado lleva «Ajustes» y «Quitar»; quien solo lee solo ve la página (H10)", () => {
     const [woo, gcal, cobro, hubspot] = catalog();
-    expect(rowActions(woo!, true)).toEqual(["page", "settings", "remove"]);
+    expect(rowActions(woo!, true)).toEqual(["settings", "remove"]);
     expect(rowActions(gcal!, true)).toEqual(["connect"]);
-    expect(rowActions(cobro!, true)).toEqual(["page"]);
+    expect(rowActions(cobro!, true)).toEqual(["connect"]);
     expect(rowActions(hubspot!, true)).toEqual(["reconnect", "page"]);
     expect(rowActions(connector({ connection: { id: CONN_WOO, status: "pending", last_checked_at: null } }), true)).toEqual(["connect", "page"]);
     expect(rowActions(connector({ connection: { id: CONN_WOO, status: "paused", last_checked_at: null } }), true)).toEqual(["page"]);
@@ -51,14 +53,27 @@ describe("los conectores · el estado y las acciones de cada fila", () => {
     expect(rowActions(gcal!, false)).toEqual([]);
   });
 
-  it("filtra por nombre y por categoría sin cambiar el orden de la API, y nombra lo que no conoce como «El resto»", () => {
+  it("filtra por nombre, por categoría y por «Conectados», y nombra lo que no conoce como «El resto»", () => {
     const list = [...catalog(), connector({ slug: "rara", name: "Rara", category: "weird" })];
     expect(categoriesOf(list)).toEqual(["ecommerce", "calendar", "billing", "crm", "other"]);
     expect(filterConnectors(list, { q: "goo", category: null }).map((c) => c.slug)).toEqual(["googlecalendar"]);
     expect(filterConnectors(list, { q: "", category: "other" }).map((c) => c.slug)).toEqual(["rara"]);
+    expect(filterConnectors(list, { q: "", category: "connected" }).map((c) => c.slug)).toEqual(["woocommerce"]);
     expect(filterConnectors(list, { q: "  ", category: null })).toHaveLength(5);
     expect(authKindLabel(t, "oauth_composio")).toBe("Se autoriza con la cuenta del servicio");
     expect(authKindLabel(t, "algo_nuevo")).toBe("Se autoriza desde el servicio");
+  });
+
+  it("los recuentos del filtro segmentado: todos, los que usa este agente y cada categoría (H10)", () => {
+    const list = [...catalog(), connector({ slug: "rara", name: "Rara", category: "weird" })];
+    expect(filterCounts(list)).toEqual({ all: 5, connected: 1, categories: { ecommerce: 1, calendar: 1, billing: 1, crm: 1, other: 1 } });
+    expect(filterCounts([])).toEqual({ all: 0, connected: 0, categories: {} });
+  });
+
+  it("primero lo que piden las habilidades y luego lo conectado, sin cambiar el orden de la API dentro de cada grupo (62.5)", () => {
+    const [woo, gcal, cobro, hubspot] = catalog();
+    const extra = connector({ slug: "shopify", name: "Shopify", connection: { id: CONN_WOO, status: "connected", last_checked_at: null }, activation: { permission: "read", settings: {} } });
+    expect(orderConnectors([hubspot!, cobro!, extra, gcal!, woo!]).map((c) => c.slug)).toEqual(["googlecalendar", "woocommerce", "shopify", "hubspot", "amigable_cobro"]);
   });
 
   it("las direcciones: la página de la conexión sabe volver al agente", () => {

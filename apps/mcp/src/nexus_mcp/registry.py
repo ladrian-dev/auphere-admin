@@ -24,10 +24,11 @@ block-C stubs.
 
 from __future__ import annotations
 
+import copy
 import secrets
 import time
 from collections.abc import Awaitable, Callable, Iterable
-from typing import Any
+from typing import Any, Self
 
 import structlog
 from nexus_api.core.metrics import (
@@ -51,19 +52,20 @@ log = structlog.get_logger(__name__)
 
 # ── internal caller token ───────────────────────────────────────────────────
 #
-# Bloque E introduce ``MCPRegistry.dispatch_internal`` para que los servers
-# Bloque D (en particular booking-server) puedan invocar tools internas
-# (``agendapro.*``) sin que el LLM tenga forma de alcanzarlas. Tres capas
-# defensivas, cualquiera de las cuales sería suficiente:
+# Bloque E introduce ``MCPRegistry.dispatch_internal`` para que un server
+# pueda invocar tools internas sin que el LLM tenga forma de alcanzarlas.
+# Su único inquilino, el conector de agenda por navegador, se retiró en la
+# spec 048: hoy el espacio interno está vacío y el mecanismo se queda. Tres capas defensivas,
+# cualquiera de las cuales sería suficiente:
 #
 #   1. ESTRUCTURAL — las internal tools viven en ``_internal_tools``,
 #      separado del ``_tools`` público. ``dispatch(name, ...)`` consulta solo
-#      ``_tools``; aunque el LLM alucine ``agendapro.create_appointment``,
+#      ``_tools``; aunque el LLM alucine un nombre interno,
 #      ``_tools.get(name)`` devuelve None.
 #
-#   2. CATÁLOGO — la migración 0008 + seed marca las 6 ``agendapro.*`` con
-#      ``tool_status='internal'``. El endpoint admin que edita
-#      ``agent_config.tools`` rechaza nombres con ese status.
+#   2. CATÁLOGO — una tool interna lleva ``tool_status='internal'``. El
+#      endpoint admin que edita ``agent_config.tools`` rechaza nombres con ese
+#      status.
 #
 #   3. SIGNING (cinturón y tirante) — ``dispatch_internal`` requiere
 #      ``caller_token`` que es un secret in-memory generado al startup del
@@ -80,8 +82,8 @@ _INTERNAL_CALLER_TOKEN: str = secrets.token_urlsafe(32)
 def get_internal_caller_token() -> str:
     """Token in-memory que ``dispatch_internal`` exige.
 
-    Lo importan los servers Bloque D que necesitan delegar a tools
-    internas (booking → agendapro). Tests pueden importarlo igual.
+    Lo importa un server que necesita delegar a una tool interna. Tests
+    pueden importarlo igual.
     """
     return _INTERNAL_CALLER_TOKEN
 
@@ -134,6 +136,24 @@ class MCPRegistry:
         explores. The audit callback records every blocked attempt.
         """
         return self._dry_run
+
+    def view(self) -> Self:
+        """A per-turn copy to layer a tenant's proxies on (Composio): its own
+        tool tables, so the shared registry is never mutated, and **everything
+        else kept** — ``dry_run``, its audit hook and whatever a subclass adds
+        (the simulated world of the playground). A bare ``MCPRegistry()`` here
+        would turn a dry run into a live one."""
+        clone = copy.copy(self)
+        clone._tools = dict(self._tools)
+        clone._internal_tools = dict(self._internal_tools)
+        return clone
+
+    def note_simulated_approval(self, name: str, args: dict[str, Any]) -> None:
+        """Dry run: the owner would have been asked before running ``name``
+        («Preguntar antes de escribir»), and nobody is. A simulated world
+        records it as something it would have done; a plain dry run has nothing
+        to record — its dispatch gate blocks and audits the write itself."""
+        del name, args
 
     # ── registration ─────────────────────────────────────────────────────
 
@@ -305,11 +325,8 @@ class MCPRegistry:
         (las internal tools están fuera de cualquier whitelist por
         construcción), pero exige ``caller_token`` válido.
 
-        Bloque E uso primario: ``booking.create_appointment.run`` detecta
-        que el tenant tiene integration='agendapro' activa y llama
-        ``dispatch_internal('agendapro.create_appointment', ...)`` para
-        delegar al server subprocess. El external_ref devuelto se persiste
-        en la fila local de ``appointments``.
+        Hoy no hay ninguna registrada (spec 048 retiró el único uso); el
+        mecanismo se queda para el siguiente delegado.
         """
         if not secrets.compare_digest(caller_token, _INTERNAL_CALLER_TOKEN):
             log.warning("dispatch_internal.invalid_caller_token", tool=name)
@@ -319,10 +336,9 @@ class MCPRegistry:
         if tool is None:
             raise ToolError(f"internal tool {name!r} is not registered")
 
-        # dry_run also gates internal dispatches — otherwise the public
-        # ``booking.create_appointment`` tool would be blocked but its
-        # subprocess delegate (``agendapro.create_appointment``) would
-        # still hit the real provider. Same audit hook fires.
+        # dry_run also gates internal dispatches — otherwise a public tool
+        # would be blocked but its internal delegate would still hit the
+        # real provider. Same audit hook fires.
         if self._dry_run and tool.side_effects:
             synthetic = make_envelope(
                 tool=name,
@@ -399,10 +415,8 @@ _default_registry: MCPRegistry | None = None
 def build_default_registry() -> MCPRegistry:
     """Construct the registry with the public Block-D servers.
 
-    Block O (ADR-017): the public-link AgendaPro MCP lands here as
-    INTERNAL tools (``agendapro_public.*``). The booking facade and
-    the async booking cron reach them via ``dispatch_internal`` with
-    the in-process caller token; the LLM never sees them.
+    Nothing is registered as INTERNAL: spec 048 retired the public-link
+    booking MCP, the only internal tools.
     """
     global _default_registry
     if _default_registry is not None:
@@ -410,9 +424,6 @@ def build_default_registry() -> MCPRegistry:
 
     # Local imports to avoid circular deps (each server's tools.py can
     # import from nexus_mcp.base safely).
-    from nexus_mcp.servers.agendapro_public.tools import (
-        build_agendapro_public_tools,
-    )
     from nexus_mcp.servers.amigable_cobro.tools import AMIGABLE_COBRO_TOOLS
     from nexus_mcp.servers.booking.tools import BOOKING_TOOLS
     from nexus_mcp.servers.client.tools import CLIENT_TOOLS
@@ -447,11 +458,6 @@ def build_default_registry() -> MCPRegistry:
         *RECEPTION_TOOLS,
     ):
         registry.register(tool_cls())
-    # Block O: agendapro_public.* are INTERNAL — the transport is
-    # resolved at dispatch time (set_default_transport must run at
-    # worker startup, or tests must inject a FakeAgendaProPublicTransport).
-    for internal_tool in build_agendapro_public_tools():
-        registry.register_internal(internal_tool)
     _default_registry = registry
     return registry
 

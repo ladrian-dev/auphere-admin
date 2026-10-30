@@ -30,7 +30,10 @@ Pestaña **Acceso** en la ficha del tenant del admin
   uno; la Bandeja exige un WhatsApp conectado **al elegirla**; Reservas exige
   el modo (Servicios o Aforo, y en Aforo el tipo de negocio) la primera vez, y
   cambiarlo con reservas vivas pide decidir qué pasa con ellas
-  ([reservas.md](reservas.md#activarlo-panel-de-operador)).
+  ([reservas.md](reservas.md#activarlo-panel-de-operador)). Reservas **no
+  depende del acceso** (spec 048, decisión 16): con `reservas` en la lista, el
+  agente reserva aunque el acceso de las personas esté apagado; `enabled` solo
+  dice quién puede entrar.
 - **Personas**: invitación de un solo uso (hash SHA-256, 21 días) por correo
   y también impresa al operador (`accept_path`). Reenviar retira el enlace
   anterior. Revocar a una persona o apagar el acceso **cierra sus sesiones**

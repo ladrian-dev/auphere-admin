@@ -5,6 +5,22 @@
  */
 import type { Audience, AudienceIn, ConsolePolicy, PaymentReview, VersionStatus } from "./agent-tools-types";
 
+/**
+ * Spec 047, amendment of 2026-10-30 «Solo lo que tenemos» (requisito 65;
+ * `contracts/console-api.md` §11): something the agent would need and we do not
+ * have. `label` is Spanish, ready to follow «No tenemos herramienta para: ».
+ * `pointer` says where an `action` is promised in the AgentSpec; `null` for the
+ * rest. None of it ever turns into «Conectar {X}».
+ */
+export type MissingCapability = {
+  kind: "integration" | "module" | "tool" | "action";
+  key: string;
+  label: string;
+  reason: "integration_unknown" | "module_off" | "not_linked" | "tool_unknown" | "no_tool";
+  source: "skill" | "connection_request" | "tool" | "text";
+  pointer: string | null;
+};
+
 /** The screens of the agent where the draft differs from the active version. */
 export type AgentDraftScreen = "settings" | "capabilities" | "knowledge" | "prompt";
 
@@ -37,6 +53,14 @@ export type AgentDraft = {
   payment_review: PaymentReview;
   screens: AgentDraftScreen[];
   allowed: ("edit" | "discard")[];
+  /**
+   * What the agent was left without (spec 047, 65.3 and 65.4): what the first
+   * draft could not use, kept in the version, plus the promises of the current
+   * AgentSpec that no tool does, worked out on every read. Always sent by the
+   * API (`[]` if nothing is missing); optional so that a response from before
+   * reads as «nothing we know of».
+   */
+  missing_capabilities?: MissingCapability[];
 };
 
 /** What one save sends. Only what is sent changes. */

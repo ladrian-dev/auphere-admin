@@ -22,7 +22,19 @@
         "price_currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
         "wallet_currency": { "enum": ["EUR", "USD"] },
         "eu_only": { "type": "boolean" },
-        "sovereign": { "description": "Solo lectura: la fija Auphere (requisito 54.6).", "type": "boolean", "readOnly": true }
+        "sovereign": { "description": "Solo lectura: la fija Auphere (requisito 54.6).", "type": "boolean", "readOnly": true },
+        "sector": {
+          "description": "El sector del negocio (enmienda del 2026-10-29, requisito 57.1): una guía de Auphere u «otro». Lo identifica el sistema o lo fija una persona; mientras se identifica, no va.",
+          "type": "object", "additionalProperties": false, "required": ["key", "label"],
+          "properties": {
+            "key": { "enum": ["barberia_peluqueria", "clinica", "restaurante", "tienda", "servicios_profesionales", "mayorista", "otro"] },
+            "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "source": { "enum": ["niche", "info", "web", "person", "fallback"] },
+            "decided_by": { "enum": ["system", "person"] },
+            "has_guide": { "description": "Solo lectura: si el sector tiene guía de Auphere.", "type": "boolean", "readOnly": true }
+          }
+        }
       }
     },
     "locations": {

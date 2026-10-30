@@ -615,7 +615,7 @@
   /* One focus ring for everything focusable — WCAG 2.2 focus appearance
      (≥2 px, ≥3:1 against adjacent colours). Components may add their own
      inset ring but never remove this. */
-  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
     border-radius: var(--radius-sm);

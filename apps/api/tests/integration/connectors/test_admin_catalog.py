@@ -1,7 +1,7 @@
 """Admin catalog endpoints — list + detail.
 
 The catalog merges custom seeds (whatsapp_meta,
-agendapro, woocommerce, amigable_cobro, amigable_venta) with the dynamic
+woocommerce, amigable_cobro, amigable_venta, tiktok_bm) with the dynamic
 auth_configs
 that Composio surfaces. The ``fake_composio`` fixture pre-registers
 googlecalendar / calendly / notion in the fake Composio project.
@@ -20,8 +20,8 @@ async def test_list_catalog_merges_seeds_and_composio(
     r = await client.get("/admin/connectors", headers=admin_headers)
     assert r.status_code == 200
     slugs = {c["slug"] for c in r.json()}
+    # Spec 048: AgendaPro is gone, and release.sh has no seed to bring it back.
     assert slugs == {
-        "agendapro",
         "amigable_cobro",
         "amigable_venta",
         "calendly",
@@ -43,7 +43,6 @@ async def test_list_catalog_without_composio_falls_back_to_seeds(
         assert r.status_code == 200
         slugs = {c["slug"] for c in r.json()}
         assert slugs == {
-            "agendapro",
             "amigable_cobro",
             "amigable_venta",
             "tiktok_bm",
@@ -77,11 +76,11 @@ async def test_get_catalog_entry(client, admin_headers, seeded_catalog, fake_com
 
 async def test_get_catalog_entry_seed(client, admin_headers, seeded_catalog, fake_composio) -> None:
     """Custom seeds keep their persisted ``id`` since they're seeded at deploy."""
-    r = await client.get("/admin/connectors/agendapro", headers=admin_headers)
+    r = await client.get("/admin/connectors/woocommerce", headers=admin_headers)
     assert r.status_code == 200
     body = r.json()
-    assert body["slug"] == "agendapro"
-    assert body["auth_kind"] == "browser_credentials"
+    assert body["slug"] == "woocommerce"
+    assert body["auth_kind"] == "api_key"
     assert body["id"] is not None
 
 

@@ -49,11 +49,13 @@ entries:
 
   - key: connector.agendapro
     family: connector
-    status: available
+    status: retired
     label: "AgendaPro"
-    note: "Agenda y reservas para clínicas y centros de servicio."
+    note: >-
+      Se retiró (spec 048, 2026-10-29): nadie lo usaba. La agenda de los
+      agentes es Reservas, la nativa, la que el negocio ve en su consola.
     eta: null
-    replaced_by: []
+    replaced_by: [reservas]
 
   - key: connector.amigable_cobro
     family: connector
@@ -101,8 +103,8 @@ entries:
     status: absent
     label: "Google Calendar"
     note: >-
-      No hay conector nativo. Para agenda hay AgendaPro; si el cliente usa
-      Google Calendar, hoy hace falta desarrollo.
+      No hay conector nativo. La agenda es Reservas (la nativa); si el cliente
+      quiere ver sus citas en Google Calendar, hoy hace falta desarrollo.
     eta: null
     replaced_by: []
 

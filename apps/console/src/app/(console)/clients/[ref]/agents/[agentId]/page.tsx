@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 
 import { AgentBuilder } from "@/components/builder/agent-builder";
 import { sectionForTab } from "@/components/builder/builder-model";
+import { missingFrom } from "@/components/builder/missing-model";
+import { channelHref } from "@/components/builder/channel-model";
 import { ArchivedAgent } from "@/components/builder/archived-agent";
 import { metaSignupConfig } from "@/components/channels/connect-choice";
 import { clientHref } from "@/components/shell/routes-v2";
@@ -39,10 +41,9 @@ export async function generateMetadata() {
  * correcciones del negocio). `?tab=performance` e `?tab=improvements` llevan a
  * ellas. Cada parte que no llega lo dice en su sección.
  *
- * Spec 047 (historias 21 y 23): Conectores (el catálogo del agente, conectar
- * y el permiso de cada uno; `?tab=integrations`) y Avanzado › Calidad (las
- * opciones con su precio por mensaje y «Comprobar la calidad»;
- * `?tab=quality`).
+ * Spec 047 (historia 21): Conectores (el catálogo del agente, conectar y el
+ * permiso de cada uno; `?tab=integrations`). Avanzado dice que el modelo lo
+ * gestiona Auphere (64.1; D55); `?tab=quality` llega a esa línea.
  *
  * Spec 047 (historias 10, 11 y 22): con `knowledge:read`, la sección
  * Conocimiento (sus fuentes y «Enseñar»); con `channels:read`, la sección
@@ -56,13 +57,23 @@ export async function generateMetadata() {
  * «Nuevo agente» termina aquí (prototipo §3.3): con `?job=` se lee su trabajo
  * y, si es de este agente y dejó preguntas, salen encima de la tabla para
  * responderlas una a una. Si el trabajo no se puede leer, la pantalla sigue sin ellas.
+ *
+ * Spec 047, enmienda del 2026-10-30 (T228; 65.3 y 65.4): «No tenemos
+ * herramienta para: …» sale del `missing_capabilities` del borrador, que la API
+ * manda siempre. Un borrador de antes sin el campo cae en el del trabajo de
+ * «Nuevo agente» (`?job=`), que recién creado dice lo mismo.
+ *
+ * Spec 047 (63.1; hueco H5): con `?canal=` la pestaña Canales abre la
+ * configuración de ese número dentro del agente (su página, su historial y
+ * cómo se asigna o se pide saldo desde sus comprobaciones). Si el número es de
+ * otro agente, se va al suyo; si no se puede leer, se ve la lista.
  */
 export default async function AgentScreenPage({
   params,
   searchParams,
 }: {
   params: Promise<{ ref: string; agentId: string }>;
-  searchParams?: Promise<{ tab?: string; job?: string }>;
+  searchParams?: Promise<{ tab?: string; job?: string; canal?: string }>;
 }) {
   const { ref, agentId } = await params;
   const query = (await searchParams) ?? {};
@@ -91,7 +102,9 @@ export default async function AgentScreenPage({
   // Spec 047 (historia 31): la lista de conversaciones (solo metadatos) es de quien puede leerlas.
   const readsConversations = can(principal.role, "conversations:read");
   const biz = businessSectionsApi(callFor(principal));
-  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements, client, bizServices, bizLocations, bizHours] = await Promise.all([
+  // Spec 047 (63.1): el canal que se configura dentro del agente.
+  const canal = readsChannels && typeof query.canal === "string" && UUID_RE.test(query.canal) ? query.canal : null;
+  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements, client, bizServices, bizLocations, bizHours, canalPage, canalHistory] = await Promise.all([
     run(() => api.getBuilderDraft(ref, agentId)),
     run(() => api.listProposals(ref, agentId)),
     run(() => api.getAgentTests(ref, agentId)),
@@ -109,13 +122,17 @@ export default async function AgentScreenPage({
     run(() => biz.getServices(ref)),
     run(() => biz.getLocations(ref)),
     run(() => biz.getHours(ref)),
+    canal ? run(() => api.getChannelPage(ref, canal)) : null,
+    canal ? run(() => api.getChannelHistory(ref, canal)) : null,
   ]);
+  // Pasó a otro agente: su configuración se abre en el suyo.
+  if (canal && canalPage?.ok && canalPage.data.agent && canalPage.data.agent.id !== agentId) redirect(channelHref(ref, canalPage.data.agent.id, canal));
   // Las preguntas que dejó el borrador de «Nuevo agente», si el trabajo es de este agente.
   const job = typeof query.job === "string" && UUID_RE.test(query.job) && can(principal.role, "agents:write") ? await run(() => api.getDraftJob(query.job!)) : null;
-  const questions =
-    job?.ok && job.data.kind === "agent_draft" && job.data.status === "done" && (job.data.result?.agent_id ?? job.data.agent_id) === agentId && job.data.result?.questions.length
-      ? { job: job.data.job_id, questions: job.data.result.questions.slice(0, 5), discarded: job.data.result.discarded ?? { count: 0, reasons: [] } }
-      : null;
+  const ownJob = job?.ok && job.data.kind === "agent_draft" && job.data.status === "done" && (job.data.result?.agent_id ?? job.data.agent_id) === agentId ? job.data : null;
+  const questions = ownJob?.result?.questions.length
+    ? { job: ownJob.job_id, questions: ownJob.result.questions.slice(0, 5), discarded: ownJob.result.discarded ?? { count: 0, reasons: [] } }
+    : null;
   if (!draft.ok) {
     if (draft.status === 404 || draft.status === 422) notFound();
     throw new Error(`agent draft ${draft.status}`);
@@ -146,11 +163,28 @@ export default async function AgentScreenPage({
           canWrite: can(principal.role, "usage:write"),
         }
       : undefined;
+  // Spec 047 (45.1): «Asignar saldo» se abre en el sitio si esta persona puede; si no, «Pedir saldo» (45.7).
+  const allowed = client?.allowed ?? [];
+  const channelConfig =
+    canal && canalPage?.ok
+      ? {
+          page: canalPage.data,
+          history: canalHistory?.ok ? canalHistory.data : null,
+          canWrite: can(principal.role, "channels:write"),
+          balance: client
+            ? allowed.includes("assign_balance")
+              ? { name: client.name, mode: "assign" as const }
+              : allowed.includes("request_balance")
+                ? { name: client.name, mode: "request" as const }
+                : null
+            : null,
+        }
+      : null;
   return (
     <AgentBuilder
       key={draft.data.agent_id}
       refId={ref}
-      draft={draft.data}
+      draft={{ ...draft.data, missing_capabilities: missingFrom(draft.data.missing_capabilities, ownJob?.result?.missing_capabilities) }}
       proposals={ok(proposals)}
       canWrite={can(principal.role, "agents:write")}
       quality={{ tests: ok(tests), preview: ok(preview), history: ok(history), sessions: ok(sessions) }}
@@ -172,11 +206,13 @@ export default async function AgentScreenPage({
       advanced={advanced}
       performance={{ performance: ok(performance), conversations: conversations ? ok(conversations) : undefined }}
       improvements={{ data: ok(improvements) }}
-      // Spec 047 (historias 21 y 23): Conectores y Avanzado › Calidad se leen al
-      // montar su sección: el catálogo pregunta al proveedor y la calidad al
-      // router, y ninguno de los dos frena el resto de la pantalla.
+      // Spec 047 (historia 21): los Conectores se leen al montar su sección: el
+      // catálogo pregunta al proveedor y no frena el resto de la pantalla.
+      // Avanzado ya no lee la calidad (64.1; D55): el modelo lo gestiona Auphere.
       connectors={{ canWrite: can(principal.role, "agents:write") }}
-      modelQuality={{ canWrite: can(principal.role, "agents:write") }}
+      channelConfig={channelConfig}
+      // T218: se pidió un canal que no se pudo leer (404, de otro cliente o la API no respondió): la pestaña Canales lo dice.
+      channelUnavailable={Boolean(canal && canalPage && !canalPage.ok)}
       initialSection={sectionForTab(query.tab)}
       questions={questions}
       clientName={client?.name ?? null}

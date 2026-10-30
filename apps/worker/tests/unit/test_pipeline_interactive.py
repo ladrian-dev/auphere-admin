@@ -144,8 +144,14 @@ def _stub_dispatch(monkeypatch: pytest.MonkeyPatch, *, status: str = "ok") -> li
     async def _empty_kg(_tid: uuid.UUID) -> str:
         return ""
 
+    async def _nothing_gated(_tid: uuid.UUID) -> frozenset[str]:
+        # Without the DB the gate cannot be read, and an unread gate is closed
+        # (T217): this test is not about gating, so the tenant gated nothing.
+        return frozenset()
+
     monkeypatch.setattr(pipeline, "_dispatch_tool", _fake)
     monkeypatch.setattr(pipeline, "_load_kg_snapshot_text", _empty_kg)
+    monkeypatch.setattr(pipeline, "_load_gated_tools", _nothing_gated)
     return seen
 
 

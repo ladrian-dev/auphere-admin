@@ -268,10 +268,8 @@ jobs:
       # (2026-10-22 and 2026-10-28) and blocked deploy-staging with no change
       # of ours. Run `npx expo-doctor` by hand when the app's dependencies change.
 
-  # ADR-017 / migration 0021 — the AgendaPro admin browser MCP (Node
-  # subprocess) was removed. The ``test-mcp-node`` job that built +
-  # tested it is gone with it. When the new public-link MCP lands a
-  # replacement job will live here.
+  # No Node job for the MCP: the browser booking MCP it would build was
+  # removed (migration 0021, then spec 048 for its public-link successor).
 
   lint:
     name: lint
@@ -327,6 +325,42 @@ jobs:
       - name: mypy --strict (mcp)
         working-directory: apps/mcp
         run: mypy --strict src/nexus_mcp
+
+  # Spec 047 (T203, research D50): el navegador de respaldo. Job propio porque
+  # su lock es propio —Playwright no entra en la API ni en el worker— y sus
+  # versiones no deben mezclarse con las de ``test-api`` en el mismo Python.
+  # Se instala igual que channels: desde el LOCK (``uv export --frozen``), no
+  # resolviendo de cero. El paquete ``playwright`` no descarga navegadores al
+  # instalarse y las pruebas lo simulan: aquí no hay Chromium.
+  test-renderer:
+    name: test-renderer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: install uv
+        run: pip install uv
+      - name: install renderer deps (desde uv.lock)
+        working-directory: apps/renderer
+        run: |
+          set -euo pipefail
+          uv export --frozen --extra dev --no-emit-project --no-hashes \
+            > /tmp/ci-renderer-requirements.txt
+          uv pip install --system -r /tmp/ci-renderer-requirements.txt
+          uv pip install --system --no-deps .
+      - name: ruff check + format --check
+        working-directory: apps/renderer
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+      - name: mypy --strict
+        working-directory: apps/renderer
+        run: mypy --strict src/nexus_renderer
+      - name: pytest (sin navegador)
+        working-directory: apps/renderer
+        run: pytest -x --tb=short
 
   # WP-23/25: la infraestructura también tiene tests que bloquean — fmt y
   # validate de cada stack (sin backend: no toca AWS ni el estado).

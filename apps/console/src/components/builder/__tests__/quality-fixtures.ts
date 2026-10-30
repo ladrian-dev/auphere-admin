@@ -124,8 +124,8 @@ export const REVIEW: AgentReview = {
     {
       code: "skill_without_integration",
       severity: "block",
-      message: "La habilidad Reservas necesita AgendaPro y no está conectada.",
-      fix: { kind: "link", target: "integrations", integration: "agendapro" },
+      message: "La habilidad Reservas necesita Google Calendar y no está conectada.",
+      fix: { kind: "link", target: "integrations", integration: "googlecalendar" },
     },
     {
       code: "contradicts_hours",

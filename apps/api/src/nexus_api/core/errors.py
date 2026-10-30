@@ -27,5 +27,13 @@ class AgentConfigConflict(NexusError):
     """Cannot perform the requested transition (e.g. promote a non-staged version)."""
 
 
+class RollbackTargetNeverPublished(AgentConfigConflict):
+    """Spec 047 (requisito 23): a rollback only returns to a version that was
+    live. A draft — or a draft that was discarded — goes live through the
+    publish gate, never through a rollback."""
+
+    code = "rollback_target_never_published"
+
+
 class UnknownAgent(NexusError):
     """Spec 030: the agent named is not an active agent of the current tenant."""

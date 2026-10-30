@@ -11,7 +11,9 @@ Lo que comprueba (22.1):
 - servicios sin precio, o reservables sin duración;
 - horario ausente;
 - contradicciones entre las instrucciones y la ficha;
-- instrucciones que prometen acciones sin herramienta;
+- instrucciones que prometen acciones sin herramienta (comparadas con lo que hace
+  cada herramienta según ``capability_names``; bloquea en un agente estructurado,
+  requisito 65.5);
 - referencias a herramientas que no existen;
 - canales sin destinatarios de escalado;
 - aviso de IA sin decidir (y «solo si preguntan» en un cliente de la UE, AI Act art. 50).
@@ -30,6 +32,7 @@ from typing import Any, Final, Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.services.agent_spec.compiler import incoherences
+from nexus_api.services.agent_spec.missing import MODULE_LABELS
 from nexus_api.services.agent_spec.schema import AgentSpec
 from nexus_api.services.agent_spec.validator import Context
 from nexus_api.services.business.compilation import Facts
@@ -131,14 +134,27 @@ def review(data: ReviewInput) -> Review:
         if connected:
             continue
         has_fallback = bool((skill.fallback or "").strip())
+        # Spec 047, enmienda del 2026-10-30 (65.3): lo que no es un conector (el
+        # módulo Reservas, que enciende Auphere; el catálogo de Meta, que se enlaza
+        # en Canales) no se arregla en Conectores: no hay enlace.
+        connector = any(
+            info.integration == skill.integration and info.activatable
+            for info in data.ctx.tools.values()
+        )
+        if connector:
+            what = f"{skill.integration}, que no está conectada"
+        elif skill.integration in MODULE_LABELS:
+            what = f"{MODULE_LABELS[skill.integration]}; lo enciende Auphere"
+        else:
+            what = f"{skill.integration}, que no tenemos para este cliente"
         found["skills_integrations"].append(
             Finding(
                 "skill_without_integration",
                 "warn" if has_fallback else "block",
-                f"La habilidad «{skill.key}» necesita {skill.integration}, que no está conectada"
+                f"La habilidad «{skill.key}» necesita {what}"
                 + (" (mientras, hace lo de su alternativa)." if has_fallback else "."),
                 pointer=f"/skills/{i}",
-                fix=_link("integrations", integration=skill.integration),
+                fix=_link("integrations", integration=skill.integration) if connector else None,
             )
         )
 
@@ -194,13 +210,19 @@ def review(data: ReviewInput) -> Review:
                 )
             )
         elif inc.code == "promises_without_tool":
+            # Spec 047, enmienda del 2026-10-30 (65.5): bloquea en un agente
+            # estructurado. En uno de antes («instructions») sigue avisando: su
+            # prompt es el de siempre, byte a byte, y lo que existe sigue
+            # funcionando (historia 13). No hay nada que conectar: se arregla
+            # quitando la promesa.
             found["promises"].append(
                 Finding(
                     "promises_without_tool",
-                    "warn",
-                    f"Las instrucciones prometen {inc.detail} y el agente no tiene con qué.",
+                    "block" if spec.mode == "structured" else "warn",
+                    f"Las instrucciones prometen {inc.detail} y el agente no tiene "
+                    "ninguna herramienta que lo haga.",
                     pointer=inc.pointer,
-                    fix=_link("capabilities"),
+                    fix={"kind": "edit", "pointer": inc.pointer},
                 )
             )
         else:

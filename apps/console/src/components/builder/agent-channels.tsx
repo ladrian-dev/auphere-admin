@@ -59,6 +59,7 @@ export function AgentChannelsPanel({
   fromPhone = false,
   clientName = null,
   meta = null,
+  updated = null,
   actions = {},
 }: {
   refId: string;
@@ -72,6 +73,8 @@ export function AgentChannelsPanel({
   clientName?: string | null;
   /** La configuración del alta de Meta de este entorno (nunca el secreto). Sin ella, se dice quién conecta el número. */
   meta?: MetaSignupConfig | null;
+  /** Spec 047 (63.1): lo último que guardó la configuración de un canal, abierta dentro del agente. */
+  updated?: ChannelPage | null;
   actions?: AgentChannelsActions;
 }) {
   const t = useT();
@@ -85,6 +88,14 @@ export function AgentChannelsPanel({
   const listTitle = React.useId();
   const reloadAction = actions.reload ?? agentChannelsAction;
   const connect = actions.connect ?? CONNECT_ACTIONS;
+
+  // La configuración del canal guardó: su fila dice lo nuevo (estado, a quién responde, a quién escala).
+  const [seen, setSeen] = React.useState(updated);
+  if (updated && updated !== seen) {
+    setSeen(updated);
+    setPages((prev) => ({ ...prev, [updated.id]: updated }));
+    setData((prev) => (prev ? { ...prev, channels: prev.channels.map((c) => (c.id === updated.id ? { ...c, visible_state: updated.visible_state } : c)) } : prev));
+  }
 
   // «Añadir otro canal» desaparece al pulsarlo: el foco pasa al asistente.
   React.useEffect(() => {

@@ -38,8 +38,10 @@ export function rowState(c: AgentConnector): RowState {
 export type RowActionKind = "connect" | "reconnect" | "page" | "settings" | "remove";
 
 /**
- * Las acciones de una fila, la principal primero. El permiso no es una acción:
- * es el selector de la fila (35.5).
+ * Las acciones de una fila, la principal primero (prototipo §9, hueco H10):
+ * sin conectar —o conectado al cliente y sin usar aquí— «Conectar»; conectado,
+ * «Ajustes» (el permiso, los ajustes del catálogo y su página; 63.3) y
+ * «Quitar»; roto, «Reconectar» y su página. El permiso no está en la fila.
  */
 export function rowActions(c: AgentConnector, canWrite: boolean): RowActionKind[] {
   const state = rowState(c);
@@ -47,14 +49,13 @@ export function rowActions(c: AgentConnector, canWrite: boolean): RowActionKind[
   if (!canWrite) return page;
   switch (state) {
     case "not_connected":
+    case "off":
       return ["connect"];
     case "other":
       // Rota o a medio autorizar: volver a autorizar. En pausa se reanuda desde su página de cliente.
       return c.connection?.status === "paused" ? page : [isBroken(c.connection?.status) ? "reconnect" : "connect", ...page];
-    case "off":
-      return page;
     case "on":
-      return [...page, ...(c.settings_schema ? (["settings"] as const) : []), "remove"];
+      return ["settings", "remove"];
   }
 }
 
@@ -80,14 +81,47 @@ export function categoriesOf(list: readonly AgentConnector[]): string[] {
   return out;
 }
 
-/** El catálogo filtrado por nombre (o slug) y categoría, sin cambiar el orden de la API (35.2). */
+/** «Conectados» en el filtro segmentado: los que usa este agente. */
+export const CONNECTED_FILTER = "connected";
+
+/**
+ * El catálogo filtrado por nombre (o slug) y por categoría —o por
+ * «Conectados», los que usa este agente—, sin cambiar el orden que recibe.
+ */
 export function filterConnectors(list: readonly AgentConnector[], filter: { q: string; category: string | null }): AgentConnector[] {
   const needle = filter.q.trim().toLowerCase();
   return list.filter((c) => {
-    if (filter.category && categoryOf(c) !== filter.category) return false;
+    if (filter.category === CONNECTED_FILTER) {
+      if (rowState(c) !== "on") return false;
+    } else if (filter.category && categoryOf(c) !== filter.category) return false;
     if (needle && !`${c.name} ${c.slug}`.toLowerCase().includes(needle)) return false;
     return true;
   });
+}
+
+/** Los números del filtro segmentado (H10): «Todos», «Conectados» y cada categoría. */
+export function filterCounts(list: readonly AgentConnector[]): { all: number; connected: number; categories: Record<string, number> } {
+  const categories: Record<string, number> = {};
+  let connected = 0;
+  for (const c of list) {
+    const key = categoryOf(c);
+    categories[key] = (categories[key] ?? 0) + 1;
+    if (rowState(c) === "on") connected += 1;
+  }
+  return { all: list.length, connected, categories };
+}
+
+/**
+ * El orden de la pestaña (62.5; prototipo §9): primero lo que piden las
+ * habilidades del agente, luego lo que ya usa, y después el resto; dentro de
+ * cada grupo, el orden de la API.
+ */
+export function orderConnectors(list: readonly AgentConnector[]): AgentConnector[] {
+  const rank = (c: AgentConnector) => (c.needed ? 0 : rowState(c) === "on" ? 1 : 2);
+  return list
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i)
+    .map(({ c }) => c);
 }
 
 export function permissionLabel(t: T, p: ConnectorPermission): string {

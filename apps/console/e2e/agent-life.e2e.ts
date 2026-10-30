@@ -132,24 +132,30 @@ test.describe("Spec 047 — la vida de los agentes, el copiloto y el constructor
     await expectNoSeriousAxe(page);
   });
 
-  test("«Completar con el constructor» propone por secciones y agentes que no se crean solos", async ({ page, request }) => {
+  // Enmienda del 2026-10-29 (60.4–60.6): sin «Completar con el constructor». Lo
+  // propuesto se decide en su sección de Negocio, y los agentes sugeridos, en Agentes.
+  test("lo sugerido se decide en Políticas y Preguntas frecuentes, y los agentes sugeridos no se crean solos", async ({ page, request }) => {
     const res = await page.goto(`/clients/${REF}/business`);
     expect(res?.status()).toBeLessThan(400);
     await page.waitForLoadState("networkidle").catch(() => undefined);
-    const panel = page.locator("[data-slot=client-builder]");
-    await panel.getByRole("button", { name: "Completar con el constructor" }).click();
-    await expect(panel.getByText("Listo: revisa lo que propone.")).toBeVisible({ timeout: 20_000 });
-    const policy = panel.getByRole("listitem", { name: "Cancelación" });
+    await expect(page.getByText("Completar con el constructor")).toHaveCount(0);
+    const policies = page.getByRole("region", { name: "Políticas" });
+    const policy = policies.getByRole("listitem", { name: "Cancelación" });
     await expect(policy.getByText("Sugerido · confirma")).toBeVisible();
     await policy.getByRole("button", { name: "Aceptar Cancelación" }).click();
-    await expect(panel.getByRole("listitem", { name: "Cancelación" })).toHaveCount(0);
-    await panel.getByRole("button", { name: "Descartar ¿Aceptáis tarjeta?" }).click();
-    await expect(panel.getByText("No queda nada por confirmar.")).toBeVisible();
+    await expect(policies.getByRole("listitem", { name: "Cancelación" })).toHaveCount(0);
+    const faqs = page.getByRole("region", { name: "Preguntas frecuentes" });
+    await faqs.getByRole("button", { name: "Descartar ¿Aceptáis tarjeta?" }).click();
+    await expect(faqs.getByText("Todavía no hay preguntas frecuentes.")).toBeVisible();
     const sent = await (await request.get(`${API}/__test/state`)).json();
     expect(sent.decisions.map((d: { decision: string }) => d.decision)).toEqual(["accept", "discard"]);
     await expectNoSeriousAxe(page);
 
-    await panel.getByRole("link", { name: "Crear el agente Recordatorios" }).click();
+    await page.goto(`/clients/${REF}/agents`);
+    const suggested = page.getByRole("list", { name: "Agentes sugeridos" });
+    await expect(suggested.getByText("Sugerido", { exact: true })).toBeVisible();
+    await expectNoSeriousAxe(page);
+    await suggested.getByRole("link", { name: "Crear este agente: Recordatorios" }).click();
     await expect(page).toHaveURL(/\/agents\/new\?name=Recordatorios/);
     await expect(page.getByRole("textbox", { name: /Nombre/ })).toHaveValue("Recordatorios");
     await expect(page.getByRole("textbox", { name: /¿Qué tiene que hacer\?/ })).toHaveValue(/Recuerda las citas del día siguiente/);

@@ -122,6 +122,12 @@ class AgentTest(UUIDPrimaryKey, Base):
             name="fk_agent_tests_suite",
             ondelete="CASCADE",
         ),
+        ForeignKeyConstraint(
+            ["tenant_id", "generated_guide_id"],
+            ["generated_guides.tenant_id", "generated_guides.id"],
+            name="fk_agent_tests_generated_guide",
+            ondelete="SET NULL",
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -143,6 +149,9 @@ class AgentTest(UUIDPrimaryKey, Base):
     not_applicable_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: ``sector@versión#clave`` de una prueba del sector.
     sector_test_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Spec 047, enmienda del 2026-10-29 (0206): la prueba del sector salió de una
+    #: guía generada para este cliente (``origin: generated``, requisito 58.4).
+    generated_guide_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="builder")
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -225,6 +234,9 @@ class AgentTestResult(UUIDPrimaryKey, Base):
     transcript: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
+    #: Spec 047, enmienda del 2026-10-29 (0206, requisito 61.3): por qué terminó la
+    #: conversación con el cliente simulado (``TEST_STOPS``). La escribe la T206.
+    stop: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=_now()
     )
@@ -299,3 +311,76 @@ __all__ = [
     "Proposal",
     "SectorTestCatalog",
 ]
+
+
+# ── Spec 047, enmienda del 2026-10-29 (migración 0206): las guías generadas ──
+
+#: Por qué termina la conversación de una pasada (requisito 61.3).
+TEST_STOPS: tuple[str, ...] = ("plan_done", "goodbye", "handoff", "turn_limit")
+GENERATED_GUIDE_STATUSES: tuple[str, ...] = ("generated", "reviewed", "promoted", "archived")
+
+
+class GeneratedGuide(UUIDPrimaryKey, Base):
+    """La guía del sector que el constructor genera **para este cliente** cuando su
+    sector no tiene guía de Auphere (requisito 58.4, D47): qué preguntar,
+    procedimientos, riesgos y herramientas (``guide``) y sus 12 pruebas (``tests``).
+    Es del cliente (garantía 1) y nunca se comparte; Auphere puede convertir una
+    revisada y sin datos del cliente en guía propia (58.5, ``promoted_to``). La
+    escribe la T201."""
+
+    __tablename__ = "generated_guides"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_generated_guides_tenant_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "job_id"],
+            ["jobs.tenant_id", "jobs.id"],
+            name="fk_generated_guides_job",
+            ondelete="SET NULL",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: La etiqueta del sector para la que se generó (1-40).
+    sector_label: Mapped[str] = mapped_column(String(40), nullable=False)
+    #: La etiqueta normalizada: una guía viva por etiqueta y cliente.
+    label_key: Mapped[str] = mapped_column(String(60), nullable=False)
+    guide: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    tests: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(
+        String(12), nullable=False, default="generated", server_default="generated"
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    promoted_to: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=_now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=_now(), onupdate=_now()
+    )
+
+
+class SectorGuide(Base):
+    """De plataforma (0207): una guía de Auphere convertida desde la guía generada de
+    un cliente, revisada y sin datos del cliente («Convertir en guía de Auphere»,
+    requisito 58.5, D66). Nada en la fila apunta al cliente del que salió. Un cliente
+    de «otro» con la misma ``label_key`` recibe esta guía; sus 12 pruebas están en
+    ``sector_test_catalog`` con ``key``. Las de las plantillas viven en el código."""
+
+    __tablename__ = "sector_guides"
+
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label: Mapped[str] = mapped_column(String(40), nullable=False)
+    label_key: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    guide: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    published_by: Mapped[str] = mapped_column(String(160), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=_now()
+    )

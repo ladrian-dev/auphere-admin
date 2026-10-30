@@ -180,6 +180,9 @@ class ChannelPageOut(BaseModel):
     id: uuid.UUID
     type: str
     identifier: str
+    #: Spec 047, enmienda del 2026-10-29 (requisito 63.1, D56): cómo se conectó el
+    #: número, para «WhatsApp · {método} · canal de {agente}». ``None`` si no se sabe.
+    method: Literal["coexistence", "cloud_api"] | None = None
     status: str
     problem_reason: str | None = None
     visible_state: VisibleOut
@@ -325,6 +328,20 @@ async def _undo_until(scope: ClientScope, channel: Channel) -> datetime | None:
     return found
 
 
+def method_of(channel: Channel) -> Literal["coexistence", "cloud_api"] | None:
+    """«Coexistencia» si el número sigue en la app de WhatsApp Business (la columna
+    o el modo con que se dio de alta); «Cloud API» si se dio de alta así. Sin dato,
+    ``None``: la consola no lo inventa (§V)."""
+    if channel.provider != "meta":
+        return None
+    mode = (channel.config or {}).get("mode")
+    if channel.coexistence or mode == "coexistence":
+        return "coexistence"
+    if mode == "cloud_api":
+        return "cloud_api"
+    return None
+
+
 async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
     session = scope.session
     agent = await svc._agent_of(session, channel)
@@ -341,6 +358,7 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
         id=channel.id,
         type=_kind(channel),
         identifier=_identifier(channel),
+        method=method_of(channel),
         status=_status(channel),
         problem_reason=channel.problem_reason,
         visible_state=visible_of(channel),

@@ -70,6 +70,28 @@ def _fenced(tag: str, lines: Iterable[str]) -> str:
     return f"<{tag}>\n{body}\n</{tag}>"
 
 
+#: The fixed section of limits of every «structured» agent (requirement 65.6).
+LIMITS_TITLE: Final = "Lo que no haces"
+DEFAULT_FALLBACK: Final = "Pasa la conversación a una persona."
+
+
+def _limits(spec: AgentSpec) -> str:
+    """Only what its tools do; anything else, said and handed to a person; and
+    the alternative of each enabled skill, the default one if it has none."""
+    lines = [
+        "- Solo haces acciones con tus herramientas. No digas que has reservado, "
+        "cobrado, enviado, cambiado o emitido nada que no hayas hecho con una de ellas.",
+        "- Si te piden algo que no puedes hacer con tus herramientas, dilo con claridad "
+        "y pasa la conversación a una persona.",
+    ]
+    for skill in spec.skills or []:
+        if not skill.enabled:
+            continue
+        fallback = _clean(skill.fallback) or DEFAULT_FALLBACK
+        lines.append(f"- Si no puedes con «{_clean(skill.key)}»: {fallback}")
+    return "\n".join(lines)
+
+
 def _parts(spec: AgentSpec) -> list[tuple[str, str]]:
     """Las partes del prompt de un agente «structured», con su título."""
     parts: list[tuple[str, str]] = []
@@ -110,6 +132,8 @@ def _parts(spec: AgentSpec) -> list[tuple[str, str]]:
 
     if spec.rules:
         parts.append(("Reglas", "\n".join(f"- {_clean(rule)}" for rule in spec.rules)))
+
+    parts.append((LIMITS_TITLE, _limits(spec)))
 
     if spec.escalation is not None:
         esc: list[str] = []
@@ -193,38 +217,114 @@ class Incoherence:
     code: Literal["promises_without_tool", "contradicts_business", "unknown_tool"]
     pointer: str
     detail: str
+    #: For ``promises_without_tool``: the promised action (``capability_names``).
+    action: str | None = None
 
 
-#: Lo que un texto promete hacer → las familias de herramientas que lo hacen.
-PROMISES: Final[tuple[tuple[str, re.Pattern[str], tuple[str, ...]], ...]] = (
-    (
+@dataclass(frozen=True)
+class Promise:
+    """Something a text promises to do: its key, how the console says it, and the
+    actions (``capability_names.TOOL_ACTIONS``) any one of which keeps it."""
+
+    key: str
+    label: str
+    needs: frozenset[str]
+
+
+def _promise(
+    key: str, label: str, needs: set[str], pattern: str
+) -> tuple[Promise, re.Pattern[str]]:
+    return Promise(key, label, frozenset(needs)), re.compile(pattern, re.I)
+
+
+_DET = r"(?:la |el |una |un |los |las |tu |su |sus |tus |mi |nuestro |nuestra )?"
+
+#: What a text promises → the actions that keep it (spec 047, amendment of
+#: 2026-10-30, requirement 65.5). Compared with what each tool does according to
+#: ``capability_names``, never with a tool's prefix. The specific promise goes
+#: before the generic one that it covers (``charge`` before ``collect``).
+PROMISES: Final[tuple[tuple[Promise, re.Pattern[str]], ...]] = (
+    _promise(
+        "book",
         "reservar citas",
-        re.compile(r"\b(reserv(a|ar|o|as|amos)|agend(a|ar|o)|pid(e|en) cita|da(r|s) cita)\b", re.I),
-        ("reservas.", "booking.", "agendapro.", "google_calendar.", "calendly."),
+        {"book"},
+        r"\b(reserv(a|ar|o|as|amos|e|en)|agend(a|ar|o|as|amos|e|en)|"
+        rf"da(r|s|mos)? {_DET}citas?|cierr(a|as)? {_DET}citas?|cerrar {_DET}citas?)\b",
     ),
-    (
-        "cobrar o enviar enlaces de pago",
-        re.compile(r"\b(cobr(a|ar|o)|enlace de pago|link de pago|pagar con tarjeta)\b", re.I),
-        ("payments.", "stripe.", "billing.", "mercadopago."),
+    _promise(
+        "modify_booking",
+        "cambiar o cancelar citas",
+        {"modify_booking"},
+        rf"\b(cambi|modific|mov|muev|cancel|anul|reprogram)\w*\s+{_DET}(citas?|reservas?|turnos?)\b",
     ),
-    (
+    _promise(
+        "charge",
+        "cobrar con tarjeta o con enlace de pago",
+        {"charge"},
+        r"\b((enlace|link)s? (de|para) pag(o|ar)|(cobr|pag)\w* con tarjeta|"
+        r"pagos? (en l[ií]nea|online))\b",
+    ),
+    _promise("collect", "cobrar", {"charge", "collect"}, r"\bcobr(a|ar|o|amos|e|es|en)\b"),
+    _promise(
+        "invoice",
+        "emitir facturas",
+        {"invoice"},
+        r"\b((emit|hac|gener|envi|enví|mand|expid)\w*\s+(?:\w+\s+){0,2}?"
+        rf"{_DET}(facturas?|boletas?)|factur(ar|amos|o))\b",
+    ),
+    _promise(
+        "order",
         "tomar pedidos",
-        re.compile(r"\b(tom(a|ar) (el |los )?pedidos?|crea(r)? (el |un )?pedido)\b", re.I),
-        ("woocommerce.", "shopify.", "orders.", "amigable."),
+        {"order"},
+        rf"\b(tom|cre|registr)\w*\s+{_DET}pedidos?\b",
     ),
-    (
+    _promise(
+        "modify_order",
+        "cambiar o cancelar pedidos",
+        {"modify_order"},
+        rf"\b(cambi|modific|cancel|anul)\w*\s+{_DET}pedidos?\b",
+    ),
+    _promise(
+        "send_media",
+        "enviar documentos, fotos o ubicaciones",
+        {"send_media"},
+        rf"\b(env[ií]\w*|mand\w*)\s+{_DET}(documentos?|pdf|archivos?|ficheros?|fotos?|"
+        r"im[aá]gen(es)?|ubicaci[oó]n|v[ií]deos?|audios?)\b",
+    ),
+    _promise(
+        "remind",
         "programar recordatorios",
-        re.compile(r"\b(recordatorios?|record(ar|arle) la cita)\b", re.I),
-        ("notification.schedule_reminder", "reservas."),
+        {"remind"},
+        rf"\b((program|envi|enví|mand|dej)\w*\s+{_DET}(recordatorios?|avisos?)|"
+        rf"record(ar|arle|ará) {_DET}citas?)\b",
     ),
-    (
+    _promise(
+        "catalog",
         "enseñar el catálogo",
-        re.compile(r"\b(cat[aá]logo de productos|env(ía|iar) (el )?cat[aá]logo)\b", re.I),
-        ("catalog.", "woocommerce.", "shopify."),
+        {"catalog"},
+        rf"\b(cat[aá]logo de productos|(env[ií]|mand|enseñ|muestr)\w*\s+{_DET}cat[aá]logo)\b",
     ),
 )
+#: A generic promise that a specific one already covers in the same text.
+_COVERED_BY: Final[dict[str, str]] = {"collect": "charge"}
+#: Promises whose word is also a noun («su reserva», «la agenda», «el cobro»).
+_ALSO_NOUNS: Final = frozenset({"book", "collect"})
 
 _NEGATION = re.compile(r"\b(no|nunca|jam[aá]s|sin)\b[^.\n]{0,25}$", re.I)
+#: «Si/cuando (alguien) pide/quiere …»: the customer's wish, not the agent's act.
+_CONDITION = re.compile(
+    r"\b(si|cuando|en caso de que)\b[^.\n;:]{0,40}\b(pide|piden|pida|pidan|quiere|quieren|"
+    r"quiera|quieran|solicita|solicitan|solicite|pregunta|preguntan|necesita|necesitan)\b"
+    r"[^.\n;:]*$",
+    re.I,
+)
+#: «Para reservar, pasa al equipo»: a purpose, not a promise.
+_PURPOSE = re.compile(r"\bpara\s*$", re.I)
+#: A determiner right before the word: a noun («su reserva», «la agenda»).
+_NOUN = re.compile(
+    r"\b(la|el|una|un|los|las|tu|su|sus|tus|mi|mis|esa|esta|del|al|nuestra|nuestro)\s*$",
+    re.I,
+)
 _TOOL_MENTION = re.compile(r"\b([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)\b")
 _TIME_RANGE = re.compile(
     r"\b(?:de|desde)?\s*(\d{1,2})(?::(\d{2}))?\s*(?:h|hs)?\s*(?:a|-|\u2013|hasta)\s*(\d{1,2})(?::(\d{2}))?\s*(?:h|hs)?\b",
@@ -251,12 +351,42 @@ def _texts(spec: AgentSpec) -> list[tuple[str, str]]:
     return out
 
 
-def _promised(text: str, pattern: re.Pattern[str]) -> bool:
+def _promised(text: str, pattern: re.Pattern[str], *, noun: bool = False) -> bool:
+    """The pattern appears as something the agent does: not denied («no
+    cobramos»), not the customer's wish («si quieren reservar»), not a purpose
+    («para reservar, pasa al equipo») and not a noun («su reserva»)."""
     for match in pattern.finditer(text):
-        before = text[max(0, match.start() - 40) : match.start()]
-        if not _NEGATION.search(before):
-            return True
+        clause = re.split(r"[.\n;:]", text[: match.start()])[-1]
+        before = clause[-60:]
+        if (
+            _NEGATION.search(before[-40:])
+            or _CONDITION.search(clause)
+            or _PURPOSE.search(before)
+            or (noun and _NOUN.search(before))
+        ):
+            continue
+        return True
     return False
+
+
+def promises_in(text: str) -> list[Promise]:
+    """What ``text`` promises to do, in the order of :data:`PROMISES`, without a
+    generic promise that a specific one already covers."""
+    found = [
+        promise
+        for promise, pattern in PROMISES
+        if _promised(text, pattern, noun=promise.key in _ALSO_NOUNS)
+    ]
+    keys = {p.key for p in found}
+    return [p for p in found if _COVERED_BY.get(p.key) not in keys]
+
+
+def uncovered_promises(text: str, tools: Iterable[str]) -> list[Promise]:
+    """What ``text`` promises and none of ``tools`` does (requirement 65.5)."""
+    from nexus_api.api.console.capability_names import actions_of
+
+    doable = actions_of(tools)
+    return [p for p in promises_in(text) if not (p.needs & doable)]
 
 
 def _numbers(text: str) -> set[int]:
@@ -280,11 +410,10 @@ def incoherences(
     found: list[Incoherence] = []
 
     for pointer, text in _texts(spec):
-        for label, pattern, families in PROMISES:
-            if not _promised(text, pattern):
-                continue
-            if not any(t.startswith(f) or t == f for t in tools for f in families):
-                found.append(Incoherence("promises_without_tool", pointer, label))
+        for promise in uncovered_promises(text, tools):
+            found.append(
+                Incoherence("promises_without_tool", pointer, promise.label, action=promise.key)
+            )
 
     if facts is not None:
         hours_numbers = _numbers(facts.hours or "")
@@ -335,10 +464,16 @@ def incoherences(
 
 __all__ = [
     "AGENT_TAG",
+    "DEFAULT_FALLBACK",
     "FAMILIES",
+    "LIMITS_TITLE",
+    "PROMISES",
     "Family",
     "Incoherence",
+    "Promise",
     "compile_spec",
     "family_of",
     "incoherences",
+    "promises_in",
+    "uncovered_promises",
 ]

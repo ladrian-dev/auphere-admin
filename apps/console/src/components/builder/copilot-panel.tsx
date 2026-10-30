@@ -15,6 +15,7 @@ import type { Citation, CopilotAnswer, CopilotContext, CopilotFixOffer, CopilotF
 import type { Proposal } from "@/lib/backend/builder-types";
 
 import { blockOfPointer, type Result } from "./builder-model";
+import { MissingCapabilities } from "./missing-capabilities";
 import { ProposalList, type DecideProposal } from "./proposals";
 
 type Ids = { ref: string; agent: string };
@@ -76,6 +77,11 @@ export function citationHref(refId: string, link: Citation["link"]): string | nu
  * conocimiento o una herramienta (19.2). Si el arreglo es un dato, pregunta
  * dónde se corrige —en la ficha o solo en este agente— y solo entonces lo
  * aplica (19.4). A quien solo lee le explica, sin un control de aplicar (19.5).
+ *
+ * Enmienda del 2026-10-30 (T228; 65.3): debajo de su respuesta, lo que la
+ * petición necesitaba y no tenemos (`missing_capabilities`), con «No tenemos
+ * herramienta para: …» y la alternativa del agente. No propone esa parte ni
+ * ofrece «Conectar {X}».
  */
 export const CopilotPanel = React.forwardRef<
   CopilotHandle,
@@ -236,6 +242,8 @@ function CopilotReply({
     <div className="grid min-w-0 gap-3 rounded-md border border-border bg-background p-3" data-slot="copilot-reply">
       <p className="sr-only">{t("builder.copilot.title")}</p>
       <p className="text-sm text-pretty break-words whitespace-pre-line">{answer.text}</p>
+      {/* 65.3: lo que la petición necesitaba y no tenemos; vacío o sin el campo, nada. */}
+      <MissingCapabilities items={answer.missing_capabilities} />
       {answer.citations.length ? (
         <div className="grid min-w-0 gap-1">
           <p className="text-xs font-medium text-muted-foreground">{t("builder.copilot.sources")}</p>

@@ -76,10 +76,10 @@ function specFor(name, description) {
     services: { mode: "all" },
     skills: [
       { key: "reservas", enabled: true, integration: null },
-      { key: "agendapro", enabled: true, integration: "agendapro", fallback: "Mientras no esté conectada, pasa la conversación al equipo." },
+      { key: "reservas", enabled: true, integration: "googlecalendar", fallback: "Mientras no esté conectada, pasa la conversación al equipo." },
     ],
     tools: [],
-    connection_requests: [{ integration: "agendapro", reason: "Para reservar en la agenda de la barbería" }],
+    connection_requests: [{ integration: "googlecalendar", reason: "Para reservar en el calendario de la barbería" }],
     escalation: { triggers: ["asks_for_human", "complaint", "failed_attempts"], failed_attempts: 2, message: "Te paso con el equipo." },
     rules: ["No ofrezcas descuentos"],
     ai_disclosure: { decided: false },

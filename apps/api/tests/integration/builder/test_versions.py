@@ -21,6 +21,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.models import AgentConfig, AgentConfigStatus
 
 from ..business._business_world import Biz, new_business, write
+from ._builder_world import turn_reservas_on
 from .test_agent_suite import BOOKING_TEST, Booker
 from .test_publish_gate import WEEK, _agent, _save, _set_spec, _url
 
@@ -35,6 +36,8 @@ def one_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 async def biz(client: Any, db_session: AsyncSession, console_world: dict[str, Any]) -> Biz:
     biz = await new_business(client, db_session, console_world, name="Barbería Cultor")
+    # La barbería tiene Reservas encendido: sin él, la agenda cuenta como sin activar (D67).
+    await turn_reservas_on(db_session, biz)
     await write(client, biz, "PUT", "/hours", {"layout": "daily", "days": WEEK}, revision=0)
     return biz
 

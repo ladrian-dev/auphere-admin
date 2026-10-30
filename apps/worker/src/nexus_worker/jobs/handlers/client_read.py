@@ -28,7 +28,6 @@ la consola pone las palabras y ofrece reintentar.
 
 from __future__ import annotations
 
-import os
 import uuid
 from collections.abc import Callable
 
@@ -75,9 +74,11 @@ HttpFactory = Callable[[], httpx.AsyncClient]
 
 
 def read_source_model() -> str:
-    from nexus_worker.config import get_worker_settings
+    """El de la plataforma (requisito 64.2): ``NEXUS_LLM_READ_SOURCE_MODEL`` o el de
+    clasificar."""
+    from nexus_worker.platform_models import platform_model
 
-    return os.environ.get("NEXUS_LLM_READ_SOURCE_MODEL") or get_worker_settings().llm_classify_model
+    return platform_model("read_source")
 
 
 def default_extractor(tenant_id: uuid.UUID) -> Extract:
@@ -102,11 +103,15 @@ def default_extractor(tenant_id: uuid.UUID) -> Extract:
 
 
 def default_http() -> httpx.AsyncClient:
-    return httpx.AsyncClient(
-        follow_redirects=False,
-        timeout=FETCH_TIMEOUT_S,
-        headers={"User-Agent": USER_AGENT},
+    """The client that reads the business's web, networks and URL sources: only
+    public addresses on 80 and 443, resolved once and connected to the address
+    it checked (spec 047, T217; ``nexus_api.core.public_http``)."""
+    from nexus_api.core.public_http import public_client
+
+    client: httpx.AsyncClient = public_client(
+        timeout=FETCH_TIMEOUT_S, headers={"User-Agent": USER_AGENT}
     )
+    return client
 
 
 def make_client_read_handler(
@@ -163,9 +168,31 @@ def make_client_read_handler(
         await notify_read_finished(
             tenant_id=ctx.tenant_id, recipient_user_id=ctx.job.created_by, result=result
         )
+        await _after_reading(ctx)
         return JobOutcome(result=result)
 
     return handle
+
+
+async def _after_reading(ctx: JobContext) -> None:
+    """Spec 047, enmienda del 2026-10-29 (requisitos 57.2 y 60.1): terminada la
+    lectura, se vuelve a identificar el sector con lo leído y, después, se lanza el
+    constructor del cliente (lo hace ``sector_identify`` al terminar). Un fallo
+    aquí no deshace la lectura."""
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.services.business.sector import request_identification
+
+    try:
+        async with get_sessionmaker()() as session, tenant_scoped_session(session, ctx.tenant_id):
+            await request_identification(session, reason="read", after_read=True)
+    except Exception as exc:
+        log.warning(
+            "jobs.client_read.sector_request_failed",
+            tenant_id=str(ctx.tenant_id),
+            job_id=str(ctx.job_id),
+            error=type(exc).__name__,
+        )
 
 
 def register(registry: JobRegistry = default_registry) -> None:

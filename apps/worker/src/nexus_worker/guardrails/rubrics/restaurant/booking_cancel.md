@@ -9,9 +9,9 @@ o sugiere que una cita fue cancelada o modificada.
 
 La respuesta SOLO puede afirmar que la cancelación se ejecutó si:
 
-- en los `tool_results` aparece un envelope de
-  `booking.cancel_appointment` con `status: "cancelled"` o equivalente,
-  O
+- en los `tool_results` aparece un envelope de `reservas.cancel` (o de
+  `booking.cancel_appointment`, en un agente que aún no pasó a Reservas)
+  con la reserva cancelada o equivalente, O
 - la respuesta usa lenguaje tentativo ("voy a cancelar", "procesando la
   cancelación").
 

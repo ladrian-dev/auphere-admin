@@ -34,7 +34,7 @@
       "history": [],
       "assertions": {
         "must_emit_text": true,
-        "expected_tools_called": ["booking.check_availability"],
+        "expected_tools_called": ["reservas.find_slots"],
         "judge_questions": [
           "¿La respuesta ofrece horarios concretos o dice claramente que no hay disponibilidad, apoyándose en una tool, en lugar de inventar un turno libre?"
         ]

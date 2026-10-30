@@ -32,6 +32,7 @@ from nexus_api.db.models import (
     Agent,
     AgentConfig,
     AuditLog,
+    ClientWallet,
     Job,
     Partner,
     PartnerTenant,
@@ -109,7 +110,11 @@ async def test_three_fields_create_an_active_client_without_agents(
 
     assert await _scoped(db_session, tenant.id, sa.select(Agent)) == []
     assert await _scoped(db_session, tenant.id, sa.select(AgentConfig)) == []
-    assert await _scoped(db_session, tenant.id, sa.select(Job)) == []
+    reads = sa.select(Job).where(Job.kind == "client_read")
+    assert await _scoped(db_session, tenant.id, reads) == []
+    # Enmienda del 2026-10-29 (57.2): el sector se identifica en segundo plano.
+    (sector_job,) = await _scoped(db_session, tenant.id, sa.select(Job))
+    assert sector_job.kind == "sector_identify" and sector_job.status == "queued"
 
     (profile,) = await _scoped(db_session, tenant.id, sa.select(BusinessProfile))
     assert profile.niche == "Barbería de barrio con 2 sedes"
@@ -243,12 +248,14 @@ async def test_a_cl_web_deduces_chile_and_launches_the_reading(
     assert links == {("web", "https://flor-y-encanto.cl"), ("instagram", "@florencanto")}
 
     # Requisito 4.4: hay web, así que la lectura empieza en segundo plano.
-    (job,) = await _scoped(db_session, tenant.id, sa.select(Job))
+    (job,) = await _scoped(db_session, tenant.id, sa.select(Job).where(Job.kind == "client_read"))
     assert body["read_job_id"] == str(job.id)
     assert (job.kind, job.status, job.agent_id) == ("client_read", "queued", None)
     assert job.created_by == a["user_id"]
     entries = await fake_redis.xrange(JOBS_STREAM)
-    assert [e[1]["job_id"] for e in entries] == [str(job.id)]
+    # La lectura, y la identificación del sector (enmienda del 2026-10-29, 57.2).
+    assert [e[1]["kind"] for e in entries if e[1]["job_id"] == str(job.id)] == ["client_read"]
+    assert sorted(e[1]["kind"] for e in entries) == ["client_read", "sector_identify"]
 
 
 async def test_a_spanish_phone_deduces_spain_and_eu_only(
@@ -301,6 +308,35 @@ async def test_what_the_person_chose_in_more_settings_wins(
         "MXN",
         True,
     )
+
+
+@pytest.mark.parametrize(
+    ("country", "chosen", "expected"),
+    [("MX", "EUR", "EUR"), ("ES", "USD", "USD"), ("CL", "USD", "USD")],
+)
+async def test_the_bag_is_born_in_the_chosen_currency(
+    client: Any,
+    db_session: AsyncSession,
+    world: dict[str, Any],
+    country: str,
+    chosen: str,
+    expected: str,
+) -> None:
+    """Bug «el alta descarta la moneda de la bolsa» (requisito 43.3): la moneda
+    elegida en «Más ajustes» es la de la bolsa, aunque el país diga otra."""
+    a = world["a"]
+    resp = await _create(
+        client,
+        a["headers"](),
+        name="Café Origen",
+        niche="Cafetería",
+        country=country,
+        wallet_currency=chosen,
+    )
+    assert resp.status_code == 201, resp.text
+    tenant = await _tenant_of(db_session, a["partner_id"], resp.json()["ref"])
+    (bag,) = await _scoped(db_session, tenant.id, sa.select(ClientWallet))
+    assert (bag.currency, bag.balance_micros) == (expected, 0)
 
 
 async def test_the_link_chips_the_person_changed_are_what_is_saved(

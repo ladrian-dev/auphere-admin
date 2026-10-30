@@ -339,6 +339,14 @@ async def test_a_routed_call_meters_its_task_and_its_decision(wire, metered) -> 
         ("book", True, "tool_turn"),
         ("info", False, "answer"),
         ("companion", True, "build"),
+        # Spec 047 (requisito 15.7): the builder's draft job calls with role
+        # ``build`` (``jobs/handlers/agent_draft.py``); without it in
+        # ``TASK_BY_ROLE`` it logged ``llm.task_missing`` and was metered
+        # without a task.
+        ("build", False, "build"),
+        ("build", True, "build"),
+        # Spec 047, enmienda (61.1): el cliente simulado de las pruebas.
+        ("customer_sim", False, "answer"),
     ],
 )
 async def test_calls_of_today_carry_a_task_too(

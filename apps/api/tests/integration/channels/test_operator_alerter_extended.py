@@ -1,7 +1,7 @@
 """Block H: operator alerter — 3 new audit actions → WhatsApp templates.
 
 The alerter (block F) ledgers + dispatches WhatsApp templates for
-``conversation.escalated`` + ``integration.agendapro.needs_reauth``.
+``conversation.escalated`` + ``connector.needs_reauth``.
 Block H adds three more action handlers:
 
 - ``cost.daily_threshold_exceeded`` → ``alert_cost_threshold_v1``.

@@ -153,7 +153,7 @@ class TenantConnector(UUIDPrimaryKey, TimestampMixin, Base):
       ``user_id = f"tenant_{tenant.slug}"``.
     - ``browser_credentials`` → ``credentials_ref.tenant_credentials_id``
       points to a row in the existing ``tenant_credentials`` table
-      (Fernet vault, ADR-006). AgendaPro and similar.
+      (Fernet vault, ADR-006).
     - ``webhook_manual`` → ``credentials_ref.channel_id`` points to a row
       in ``channels``. WhatsApp (Meta).
     - ``api_key`` → two valid shapes:

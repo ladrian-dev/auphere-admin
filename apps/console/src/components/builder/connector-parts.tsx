@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import * as React from "react";
 
 import {
@@ -52,7 +53,14 @@ export function ConnectorLogo({ refId, slug, name, logo }: { refId: string; slug
       {logo ? (
         // Ya viene por nuestra propia ruta: no hay nada que optimizar.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={`/api/connector-logo/${encodeURIComponent(refId)}/${encodeURIComponent(slug)}`} alt="" loading="lazy" className="size-10 object-contain" />
+        <img
+          src={`/api/connector-logo/${encodeURIComponent(refId)}/${encodeURIComponent(slug)}`}
+          alt=""
+          width={40}
+          height={40}
+          loading="lazy"
+          className="size-10 object-contain"
+        />
       ) : (
         <span aria-hidden="true" className="text-sm font-medium text-muted-foreground">
           {name.trim().charAt(0).toUpperCase()}
@@ -65,6 +73,53 @@ export function ConnectorLogo({ refId, slug, name, logo }: { refId: string; slug
 /** Lo que significa cada permiso, para el texto de ayuda del selector. */
 export function permissionHint(t: ReturnType<typeof useT>, p: ConnectorPermission): string {
   return t(`agentConn.permission.hint.${p}` as MessageKey);
+}
+
+/**
+ * Los tres permisos como radios, cada uno con lo que significa: al conectar y
+ * dentro de «Ajustes» (35.5; 63.3: el permiso no se ajusta a la vista).
+ */
+export function PermissionRadios({
+  legend,
+  value,
+  onChange,
+  disabled,
+}: {
+  legend: string;
+  value: ConnectorPermission;
+  onChange: (next: ConnectorPermission) => void;
+  disabled?: boolean;
+}) {
+  const t = useT();
+  const id = React.useId();
+  return (
+    <div role="radiogroup" aria-labelledby={`${id}-legend`} className="grid min-w-0 gap-2" data-slot="connector-permission">
+      <p id={`${id}-legend`} className="mb-1 text-sm font-medium">
+        {legend}
+      </p>
+      {CONNECTOR_PERMISSIONS.map((p) => {
+        const radio = `${id}-${p}`;
+        return (
+          <label key={p} htmlFor={radio} className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border p-2 text-sm has-[:checked]:border-primary">
+            <input
+              id={radio}
+              type="radio"
+              name={`${id}-permission`}
+              value={p}
+              checked={value === p}
+              onChange={() => onChange(p)}
+              className="mt-1 size-4 shrink-0 accent-primary"
+              disabled={disabled}
+            />
+            <span className="grid min-w-0 gap-1">
+              <span className="font-medium">{permissionLabel(t, p)}</span>
+              <span className="text-xs text-pretty text-muted-foreground">{permissionHint(t, p)}</span>
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
@@ -154,16 +209,24 @@ type SettingsFormProps = {
   name: string;
   schema: SettingsSchema | null;
   settings: ConnectorSettings;
-  save: (settings: ConnectorSettings) => Promise<Result<Activation>>;
+  /**
+   * Spec 047 (63.3): el permiso de este agente, que se ajusta aquí y no en la
+   * fila. Sin él, el formulario solo lleva los ajustes del catálogo.
+   */
+  permission?: ConnectorPermission;
+  /** La página de la conexión, para ir a ella desde «Ajustes». */
+  pageHref?: string | null;
+  save: (settings: ConnectorSettings, permission?: ConnectorPermission) => Promise<Result<Activation>>;
   onSaved: (activation: Activation) => void;
   onClose: () => void;
   onBusy?: (busy: boolean) => void;
 };
 
-function SettingsForm({ slug, schema, settings, save, onSaved, onClose, onBusy }: SettingsFormProps) {
+function SettingsForm({ slug, name, schema, settings, permission: initialPermission, pageHref = null, save, onSaved, onClose, onBusy }: SettingsFormProps) {
   const t = useT();
   const fields = React.useMemo(() => settingFields(schema), [schema]);
   const [values, setValues] = React.useState(() => settingValues(fields, settings));
+  const [permission, setPermission] = React.useState(initialPermission);
   const [problems, setProblems] = React.useState<Record<string, SettingProblem>>({});
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusyState] = React.useState(false);
@@ -180,7 +243,8 @@ function SettingsForm({ slug, schema, settings, save, onSaved, onClose, onBusy }
     setError(null);
     if (Object.keys(found).length) return;
     setBusy(true);
-    const res = await save(settingsFromValues(fields, values));
+    // Sin campos en el catálogo, los ajustes guardados se quedan como estaban.
+    const res = await save(fields.length ? settingsFromValues(fields, values) : settings, permission);
     setBusy(false);
     if (res.ok) {
       onSaved(res.data);
@@ -242,6 +306,7 @@ function SettingsForm({ slug, schema, settings, save, onSaved, onClose, onBusy }
 
   return (
     <form className="grid min-w-0 gap-4" onSubmit={(e) => void submit(e)} noValidate aria-busy={busy}>
+      {permission ? <PermissionRadios legend={t("agentConn.settings.permission")} value={permission} onChange={setPermission} disabled={busy} /> : null}
       {groups.map((g, i) =>
         g.group ? (
           <fieldset key={g.group} className="grid min-w-0 gap-3 rounded-md border border-border p-3">
@@ -252,6 +317,11 @@ function SettingsForm({ slug, schema, settings, save, onSaved, onClose, onBusy }
           <React.Fragment key={`top-${i}`}>{g.fields.map(control)}</React.Fragment>
         ),
       )}
+      {pageHref ? (
+        <Link href={pageHref} className="w-fit text-sm font-medium text-primary-text underline-offset-4 hover:underline">
+          {t("agentConn.page.named", { name })}
+        </Link>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive text-pretty">
           {error}

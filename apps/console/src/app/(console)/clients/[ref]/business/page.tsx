@@ -25,8 +25,12 @@ export async function generateMetadata() {
  * esa dice que no cargó (el estado parcial). Como el prototipo aprobado, también
  * «Documentos y webs» y «Redes sociales».
  *
- * Sin «Completar con el constructor» (Andrés, 2026-10-28): el constructor
- * trabaja por dentro y no se enseña. Como en el prototipo aprobado.
+ * Enmienda del 2026-10-29 (T209, requisitos 57.5 y 60): «Políticas» y
+ * «Preguntas frecuentes», y el sector en Datos básicos con los sectores con
+ * guía para su selector. El constructor del cliente trabaja solo, al terminar la
+ * lectura o al cambiar el sector: sus propuestas llegan como sugerencias de
+ * `GET /business` y se deciden en su sección. Sigue sin haber «Completar con el
+ * constructor» ni nada que lo nombre (Andrés, 2026-10-28).
  */
 export default async function BusinessPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
@@ -38,12 +42,15 @@ export default async function BusinessPage({ params }: { params: Promise<{ ref: 
   const records = clientRecordsApi(callFor(principal));
   // «Documentos y webs» y «Redes sociales» (como el prototipo): las fuentes y la
   // ficha, que trae las redes guardadas y el estado de cada sección.
-  const [basics, locations, hours, specialDates, services, sources, record] = await Promise.all([
+  const [basics, locations, hours, specialDates, services, policies, faqs, sectors, sources, record] = await Promise.all([
     run(() => api.getBasics(ref)),
     run(() => api.getLocations(ref)),
     run(() => api.getHours(ref)),
     run(() => api.getSpecialDates(ref)),
     run(() => api.getServices(ref)),
+    run(() => api.getPolicies(ref)),
+    run(() => api.getFaqs(ref)),
+    run(() => api.listSectors()),
     run(() => records.listSources(ref)),
     run(() => records.getBusiness(ref)),
   ]);
@@ -51,7 +58,11 @@ export default async function BusinessPage({ params }: { params: Promise<{ ref: 
 
   return (
     <div className="grid min-w-0 gap-6">
-      <BusinessSectionsView refId={ref} canWrite={canWrite} data={{ basics, locations, hours, specialDates, services, sources, record }} />
+      <BusinessSectionsView
+        refId={ref}
+        canWrite={canWrite}
+        data={{ basics, locations, hours, specialDates, services, policies, faqs, sectors, sources, record }}
+      />
     </div>
   );
 }

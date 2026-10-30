@@ -54,6 +54,15 @@ describe("crumbsFor", () => {
     ]);
   });
 
+  it("la configuración de un canal dentro del agente (`?canal=`): el agente vuelve a Canales (63.1)", () => {
+    expect(crumbsFor("/clients/flor/agents/a-1", { ...NAMES, "canal@a-1": "+34 611 20 48 93" })).toEqual([
+      { href: "/clients", label: { key: "nav.clients" } },
+      { href: "/clients/flor/agents", label: { text: "Flor y Encanto" } },
+      { href: "/clients/flor/agents/a-1?tab=channels", label: { text: "Recepción" } },
+      { href: null, label: { key: "shell.crumbs.channel", vars: { name: "+34 611 20 48 93" } } },
+    ]);
+  });
+
   it("sin nombre todavía: la referencia del cliente y una palabra para el agente, nunca un uuid", () => {
     const crumbs = crumbsFor("/clients/caf%C3%A9-origen/agents/0b7c2e4e-1111-4c1c-9d1f-3f0f0f0f0f0f", {});
     expect(crumbs[1]).toEqual({ href: "/clients/caf%C3%A9-origen/agents", label: { text: "café-origen" } });

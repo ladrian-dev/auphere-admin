@@ -5,6 +5,7 @@ block fails like any other schema error.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -25,9 +26,31 @@ APPOINTMENTS = [
 ]
 
 
+#: Spec 048 (requisito 2.1): the nine that book, and book in Reservas.
+BOOKS = [*APPOINTMENTS, "restaurante_v1"]
+#: A booking tool written as a name, not the ``policies.booking.*`` placeholders.
+_BOOKING_TOOL = re.compile(r"(?<![\w.{])booking\.[a-z_*]+")
+
+
 @pytest.mark.parametrize("name", APPOINTMENTS)
-def test_appointment_sectors_recommend_calendly_next_to_agendapro(name: str) -> None:
-    assert load_seed_template(name).connectors_recommended == ["agendapro", "calendly"]
+def test_appointment_sectors_recommend_calendly_and_never_agendapro(name: str) -> None:
+    assert load_seed_template(name).connectors_recommended == ["calendly"]
+
+
+@pytest.mark.parametrize("name", BOOKS)
+def test_the_sectors_that_book_book_in_reservas(name: str) -> None:
+    tools = load_seed_template(name).tools_required
+    assert {"reservas.find_slots", "reservas.create"} <= set(tools)
+    assert not [t for t in tools if t.startswith("booking.")]
+
+
+@pytest.mark.parametrize(
+    "path", sorted(seed_templates._SEEDS_DIR.glob("*.yaml")), ids=lambda p: p.stem
+)
+def test_no_template_names_booking_or_agendapro(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert "agendapro" not in text.lower()
+    assert _BOOKING_TOOL.findall(text) == []
 
 
 def test_collections_recommend_stripe_next_to_amigable_cobro() -> None:

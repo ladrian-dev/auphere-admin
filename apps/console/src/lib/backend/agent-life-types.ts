@@ -6,7 +6,7 @@
  * `agents_list.py` y `client_builder.py`. El cliente de la API es
  * `./agent-life.ts`.
  */
-import type { ProposalOp } from "./builder-types";
+import type { MissingCapability, ProposalOp } from "./builder-types";
 
 // ── la vida del agente (requisitos 25 a 28) ─────────────────────────────────
 
@@ -64,7 +64,18 @@ export type CopilotProposal = { id: string; kind: string; summary: string | null
 /** «Arreglar» un dato: la persona elige dónde se corrige y entonces se aplica (19.4). */
 export type CopilotFixOffer = { test_id: string; scopes: ("business" | "agent")[] };
 
-export type CopilotAnswer = { text: string; citations: Citation[]; proposals: CopilotProposal[]; fix: CopilotFixOffer | null };
+/**
+ * Spec 047 (65.3): `missing_capabilities` es lo que la petición necesitaba y no
+ * tenemos. El copiloto lo dice en `text` y no propone esa parte. Llega siempre
+ * desde la enmienda del 2026-10-30; opcional para las respuestas de antes.
+ */
+export type CopilotAnswer = {
+  text: string;
+  citations: Citation[];
+  proposals: CopilotProposal[];
+  fix: CopilotFixOffer | null;
+  missing_capabilities?: MissingCapability[];
+};
 export type CopilotFixResult = { scope: "business" | "agent"; faq_id?: string; pointer?: string };
 
 // ── «Completar con el constructor» (requisito 18) ───────────────────────────

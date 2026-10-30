@@ -138,6 +138,9 @@ class NewClient:
     eu_only: bool
     #: The chips the person kept, normalised.
     links: Sequence[DetectedLink]
+    #: The bag currency (EUR or USD) the person chose in «Más ajustes». Without
+    #: a choice the bag is born later, in its country's currency (43.12).
+    wallet_currency: str | None = None
 
 
 @dataclass(frozen=True)
@@ -212,6 +215,7 @@ async def create_client(
         client_slug,
         count_quota_usage,
     )
+    from nexus_api.services.wallet.bags import empty_bag
 
     links = list(new.links)
     for attempt in range(2):
@@ -268,6 +272,8 @@ async def create_client(
                 token = _current_tenant.set(tenant.id)
                 try:
                     await apply_tenant_to_session(session, tenant.id)
+                    if new.wallet_currency is not None:
+                        session.add(empty_bag(tenant.id, partner.id, new.wallet_currency))
                     await create_profile(
                         session,
                         niche=new.niche,
@@ -304,6 +310,12 @@ async def create_client(
                         if links
                         else None
                     )
+                    # Spec 047, enmienda del 2026-10-29 (requisito 57.2): el sector se
+                    # identifica en segundo plano desde el alta, sin retrasarla; se
+                    # avisa al worker al confirmar.
+                    from nexus_api.services.business.sector import request_identification
+
+                    await request_identification(session, reason="created")
                 finally:
                     _current_tenant.reset(token)
         except IntegrityError:

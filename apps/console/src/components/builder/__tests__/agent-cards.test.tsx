@@ -1,12 +1,19 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 import { axeViolations } from "@nexus/ui/test/axe";
 
 import { LocaleProvider } from "@/i18n/client";
 import type { ClientAgent } from "@/lib/backend";
+import type { SuggestedAgent } from "@/lib/backend/suggested-agents";
 
-import { AgentCards } from "../agent-cards";
+const dismissAction = vi.hoisted(() => vi.fn());
+vi.mock("@/app/(console)/clients/[ref]/agents/suggested-actions", () => ({ dismissSuggestedAgentAction: dismissAction }));
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
+vi.mock("sonner", () => ({ toast }));
+
+const { AgentCards } = await import("../agent-cards");
 
 /**
  * Spec 047 (historia 7, escenario 6; requisito 17.2) — la pestaña Agentes: una
@@ -42,10 +49,10 @@ const AGENTS: ClientAgent[] = [
   }),
 ];
 
-function cards(agents: ClientAgent[] | null, canWrite = true) {
+function cards(agents: ClientAgent[] | null, canWrite = true, suggested: SuggestedAgent[] | null = null) {
   return render(
     <LocaleProvider locale="es">
-      <AgentCards refId={REF} agents={agents} canWrite={canWrite} />
+      <AgentCards refId={REF} agents={agents} canWrite={canWrite} suggested={suggested} />
     </LocaleProvider>,
   );
 }
@@ -113,5 +120,114 @@ describe("la pestaña Agentes", () => {
   it("si no se pudieron leer, lo dice", () => {
     cards(null);
     expect(screen.getByRole("alert")).toHaveTextContent("No pudimos cargar los agentes");
+  });
+});
+
+/**
+ * Enmienda del 2026-10-29 (T210, requisito 60.6) — los agentes que el sistema
+ * sugiere para el cliente salen como tarjetas «Sugerido», detrás de los suyos,
+ * con «Crear este agente» (abre «Nuevo agente» con nombre y descripción, no
+ * crea nada) y «Descartar». Nunca se crean solos.
+ */
+describe("la pestaña Agentes · los sugeridos (60.6)", () => {
+  const SUGGESTED: SuggestedAgent[] = [
+    { id: "s1", name: "Cobros", description: "Envía el enlace de pago de la señal y confirma cuando llega.", role: "billing" },
+    { id: "s2", name: "Dudas & preguntas", description: "Responde a lo que preguntan sobre precios y horarios.", role: null },
+  ];
+
+  it("cada uno es una tarjeta «Sugerido» con «Crear este agente», que abre «Nuevo agente» relleno, y pasa axe", async () => {
+    const { container } = cards(AGENTS, true, SUGGESTED);
+    const list = screen.getByRole("list", { name: "Agentes sugeridos" });
+    const [cobros, dudas] = within(list).getAllByRole("listitem");
+    expect(within(cobros!).getByText("Sugerido")).toBeVisible();
+    expect(within(cobros!).getByText("Cobros")).toBeVisible();
+    expect(within(cobros!).getByText("Para cobros")).toBeVisible();
+    expect(within(cobros!).getByText(SUGGESTED[0]!.description)).toBeVisible();
+    expect(within(cobros!).getByRole("link", { name: "Crear este agente: Cobros" })).toHaveAttribute(
+      "href",
+      `/clients/${REF}/agents/new?name=Cobros&description=${encodeURIComponent(SUGGESTED[0]!.description)}`,
+    );
+    expect(within(dudas!).getByRole("link", { name: "Crear este agente: Dudas & preguntas" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("name=Dudas%20%26%20preguntas"),
+    );
+    // Los suyos siguen igual, primero.
+    expect(within(screen.getByRole("list", { name: "Agentes del cliente" })).getAllByRole("link")).toHaveLength(3);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("«Descartar» lo quita y no lo crea", async () => {
+    const user = userEvent.setup();
+    dismissAction.mockResolvedValue({ ok: true, data: null });
+    cards(AGENTS, true, SUGGESTED);
+    await user.click(screen.getByRole("button", { name: "Descartar la sugerencia Cobros" }));
+    expect(dismissAction).toHaveBeenCalledWith({ ref: REF, id: "s1" });
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Crear este agente: Cobros" })).toBeNull());
+    expect(screen.getByRole("link", { name: "Crear este agente: Dudas & preguntas" })).toBeVisible();
+    expect(toast.success).toHaveBeenCalledWith("Sugerencia descartada.");
+  });
+
+  it("si no se puede descartar, lo dice y la deja", async () => {
+    const user = userEvent.setup();
+    dismissAction.mockResolvedValue({ ok: false, status: 500, message: "x" });
+    cards(AGENTS, true, SUGGESTED);
+    await user.click(screen.getByRole("button", { name: "Descartar la sugerencia Cobros" }));
+    expect(await screen.findByText("No se pudo descartar. Inténtalo de nuevo.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Crear este agente: Cobros" })).toBeVisible();
+  });
+
+  it("sin agentes, el vacío y debajo los sugeridos", () => {
+    cards([], true, SUGGESTED);
+    expect(screen.getByText("Este cliente aún no tiene agentes")).toBeVisible();
+    expect(screen.getByRole("list", { name: "Agentes sugeridos" })).toBeVisible();
+  });
+
+  it("el nombre accesible de «Crear este agente» empieza por lo que se ve (WCAG 2.5.3); un papel que no conoce no se pinta", () => {
+    cards(AGENTS, true, [{ ...SUGGESTED[0]!, role: "marketing" as SuggestedAgent["role"] }]);
+    const link = screen.getByRole("link", { name: "Crear este agente: Cobros" });
+    expect(link).toHaveTextContent("Crear este agente");
+    expect(link.getAttribute("aria-label")).toMatch(/^Crear este agente/);
+    expect(screen.queryByText(/builder\.suggested\.role/)).toBeNull();
+  });
+
+  it("quien solo lee los ve sin botones; sin sugeridos (o si no cargaron) no hay lista", () => {
+    const { unmount } = cards(AGENTS, false, SUGGESTED);
+    expect(screen.getByRole("list", { name: "Agentes sugeridos" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: /Crear este agente/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Descartar/ })).toBeNull();
+    unmount();
+    const second = cards(AGENTS, true, []);
+    expect(screen.queryByRole("list", { name: "Agentes sugeridos" })).toBeNull();
+    second.unmount();
+    cards(AGENTS, true, null);
+    expect(screen.queryByRole("list", { name: "Agentes sugeridos" })).toBeNull();
+  });
+});
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (T228; requisito 65.7;
+ * `contracts/console-api.md` §11 «Sugerencias de agentes»): no hay papeles
+ * fijos. `role` es opcional: `null` es lo normal, puede no venir y cualquier
+ * valor que la consola no conozca cuenta como `null`. Nada falla y no se pinta
+ * ningún papel.
+ */
+describe("la pestaña Agentes · los sugeridos sin papel obligatorio (65.7)", () => {
+  it("sin papel, sin el campo o con uno desconocido: la tarjeta sale entera y sin papel; pasa axe", async () => {
+    const free = [
+      { id: "s1", name: "Atiende y pasa las citas", description: "Responde dudas y pasa las citas al equipo.", role: null },
+      { id: "s2", name: "Encargos de tartas", description: "Toma nota de los encargos y los pasa al obrador." } as unknown as SuggestedAgent,
+      { id: "s3", name: "Avisos de stock", description: "Dice qué hay disponible esta semana.", role: "inventory" } as unknown as SuggestedAgent,
+    ];
+    const { container } = cards(AGENTS, true, free);
+    const list = screen.getByRole("list", { name: "Agentes sugeridos" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    for (const [i, li] of items.entries()) {
+      expect(within(li).getByText("Sugerido")).toBeVisible();
+      expect(within(li).getByText(free[i]!.description)).toBeVisible();
+      expect(within(li).queryByText(/^Para /)).toBeNull();
+      expect(within(li).getByRole("link", { name: `Crear este agente: ${free[i]!.name}` })).toBeVisible();
+    }
+    expect(await axeViolations(container)).toEqual([]);
   });
 });

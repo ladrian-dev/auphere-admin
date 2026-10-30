@@ -13,6 +13,10 @@ seguir graduándolo.
 Prioridad baja de verdad: si el consumidor se retrasa o se cae, no pasa
 nada para el cliente final — el turno ya se respondió. Por eso el bucle
 espera cuando no hay trabajo y no compite por réplicas con el runner.
+
+Cada veredicto se pide con la clave del partner del cliente atada al proxy
+de modelos, como el turno que lo originó: con el proxy obligatorio
+(staging), sin ella el grader no llega al modelo.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from typing import Any
 
 import sqlalchemy as sa
 import structlog
+from nexus_api.core.llm_proxy import llm_proxy_partner_scope, partner_id_for_tenant_standalone
 from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
@@ -172,13 +177,20 @@ async def drain_once(
                 # mirará quien audite la calidad del agente.
                 overall, feedback = "skipped", "sin rúbrica para el intent"
             else:
-                verdict = await grader.grade(
-                    tenant_id=tenant_id,
-                    intent=intent,
-                    rubric_body=rubric_body,
-                    draft_response=fields.get("response") or "",
-                    tool_envelopes=json.loads(fields.get("tool_calls") or "[]"),
+                partner_id = await partner_id_for_tenant_standalone(tenant_id)
+                scope = (
+                    llm_proxy_partner_scope(partner_id)
+                    if partner_id is not None
+                    else contextlib.nullcontext()
                 )
+                with scope:
+                    verdict = await grader.grade(
+                        tenant_id=tenant_id,
+                        intent=intent,
+                        rubric_body=rubric_body,
+                        draft_response=fields.get("response") or "",
+                        tool_envelopes=json.loads(fields.get("tool_calls") or "[]"),
+                    )
                 overall = str(verdict.overall)
                 feedback = str(verdict.feedback or "")
         except Exception as exc:

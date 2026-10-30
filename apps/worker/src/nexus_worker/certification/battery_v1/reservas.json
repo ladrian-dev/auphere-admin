@@ -15,8 +15,8 @@
       "critical": true,
       "assertions": {
         "must_emit_text": true,
-        "expected_tools_called": ["booking.check_availability"],
-        "tools_must_not_call": ["booking.cancel_appointment"],
+        "expected_tools_called": ["reservas.find_slots"],
+        "tools_must_not_call": ["reservas.cancel"],
         "judge_questions": [
           "¿La respuesta ofrece horarios que salieron de una herramienta, o dice que no hay, sin inventar ninguno?",
           "¿Evita dar la cita por confirmada antes de que el cliente elija un horario?"
@@ -41,8 +41,8 @@
       "critical": true,
       "assertions": {
         "must_emit_text": true,
-        "expected_tools_called": ["booking.get_appointments"],
-        "tools_must_not_call": ["booking.cancel_appointment"],
+        "expected_tools_called": ["reservas.list_mine"],
+        "tools_must_not_call": ["reservas.cancel"],
         "judge_questions": [
           "¿Busca la cita que el cliente ya tiene antes de proponer un cambio?",
           "¿Evita dar el cambio por hecho si ninguna herramienta lo confirmó?"
@@ -67,8 +67,8 @@
       "critical": false,
       "assertions": {
         "must_emit_text": true,
-        "expected_tools_called": ["booking.get_appointments"],
-        "tools_must_not_call": ["booking.create_appointment"],
+        "expected_tools_called": ["reservas.list_mine"],
+        "tools_must_not_call": ["reservas.create"],
         "judge_questions": [
           "¿Confirma con el cliente qué cita cancela antes de darla por cancelada?",
           "¿Evita decir que está cancelada si ninguna herramienta lo confirmó?"

@@ -349,6 +349,9 @@ class Batch:
     state_hash: str
     legacy_chars: int | None
     messages: list[dict[str, str]] = field(default_factory=list)
+    #: Lo que dijo cada mensaje que leyó el modelo, ya tapado: una prueba que lo
+    #: copia no se guarda (:func:`copies_a_message`).
+    said: tuple[str, ...] = ()
     started: float = field(default_factory=time.monotonic)
 
 
@@ -366,7 +369,15 @@ async def target_spec(session: AsyncSession, agent: Agent) -> AgentSpec | None:
     ).all()
     staged = next((r for r in rows if r.status is AgentConfigStatus.STAGED), None)
     active = next((r for r in rows if r.status is AgentConfigStatus.ACTIVE), None)
-    return spec_of(staged or active, agent)
+    spec = spec_of(staged or active, agent)
+    if spec is not None and spec.mode == "structured":
+        # Spec 047, enmienda del 2026-10-30 (D72): la misma base que la consola
+        # (``current_spec``), sin lo que no tenemos.
+        from nexus_api.services.agent_spec.missing import strip_spec
+        from nexus_api.services.agent_spec.validator import load_context
+
+        spec, _lacking = strip_spec(spec, await load_context(session, partner_id=None))
+    return spec
 
 
 def legacy_chars_of(spec: AgentSpec | None) -> int | None:
@@ -422,15 +433,56 @@ def _speaker(m: Message) -> str | None:
     return "Agente"
 
 
-def _transcript(messages: Sequence[Message], *, names: Sequence[str], handed: bool) -> str:
-    lines = ["(Pasó a una persona.)"] if handed else []
+def _said(messages: Sequence[Message], *, names: Sequence[str]) -> list[tuple[str, str]]:
+    """``(quién, qué dijo)`` de cada mensaje que lee el modelo, ya tapado."""
+    out: list[tuple[str, str]] = []
     for m in messages[:MAX_MESSAGES]:
         who = _speaker(m)
         said = (m.content or m.media_transcript or "").strip()
         if who is None or not said:
             continue
-        lines.append(f"{who}: {mask(said[:MAX_MESSAGE_CHARS], names=names)}")
+        out.append((who, mask(said[:MAX_MESSAGE_CHARS], names=names)))
+    return out
+
+
+def _transcript(said: Sequence[tuple[str, str]], *, handed: bool) -> str:
+    lines = ["(Pasó a una persona.)"] if handed else []
+    lines.extend(f"{who}: {text}" for who, text in said)
     return "\n".join(lines)[:MAX_CONVERSATION_CHARS]
+
+
+# ── una prueba que copia un mensaje de verdad ──────────────────────────────
+
+#: Palabras por n-grama, los que tienen que coincidir como mínimo (unas seis
+#: palabras seguidas) y la parte del texto más corto que tiene que estar en el otro.
+COPY_NGRAM: Final = 4
+COPY_MIN_SHARED: Final = 3
+COPY_SHARE: Final = 0.5
+_WORD = re.compile(r"\w+")
+
+
+def _grams(text: str) -> set[tuple[str, ...]]:
+    words = _WORD.findall(_plain(text))
+    return {tuple(words[i : i + COPY_NGRAM]) for i in range(len(words) - COPY_NGRAM + 1)}
+
+
+def copies_a_message(text: str, said: Sequence[str]) -> bool:
+    """¿``text`` copia casi al pie de la letra uno de los mensajes ``said``?
+
+    Por n-gramas de :data:`COPY_NGRAM` palabras, sin mayúsculas, tildes ni
+    puntuación: copia si comparte al menos :data:`COPY_MIN_SHARED` y esos son,
+    como poco, :data:`COPY_SHARE` de los del más corto de los dos. Así cuenta un
+    mensaje metido dentro de una persona larga, y no cuenta una frase corriente
+    («¿dónde puedo aparcar?») que también dijo alguien."""
+    mine = _grams(text)
+    if len(mine) < COPY_MIN_SHARED:
+        return False
+    for message in said:
+        theirs = _grams(message)
+        shared = len(mine & theirs)
+        if shared >= COPY_MIN_SHARED and shared >= COPY_SHARE * min(len(mine), len(theirs)):
+            return True
+    return False
 
 
 def build_messages(
@@ -518,12 +570,15 @@ async def open_week(
 
         refs: dict[str, Ref] = {}
         transcripts: list[tuple[str, str]] = []
+        said: list[str] = []
         for n, row in enumerate(chosen, start=1):
             ref = f"c{n}"
             refs[ref] = Ref(conversation_id=row.id, customer_id=row.customer_id)
             customer = customers.get(row.customer_id)
             names = [customer.name] if customer is not None and customer.name else []
-            text = _transcript(by_conv[row.id], names=names, handed=bool(row.handed))
+            lines = _said(by_conv[row.id], names=names)
+            said.extend(text for _who, text in lines)
+            text = _transcript(lines, handed=bool(row.handed))
             transcripts.append((ref, text or "(sin texto)"))
         contacts = Contacts(
             names=tuple(c.name for c in customers.values() if c.name),
@@ -552,6 +607,7 @@ async def open_week(
             state_hash=_state_hash(spec),
             legacy_chars=legacy_chars_of(spec),
             messages=build_messages(transcripts=transcripts, doc=doc, avoid=avoid),
+            said=tuple(said),
         )
 
 
@@ -682,6 +738,13 @@ async def _store(batch: Batch, raw: Mapping[str, Any], *, now: datetime) -> Repo
             said = "\n".join(_strings([topic, summary, item.get("key"), ops, test]))
             if batch.contacts.found_in(said):
                 report.drop("personal_data")
+                continue
+            # T217: la prueba sale en «Por qué falló» con su conversación; lo que
+            # copia un mensaje de verdad no entra (``test_console_scope.py``).
+            if any(
+                copies_a_message(test[k], batch.said) for k in ("first_message", "persona", "plan")
+            ):
+                report.drop("copied")
                 continue
             key = topic_key(item.get("key"), topic)
             change = {"ops": ops, "test": test}
@@ -936,6 +999,7 @@ __all__ = [
     "analyzed_week",
     "change_of",
     "clean_test",
+    "copies_a_message",
     "due_agents",
     "for_decision",
     "generate",

@@ -239,6 +239,15 @@ async def test_pinning_offers_only_active_allowed_and_resident_models(
     assert eu["eu_only"] is True
 
 
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "Spec 047, requisito 64.3: mientras Auphere gestione los modelos, la consola "
+        "recibe 409 model_policy_managed (test_model_policy_managed). Vuelve a pasar "
+        "cuando se retire la restricción (64.4); entonces el xfail estricto falla y avisa."
+    ),
+)
 async def test_an_unchecked_policy_is_checked_with_the_suite_and_only_then_saves(
     client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
 ) -> None:

@@ -11,7 +11,7 @@
 #   - NEXUS_API_BASE   (e.g. https://api.auphere.com)
 #   - NEXUS_ADMIN_TOKEN
 #   - NEXUS_YCLOUD_WEBHOOK_SECRET   (same one configured in Doppler)
-#   - One canary tenant with WhatsApp channel + AgendaPro public_url set
+#   - One canary tenant with WhatsApp channel + Reservas turned on
 #   - jq, curl, openssl in PATH
 #
 # Usage:

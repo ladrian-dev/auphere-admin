@@ -10,7 +10,7 @@ async def test_fernet_round_trip(db_session, seed_tenants):
     tid = seed_tenants["a"]
     cred = TenantCredentials(
         tenant_id=tid,
-        integration="agendapro",
+        integration="woocommerce",
         encrypted_payload=b"super-secret-token",
     )
     # Setting tenant_id manually via SET LOCAL because the per-test session

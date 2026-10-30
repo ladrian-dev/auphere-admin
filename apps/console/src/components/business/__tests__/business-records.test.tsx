@@ -205,6 +205,20 @@ describe("documentos y webs", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("No pudimos cargar los documentos.");
   });
 
+  it("cargando se anuncia como estado y pasa axe (T218: un `aria-label` en un `div` sin papel no vale)", async () => {
+    const load = vi.fn(() => new Promise<never>(() => {}));
+    wrap(<BusinessSources refId="cultor" canWrite actions={{ load }} />);
+    expect(screen.getByRole("status", { name: "Cargando los documentos…" })).toBeTruthy();
+    expect(await axeViolations()).toEqual([]);
+  });
+
+  it("cargando se anuncia como estado y pasa axe (T218: un `aria-label` en un `div` sin papel no vale)", async () => {
+    const load = vi.fn(() => new Promise<never>(() => {}));
+    wrap(<BusinessSources refId="cultor" canWrite actions={{ load }} />);
+    expect(screen.getByRole("status", { name: "Cargando los documentos…" })).toBeTruthy();
+    expect(await axeViolations()).toEqual([]);
+  });
+
   it("no sube un archivo de más de 10 MB", async () => {
     const user = userEvent.setup({ applyAccept: false });
     const upload = vi.fn();

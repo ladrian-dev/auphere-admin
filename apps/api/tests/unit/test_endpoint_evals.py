@@ -511,6 +511,7 @@ async def test_promote_blocked_without_passing_run(
     r = await client.post(
         f"/admin/tenants/{tid}/agent-config/1/promote",
         headers=admin_headers,
+        json={"reason": "Prueba del panel de operador"},
     )
     assert r.status_code == 409
     assert "eval gate" in r.json()["detail"]
@@ -571,6 +572,7 @@ async def test_promote_allowed_with_passing_run(
     r = await client.post(
         f"/admin/tenants/{tid}/agent-config/1/promote",
         headers=admin_headers,
+        json={"reason": "Prueba del panel de operador"},
     )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "active"
@@ -651,7 +653,9 @@ async def test_promote_override_requires_reason(
         headers=admin_headers,
         json={"override": True, "reason": ""},
     )
-    assert r.status_code == 400
+    # Spec 047 (requisito 23): every operator promote says why, override or not.
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "reason_required"
 
 
 async def test_promote_unchanged_when_eval_required_false(
@@ -683,6 +687,7 @@ async def test_promote_unchanged_when_eval_required_false(
     r = await client.post(
         f"/admin/tenants/{tid}/agent-config/1/promote",
         headers=admin_headers,
+        json={"reason": "Prueba del panel de operador"},
     )
     assert r.status_code == 200
 

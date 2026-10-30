@@ -279,10 +279,9 @@ async def test_tools_enable_and_publish(
     cat = await client.get(f"{base}/tools", headers=h())
     assert cat.status_code == 200, cat.text
     names = {t["name"]: t for t in cat.json()["tools"]}
-    assert (
-        "booking.check_availability" in names and not names["booking.check_availability"]["enabled"]
-    )
-    assert "agendapro.get_today_appointments" not in names  # internal
+    assert "reservas.find_slots" in names and not names["reservas.find_slots"]["enabled"]
+    # Spec 048: ``booking.*`` is retired and not offered.
+    assert not [n for n in names if n.startswith("booking.")]
     assert all(t["connector_slug"] != "tiktok_bm" for t in names.values())
     bound = [t for t in names.values() if t["connector_required"]]
     for t in bound:  # not installed → never usable, even if whitelisted
@@ -291,28 +290,34 @@ async def test_tools_enable_and_publish(
     saved = await client.put(
         f"{base}/tools",
         headers=h(),
-        json={"tools": ["booking.check_availability", "escalate.escalate_to_human"]},
+        json={"tools": ["reservas.find_slots", "escalate.escalate_to_human"]},
     )
     assert saved.status_code == 200, saved.text
     assert saved.json()["draft_created"] is True
     by = {t["name"]: t for t in saved.json()["tools"]}
-    assert (
-        by["booking.check_availability"]["enabled"] and by["booking.check_availability"]["usable"]
-    )
-    assert not by["booking.check_availability"]["enabled_in_active"]
+    assert by["reservas.find_slots"]["enabled"] and by["reservas.find_slots"]["usable"]
+    assert not by["reservas.find_slots"]["enabled_in_active"]
 
     unknown = await client.put(f"{base}/tools", headers=h(), json={"tools": ["nope.tool"]})
     assert unknown.status_code == 422
-    internal = await client.put(
-        f"{base}/tools", headers=h(), json={"tools": ["agendapro.scrape_no_shows"]}
+    # Spec 048 (requisito 2.3): adding a retired tool is refused, with the
+    # Reservas one that replaces it.
+    retired = await client.put(
+        f"{base}/tools",
+        headers=h(),
+        json={"tools": ["reservas.find_slots", "booking.create_appointment"]},
     )
-    assert internal.status_code == 422
+    assert retired.status_code == 422, retired.text
+    assert retired.json()["detail"] == {
+        "code": "tool_retired",
+        "replacements": {"booking.create_appointment": "reservas.create"},
+    }
 
     v = saved.json()["version"]
     pub = await client.post(f"{base}/agent/versions/{v}/publish", headers=h())
     assert pub.status_code == 200, pub.text
     active = await _active(db_session, a["tenant_id"])
-    assert sorted(active.tools) == ["booking.check_availability", "escalate.escalate_to_human"]
+    assert sorted(active.tools) == ["escalate.escalate_to_human", "reservas.find_slots"]
     bundle = (await client.get(f"{base}/agent", headers=h())).json()
     assert bundle["active_version"] == v
 
@@ -320,7 +325,7 @@ async def test_tools_enable_and_publish(
     # bloqueo y engañaba a quien lo elegía, así que pedirlo ya no se guarda:
     # se contesta por qué.
     refused = await client.put(
-        f"{base}/tools/booking.check_availability/mode",
+        f"{base}/tools/reservas.find_slots/mode",
         headers=h(),
         json={"mode": "needs_approval"},
     )
@@ -328,7 +333,7 @@ async def test_tools_enable_and_publish(
 
     # Gating override: immediate, not versioned.
     mode = await client.put(
-        f"{base}/tools/booking.check_availability/mode",
+        f"{base}/tools/reservas.find_slots/mode",
         headers=h(),
         json={"mode": "blocked"},
     )
@@ -336,13 +341,13 @@ async def test_tools_enable_and_publish(
     t = next(
         x
         for x in (await client.get(f"{base}/tools", headers=h())).json()["tools"]
-        if x["name"] == "booking.check_availability"
+        if x["name"] == "reservas.find_slots"
     )
     assert t["effective_mode"] == "blocked" and t["override_mode"] == "blocked"
-    gone = await client.delete(f"{base}/tools/booking.check_availability/mode", headers=h())
+    gone = await client.delete(f"{base}/tools/reservas.find_slots/mode", headers=h())
     assert gone.status_code == 204
     assert (
-        await client.delete(f"{base}/tools/booking.check_availability/mode", headers=h())
+        await client.delete(f"{base}/tools/reservas.find_slots/mode", headers=h())
     ).status_code == 404
 
 
@@ -623,82 +628,27 @@ async def test_knowledge_upload_too_large_is_413(client, console_world) -> None:
     assert r.status_code == 413
 
 
-# ── spec 016 · AgendaPro enlazada por su agenda pública (R6) ─────────────────
+# ── spec 048 · AgendaPro ya no está ──────────────────────────────────────────
 
 
-async def test_agendapro_is_linked_by_public_url_never_by_credentials(
+async def test_agendapro_is_gone_from_the_console(
     client, console_world, db_session, seeded_connectors, fake_composio
 ) -> None:
-    from tests.conftest import add_console_member
-
+    """Spec 048 (requisitos 1.1 y 1.2): ni tarjeta en Conectores, ni campo de
+    agenda pública, ni la ruta que la enlazaba."""
     a = console_world["a"]
     h = a["headers"]
     base = f"/console/clients/{a['ref']}"
-    url_path = f"{base}/integrations/agendapro/public-url"
-
-    before = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
-    assert before["agendapro"]["auth_kind"] == "public_url"
-    assert before["agendapro"]["public_url"] is None
-    assert before["agendapro"]["status"] is None
-    assert before["agendapro"]["credentials_form"] == []
-
-    good = "https://cultorbarber.site.agendapro.com/cl/sucursal"
-    linked = await client.put(url_path, headers=h(), json={"public_url": good})
-    assert linked.status_code == 200, linked.text
-    assert linked.json()["public_url"] == good
-    assert linked.json()["integration"] == "agendapro"
-    after = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
-    assert after["agendapro"]["status"] == "connected"
-    assert after["agendapro"]["public_url"] == good
-    assert after["agendapro"]["installed"] is True
-    assert "credentials_ref" not in after["agendapro"]
-    # The booking tools are native: they need no connector row to be usable.
-    booking = [
-        t
-        for t in (await client.get(f"{base}/tools", headers=h())).json()["tools"]
-        if t["name"].startswith("booking.")
-    ]
-    assert booking and all(t["connector_required"] is False for t in booking)
-
-    for bad, reason in (
-        ("http://cultorbarber.site.agendapro.com/cl", "scheme"),
-        ("https://evil.example.com/agendapro.com", "host"),
-        ("https://agendapro.com.evil.example", "host"),
-        ("not a url", "scheme"),
-    ):
-        resp = await client.put(url_path, headers=h(), json={"public_url": bad})
-        assert resp.status_code == 422, (bad, resp.text)
-        assert resp.json()["detail"] == {"code": "invalid_url", "reason": reason}
-    extra = await client.put(url_path, headers=h(), json={"public_url": good, "login": "x"})
-    assert extra.status_code == 422, extra.text
-    still = (await client.get(f"{base}/connectors", headers=h())).json()
-    assert next(c for c in still if c["slug"] == "agendapro")["public_url"] == good
-
-    cleared = await client.put(url_path, headers=h(), json={"public_url": ""})
-    assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["public_url"] is None
-    gone = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
-    assert gone["agendapro"]["status"] is None and gone["agendapro"]["public_url"] is None
-
-    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
-    denied = await client.put(url_path, headers=analyst["headers"](), json={"public_url": good})
-    assert denied.status_code == 403, denied.text
-
-    rows = (
-        await db_session.execute(
-            sa.select(AuditLog.after_json, AuditLog.actor)
-            .where(
-                AuditLog.action == "console.integration.agendapro_url",
-                AuditLog.tenant_id == a["tenant_id"],
-            )
-            .order_by(AuditLog.created_at)
-        )
-    ).all()
-    assert [r.after_json for r in rows] == [
-        {"set": True, "public_url": good},
-        {"set": False, "public_url": None},
-    ]
-    assert all(r.actor.startswith("console:") for r in rows)
+    cards = (await client.get(f"{base}/connectors", headers=h())).json()
+    assert cards, "the catalogue is empty"
+    assert not [c for c in cards if "agendapro" in c["slug"]]
+    assert all("public_url" not in c for c in cards)
+    gone = await client.put(
+        f"{base}/integrations/agendapro/public-url",
+        headers=h(),
+        json={"public_url": "https://cultorbarber.site.agendapro.com/cl/sucursal"},
+    )
+    assert gone.status_code == 404, gone.text
 
 
 # ── spec 016 · la clave se guarda y sincroniza de una vez (R7) ───────────────
@@ -816,14 +766,8 @@ async def test_connecting_enables_tools_only_for_that_tenant(
         },
     )
     assert key.status_code == 201, key.text
-    url = await client.put(
-        f"/console/clients/{a['ref']}/integrations/agendapro/public-url",
-        headers=a["headers"](),
-        json={"public_url": "https://a.site.agendapro.com/cl/x"},
-    )
-    assert url.status_code == 200, url.text
 
-    # B: same agent tools as before, no WooCommerce install, no AgendaPro page.
+    # B: same agent tools as before, no WooCommerce install.
     db_session.expire_all()
     assert (await _active(db_session, b["tenant_id"])).tools == tools_b_before
     b_conn = {
@@ -833,7 +777,6 @@ async def test_connecting_enables_tools_only_for_that_tenant(
         ).json()
     }
     assert b_conn["woocommerce"]["installed"] is False
-    assert b_conn["agendapro"]["public_url"] is None and b_conn["agendapro"]["status"] is None
     b_versions = (
         await client.get(f"/console/clients/{b['ref']}/agent", headers=b["headers"]())
     ).json()["versions"]

@@ -317,7 +317,7 @@ function BloqueConectado({ estado = "ok" }: { estado?: Estado }) {
             <span className="text-xs text-muted-foreground">+34 600 123 456</span>
           </li>
           <li className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-medium">AgendaPro</span>
+            <span className="font-medium">Google Calendar</span>
             <StatusBadge tone="positive">Conectado</StatusBadge>
           </li>
           <li className="text-xs text-muted-foreground">2 conectores más sin conectar.</li>

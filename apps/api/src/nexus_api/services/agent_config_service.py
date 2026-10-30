@@ -478,6 +478,55 @@ class AgentConfigService:
         await self.finish_draft(write, actor=actor)
         return published
 
+    async def publish_platform_copy(
+        self,
+        source: AgentConfig,
+        *,
+        actor: str,
+        reason: str,
+        note: str,
+        tools: list[str],
+        system_prompt_rendered: str,
+        spec: dict[str, Any] | None,
+    ) -> AgentConfig:
+        """Spec 048 (plan, decision 12): a change Auphere decides for everyone,
+        published at once from ``source`` — the agent's ACTIVE version, never
+        its draft — without the publish gate, which judges a partner's
+        changes. The new version says who and why (``published_by``, ``note``,
+        ``override_reason``) and the audit keeps the reason.
+
+        The agent's draft, if it has one, stays a draft: it is not published,
+        replaced nor discarded, and publishing does not move its revision
+        (rewriting it is a write of its own, through :meth:`open_draft`)."""
+        await self._validate_tools(tools)
+        await self.lock_draft(source.agent_id, expected=None)
+        published = await self.configs.publish_copy(
+            source,
+            policies=dict(source.policies or {}),
+            published_by=actor,
+            tools=tools,
+            system_prompt_rendered=system_prompt_rendered,
+            spec=spec,
+        )
+        published.published_by = actor
+        published.published_at = published.promoted_at
+        published.note = note[:500]
+        published.override_reason = reason
+        await self.session.flush()
+        await self.audit.record(
+            actor=actor,
+            action="agent_config.promote",
+            target=str(published.id),
+            before={"version": source.version},
+            after={
+                "version": published.version,
+                "agent": str(published.agent_id),
+                "number": published.agent_version_number,
+                "reason": reason,
+            },
+        )
+        return published
+
     async def promote(self, version: int, *, actor: str, origin: str | None = None) -> AgentConfig:
         """``origin`` (spec 017 R3.3) says which surface the partner pressed:
         the draft bar or the agent tab. It is audit context, never a
@@ -519,22 +568,17 @@ class AgentConfigService:
         return config
 
     async def rollback(self, target_version: int, *, actor: str) -> AgentConfig:
+        """Back to a version that was live (spec 047, requisito 23): a draft is
+        ``RollbackTargetNeverPublished`` — it goes live through the gate."""
         before = await self._active_of_version(target_version)
         if before is not None and before.version == target_version:
             raise AgentConfigConflict(f"version {target_version} is already active")
-        target = await self.configs.get_by_version(target_version)
-        was_draft = target is not None and target.status is AgentConfigStatus.STAGED
-        if target is not None and was_draft:
-            await self.lock_draft(target.agent_id, expected=None)
         config = await self.configs.rollback(target_version, promoted_by=actor)
         after: dict[str, Any] = {
             "version": config.version,
             "agent": str(config.agent_id),
             "number": config.agent_version_number,
         }
-        if was_draft:
-            after["revision"] = await self.configs.bump_draft_revision(config.agent_id)
-            after["fields"] = []
         await self.audit.record(
             actor=actor,
             action="agent_config.rollback",
@@ -552,7 +596,7 @@ class AgentConfigService:
         unknown = [t for t in tools if t not in catalog]
         if unknown:
             raise AgentConfigConflict("Tools not in catalog: " + ", ".join(unknown))
-        # Bloque E: las tools internas (ej. ``agendapro.*``) NO pueden
+        # Bloque E: las tools internas (``tool_status='internal'``) NO pueden
         # entrar en la whitelist de un agent_config — solo se invocan vía
         # ``MCPRegistry.dispatch_internal`` desde otros servers. Defense
         # in depth: aunque el operator panel no las ofrezca, este check

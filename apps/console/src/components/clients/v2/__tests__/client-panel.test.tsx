@@ -135,22 +135,65 @@ describe("ClientPanelView", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("solo Saldo, Este mes y Agentes que más consumen: sin la tarjeta de la lectura (Andrés, 2026-10-28)", () => {
-    const running = {
-      job_id: "11111111-1111-4111-8111-111111111111",
-      kind: "client_read",
-      status: "running",
-      agent_id: null,
-      progress: { step: "pages", blocks: [{ key: "pages", read: 3 }] },
-      questions: null,
-      result: null,
-      error_code: null,
-      created_at: "2026-10-26T10:00:00Z",
-      finished_at: null,
+  // Enmienda del 2026-10-29 (T210, requisito 59.7): la tarjeta de lectura vuelve
+  // al Panel, arriba a la izquierda, mientras se lee y al terminar. Sustituye la
+  // decisión del 2026-10-28 de dejarla solo en Negocio.
+  const readJob = (over: Record<string, unknown> = {}) => ({
+    job_id: "11111111-1111-4111-8111-111111111111",
+    kind: "client_read",
+    status: "running",
+    agent_id: null,
+    progress: { step: "pages", blocks: [{ key: "pages", read: 3 }] },
+    questions: null,
+    result: null,
+    error_code: null,
+    created_at: "2026-10-26T10:00:00Z",
+    finished_at: null,
+    ...over,
+  });
+
+  it("la tarjeta de lectura va arriba a la izquierda mientras se lee (59.7)", async () => {
+    const { container } = show(panel({ read: { job: readJob(), website: "auphere.com", networks: [] } as never }));
+    const card = container.querySelector("[data-slot=client-read-card]");
+    expect(card).not.toBeNull();
+    // En la columna de Saldo y Este mes, antes de Saldo.
+    const left = container.querySelector("[data-slot=panel-balance]")!.parentElement!;
+    expect(left.contains(card)).toBe(true);
+    expect(left.firstElementChild?.contains(card)).toBe(true);
+    expect(screen.getByText("Leyendo auphere.com para completar la ficha: sedes, horario y servicios…")).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("al terminar sigue: qué se leyó, qué se encontró, qué falta revisar y qué red no se dejó leer (59.4, 59.7)", () => {
+    const result = {
+      website: "auphere.com",
+      sources: [],
+      found: { locations: 1, hours: 1, services: 3, policies: 0, faqs: 0, links: 0 },
+      applied: 2,
+      suggested: 1,
+      translated_from: null,
     };
-    const { container } = show(panel({ read: { job: running, website: "auphere.com", networks: [] } as never }));
+    show(
+      panel({
+        read: {
+          job: readJob({ status: "done", result, finished_at: "2026-10-26T10:02:00Z" }),
+          website: "auphere.com",
+          networks: [
+            { network: "web", status: "read" },
+            { network: "instagram", status: "blocked_by_network" },
+          ],
+        } as never,
+      }),
+    );
+    expect(screen.getByText(/Leímos auphere.com: 1 sede, el horario y 3 servicios/)).toBeVisible();
+    expect(screen.getByText("3 datos por revisar en Negocio.")).toBeVisible();
+    expect(screen.getByText("Instagram no deja leer perfiles sin cuenta.")).toBeVisible();
+    expect(screen.getByText("Revisar").closest("a")).toHaveAttribute("href", "/clients/barberia-cultor/business");
+  });
+
+  it("sin lectura no hay tarjeta", () => {
+    const { container } = show(panel());
     expect(container.querySelector("[data-slot=client-read-card]")).toBeNull();
-    expect(screen.queryByText("Completando la ficha")).toBeNull();
   });
 
   it("no anuncia lo que falta en la ficha: eso se ve en Negocio (Andrés, 2026-10-28)", () => {

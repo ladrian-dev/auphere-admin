@@ -177,6 +177,30 @@ el despliegue declara:
 
 Lo que no va enrutado —todo el código de hoy— sale exactamente como antes.
 
+**Quién paga cada llamada.** Donde el proxy LiteLLM es obligatorio
+(`NEXUS_LLM_PROXY_REQUIRED=true`, hoy staging), cada llamada sale con la clave
+virtual de quien la paga, del mapa `LITELLM_PROXY_VIRTUAL_KEYS`, y sin ella no
+sale (`LLMProxyUnavailable`, fail-closed):
+
+- **un partner** (`llm_proxy_partner_scope`): la abre quien conoce al cliente. El
+  despachador y el reparto al dueño, por turno; `jobs-consumer`, por trabajo, con
+  el partner que lee al empezarlo (así los manejadores de `jobs/handlers/` no
+  tienen que acordarse); el grader diferido y las sugerencias semanales, con el
+  partner de cada cliente; el copiloto, con el de quien pregunta; la paráfrasis
+  de una corrección, con el del cliente;
+- **Auphere** (`llm_proxy_platform_scope`): lo que no es de ningún cliente y paga
+  Auphere —la evaluación del constructor y la calibración del juez del panel de
+  operador— sale con la entrada `"platform"` del mismo mapa. Es explícito: una
+  llamada sin partner nunca cae en ella por defecto, y dentro del ámbito de
+  plataforma no queda ningún partner atado.
+
+Sin el proxy obligatorio (producción, ADR-036) la llamada va al vendor y un
+cliente sin partner es legítimo. Dos barridos lo vigilan: el de las fuentes
+(`tests/unit/test_llm_proxy_scope_coverage.py`: todo sitio que construye un
+`LiteLLMProvider` abre uno de los dos ámbitos o dice por qué no) y el de los
+trabajos (`tests/integration/test_jobs_reach_the_model_behind_the_proxy.py`:
+cada tipo registrado llega al modelo con la clave de su partner).
+
 `LLMRouter.complete_routed` / `respond_routed` / `complete_structured` recorren
 la cadena: dos intentos por despliegue y, si el proveedor falla (error del
 servidor, tiempo agotado o límite de peticiones), la siguiente alternativa en el
@@ -303,6 +327,39 @@ del cliente. Si no —hoy, D44—, nace por el camino de hoy, como los agentes d
 hoy: la consola no ofrece lo que no puede servir. Una versión nueva de un
 agente que ya tenía versiones nunca recibe `model_policy` sola: el cambio lo
 hace una persona (39.11).
+
+## Los modelos los gestiona Auphere (requisito 64)
+
+Enmienda del 2026-10-29 (D55 y D64): hasta que la gestión de modelos, precios y
+selección llegue al panel de operador, **la consola no cambia la política de
+modelo** de un agente. `PATCH …/draft` con otra `model_policy` y `POST
+…/quality/check` responden `409 model_policy_managed`
+(`services/agent_spec/model_policy.py`); los agentes siguen con la suya (D44 y
+D45). El constructor, «Desde una plantilla» y el panel de operador la ponen como
+hasta ahora.
+
+Los trabajos de la plataforma usan el modelo que fija el despliegue, en una sola
+tabla (`nexus_worker/platform_models.py`):
+
+| Tarea | Variable | Sin ella |
+|---|---|---|
+| `build` (borrador y constructor del cliente) | `NEXUS_LLM_BUILD_MODEL` | el de responder |
+| `read_source` (la lectura) | `NEXUS_LLM_READ_SOURCE_MODEL` | el de clasificar |
+| `sector` (identificar el sector) | `NEXUS_LLM_SECTOR_MODEL` | el de clasificar |
+| `customer_sim` (el cliente simulado, T206) | `NEXUS_LLM_CUSTOMER_SIM_MODEL` | el de clasificar |
+| `judge` (el juez) | `NEXUS_LLM_JUDGE_MODEL` | el de clasificar |
+
+Todas salen por el proxy de LiteLLM con la clave del partner del cliente: el
+consumidor de trabajos abre su ámbito para todo el trabajo. La restricción se
+retira en la spec que construya la gestión de modelos (64.4).
+
+El cliente simulado llama con el rol `customer_sim` (tarea `answer` en
+`TASK_BY_ROLE`) y se mide con el resto de la pasada en «Construcción y pruebas».
+Ni él ni el juez pueden ser el modelo que respondió como agente (61.5): el cliente
+pasa al del juez o al de clasificar si coincide; un juez que coincide no cuenta en
+esa pasada, y si es de la misma familia (`simulation/customer.family_of`) la pasada
+lo dice en `warnings` y en el log `tests.judge_warning`, que es el aviso al
+operador mientras no exista la gestión de modelos en el panel.
 
 ## El ciclo de vida de los modelos (41.7 a 41.9)
 

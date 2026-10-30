@@ -7,12 +7,16 @@ import { BusinessLinks } from "@/components/business/sources/business-links";
 import { BusinessSources } from "@/components/business/sources/business-sources";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { Basics, Hours, Locations, SectionState, Services, SpecialDates } from "@/lib/backend/business-sections";
+import type { Basics, Faqs, Hours, Locations, Policies, SectionState, SectorOption, Services, SpecialDates } from "@/lib/backend/business-sections";
 import type { BusinessRecord, LinkItem, Section, Sources } from "@/lib/backend/client-records";
 
 import { BasicsSection } from "./basics-section";
+import { FaqsSection } from "./faqs-section";
 import { HoursSection } from "./hours-section";
+import { BUSINESS_GRID, BUSINESS_INDEX_LIST, BUSINESS_SECTIONS_COLUMN } from "./layout";
 import { LocationsSection } from "./locations-section";
+import { PoliciesSection } from "./policies-section";
+import { sectorSuggestion } from "./proposals-model";
 import { SectionEditProvider, SectionError, SectionFrame, SectionStateMark, type Result } from "./section-frame";
 import { ServicesSection } from "./services-section";
 import { SpecialDatesSection } from "./special-dates-section";
@@ -23,18 +27,25 @@ export type BusinessData = {
   hours: Result<Hours>;
   specialDates: Result<SpecialDates>;
   services: Result<Services>;
+  /** «Políticas» y «Preguntas frecuentes» (enmienda del 2026-10-29, 60.4; sin ellas, no se pintan). */
+  policies?: Result<Policies>;
+  faqs?: Result<Faqs>;
+  /** Los sectores con guía para el selector de Datos básicos (57.5). */
+  sectors?: Result<SectorOption[]>;
   /** «Documentos y webs» y «Redes sociales» (sin ellas, no se pintan). */
   sources?: Result<Sources>;
   record?: Result<BusinessRecord>;
 };
 
-type Key = "basics" | "locations" | "hours" | "services" | "sources" | "links";
-type Reloadable = "basics" | "locations" | "hours" | "special_dates" | "services";
+type Key = "basics" | "locations" | "hours" | "services" | "policies" | "faqs" | "sources" | "links";
+type Reloadable = "basics" | "locations" | "hours" | "special_dates" | "services" | "policies" | "faqs";
 const ORDER: readonly { key: Key; id: string; title: MessageKey; api?: Reloadable }[] = [
   { key: "basics", id: "business-basics", title: "business.basics.title", api: "basics" },
   { key: "locations", id: "business-locations", title: "business.locations.title", api: "locations" },
   { key: "hours", id: "business-hours", title: "business.hours.title", api: "hours" },
   { key: "services", id: "business-services", title: "business.services.title", api: "services" },
+  { key: "policies", id: "business-policies", title: "business.policies.title", api: "policies" },
+  { key: "faqs", id: "business-faqs", title: "business.faqs.title", api: "faqs" },
   { key: "sources", id: "business-sources", title: "business.docs.title" },
   { key: "links", id: "business-links", title: "business.socials.section" },
 ];
@@ -53,6 +64,12 @@ function linksOf(record: BusinessRecord): LinkItem[] {
  * secciones en lectura con su «Editar» o «Añadir…». Una sola edición a la vez.
  * Las fechas especiales viven dentro de Horarios. Cada sección carga y falla
  * sola: si una no llega, lo dice y deja reintentar, y las demás siguen.
+ *
+ * Enmienda del 2026-10-29 (T209): «Políticas» y «Preguntas frecuentes» detrás
+ * de Servicios, con lo sugerido por el sistema en su sección (60.4, 60.5), y
+ * el sector en Datos básicos (57.5). Lo sugerido sale de las propuestas
+ * pendientes de `GET /business`; si la ficha no se pudo leer, cada sección lo
+ * dice y enseña lo escrito.
  */
 export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId: string; canWrite: boolean; data: BusinessData }) {
   const t = useT();
@@ -61,6 +78,8 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
   const [, startTransition] = React.useTransition();
   const locations = data.locations.ok ? data.locations.data.items : [];
   const record = data.record?.ok ? data.record.data : null;
+  // Sin ficha no se sabe qué hay sugerido (`null`); con ella, sus propuestas pendientes.
+  const suggestions = record ? record.suggestions : null;
   const stateIn = (section: Section): SectionState | null => record?.sections.find((x) => x.section === section)?.state ?? null;
 
   function retry(key: keyof BusinessData, api: Reloadable) {
@@ -70,13 +89,23 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
     });
   }
 
-  const shown = ORDER.filter((item) => (item.key === "sources" ? data.sources !== undefined : item.key === "links" ? data.record !== undefined : true));
+  const shown = ORDER.filter((item) =>
+    item.key === "sources"
+      ? data.sources !== undefined
+      : item.key === "links"
+        ? data.record !== undefined
+        : item.key === "policies"
+          ? data.policies !== undefined
+          : item.key === "faqs"
+            ? data.faqs !== undefined
+            : true,
+  );
 
   function stateOf(key: Key): SectionState | null {
     if (key === "sources") return data.sources?.ok ? (data.sources.data.items.length ? "complete" : "pending") : stateIn("sources");
     if (key === "links") return stateIn("links");
     const entry = data[key];
-    return entry.ok ? entry.data.state : null;
+    return entry?.ok ? entry.data.state : null;
   }
 
   function failedFrame(item: (typeof ORDER)[number], onRetry?: () => void) {
@@ -90,7 +119,11 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
   function body(item: (typeof ORDER)[number]) {
     switch (item.key) {
       case "basics":
-        return data.basics.ok ? <BasicsSection refId={refId} basics={data.basics.data} canWrite={canWrite} /> : failedFrame(item, () => retry("basics", "basics"));
+        return data.basics.ok ? (
+          <BasicsSection refId={refId} basics={data.basics.data} canWrite={canWrite} sectors={data.sectors} sectorProposal={sectorSuggestion(suggestions)} />
+        ) : (
+          failedFrame(item, () => retry("basics", "basics"))
+        );
       case "locations":
         return data.locations.ok ? (
           <LocationsSection
@@ -119,6 +152,18 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
         ) : (
           failedFrame(item, () => retry("services", "services"))
         );
+      case "policies":
+        return data.policies?.ok ? (
+          <PoliciesSection refId={refId} policies={data.policies.data} suggestions={suggestions} canWrite={canWrite} />
+        ) : (
+          failedFrame(item, () => retry("policies", "policies"))
+        );
+      case "faqs":
+        return data.faqs?.ok ? (
+          <FaqsSection refId={refId} faqs={data.faqs.data} suggestions={suggestions} canWrite={canWrite} />
+        ) : (
+          failedFrame(item, () => retry("faqs", "faqs"))
+        );
       case "sources":
         return (
           <SectionFrame id={item.id} title={t(item.title)} state={stateOf("sources")} canWrite={canWrite}>
@@ -145,12 +190,12 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
 
   return (
     <SectionEditProvider>
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[12.5rem_minmax(0,1fr)] lg:items-start">
+      <div className={BUSINESS_GRID}>
         <div className="grid min-w-0 gap-3 lg:sticky lg:top-20">
           <nav aria-label={t("business.page.index")} className="min-w-0">
             {/* `relative`: el estado `sr-only` de cada sección es absoluto y, sin
                 un contenedor posicionado, ensancha la página a 375 px. */}
-            <ul className="relative flex min-w-0 gap-1 overflow-x-auto pb-1 lg:grid lg:overflow-visible lg:pb-0" data-scroll-x>
+            <ul className={BUSINESS_INDEX_LIST} data-scroll-x>
               {shown.map((item) => {
                 const state = stateOf(item.key);
                 return (
@@ -169,7 +214,7 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
           </nav>
           <p className="hidden px-3 text-xs text-pretty text-muted-foreground lg:block">{t("business.page.note")}</p>
         </div>
-        <div className="grid min-w-0 gap-4">
+        <div className={BUSINESS_SECTIONS_COLUMN}>
           {/* The client's name is the page's h1 (the client frame); the sections are h2. */}
           {shown.map((item) => (
             <React.Fragment key={item.id}>{body(item)}</React.Fragment>

@@ -162,7 +162,11 @@ def test_a_coherent_spec_has_none() -> None:
 
 def test_promising_what_no_tool_does() -> None:
     spec = _spec(rules=["Cobra la señal con un enlace de pago antes de reservar."])
-    assert ("promises_without_tool", "/rules/0", "cobrar o enviar enlaces de pago") in _codes(spec)
+    assert (
+        "promises_without_tool",
+        "/rules/0",
+        "cobrar con tarjeta o con enlace de pago",
+    ) in _codes(spec)
     # «No cobres» no promete nada.
     assert _codes(_spec(rules=["No cobres nada por WhatsApp."])) == set()
 

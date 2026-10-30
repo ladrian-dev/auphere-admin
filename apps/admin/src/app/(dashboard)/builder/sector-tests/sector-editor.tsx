@@ -167,7 +167,8 @@ type TestEditorProps = {
   onRemove: () => void;
 };
 
-function TestEditor({ form, index, open, hasErrors, errors, onToggle, onChange, onCriteria, onRemove }: TestEditorProps) {
+/** One test of the editor. Also corrects the tests of a generated guide (T201, 58.5). */
+export function TestEditor({ form, index, open, hasErrors, errors, onToggle, onChange, onCriteria, onRemove }: TestEditorProps) {
   const n = index + 1;
   const bodyId = `sector-test-${form.uid}`;
   const err = (field: string) => errors[`${index}.${field}`];

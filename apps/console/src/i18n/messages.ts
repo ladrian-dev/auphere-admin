@@ -8,6 +8,8 @@ export type Locale = "es" | "en";
 
 import { accountProtoMessages } from "./lanes/account-proto";
 import { agentImproveMessages } from "./lanes/agent-improve";
+import { amendmentMessages } from "./lanes/amendment";
+import { amendment1030Messages } from "./lanes/amendment-1030";
 import { agentProtoMessages } from "./lanes/agent-proto";
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { agentsMessages } from "./lanes/agents";
@@ -602,6 +604,8 @@ const messages = {
   ...accountProtoMessages,
   ...businessProtoMessages,
   ...channelsProtoMessages,
+  ...amendmentMessages,
+  ...amendment1030Messages,
 } as const;
 
 export type MessageKey = keyof typeof messages;
