@@ -48,7 +48,7 @@ export function ChannelTemplates({ refId, manage }: { refId: string; manage: boo
   }
   return (
     <div className="rounded-md border border-border bg-card p-4 sm:p-6" data-slot="channel-templates">
-      <TemplatesSection refId={refId} list={state.list} error={state.error} manage={manage} onChanged={() => setVersion((v) => v + 1)} sectionId="canal-plantillas" />
+      <TemplatesSection refId={refId} list={state.list} error={state.error} manage={manage} onChanged={() => setVersion((v) => v + 1)} sectionId="canal-plantillas" headingLevel={3} />
     </div>
   );
 }

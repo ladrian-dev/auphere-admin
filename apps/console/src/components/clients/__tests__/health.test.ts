@@ -7,7 +7,7 @@ describe("clients/health (spec 016)", () => {
     const items = missingItems({ missing: ["activation", "quota", "whatsapp", "agent"] }, "panaderia la espiga");
     expect(items.map((i) => i.key)).toEqual(["agent", "whatsapp", "quota", "activation"]);
     expect(items[0]).toMatchObject({ href: "/clients/panaderia%20la%20espiga/agent", permission: "agents:write", blocking: true });
-    expect(items[1]).toMatchObject({ href: "/clients/panaderia%20la%20espiga/channels", permission: "channels:write", blocking: true });
+    expect(items[1]).toMatchObject({ href: "/clients/panaderia%20la%20espiga/agents", permission: "channels:write", blocking: true });
     expect(items[2]).toMatchObject({
       label: "clients.detail.missing.quota",
       fix: "clients.health.fix.quota",

@@ -68,6 +68,7 @@ export function TemplatesSection({
   manage,
   onChanged,
   sectionId = "tpl",
+  headingLevel = 2,
 }: {
   refId: string;
   list: TemplateList | null;
@@ -77,9 +78,12 @@ export function TemplatesSection({
   onChanged?: () => void;
   /** The anchor of the section (the number's page links to it from its index). */
   sectionId?: string;
+  /** 3 inside the number's page, under the channel's own h2. */
+  headingLevel?: 2 | 3;
 }) {
   const t = useT();
   const router = useRouter();
+  const Heading = headingLevel === 3 ? "h3" : "h2";
   const [createOpen, setCreateOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState<TemplateRow | null>(null);
   // QA 2026-10-30: a template opens to read all of it — what was sent, Meta's
@@ -109,9 +113,9 @@ export function TemplatesSection({
     <section id={sectionId} className="flex min-w-0 scroll-mt-24 flex-col gap-3" aria-labelledby={`${sectionId}-title`} aria-busy={pending}>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 id={`${sectionId}-title`} className="text-base font-medium">
+          <Heading id={`${sectionId}-title`} className="text-base font-medium">
             {t("tpl.title")}
-          </h2>
+          </Heading>
           <p className=" text-sm text-muted-foreground">{t("tpl.description")}</p>
         </div>
         {manage && list ? <Button onClick={() => openComposer(null)}>{t("tpl.new")}</Button> : null}

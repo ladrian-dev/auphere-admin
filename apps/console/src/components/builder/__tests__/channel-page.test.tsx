@@ -82,7 +82,7 @@ describe("la página de un canal", () => {
     expect(head.querySelector("[data-brand=whatsapp]")).not.toBeNull();
     // El índice: «Excepciones» solo con «A todos».
     const nav = screen.getByRole("navigation", { name: "Secciones de la configuración" });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["A quién responde", "Escalado a personas", "Plantillas de mensaje"]);
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Comprobaciones", "A quién responde", "Plantillas de mensaje", "Escalado a personas"]);
     expect(within(nav).getByText("Todo esto es del canal. Si el agente atiende en otro canal, allí tiene su propia configuración.")).toBeVisible();
     for (const name of ["A quién responde", "Escalado a personas", "Comprobaciones"]) {
       expect(screen.getByRole("region", { name })).toBeVisible();
@@ -108,7 +108,7 @@ describe("la página de un canal", () => {
     await user.click(screen.getByRole("radio", { name: /A todos/ }));
     expect(screen.getByRole("region", { name: "Excepciones" })).toBeVisible();
     const nav = screen.getByRole("navigation", { name: "Secciones de la configuración" });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["A quién responde", "Excepciones", "Escalado a personas", "Plantillas de mensaje"]);
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Comprobaciones", "A quién responde", "Excepciones", "Plantillas de mensaje", "Escalado a personas"]);
   });
 
   it("«Mensaje de espera» e «Historial» viven en «Más ajustes»", async () => {

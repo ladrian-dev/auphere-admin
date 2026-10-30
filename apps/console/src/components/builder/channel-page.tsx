@@ -279,12 +279,16 @@ export function ChannelConfigPage({
         <nav aria-label={t("builder.channel.page.sections")} className="grid min-w-0 content-start gap-3 min-[860px]:sticky min-[860px]:top-24 min-[860px]:self-start">
           <ul className="flex min-w-0 flex-wrap gap-1 min-[860px]:grid">
             {[
-              ...NAV.filter((s) => s.id !== "canal-excepciones" || (everyone && phones)),
-              // Spec 050 (4.1): la cuenta en Meta, cuando Meta dice algo de ella.
-              ...(account ? [{ id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }] : []),
+              // The same order as the page (QA 2026-10-30): whether it works,
+              // who it answers, what is this channel's own, escalation, the account.
+              { id: "canal-comprobaciones", label: "builder.channel.checks.title" as MessageKey },
+              ...NAV.filter((s) => s.id !== "canal-escalado" && (s.id !== "canal-excepciones" || (everyone && phones))),
               ...(page.instagram_comments ? [{ id: "canal-comentarios", label: "builder.channel.comments.title" as MessageKey }] : []),
               ...(page.catalog_state ? [{ id: "canal-catalogo", label: "ch.catalog" as MessageKey }] : []),
               ...(page.type === "whatsapp" && !disconnected ? [{ id: "canal-plantillas", label: "tpl.title" as MessageKey }] : []),
+              { id: "canal-escalado", label: "builder.channel.escalation.title" as MessageKey },
+              // Spec 050 (4.1): la cuenta en Meta, cuando Meta dice algo de ella.
+              ...(account ? [{ id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }] : []),
             ].map((s) => (
               <li key={s.id} className="min-w-0">
                 <a
@@ -354,42 +358,6 @@ export function ChannelConfigPage({
             }}
             data-slot="channel-config"
           >
-            <PageSection id="canal-audiencia" title={t("builder.channel.audience.title")} intro={t("builder.channel.audience.intro")}>
-              <AudienceSection
-                draft={draft}
-                writable={writable}
-                adminOnly={page.admin_only_template}
-                phones={phones}
-                onMode={(mode) => set((d) => ({ ...d, audience: { ...d.audience, mode } }))}
-                onTests={(list) => set((d) => ({ ...d, audience: { ...d.audience, test_numbers: list } }))}
-              />
-              <InlineError error={errorIn("audience")} targets={targets} balance={balance} refId={refId} />
-            </PageSection>
-
-            {everyone && phones ? (
-              <PageSection id="canal-excepciones" title={t("builder.channel.exceptions.title")} intro={t("builder.channel.exceptions.intro")}>
-                <NumberList
-                  label={t("builder.channel.exceptions.title")}
-                  numbers={draft.audience.exceptions}
-                  writable={writable}
-                  empty={t("builder.channel.exceptions.empty")}
-                  onChange={(list) => set((d) => ({ ...d, audience: { ...d.audience, exceptions: list } }))}
-                />
-              </PageSection>
-            ) : null}
-
-            <PageSection id="canal-escalado" title={t("builder.channel.escalation.title")} intro={t("builder.channel.escalation.intro")}>
-              <EscalationSection
-                draft={draft}
-                writable={writable}
-                notifyFrom={page.config.notify_from}
-                onRecipients={(recipients) => set((d) => ({ ...d, escalation: { ...d.escalation, recipients } }))}
-                onSummary={(summary) => set((d) => ({ ...d, escalation: { ...d.escalation, summary } }))}
-              />
-              <InlineError error={errorIn("escalation")} targets={targets} balance={balance} refId={refId} />
-              <Triggers triggers={page.triggers} editHref={`${agentHref(refId, owner)}#bloque-escalation`} />
-            </PageSection>
-
             <PageSection id="canal-comprobaciones" title={t("builder.channel.checks.title")} intro={t("builder.channel.checks.intro")}>
               <ul className="grid min-w-0 gap-2" aria-label={t("builder.channel.checks.title")}>
                 {page.checks.map((check) => {
@@ -422,9 +390,38 @@ export function ChannelConfigPage({
               </ul>
             </PageSection>
 
-            {account ? (
-              <PageSection id="canal-cuenta" title={t("builder.channel.account.title")} intro={t("builder.channel.account.intro")}>
-                <ChannelAccount account={account} />
+            <PageSection id="canal-audiencia" title={t("builder.channel.audience.title")} intro={t("builder.channel.audience.intro")}>
+              <AudienceSection
+                draft={draft}
+                writable={writable}
+                adminOnly={page.admin_only_template}
+                phones={phones}
+                onMode={(mode) => set((d) => ({ ...d, audience: { ...d.audience, mode } }))}
+                onTests={(list) => set((d) => ({ ...d, audience: { ...d.audience, test_numbers: list } }))}
+              />
+              <InlineError error={errorIn("audience")} targets={targets} balance={balance} refId={refId} />
+            </PageSection>
+
+            {everyone && phones ? (
+              <PageSection id="canal-excepciones" title={t("builder.channel.exceptions.title")} intro={t("builder.channel.exceptions.intro")}>
+                <NumberList
+                  label={t("builder.channel.exceptions.title")}
+                  numbers={draft.audience.exceptions}
+                  writable={writable}
+                  empty={t("builder.channel.exceptions.empty")}
+                  onChange={(list) => set((d) => ({ ...d, audience: { ...d.audience, exceptions: list } }))}
+                />
+              </PageSection>
+            ) : null}
+
+            {page.instagram_comments ? (
+              <PageSection id="canal-comentarios" title={t("builder.channel.comments.title")} intro={t("builder.channel.comments.intro")}>
+                <InstagramCommentsSection
+                  comments={page.instagram_comments}
+                  canWrite={canWrite && !disconnected && Boolean(actions.comments)}
+                  onSave={(next) => actions.comments!({ ...ids, ...next })}
+                  onSaved={setPage}
+                />
               </PageSection>
             ) : null}
 
@@ -445,14 +442,21 @@ export function ChannelConfigPage({
 
             {page.type === "whatsapp" && !disconnected ? <ChannelTemplates refId={refId} manage={canWrite} /> : null}
 
-            {page.instagram_comments ? (
-              <PageSection id="canal-comentarios" title={t("builder.channel.comments.title")} intro={t("builder.channel.comments.intro")}>
-                <InstagramCommentsSection
-                  comments={page.instagram_comments}
-                  canWrite={canWrite && !disconnected && Boolean(actions.comments)}
-                  onSave={(next) => actions.comments!({ ...ids, ...next })}
-                  onSaved={setPage}
-                />
+            <PageSection id="canal-escalado" title={t("builder.channel.escalation.title")} intro={t("builder.channel.escalation.intro")}>
+              <EscalationSection
+                draft={draft}
+                writable={writable}
+                notifyFrom={page.config.notify_from}
+                onRecipients={(recipients) => set((d) => ({ ...d, escalation: { ...d.escalation, recipients } }))}
+                onSummary={(summary) => set((d) => ({ ...d, escalation: { ...d.escalation, summary } }))}
+              />
+              <InlineError error={errorIn("escalation")} targets={targets} balance={balance} refId={refId} />
+              <Triggers triggers={page.triggers} editHref={`${agentHref(refId, owner)}#bloque-escalation`} />
+            </PageSection>
+
+            {account ? (
+              <PageSection id="canal-cuenta" title={t("builder.channel.account.title")} intro={t("builder.channel.account.intro")}>
+                <ChannelAccount account={account} />
               </PageSection>
             ) : null}
 
@@ -627,9 +631,9 @@ function PageSection({ id, title, intro, children }: { id: string; title: string
   return (
     <section id={id} aria-labelledby={`${id}-title`} className={`grid min-w-0 scroll-mt-24 gap-3 rounded-md border border-border bg-card p-4 sm:p-6 ${CLEAR_OF_BAR}`}>
       <div className="grid min-w-0 gap-1">
-        <h2 id={`${id}-title`} className="text-base font-semibold text-balance">
+        <h3 id={`${id}-title`} className="text-base font-semibold text-balance">
           {title}
-        </h2>
+        </h3>
         {intro ? <p className="max-w-prose text-sm text-pretty text-muted-foreground">{intro}</p> : null}
       </div>
       {children}
@@ -730,9 +734,10 @@ function AudienceSection({
         <Callout tone="info">{t("builder.channel.adminOnly")}</Callout>
       ) : null}
       {/* Los números de prueba, con «Solo mi equipo» (y mientras no se ha elegido). */}
-      {mode !== "everyone" ? (
+      {/* Phones: only WhatsApp has them (Instagram / Messenger write with an IGSID or PSID). */}
+      {mode !== "everyone" && phones ? (
         <div className="grid min-w-0 gap-2">
-          <h3 className="text-sm font-medium">{t("builder.channel.tests.title")}</h3>
+          <h4 className="text-sm font-medium">{t("builder.channel.tests.title")}</h4>
           <NumberList
             label={t("builder.channel.tests.title")}
             numbers={draft.audience.test_numbers}
@@ -987,7 +992,7 @@ function Triggers({ triggers, editHref }: { triggers: ChannelPage["triggers"]; e
   const t = useT();
   return (
     <div className="grid min-w-0 gap-2 rounded-md bg-muted/40 p-3" data-slot="channel-triggers">
-      <h3 className="text-sm font-medium">{t("builder.channel.triggers.title")}</h3>
+      <h4 className="text-sm font-medium">{t("builder.channel.triggers.title")}</h4>
       <p className="text-xs text-muted-foreground">{t("builder.channel.triggers.intro")}</p>
       {triggers.length ? (
         <ul className="grid list-disc gap-1 pl-5 text-sm">

@@ -57,7 +57,7 @@ describe("el botón de la cabecera", () => {
     expect(agent).toMatchObject({ kind: "link", href: `${base}/agent`, label: "clients.setup.next.agent", why: "clients.setup.why.agent" });
 
     const channel = nextAction(setup({ channel: false, next: "channel" }), "owner", base);
-    expect(channel).toMatchObject({ kind: "link", href: `${base}/channels` });
+    expect(channel).toMatchObject({ kind: "link", href: `${base}/agents` });
   });
 
   it("manda el crédito a la pantalla de consumo, que es la que lo asigna hoy", () => {
