@@ -11,7 +11,7 @@ import { clientHref } from "@/components/shell/routes-v2";
 import { useT } from "@/i18n/client";
 import type { ClientUsage } from "@/lib/backend/money-types";
 
-import { BalanceButton, BalanceDialogs } from "./balance-button";
+import { BalanceDialogs } from "./balance-button";
 import { CurrencyDialog, MoveDialog, RefillDialog, type BagRef } from "./bag-dialogs";
 import { daysText, moneyText, requestedText } from "./money-model";
 import { useRequested } from "./request-balance";
@@ -33,10 +33,12 @@ const bagRef = (row: ClientUsage): BagRef => ({ ref: row.ref, name: row.name ?? 
 /**
  * La tabla por cliente de Consumo (spec 047, requisitos 46.2 y 45.6): su bolsa
  * en su moneda, lo gastado este mes, los días al ritmo de 7 días, el relleno
- * mensual y sus acciones. Los que no tienen saldo salen con «Sin saldo» en rojo
- * y con «Asignar saldo» a la vista. Las acciones van en «⋯»: «Cambiar saldo»,
- * «Mover saldo a otro cliente» y «Ver su gasto» (y el relleno y la moneda).
- * Quien no puede asignar ve «Pedir saldo». Se desplaza dentro de su caja.
+ * mensual y sus acciones. Los que no tienen saldo salen con «Sin saldo» en rojo.
+ * Todas las acciones van en «⋯» (regla de los tres puntos): «Asignar saldo» o
+ * «Cambiar saldo», «Mover saldo a otro cliente» y «Ver su gasto» (y el relleno
+ * y la moneda); en la columna no se repite ningún botón. Quien no puede asignar
+ * ve «Pedir saldo» en el «⋯» y, si ya lo pidió, «Pedido hace…» junto al estado.
+ * Se desplaza dentro de su caja.
  */
 export function UsageClientsTable({ clients, canWrite, days }: { clients: ClientUsage[]; canWrite: boolean; days: number }) {
   const t = useT();
@@ -101,7 +103,7 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
                     {row.empty ? (
                       <span className="inline-flex flex-wrap items-center justify-end gap-2">
                         <StatusBadge tone="danger">{t("money.table.noBalance")}</StatusBadge>
-                        {canWrite ? <BalanceButton refId={row.ref} name={name} mode="assign" size="xs" /> : <RequestInline refId={row.ref} name={name} />}
+                        {canWrite ? null : <RequestedNote refId={row.ref} />}
                       </span>
                     ) : (
                       <span className="whitespace-nowrap tabular-nums">{moneyText(row.bag, "down")}</span>
@@ -140,10 +142,10 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
   );
 }
 
-/** «Pedir saldo» a la vista en un cliente sin saldo, o «Pedido hace…» si ya se pidió. */
-function RequestInline({ refId, name }: { refId: string; name: string }) {
+/** «Pedido hace…» junto a «Sin saldo» si ya se pidió; pedir va en el «⋯». */
+function RequestedNote({ refId }: { refId: string }) {
   const t = useT();
   const at = useRequested(refId);
-  if (at !== undefined) return <span className="text-xs text-muted-foreground">{requestedText(t, at)}</span>;
-  return <BalanceButton refId={refId} name={name} mode="request" size="xs" variant="outline" />;
+  if (at === undefined) return null;
+  return <span className="text-xs text-muted-foreground">{requestedText(t, at)}</span>;
 }

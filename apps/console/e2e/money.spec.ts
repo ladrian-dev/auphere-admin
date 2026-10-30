@@ -65,7 +65,8 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
     expect(plain(await flor.textContent())).toContain("12,40 €");
     const barberia = table.locator(`tr[data-client=${BARBERIA}]`);
     await expect(barberia.getByText("Sin saldo")).toBeVisible();
-    await expect(barberia.getByRole("button", { name: "Asignar saldo" })).toBeVisible();
+    // Regla de los tres puntos: la acción va en el ⋯, no junto al estado.
+    await expect(barberia.getByRole("button", { name: "Asignar saldo" })).toHaveCount(0);
 
     // La gráfica de bloques con su tabla para lectores de pantalla, y sus filtros.
     const chart = page.locator("#gasto");
@@ -100,7 +101,8 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
   test("«Asignar saldo» desde la tabla de Consumo: otra cantidad con coma, el recibo y el aviso final", async ({ page, request }) => {
     await go(page, "/usage", "Consumo");
     const row = page.locator(`tr[data-client=${BARBERIA}]`);
-    await row.getByRole("button", { name: "Asignar saldo" }).click();
+    await row.getByRole("button", { name: /^Acciones de / }).click();
+    await page.getByRole("menuitem", { name: "Asignar saldo" }).click();
     const dialog = page.getByRole("dialog", { name: "Asignar saldo a Barbería Cultor" });
     await expect(dialog).toBeVisible();
     await expect(page).toHaveURL(/\/usage$/);

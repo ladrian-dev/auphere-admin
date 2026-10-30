@@ -131,8 +131,16 @@ describe("Consumo · la tabla por cliente (46.2, 45.6)", () => {
     expect(plain(rows[1]!.textContent)).toContain("Hasta 50,00 USD");
     const empty = rows[2]!;
     expect(within(empty).getByText("Sin saldo").closest("[data-tone]")).toHaveAttribute("data-tone", "danger");
-    expect(within(empty).getByRole("button", { name: "Asignar saldo" })).toBeTruthy();
+    // Regla de los tres puntos: «Asignar saldo» va en el ⋯, no repetido junto al estado.
+    expect(within(empty).queryByRole("button", { name: "Asignar saldo" })).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("sin saldo, «Asignar saldo» se abre desde el ⋯ de ese cliente", async () => {
+    const user = userEvent.setup();
+    wrap(<UsageClientsTable canWrite days={30} clients={[client(), client({ ref: "barberia", name: "Barbería Cultor", bag: M(0), month_spent: M(0), empty: true, days_left: null })]} />);
+    await user.click(screen.getByRole("button", { name: "Acciones de Barbería Cultor" }));
+    expect((await screen.findAllByRole("menuitem"))[0]).toHaveTextContent("Asignar saldo");
   });
 
   it("el ⋯ de cada cliente: «Cambiar saldo», «Mover saldo a otro cliente» y «Ver su gasto»", async () => {
@@ -169,6 +177,7 @@ describe("Consumo · la tabla por cliente (46.2, 45.6)", () => {
     const user = userEvent.setup();
     wrap(<UsageClientsTable canWrite={false} days={30} clients={[client(), client({ ref: "barberia", name: "Barbería Cultor", bag: null, empty: true })]} />);
     expect(screen.queryByRole("button", { name: "Asignar saldo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pedir saldo" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Acciones de Flor y Encanto" }));
     expect((await screen.findAllByRole("menuitem")).map((i) => i.textContent)).toEqual(["Pedir saldo", "Ver su gasto", "Abrir ficha del cliente"]);
   });
