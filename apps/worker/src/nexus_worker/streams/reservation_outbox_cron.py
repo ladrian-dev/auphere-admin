@@ -180,8 +180,10 @@ class _Sender:
         puso el negocio, no el «STOP» del cliente (decisión del owner, QA
         2026-10-30, INC-18). Vale en cualquiera de los números del negocio
         (RLS acota al cliente), como en ``cobranza_reminder_cron``."""
-        return await whatsapp_opt_outs.blocks(
-            self.session, channel_id=None, phone=digits, marketing=False
+        return bool(
+            await whatsapp_opt_outs.blocks(
+                self.session, channel_id=None, phone=digits, marketing=False
+            )
         )
 
     async def _channel(self, notice: automation.Notice) -> Channel | None:
