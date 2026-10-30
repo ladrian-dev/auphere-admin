@@ -174,7 +174,7 @@ describe("Conectar WhatsApp (§10.1)", () => {
     // El alta de la consola deja el número en el cliente: se pasa a este agente.
     await waitFor(() => expect(actions.connect!.move).toHaveBeenCalledWith({ ref: REF, channel: CH3, to: RECEPCION }));
     expect(await screen.findByText("+34 600 11 22 33")).toBeVisible();
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${RECEPCION}/channels/${CH3}`));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${RECEPCION}?canal=${CH3}`));
     expect(toast.success).toHaveBeenCalledWith("WhatsApp conectado. Configura el canal para que empiece a responder.");
     expect(screen.queryByRole("dialog", { name: "Continúa en la ventana de Meta" })).toBeNull();
   });
@@ -185,7 +185,7 @@ describe("Conectar WhatsApp (§10.1)", () => {
     const { actions } = panel(empty(), { reload });
     await user.click(screen.getByRole("button", { name: "Conectar WhatsApp" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Conectar" }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${RECEPCION}/channels/${CH3}`));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${RECEPCION}?canal=${CH3}`));
     expect(actions.connect!.signup).toHaveBeenCalledWith(expect.objectContaining({ mode: "coexistence" }));
     expect(actions.connect!.move).not.toHaveBeenCalled();
   });
@@ -297,14 +297,14 @@ describe("con canales: la lista (§7.2)", () => {
   });
 });
 
-describe("el logo de WhatsApp en la página del canal", () => {
-  it("va junto al título", () => {
+describe("el logo de WhatsApp en la configuración del canal", () => {
+  it("va junto al número, en la cabecera del canal (H5)", () => {
     render(
       <LocaleProvider locale="es">
         <ChannelConfigPage refId={REF} agentId={RECEPCION} page={page()} history={HISTORY} canWrite={false} />
       </LocaleProvider>,
     );
-    const header = screen.getByRole("heading", { level: 1, name: "Canal +34 611 20 48 93" }).closest("header") as HTMLElement;
+    const header = screen.getByRole("heading", { level: 2, name: "+34 611 20 48 93" }).closest("header") as HTMLElement;
     expect(header.querySelector("[data-brand=whatsapp]")).not.toBeNull();
   });
 });

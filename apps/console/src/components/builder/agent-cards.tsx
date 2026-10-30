@@ -1,14 +1,23 @@
 "use client";
 
-import { Bot, ChevronRight } from "lucide-react";
+import { Bot, ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
+import * as React from "react";
+import { toast } from "sonner";
 
-import { Callout, EmptyState, StatusBadge } from "@nexus/ui";
+import { Button, Callout, EmptyState, StatusBadge, buttonVariants } from "@nexus/ui";
 
+import { dismissSuggestedAgentAction } from "@/app/(console)/clients/[ref]/agents/suggested-actions";
 import { useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
 import type { ClientAgent } from "@/lib/backend";
+import { suggestedRole, type SuggestedAgent } from "@/lib/backend/suggested-agents";
 
-import { cardHref, isDefault, visibleText, visibleTone } from "./life-model";
+import type { Result } from "./builder-model";
+import { cardHref, isDefault, proposedAgentHref, visibleText, visibleTone } from "./life-model";
+
+type Dismiss = (body: { ref: string; id: string }) => Promise<Result<null>>;
+const DISMISS: Dismiss = (body) => dismissSuggestedAgentAction(body);
 
 /**
  * La pestaña Agentes de un cliente con la consola nueva (spec 047, historias 7
@@ -20,8 +29,27 @@ import { cardHref, isDefault, visibleText, visibleTone } from "./life-model";
  *
  * «Nuevo agente» solo para quien puede escribir (§V): a quien lee no se le
  * enseña un botón que no podría usar.
+ *
+ * Enmienda del 2026-10-29 (T210, requisito 60.6): detrás, los agentes que el
+ * sistema sugiere para su ficha, como tarjetas «Sugerido» con «Crear este
+ * agente» (abre «Nuevo agente» con su nombre y su descripción, no crea nada) y
+ * «Descartar». `suggested` es `null` si no se pudieron leer: entonces no salen.
+ * Enmienda del 2026-10-30 (T228, 65.7): el papel de una sugerencia es
+ * opcional y no decide nada; sin él, la tarjeta sale entera y sin papel.
  */
-export function AgentCards({ refId, agents, canWrite }: { refId: string; agents: ClientAgent[] | null; canWrite: boolean }) {
+export function AgentCards({
+  refId,
+  agents,
+  canWrite,
+  suggested = null,
+  dismiss = DISMISS,
+}: {
+  refId: string;
+  agents: ClientAgent[] | null;
+  canWrite: boolean;
+  suggested?: SuggestedAgent[] | null;
+  dismiss?: Dismiss;
+}) {
   const t = useT();
   const listed = agents ? [...agents].sort((a, b) => Number(a.status === "archived") - Number(b.status === "archived")) : [];
   return (
@@ -47,7 +75,109 @@ export function AgentCards({ refId, agents, canWrite }: { refId: string; agents:
           ))}
         </ul>
       )}
+      {suggested?.length ? <SuggestedAgents refId={refId} initial={suggested} canWrite={canWrite} dismiss={dismiss} /> : null}
     </div>
+  );
+}
+
+/** Las tarjetas «Sugerido» (60.6): ninguna se crea sola. */
+function SuggestedAgents({ refId, initial, canWrite, dismiss }: { refId: string; initial: SuggestedAgent[]; canWrite: boolean; dismiss: Dismiss }) {
+  const t = useT();
+  const hintId = React.useId();
+  const [items, setItems] = React.useState(initial);
+  if (!items.length) return null;
+  return (
+    <div className="grid min-w-0 gap-2" data-slot="suggested-agents">
+      <p id={hintId} className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-muted-foreground">
+        <Sparkles aria-hidden="true" className="size-4 shrink-0" />
+        {t("builder.suggested.hint")}
+      </p>
+      <ul aria-label={t("builder.suggested.list")} aria-describedby={hintId} className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {items.map((agent) => (
+          <SuggestedCard
+            key={agent.id}
+            refId={refId}
+            agent={agent}
+            canWrite={canWrite}
+            dismiss={dismiss}
+            onDismissed={() => setItems((prev) => prev.filter((x) => x.id !== agent.id))}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SuggestedCard({
+  refId,
+  agent,
+  canWrite,
+  dismiss,
+  onDismissed,
+}: {
+  refId: string;
+  agent: SuggestedAgent;
+  canWrite: boolean;
+  dismiss: Dismiss;
+  onDismissed: () => void;
+}) {
+  const t = useT();
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState(false);
+  // 65.7: el papel es opcional y ninguno es fijo. Uno que la consola no conoce, o ninguno, no se pinta.
+  const role = suggestedRole(agent.role);
+
+  async function discard() {
+    if (busy) return;
+    setBusy(true);
+    setError(false);
+    const res = await dismiss({ ref: refId, id: agent.id }).catch(() => null);
+    setBusy(false);
+    if (res?.ok) {
+      toast.success(t("builder.suggested.dismissed"));
+      onDismissed();
+      return;
+    }
+    setError(true);
+  }
+
+  return (
+    <li className="grid h-full min-w-0 content-between gap-3 rounded-md border border-dashed border-input bg-card p-4" data-slot="suggested-agent">
+      <div className="grid min-w-0 gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 font-medium text-pretty break-words">{agent.name}</p>
+          <StatusBadge tone="info">{t("builder.suggested.badge")}</StatusBadge>
+        </div>
+        {role ? <p className="text-xs text-muted-foreground">{t(`builder.suggested.role.${role}` as MessageKey)}</p> : null}
+        <p className="line-clamp-3 text-sm text-pretty break-words text-muted-foreground">{agent.description}</p>
+      </div>
+      {error ? (
+        <p role="alert" className="text-xs text-pretty text-destructive">
+          {t("builder.suggested.error")}
+        </p>
+      ) : null}
+      {canWrite ? (
+        <div className="flex min-w-0 flex-wrap gap-2">
+          <Link
+            href={proposedAgentHref(refId, agent)}
+            className={buttonVariants({ size: "sm", variant: "outline" })}
+            aria-label={t("builder.suggested.create.label", { name: agent.name })}
+          >
+            {t("builder.suggested.create")}
+          </Link>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            loading={busy}
+            onClick={() => void discard()}
+            aria-label={t("builder.suggested.dismiss.label", { name: agent.name })}
+          >
+            {t("builder.suggested.dismiss")}
+          </Button>
+        </div>
+      ) : null}
+    </li>
   );
 }
 

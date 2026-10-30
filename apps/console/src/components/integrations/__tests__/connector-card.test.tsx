@@ -20,7 +20,6 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: 
 vi.mock("@/app/(console)/clients/[ref]/integrations/actions", () => ({
   connectApiKeyAction: vi.fn(),
   connectorStatusAction: vi.fn(),
-  setAgendaProUrlAction: vi.fn(),
   startConsentAction: vi.fn(),
   syncConnectorAction: vi.fn(),
 }));

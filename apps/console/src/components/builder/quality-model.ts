@@ -1,5 +1,5 @@
 import type { MessageKey } from "@/i18n/messages";
-import type { AgentTest, ReviewFix, TestStatus } from "@/lib/backend/agent-quality-types";
+import { TEST_STOPS, type AgentTest, type ReviewFix, type TestStatus, type TestStop, type TestTurn } from "@/lib/backend/agent-quality-types";
 
 import { POLL_FIRST_MS, nextDelay, type Result } from "./builder-model";
 
@@ -125,6 +125,35 @@ export const STATUS_TONE: Record<TestStatus, "positive" | "warn" | "danger" | "i
 /** Las que no pasan y hay que mirar: tienen «Por qué falló». */
 export function isFailing(status: TestStatus): boolean {
   return status === "failed" || status === "flaky" || status === "unknown";
+}
+
+/**
+ * La conversación que enseña «Por qué falló» (61.6): la de la prueba si la API
+ * la manda en la prueba; si no, la de la primera pasada que falló (o, si
+ * ninguna dice que falló, la primera con conversación). `null` sin conversación
+ * guardada, como las pruebas de antes de la fase 27. Un motivo de parada que la
+ * consola no conoce no se enseña.
+ */
+export function failedConversation(test: AgentTest): { transcript: TestTurn[]; stop: TestStop | null } | null {
+  const stopOf = (stop: unknown): TestStop | null => ((TEST_STOPS as readonly unknown[]).includes(stop) ? (stop as TestStop) : null);
+  if (test.transcript?.length) return { transcript: test.transcript, stop: stopOf(test.stop) };
+  const attempts = (test.attempts ?? []).filter((a) => a.transcript?.length);
+  const chosen = attempts.find((a) => a.passed === false) ?? attempts.find((a) => a.passed !== true);
+  return chosen ? { transcript: chosen.transcript!, stop: stopOf(chosen.stop) } : null;
+}
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (65.8): la razón de una prueba que no
+ * aplica, sin el «No aplica» con el que puede llegar, porque la pantalla ya lo
+ * pone delante («No aplica: {razón}»).
+ */
+export function naReason(reason: string): string {
+  return reason.replace(/^\s*no aplica\s*[:.,-]\s*/i, "").trim() || reason.trim();
+}
+
+/** Una prueba de la guía generada para este cliente: lleva «Generada» (58.4). */
+export function isGenerated(test: Pick<AgentTest, "origin">): boolean {
+  return test.origin === "generated";
 }
 
 const PARTS = new Set([

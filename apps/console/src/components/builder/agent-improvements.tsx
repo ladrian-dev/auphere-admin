@@ -22,8 +22,6 @@ import {
 } from "@nexus/ui";
 
 import { acceptImprovementAction, discardImprovementAction, improvementsAction } from "@/app/(console)/clients/[ref]/agents/improve-actions";
-import { RowActions, type RowAction } from "@/components/row-actions";
-import { foldsIntoMenu } from "@/components/row-actions-rule";
 import { useLocale, useT } from "@/i18n/client";
 import type { Improvement, ImprovementAccepted, ImprovementDiscarded, Improvements } from "@/lib/backend/agent-improve-types";
 
@@ -55,6 +53,11 @@ const REASON_MAX = 300;
  * que preguntó el cliente, nunca el mensaje (C1). Cada una trae su propuesta: el
  * cambio y la prueba nueva.
  *
+ * Como el prototipo (`agente.md` §6, hueco H9; requisito 63.2): la tarjeta
+ * «Sugerencias de esta semana», a la derecha de los 30 días, con una fila por
+ * mejora —su bombilla, lo que pasó, a cuántos afecta o de dónde viene— y «Ver».
+ * «Ver» abre la propuesta entera con «Aceptar» y «Descartar».
+ *
  * «Aceptar» lleva el cambio y la prueba al borrador y dice en qué quedó; nada se
  * publica hasta «Guardar», que pasa la puerta. «Descartar» pide el motivo, y una
  * sugerencia descartada no vuelve en 30 días. Quien solo lee lo ve todo, sin
@@ -76,15 +79,16 @@ export function AgentImprovementsPanel({
 }) {
   const t = useT();
   const [data, setData] = React.useState(initial);
-  const [busy, setBusy] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
   const [accepted, setAccepted] = React.useState<ImprovementAccepted | null>(null);
-  const [problem, setProblem] = React.useState<{ id: string; text: string } | null>(null);
+  const [problem, setProblem] = React.useState<string | null>(null);
+  const [viewing, setViewing] = React.useState<Improvement | null>(null);
   const [discarding, setDiscarding] = React.useState<Improvement | null>(null);
   const [reloading, startReload] = React.useTransition();
+  const titleId = React.useId();
 
   const items = data?.items ?? [];
   const allowed = data?.allowed ?? [];
-  const menu = foldsIntoMenu(items.length * allowed.length);
 
   function retry() {
     startReload(async () => {
@@ -114,18 +118,24 @@ export function AgentImprovementsPanel({
     setData((d) => (d ? { ...d, items: d.items.filter((i) => i.id !== id) } : d));
   }
 
+  function view(item: Improvement | null) {
+    setViewing(item);
+    setProblem(null);
+  }
+
   async function accept(item: Improvement) {
-    setBusy(item.id);
+    setBusy(true);
     setProblem(null);
     const res = await actions.accept({ ref: refId, agent: agentId, id: item.id });
-    setBusy(null);
+    setBusy(false);
     if (res.ok) {
       drop(item.id);
+      setViewing(null);
       setAccepted(res.data);
       onAccepted?.(res.data);
       return;
     }
-    setProblem({ id: item.id, text: failure(res) });
+    setProblem(failure(res));
     if (res.code === "improvement_closed") drop(item.id);
   }
 
@@ -138,50 +148,101 @@ export function AgentImprovementsPanel({
     return null;
   }
 
-  if (data === null) {
-    return <ErrorState className="py-6" title={t("improve.error.load")} description={t("improve.error.load.hint")} onRetry={retry} retryLabel={t("improve.retry")} />;
-  }
-
   return (
-    <div className="grid min-w-0 gap-4" data-slot="agent-improvements" aria-busy={reloading}>
-      <p className="text-sm text-pretty text-muted-foreground">{t("improve.intro")}</p>
-      {accepted ? (
-        <Callout tone="positive" title={t("improve.accepted.title")} dismissible dismissLabel={t("improve.accepted.dismiss")} onDismiss={() => setAccepted(null)}>
-          {t("improve.accepted.body", { n: accepted.draft_revision })}
-        </Callout>
-      ) : null}
-      {items.length === 0 ? (
-        <EmptyState icon={Lightbulb} title={t("improve.empty")} description={t("improve.empty.hint")} readonly />
+    <section
+      id="agente-mejoras"
+      aria-labelledby={titleId}
+      aria-busy={reloading || undefined}
+      className="grid min-w-0 scroll-mt-24 content-start gap-3 rounded-lg border border-border bg-card p-4 sm:px-5"
+      data-slot="agent-improvements"
+    >
+      <h2 id={titleId} className="text-base font-semibold text-balance">
+        {t("improve.suggestions.title")}
+      </h2>
+      {data === null ? (
+        <ErrorState className="py-4" title={t("improve.error.load")} description={t("improve.error.load.hint")} onRetry={retry} retryLabel={t("improve.retry")} />
       ) : (
-        <ul aria-label={t("improve.list")} className="grid min-w-0 divide-y divide-border-soft border-y border-border-soft">
-          {items.map((item) => {
-            const rowActions: RowAction[] = allowed.map((a) =>
-              a === "accept"
-                ? { label: t("improve.accept"), primary: true, disabled: busy !== null, onSelect: () => void accept(item) }
-                : { label: t("improve.discard"), disabled: busy !== null, onSelect: () => setDiscarding(item) },
-            );
-            return (
-              <li key={item.id} className="min-w-0 py-3">
-                <ImprovementRow item={item} actions={rowActions} menu={menu} problem={problem?.id === item.id ? problem.text : null} />
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {accepted ? (
+            <Callout tone="positive" title={t("improve.accepted.title")} dismissible dismissLabel={t("improve.accepted.dismiss")} onDismiss={() => setAccepted(null)}>
+              {t("improve.accepted.body", { n: accepted.draft_revision })}
+            </Callout>
+          ) : null}
+          {items.length === 0 ? (
+            <EmptyState icon={Lightbulb} title={t("improve.empty")} description={t("improve.empty.hint")} readonly />
+          ) : (
+            <ul aria-label={t("improve.list")} className="grid min-w-0 divide-y divide-border">
+              {items.map((item) => (
+                <li key={item.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0" data-improvement={item.kind}>
+                  <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    <Lightbulb className="size-4" />
+                  </span>
+                  <span className="grid min-w-0 flex-1 gap-1">
+                    <span className="text-sm font-medium text-pretty break-words">{item.topic}</span>
+                    <span className="text-xs text-pretty text-muted-foreground">{subtitle(t, item)}</span>
+                  </span>
+                  <Button type="button" size="sm" variant="outline" className="shrink-0" aria-label={t("improve.view.aria", { topic: item.topic })} onClick={() => view(item)}>
+                    {t("improve.view")}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
+      {viewing ? (
+        <ImprovementDialog
+          item={viewing}
+          allowed={allowed}
+          busy={busy}
+          problem={problem}
+          onClose={() => view(null)}
+          onAccept={() => void accept(viewing)}
+          onDiscard={() => {
+            setDiscarding(viewing);
+            view(null);
+          }}
+        />
+      ) : null}
       {discarding ? <DiscardDialog item={discarding} onClose={() => setDiscarding(null)} onDiscard={(reason) => discard(discarding, reason)} /> : null}
-    </div>
+    </section>
   );
 }
 
-function ImprovementRow({ item, actions, menu, problem }: { item: Improvement; actions: RowAction[]; menu: boolean; problem: string | null }) {
+/** La línea de debajo del título: a cuántos afecta una sugerencia, de dónde viene una corrección. */
+function subtitle(t: ReturnType<typeof useT>, item: Improvement): string {
+  return item.kind === "suggestion" ? improvementReach(t, item) : `${t("improve.kind.correction")} · ${t(originKey(item.origin))}`;
+}
+
+/** «Ver»: la mejora entera —lo que pasó, la propuesta y su prueba— con «Aceptar» y «Descartar» si se puede. */
+function ImprovementDialog({
+  item,
+  allowed,
+  busy,
+  problem,
+  onClose,
+  onAccept,
+  onDiscard,
+}: {
+  item: Improvement;
+  allowed: readonly string[];
+  busy: boolean;
+  problem: string | null;
+  onClose: () => void;
+  onAccept: () => void;
+  onDiscard: () => void;
+}) {
   const t = useT();
   const locale = useLocale();
-  const titleId = React.useId();
   const ops = item.diff.ops ?? [];
   return (
-    <article aria-labelledby={titleId} className="grid min-w-0 gap-2" data-improvement={item.kind}>
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-        <div className="grid min-w-0 flex-1 basis-56 gap-1">
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-pretty break-words">{item.topic}</DialogTitle>
+          <DialogDescription>{improvementReach(t, item)}</DialogDescription>
+        </DialogHeader>
+        <div className="grid min-w-0 gap-3" data-improvement={item.kind}>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <StatusBadge tone={item.kind === "suggestion" ? "info" : "warn"}>
               {t(item.kind === "suggestion" ? "improve.kind.suggestion" : "improve.kind.correction")}
@@ -190,61 +251,57 @@ function ImprovementRow({ item, actions, menu, problem }: { item: Improvement; a
               {item.kind === "suggestion" && item.week ? t("improve.week", { date: formatDate(item.week, locale) }) : t(originKey(item.origin))}
             </span>
           </div>
-          <h3 id={titleId} className="text-sm font-semibold text-pretty break-words">
-            {item.topic}
-          </h3>
-          <p className="text-xs text-muted-foreground">{improvementReach(t, item)}</p>
-        </div>
-        {actions.length && menu ? <RowActions actions={actions} menu ariaLabel={t("improve.actions", { topic: item.topic })} /> : null}
-        {actions.length && !menu ? (
-          // Pocos botones en la lista: van a la vista, el principal primero (la regla de los tres puntos).
-          <div className="flex shrink-0 flex-wrap gap-2">
-            {actions.map((a) => (
-              <Button key={a.label} size="sm" variant={a.primary ? "default" : "outline"} disabled={a.disabled} onClick={a.onSelect}>
-                {a.label}
-              </Button>
-            ))}
+          {item.kind === "correction" && item.lesson ? (
+            <p className="text-sm text-pretty break-words">
+              <span className="font-medium">{t("improve.lesson")} </span>
+              {item.lesson}
+            </p>
+          ) : item.summary ? (
+            <p className="text-sm text-pretty break-words">{item.summary}</p>
+          ) : null}
+          <div className="grid min-w-0 gap-2 rounded-md bg-muted/50 px-3 py-2">
+            <p className="text-sm font-medium">{t("improve.proposal")}</p>
+            {ops.length ? (
+              <ul className="grid min-w-0 gap-2 text-sm">
+                {ops.map((op, i) => (
+                  <OpLine key={`${op.path}-${i}`} op={op} />
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("improve.proposal.none")}</p>
+            )}
+            {item.test ? (
+              <div className="grid min-w-0 gap-1 text-sm">
+                <p className="font-medium">{t("improve.test", { name: item.test.name })}</p>
+                {item.test.first_message ? <p className="text-pretty break-words text-muted-foreground">{t("improve.test.first", { text: item.test.first_message })}</p> : null}
+                {item.test.plan ? <p className="text-pretty break-words text-muted-foreground">{item.test.plan}</p> : null}
+                {item.test.critical ? <StatusBadge tone="warn" className="justify-self-start">{t("improve.test.critical")}</StatusBadge> : null}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-      {item.kind === "correction" && item.lesson ? (
-        <p className="text-sm text-pretty break-words">
-          <span className="font-medium">{t("improve.lesson")} </span>
-          {item.lesson}
-        </p>
-      ) : item.summary ? (
-        <p className="text-sm text-pretty break-words">{item.summary}</p>
-      ) : null}
-      <details className="group min-w-0 rounded-md bg-muted/50 px-3 py-2">
-        <summary className="min-h-6 cursor-pointer text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-          {t("improve.proposal")}
-        </summary>
-        <div className="mt-2 grid min-w-0 gap-3">
-          {ops.length ? (
-            <ul className="grid min-w-0 gap-2 text-sm">
-              {ops.map((op, i) => (
-                <OpLine key={`${op.path}-${i}`} op={op} />
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("improve.proposal.none")}</p>
-          )}
-          {item.test ? (
-            <div className="grid min-w-0 gap-1 text-sm">
-              <p className="font-medium">{t("improve.test", { name: item.test.name })}</p>
-              {item.test.first_message ? <p className="text-pretty break-words text-muted-foreground">{t("improve.test.first", { text: item.test.first_message })}</p> : null}
-              {item.test.plan ? <p className="text-pretty break-words text-muted-foreground">{item.test.plan}</p> : null}
-              {item.test.critical ? <StatusBadge tone="warn" className="justify-self-start">{t("improve.test.critical")}</StatusBadge> : null}
-            </div>
+          {problem ? (
+            <p role="alert" className="text-sm text-destructive">
+              {problem}
+            </p>
           ) : null}
         </div>
-      </details>
-      {problem ? (
-        <p role="alert" className="text-sm text-destructive">
-          {problem}
-        </p>
-      ) : null}
-    </article>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            {t("improve.close")}
+          </Button>
+          {allowed.includes("discard") ? (
+            <Button type="button" variant="outline" onClick={onDiscard} disabled={busy}>
+              {t("improve.discard")}
+            </Button>
+          ) : null}
+          {allowed.includes("accept") ? (
+            <Button type="button" onClick={onAccept} loading={busy}>
+              {t("improve.accept")}
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

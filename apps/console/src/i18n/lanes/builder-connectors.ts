@@ -10,15 +10,11 @@ export const builderConnectorsMessages = {
   // ── La sección del agente (35.2) ────────────────────────────────────────
   "agentConn.title": { es: "Conectores", en: "Connectors" },
   "agentConn.intro": {
-    es: "Las herramientas del negocio que puede usar este agente. Cada servicio se autoriza una vez por cliente y aquí eliges con qué permiso lo usa este agente.",
-    en: "The business tools this agent can use. Each service is authorised once per client and here you choose how this agent may use it.",
+    es: "Lo que este agente usa para actuar. Se autoriza una vez por cliente y cada agente activa solo lo que necesita.",
+    en: "What this agent uses to act. It is authorised once per client and each agent turns on only what it needs.",
   },
-  "agentConn.search": { es: "Buscar un conector", en: "Search a connector" },
-  "agentConn.search.placeholder": { es: "Nombre del servicio…", en: "Service name…" },
   "agentConn.category": { es: "Categoría", en: "Category" },
-  "agentConn.category.all": { es: "Todas", en: "All" },
   "agentConn.list": { es: "Conectores para este agente", en: "Connectors for this agent" },
-  "agentConn.count": { es: "Se ven {shown} de {total}", en: "Showing {shown} of {total}" },
   "agentConn.empty": {
     es: "Todavía no hay conectores disponibles para este cliente.",
     en: "There are no connectors available for this client yet.",
@@ -32,10 +28,7 @@ export const builderConnectorsMessages = {
   },
   "agentConn.retry": { es: "Reintentar", en: "Retry" },
   "agentConn.readonly": { es: "Tu rol puede ver los conectores, no cambiarlos.", en: "Your role can see the connectors, not change them." },
-  "agentConn.needed": { es: "Lo pide una habilidad", en: "A skill needs it" },
-  "agentConn.state.notConnected": { es: "Sin conectar", en: "Not connected" },
   "agentConn.state.off": { es: "Conectado, sin usar en este agente", en: "Connected, not used by this agent" },
-  "agentConn.state.on": { es: "Lo usa este agente", en: "This agent uses it" },
   "agentConn.auth.oauth_composio": { es: "Se autoriza con la cuenta del servicio", en: "Authorised with the service account" },
   "agentConn.auth.api_key": { es: "Se conecta con una clave", en: "Connected with a key" },
   "agentConn.auth.browser_credentials": { es: "Se conecta con usuario y contraseña", en: "Connected with a username and password" },
@@ -44,7 +37,6 @@ export const builderConnectorsMessages = {
   "agentConn.auth.other": { es: "Se autoriza desde el servicio", en: "Authorised from the service" },
 
   // ── El permiso (35.5) ──────────────────────────────────────────────────
-  "agentConn.permission": { es: "Permiso de {name} en este agente", en: "{name} permission for this agent" },
   "agentConn.permission.off": { es: "Sin usar en este agente", en: "Not used by this agent" },
   "agentConn.permission.read": { es: "Solo leer", en: "Read only" },
   "agentConn.permission.ask_before_write": { es: "Preguntar antes de escribir", en: "Ask before writing" },
@@ -56,15 +48,28 @@ export const builderConnectorsMessages = {
   },
   "agentConn.permission.hint.read_write": { es: "Consulta y cambia sin preguntar.", en: "Looks things up and changes them without asking." },
   "agentConn.permission.saved": { es: "{name}: {permission}.", en: "{name}: {permission}." },
-  "agentConn.activated": { es: "{name} activado en este agente con «{permission}».", en: "{name} turned on for this agent with “{permission}”." },
 
   // ── Las acciones de cada fila ──────────────────────────────────────────
   "agentConn.connect": { es: "Conectar", en: "Connect" },
   "agentConn.reconnect": { es: "Reconectar", en: "Reconnect" },
   "agentConn.page": { es: "Ver su página", en: "Open its page" },
+  // H10 (63.3): cada botón de la fila lleva el nombre del conector para quien no ve la fila.
+  "agentConn.page.named": { es: "Ver su página de {name}", en: "Open the {name} page" },
+  "agentConn.connect.named": { es: "Conectar {name}", en: "Connect {name}" },
+  "agentConn.reconnect.named": { es: "Reconectar {name}", en: "Reconnect {name}" },
+  "agentConn.settings.named": { es: "Ajustes de {name}", en: "{name} settings" },
+  "agentConn.remove.short": { es: "Quitar", en: "Remove" },
+  "agentConn.remove.named": { es: "Quitar {name}", en: "Remove {name}" },
+  "agentConn.connected": { es: "Conectado", en: "Connected" },
+  "agentConn.settings.permission": { es: "Permiso en este agente", en: "Permission for this agent" },
+  "agentConn.searchLabel": { es: "Buscar conector", en: "Search connector" },
+  "agentConn.filter.all": { es: "Todos", en: "All" },
+  "agentConn.filter.connected": { es: "Conectados", en: "Connected" },
+  "agentConn.noMatch": { es: "Ningún conector coincide con «{q}».", en: "No connector matches “{q}”." },
+  "agentConn.note.needed": { es: "lo necesita una habilidad de este agente", en: "a skill of this agent needs it" },
+
   "agentConn.settings": { es: "Ajustes", en: "Settings" },
   "agentConn.remove": { es: "Quitar de este agente", en: "Remove from this agent" },
-  "agentConn.actions": { es: "Más acciones de {name}", en: "More actions for {name}" },
 
   // ── Conectar (35.3, 35.4) ──────────────────────────────────────────────
   "agentConn.connect.title": { es: "Conectar {name}", en: "Connect {name}" },

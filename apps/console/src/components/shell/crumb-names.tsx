@@ -28,10 +28,27 @@ export function useCrumbNames(): Record<string, string> {
   return useSyncExternalStore(subscribe, () => names, () => EMPTY);
 }
 
-export function CrumbName({ id, label }: { id: string; label: string }) {
+/**
+ * `transient`: el nombre se va al desmontar. Lo usa la configuración de un
+ * canal dentro de su agente (`?canal=`, 63.1): cerrada, la miga del canal no
+ * se queda.
+ */
+export function CrumbName({ id, label, transient = false }: { id: string; label: string; transient?: boolean }) {
   useEffect(() => {
     names = { ...names, [id]: label };
     emit();
-  }, [id, label]);
+    if (!transient) return;
+    return () => {
+      const rest = { ...names };
+      delete rest[id];
+      names = rest;
+      emit();
+    };
+  }, [id, label, transient]);
   return null;
+}
+
+/** La clave con la que la configuración de un canal anuncia su miga dentro de su agente. */
+export function openChannelCrumb(agentId: string): string {
+  return `canal@${agentId}`;
 }

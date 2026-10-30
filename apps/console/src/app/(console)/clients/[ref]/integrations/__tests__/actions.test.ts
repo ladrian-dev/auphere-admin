@@ -8,7 +8,6 @@ vi.mock("next/cache", () => h.cacheModule);
 const {
   connectApiKeyAction,
   connectorStatusAction,
-  setAgendaProUrlAction,
   startConsentAction,
   syncConnectorAction,
 } = await import("../actions");
@@ -33,33 +32,6 @@ describe("integrations actions (spec 017, R4)", () => {
     // funciona hasta que alguien recargara a mano.
     expect(h.cacheModule.revalidatePath).toHaveBeenCalledWith("/clients/demo", "layout");
     expect(h.cacheModule.revalidatePath).not.toHaveBeenCalledWith("/clients/demo/integrations");
-  });
-
-  it("setAgendaProUrlAction enlaza y desenlaza por la misma llamada", async () => {
-    h.setRole("builder");
-    const out = {
-      integration: "agendapro",
-      public_url: "https://x.site.agendapro.com/cl/s",
-      updated_at: "2026-09-23T00:00:00Z",
-    };
-    h.backend.setAgendaProUrl.mockResolvedValueOnce(out);
-    expect(await setAgendaProUrlAction({ ref: "demo", public_url: out.public_url })).toEqual({
-      ok: true,
-      data: out,
-    });
-    expect(h.backend.setAgendaProUrl).toHaveBeenCalledWith("demo", out.public_url);
-    expect(h.cacheModule.revalidatePath).toHaveBeenCalledWith("/clients/demo", "layout");
-
-    h.backend.setAgendaProUrl.mockResolvedValueOnce({ ...out, public_url: null });
-    expect(await setAgendaProUrlAction({ ref: "demo", public_url: null })).toMatchObject({
-      ok: true,
-      data: { public_url: null },
-    });
-
-    h.fail("setAgendaProUrl", 422, "", "invalid_url");
-    expect(
-      await setAgendaProUrlAction({ ref: "demo", public_url: "https://evil.example" }),
-    ).toMatchObject({ ok: false, code: "invalid_url" });
   });
 
   it("connectApiKeyAction devuelve el conector con el resultado del sync", async () => {
@@ -92,7 +64,6 @@ describe("integrations actions (spec 017, R4)", () => {
       "resumeConnector",
       "disconnectConnector",
       "connectApiKey",
-      "setAgendaProUrl",
     ] as const;
     for (const n of names) h.backend[n].mockClear();
 
@@ -106,7 +77,6 @@ describe("integrations actions (spec 017, R4)", () => {
     expect(
       await connectApiKeyAction({ ref: "demo", slug: "woocommerce", secrets: { k: "v" }, endpoint_meta: {} }),
     ).toEqual(h.denied());
-    expect(await setAgendaProUrlAction({ ref: "demo", public_url: null })).toEqual(h.denied());
 
     for (const n of names) expect(h.backend[n]).not.toHaveBeenCalled();
   });

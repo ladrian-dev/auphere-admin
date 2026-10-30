@@ -6,6 +6,7 @@ import * as React from "react";
 
 import { Button, Callout, Card, CardContent, MICROS_PER_UNIT, Money, StatusBadge, cn, formatMoney, formatNumber } from "@nexus/ui";
 
+import { ClientReadCard } from "@/components/clients/client-read-card";
 import { AgentCapButton } from "@/components/money/agent-cap";
 import { BalanceButton, BalanceDialogs } from "@/components/money/balance-button";
 import { agentHref, clientHref } from "@/components/shell/routes-v2";
@@ -31,7 +32,9 @@ export type PanelMoney = { currency: "EUR" | "USD"; canSetCap: boolean; refillUp
 /**
  * El Panel de un cliente (spec 047, T067, requisito 14) como el prototipo
  * aprobado (`clientes.md` §4, hueco H4): dos columnas, 1,35 : 1. A la
- * izquierda, mientras dura la lectura de la web, su tarjeta; «Saldo» (lo que
+ * izquierda, la tarjeta de lectura mientras se lee y al terminar (enmienda del
+ * 2026-10-29, requisito 59.7: qué se leyó, qué se encontró, qué falta revisar y
+ * qué red no se pudo leer y por qué); sin lectura, no hay tarjeta. «Saldo» (lo que
  * queda en grande, lo consumido y lo disponible, la barra por agente medida
  * contra lo asignado con «Disponible» en la leyenda y los avisos) con «Asignar
  * saldo» en su cabecera; y «Este mes» con tres cifras. A la derecha, «Agentes
@@ -61,6 +64,7 @@ export function ClientPanelView({
     <div className="grid min-w-0 gap-4" data-slot="client-panel">
       <div data-slot="client-panel-grid" className="grid min-w-0 items-start gap-4 min-[980px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <div className="grid min-w-0 gap-4">
+          {panel.read?.job ? <ClientReadCard refId={panel.ref} initial={panel.read} canWrite={panel.allowed.includes("edit")} /> : null}
           <BalanceCard panel={panel} money={money} mode={balanceMode} openBalance={openBalance} />
           <MonthCard panel={panel} now={now} />
         </div>

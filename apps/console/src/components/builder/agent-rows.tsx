@@ -13,6 +13,7 @@ import type { AgentSpec, EditableBlock, EscalationTrigger, SpecSkill } from "@/l
 import { AGENT_ROWS, ROW_BLOCKS, ROW_TITLE_BLOCK, editableBlocks, type AgentRow } from "./agent-proto-model";
 import { AiDisclosureValue, BlockValue, blockTitleKey, connectHref, triggerText } from "./block-view";
 import { blockFromSpec, connectByIntegration, integrationName, isEditable, languageName, skillName, type AgentBlockKey } from "./builder-model";
+import { canConnect } from "./missing-model";
 
 /** Lo que dice la ficha del negocio para «Qué sabe»; `null` si no se pudo leer. */
 export type BusinessSummary = { services: number; locations: number; hours: boolean };
@@ -52,6 +53,8 @@ export function AgentRows({
   sources,
   business,
   onConnect,
+  connected,
+  notOffered,
 }: {
   refId: string;
   spec: AgentSpec;
@@ -66,11 +69,20 @@ export function AgentRows({
   /** Cuántas fuentes propias tiene; `null` si no se sabe. */
   sources?: number | null;
   business?: BusinessSummary | null;
-  /** Un conector que falta: la pestaña Conectores. Sin ella, la página de conectores del cliente. */
+  /** Un conector que falta: se conecta en el sitio (62.3). Sin ella, la página de conectores del cliente. */
   onConnect?: (integration: string) => void;
+  /** Spec 047 (H11): los conectores que este agente ya usa; su habilidad dice «{X} · conectado». */
+  connected?: ReadonlySet<string>;
+  /**
+   * Spec 047 (65.3): lo que la API dice que no ofrecemos como conector o que es
+   * un módulo apagado (`missing_capabilities`). Ni «Conectar {X}» ni «conectado».
+   */
+  notOffered?: ReadonlySet<string>;
 }) {
   const t = useT();
   return (
+    <ConnectedIntegrations.Provider value={connected ?? NONE}>
+    <NotOfferedIntegrations.Provider value={notOffered ?? NONE}>
     <section aria-label={t("agentProto.table")} className="grid min-w-0 divide-y divide-border rounded-lg border border-border bg-card" data-slot="agent-rows">
       {AGENT_ROWS.map((row) => {
         const isOpen = open?.row === row;
@@ -124,8 +136,16 @@ export function AgentRows({
         );
       })}
     </section>
+    </NotOfferedIntegrations.Provider>
+    </ConnectedIntegrations.Provider>
   );
 }
+
+/** Spec 047 (H11): los conectores que el agente ya usa, para la línea de cada habilidad. */
+const NONE: ReadonlySet<string> = new Set();
+const ConnectedIntegrations = React.createContext<ReadonlySet<string>>(NONE);
+/** Spec 047 (65.3): lo que no se conecta nunca desde aquí (además de Reservas). */
+const NotOfferedIntegrations = React.createContext<ReadonlySet<string>>(NONE);
 
 function Row({
   row,
@@ -319,7 +339,7 @@ function DoesSummary({ spec, refId }: { spec: AgentSpec; refId: string }) {
       <Note>{counts}</Note>
       {sections || legacy || rules ? (
         <details className="group min-w-0">
-          <summary className="w-fit cursor-pointer list-none text-xs font-medium text-primary-text underline underline-offset-4 hover:no-underline [&::-webkit-details-marker]:hidden">
+          <summary className="min-h-6 w-fit cursor-pointer list-none rounded-sm text-xs font-medium text-primary-text underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
             {t("agentProto.does.more")}
           </summary>
           <div className="mt-2 grid min-w-0 gap-4">
@@ -431,11 +451,18 @@ function CanSummary({ spec, refId, onConnect }: { spec: AgentSpec; refId: string
  * derecha, «{conector} · conectado» o «Conectar {conector}». Apagada, lo dice;
  * sin su conector, lo que hace mientras tanto. Lo que se pide conectar sin una
  * habilidad que lo nombre va en su propia línea.
+ *
+ * Enmienda del 2026-10-30 (65.3): solo con conectores ofrecidos. Reservas (un
+ * módulo) y lo que la API dice que no ofrecemos no llevan «Conectar {X}» ni
+ * «conectado»: lo dice «No tenemos herramienta para: …».
  */
 function SkillLines({ spec, refId, onConnect }: { spec: AgentSpec; refId: string; onConnect?: (integration: string) => void }) {
   const t = useT();
   const skills: SpecSkill[] = Array.isArray(spec.skills) ? spec.skills : [];
-  const missing = connectByIntegration(spec.connection_requests);
+  // Lo que pide el borrador sin conectar, menos lo que ya se conectó en esta visita (H11).
+  const inUse = React.useContext(ConnectedIntegrations);
+  const notOffered = React.useContext(NotOfferedIntegrations);
+  const missing = new Map([...connectByIntegration(spec.connection_requests, notOffered)].filter(([integration]) => !inUse.has(integration)));
   const named = new Set(skills.map((s) => s.integration).filter((i): i is string => Boolean(i)));
   const loose = [...missing.keys()].filter((integration) => !named.has(integration));
   if (!skills.length && !loose.length) return <p className="text-pretty text-muted-foreground">{t("agentProto.can.none")}</p>;
@@ -443,14 +470,15 @@ function SkillLines({ spec, refId, onConnect }: { spec: AgentSpec; refId: string
     <ul className="grid min-w-0 gap-2" data-slot="builder-skills">
       {skills.map((s) => {
         const needs = s.integration && missing.has(s.integration) ? s.integration : null;
+        const connectable = Boolean(s.integration) && canConnect(s.integration!, notOffered);
         return (
           <SkillLine
             key={s.key}
             name={skillName(s.key)}
             off={!s.enabled}
-            fallback={needs ? s.fallback : undefined}
+            fallback={needs || (s.integration && !connectable) ? s.fallback : undefined}
             needs={needs}
-            connected={s.integration && !needs ? s.integration : null}
+            connected={s.integration && !needs && connectable ? s.integration : null}
             refId={refId}
             onConnect={onConnect}
           />

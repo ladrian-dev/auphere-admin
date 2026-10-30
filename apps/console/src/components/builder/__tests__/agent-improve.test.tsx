@@ -74,9 +74,13 @@ const page: AgentConversationPage = {
   next_cursor: "c2",
 };
 
-describe("Rendimiento (T174)", { timeout: 30_000 }, () => {
+describe("Rendimiento (T174; H9, 63.2)", { timeout: 30_000 }, () => {
   // `hidden`: esta persona no puede leer conversaciones (un `undefined` a secas tomaría el valor por defecto).
-  function view(over: Partial<PerfActions> = {}, list: AgentConversationPage | null | "hidden" = page) {
+  function view(
+    over: Partial<PerfActions> = {},
+    list: AgentConversationPage | null | "hidden" = page,
+    { initial = perf() as AgentPerformance | null, cap = null as { amount_micros: number; currency: "EUR" | "USD" } | null } = {},
+  ) {
     const conversations = list === "hidden" ? undefined : list;
     const actions: PerfActions = {
       load: vi.fn(async (b) => ok(perf(b.days))),
@@ -85,21 +89,36 @@ describe("Rendimiento (T174)", { timeout: 30_000 }, () => {
     };
     const r = render(
       <LocaleProvider locale="es">
-        <AgentPerformancePanel refId={REF} agentId={AGENT} performance={perf()} conversations={conversations} actions={actions} />
+        <AgentPerformancePanel
+          refId={REF}
+          agentId={AGENT}
+          performance={initial}
+          conversations={conversations}
+          cap={cap}
+          suggestions={<section aria-label="Sugerencias de prueba">Sugerencias</section>}
+          actions={actions}
+        />
       </LocaleProvider>,
     );
     return { ...r, actions };
   }
 
-  it("enseña los 30 días con sus cifras, la gráfica y las conversaciones solo con metadatos, y pasa axe", async () => {
-    const { container } = view();
-    const figures = container.querySelector("[data-slot=performance-figures]") as HTMLElement;
+  it("arriba, en dos columnas, los 30 días con tres cifras y las sugerencias; debajo, la gráfica y las conversaciones solo con metadatos; pasa axe", async () => {
+    const { container } = view({}, page, { cap: { amount_micros: 1_500_000, currency: "USD" } });
+    const top = container.querySelector("[data-slot=performance-top]") as HTMLElement;
+    const summary = within(top).getByRole("region", { name: "Últimos 30 días" });
+    expect(within(top).getByRole("region", { name: "Sugerencias de prueba" })).toBeInTheDocument();
+    const figures = summary;
     expect(within(figures).getByText("42")).toBeInTheDocument();
-    expect(within(figures).getByText("35")).toBeInTheDocument();
-    expect(within(figures).getByText("83 % del total")).toBeInTheDocument();
-    expect(within(figures).getByText("7")).toBeInTheDocument();
+    expect(within(figures).getByText("Conversaciones")).toBeInTheDocument();
+    expect(within(figures).getByText("83 %")).toBeInTheDocument();
+    expect(within(figures).getByText("Resueltas sin persona")).toBeInTheDocument();
     expect(within(figures).getByText(/42,00/)).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "30 días" })).toHaveAttribute("aria-selected", "true");
+    expect(within(figures).getByText(/^Consumido de la bolsa · tope 15,00/)).toBeInTheDocument();
+    // Sin el selector de periodo arriba: la píldora es de la gráfica, debajo.
+    expect(within(top).queryByRole("tablist")).toBeNull();
+    const chart = container.querySelector("[data-slot=performance-chart]") as HTMLElement;
+    expect(within(chart).getByRole("tab", { name: "30 días" })).toHaveAttribute("aria-selected", "true");
     const table = screen.getByRole("table", { name: "Conversaciones" });
     expect(within(table).getByText("WhatsApp")).toBeInTheDocument();
     expect(within(table).getByText("12 min")).toBeInTheDocument();
@@ -109,19 +128,27 @@ describe("Rendimiento (T174)", { timeout: 30_000 }, () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("la píldora cambia el periodo, también con las flechas", async () => {
+  it("sin conversaciones, «Resueltas sin persona» dice «—»; sin tope, solo lo consumido", () => {
+    view({}, page, { initial: { ...perf(), conversations: 0, resolved_without_person: 0, handed_to_person: 0, resolved_pct: null } });
+    const summary = screen.getByRole("region", { name: "Últimos 30 días" });
+    expect(within(summary).getByText("—")).toBeInTheDocument();
+    expect(within(summary).getByText("Consumido de la bolsa")).toBeInTheDocument();
+  });
+
+  it("la píldora de la gráfica cambia su periodo, también con las flechas; los 30 días de arriba se quedan", async () => {
     const user = userEvent.setup();
     const { actions } = view();
     await user.click(screen.getByRole("tab", { name: "7 días" }));
     await waitFor(() => expect(actions.load).toHaveBeenCalledWith({ ref: REF, agent: AGENT, days: 7 }));
     expect(await screen.findByText("Últimos 7 días")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Últimos 30 días" })).toBeInTheDocument();
     screen.getByRole("tab", { name: "7 días" }).focus();
     await user.keyboard("{ArrowRight}");
     await waitFor(() => expect(actions.load).toHaveBeenCalledWith({ ref: REF, agent: AGENT, days: 30 }));
     expect(screen.getByRole("tab", { name: "30 días" })).toHaveFocus();
   });
 
-  it("«Ver más» sigue el cursor; sin permiso, la lista no se pinta; si las cifras fallan, se reintenta", async () => {
+  it("«Ver más» sigue el cursor; sin permiso, la lista no se pinta", async () => {
     const user = userEvent.setup();
     const { actions, unmount } = view();
     await user.click(screen.getByRole("button", { name: "Ver más" }));
@@ -134,7 +161,7 @@ describe("Rendimiento (T174)", { timeout: 30_000 }, () => {
     expect(screen.queryByRole("table", { name: "Conversaciones" })).toBeNull();
   });
 
-  it("si el periodo no llega, lo dice y deja reintentar", async () => {
+  it("si el periodo de la gráfica no llega, lo dice y deja reintentar", async () => {
     const user = userEvent.setup();
     const load = vi.fn().mockResolvedValueOnce({ ok: false, status: 500, message: "x" }).mockResolvedValueOnce(ok(perf(90)));
     view({ load });
@@ -142,6 +169,16 @@ describe("Rendimiento (T174)", { timeout: 30_000 }, () => {
     expect(await screen.findByText("No pudimos leer el rendimiento")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByText("Últimos 90 días")).toBeInTheDocument();
+  });
+
+  it("si los 30 días no llegaron, el resumen lo dice y se reintenta en el sitio", async () => {
+    const user = userEvent.setup();
+    const { actions } = view({}, page, { initial: null });
+    const summary = screen.getByRole("region", { name: "Últimos 30 días" });
+    expect(within(summary).getByText("No pudimos leer el rendimiento")).toBeInTheDocument();
+    await user.click(within(summary).getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(actions.load).toHaveBeenCalledWith({ ref: REF, agent: AGENT, days: 30 }));
+    expect(await within(summary).findByText("42")).toBeInTheDocument();
   });
 });
 
@@ -176,7 +213,7 @@ const correction = suggestion({
   contacts_count: 1,
 });
 
-describe("Mejoras (T174)", { timeout: 30_000 }, () => {
+describe("Sugerencias de esta semana (T174; H9, 63.2)", { timeout: 30_000 }, () => {
   function view(data: Improvements | null, over: Partial<ImpActions> = {}) {
     const actions: ImpActions = {
       reload: vi.fn(async () => ok({ items: [suggestion()], allowed: ["accept", "discard"] as ("accept" | "discard")[] })),
@@ -192,36 +229,45 @@ describe("Mejoras (T174)", { timeout: 30_000 }, () => {
     );
     return { ...r, actions, onAccepted };
   }
+  const ver = (topic: string) => screen.getByRole("button", { name: `Ver «${topic}»` });
 
-  it("las sugerencias dicen a cuántos afectan y las correcciones la lección, nunca el mensaje; pasan axe", async () => {
+  it("una fila por mejora con su bombilla, a cuántos afecta o de dónde viene, y «Ver»; nunca el mensaje; pasa axe", async () => {
     const { container } = view({ items: [suggestion(), correction], allowed: ["accept", "discard"] });
-    const list = screen.getByRole("list", { name: "Mejoras por decidir" });
+    const card = screen.getByRole("region", { name: "Sugerencias de esta semana" });
+    const list = within(card).getByRole("list", { name: "Mejoras por decidir" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).getByText("12 clientes preguntaron por el aparcamiento y el agente no supo")).toBeInTheDocument();
     expect(within(list).getByText("12 conversaciones de 9 clientes")).toBeInTheDocument();
-    expect(within(list).getByText("Sugerencia de la semana")).toBeInTheDocument();
-    expect(within(list).getByText("Corrección del negocio")).toBeInTheDocument();
-    expect(within(list).getByText("Desde la app")).toBeInTheDocument();
-    expect(within(list).getByText("No des citas los festivos")).toBeInTheDocument();
-    // Cuatro botones en la lista: cada fila los pliega en «⋯».
-    expect(within(list).getAllByRole("button", { name: /^Acciones de / })).toHaveLength(2);
+    expect(within(list).getByText("Corrección del negocio · Desde la app")).toBeInTheDocument();
+    // Aceptar y descartar viven dentro de «Ver», no en la fila.
+    expect(within(list).queryByRole("button", { name: /Aceptar|Descartar|Acciones de/ })).toBeNull();
+    expect(within(list).getAllByRole("button", { name: /^Ver «/ })).toHaveLength(2);
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("aceptar dice en qué quedó el borrador y avisa a la pantalla", async () => {
+  it("«Ver» enseña la propuesta y su prueba; aceptar dice en qué quedó el borrador y avisa a la pantalla", async () => {
     const user = userEvent.setup();
-    const { actions, onAccepted } = view({ items: [suggestion()], allowed: ["accept", "discard"] });
-    await user.click(screen.getByText("Ver propuesta"));
-    expect(screen.getByText("Prueba nueva: Pregunta por el aparcamiento")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Aceptar" }));
+    const { actions, onAccepted } = view({ items: [suggestion(), correction], allowed: ["accept", "discard"] });
+    await user.click(ver(correction.topic));
+    let dialog = await screen.findByRole("dialog", { name: correction.topic });
+    expect(within(dialog).getByText("No des citas los festivos")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    await user.click(ver(suggestion().topic));
+    dialog = await screen.findByRole("dialog", { name: suggestion().topic });
+    expect(within(dialog).getByText("Prueba nueva: Pregunta por el aparcamiento")).toBeInTheDocument();
+    expect(within(dialog).getByText("12 conversaciones de 9 clientes")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Aceptar" }));
     await waitFor(() => expect(actions.accept).toHaveBeenCalledWith({ ref: REF, agent: AGENT, id: suggestion().id }));
     expect(await screen.findByText(/El cambio y su prueba están en el borrador \(revisión 9\)/)).toBeInTheDocument();
     expect(onAccepted).toHaveBeenCalledWith(expect.objectContaining({ draft_revision: 9 }));
-    expect(screen.getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("descartar pide el motivo (al menos 3 caracteres) y no vuelve en 30 días", async () => {
+  it("descartar desde «Ver» pide el motivo (al menos 3 caracteres) y no vuelve en 30 días", async () => {
     const user = userEvent.setup();
     const { actions } = view({ items: [suggestion()], allowed: ["accept", "discard"] });
-    await user.click(screen.getByRole("button", { name: "Descartar" }));
+    await user.click(ver(suggestion().topic));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar" }));
     const dialog = await screen.findByRole("dialog", { name: "¿Por qué la descartas?" });
     expect(within(dialog).getByText("No volveremos a proponerla en 30 días.")).toBeInTheDocument();
     await user.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "no");
@@ -232,18 +278,25 @@ describe("Mejoras (T174)", { timeout: 30_000 }, () => {
     await user.click(within(dialog).getByRole("button", { name: "Descartar" }));
     await waitFor(() => expect(actions.discard).toHaveBeenCalledWith({ ref: REF, agent: AGENT, id: suggestion().id, reason: "no aplica: no tenemos parking" }));
     expect(toast.success).toHaveBeenCalledWith("Descartada. No volverá en 30 días.");
+    expect(screen.getByText("Nada que mejorar por ahora")).toBeInTheDocument();
   });
 
   it("los «no» de la API en palabras; quien solo lee no tiene botones; vacío y error", async () => {
     const user = userEvent.setup();
     const { unmount } = view({ items: [suggestion()], allowed: ["accept", "discard"] }, { accept: vi.fn(async () => ({ ok: false as const, status: 409, message: "x", code: "improvement_outdated" })) });
-    await user.click(screen.getByRole("button", { name: "Aceptar" }));
-    expect(await screen.findByText("El borrador cambió y la propuesta ya no encaja.")).toBeInTheDocument();
+    await user.click(ver(suggestion().topic));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Aceptar" }));
+    expect(await within(screen.getByRole("dialog")).findByText("El borrador cambió y la propuesta ya no encaja.")).toBeInTheDocument();
     unmount();
 
     const reader = view({ items: [suggestion()], allowed: [] });
-    expect(screen.queryByRole("button", { name: /Aceptar|Descartar|Acciones de/ })).toBeNull();
+    await user.click(ver(suggestion().topic));
+    expect(within(await screen.findByRole("dialog")).queryByRole("button", { name: /Aceptar|Descartar/ })).toBeNull();
     reader.unmount();
+
+    const empty = view({ items: [], allowed: ["accept", "discard"] });
+    expect(within(screen.getByRole("region", { name: "Sugerencias de esta semana" })).getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+    empty.unmount();
 
     const broken = view(null);
     expect(screen.getByText("No pudimos leer las mejoras")).toBeInTheDocument();

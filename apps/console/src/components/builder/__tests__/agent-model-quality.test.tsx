@@ -6,7 +6,6 @@ import { axeViolations } from "@nexus/ui/test/axe";
 
 import { LocaleProvider } from "@/i18n/client";
 import type { QualityJob } from "@/lib/backend/agent-quality-types";
-import type { AgentSpec, BuilderDraft } from "@/lib/backend/builder-types";
 import type { ModelPolicy, ModelQuality } from "@/lib/backend/model-quality-types";
 
 import { AGENT, JOB, REF, fail, noWait, ok, profile, quality } from "./connector-fixtures";
@@ -26,7 +25,6 @@ vi.mock("@/app/(console)/clients/[ref]/agents/builder-actions", () => ({
 }));
 
 const { AgentModelQuality } = await import("../agent-model-quality");
-const { AgentBuilder } = await import("../agent-builder");
 type Actions = NonNullable<React.ComponentProps<typeof AgentModelQuality>["actions"]>;
 
 /**
@@ -245,76 +243,6 @@ describe("Calidad · comprobar y usar (39.1, 39.9)", () => {
   });
 });
 
-// ── En la pantalla del agente ───────────────────────────────────────────────
-
-const SPEC = {
-  schema_version: "1",
-  mode: "structured",
-  identity: { name: "Recepción", description: "Atiende las citas de la barbería por WhatsApp." },
-  ai_disclosure: { decided: false },
-  model_policy: { kind: "profile", profile: "auto" },
-  memory: { scope: "shared" },
-} as AgentSpec;
-
-function draft(over: Partial<BuilderDraft> = {}): BuilderDraft {
-  return {
-    agent_id: AGENT,
-    agent_name: "Recepción",
-    revision: 4,
-    exists: true,
-    number: 1,
-    version: 7,
-    status: "staged",
-    base_number: null,
-    active_number: null,
-    active_version: null,
-    author: "luis@ladrian.studio",
-    created_at: "2026-10-27T10:00:00Z",
-    updated_at: "2026-10-27T10:00:00Z",
-    change_note: null,
-    system_prompt: "…",
-    tools: [],
-    skills: [],
-    settings: {} as BuilderDraft["settings"],
-    audience: { mode: "everyone", numbers: [], locked: false } as unknown as BuilderDraft["audience"],
-    payment_review: { reviewers: [] } as unknown as BuilderDraft["payment_review"],
-    screens: [],
-    allowed: ["edit", "discard"],
-    spec: SPEC,
-    tests: { total: 8, stale: 0, case: 8, sector: 0 },
-    ...over,
-  };
-}
-
-describe("Calidad y Conectores en la pantalla del agente", () => {
-  it("las dos secciones con su ancla y su píldora, y la calidad elegida se guarda en el borrador con su revisión", async () => {
-    const user = userEvent.setup();
-    const save = vi.fn(async ({ spec }: { spec: AgentSpec }) => ok(draft({ revision: 5, spec })));
-    render(
-      <LocaleProvider locale="es">
-        <AgentBuilder
-          refId={REF}
-          draft={draft()}
-          proposals={[]}
-          canWrite
-          actions={{ save, reload: vi.fn(), decide: vi.fn() }}
-          connectors={{ data: [], canWrite: true }}
-          modelQuality={{ data: quality(), canWrite: true }}
-          initialSection="agente-calidad"
-          qualityActions={{ modelQuality: { load: vi.fn(), check: vi.fn(), poll: vi.fn() }, connectors: { load: vi.fn() } }}
-        />
-      </LocaleProvider>,
-    );
-    // Calidad vive en «Configuración»; los Conectores, en su pestaña.
-    expect(screen.getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Conectores" })).toHaveAttribute("aria-selected", "false");
-    expect(screen.getByRole("region", { name: "Avanzado" })).toHaveAttribute("id", "agente-avanzado");
-    const calidad = screen.getByRole("region", { name: "Calidad" });
-    expect(calidad).toHaveAttribute("id", "agente-calidad");
-    expect(calidad.closest("#agente-avanzado")).not.toBeNull();
-    await user.click(within(calidad).getByRole("radio", { name: /^Equilibrado/ }));
-    await user.click(within(calidad).getByRole("button", { name: "Usar Equilibrado en el borrador" }));
-    await waitFor(() => expect(save).toHaveBeenCalledWith({ ref: REF, agent: AGENT, revision: 4, spec: { ...SPEC, model_policy: { kind: "profile", profile: "balanced" } } }));
-    expect(await within(calidad).findByText("En el borrador: Equilibrado. Se aplica al guardar.")).toBeVisible();
-  });
-});
+// La pantalla del agente ya no monta Calidad (spec 047, 64.1; D55): lo prueba
+// `agent-builder.test.tsx` («Avanzado sin «Calidad»»). El componente se queda,
+// probado aquí, para cuando la gestión de modelos vuelva a la consola (64.4).

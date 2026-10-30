@@ -70,7 +70,16 @@ function fresh() {
     fixes: [],
     decisions: [],
     copilot: [],
-    suggestions: [],
+    // Enmienda del 2026-10-29 (60): el constructor del cliente trabaja solo; sus
+    // propuestas ya están en la ficha cuando se abre Negocio.
+    suggestions: [
+      { id: POLICY, pointer: "/policies/cancellation", section: "policies", proposed_value: "Se puede cancelar sin coste hasta 24 horas antes." },
+      { id: FAQ, pointer: "/faqs/-", section: "faqs", proposed_value: { q: "¿Aceptáis tarjeta?", a: "Sí, todas las tarjetas." } },
+    ],
+    suggestedAgents: [
+      { id: "recordatorios", name: "Recordatorios", description: "Recuerda las citas del día siguiente y ofrece cambiarlas si el cliente no puede venir.", role: "support" },
+    ],
+    dismissed: [],
   };
 }
 let state = fresh();
@@ -194,6 +203,12 @@ const LOCATIONS = { ...meta, items: [], created_id: null };
 const HOURS = { ...meta, location_id: null, inherits: false, layout: "blocks", days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }, label: null };
 const SPECIAL = { ...meta, items: [], created_id: null };
 const SERVICES = { ...meta, items: [], currency: "EUR", exponent: 2, created_id: null, agents: [] };
+const POLICIES = { ...meta, state: "optional", cancellation: null, payments: "Efectivo y tarjeta.", deposit: null, no_show: null };
+const FAQS = { ...meta, items: [], created_id: null };
+const SECTORS = [
+  { key: "barberia_peluqueria", label: "Barbería" },
+  { key: "clinica", label: "Clínica" },
+];
 
 function suggestionsView() {
   return state.suggestions.map((s) => ({ ...s, current_value: null, source: "builder", source_url: null, translated_from: null, created_at: NOW }));
@@ -250,7 +265,7 @@ const server = createServer(async (req, res) => {
     return send(res, 200, { ok: true });
   }
   if (route === "GET /__test/state")
-    return send(res, 200, { archives: state.archives, fixes: state.fixes, decisions: state.decisions, copilot: state.copilot, agents: state.agents });
+    return send(res, 200, { archives: state.archives, fixes: state.fixes, decisions: state.decisions, copilot: state.copilot, agents: state.agents, dismissed: state.dismissed });
   if (route === "POST /console/auth/session") return send(res, 200, { principal: PRINCIPAL });
   if (route === "GET /console/me")
     return send(res, 200, {
@@ -282,6 +297,17 @@ const server = createServer(async (req, res) => {
   if (route === `GET ${base}/business/hours`) return send(res, 200, HOURS);
   if (route === `GET ${base}/business/special-dates`) return send(res, 200, SPECIAL);
   if (route === `GET ${base}/business/services`) return send(res, 200, SERVICES);
+  if (route === `GET ${base}/business/policies`) return send(res, 200, POLICIES);
+  if (route === `GET ${base}/business/faqs`) return send(res, 200, FAQS);
+  if (route === "GET /console/sectors") return send(res, 200, { sectors: SECTORS });
+  if (route === `GET ${base}/suggested-agents`) return send(res, 200, { agents: state.suggestedAgents });
+  const dm = path.match(new RegExp(`^${base}/suggested-agents/([a-z0-9-]+)/dismiss$`));
+  if (dm && req.method === "POST") {
+    state.dismissed.push(dm[1]);
+    state.suggestedAgents = state.suggestedAgents.filter((a) => a.id !== dm[1]);
+    res.writeHead(204);
+    return res.end();
+  }
   if (route === `POST ${base}/business/builder`) {
     const id = randomUUID();
     jobs[id] = { polls: 0 };

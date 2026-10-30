@@ -20,12 +20,20 @@ const { ChannelConfigPage } = await import("../channel-page");
 type Actions = NonNullable<React.ComponentProps<typeof ChannelConfigPage>["actions"]>;
 
 /**
- * Spec 047 (historia 11; requisitos 32 y 33; T115) — la página de un canal: las
- * cinco secciones, guardar con la revisión leída, el conflicto con lo que
- * cambió otra persona, los errores con su arreglo, deshacer durante 10 minutos,
- * el historial con el antes y el después, de qué número salen los avisos y los
+ * Spec 047 (historia 11; requisitos 32 y 33; T115) — la configuración de un
+ * canal: guardar con la revisión leída, el conflicto con lo que cambió otra
+ * persona, los errores con su arreglo, deshacer durante 10 minutos, el
+ * historial con el antes y el después, de qué número salen los avisos y los
  * disparadores del agente en solo lectura. Quien solo lee no ve campos.
+ *
+ * Como el prototipo (`agente.md` §8, hueco H5; requisito 63.1): dentro del
+ * agente, con su cabecera de canal, el índice a la izquierda, dos modos,
+ * «Excepciones» solo con «A todos», el escalado en filas de una línea,
+ * «Mensaje de espera» e «Historial» en «Más ajustes», y la barra que ofrece
+ * activar un canal sin configurar.
  */
+
+const onClose = vi.fn();
 
 function view(p: ChannelPage = page(), over: Partial<Actions> = {}, { canWrite = true, balanceHref = null as string | null } = {}) {
   const actions: Actions = {
@@ -43,7 +51,7 @@ function view(p: ChannelPage = page(), over: Partial<Actions> = {}, { canWrite =
   };
   const rendered = render(
     <LocaleProvider locale="es">
-      <ChannelConfigPage refId={REF} agentId={RECEPCION} page={p} history={HISTORY} canWrite={canWrite} balanceHref={balanceHref} actions={actions} />
+      <ChannelConfigPage refId={REF} agentId={RECEPCION} page={p} history={HISTORY} canWrite={canWrite} balanceHref={balanceHref} onClose={onClose} actions={actions} />
     </LocaleProvider>,
   );
   return { ...rendered, actions };
@@ -53,17 +61,35 @@ beforeEach(() => {
   toast.success.mockClear();
   toast.error.mockClear();
   router.replace.mockClear();
+  onClose.mockClear();
 });
 
+const openMore = async (user: ReturnType<typeof userEvent.setup>) => {
+  const toggle = screen.getByRole("button", { name: /Más ajustes/ });
+  if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
+};
+
 describe("la página de un canal", () => {
-  it("tiene sus cinco secciones, el estado visible y los disparadores del agente en solo lectura", async () => {
+  it("la cabecera del canal, el índice, dos modos y las secciones; los disparadores del agente en solo lectura; pasa axe (H5)", async () => {
     const { container } = view();
-    expect(screen.getByRole("heading", { level: 1, name: "Canal +34 611 20 48 93" })).toBeVisible();
-    for (const name of ["A quién responde", "Excepciones", "Escalado a personas", "Mensaje de espera", "Comprobaciones", "Historial"]) {
+    // Dentro del agente: el título de la página es el del agente; el canal lleva un h2.
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    const head = container.querySelector("[data-slot=channel-head]") as HTMLElement;
+    expect(within(head).getByRole("heading", { level: 2, name: "+34 611 20 48 93" })).toBeVisible();
+    expect(within(head).getByText("WhatsApp · canal de Recepción")).toBeVisible();
+    expect(head.querySelector("[data-brand=whatsapp]")).not.toBeNull();
+    // El índice: «Excepciones» solo con «A todos».
+    const nav = screen.getByRole("navigation", { name: "Secciones de la configuración" });
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["A quién responde", "Escalado a personas"]);
+    expect(within(nav).getByText("Todo esto es del canal. Si el agente atiende en otro canal, allí tiene su propia configuración.")).toBeVisible();
+    for (const name of ["A quién responde", "Escalado a personas", "Comprobaciones"]) {
       expect(screen.getByRole("region", { name })).toBeVisible();
     }
-    expect(screen.getAllByText("Solo mi equipo")[0]).toBeVisible();
-    expect(screen.getByRole("link", { name: "Lo atiende Recepción" })).toHaveAttribute("href", `/clients/${REF}/agents/${RECEPCION}`);
+    expect(screen.queryByRole("region", { name: "Excepciones" })).toBeNull();
+    // Dos modos, sin «Todavía a nadie».
+    const modes = screen.getByRole("radiogroup", { name: "A quién responde" });
+    expect(within(modes).getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["team_only", "everyone"]);
+    expect(within(modes).getByRole("radio", { name: /Solo mi equipo/ })).toBeChecked();
     expect(screen.getByText(/saldrán del número de avisos de Auphere/)).toBeVisible();
     const triggers = container.querySelector("[data-slot=channel-triggers]") as HTMLElement;
     expect(within(triggers).getByText("Cuando pide hablar con una persona")).toBeVisible();
@@ -74,6 +100,86 @@ describe("la página de un canal", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("«Excepciones» aparece con «A todos», en su sección y en el índice", async () => {
+    const user = userEvent.setup();
+    view();
+    await user.click(screen.getByRole("radio", { name: /A todos/ }));
+    expect(screen.getByRole("region", { name: "Excepciones" })).toBeVisible();
+    const nav = screen.getByRole("navigation", { name: "Secciones de la configuración" });
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["A quién responde", "Excepciones", "Escalado a personas"]);
+  });
+
+  it("«Mensaje de espera» e «Historial» viven en «Más ajustes»", async () => {
+    const user = userEvent.setup();
+    view();
+    expect(screen.queryByRole("region", { name: "Mensaje de espera" })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Historial" })).toBeNull();
+    await openMore(user);
+    expect(screen.getByRole("region", { name: "Mensaje de espera" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Historial" })).toBeVisible();
+  });
+
+  it("el escalado va en filas de una línea: persona, por dónde, su dato y la papelera", async () => {
+    const user = userEvent.setup();
+    view();
+    const escalation = screen.getByRole("region", { name: "Escalado a personas" });
+    const first = within(escalation).getByRole("group", { name: "Persona 1" });
+    expect(first.className).toMatch(/grid-cols-/);
+    expect(within(first).getByRole("textbox", { name: /Nombre/ })).toHaveValue("Marta");
+    expect(within(first).getByRole("combobox", { name: "Por dónde" })).toHaveValue("whatsapp");
+    expect(within(first).getByRole("textbox", { name: /Su WhatsApp/ })).toHaveValue("+34600000009");
+    // La papelera quita a la persona; sin nadie, la conversación sigue llegando a la Bandeja.
+    await user.click(within(first).getByRole("button", { name: "Quitar a Marta" }));
+    expect(within(escalation).getByText(/Nadie recibe aviso todavía/)).toBeVisible();
+  });
+
+  it("un canal sin configurar ofrece «Activar solo para mi equipo», «Activar para todos» y «Decidir luego» (32.9)", async () => {
+    const user = userEvent.setup();
+    const unset = page({
+      visible_state: { code: "unconfigured", tone: "muted", reason: null },
+      config: { ...page().config, audience: { mode: "unset", test_numbers: [], exceptions: [] } },
+    });
+    const { actions } = view(unset);
+    const bar = screen.getByRole("region", { name: "Guardar configuración" });
+    expect(within(bar).getByText("El canal aún no responde: guarda para activarlo.")).toBeVisible();
+    expect(within(screen.getByRole("radiogroup", { name: "A quién responde" })).queryByRole("radio", { checked: true })).toBeNull();
+    // «Solo mi equipo» sin números se dice antes de mandar.
+    await user.click(within(bar).getByRole("button", { name: "Activar solo para mi equipo" }));
+    expect(screen.getByText("«Solo mi equipo» necesita al menos un número de prueba.")).toBeVisible();
+    expect(actions.save).not.toHaveBeenCalled();
+    const audience = screen.getByRole("region", { name: "A quién responde" });
+    await user.type(within(audience).getByRole("textbox", { name: /Número nuevo/ }), "+34 611 20 48 93");
+    await user.click(within(audience).getByRole("button", { name: "Añadir a Números de prueba" }));
+    await user.click(within(bar).getByRole("button", { name: "Activar solo para mi equipo" }));
+    expect(actions.save).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ audience: { mode: "team_only", test_numbers: ["+34611204893"], exceptions: [] } }) }));
+    expect(toast.success).toHaveBeenCalledWith("Recepción responde por +34 611 20 48 93 solo a tu equipo.");
+  });
+
+  it("«Activar para todos» guarda «A todos», y «Decidir luego» vuelve a la lista sin guardar", async () => {
+    const user = userEvent.setup();
+    const unset = page({ config: { ...page().config, audience: { mode: "unset", test_numbers: [], exceptions: [] } } });
+    const { actions } = view(unset);
+    const bar = screen.getByRole("region", { name: "Guardar configuración" });
+    await user.click(within(bar).getByRole("button", { name: "Activar para todos" }));
+    expect(actions.save).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ audience: { mode: "everyone", test_numbers: [], exceptions: [] } }) }));
+    expect(toast.success).toHaveBeenCalledWith("Recepción responde por +34 611 20 48 93 a todos.");
+    view(unset);
+    await user.click(within(screen.getAllByRole("region", { name: "Guardar configuración" })[1]!).getByRole("button", { name: "Decidir luego" }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("configurado: «Guardar» y «Descartar» solo con cambios; «Descartar» vuelve a lo guardado", async () => {
+    const user = userEvent.setup();
+    const { actions } = view();
+    await user.click(screen.getByRole("radio", { name: /A todos/ }));
+    const bar = screen.getByRole("region", { name: "Guardar configuración" });
+    expect(within(bar).getByText("Los cambios se aplican al guardar.")).toBeVisible();
+    await user.click(within(bar).getByRole("button", { name: "Descartar" }));
+    expect(screen.getByRole("radio", { name: /Solo mi equipo/ })).toBeChecked();
+    expect(within(bar).queryByRole("button", { name: "Guardar" })).toBeNull();
+    expect(actions.save).not.toHaveBeenCalled();
+  });
+
   it("los avisos saldrán de este número si tiene la plantilla aprobada (33.3)", () => {
     view(page({ config: { ...page().config, notify_from: "channel" } }));
     expect(screen.getByText("Los avisos por WhatsApp saldrán de este número.")).toBeVisible();
@@ -82,12 +188,12 @@ describe("la página de un canal", () => {
   it("guarda la configuración entera con la revisión leída, en E.164", async () => {
     const user = userEvent.setup();
     const { actions } = view();
+    await user.click(screen.getByRole("radio", { name: /A todos/ }));
     const exceptions = screen.getByRole("region", { name: "Excepciones" });
     await user.type(within(exceptions).getByRole("textbox", { name: /Número nuevo/ }), "+56 9 1234 5678");
     await user.click(within(exceptions).getByRole("button", { name: "Añadir a Excepciones" }));
     expect(within(exceptions).getByRole("list", { name: "Excepciones" })).toHaveTextContent("+56912345678");
-    await user.click(screen.getByRole("radio", { name: /A todos/ }));
-    expect(screen.getByText("Tienes cambios sin guardar.")).toBeVisible();
+    expect(screen.getByText("Los cambios se aplican al guardar.")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     expect(actions.save).toHaveBeenCalledWith({
       ref: REF,
@@ -99,7 +205,7 @@ describe("la página de un canal", () => {
         wait_message: null,
       },
     });
-    expect(toast.success).toHaveBeenCalledWith("Guardado. Vale desde el siguiente mensaje.");
+    expect(toast.success).toHaveBeenCalledWith("Recepción responde por +34 611 20 48 93 a todos.");
     expect(await screen.findByRole("button", { name: "Deshacer el último cambio" })).toBeVisible();
     expect(actions.history).toHaveBeenCalled();
   });
@@ -185,6 +291,7 @@ describe("la página de un canal", () => {
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     await user.click(await screen.findByRole("button", { name: "Ver lo que hay ahora" }));
     expect(actions.reload).toHaveBeenCalledWith({ ref: REF, channel: CH });
+    await openMore(user);
     await waitFor(() => expect(screen.getByRole("textbox", { name: /Mensaje/ })).toHaveValue("Ya vamos"));
     expect(screen.getByRole("radio", { name: /Solo mi equipo/ })).toBeChecked();
   });
@@ -247,8 +354,10 @@ describe("la página de un canal", () => {
     expect(within(checks).getByText("Impide «A todos»:")).toBeInTheDocument();
   });
 
-  it("el historial enseña quién, cuándo, el antes y el después", () => {
+  it("el historial enseña quién, cuándo, el antes y el después", async () => {
+    const user = userEvent.setup();
     view();
+    await openMore(user);
     const history = screen.getByRole("list", { name: "Historial" });
     expect(within(history).getByText("A quién responde: Todavía a nadie → Solo mi equipo")).toBeVisible();
     expect(within(history).getByText("Al conectar")).toBeVisible();
@@ -268,7 +377,7 @@ describe("la página de un canal", () => {
     expect(within(dialog).getByRole("radio", { name: "Ventas" })).toBeChecked();
     await user.click(within(dialog).getByRole("button", { name: "Pasar el número" }));
     expect(actions.menu!.move).toHaveBeenCalledWith({ ref: REF, channel: CH, to: VENTAS });
-    expect(router.replace).toHaveBeenCalledWith(`/clients/${REF}/agents/${VENTAS}/channels/${CH}`);
+    expect(router.replace).toHaveBeenCalledWith(`/clients/${REF}/agents/${VENTAS}?canal=${CH}`);
   });
 
   it("quien solo lee lo ve todo como texto, sin campos ni botones (§V)", () => {
@@ -276,7 +385,8 @@ describe("la página de un canal", () => {
     expect(screen.getByText("Tu rol solo permite ver esta configuración.")).toBeVisible();
     expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+    // Solo «Más ajustes», para leer el mensaje de espera y el historial.
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([expect.stringMatching(/^Más ajustes/)]);
     expect(screen.getByText("Marta")).toBeVisible();
     expect(screen.getByText("+34611204893")).toBeVisible();
   });

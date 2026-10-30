@@ -70,8 +70,8 @@ test.describe("Spec 047 — crear un agente describiéndolo", () => {
   test("describir → bloques → responder una pregunta → la pantalla del agente", async ({ page, request }) => {
     await describeAndGenerate(page);
 
-    // «Conectar AgendaPro» en la fila de su habilidad (17.6).
-    const connect = page.getByRole("link", { name: "Conectar AgendaPro" });
+    // «Conectar Google Calendar» en la fila de su habilidad (17.6).
+    const connect = page.getByRole("link", { name: "Conectar Google Calendar" });
     await expect(connect).toBeVisible();
     await expect(connect).toHaveAttribute("href", `/clients/${REF}/integrations`);
     // Las descartadas, con su porqué (17.4).

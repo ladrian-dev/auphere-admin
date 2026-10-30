@@ -5,7 +5,9 @@
  * de un trabajo `agent_draft` y `contracts/agent-spec.schema.json`. El cliente
  * de la API es `./builder.ts`.
  */
-import type { AgentDraft } from "./agent-draft-types";
+import type { AgentDraft, MissingCapability } from "./agent-draft-types";
+
+export type { MissingCapability } from "./agent-draft-types";
 
 // ── «Nuevo agente» ──────────────────────────────────────────────────────────
 
@@ -84,16 +86,20 @@ export type DraftJobResult = {
   questions: BuilderQuestion[];
   /** Cuántas preguntas descartó y por qué; nunca una cifra fija (17.4). */
   discarded: { count: number; reasons: string[] };
+  /** Solo conectores ofrecidos: nunca `reservas` ni uno inventado (65.3). */
   connect?: ConnectRequest[];
   dropped_tools?: { tool: string; why: string }[];
   tests?: { case: number };
+  /** Spec 047 (65.3, 65.4): lo que el borrador no pudo usar y las promesas que ninguna herramienta hace. */
+  missing_capabilities?: MissingCapability[];
 };
 
 export type DraftJobStatus = "queued" | "running" | "done" | "failed";
 
 /** `GET /console/jobs/{job_id}` de un trabajo `agent_draft`. Un fallo viaja
- *  solo como `error_code` (`builder_unavailable`, `name_taken`…): las palabras
- *  son de la consola. `progress.input` guarda lo que se escribió (15.8). */
+ *  solo como `error_code` (`builder_unavailable`, `facts_unavailable`,
+ *  `name_taken`…): las palabras son de la consola. `progress.input` guarda lo
+ *  que se escribió (15.8). */
 export type DraftJob = {
   job_id: string;
   kind: string;

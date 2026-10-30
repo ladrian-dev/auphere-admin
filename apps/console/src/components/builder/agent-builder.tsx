@@ -22,18 +22,17 @@ import type { AgentHeader } from "@/lib/backend/agent-life-types";
 import type { HistoryEntry, PlaygroundSession, PublishPreview, TestSuite } from "@/lib/backend/agent-quality-types";
 import type { AgentSpec, BuilderDraft, EditableBlock, Proposal, SpecProblem } from "@/lib/backend/builder-types";
 import type { AgentConnector } from "@/lib/backend/agent-connectors-types";
-import type { AgentChannels, ChannelPage } from "@/lib/backend/channel-config-types";
-import type { ModelPolicy, ModelQuality } from "@/lib/backend/model-quality-types";
+import type { AgentChannels, ChannelChange, ChannelPage } from "@/lib/backend/channel-config-types";
 import type { Currency, Money } from "@/lib/backend/money-types";
+import { agentHref } from "@/components/shell/routes-v2";
 import { ShellBackButton } from "@/components/shell/shell-back-button";
 
 import { AgentChannelsPanel, type AgentChannelsActions } from "./agent-channels";
-import { AgentConnectorsPanel, type AgentConnectorsActions } from "./agent-connectors";
+import { AgentConnectorsPanel, type AgentConnectorsActions, type AgentConnectorsHandle } from "./agent-connectors";
 import { AgentHistory, type HistoryActions } from "./agent-history";
 import { AgentImprovementsPanel, type ImprovementsActions } from "./agent-improvements";
 import { AgentKnowledgePanel, type AgentKnowledgeActions } from "./agent-knowledge";
 import { AgentMenu, type AgentLifeActions } from "./agent-menu";
-import { AgentModelQuality, type ModelQualityActions } from "./agent-model-quality";
 import { AgentPerformancePanel, type PerformanceActions } from "./agent-performance";
 import { AgentPlayground, type PlaygroundActions } from "./agent-playground";
 import { inMore, rowOfBlock, rowOfSection, type AgentRow } from "./agent-proto-model";
@@ -42,10 +41,13 @@ import { BlockEditor } from "./block-editor";
 import { PendingQuestions, answerQuestion, type AnswerQuestion, type PendingQuestionsView } from "./builder-questions";
 import { blockTitleKey } from "./block-view";
 import { AGENT_BLOCKS, blockOfPointer, isEditable, tabOfSection, withBlock, type AgentBlockKey, type AgentTab, type Result } from "./builder-model";
+import { rowState } from "./connector-model";
+import { ChannelConfigPage, type ChannelBalance, type ChannelPageActions } from "./channel-page";
 import { CopilotPanel, type CopilotActions, type CopilotHandle } from "./copilot-panel";
 import { receptionOf, type Reception } from "./improve-model";
 import { visibleText, visibleTone } from "./life-model";
-import { draftPolicy } from "./model-quality-model";
+import { MissingCapabilities, type MissingState } from "./missing-capabilities";
+import { missingCapabilities, notOfferedKeys, specProblemText } from "./missing-model";
 import { ProposalList, type DecideProposal } from "./proposals";
 import { PublishBar, type PublishActions } from "./publish-bar";
 import { ReceptionBadge, ReceptionSection } from "./reception-section";
@@ -75,7 +77,7 @@ export type AgentQualityActions = {
   performance?: PerformanceActions;
   improvements?: ImprovementsActions;
   connectors?: AgentConnectorsActions;
-  modelQuality?: ModelQualityActions;
+  channelPage?: ChannelPageActions;
   wait?: (ms: number) => Promise<void>;
 };
 
@@ -92,6 +94,12 @@ export type AgentChannelsView = {
   meta?: MetaSignupConfig | null;
 };
 /**
+ * Spec 047 (63.1; H5): la configuración de un canal abierta dentro del agente
+ * (`?canal=`): su página, su historial (`null` si no llegó), si se puede
+ * cambiar y cómo se pide o se asigna saldo desde sus comprobaciones.
+ */
+export type AgentChannelConfigView = { page: ChannelPage; history: ChannelChange[] | null; canWrite: boolean; balance: ChannelBalance | null };
+/**
  * Spec 047 (historia 31): Rendimiento —las cifras de 30 días, nulas si no se
  * pudieron leer— y las conversaciones con solo metadatos (`undefined` si esta
  * persona no puede leerlas; `null` si no llegaron).
@@ -104,9 +112,6 @@ export type AgentImprovementsView = { data: Improvements | null };
  * montar (llama al catálogo del proveedor y no frena la pantalla); `null`, no llegó.
  */
 export type AgentConnectorsView = { data?: AgentConnector[] | null; canWrite: boolean };
-/** Spec 047 (historia 23): Avanzado › Calidad. `data` en `undefined` se lee al montar. */
-export type AgentModelQualityView = { data?: ModelQuality | null; canWrite: boolean };
-
 /**
  * Spec 047 (44.1): Agente › Avanzado, con el tope mensual del agente en la
  * moneda de la bolsa de su cliente, y lo gastado este mes. `cap` en `undefined`
@@ -165,6 +170,13 @@ type Conflict = { current: BuilderDraft; changes: DraftChange[]; block: Editable
  * prueba, la revisión entera, el historial, Avanzado, el copiloto y las
  * propuestas); a la derecha, pegada al bajar, la tarjeta de pruebas y el chat
  * de prueba; abajo, la barra flotante de vidrio.
+ *
+ * Enmienda del 2026-10-30 «Solo lo que tenemos» (T228; 65.3, 65.4, 65.8 y
+ * 65.9): encima de la tabla, «No tenemos herramienta para: …» con el
+ * `missing_capabilities` del borrador (se vuelve a leer con él, y si no se
+ * puede, lo dice); una promesa sin herramienta lleva a su bloque. Nada de eso
+ * lleva «Conectar {X}», ni en «Qué puede hacer» ni en los arreglos de la
+ * revisión. La puerta sin pruebas que le apliquen abre «Añadir una prueba».
  */
 export function AgentBuilder({
   refId,
@@ -180,7 +192,8 @@ export function AgentBuilder({
   performance,
   improvements,
   connectors,
-  modelQuality,
+  channelConfig = null,
+  channelUnavailable = false,
   initialSection = null,
   clientName = null,
   business = null,
@@ -209,8 +222,10 @@ export function AgentBuilder({
   improvements?: AgentImprovementsView;
   /** Spec 047 (historia 21): los Conectores del agente. Sin ellos, no se pintan. */
   connectors?: AgentConnectorsView;
-  /** Spec 047 (historia 23): Avanzado › Calidad. Sin ella, no se pinta. */
-  modelQuality?: AgentModelQualityView;
+  /** Spec 047 (63.1; H5): el canal que se configura dentro de la pestaña Canales (`?canal=`). */
+  channelConfig?: AgentChannelConfigView | null;
+  /** T218: se pidió un canal (`?canal=`) que no se pudo leer; la pestaña Canales lo dice sobre la lista. */
+  channelUnavailable?: boolean;
   /** Spec 047 (49.6): la sección a la que llega un aviso (`?tab=`), ya traducida a su id. */
   initialSection?: string | null;
   /** El cliente del agente: «de Flor y Encanto» bajo el título. */
@@ -241,26 +256,64 @@ export function AgentBuilder({
   // historial se vuelven a leer.
   const [refreshKey, setRefreshKey] = React.useState(0);
   const bump = () => setRefreshKey((k) => k + 1);
+  // Spec 047 (65.3, 65.4): lo que no tenemos sale del borrador; mientras se
+  // vuelve a leer, un esqueleto, y si no se puede, se dice.
+  const [missingState, setMissingState] = React.useState<MissingState>("ready");
+  // «Añadir una prueba» desde la puerta (65.9): abre el formulario de la lista.
+  const [addTest, setAddTest] = React.useState(0);
   const router = useRouter();
   const [header, setHeader] = React.useState(initialHeader ?? null);
   // Las preguntas sin responder, para la barra flotante.
   const [pendingQuestions, setPendingQuestions] = React.useState(questions?.questions.length ?? 0);
   const writable = canWrite && draft.allowed.includes("edit");
   const spec = draft.spec;
+  const missing = React.useMemo(() => missingCapabilities(draft.missing_capabilities), [draft.missing_capabilities]);
+  // Nada de lo que la API dice que no ofrecemos lleva «Conectar {X}» (65.3).
+  const notOffered = React.useMemo(() => notOfferedKeys(missing), [missing]);
 
-  // Un agente que ya atiende abre en Rendimiento; uno sin publicar, en
-  // «Configuración». Un aviso (`?tab=advanced`…) o un enlace
-  // (`#agente-pruebas`) abre la pestaña de su sección y la lleva a la vista.
-  // La pestaña elegida vale mientras el ancla no cambie: un enlace nuevo manda.
+  // Spec 047 (63.2; H9): Rendimiento solo existe con una versión guardada.
+  const hasPerf = draft.active_number != null && Boolean(performance || improvements);
+  // Un agente «Listo · sin canal» abre en Canales; uno que ya atiende, en
+  // Rendimiento; uno sin guardar, en «Configuración». Un aviso
+  // (`?tab=advanced`…) o un enlace (`#agente-pruebas`) abre la pestaña de su
+  // sección y la lleva a la vista. La pestaña elegida vale mientras el ancla
+  // no cambie: un enlace nuevo manda.
   const hash = React.useSyncExternalStore(subscribeHash, readHash, () => "");
   const [chosen, setChosen] = React.useState<{ tab: AgentTab; hash: string } | null>(null);
+  // Spec 047 (63.1; H5): un canal abierto (`?canal=`) se configura dentro de
+  // la pestaña Canales. Llega uno nuevo: se abre y la pestaña va a Canales.
+  // Cambiar de pestaña o «Decidir luego» lo cierra y quita `?canal=`.
+  const canalId = channelConfig?.page.id ?? null;
+  const [openCanal, setOpenCanal] = React.useState(canalId);
+  const [seenCanal, setSeenCanal] = React.useState(canalId);
+  if (seenCanal !== canalId) {
+    setSeenCanal(canalId);
+    setOpenCanal(canalId);
+    if (canalId) setChosen({ tab: "channels", hash });
+  }
+  const showingChannel = openCanal && channelConfig && channelConfig.page.id === openCanal ? channelConfig : null;
+  // T218: el canal pedido no se pudo leer. Se abre la lista y se dice, hasta cambiar de pestaña.
+  const [canalMissing, setCanalMissing] = React.useState(channelUnavailable && !channelConfig && Boolean(channels));
+  // Lo último que guardó la configuración del canal: la lista lo refleja sin volver a leer.
+  const [channelUpdate, setChannelUpdate] = React.useState<ChannelPage | null>(null);
   const tab: AgentTab =
     (chosen && chosen.hash === hash ? chosen.tab : null) ??
+    (showingChannel || canalMissing ? "channels" : null) ??
     tabOfSection(hash) ??
     tabOfSection(initialSection) ??
-    (initial.active_number != null && (performance || improvements) ? "perf" : "build");
+    (header?.visible_state.code === "ready_no_channel" && channels ? "channels" : hasPerf ? "perf" : "build");
   function setTab(next: AgentTab) {
+    if (showingChannel) closeChannel();
+    if (canalMissing) {
+      setCanalMissing(false);
+      router.replace(agentHref(refId, draft.agent_id), { scroll: false });
+    }
     setChosen({ tab: next, hash });
+  }
+  /** Cierra la configuración del canal: vuelve la lista y la dirección pierde `?canal=`. */
+  function closeChannel() {
+    setOpenCanal(null);
+    router.replace(agentHref(refId, draft.agent_id), { scroll: false });
   }
   // La sección a la que hay que ir cuando su pestaña ya esté a la vista.
   const scrollTo = React.useRef<string | null>(initialSection);
@@ -358,23 +411,6 @@ export function AgentBuilder({
     return res;
   }
 
-  /**
-   * Spec 047 (39.1): la calidad elegida va al borrador, con la misma revisión
-   * que los bloques. Se aplica al «Guardar», que pasa la puerta.
-   */
-  async function saveModelPolicy(policy: ModelPolicy): Promise<Result<BuilderDraft>> {
-    if (!draft.spec) return { ok: false, status: 409, message: "no spec" };
-    const res = await actions.save({ ref: refId, agent: draft.agent_id, revision: draft.revision, spec: { ...draft.spec, model_policy: policy } });
-    if (res.ok) {
-      setDraft(res.data);
-      bump();
-    } else if (res.status === 412) {
-      // Otra persona guardó antes: se lee su borrador y se puede volver a elegir.
-      void reload();
-    }
-    return res;
-  }
-
   /** Lo suyo: el bloque que se estaba guardando, encima del borrador de ahora. */
   function keepMine() {
     if (conflict) void save(conflict.block, conflict.value, conflict.current);
@@ -387,11 +423,16 @@ export function AgentBuilder({
   }
 
   async function reload() {
+    setMissingState("loading");
     const res = await actions.reload({ ref: refId, agent: draft.agent_id });
-    if (!res.ok) return;
+    if (!res.ok) {
+      setMissingState("failed");
+      return;
+    }
     setDraft(res.data.draft);
     setProposals(res.data.proposals);
     setProposalsVersion((v) => v + 1);
+    setMissingState("ready");
   }
 
   /** El borrador cambió fuera de los bloques: se lee otra vez, y todo lo demás. */
@@ -414,9 +455,22 @@ export function AgentBuilder({
     go(block ? `bloque-${block}` : "agente-borrador");
   }
 
-  /** Un conector que falta: la pestaña Conectores, sin salir de la pantalla. */
+  /** La puerta no guarda un agente sin pruebas que le apliquen (65.9): a la lista, con su formulario abierto. */
+  function addTestFromGate() {
+    setTab("build");
+    setMoreOpen(true);
+    setAddTest((n) => n + 1);
+    go("agente-pruebas");
+  }
+
+  // Spec 047 (62.3; H11): «Conectar {X}» —de una habilidad o de un hallazgo—
+  // abre aquí mismo el diálogo de conectar de la pestaña Conectores. Si el
+  // conector no está en su catálogo, se va a la pestaña.
+  const connectorsPanel = React.useRef<AgentConnectorsHandle>(null);
+  const [inUse, setInUse] = React.useState<ReadonlySet<string>>(() => new Set());
   const connectTo = connectors
-    ? () => {
+    ? (integration?: string) => {
+        if (integration && connectorsPanel.current?.connect(integration)) return;
         setTab("connectors");
         go("agente-conectores");
       }
@@ -467,7 +521,7 @@ export function AgentBuilder({
             <ul className="grid list-disc gap-1 pl-5" data-slot="spec-problems">
               {problems.map((p, i) => (
                 <li key={`${p.pointer}-${i}`} className="break-words">
-                  {p.message || p.code}
+                  {specProblemText(p, spec, t)}
                 </li>
               ))}
             </ul>
@@ -516,16 +570,27 @@ export function AgentBuilder({
       sources={knowledge?.data ? knowledge.data.items.length : null}
       business={business}
       onConnect={connectTo}
+      connected={inUse}
+      notOffered={notOffered}
     />
   ) : (
     <Callout tone="info">{t("builder.agent.noSpec")}</Callout>
   );
 
   const openProposals = proposals?.length ?? 0;
+  const improvementsPanel = improvements ? (
+    <AgentImprovementsPanel
+      refId={refId}
+      agentId={draft.agent_id}
+      improvements={improvements.data}
+      onAccepted={() => void refreshAll()}
+      actions={qualityActions.improvements}
+    />
+  ) : null;
 
   // El owner (2026-10-28): las pestañas del agente no llevan números.
   const tabs: { id: AgentTab; label: string }[] = [
-    ...(performance || improvements ? [{ id: "perf" as const, label: t("improve.performance.title") }] : []),
+    ...(hasPerf ? [{ id: "perf" as const, label: t("improve.performance.title") }] : []),
     { id: "build", label: t("builder.screen.tab.build") },
     ...(channels ? [{ id: "channels" as const, label: t("builder.screen.channels") }] : []),
     ...(connectors ? [{ id: "connectors" as const, label: t("agentConn.title") }] : []),
@@ -603,30 +668,22 @@ export function AgentBuilder({
 
         {/* Las pestañas ocultas siguen montadas: el chat de prueba o un editor
             abierto no se pierden al cambiar de pestaña. */}
-        {performance || improvements ? (
-          <TabsContent value="perf" keepMounted className="grid min-w-0 gap-8">
-          {performance ? (
-            <ScreenSection id="agente-rendimiento" title={t("improve.performance.title")}>
+        {hasPerf ? (
+          // Como el prototipo (§6, H9): los 30 días y las sugerencias arriba, en dos columnas; la gráfica y las conversaciones debajo.
+          <TabsContent value="perf" keepMounted className="grid min-w-0 gap-4">
+            {performance ? (
               <AgentPerformancePanel
                 refId={refId}
                 agentId={draft.agent_id}
                 performance={performance.performance}
                 conversations={performance.conversations}
+                cap={advanced?.cap ?? null}
+                suggestions={improvementsPanel}
                 actions={qualityActions.performance}
               />
-            </ScreenSection>
-          ) : null}
-          {improvements ? (
-            <ScreenSection id="agente-mejoras" title={t("improve.title")}>
-              <AgentImprovementsPanel
-                refId={refId}
-                agentId={draft.agent_id}
-                improvements={improvements.data}
-                onAccepted={() => void refreshAll()}
-                actions={qualityActions.improvements}
-              />
-            </ScreenSection>
-          ) : null}
+            ) : (
+              improvementsPanel
+            )}
           </TabsContent>
         ) : null}
 
@@ -647,6 +704,15 @@ export function AgentBuilder({
                   />
                 </div>
               ) : null}
+              <div id="agente-faltan" className="min-w-0 scroll-mt-24 empty:hidden">
+                <MissingCapabilities
+                  items={missing}
+                  state={missingState}
+                  canEdit={writable}
+                  onEdit={(pointer) => openAt(blockOfPointer(pointer))}
+                  onRetry={reload}
+                />
+              </div>
               <div id="agente-borrador" className="min-w-0 scroll-mt-24">
                 {blocks}
               </div>
@@ -673,6 +739,8 @@ export function AgentBuilder({
                         suite={quality.tests}
                         canWrite={writable}
                         refreshKey={refreshKey}
+                        structured={spec?.mode === "structured"}
+                        addRequest={addTest}
                         onFix={() => openAt("instructions")}
                         onWhy={(test) => askWhy({ test_id: test.id }, t("builder.copilot.about.test", { name: test.name }))}
                         onChanged={() => void refreshAll()}
@@ -704,39 +772,28 @@ export function AgentBuilder({
                     </ScreenSection>
                   </>
                 ) : null}
-                {advanced || modelQuality ? (
-                  <ScreenSection id="agente-avanzado" title={t("money.advanced.title")}>
-                    {advanced ? (
-                      <AgentCapForm
-                        refId={refId}
-                        agentId={draft.agent_id}
-                        agentName={header?.name ?? draft.agent_name}
-                        cap={advanced.cap}
-                        spent={advanced.spent ?? null}
-                        currency={advanced.currency}
-                        canWrite={advanced.canWrite}
-                      />
-                    ) : null}
-                    {modelQuality ? (
-                      // Agente › Avanzado › Calidad (39.4): `?tab=quality` llega aquí.
-                      <section id="agente-calidad" aria-labelledby="agente-calidad-title" className="grid min-w-0 scroll-mt-24 gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
-                        <h3 id="agente-calidad-title" className="text-sm font-semibold">
-                          {t("modelQuality.title")}
-                        </h3>
-                        <AgentModelQuality
-                          refId={refId}
-                          agentId={draft.agent_id}
-                          quality={modelQuality.data}
-                          canWrite={modelQuality.canWrite && writable}
-                          drafted={draftPolicy(spec)}
-                          onUse={spec && writable ? saveModelPolicy : undefined}
-                          actions={qualityActions.modelQuality}
-                          wait={qualityActions.wait}
-                        />
-                      </section>
-                    ) : null}
-                  </ScreenSection>
-                ) : null}
+                <ScreenSection id="agente-avanzado" title={t("money.advanced.title")}>
+                  {advanced ? (
+                    <AgentCapForm
+                      refId={refId}
+                      agentId={draft.agent_id}
+                      agentName={header?.name ?? draft.agent_name}
+                      cap={advanced.cap}
+                      spent={advanced.spent ?? null}
+                      currency={advanced.currency}
+                      canWrite={advanced.canWrite}
+                    />
+                  ) : null}
+                  {/* Spec 047 (64.1; D55): sin «Calidad» ni «Fijar un modelo» mientras
+                      Auphere gestiona los modelos. Un aviso viejo (`?tab=quality`) llega aquí. */}
+                  <p
+                    id="agente-calidad"
+                    className="min-w-0 scroll-mt-24 border-t border-border pt-4 text-sm text-pretty text-muted-foreground first:border-t-0 first:pt-0"
+                    data-slot="model-managed"
+                  >
+                    {t("modelQuality.managed")}
+                  </p>
+                </ScreenSection>
                 {quality && spec ? (
                   <div id="agente-copiloto" className="min-w-0 scroll-mt-24 rounded-lg border border-border bg-card p-4 sm:p-6">
                     <CopilotPanel
@@ -801,7 +858,8 @@ export function AgentBuilder({
                   onFix={() => openAt("instructions")}
                   onWhy={spec ? (test) => askWhy({ test_id: test.id }, t("builder.copilot.about.test", { name: test.name })) : undefined}
                   onEdit={(pointer) => openAt(pointer ? blockOfPointer(pointer) : null)}
-                  onConnect={connectTo ? () => connectTo() : undefined}
+                  onConnect={connectTo}
+                  notOffered={notOffered}
                   onAll={() => {
                     setMoreOpen(true);
                     go("agente-pruebas");
@@ -826,6 +884,8 @@ export function AgentBuilder({
                 tests={{ summary: testRun.suite?.summary ?? null, running: testRun.running !== null, canRun: testRun.canRun, run: () => void testRun.run("all") }}
                 pendingQuestions={pendingQuestions}
                 onConnect={channelsTab}
+                onAddTest={writable ? addTestFromGate : undefined}
+                onEdit={writable ? (pointer) => openAt(blockOfPointer(pointer)) : undefined}
                 onPublished={() => void refreshAll()}
                 actions={qualityActions.publish}
                 wait={qualityActions.wait}
@@ -836,39 +896,64 @@ export function AgentBuilder({
 
         {channels ? (
           <TabsContent value="channels" keepMounted className="grid min-w-0 gap-6">
-          {channels ? (
-            // Como el prototipo (`agente.md` §7): sin marco ni título propio, el asistente y la lista son las tarjetas.
-            <div id="agente-canales" className="min-w-0 scroll-mt-24">
-              <AgentChannelsPanel
-                refId={refId}
-                agentId={draft.agent_id}
-                channels={channels.data}
-                pages={channels.pages}
-                canWrite={channels.canWrite}
-                fromPhone={channels.fromPhone}
-                clientName={clientName}
-                meta={channels.meta ?? null}
-                actions={qualityActions.channels}
-              />
+            {/* Como el prototipo (`agente.md` §7 y §8): sin marco ni título propio. Con
+                un canal abierto (`?canal=`), su configuración; la lista sigue montada debajo, oculta. */}
+            <div id="agente-canales" className="grid min-w-0 scroll-mt-24 gap-6">
+              {canalMissing ? <Callout tone="warning">{t("builder.channel.page.unavailable")}</Callout> : null}
+              {showingChannel ? (
+                <ChannelConfigPage
+                  key={showingChannel.page.id}
+                  refId={refId}
+                  agentId={draft.agent_id}
+                  page={showingChannel.page}
+                  history={showingChannel.history}
+                  canWrite={showingChannel.canWrite}
+                  balance={showingChannel.balance}
+                  onClose={() => {
+                    closeChannel();
+                    setChosen({ tab: "channels", hash });
+                  }}
+                  onChanged={setChannelUpdate}
+                  actions={qualityActions.channelPage}
+                />
+              ) : null}
+              <div hidden={Boolean(showingChannel)} className="min-w-0">
+                <AgentChannelsPanel
+                  refId={refId}
+                  agentId={draft.agent_id}
+                  channels={channels.data}
+                  pages={channels.pages}
+                  canWrite={channels.canWrite}
+                  fromPhone={channels.fromPhone}
+                  clientName={clientName}
+                  meta={channels.meta ?? null}
+                  updated={channelUpdate}
+                  actions={qualityActions.channels}
+                />
+              </div>
             </div>
-          ) : null}
           </TabsContent>
         ) : null}
 
         {connectors ? (
           <TabsContent value="connectors" keepMounted className="grid min-w-0 gap-6">
-          {connectors ? (
-            <ScreenSection id="agente-conectores" title={t("agentConn.title")}>
+            {/* Como el prototipo (§9, H10): sin marco propio; la tarjeta de filas es la sección. */}
+            <section id="agente-conectores" aria-labelledby="agente-conectores-title" className="grid min-w-0 scroll-mt-24 gap-3">
+              <h2 id="agente-conectores-title" className="sr-only">
+                {t("agentConn.title")}
+              </h2>
               <AgentConnectorsPanel
+                ref={connectorsPanel}
                 refId={refId}
                 agentId={draft.agent_id}
                 connectors={connectors.data}
                 canWrite={connectors.canWrite}
                 spec={spec}
+                onList={(list) => setInUse(new Set(list.filter((c) => rowState(c) === "on").map((c) => c.slug)))}
+                onConnected={() => void refreshAll()}
                 actions={qualityActions.connectors}
               />
-            </ScreenSection>
-          ) : null}
+            </section>
           </TabsContent>
         ) : null}
       </Tabs>

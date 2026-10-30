@@ -22,6 +22,26 @@ type SectionMeta = { revision: number; state: SectionState; allowed: SectionActi
 export type ShiftOut = { open: string; close: string; overnight: boolean };
 export type ShiftIn = { open: string; close: string };
 
+/**
+ * El sector del negocio (requisito 57; `contracts/console-api.md` §10): la clave
+ * de una guía de Auphere u `otro`, su etiqueta legible, la confianza, de dónde
+ * salió y quién lo decidió. `has_guide` dice si sus agentes siguen una guía de
+ * Auphere o una generada para este cliente (58.4).
+ */
+export type SectorSource = "niche" | "info" | "web" | "person" | "fallback";
+export type Sector = {
+  key: string;
+  label: string;
+  confidence: number;
+  source: SectorSource;
+  decided_by: "system" | "person";
+  has_guide: boolean;
+};
+/** Un sector con guía de Auphere, para el selector (`GET /console/sectors`). */
+export type SectorOption = { key: string; label: string };
+/** `key = "otro"` exige `label` (1–40). */
+export type SectorBody = { key: string; label: string };
+
 export type Basics = SectionMeta & {
   name: string;
   niche: string;
@@ -31,8 +51,26 @@ export type Basics = SectionMeta & {
   timezone: string;
   price_currency: string | null;
   eu_only: boolean;
+  /**
+   * `null` mientras se identifica; sin el campo (una API de antes de la fase 27),
+   * la consola no habla del sector.
+   */
+  sector?: Sector | null;
 };
-export type BasicsBody = Partial<Omit<Basics, keyof SectionMeta>>;
+export type BasicsBody = Partial<Omit<Basics, keyof SectionMeta | "sector">> & { sector?: SectorBody };
+
+/** Las cuatro políticas del negocio (requisito 8.1), tal cual entran en el prompt. */
+export const POLICY_KEYS = ["cancellation", "payments", "deposit", "no_show"] as const;
+export type PolicyKey = (typeof POLICY_KEYS)[number];
+export type Policies = SectionMeta & Record<PolicyKey, string | null>;
+/** `PUT /policies` sustituye las cuatro: lo que no se manda queda vacío. */
+export type PoliciesBody = Record<PolicyKey, string | null>;
+
+/** Una pregunta frecuente; `suggested` es «Sugerido · confirma» y no entra en el prompt. */
+export type Faq = { id: string; q: string; a: string; suggested: boolean };
+export type Faqs = SectionMeta & { items: Faq[]; created_id: string | null };
+export type FaqBody = { q: string; a: string };
+export type FaqPatch = { q?: string; a?: string; suggested?: boolean };
 
 export type Hours = SectionMeta & {
   location_id: string | null;
@@ -149,5 +187,18 @@ export function businessSectionsApi(call: Call) {
       call<Services>(`${biz(ref)}/services/${enc(id)}/duplicate`, { method: "POST", headers: ifMatch(revision) }),
     setServiceAgents: (ref: string, id: string, body: { mode: "all_agents" | "list"; agent_ids: string[] }, revision: number) =>
       call<Services>(`${biz(ref)}/services/${enc(id)}/agents`, { method: "PUT", body, headers: ifMatch(revision) }),
+    // Spec 047, fase 27 (T209; requisitos 57.5 y 60.4).
+    getPolicies: (ref: string) => call<Policies>(`${biz(ref)}/policies`),
+    putPolicies: (ref: string, body: PoliciesBody, revision: number) =>
+      call<Policies>(`${biz(ref)}/policies`, { method: "PUT", body, headers: ifMatch(revision) }),
+    getFaqs: (ref: string) => call<Faqs>(`${biz(ref)}/faqs`),
+    createFaq: (ref: string, body: FaqBody, revision: number) =>
+      call<Faqs>(`${biz(ref)}/faqs`, { method: "POST", body, headers: ifMatch(revision) }),
+    updateFaq: (ref: string, id: string, body: FaqPatch, revision: number) =>
+      call<Faqs>(`${biz(ref)}/faqs/${enc(id)}`, { method: "PATCH", body, headers: ifMatch(revision) }),
+    archiveFaq: (ref: string, id: string, revision: number) =>
+      call<Faqs>(`${biz(ref)}/faqs/${enc(id)}/archive`, { method: "POST", headers: ifMatch(revision) }),
+    /** Los sectores con guía de Auphere (el selector de Datos básicos). */
+    listSectors: async () => (await call<{ sectors: SectorOption[] }>("/console/sectors")).sectors,
   };
 }

@@ -25,7 +25,8 @@ const VENTAS = "00000000-0000-4000-8000-0000000000a3";
 const CH1 = "00000000-0000-4000-8000-0000000000c1";
 
 const agentPage = `/clients/${REF}/agents/${RECEPCION}`;
-const channelPage = `${agentPage}/channels/${CH1}`;
+// Spec 047 (63.1; H5): la configuración del canal se abre dentro del agente.
+const channelPage = `${agentPage}?canal=${CH1}`;
 
 async function expectNoSeriousAxe(page: Page) {
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 15_000 });
@@ -165,9 +166,14 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
   });
 
   test("la página del canal: guardar con su revisión, el conflicto, «A todos» sin saldo, deshacer e historial", async ({ page, request }) => {
-    await go(page, `/clients/${REF}/channels/${CH1}`, "Canal +34 611 20 48 93");
-    await expect(page).toHaveURL(new RegExp(`${channelPage}$`));
-    for (const name of ["A quién responde", "Excepciones", "Escalado a personas", "Mensaje de espera", "Comprobaciones", "Historial"]) {
+    await go(page, `/clients/${REF}/channels/${CH1}`, "+34 611 20 48 93");
+    await expect(page).toHaveURL(new RegExp(`${channelPage.replace("?", "\\?")}$`));
+    await expect(page.getByRole("tab", { name: "Canales" })).toHaveAttribute("aria-selected", "true");
+    for (const name of ["A quién responde", "Escalado a personas", "Comprobaciones"]) {
+      await expect(page.getByRole("region", { name })).toBeVisible();
+    }
+    await page.getByRole("button", { name: /Más ajustes/ }).last().click();
+    for (const name of ["Mensaje de espera", "Historial"]) {
       await expect(page.getByRole("region", { name })).toBeVisible();
     }
     await expect(page.getByText("Los avisos por WhatsApp saldrán de este número.")).toBeVisible();
@@ -180,12 +186,11 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     const audience = page.getByRole("region", { name: "A quién responde" });
     await expect(audience.getByText(/«A todos» necesita saldo en la bolsa del cliente/)).toBeVisible();
     await expect(audience.getByRole("link", { name: "Asignar saldo" })).toHaveAttribute("href", `/usage?client=${REF}&assign=1`);
-    await page.getByRole("radio", { name: /Solo mi equipo/ }).check();
-
-    // Una excepción y el mensaje de espera; otra persona guarda antes.
+    // Una excepción (solo se ve con «A todos») y el mensaje de espera; otra persona guarda antes.
     const exceptions = page.getByRole("region", { name: "Excepciones" });
     await exceptions.getByRole("textbox", { name: /Número nuevo/ }).fill("+56 9 1234 5678");
     await exceptions.getByRole("button", { name: "Añadir a Excepciones" }).click();
+    await page.getByRole("radio", { name: /Solo mi equipo/ }).check();
     await page.getByRole("textbox", { name: /^Mensaje/ }).fill("Gracias por escribir. Te respondemos enseguida.");
     await request.post(`${API}/__test/bump`);
     await page.getByRole("button", { name: "Guardar" }).click();
@@ -209,7 +214,6 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     await expect(history.getByText("Excepciones: ninguno → 1 número")).toBeVisible();
 
     await page.getByRole("button", { name: "Deshacer el último cambio" }).click();
-    await expect(page.getByRole("region", { name: "Excepciones" }).getByText("Sin excepciones.")).toBeVisible();
     await expect(history.getByText("Deshecho", { exact: true })).toBeVisible();
     await expectNoSeriousAxe(page);
   });
@@ -232,7 +236,7 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     expect(await overflowOffenders(page), "@390px el modal se desborda").toEqual([]);
     await expectNoSeriousAxe(page);
 
-    await go(page, channelPage, "Canal +34 611 20 48 93");
+    await go(page, channelPage, "+34 611 20 48 93");
     await page.getByRole("region", { name: "Escalado a personas" }).getByRole("button", { name: "Añadir persona" }).click();
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px la página del canal se desborda").toEqual([]);

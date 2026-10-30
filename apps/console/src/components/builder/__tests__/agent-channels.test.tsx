@@ -79,7 +79,7 @@ describe("la sección Canales del agente", () => {
     expect(within(items[1]!).getByText("Con problemas · la app lleva días sin abrirse")).toBeVisible();
     expect(within(items[0]!).getByRole("link", { name: "Configurar +34 611 20 48 93" })).toHaveAttribute(
       "href",
-      `/clients/${REF}/agents/${RECEPCION}/channels/${CH}`,
+      `/clients/${REF}/agents/${RECEPCION}?canal=${CH}`,
     );
     // Sin su página, el número se ve igual, sin ⋯.
     expect(screen.queryByRole("button", { name: "Más acciones de +34 611 20 48 94" })).toBeNull();

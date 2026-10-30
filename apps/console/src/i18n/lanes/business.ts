@@ -164,7 +164,6 @@ export const businessMessages = {
   "business.read.found.links.other": { es: "{n} redes", en: "{n} social profiles" },
   "business.read.and": { es: " y ", en: " and " },
   "business.read.translated": { es: "Traducido de {language}.", en: "Translated from {language}." },
-  "business.read.blockedNetworks": { es: "{networks} no se deja leer.", en: "{networks} does not allow reading." },
   "business.read.review": { es: "Revisar", en: "Review" },
   "business.read.failed": { es: "No pudimos leer {site}: {reason}.", en: "We could not read {site}: {reason}." },
   "business.read.reason.unreachable": { es: "no responde", en: "it does not answer" },

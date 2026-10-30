@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Search } from "lucide-react";
+import { CircleCheck, ExternalLink, Search } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 import { toast } from "sonner";
@@ -16,11 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-  Label,
-  NativeSelect,
+  SegmentedControl,
   Skeleton,
   StatusBadge,
-  StatusDot,
+  buttonVariants,
   formatDateTime,
 } from "@nexus/ui";
 
@@ -32,9 +31,7 @@ import {
   setActivationAction,
 } from "@/app/(console)/clients/[ref]/agents/connector-actions";
 import { connectApiKeyAction } from "@/app/(console)/clients/[ref]/integrations/actions";
-import { connectorStatusKey, connectorTone, splitCredentials } from "@/components/agent-tools/lib";
-import { RowActions, type RowAction } from "@/components/row-actions";
-import { foldsIntoMenu } from "@/components/row-actions-rule";
+import { connectorStatusKey, splitCredentials } from "@/components/agent-tools/lib";
 import { useLocale, useT } from "@/i18n/client";
 import type {
   Activation,
@@ -46,13 +43,13 @@ import type {
   ConnectorPermission,
   ConnectorSettings,
 } from "@/lib/backend/agent-connectors-types";
-import { CONNECTOR_PERMISSIONS } from "@/lib/backend/agent-connectors-types";
 import type { ConnectorOut } from "@/lib/backend/agent-tools-types";
 import type { AgentSpec } from "@/lib/backend/builder-types";
 
 import { skillName, type Result } from "./builder-model";
-import { ConnectorLogo, CredentialsForm, PermissionSelect, SettingsDialog, permissionHint } from "./connector-parts";
+import { ConnectorLogo, CredentialsForm, PermissionRadios, SettingsDialog } from "./connector-parts";
 import {
+  CONNECTED_FILTER,
   authKindLabel,
   categoriesOf,
   categoryLabel,
@@ -60,12 +57,13 @@ import {
   connectionHref,
   descriptionKey,
   filterConnectors,
+  filterCounts,
   isBroken,
+  orderConnectors,
   permissionLabel,
   rowActions,
   rowState,
   skillsUsing,
-  type RowActionKind,
 } from "./connector-model";
 
 type Ids = { ref: string; agent: string };
@@ -91,10 +89,21 @@ const SERVER_ACTIONS: Required<AgentConnectorsActions> = {
 };
 
 const NO_ACTIONS: AgentConnectorsActions = {};
+/** «Todos» en el filtro segmentado. */
+const ALL = "all";
 
 /** Una autorización abierta en otra ventana: el enlace por si el navegador la bloqueó. */
 type Pending = { slug: string; name: string; consent: ConnectConsent };
-type ConnectTarget = { connector: AgentConnector; form: ConnectFormField[] | null; mode: "connect" | "reconnect" };
+/** `inPlace`: se abrió desde fuera de la pestaña (una habilidad, un hallazgo), y el aviso va en un toast. */
+type ConnectTarget = { connector: AgentConnector; form: ConnectFormField[] | null; mode: "connect" | "reconnect"; inPlace?: boolean };
+
+/**
+ * Spec 047 (62.3; H11): «Conectar {X}» desde una habilidad o el fallo de una
+ * prueba abre aquí mismo el diálogo de conectar, sin salir de la pantalla.
+ * `connect` devuelve `false` si el conector no está en el catálogo del agente
+ * (o ya lo usa): quien llama decide adónde ir.
+ */
+export type AgentConnectorsHandle = { connect: (slug: string) => boolean };
 
 /**
  * La sección Conectores de un agente (spec 047, historia 21; T129; requisitos
@@ -119,19 +128,27 @@ type ConnectTarget = { connector: AgentConnector; form: ConnectFormField[] | nul
  * del proveedor y no frena el resto de la pantalla); en `null`, no se pudo leer.
  */
 export function AgentConnectorsPanel({
+  ref,
   refId,
   agentId,
   connectors: initial,
   canWrite,
   spec = null,
+  onList,
+  onConnected,
   actions: given = NO_ACTIONS,
 }: {
+  ref?: React.Ref<AgentConnectorsHandle>;
   refId: string;
   agentId: string;
   connectors?: AgentConnector[] | null;
   canWrite: boolean;
   /** El borrador, para decir qué habilidades lo piden antes de quitarlo. */
   spec?: AgentSpec | null;
+  /** El catálogo cada vez que cambia: la pantalla sabe qué está conectado (H11). */
+  onList?: (list: AgentConnector[]) => void;
+  /** Un conector se conectó o se activó: las pruebas que lo usan quedan desactualizadas (62.3). */
+  onConnected?: () => void;
   actions?: AgentConnectorsActions;
 }) {
   const t = useT();
@@ -141,6 +158,7 @@ export function AgentConnectorsPanel({
   const [list, setList] = React.useState<AgentConnector[] | null | undefined>(initial);
   const [loading, setLoading] = React.useState(initial === undefined);
   const [query, setQuery] = React.useState("");
+  // `null`: «Todos»; `CONNECTED_FILTER`: «Conectados»; si no, una categoría.
   const [category, setCategory] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState<Pending[]>([]);
@@ -155,8 +173,28 @@ export function AgentConnectorsPanel({
     },
     [],
   );
-  const searchId = React.useId();
-  const categoryId = React.useId();
+  // La pantalla sabe qué conectores usa este agente (la línea de cada habilidad, H11).
+  const onListRef = React.useRef(onList);
+  React.useEffect(() => {
+    onListRef.current = onList;
+  });
+  React.useEffect(() => {
+    if (list) onListRef.current?.(list);
+  }, [list]);
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      connect: (slug: string) => {
+        const c = list?.find((x) => x.slug === slug);
+        if (!c || !canWrite || rowState(c) === "on") return false;
+        setRowError(null);
+        setTarget({ connector: c, form: null, mode: "connect", inPlace: true });
+        return true;
+      },
+    }),
+    [list, canWrite],
+  );
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -182,24 +220,6 @@ export function AgentConnectorsPanel({
     if (res.status === 401 || res.status === 403) return t("common.forbidden");
     if (res.code === "connection_not_authorized" || res.code === "unknown_integration" || res.code === "invalid_settings") return t(`agentConn.error.${res.code}`);
     return t("agentConn.error.unknown");
-  }
-
-  /** El permiso de la fila cambió: activar, cambiar o (con confirmación) quitar. */
-  async function choose(c: AgentConnector, next: ConnectorPermission | null) {
-    setRowError(null);
-    if (next === null) {
-      if (c.activation) setRemoving(c);
-      return;
-    }
-    if (c.activation?.permission === next) return;
-    setBusy(c.slug);
-    const res = await actions.activate({ ...ids, slug: c.slug, permission: next, settings: c.activation?.settings ?? {} });
-    if (!alive.current) return;
-    setBusy(null);
-    if (!res.ok) return setRowError({ slug: c.slug, text: errorText(res) });
-    patch(c.slug, { activation: res.data });
-    const permission = permissionLabel(t, res.data.permission);
-    toast.success(c.activation ? t("agentConn.permission.saved", { name: c.name, permission }) : t("agentConn.activated", { name: c.name, permission }));
   }
 
   async function remove(c: AgentConnector) {
@@ -228,25 +248,49 @@ export function AgentConnectorsPanel({
     setRowError({ slug: c.slug, text: errorText(res) });
   }
 
-  function opened(c: AgentConnector, consent: ConnectConsent) {
+  function opened(c: AgentConnector, consent: ConnectConsent, inPlace = false) {
     actions.open(consent.signed_consent_url);
     setPending((prev) => [...prev.filter((p) => p.slug !== c.slug), { slug: c.slug, name: c.name, consent }]);
+    // Desde fuera de la pestaña, el aviso con «Ya la terminé» va donde está la persona.
+    if (inPlace) {
+      toast(t("agentConn.connect.consent", { name: c.name }), {
+        duration: Infinity,
+        action: { label: t("agentConn.connect.finished"), onClick: () => void finished(c.slug) },
+      });
+    }
   }
 
   async function finished(slug: string) {
     setPending((prev) => prev.filter((p) => p.slug !== slug));
     await load();
+    onConnected?.();
+  }
+
+  /** «Ajustes»: el permiso y los ajustes del catálogo, en una sola escritura (63.3). */
+  async function saveSettings(c: AgentConnector, settings: ConnectorSettings, permission: ConnectorPermission | undefined) {
+    return actions.activate({ ...ids, slug: c.slug, permission: permission ?? c.activation!.permission, settings });
   }
 
   if (list === undefined || (loading && list === null)) {
     return (
-      <div className="grid min-w-0 gap-3" aria-busy="true" data-slot="agent-connectors-loading">
-        <p role="status" className="text-sm text-muted-foreground">
+      // Con la forma de lo que llega (T218): el aviso donde va la introducción, el buscador y la tarjeta de filas.
+      <div className="grid min-w-0 gap-4" aria-busy="true" data-slot="agent-connectors-loading">
+        <p role="status" className="max-w-prose text-sm text-muted-foreground">
           {t("agentConn.loading")}
         </p>
-        {Array.from({ length: 3 }, (_, i) => (
-          <Skeleton key={i} className="h-16 w-full" />
-        ))}
+        <Skeleton className="h-9 w-full sm:max-w-sm" />
+        <div className="min-w-0 divide-y divide-border rounded-lg border border-border bg-card">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="flex min-w-0 items-center gap-3 px-4 py-4 sm:px-5">
+              <Skeleton className="size-10 shrink-0" />
+              <div className="grid min-w-0 flex-1 gap-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+              <Skeleton className="h-8 w-24 shrink-0" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -266,27 +310,15 @@ export function AgentConnectorsPanel({
     );
   }
 
-  const categories = categoriesOf(list);
-  const visible = filterConnectors(list, { q: query, category });
-  // La regla de los tres puntos: más de dos botones en la lista, o más de uno
-  // en una fila, y cada fila lleva los suyos en su «⋯».
-  const perRow = visible.map((c) => rowActions(c, canWrite).length);
-  const menu = foldsIntoMenu(perRow.reduce((n, k) => n + k, 0)) || perRow.some((n) => n > 1);
-
-  const actionOf = (c: AgentConnector, kind: RowActionKind, primary: boolean): RowAction => {
-    switch (kind) {
-      case "connect":
-        return { label: t("agentConn.connect"), primary, onSelect: () => setTarget({ connector: c, form: null, mode: "connect" }) };
-      case "reconnect":
-        return { label: t("agentConn.reconnect"), primary, onSelect: () => void reconnect(c) };
-      case "page":
-        return { label: t("agentConn.page"), primary, href: connectionHref(refId, c.connection!.id, agentId) };
-      case "settings":
-        return { label: t("agentConn.settings"), primary, onSelect: () => setSettingsOf(c) };
-      case "remove":
-        return { label: t("agentConn.remove"), primary, onSelect: () => setRemoving(c) };
-    }
-  };
+  const ordered = orderConnectors(list);
+  const categories = categoriesOf(ordered);
+  const counts = filterCounts(ordered);
+  const visible = filterConnectors(ordered, { q: query, category });
+  const filters: { key: string | null; label: string; count: number }[] = [
+    { key: null, label: t("agentConn.filter.all"), count: counts.all },
+    { key: CONNECTED_FILTER, label: t("agentConn.filter.connected"), count: counts.connected },
+    ...categories.map((key) => ({ key, label: categoryLabel(t, key), count: counts.categories[key] ?? 0 })),
+  ];
 
   return (
     <div className="grid min-w-0 gap-4" data-slot="agent-connectors">
@@ -294,42 +326,28 @@ export function AgentConnectorsPanel({
       {!canWrite ? <p className="text-sm text-muted-foreground">{t("agentConn.readonly")}</p> : null}
 
       {list.length ? (
-        <div className="flex min-w-0 flex-wrap items-end gap-3" role="search" aria-label={t("agentConn.search")}>
-          <div className="grid min-w-0 flex-1 basis-56 gap-1">
-            <Label htmlFor={searchId}>{t("agentConn.search")}</Label>
-            <div className="relative min-w-0">
-              <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id={searchId}
-                type="search"
-                className="pl-8"
-                placeholder={t("agentConn.search.placeholder")}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
+        // Como el prototipo (§9): el buscador sin etiqueta a la vista y el filtro segmentado de vidrio.
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <div role="search" className="relative w-full min-w-0 sm:max-w-sm">
+            <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              className="pl-8"
+              aria-label={t("agentConn.searchLabel")}
+              placeholder={t("agentConn.searchLabel")}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoComplete="off"
+            />
           </div>
-          {categories.length > 1 ? (
-            <div className="grid min-w-0 gap-1">
-              <Label htmlFor={categoryId}>{t("agentConn.category")}</Label>
-              <NativeSelect id={categoryId} value={category ?? ""} onChange={(e) => setCategory(e.target.value || null)}>
-                <option value="">{t("agentConn.category.all")}</option>
-                {categories.map((key) => (
-                  <option key={key} value={key}>
-                    {categoryLabel(t, key)}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-          ) : null}
+          <SegmentedControl
+            type="pressed"
+            aria-label={t("agentConn.category")}
+            options={filters.map((f) => ({ value: f.key ?? ALL, label: f.label, count: f.count }))}
+            value={category ?? ALL}
+            onValueChange={(v) => setCategory(v === ALL ? null : v)}
+          />
         </div>
-      ) : null}
-
-      {list.length ? (
-        <p className="text-xs text-muted-foreground tabular-nums" role="status" aria-live="polite">
-          {t("agentConn.count", { shown: visible.length, total: list.length })}
-        </p>
       ) : null}
 
       {pending.map((p) => (
@@ -357,8 +375,10 @@ export function AgentConnectorsPanel({
           {t("agentConn.empty")}
         </p>
       ) : !visible.length ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-3 text-sm">
-          <p className="text-muted-foreground">{t("agentConn.noResults")}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 text-sm">
+          <p role="status" className="min-w-0 text-pretty text-muted-foreground">
+            {query.trim() ? t("agentConn.noMatch", { q: query.trim() }) : t("agentConn.noResults")}
+          </p>
           <Button
             size="sm"
             variant="outline"
@@ -371,60 +391,29 @@ export function AgentConnectorsPanel({
           </Button>
         </div>
       ) : (
-        <ul aria-label={t("agentConn.list")} className="grid min-w-0 gap-3" data-slot="agent-connector-list">
-          {visible.map((c) => {
-            const state = rowState(c);
-            const rowActionsList = rowActions(c, canWrite).map((k, i) => actionOf(c, k, i === 0));
-            const desc = descriptionKey(c.slug);
-            return (
-              <li key={c.slug} className="grid min-w-0 gap-3 rounded-md border border-border p-3" data-slot="agent-connector" data-state={state} aria-busy={busy === c.slug || undefined}>
-                <div className="flex min-w-0 items-start gap-3">
-                  <ConnectorLogo refId={refId} slug={c.slug} name={c.name} logo={c.logo} />
-                  <div className="grid min-w-0 flex-1 gap-1">
-                    <h3 className="min-w-0 font-medium break-words">{c.name}</h3>
-                    {desc ? <p className="text-sm text-pretty text-muted-foreground">{t(desc)}</p> : null}
-                    <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <StateLine connector={c} />
-                      {c.needed ? <StatusBadge tone="info">{t("agentConn.needed")}</StatusBadge> : null}
-                      <span>{categoryLabel(t, categoryOf(c))}</span>
-                      <span>{authKindLabel(t, c.auth_kind)}</span>
-                    </p>
-                  </div>
-                  {rowActionsList.length ? (
-                    <div className="shrink-0">
-                      {menu ? (
-                        <RowActions actions={rowActionsList} menu ariaLabel={t("agentConn.actions", { name: c.name })} />
-                      ) : (
-                        <SingleAction action={rowActionsList[0]!} name={c.name} />
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-                {state === "on" || state === "off" ? (
-                  <div className="grid min-w-0 gap-1 sm:max-w-sm">
-                    {canWrite ? (
-                      <PermissionSelect
-                        label={t("agentConn.permission", { name: c.name })}
-                        value={c.activation?.permission ?? null}
-                        allowOff
-                        busy={busy === c.slug}
-                        onChange={(next) => void choose(c, next)}
-                      />
-                    ) : (
-                      <span className="text-sm">{c.activation ? permissionLabel(t, c.activation.permission) : t("agentConn.permission.off")}</span>
-                    )}
-                    {c.activation ? <span className="text-xs text-pretty text-muted-foreground">{permissionHint(t, c.activation.permission)}</span> : null}
-                  </div>
-                ) : null}
-                {rowError?.slug === c.slug ? (
-                  <p role="alert" className="text-sm text-destructive text-pretty">
-                    {rowError.text}
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        // Una sola tarjeta con filas divididas (prototipo §9; 63.3).
+        <div className="min-w-0 rounded-lg border border-border bg-card">
+          <ul aria-label={t("agentConn.list")} className="grid min-w-0 divide-y divide-border" data-slot="agent-connector-list">
+            {visible.map((c) => (
+              <ConnectorRow
+                key={c.slug}
+                connector={c}
+                refId={refId}
+                agentId={agentId}
+                canWrite={canWrite}
+                busy={busy === c.slug}
+                error={rowError?.slug === c.slug ? rowError.text : null}
+                onConnect={() => {
+                  setRowError(null);
+                  setTarget({ connector: c, form: null, mode: "connect" });
+                }}
+                onReconnect={() => void reconnect(c)}
+                onSettings={() => setSettingsOf(c)}
+                onRemove={() => setRemoving(c)}
+              />
+            ))}
+          </ul>
+        </div>
       )}
 
       {target ? (
@@ -435,8 +424,11 @@ export function AgentConnectorsPanel({
           onClose={() => setTarget(null)}
           actions={actions}
           ids={ids}
-          onConsent={(consent) => opened(target.connector, consent)}
-          onDone={() => void load()}
+          onConsent={(consent) => opened(target.connector, consent, target.inPlace)}
+          onDone={() => {
+            void load();
+            onConnected?.();
+          }}
         />
       ) : null}
 
@@ -448,10 +440,17 @@ export function AgentConnectorsPanel({
           name={settingsOf.name}
           schema={settingsOf.settings_schema}
           settings={settingsOf.activation.settings}
-          save={(settings) => actions.activate({ ...ids, slug: settingsOf.slug, permission: settingsOf.activation!.permission, settings })}
+          permission={settingsOf.activation.permission}
+          pageHref={settingsOf.connection ? connectionHref(refId, settingsOf.connection.id, agentId) : null}
+          save={(settings, permission) => saveSettings(settingsOf, settings, permission)}
           onSaved={(activation) => {
+            const before = settingsOf.activation!.permission;
             patch(settingsOf.slug, { activation });
-            toast.success(t("agentConn.settings.saved", { name: settingsOf.name }));
+            toast.success(
+              activation.permission !== before
+                ? t("agentConn.permission.saved", { name: settingsOf.name, permission: permissionLabel(t, activation.permission) })
+                : t("agentConn.settings.saved", { name: settingsOf.name }),
+            );
           }}
         />
       ) : null}
@@ -470,39 +469,120 @@ export function AgentConnectorsPanel({
   );
 }
 
-/** Una sola acción a la vista: lleva el nombre del conector para quien no ve la fila. */
-function SingleAction({ action, name }: { action: RowAction; name: string }) {
-  const label = `${action.label} ${name}`;
-  return action.href ? (
-    <Button size="sm" variant="outline" nativeButton={false} render={<Link href={action.href} aria-label={label} />}>
-      {action.label}
-    </Button>
-  ) : (
-    <Button size="sm" onClick={action.onSelect} disabled={action.disabled} aria-label={label}>
-      {action.label}
-    </Button>
-  );
-}
-
-/** «Conectado» o el estado de la conexión del cliente, con su punto: la palabra lo dice sin el color. */
-function StateLine({ connector: c }: { connector: AgentConnector }) {
+/**
+ * Una fila como el prototipo (§9; 63.3): el logo, el nombre con su categoría,
+ * la nota —qué hace, si lo pide una habilidad y cómo se autoriza— y su acción:
+ * «Conectar» (el principal si lo pide una habilidad), «Conectado» con
+ * «Ajustes» y «Quitar», o «Reconectar» y su página si la conexión no está bien.
+ */
+function ConnectorRow({
+  connector: c,
+  refId,
+  agentId,
+  canWrite,
+  busy,
+  error,
+  onConnect,
+  onReconnect,
+  onSettings,
+  onRemove,
+}: {
+  connector: AgentConnector;
+  refId: string;
+  agentId: string;
+  canWrite: boolean;
+  busy: boolean;
+  error: string | null;
+  onConnect: () => void;
+  onReconnect: () => void;
+  onSettings: () => void;
+  onRemove: () => void;
+}) {
   const t = useT();
   const state = rowState(c);
+  const desc = descriptionKey(c.slug);
+  const kinds = rowActions(c, canWrite);
   const status = c.connection?.status ?? null;
-  const text =
-    state === "not_connected"
-      ? t("agentConn.state.notConnected")
-      : state === "on"
-        ? t("agentConn.state.on")
-        : state === "off"
-          ? t("agentConn.state.off")
-          : t(connectorStatusKey(status));
-  const tone = state === "not_connected" || state === "off" ? "muted" : state === "on" ? "positive" : connectorTone(status);
+  const note = [
+    desc ? t(desc) : null,
+    c.needed ? t("agentConn.note.needed") : null,
+    state === "not_connected" ? authKindLabel(t, c.auth_kind) : null,
+    state === "off" ? t("agentConn.state.off") : null,
+    // Quien no puede abrir «Ajustes» ve el permiso como texto.
+    state === "on" && !canWrite && c.activation ? permissionLabel(t, c.activation.permission) : null,
+  ].filter(Boolean);
   return (
-    <span className="inline-flex items-center gap-2" data-slot="connector-state">
-      <StatusDot tone={tone} />
-      {isBroken(status) ? <StatusBadge tone="danger">{text}</StatusBadge> : text}
-    </span>
+    <li className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-4 sm:px-5" data-slot="agent-connector" data-state={state} aria-busy={busy || undefined}>
+      <ConnectorLogo refId={refId} slug={c.slug} name={c.name} logo={c.logo} />
+      <div className="grid min-w-0 flex-1 basis-56 gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="min-w-0 font-medium break-words">{c.name}</h3>
+          <StatusBadge tone="muted" dot={false} className="h-5 text-xs">
+            {categoryLabel(t, categoryOf(c))}
+          </StatusBadge>
+          {state === "other" ? (
+            <StatusBadge tone={isBroken(status) ? "danger" : "warn"} data-slot="connector-state">
+              {t(connectorStatusKey(status))}
+            </StatusBadge>
+          ) : null}
+        </div>
+        {note.length ? <p className="text-sm text-pretty text-muted-foreground">{note.join(" · ")}</p> : null}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {state === "on" ? (
+          <StatusBadge tone="positive" dot={false} data-slot="connector-state">
+            <span className="inline-flex items-center gap-1">
+              <CircleCheck aria-hidden="true" className="size-3 text-status-positive-text" />
+              {t("agentConn.connected")}
+            </span>
+          </StatusBadge>
+        ) : null}
+        {kinds.map((kind) => {
+          switch (kind) {
+            case "connect":
+              return (
+                <Button key={kind} size="sm" variant={c.needed ? "default" : "outline"} disabled={busy} onClick={onConnect} aria-label={t("agentConn.connect.named", { name: c.name })}>
+                  {t("agentConn.connect")}
+                </Button>
+              );
+            case "reconnect":
+              return (
+                <Button key={kind} size="sm" disabled={busy} loading={busy} onClick={onReconnect} aria-label={t("agentConn.reconnect.named", { name: c.name })}>
+                  {t("agentConn.reconnect")}
+                </Button>
+              );
+            case "settings":
+              return (
+                <Button key={kind} size="sm" variant="ghost" disabled={busy} onClick={onSettings} aria-label={t("agentConn.settings.named", { name: c.name })}>
+                  {t("agentConn.settings")}
+                </Button>
+              );
+            case "remove":
+              return (
+                <Button key={kind} size="sm" variant="ghost" disabled={busy} loading={busy} onClick={onRemove} aria-label={t("agentConn.remove.named", { name: c.name })}>
+                  {t("agentConn.remove.short")}
+                </Button>
+              );
+            case "page":
+              return c.connection ? (
+                <Link
+                  key={kind}
+                  href={connectionHref(refId, c.connection.id, agentId)}
+                  aria-label={t("agentConn.page.named", { name: c.name })}
+                  className={buttonVariants({ size: "sm", variant: "outline" })}
+                >
+                  {t("agentConn.page")}
+                </Link>
+              ) : null;
+          }
+        })}
+      </div>
+      {error ? (
+        <p role="alert" className="basis-full text-sm text-pretty text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </li>
   );
 }
 
@@ -548,7 +628,6 @@ function ConnectDialog({
   const [needsForm, setNeedsForm] = React.useState(target.mode === "reconnect");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const formId = React.useId();
 
   async function connect(e: React.FormEvent) {
     e.preventDefault();
@@ -601,32 +680,7 @@ function ConnectDialog({
     onClose();
   }
 
-  const permissionField = (
-    <fieldset className="grid min-w-0 gap-2">
-      <legend className="mb-1 text-sm font-medium">{t("agentConn.connect.permission")}</legend>
-      {CONNECTOR_PERMISSIONS.map((p) => {
-        const id = `${formId}-${p}`;
-        return (
-          <label key={p} htmlFor={id} className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border p-2 text-sm has-[:checked]:border-primary">
-            <input
-              id={id}
-              type="radio"
-              name={`${formId}-permission`}
-              value={p}
-              checked={permission === p}
-              onChange={() => setPermission(p)}
-              className="mt-1 accent-primary"
-              disabled={busy}
-            />
-            <span className="grid min-w-0 gap-1">
-              <span className="font-medium">{permissionLabel(t, p)}</span>
-              <span className="text-xs text-pretty text-muted-foreground">{permissionHint(t, p)}</span>
-            </span>
-          </label>
-        );
-      })}
-    </fieldset>
-  );
+  const permissionField = <PermissionRadios legend={t("agentConn.connect.permission")} value={permission} onChange={setPermission} disabled={busy} />;
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>

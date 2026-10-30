@@ -125,7 +125,7 @@ describe("El alta está en un idioma · spec 019, R9", () => {
    * traducciones pendientes.
    */
   const DEL_ALTA = (key: string) => key.startsWith("wizard.");
-  const MARCAS = /whatsapp|woocommerce|agendapro|auphere|companion|instagram/gi;
+  const MARCAS = /whatsapp|woocommerce|auphere|companion|instagram/gi;
 
   function copiaDelAlta(locale: Locale): Array<[string, string]> {
     return (Object.entries(messages) as Array<[MessageKey, Record<Locale, string>]>)

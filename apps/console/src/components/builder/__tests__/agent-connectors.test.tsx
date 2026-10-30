@@ -9,7 +9,7 @@ import type { AgentConnector } from "@/lib/backend/agent-connectors-types";
 import type { ConnectorOut } from "@/lib/backend/agent-tools-types";
 import type { AgentSpec } from "@/lib/backend/builder-types";
 
-import { AGENT, CONN_COBRO, CONN_WOO, REF, catalog, connector, fail, ok } from "./connector-fixtures";
+import { AGENT, CONN_COBRO, CONN_GCAL, CONN_WOO, REF, catalog, connector, fail, ok } from "./connector-fixtures";
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
@@ -21,11 +21,13 @@ type Actions = NonNullable<React.ComponentProps<typeof AgentConnectorsPanel>["ac
 
 /**
  * Spec 047 (historia 21; T129; requisitos 35.2, 35.3, 35.5 y 35.7) — la
- * sección Conectores de un agente: el catálogo con lo que piden las
- * habilidades primero, el buscador y la categoría; «Conectar» con el permiso
- * (activa sin pedir de nuevo, abre la autorización o pide la clave); el permiso
- * en la fila; quitarlo con confirmación y las habilidades afectadas; la regla
- * de los tres puntos; y sus estados de carga, error y vacío.
+ * sección Conectores de un agente, como el prototipo aprobado (`agente.md` §9,
+ * hueco H10; requisitos 62.5 y 63.3): una sola tarjeta con filas, el buscador
+ * sin etiqueta visible, el filtro segmentado con recuentos, lo que piden las
+ * habilidades primero; «Conectar» con el permiso (activa sin pedir de nuevo,
+ * abre la autorización o pide la clave); «Conectado» con «Ajustes» (el
+ * permiso y los ajustes del catálogo) y «Quitar» con confirmación; y sus
+ * estados de carga, error y vacío.
  */
 
 const SPEC = { skills: [{ key: "pedidos.consultar", enabled: true, integration: "woocommerce" }] } as unknown as AgentSpec;
@@ -51,79 +53,82 @@ function panel(data: AgentConnector[] | null | "lazy" = catalog(), over: Partial
 }
 
 const row = (name: string) => screen.getAllByRole("listitem").find((li) => within(li).queryByRole("heading", { name })) as HTMLElement;
-
-async function openMenu(user: ReturnType<typeof userEvent.setup>, name: string) {
-  await user.click(screen.getByRole("button", { name: `Más acciones de ${name}` }));
-  return screen.findByRole("menu");
-}
+const names = () =>
+  within(screen.getByRole("list", { name: "Conectores para este agente" }))
+    .getAllByRole("heading", { level: 3 })
+    .map((h) => h.textContent);
 
 beforeEach(() => {
   toast.success.mockClear();
   toast.error.mockClear();
 });
 
-describe("la sección Conectores · leer", () => {
-  it("el catálogo en el orden de la API, cada fila con su estado, quién la pide y cómo se autoriza, y pasa axe", async () => {
+describe("la sección Conectores · leer (H10)", () => {
+  it("una sola tarjeta con filas: logo, nombre con su categoría, la nota y su acción; el permiso no está a la vista; pasa axe", async () => {
     const { container } = panel();
     const list = screen.getByRole("list", { name: "Conectores para este agente" });
-    const names = within(list)
-      .getAllByRole("heading", { level: 3 })
-      .map((h) => h.textContent);
-    expect(names).toEqual(["WooCommerce", "Google Calendar", "Amigable Cobro", "HubSpot"]);
-    expect(within(row("WooCommerce")).getByText("Lo usa este agente")).toBeVisible();
-    expect(within(row("WooCommerce")).getByText("Lo pide una habilidad")).toBeVisible();
-    expect(within(row("WooCommerce")).getByText("Se conecta con una clave")).toBeVisible();
-    expect(within(row("Google Calendar")).getByText("Sin conectar")).toBeVisible();
-    expect(within(row("Google Calendar")).getByText("Se autoriza con la cuenta del servicio")).toBeVisible();
-    expect(within(row("Amigable Cobro")).getByText("Conectado, sin usar en este agente")).toBeVisible();
+    expect(list.className).toMatch(/divide-y/);
+    expect(container.querySelectorAll("[data-slot=agent-connector-list]")).toHaveLength(1);
+    expect(names()).toEqual(["WooCommerce", "Google Calendar", "Amigable Cobro", "HubSpot"]);
+    // Conectado: la insignia, «Ajustes» y «Quitar».
+    expect(within(row("WooCommerce")).getByText("Tienda")).toBeVisible();
+    expect(within(row("WooCommerce")).getByText("Conectado")).toBeVisible();
+    expect(within(row("WooCommerce")).getByText(/lo necesita una habilidad de este agente/)).toBeVisible();
+    expect(within(row("WooCommerce")).getByRole("button", { name: "Ajustes de WooCommerce" })).toBeVisible();
+    expect(within(row("WooCommerce")).getByRole("button", { name: "Quitar WooCommerce" })).toBeVisible();
+    // Sin conectar: la nota dice que lo pide una habilidad y cómo se autoriza; «Conectar» es el principal.
+    const gcal = row("Google Calendar");
+    expect(within(gcal).getByText("Calendario")).toBeVisible();
+    expect(within(gcal).getByText(/lo necesita una habilidad de este agente · Se autoriza con la cuenta del servicio/)).toBeVisible();
+    expect(within(gcal).getByRole("button", { name: "Conectar Google Calendar" }).className).toMatch(/(^|\s)bg-primary(\s|$)/);
+    // Conectado al cliente y sin usar aquí: lo dice, y «Conectar» lo activa.
+    expect(within(row("Amigable Cobro")).getByText(/Conectado, sin usar en este agente/)).toBeVisible();
+    expect(within(row("Amigable Cobro")).getByRole("button", { name: "Conectar Amigable Cobro" }).className).not.toMatch(/(^|\s)bg-primary(\s|$)/);
+    // Rota: lo dice, con «Reconectar» y su página.
     expect(within(row("HubSpot")).getByText("Hay que volver a autorizar")).toBeVisible();
-    // El permiso de la fila, con lo que significa.
-    expect(within(row("WooCommerce")).getByRole("combobox", { name: "Permiso de WooCommerce en este agente" })).toHaveValue("read");
-    expect(within(row("WooCommerce")).getByText("Consulta, nunca cambia nada.")).toBeVisible();
-    expect(within(row("Amigable Cobro")).getByRole("combobox", { name: "Permiso de Amigable Cobro en este agente" })).toHaveValue("off");
-    expect(screen.getByText("Se ven 4 de 4")).toBeVisible();
+    expect(within(row("HubSpot")).getByRole("button", { name: "Reconectar HubSpot" })).toBeVisible();
+    expect(within(row("HubSpot")).getByRole("link", { name: "Ver su página de HubSpot" })).toHaveAttribute("href", `/clients/${REF}/integrations/${CONN_GCAL}?agent=${AGENT}`);
+    // 63.3: el permiso se ajusta dentro de «Ajustes», no en la fila.
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("busca por nombre y filtra por categoría, y sin resultados deja quitar los filtros", async () => {
+  it("lo que piden las habilidades va primero, y después lo conectado, aunque la API lo mande en otro orden (62.5)", () => {
+    const [woo, gcal, cobro, hubspot] = catalog();
+    panel([hubspot!, cobro!, woo!, gcal!]);
+    expect(names()).toEqual(["WooCommerce", "Google Calendar", "HubSpot", "Amigable Cobro"]);
+  });
+
+  it("el buscador no lleva etiqueta a la vista pero sí nombre; el filtro segmentado cuenta Todos, Conectados y cada categoría", async () => {
     const user = userEvent.setup();
     panel();
-    await user.type(screen.getByRole("searchbox", { name: "Buscar un conector" }), "cal");
-    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Google Calendar"]);
-    expect(screen.getByText("Se ven 1 de 4")).toBeVisible();
-    await user.clear(screen.getByRole("searchbox", { name: "Buscar un conector" }));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Categoría" }), "Cobros");
-    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Amigable Cobro"]);
-    await user.type(screen.getByRole("searchbox", { name: "Buscar un conector" }), "nada");
-    expect(screen.getByText("Ningún conector coincide con la búsqueda.")).toBeVisible();
+    expect(screen.queryByText("Buscar un conector")).not.toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Buscar conector" });
+    const filter = screen.getByRole("group", { name: "Categoría" });
+    expect(within(filter).getAllByRole("button").map((b) => b.textContent)).toEqual(["Todos 4", "Conectados 1", "Tienda 1", "Calendario 1", "Cobros 1", "Clientes 1"]);
+    expect(within(filter).getByRole("button", { name: "Todos 4" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(within(filter).getByRole("button", { name: "Conectados 1" }));
+    expect(within(filter).getByRole("button", { name: "Conectados 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(names()).toEqual(["WooCommerce"]);
+    await user.click(within(filter).getByRole("button", { name: "Cobros 1" }));
+    expect(names()).toEqual(["Amigable Cobro"]);
+    await user.click(within(filter).getByRole("button", { name: "Todos 4" }));
+    await user.type(search, "cal");
+    expect(names()).toEqual(["Google Calendar"]);
+    expect(search).toHaveFocus();
+    await user.clear(search);
+    await user.type(search, "nada");
+    expect(screen.getByText("Ningún conector coincide con «nada».")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Quitar los filtros" }));
-    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
+    expect(names()).toHaveLength(4);
   });
 
-  it("con más de dos acciones en la lista, cada fila las lleva en su ⋯, la principal primero", async () => {
-    const user = userEvent.setup();
-    panel();
-    const menu = await openMenu(user, "WooCommerce");
-    const items = within(menu).getAllByRole("menuitem").map((i) => i.textContent);
-    expect(items).toEqual(["Ver su página", "Ajustes", "Quitar de este agente"]);
-    expect(within(menu).getByRole("menuitem", { name: "Ver su página" })).toHaveAttribute("href", `/clients/${REF}/integrations/${CONN_WOO}?agent=${AGENT}`);
-  });
-
-  it("con una sola acción, el botón lleva el nombre del conector", () => {
-    panel([connector({ slug: "googlecalendar", name: "Google Calendar", auth_kind: "oauth_composio" })]);
-    expect(screen.getByRole("button", { name: "Conectar Google Calendar" })).toBeVisible();
-    expect(screen.queryByRole("combobox", { name: "Categoría" })).not.toBeInTheDocument();
-  });
-
-  it("quien solo lee ve los permisos sin cambiarlos y solo el camino a cada página", async () => {
-    const user = userEvent.setup();
+  it("quien solo lee ve el permiso como texto y solo el camino a cada página", () => {
     panel(catalog(), {}, { canWrite: false });
     expect(screen.getByText("Tu rol puede ver los conectores, no cambiarlos.")).toBeVisible();
-    expect(screen.queryByRole("combobox", { name: /Permiso de/ })).not.toBeInTheDocument();
-    expect(within(row("WooCommerce")).getByText("Solo leer")).toBeVisible();
-    const menu = await openMenu(user, "WooCommerce");
-    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Ver su página"]);
-    expect(screen.queryByRole("button", { name: /Conectar/ })).not.toBeInTheDocument();
+    expect(within(row("WooCommerce")).getByText(/Solo leer/)).toBeVisible();
+    expect(within(row("WooCommerce")).getByRole("link", { name: "Ver su página de WooCommerce" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Conectar|Ajustes|Quitar|Reconectar/ })).not.toBeInTheDocument();
   });
 });
 
@@ -138,7 +143,7 @@ describe("la sección Conectores · los estados", () => {
     expect(await screen.findByRole("list", { name: "Conectores para este agente" })).toBeVisible();
   });
 
-  it("si no se pudo leer lo dice y deja reintentar, y un catálogo vacío lo dice también", async () => {
+  it("si no se pudo leer lo dice y deja reintentar", async () => {
     const user = userEvent.setup();
     const load = vi.fn(async () => fail(503));
     panel(null, { load });
@@ -159,8 +164,7 @@ describe("la sección Conectores · conectar (35.3, 35.4)", () => {
   it("ya autorizado para el cliente: se activa con el permiso elegido, sin pedir nada más", async () => {
     const user = userEvent.setup();
     const { actions } = panel();
-    const menu = await openMenu(user, "Google Calendar");
-    await user.click(within(menu).getByRole("menuitem", { name: "Conectar" }));
+    await user.click(screen.getByRole("button", { name: "Conectar Google Calendar" }));
     const dialog = await screen.findByRole("dialog", { name: "Conectar Google Calendar" });
     await user.click(within(dialog).getByRole("radio", { name: /Preguntar antes de escribir/ }));
     await user.click(within(dialog).getByRole("button", { name: "Conectar" }));
@@ -169,11 +173,19 @@ describe("la sección Conectores · conectar (35.3, 35.4)", () => {
     await waitFor(() => expect(actions.load).toHaveBeenCalled());
   });
 
+  it("conectado al cliente y sin usar aquí: «Conectar» lo activa en este agente con su permiso", async () => {
+    const user = userEvent.setup();
+    const { actions } = panel();
+    await user.click(screen.getByRole("button", { name: "Conectar Amigable Cobro" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Conectar Amigable Cobro" })).getByRole("button", { name: "Conectar" }));
+    await waitFor(() => expect(actions.connect).toHaveBeenCalledWith({ ref: REF, agent: AGENT, slug: "amigable_cobro", permission: "read" }));
+  });
+
   it("OAuth: abre la autorización, deja el enlace por si se bloqueó y vuelve a leer al terminar", async () => {
     const user = userEvent.setup();
     const connect = vi.fn(async () => ok({ slug: "googlecalendar", signed_consent_url: "https://auth.example/gcal", expires_at: "2026-10-28T12:00:00Z" }));
     const { actions } = panel(catalog(), { connect });
-    await user.click(within(await openMenu(user, "Google Calendar")).getByRole("menuitem", { name: "Conectar" }));
+    await user.click(screen.getByRole("button", { name: "Conectar Google Calendar" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Conectar" }));
     await waitFor(() => expect(actions.open).toHaveBeenCalledWith("https://auth.example/gcal"));
     expect(screen.getByText(/Se abrió la autorización de Google Calendar/)).toBeVisible();
@@ -223,56 +235,60 @@ describe("la sección Conectores · conectar (35.3, 35.4)", () => {
   it("sin formulario en el catálogo, lleva a los Conectores del cliente", async () => {
     const user = userEvent.setup();
     const connect = vi.fn(async () => fail(409, "authorize_with_form", { auth_kind: "browser_credentials", form: null }));
-    panel([connector({ slug: "agendapro", name: "AgendaPro", auth_kind: "browser_credentials" })], { connect });
-    await user.click(screen.getByRole("button", { name: "Conectar AgendaPro" }));
+    panel([connector({ slug: "mi_agenda", name: "Mi Agenda", auth_kind: "browser_credentials" })], { connect });
+    await user.click(screen.getByRole("button", { name: "Conectar Mi Agenda" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Conectar" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/AgendaPro se conecta desde los Conectores del cliente/)).toBeVisible();
+    expect(within(dialog).getByText(/Mi Agenda se conecta desde los Conectores del cliente/)).toBeVisible();
     expect(within(dialog).getByText("Ir a los Conectores del cliente").closest("a")).toHaveAttribute("href", `/clients/${REF}/integrations`);
   });
 
   it("una conexión rota se reconecta y conserva las activaciones", async () => {
     const user = userEvent.setup();
     const { actions } = panel();
-    await user.click(within(await openMenu(user, "HubSpot")).getByRole("menuitem", { name: "Reconectar" }));
+    await user.click(screen.getByRole("button", { name: "Reconectar HubSpot" }));
     await waitFor(() => expect(actions.reconnect).toHaveBeenCalledWith({ ref: REF, connection: expect.any(String) }));
     expect(actions.open).toHaveBeenCalledWith("https://auth.example/hubspot");
     expect(screen.getByText(/Se abrió la autorización de HubSpot/)).toBeVisible();
   });
 });
 
-describe("la sección Conectores · el permiso y quitarlo (35.5, 35.7)", () => {
-  it("cambiar el permiso lo guarda con sus ajustes; activarlo en un conectado sin uso también", async () => {
+describe("la sección Conectores · «Ajustes» y «Quitar» (35.5, 35.7; 63.3)", () => {
+  it("el permiso se cambia dentro de «Ajustes» y se guarda con sus ajustes", async () => {
     const user = userEvent.setup();
     const { actions } = panel();
-    await user.selectOptions(within(row("WooCommerce")).getByRole("combobox"), "read_write");
+    await user.click(screen.getByRole("button", { name: "Ajustes de WooCommerce" }));
+    const dialog = await screen.findByRole("dialog", { name: "Ajustes de WooCommerce en este agente" });
+    const group = within(dialog).getByRole("radiogroup", { name: "Permiso en este agente" });
+    expect(within(group).getByRole("radio", { name: /Solo leer/ })).toBeChecked();
+    expect(within(dialog).getByRole("link", { name: "Ver su página de WooCommerce" })).toHaveAttribute("href", `/clients/${REF}/integrations/${CONN_WOO}?agent=${AGENT}`);
+    await user.click(within(group).getByRole("radio", { name: /Leer y escribir/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() =>
       expect(actions.activate).toHaveBeenCalledWith({ ref: REF, agent: AGENT, slug: "woocommerce", permission: "read_write", settings: { store_url: "https://tienda.example" } }),
     );
     expect(toast.success).toHaveBeenCalledWith("WooCommerce: Leer y escribir.");
-    await user.selectOptions(within(row("Amigable Cobro")).getByRole("combobox"), "read");
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Amigable Cobro activado en este agente con «Solo leer»."));
-    expect(within(row("Amigable Cobro")).getByText("Lo usa este agente")).toBeVisible();
   });
 
-  it("un error de la API se dice en la fila", async () => {
-    const user = userEvent.setup();
-    panel(catalog(), { activate: vi.fn(async () => fail(409, "connection_not_authorized")) });
-    await user.selectOptions(within(row("WooCommerce")).getByRole("combobox"), "read_write");
-    expect(await within(row("WooCommerce")).findByRole("alert")).toHaveTextContent("La conexión no está autorizada. Vuelve a conectarla.");
-  });
-
-  it("«Sin usar» pide confirmación con las habilidades que lo piden, y al quitarlo dice lo que pierde", async () => {
+  it("«Quitar» pide confirmación con las habilidades que lo piden, y al quitarlo dice lo que pierde", async () => {
     const user = userEvent.setup();
     const { actions } = panel();
-    await user.selectOptions(within(row("WooCommerce")).getByRole("combobox"), "off");
+    await user.click(screen.getByRole("button", { name: "Quitar WooCommerce" }));
     const dialog = await screen.findByRole("dialog", { name: "Quitar WooCommerce de este agente" });
     expect(within(dialog).getByText("Se quedan sin él estas habilidades: Pedidos consultar.")).toBeVisible();
     expect(actions.remove).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole("button", { name: "Quitar de este agente" }));
     await waitFor(() => expect(actions.remove).toHaveBeenCalledWith({ ref: REF, agent: AGENT, slug: "woocommerce" }));
     expect(toast.success).toHaveBeenCalledWith("Este agente ya no usa WooCommerce. Se quedan sin él: Pedidos consultar, Ver un pedido.");
-    expect(within(row("WooCommerce")).getByText("Conectado, sin usar en este agente")).toBeVisible();
+    expect(within(row("WooCommerce")).getByRole("button", { name: "Conectar WooCommerce" })).toBeVisible();
+  });
+
+  it("un error de la API se dice en la fila", async () => {
+    const user = userEvent.setup();
+    panel(catalog(), { remove: vi.fn(async () => fail(409, "connection_not_authorized")) });
+    await user.click(screen.getByRole("button", { name: "Quitar WooCommerce" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Quitar de este agente" }));
+    expect(await within(row("WooCommerce")).findByRole("alert")).toHaveTextContent("La conexión no está autorizada. Vuelve a conectarla.");
   });
 
   it("los ajustes del catálogo se editan, se validan y lo que la API marca vuelve a su campo", async () => {
@@ -280,7 +296,7 @@ describe("la sección Conectores · el permiso y quitarlo (35.5, 35.7)", () => {
     const activate = vi.fn().mockResolvedValueOnce(fail(422, "invalid_settings", { errors: [{ field: "store_url", message: "bad" }] }));
     activate.mockImplementation(async ({ permission, settings }) => ok({ permission, settings }));
     const { actions } = panel(catalog(), { activate });
-    await user.click(within(await openMenu(user, "WooCommerce")).getByRole("menuitem", { name: "Ajustes" }));
+    await user.click(screen.getByRole("button", { name: "Ajustes de WooCommerce" }));
     const dialog = await screen.findByRole("dialog", { name: "Ajustes de WooCommerce en este agente" });
     const field = within(dialog).getByRole("textbox", { name: "Dirección de la tienda" });
     expect(field).toHaveValue("https://tienda.example");
@@ -302,11 +318,10 @@ describe("la sección Conectores · el permiso y quitarlo (35.5, 35.7)", () => {
   });
 });
 
-it("el catálogo de este agente también existe con conexión de otro estado: pendiente se vuelve a autorizar", async () => {
-  const user = userEvent.setup();
+it("el catálogo de este agente también existe con conexión de otro estado: pendiente se vuelve a autorizar", () => {
   const list = [connector({ slug: "googlecalendar", name: "Google Calendar", auth_kind: "oauth_composio", connection: { id: CONN_COBRO, status: "pending", last_checked_at: null } })];
   panel(list);
   expect(screen.getByText("Pendiente de consentimiento")).toBeVisible();
-  const menu = await openMenu(user, "Google Calendar");
-  expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Conectar", "Ver su página"]);
+  expect(screen.getByRole("button", { name: "Conectar Google Calendar" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Ver su página de Google Calendar" })).toBeVisible();
 });

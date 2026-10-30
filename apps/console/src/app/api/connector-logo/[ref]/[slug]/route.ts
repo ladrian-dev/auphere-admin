@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
  * El logotipo de un conector, servido desde nuestro propio origen.
  *
  * **Por qué existe.** El catálogo trae la URL del logotipo del proveedor
- * —`agendapro.com/favicon.ico`, el SVG de WhatsApp en Wikimedia— y la tarjeta
+ * —el `favicon.ico` de su web, el SVG de WhatsApp en Wikimedia— y la tarjeta
  * las pintaba directamente. Ninguna cargaba nunca: la consola publica
  * `img-src 'self' data: blob:`, así que el navegador las bloqueaba todas y
  * dibujaba el icono de imagen rota. Se veía en Conectores desde el primer día.

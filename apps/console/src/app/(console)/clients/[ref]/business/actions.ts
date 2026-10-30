@@ -8,8 +8,10 @@ import { callFor } from "@/lib/backend";
 import {
   businessSectionsApi,
   type Basics,
+  type Faqs,
   type Hours,
   type Locations,
+  type Policies,
   type Services,
   type SpecialDates,
 } from "@/lib/backend/business-sections";
@@ -17,7 +19,8 @@ import { can, requirePrincipal } from "@/lib/principal";
 
 /**
  * Spec 047 (T060) — las acciones de Negocio: datos básicos, sedes, horario,
- * fechas especiales y servicios. Cada entrada se valida aquí con Zod; la API
+ * fechas especiales y servicios; con la enmienda del 2026-10-29 (T209), el
+ * sector, las políticas y las preguntas frecuentes. Cada entrada se valida aquí con Zod; la API
  * vuelve a validar, comprueba `If-Match` con la revisión que leyó la pantalla y
  * es la que decide. El navegador nunca tiene credenciales.
  */
@@ -59,12 +62,18 @@ async function read<T>(fn: (api: ReturnType<typeof businessSectionsApi>) => Prom
 
 // ── leer una sección otra vez (Reintentar) ─────────────────────────────────
 
-const sectionSchema = z.object({ ref, section: z.enum(["basics", "locations", "hours", "special_dates", "services"]) });
+const sectionSchema = z.object({ ref, section: z.enum(["basics", "locations", "hours", "special_dates", "services", "policies", "faqs"]) });
 
-export async function reloadSectionAction(raw: unknown): Promise<ActionResult<Basics | Locations | Hours | SpecialDates | Services>> {
+type Reloaded = Basics | Locations | Hours | SpecialDates | Services | Policies | Faqs;
+
+export async function reloadSectionAction(raw: unknown): Promise<ActionResult<Reloaded>> {
   const { ref: r, section } = sectionSchema.parse(raw);
-  return read<Basics | Locations | Hours | SpecialDates | Services>((api) => {
+  return read<Reloaded>((api) => {
     switch (section) {
+      case "policies":
+        return api.getPolicies(r);
+      case "faqs":
+        return api.getFaqs(r);
       case "basics":
         return api.getBasics(r);
       case "locations":
@@ -94,6 +103,8 @@ const basicsSchema = z.object({
       timezone: z.string().min(1).max(64),
       price_currency: z.string().regex(/^[A-Z]{3}$/).nullable(),
       eu_only: z.boolean(),
+      // Requisito 57.5: una clave de la lista o «otro» con su etiqueta (1–40). La API valida la clave.
+      sector: z.object({ key: z.string().min(1).max(40).regex(/^[a-z_]+$/), label: z.string().trim().min(1).max(40) }),
     })
     .partial(),
 });
@@ -208,4 +219,40 @@ export async function setServiceAgentsAction(raw: unknown): Promise<ActionResult
     .object({ ref, revision, id: uuid, body: z.object({ mode: z.enum(["all_agents", "list"]), agent_ids: z.array(uuid).max(100) }) })
     .parse(raw);
   return write(r, (api) => api.setServiceAgents(r, id, body, rev));
+}
+
+// ── políticas y preguntas frecuentes (enmienda del 2026-10-29, T209) ─────────
+
+const policy = z.string().trim().max(1000).nullable();
+const policiesSchema = z.object({
+  ref,
+  revision,
+  body: z.object({ cancellation: policy, payments: policy, deposit: policy, no_show: policy }),
+});
+
+/** `PUT …/policies`: las cuatro, con `If-Match`. Lo vacío viaja como `null`. */
+export async function savePoliciesAction(raw: unknown): Promise<ActionResult<Policies>> {
+  const { ref: r, revision: rev, body } = policiesSchema.parse(raw);
+  const clean = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, v ? v : null])) as typeof body;
+  return write(r, (api) => api.putPolicies(r, clean, rev));
+}
+
+const faqBody = z.object({ q: z.string().trim().min(1).max(300), a: z.string().trim().min(1).max(2000) });
+
+export async function createFaqAction(raw: unknown): Promise<ActionResult<Faqs>> {
+  const { ref: r, revision: rev, body } = z.object({ ref, revision, body: faqBody }).parse(raw);
+  return write(r, (api) => api.createFaq(r, body, rev));
+}
+
+/** Editar una pregunta o confirmar una sugerida (`suggested: false`). */
+export async function updateFaqAction(raw: unknown): Promise<ActionResult<Faqs>> {
+  const { ref: r, revision: rev, id, body } = z
+    .object({ ref, revision, id: uuid, body: faqBody.partial().extend({ suggested: z.boolean().optional() }) })
+    .parse(raw);
+  return write(r, (api) => api.updateFaq(r, id, body, rev));
+}
+
+export async function archiveFaqAction(raw: unknown): Promise<ActionResult<Faqs>> {
+  const { ref: r, revision: rev, id } = z.object({ ref, revision, id: uuid }).parse(raw);
+  return write(r, (api) => api.archiveFaq(r, id, rev));
 }

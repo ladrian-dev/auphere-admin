@@ -18,7 +18,8 @@ import type { MessageKey } from "@/i18n/messages";
 import type { AgentTest, QualityJob, TestBody, TestRunAccepted, TestRunScope, TestSuite } from "@/lib/backend/agent-quality-types";
 
 import { sleep, type Result } from "./builder-model";
-import { STATUS_TONE, groupTests, isFailing, waitForJob } from "./quality-model";
+import { STATUS_TONE, failedConversation, groupTests, isFailing, isGenerated, naReason, waitForJob } from "./quality-model";
+import { TestConversation } from "./test-conversation";
 
 type Ids = { ref: string; agent: string };
 export type TestListActions = {
@@ -44,10 +45,19 @@ const SERVER_ACTIONS: TestListActions = {
  * «Desactualizada» cuando cambió algo desde la última pasada.
  *
  * La que no pasa trae «Por qué falló» con lo que se comprobó (el estado final,
- * no lo que dijo el agente) y «Arreglar», que abre las instrucciones del
- * borrador. Una del sector se puede marcar «No aplica» escribiendo la razón.
+ * no lo que dijo el agente), la conversación con el cliente simulado turno a
+ * turno y por qué terminó (enmienda del 2026-10-29, 61.6), y «Arreglar», que
+ * abre las instrucciones del borrador. Las de una guía generada para el
+ * cliente llevan «Generada» (58.4). Una del sector se puede marcar «No aplica» escribiendo la razón.
  * Ejecutar es un trabajo: la lista se vuelve a leer al terminar. Sin el juez
  * calibrado, se dice que solo cuenta el estado final (21.8).
+ *
+ * Enmienda del 2026-10-30 (T228; 65.8 y 65.9): una del sector que pide lo que
+ * el agente no tiene llega ya «No aplica», con su razón; se ve igual y se
+ * reactiva como cualquiera («Vuelve a aplicar», sin doble envío, y si no se
+ * puede lo dice en su fila). Un agente estructurado sin ninguna prueba que le
+ * aplique no se guarda: la lista lo dice encima de «Añadir una prueba», que la
+ * puerta puede abrir desde fuera (`addRequest`).
  */
 export function TestList({
   refId,
@@ -55,6 +65,8 @@ export function TestList({
   suite: initial,
   canWrite,
   refreshKey = 0,
+  structured = false,
+  addRequest = 0,
   onFix,
   onWhy,
   onChanged,
@@ -68,6 +80,10 @@ export function TestList({
   canWrite: boolean;
   /** Cambia cuando el borrador cambió: la lista se vuelve a leer. */
   refreshKey?: number;
+  /** Un agente con AgentSpec estructurado: sin ninguna prueba que le aplique no se guarda (65.9). */
+  structured?: boolean;
+  /** Sube cuando alguien de fuera (la puerta) pide «Añadir una prueba»: se abre su formulario. */
+  addRequest?: number;
   /** «Arreglar»: abrir el bloque del borrador donde se corrige. */
   onFix?: (test: AgentTest) => void;
   /** «¿Por qué dijo esto?»: el copiloto explica la última respuesta de la prueba. */
@@ -104,6 +120,13 @@ export function TestList({
     seen.current = refreshKey;
     void reload();
   }, [refreshKey, reload]);
+
+  // «Añadir una prueba» pedido desde fuera: el formulario se abre (y su campo toma el foco).
+  const [seenAdd, setSeenAdd] = React.useState(addRequest);
+  if (seenAdd !== addRequest) {
+    setSeenAdd(addRequest);
+    if (addRequest > 0) setAdding(true);
+  }
 
   const can = (what: "add" | "edit" | "run") => canWrite && Boolean(suite?.allowed.includes(what));
 
@@ -185,12 +208,21 @@ export function TestList({
         </p>
       ) : null}
 
+      {structured && counted <= 0 ? (
+        // 65.9: la puerta no guarda un estructurado sin ninguna prueba que le aplique.
+        <Callout tone="warning">{t("builder.suite.noneApplies")}</Callout>
+      ) : null}
       {!suite.tests.length ? <p className="text-sm text-muted-foreground">{t("builder.suite.empty")}</p> : null}
       {groupTests(suite.tests).map((group) => (
         <div key={group.kind} className="grid min-w-0 gap-2">
           <h3 className="text-sm font-semibold" id={`tests-${group.kind}`}>
             {t(`builder.suite.kind.${group.kind}` as MessageKey)} · {group.tests.length}
           </h3>
+          {group.kind === "sector" && group.tests.some(isGenerated) ? (
+            <p className="text-xs text-pretty text-muted-foreground" data-slot="tests-generated">
+              {t("builder.suite.generated.hint")}
+            </p>
+          ) : null}
           <ul aria-labelledby={`tests-${group.kind}`} className="grid min-w-0 gap-2">
             {group.tests.map((test) => (
               <TestRow
@@ -218,6 +250,7 @@ export function TestList({
       {can("add") ? (
         adding ? (
           <AddTestForm
+            key={addRequest}
             onCancel={() => setAdding(false)}
             onAdd={async (body) => {
               const res = await actions.add({ ...ids, test: body });
@@ -262,8 +295,21 @@ function TestRow({
   const t = useT();
   const nameId = React.useId();
   const [marking, setMarking] = React.useState(false);
+  const [reviving, setReviving] = React.useState(false);
+  const [reviveError, setReviveError] = React.useState(false);
   const failing = isFailing(test.status);
+
+  /** «Vuelve a aplicar»: una sola vez mientras se guarda; si no se puede, lo dice aquí. */
+  async function revive() {
+    if (reviving) return;
+    setReviving(true);
+    setReviveError(false);
+    const res = await onNotApplicable("").catch(() => null);
+    setReviving(false);
+    if (!res?.ok) setReviveError(true);
+  }
   const sector = test.kind === "sector";
+  const conversation = failing ? failedConversation(test) : null;
 
   return (
     <li aria-labelledby={nameId} className="grid min-w-0 gap-2 rounded-md border border-border p-3" data-slot="test-row" data-status={test.status}>
@@ -275,6 +321,11 @@ function TestRow({
           <span className="text-xs text-pretty break-words text-muted-foreground">{t("builder.suite.first", { text: test.first_message })}</span>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {isGenerated(test) ? (
+            <StatusBadge tone="info" dot={false}>
+              {t("builder.suite.generated")}
+            </StatusBadge>
+          ) : null}
           {test.critical ? <StatusBadge tone="danger" dot={false}>{t("builder.suite.critical")}</StatusBadge> : null}
           <StatusBadge tone={STATUS_TONE[test.status]}>{t(`builder.suite.status.${test.status}` as MessageKey)}</StatusBadge>
           {test.stale && test.status !== "not_applicable" ? <StatusBadge tone="warn">{t("builder.suite.staleBadge")}</StatusBadge> : null}
@@ -284,12 +335,16 @@ function TestRow({
         <p className="text-xs text-muted-foreground tabular-nums">{t("builder.suite.passes", { passes: test.passes, decided: test.decided })}</p>
       ) : null}
       {test.not_applicable_reason ? (
-        <p className="text-xs text-pretty text-muted-foreground">{t("builder.suite.na.shown", { reason: test.not_applicable_reason })}</p>
+        // La razón puede llegar con su «No aplica» delante (65.8): no se repite.
+        <p className="text-xs text-pretty break-words text-muted-foreground">{t("builder.suite.na.shown", { reason: naReason(test.not_applicable_reason) })}</p>
       ) : null}
       {failing ? (
         <details className="min-w-0 text-sm" data-slot="test-why">
-          <summary className="w-fit cursor-pointer font-medium">{t("builder.suite.why")}</summary>
-          <p className="mt-1 text-pretty break-words whitespace-pre-line text-muted-foreground">{test.why_failed || t("builder.suite.why.none")}</p>
+          <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{t("builder.suite.why")}</summary>
+          <div className="mt-1 grid min-w-0 gap-2">
+            <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{test.why_failed || t("builder.suite.why.none")}</p>
+            {conversation ? <TestConversation transcript={conversation.transcript} stop={conversation.stop} /> : null}
+          </div>
         </details>
       ) : null}
       {marking ? (
@@ -319,12 +374,17 @@ function TestRow({
             </Button>
           ) : null}
           {canEdit && sector && test.not_applicable_reason ? (
-            <Button size="sm" variant="ghost" onClick={() => void onNotApplicable("")}>
+            <Button size="sm" variant="ghost" loading={reviving} onClick={() => void revive()}>
               {t("builder.suite.na.undo")}
             </Button>
           ) : null}
         </div>
       )}
+      {reviveError ? (
+        <p role="alert" className="text-xs text-pretty text-destructive">
+          {t("builder.suite.na.undo.error")}
+        </p>
+      ) : null}
     </li>
   );
 }
@@ -386,9 +446,15 @@ function AddTestForm({ onAdd, onCancel }: { onAdd: (body: TestBody) => Promise<R
   const [critical, setCritical] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  // Al abrirse (con su botón o desde la puerta), el foco va a su primer campo: el botón ya no está.
+  React.useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (busy) return;
     if (!name.trim() || !first.trim()) {
       setError(t("builder.suite.add.required"));
       return;
@@ -403,7 +469,7 @@ function AddTestForm({ onAdd, onCancel }: { onAdd: (body: TestBody) => Promise<R
   return (
     <form onSubmit={submit} noValidate className="grid min-w-0 gap-3 rounded-md border border-border p-3" aria-label={t("builder.suite.add")}>
       <Field label={t("builder.suite.add.name")} required>
-        {(a11y) => <Input {...a11y} value={name} maxLength={120} autoComplete="off" onChange={(e) => setName(e.target.value)} />}
+        {(a11y) => <Input {...a11y} ref={nameRef} value={name} maxLength={120} autoComplete="off" onChange={(e) => setName(e.target.value)} />}
       </Field>
       <Field label={t("builder.suite.add.first")} required>
         {(a11y) => <Textarea {...a11y} value={first} rows={2} maxLength={2000} onChange={(e) => setFirst(e.target.value)} />}

@@ -117,7 +117,7 @@ const PANTALLAS = {
   Conectores: () => (
     <IntegrationsList
       refId="demo"
-      connectors={[connector("WooCommerce", "ecommerce", "connected"), connector("AgendaPro", "booking", null)]}
+      connectors={[connector("WooCommerce", "ecommerce", "connected"), connector("Calendly", "booking", null)]}
       error={null}
       canWrite
     />
@@ -190,7 +190,7 @@ describe("Los tres catálogos · las categorías", () => {
     mount("Conectores");
     expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
-      "AgendaPro",
+      "Calendly",
       "WooCommerce",
     ]);
   });

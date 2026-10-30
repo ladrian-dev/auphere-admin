@@ -5,6 +5,7 @@ import type { MessageKey } from "@/i18n/messages";
 
 import {
   addNumber,
+  agentChannelsTabHref,
   channelHref,
   channelMenuItems,
   channelStateText,
@@ -52,8 +53,9 @@ describe("el ⋯ y las rutas", () => {
     expect(channelMenuItems([])).toEqual([]);
   });
 
-  it("la página de un canal cuelga de su agente", () => {
-    expect(channelHref(REF, RECEPCION, CH)).toBe(`/clients/${REF}/agents/${RECEPCION}/channels/${CH}`);
+  it("la configuración de un canal se abre dentro de su agente, en la pestaña Canales (63.1)", () => {
+    expect(channelHref(REF, RECEPCION, CH)).toBe(`/clients/${REF}/agents/${RECEPCION}?canal=${CH}`);
+    expect(agentChannelsTabHref(REF, RECEPCION)).toBe(`/clients/${REF}/agents/${RECEPCION}?tab=channels`);
   });
 });
 

@@ -7,11 +7,13 @@ import { axeViolations } from "@nexus/ui/test/axe";
 import { LocaleProvider } from "@/i18n/client";
 import type { AgentSpec, AnswersResult, BuilderAnswer, BuilderDraft, Proposal } from "@/lib/backend/builder-types";
 
-import { HISTORY, REVIEW, job, noWait, ok as okData, preview, session, suite } from "./quality-fixtures";
+import { HISTORY as CHANNEL_HISTORY, page as channelPage } from "./channel-fixtures";
+import { HISTORY, REVIEW, job, noWait, ok as okData, preview, session, suite, test } from "./quality-fixtures";
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
-vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => router }));
 vi.mock("@/app/(console)/clients/[ref]/agents/quality-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/life-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/builder-actions", () => ({
@@ -48,9 +50,9 @@ const SPEC: AgentSpec = {
   instructions: { sections: [{ title: "Qué haces", body: "Reservas citas y respondes dudas." }] },
   procedures: [{ id: "reservar", title: "Reservar una cita", when: "Cuando piden hora", steps: "Busca hueco y confirma." }],
   services: { mode: "all" },
-  skills: [{ key: "agendapro", enabled: true, integration: "agendapro", fallback: "Pasa la conversación al equipo." }],
+  skills: [{ key: "reservas", enabled: true, integration: "googlecalendar", fallback: "Pasa la conversación al equipo." }],
   tools: [],
-  connection_requests: [{ integration: "agendapro", reason: "Para reservar en su agenda" }],
+  connection_requests: [{ integration: "googlecalendar", reason: "Para reservar en su calendario" }],
   escalation: { triggers: ["asks_for_human", { custom: "Si pide factura" }], failed_attempts: 2, message: "Te paso con el equipo." },
   rules: ["No ofrezcas descuentos"],
   ai_disclosure: { decided: false },
@@ -155,7 +157,7 @@ describe("la pantalla del agente · leer", () => {
     expect(within(row("knows")).getByText("Atiende todos los servicios de la ficha.")).toBeVisible();
     expect(within(row("knows")).getByText(/Hereda la ficha del negocio/)).toBeVisible();
     // 17.6: la habilidad sin su conector lleva «Conectar» en su línea; los procedimientos debajo.
-    const connect = within(row("can")).getByRole("link", { name: "Conectar AgendaPro" });
+    const connect = within(row("can")).getByRole("link", { name: "Conectar Google Calendar" });
     expect(connect).toHaveAttribute("href", `/clients/${REF}/integrations`);
     expect(within(row("can")).getByText("Mientras tanto: Pasa la conversación al equipo.")).toBeVisible();
     expect(within(row("can")).getByText("Para «Reservar una cita»: Cuando piden hora")).toBeVisible();
@@ -191,7 +193,7 @@ describe("la pantalla del agente · leer", () => {
     await user.click(within(row("can")).getByRole("button", { name: "Editar «Qué puede hacer»" }));
     expect(screen.getByRole("form", { name: "Editar «Procedimientos»" })).toBeVisible();
     expect(within(block("skills")).queryByRole("button", { name: /Editar/ })).toBeNull();
-    expect(within(block("skills")).getByRole("link", { name: "Conectar AgendaPro" })).toBeVisible();
+    expect(within(block("skills")).getByRole("link", { name: "Conectar Google Calendar" })).toBeVisible();
   });
 });
 
@@ -468,7 +470,7 @@ describe("la pantalla del agente · probar y guardar (historias 8 y 9)", () => {
     expect(within(fail).getByText("La cita no existe en la agenda al terminar.")).toBeVisible();
     expect(within(fail).getByText("Y 1 más sin pasar.")).toBeVisible();
     const checks = await within(aside).findByRole("list", { name: "Revisión automática" });
-    expect(within(checks).getByText(/La habilidad Reservas necesita AgendaPro/)).toBeVisible();
+    expect(within(checks).getByText(/La habilidad Reservas necesita Google Calendar/)).toBeVisible();
     expect(within(checks).getByText(/El servicio Tinte no tiene precio/)).toBeVisible();
     expect(within(checks).getByRole("link", { name: "Ir a Servicios" })).toHaveAttribute("href", `/clients/${REF}/business#business-services`);
     await user.click(within(aside).getByRole("button", { name: "Ver las 6 pruebas" }));
@@ -599,7 +601,7 @@ describe("la pantalla del agente · su vida y el copiloto (historias 18 a 20)", 
 
   function withLife() {
     const copilot = {
-      ask: vi.fn(async () => okData({ text: "Porque la ficha no tiene AgendaPro conectado.", citations: [], proposals: [], fix: null })),
+      ask: vi.fn(async () => okData({ text: "Porque la ficha no tiene Google Calendar conectado.", citations: [], proposals: [], fix: null })),
       fix: vi.fn(),
       decide: vi.fn(),
     };
@@ -664,7 +666,7 @@ describe("la pantalla del agente · su vida y el copiloto (historias 18 a 20)", 
     // El copiloto vive en «Más ajustes»: preguntar lo abre.
     expect(screen.getByRole("button", { name: /Más ajustes/ })).toHaveAttribute("aria-expanded", "true");
     const panel = screen.getByRole("region", { name: "Copiloto" });
-    expect(await within(panel).findByText("Porque la ficha no tiene AgendaPro conectado.")).toBeVisible();
+    expect(await within(panel).findByText("Porque la ficha no tiene Google Calendar conectado.")).toBeVisible();
     expect(within(panel).getByText("Sobre la prueba «Reserva una cita»")).toBeVisible();
   });
 });
@@ -687,7 +689,7 @@ describe("la pantalla del agente · como el prototipo", () => {
   } as unknown as Partial<React.ComponentProps<typeof AgentBuilder>>;
 
   it("el nombre es el título, dice de qué cliente es y lleva cuatro pestañas en vidrio", () => {
-    screenWith({}, { ...sections, clientName: "Barbería Cultor" });
+    screenWith({}, { ...sections, clientName: "Barbería Cultor", draft: draftWith({ active_number: 2, active_version: 9 }) });
     expect(screen.getByRole("heading", { level: 1, name: "Recepción" })).toBeVisible();
     expect(screen.getByText("de Barbería Cultor")).toBeVisible();
     const tabs = screen.getByRole("tablist", { name: "Secciones del agente" });
@@ -707,6 +709,63 @@ describe("la pantalla del agente · como el prototipo", () => {
     expect(row("does")).not.toBeVisible();
     await user.click(screen.getByRole("tab", { name: "Configuración" }));
     expect(row("does")).toBeVisible();
+  });
+
+  it("Rendimiento solo existe con una versión guardada (63.2)", () => {
+    const first = screenWith({}, sections);
+    expect(within(screen.getByRole("tablist")).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Configuración", "Canales", "Conectores"]);
+    first.unmount();
+    // Un aviso viejo a Rendimiento, sin versión guardada: la pantalla abre en Configuración.
+    screenWith({}, { ...sections, initialSection: "agente-rendimiento" });
+    expect(screen.getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("un agente «Listo · sin canal» abre en Canales, no en Rendimiento (63.2)", () => {
+    const header = {
+      id: AGENT,
+      name: "Recepción",
+      lifecycle: "published",
+      pause_reason: null,
+      visible_state: { code: "ready_no_channel", tone: "info", reason: null },
+      is_default: true,
+      open_conversations: 0,
+      paused_by_kind: null,
+      paused_origin: null,
+      allowed: [],
+    };
+    screenWith({}, { ...sections, header, draft: draftWith({ active_number: 1, active_version: 3 }) });
+    expect(screen.getByRole("tab", { name: "Canales" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Rendimiento" })).toBeInTheDocument();
+  });
+
+  it("Rendimiento en dos columnas: los 30 días y las sugerencias de esta semana, y la gráfica debajo (H9)", () => {
+    const perf = {
+      days: 30,
+      since: "2026-09-29T00:00:00Z",
+      until: "2026-10-29T00:00:00Z",
+      conversations: 12,
+      resolved_without_person: 9,
+      handed_to_person: 3,
+      resolved_pct: 75,
+      spent: { amount_micros: 1_000_000, currency: "USD" as const },
+      spend_per_conversation: null,
+      series: [],
+    };
+    const { container } = screenWith(
+      {},
+      {
+        ...sections,
+        draft: draftWith({ active_number: 2, active_version: 9 }),
+        performance: { performance: perf },
+        improvements: { data: { items: [], allowed: [] } },
+        advanced: { cap: { amount_micros: 1_500_000, currency: "EUR" }, spent: null, currency: "EUR", canWrite: true },
+      },
+    );
+    const top = container.querySelector("[data-slot=performance-top]") as HTMLElement;
+    expect(within(top).getByRole("region", { name: "Últimos 30 días" })).toBeVisible();
+    expect(within(top).getByRole("region", { name: "Sugerencias de esta semana" })).toBeVisible();
+    expect(within(top).getByText(/tope 15,00/)).toBeVisible();
+    expect(container.querySelector("[data-slot=performance-chart]")).not.toBeNull();
   });
 
   it("los bloques son las cinco filas de una tabla compacta, con un lápiz por fila", () => {
@@ -745,8 +804,28 @@ describe("la pantalla del agente · como el prototipo", () => {
     };
     screenWith({}, { ...sections, draft: draftWith({ spec }) });
     expect(within(row("can")).getByText("WooCommerce · conectado")).toBeVisible();
-    await user.click(within(row("can")).getByRole("button", { name: "Conectar AgendaPro" }));
+    await user.click(within(row("can")).getByRole("button", { name: "Conectar Google Calendar" }));
     expect(screen.getByRole("tab", { name: "Conectores" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("«Conectar {X}» de una habilidad abre aquí mismo el diálogo de conectar; al conectar, la línea dice «conectado» y se vuelve a leer el borrador (62.3; H11)", async () => {
+    const user = userEvent.setup();
+    const gcal = { slug: "googlecalendar", name: "Google Calendar", category: "calendar", logo: null, auth_kind: "oauth_composio", needed: true, connection: null, activation: null, settings_schema: null };
+    const connected = { ...gcal, connection: { id: "c1", status: "connected", last_checked_at: null }, activation: { permission: "read" as const, settings: {} } };
+    const connect = vi.fn(async () => okData({ status: "activated" as const, connection_id: "c1" }));
+    const load = vi.fn(async () => okData([connected]));
+    const reload = vi.fn(async () => ({ ok: true as const, data: { draft: draftWith({ revision: 6 }), proposals: [] } }));
+    screenWith({ reload }, { ...sections, connectors: { data: [gcal], canWrite: true }, qualityActions: { connectors: { load, connect, open: vi.fn() } } });
+    await user.click(within(row("can")).getByRole("button", { name: "Conectar Google Calendar" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conectar Google Calendar" });
+    // Sin salir de la pantalla: la pestaña sigue en «Configuración» (detrás del diálogo).
+    expect(screen.getByRole("tab", { name: "Configuración", hidden: true })).toHaveAttribute("aria-selected", "true");
+    await user.click(within(dialog).getByRole("button", { name: "Conectar" }));
+    await waitFor(() => expect(connect).toHaveBeenCalledWith({ ref: REF, agent: AGENT, slug: "googlecalendar", permission: "read" }));
+    await waitFor(() => expect(reload).toHaveBeenCalled());
+    expect(await within(row("can")).findByText("Google Calendar · conectado")).toBeVisible();
+    expect(within(row("can")).queryByRole("button", { name: "Conectar Google Calendar" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("un aviso que lleva a algo de «Más ajustes» lo abre", () => {
@@ -770,6 +849,94 @@ describe("la pantalla del agente · como el prototipo", () => {
     screenWith({}, { ...sections, initialSection: "agente-conectores" });
     expect(screen.getByRole("tab", { name: "Conectores" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "Conectores" })).toBeVisible();
+  });
+});
+
+/**
+ * Spec 047 (requisito 63.1; H5; T211): la configuración de un canal se pinta
+ * dentro del agente, en su pestaña Canales (`?canal=`), con la cabecera y las
+ * pestañas del agente arriba. Cambiar de pestaña la cierra.
+ */
+describe("la pantalla del agente · el canal dentro del agente (63.1)", () => {
+  const sections = {
+    channels: { data: { channels: [], pending_link: null }, pages: {}, canWrite: true, fromPhone: false },
+    connectors: { data: [], canWrite: true },
+    qualityActions: { connectors: { load: vi.fn() } },
+  } as unknown as Partial<React.ComponentProps<typeof AgentBuilder>>;
+  const channelConfig = { page: channelPage({ agent: { id: AGENT, name: "Recepción" } }), history: CHANNEL_HISTORY, canWrite: true, balance: null };
+
+  beforeEach(() => router.replace.mockClear());
+
+  it("abre en Canales con la cabecera del agente arriba y la del canal dentro", () => {
+    screenWith({}, { ...sections, channelConfig });
+    expect(screen.getByRole("heading", { level: 1, name: "Recepción" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Canales" })).toHaveAttribute("aria-selected", "true");
+    const config = document.querySelector("[data-slot=channel-page]") as HTMLElement;
+    expect(config).toBeVisible();
+    expect(within(config).getByRole("heading", { level: 2, name: "+34 611 20 48 93" })).toBeVisible();
+    expect(within(config).getByText("WhatsApp · canal de Recepción")).toBeVisible();
+    // La lista de números sigue montada, oculta, mientras la configuración está abierta.
+    expect(document.querySelector("[data-slot=agent-channels]")).not.toBeVisible();
+  });
+
+  it("cambiar de pestaña cierra la configuración del canal y quita `?canal=` de la dirección", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { ...sections, channelConfig });
+    await user.click(screen.getByRole("tab", { name: "Configuración" }));
+    expect(screen.getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
+    expect(router.replace).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`, { scroll: false });
+    await user.click(screen.getByRole("tab", { name: "Canales" }));
+    expect(document.querySelector("[data-slot=channel-page]")).toBeNull();
+    expect(document.querySelector("[data-slot=agent-channels]")).toBeVisible();
+  });
+
+  it("si el canal pedido no se pudo leer, abre Canales con la lista y lo dice (T218)", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { ...sections, channelUnavailable: true });
+    expect(screen.getByRole("tab", { name: "Canales" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("No pudimos abrir la configuración de ese número.");
+    expect(document.querySelector("[data-slot=agent-channels]")).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "Configuración" }));
+    await user.click(screen.getByRole("tab", { name: "Canales" }));
+    expect(screen.queryByText(/No pudimos abrir la configuración de ese número/)).toBeNull();
+  });
+
+  it("«Decidir luego» vuelve a la lista de canales", async () => {
+    const user = userEvent.setup();
+    const unset = channelPage({ agent: { id: AGENT, name: "Recepción" }, config: { ...channelPage().config, audience: { mode: "unset", test_numbers: [], exceptions: [] } } });
+    screenWith({}, { ...sections, channelConfig: { ...channelConfig, page: unset } });
+    await user.click(screen.getByRole("button", { name: "Decidir luego" }));
+    expect(screen.getByRole("tab", { name: "Canales" })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector("[data-slot=channel-page]")).toBeNull();
+    expect(document.querySelector("[data-slot=agent-channels]")).toBeVisible();
+    expect(router.replace).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}`, { scroll: false });
+  });
+});
+
+/**
+ * Spec 047 (requisito 64; D55; T214): mientras Auphere gestiona los modelos,
+ * Avanzado no enseña «Calidad» ni «Fijar un modelo»: lo dice en una línea. Un
+ * aviso viejo que lleva a `?tab=quality` cae en esa línea.
+ */
+describe("la pantalla del agente · Avanzado sin «Calidad» (64.1)", () => {
+  const advanced = { cap: null, spent: { amount_micros: 0, currency: "EUR" as const }, currency: "EUR" as const, canWrite: true };
+
+  it("dice que el modelo lo gestiona Auphere, sin «Calidad» ni «Fijar un modelo»", async () => {
+    screenWith({}, { advanced });
+    await openMore();
+    const region = screen.getByRole("region", { name: "Avanzado" });
+    expect(within(region).getByText("El modelo de este agente lo gestiona Auphere.")).toBeVisible();
+    expect(within(region).queryByRole("heading", { name: "Calidad" })).toBeNull();
+    expect(screen.queryByText(/Fijar un modelo/)).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: /calidad/i })).toBeNull();
+  });
+
+  it("sin permiso para el tope, Avanzado sigue diciendo quién gestiona el modelo; `?tab=quality` llega a esa línea", () => {
+    screenWith({}, { initialSection: "agente-calidad" });
+    expect(screen.getByRole("button", { name: /Más ajustes/ })).toHaveAttribute("aria-expanded", "true");
+    const line = document.getElementById("agente-calidad") as HTMLElement;
+    expect(line).toHaveTextContent("El modelo de este agente lo gestiona Auphere.");
+    expect(line).toBeVisible();
   });
 });
 
@@ -867,5 +1034,195 @@ describe("la pantalla del agente · las preguntas que faltan (§3.3)", () => {
     await user.click(within(cancel()).getByRole("button", { name: "24 horas antes" }));
     expect(await within(cancel()).findByRole("alert")).toHaveTextContent("Esta respuesta no vale aquí");
     expect(screen.getByRole("heading", { level: 2, name: "Me faltan 2 datos" })).toBeVisible();
+  });
+});
+
+/**
+ * Spec 047, enmienda del 2026-10-30 «Solo lo que tenemos» (T228; requisitos
+ * 65.3, 65.4 y 65.9; `contracts/console-api.md` §11): el borrador dice lo que
+ * no tenemos con «No tenemos herramienta para: …» —su `missing_capabilities`—,
+ * y nada de eso lleva «Conectar {X}». Una promesa del texto lleva a su punto.
+ */
+describe("la pantalla del agente · solo lo que tenemos (65)", () => {
+  const MISSING = [
+    { kind: "module" as const, key: "reservas", label: "la agenda (Reservas no está activo para este cliente)", reason: "module_off" as const, source: "connection_request" as const, pointer: null },
+    { kind: "action" as const, key: "invoice", label: "emitir facturas", reason: "no_tool" as const, source: "text" as const, pointer: "/procedures/0/steps" },
+  ];
+
+  it("encima de la tabla: lo que falta con su `label` y la alternativa del agente; pasa axe", async () => {
+    const { container } = screenWith({}, { draft: draftWith({ missing_capabilities: MISSING }) });
+    const notice = container.querySelector("[data-slot=missing-capabilities]") as HTMLElement;
+    expect(within(notice).getByText("No tenemos herramienta para:")).toBeVisible();
+    expect(within(notice).getByText("la agenda (Reservas no está activo para este cliente)")).toBeVisible();
+    expect(within(notice).getByText("emitir facturas")).toBeVisible();
+    expect(within(notice).getByText("Si se lo piden, el agente pasa la conversación a una persona.")).toBeVisible();
+    // Antes de la tabla, para que se lea primero.
+    expect(notice.compareDocumentPosition(document.querySelector("[data-slot=agent-rows]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("sin nada que falte (o sin el campo), no se enseña nada", () => {
+    const { container, unmount } = screenWith({}, { draft: draftWith({ missing_capabilities: [] }) });
+    expect(container.querySelector("[data-slot=missing-capabilities]")).toBeNull();
+    unmount();
+    const second = screenWith();
+    expect(second.container.querySelector("[data-slot=missing-capabilities]")).toBeNull();
+  });
+
+  it("«Quitar la promesa» abre el bloque donde está; al guardarlo, lo que falta es lo que diga el borrador nuevo", async () => {
+    const user = userEvent.setup();
+    const save = vi.fn(async ({ spec }: { spec: AgentSpec }) => ({ ok: true as const, data: draftWith({ revision: 5, spec, missing_capabilities: [MISSING[0]!] }) }));
+    screenWith({ save }, { draft: draftWith({ missing_capabilities: MISSING }) });
+    await user.click(screen.getByRole("button", { name: "Quitar la promesa: emitir facturas" }));
+    const form = screen.getByRole("form", { name: "Editar «Procedimientos»" });
+    expect(row("can")).toHaveAttribute("data-open", "true");
+    const steps = within(form).getByRole("textbox", { name: /Pasos del procedimiento 1/ });
+    await user.clear(steps);
+    await user.type(steps, "Busca hueco y confirma.");
+    await user.click(within(form).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(screen.queryByText("emitir facturas")).toBeNull());
+    expect(screen.getByText("No tenemos herramienta para: la agenda (Reservas no está activo para este cliente)")).toBeVisible();
+  });
+
+  it("al volver a leer el borrador, un esqueleto; si no se puede, lo dice y «Reintentar» lo lee otra vez", async () => {
+    const user = userEvent.setup();
+    let answer: (value: { ok: false; status: number; message: string }) => void = () => undefined;
+    const reload = vi
+      .fn<Actions["reload"]>()
+      .mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce({ ok: true, data: { draft: draftWith({ revision: 7, missing_capabilities: [MISSING[1]!] }), proposals: [] } });
+    screenWith({ reload }, { draft: draftWith({ missing_capabilities: MISSING }) });
+    await openMore(user);
+    await user.click(screen.getByRole("button", { name: "Aplicar" }));
+    expect(await screen.findByRole("status", { name: "Comprobando qué herramientas faltan…" })).toBeInTheDocument();
+    answer({ ok: false, status: 500, message: "" });
+    expect(await screen.findByText("No pudimos comprobar qué herramientas le faltan a este agente.")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByText("No tenemos herramienta para: emitir facturas")).toBeVisible();
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it("ningún «Conectar {X}» para lo que no ofrecemos: ni Reservas ni lo que la API dice que falta", () => {
+    const spec: AgentSpec = {
+      ...SPEC,
+      skills: [
+        ...(SPEC.skills ?? []),
+        { key: "agenda", enabled: true, integration: "reservas", fallback: "Pasa la conversación al equipo." },
+        { key: "facturas", enabled: true, integration: "quickbooks" },
+      ],
+      connection_requests: [
+        ...(SPEC.connection_requests ?? []),
+        { integration: "reservas", reason: "Para reservar" },
+        { integration: "quickbooks", reason: "Para facturar" },
+      ],
+    };
+    const missing = [{ kind: "integration" as const, key: "quickbooks", label: "quickbooks", reason: "integration_unknown" as const, source: "skill" as const, pointer: null }];
+    screenWith({}, { draft: draftWith({ spec, missing_capabilities: missing }) });
+    const can = row("can");
+    expect(within(can).getByRole("link", { name: "Conectar Google Calendar" })).toBeVisible();
+    expect(within(can).queryByRole("link", { name: /Conectar Reservas/ })).toBeNull();
+    expect(within(can).queryByRole("link", { name: /Conectar Quickbooks/i })).toBeNull();
+    // Tampoco se dice «conectado» de lo que no se conecta.
+    expect(within(can).queryByText(/Reservas · conectado/)).toBeNull();
+    expect(within(can).queryByText(/Quickbooks · conectado/i)).toBeNull();
+  });
+
+  it("un `integration_unknown` del validador se dice en palabras, con el conector que pide", async () => {
+    const user = userEvent.setup();
+    const spec: AgentSpec = { ...SPEC, skills: [{ key: "facturas", enabled: true, integration: "quickbooks" }], connection_requests: [] };
+    const save = vi.fn(async () => ({
+      ok: false as const,
+      status: 422,
+      message: "",
+      code: "spec_invalid",
+      info: { problems: [{ pointer: "/skills/0/integration", code: "integration_unknown", message: "integration 'quickbooks' is not an offered connector" }] },
+    }));
+    screenWith({ save }, { draft: draftWith({ spec }) });
+    await user.click(within(row("does")).getByRole("button", { name: "Editar «Qué hace»" }));
+    await user.click(within(screen.getByRole("form", { name: /Editar/ })).getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByText("Quickbooks no es un conector que tengamos para este cliente. Hay que quitar lo que lo pide para poder guardar.")).toBeVisible();
+    expect(screen.queryByText(/is not an offered connector/)).toBeNull();
+  });
+});
+
+describe("la pantalla del agente · pruebas que aplican (65.8, 65.9)", () => {
+  // Un agente estructurado cuya única prueba no le aplica (65.8): la puerta no lo publica (65.9).
+  const NA = test({
+    id: "77777777-7777-4777-8777-000000000009",
+    kind: "sector",
+    name: "Reserva una cita",
+    status: "not_applicable",
+    not_applicable_reason: "No aplica: este agente no tiene herramienta para reservar citas.",
+    passes: 0,
+    decided: 0,
+  });
+  const tests = suite({
+    summary: { passed: 0, flaky: 0, failed: 0, unknown: 0, not_run: 0, not_applicable: 1, total: 1, stale: 0, critical_failed: [], rate: null },
+    tests: [NA],
+  });
+  const gate = {
+    conditions: [{ condition: "critical_tests", ok: false }],
+    hard: [{ condition: "critical_tests", code: "no_applicable_tests", message: "Este agente no tiene ninguna prueba que aplique: añade una antes de guardar." }],
+    overridable: [],
+    normal_failures: [],
+    rate: null,
+    reference_rate: null,
+  };
+
+  function withTests(spec: AgentSpec = SPEC) {
+    return render(
+      <LocaleProvider locale="es">
+        <AgentBuilder
+          refId={REF}
+          draft={draftWith({ spec })}
+          proposals={[]}
+          canWrite
+          quality={{ tests, preview: preview(), history: HISTORY, sessions: [session()] }}
+          actions={{ save: vi.fn(), reload: vi.fn(async () => ({ ok: true as const, data: { draft: draftWith({ spec }), proposals: [] } })), decide: vi.fn() }}
+          qualityActions={{
+            playground: { open: vi.fn(), send: vi.fn(), setTime: vi.fn(), close: vi.fn() },
+            tests: { load: vi.fn(async () => okData(tests)), run: vi.fn(), poll: vi.fn(), notApplicable: vi.fn(), add: vi.fn() },
+            review: { load: vi.fn(async () => okData(REVIEW)), decide: vi.fn() },
+            publish: {
+              preview: vi.fn(async () => okData(preview())),
+              publish: vi.fn(async () => okData({ job_id: "66666666-6666-4666-8666-666666666666" })),
+              poll: vi.fn(async () => okData(job({ status: "failed", error_code: "gate_blocked", progress: { step: "blocked", blocks: [{ key: "gate", ...gate }] } }))),
+              undo: vi.fn(),
+            },
+            history: { load: vi.fn(async () => okData(HISTORY)), restore: vi.fn() },
+            wait: noWait,
+          }}
+        />
+      </LocaleProvider>,
+    );
+  }
+
+  it("la puerta sin pruebas aplicables lo dice y «Añadir una prueba» lleva a la lista con su formulario abierto", async () => {
+    const user = userEvent.setup();
+    withTests();
+    const bar = screen.getByRole("region", { name: "Acciones del agente" });
+    await user.click(within(bar).getByRole("button", { name: "Guardar" }));
+    const sheet = await screen.findByRole("dialog", { name: "Por qué no se guardó" });
+    expect(within(sheet).getByText("Este agente no tiene ninguna prueba que le aplique. Añade una antes de guardar.")).toBeVisible();
+    await user.click(within(sheet).getByRole("button", { name: "Añadir una prueba" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Por qué no se guardó" })).toBeNull());
+    expect(screen.getByRole("button", { name: /Más ajustes/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("form", { name: "Añadir una prueba" })).toBeVisible();
+  });
+
+  it("en la lista, un estructurado sin pruebas que le apliquen lo dice; la que no aplica, con su razón y sin repetir «No aplica»", async () => {
+    const user = userEvent.setup();
+    withTests();
+    await openMore(user);
+    const list = document.querySelector("[data-slot=test-list]") as HTMLElement;
+    expect(within(list).getByText("Ninguna prueba aplica a este agente. Añade una que le aplique: sin ella no se puede guardar.")).toBeVisible();
+    expect(within(list).getByText("No aplica: este agente no tiene herramienta para reservar citas.")).toBeVisible();
+  });
+
+  it("uno de antes (`instructions`) no lo dice: la puerta no se lo pide", async () => {
+    const user = userEvent.setup();
+    withTests({ ...SPEC, mode: "instructions" });
+    await openMore(user);
+    expect(screen.queryByText(/Ninguna prueba aplica a este agente/)).toBeNull();
   });
 });

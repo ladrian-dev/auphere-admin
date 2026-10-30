@@ -49,9 +49,9 @@ const SPEC = {
   instructions: { sections: [{ title: "Qué haces", body: "Reservas citas y respondes dudas. Abrimos los domingos." }] },
   procedures: [],
   services: { mode: "all" },
-  skills: [{ key: "agendapro", enabled: true, integration: "agendapro", fallback: "Pasa la conversación al equipo." }],
+  skills: [{ key: "reservas", enabled: true, integration: "googlecalendar", fallback: "Pasa la conversación al equipo." }],
   tools: [],
-  connection_requests: [{ integration: "agendapro", reason: "Para reservar en su agenda" }],
+  connection_requests: [{ integration: "googlecalendar", reason: "Para reservar en su calendario" }],
   escalation: { triggers: ["asks_for_human"], failed_attempts: 2 },
   rules: ["No ofrezcas descuentos"],
   ai_disclosure: { decided: true, mode: "first_message" },
@@ -96,7 +96,7 @@ function testView(t) {
     decided = 3;
     if (t.id.endsWith("f002")) {
       status = "failed";
-      why = "La cita no existe en la agenda al terminar: falta conectar AgendaPro.";
+      why = "La cita no existe en la agenda al terminar: falta conectar Google Calendar.";
     } else if (t.id.endsWith("f003")) {
       status = "flaky";
       passes = 2;
@@ -257,8 +257,8 @@ const REVIEW = () => ({
     {
       code: "skill_without_integration",
       severity: "block",
-      message: "La habilidad Agendapro necesita AgendaPro y no está conectada.",
-      fix: { kind: "link", target: "integrations", integration: "agendapro" },
+      message: "La habilidad Reservas necesita Google Calendar y no está conectada.",
+      fix: { kind: "link", target: "integrations", integration: "googlecalendar" },
     },
     {
       code: "contradicts_hours",

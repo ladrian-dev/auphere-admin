@@ -112,7 +112,7 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
     await expectNoSeriousAxe(page);
     await page.getByRole("button", { name: "Guardar igualmente…" }).click();
     const dialog = page.getByRole("dialog", { name: "Guardar saltando la puerta" });
-    await dialog.getByRole("textbox", { name: /Motivo/ }).fill("AgendaPro se conecta mañana a primera hora");
+    await dialog.getByRole("textbox", { name: /Motivo/ }).fill("Google Calendar se conecta mañana a primera hora");
     await dialog.getByRole("button", { name: "Guardar con este motivo" }).click();
 
     const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Guardado como v2" });
@@ -120,7 +120,7 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
     const sent = await (await request.get(`${API}/__test/state`)).json();
     expect(sent.publishes).toEqual([
       { note: "Lista de espera" },
-      { note: "Lista de espera", override_reason: "AgendaPro se conecta mañana a primera hora", accept_normal_failures: true },
+      { note: "Lista de espera", override_reason: "Google Calendar se conecta mañana a primera hora", accept_normal_failures: true },
     ]);
     await expect(page.getByText("No hay cambios sin guardar.")).toBeVisible();
     const history = section(page, "Historial");

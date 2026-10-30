@@ -13,9 +13,10 @@ export const agentImproveMessages = {
   "improve.performance.error": { es: "No pudimos leer el rendimiento", en: "We could not read the performance" },
   "improve.performance.error.hint": { es: "Lo demás del agente está al día.", en: "The rest of the agent is up to date." },
   "improve.figure.conversations": { es: "Conversaciones", en: "Conversations" },
-  "improve.figure.pct": { es: "{n} % del total", en: "{n}% of the total" },
-  "improve.figure.spent": { es: "Gasto", en: "Spend" },
-  "improve.figure.perConversation": { es: "{amount} por conversación", en: "{amount} per conversation" },
+  // Rendimiento como el prototipo (H9, 63.2): tres cifras de los últimos 30 días.
+  "improve.figure.percent": { es: "{n} %", en: "{n}%" },
+  "improve.figure.bag": { es: "Consumido de la bolsa", en: "Spent from the bag" },
+  "improve.figure.cap": { es: "tope {amount}", en: "cap {amount}" },
   "improve.chart.empty": { es: "Sin conversaciones en estos {n} días.", en: "No conversations in these {n} days." },
   "improve.conversations.title": { es: "Conversaciones", en: "Conversations" },
   "improve.conversations.privacy": {
@@ -57,12 +58,12 @@ export const agentImproveMessages = {
   "waiting.reason.other": { es: "Otro motivo", en: "Another reason" },
 
   // ── Mejoras (51.3, 51.4, 52.2, 52.3) ──
-  "improve.title": { es: "Mejoras", en: "Improvements" },
-  "improve.intro": {
-    es: "Cada semana revisamos las conversaciones de este agente y te proponemos qué cambiar. Aquí llegan también las correcciones del negocio. Nunca verás un mensaje.",
-    en: "Every week we review this agent’s conversations and propose what to change. The business’s corrections arrive here too. You will never see a message.",
-  },
   "improve.list": { es: "Mejoras por decidir", en: "Improvements to decide" },
+  // H9 (63.2): la tarjeta de la derecha, con una fila por mejora y «Ver».
+  "improve.suggestions.title": { es: "Sugerencias de esta semana", en: "This week’s suggestions" },
+  "improve.view": { es: "Ver", en: "View" },
+  "improve.view.aria": { es: "Ver «{topic}»", en: "View “{topic}”" },
+  "improve.close": { es: "Cerrar", en: "Close" },
   "improve.empty": { es: "Nada que mejorar por ahora", en: "Nothing to improve for now" },
   "improve.empty.hint": {
     es: "Las sugerencias salen cuando al menos 5 clientes distintos preguntan algo que el agente no supo.",

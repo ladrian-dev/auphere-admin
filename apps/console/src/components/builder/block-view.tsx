@@ -224,7 +224,8 @@ function SkillRow({
 }) {
   const t = useT();
   return (
-    <li className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border border-border px-3 py-2 text-sm" data-slot="builder-skill">
+    // Como el prototipo (§4.4, H11): una línea por habilidad, sin caja.
+    <li className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm" data-slot="builder-skill">
       <div className="grid min-w-0 flex-1 basis-48 gap-1">
         <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
           <span className="font-medium break-words">{name}</span>

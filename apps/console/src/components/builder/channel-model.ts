@@ -66,9 +66,18 @@ export function channelSummary(t: T, type: string, page: Pick<ChannelPage, "conf
 
 // ── las rutas ───────────────────────────────────────────────────────────────
 
-/** La página de un canal cuelga de su agente (las migas ya lo esperan así). */
+/**
+ * La configuración de un canal se abre dentro de su agente, en la pestaña
+ * Canales (`?canal=`; spec 047, 63.1 y hueco H5). La ruta vieja
+ * (`…/channels/{id}`) redirige aquí.
+ */
 export function channelHref(refId: string, agentId: string, channelId: string): string {
-  return `${agentHref(refId, agentId)}/channels/${encodeURIComponent(channelId)}`;
+  return `${agentHref(refId, agentId)}?canal=${encodeURIComponent(channelId)}`;
+}
+
+/** La pestaña Canales del agente, con su lista. */
+export function agentChannelsTabHref(refId: string, agentId: string): string {
+  return `${agentHref(refId, agentId)}?tab=channels`;
 }
 
 /** La sección Canales en la pantalla del agente. */
