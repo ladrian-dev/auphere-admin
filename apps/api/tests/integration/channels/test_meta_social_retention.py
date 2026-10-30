@@ -205,6 +205,41 @@ async def test_health_flags_a_revoked_token(db_session, fake_redis):
         assert channel.config["needs_attention"] == "token_revoked"
 
 
+async def test_access_lost_for_a_week_disconnects_and_starts_the_clock(db_session, fake_redis):
+    """QA 2026-10-30 (INC-09): a business that took the app away left the
+    channel «degraded» for ever, with its token, and the 30-day clock never
+    started. After a week of lost access the channel is disconnected."""
+    world = await _world(db_session)
+    revoked = _graph(
+        lambda r: httpx.Response(400, json={"error": {"message": "revoked", "code": 190}})
+    )
+    await tick_tenant(world["tenant_id"], client=revoked, redis=fake_redis, app_id=APP_ID)
+
+    sm = get_sessionmaker()
+    async with sm() as s, tenant_scoped_session(s, world["tenant_id"]):
+        channel = await s.get(Channel, world["channel_id"])
+        assert channel is not None and channel.status is ChannelStatus.DEGRADED
+        since = datetime.fromisoformat(channel.config["needs_attention_since"])
+        channel.config = {
+            **channel.config,
+            "needs_attention_since": (since - timedelta(days=8)).isoformat(),
+        }
+        await s.commit()
+
+    await tick_tenant(world["tenant_id"], client=revoked, redis=fake_redis, app_id=APP_ID)
+
+    async with sm() as s, tenant_scoped_session(s, world["tenant_id"]):
+        channel = await s.get(Channel, world["channel_id"])
+        assert channel is not None
+        assert channel.status is ChannelStatus.DISCONNECTED
+        assert channel.config.get("disconnected_at")
+        assert channel.config_encrypted is None, "the token must go"
+        audit = await s.scalar(
+            select(AuditLog).where(AuditLog.action == "channel.meta_social.access_lost")
+        )
+        assert audit is not None
+
+
 async def test_operator_erases_one_person_only(client, db_session, admin_headers):
     from nexus_api.services import operator_identity
 

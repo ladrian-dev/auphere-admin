@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 import structlog
@@ -38,6 +38,12 @@ from redis.asyncio import Redis
 log = structlog.get_logger(__name__)
 
 DEFAULT_TICK_SECONDS = 6 * 3600.0
+#: The business took the app away (or the token died) and it stayed that way
+#: this long: the channel is disconnected, which drops the token and starts
+#: the 30-day clock of Req. 5.3. Before, it stayed «degraded» for ever (QA
+#: 2026-10-30, INC-09).
+ACCESS_LOST_GRACE = timedelta(days=7)
+ACCESS_LOST = frozenset({"token_revoked", "permission_lost", "no_credentials"})
 ACTOR = "system:meta_social_cron"
 
 
@@ -126,10 +132,32 @@ async def tick_tenant(
                     channel.config = cfg
                     set_health(channel, degraded=False)
                     channel.problem_reason = None
+                cfg.pop("needs_attention_since", None)
+                channel.config = cfg
                 if health.resubscribed:
                     log.info("meta_social_cron.resubscribed", channel_id=str(channel.id))
+            elif health.reason in ACCESS_LOST and _lost_for(cfg, now) >= ACCESS_LOST_GRACE:
+                await connector.disconnect(channel)
+                session.add(
+                    AuditLog(
+                        tenant_id=tenant_id,
+                        actor=ACTOR,
+                        action="channel.meta_social.access_lost",
+                        target=f"channel:{channel.id}",
+                        before_json=None,
+                        after_json={"display_name": _display(channel), "reason": health.reason},
+                    )
+                )
+                log.info("meta_social_cron.disconnected_access_lost", channel_id=str(channel.id))
+            elif cfg.get("needs_attention") == health.reason and not cfg.get(
+                "needs_attention_since"
+            ):
+                # Flagged before the clock existed: it starts now.
+                cfg["needs_attention_since"] = now.isoformat()
+                channel.config = cfg
             elif cfg.get("needs_attention") != health.reason:
                 cfg["needs_attention"] = health.reason
+                cfg["needs_attention_since"] = now.isoformat()
                 channel.config = cfg
                 set_health(channel, degraded=True)
                 channel.problem_reason = PROBLEM_REASON_OF.get(str(health.reason), "meta_error")
@@ -144,6 +172,17 @@ async def tick_tenant(
                     )
                 )
         await session.flush()
+
+
+def _lost_for(cfg: dict[str, object], now: datetime) -> timedelta:
+    """How long the channel has needed attention for the current reason."""
+    since = cfg.get("needs_attention_since")
+    if not isinstance(since, str):
+        return timedelta(0)
+    try:
+        return now - datetime.fromisoformat(since)
+    except ValueError:
+        return timedelta(0)
 
 
 def _display(channel: Channel) -> str:
