@@ -11,6 +11,7 @@ import { Button, Callout, Field, Input, Label, NativeSelect, StatusBadge, Textar
 import {
   channelHistoryAction,
   channelPageAction,
+  instagramCommentsAction,
   saveChannelConfigAction,
   undoChannelConfigAction,
 } from "@/app/(console)/clients/[ref]/agents/channel-actions";
@@ -21,11 +22,12 @@ import { agentHref } from "@/components/shell/routes-v2";
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { EscalationTrigger } from "@/lib/backend/builder-types";
-import type { AudienceMode, ChannelChange, ChannelConfigIn, ChannelPage, Recipient } from "@/lib/backend/channel-config-types";
+import type { AudienceMode, ChannelChange, ChannelConfigIn, ChannelPage, InstagramComments, Recipient } from "@/lib/backend/channel-config-types";
 
 import { triggerText } from "./block-view";
 import type { Result } from "./builder-model";
 import { ChannelAccount, hasAccountFacts } from "./channel-account";
+import { InstagramCommentsSection } from "./channel-comments";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
 import {
   MAX_RECIPIENTS,
@@ -57,6 +59,8 @@ export type ChannelPageActions = {
   undo: (body: Ids) => Promise<Result<ChannelPage>>;
   reload: (body: Ids) => Promise<Result<ChannelPage>>;
   history: (body: Ids) => Promise<Result<ChannelChange[]>>;
+  /** Spec 049: los comentarios de una cuenta de Instagram (guarda al pulsar). */
+  comments?: (body: Ids & InstagramComments) => Promise<Result<ChannelPage>>;
   menu?: ChannelMenuActions;
 };
 
@@ -65,6 +69,14 @@ export const CHANNEL_PAGE_ACTIONS: ChannelPageActions = {
   undo: (body) => undoChannelConfigAction(body),
   reload: (body) => channelPageAction(body),
   history: (body) => channelHistoryAction(body),
+  comments: (body) => instagramCommentsAction(body),
+};
+
+/** El nombre de cada canal en la cabecera («Instagram · canal de Ava»). */
+const CHANNEL_NAMES: Record<string, MessageKey> = {
+  whatsapp: "builder.channels.whatsapp",
+  instagram: "builder.channels.instagram",
+  messenger: "builder.channels.messenger",
 };
 
 /** El índice de la configuración (prototipo §8.1): «Excepciones» solo con «A todos». */
@@ -250,7 +262,7 @@ export function ChannelConfigPage({
   const account = hasAccountFacts(t, locale, page.whatsapp) ? page.whatsapp : null;
   const method = page.method === "coexistence" || page.method === "cloud_api" ? t(`channels.proto.connect.${page.method}` as MessageKey) : null;
   const headLine = [
-    page.type === "whatsapp" ? t("builder.channels.whatsapp") : page.type,
+    page.type in CHANNEL_NAMES ? t(CHANNEL_NAMES[page.type]!) : page.type,
     method,
     page.agent ? t("builder.channel.head.of", { name: page.agent.name }) : t("builder.channel.page.noAgent"),
   ].filter(Boolean);
@@ -266,6 +278,7 @@ export function ChannelConfigPage({
               ...NAV.filter((s) => s.id !== "canal-excepciones" || everyone),
               // Spec 050 (4.1): la cuenta en Meta, cuando Meta dice algo de ella.
               ...(account ? [{ id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }] : []),
+              ...(page.instagram_comments ? [{ id: "canal-comentarios", label: "builder.channel.comments.title" as MessageKey }] : []),
             ].map((s) => (
               <li key={s.id} className="min-w-0">
                 <a
@@ -398,6 +411,17 @@ export function ChannelConfigPage({
             {account ? (
               <PageSection id="canal-cuenta" title={t("builder.channel.account.title")} intro={t("builder.channel.account.intro")}>
                 <ChannelAccount account={account} />
+              </PageSection>
+            ) : null}
+
+            {page.instagram_comments ? (
+              <PageSection id="canal-comentarios" title={t("builder.channel.comments.title")} intro={t("builder.channel.comments.intro")}>
+                <InstagramCommentsSection
+                  comments={page.instagram_comments}
+                  canWrite={canWrite && !disconnected && Boolean(actions.comments)}
+                  onSave={(next) => actions.comments!({ ...ids, ...next })}
+                  onSaved={setPage}
+                />
               </PageSection>
             ) : null}
 

@@ -112,6 +112,19 @@ export async function resumeChannelAction(raw: unknown): Promise<ActionResult<Ch
   return write(body.ref, (api) => api.resumeChannel(body.ref, body.channel));
 }
 
+const commentsSchema = channelSchema.extend({
+  enabled: z.boolean(),
+  public_reply: z.string().trim().max(300).nullable(),
+});
+
+/** Spec 049 (historia 3): los comentarios de Instagram. Guarda al pulsar, como el catálogo. */
+export async function instagramCommentsAction(raw: unknown): Promise<ActionResult<ChannelPage>> {
+  const body = commentsSchema.parse(raw);
+  return write(body.ref, (api) =>
+    api.setInstagramComments(body.ref, body.channel, { enabled: body.enabled, public_reply: body.public_reply || null }),
+  );
+}
+
 // ── El enlace del dueño por agente (31) ─────────────────────────────────────
 
 export async function agentChannelsAction(raw: unknown): Promise<ActionResult<AgentChannels>> {

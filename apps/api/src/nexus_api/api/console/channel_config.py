@@ -176,6 +176,18 @@ def whatsapp_account_of(channel: Channel) -> WhatsAppAccountOut | None:
     )
 
 
+class InstagramCommentsIO(BaseModel):
+    """Spec 049 (Historia 3): qué hace el agente con los comentarios de una
+    cuenta de Instagram. ``public_reply`` es la línea que se publica bajo el
+    comentario cuando el agente contesta en privado; vacía, no se publica
+    nada (QA 2026-10-30, INC-07: nadie podía escribirla)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    public_reply: str | None = Field(default=None, max_length=300)
+
+
 class ChannelPageOut(BaseModel):
     id: uuid.UUID
     type: str
@@ -204,6 +216,8 @@ class ChannelPageOut(BaseModel):
     allowed: list[Action] = Field(default_factory=list)
     #: Spec 050: the Meta account facts of a WhatsApp number; ``None`` otherwise.
     whatsapp: WhatsAppAccountOut | None = None
+    #: Spec 049: los comentarios de una cuenta de Instagram; ``None`` en otros canales.
+    instagram_comments: InstagramCommentsIO | None = None
 
 
 class ChangeOut(BaseModel):
@@ -374,6 +388,18 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
         move_targets=move_targets,
         allowed=allowed,
         whatsapp=whatsapp_account_of(channel),
+        instagram_comments=_comments_of(channel),
+    )
+
+
+def _comments_of(channel: Channel) -> InstagramCommentsIO | None:
+    if channel.type is not ChannelType.INSTAGRAM:
+        return None
+    cfg = channel.config or {}
+    reply = cfg.get("comment_public_reply")
+    return InstagramCommentsIO(
+        enabled=cfg.get("comments_enabled") is not False,
+        public_reply=reply if isinstance(reply, str) and reply.strip() else None,
     )
 
 
@@ -584,6 +610,52 @@ def _tell_client(scope: ClientScope, kind: str, channel: Channel) -> None:
         )
 
     after_commit(scope.session, _send)
+
+
+@router.put("/channels/{channel_id}/comments", response_model=ChannelPageOut)
+async def put_instagram_comments(
+    channel_id: uuid.UUID,
+    body: InstagramCommentsIO,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+    redis: Redis = Depends(get_redis),
+) -> ChannelPageOut:
+    """Spec 049 (Historia 3): si el agente atiende los comentarios y qué línea
+    publica bajo el comentario al contestar en privado. Guarda al pulsar,
+    como el catálogo, y queda en la auditoría."""
+    channel = await _channel(scope, channel_id)
+    if channel.type is not ChannelType.INSTAGRAM:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "not_instagram"})
+    if channel.status is ChannelStatus.DISCONNECTED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "channel_disconnected"}
+        )
+    before = _comments_of(channel)
+    reply = (body.public_reply or "").strip()
+    cfg = {
+        k: v
+        for k, v in (channel.config or {}).items()
+        if k not in ("comments_enabled", "comment_public_reply")
+    }
+    if not body.enabled:
+        cfg["comments_enabled"] = False
+    if reply:
+        cfg["comment_public_reply"] = reply
+    channel.config = cfg
+    after = _comments_of(channel)
+    scope.session.add(
+        _audit(
+            scope,
+            channel,
+            "console.channel.comments",
+            {
+                "before": before.model_dump() if before else None,
+                "after": after.model_dump() if after else None,
+            },
+        )
+    )
+    await scope.session.flush()
+    await _drop_cache(scope, redis, channel)
+    return await page(scope, channel)
 
 
 @router.post("/channels/{channel_id}/resume", response_model=ChannelPageOut)

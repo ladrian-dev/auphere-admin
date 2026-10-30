@@ -37,6 +37,8 @@ export const builderChannelsMessages = {
     en: "We could not load this agent’s numbers. Try again.",
   },
   "builder.channels.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
+  "builder.channels.instagram": { es: "Instagram", en: "Instagram" },
+  "builder.channels.messenger": { es: "Messenger", en: "Messenger" },
   "builder.channels.configure": { es: "Configurar {number}", en: "Set up {number}" },
 
   // ── El ⋯ de cada canal (34.1) ───────────────────────────────────────────
@@ -284,6 +286,30 @@ export const builderChannelsMessages = {
   "builder.channel.wait.field": { es: "Mensaje", en: "Message" },
   "builder.channel.wait.hint": { es: "Hasta 500 caracteres.", en: "Up to 500 characters." },
   "builder.channel.wait.tooLong": { es: "Como mucho 500 caracteres.", en: "At most 500 characters." },
+
+  // Spec 049 (historia 3): los comentarios de una cuenta de Instagram.
+  "builder.channel.comments.title": { es: "Comentarios", en: "Comments" },
+  "builder.channel.comments.intro": {
+    es: "Cuando alguien comenta una publicación, el agente le contesta por mensaje privado.",
+    en: "When someone comments on a post, the agent answers them by private message.",
+  },
+  "builder.channel.comments.answer": { es: "Atender los comentarios", en: "Answer comments" },
+  "builder.channel.comments.answer.hint": {
+    es: "Un mensaje privado por comentario, dentro de los 7 días.",
+    en: "One private message per comment, within 7 days.",
+  },
+  "builder.channel.comments.on": { es: "Sí", en: "Yes" },
+  "builder.channel.comments.off": { es: "No", en: "No" },
+  "builder.channel.comments.public": { es: "Respuesta pública bajo el comentario", en: "Public reply under the comment" },
+  "builder.channel.comments.public.placeholder": { es: "Te escribimos por privado 📩", en: "We sent you a DM 📩" },
+  "builder.channel.comments.public.hint": {
+    es: "Se publica a la vez que el mensaje privado. Vacía, no se publica nada. Hasta 300 caracteres.",
+    en: "Posted together with the private message. Empty, nothing is posted. Up to 300 characters.",
+  },
+  "builder.channel.comments.public.tooLong": { es: "Como mucho 300 caracteres.", en: "At most 300 characters." },
+  "builder.channel.comments.public.none": { es: "Ninguna", en: "None" },
+  "builder.channel.comments.save": { es: "Guardar comentarios", en: "Save comments" },
+  "builder.channel.comments.saved": { es: "Comentarios guardados.", en: "Comments saved." },
 
   "builder.channel.account.title": { es: "La cuenta en Meta", en: "The account at Meta" },
   "builder.channel.account.intro": { es: "Lo que Meta dice de este número. Se actualiza solo cuando Meta avisa.", en: "What Meta says about this number. It updates itself when Meta tells us." },

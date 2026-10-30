@@ -1,7 +1,7 @@
 import type { Call } from "../backend";
 
 import { ifMatch } from "./agent-draft";
-import type { AgentChannels, ChannelChange, ChannelConfigIn, ChannelPage, OwnerLink, OwnerLinkMode } from "./channel-config-types";
+import type { AgentChannels, ChannelChange, ChannelConfigIn, ChannelPage, InstagramComments, OwnerLink, OwnerLinkMode } from "./channel-config-types";
 
 /**
  * Carril de la página de cada canal, de su menú ⋯ y del enlace del dueño por
@@ -37,6 +37,8 @@ export function channelConfigApi(call: Call) {
       call<ChannelPage>(`${channel(ref, channelId)}/move`, { method: "POST", body: { to_agent_id: toAgentId } }),
     pauseChannel: (ref: string, channelId: string) => call<ChannelPage>(`${channel(ref, channelId)}/pause`, { method: "POST" }),
     resumeChannel: (ref: string, channelId: string) => call<ChannelPage>(`${channel(ref, channelId)}/resume`, { method: "POST" }),
+    setInstagramComments: (ref: string, channelId: string, body: InstagramComments) =>
+      call<ChannelPage>(`${channel(ref, channelId)}/comments`, { method: "PUT", body }),
 
     listAgentChannels: (ref: string, agentId: string) => call<AgentChannels>(`${agent(ref, agentId)}/channels`),
     createOwnerLink: (ref: string, agentId: string, body: { mode: OwnerLinkMode; replace?: boolean }) =>

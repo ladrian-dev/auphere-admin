@@ -346,3 +346,69 @@ def test_the_new_console_names_the_account_not_the_meta_id() -> None:
     assert _identifier(ig) == "@demo.store"
     assert _identifier(page) == "Demo Store"
     assert _identifier(wa) == "+34600000001"
+
+
+async def test_the_partner_sets_the_public_reply_to_comments(
+    client, console_world, db_session, graph
+) -> None:
+    """QA 2026-10-30 (INC-07): nobody could write ``comment_public_reply``,
+    so the public line under a comment never went out."""
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["instagram"])
+    r = await client.post(
+        _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "CODE"}
+    )
+    channel_id = r.json()["channel"]["id"]
+    url = f"/console/clients/{a['ref']}/channels/{channel_id}"
+
+    page = (await client.get(url, headers=a["headers"]())).json()
+    assert page["instagram_comments"] == {"enabled": True, "public_reply": None}
+
+    r = await client.put(
+        f"{url}/comments",
+        headers=a["headers"](),
+        json={"enabled": True, "public_reply": "  We sent you a DM 📩  "},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["instagram_comments"] == {
+        "enabled": True,
+        "public_reply": "We sent you a DM 📩",
+    }
+    row = await db_session.get(Channel, uuid.UUID(channel_id), populate_existing=True)
+    assert row.config["comment_public_reply"] == "We sent you a DM 📩"
+
+    r = await client.put(
+        f"{url}/comments", headers=a["headers"](), json={"enabled": False, "public_reply": ""}
+    )
+    assert r.json()["instagram_comments"] == {"enabled": False, "public_reply": None}
+    row = await db_session.get(Channel, uuid.UUID(channel_id), populate_existing=True)
+    assert row.config["comments_enabled"] is False
+    assert "comment_public_reply" not in row.config
+    audits = (
+        (
+            await db_session.execute(
+                sa.select(AuditLog).where(AuditLog.action == "console.channel.comments")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(audits) == 2
+
+
+async def test_comment_settings_are_only_for_instagram(
+    client, console_world, db_session, graph
+) -> None:
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["messenger"])
+    r = await client.post(
+        _url(a, "messenger/connect"), headers=a["headers"](), json={"code": "CODE"}
+    )
+    channel_id = r.json()["channel"]["id"]
+    url = f"/console/clients/{a['ref']}/channels/{channel_id}"
+    assert (await client.get(url, headers=a["headers"]())).json()["instagram_comments"] is None
+    r = await client.put(
+        f"{url}/comments", headers=a["headers"](), json={"enabled": True, "public_reply": "Hi"}
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "not_instagram"

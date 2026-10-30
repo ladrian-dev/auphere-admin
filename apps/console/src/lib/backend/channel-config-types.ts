@@ -95,7 +95,15 @@ export type ChannelPage = {
   allowed: ChannelAction[];
   /** Spec 050: la cuenta en Meta de un número de WhatsApp; ausente en los demás. */
   whatsapp?: WhatsAppAccount | null;
+  /** Spec 049: los comentarios de una cuenta de Instagram; ausente en los demás. */
+  instagram_comments?: InstagramComments | null;
 };
+
+/**
+ * Spec 049 (historia 3): si el agente atiende los comentarios y la línea que
+ * se publica bajo el comentario cuando contesta en privado (vacía: ninguna).
+ */
+export type InstagramComments = { enabled: boolean; public_reply: string | null };
 
 /** Una fila del historial del canal, con el antes y el después (32.7). */
 export type ChannelChange = {
