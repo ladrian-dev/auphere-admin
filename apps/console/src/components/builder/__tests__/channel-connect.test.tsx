@@ -20,6 +20,7 @@ vi.mock("@/app/(console)/clients/[ref]/agents/channel-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
   whatsappSignupAction: sdk.whatsappSignupAction,
   listCatalogsAction: vi.fn(),
+  listTemplatesAction: vi.fn(async () => ({ ok: true, data: { items: [], approved: 0, rejected: 0, pending: 0 } })),
   metaSocialConnectAction: sdk.metaSocialConnectAction,
   metaSocialCompleteAction: vi.fn(),
 }));
@@ -353,7 +354,9 @@ describe("spec 049: Instagram y Messenger para un partner con el canal en beta",
     await waitFor(() => expect(sdk.metaSocialConnectAction).toHaveBeenCalledWith({ ref: REF, kind: "instagram", code: "CODE" }));
     expect(sdk.loginForCode).toHaveBeenCalledWith({ appId: "123", version: "v26.0", configId: "cfg-ig" });
     await waitFor(() => expect(actions.connect!.move).toHaveBeenCalledWith({ ref: REF, channel: CH3, to: RECEPCION }));
-    expect(toast.success).toHaveBeenCalledWith("@demo.store conectado. El agente ya atiende sus mensajes.");
+    expect(toast.success).toHaveBeenCalledWith("@demo.store conectado. Configura a quién responde para que el agente empiece.");
+    // Like a WhatsApp number: straight to its page to set it up.
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith(expect.stringContaining(CH3)));
   });
 });
 
