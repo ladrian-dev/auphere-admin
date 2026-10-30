@@ -4,11 +4,8 @@
 #
 # Build context MUST be the project root.
 #
-# Block O (ADR-017): re-introduces a Node stage that compiles the
-# ``agendapro_public_mcp`` server. The worker's Python booking facade
-# + async_booking_cron spawn it via stdio JSON-RPC to drive the
-# AgendaPro public link wizard. Node + the compiled dist + production
-# node_modules ship inside the runtime image.
+# Python only. Spec 048 removed the Node stage (a browser MCP for a third-party
+# booking page, driven over stdio) together with the server it compiled.
 
 # ──────────────────────────────────────────────────────────────────────
 # Stage 1 — python-build
@@ -72,48 +69,8 @@ RUN uv export --locked --no-dev --no-emit-project --no-hashes -o /tmp/requiremen
 RUN python -m nexus_api.core.litellm_smoke
 
 # ──────────────────────────────────────────────────────────────────────
-# Stage 2 — node-build
-#   Compiles the agendapro_public_mcp TypeScript server and prunes
-#   to production-only node_modules.
-#
-#   Cache strategy: COPY package.json first, install, THEN COPY src.
-#   When only src changes (most common case while iterating on the
-#   wizard flows), npm install hits cache and only ``tsc`` re-runs.
-# ──────────────────────────────────────────────────────────────────────
-FROM node:22-slim AS node-build
-
-WORKDIR /node-build
-
-COPY apps/mcp/servers/agendapro_public_mcp/package.json ./package.json
-COPY apps/mcp/servers/agendapro_public_mcp/tsconfig.json ./tsconfig.json
-# Copy lockfile when present (post-first-build); not strictly required
-# for the COPY to succeed because Docker fails only on missing required
-# files, but the conditional shape keeps repeat builds reproducible.
-COPY apps/mcp/servers/agendapro_public_mcp/package-loc[k].json ./
-
-# Install ALL deps (incl. devDeps for tsc / @types/node). ``npm ci`` is
-# preferred when a lockfile exists; falls back to ``npm install``
-# automatically if there isn't one (npm's default behaviour).
-RUN if [ -f package-lock.json ]; then \
-        npm ci --no-audit --no-fund; \
-    else \
-        npm install --no-audit --no-fund; \
-    fi
-
-# Now bring the source over and compile.
-COPY apps/mcp/servers/agendapro_public_mcp/src ./src
-RUN npx tsc -p tsconfig.json \
-    && ls -la dist/
-
-# Prune devDeps so only what the runtime needs ships forward.
-RUN npm prune --omit=dev
-
-# ──────────────────────────────────────────────────────────────────────
-# Stage 3 — runtime
-#   Slim Python runtime + Node 22 binary + non-root user.
-#   Stagehand uses Browserbase remote browsers (``env=BROWSERBASE``) so
-#   no local Chromium/Playwright deps are needed — keeps the image
-#   reasonable (~400MB vs ~1.2GB if we shipped Playwright).
+# Stage 2 — runtime
+#   Slim Python runtime + non-root user.
 # ──────────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
@@ -121,13 +78,6 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     NEXUS_ENVIRONMENT=production
-
-# Bring just the Node binary (no npm — the production image doesn't
-# install packages at runtime; node_modules is baked in already).
-COPY --from=node-build /usr/local/bin/node /usr/local/bin/node
-# Node ships with ICU/SSL libs already statically built into the binary
-# on the official images, so no extra apt deps needed for the basic
-# stagehand+http use case.
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -148,23 +98,9 @@ COPY --from=python-build /py-build/apps /app/apps
 # safety net so any direct path import still resolves at runtime.
 COPY --from=python-build /py-build/packages /app/packages
 
-# Compiled MCP server + production node_modules at the path the
-# Python transport defaults to: ``node apps/mcp/servers/agendapro_public_mcp/dist/server.js``.
-# Override via NEXUS_AGENDAPRO_PUBLIC_NODE_CMD if needed.
-COPY --from=node-build /node-build/dist /app/apps/mcp/servers/agendapro_public_mcp/dist
-COPY --from=node-build /node-build/node_modules /app/apps/mcp/servers/agendapro_public_mcp/node_modules
-COPY --from=node-build /node-build/package.json /app/apps/mcp/servers/agendapro_public_mcp/package.json
-
-# Ownership for the non-root user.
-RUN chown -R nexus:nexus /app/apps/mcp/servers/agendapro_public_mcp
-
 WORKDIR /app
 
 ENV PYTHONPATH=/app/apps/api/src:/app/apps/channels/src:/app/apps/mcp/src:/app/apps/worker/src:/app/packages/ucm-schema/py/src
-# The Python transport spawns ``node /app/apps/mcp/servers/agendapro_public_mcp/dist/server.js``
-# — keep cwd consistent so relative ``import`` paths resolve.
-ENV NEXUS_AGENDAPRO_PUBLIC_NODE_CMD="node /app/apps/mcp/servers/agendapro_public_mcp/dist/server.js"
-ENV NEXUS_AGENDAPRO_PUBLIC_NODE_CWD="/app/apps/mcp/servers/agendapro_public_mcp"
 
 USER nexus
 

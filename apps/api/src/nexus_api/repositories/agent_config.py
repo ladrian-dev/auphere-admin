@@ -22,12 +22,25 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import desc, select, update
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.core.errors import AgentConfigConflict, UnknownAgent
+from nexus_api.core.errors import (
+    AgentConfigConflict,
+    RollbackTargetNeverPublished,
+    UnknownAgent,
+)
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus, AgentStatus
+
+#: What leaving ACTIVE writes. A version that was live keeps when it went live:
+#: one created ACTIVE (a seed, a script) has no ``promoted_at`` and gets its
+#: creation, so a rollback can tell it from a draft that never was (spec 047,
+#: requisito 23 — ``RollbackTargetNeverPublished``).
+_DEMOTED: dict[str, Any] = {
+    "status": AgentConfigStatus.ARCHIVED,
+    "promoted_at": func.coalesce(AgentConfig.promoted_at, AgentConfig.created_at),
+}
 
 
 class AgentConfigRepository:
@@ -175,7 +188,14 @@ class AgentConfigRepository:
         return draft
 
     async def publish_copy(
-        self, source: AgentConfig, *, policies: dict[str, Any], published_by: str | None
+        self,
+        source: AgentConfig,
+        *,
+        policies: dict[str, Any],
+        published_by: str | None,
+        tools: list[str] | None = None,
+        system_prompt_rendered: str | None = None,
+        spec: dict[str, Any] | None = None,
     ) -> AgentConfig:
         """A new ACTIVE version of ``source``'s agent, equal to ``source`` but
         for ``policies``, without going through the draft.
@@ -183,7 +203,11 @@ class AgentConfigRepository:
         For a change that applies at once and must not publish — nor wait
         for, nor overwrite — a draft someone has pending (the admins set from
         the partner API). The current active is archived first, as a
-        promotion does."""
+        promotion does.
+
+        Spec 048: ``tools`` and ``system_prompt_rendered`` replace the
+        source's when given, and ``spec`` is the new version's AgentSpec (the
+        automatic pass to Reservas publishes ``booking.*`` → ``reservas.*``)."""
         tenant_id = require_current_tenant()
         await self._session.execute(
             update(AgentConfig)
@@ -191,7 +215,7 @@ class AgentConfigRepository:
                 AgentConfig.status == AgentConfigStatus.ACTIVE,
                 AgentConfig.agent_id == source.agent_id,
             )
-            .values(status=AgentConfigStatus.ARCHIVED)
+            .values(**_DEMOTED)
         )
         # The unique «one active per agent» index checks each statement.
         await self._session.flush()
@@ -202,15 +226,20 @@ class AgentConfigRepository:
             version=await self._next_version(),
             status=AgentConfigStatus.ACTIVE,
             base_version_id=source.id,
-            system_prompt_rendered=source.system_prompt_rendered,
+            system_prompt_rendered=(
+                system_prompt_rendered
+                if system_prompt_rendered is not None
+                else source.system_prompt_rendered
+            ),
             channels=list(source.channels or []),
-            tools=list(source.tools or []),
+            tools=list(tools if tools is not None else source.tools or []),
             policies=policies,
             seed_template_ref=source.seed_template_ref,
             kg_schema_id=source.kg_schema_id,
             created_by=published_by,
             promoted_at=now,
             promoted_by=published_by,
+            spec=spec,
         )
         copy_runtime_fields(source, config)
         self._session.add(config)
@@ -314,7 +343,7 @@ class AgentConfigRepository:
                 # tenant's would silence every other agent of the client.
                 AgentConfig.agent_id == target.agent_id,
             )
-            .values(status=AgentConfigStatus.ARCHIVED)
+            .values(**_DEMOTED)
         )
         # Make the archived row's new state visible before the target turns
         # active: the unique «one active per agent» index checks each UPDATE.
@@ -327,16 +356,21 @@ class AgentConfigRepository:
         return target
 
     async def rollback(self, target_version: int, *, promoted_by: str | None) -> AgentConfig:
-        """Re-promote a previously archived version. Current active becomes archived."""
+        """Re-promote a version that was live before. Current active becomes archived.
+
+        Spec 047 (requisito 23): only a version that was published —
+        ``promoted_at`` set, now archived — comes back this way. A draft (staged,
+        or discarded: archived without ``promoted_at``) goes live through the
+        publish gate, with its tests, never through a rollback."""
         require_current_tenant()
         target = await self.get_by_version(target_version)
         if target is None:
             raise AgentConfigConflict(f"version {target_version} not found")
         if target.status == AgentConfigStatus.ACTIVE:
             return target
-        if target.status not in {AgentConfigStatus.ARCHIVED, AgentConfigStatus.STAGED}:
-            raise AgentConfigConflict(
-                f"cannot rollback to version {target_version} (status={target.status.value})"
+        if target.status != AgentConfigStatus.ARCHIVED or target.promoted_at is None:
+            raise RollbackTargetNeverPublished(
+                f"version {target_version} was never published; publish it through the gate"
             )
 
         await self._session.execute(
@@ -347,7 +381,7 @@ class AgentConfigRepository:
                 # tenant's would silence every other agent of the client.
                 AgentConfig.agent_id == target.agent_id,
             )
-            .values(status=AgentConfigStatus.ARCHIVED)
+            .values(**_DEMOTED)
         )
         # Make the archived row's new state visible before the target turns
         # active: the unique «one active per agent» index checks each UPDATE.

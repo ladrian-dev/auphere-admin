@@ -7,8 +7,8 @@ Cliente piloto interno descrito en
 Idempotente: si el tenant ``clinica-boreal`` ya existe por slug, el
 script lo recupera y rellena solamente las piezas que falten. Ejecutable
 contra dev local o contra prod via ``NEXUS_DATABASE_URL``. NUNCA crea
-canales — la instalación de WhatsApp Meta + AgendaPro pasa por la UI
-admin (requiere OAuth consent del operador).
+canales — la instalación de WhatsApp Meta y la activación de Reservas
+pasan por la UI admin.
 
 Uso típico (dev):
 
@@ -35,7 +35,7 @@ Lo que crea:
 
 Tras correr este script, el operador todavía tiene que:
 - Instalar el conector WhatsApp Meta (Embedded Signup) en la UI.
-- Instalar el conector AgendaPro en la UI.
+- Activar Reservas (pestaña Acceso), la agenda del agente.
 - Correr el eval dataset → si pasa ≥0.92 → promote v1 a ACTIVE.
 """
 
@@ -322,7 +322,7 @@ async def _amain() -> int:
     print("Next steps for the operator:")
     print("  1. Upload pending skills if any were skipped (see warnings above).")
     print("  2. Install WhatsApp Meta connector via /tenants/<id>/connectors.")
-    print("  3. Install AgendaPro connector via /tenants/<id>/connectors.")
+    print("  3. Turn on Reservas (Access tab): it is the agent's agenda.")
     print("  4. Run eval dataset 'aesthetic_clinic_v1' in the sandbox.")
     print("  5. If pass_rate ≥ 0.92, promote agent_config v1 to ACTIVE.")
     return 0

@@ -19,6 +19,12 @@ normal y responde con **propuestas revisables** (19.1), nunca con cambios hechos
 Los cambios de voz más corrientes («más formal», «de tú») se proponen sin modelo;
 cualquier otra petición, con un modelo de la tarea ``build`` si lo hay, y siempre
 pasando el validador antes de enseñarse.
+
+Spec 047, enmienda del 2026-10-30 (65.3 y 65.7): el copiloto conoce las
+herramientas disponibles para el cliente y lo que hace cada una, y no propone lo
+que no tenemos. Una regla que promete algo que ninguna herramienta del agente hace
+no se propone: si el cliente tiene una herramienta que lo haría, lo dice; si no la
+tiene nadie, «No tenemos herramienta para: …», con ``missing_capabilities``.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ from typing import Any, Final, Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.services import proposal_state
+from nexus_api.services.agent_spec.missing import MissingCapability
 from nexus_api.services.agent_spec.schema import AgentSpec, dump
 from nexus_api.services.business.compilation import Facts
 
@@ -137,6 +144,8 @@ class CopilotAnswer:
     citations: list[Citation] = field(default_factory=list)
     proposals: list[dict[str, Any]] = field(default_factory=list)
     fix: dict[str, Any] | None = None
+    #: 65.4: lo que la petición necesitaba y no tenemos (``contracts/console-api.md`` §11).
+    missing: list[MissingCapability] = field(default_factory=list)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -144,7 +153,40 @@ class CopilotAnswer:
             "citations": [c.to_json() for c in self.citations],
             "proposals": self.proposals,
             "fix": self.fix,
+            "missing_capabilities": [m.to_json() for m in self.missing],
         }
+
+
+def no_tool_text(missing: Sequence[MissingCapability]) -> str:
+    return "No tenemos herramienta para: " + ", ".join(m.label for m in missing) + "."
+
+
+async def _rule_without_tool(
+    session: AsyncSession, rule: str, spec: AgentSpec, partner_id: uuid.UUID | None
+) -> CopilotAnswer | None:
+    """65.7: una regla que promete algo que ninguna herramienta del agente hace no
+    se propone. Se mira lo que el cliente tiene disponible para decir si existe."""
+    from nexus_api.api.console.capability_names import actions_of
+    from nexus_api.services.agent_spec import missing
+    from nexus_api.services.agent_spec.compiler import uncovered_promises
+    from nexus_api.services.agent_spec.validator import load_context
+
+    unkept = uncovered_promises(rule, spec.tools or [])
+    if not unkept:
+        return None
+    ctx = await load_context(session, partner_id=partner_id)
+    doable = actions_of(ctx.available_tools())
+    lacking = [missing.action(p.key, p.label, None) for p in unkept if not p.needs & doable]
+    if lacking:
+        return CopilotAnswer(
+            no_tool_text(lacking) + " El agente lo pasará a una persona; no te propongo la regla.",
+            missing=lacking,
+        )
+    labels = ", ".join(p.label for p in unkept)
+    return CopilotAnswer(
+        f"Este agente no tiene ninguna herramienta para {labels}. Añádela en su "
+        "especificación antes de pedírselo; no te propongo la regla."
+    )
 
 
 # ── «¿Por qué dijo…?» ───────────────────────────────────────────────────────
@@ -369,6 +411,9 @@ async def ask(
     # Una regla, con su prueba (19.3).
     if _RULE.search(message):
         rule = _rule_text(message)
+        refused = await _rule_without_tool(session, rule, spec, partner_id) if rule else None
+        if refused is not None:
+            return refused
         if rule:
             rules = list(doc.get("rules") or [])
             if rule not in rules:

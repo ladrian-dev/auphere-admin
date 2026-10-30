@@ -153,6 +153,8 @@ async def publish_preview(scope: ClientScope = Depends(agent_in_path("agents:rea
             version=staged,
             active=active,
             partner_id=scope.principal.partner.id,
+            # «Guardar» publica por el trabajo, que pasa las pruebas antes.
+            tests_will_run=True,
         )
         gate = result.to_json()
     action: Literal["save", "save_and_connect", "save_changes"] = (

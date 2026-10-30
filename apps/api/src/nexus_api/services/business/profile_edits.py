@@ -7,7 +7,9 @@ valida, escribe sus filas y anota la escritura con ``writes.write_section``
 
 - :func:`update_basics`: lo que edita el modal «Editar cliente» (requisito 6.1):
   nombre, nicho, información, web, país, zona horaria (IANA, validada aquí, 6.2),
-  moneda de los precios y «Solo UE». La moneda de la bolsa no se cambia aquí: con
+  moneda de los precios y «Solo UE»; y, desde la enmienda del 2026-10-29, el
+  sector que fija una persona (requisito 57.5; lo que identifica el sistema lo
+  escribe ``sector.py`` sin pasar por aquí, D58). La moneda de la bolsa no se cambia aquí: con
   saldo dentro exige convertirlo (6.7), y eso es de la ola 7 (``PUT
   /bag/currency``). El nombre vive en ``tenants`` y en ``partner_tenants``;
   cambiarlo cambia los dos.
@@ -19,6 +21,12 @@ valida, escribe sus filas y anota la escritura con ``writes.write_section``
 
 Y los adaptadores de las tres para deshacer y para aplicar propuestas
 (``writes.register_section_adapter``).
+
+**Lo que dispara una persona** (enmienda del 2026-10-29), nunca lo que escribe el
+lector ni el constructor: una web nueva o una red añadida encola una lectura
+(requisito 59.6: se relee cuando cambia, no cada semana); un nicho o una
+información distintos, que se vuelva a identificar el sector (57.2); y un sector
+distinto, el constructor del cliente (60.1). Todo se encola al confirmar.
 """
 
 from __future__ import annotations
@@ -35,6 +43,7 @@ from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import PartnerTenant, Tenant
 from nexus_api.db.models.business import BusinessLink, BusinessProfile
 from nexus_api.services.business import client_spec
+from nexus_api.services.business import sector as sector_service
 from nexus_api.services.business.links import MAX_LINKS, link_from_choice
 from nexus_api.services.business.profile import (
     DEFAULT_WALLET_CURRENCY,
@@ -68,7 +77,11 @@ BASICS_FIELDS: Final[tuple[str, ...]] = (
     "price_currency",
     "wallet_currency",
     "eu_only",
+    "sector",
 )
+#: Quien escribe es una persona: lo que escribe dispara lecturas, el sector y el
+#: constructor. El lector (``system``) y el constructor (``builder``), no.
+PERSON_KINDS: Final[frozenset[str]] = frozenset({"partner_member", "client_user", "operator"})
 _COUNTRY = re.compile(r"^[A-Z]{2}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 
@@ -164,6 +177,11 @@ def _clean_basics(changes: Mapping[str, Any]) -> dict[str, Any]:
                 raise BagCurrencyLocked
         elif key == "eu_only":
             out[key] = bool(value)
+        elif key == "sector":
+            try:
+                out[key] = sector_service.written(value)
+            except sector_service.SectorInvalid as exc:
+                raise InvalidField("sector", exc.code) from exc
     return out
 
 
@@ -202,6 +220,8 @@ async def update_basics(
         elif key == "timezone":
             tenant.timezone = value
             profile.timezone = value
+        elif key == "sector":
+            profile.sector = value
         else:
             setattr(profile, key, value)
     await session.flush()
@@ -226,7 +246,39 @@ async def update_basics(
         undo_of=undo_of,
         audit=audit,
     )
+    if actor.kind in PERSON_KINDS:
+        await _after_person_basics(session, changed, after, actor=actor)
     return Edited(written=written, changed=changed, before=before, after=after)
+
+
+async def _after_person_basics(
+    session: AsyncSession, changed: Sequence[str], after: Mapping[str, Any], *, actor: Actor
+) -> None:
+    """Lo que dispara una persona al cambiar los datos básicos (ver el módulo)."""
+    if "website" in changed and after.get("website"):
+        await _read_again(session, created_by=actor.id)
+    if "niche" in changed or "info" in changed:
+        # T217: una por hora como mucho; lo de dentro de la hora queda pendiente.
+        await sector_service.request_after_edit(session)
+    if "sector" in changed:
+        from nexus_api.services.builder.client_profile import launch_client_builder
+
+        await launch_client_builder(session, reason="sector")
+
+
+async def _read_again(session: AsyncSession, *, created_by: str | None) -> None:
+    """Requisito 59.6: la web o las redes cambiaron, se vuelven a leer (una sola
+    lectura viva a la vez)."""
+    from nexus_api.services.business.reader import NothingToRead
+    from nexus_api.services.business.sources import request_site_read
+    from nexus_api.services.jobs import enqueue_after_commit
+
+    try:
+        job, created = await request_site_read(session, created_by=created_by)
+    except NothingToRead:
+        return
+    if created:
+        enqueue_after_commit(session, job)
 
 
 # ── políticas ──────────────────────────────────────────────────────────────────
@@ -375,6 +427,8 @@ async def put_links(
         audit_actor=audit_actor,
         undo_of=undo_of,
     )
+    if added and actor.kind in PERSON_KINDS:
+        await _read_again(session, created_by=actor.id)
     return Edited(
         written=written, changed=["links"], before={"links": before}, after={"links": after}
     )
@@ -432,7 +486,20 @@ async def _apply_basics(
         key, rest = client_spec.split_pointer(op.path)
         if key != "business" or len(rest) != 1 or op.op != "replace":
             raise InvalidField(op.path, "invalid_pointer")
-        changes[rest[0]] = op.value
+        value = op.value
+        if rest[0] == "sector" and isinstance(value, Mapping):
+            # Lo decide la persona que acepta (57.3): lo aceptado conserva de dónde
+            # salió; lo editado a mano es suyo, con confianza 1.
+            value = (
+                dict(value)
+                if ctx.source != "person"
+                else {
+                    "key": value.get("key"),
+                    "label": value.get("label"),
+                }
+            )
+            value["decided_by"] = "person"
+        changes[rest[0]] = value
     return _written(await update_basics(session, changes, **_kw(ctx)))
 
 
@@ -493,6 +560,7 @@ register_section_adapter("links", restore=_restore_links, apply=_apply_links)
 
 __all__ = [
     "BASICS_FIELDS",
+    "PERSON_KINDS",
     "POLICY_KEYS",
     "BagCurrencyLocked",
     "Edited",

@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
 
 from nexus_api.api.deps import get_redis
-from nexus_api.core.errors import AgentConfigConflict
+from nexus_api.core.errors import AgentConfigConflict, RollbackTargetNeverPublished
 from nexus_api.db.models import AgentConfig
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.agent_console_policy import has_disclosure_decision
@@ -101,7 +101,12 @@ async def get_draft_diff(scope: ClientScope = Depends(agent_scope("agents:read")
     "/versions",
     response_model=AgentVersionOut,
     status_code=status.HTTP_201_CREATED,
-    responses={409: {"description": "Draft conflicts with the current state."}},
+    responses={
+        409: {
+            "description": "Draft conflicts with the current state; structured_agent: the "
+            "tools of a structured agent change in its AgentSpec."
+        }
+    },
 )
 async def stage_version(
     body: AgentDraftIn,
@@ -118,8 +123,16 @@ async def stage_version(
     Policies are never accepted raw from the console (platform keys such
     as ``admin_access``/``llm`` live there). CP-31: a draft written from
     the console always carries an explicit AI-disclosure decision.
+
+    Spec 047, T217 (65.10): the tools of a structured agent change only through
+    its AgentSpec and the validator; sent here, ``409 structured_agent`` as on
+    ``PUT …/tools``. The console only sends the prompt.
     """
     if body.tools is not None:
+        from .agent_draft_routes import is_structured, structured_agent_error
+
+        if is_structured((await load_view(scope)).target):
+            raise structured_agent_error()
         try:
             await AgentConfigService(scope.session)._validate_tools(body.tools)
         except AgentConfigConflict as exc:
@@ -214,13 +227,25 @@ async def rollback_version(
     scope: ClientScope = Depends(agent_scope("agents:write")),
     redis: Redis = Depends(get_redis),
 ) -> AgentVersionOut:
+    """Back to a version that was live. A draft never goes live this way (spec
+    047, requisito 23): 409 ``rollback_target_never_published``, with the way
+    to publish it — «Guardar», which runs its tests and the gate."""
     service = AgentConfigService(scope.session)
-    if scope.agent_id is not None:
-        target = await service.configs.get_by_version(version)
-        if target is None or target.agent_id != scope.agent_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
+    target = await service.configs.get_by_version(version)
+    if scope.agent_id is not None and (target is None or target.agent_id != scope.agent_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
     try:
         cfg = await service.rollback(version, actor=scope.principal.actor)
+    except RollbackTargetNeverPublished as exc:
+        assert target is not None
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "publish": f"/console/clients/{scope.ref}/agents/{target.agent_id}/publish",
+            },
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=_conflict_status(exc), detail=str(exc)) from exc
     await _publish_promote(redis, scope)

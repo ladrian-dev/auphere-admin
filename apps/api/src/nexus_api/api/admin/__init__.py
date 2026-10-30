@@ -19,7 +19,6 @@ from nexus_api.api.admin import (
     cost,
     evals,
     impersonate,
-    integrations,
     isolation,
     meta_signup,
     model_bindings,
@@ -37,6 +36,7 @@ from nexus_api.api.admin import (
     receipts,
     router_policies,
     screenshots,
+    sector_guides,
     sector_tests,
     signups,
     skills,
@@ -67,7 +67,6 @@ router.include_router(agent_configs.router)
 router.include_router(agents.router)
 router.include_router(conversations.router)
 router.include_router(tool_catalog.router)
-router.include_router(integrations.router)
 router.include_router(connectors.router)
 router.include_router(screenshots.router)
 router.include_router(isolation.router)
@@ -110,6 +109,8 @@ router.include_router(certifications.router)
 router.include_router(sector_tests.router)
 router.include_router(sector_tests.calibration_router)
 router.include_router(sector_tests.eval_router)
+# Spec 047, enmienda del 2026-10-29 (T201, 58.5): sectores sin guía y «Convertir».
+router.include_router(sector_guides.router)
 # Spec 047 (T117): la beta «WhatsApp login» por país; nunca la UE ni el EEE.
 router.include_router(whatsapp_login_beta.router)
 # Spec 047 (T158): el tope de construcción y la moneda de la cuenta.

@@ -146,6 +146,7 @@ def _blank_spec(name: str, description: str) -> AgentSpec:
     responses={
         404: {"description": "Unknown template."},
         409: {"description": "name_taken"},
+        503: {"description": "facts_unavailable: the business profile could not be read."},
         422: {"description": "name_length · description_length · template_required"},
     },
 )
@@ -190,27 +191,49 @@ async def start_draft(
         return out
 
     # «Desde una plantilla» y «En blanco»: el agente y su borrador, ya.
+    if body.start == "template" and not body.template_id:
+        raise _error("template_required", status.HTTP_422_UNPROCESSABLE_CONTENT)
     async with tenant_scoped_session(session, mapping.tenant_id):
         tenant = await session.get(Tenant, mapping.tenant_id)
         assert tenant is not None
         scope = ClientScope(principal=principal, mapping=mapping, tenant=tenant, session=session)
-        try:
-            agent = await agent_service.create_agent(
-                session, mapping.tenant_id, name=body.name, actor=principal.actor
-            )
-        except agent_service.AgentError as exc:
-            raise _error(exc.code, exc.status) from None
-        scoped = replace(scope, agent_id=agent.id)
         if body.start == "template":
-            if not body.template_id:
-                raise _error("template_required", status.HTTP_422_UNPROCESSABLE_CONTENT)
-            from .seed_templates import stage_from_seed
-
-            placeholders = await _placeholders_from_ficha(session, agent)
-            await stage_from_seed(
-                session, scoped, seed_template=body.template_id, placeholders=placeholders
+            # 58.6: como el constructor — un AgentSpec estructurado con las pruebas
+            # del caso y del sector, no un agente en modo «instrucciones».
+            from nexus_api.services.builder.agent_draft import (
+                FactsUnavailable,
+                draft_from_template,
             )
+            from nexus_api.services.templating.seed_templates import SeedTemplateNotFound
+
+            assert body.template_id is not None
+            try:
+                agent_id = await draft_from_template(
+                    session,
+                    template_id=body.template_id,
+                    name=body.name,
+                    description=body.description,
+                    actor=principal.actor,
+                )
+            except SeedTemplateNotFound:
+                raise _error("unknown_template", status.HTTP_404_NOT_FOUND) from None
+            except FactsUnavailable:
+                # 65.12: sin ficha, ningún borrador genérico.
+                raise _error(FactsUnavailable.code, status.HTTP_503_SERVICE_UNAVAILABLE) from None
+            except DraftInputInvalid as exc:
+                raise _error(exc.code, status.HTTP_422_UNPROCESSABLE_CONTENT) from None
+            except agent_service.AgentError as exc:
+                raise _error(exc.code, exc.status) from None
+            agent = await session.get(Agent, agent_id)
+            assert agent is not None
         else:
+            try:
+                agent = await agent_service.create_agent(
+                    session, mapping.tenant_id, name=body.name, actor=principal.actor
+                )
+            except agent_service.AgentError as exc:
+                raise _error(exc.code, exc.status) from None
+            scoped = replace(scope, agent_id=agent.id)
             description = (body.description or "").strip()
             if len(description) < 20:
                 description = _BLANK_DESCRIPTION
@@ -244,24 +267,6 @@ async def _name_taken(session: AsyncSession, name: str) -> bool:
         )
     )
     return found is not None
-
-
-async def _placeholders_from_ficha(session: AsyncSession, agent: Agent) -> dict[str, Any]:
-    """Lo que una plantilla pide del negocio sale de la ficha, no de un formulario
-    aparte: dirección y horario (con su frase), y el nombre del agente."""
-    from nexus_api.services.business.compilation import load_facts
-
-    facts = await load_facts(session, agent)
-    address = (
-        facts.locations[0].split(" · ")[1]
-        if facts.locations and " · " in facts.locations[0]
-        else ""
-    )
-    return {
-        "agent.name": agent.name,
-        "tenant.address": address or "Sin dirección registrada: atiende online.",
-        "tenant.business_hours_label": facts.hours or "Sin horario registrado.",
-    }
 
 
 # ── las respuestas a las preguntas ──────────────────────────────────────────

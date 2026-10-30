@@ -8,6 +8,10 @@
   recuerda de qué versión salió.
 
 Tabla de plataforma: sin datos de ningún cliente.
+
+La calibración del juez y la evaluación del constructor las paga Auphere: sus
+llamadas al modelo van dentro de ``llm_proxy_platform_scope`` y salen con la
+clave de Auphere, nunca con la de un partner.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin.operator import require_operator
 from nexus_api.api.deps import get_db_session
+from nexus_api.core.llm_proxy import llm_proxy_platform_scope
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import OperatorAccount
 from nexus_api.services.builder.sectors import SECTORS
@@ -157,7 +162,8 @@ async def run_calibration(
         )
     if model_id is None:
         raise HTTPException(status_code=404, detail={"code": "unknown_deployment"})
-    report = await calibrate(_judge_for(str(model_id)))
+    with llm_proxy_platform_scope():
+        report = await calibrate(_judge_for(str(model_id)))
     async with session.begin():
         import uuid as _uuid
 
@@ -188,7 +194,11 @@ async def _catalog_context(session: AsyncSession) -> Any:
     """El catálogo como lo vería un cliente sin integraciones conectadas."""
     import sqlalchemy as sa
 
-    from nexus_api.api.console.capability_names import requires_connector
+    from nexus_api.api.console.capability_names import (
+        RESERVAS_MODULE,
+        requires_connector,
+        requires_module,
+    )
     from nexus_api.db.models import Connector, ToolCatalog
     from nexus_api.services.agent_spec.validator import Context, ToolInfo, _model_visible_args
 
@@ -200,13 +210,16 @@ async def _catalog_context(session: AsyncSession) -> Any:
     )
     tools = {}
     for tool, slug, connector_status in rows.tuples().all():
-        integration = slug or requires_connector(tool.name, "tool")
+        integration = slug or requires_connector(tool.name, "tool") or requires_module(tool.name)
         tools[tool.name] = ToolInfo(
             name=tool.name,
             status=getattr(tool.status, "value", str(tool.status)),
             integration=integration,
             integration_offered=connector_status in (None, "available", "beta"),
-            connected=integration is None,
+            # Como un cliente sin integraciones conectadas, pero con Reservas
+            # encendido: el banco mide si un agente de citas sabe reservar (D67).
+            connected=integration in (None, RESERVAS_MODULE),
+            activatable=slug is not None,
             args=args.get(tool.name, frozenset()),
         )
     return Context(tools=tools)
@@ -250,8 +263,15 @@ async def run_eval(
 
     async with session.begin():
         ctx = await _catalog_context(session)
+        # 58.7: las pruebas del sector vigentes, para medir los borradores con ellas.
+        catalog = {}
+        for key in SECTORS:
+            row = await sector_catalog.latest(session, key)
+            if row is not None:
+                catalog[key] = list(row.tests)
     items = bank()[: body.limit] if body.limit else bank()
-    report = await evaluate(complete, ctx=ctx, items=items)
+    with llm_proxy_platform_scope():
+        report = await evaluate(complete, ctx=ctx, items=items, catalog=catalog)
     async with session.begin():
         await record(session, report, by=f"operator:{operator.id}")
         return (await history(session, limit=2))[0]

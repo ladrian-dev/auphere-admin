@@ -38,7 +38,6 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     ClientAccess,
-    ClientModule,
     ReservationSettings,
     Tenant,
     TenantStatus,
@@ -159,11 +158,8 @@ async def run_for_reservation_tenants(
 async def _offers_on(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
     """El cliente tiene el módulo encendido: se le pueden ofrecer huecos."""
     access = await session.get(ClientAccess, tenant_id)
-    return bool(
-        access is not None
-        and access.enabled
-        and ClientModule.RESERVAS.value in (access.modules or [])
-    )
+    # Spec 048 (decision 16): on the list is on, with or without people's access.
+    return bool(access is not None and access.reservas_on)
 
 
 async def process_tenant(

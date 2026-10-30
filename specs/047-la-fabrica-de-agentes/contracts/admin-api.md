@@ -40,6 +40,8 @@ escritura queda en la auditoría con la persona de Auphere y su motivo.
 | `POST /admin/builder/eval-runs` | Corre el banco de 100 descripciones | 54.4 |
 | `GET /admin/builder/eval-runs` · `GET /admin/builder/eval-runs/{id}` | % que pasa el validador a la primera, % que pasa la batería del sector sin edición, p90 del borrador; comparación con la anterior | 54.4, CE-002, CE-003 |
 | `GET /admin/sector-tests` · `PUT /admin/sector-tests/{sector}` | Las 12 pruebas por sector, con versión | 54.10 |
+| `GET /admin/builder/sector-guides` · `GET /admin/builder/sector-guides/missing` | Las guías de Auphere y las etiquetas sin guía que más se repiten (detalle en `admin-sector-guides.md`) | 58.1, 58.5 |
+| `GET /admin/builder/generated-guides/{tenant_id}/{guide_id}` · `POST …/review` · `POST …/promote` | Revisar una guía generada y «Convertir en guía de Auphere» (`admin-sector-guides.md`) | 58.5 |
 
 ## 5. Partners y clientes
 

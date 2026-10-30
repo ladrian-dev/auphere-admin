@@ -8,7 +8,9 @@ Importar este paquete los registra en ``default_registry``, que es el que usa
 - ``agent_draft``: «Generar borrador», el constructor de agentes (T079).
 - ``tests``: la suite de un agente, tres pasadas por prueba (T086).
 - ``publish``: «Guardar», la puerta y la publicación (T093).
-- ``client_builder``: «Completar con el constructor», la ficha propuesta (T098).
+- ``client_builder``: «Completar con el constructor», la ficha propuesta (T098);
+  desde la enmienda del 2026-10-29 lo lanza el sistema (T205).
+- ``sector_identify``: identificar el sector del negocio (T200).
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from nexus_worker.jobs.handlers import (
     agent_tests,
     client_builder,
     client_read,
+    sector_identify,
 )
 
 __all__ = [
@@ -27,4 +30,5 @@ __all__ = [
     "agent_tests",
     "client_builder",
     "client_read",
+    "sector_identify",
 ]

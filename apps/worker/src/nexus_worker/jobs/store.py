@@ -9,6 +9,9 @@ El cliente llega en la entrada del stream y se usa **solo** para abrir la
 transacción: con la RLS, un ``tenant_id`` que no es el del trabajo no
 encuentra nada, y cada escritura es un ``UPDATE … WHERE status = …`` que se da
 una vez o ninguna.
+
+Al empezar, la misma transacción lee el partner del cliente (``partner_tenants``,
+o ``tenants.partner_id``): el consumidor lo ata al proxy de modelos.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from typing import Any, Protocol
 
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.metering.wallet import partner_id_for_tenant
 from nexus_api.services import jobs as jobs_service
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -72,6 +76,7 @@ class DbJobStore:
                 agent_id=job.agent_id,
                 created_by=job.created_by,
                 draft_revision=job.draft_revision,
+                partner_id=await partner_id_for_tenant(session, job.tenant_id),
             )
 
     async def heartbeat(self, tenant_id: uuid.UUID, job_id: uuid.UUID) -> bool:

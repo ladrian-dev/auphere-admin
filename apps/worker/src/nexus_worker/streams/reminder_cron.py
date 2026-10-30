@@ -1,10 +1,9 @@
 """Reminder cron — dispatches ``scheduled_jobs`` rows of kind=reminder.
 
 Block D's ``notification.schedule_reminder`` tool persists a row in
-``scheduled_jobs`` with ``kind='reminder'`` + ``payload``. Block H wires the
-full cron dispatcher (also handles ``health_check`` and ``no_show_scrape``);
-block F ships only the ``reminder`` kind because the booking flow needs it
-for the smoke 1 / 5 / 6 scenarios.
+``scheduled_jobs`` with ``kind='reminder'`` + ``payload``. This cron handles
+only the ``reminder`` kind, which the booking flow needs for the smoke
+1 / 5 / 6 scenarios.
 
 Each tick (~30s):
 

@@ -4,7 +4,9 @@
 si se cumplen todas estas condiciones (23.1):
 
 1. el **validador** da 0 errores;
-2. las pruebas **críticas** pasan 3 de 3;
+2. las pruebas **críticas** pasan 3 de 3 —en una pasada de **esta** versión: con
+   pruebas y sin ella, ``tests_not_run``—; un agente estructurado sin ninguna
+   prueba que aplique no pasa (``no_applicable_tests``, requisito 65.9);
 3. la tasa global **no baja más de 2 puntos** frente a la versión activa;
 4. el **aviso de IA** está decidido;
 5. la **revisión** no tiene bloqueantes.
@@ -13,14 +15,16 @@ Y qué se puede hacer cuando no:
 
 - el validador o el aviso de IA no se saltan nunca: se arreglan;
 - una prueba **normal** en rojo deja «Guardar igualmente», con confirmación (23.2);
-- una **crítica**, la regresión o un **bloqueante** solo lo salta un owner o un
-  admin (o una persona de Auphere), escribiendo el motivo, que queda en la
-  versión y en la auditoría (23.3).
+- una **crítica**, unas pruebas sin pasar, la regresión o un **bloqueante** solo
+  lo salta un owner o un admin (o una persona de Auphere), escribiendo el
+  motivo, que queda en la versión y en la auditoría (23.3).
 
 **Después** de publicar (24): el siguiente mensaje usa la versión nueva (23.6),
 hay 10 minutos para **deshacer**, y el historial deja **restaurar** cualquier
 versión, que vuelve como borrador y pasa la puerta antes de publicarse. La
-política de modelo va dentro de la versión (24.4).
+política de modelo va dentro de la versión (24.4). El rollback de antes solo
+vuelve a una versión que estuvo activa: un borrador nunca se publica así
+(``RollbackTargetNeverPublished``).
 
 La usan los tres sitios que publican (23.7): la consola, el panel de operador y
 la API de partners.
@@ -137,9 +141,14 @@ async def evaluate_gate(
     active: AgentConfig | None,
     partner_id: uuid.UUID | None,
     strict: bool | None = None,
+    tests_will_run: bool = False,
 ) -> GateResult:
     """Las cinco condiciones del requisito 23.1 sobre ``version``, sin publicar
     nada. Las pruebas son las de la última pasada de **esa** versión.
+
+    ``tests_will_run``: quien pregunta pasará las pruebas antes de decidir (la
+    vista previa de «Guardar», que publica por el trabajo ``publish``); entonces
+    no haberlas pasado todavía no es un bloqueo que enseñar.
 
     **Estricta** con un agente «structured» o de un partner con la consola nueva.
     Con un agente de antes («instructions») de un partner que aún no la tiene, lo
@@ -148,6 +157,7 @@ async def evaluate_gate(
     ya existe sigue funcionando (historia 13, D38). Las pruebas, el aviso de IA y
     el resto del validador valen igual para todos."""
     from nexus_api.api.console.agent_spec_drafts import spec_of
+    from nexus_api.services.agent_spec.missing import strip_spec
     from nexus_api.services.agent_spec.review import load_input, review
     from nexus_api.services.agent_spec.validator import Problem, load_context, validate_spec
     from nexus_api.services.testing.runs import suite_view
@@ -169,6 +179,11 @@ async def evaluate_gate(
     problems: list[Any] = []
     if spec is not None:
         ctx = await load_context(session, partner_id=partner_id, legacy_chars=legacy_chars)
+        # Spec 047, enmienda del 2026-10-30 (D72): la misma lectura que la consola.
+        # Una habilidad o una petición de conexión con algo que no tenemos (de un
+        # borrador de antes de la enmienda) no hace nada en el turno y la consola
+        # no la puede editar: no bloquea, como no bloquea al editar.
+        spec, _lacking = strip_spec(spec, ctx)
         _checked, problems = validate_spec(spec, ctx, author="person")
     if not (version.system_prompt_rendered or "").strip():
         problems.append(Problem("", "empty_prompt", "El prompt está vacío."))
@@ -181,12 +196,43 @@ async def evaluate_gate(
             "message": p.message,
             "pointer": p.pointer,
         }
+        # Spec 048: a retired tool says which one replaces it.
+        if getattr(p, "replacement", None):
+            item["replacement"] = p.replacement
         (gate.hard if p in hard_problems else gate.warnings).append(item)
     gate.conditions.append({"condition": "validator", "ok": not hard_problems})
 
     # 2 y 3. Las pruebas: críticas 3/3 y la regresión.
     tests, outcomes, _summary = await suite_view(session, agent.id)
     run = await _last_full_run(session, agent.id, version.id)
+    # Con pruebas y sin pasada propia, la versión no se ha probado, y «no se
+    # probó» no es «pasa» (cuenta en la condición de las críticas). El trabajo
+    # ``publish`` las pasa antes de decidir, así que solo lo ve quien publica sin
+    # él —la ruta de antes de la consola, el panel de operador—: lo salta un
+    # owner o un admin con motivo.
+    applicable = [t for t in tests if not t.not_applicable_reason]
+    # Spec 047, enmienda del 2026-10-30 (65.9, enmienda el 23.1): «sin pruebas»
+    # no es «aprobado». Un agente estructurado sin ninguna prueba que aplique no
+    # se publica, y nadie lo salta: se añade una.
+    no_tests = spec is not None and spec.mode == "structured" and not applicable
+    if no_tests:
+        gate.hard.append(
+            {
+                "condition": "critical_tests",
+                "code": "no_applicable_tests",
+                "message": "Este agente no tiene ninguna prueba que aplique: añade una antes "
+                "de guardar.",
+            }
+        )
+    untested = bool(applicable) and run is None and not tests_will_run
+    if untested:
+        gate.overridable.append(
+            {
+                "condition": "critical_tests",
+                "code": "tests_not_run",
+                "message": "Esta versión no ha pasado sus pruebas: pruébala antes de guardar.",
+            }
+        )
     critical_bad: list[str] = []
     for test in tests:
         if test.not_applicable_reason:
@@ -205,7 +251,9 @@ async def evaluate_gate(
                 "message": f"La prueba crítica «{name}» no pasa 3 de 3.",
             }
         )
-    gate.conditions.append({"condition": "critical_tests", "ok": not critical_bad})
+    gate.conditions.append(
+        {"condition": "critical_tests", "ok": not (critical_bad or untested or no_tests)}
+    )
     gate.rate = (run.summary or {}).get("rate") if run is not None else None
     if active is not None and active.id != version.id:
         reference = await _last_full_run(session, agent.id, active.id)
@@ -248,6 +296,9 @@ async def evaluate_gate(
         blockers = [f for f in review(data).blocking if f.code != "ai_disclosure_undecided"]
     for f in blockers:
         item = {"condition": "review", "code": f.code, "message": f.message}
+        # 65.5: «Arreglar en el borrador» lleva al texto que promete.
+        if f.pointer:
+            item["pointer"] = f.pointer
         (gate.overridable if strict else gate.warnings).append(item)
     gate.conditions.append({"condition": "review", "ok": not (blockers and strict)})
 

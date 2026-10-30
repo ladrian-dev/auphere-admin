@@ -10,7 +10,8 @@ sin llamar a ningún modelo:
 - **las herramientas**: en el catálogo, permitidas (ni internas, ni retiradas, ni
   de una integración que no se ofrece) y, si necesitan una integración,
   **conectadas** al cliente. Lo que falta por conectar va en
-  ``connection_requests``, no en ``tools``;
+  ``connection_requests``, no en ``tools``. Una de ``booking.*`` (spec 048) sale
+  como ``tool_retired`` con su sustituta de Reservas en ``replacement``;
 - **ningún cliente final como argumento** (garantía 8): una herramienta con un
   argumento que elige a una persona no entra en un agente «structured»; en un
   agente de antes («instructions») se deja como estaba, salvo que la proponga
@@ -38,7 +39,13 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import require_current_tenant
-from nexus_api.services.agent_spec.schema import MAX_INSTRUCTIONS_CHARS, AgentSpec
+from nexus_api.services.agent_spec.retired import RETIRED_TOOLS
+from nexus_api.services.agent_spec.retired import replacement as retired_replacement
+from nexus_api.services.agent_spec.schema import (
+    MAX_INSTRUCTIONS_CHARS,
+    TOOL_NAME_PATTERN,
+    AgentSpec,
+)
 
 Author = Literal["person", "builder", "copilot", "suggestion", "correction", "migration"]
 
@@ -73,6 +80,7 @@ SERVER_SIDE_ARGS: Final = frozenset(
     }
 )
 _ALWAYS_INJECTED: Final = "conversation_id"
+_TOOL_NAME: Final = re.compile(TOOL_NAME_PATTERN)
 
 
 @dataclass(frozen=True)
@@ -80,6 +88,8 @@ class Problem:
     pointer: str
     code: str
     message: str
+    #: Spec 048: what to put instead (``tool_retired``), for the console's fix.
+    replacement: str | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +105,13 @@ class ToolInfo:
     integration_offered: bool = True
     #: Si el cliente la tiene conectada.
     connected: bool = True
+    #: Spec 047, enmienda del 2026-10-29 (62, D62): su integración es un conector
+    #: del catálogo, con activación por agente. Solo entonces una herramienta sin
+    #: conectar puede quedar «pendiente de conexión»: el turno la retiene hasta que
+    #: la conexión exista y esté activada (``activations.tool_policy``). Las que
+    #: dependen de otra cosa (el catálogo de Meta del canal) no tienen activación
+    #: que las retenga, así que sin conectar siguen sin poder entrar.
+    activatable: bool = True
     #: Los nombres de sus argumentos.
     args: frozenset[str] = frozenset()
 
@@ -108,6 +125,47 @@ class Context:
     foreign_names: tuple[str, ...] = ()
     #: La longitud del prompt migrado, para la regla de «no crece».
     legacy_chars: int | None = None
+
+    def usable(self, name: str) -> bool:
+        """Spec 047, enmienda del 2026-10-30 (65.2): la herramienta está disponible
+        para el cliente. Existe en el catálogo, se ofrece, el AgentSpec admite su
+        nombre (65.13), no está retirada, y su conector está conectado o tiene
+        activación (62.1) y su módulo está encendido."""
+        info = self.tools.get(name)
+        return (
+            info is not None
+            and info.status not in {"internal", "deprecated"}
+            and info.integration_offered
+            and name not in RETIRED_TOOLS
+            and _TOOL_NAME.fullmatch(name) is not None
+            and (info.connected or (info.integration is not None and info.activatable))
+        )
+
+    def available_tools(self) -> list[str]:
+        """Las herramientas disponibles para el cliente (65.2), por orden."""
+        return sorted(name for name in self.tools if self.usable(name))
+
+    def offered_connectors(self) -> frozenset[str]:
+        """Las integraciones que son un conector ofrecido **para un AgentSpec**: con
+        activación y con al menos una herramienta disponible. Un conector cuyas
+        herramientas el AgentSpec no admite (las de Composio) no lo es: conectarlo
+        no le daría nada al agente (65.3 y 65.13)."""
+        return frozenset(
+            info.integration
+            for name, info in self.tools.items()
+            if info.integration is not None and info.activatable and self.usable(name)
+        )
+
+    def skill_integrations(self) -> frozenset[str]:
+        """Lo que una habilidad puede pedir: un conector ofrecido, o algo que no se
+        conecta y el cliente ya tiene (el módulo Reservas encendido, el catálogo de
+        Meta enlazado)."""
+        here = frozenset(
+            info.integration
+            for name, info in self.tools.items()
+            if info.integration is not None and info.connected and self.usable(name)
+        )
+        return self.offered_connectors() | here
 
 
 def _pydantic_problems(exc: ValidationError) -> list[Problem]:
@@ -179,12 +237,25 @@ def validate_spec(
                 )
             )
 
-    # Las herramientas: catálogo, permitidas y conectadas.
+    # Las herramientas: catálogo y permitidas (conectadas o pendientes de conexión).
     strict_customer = spec.mode == "structured" or author != "person"
     named: list[tuple[str, str]] = [(f"/tools/{i}", t) for i, t in enumerate(spec.tools or [])]
     for i, proc in enumerate(spec.procedures or []):
         named.extend((f"/procedures/{i}/tools/{j}", t) for j, t in enumerate(proc.tools or []))
     for pointer, name in named:
+        # Spec 048 (requisito 2.3): retired by name — the code decides it, so a
+        # catalog that has not run 0205 yet does not let it back in.
+        instead = retired_replacement(name)
+        if instead is not None:
+            problems.append(
+                Problem(
+                    pointer,
+                    "tool_retired",
+                    f"{name} está retirada: el agente reserva con Reservas. Usa {instead}.",
+                    replacement=instead,
+                )
+            )
+            continue
         info = ctx.tools.get(name)
         if info is None:
             problems.append(
@@ -196,7 +267,13 @@ def validate_spec(
                 Problem(pointer, "tool_not_allowed", f"La herramienta {name} no se puede usar.")
             )
             continue
-        if info.integration is not None and not info.connected:
+        # Spec 047, enmienda del 2026-10-29 (requisito 62.4, D53 y D62): sin conectar
+        # no es un problema si su integración es un conector con activación: queda
+        # «pendiente de conexión» (la petición va en ``connection_requests``) y el
+        # runtime no la ve hasta que la conexión exista y esté activada para el
+        # agente (``activations.tool_policy``). Si no lo es, no hay nada que la
+        # retenga en el turno: se pide conectar antes.
+        if info.integration is not None and not info.connected and not info.activatable:
             problems.append(
                 Problem(
                     pointer,
@@ -217,6 +294,33 @@ def validate_spec(
                         pointer,
                         "end_customer_argument",
                         f"{name} deja elegir a un cliente final ({', '.join(picked)}).",
+                    )
+                )
+
+    # Spec 047, enmienda del 2026-10-30 (65.3): una habilidad o una petición de
+    # conexión solo nombran lo que existe. Pedir conectar algo que no es un
+    # conector ofrecido acabaría en un «Conectar {X}» que no lleva a nada; un
+    # módulo (Reservas) o el catálogo de Meta nunca se «conectan» desde el agente.
+    if spec.skills or spec.connection_requests:
+        skill_ok = ctx.skill_integrations()
+        connect_ok = ctx.offered_connectors()
+        for i, skill in enumerate(spec.skills or []):
+            if skill.integration is not None and skill.integration not in skill_ok:
+                problems.append(
+                    Problem(
+                        f"/skills/{i}/integration",
+                        "integration_unknown",
+                        f"No tenemos {skill.integration} para este cliente: la habilidad "
+                        "no puede depender de ella.",
+                    )
+                )
+        for i, request in enumerate(spec.connection_requests or []):
+            if request.integration not in connect_ok:
+                problems.append(
+                    Problem(
+                        f"/connection_requests/{i}/integration",
+                        "integration_unknown",
+                        f"{request.integration} no es una integración que se pueda conectar.",
                     )
                 )
 
@@ -280,7 +384,6 @@ async def load_context(
         Agent,
         Connector,
         PartnerTenant,
-        Tenant,
         TenantConnector,
         ToolCatalog,
     )
@@ -299,21 +402,26 @@ async def load_context(
             )
         ).all()
     )
-    tenant = await session.get(Tenant, tenant_id)
-    if tenant is not None and getattr(tenant, "agendapro_public_url", None):
-        connected_slugs.add("agendapro")
     rows = await session.execute(
         sa.select(ToolCatalog, Connector.slug, Connector.status).outerjoin(
             Connector, Connector.id == ToolCatalog.connector_id
         )
     )
     from nexus_api.api.console.capabilities_client import tenant_has_catalog
+    from nexus_api.api.console.capability_names import RESERVAS_MODULE, requires_module
+    from nexus_api.services.reservations.passing import reservas_enabled
 
     has_catalog = await tenant_has_catalog(session)
+    # Spec 047, enmienda del 2026-10-29 (D67): la agenda (``reservas.*``) es del
+    # módulo Reservas, que no es un conector ni se conecta desde el agente. Con el
+    # módulo apagado para el cliente cuenta como sin conectar y sin activación:
+    # ``sanitize`` la quita, la puerta da ``tool_not_connected`` y el constructor la
+    # ve «SIN ACTIVAR». En el turno respondería «Reservas no está activo».
+    reservas_on = await reservas_enabled(session, tenant_id)
     model_args = _model_visible_args()
     tools: dict[str, ToolInfo] = {}
     for tool, slug, connector_status in rows.tuples().all():
-        integration = slug or requires_connector(tool.name, "tool")
+        integration = slug or requires_connector(tool.name, "tool") or requires_module(tool.name)
         # Los argumentos que el modelo puede rellenar son los de la definición
         # que ve (el registro MCP): los que pone el servidor no están ahí.
         props = model_args.get(tool.name)
@@ -323,6 +431,7 @@ async def load_context(
             integration is None
             or integration in connected_slugs
             or (integration == "channel_catalog" and has_catalog)
+            or (integration == RESERVAS_MODULE and reservas_on)
         )
         tools[tool.name] = ToolInfo(
             name=tool.name,
@@ -330,6 +439,7 @@ async def load_context(
             integration=integration,
             integration_offered=connector_status in (None, "available", "beta"),
             connected=connected,
+            activatable=slug is not None,
             args=props,
         )
     service_ids = frozenset(
@@ -386,7 +496,13 @@ def _model_visible_args() -> dict[str, frozenset[str]]:
 
 
 def problems_out(problems: list[Problem]) -> list[dict[str, str]]:
-    return [{"pointer": p.pointer, "code": p.code, "message": p.message} for p in problems]
+    out: list[dict[str, str]] = []
+    for p in problems:
+        item = {"pointer": p.pointer, "code": p.code, "message": p.message}
+        if p.replacement is not None:
+            item["replacement"] = p.replacement
+        out.append(item)
+    return out
 
 
 __all__ = [

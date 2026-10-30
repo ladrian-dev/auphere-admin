@@ -69,7 +69,7 @@ from nexus_api.core.tenant_context import (
 )
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import TurnSource
-from nexus_api.services.activations import ToolPolicy
+from nexus_api.services.activations import ToolPolicy, allowed_names
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.router_catalog import CatalogSnapshot, ProfilePolicy, record_anomaly
 from nexus_mcp import MCPRegistry, build_default_registry
@@ -365,10 +365,10 @@ _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
         "client.get_preferences",
         "client.update_preferences",
         "client.get_history",
-        # ADR-018 — the booking flow on connectors like agendapro_public
-        # can't act on cancel / modify without owner approval. The agent
-        # consults the owner from this category so the customer sees an
-        # immediate ack while the owner answers asynchronously.
+        # ADR-018 — what the agent cannot do on its own (a booking it may
+        # not touch, a price that is not in the catalogue) it asks the
+        # owner from this category, so the customer sees an immediate ack
+        # while the owner answers asynchronously.
         "operator.consult_owner",
     ),
     "queue": (
@@ -611,13 +611,10 @@ async def _view_with_composio(
     # The view MUST inherit ``dry_run`` and its audit hook: the QA
     # Playground relies on the registry gate to block side effects, and a
     # bare ``MCPRegistry()`` would let a Composio proxy write to the
-    # client's real CRM/calendar from a test conversation.
-    view = MCPRegistry(dry_run=registry.dry_run, dry_run_audit=registry._dry_run_audit)
-    for name in registry.names():
-        # Re-register the existing instance under the new view.
-        view._tools[name] = registry._tools[name]
-    for name in registry.internal_names():
-        view._internal_tools[name] = registry._internal_tools[name]
+    # client's real CRM/calendar from a test conversation. It also keeps the
+    # registry's class: the agent playground's ``SimulatedRegistry`` (spec
+    # 047) must keep its simulated world and its rules for connector tools.
+    view = registry.view()
     for proxy in proxies:
         view._tools[proxy.name] = proxy
     return view, available_names
@@ -1498,17 +1495,17 @@ def make_handler_node(
             # (ToolNotInWhitelist) if the model hallucinates one — real
             # enforcement, not just hiding. ``None``/``full`` = no change.
             # Console per-tool gating (CP-13): explicit tenant overrides
-            # (blocked / needs_approval) leave the whitelist. Best-effort
-            # read; a DB hiccup keeps the whitelist unchanged.
+            # (blocked / needs_approval) leave the whitelist. A gate that cannot
+            # be read is closed (T217): no tool this turn.
             gated = await _load_gated_tools(tenant_id)
-            if gated:
-                available_names = tuple(n for n in available_names if n not in gated)
+            available_names = without_gated(available_names, gated)
             # Spec 047 (35.5, 35.6): the agent's activation of each connection —
             # without one, none of its tools; «Solo leer» drops the writes;
             # «Preguntar antes de escribir» keeps them behind a durable approval.
+            # Spec 047, enmienda del 2026-10-30 (65.11): a policy that cannot be
+            # read is closed — no connector tool at all, only the house's.
             tool_policy = await _load_tool_policy(tenant_id, _agent_uuid(state))
-            if tool_policy.blocked:
-                available_names = tuple(n for n in available_names if n not in tool_policy.blocked)
+            available_names = allowed_names(available_names, tool_policy)
             admin_role = sender_role(bundle.policies, state.get("user_id"))
             if admin_role == ROLE_READONLY:
                 available_names = tuple(
@@ -1829,9 +1826,19 @@ def make_handler_node(
 
                     async def _run(call: ToolCall = call) -> dict[str, Any]:
                         if call.name in tool_policy.needs_approval:
-                            asked = await _approval_envelope(state, call, intent)
-                            if asked is not None:
-                                return asked
+                            if scoped_registry.dry_run:
+                                # The playground and the tests (20.1): nobody
+                                # is asked. The turn says it would have asked
+                                # and goes on as if the owner said yes, so the
+                                # rest can be checked; the dispatch below is
+                                # the dry run's, which never writes.
+                                scoped_registry.note_simulated_approval(
+                                    call.name, dict(call.arguments or {})
+                                )
+                            else:
+                                asked = await _approval_envelope(state, call, intent)
+                                if asked is not None:
+                                    return asked
                         return await _dispatch_tool(
                             scoped_registry,
                             call,
@@ -1990,18 +1997,20 @@ def make_handler_node(
 
 
 async def _load_tool_policy(tenant_id: uuid.UUID, agent_id: uuid.UUID | None) -> ToolPolicy:
-    """Spec 047 (T128): the connector activations of this agent. Fails closed on
-    what the activations manage: a read error blocks nothing new but logs, and
-    the registry still refuses what is not whitelisted."""
-    from nexus_api.services.activations import tool_policy
+    """Spec 047 (T128): the connector activations of this agent. Fails closed
+    (spec 047, amendment of 2026-10-30, 65.11; guarantee 2): when the policy
+    cannot be read, the turn offers no connector tool at all
+    (``ToolPolicy.closed``), only the house's; the registry still refuses what is
+    not whitelisted."""
+    from nexus_api.services import activations
 
     try:
         sm = get_sessionmaker()
         async with sm() as session, tenant_scoped_session(session, tenant_id):
-            return await tool_policy(session, tenant_id, agent_id)
+            return await activations.tool_policy(session, tenant_id, agent_id)
     except Exception as exc:
         log.warning("tool_policy.load_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
-        return ToolPolicy()
+        return ToolPolicy(closed=True)
 
 
 async def _approval_envelope(
@@ -2046,12 +2055,26 @@ async def _approval_envelope(
     }
 
 
-async def _load_gated_tools(tenant_id: uuid.UUID) -> frozenset[str]:
+async def _load_gated_tools(tenant_id: uuid.UUID) -> frozenset[str] | None:
+    """The tools the tenant gated off (CP-13), or ``None`` if they cannot be read.
+
+    Fails closed (spec 047, T217, security review of 2026-10-30; guarantee 2), as
+    :func:`_load_tool_policy` does: the gate is a deny-list that any catalogued
+    tool can be on, the house's included, so a gate that cannot be read leaves
+    the turn without tools (:func:`without_gated`)."""
     try:
         return await load_gated_tool_names(tenant_id)
     except Exception as exc:
         log.warning("tool_gating.load_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
-        return frozenset()
+        return None
+
+
+def without_gated(names: tuple[str, ...], gated: frozenset[str] | None) -> tuple[str, ...]:
+    """The tools a turn may offer after the tenant's gate. ``None`` (the gate could
+    not be read): none at all."""
+    if gated is None:
+        return ()
+    return tuple(n for n in names if n not in gated)
 
 
 async def _load_knowledge(

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis, scoped_session_from_path
 from nexus_api.config import get_settings
-from nexus_api.core.errors import AgentConfigConflict, UnknownAgent
+from nexus_api.core.errors import AgentConfigConflict, RollbackTargetNeverPublished, UnknownAgent
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import (
     AgentConfig,
@@ -151,6 +151,13 @@ async def promote_agent_config(
 ) -> AgentConfigOut:
     """Promote a staged ``agent_config`` version to ACTIVE.
 
+    Spec 047 (requisito 23): the operator's promote is an **audited jump** of
+    the gate, like the console's: ``reason`` is required (422
+    ``reason_required`` without it) and skips what an owner or an admin may
+    skip — tests not run, a critical test, the regression, a blocker — writing
+    the reason into the version and the audit. The validator and the
+    AI-disclosure decision are never skipped.
+
     Block P (eval gate): when ``Tenant.eval_required=true``, the
     promote is blocked unless one of these is true:
 
@@ -159,6 +166,15 @@ async def promote_agent_config(
     - The body sets ``override=true`` with a non-empty ``reason``;
       an audit row records the override.
     """
+    reason = " ".join(((body.reason if body else None) or "").split())
+    if not reason:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "reason_required",
+                "message": "Promoting from the operator panel skips the gate: say why.",
+            },
+        )
     tenant = (
         await session.execute(sa.select(Tenant).where(Tenant.id == tenant_id))
     ).scalar_one_or_none()
@@ -167,7 +183,6 @@ async def promote_agent_config(
 
     if tenant.eval_required:
         override = bool(body and body.override)
-        reason = (body.reason if body else None) or ""
         if not override:
             passing = await has_passing_recent_run(
                 session,
@@ -184,11 +199,6 @@ async def promote_agent_config(
                     ),
                 )
         else:
-            if not reason.strip():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="override=true requires a non-empty reason",
-                )
             session.add(
                 AuditLog(
                     tenant_id=tenant_id,
@@ -200,8 +210,8 @@ async def promote_agent_config(
                 )
             )
 
-    # Spec 047 (T093, 23.7): the same gate as the console. An operator of
-    # Auphere may skip a critical test or a blocker with the audited reason.
+    # Spec 047 (T093, 23.7): the same gate as the console. The operator of
+    # Auphere skips what an owner may skip, always with the audited reason.
     from nexus_api.services import publishing
 
     svc = AgentConfigService(session)
@@ -228,7 +238,7 @@ async def promote_agent_config(
             role="operator",
             partner_id=tenant.partner_id,
             accept_normal_failures=override,
-            override_reason=(body.reason if body and override else None),
+            override_reason=reason,
             origin="admin",
         )
     except publishing.GateBlocked as exc:
@@ -260,6 +270,17 @@ async def rollback_agent_config(
     svc = AgentConfigService(session)
     try:
         config = await svc.rollback(version, actor=f"admin:{actor[:8]}")
+    except RollbackTargetNeverPublished as exc:
+        # Spec 047 (requisito 23): a draft goes live through the gate — the
+        # promote, with its audited reason — never through a rollback.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "publish": f"/admin/tenants/{tenant_id}/agent-config/{version}/promote",
+            },
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     out = AgentConfigOut.model_validate(config)

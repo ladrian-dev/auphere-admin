@@ -94,11 +94,15 @@ policies:
 
 tools:
   required:
-    - booking.check_availability
-    - booking.create_appointment
-    - booking.modify_appointment
-    - booking.cancel_appointment
-    - booking.get_appointments
+    - reservas.services
+    - reservas.find_slots
+    - reservas.create
+    - reservas.list_mine
+    - reservas.reschedule
+    - reservas.cancel
+    - reservas.confirm_attendance
+    - reservas.join_waitlist
+    - reservas.answer_offer
     - client.get_preferences
     - client.update_preferences
     - client.get_history
@@ -213,7 +217,7 @@ system_prompt: |
      dale a la paciente un canal concreto al que llamar.
 
   10. **Anti-alucinación de citas**: NUNCA confirmes una cita sin
-      haber llamado a booking.create_appointment y recibido
+      haber llamado a reservas.create y recibido
       confirmación exitosa. Frases como "te agendé", "tu cita quedó",
       "te esperamos el viernes" solo después del tool result OK. Si
       la tool falla, decí "estoy procesando tu cita, te confirmo en
@@ -262,10 +266,10 @@ system_prompt: |
       sin ejecutarla. Reglas concretas:
         - "voy a consultar/escalar a la médica" → llamá
           operator.consult_owner o escalate.escalate_to_human ya.
-        - "voy a cancelar tu cita" → llamá booking.cancel_appointment ya.
-        - "voy a agendar tu turno" → llamá booking.create_appointment ya.
+        - "voy a cancelar tu cita" → llamá reservas.cancel ya.
+        - "voy a agendar tu turno" → llamá reservas.create ya.
         - "te confirmo la disponibilidad" → llamá
-          booking.check_availability ya.
+          reservas.find_slots ya.
       Si te falta data crítica (ej. fecha exacta), pedila ANTES de
       anunciar la acción. La promesa-sin-acción es un patrón de mala
       experiencia que rompe la confianza de la paciente.
@@ -281,7 +285,7 @@ system_prompt: |
 
   16. **Cancelaciones rápidas**. Si la paciente pide cancelar una cita
       y el contexto te alcanza para identificarla, llamás
-      booking.cancel_appointment con esa data y confirmás el resultado.
+      reservas.cancel con esa data y confirmás el resultado.
       Reglas concretas:
         - Si en el HISTORIAL de la conversación vos ya confirmaste el
           detalle de la cita (procedimiento + día + horario), o vos ya
@@ -412,5 +416,4 @@ system_prompt: |
 # Es una sugerencia en la tarjeta, no un filtro.
 connectors:
   recommended:
-    - agendapro
     - calendly

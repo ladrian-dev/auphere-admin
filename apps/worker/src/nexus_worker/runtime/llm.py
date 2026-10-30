@@ -59,7 +59,7 @@ from nexus_api.core.llm_proxy import (
     apply_litellm_proxy_kwargs,
     proxy_required,
     raise_mapped_proxy_failure,
-    require_current_llm_proxy_partner,
+    require_llm_proxy_payer,
 )
 from nexus_api.core.metrics import (
     ISOLATION_LLM_BATCH_CROSS_TENANT,
@@ -384,12 +384,19 @@ TASK_BY_ROLE: dict[str, str] = {
     "judge": "judge",
     "companion": "build",
     "builder": "build",
+    # Spec 047 (requisito 15.7): the builder's draft job calls with this role
+    # (``jobs/handlers/agent_draft.py``).
+    "build": "build",
     "vision": "vision",
     "transcribe": "transcribe",
     "summarize": "summarize",
     "translate": "translate",
     "extract": "extract",
     "read_source": "read_source",
+    # Spec 047, amendment of 2026-10-29 (61.1): the simulated customer of the
+    # agent's tests writes a customer's message — an answer, measured in the
+    # tests line with the rest of the pass (``jobs/handlers/agent_tests.py``).
+    "customer_sim": "answer",
 }
 #: Roles that answer the end customer: ``answer`` without tools, ``tool_turn``
 #: with them. The pipeline passes the intent as the role.
@@ -1009,9 +1016,12 @@ def _proxy_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     staging y en producción: exigir aquí el partner mataba su turno con
     ``missing partner virtual key``. La limpieza de la auth inyectada por la
     consola sigue siendo incondicional — la hace ``apply_litellm_proxy_kwargs``.
+
+    Lo que paga Auphere sin partner (el panel de operador) va dentro de
+    ``llm_proxy_platform_scope`` y sale con la clave de Auphere.
     """
     if proxy_required():
-        require_current_llm_proxy_partner()
+        require_llm_proxy_payer()
     apply_litellm_proxy_kwargs(kwargs)
     return kwargs
 

@@ -1,10 +1,12 @@
 """``GET /admin/screenshots/:tenant_id/:audit_id`` — proxy that serves the
-screenshot a mutating AgendaPro tool captured into ``audit_log``.
+screenshot a mutating browser tool captured into ``audit_log`` (the
+browser booking MCP that spec 048 retired; the endpoint stays for the rows
+that still carry one).
 
 Why a proxy instead of a direct asset URL:
 
 - The screenshot URL stored on each audit row uses the ``file://``
-  scheme during Phase 1 (LocalDiskScreenshotStore in the AgendaPro
+  scheme during Phase 1 (LocalDiskScreenshotStore in the browser MCP's
   Node server). Browsers cannot follow ``file://`` from an HTTPS
   origin; even in dev they need a server to read the bytes off disk.
 - Phase 1.5 / H swaps the disk store for an R2 store. The R2 URLs

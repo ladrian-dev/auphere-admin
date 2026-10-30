@@ -9,7 +9,8 @@ version: 1
 Esta skill es el filtro de seguridad clínica del vertical
 `aesthetic_clinic_v1`. Materializa la regla 5 del system prompt.
 
-Antes de llamar `booking.create_appointment` para un inyectable o
+Antes de llamar `reservas.create` (o `booking.create_appointment`, en un
+agente que aún no pasó a Reservas) para un inyectable o
 una consulta pre-quirúrgica, el agente DEBE haber recibido respuesta
 a las cinco preguntas de screening. No es opcional. No es "se lo
 preguntamos cuando llegue". Si la paciente embarazada agenda Botox
@@ -146,7 +147,7 @@ memoria por paciente persiste; el agente la usa.
 
 ## Verificación interna del agente
 
-Antes de llamar `booking.create_appointment` para inyectable o
+Antes de llamar `reservas.create` para inyectable o
 consulta quirúrgica, el agente revisa:
 
 1. ¿Tengo respuesta a las 5 preguntas del screening? (revisar
@@ -160,7 +161,7 @@ consulta quirúrgica, el agente revisa:
    confirmar acompañamiento.
 
 Si las 4 son "no problema" → proceder con
-`booking.create_appointment`.
+`reservas.create`.
 
 ## Ejemplo completo de flujo correcto
 

@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from nexus_api.core.llm_proxy import llm_proxy_partner_scope
 from nexus_api.db.models import Agent
 from nexus_api.db.models.agent_spec import AgentTest, AgentTestResult
 from nexus_api.services.agent_spec.patch import apply_ops
@@ -125,19 +126,23 @@ async def ask(
             if agent_turns:
                 context["answer"] = " ".join(agent_turns[-1].get("bubbles") or [])
         context["test_id"] = str(test.id)
-    answer = await copilot_service.ask(
-        scope.session,
-        agent_id=scope.agent_id,
-        spec=spec,
-        state_hash=spec_state_hash(spec),
-        facts=await load_facts(scope.session, agent),
-        message=body.message,
-        context=context,
-        can_write="agents:write" in scope.principal.permissions,
-        actor=scope.principal.actor,
-        partner_id=scope.principal.partner.id,
-        complete=_complete(),
-    )
+    facts = await load_facts(scope.session, agent)
+    # El modelo sale con la clave del partner de quien pregunta: con el proxy
+    # obligatorio (staging), sin ella no llega.
+    with llm_proxy_partner_scope(scope.principal.partner.id):
+        answer = await copilot_service.ask(
+            scope.session,
+            agent_id=scope.agent_id,
+            spec=spec,
+            state_hash=spec_state_hash(spec),
+            facts=facts,
+            message=body.message,
+            context=context,
+            can_write="agents:write" in scope.principal.permissions,
+            actor=scope.principal.actor,
+            partner_id=scope.principal.partner.id,
+            complete=_complete(),
+        )
     return answer.to_json()
 
 

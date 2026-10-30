@@ -89,6 +89,10 @@ def _test_row(suite: AgentTestSuite, item: Mapping[str, Any], *, kind: str, by: 
         criteria=list(item.get("criteria") or []),
         critical=bool(item.get("critical", False)),
         sector_test_ref=item.get("sector_test_ref"),
+        # Spec 047, enmienda (58.4): salió de la guía generada para este cliente.
+        generated_guide_id=item.get("generated_guide_id"),
+        # Spec 047, enmienda del 2026-10-30 (65.8): lo marca el sistema al añadirla.
+        not_applicable_reason=item.get("not_applicable_reason") or None,
         created_by_kind=by,
     )
 

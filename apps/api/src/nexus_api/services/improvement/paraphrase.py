@@ -10,10 +10,14 @@ encuentre por su marca. La persona la revisa y la edita antes de enviar.
 El modelo es **inyectable** (:func:`set_paraphraser`): las pruebas ponen uno de
 mentira. Sin modelo (``llm_use_inmemory``) no hay paráfrasis y la escribe la
 persona. Un fallo del modelo tampoco tumba la corrección.
+
+La llamada sale con la clave del partner del cliente (``partner_id``): con el
+proxy obligatorio (staging), sin ella no llega.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
@@ -21,6 +25,7 @@ from typing import Final
 
 import structlog
 
+from nexus_api.core.llm_proxy import llm_proxy_partner_scope
 from nexus_api.db.models.inbox_correction import PARAPHRASE_MAX
 from nexus_api.services.improvement import pii
 
@@ -86,7 +91,11 @@ def clean(text: str | None, *, names: Iterable[str | None] = ()) -> str | None:
 
 
 async def paraphrase(
-    customer_text: str, *, tenant_id: uuid.UUID, names: Iterable[str | None] = ()
+    customer_text: str,
+    *,
+    tenant_id: uuid.UUID,
+    partner_id: uuid.UUID | None,
+    names: Iterable[str | None] = (),
 ) -> str | None:
     """La paráfrasis propuesta, o ``None`` si no hay modelo, no hay texto o el
     modelo falla. Nunca devuelve un dato que el detector reconozca."""
@@ -96,8 +105,12 @@ async def paraphrase(
     fn = _override or _default(tenant_id)
     if fn is None:
         return None
+    scope = (
+        llm_proxy_partner_scope(partner_id) if partner_id is not None else contextlib.nullcontext()
+    )
     try:
-        raw = await fn(text)
+        with scope:
+            raw = await fn(text)
     except Exception as exc:
         log.warning(
             "correction.paraphrase_failed", tenant_id=str(tenant_id), error=type(exc).__name__

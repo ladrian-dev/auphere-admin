@@ -13,6 +13,25 @@ El agente reserva, mueve y cancela por WhatsApp con las herramientas
 `reservas.*`; el negocio lo ve y lo corrige en su consola o en la app; el
 sistema confirma, recuerda, libera y ofrece los huecos a la lista de espera.
 
+**Reservas es la única agenda de los agentes** (spec
+[`048-retirar-agendapro`](../specs/048-retirar-agendapro/spec.md)). AgendaPro se
+retiró del todo; `booking.*` —la agenda de antes, que escribe en
+`appointments` y que el negocio no ve— está **retirada**: el catálogo la marca
+`deprecated`, el constructor, el copiloto, la consola y las plantillas no la
+ofrecen, y el validador rechaza un borrador que la traiga con `tool_retired` y su
+sustituta (`replacement`). Los agentes que aún la nombran pasan solos a Reservas
+en cada despliegue ([abajo](#el-paso-automático-a-reservas-spec-048)). El runtime
+la sigue ejecutando para las versiones que ya la tienen, hasta el borrado final
+(requisito 5, otra entrega).
+
+| `booking.*` | `reservas.*` |
+|---|---|
+| `check_availability` | `find_slots` |
+| `create_appointment` | `create` |
+| `modify_appointment` | `reschedule` |
+| `cancel_appointment` | `cancel` |
+| `get_appointments` | `list_mine` |
+
 ## Activarlo (panel de operador)
 
 Pestaña **Acceso** del cliente: se marca «Reservas» y se elige el modo (y en
@@ -27,17 +46,106 @@ on_live}` (contrato: [`admin-api.md`](../specs/043-reservas/contracts/admin-api.
   (`cancel_cause = mode_change`), cada cliente con teléfono recibe el aviso y el
   modo cambia, todo en una transacción. Nunca conviven dos modos.
 - Cambiar solo el tipo de Aforo cambia las palabras, no los números.
-- Activar o desactivar **prepara** una versión del agente por cada agente
-  activo: con `reservas.*` y sin `booking.*` (que escribían en `appointments`,
-  que la consola no ve), o sin `reservas.*`. **No la promueve**: la pestaña
-  enlaza a la pestaña Agente (`agents_pending_promotion`).
+- Activar o desactivar **prepara el borrador** de cada agente activo (el único
+  que tiene, spec 047): con `reservas.*` y sin `booking.*`, o sin `reservas.*`.
+  **No lo promueve**: se publica por la puerta; la pestaña enlaza a la pestaña
+  Agente (`agents_pending_promotion`). Activar es además **pasar el cliente a
+  Reservas** (abajo): el AgentSpec y el texto también, y las citas futuras.
 - Desactivar el módulo no borra ajustes ni reservas; las futuras siguen
   recibiendo sus recordatorios.
+- **Reservas no depende del acceso de las personas** (spec 048, decisión 16 de
+  su `plan.md`). Está encendido si `reservas` está en `client_access.modules` y
+  hay `reservation_settings`, con `enabled` encendido o apagado: lo miran las
+  herramientas del agente, las ofertas del worker y esta pestaña
+  (`ClientAccess.reservas_on`). `enabled` solo dice si las personas del cliente
+  pueden entrar en la consola y en la app; apagarlo ya no apaga Reservas.
 
 La parte de Reservas de esa llamada corre **bajo la RLS del cliente dentro de la
 transacción del admin** (`services/reservations/admin.py: as_tenant`: cambia al
 rol `nexus_app` y vuelve con `RESET ROLE`): la sesión del admin trabaja sin RLS y
 las consultas del dominio no filtran por tenant a mano.
+
+## El paso automático a Reservas (spec 048)
+
+Para los clientes que todavía reservan con `booking.*`. **Nadie hace nada a
+mano**: corre en cada despliegue, en la tarea de migración, después de `alembic
+upgrade head` y del sembrado de conectores (`scripts/release.sh` →
+`scripts/pass_booking_to_reservas.py` → `services/reservations/auto_pass.py`).
+No hay pantalla ni rutas para hacerlo a mano (requisito 3.8).
+
+- **Quién.** Cada cliente con algún agente activo cuya versión activa o cuyo
+  borrador nombra `booking.*` (herramientas, AgentSpec o texto). La lista de
+  clientes se lee con el rol de migraciones (solo sus ids); cada cliente pasa
+  después en **su propia transacción, bajo su RLS** (`admin.as_tenant`), contra
+  la base directa. Un cliente sin agentes con `booking.*` se salta: el segundo
+  despliegue no encuentra a nadie.
+- **Reservas, si no lo tenía.** Se activa primero, con los valores de partida del
+  modo (`admin.apply_choice`): **Aforo de restaurante** si el negocio es un
+  restaurante —el sector guardado de la ficha (`sector_key`, solo se lee: ni se
+  identifica ni se llama a un modelo durante el despliegue) o, sin sector, la
+  plantilla de la que viene su agente (`restaurante_v1`)—, y **citas por
+  persona** en cualquier otro caso. Se añade `reservas` a los módulos del
+  cliente sin tocar `enabled`: no abre el acceso de sus personas ni invita a
+  nadie. Un cliente que ya tenía Reservas conserva su modo; uno con los ajustes
+  y el módulo quitado recupera el módulo con su modo.
+- **La versión activa se publica** con `reservas.*` en `tools`, en el AgentSpec
+  (`tools` y procedimientos) y en el texto, con el mapa de arriba, y gana
+  además solo `reservas.services` (sin ella no sabría los ids). Nada más: un
+  agente que solo miraba la agenda (`booking.check_availability`) no sale
+  pudiendo reservar, cancelar ni mover citas (R3.3; plan de la 048, decisión 26,
+  que sustituye en esto a la 19). El borrador que nombra `booking.*` se reescribe
+  igual. Activar Reservas desde Acceso sí sigue dando las nueve, en un borrador
+  que pasa la puerta. Lo demás es igual a la activa. Es un cambio de la plataforma, no del partner: nace de la
+  **activa**, nunca del borrador, y se publica **sin la puerta de pruebas**
+  (`AgentConfigService.publish_platform_copy`), firmada por
+  `platform:reservas-pass`, con su nota («Paso automático a Reservas») y su
+  motivo en `override_reason` y en la auditoría (`agent_config.promote` y
+  `agent.publish` con `origin: platform`). Sin ventana de deshacer. Las pruebas
+  del agente quedan desactualizadas.
+- **El borrador del partner**, si nombra `booking.*`, se reescribe igual y **no
+  se publica**: conserva sus otros cambios y sigue siendo el único borrador del
+  agente. Su revisión avanza una vez, como con cualquier escritura, así que una
+  pestaña que lo estaba editando se entera (412 con el cambio de Auphere). Un
+  agente sin borrador no recibe uno.
+- **Las citas futuras** (reservadas o confirmadas) de `appointments` pasan a
+  `reservations` como confirmadas, sin mensaje a nadie (la persona ya sabe de su
+  cita), cuando su servicio casa por nombre con un servicio de Reservas y su
+  barbero (el nodo del grafo) con una persona del equipo — sin tildes ni
+  mayúsculas. La reserva guarda la cita de origen en su clave
+  (`appointment:<id>`): nada se duplica. Las que no casan se quedan en
+  `appointments` y salen en el informe con su motivo: `capacity_mode` (en Aforo
+  una cita no dice para cuántos), `service_missing`, `service_not_bookable`,
+  `staff_missing`, `staff_not_found`, `staff_cannot_do_service`, `slot_taken`.
+  Un cliente recién activado empieza sin servicios ni personas, así que sus citas
+  salen como `service_missing` y no se pierden.
+- **El informe**, en la auditoría del cliente: `reservations.passed`, con
+  `automatic: true`, el motivo, la activación (`activated: {mode,
+  capacity_kind, from}` con `from` = `sector`, `template`, `default` o
+  `existing`; `null` si ya lo tenía), las versiones publicadas (`published`),
+  los borradores reescritos (`agents`), las importadas, las ya importadas y las
+  que no, con su motivo. Si hubo que activar el módulo, también
+  `client_access.updated` con `automatic: true`.
+- **Si un cliente falla**, se deshace solo el suyo (activación, versiones,
+  borrador, citas e informe) y queda en el registro
+  `reservations.auto_pass_failed` con `tenant_id` y el tipo de error (sin datos
+  de nadie); los demás siguen. Al final, una línea
+  `reservations.auto_pass_done` con `passed`, `failed`, `failed_tenants`,
+  `activated`, `published`, `drafts`, `imported`, `already_imported` y
+  `not_imported`. El guion sale con 0 aunque falle un cliente, y `release.sh`
+  sigue aunque el guion entero reviente: **el despliegue no se para aquí**. El
+  runtime sigue ejecutando `booking.*` para quien la tenga (requisito 5.3), y el
+  borrado final (T030) se niega en voz alta mientras alguien la nombre.
+- **El historial y las comisiones** (`client.get_history`, `commission.*`)
+  leen las dos agendas: las reservas y las citas que no se importaron, sin
+  contar dos veces una importada (`nexus_mcp/_agenda.py`).
+
+Activar Reservas desde la pestaña **Acceso** sigue haciendo el paso a su manera
+(requisito 3.9): el borrador de **cada** agente activo gana `reservas.*`, no se
+publica (va por la puerta) y las citas futuras se importan con su informe
+(`reservations.passed`, `automatic: false`, firmado por el operador).
+
+Qué mirar en el registro del despliegue y cómo repetir el paso: `RUNBOOK.md`,
+«Paso automático a Reservas».
 
 ## El dominio (`apps/api/src/nexus_api/services/reservations/`)
 
@@ -49,6 +157,8 @@ las consultas del dominio no filtran por tenant a mano.
 | `views.py` | La forma `Booking` del contrato, listado, ocupación por franja, resumen |
 | `settings.py` | Valores de partida por modo y tipo; validación de lo que el negocio cambia |
 | `admin.py` | La activación desde el admin |
+| `passing.py` | Pasar a Reservas (spec 048): reescritura `booking.*` → `reservas.*` de borradores y versiones, publicación sin puerta desde la activa, importación de citas, informe y quién sigue con `booking.*` |
+| `auto_pass.py` | El paso automático de cada despliegue (spec 048): activar Reservas por sector o plantilla, un cliente por transacción bajo su RLS, y sus registros `reservations.auto_pass_*` |
 | `calendar.py`, `calendar_sync.py` | P3: choques con Google Calendar y la sincronización |
 
 **Sin doble reserva.** No hay `EXCLUDE` en la base (el aforo es una suma, y
@@ -205,5 +315,9 @@ E2E_BASE_URL=http://localhost:3110 E2E_CLIENT_EMAIL=valeria@cultor.test \
   modos, las dos credenciales; 403 a partner y a cliente sin módulo.
 - `tests/isolation/test_reservas_customer_axis.py`: el agente de una persona no
   toca lo de otra del mismo negocio; ninguna herramienta tiene campo de cliente.
+- `tests/isolation/test_reservas_auto_pass_scope.py` (spec 048): el paso
+  automático de un cliente no lee ni escribe nada de otro — ni su sector, ni sus
+  servicios y su equipo, ni sus agentes, citas, pruebas, ajustes, acceso o
+  auditoría.
 - Los barridos genéricos de la consola lite dejan `/console/lite/reservas` a
   esos dos ficheros.

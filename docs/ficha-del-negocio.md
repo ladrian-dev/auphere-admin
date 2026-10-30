@@ -130,7 +130,7 @@ pendiente de revisar. La consola la escribe así:
 | `person`, desde la app | «Editado por Marta desde la app · hace 2 h» |
 | `web` pendiente | «Leído de la web · revísalo» |
 | `migrated` pendiente | «Migrado · revísalo» |
-| `builder` | «Propuesto por el constructor» |
+| `builder` | «Propuesto a partir de la ficha» (la interfaz no nombra al constructor) |
 | `inbox_correction` | «Corregido desde la Bandeja» |
 
 **«Es correcto»** (13.2, `POST …/business/sections/{section}/confirm`): lo leído
@@ -138,8 +138,25 @@ pendiente de la sección pasa a escrito por quien confirma y la sección deja de
 salir como pendiente. No cambia ningún dato ni sube la revisión.
 
 Aceptar una propuesta conserva lo que dice de dónde vino: lo del constructor
-queda «Propuesto por el constructor», lo importado «Importado» y lo leído pasa a
+queda con su procedencia `builder`, lo importado «Importado» y lo leído pasa a
 ser de quien lo aceptó. Editar antes de aceptar lo deja escrito por esa persona.
+
+**Dónde se deciden las propuestas** (enmienda del 2026-10-29, requisitos 57.3 y
+60.5). Cada propuesta pendiente sale en la sección de Negocio a la que apunta, al
+lado de lo que hay, marcada «Sugerido · confirma» y con su procedencia
+(«Propuesto a partir de la ficha», «Leído de la web», «Leído de un documento»,
+«Leído de sus redes», «Importado»), con «Aceptar», «Editar» y «Descartar»:
+
+| Puntero | Sección | Qué se ve |
+|---|---|---|
+| `/policies/{cancellation\|payments\|deposit\|no_show}` | Políticas | Debajo del valor de esa política, con «Ahora: …» si ya había uno |
+| `/faqs/-` | Preguntas frecuentes | En «Por confirmar», la pregunta y su respuesta |
+| `/business/sector` | Datos básicos | «Propuesto: {sector}» al lado del sector, solo «Aceptar» y «Descartar» |
+
+Una pregunta guardada con `suggested: true` (sugerida, fuera del prompt) también
+sale en «Por confirmar»: aceptarla es `PATCH …/faqs/{id}` con `suggested: false`
+y descartarla, archivarla. Nada sugerido entra en el prompt de un agente hasta que
+una persona lo acepta (60.7).
 
 ## El historial y el deshacer
 
@@ -174,14 +191,19 @@ puede deshacer, salvo las redes que la lectura añadió, que se quitan.
 - **Quitar** borra la fila (el siguiente turno ya no la ve) y guarda su copia en
   el historial de `sources`; durante **10 minutos** `POST …/restore` la devuelve
   tal cual. Pasado el plazo, `409 undo_window_closed`.
-- **Volver a leer**: a mano, y cada semana el cron `source-reread-cron`
-  (`wk/streams/source_reread_cron.py` → `sources.reread_due`) relee las webs
-  leídas hace más de 7 días y la web y las redes del propio cliente. Los
-  archivos no se releen solos. Nunca dos lecturas de la misma fuente a la vez.
-  Los cambios llegan como propuestas.
+- **Volver a leer**: a mano. **No hay relectura periódica** (enmienda del
+  2026-10-29, requisito 59.6, D48 y D63): la web y las redes del cliente se
+  vuelven a leer cuando una persona pone una web distinta en Datos básicos o añade
+  una red (`profile_edits`, nunca por lo que escribe el propio lector), y una
+  fuente se lee al añadirla. Quitar una red no lee nada. Nunca dos lecturas de la
+  misma fuente a la vez. Los cambios llegan como propuestas.
 
 La tarjeta de lectura del Panel solo sigue la lectura de la web y las redes del
-cliente (`sources.latest_site_read`), no la de cada fuente.
+cliente (`sources.latest_site_read`), no la de cada fuente. Con la enmienda del
+2026-10-29 (59.7) se queda en el Panel al terminar: qué se leyó, qué se encontró,
+cuánto falta revisar y, por red, la que no deja leer perfiles sin cuenta
+(`blocked_by_network`, que no cuenta como fallo, 59.4) y la que falló con su
+motivo.
 
 ## Redes
 
@@ -195,10 +217,120 @@ primera web de la lista.
 
 `services/business/reader.py` (T049): al crear un cliente con web o redes se
 lanza un `client_read` que lee hasta 25 páginas del mismo dominio con
-`robots.txt`, o los perfiles públicos de sus redes. Lo que no choca se aplica
+`robots.txt`, y los perfiles públicos de sus redes. Lo que no choca se aplica
 marcado «Leído de la web · revísalo»; lo que contradice un dato escrito por una
 persona queda como propuesta al lado. Lo leído es dato, nunca instrucción
 (§III). Avisa a quien la lanzó al terminar o al fallar.
+
+Desde la enmienda del 2026-10-29 (requisito 59, D49, D50 y D69):
+
+- **Datos estructurados primero, sin modelo** (`services/business/structured.py`):
+  el JSON-LD y los microdatos de schema.org (nombre, dirección, teléfono, horario,
+  servicios con precio y preguntas frecuentes) se pasan a la misma forma que pide
+  el modelo y por la misma validación (solo datos del negocio). Al mezclarlos con
+  lo que extrae el modelo, **mandan**: sus sedes, su horario, sus servicios y sus
+  preguntas van primero. El resultado dice `structured: true`. La procedencia
+  guardada sigue siendo `web`.
+- **El `sitemap.xml`** (el que diga `robots.txt` o `/sitemap.xml`, con su índice;
+  1 MB, 3 sitemaps y 200 direcciones como mucho, sin entidades XML) elige las
+  páginas, junto con los enlaces que suenan a servicios, precios, horario o
+  contacto.
+- **Cuatro páginas a la vez** como mucho (`CONCURRENCY`), sin pasar de 25 páginas,
+  40 intentos ni 3 minutos.
+- **Solo la red pública, y sin rebinding** (T217, revisión de seguridad del
+  2026-10-30): el cliente HTTP del worker (`core/public_http.public_client`, el
+  mismo que usa `fetch_url`) resuelve cada nombre una sola vez, valida todas sus
+  direcciones con la tabla del renderer (`core/public_addresses.py`, una copia de
+  `apps/renderer/.../addresses.py`; una prueba exige que coincidan) y conecta a la
+  validada, con el `Host` y el SNI del nombre, y solo por 80 y 443.
+  `assert_public_url` usa esa misma tabla y esos puertos: también rechaza NAT64 y
+  la multidifusión, que `is_global` aceptaba. Un bloque JSON-LD anidado hasta
+  tumbar `json.loads` (`RecursionError`) se salta; los demás se leen.
+- **«Volver a leer» gasta de «Construcción y pruebas»**: agotada, `402
+  build_budget_exhausted` (T217).
+- **Las redes también con web** (59.3). Instagram, Facebook, LinkedIn y X no dejan
+  leer perfiles sin cuenta: no se piden y salen como `blocked_by_network` en
+  `networks` del resultado, igual que una red cuyo `robots.txt` lo prohíbe; no son
+  un fallo (59.4). Si solo hay redes de esas, la lectura termina sin nada que
+  proponer, no fallida.
+- **La extracción que no es JSON se reintenta una vez**, con el error (59.5). Si
+  vuelve a fallar y no hay datos estructurados, la lectura falla con
+  `extract_failed` («Sin datos útiles»); con datos estructurados, se aplican esos.
+- **El navegador de respaldo** (`docs/renderer.md`): solo para una página con poco
+  texto y si está configurado.
+
+El resultado del trabajo añade `networks: [{network, status: read |
+blocked_by_network | failed, reason?}]`, `structured` y `extraction_retried`.
+
+## El sector
+
+Enmienda del 2026-10-29 (requisito 57, research D46, D58 y D59). `business.sector`
+(`business_profiles.sector`, migración 0206) guarda la clave de una guía de
+Auphere (u `otro`), la etiqueta (1 a 40), la confianza, de dónde salió (`niche`,
+`info`, `web`, `person`, `fallback`) y quién lo decidió. Lo identifica el sistema
+en segundo plano; `null` mientras tanto.
+
+- **Leerlo desde el servidor**: `services/business/sector.stored(session)` (el
+  objeto) o `sector.sector_key(session)` (la clave), con el cliente puesto. Nadie
+  lo vuelve a clasificar del nicho (57.6): las pruebas del sector y el constructor
+  del cliente leen el guardado, y si aún no lo hay lo dejan guardado una vez con
+  la regla de respaldo (`sector.ensure_stored`).
+- **Cuándo se identifica**: el trabajo `sector_identify`
+  (`wk/jobs/handlers/sector_identify.py` → `sector.identify_sector`) se encola al
+  alta (sin retrasarla), al terminar la lectura de la web y las redes, cuando una
+  persona cambia el nicho o la información, y al abrir Datos básicos sin sector o
+  con el de respaldo (como mucho una vez por hora). Lo que lanza una persona al
+  cambiar el nicho o la información también espera su hora (T217,
+  `sector.request_after_edit`): una identificación por hora como mucho. Lo que
+  cambia dentro de esa hora queda pendiente y lo identifica abrir Datos básicos
+  pasada la hora (el nicho o la información se escribieron después de que la
+  última identificación empezara a leer). Sin partida de «Construcción y
+  pruebas», no se llama al modelo: vale la regla de respaldo.
+- **Con modelo**: uno barato (`classify`, `NEXUS_LLM_SECTOR_MODEL`), con el nicho,
+  la información y lo leído vallados; la respuesta se valida contra la lista
+  cerrada y la etiqueta se limpia y se corta a 40 (57.7). **Sin modelo**, o si la
+  respuesta no vale: la regla de palabras enteras de `builder/sectors.py`, con
+  confianza 0,3, que no pisa a lo del modelo.
+- **Quién manda**: lo del sistema se guarda directamente (no mueve la revisión de
+  Datos básicos ni deja pruebas desactualizadas, D58). Lo que fija una persona va
+  por `update_basics`, con historial y deshacer, y desde ahí el sistema solo
+  propone (`/business/sector`).
+- Se mide en «Construcción y pruebas» (`source = builder`, tarea `classify`). En Negocio, Datos básicos lo
+enseña con «Con guía» o «Generada» (sin guía de Auphere, el constructor genera una
+para este cliente, 58.4), y se corrige con los sectores de `GET /console/sectors`
+o «Otro» con una etiqueta de hasta 40 caracteres (`PUT …/basics` con `sector:
+{key, label}`; una clave fuera de la lista es `422 sector_unknown`). Fijado por una
+persona, el sistema ya no lo cambia: lo propone (`/business/sector`).
+
+## El constructor del cliente
+
+Enmienda del 2026-10-29 (requisito 60, research D51, D60 y D61).
+`services/builder/client_profile.py`, trabajo `client_builder`. **Se lanza solo**,
+en segundo plano: al terminar `sector_identify` tras una lectura, cuando el sistema
+cambia el sector y no hay una lectura en marcha, y cuando una persona cambia el
+sector. Es idempotente por la huella de la ficha (el `state_hash` de su ClientSpec,
+en `progress.input.fingerprint`): con la misma, no genera dos veces. Si el modelo no
+responde, reintenta 3 veces (esperas de 2, 4 y 8 s) y queda `failed` con
+`builder_unavailable`, sin bloquear nada. Sin saldo en «Construcción y pruebas» no
+se lanza.
+
+Sus propuestas de políticas y preguntas frecuentes son sugerencias de la ficha
+(`source = "builder"`, `/policies/{clave}` y `/faqs/-`) que se deciden en su
+sección; nada entra en el prompt hasta aceptarse. Los agentes que propone se
+guardan en `suggested_agents` y la pestaña Agentes los enseña («Sugerido», «Crear
+este agente» y «Descartar»). Lo descartado no vuelve.
+
+## Políticas y preguntas frecuentes
+
+Enmienda del 2026-10-29 (requisito 60.4). Lo que ya entraba en el prompt de todos
+sus agentes tiene su sección en Negocio:
+
+- **Políticas** (`GET`/`PUT …/business/policies`): cancelación, pagos, señal y no
+  presentarse, hasta 1.000 caracteres cada una. `PUT` las sustituye las cuatro
+  (lo vacío, `null`), con `If-Match`.
+- **Preguntas frecuentes** (`GET`/`POST …/business/faqs`, `PATCH …/faqs/{id}`,
+  `POST …/faqs/{id}/archive`): pregunta (≤ 300) y respuesta (≤ 2.000). Las
+  sugeridas (`suggested: true`) no entran en el prompt hasta confirmarlas.
 
 ## La ficha en la API
 
@@ -211,7 +343,10 @@ persona queda como propuesta al lado. Lo leído es dato, nunca instrucción
 | `POST …/suggestions/{id}/decide` | `{decision: accept \| edit \| discard, value?}` |
 | `GET …/sources` · `POST …/sources` · `POST …/sources/{id}/reread\|remove\|restore` | Documentos y webs |
 | `GET …/export` · `POST …/import?dry_run=` | ClientSpec v1 |
-| `GET /console/clients/{ref}/business/read` · `POST …/read` | La tarjeta de lectura |
+| `GET /console/clients/{ref}/business/read` · `POST …/read` | La tarjeta de lectura; con la enmienda, `networks[]` con el estado de cada red y `structured` |
+| `GET …/policies` · `PUT …/policies` · `GET …/faqs` · `POST …/faqs` · `PATCH …/faqs/{id}` · `POST …/faqs/{id}/archive` | Políticas y preguntas frecuentes |
+| `GET /console/sectors` | Los sectores con guía, para el selector |
+| `GET /console/clients/{ref}/suggested-agents` · `POST …/suggested-agents/{id}/dismiss` | Los agentes que sugiere el constructor del cliente (`agents:read` / `agents:write`) |
 
 Las secciones con servicio propio (datos básicos, sedes, horario, fechas
 especiales, servicios, políticas y preguntas) tienen sus rutas en

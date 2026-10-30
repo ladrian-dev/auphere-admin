@@ -26,8 +26,10 @@ uso del lector, en la partida «Construcción y pruebas» (12.6).
 **Quitar** (12.2) borra la fila —el siguiente turno ya no la ve— y guarda una
 copia en el historial de la sección ``sources``; durante 10 minutos
 :func:`restore` la devuelve tal cual (``business.section_undone``). **Releer**
-(12.3): «Volver a leer» y :func:`reread_due`, la pasada semanal del cron
-``source_reread_cron``, que también vuelve a leer la web y las redes del cliente.
+(12.3): «Volver a leer». Desde la enmienda del 2026-10-29 (requisito 59.6, D48)
+**no hay relectura periódica**: la web y las redes del cliente se vuelven a leer
+cuando cambian (``profile_edits``) o cuando una persona lo pide
+(:func:`request_site_read`), y una fuente nueva se lee al añadirla.
 """
 
 from __future__ import annotations
@@ -45,7 +47,6 @@ from xml.etree import ElementTree
 import httpx
 import sqlalchemy as sa
 import structlog
-from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from nexus_api.core.tenant_context import require_current_tenant, tenant_scoped_session
@@ -55,8 +56,6 @@ from nexus_api.db.models import (
     KnowledgeDocumentKind,
     KnowledgeDocumentStatus,
     KnowledgeErrorCode,
-    Tenant,
-    TenantStatus,
 )
 from nexus_api.db.models.business import BusinessChange, BusinessProfile
 from nexus_api.db.models.jobs import LIVE_JOB_STATUSES
@@ -80,8 +79,6 @@ _EXTRA_EXT: Final[dict[str, str]] = {
 _DOCX_XML_MAX: Final = 40 * 1024 * 1024
 #: Quitar se deshace durante este rato (§IV, research parte 7).
 RESTORE_WINDOW: Final = timedelta(minutes=10)
-#: Una web se vuelve a leer a la semana de leída.
-REREAD_AFTER: Final = timedelta(days=7)
 #: ``knowledge_documents.error_code`` → el motivo que enseña la consola.
 FAILURE_OF: Final[dict[str, str]] = {
     KnowledgeErrorCode.FETCH_FAILED.value: "unreachable",
@@ -749,93 +746,6 @@ async def request_site_read(session: AsyncSession, *, created_by: str | None) ->
     return await create_job(session, kind="client_read", created_by=created_by), True
 
 
-# ── la pasada semanal (cron ``source_reread_cron``) ────────────────────────────
-
-
-#: Los clientes que se releen: ni archivados ni en pausa.
-_REREAD_STATUSES: Final = (TenantStatus.ACTIVE, TenantStatus.PROVISIONING)
-
-
-async def _due_in_tenant(
-    session: AsyncSession, tenant_id: uuid.UUID, *, now: datetime
-) -> list[Job]:
-    from nexus_api.services.business.reader import readable
-    from nexus_api.services.jobs import create_job
-
-    created: list[Job] = []
-    cutoff = now - REREAD_AFTER
-    webs = (
-        await session.scalars(
-            sa.select(KnowledgeDocument).where(
-                KnowledgeDocument.tenant_id == tenant_id,
-                KnowledgeDocument.kind == KnowledgeDocumentKind.URL.value,
-                KnowledgeDocument.status != KnowledgeDocumentStatus.PENDING.value,
-                sa.func.coalesce(KnowledgeDocument.indexed_at, KnowledgeDocument.updated_at)
-                < cutoff,
-            )
-        )
-    ).all()
-    for doc in webs:
-        if await _live_job(session, doc.id) is not None:
-            continue
-        doc.status = KnowledgeDocumentStatus.PENDING.value
-        created.append(await _new_job(session, doc, action="reread", created_by=None))
-    # La web y las redes del propio cliente (la lectura del alta), a la semana.
-    last = await session.scalar(
-        sa.select(Job)
-        .where(
-            Job.tenant_id == tenant_id,
-            Job.kind == "client_read",
-            _site_read(),
-        )
-        .order_by(Job.created_at.desc())
-        .limit(1)
-    )
-    if last is not None and last.status not in LIVE_JOB_STATUSES and last.created_at < cutoff:
-        site, networks = await readable(session)
-        if site or networks:
-            created.append(await create_job(session, kind="client_read", created_by=None))
-    return created
-
-
-async def reread_due(redis: Redis, *, now: datetime | None = None, limit: int = 500) -> int:
-    """Una pasada: encola la relectura de las webs leídas hace más de una semana
-    (y de la web y las redes de cada cliente). Devuelve cuántas encoló."""
-    from nexus_api.db.base import get_sessionmaker
-    from nexus_api.services.jobs import enqueue_job
-
-    now = now or datetime.now(UTC)
-    sm = get_sessionmaker()
-    async with sm() as session, session.begin():
-        tenant_ids = list(
-            (
-                await session.scalars(
-                    sa.select(Tenant.id)
-                    .where(Tenant.status.in_(_REREAD_STATUSES))
-                    .order_by(Tenant.id)
-                    .limit(limit)
-                )
-            ).all()
-        )
-    total = 0
-    for tenant_id in tenant_ids:
-        try:
-            async with sm() as session, tenant_scoped_session(session, tenant_id):
-                jobs = await _due_in_tenant(session, tenant_id, now=now)
-        except Exception as exc:  # un cliente que falla no para la pasada
-            log.warning("sources.reread_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
-            continue
-        for job in jobs:
-            try:
-                await enqueue_job(redis, job)
-            except Exception as exc:
-                log.warning("sources.reread_enqueue_failed", error=type(exc).__name__)
-        total += len(jobs)
-    if total:
-        log.info("sources.reread_due", jobs=total)
-    return total
-
-
 __all__ = [
     "ADDED_ACTION",
     "DOCX_MIME",
@@ -843,7 +753,6 @@ __all__ = [
     "MAX_UPLOAD_BYTES",
     "REMOVED_ACTION",
     "REREAD_ACTION",
-    "REREAD_AFTER",
     "RESTORE_WINDOW",
     "Removed",
     "SourceError",
@@ -861,7 +770,6 @@ __all__ = [
     "removed_sources",
     "request_site_read",
     "reread",
-    "reread_due",
     "restore",
     "source_job_target",
     "source_mime",

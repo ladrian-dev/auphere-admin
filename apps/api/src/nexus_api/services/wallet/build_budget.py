@@ -8,7 +8,10 @@ Auphere hasta el tope (50 en la moneda de la cuenta por defecto,
 
 - Al 80 %, un aviso (``build.budget.warning``).
 - Al 100 %, se paran el constructor, las pruebas y el playground (``402
-  build_budget_exhausted``); la edición a mano sigue y la suite empezada termina.
+  build_budget_exhausted``); la edición a mano sigue. Desde la T217 (revisión de
+  seguridad del 2026-10-30) también «Volver a leer» y la identificación del sector
+  (que entonces usa la regla de respaldo), y una suite en marcha vuelve a mirar la
+  partida antes de cada prueba: la empezada termina, las que faltan no empiezan.
 - «Pedir ampliación»: una al día (``429 request_already_sent_today``).
 
 Sustituye al tope de 2 M de tokens del playground (``qa_monthly_token_cap``) para

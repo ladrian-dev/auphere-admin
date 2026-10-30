@@ -19,10 +19,10 @@ def test_default_registry_has_all_block_d_tools():
     + 4 inventory.* tools (search_products, get_product, check_stock,
     low_stock) = 58 LLM-facing.
 
-    Block O (ADR-017) registers 2 INTERNAL tools (``agendapro_public.
-    check_availability`` and ``.create_appointment``) that the booking
-    facade and async cron reach via ``dispatch_internal``; the LLM
-    never sees them.
+    Spec 048 (requisito 1.3): AgendaPro is gone. Its two INTERNAL tools
+    (``agendapro_public.*``) are not registered any more, so the internal
+    space is empty — ``dispatch_internal`` stays as the mechanism, with
+    nothing behind it.
     """
     reset_default_registry()
     reg = build_default_registry()
@@ -47,12 +47,9 @@ def test_default_registry_has_all_block_d_tools():
     assert "payments.request_review" in names
     assert "operator.consult_owner" in names
     assert "response.send_interactive" in names
-    # Block O internal tools — not LLM-facing.
-    internal = set(reg.internal_names())
-    assert internal == {
-        "agendapro_public.check_availability",
-        "agendapro_public.create_appointment",
-    }
+    # Spec 048: nothing internal, and nothing of AgendaPro anywhere.
+    assert set(reg.internal_names()) == set()
+    assert not any("agendapro" in n for n in names)
 
     # Spot check namespaces.
     assert any(n.startswith("booking.") for n in names)

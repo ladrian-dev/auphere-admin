@@ -143,7 +143,8 @@ async def test_a_page_that_gives_orders_changes_nothing_that_runs(
                 200, html=page(f"<p>{INJECTION}</p><p>{FORGED}</p><p>Corte 15 €.</p>")
             )
         )
-        assert await run_reader(fake_redis, extract) == 1
+        # La lectura y la identificación del sector que el alta dejó en cola (57.2).
+        assert await run_reader(fake_redis, extract) == 2
 
     async with tenant_scoped_session(db_session, tenant_id):
         job_status = await db_session.scalar(

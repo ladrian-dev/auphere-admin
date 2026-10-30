@@ -19,7 +19,8 @@ Tres reglas que este fichero cumple y que sus tests fijan:
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from collections.abc import Iterable
+from typing import Final, Literal, TypedDict
 
 Kind = Literal["tool", "skill"]
 Function = Literal["appointments", "orders", "messages", "escalation", "knowledge", "other"]
@@ -42,9 +43,7 @@ class CapabilityName(TypedDict, total=False):
     #: herramientas lo deducen de las suyas.
     sectors: list[str]
     #: La integración que hace falta cuando el catálogo no la enlaza por
-    #: `connector_id`. Hoy solo AgendaPro: se conecta pegando la URL pública
-    #: de la agenda en el tenant, no con una fila de conector, así que sus
-    #: herramientas quedaron sueltas y la pantalla no podía avisar.
+    #: `connector_id`: hoy, el catálogo de Meta del canal (``channel_catalog``).
     requires: str
 
 
@@ -106,13 +105,14 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         requires="channel_catalog",
     ),
     # ── Citas ──────────────────────────────────────────────────────────
+    # Spec 048: ``booking.*`` está retirada (no se ofrece); el nombre se queda
+    # para lo que todavía la lleva hasta el borrado final.
     ("tool", "booking.create_appointment"): _t(
         "Reservar una cita",
         "Book an appointment",
         "Deja la cita puesta en la agenda del negocio.",
         "Puts the appointment in the business's calendar.",
         "appointments",
-        requires="agendapro",
     ),
     ("tool", "booking.check_availability"): _t(
         "Consultar disponibilidad",
@@ -120,7 +120,6 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Mira qué huecos quedan antes de proponer nada.",
         "Looks at what slots are free before proposing anything.",
         "appointments",
-        requires="agendapro",
     ),
     ("tool", "booking.modify_appointment"): _t(
         "Cambiar una cita",
@@ -205,20 +204,6 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Look up a client's appointments",
         "Dice qué citas tiene un cliente y cuándo.",
         "Says which appointments a client has and when.",
-        "appointments",
-    ),
-    ("tool", "agendapro.get_today_appointments"): _t(
-        "Ver las citas de hoy",
-        "See today's appointments",
-        "Lee la agenda del día desde AgendaPro.",
-        "Reads the day's calendar from AgendaPro.",
-        "appointments",
-    ),
-    ("tool", "agendapro.scrape_no_shows"): _t(
-        "Detectar ausencias",
-        "Spot no-shows",
-        "Encuentra las citas a las que nadie se presentó.",
-        "Finds the appointments nobody turned up to.",
         "appointments",
     ),
     ("tool", "queue.join_queue"): _t(
@@ -931,6 +916,101 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
 }
 
 
+# ── what each tool does (spec 047, amendment of 2026-10-30, requirement 65.5) ──
+
+#: The actions an agent's text can promise. A promise is kept only by a tool that
+#: does that action (:data:`TOOL_ACTIONS`), never by a tool that merely shares its
+#: prefix: ``payments.request_review`` reviews a receipt, it neither charges nor
+#: invoices; ``reservas.services`` lists services, it does not book.
+Action = Literal[
+    "book",
+    "modify_booking",
+    "charge",
+    "collect",
+    "invoice",
+    "order",
+    "modify_order",
+    "send_media",
+    "remind",
+    "catalog",
+]
+
+#: What the console says after «No tenemos herramienta para: ».
+ACTION_LABELS: Final[dict[Action, str]] = {
+    "book": "reservar citas",
+    "modify_booking": "cambiar o cancelar citas",
+    "charge": "cobrar con tarjeta o con enlace de pago",
+    "collect": "cobrar",
+    "invoice": "emitir facturas",
+    "order": "tomar pedidos",
+    "modify_order": "cambiar o cancelar pedidos",
+    "send_media": "enviar documentos, fotos o ubicaciones",
+    "remind": "programar recordatorios",
+    "catalog": "enseñar el catálogo",
+}
+
+#: The tools that do each action, read from their description above. A tool that
+#: is not here does none of them. Every key is a ``("tool", name)`` of
+#: :data:`CAPABILITY_NAMES` (``tests/unit/test_only_what_we_have.py``).
+TOOL_ACTIONS: Final[dict[str, frozenset[Action]]] = {
+    # The agenda. ``booking.*`` is retired (spec 048) but still keeps the promise
+    # for the versions that book with it until they pass to Reservas.
+    "reservas.create": frozenset({"book"}),
+    "reservas.answer_offer": frozenset({"book"}),
+    "booking.create_appointment": frozenset({"book"}),
+    "reservas.reschedule": frozenset({"modify_booking"}),
+    "reservas.cancel": frozenset({"modify_booking"}),
+    "booking.modify_appointment": frozenset({"modify_booking"}),
+    "booking.cancel_appointment": frozenset({"modify_booking"}),
+    # Reservas sends the reminder of each booking itself; the tool notes the answer.
+    "reservas.confirm_attendance": frozenset({"remind"}),
+    "notification.schedule_reminder": frozenset({"remind"}),
+    # Collections (cobranza): what is owed, reminding it and noting the payment.
+    "billing.get_my_debt": frozenset({"collect"}),
+    "billing.add_charge": frozenset({"collect"}),
+    "billing.register_payment": frozenset({"collect"}),
+    "billing.send_reminders": frozenset({"collect", "remind"}),
+    # A payment link: the only tool that takes a payment.
+    "woocommerce.build_checkout_link": frozenset({"charge", "order"}),
+    "woocommerce.create_order": frozenset({"order"}),
+    "woocommerce.update_order": frozenset({"modify_order"}),
+    "woocommerce.update_order_status": frozenset({"modify_order"}),
+    "notification.send_document": frozenset({"send_media"}),
+    "notification.send_image": frozenset({"send_media"}),
+    "notification.send_location": frozenset({"send_media"}),
+    "notification.send_audio": frozenset({"send_media"}),
+    "notification.send_video": frozenset({"send_media"}),
+    "catalog.search_products": frozenset({"catalog"}),
+    "catalog.get_product": frozenset({"catalog"}),
+    "woocommerce.list_products": frozenset({"catalog"}),
+    "woocommerce.get_product": frozenset({"catalog"}),
+    "inventory.search_products": frozenset({"catalog"}),
+    "inventory.get_product": frozenset({"catalog"}),
+}
+
+
+def actions_of(names: Iterable[str]) -> frozenset[Action]:
+    """Every action that at least one of ``names`` does."""
+    out: set[Action] = set()
+    for name in names:
+        out |= TOOL_ACTIONS.get(name, frozenset())
+    return frozenset(out)
+
+
+#: Spec 047, enmienda del 2026-10-29 (D67): la agenda (``reservas.*``) solo funciona
+#: con el módulo Reservas encendido para el cliente. No es un conector: lo
+#: enciende Auphere (Acceso, o el paso automático de la spec 048), y el validador
+#: la da por conectada solo entonces (``agent_spec.validator.load_context``).
+RESERVAS_MODULE: Final = "reservas"
+
+
+def requires_module(key: str) -> str | None:
+    """El módulo del cliente que necesita una herramienta (hoy, la agenda), o
+    ``None``. Distinto de :func:`requires_connector`: un módulo no se conecta
+    desde la pantalla de capacidades, lo enciende Auphere."""
+    return RESERVAS_MODULE if key.startswith("reservas.") else None
+
+
 def business_name(key: str, kind: Kind, lang: str) -> str:
     """El nombre para el partner; el técnico si aún no tiene uno."""
     entry = CAPABILITY_NAMES.get((kind, key))
@@ -969,15 +1049,9 @@ def sectors_of(key: str, kind: Kind, tags: list[str] | None) -> list[str]:
 def requires_connector(key: str, kind: Kind) -> str | None:
     """Qué integración hace falta cuando el catálogo no la enlaza.
 
-    `booking.check_availability` y `booking.create_appointment` leen
-    `tenants.agendapro_public_url`, así que sin la agenda enlazada no
-    funcionan — pero en `tool_catalog` figuran como nativas, sin
-    `connector_id`, porque AgendaPro no se conecta con una fila de conector.
-    Sin esto la pantalla las daría por utilizables y mentiría.
-
-    Cancelar, modificar y consultar citas NO entran: están fuera del flujo
-    público y el agente las escala al dueño, así que no dependen de la
-    agenda (`api/admin/integrations.py`).
+    Una herramienta nativa en `tool_catalog` (sin `connector_id`) que solo
+    funciona con algo del cliente —hoy, el catálogo de Meta del canal— lo dice
+    aquí. Sin esto la pantalla la daría por utilizable y mentiría.
     """
     entry = CAPABILITY_NAMES.get((kind, key))
     return entry.get("requires") if entry else None

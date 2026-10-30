@@ -74,6 +74,11 @@ KG_READERS: dict[str, str] = {
         "Razón: es la lista de tablas cuyas consultas vigila el enforcer; nombra el "
         "grafo, no lo lee."
     ),
+    # Spec 048: el barbero de una cita casa con una persona de Reservas por nombre.
+    "api/src/nexus_api/services/reservations/passing.py": (
+        "test_passing_to_reservas_never_reads_another_clients_barber"
+    ),
+    "mcp/src/nexus_mcp/_agenda.py": "test_the_daily_report_never_takes_another_clients_barber",
 }
 
 
@@ -237,6 +242,113 @@ async def test_commission_tools_do_not_reach_another_clients_barber(db_session, 
     assert "BARBERO-B" not in repr(earnings)
 
 
+async def _reservas_of_a(db_session, tenant_id: uuid.UUID) -> dict[str, uuid.UUID]:
+    """En A, Reservas en Servicios con una persona que se llama como el barbero
+    de B, y un servicio."""
+    from nexus_api.db.models import (
+        Customer,
+        ReservationService,
+        ReservationSettings,
+        ReservationStaff,
+    )
+    from nexus_api.services.reservations.settings import apply_defaults
+
+    settings = ReservationSettings(tenant_id=tenant_id, version=1, updated_by="tests")
+    apply_defaults(settings, "services", None)
+    staff = ReservationStaff(tenant_id=tenant_id, name="BARBERO-B")
+    service = ReservationService(tenant_id=tenant_id, name="Corte", duration_minutes=30)
+    customer = Customer(tenant_id=tenant_id, identifier="56911112222", preferences={})
+    async with db_session.begin():
+        await set_tenant(db_session, tenant_id)
+        db_session.add_all([settings, staff, service, customer])
+    return {"staff": staff.id, "service": service.id, "customer": customer.id}
+
+
+async def test_passing_to_reservas_never_reads_another_clients_barber(
+    db_session, tenants_ab
+) -> None:
+    """Spec 048: una cita de A que apunta al barbero de B (una FK de una
+    columna no pasa por la RLS) no casa con la persona de A que se llama como
+    él: el nombre del barbero de B no se lee desde A."""
+    from datetime import UTC, datetime, timedelta
+
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import Appointment, AppointmentStatus
+    from nexus_api.services.reservations.passing import import_appointments
+
+    a = tenants_ab["a"]
+    ids = await _graph(db_session, tenants_ab)
+    world = await _reservas_of_a(db_session, a)
+    starts = datetime.now(UTC) + timedelta(days=3)
+    async with db_session.begin():
+        await set_tenant(db_session, a)
+        db_session.add(
+            Appointment(
+                tenant_id=a,
+                customer_id=world["customer"],
+                barber_id=ids["b"],
+                service_name="Corte",
+                service_duration_min=30,
+                starts_at=starts,
+                ends_at=starts + timedelta(minutes=30),
+                status=AppointmentStatus.BOOKED,
+                idempotency_key="iso-46-cross",
+            )
+        )
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, a):
+        result = await import_appointments(session, a, now=datetime.now(UTC))
+    assert result.imported == []
+    assert [(n["reason"], n["staff_name"]) for n in result.not_imported] == [
+        ("staff_not_found", None)
+    ]
+
+
+async def test_the_daily_report_never_takes_another_clients_barber(db_session, tenants_ab) -> None:
+    """Spec 048: una reserva de A con una persona que se llama como el barbero
+    de B no cobra con el modelo de B (60 %): desde A, el grafo de B no existe."""
+    from datetime import UTC, datetime, timedelta
+
+    from nexus_api.db.models import Reservation
+
+    a = tenants_ab["a"]
+    ids = await _graph(db_session, tenants_ab)
+    world = await _reservas_of_a(db_session, a)
+    today = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+    async with db_session.begin():
+        await set_tenant(db_session, a)
+        db_session.add(
+            Reservation(
+                tenant_id=a,
+                mode="services",
+                status="done",
+                starts_at=today,
+                ends_at=today + timedelta(minutes=30),
+                staff_id=world["staff"],
+                service_id=world["service"],
+                service_name="Corte",
+                price_minor=10_000,
+                currency="CLP",
+                customer_id=world["customer"],
+                origin="agent",
+                channel="whatsapp",
+                created_by_kind="system",
+                version=1,
+            )
+        )
+    registry = build_default_registry()
+    with tenant_context(a):
+        report = await registry.dispatch(
+            "commission.get_daily_report",
+            {"on_date": today.date().isoformat()},
+            whitelist=["commission.get_daily_report"],
+        )
+    result = report["result"]
+    assert result["appointments_count"] == 1
+    assert result["total_commission_cents"] == 0, "se aplicó el modelo del barbero de B"
+    assert all(b["barber_id"] != str(ids["b"]) for b in result["by_barber"])
+
+
 # ── la ficha, con datos: el alta y la lectura no tocan el grafo ──────────────
 #
 # Spec 047, T042 a T045. El barrido de arriba prueba que ningún módulo de la
@@ -283,7 +395,8 @@ async def test_the_alta_and_the_reading_write_nothing_to_the_graph(
         router.get("https://cultorbarber.com/").mock(
             return_value=httpx.Response(200, html=page("<p>Corte 15 €. Lunes a sábado.</p>"))
         )
-        assert await run_reader(fake_redis, FakeExtractor(reply=CULTOR_READ)) == 1
+        # La lectura y la identificación del sector que el alta dejó en cola (57.2).
+        assert await run_reader(fake_redis, FakeExtractor(reply=CULTOR_READ)) == 2
 
     # La ficha sí recibió lo leído (aplicado en una ficha vacía, o al lado como
     # sugerencia si una persona ya lo había escrito)…

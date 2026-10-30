@@ -7,6 +7,11 @@ is stripped before the proxy sees the kwargs.
 
 Not the master key. Not ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``.
 Retries stay on the same ``api_base``; there is no vendor fallback.
+
+Lo que paga Auphere sin partner (la evaluación del constructor y la calibración
+del juez del panel de operador) sale con la clave ``platform`` del mismo mapa,
+dentro de :func:`llm_proxy_platform_scope`. Es explícito: ninguna llamada sin
+partner cae en ella por defecto.
 """
 
 from __future__ import annotations
@@ -31,6 +36,10 @@ LLM_PROXY_UNAVAILABLE = "llm_proxy_unavailable"
 _CLIENT_INJECTED = frozenset({"partner_id", "api_key", "api_base"})
 
 _current_partner_id: ContextVar[uuid.UUID | None] = ContextVar("llm_proxy_partner_id", default=None)
+_platform_scope: ContextVar[bool] = ContextVar("llm_proxy_platform_scope", default=False)
+
+#: La entrada del mapa de claves virtuales con la clave de Auphere.
+PLATFORM_KEY_ENTRY = "platform"
 
 
 class LLMProxyUnavailable(Exception):
@@ -48,7 +57,8 @@ class LLMProxyUnavailable(Exception):
 class LiteLLMProxyTarget:
     api_base: str
     api_key: str
-    partner_id: uuid.UUID
+    #: ``None``: la paga Auphere (:func:`llm_proxy_platform_scope`).
+    partner_id: uuid.UUID | None
 
 
 def current_llm_proxy_partner() -> uuid.UUID | None:
@@ -77,6 +87,34 @@ def require_current_llm_proxy_partner() -> uuid.UUID:
     if partner_id is None:
         raise LLMProxyUnavailable("missing partner virtual key")
     return partner_id
+
+
+@contextmanager
+def llm_proxy_platform_scope() -> Iterator[None]:
+    """Lo que viene dentro lo paga Auphere, con su clave ``platform``.
+
+    Para las llamadas de operador que no son de ningún cliente. Quita el partner
+    que hubiera atado: una llamada la paga uno solo, y nunca un partner por una
+    evaluación de Auphere.
+    """
+    partner_token = _current_partner_id.set(None)
+    platform_token = _platform_scope.set(True)
+    try:
+        yield
+    finally:
+        _platform_scope.reset(platform_token)
+        _current_partner_id.reset(partner_token)
+
+
+def in_llm_proxy_platform_scope() -> bool:
+    return _platform_scope.get()
+
+
+def require_llm_proxy_payer() -> None:
+    """Con el proxy obligatorio, una llamada sale con un partner atado o dentro
+    del ámbito de plataforma. Si no, ``LLMProxyUnavailable``."""
+    if not in_llm_proxy_platform_scope():
+        require_current_llm_proxy_partner()
 
 
 def _env(*names: str) -> str:
@@ -115,7 +153,7 @@ def _virtual_keys_raw() -> str:
     return keys
 
 
-def virtual_key_for(partner_id: uuid.UUID) -> str:
+def _virtual_key_entry(entry: str) -> str:
     raw = _virtual_keys_raw()
     if not raw:
         return ""
@@ -126,21 +164,38 @@ def virtual_key_for(partner_id: uuid.UUID) -> str:
         return ""
     if not isinstance(parsed, dict):
         return ""
-    key = parsed.get(str(partner_id))
+    key = parsed.get(entry)
     if key is None:
-        key = parsed.get(str(partner_id).lower())
+        key = parsed.get(entry.lower())
     if not isinstance(key, str):
         return ""
     return key.strip()
 
 
+def virtual_key_for(partner_id: uuid.UUID) -> str:
+    return _virtual_key_entry(str(partner_id))
+
+
+def platform_virtual_key() -> str:
+    """La clave de Auphere (``"platform"`` en el mapa), o ``""``."""
+    return _virtual_key_entry(PLATFORM_KEY_ENTRY)
+
+
 def resolve_litellm_proxy(partner_id: uuid.UUID | None) -> LiteLLMProxyTarget:
-    """Fail-closed: missing base or partner virtual key → no hop."""
-    if partner_id is None:
+    """Fail-closed: missing base or partner virtual key → no hop.
+
+    Sin partner, solo el ámbito de plataforma tiene clave: la de Auphere.
+    """
+    if partner_id is None and not in_llm_proxy_platform_scope():
         raise LLMProxyUnavailable("missing partner virtual key")
     base = proxy_api_base()
     if not base:
         raise LLMProxyUnavailable("missing LITELLM_PROXY_API_BASE")
+    if partner_id is None:
+        key = platform_virtual_key()
+        if not key:
+            raise LLMProxyUnavailable("missing platform virtual key")
+        return LiteLLMProxyTarget(api_base=base, api_key=key, partner_id=None)
     key = virtual_key_for(partner_id)
     if not key:
         raise LLMProxyUnavailable("missing partner virtual key")

@@ -11,20 +11,33 @@ blanca) en la que:
 - **los mensajes extra** (``notification.send_text`` y compañía) son burbujas de
   más, que la pantalla señala (20.4);
 - **lo demás con efecto** queda bloqueado y anotado, como en el dry-run de hoy;
-- **lo que solo lee** (el catálogo, por ejemplo) corre de verdad.
+- **las herramientas de un conector** (Composio, o cualquiera con
+  ``connector_id`` en el catálogo) no se ejecutan **nunca**, tampoco las que
+  solo leen: traerían datos de verdad de los clientes finales del negocio, que
+  el partner no debe ver (C8). El agente recibe un resultado simulado y vacío,
+  marcado como tal, y la pantalla «Consultar …» o «Usar …»;
+- **«Preguntar antes de escribir»** no pregunta a nadie: queda «Preguntar al
+  dueño antes de …» y el turno sigue como si hubiera dicho que sí
+  (:meth:`SimulatedRegistry.note_simulated_approval`, desde el grafo);
+- **lo interno que solo lee** datos del propio negocio (la ficha, los
+  servicios) corre de verdad.
 
 Nada de lo que pasa aquí toca datos del cliente ni sale a un proveedor (20.1).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timedelta
 from typing import Any
 
+import sqlalchemy as sa
 from nexus_api.core.tenant_context import require_current_tenant
-from nexus_mcp import MCPRegistry, build_default_registry
+from nexus_api.db.models import ToolCatalog
+from nexus_mcp import MCPRegistry, ToolError, build_default_registry
 from nexus_mcp.base import make_envelope
+from nexus_mcp.servers.composio_proxy.proxy import ComposioProxyTool
+from nexus_mcp.servers.reservas.tools import NOT_ACTIVE
 
 from nexus_worker.simulation.world import World
 
@@ -47,6 +60,8 @@ PHRASES: dict[str, str] = {
     "queue.check_in": "Registrar la llegada del cliente",
     "queue.remove_from_queue": "Sacar al cliente de la cola",
 }
+#: La agenda de Reservas: solo con el módulo encendido para el cliente.
+AGENDA_PREFIX = "reservas."
 #: Herramientas cuyo mensaje es una burbuja más del turno.
 EXTRA_BUBBLES = frozenset({"notification.send_text", "response.send_interactive"})
 
@@ -62,10 +77,42 @@ def _date(raw: Any, world: World) -> date | None:
         return None
 
 
-class SimulatedRegistry(MCPRegistry):  # type: ignore[misc]
-    """La vista del registro que usan el playground y las pruebas."""
+async def load_connector_tools(session: Any) -> dict[str, bool]:
+    """Las herramientas de conectores del catálogo (``connector_id``) y si solo
+    leen: el playground no ejecuta ninguna. Tabla de plataforma."""
+    rows = await session.execute(
+        sa.select(ToolCatalog.name, ToolCatalog.read_only).where(
+            ToolCatalog.connector_id.is_not(None)
+        )
+    )
+    return {str(name): bool(read_only) for name, read_only in rows.tuples().all()}
 
-    def __init__(self, world: World, *, base: MCPRegistry | None = None) -> None:
+
+def _phrase(name: str) -> str:
+    return PHRASES.get(name) or f"Usar {name}"
+
+
+class SimulatedRegistry(MCPRegistry):  # type: ignore[misc]
+    """La vista del registro que usan el playground y las pruebas.
+
+    ``connector_tools``: las herramientas de conectores del catálogo y si solo
+    leen (:func:`load_connector_tools`). Un proxy de Composio cuenta siempre,
+    esté o no en el mapa.
+
+    ``reservas_on``: si el cliente tiene el módulo Reservas encendido. Apagado, la
+    agenda simulada responde lo mismo que el servidor de Reservas en el turno
+    («no está activo», spec 047, enmienda del 2026-10-29, D67): una prueba no puede
+    pasar en verde con una agenda que en el canal no funcionaría.
+    """
+
+    def __init__(
+        self,
+        world: World,
+        *,
+        base: MCPRegistry | None = None,
+        connector_tools: Mapping[str, bool] | None = None,
+        reservas_on: bool = True,
+    ) -> None:
         super().__init__(dry_run=True)
         source = base or build_default_registry()
         for name in source.names():
@@ -73,10 +120,22 @@ class SimulatedRegistry(MCPRegistry):  # type: ignore[misc]
         for name in source.internal_names():
             self._internal_tools[name] = source._internal_tools[name]
         self.world = world
+        self.connector_tools: dict[str, bool] = dict(connector_tools or {})
+        self.reservas_on = reservas_on
+
+    def note_simulated_approval(self, name: str, args: dict[str, Any]) -> None:
+        """«Preguntar antes de escribir»: lo que habría hecho, sin preguntar."""
+        phrase = _phrase(name)
+        self.world.did(name, f"Preguntar al dueño antes de {phrase[:1].lower()}{phrase[1:]}", args)
+
+    def _is_connector(self, name: str, tool: Any) -> bool:
+        return name in self.connector_tools or isinstance(tool, ComposioProxyTool)
 
     async def dispatch(self, name: str, args: dict[str, Any], *, whitelist: Iterable[str]) -> Any:
         tenant_id = require_current_tenant()
         if name in set(whitelist):
+            if name.startswith(AGENDA_PREFIX) and not self.reservas_on:
+                raise ToolError(NOT_ACTIVE)
             handler = _HANDLERS.get(name)
             if handler is not None:
                 result = handler(self.world, dict(args))
@@ -91,8 +150,32 @@ class SimulatedRegistry(MCPRegistry):  # type: ignore[misc]
                 return make_envelope(
                     tool=name, tenant_id=tenant_id, args=dict(args), result=_ok({}), status="ok"
                 )
+            if self._is_connector(name, tool):
+                # Un sistema del negocio: ni una lectura sale de aquí (C8).
+                reads = self.connector_tools.get(name, False)
+                phrase = (
+                    f"Consultar {name} (simulado, sin datos reales)" if reads else _phrase(name)
+                )
+                self.world.did(name, phrase, args)
+                return make_envelope(
+                    tool=name,
+                    tenant_id=tenant_id,
+                    args=dict(args),
+                    result=_ok(
+                        {
+                            "data": {},
+                            "note": (
+                                "Simulado: no se consultó el sistema del negocio; "
+                                "no hay datos de verdad."
+                                if reads
+                                else "Simulado: no se hizo nada de verdad."
+                            ),
+                        }
+                    ),
+                    status="ok",
+                )
             if tool is not None and tool.side_effects:
-                phrase = PHRASES.get(name) or f"Usar {name}"
+                phrase = _phrase(name)
                 if name == "escalate.escalate_to_human":
                     self.world.escalated = True
                     reason = str(args.get("reason") or "").strip()
@@ -241,4 +324,11 @@ def advance(world: World, minutes: int) -> None:
     world.set_now(world.now_at + timedelta(minutes=minutes))
 
 
-__all__ = ["EXTRA_BUBBLES", "PHRASES", "SimulatedRegistry", "advance", "simulated_now"]
+__all__ = [
+    "EXTRA_BUBBLES",
+    "PHRASES",
+    "SimulatedRegistry",
+    "advance",
+    "load_connector_tools",
+    "simulated_now",
+]

@@ -109,10 +109,12 @@ async def run_jobs(
     *,
     judge: Any | None = None,
     router: Any | None = None,
+    customer: Any | None = None,
 ) -> int:
     """Corre los trabajos en cola con los manejadores de verdad. ``builder=None``
-    es el generador sin modelo (local); ``judge`` y ``router`` son los del
-    trabajo ``tests`` (sin ``router``, el que haya puesto la prueba)."""
+    es el generador sin modelo (local); ``judge``, ``router`` y ``customer`` (el
+    cliente simulado; sin él, una pasada es un turno) son los del trabajo
+    ``tests`` (sin ``router``, el que haya puesto la prueba)."""
     from nexus_worker.jobs import DbJobStore, JobRegistry, drain_once
     from nexus_worker.jobs.handlers.agent_draft import make_agent_draft_handler
     from nexus_worker.jobs.handlers.agent_publish import make_publish_handler
@@ -130,6 +132,7 @@ async def run_jobs(
         make_agent_tests_handler(
             judge_factory=lambda _tenant: judge,
             router_factory=(lambda: router) if router is not None else default_router,
+            customer_factory=lambda _tenant: customer,
         ),
         timeout_s=120,
     )
@@ -138,6 +141,7 @@ async def run_jobs(
         make_publish_handler(
             judge_factory=lambda _tenant: judge,
             router_factory=(lambda: router) if router is not None else default_router,
+            customer_factory=lambda _tenant: customer,
         ),
         timeout_s=120,
     )
@@ -148,6 +152,36 @@ async def start_draft(client: Any, url: str, headers: dict[str, str], **body: An
     payload = {"name": "Recepción", "description": "Atiende las citas de la barbería por WhatsApp."}
     payload.update(body)
     return await client.post(f"{url}/agents/draft-jobs", json=payload, headers=headers)
+
+
+async def turn_reservas_on(db_session: AsyncSession, biz: Any) -> None:
+    """Reservas encendido para el cliente (módulo en la lista y su modo elegido),
+    como lo deja el panel de operador. Desde la enmienda del 2026-10-29 (D67) el
+    constructor solo da ``reservas.*`` a un agente si Reservas está encendido y lo
+    que describe la persona lo pide."""
+    from nexus_api.db.models.client_access import ClientAccess
+    from nexus_api.db.models.reservation import ReservationSettings
+    from nexus_api.services.reservations.settings import apply_defaults
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        if await db_session.get(ReservationSettings, biz.tenant_id) is None:
+            settings = ReservationSettings(tenant_id=biz.tenant_id, version=1, updated_by="tests")
+            apply_defaults(settings, "services", None)
+            db_session.add(settings)
+    async with db_session.begin():
+        access = await db_session.get(ClientAccess, biz.tenant_id)
+        if access is None:
+            db_session.add(
+                ClientAccess(
+                    tenant_id=biz.tenant_id,
+                    partner_id=biz.partner_id,
+                    enabled=False,
+                    modules=["reservas"],
+                    updated_by="operator:tests",
+                )
+            )
+        elif "reservas" not in (access.modules or []):
+            access.modules = [*(access.modules or []), "reservas"]
 
 
 async def job_row(db_session: AsyncSession, tenant_id: uuid.UUID, job_id: str | uuid.UUID) -> Job:
@@ -161,4 +195,4 @@ async def job_row(db_session: AsyncSession, tenant_id: uuid.UUID, job_id: str | 
     return job
 
 
-__all__ = ["RECEPTION", "FakeBuilder", "job_row", "run_jobs", "start_draft"]
+__all__ = ["RECEPTION", "FakeBuilder", "job_row", "run_jobs", "start_draft", "turn_reservas_on"]

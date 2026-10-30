@@ -29,9 +29,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import tenant_scoped_session
-from nexus_api.db.models import Job, KnowledgeDocument, Tenant, TenantStatus
+from nexus_api.db.models import Job, KnowledgeDocument
 from nexus_api.db.models.business import BusinessChange, BusinessSuggestion
-from nexus_api.services.business import sources as sources_service
 from nexus_api.services.business.profile_edits import update_policies
 from nexus_api.services.business.sections import Actor
 from nexus_api.services.knowledge_indexer import MAX_UPLOAD_BYTES
@@ -193,7 +192,8 @@ async def test_a_document_is_read_in_the_background_and_its_prices_become_propos
         assert doc is not None and doc.status == "pending" and doc.content_text is None
 
     extract = FakeExtractor(reply=PRICES)
-    assert await _run(fake_redis, extract) == 1
+    # La fuente y la identificación del sector que el alta dejó en cola (57.2).
+    assert await _run(fake_redis, extract) == 2
     listed = await _sources(client, a["headers"](), c["base"])
     (item,) = listed["items"]
     assert item["status"] == "read" and item["failure"] is None
@@ -378,50 +378,6 @@ async def test_rereading_brings_changes_as_proposals_never_overwrites(
     assert proposal["proposed_value"] == "Con 48 h." and proposal["source"] == "web"
 
 
-async def test_the_weekly_pass_rereads_old_webs_only(
-    client: Any, db_session: AsyncSession, world: dict[str, Any], fake_redis: Any
-) -> None:
-    a = world["a"]
-    c = await _cultor(client, db_session, world)
-    web = await client.post(
-        f"{c['base']}/sources",
-        json={"url": "https://cultorbarber.com/precios"},
-        headers=a["headers"](),
-    )
-    await _upload(client, a["headers"](), c["base"], "precios.txt", b"Corte 15 EUR", "text/plain")
-    with respx.mock(assert_all_called=False) as router:
-        router.get("https://cultorbarber.com/precios").mock(
-            return_value=httpx.Response(200, html="<p>Corte 15 EUR</p>")
-        )
-        await _run(fake_redis, FakeExtractor(reply={}))
-
-    now = datetime.now(UTC)
-    assert await sources_service.reread_due(fake_redis, now=now) == 0  # recién leída
-    later = now + timedelta(days=8)
-    assert await sources_service.reread_due(fake_redis, now=later) == 1  # la web, no el archivo
-    assert await sources_service.reread_due(fake_redis, now=later) == 0  # ya hay una en marcha
-    async with tenant_scoped_session(db_session, c["tenant_id"]):
-        live = (
-            await db_session.scalars(
-                sa.select(Job).where(Job.kind == "client_read", Job.status == "queued")
-            )
-        ).all()
-    assert [j.progress.get("source_id") for j in live] == [web.json()["source"]["id"]]
-
-    # Un cliente archivado no se relee.
-    async with db_session.begin():
-        tenant = await db_session.get(Tenant, c["tenant_id"])
-        assert tenant is not None
-        tenant.status = TenantStatus.ARCHIVED
-    async with tenant_scoped_session(db_session, c["tenant_id"]):
-        await db_session.execute(
-            sa.update(Job)
-            .where(Job.status == "queued")
-            .values(status="failed", error_code="timeout", finished_at=sa.func.now())
-        )
-    assert await sources_service.reread_due(fake_redis, now=later + timedelta(days=8)) == 0
-
-
 # ── quitar, con deshacer de 10 minutos ──────────────────────────────────────
 
 
@@ -515,28 +471,3 @@ async def test_another_partner_never_reaches_the_sources(
         f"{c['base']}/sources/{uuid.uuid4()}/remove", headers=world["a"]["headers"]()
     )
     assert foreign.status_code == 404
-
-
-async def test_the_cron_runs_the_weekly_pass_until_it_is_stopped(
-    fake_redis: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """``wk/streams/source_reread_cron.py``: una pasada por tick, y para con ``stop``."""
-    import asyncio
-
-    from nexus_worker.streams import source_reread_cron
-
-    calls: list[Any] = []
-    stop = asyncio.Event()
-
-    async def _pass(redis: Any, **_kw: Any) -> int:
-        calls.append(redis)
-        stop.set()
-        return 0
-
-    monkeypatch.setattr(source_reread_cron, "reread_due", _pass)
-    await asyncio.wait_for(
-        source_reread_cron.run_source_reread_cron(stop=stop, tick_seconds=0.01, redis=fake_redis),
-        timeout=5,
-    )
-    assert calls == [fake_redis]
-    assert source_reread_cron.TASK_NAME == "source-reread-cron"

@@ -75,7 +75,7 @@ específicas según síntoma]. Si entre ahora y la cita aparece
 [lista de red flags concretos], andá directo a
 {tenant.surgery_referral_hospital}."*
 
-Agenda control con `booking.create_appointment` para el día hábil
+Agenda control con `reservas.create` para el día hábil
 siguiente. NO escala a urgencia.
 
 ### Nivel 3 — RED FLAG → urgencia inmediata + escalate

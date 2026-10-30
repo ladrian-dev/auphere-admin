@@ -35,7 +35,7 @@ CTX = Context(
         "hubspot.create_contact": ToolInfo(
             "hubspot.create_contact", integration="hubspot", connected=False
         ),
-        "agendapro.book": ToolInfo("agendapro.book", integration="agendapro", connected=True),
+        "calendly.book": ToolInfo("calendly.book", integration="calendly", connected=True),
     }
 )
 GOOD_SERVICES = (ServiceFact("s1", "Corte de pelo", True, 30, True),)
@@ -80,7 +80,7 @@ def test_a_skill_without_its_integration_blocks_without_fallback_and_warns_with_
     # Conectada, no hay hallazgo.
     assert (
         _codes(
-            _input(doc={"skills": [{"key": "agenda", "enabled": True, "integration": "agendapro"}]})
+            _input(doc={"skills": [{"key": "agenda", "enabled": True, "integration": "calendly"}]})
         )
         == {}
     )
@@ -114,7 +114,8 @@ def test_contradictions_promises_and_unknown_tools() -> None:
     result = review(_input(doc={k: doc[k] for k in ("instructions", "procedures")}))
     codes = {(f.code, f.severity) for f in result.findings}
     assert ("contradicts_business", "warn") in codes
-    assert ("promises_without_tool", "warn") in codes
+    # Spec 047, enmienda del 2026-10-30 (65.5): en un agente estructurado, bloquea.
+    assert ("promises_without_tool", "block") in codes
     assert ("unknown_tool", "block") in codes
     unknown = next(f for f in result.findings if f.code == "unknown_tool")
     assert unknown.fix is not None and unknown.fix["kind"] == "proposal"
@@ -142,3 +143,33 @@ def test_the_ai_disclosure_undecided_blocks_and_on_ask_warns_in_the_eu() -> None
 def test_blocking_findings_are_what_the_gate_reads() -> None:
     result = review(_input(has_hours=False, doc={"ai_disclosure": {"decided": False}}))
     assert {f.code for f in result.blocking} == {"no_hours", "ai_disclosure_undecided"}
+
+
+def test_the_booking_promise_is_kept_by_reservas_and_booking_and_not_by_agendapro() -> None:
+    """Spec 048 (requisitos 1.9 y 2.4): AgendaPro no longer keeps a promise to
+    book; ``booking.*`` still does, for the versions that book with it until
+    they pass to Reservas, and ``reservas.*`` does."""
+    from nexus_api.api.console.capability_names import TOOL_ACTIONS
+    from nexus_api.services.agent_spec.compiler import incoherences
+
+    # Spec 047, enmienda del 2026-10-30 (65.5): lo que hace cada herramienta, no
+    # su prefijo.
+    keepers = {name for name, actions in TOOL_ACTIONS.items() if "book" in actions}
+    assert not [t for t in keepers if t.startswith("agendapro")]
+    assert {"reservas.create", "booking.create_appointment"} <= keepers
+
+    def promises_unkept(tool: str) -> bool:
+        doc = copy.deepcopy(STRUCTURED)
+        doc["tools"] = [tool]
+        doc["procedures"] = []
+        doc["instructions"]["sections"] = [
+            {"title": "Citas", "body": "Reserva citas a quien lo pida."}
+        ]
+        found = incoherences(AgentSpec.model_validate(doc), None, [tool])
+        return any(
+            i.code == "promises_without_tool" and i.detail == "reservar citas" for i in found
+        )
+
+    assert promises_unkept("agendapro.create_appointment")
+    assert not promises_unkept("booking.create_appointment")
+    assert not promises_unkept("reservas.create")

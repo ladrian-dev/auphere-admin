@@ -7,9 +7,11 @@ cambia en Reservas:
 - la primera activación crea los ajustes con los valores de partida;
 - cambiar de modo con reservas futuras vivas es un 409 con cuántas, salvo que el
   admin pida **cancelarlas y avisar**; nunca conviven dos modos en una agenda;
-- activar o desactivar prepara, por cada agente activo, una versión **no
-  activa** con (o sin) ``reservas.*`` y sin ``booking.*``. Promoverla es de una
-  persona (constitución §IV).
+- activar o desactivar prepara, por cada agente activo, su borrador con (o
+  sin) ``reservas.*`` y sin ``booking.*``. Promoverlo es de una persona
+  (constitución §IV). Activar además pasa el cliente a Reservas (spec 048,
+  ``passing.py``): ``reservas.*`` también en el AgentSpec y en el texto, y sus
+  citas futuras de ``appointments`` importadas, con su informe.
 
 La sesión del admin trabaja sin RLS (``declare_tenant``). Esta parte se hace
 bajo la RLS del cliente **en la misma transacción** (:func:`as_tenant`), para
@@ -39,24 +41,10 @@ from nexus_api.db.models import (
     Reservation,
     ReservationSettings,
 )
-from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.reservations import passing
 from nexus_api.services.reservations.core import Actor, cancel_booking, load_ctx
+from nexus_api.services.reservations.passing import LEGACY_PREFIX, RESERVAS_TOOLS
 from nexus_api.services.reservations.settings import apply_defaults
-
-#: Lo que el agente gana al activar Reservas (contrato ``agent-tools.md``).
-RESERVAS_TOOLS: tuple[str, ...] = (
-    "reservas.services",
-    "reservas.find_slots",
-    "reservas.create",
-    "reservas.list_mine",
-    "reservas.reschedule",
-    "reservas.cancel",
-    "reservas.confirm_attendance",
-    "reservas.join_waitlist",
-    "reservas.answer_offer",
-)
-#: Lo que pierde: escribían en ``appointments``, que la consola no ve.
-LEGACY_PREFIX = "booking."
 
 
 class ReservasChoiceError(Exception):
@@ -114,8 +102,12 @@ async def apply_choice(
     choice: Choice | None,
     actor: str,
     now: datetime,
+    prepare_agents: bool = True,
 ) -> None:
-    """Lo que la llamada del admin cambia en Reservas. Corre bajo la RLS."""
+    """Lo que la llamada del admin cambia en Reservas. Corre bajo la RLS.
+
+    ``prepare_agents=False``: only the settings — the caller takes care of the
+    agents (spec 048, the automatic pass publishes their versions itself)."""
     settings = await session.get(ReservationSettings, tenant_id)
     if choice is not None:
         _validate(choice)
@@ -180,51 +172,21 @@ async def apply_choice(
         settings.version += 1
         settings.updated_by = actor
 
-    if had_module != wants_module:
-        await prepare_agent_versions(session, enable=wants_module, actor=actor)
+    if prepare_agents and had_module != wants_module:
+        if wants_module:
+            # Spec 048: activar es pasar el cliente a Reservas.
+            await passing.pass_to_reservas(
+                session, tenant_id, actor=actor, now=now, every_agent=True
+            )
+        else:
+            await prepare_agent_versions(session, enable=False, actor=actor)
     await session.flush()
 
 
-def _tools(current: list[str], *, enable: bool) -> list[str]:
-    tools = set(current)
-    if enable:
-        tools = {t for t in tools if not t.startswith(LEGACY_PREFIX)} | set(RESERVAS_TOOLS)
-    else:
-        tools -= set(RESERVAS_TOOLS)
-    return sorted(tools)
-
-
 async def prepare_agent_versions(session: AsyncSession, *, enable: bool, actor: str) -> int:
-    """Una versión preparada por agente activo, sin promover."""
-    svc = AgentConfigService(session)
-    agents = (
-        await session.execute(
-            sa.select(Agent.id)
-            .where(Agent.status == AgentStatus.ACTIVE.value)
-            .order_by(Agent.created_at)
-        )
-    ).scalars()
-    staged = 0
-    for agent_id in list(agents):
-        versions = await svc.list_versions(agent_id=agent_id)
-        base = max(versions, key=lambda v: v.version, default=None)
-        if base is None:
-            continue
-        new_tools = _tools(list(base.tools), enable=enable)
-        if new_tools == sorted(base.tools):
-            continue
-        await svc.stage_new_version(
-            actor=actor,
-            system_prompt_rendered=base.system_prompt_rendered,
-            channels=list(base.channels),
-            tools=new_tools,
-            policies=dict(base.policies),
-            seed_template_ref=base.seed_template_ref,
-            kg_schema_id=base.kg_schema_id,
-            agent_id=agent_id,
-        )
-        staged += 1
-    return staged
+    """El borrador de cada agente activo con (o sin) Reservas, sin promover.
+    Cuántos cambió."""
+    return len(await passing.prepare_agent_versions(session, enable=enable, actor=actor))
 
 
 async def admin_view(
@@ -264,6 +226,7 @@ async def admin_view(
 
 
 __all__ = [
+    "LEGACY_PREFIX",
     "RESERVAS_TOOLS",
     "Choice",
     "ReservasChoiceError",

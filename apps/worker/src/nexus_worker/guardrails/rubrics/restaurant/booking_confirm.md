@@ -14,9 +14,9 @@ en cualquier criterio → `overall: fail`.
 
 La respuesta SOLO puede afirmar que la reserva está confirmada si:
 
-- en los `tool_results` aparece un envelope de
-  `booking.create_appointment` con `status: "confirmed"` (o equivalente
-  para el connector — AgendaPro `booking.confirmed`, Google Calendar
+- en los `tool_results` aparece un envelope de `reservas.create` (o de
+  `booking.create_appointment`, en un agente que aún no pasó a Reservas)
+  con la reserva hecha (o equivalente para el connector — Google Calendar
   `event_created`), O
 - la respuesta usa lenguaje tentativo claro: "voy a intentar reservar",
   "déjame confirmarte", "te confirmo en un momento", "estoy procesando

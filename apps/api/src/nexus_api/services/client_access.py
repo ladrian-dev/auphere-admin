@@ -102,7 +102,7 @@ def _ordered(modules: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     return tuple(m for m in CLIENT_MODULES if m in have)
 
 
-async def _partner_of(session: AsyncSession, tenant: Tenant) -> Partner | None:
+async def partner_of(session: AsyncSession, tenant: Tenant) -> Partner | None:
     """El partner del cliente: el de ``tenants.partner_id`` si está mapeado, y
     si no, el de su mapeo en ``partner_tenants``."""
     stmt = sa.select(PartnerTenant.partner_id).where(PartnerTenant.tenant_id == tenant.id)
@@ -182,7 +182,7 @@ async def _members(session: AsyncSession, tenant_id: uuid.UUID) -> list[MemberRo
 
 async def read_access(session: AsyncSession, tenant_id: uuid.UUID) -> AccessView:
     tenant = await _tenant(session, tenant_id)
-    partner = await _partner_of(session, tenant)
+    partner = await partner_of(session, tenant)
     reason: str | None = None
     if tenant.status == TenantStatus.ARCHIVED:
         reason = "archived"
@@ -255,7 +255,7 @@ async def set_access(
     todas las personas del cliente (R1.7). Con ``reservas``, el modo de
     Reservas (spec 043), en la misma transacción."""
     tenant = await _tenant(session, tenant_id)
-    partner = await _partner_of(session, tenant)
+    partner = await partner_of(session, tenant)
     if partner is None:
         raise ClientAccessError("no_partner", 409)
     if tenant.status == TenantStatus.ARCHIVED:
@@ -268,10 +268,10 @@ async def set_access(
         raise ClientAccessError("no_modules", 422)
     access = await session.get(ClientAccess, tenant_id)
     had_inbox = bool(access and ClientModule.INBOX.value in (access.modules or []))
-    had_reservas = bool(
-        access and access.enabled and ClientModule.RESERVAS.value in (access.modules or [])
-    )
-    wants_reservas = enabled and ClientModule.RESERVAS.value in ordered
+    # Spec 048 (decision 16): Reservas is on when it is on the list; ``enabled``
+    # only says whether the client's people can sign in.
+    had_reservas = bool(access and access.reservas_on)
+    wants_reservas = ClientModule.RESERVAS.value in ordered
     wants_inbox = ClientModule.INBOX.value in ordered
     if wants_inbox and not had_inbox and not await _whatsapp_connected(session, tenant_id):
         raise ClientAccessError("inbox_requires_whatsapp", 422)
@@ -556,6 +556,7 @@ __all__ = [
     "accept_invitation",
     "client_name",
     "invite",
+    "partner_of",
     "pending_invitation",
     "read_access",
     "resend",

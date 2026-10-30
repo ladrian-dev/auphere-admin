@@ -34,7 +34,7 @@ from nexus_api.db.models.agent_spec import AgentTest, AgentTestSuite
 from tests.conftest import add_console_member
 
 from ..business._business_world import Biz, new_business, write
-from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft
+from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft, turn_reservas_on
 from .test_agent_suite import BOOKING_TEST, Booker
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -51,6 +51,8 @@ def one_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 async def biz(client: Any, db_session: AsyncSession, console_world: dict[str, Any]) -> Biz:
     biz = await new_business(client, db_session, console_world, name="Barbería Cultor")
+    # La barbería tiene Reservas encendido: sin él, la agenda cuenta como sin activar (D67).
+    await turn_reservas_on(db_session, biz)
     await write(client, biz, "PUT", "/hours", {"layout": "daily", "days": WEEK}, revision=0)
     return biz
 
@@ -337,7 +339,9 @@ async def test_the_same_gate_in_the_old_console_and_the_operator_panel(
         json={},
         headers=admin_headers,
     )
-    assert admin.status_code == 409 and admin.json()["detail"]["code"] == "gate_blocked"
+    # Spec 047 (requisito 23): the operator's promote is an audited jump: no
+    # reason, no promote.
+    assert admin.status_code == 422 and admin.json()["detail"]["code"] == "reason_required"
     forced = await client.post(
         f"/admin/tenants/{biz.tenant_id}/agent-config/{draft.version}/promote",
         json={"override": True, "reason": "Incidencia: se publica a mano"},

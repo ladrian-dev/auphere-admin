@@ -52,7 +52,6 @@ from nexus_api.api.console import (
     conversations,
     diagnostics,
     home,
-    integrations,
     invitations,
     jobs,
     keys,
@@ -66,11 +65,13 @@ from nexus_api.api.console import (
     playbook,
     playground,
     search,
+    sectors,
     seed_templates,
     session_catalog,
     session_codes,
     signup,
     skills,
+    suggested_agents,
     support,
     team,
     teammates,
@@ -147,7 +148,6 @@ router.include_router(templates.router)
 # lane agent-tools (CP-11/13/14/15/31)
 router.include_router(agent_settings.router)
 router.include_router(tools.router)
-router.include_router(integrations.router)
 router.include_router(skills.router)
 # Spec 017 (R5): herramientas y habilidades, en una sola lectura.
 router.include_router(capabilities_client.router)
@@ -186,3 +186,7 @@ router.include_router(business.router)
 # Spec 047 (de la T069 a la T072): la ficha entera, su procedencia, su historial, sus
 # propuestas, sus fuentes y el ClientSpec.
 router.include_router(business_records.router)
+# Spec 047, enmienda del 2026-10-29: los sectores con guía (57.5) y los agentes que
+# sugiere el constructor del cliente (60.6).
+router.include_router(sectors.router)
+router.include_router(suggested_agents.router)

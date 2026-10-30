@@ -30,14 +30,17 @@ from nexus_api.services.testing.judge import calibration_set, judge_calibrated
 from tests.conftest import add_console_member
 
 from ..business._business_world import Biz, new_business
-from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft
+from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft, turn_reservas_on
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 @pytest.fixture
 async def biz(client: Any, db_session: AsyncSession, console_world: dict[str, Any]) -> Biz:
-    return await new_business(client, db_session, console_world, name="Barbería Cultor")
+    biz = await new_business(client, db_session, console_world, name="Barbería Cultor")
+    # La barbería tiene Reservas encendido: sin él, la agenda cuenta como sin activar (D67).
+    await turn_reservas_on(db_session, biz)
+    return biz
 
 
 @pytest_asyncio.fixture
@@ -200,13 +203,13 @@ async def test_the_judge_blocks_only_once_calibrated(
 async def test_the_builder_eval_measures_the_bank_and_compares(
     client: Any, ops: dict[str, str]
 ) -> None:
-    """T100 (54.4, CE-002, CE-003): el banco v1 tiene 100 descripciones; la
-    evaluación guarda el validador a la primera y el p90, y la diferencia con la
-    vez anterior."""
+    """T100 (54.4, CE-002, CE-003): el banco v2 tiene las 100 descripciones de
+    antes, cada una con su negocio, y 20 de sectores sin guía (58.7); la evaluación
+    guarda el validador a la primera y el p90, y la diferencia con la vez anterior."""
     from nexus_api.api.admin.sector_tests import set_eval_model
     from nexus_api.services.builder.evaluation import bank
 
-    assert len(bank()) == 100
+    assert len(bank()) == 120
     calls = {"n": 0}
 
     async def model(_messages: list[dict[str, str]]) -> str:

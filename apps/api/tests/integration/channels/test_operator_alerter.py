@@ -99,7 +99,7 @@ async def test_alerter_sends_needs_reauth_template(
     info = two_tenants_with_channels["a"]
     audit_id = await _seed_audit(
         tenant_info=info,
-        action="integration.agendapro.needs_reauth",
+        action="connector.needs_reauth",
         after_json={"checked_at": "2026-05-09T12:00:00+00:00", "notes": "login form returned"},
     )
 
@@ -150,7 +150,7 @@ async def test_alerter_marks_failed_when_send_fails(
     fake_adapter.fail_template_with = RuntimeError("provider unavailable")
     audit_id = await _seed_audit(
         tenant_info=info,
-        action="integration.agendapro.needs_reauth",
+        action="connector.needs_reauth",
         after_json={},
     )
 

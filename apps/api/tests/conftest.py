@@ -337,6 +337,8 @@ _TRUNCATE_TABLES = (
     # Spec 047 (0191): los países de la beta de «Iniciar sesión con WhatsApp».
     # Sin semilla; una prueba que abre un país no lo deja abierto a la siguiente.
     "whatsapp_login_beta_countries",
+    # Spec 047, enmienda (0207): las guías convertidas por Auphere. Sin semilla.
+    "sector_guides",
     "business_links",
     "business_suggestions",
     "business_changes",
@@ -548,8 +550,8 @@ async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
         )
         async with test_engine.begin() as conn:
             # Block L — clean test-inserted tool_catalog rows. The baseline
-            # rows are seeded by migrations 0003 (21 LLM-facing) + 0009 (6
-            # agendapro internal) and must survive. Connector-derived rows
+            # rows are seeded by migrations (0003's 21 LLM-facing and the
+            # ones after it) and must survive. Connector-derived rows
             # use mcp_server starting with "composio:" (see seed YAMLs) or
             # have a non-null connector_id (set by tools.sync). The
             # ``SHARED_TOOL_FOR_ISOLATION`` row from
@@ -563,6 +565,15 @@ async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
                 )
             )
             await conn.execute(text("DELETE FROM connectors"))
+            # Spec 047, enmienda (T201): las pruebas de una guía convertida entran
+            # en el catálogo con su clave; las de los seis sectores (0188) quedan.
+            await conn.execute(
+                text(
+                    "DELETE FROM sector_test_catalog WHERE sector_key NOT IN ("
+                    "'barberia_peluqueria', 'clinica', 'restaurante', 'tienda', "
+                    "'servicios_profesionales', 'mayorista')"
+                )
+            )
 
 
 # ── seed helpers ────────────────────────────────────────────────────────────────

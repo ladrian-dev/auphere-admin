@@ -127,9 +127,9 @@ async def test_capabilities_come_grouped_by_what_the_business_wants(
     # Herramientas y habilidades, juntas y sin distinguirse por la forma.
     assert {"tool", "skill"} <= {i["kind"] for i in todas}
     # Y con nombre de negocio, no técnico.
-    reservar = next(i for i in todas if i["key"] == "booking.create_appointment")
-    assert reservar["business_name"] == "Reservar una cita"
-    assert reservar["technical"]["name"] == "booking.create_appointment"
+    reservar = next(i for i in todas if i["key"] == "reservas.create")
+    assert reservar["business_name"] == "Reservar"
+    assert reservar["technical"]["name"] == "reservas.create"
 
 
 async def test_the_sector_hides_what_is_not_for_this_client(
@@ -182,21 +182,23 @@ async def test_the_search_looks_in_the_language_the_partner_reads(
     await _seed(db_session, a["tenant_id"], seed=None)
 
     es = (
-        await client.get(f"/console/clients/{a['ref']}/capabilities?q=cita", headers=a["headers"]())
+        await client.get(
+            f"/console/clients/{a['ref']}/capabilities?q=reserva", headers=a["headers"]()
+        )
     ).json()
     claves = {i["key"] for g in es["groups"] for i in g["items"]}
-    assert "booking.create_appointment" in claves
+    assert "reservas.create" in claves
     assert "notification.send_text" not in claves
 
     # La misma búsqueda en inglés encuentra lo inglés, no lo español.
     en = (
         await client.get(
-            f"/console/clients/{a['ref']}/capabilities?q=appointment&lang=en",
+            f"/console/clients/{a['ref']}/capabilities?q=book&lang=en",
             headers=a["headers"](),
         )
     ).json()
     claves_en = {i["key"] for g in en["groups"] for i in g["items"]}
-    assert "booking.create_appointment" in claves_en
+    assert "reservas.create" in claves_en
 
     # Busca también en la descripción, no solo en el nombre.
     desc = (
@@ -204,7 +206,7 @@ async def test_the_search_looks_in_the_language_the_partner_reads(
             f"/console/clients/{a['ref']}/capabilities?q=agenda", headers=a["headers"]()
         )
     ).json()
-    assert any(i["key"] == "booking.create_appointment" for g in desc["groups"] for i in g["items"])
+    assert any(i["key"] == "reservas.create" for g in desc["groups"] for i in g["items"])
 
 
 async def test_recommended_are_the_ones_the_sector_template_turns_on(
@@ -270,7 +272,7 @@ async def test_one_change_saves_into_the_draft_and_leaves_its_trace(
     r = await client.put(
         f"/console/clients/{a['ref']}/capabilities",
         headers=a["headers"](),
-        json={"key": "booking.create_appointment", "kind": "tool", "enabled": True},
+        json={"key": "reservas.create", "kind": "tool", "enabled": True},
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -282,7 +284,7 @@ async def test_one_change_saves_into_the_draft_and_leaves_its_trace(
             AgentConfig.tenant_id == a["tenant_id"], AgentConfig.status == AgentConfigStatus.STAGED
         )
     )
-    assert draft is not None and draft.tools == ["booking.create_appointment"]
+    assert draft is not None and draft.tools == ["reservas.create"]
 
     rows = (
         (
@@ -294,7 +296,7 @@ async def test_one_change_saves_into_the_draft_and_leaves_its_trace(
         .all()
     )
     assert rows, "cambiar una capacidad tiene que dejar su fila de auditoría"
-    assert rows[0].after_json["key"] == "booking.create_appointment"
+    assert rows[0].after_json["key"] == "reservas.create"
     assert rows[0].after_json["enabled"] is True
 
 
@@ -303,12 +305,12 @@ async def test_turning_one_on_does_not_wipe_the_others(client, console_world, db
     Mandar la lista entera desde la pantalla era lo que hacía que dos
     personas editando a la vez se pisaran."""
     a = console_world["a"]
-    await _seed(db_session, a["tenant_id"], tools=["booking.check_availability"], seed=None)
+    await _seed(db_session, a["tenant_id"], tools=["reservas.find_slots"], seed=None)
 
     r = await client.put(
         f"/console/clients/{a['ref']}/capabilities",
         headers=a["headers"](),
-        json={"key": "booking.create_appointment", "kind": "tool", "enabled": True},
+        json={"key": "reservas.create", "kind": "tool", "enabled": True},
     )
     assert r.status_code == 200, r.text
     draft = await db_session.scalar(
@@ -317,7 +319,7 @@ async def test_turning_one_on_does_not_wipe_the_others(client, console_world, db
         )
     )
     assert draft is not None
-    assert set(draft.tools) == {"booking.check_availability", "booking.create_appointment"}
+    assert set(draft.tools) == {"reservas.find_slots", "reservas.create"}
 
 
 async def test_turning_on_something_whose_integration_is_missing_is_allowed(
@@ -346,14 +348,14 @@ async def test_needs_approval_is_refused(client, console_world, db_session) -> N
     r = await client.put(
         f"/console/clients/{a['ref']}/capabilities",
         headers=a["headers"](),
-        json={"key": "booking.create_appointment", "kind": "tool", "mode": "needs_approval"},
+        json={"key": "reservas.create", "kind": "tool", "mode": "needs_approval"},
     )
     assert r.status_code == 422
     assert r.json()["detail"] == "mode_not_supported"
 
     # Y también en el endpoint viejo, que sigue existiendo (R5.7).
     old = await client.put(
-        f"/console/clients/{a['ref']}/tools/booking.create_appointment/mode",
+        f"/console/clients/{a['ref']}/tools/reservas.create/mode",
         headers=a["headers"](),
         json={"mode": "needs_approval"},
     )
@@ -377,7 +379,7 @@ async def test_going_back_to_the_default_removes_the_override(
     a = console_world["a"]
     await _seed(db_session, a["tenant_id"], seed=None)
     url = f"/console/clients/{a['ref']}/capabilities"
-    body = {"key": "booking.create_appointment", "kind": "tool"}
+    body = {"key": "reservas.create", "kind": "tool"}
 
     puesto = await client.put(url, headers=a["headers"](), json={**body, "mode": "blocked"})
     assert puesto.status_code == 200, puesto.text
@@ -482,7 +484,7 @@ async def test_reading_needs_only_agents_read_and_writing_does_not(
     denied = await client.put(
         f"/console/clients/{a['ref']}/capabilities",
         headers=a["headers"](),
-        json={"key": "booking.create_appointment", "kind": "tool", "enabled": True},
+        json={"key": "reservas.create", "kind": "tool", "enabled": True},
     )
     assert denied.status_code == 403
 
@@ -494,59 +496,24 @@ async def test_another_partner_sees_nothing(client, console_world, db_session) -
     assert r.status_code == 404
 
 
-async def test_booking_says_it_needs_agendapro_even_though_the_catalogue_does_not_link_it(
+async def test_retired_booking_is_not_offered_and_reservas_needs_no_connector(
     client, console_world, db_session
 ) -> None:
-    """AgendaPro no se conecta con una fila de conector: se pega la URL
-    pública de la agenda en el cliente. Por eso sus dos herramientas figuran
-    como nativas en el catálogo, y la pantalla las daba por utilizables.
-
-    Solo son dos: `check_availability` y `create_appointment` leen esa URL
-    (`api/admin/integrations.py`). Cancelar, modificar y consultar citas
-    están fuera del flujo público —el agente las escala al dueño—, así que
-    no dependen de la agenda y no deben pedirla.
-    """
-    from nexus_api.db.models import Tenant
-
+    """Spec 048: ``booking.*`` está retirada —la 0205 la marca ``deprecated``—
+    y la pantalla no la ofrece, ni como herramienta ni pidiendo una agenda que
+    conectar. La agenda es Reservas: nativa, sin conector."""
     a = console_world["a"]
     await _seed(
         db_session,
         a["tenant_id"],
-        tools=["booking.create_appointment", "booking.cancel_appointment"],
+        tools=["booking.create_appointment", "reservas.create"],
         seed=None,
     )
-
-    def find(body, key):
-        return next(i for g in body["groups"] for i in g["items"] if i["key"] == key)
-
     body = (
         await client.get(f"/console/clients/{a['ref']}/capabilities", headers=a["headers"]())
     ).json()
-
-    crear = find(body, "booking.create_appointment")
-    assert crear["connector"] is not None, (
-        "sin agenda enlazada, reservar no puede darse por utilizable"
-    )
-    assert crear["connector"]["slug"] == "agendapro"
-    assert crear["connector"]["status"] != "connected"
-    assert crear["enabled"] is True and crear["usable"] is False
-
-    # Cancelar no pasa por la agenda: no debe pedirla.
-    cancelar = find(body, "booking.cancel_appointment")
-    assert cancelar["connector"] is None
-    assert cancelar["usable"] is True
-
-    # Con la agenda enlazada, reservar pasa a utilizable sin tocar nada más.
-    await db_session.execute(
-        sa.update(Tenant)
-        .where(Tenant.id == a["tenant_id"])
-        .values(agendapro_public_url="https://negocio.site.agendapro.com/cl/sucursal")
-    )
-    await db_session.commit()
-
-    body = (
-        await client.get(f"/console/clients/{a['ref']}/capabilities", headers=a["headers"]())
-    ).json()
-    crear = find(body, "booking.create_appointment")
-    assert crear["connector"]["status"] == "connected"
-    assert crear["usable"] is True
+    items = {i["key"]: i for g in body["groups"] for i in g["items"]}
+    assert not [k for k in items if k.startswith(("booking.", "agendapro"))]
+    crear = items["reservas.create"]
+    assert crear["connector"] is None
+    assert crear["enabled"] is True and crear["usable"] is True

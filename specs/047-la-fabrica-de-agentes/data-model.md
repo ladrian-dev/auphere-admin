@@ -626,6 +626,66 @@ Se activan por defecto en los clientes de partners con la consola nueva.
 
 ---
 
+## 10b. Enmienda del 2026-10-29 (migración 0206)
+
+### `business_profiles.sector` (columna nueva)
+
+JSONB, `NULL` mientras se identifica: `{key, label, confidence, source,
+decided_by}`. `key` es una guía de Auphere u `otro`; `label` de 1 a 40;
+`source` ∈ `niche`, `info`, `web`, `person`, `fallback`; `decided_by` ∈ `system`,
+`person`. La base comprueba la forma (`ck_business_profiles_sector`). Se lee con
+`services/business/sector.stored` (requisito 57.1; D58 y D59).
+
+### `generated_guides` (nueva, del cliente)
+
+`id`, `tenant_id`, `sector_label` (1–40), `label_key` (normalizada; una viva por
+cliente y etiqueta), `guide` (objeto: qué preguntar, procedimientos, riesgos,
+herramientas), `tests` (hasta 12), `status` (`generated`, `reviewed`, `promoted`,
+`archived`), `job_id` (FK compuesta a `jobs`, `SET NULL`), `reviewed_by`/`_at`,
+`promoted_to`/`_at`, `created_at`, `updated_at`. RLS FORCE. La escribe la T201
+(requisito 58.4; D47 y D65).
+
+### `suggested_agents` (nueva, del cliente)
+
+`id`, `tenant_id`, `name` (1–40), `name_key` (normalizado; uno pendiente por
+nombre), `description` (20–1.024), `role` (`reception`, `sales`, `billing`,
+`support` o nulo), `status` (`open`, `dismissed`, `superseded`), `fingerprint`
+(la huella de la ficha), `job_id` (FK compuesta a `jobs`, `SET NULL`),
+`decided_by`, `decided_at`, `created_at`, `updated_at`. RLS FORCE (requisito 60.6;
+D61).
+
+### Columnas nuevas en las pruebas
+
+- `agent_tests.generated_guide_id`: FK compuesta a `generated_guides`
+  (`SET NULL`); la prueba del sector salió de una guía generada (`origin:
+  generated`).
+- `agent_test_results.stop`: `plan_done`, `goodbye`, `handoff` o `turn_limit`
+  (requisito 61.3). La conversación de la pasada ya vivía en `transcript`.
+
+### `jobs.kind`
+
+Gana `sector_identify` (T200).
+
+### `sector_guides` (nueva, de plataforma; migración 0207)
+
+`key` (PK, `^[a-z_]{2,40}$`, la de `generated_guides.promoted_to` y la de sus
+pruebas en `sector_test_catalog`), `label` (1–40), `label_key` (única),
+`guide` (objeto, la forma de la guía), `version`, `published_by`,
+`published_at`. Sin `tenant_id` ni nada que apunte al cliente del que salió:
+«Convertir en guía de Auphere» (requisito 58.5; D66). `nexus_app` solo la lee; la
+escribe el panel de operador. Un cliente de «otro» con la misma `label_key` recibe
+esta guía en lugar de generar la suya. Las guías de las plantillas viven en el
+código (`services/builder/guides/guides.yaml`).
+
+### Lo que escriben T201 y T206 (sin migración)
+
+- `agent_test_results.transcript`: desde la T206, cada turno es `{role, text,
+  bubbles, actions, model?}` (antes, `{role, bubbles}`); la API sirve `{role, text,
+  actions}`.
+- `agent_test_results.final_state`: añade `booking.items` (servicio, día y hora),
+  `escalation` (`to`, `reason`) y `payment.requested`.
+- `agent_test_runs.summary.warnings`: `judge_same_family` o `judge_same_model`.
+
 ## 11. Avisos y auditoría
 
 - **Notificaciones** (`console_notifications`, existe): `NotificationKind` gana

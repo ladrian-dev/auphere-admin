@@ -118,6 +118,23 @@ async def enqueue_job(redis: Redis, job: Job) -> None:
     )
 
 
+def enqueue_after_commit(session: AsyncSession, job: Job) -> None:
+    """Avisa al worker de ``job`` cuando la transacción **exterior** de ``session``
+    se confirme, y nunca si hace rollback (``business.writes.after_commit``). Para
+    los trabajos que lanza el sistema desde un servicio (el sector, la relectura,
+    el constructor del cliente): quien escribe no tiene que acordarse de encolar."""
+    from nexus_api.services.business.writes import after_commit
+
+    fields = {"tenant_id": str(job.tenant_id), "job_id": str(job.id), "kind": job.kind}
+
+    async def push() -> None:
+        from nexus_api.core import redis_client
+
+        await xadd_capped(redis_client.get_redis(), JOBS_STREAM, fields, maxlen=MAX_STREAM_LEN)
+
+    after_commit(session, push)
+
+
 async def _transition(
     session: AsyncSession,
     job_id: uuid.UUID,
@@ -292,6 +309,7 @@ __all__ = [
     "RUNNING_STALE_AFTER",
     "TIMEOUT",
     "create_job",
+    "enqueue_after_commit",
     "enqueue_job",
     "fail_job",
     "finish_job",

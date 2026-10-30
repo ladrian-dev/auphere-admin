@@ -55,6 +55,7 @@ from nexus_api.db.models import (
     NotificationKind,
 )
 from nexus_api.db.models.inbox_correction import LESSON_MAX, InboxCorrection
+from nexus_api.metering.wallet import partner_id_for_tenant
 from nexus_api.services import inbox_view, proposal_state
 from nexus_api.services.improvement import paraphrase as paraphrases
 from nexus_api.services.improvement import pii
@@ -210,7 +211,10 @@ async def draft(
     lesson = _clean_lesson(text)
     names = await _contact_names(session, conversation.id)
     proposed = await paraphrases.paraphrase(
-        await _customer_text(session, reply), tenant_id=conversation.tenant_id, names=names
+        await _customer_text(session, reply),
+        tenant_id=conversation.tenant_id,
+        partner_id=await partner_id_for_tenant(session, conversation.tenant_id),
+        names=names,
     )
     row = InboxCorrection(
         id=uuid.uuid4(),

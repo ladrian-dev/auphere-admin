@@ -1,7 +1,8 @@
 """Nexus MCP — in-process tool servers backing the catalog.
 
-Bloque E agrega un transporte alterno (subprocess stdio) y un espacio
-interno de tools (``agendapro.*``) accesible vía ``dispatch_internal``.
+Bloque E agregó un espacio interno de tools accesible vía
+``dispatch_internal``; hoy está vacío (spec 048 retiró su único inquilino, el
+conector de agenda por navegador, junto con el transporte por subprocesos).
 La firma pública ``MCPRegistry.dispatch(name, args, *, whitelist)`` no
 cambia.
 """
@@ -22,17 +23,12 @@ from nexus_mcp.registry import (
     get_internal_caller_token,
     reset_default_registry,
 )
-from nexus_mcp.subprocess_tool import (
-    SubprocessTransport,
-    make_subprocess_tool_class,
-)
 
 __all__ = [
     "InputModel",
     "InternalCallerTokenInvalid",
     "MCPRegistry",
     "OutputModel",
-    "SubprocessTransport",
     "ToolBase",
     "ToolDef",
     "ToolError",
@@ -40,6 +36,5 @@ __all__ = [
     "ToolResult",
     "build_default_registry",
     "get_internal_caller_token",
-    "make_subprocess_tool_class",
     "reset_default_registry",
 ]

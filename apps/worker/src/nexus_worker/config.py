@@ -95,7 +95,6 @@ class WorkerSettings(BaseSettings):
 
     # Cron tick overrides (test fixtures use these to drop seconds → ms).
     health_check_tick_seconds: float = 3600.0
-    no_show_scrape_tick_seconds: float = 3600.0
     cost_rollup_tick_seconds: float = 3600.0
     isolation_watcher_tick_seconds: float = 60.0
 

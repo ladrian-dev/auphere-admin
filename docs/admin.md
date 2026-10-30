@@ -243,8 +243,10 @@ Cómo funciona lo que hay detrás: [modelos-y-router.md](modelos-y-router.md).
 
 ## Constructor (spec 047)
 
-La calidad del constructor de agentes, en tres pestañas bajo `/builder` (historias 8 y
-18; `api/admin/sector_tests.py`). Son tablas de plataforma: ningún dato de un cliente.
+La calidad del constructor de agentes, en cuatro pestañas bajo `/builder` (historias 8 y
+18; `api/admin/sector_tests.py`). Las tres primeras son tablas de plataforma: ningún dato
+de un cliente. La cuarta, «Sectores sin guía», lee guías que son de cada cliente hasta
+que Auphere las convierte.
 
 ### Pruebas del sector (`/builder/sector-tests`)
 
@@ -284,6 +286,62 @@ primera (objetivo 95 %), el que pasa la batería del sector sin edición (70 %; 
 20). «Correr la evaluación» acepta un número de descripciones (vacío: las 100) y llama
 a `POST /admin/builder/eval`, que no escribe nada en ningún cliente y responde cuando
 termina.
+
+### Sectores sin guía (`/builder/sector-guides`)
+
+T201, requisito 58.5, decisiones D47, D65 y D66; contrato
+`contracts/admin-sector-guides.md`. Cuando el sector guardado de un cliente es «Otro»
+(con una etiqueta libre, como «Gimnasio»), el constructor genera una guía **solo para
+ese cliente**, con sus 12 pruebas, marcadas «Generada» en la consola (58.4). Es del
+cliente (RLS) y nunca se comparte. Esta pestaña deja a Auphere ver qué etiquetas se
+repiten y convertir una de esas guías en guía de Auphere.
+
+- **El listado** tiene dos partes, y cada una se lee por su cuenta: si una falla, la
+  otra sigue en pie.
+  - **Las etiquetas sin guía que más se repiten** (`GET …/sector-guides/missing?limit=`,
+    20 por defecto; «Ver hasta 100 etiquetas» pide `?limit=100`). La API las calcula al
+    momento, cliente a cliente con su contexto puesto, así que puede tardar unos segundos:
+    la sección enseña su esqueleto mientras tanto. Cada etiqueta dice cuántos clientes la
+    tienen hoy y cuántas guías generadas vivas hay (sin revisar y revisadas), y lista hasta
+    5 con «Revisar». Una etiqueta con clientes y sin ninguna guía generada dice que no hay
+    nada que convertir. Una sin clientes (cambiaron de sector) sale al final, con sus guías.
+  - **Guías de Auphere** (`GET …/sector-guides`): las de las plantillas, en el orden de los
+    sectores, y las convertidas, cada una con su versión y sus pruebas; se despliega para
+    leer lo que dice.
+- **Una guía generada** (`/builder/sector-guides/{cliente}/{guía}`,
+  `GET /admin/builder/generated-guides/{tenant_id}/{guide_id}`). Enseña la guía (qué
+  preguntar, procedimientos, lo que pasa a una persona, herramientas) y sus pruebas. Los
+  datos del cliente que la API encuentra al leerla (`client_data`: nombre, web, URL,
+  correo, teléfono, dirección, sede o persona del equipo) salen **marcados en su sitio**,
+  y arriba un resumen con un enlace a cada uno. La etiqueta del sector no cuenta como
+  dato del cliente, salvo que sea su nombre o el de una de sus sedes (T217): entonces
+  es como se llama, y sale marcada. Una guía sin sus 12 pruebas lo dice.
+- **Revisar** (`POST …/review`, con `X-Operator-Id`). «Corregir la guía y las pruebas»
+  abre los editores: la guía con sus límites y las pruebas con el mismo editor que el
+  catálogo del sector. Los datos del cliente salen como error del campo donde están. La
+  nota es opcional (hasta 300). Solo se envían `guide` y `tests` si cambiaron, para que
+  la auditoría diga si se editó. La API vuelve a buscar datos del cliente en lo que queda
+  guardado: si encuentra alguno responde `client_data_found`, no guarda nada, y la
+  pantalla marca los nuevos hallazgos. Se puede revisar otra vez una ya revisada.
+- **Convertir en guía de Auphere** (`POST …/promote`, con `X-Operator-Id`). Solo aparece
+  si la API la da por `promotable`: revisada, sin datos del cliente y con 12 pruebas. Si
+  no, la pantalla dice qué le falta. Mientras hay correcciones sin guardar tampoco
+  aparece: lo que se convierte es lo guardado. Pide clave (`^[a-z_]{2,40}$`, propuesta a
+  partir de la etiqueta; no puede ser la de un sector, `otro` ni la de otra guía),
+  etiqueta (hasta 40) y motivo (de 3 a 300). Al convertirla, la guía pasa a la plataforma
+  y sus 12 pruebas son la versión 1 de esa clave en el catálogo. Desde entonces, cada
+  cliente de «Otro» con la misma etiqueta normalizada la recibe en lugar de generar la
+  suya, aunque su ficha siga diciendo «Otro» (D66).
+- **Rechazos en palabras** (`sector-guides/sector-guides.ts`): `unknown_guide`,
+  `guide_not_reviewable`, `guide_not_reviewed`, `guide_already_promoted`,
+  `guide_key_taken`, `guide_label_taken`, `client_data_found` (con sus hallazgos),
+  `twelve_tests_required`, `invalid_test`, `duplicate_key` e `invalid_guide`. Un `400`
+  es la sesión del operador y un `401`, el token del panel.
+- Los botones esperan mientras la acción está en curso: nadie la envía dos veces.
+
+Las llamadas viven en `lib/backend-sector-guides.ts`, y sus pruebas
+(`lib/__tests__/backend-sector-guides.test.ts`) comprueban rutas, cabeceras y cuerpos
+contra el contrato con la API simulada.
 
 ## Palancas del partner y del cliente (spec 047)
 

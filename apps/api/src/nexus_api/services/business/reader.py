@@ -21,7 +21,12 @@ qué guardas, cómo se le pide al modelo y qué se hace con lo que devuelve.
 en ``MAX_URL_BYTES`` mientras llega, y ``extract_text`` para sacar el texto.
 ``fetch_url`` no se usa tal cual porque no devuelve ni el HTML (los enlaces a
 seguir) ni el código HTTP (distinguir «bloqueada» de «inalcanzable»); el bucle
-de aquí repite su forma con las mismas guardas.
+de aquí repite su forma con las mismas guardas. Y la que de verdad protege la
+conexión está en el cliente HTTP que se le pasa (spec 047, T217): el del worker
+es ``core/public_http.public_client``, que resuelve una sola vez, valida todas las
+direcciones con la tabla del renderer, conecta a la validada con el ``Host`` y el
+SNI del nombre, y solo por 80 y 443. Sin él, un DNS que contesta una dirección
+pública a la guarda y una privada a ``httpx`` (rebinding) pasaba.
 
 **Lo leído es dato y nunca instrucción** (§III, requisito 5.6). Va al modelo
 vallado (``core/guardrails/untrusted.py``), y lo que el modelo devuelve se
@@ -49,6 +54,8 @@ la partida «Construcción y pruebas».
 
 from __future__ import annotations
 
+import asyncio
+import html
 import json
 import re
 import time
@@ -81,7 +88,9 @@ from nexus_api.db.models.business import (
 from nexus_api.db.models.jobs import LIVE_JOB_STATUSES
 from nexus_api.services.business.links import DetectedLink, classify_url, detect_links
 from nexus_api.services.business.profile import LANGUAGE_NAMES, business_language
+from nexus_api.services.business.renderer_client import Rendered
 from nexus_api.services.business.sections import READER, bump_content_rev, touch_section
+from nexus_api.services.business.structured import extract_structured
 from nexus_api.services.business.writes import WriteContext
 from nexus_api.services.knowledge_indexer import (
     FETCH_TIMEOUT_S,
@@ -112,6 +121,20 @@ MAX_PAGE_CHARS: Final = 8_000
 MAX_PROMPT_CHARS: Final = 60_000
 #: El ``robots.txt`` que se lee como mucho (RFC 9309 pide al menos 500 KiB).
 MAX_ROBOTS_BYTES: Final = 512 * 1024
+#: Spec 047, enmienda del 2026-10-29 (59.1, D49): páginas a la vez, como mucho.
+CONCURRENCY: Final = 4
+#: El ``sitemap.xml``: tamaño, cuántos se leen (con su índice) y direcciones.
+MAX_SITEMAP_BYTES: Final = 1024 * 1024
+MAX_SITEMAPS: Final = 3
+MAX_SITEMAP_URLS: Final = 200
+#: Menos texto que esto, y sin datos estructurados, es una página que no se deja
+#: leer sin navegador (59.2).
+MIN_TEXT_CHARS: Final = 200
+#: Páginas que se piden al navegador de respaldo en una lectura, como mucho.
+MAX_RENDERS: Final = 5
+#: Las redes que no dejan leer perfiles sin cuenta (comprobado el 2026-10-29,
+#: D49): no se piden, y la ficha dice «no deja leer», no un fallo (59.4).
+BLOCKING_NETWORKS: Final = frozenset({"instagram", "facebook", "linkedin", "x"})
 
 #: Por qué falla una lectura: vocabulario cerrado, la consola pone las palabras.
 UNREACHABLE: Final = "unreachable"
@@ -129,6 +152,8 @@ POLICY_KEYS: Final[tuple[str, ...]] = ("cancellation", "payments", "deposit", "n
 WEEKDAYS: Final[tuple[str, ...]] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 _REDIRECTS: Final = frozenset({301, 302, 303, 307, 308})
+_LOC: Final = re.compile(r"<loc>\s*([^<]*?)\s*</loc>", re.IGNORECASE)
+_SITEMAP_INDEX: Final = re.compile(r"<sitemapindex[\s>]", re.IGNORECASE)
 _BLOCKED_STATUSES: Final = frozenset({401, 403, 429, 451})
 #: Extensiones que no son páginas.
 _NOT_PAGES: Final = re.compile(
@@ -167,6 +192,8 @@ _ZERO_DECIMALS: Final = frozenset(
 )
 
 Guard = Callable[[str], Awaitable[None]]
+#: El navegador de respaldo (``renderer_client.render``): la página pintada o ``None``.
+Render = Callable[[str], Awaitable[Rendered | None]]
 #: El modelo de la tarea ``read_source``: recibe los mensajes y devuelve su texto.
 Extract = Callable[[list[dict[str, str]]], Awaitable[str]]
 Progress = Callable[..., Awaitable[bool]]
@@ -205,7 +232,9 @@ async def guarded_get(
     max_bytes: int = MAX_URL_BYTES,
 ) -> Fetched:
     """GET con las guardas de ``knowledge_indexer.fetch_url``: dirección pública
-    en cada salto, redirecciones a mano y el cuerpo cortado mientras llega.
+    en cada salto, redirecciones a mano y el cuerpo cortado mientras llega. ``http``
+    es un ``core/public_http.public_client``: la guarda es el aviso temprano y el
+    transporte, el que conecta solo a lo que validó (T217).
     Devuelve también el código (lo decide quien llama). ``ReadFailure`` con
     ``unreachable`` si no hay respuesta y ``too_large`` si no cabe."""
     current = url
@@ -274,6 +303,9 @@ class Page:
     title: str
     text: str
     links: tuple[str, ...] = ()
+    #: Spec 047, enmienda (59.1): el JSON-LD y los microdatos de la página, ya en
+    #: la forma de la extracción (``structured.extract_structured``), sin modelo.
+    structured: dict[str, Any] = field(default_factory=dict)
 
 
 def _decode(data: bytes) -> str:
@@ -293,6 +325,7 @@ def to_page(fetched: Fetched) -> Page:
     meta: list[str] = []
     title = ""
     body = ""
+    structured: dict[str, Any] = {}
     if mime in HTML_MIMES:
         raw = _decode(fetched.data)
         parser = _PageParser()
@@ -303,6 +336,7 @@ def to_page(fetched: Fetched) -> Page:
             pass
         hrefs, meta = parser.hrefs, parser.meta
         body, title = html_to_text(raw)
+        structured = extract_structured(raw)
     else:
         try:
             body = extract_text(fetched.data, mime=mime, max_bytes=MAX_URL_BYTES).text
@@ -311,7 +345,7 @@ def to_page(fetched: Fetched) -> Page:
                 raise ReadFailure(TOO_LARGE) from exc
             raise ReadFailure(NO_TEXT) from exc
     text = "\n".join([*meta, body]).strip()
-    if not text:
+    if not text and not structured:
         raise ReadFailure(NO_TEXT)
     links = tuple(_absolute(fetched.url, href) for href in hrefs)
     return Page(
@@ -319,6 +353,7 @@ def to_page(fetched: Fetched) -> Page:
         title=title[:200],
         text=text[:MAX_PAGE_CHARS],
         links=tuple(link for link in links if link),
+        structured=structured,
     )
 
 
@@ -360,6 +395,9 @@ class Robots:
     def allows(self, url: str) -> bool:
         return True if self.rules is None else self.rules.can_fetch(ROBOTS_AGENT, url)
 
+    def sitemaps(self) -> list[str]:
+        return list((self.rules.site_maps() if self.rules is not None else None) or [])
+
 
 async def robots_for(http: httpx.AsyncClient, url: str, *, guard: Guard) -> Robots:
     """El ``robots.txt`` del sitio de ``url`` (RFC 9309): 2xx manda; 4xx es «sin
@@ -381,8 +419,44 @@ async def robots_for(http: httpx.AsyncClient, url: str, *, guard: Guard) -> Robo
     return Robots(rules=rules)
 
 
-async def read_page(http: httpx.AsyncClient, url: str, *, guard: Guard, robots: Robots) -> Page:
-    """Una página, si ``robots.txt`` la deja y responde con texto."""
+def _thin(page: Page) -> bool:
+    """Una página con menos texto del que hace falta para leerla (59.2)."""
+    return len(page.text) < MIN_TEXT_CHARS and not page.structured
+
+
+async def _rendered(url: str, render: Render, robots: Robots) -> Page | None:
+    """La página pintada por el navegador de respaldo, con las mismas guardas: el
+    cliente del renderer ya comprueba la dirección de partida y la final; aquí,
+    ``robots.txt`` de la final, el código y el texto."""
+    rendered = await render(url)
+    if rendered is None or rendered.status >= 400:
+        return None
+    if not robots.allows(rendered.final_url):
+        return None
+    try:
+        return to_page(
+            Fetched(
+                url=rendered.final_url,
+                status=rendered.status,
+                content_type="text/html; charset=utf-8",
+                data=rendered.html.encode("utf-8", errors="replace"),
+            )
+        )
+    except ReadFailure:
+        return None
+
+
+async def read_page(
+    http: httpx.AsyncClient,
+    url: str,
+    *,
+    guard: Guard,
+    robots: Robots,
+    render: Render | None = None,
+) -> Page:
+    """Una página, si ``robots.txt`` la deja y responde con texto. Si trae menos
+    texto del que hace falta y hay navegador de respaldo (``render``), se le pide
+    a él (59.2)."""
     if not robots.allows(url):
         raise ReadFailure(BLOCKED)
     fetched = await guarded_get(http, url, guard=guard)
@@ -392,7 +466,66 @@ async def read_page(http: httpx.AsyncClient, url: str, *, guard: Guard, robots: 
         raise ReadFailure(UNREACHABLE)
     if fetched.url != url and not robots.allows(fetched.url):
         raise ReadFailure(BLOCKED)
-    return to_page(fetched)
+    page: Page | None
+    try:
+        page = to_page(fetched)
+    except ReadFailure as failure:
+        if failure.code != NO_TEXT or render is None:
+            raise
+        page = None
+    if render is not None and (page is None or _thin(page)):
+        better = await _rendered(url, render, robots)
+        if better is not None and (page is None or len(better.text) > len(page.text)):
+            return better
+    if page is None:
+        raise ReadFailure(NO_TEXT)
+    return page
+
+
+def sitemap_locations(text: str) -> tuple[list[str], list[str]]:
+    """``(páginas, sitemaps hijos)`` de un ``sitemap.xml`` o de su índice. Se leen
+    solo las ``<loc>`` con una expresión regular: nada de entidades ni DTD."""
+    locs = [html.unescape(m).strip() for m in _LOC.findall(text or "")]
+    urls = [u for u in dict.fromkeys(locs) if urlsplit(u).scheme in ("http", "https")]
+    if _SITEMAP_INDEX.search(text or ""):
+        return [], urls
+    return urls, []
+
+
+async def sitemap_pages(
+    http: httpx.AsyncClient, start: str, *, robots: Robots, guard: Guard
+) -> list[str]:
+    """Las páginas que el sitio declara en su ``sitemap.xml`` (o en los que dice su
+    ``robots.txt``), del mismo sitio, con un tope de tamaño, de sitemaps y de
+    direcciones. Si no hay o no se puede leer, ninguna: nunca falla la lectura."""
+    parts = urlsplit(start)
+    pending = [u for u in robots.sitemaps() if same_site(u, start)] or [
+        f"{parts.scheme}://{parts.netloc}/sitemap.xml"
+    ]
+    found: list[str] = []
+    fetched_maps = 0
+    while pending and fetched_maps < MAX_SITEMAPS and len(found) < MAX_SITEMAP_URLS:
+        url = pending.pop(0)
+        if url.lower().endswith(".gz") or not same_site(url, start):
+            continue
+        fetched_maps += 1
+        try:
+            got = await guarded_get(http, url, guard=guard, max_bytes=MAX_SITEMAP_BYTES)
+        except Exception as exc:
+            log.info("reader.sitemap_skipped", error=type(exc).__name__)
+            continue
+        if got.status != 200:
+            continue
+        pages, children = sitemap_locations(got.data.decode("utf-8", errors="ignore"))
+        pending += [c for c in children if same_site(c, start)]
+        for page in pages:
+            if (
+                same_site(page, start)
+                and not _NOT_PAGES.search(urlsplit(page).path or "")
+                and page not in found
+            ):
+                found.append(page)
+    return found[:MAX_SITEMAP_URLS]
 
 
 async def crawl_site(
@@ -402,20 +535,24 @@ async def crawl_site(
     guard: Guard = assert_public_url,
     max_pages: int = MAX_PAGES,
     progress: Progress | None = None,
+    render: Render | None = None,
 ) -> list[Page]:
-    """Hasta ``max_pages`` páginas del sitio de ``start``. La primera decide:
-    si no se puede leer, la lectura falla con su motivo; las demás que fallan
-    se saltan."""
+    """Hasta ``max_pages`` páginas del sitio de ``start``, como mucho
+    :data:`CONCURRENCY` a la vez y sin pasar de :data:`CRAWL_DEADLINE_S`. Primero
+    las del ``sitemap.xml`` y los enlaces que suenan a lo que la ficha necesita
+    (59.1). La primera decide: si no se puede leer, la lectura falla con su motivo;
+    las demás que fallan se saltan."""
+    deadline = time.monotonic() + CRAWL_DEADLINE_S
     robots = await robots_for(http, start, guard=guard)
-    home = await read_page(http, start, guard=guard, robots=robots)
+    home = await read_page(http, start, guard=guard, robots=robots, render=render)
     pages = [home]
     seen = {_normal(start), _normal(home.url)}
     queue: list[tuple[int, int, str]] = []
     order = 0
 
-    def enqueue(page: Page) -> None:
+    def push(links: Sequence[str]) -> None:
         nonlocal order
-        for link in page.links:
+        for link in links:
             key = _normal(link)
             if key in seen or not same_site(link, start):
                 continue
@@ -426,42 +563,70 @@ async def crawl_site(
             queue.append((0 if _USEFUL.search(link) else 1, order, link))
         queue.sort()
 
-    enqueue(home)
+    push(await sitemap_pages(http, start, robots=robots, guard=guard))
+    push(home.links)
     attempts = 1
-    deadline = time.monotonic() + CRAWL_DEADLINE_S
+    gate = asyncio.Semaphore(CONCURRENCY)
+
+    async def one(url: str) -> Page:
+        async with gate:
+            return await read_page(http, url, guard=guard, robots=robots, render=render)
+
     while queue and len(pages) < max_pages and attempts < MAX_ATTEMPTS:
-        if time.monotonic() > deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             log.info("reader.crawl_deadline", pages=len(pages))
             break
-        _, _, url = queue.pop(0)
-        if not robots.allows(url):
-            continue
-        attempts += 1
+        batch: list[str] = []
+        while (
+            queue
+            and len(batch) < CONCURRENCY
+            and len(pages) + len(batch) < max_pages
+            and attempts < MAX_ATTEMPTS
+        ):
+            _, _, url = queue.pop(0)
+            if not robots.allows(url):
+                continue
+            attempts += 1
+            batch.append(url)
+        if not batch:
+            break
         try:
-            page = await read_page(http, url, guard=guard, robots=robots)
-        except ReadFailure as failure:
-            log.info("reader.page_skipped", code=failure.code)
-            continue
-        except Exception as exc:
-            # Una página rara (una URL que httpx no acepta, una codificación
-            # imposible) no tumba la lectura: la primera ya se leyó.
-            log.info("reader.page_skipped", error=type(exc).__name__)
-            continue
-        if not same_site(page.url, start):
-            continue
-        pages.append(page)
-        enqueue(page)
+            results = await asyncio.wait_for(
+                asyncio.gather(*(one(url) for url in batch), return_exceptions=True),
+                timeout=remaining,
+            )
+        except TimeoutError:
+            log.info("reader.crawl_deadline", pages=len(pages))
+            break
+        for result in results:
+            if isinstance(result, ReadFailure):
+                log.info("reader.page_skipped", code=result.code)
+                continue
+            if isinstance(result, BaseException):
+                # Una página rara (una URL que httpx no acepta, una codificación
+                # imposible) no tumba la lectura: la primera ya se leyó.
+                log.info("reader.page_skipped", error=type(result).__name__)
+                continue
+            if not same_site(result.url, start) or len(pages) >= max_pages:
+                continue
+            pages.append(result)
+            push(result.links)
         if progress is not None:
             await progress(step="pages", block={"key": "pages", "read": len(pages)})
     return pages
 
 
 async def read_profile(
-    http: httpx.AsyncClient, url: str, *, guard: Guard = assert_public_url
+    http: httpx.AsyncClient,
+    url: str,
+    *,
+    guard: Guard = assert_public_url,
+    render: Render | None = None,
 ) -> Page:
     """El perfil público de una red, si su ``robots.txt`` lo permite."""
     robots = await robots_for(http, url, guard=guard)
-    return await read_page(http, url, guard=guard, robots=robots)
+    return await read_page(http, url, guard=guard, robots=robots, render=render)
 
 
 # ── lo que se le pide al modelo ─────────────────────────────────────────────
@@ -688,6 +853,44 @@ def parse_extraction(raw: str, *, price_currency: str | None) -> Extraction:
         if isinstance(faq, _Faq) and len(out.faqs) < 200:
             out.faqs.append({"q": faq.q, "a": faq.a})
     return out
+
+
+def _named(items: Sequence[dict[str, Any]], key: str = "name") -> set[str]:
+    return {" ".join(str(i.get(key) or "").split()).casefold() for i in items}
+
+
+def merge_extractions(structured: Extraction, model: Extraction) -> Extraction:
+    """Lo de los datos estructurados manda (59.1: la procedencia más fiable): sus
+    sedes, su horario, sus servicios y sus preguntas van primero, y de lo del
+    modelo solo entra lo que no repite un nombre. Las políticas solo las dice el
+    modelo (schema.org no las tiene)."""
+    out = Extraction(source_language=model.source_language or structured.source_language)
+    out.locations = list(structured.locations)
+    have = _named(out.locations)
+    out.locations += [loc for loc in model.locations if _named([loc]).isdisjoint(have)]
+    out.hours = structured.hours or model.hours
+    out.services = list(structured.services)
+    have = _named(out.services)
+    out.services += [svc for svc in model.services if _named([svc]).isdisjoint(have)]
+    out.policies = dict(model.policies)
+    out.faqs = list(structured.faqs)
+    have = _named(out.faqs, "q")
+    out.faqs += [faq for faq in model.faqs if _named([faq], "q").isdisjoint(have)]
+    return out
+
+
+def structured_extraction(pages: Sequence[Page], *, price_currency: str | None) -> Extraction:
+    """Los datos estructurados de todas las páginas, con la misma validación que
+    lo que dice el modelo (solo datos del negocio, §III)."""
+    merged = Extraction()
+    for page in pages:
+        if page.structured:
+            found = parse_extraction(json.dumps(page.structured), price_currency=price_currency)
+            merged = merge_extractions(merged, found) if merged.found() != _NOTHING else found
+    return merged
+
+
+_NOTHING: Final = {"locations": 0, "hours": 0, "services": 0, "policies": 0, "faqs": 0}
 
 
 # ── aplicar: lo que no choca, con revisión pendiente; lo que choca, a sugerencias ──
@@ -1165,6 +1368,85 @@ async def _load_target(session: AsyncSession) -> _Target:
     )
 
 
+def _blocked_source(link: DetectedLink, *, failure: str = BLOCKED) -> dict[str, Any]:
+    """Una red que no se leyó, en la forma de ``sources`` de siempre."""
+    return {
+        "network": link.network,
+        "value": link.value,
+        "status": "failed",
+        "failure": failure,
+        "pages": 0,
+    }
+
+
+def default_render(guard: Guard) -> Render | None:
+    """El navegador de respaldo si está configurado (``NEXUS_RENDERER_URL``), con
+    las mismas guardas de direcciones y como mucho :data:`MAX_RENDERS` páginas por
+    lectura; si no, ``None`` y nadie lo pide (59.2)."""
+    from nexus_api.services.business import renderer_client
+
+    settings = renderer_client.get_renderer_settings()
+    if not settings.enabled:
+        return None
+    used = 0
+
+    async def render(url: str) -> Rendered | None:
+        nonlocal used
+        if used >= MAX_RENDERS:
+            return None
+        used += 1
+        return await renderer_client.render(url, settings=settings, guard=guard)
+
+    return render
+
+
+_RETRY: Final = (
+    "Tu respuesta anterior no era un objeto JSON válido ({why}). Responde otra vez, SOLO con "
+    "el objeto JSON de la forma pedida, sin texto alrededor."
+)
+
+
+def _json_or_none(raw: str) -> dict[str, Any] | None:
+    text = (raw or "").strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if fenced:
+        text = fenced.group(1)
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+async def _extract_with_retry(
+    extract: Extract, messages: list[dict[str, str]], *, tenant_id: uuid.UUID
+) -> tuple[str | None, bool]:
+    """``(respuesta, reintentada)``. Lo que no es un objeto JSON se reintenta una
+    vez con el error (59.5); ``None`` si tampoco vale o el modelo no respondió."""
+    retried = False
+    for attempt in range(2):
+        try:
+            raw = await extract(messages)
+        except Exception as exc:
+            log.warning("reader.extract_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
+            return None, retried
+        if _json_or_none(raw) is not None:
+            return raw, retried
+        if attempt == 0:
+            retried = True
+            why = "no hay un objeto JSON" if "{" not in (raw or "") else "el JSON no se puede leer"
+            messages = [
+                *messages,
+                {"role": "assistant", "content": (raw or "")[:2000]},
+                {"role": "user", "content": _RETRY.format(why=why)},
+            ]
+    log.info("reader.extract_invalid", tenant_id=str(tenant_id))
+    return None, retried
+
+
 def _social_links_in(pages: Sequence[Page]) -> list[DetectedLink]:
     found: list[DetectedLink] = []
     seen: set[tuple[str, str]] = set()
@@ -1203,13 +1485,19 @@ async def read_client(
         target = await _load_target(session)
 
     sources: list[dict[str, Any]] = []
+    networks: list[dict[str, Any]] = []
     read: list[SourcePage] = []
+    render = default_render(guard)
     await step("pages")
+    web_failure: ReadFailure | None = None
     if target.website:
         site = display_site(target.website)
         try:
-            pages = await crawl_site(http, target.website, guard=guard, progress=progress)
+            pages = await crawl_site(
+                http, target.website, guard=guard, progress=progress, render=render
+            )
         except ReadFailure as failure:
+            web_failure = failure
             sources.append(
                 {
                     "network": "web",
@@ -1219,58 +1507,87 @@ async def read_client(
                     "pages": 0,
                 }
             )
-            raise
-        sources.append(
-            {
-                "network": "web",
-                "value": site,
-                "status": "read",
-                "failure": None,
-                "pages": len(pages),
-            }
-        )
-        read = [SourcePage(source="web", page=p) for p in pages]
-    else:
-        failures: list[str] = []
-        for link in target.socials:
-            assert link.url is not None
-            try:
-                page = await read_profile(http, link.url, guard=guard)
-            except ReadFailure as failure:
-                failures.append(failure.code)
-                sources.append(
-                    {
-                        "network": link.network,
-                        "value": link.value,
-                        "status": "failed",
-                        "failure": failure.code,
-                        "pages": 0,
-                    }
-                )
-                continue
+            networks.append({"network": "web", "status": "failed", "reason": failure.code})
+        else:
             sources.append(
                 {
-                    "network": link.network,
-                    "value": link.value,
+                    "network": "web",
+                    "value": site,
                     "status": "read",
                     "failure": None,
-                    "pages": 1,
+                    "pages": len(pages),
                 }
             )
-            read.append(SourcePage(source="social", page=page))
-        if not read:
-            if not failures:
-                raise NothingToRead
-            raise ReadFailure(BLOCKED if BLOCKED in failures else failures[0])
+            networks.append({"network": "web", "status": "read"})
+            read = [SourcePage(source="web", page=p) for p in pages]
+    # 59.3: las redes permitidas se leen también cuando hay web. 59.4: la que no
+    # deja leer perfiles sin cuenta se dice como tal, no como un fallo.
+    failures: list[str] = []
+    for link in target.socials:
+        assert link.url is not None
+        if link.network in BLOCKING_NETWORKS:
+            sources.append(_blocked_source(link))
+            networks.append({"network": link.network, "status": "blocked_by_network"})
+            continue
+        try:
+            page = await read_profile(http, link.url, guard=guard, render=render)
+        except ReadFailure as failure:
+            sources.append(_blocked_source(link, failure=failure.code))
+            if failure.code == BLOCKED:
+                networks.append({"network": link.network, "status": "blocked_by_network"})
+            else:
+                failures.append(failure.code)
+                networks.append(
+                    {"network": link.network, "status": "failed", "reason": failure.code}
+                )
+            continue
+        sources.append(
+            {
+                "network": link.network,
+                "value": link.value,
+                "status": "read",
+                "failure": None,
+                "pages": 1,
+            }
+        )
+        networks.append({"network": link.network, "status": "read"})
+        read.append(SourcePage(source="social", page=page))
+    if not read:
+        if web_failure is not None:
+            raise web_failure
+        if failures:
+            raise ReadFailure(failures[0])
+        if not networks:
+            raise NothingToRead
+        # Solo redes que no dejan leer: no es un fallo de la lectura (59.4).
+        return {
+            "website": display_site(target.website),
+            "sources": sources,
+            "networks": networks,
+            "structured": False,
+            "found": {**Extraction().found(), "links": 0},
+            "applied": 0,
+            "suggested": 0,
+            "translated_from": None,
+        }
 
     language = business_language(target.country)
     await step("extract")
-    try:
-        raw = await extract(build_messages(read, language=language))
-    except Exception as exc:
-        log.warning("reader.extract_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
-        raise ReadFailure(EXTRACT_FAILED) from exc
-    extraction = parse_extraction(raw, price_currency=target.price_currency)
+    structured = structured_extraction(
+        [item.page for item in read], price_currency=target.price_currency
+    )
+    has_structured = structured.found() != _NOTHING
+    raw, retried = await _extract_with_retry(
+        extract, build_messages(read, language=language), tenant_id=tenant_id
+    )
+    if raw is None and not has_structured:
+        raise ReadFailure(EXTRACT_FAILED)
+    model = (
+        parse_extraction(raw, price_currency=target.price_currency)
+        if raw is not None
+        else Extraction()
+    )
+    extraction = merge_extractions(structured, model)
     translated = (
         extraction.source_language
         if extraction.source_language and extraction.source_language != language
@@ -1292,6 +1609,9 @@ async def read_client(
     result = {
         "website": display_site(target.website),
         "sources": sources,
+        "networks": networks,
+        "structured": has_structured,
+        "extraction_retried": retried,
         "found": {**extraction.found(), "links": len(found_links)},
         "applied": applied.applied,
         "suggested": applied.suggested,

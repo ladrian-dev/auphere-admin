@@ -136,8 +136,8 @@ async def test_tenant_a_sees_connected_status(client, db_session):
 
 
 async def test_baseline_seed_tools_report_no_connector(client, db_session):
-    """Baseline tools (booking.*, queue.*, client.*) come from migration
-    0003 with ``connector_id IS NULL`` — they should still appear in
+    """Baseline tools (reservas.*, queue.*, client.*) come from migrations
+    (0003, 0173…) with ``connector_id IS NULL`` — they should still appear in
     the per-tenant catalog with all install fields ``null``. The editor
     will render them grouped under "Sin connector" or similar."""
     tenant_id = uuid.uuid4()
@@ -156,7 +156,9 @@ async def test_baseline_seed_tools_report_no_connector(client, db_session):
     assert r.status_code == 200, r.text
     by_name = {t["name"]: t for t in r.json()}
 
-    baseline = by_name["booking.check_availability"]
+    # Spec 048: ``booking.*`` is retired and not listed.
+    assert not [n for n in by_name if n.startswith("booking.")]
+    baseline = by_name["reservas.find_slots"]
     assert baseline["connector_id"] is None
     assert baseline["connector_slug"] is None
     assert baseline["connector_display_name"] is None

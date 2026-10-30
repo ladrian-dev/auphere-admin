@@ -44,6 +44,8 @@ JOB_KINDS: tuple[str, ...] = (
     "copilot",
     "quality_check",
     "suggestions",
+    # Spec 047, enmienda del 2026-10-29 (T200, migración 0206): identificar el sector.
+    "sector_identify",
 )
 JOB_STATUSES: tuple[str, ...] = ("queued", "running", "done", "failed")
 #: Los estados en los que un trabajo sigue vivo y puede caducar.

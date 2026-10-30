@@ -934,3 +934,249 @@ async def test_an_agent_never_offers_nor_books_its_siblings_services(
             {"service_name": names[me], "on_date": day, "duration_min": 30},
         )
         assert own["status"] == "ok", own
+
+
+# ── spec 047, enmienda del 2026-10-29: herramientas pendientes de conexión ──
+
+
+async def test_a_pending_tool_never_reaches_the_turn_without_connection_and_activation(
+    db_session, tenants_ab
+) -> None:
+    """Requisito 62.2 y garantías 2 y 9, barridos: el AgentSpec puede guardar una
+    herramienta cuya integración el cliente aún no conectó (62.1), pero el turno
+    no la ve hasta que la conexión existe **y** está activada para ese agente. Se
+    recorre cada herramienta de conector del catálogo, no una de muestra."""
+    from datetime import UTC, datetime
+
+    from nexus_api.db.models import (
+        AgentConnectorActivation,
+        Connector,
+        Partner,
+        Tenant,
+        TenantConnector,
+        ToolCatalog,
+        ToolStatus,
+    )
+    from nexus_api.services.activations import tool_policy
+    from nexus_api.services.connectors.seed_loader import load_all_seeds
+    from nexus_api.services.connectors.seed_runner import apply_seeds
+
+    await apply_seeds(db_session, load_all_seeds())
+    # Dos integraciones propias, para que el barrido nunca dependa de lo que otra
+    # prueba haya dejado en el catálogo (la tabla no se vacía entre pruebas).
+    for slug in ("pendiente_g9", "pendiente_g9b"):
+        probe = await db_session.scalar(select(Connector).where(Connector.slug == slug))
+        if probe is None:
+            probe = Connector(
+                slug=slug,
+                display_name="Pendiente",
+                vendor="Test",
+                category="ecommerce",
+                auth_kind="api_key",
+                mcp_server_ref=f"internal:{slug}",
+                status="available",
+            )
+            db_session.add(probe)
+            await db_session.flush()
+        tool = await db_session.scalar(
+            select(ToolCatalog).where(ToolCatalog.name == f"{slug}.list_items")
+        )
+        if tool is None:
+            db_session.add(
+                ToolCatalog(
+                    name=f"{slug}.list_items",
+                    description="x",
+                    mcp_server=f"internal:{slug}",
+                    status=ToolStatus.ACTIVE,
+                    connector_id=probe.id,
+                    read_only=True,
+                    destructive=False,
+                    default_mode="always",
+                )
+            )
+        else:
+            tool.connector_id = probe.id
+    partner = Partner(name="G9 pendientes", slug=f"g9-pend-{uuid.uuid4().hex[:8]}")
+    partner.console_v2_enabled_at = datetime.now(UTC)
+    db_session.add(partner)
+    await db_session.flush()
+    tenant = await db_session.get(Tenant, tenants_ab["a"])
+    assert tenant is not None
+    tenant.partner_id = partner.id
+    await db_session.commit()
+
+    catalog = (
+        await db_session.execute(
+            select(ToolCatalog.name, ToolCatalog.connector_id).where(
+                ToolCatalog.connector_id.is_not(None)
+            )
+        )
+    ).all()
+    by_connector: dict[uuid.UUID, set[str]] = {}
+    for name, connector_id in catalog:
+        by_connector.setdefault(connector_id, set()).add(name)
+    every = {name for name, _c in catalog}
+    assert {"pendiente_g9.list_items", "pendiente_g9b.list_items"} <= every, "barrido roto"
+
+    a = tenants_ab["a"]
+    cfg = await seed_active_agent_config(
+        db_session, tenant_id=a, system_prompt="Vende.", tools=sorted(every)
+    )
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, a):
+        none = await tool_policy(session, a, cfg.agent_id)
+    assert every <= none.blocked, sorted(every - none.blocked)
+
+    # Conectada para el cliente pero sin activar en el agente: sigue sin verla.
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, a):
+        installs = {}
+        for connector_id in by_connector:
+            install = TenantConnector(
+                tenant_id=a,
+                connector_id=connector_id,
+                status="connected",
+                credentials_ref={},
+                connected_at=datetime.now(UTC),
+            )
+            session.add(install)
+            await session.flush()
+            installs[connector_id] = install.id
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, a):
+        connected = await tool_policy(session, a, cfg.agent_id)
+    assert every <= connected.blocked
+
+    # Activada en el agente: la ve. Las demás, todavía no.
+    first, *_rest = sorted(by_connector, key=str)
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, a):
+        session.add(
+            AgentConnectorActivation(
+                tenant_id=a,
+                agent_id=cfg.agent_id,
+                connector_id=installs[first],
+                permission="read_write",
+                settings={},
+            )
+        )
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, a):
+        active = await tool_policy(session, a, cfg.agent_id)
+    assert not (by_connector[first] & active.blocked)
+    assert (every - by_connector[first]) <= active.blocked
+
+
+# ── spec 047, enmienda del 2026-10-30: la política que no se lee cierra ─────
+
+
+async def test_without_its_tool_policy_the_turn_offers_no_connector_tool(
+    db_session, tenants_ab, monkeypatch
+) -> None:
+    """Requisito 65.11 y garantía 2, barridos: si el turno no puede leer la
+    política de herramientas del cliente, **ninguna** herramienta de conector llega
+    al modelo. Se recorre cada herramienta de conector del catálogo (más una de
+    Composio, que no está en el catálogo con nombre de AgentSpec), no una de
+    muestra; las de la casa siguen."""
+    from nexus_worker.runtime import pipeline
+
+    from nexus_api.db.models import Connector, ToolCatalog, ToolStatus
+    from nexus_api.services import activations
+    from nexus_api.services.connectors.seed_loader import load_all_seeds
+    from nexus_api.services.connectors.seed_runner import apply_seeds
+
+    await apply_seeds(db_session, load_all_seeds())
+    probe = await db_session.scalar(select(Connector).where(Connector.slug == "cerrada_g2"))
+    if probe is None:
+        probe = Connector(
+            slug="cerrada_g2",
+            display_name="Cerrada",
+            vendor="Test",
+            category="ecommerce",
+            auth_kind="api_key",
+            mcp_server_ref="internal:cerrada_g2",
+            status="available",
+        )
+        db_session.add(probe)
+        await db_session.flush()
+    if (
+        await db_session.scalar(
+            select(ToolCatalog).where(ToolCatalog.name == "cerrada_g2.list_items")
+        )
+        is None
+    ):
+        db_session.add(
+            ToolCatalog(
+                name="cerrada_g2.list_items",
+                description="x",
+                mcp_server="internal:cerrada_g2",
+                status=ToolStatus.ACTIVE,
+                connector_id=probe.id,
+                read_only=True,
+                destructive=False,
+                default_mode="always",
+            )
+        )
+    await db_session.commit()
+    connector_tools = set(
+        (
+            await db_session.scalars(
+                select(ToolCatalog.name).where(ToolCatalog.connector_id.is_not(None))
+            )
+        ).all()
+    )
+    assert "cerrada_g2.list_items" in connector_tools, "barrido roto"
+    connector_tools |= {"GMAIL_SEND_EMAIL", "list_products"}
+    native = {
+        name
+        for name in build_default_registry().names()
+        if name not in connector_tools and not activations.needs_connector(name)
+    }
+    assert {"reservas.create", "escalate.escalate_to_human"} <= native
+
+    async def unreadable(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("the policy cannot be read")
+
+    monkeypatch.setattr(activations, "tool_policy", unreadable)
+    a = tenants_ab["a"]
+    cfg = await seed_active_agent_config(
+        db_session, tenant_id=a, system_prompt="Vende.", tools=sorted(connector_tools | native)
+    )
+    policy = await pipeline._load_tool_policy(a, cfg.agent_id)
+    assert policy.closed, "falla cerrada"
+    offered = set(activations.allowed_names(tuple(sorted(connector_tools | native)), policy))
+    assert not (offered & connector_tools), sorted(offered & connector_tools)
+    assert native <= offered
+
+
+# ── T217 (revisión de seguridad del 2026-10-30): el bloqueo que no se lee cierra ──
+
+
+async def test_without_its_tool_gating_the_turn_offers_no_tool(tenants_ab, monkeypatch) -> None:
+    """Garantía 2. El bloqueo por herramienta de la consola (CP-13: ``blocked`` o
+    ``needs_approval`` en ``tenant_connector_tool_overrides``) es una lista de
+    excluidas en la que puede estar **cualquier** herramienta del catálogo, también
+    las de la casa (``reservas.create``). Si el turno no puede leerla, no sabe qué
+    bloqueó el cliente: no ofrece ninguna. Se barre el registro entero; y, leída,
+    solo sale lo bloqueado (el control del control)."""
+    from nexus_worker.runtime import pipeline
+
+    from nexus_api.db.models import TenantConnectorToolOverride
+
+    every = tuple(sorted(build_default_registry().names()))
+    assert {"reservas.create", "escalate.escalate_to_human"} <= set(every)
+    a = tenants_ab["a"]
+
+    async def unreadable(_tenant_id: uuid.UUID) -> frozenset[str]:
+        raise RuntimeError("the gate cannot be read")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(pipeline, "load_gated_tool_names", unreadable)
+        gated = await pipeline._load_gated_tools(a)
+    assert pipeline.without_gated(every, gated) == (), "falla cerrada"
+
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, a):
+        session.add(
+            TenantConnectorToolOverride(
+                tenant_id=a, tool_name="reservas.create", mode="blocked", set_by_actor="t217"
+            )
+        )
+    read = await pipeline._load_gated_tools(a)
+    offered = pipeline.without_gated(every, read)
+    assert "reservas.create" not in offered
+    assert set(every) - {"reservas.create"} <= set(offered)

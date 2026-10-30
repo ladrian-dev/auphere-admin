@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,6 +73,25 @@ class TestPatchIn(BaseModel):
     not_applicable_reason: str | None = Field(default=None, max_length=500)
 
 
+class TestTurnOut(BaseModel):
+    """Un turno de la conversación de una pasada (``runs.served_turns``)."""
+
+    role: Literal["customer", "agent"]
+    text: str
+    #: Lo que habría hecho el agente en ese turno, en una frase cada cosa.
+    actions: list[str] = Field(default_factory=list)
+
+
+class TestAttemptOut(BaseModel):
+    """Una pasada de la última ejecución (``runs.served_attempt``). Tipada para que
+    el barrido de ``test_console_scope.py`` vea su conversación."""
+
+    attempt: int
+    passed: bool | None
+    transcript: list[TestTurnOut] = Field(default_factory=list)
+    stop: str | None = None
+
+
 class TestOut(BaseModel):
     id: uuid.UUID
     kind: str
@@ -89,6 +109,15 @@ class TestOut(BaseModel):
     passes: int
     decided: int
     why_failed: str | None
+    #: Spec 047, enmienda (58.4): ``generated`` si salió de la guía generada para
+    #: este cliente («Generada»); si no, su ``kind``.
+    origin: str
+    #: Spec 047, enmienda (61.6): la conversación de la pasada que se enseña en «Por
+    #: qué falló» (la primera que falló o, si ninguna, la primera) y por qué
+    #: terminó; y todas las pasadas de la última ejecución.
+    transcript: list[TestTurnOut] = Field(default_factory=list)
+    stop: str | None = None
+    attempts: list[TestAttemptOut] = Field(default_factory=list)
 
 
 class SuiteOut(BaseModel):
@@ -103,6 +132,8 @@ class RunIn(BaseModel):
 
     scope: Literal["all", "affected", "one"] = "all"
     test_id: uuid.UUID | None = None
+    #: Spec 047, enmienda (61.8): solo estimar el coste, sin encolar nada.
+    dry_run: bool = False
 
 
 class RunOut(BaseModel):
@@ -116,6 +147,9 @@ def _error(code: str, status_code: int) -> HTTPException:
 
 
 def _test_out(test: AgentTest, outcome: runs_service.TestOutcome) -> TestOut:
+    shown = next((a for a in outcome.attempts if a.get("passed") is False), None) or next(
+        iter(outcome.attempts), None
+    )
     return TestOut(
         id=test.id,
         kind=test.kind,
@@ -133,6 +167,10 @@ def _test_out(test: AgentTest, outcome: runs_service.TestOutcome) -> TestOut:
         passes=outcome.passes,
         decided=outcome.decided,
         why_failed=outcome.why_failed,
+        origin="generated" if test.generated_guide_id is not None else test.kind,
+        transcript=[TestTurnOut.model_validate(t) for t in shown["transcript"]] if shown else [],
+        stop=shown["stop"] if shown else None,
+        attempts=[TestAttemptOut.model_validate(a) for a in outcome.attempts],
     )
 
 
@@ -197,7 +235,12 @@ async def edit_test(
     return await _suite_out(scope)
 
 
-@router.post("/test-runs", response_model=RunOut, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/test-runs",
+    response_model=RunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={200: {"description": "dry_run: the estimate, nothing queued (61.8)"}},
+)
 async def start_run(
     body: RunIn,
     ref: str = Path(...),
@@ -205,26 +248,42 @@ async def start_run(
     principal: ConsolePrincipal = Depends(require_console_principal("agents:write")),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
-) -> RunOut:
-    """Abre su propia transacción: el trabajo se encola **después** de confirmar."""
+) -> RunOut | JSONResponse:
+    """Abre su propia transacción: el trabajo se encola **después** de confirmar.
+    Con ``dry_run`` solo dice cuánto costaría (requisito 61.8), sin encolar.
+
+    Spec 047, T217: como mucho una pasada viva por agente. Si ya hay una, se
+    devuelve esa y no se encola nada (como «Volver a leer»): la fila del agente se
+    bloquea para que dos peticiones a la vez no lancen dos."""
     await require_build_room(principal.partner.id)
     if body.scope == "one" and body.test_id is None:
         raise _error("test_required", status.HTTP_422_UNPROCESSABLE_CONTENT)
     mapping = await resolve_mapping(session, principal, ref)
     async with tenant_scoped_session(session, mapping.tenant_id):
-        agent = await session.get(Agent, agent_id)
+        agent = await session.get(Agent, agent_id, with_for_update=not body.dry_run)
         if agent is None or agent.tenant_id != mapping.tenant_id or agent.status != "active":
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent")
         suite = await ensure_suite(session, agent_id)
         from nexus_api.services.testing.suites import list_tests
 
-        chosen = runs_service.tests_in_scope(
-            await list_tests(session, suite), scope=body.scope, test_id=body.test_id
-        )
+        tests = await list_tests(session, suite)
+        chosen = runs_service.tests_in_scope(tests, scope=body.scope, test_id=body.test_id)
         if not chosen:
             raise _error("nothing_to_run", status.HTTP_409_CONFLICT)
         if await runs_service.target_version(session, agent_id) is None:
             raise _error("no_version", status.HTTP_409_CONFLICT)
+        if body.dry_run:
+            from nexus_api.services.testing.estimate import estimate_for_agent
+
+            estimate = await estimate_for_agent(session, agent_id, tests=len(chosen))
+            return JSONResponse({"tests": len(chosen), **estimate.out()})
+        live = await runs_service.live_run(session, agent_id)
+        if live is not None and live.job_id is not None:
+            only = (live.summary or {}).get("test_id") if live.scope == "one" else None
+            running = runs_service.tests_in_scope(
+                tests, scope=live.scope, test_id=uuid.UUID(str(only)) if only else None
+            )
+            return RunOut(job_id=live.job_id, run_id=live.id, tests=len(running))
         job = await jobs_service.create_job(
             session, kind="tests", agent_id=agent_id, created_by=principal.user_id
         )

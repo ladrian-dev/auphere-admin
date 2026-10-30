@@ -25,7 +25,7 @@ from nexus_api.services import agents as agent_service
 
 from .deps import ClientScope, client_scope
 from .schemas_onboarding import FromSeedIn
-from .seed_templates import stage_from_seed
+from .seed_templates import refuse_on_new_console, stage_from_seed
 
 router = APIRouter(prefix="/clients/{ref}")
 
@@ -162,13 +162,19 @@ async def list_agents(
     "/agents",
     response_model=AgentOut,
     status_code=status.HTTP_201_CREATED,
-    responses={409: {"description": "name_taken"}, 404: {"description": "Unknown seed template."}},
+    responses={
+        409: {"description": "name_taken"},
+        404: {"description": "Unknown seed template."},
+        410: {"description": "seed_template_retired: the new console uses the builder."},
+    },
 )
 async def create_agent(
     body: AgentCreateIn, scope: ClientScope = Depends(client_scope("agents:write"))
 ) -> AgentOut:
     """A new agent with its draft v1 sown from a template — it answers on no
-    number until it is published and a number is assigned to it."""
+    number until it is published and a number is assigned to it. Old console
+    only: on the new one, ``410 seed_template_retired`` (65.10)."""
+    refuse_on_new_console(scope.principal.partner)
     try:
         agent = await agent_service.create_agent(
             scope.session, scope.tenant.id, name=body.name, actor=scope.principal.actor

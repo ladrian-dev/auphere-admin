@@ -150,7 +150,8 @@ async def test_the_reading_stays_in_the_domain_respects_robots_and_stops_at_25(
         pages = router.get(url__regex=rf"{SITE}/pagina-\d+").mock(
             return_value=httpx.Response(200, html=page("<p>Una página más de la barbería.</p>"))
         )
-        assert await run_reader(fake_redis, extract) == 1
+        # La lectura y la identificación del sector que el alta dejó en cola (57.2).
+        assert await run_reader(fake_redis, extract) == 2
 
     job = await _job(db_session, tenant_id, created["read_job_id"])
     assert job.status == "done", job.error_code
@@ -588,6 +589,48 @@ async def test_a_live_reading_is_not_started_twice(client: Any, world: dict[str,
     )
     assert again.status_code == 202
     assert again.json()["job_id"] == created["read_job_id"]
+
+
+async def test_reading_again_needs_room_in_build_and_tests(
+    client: Any, db_session: AsyncSession, world: dict[str, Any], fake_redis: Any
+) -> None:
+    """Spec 047, T217 (revisión de seguridad del 2026-10-30): «Volver a leer» gasta
+    de «Construcción y pruebas», que Auphere paga hasta el tope. Agotada, 402 y
+    nada en cola."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.models import Partner
+    from nexus_api.services.wallet import build_budget
+
+    a = world["a"]
+    created, tenant_id = await _cultor(client, db_session, world, info="cultorbarber.com")
+    async with tenant_scoped_session(db_session, tenant_id):
+        await db_session.execute(
+            sa.update(Job)
+            .where(Job.id == uuid.UUID(created["read_job_id"]))
+            .values(status="failed", error_code="unreachable", finished_at=sa.func.now())
+        )
+    async with db_session.begin():
+        await apply_partner_to_session(db_session, a["partner_id"])
+        state = await build_budget.read(db_session, a["partner_id"])
+        await build_budget.record(db_session, a["partner_id"], state.cap_micros)
+    async with db_session.begin():
+        # La partida es de la consola nueva.
+        await db_session.execute(
+            sa.update(Partner)
+            .where(Partner.id == a["partner_id"])
+            .values(console_v2_enabled_at=sa.func.now())
+        )
+
+    async with tenant_scoped_session(db_session, tenant_id):
+        before = (await db_session.scalars(sa.select(Job.id))).all()
+    resp = await client.post(
+        f"/console/clients/{created['ref']}/business/read", headers=a["headers"]()
+    )
+    assert resp.status_code == 402, resp.text
+    assert resp.json()["detail"] == {"code": "build_budget_exhausted"}
+    async with tenant_scoped_session(db_session, tenant_id):
+        after = (await db_session.scalars(sa.select(Job.id))).all()
+    assert sorted(after) == sorted(before), "nada en cola"
 
 
 # ── el medidor ───────────────────────────────────────────────────────────

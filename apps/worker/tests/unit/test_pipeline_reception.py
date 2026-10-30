@@ -137,8 +137,14 @@ def _stub(monkeypatch: pytest.MonkeyPatch, *, handed_off: bool) -> None:
     async def _empty(*_: Any) -> str:
         return ""
 
+    async def _nothing_gated(*_: Any) -> frozenset[str]:
+        # Without the DB the gate cannot be read, and an unread gate is closed
+        # (T217): this test is not about gating, so the tenant gated nothing.
+        return frozenset()
+
     monkeypatch.setattr(pipeline, "_dispatch_tool", _fake)
     monkeypatch.setattr(pipeline, "_load_kg_snapshot_text", _empty)
+    monkeypatch.setattr(pipeline, "_load_gated_tools", _nothing_gated)
 
 
 def _registry() -> MCPRegistry:

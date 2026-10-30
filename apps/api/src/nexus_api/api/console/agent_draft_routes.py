@@ -42,6 +42,7 @@ from nexus_api.services.agent_config_service import (
 )
 from nexus_api.services.agent_console_policy import merge_console_policy
 from nexus_api.services.agent_payment_review import Reviewer, ReviewerError, apply_reviewers
+from nexus_api.services.agent_spec import missing
 from nexus_api.services.agent_spec.schema import dump
 
 from .agent_drafts import draft_screens, draft_written, ensure_draft, load_view
@@ -56,6 +57,7 @@ from .schemas_agent_draft import (
     DraftChangeOut,
     DraftConflictOut,
     DraftTestsOut,
+    MissingCapabilityOut,
 )
 
 router = APIRouter(prefix="/clients/{ref}/agents/{agent_id}")
@@ -144,6 +146,7 @@ async def draft_out(scope: ClientScope) -> AgentDraftOut:
     view = await load_view(scope)
     target = view.target
     revision = await AgentConfigService(scope.session).draft_revision(agent.id)
+    spec_doc, missing_out = await _spec_and_missing(scope, target, agent)
     allowed: list[DraftAction] = []
     if "agents:write" in scope.principal.permissions:
         allowed = ["edit", "discard"] if view.draft is not None else ["edit"]
@@ -172,19 +175,54 @@ async def draft_out(scope: ClientScope) -> AgentDraftOut:
         payment_review=_payment_review_out(target),
         screens=draft_screens(view),
         allowed=allowed,
-        spec=_spec_doc(target, agent),
+        spec=spec_doc,
         tests=await _tests_out(scope, agent.id),
+        missing_capabilities=missing_out,
     )
 
 
-def _spec_doc(target: AgentConfig | None, agent: Agent) -> dict[str, Any] | None:
-    from .agent_spec_drafts import spec_of
+async def _spec_and_missing(
+    scope: ClientScope, target: AgentConfig | None, agent: Agent
+) -> tuple[dict[str, Any] | None, list[MissingCapabilityOut]]:
+    """Spec 047, enmienda del 2026-10-30 (65.3, 65.4 y D72): the version's
+    AgentSpec without what we do not have, and what is missing: what this read
+    took out (an agent drafted before the amendment), what the builder left out
+    (``policies["builder"]``) and what the AgentSpec promises with no tool —
+    worked out on every read, so an edit that removes a promise clears it."""
+    from nexus_api.services.agent_spec.validator import load_context
+
+    from .agent_spec_drafts import builder_missing, spec_of
 
     try:
         spec = spec_of(target, agent)
     except Exception:  # pragma: no cover - a stored spec that no longer validates
-        return dict(target.spec) if target is not None and target.spec else None
-    return dump(spec) if spec is not None else None
+        return (dict(target.spec) if target is not None and target.spec else None), []
+    if spec is None:
+        return None, []
+    if spec.mode != "structured":
+        return dump(spec), []
+    taken: list[missing.MissingCapability] = []
+    if spec.skills or spec.connection_requests:
+        ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
+        spec, taken = missing.strip_spec(spec, ctx)
+    found = missing.merge(missing.from_promises(spec), taken, builder_missing(target))
+    return dump(spec), [MissingCapabilityOut(**m.to_json()) for m in found]
+
+
+def is_structured(target: AgentConfig | None) -> bool:
+    """The version has a structured AgentSpec: its tools change only through it
+    and the validator (65.10)."""
+    return bool(target is not None and target.spec and target.spec.get("mode") == "structured")
+
+
+def structured_agent_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "structured_agent",
+            "message": "Las herramientas de este agente se cambian en su especificación.",
+        },
+    )
 
 
 async def _tests_out(scope: ClientScope, agent_id: uuid.UUID) -> DraftTestsOut | None:
@@ -300,6 +338,9 @@ async def patch_draft(
     expected = _required_revision(if_match)
     if body.spec is not None:
         return await _patch_spec(body, response, scope, expected)
+    if body.tools is not None and is_structured((await load_view(scope)).target):
+        # Spec 047, enmienda del 2026-10-30 (65.10): not around the validator.
+        raise structured_agent_error()
     service = AgentConfigService(scope.session)
     if body.tools is not None:
         try:
@@ -353,14 +394,26 @@ async def _patch_spec(
     ctx = await load_context(
         scope.session, partner_id=scope.principal.partner.id, legacy_chars=legacy_chars
     )
-    spec, problems = validate_spec(body.spec, ctx, author="person")
+    # Spec 047, enmienda del 2026-10-30 (65.3, D72): lo que no tenemos no se
+    # rechaza, se quita y queda anotado; la consola no edita habilidades ni
+    # peticiones de conexión y nunca podría quitarlas ella.
+    incoming: dict[str, Any] = dict(body.spec)
+    lacking: list[Any] = []
+    if incoming.get("mode") == "structured":
+        incoming, lacking = missing.strip_doc(incoming, ctx)
+    spec, problems = validate_spec(incoming, ctx, author="person")
     if spec is None or problems:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "spec_invalid", "problems": problems_out(problems)},
         )
+    # Requisito 64.3 (enmienda del 2026-10-29): la política de modelo la gestiona
+    # Auphere; desde la consola no se cambia (``409 model_policy_managed``).
+    from nexus_api.services.agent_spec.model_policy import guard_model_policy
+
+    await guard_model_policy(scope.session, before, spec)
     try:
-        draft = await write_spec(scope, spec, expected_revision=expected)
+        draft = await write_spec(scope, spec, expected_revision=expected, lacking=lacking)
     except DraftRevisionConflict as exc:
         raise await _conflict(scope, exc.expected) from None
     if body.note is not None:

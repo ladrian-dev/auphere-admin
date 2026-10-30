@@ -262,7 +262,7 @@ El cliente queda sin respuesta. Una reaction no responde una pregunta.
 ### ✅ Componente cuando el cliente lo agradece
 
 > Cliente: "Quiero corte el viernes a las 4."
-> Agente (tool: `booking.check_availability`) → libre.
+> Agente (tool: `reservas.find_slots`) → libre.
 > Agente: "El viernes 16:00 está libre. ¿Te lo confirmo?"
 >         + buttons `Sí, confirma` / `Cambiar hora` / `Cancelar`.
 

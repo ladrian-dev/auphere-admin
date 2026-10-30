@@ -145,10 +145,9 @@ async def tenant_has_catalog(session: AsyncSession) -> bool:
 
 
 async def _connector_by_slug(scope: ClientScope, slug: str) -> tuple[str, str] | None:
-    """(nombre visible, estado) de una integración que no se enlaza por
-    `connector_id`. Hoy solo AgendaPro, y «conectada» significa que el
-    cliente tiene pegada la URL pública de su agenda — no que exista una
-    fila de conector, que para ella nunca se crea."""
+    """(nombre visible, estado) de una integración que el catálogo no enlaza
+    por `connector_id` (``requires`` en ``capability_names``). Sin fila de
+    conector no hay nada conectado: la pantalla avisa de que falta."""
     display = (
         await scope.session.execute(
             sa.select(Connector.display_name).where(Connector.slug == slug).limit(1)
@@ -157,10 +156,7 @@ async def _connector_by_slug(scope: ClientScope, slug: str) -> tuple[str, str] |
     # La dependencia la dice el código de la herramienta, no el catálogo: si
     # la ficha del conector no está sembrada en este entorno, se nombra por
     # su slug antes que callar que hace falta.
-    display = display or slug
-    if slug == "agendapro":
-        return display, "connected" if scope.tenant.agendapro_public_url else "none"
-    return display, "none"
+    return display or slug, "none"
 
 
 async def _all_capabilities(
@@ -178,9 +174,8 @@ async def _all_capabilities(
         tags = list(tool.capability_tags or [])
         connected = install_status in _CONNECTED
         # Una herramienta puede necesitar una integración que el catálogo no
-        # enlaza: AgendaPro se conecta pegando la URL de la agenda, así que
-        # sus dos herramientas figuran como nativas. Sin esto la pantalla las
-        # daría por utilizables y mentiría.
+        # enlaza (el catálogo de Meta del canal, por ejemplo). Sin esto la
+        # pantalla la daría por utilizable y mentiría.
         if slug is None:
             needed = requires_connector(tool.name, "tool")
             if needed == CHANNEL_CATALOG:

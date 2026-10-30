@@ -40,6 +40,9 @@ from nexus_api.services.business import (
     services_catalog,
     special_dates,
 )
+from nexus_api.services.business import (
+    sector as sector_service,
+)
 from nexus_api.services.business.sections import INITIAL_STATES, Actor
 from nexus_api.services.business.writes import SectionRevisionConflict
 
@@ -64,6 +67,7 @@ from .schemas_business_sections import (
     PoliciesOut,
     PriceOut,
     SectionState,
+    SectorOut,
     ServiceAgentsIn,
     ServiceIn,
     ServiceOut,
@@ -218,6 +222,7 @@ async def _basics_out(scope: ClientScope) -> BasicsOut:
     tenant = await scope.session.get(Tenant, scope.tenant.id)
     assert tenant is not None
     revision, state = await _section(scope, "basics")
+    sector = await sector_service.sector_out_for(scope.session, profile.sector)
     return BasicsOut(
         revision=revision,
         state=state,
@@ -230,12 +235,18 @@ async def _basics_out(scope: ClientScope) -> BasicsOut:
         timezone=profile.timezone,
         price_currency=profile.price_currency,
         eu_only=profile.eu_only,
+        sector=SectorOut.model_validate(sector) if sector is not None else None,
     )
 
 
 @router.get("/basics", response_model=BasicsOut)
 async def get_basics(response: Response, scope: ClientScope = Depends(READ)) -> BasicsOut:
     out = await _basics_out(scope)
+    # Spec 047, enmienda del 2026-10-29 (D59): «Identificando el sector…» es
+    # verdad: sin sector, o con el de respaldo, hay una identificación en marcha.
+    # T217: y lo que un cambio del nicho o la información dejó pendiente dentro de
+    # su hora de espera se identifica aquí, pasada esa hora.
+    await sector_service.request_if_needed(scope.session)
     response.headers["ETag"] = etag(out.revision)
     return out
 

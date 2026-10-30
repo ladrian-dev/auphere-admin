@@ -1,8 +1,12 @@
-"""Los sectores del constructor — spec 047 (requisitos 4.2, 17.8 y 21.1).
+"""Los sectores del constructor — spec 047 (requisitos 4.2, 17.8, 21.1 y 57).
 
 Los 6 grupos de plantillas con nombre de negocio (más «Otro») que acordó la spec
-046, y los mismos 6 sectores de la batería común de pruebas (T090). Un nicho
-escrito a mano se lleva a su sector por palabras; lo que no casa es «Otro».
+046, y los mismos 6 sectores de la batería común de pruebas (T090).
+
+Desde la enmienda del 2026-10-29 (requisito 57, research D46) el sector de un
+cliente **lo identifica un modelo y vive en la ficha** (``services/business/
+sector.py``); nadie lo vuelve a clasificar del nicho. Aquí queda la lista cerrada
+de claves y la regla de respaldo de palabras enteras, para cuando no hay modelo.
 """
 
 from __future__ import annotations
@@ -40,26 +44,76 @@ TEMPLATE_SECTOR: Final[dict[str, str]] = {
     "generic_v1": OTHER,
 }
 
-_WORDS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+#: Las claves que puede tener el sector de una ficha (requisito 57.1): una guía de
+#: Auphere u «otro». Es la lista cerrada contra la que se valida lo que dice el
+#: modelo (57.7) y lo que manda la consola (``sector_unknown``).
+SECTOR_KEYS: Final[tuple[str, ...]] = (*SECTORS, OTHER)
+
+# La regla de respaldo (requisito 57.4, research D46): **palabras enteras**, no
+# fragmentos. «Despacho de abogados» caía en clínica porque contiene «spa»; con
+# palabras enteras no. Solo la usa ``services/business/sector.py`` cuando no hay
+# modelo, y lo que da se guarda con confianza baja hasta que el modelo lo vuelva a
+# identificar. Lo dudoso (psicóloga, veterinaria, gimnasio, óptica…) se queda en
+# «otro»: mejor sin guía que con la de otro oficio.
+_WORDS: Final[tuple[tuple[str, frozenset[str]], ...]] = (
     (
         "barberia_peluqueria",
-        re.compile(r"barber|peluquer|salon de belleza|unas|manicur|estetica capilar"),
+        frozenset(
+            {
+                "barber", "barbers", "barbershop", "barberia", "barberias", "barbero",
+                "barberos", "peluqueria", "peluquerias", "peluquero", "peluquera",
+                "peluqueros", "estilista", "estilistas", "unas", "manicura", "manicure",
+                "pedicura", "manicurista",
+            }
+        ),
     ),
     (
         "clinica",
-        re.compile(r"clinic|dental|dentist|odontolog|estetic|medic|fisio|spa|psicolog|veterin"),
+        frozenset(
+            {
+                "clinica", "clinicas", "dental", "dentales", "dentista", "dentistas",
+                "odontologia", "odontologo", "odontologa", "ortodoncia", "estetica",
+                "esteticas", "medico", "medica", "medicos", "medicina", "fisioterapia",
+                "fisioterapeuta", "fisio", "spa", "podologia", "podologo", "dermatologia",
+            }
+        ),
     ),
     (
         "restaurante",
-        re.compile(r"restaur|cafe|cafeteria|bar\b|pizzer|panader|pasteler|comida|cocina"),
+        frozenset(
+            {
+                "restaurante", "restaurantes", "cafe", "cafeteria", "cafeterias", "bar",
+                "bares", "pizzeria", "pizzerias", "panaderia", "pasteleria", "comida",
+                "comidas", "cocina", "tapas", "marisqueria", "asador", "heladeria",
+            }
+        ),
     ),
-    ("mayorista", re.compile(r"mayorist|por mayor|distribuid|al por mayor")),
-    ("tienda", re.compile(r"tienda|comercio|ecommerce|e-commerce|online|boutique|flor|ropa|venta")),
+    (
+        "mayorista",
+        frozenset({"mayorista", "mayoristas", "mayor", "distribuidor", "distribuidora"}),
+    ),
+    (
+        "tienda",
+        frozenset(
+            {
+                "tienda", "tiendas", "comercio", "ecommerce", "boutique", "floristeria",
+                "flores", "ropa", "zapateria", "libreria", "ferreteria", "joyeria",
+            }
+        ),
+    ),
     (
         "servicios_profesionales",
-        re.compile(r"abogad|asesor|consult|contab|inmobili|academ|escuela|taller|cobranz|seguro"),
+        frozenset(
+            {
+                "abogado", "abogados", "abogada", "abogadas", "despacho", "bufete",
+                "asesor", "asesora", "asesoria", "asesores", "consultor", "consultora",
+                "consultoria", "contable", "contabilidad", "gestoria", "inmobiliaria",
+                "academia", "escuela", "taller", "cobranza", "seguros", "notaria",
+                "arquitecto", "arquitectura", "laboralista", "laboralistas",
+            }
+        ),
     ),
-)
+)  # fmt: skip
 
 
 def _plain(text: str) -> str:
@@ -68,11 +122,14 @@ def _plain(text: str) -> str:
     )
 
 
-def sector_of_niche(niche: str | None) -> str:
-    plain = _plain(niche or "")
-    for key, pattern in _WORDS:
-        if pattern.search(plain):
-            return key
+def sector_of_text(*texts: str | None) -> str:
+    """La regla de respaldo: el primer sector con una palabra entera en el texto
+    (el nicho primero, después la información); si ninguno, «otro»."""
+    for text in texts:
+        words = set(re.findall(r"[a-z0-9]+", _plain(text or "")))
+        for key, vocabulary in _WORDS:
+            if words & vocabulary:
+                return key
     return OTHER
 
 
@@ -80,4 +137,20 @@ def sector_name(key: str) -> str:
     return SECTORS.get(key, OTHER_NAME)
 
 
-__all__ = ["OTHER", "OTHER_NAME", "SECTORS", "TEMPLATE_SECTOR", "sector_name", "sector_of_niche"]
+def has_guide(key: str | None) -> bool:
+    """Si el sector tiene guía de Auphere (sus pruebas del sector y, con la T201,
+    su guía para el constructor). «Otro» no: el constructor genera una para el
+    cliente (requisito 58.4)."""
+    return key in SECTORS
+
+
+__all__ = [
+    "OTHER",
+    "OTHER_NAME",
+    "SECTORS",
+    "SECTOR_KEYS",
+    "TEMPLATE_SECTOR",
+    "has_guide",
+    "sector_name",
+    "sector_of_text",
+]

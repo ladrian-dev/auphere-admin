@@ -39,6 +39,7 @@ from nexus_api.db.models import (
     ToolStatus,
 )
 from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.agent_spec.retired import RETIRED_TOOLS
 from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.composio_client import (
@@ -80,8 +81,6 @@ from .schemas_agent_tools import (
 router = APIRouter(prefix="/clients/{ref}")
 
 EXCLUDED_CONNECTOR_SLUGS = frozenset({"tiktok_bm"})
-#: Linked by public page (spec 016, R6), never by credentials from the console.
-AGENDAPRO_SLUG = "agendapro"
 _CONNECTED = frozenset({TenantConnectorStatus.CONNECTED.value, TenantConnectorStatus.PARTIAL.value})
 
 
@@ -176,14 +175,25 @@ async def list_tools(scope: ClientScope = Depends(agent_scope("agents:read"))) -
 @router.put(
     "/tools",
     response_model=ToolsSaved,
-    responses={422: {"description": "Unknown or internal tool."}},
+    responses={
+        409: {"description": "structured_agent: change its tools in its AgentSpec."},
+        422: {"description": "Unknown or internal tool."},
+    },
 )
 async def put_tools(
     body: ToolsIn,
     scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> ToolsSaved:
     """Replace the whitelist on the draft. Names must exist in the public
-    catalogue (the service validates; internal tools are refused)."""
+    catalogue (the service validates; internal tools are refused). A retired
+    one (spec 048: ``booking.*``) is refused when it is being added; one the
+    agent already had may stay until it passes to Reservas."""
+    from .agent_draft_routes import is_structured, structured_agent_error
+
+    # Spec 047, enmienda del 2026-10-30 (65.10): the tools of a structured agent
+    # change only through its AgentSpec and the validator (``PATCH …/draft``).
+    if is_structured((await load_view(scope)).target):
+        raise structured_agent_error()
     names = list(dict.fromkeys(body.tools))
     service = AgentConfigService(scope.session)
     try:
@@ -192,6 +202,14 @@ async def put_tools(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+    view = await load_view(scope)
+    had = set(view.target.tools or []) if view.target else set()
+    added = {n: RETIRED_TOOLS[n] for n in names if n in RETIRED_TOOLS and n not in had}
+    if added:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "tool_retired", "replacements": added},
+        )
     draft, created = await ensure_draft(scope)
     draft.tools = names
     await draft_written(scope, draft)
@@ -294,27 +312,17 @@ async def _connectors(
         tc = installs.get(e.slug)
         total, on = tool_counts.get(e.slug, (0, 0))
         form = e.provider_meta.get("credentials_form") if e.auth_kind == "api_key" else None
-        # Spec 016 (R6): AgendaPro is linked by its public page, and that is
-        # what «connected» means for it. The seed keeps ``browser_credentials``
-        # (the operator path still exists); the console never sees that kind.
-        public_link = e.slug == AGENDAPRO_SLUG
-        public_url = scope.tenant.agendapro_public_url if public_link else None
-        auth_kind = "public_url" if public_link else e.auth_kind
-        status_value = tc.status if tc else None
-        if public_link:
-            status_value = "connected" if public_url else status_value
         out.append(
             ConnectorOut(
                 slug=e.slug,
                 display_name=e.display_name,
                 vendor=e.vendor,
                 category=e.category,
-                auth_kind=auth_kind,
+                auth_kind=e.auth_kind,
                 logo_url=_logo(e.provider_meta),
                 capabilities=list(e.capabilities or []),
-                installed=tc is not None or bool(public_url),
-                status=status_value,
-                public_url=public_url,
+                installed=tc is not None,
+                status=tc.status if tc else None,
                 scopes_granted=list(tc.scopes_granted or []) if tc else [],
                 connected_at=tc.connected_at if tc else None,
                 last_synced_at=tc.last_synced_at if tc else None,

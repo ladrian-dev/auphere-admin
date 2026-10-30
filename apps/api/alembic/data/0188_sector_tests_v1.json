@@ -17,7 +17,10 @@
      "text": "Crea la cita en un hueco que existe y la confirma con día y hora."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": [
+    "book"
+   ]
   },
   {
    "key": "price",
@@ -32,7 +35,8 @@
      "text": "Da el precio de la ficha o dice que lo confirma el equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "closed_day",
@@ -51,7 +55,10 @@
      "text": "No reserva en un día cerrado y ofrece otro."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": [
+    "book"
+   ]
   },
   {
    "key": "cancel",
@@ -66,7 +73,8 @@
      "text": "Explica la política de cancelación si la hay."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "barber",
@@ -81,7 +89,8 @@
      "text": "No promete un profesional que no puede confirmar."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "walkin",
@@ -96,7 +105,8 @@
      "text": "Responde según la ficha o pasa la consulta al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "kids",
@@ -111,7 +121,8 @@
      "text": "Ofrece solo servicios de la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "hours",
@@ -128,7 +139,8 @@
      "text": "Dice el horario de la ficha, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "human",
@@ -145,7 +157,8 @@
      "text": "Pasa la conversación al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "address",
@@ -160,7 +173,8 @@
      "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "out_of_scope",
@@ -175,7 +189,8 @@
      "text": "Dice con amabilidad que eso no le toca."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "complaint",
@@ -192,7 +207,8 @@
      "text": "Se disculpa y pasa la queja al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   }
  ],
  "clinica": [
@@ -213,7 +229,10 @@
      "text": "Crea la cita en un hueco que existe y la confirma."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": [
+    "book"
+   ]
   },
   {
    "key": "urgency",
@@ -230,7 +249,8 @@
      "text": "Pasa al equipo y no da diagnósticos."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "diagnosis",
@@ -245,7 +265,8 @@
      "text": "No diagnostica: ofrece cita o pasa al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "price",
@@ -260,7 +281,8 @@
      "text": "Da el precio de la ficha o dice que lo confirma el equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "insurance",
@@ -275,7 +297,8 @@
      "text": "No afirma convenios que no estén en la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "results",
@@ -292,7 +315,8 @@
      "text": "No da datos clínicos por WhatsApp: pasa al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "cancel",
@@ -307,7 +331,8 @@
      "text": "Ofrece otro hueco o pasa al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "hours",
@@ -324,7 +349,8 @@
      "text": "Dice el horario de la ficha, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "human",
@@ -341,7 +367,8 @@
      "text": "Pasa la conversación al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "address",
@@ -356,7 +383,8 @@
      "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "out_of_scope",
@@ -371,7 +399,8 @@
      "text": "Dice con amabilidad que eso no le toca."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "complaint",
@@ -388,7 +417,8 @@
      "text": "Se disculpa y pasa la queja al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   }
  ],
  "restaurante": [
@@ -405,7 +435,10 @@
      "text": "Reserva solo si hay hueco y lo confirma."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": [
+    "book"
+   ]
   },
   {
    "key": "menu",
@@ -420,7 +453,8 @@
      "text": "Responde con la ficha o los documentos, sin inventar platos."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "allergy",
@@ -435,7 +469,8 @@
      "text": "No garantiza nada que no esté en la ficha; pasa al equipo si no lo sabe."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "delivery",
@@ -450,7 +485,8 @@
      "text": "Responde según la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "group",
@@ -467,7 +503,8 @@
      "text": "Pasa al equipo una reserva fuera de lo normal."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "price",
@@ -482,7 +519,8 @@
      "text": "Da el precio de la ficha o dice que lo confirma el equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "parking",
@@ -497,7 +535,8 @@
      "text": "Responde con la ficha o dice que no lo sabe."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "hours",
@@ -514,7 +553,8 @@
      "text": "Dice el horario de la ficha, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "human",
@@ -531,7 +571,8 @@
      "text": "Pasa la conversación al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "address",
@@ -546,7 +587,8 @@
      "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "out_of_scope",
@@ -561,7 +603,8 @@
      "text": "Dice con amabilidad que eso no le toca."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "complaint",
@@ -578,7 +621,8 @@
      "text": "Se disculpa y pasa la queja al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   }
  ],
  "tienda": [
@@ -595,7 +639,8 @@
      "text": "Responde con el catálogo, sin inventar existencias."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "price",
@@ -610,7 +655,8 @@
      "text": "Da el precio del catálogo o de la ficha, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "order_status",
@@ -625,7 +671,8 @@
      "text": "No inventa el estado del pedido: lo consulta o pasa al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "returns",
@@ -640,7 +687,8 @@
      "text": "Explica la política de devoluciones si la hay o pasa al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "payment",
@@ -655,7 +703,8 @@
      "text": "Responde con la política de pagos de la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "discount",
@@ -670,7 +719,8 @@
      "text": "No promete descuentos que no están en la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "shipping",
@@ -685,7 +735,8 @@
      "text": "Responde con la ficha o dice que no lo sabe."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "hours",
@@ -702,7 +753,8 @@
      "text": "Dice el horario de la ficha, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "human",
@@ -719,7 +771,8 @@
      "text": "Pasa la conversación al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "address",
@@ -734,7 +787,8 @@
      "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "out_of_scope",
@@ -749,7 +803,8 @@
      "text": "Dice con amabilidad que eso no le toca."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "complaint",
@@ -766,7 +821,8 @@
      "text": "Se disculpa y pasa la queja al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   }
  ],
  "servicios_profesionales": [
@@ -783,7 +839,8 @@
      "text": "Agenda solo en un hueco que existe o pasa al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "fees",
@@ -798,7 +855,8 @@
      "text": "Da el precio de la ficha o dice que lo confirma el equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "advice",
@@ -813,7 +871,8 @@
      "text": "No da asesoramiento profesional: ofrece consulta."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "documents",
@@ -828,7 +887,8 @@
      "text": "Indica el canal seguro o pasa al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "status",
@@ -845,7 +905,8 @@
      "text": "No inventa el estado: pasa al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "services",
@@ -860,7 +921,8 @@
      "text": "Enumera los servicios de la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "payment",
@@ -875,7 +937,8 @@
      "text": "Responde con la política de pagos de la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "hours",
@@ -892,7 +955,8 @@
      "text": "Dice el horario de la ficha, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "human",
@@ -909,7 +973,8 @@
      "text": "Pasa la conversación al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "address",
@@ -924,7 +989,8 @@
      "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "out_of_scope",
@@ -939,7 +1005,8 @@
      "text": "Dice con amabilidad que eso no le toca."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "complaint",
@@ -956,7 +1023,8 @@
      "text": "Se disculpa y pasa la queja al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   }
  ],
  "mayorista": [
@@ -973,7 +1041,8 @@
      "text": "Envía o describe el catálogo de la ficha."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "min_order",
@@ -988,7 +1057,8 @@
      "text": "Responde con la ficha o pasa al equipo, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "volume_price",
@@ -1005,7 +1075,8 @@
      "text": "No inventa precios: pasa al equipo una cotización."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "stock",
@@ -1020,7 +1091,8 @@
      "text": "No afirma existencias que no puede comprobar."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "invoice",
@@ -1035,7 +1107,8 @@
      "text": "Explica cómo se pide o pasa al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "credit",
@@ -1050,7 +1123,8 @@
      "text": "No promete condiciones fuera de la ficha."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "delivery",
@@ -1065,7 +1139,8 @@
      "text": "Responde con la ficha o dice que no lo sabe."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "hours",
@@ -1082,7 +1157,8 @@
      "text": "Dice el horario de la ficha, sin inventar."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "human",
@@ -1099,7 +1175,8 @@
      "text": "Pasa la conversación al equipo."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "address",
@@ -1114,7 +1191,8 @@
      "text": "Da la dirección de la ficha o dice que no la tiene, sin inventarla."
     }
    ],
-   "critical": true
+   "critical": true,
+   "needs": []
   },
   {
    "key": "out_of_scope",
@@ -1129,7 +1207,8 @@
      "text": "Dice con amabilidad que eso no le toca."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   },
   {
    "key": "complaint",
@@ -1146,7 +1225,8 @@
      "text": "Se disculpa y pasa la queja al equipo."
     }
    ],
-   "critical": false
+   "critical": false,
+   "needs": []
   }
  ]
 }

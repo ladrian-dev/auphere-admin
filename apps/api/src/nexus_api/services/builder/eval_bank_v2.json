@@ -1,0 +1,1753 @@
+[
+ {
+  "id": "b001",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Barbería Cultor",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Corte · 15 €",
+    "Barba · 10 €"
+   ]
+  }
+ },
+ {
+  "id": "b002",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Barbería El Puerto",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Corte y color · 45 €",
+    "Peinado · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "b003",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Navaja y Tijera",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Manicura · 18 €",
+    "Uñas de gel · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b004",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Barbería Sur",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Corte · 15 €",
+    "Barba · 10 €"
+   ]
+  }
+ },
+ {
+  "id": "b005",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería de barrio",
+  "name": "Asistente",
+  "description": "Barbería de barrio. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "La Barbería de Paco",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Corte y color · 45 €",
+    "Peinado · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "b006",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Peluquería Norte",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Manicura · 18 €",
+    "Uñas de gel · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b007",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Estilo Libre",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Corte · 15 €",
+    "Barba · 10 €"
+   ]
+  }
+ },
+ {
+  "id": "b008",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Corte y Color",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Corte y color · 45 €",
+    "Peinado · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "b009",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Peluquería Alba",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Manicura · 18 €",
+    "Uñas de gel · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b010",
+  "sector": "barberia_peluqueria",
+  "niche": "Peluquería unisex",
+  "name": "Asistente",
+  "description": "Peluquería unisex. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Tijeras de Oro",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Corte · 15 €",
+    "Barba · 10 €"
+   ]
+  }
+ },
+ {
+  "id": "b011",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Uñas Coral",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Corte y color · 45 €",
+    "Peinado · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "b012",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Nail Studio Luna",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Manicura · 18 €",
+    "Uñas de gel · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b013",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Manos de Seda",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Corte · 15 €",
+    "Barba · 10 €"
+   ]
+  }
+ },
+ {
+  "id": "b014",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Esmalte y Arte",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Corte y color · 45 €",
+    "Peinado · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "b015",
+  "sector": "barberia_peluqueria",
+  "niche": "Salón de uñas",
+  "name": "Asistente",
+  "description": "Salón de uñas. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Uñas Bonitas",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Manicura · 18 €",
+    "Uñas de gel · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b016",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Barbería Real",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Corte · 15 €",
+    "Barba · 10 €"
+   ]
+  }
+ },
+ {
+  "id": "b017",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Barbería 1920",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Corte y color · 45 €",
+    "Peinado · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "b018",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Barbería Castilla",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Manicura · 18 €",
+    "Uñas de gel · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b019",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Barbería Ribera",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Corte · 15 €",
+    "Barba · 10 €"
+   ]
+  }
+ },
+ {
+  "id": "b020",
+  "sector": "barberia_peluqueria",
+  "niche": "Barbería clásica con dos sedes",
+  "name": "Asistente",
+  "description": "Barbería clásica con dos sedes. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Barbería Goya",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Corte y color · 45 €",
+    "Peinado · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "b021",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Clínica Dental Sonrisa",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Sesión de fisio · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "b022",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Dental Vega",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Limpieza dental · 50 €",
+    "Revisión · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b023",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Clínica Dental Mar",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Masaje · 40 €",
+    "Facial · 55 €"
+   ]
+  }
+ },
+ {
+  "id": "b024",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "OdontoCentro",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Sesión de fisio · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "b025",
+  "sector": "clinica",
+  "niche": "Clínica dental",
+  "name": "Asistente",
+  "description": "Clínica dental. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Dental Arcos",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Limpieza dental · 50 €",
+    "Revisión · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b026",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Estética Aura",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Masaje · 40 €",
+    "Facial · 55 €"
+   ]
+  }
+ },
+ {
+  "id": "b027",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Centro Piel",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Sesión de fisio · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "b028",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Belleza Natural",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Limpieza dental · 50 €",
+    "Revisión · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b029",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Estética Clara",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Masaje · 40 €",
+    "Facial · 55 €"
+   ]
+  }
+ },
+ {
+  "id": "b030",
+  "sector": "clinica",
+  "niche": "Centro de estética",
+  "name": "Asistente",
+  "description": "Centro de estética. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Centro Lumen",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Sesión de fisio · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "b031",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Fisio Activa",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Limpieza dental · 50 €",
+    "Revisión · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b032",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Fisioterapia Ebro",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Masaje · 40 €",
+    "Facial · 55 €"
+   ]
+  }
+ },
+ {
+  "id": "b033",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Centro Movimiento",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Sesión de fisio · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "b034",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Fisio Vital",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Limpieza dental · 50 €",
+    "Revisión · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b035",
+  "sector": "clinica",
+  "niche": "Fisioterapia",
+  "name": "Asistente",
+  "description": "Fisioterapia. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Clínica Postura",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Masaje · 40 €",
+    "Facial · 55 €"
+   ]
+  }
+ },
+ {
+  "id": "b036",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Veterinaria Huellas",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Sesión de fisio · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "b037",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Clínica Veterinaria Sol",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Limpieza dental · 50 €",
+    "Revisión · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b038",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "VetCentro",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Masaje · 40 €",
+    "Facial · 55 €"
+   ]
+  }
+ },
+ {
+  "id": "b039",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Veterinaria Patas",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Sesión de fisio · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "b040",
+  "sector": "clinica",
+  "niche": "Clínica veterinaria",
+  "name": "Asistente",
+  "description": "Clínica veterinaria. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Animalia",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Limpieza dental · 50 €",
+    "Revisión · 30 €"
+   ]
+  }
+ },
+ {
+  "id": "b041",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Casa Lola",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Café · 1,50 €",
+    "Desayuno · 4 €"
+   ]
+  }
+ },
+ {
+  "id": "b042",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "El Rincón de Ana",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Pizza margarita · 9 €"
+   ]
+  }
+ },
+ {
+  "id": "b043",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Mesón del Tajo",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Menú del día · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b044",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "La Cocina de Pepa",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Café · 1,50 €",
+    "Desayuno · 4 €"
+   ]
+  }
+ },
+ {
+  "id": "b045",
+  "sector": "restaurante",
+  "niche": "Restaurante de menú del día",
+  "name": "Asistente",
+  "description": "Restaurante de menú del día. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Taberna Real",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Pizza margarita · 9 €"
+   ]
+  }
+ },
+ {
+  "id": "b046",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Café Plaza",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Menú del día · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b047",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "La Terraza",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Café · 1,50 €",
+    "Desayuno · 4 €"
+   ]
+  }
+ },
+ {
+  "id": "b048",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Café Sol y Sombra",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Pizza margarita · 9 €"
+   ]
+  }
+ },
+ {
+  "id": "b049",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Cafetería Mirador",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Menú del día · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b050",
+  "sector": "restaurante",
+  "niche": "Cafetería con terraza",
+  "name": "Asistente",
+  "description": "Cafetería con terraza. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Café Central",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Café · 1,50 €",
+    "Desayuno · 4 €"
+   ]
+  }
+ },
+ {
+  "id": "b051",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Pizzería Vesubio",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Pizza margarita · 9 €"
+   ]
+  }
+ },
+ {
+  "id": "b052",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Pizza Nostra",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Menú del día · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b053",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "La Piazza",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Café · 1,50 €",
+    "Desayuno · 4 €"
+   ]
+  }
+ },
+ {
+  "id": "b054",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Pizzería Forno",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Pizza margarita · 9 €"
+   ]
+  }
+ },
+ {
+  "id": "b055",
+  "sector": "restaurante",
+  "niche": "Pizzería con reparto",
+  "name": "Asistente",
+  "description": "Pizzería con reparto. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Pizza Bella",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Menú del día · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b056",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Horno San Juan",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Café · 1,50 €",
+    "Desayuno · 4 €"
+   ]
+  }
+ },
+ {
+  "id": "b057",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Panadería Trigo",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Pizza margarita · 9 €"
+   ]
+  }
+ },
+ {
+  "id": "b058",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "El Obrador",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Menú del día · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b059",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Pan de Pueblo",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Café · 1,50 €",
+    "Desayuno · 4 €"
+   ]
+  }
+ },
+ {
+  "id": "b060",
+  "sector": "restaurante",
+  "niche": "Panadería artesanal",
+  "name": "Asistente",
+  "description": "Panadería artesanal. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Masa Madre",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Pizza margarita · 9 €"
+   ]
+  }
+ },
+ {
+  "id": "b061",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Flores Lila",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Ramo de temporada · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "b062",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Jardín Urbano",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Camiseta · 19 €",
+    "Vaqueros · 49 €"
+   ]
+  }
+ },
+ {
+  "id": "b063",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Floristería Rosa",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Juego de llaves · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b064",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Pétalos",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Ramo de temporada · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "b065",
+  "sector": "tienda",
+  "niche": "Floristería online",
+  "name": "Asistente",
+  "description": "Floristería online. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Verde y Flor",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Camiseta · 19 €",
+    "Vaqueros · 49 €"
+   ]
+  }
+ },
+ {
+  "id": "b066",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Moda Brava",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Juego de llaves · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b067",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Boutique Alma",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Ramo de temporada · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "b068",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Ropa Nórdica",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Camiseta · 19 €",
+    "Vaqueros · 49 €"
+   ]
+  }
+ },
+ {
+  "id": "b069",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Tienda Lino",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Juego de llaves · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b070",
+  "sector": "tienda",
+  "niche": "Tienda de ropa",
+  "name": "Asistente",
+  "description": "Tienda de ropa. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Estilo Urbano",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Ramo de temporada · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "b071",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Ferretería Tornillo",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Camiseta · 19 €",
+    "Vaqueros · 49 €"
+   ]
+  }
+ },
+ {
+  "id": "b072",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Ferretería Pozo",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Juego de llaves · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b073",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Suministros Gil",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Ramo de temporada · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "b074",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Ferretería Rey",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Camiseta · 19 €",
+    "Vaqueros · 49 €"
+   ]
+  }
+ },
+ {
+  "id": "b075",
+  "sector": "tienda",
+  "niche": "Ferretería de barrio",
+  "name": "Asistente",
+  "description": "Ferretería de barrio. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Bricolaje Sur",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Juego de llaves · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b076",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Librería Papel",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Ramo de temporada · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "b077",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Libros del Sur",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Camiseta · 19 €",
+    "Vaqueros · 49 €"
+   ]
+  }
+ },
+ {
+  "id": "b078",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "La Página",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Juego de llaves · 12 €"
+   ]
+  }
+ },
+ {
+  "id": "b079",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Librería Lumen",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Ramo de temporada · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "b080",
+  "sector": "tienda",
+  "niche": "Librería",
+  "name": "Asistente",
+  "description": "Librería. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Letras Libres",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Camiseta · 19 €",
+    "Vaqueros · 49 €"
+   ]
+  }
+ },
+ {
+  "id": "b081",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Asesoría Cuentas Claras",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Curso trimestral · 180 €"
+   ]
+  }
+ },
+ {
+  "id": "b082",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Gestoría Pardo",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Declaración de la renta · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "b083",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Asesores Ibéricos",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Primera consulta · 50 €"
+   ]
+  }
+ },
+ {
+  "id": "b084",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Asesoría Faro",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Curso trimestral · 180 €"
+   ]
+  }
+ },
+ {
+  "id": "b085",
+  "sector": "servicios_profesionales",
+  "niche": "Asesoría fiscal",
+  "name": "Asistente",
+  "description": "Asesoría fiscal. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Fiscalia Plus",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Declaración de la renta · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "b086",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Bufete Arias",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Primera consulta · 50 €"
+   ]
+  }
+ },
+ {
+  "id": "b087",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Abogados Solís",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Curso trimestral · 180 €"
+   ]
+  }
+ },
+ {
+  "id": "b088",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Despacho Ruiz y Mora",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Declaración de la renta · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "b089",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Lex Norte",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Primera consulta · 50 €"
+   ]
+  }
+ },
+ {
+  "id": "b090",
+  "sector": "servicios_profesionales",
+  "niche": "Despacho de abogados",
+  "name": "Asistente",
+  "description": "Despacho de abogados. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Abogados Prado",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Curso trimestral · 180 €"
+   ]
+  }
+ },
+ {
+  "id": "b091",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Academia Oxford Sur",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Declaración de la renta · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "b092",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "English Point",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Primera consulta · 50 €"
+   ]
+  }
+ },
+ {
+  "id": "b093",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Academia Big Ben",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Curso trimestral · 180 €"
+   ]
+  }
+ },
+ {
+  "id": "b094",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Speak Up",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Declaración de la renta · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "b095",
+  "sector": "servicios_profesionales",
+  "niche": "Academia de inglés",
+  "name": "Asistente",
+  "description": "Academia de inglés. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Academia Globe",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Primera consulta · 50 €"
+   ]
+  }
+ },
+ {
+  "id": "b096",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Atiende las citas por WhatsApp: busca hueco, reserva y recuerda la política de cancelación.",
+  "business": {
+   "name": "Inmobiliaria Hogar",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Curso trimestral · 180 €"
+   ]
+  }
+ },
+ {
+  "id": "b097",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Responde las dudas de horario, precios y cómo llegar, y pasa al equipo lo que no sepa.",
+  "business": {
+   "name": "Casas Sol",
+   "hours": "L-V 9:00-14:00 y 16:00-20:00",
+   "services": [
+    "Declaración de la renta · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "b098",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Toma pedidos, envía el catálogo y cobra con enlace de pago.",
+  "business": {
+   "name": "Fincas Ribera",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Primera consulta · 50 €"
+   ]
+  }
+ },
+ {
+  "id": "b099",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Recuerda a los clientes sus pagos pendientes con amabilidad y ofrece el enlace.",
+  "business": {
+   "name": "Inmobiliaria Puerta",
+   "hours": "M-D 13:00-16:00 y 20:00-23:30",
+   "services": [
+    "Curso trimestral · 180 €"
+   ]
+  }
+ },
+ {
+  "id": "b100",
+  "sector": "servicios_profesionales",
+  "niche": "Inmobiliaria",
+  "name": "Asistente",
+  "description": "Inmobiliaria. Da la bienvenida a los clientes nuevos, entiende qué necesitan y los deriva al equipo.",
+  "business": {
+   "name": "Vivienda Plus",
+   "hours": "L-V 8:00-15:00",
+   "services": [
+    "Declaración de la renta · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "o001",
+  "sector": "otro",
+  "label": "Gimnasio",
+  "niche": "Gimnasio",
+  "name": "Asistente",
+  "description": "Responde dudas de cuotas, horarios y clases dirigidas, y apunta a quien quiere una clase de prueba.",
+  "business": {
+   "name": "Gimnasio Titán",
+   "hours": "L-V 7:00-23:00",
+   "services": [
+    "Cuota mensual · 35 €",
+    "Clase de prueba · gratis"
+   ]
+  }
+ },
+ {
+  "id": "o002",
+  "sector": "otro",
+  "label": "Gimnasio",
+  "niche": "Gimnasio",
+  "name": "Asistente",
+  "description": "Atiende a los socios: horarios de clases, cuotas y bajas; pasa al equipo las lesiones.",
+  "business": {
+   "name": "Box Fuerza",
+   "hours": "L-S 8:00-22:00",
+   "services": [
+    "Bono 10 clases · 90 €"
+   ]
+  }
+ },
+ {
+  "id": "o003",
+  "sector": "otro",
+  "label": "Gimnasio",
+  "niche": "Gimnasio",
+  "name": "Asistente",
+  "description": "Informa de la piscina y las actividades y pasa las inscripciones al equipo.",
+  "business": {
+   "name": "Centro Deportivo Ola",
+   "hours": "L-D 8:00-21:00",
+   "services": [
+    "Piscina · 6 € la entrada"
+   ]
+  }
+ },
+ {
+  "id": "o004",
+  "sector": "otro",
+  "label": "Óptica",
+  "niche": "Óptica",
+  "name": "Asistente",
+  "description": "Responde dudas de graduación y monturas y da cita para la revisión de la vista.",
+  "business": {
+   "name": "Óptica Luz",
+   "hours": "L-S 10:00-20:00",
+   "services": [
+    "Revisión de la vista · gratis",
+    "Gafas graduadas desde 89 €"
+   ]
+  }
+ },
+ {
+  "id": "o005",
+  "sector": "otro",
+  "label": "Óptica",
+  "niche": "Óptica",
+  "name": "Asistente",
+  "description": "Informa del estado de los encargos de gafas y lentillas y pasa las reclamaciones al equipo.",
+  "business": {
+   "name": "Óptica Visión Clara",
+   "hours": "L-V 9:30-20:30",
+   "services": [
+    "Lentillas mensuales · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "o006",
+  "sector": "otro",
+  "label": "Autoescuela",
+  "niche": "Autoescuela",
+  "name": "Asistente",
+  "description": "Informa de los permisos, precios y horarios de teórica, y apunta a las clases prácticas.",
+  "business": {
+   "name": "Autoescuela Volante",
+   "hours": "L-V 9:00-21:00",
+   "services": [
+    "Matrícula · 120 €",
+    "Clase práctica · 35 €"
+   ]
+  }
+ },
+ {
+  "id": "o007",
+  "sector": "otro",
+  "label": "Autoescuela",
+  "niche": "Autoescuela",
+  "name": "Asistente",
+  "description": "Responde dudas del examen teórico y pasa al equipo las fechas de examen.",
+  "business": {
+   "name": "Autoescuela Ruta 66",
+   "hours": "L-V 10:00-20:00",
+   "services": [
+    "Curso teórico · 150 €"
+   ]
+  }
+ },
+ {
+  "id": "o008",
+  "sector": "otro",
+  "label": "Hotel rural",
+  "niche": "Hotel rural",
+  "name": "Asistente",
+  "description": "Responde dudas de habitaciones, precios y actividades, y pasa las reservas al equipo.",
+  "business": {
+   "name": "Casa Rural El Robledal",
+   "hours": "Todos los días",
+   "services": [
+    "Habitación doble · 85 € la noche"
+   ]
+  }
+ },
+ {
+  "id": "o009",
+  "sector": "otro",
+  "label": "Hotel rural",
+  "niche": "Hotel rural",
+  "name": "Asistente",
+  "description": "Informa de las habitaciones y de cómo llegar y pide los datos para reservar.",
+  "business": {
+   "name": "Hotel Valle Verde",
+   "hours": "Todos los días",
+   "services": [
+    "Habitación con desayuno · 110 €"
+   ]
+  }
+ },
+ {
+  "id": "o010",
+  "sector": "otro",
+  "label": "Taller mecánico",
+  "niche": "Taller mecánico",
+  "name": "Asistente",
+  "description": "Da cita para revisiones y cambios de aceite e informa del estado de las reparaciones.",
+  "business": {
+   "name": "Taller Mecánico Piñón",
+   "hours": "L-V 8:00-18:00",
+   "services": [
+    "Cambio de aceite · 60 €",
+    "ITV · 45 €"
+   ]
+  }
+ },
+ {
+  "id": "o011",
+  "sector": "otro",
+  "label": "Taller mecánico",
+  "niche": "Taller mecánico",
+  "name": "Asistente",
+  "description": "Informa de precios de neumáticos y pasa los presupuestos al equipo.",
+  "business": {
+   "name": "Neumáticos Rueda",
+   "hours": "L-S 9:00-14:00",
+   "services": [
+    "Neumático desde 70 €"
+   ]
+  }
+ },
+ {
+  "id": "o012",
+  "sector": "otro",
+  "label": "Guardería canina",
+  "niche": "Guardería canina",
+  "name": "Asistente",
+  "description": "Responde dudas de estancias y precios y pasa las reservas de estancia al equipo.",
+  "business": {
+   "name": "Guardería Canina Patitas",
+   "hours": "L-D 8:00-20:00",
+   "services": [
+    "Día de guardería · 20 €"
+   ]
+  }
+ },
+ {
+  "id": "o013",
+  "sector": "otro",
+  "label": "Guardería canina",
+  "niche": "Guardería canina",
+  "name": "Asistente",
+  "description": "Informa de vacunas obligatorias y horarios de recogida.",
+  "business": {
+   "name": "Hotel Canino Lobo",
+   "hours": "L-D 9:00-19:00",
+   "services": [
+    "Noche · 25 €"
+   ]
+  }
+ },
+ {
+  "id": "o014",
+  "sector": "otro",
+  "label": "Escuela de música",
+  "niche": "Escuela de música",
+  "name": "Asistente",
+  "description": "Informa de clases de piano y guitarra y apunta a la clase de prueba.",
+  "business": {
+   "name": "Escuela de Música Clave",
+   "hours": "L-V 16:00-21:00",
+   "services": [
+    "Mensualidad · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "o015",
+  "sector": "otro",
+  "label": "Escuela de música",
+  "niche": "Escuela de música",
+  "name": "Asistente",
+  "description": "Responde dudas de matrícula y horarios de grupo.",
+  "business": {
+   "name": "Conservatorio Libre",
+   "hours": "L-V 16:00-20:00",
+   "services": [
+    "Matrícula · 40 €"
+   ]
+  }
+ },
+ {
+  "id": "o016",
+  "sector": "otro",
+  "label": "Lavandería",
+  "niche": "Lavandería",
+  "name": "Asistente",
+  "description": "Informa de precios de lavado y planchado y de cuándo está listo un encargo.",
+  "business": {
+   "name": "Lavandería Burbuja",
+   "hours": "L-S 9:00-21:00",
+   "services": [
+    "Lavado y secado · 8 €"
+   ]
+  }
+ },
+ {
+  "id": "o017",
+  "sector": "otro",
+  "label": "Lavandería",
+  "niche": "Lavandería",
+  "name": "Asistente",
+  "description": "Responde dudas de tintorería y pasa las reclamaciones al equipo.",
+  "business": {
+   "name": "Tintorería Nieve",
+   "hours": "L-V 9:30-20:00",
+   "services": [
+    "Traje · 14 €"
+   ]
+  }
+ },
+ {
+  "id": "o018",
+  "sector": "otro",
+  "label": "Psicología",
+  "niche": "Psicología",
+  "name": "Asistente",
+  "description": "Responde dudas de primera sesión y precios y pasa las peticiones de cita al equipo.",
+  "business": {
+   "name": "Consulta de Psicología Calma",
+   "hours": "L-V 10:00-20:00",
+   "services": [
+    "Sesión · 60 €"
+   ]
+  }
+ },
+ {
+  "id": "o019",
+  "sector": "otro",
+  "label": "Yoga",
+  "niche": "Yoga",
+  "name": "Asistente",
+  "description": "Informa de horarios de clases y bonos y apunta a la clase de prueba.",
+  "business": {
+   "name": "Estudio de Yoga Prana",
+   "hours": "L-S 8:00-21:00",
+   "services": [
+    "Bono 8 clases · 70 €"
+   ]
+  }
+ },
+ {
+  "id": "o020",
+  "sector": "otro",
+  "label": "Yoga",
+  "niche": "Yoga",
+  "name": "Asistente",
+  "description": "Responde dudas de niveles y material para las clases.",
+  "business": {
+   "name": "Shala Norte",
+   "hours": "L-V 9:00-21:00",
+   "services": [
+    "Clase suelta · 12 €"
+   ]
+  }
+ }
+]

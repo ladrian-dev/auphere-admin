@@ -39,6 +39,10 @@ class StartedJob:
     agent_id: uuid.UUID | None = None
     created_by: str | None = None
     draft_revision: int | None = None
+    #: El partner del cliente: el consumidor lo ata al proxy de modelos para todo
+    #: el trabajo. ``None``: un cliente sin partner (sin proxy obligatorio, va al
+    #: vendor; con él, sus llamadas no salen).
+    partner_id: uuid.UUID | None = None
 
 
 class ProgressSink(Protocol):

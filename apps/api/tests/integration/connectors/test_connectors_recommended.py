@@ -44,7 +44,7 @@ async def test_the_sector_template_decides_who_is_recommended(
     await _active_config(db_session, a["tenant_id"], "barbershop_v1")
 
     cards = await _cards(client, a)
-    assert cards["agendapro"]["recommended"] is True
+    assert "agendapro" not in cards  # spec 048
     assert cards["calendly"]["recommended"] is True  # dynamic, from the fake provider
     assert cards["woocommerce"]["recommended"] is False
     assert cards["googlecalendar"]["recommended"] is False
@@ -72,4 +72,4 @@ async def test_recommending_neither_hides_nor_moves_a_card(
         s: c["category"] for s, c in before.items()
     }
     assert after["woocommerce"]["recommended"] is False
-    assert after["agendapro"]["recommended"] is False
+    assert after["calendly"]["recommended"] is False

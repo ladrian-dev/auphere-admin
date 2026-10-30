@@ -332,3 +332,68 @@ def test_blocked_from_info_does_not_need_key() -> None:
     assert _blocked_from_info({"info": {"blocked": True, "key": "sk-hidden"}}) is True
     assert _blocked_from_info({"blocked": False}) is False
     assert _blocked_from_info("sk-nope") is False
+
+
+# ── el ámbito de plataforma (fallo el-constructor-no-llega-al-modelo-en-staging) ──
+#
+# Lo que paga Auphere sin partner (la evaluación del constructor y la calibración
+# del juez del panel de operador) sale con la clave ``platform`` del mapa de
+# claves virtuales. Nunca con la de un partner, y un partner nunca con ella.
+
+PLATFORM_KEY = "sk-vk-auphere-platform"
+
+
+@pytest.fixture
+def platform_map(monkeypatch: pytest.MonkeyPatch) -> None:
+    keys = json.dumps({str(PARTNER_A): KEY_A, "platform": PLATFORM_KEY})
+    monkeypatch.setenv("LITELLM_PROXY_API_BASE", BASE)
+    monkeypatch.setenv("LITELLM_PROXY_VIRTUAL_KEYS", keys)
+    monkeypatch.setenv("LITELLM_PROXY_REQUIRED", "1")
+
+
+def test_the_platform_scope_spends_auphere_s_key(platform_map: None) -> None:
+    from nexus_api.core.llm_proxy import in_llm_proxy_platform_scope, llm_proxy_platform_scope
+
+    assert not in_llm_proxy_platform_scope()
+    with llm_proxy_platform_scope():
+        assert in_llm_proxy_platform_scope()
+        kwargs = apply_litellm_proxy_kwargs({"model": "m", "messages": []})
+    assert (kwargs["api_base"], kwargs["api_key"]) == (BASE, PLATFORM_KEY)
+    assert not in_llm_proxy_platform_scope(), "the scope ends with its block"
+
+
+def test_the_platform_scope_never_spends_a_partner_s_key(platform_map: None) -> None:
+    """Dentro de un partner, el ámbito de plataforma cambia quién paga: Auphere,
+    y solo Auphere. Al salir, vuelve el partner."""
+    from nexus_api.core.llm_proxy import current_llm_proxy_partner, llm_proxy_platform_scope
+
+    with llm_proxy_partner_scope(PARTNER_A):
+        with llm_proxy_platform_scope():
+            assert current_llm_proxy_partner() is None
+            kwargs = apply_litellm_proxy_kwargs({"model": "m", "messages": []})
+        assert current_llm_proxy_partner() == PARTNER_A
+        back = apply_litellm_proxy_kwargs({"model": "m", "messages": []})
+    assert kwargs["api_key"] == PLATFORM_KEY
+    assert back["api_key"] == KEY_A
+
+
+def test_a_partner_never_spends_auphere_s_key(platform_map: None) -> None:
+    """Sin ámbito, o con un partner sin clave, no hay salto: la de Auphere no es
+    el comodín de nadie."""
+    with pytest.raises(LLMProxyUnavailable):
+        apply_litellm_proxy_kwargs({"model": "m", "messages": []})
+    with llm_proxy_partner_scope(PARTNER_B), pytest.raises(LLMProxyUnavailable):
+        apply_litellm_proxy_kwargs({"model": "m", "messages": []})
+    assert virtual_key_for(PARTNER_A) == KEY_A
+
+
+def test_without_a_platform_key_the_platform_scope_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nexus_api.core.llm_proxy import llm_proxy_platform_scope
+
+    monkeypatch.setenv("LITELLM_PROXY_API_BASE", BASE)
+    monkeypatch.setenv("LITELLM_PROXY_VIRTUAL_KEYS", json.dumps({str(PARTNER_A): KEY_A}))
+    monkeypatch.setenv("LITELLM_PROXY_REQUIRED", "1")
+    with llm_proxy_platform_scope(), pytest.raises(LLMProxyUnavailable):
+        apply_litellm_proxy_kwargs({"model": "m", "messages": []})

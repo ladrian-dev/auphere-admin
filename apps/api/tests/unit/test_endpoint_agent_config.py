@@ -5,6 +5,11 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+#: Spec 047 (requisito 23): the operator's promote is an audited jump of the
+#: gate and always says why.
+REASON = {"reason": "Prueba del panel de operador"}
+
+
 async def test_get_returns_empty_bundle_when_no_versions(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
     response = await client.get(f"/admin/tenants/{tid}/agent-config", headers=admin_headers)
@@ -71,7 +76,9 @@ async def test_promote_workflow(client, admin_headers, seed_tenants):
     )
     assert r1.status_code == 201
     # promote v1
-    r2 = await client.post(f"/admin/tenants/{tid}/agent-config/1/promote", headers=admin_headers)
+    r2 = await client.post(
+        f"/admin/tenants/{tid}/agent-config/1/promote", headers=admin_headers, json=REASON
+    )
     assert r2.status_code == 200
     assert r2.json()["status"] == "active"
 
@@ -91,7 +98,9 @@ async def test_rollback_workflow(client, admin_headers, seed_tenants):
         )
         assert staged.status_code == 201 and staged.json()["version"] == version
         promoted = await client.post(
-            f"/admin/tenants/{tid}/agent-config/{version}/promote", headers=admin_headers
+            f"/admin/tenants/{tid}/agent-config/{version}/promote",
+            headers=admin_headers,
+            json=REASON,
         )
         assert promoted.status_code == 200, promoted.text
     # Rollback to v1
@@ -103,7 +112,9 @@ async def test_rollback_workflow(client, admin_headers, seed_tenants):
 
 async def test_promote_unknown_version_returns_409(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
-    r = await client.post(f"/admin/tenants/{tid}/agent-config/999/promote", headers=admin_headers)
+    r = await client.post(
+        f"/admin/tenants/{tid}/agent-config/999/promote", headers=admin_headers, json=REASON
+    )
     assert r.status_code == 409
 
 
@@ -133,6 +144,7 @@ async def test_versions_listed_in_descending_order(client, admin_headers, seed_t
             await client.post(
                 f"/admin/tenants/{tid}/agent-config/{staged.json()['version']}/promote",
                 headers=admin_headers,
+                json=REASON,
             )
     r = await client.get(f"/admin/tenants/{tid}/agent-config", headers=admin_headers)
     versions = [v["version"] for v in r.json()["versions"]]
@@ -172,7 +184,7 @@ async def test_list_seed_templates_includes_barbershop(client, admin_headers):
     assert "barbershop_v1" in names
     bs = next(t for t in payload if t["name"] == "barbershop_v1")
     assert bs["version"] == "1.0.0"
-    assert "booking.check_availability" in bs["tools_required"]
+    assert "reservas.find_slots" in bs["tools_required"]  # spec 048
 
 
 async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenants):
@@ -198,7 +210,7 @@ async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenan
     assert config["seed_template_ref"] == "barbershop_v1"
     assert "Cultor Barber" in config["system_prompt_rendered"]
     assert "Av. Apoquindo 1234" in config["system_prompt_rendered"]
-    assert "booking.create_appointment" in config["tools"]
+    assert "reservas.create" in config["tools"]  # spec 048
     assert config["policies"]["cancellation"]["free_hours_before"] == 24
 
 
@@ -274,6 +286,7 @@ async def test_patch_runtime_refuses_active(client, admin_headers, seed_tenants)
     promote = await client.post(
         f"/admin/tenants/{tid}/agent-config/{version}/promote",
         headers=admin_headers,
+        json=REASON,
     )
     assert promote.status_code == 200
     body = {

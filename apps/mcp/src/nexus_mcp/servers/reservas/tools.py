@@ -109,7 +109,9 @@ async def _ctx(session: AsyncSession) -> Ctx:
     """Los ajustes del cliente, solo con el módulo activo."""
     tenant_id = require_current_tenant()
     access = await session.get(ClientAccess, tenant_id)
-    if access is None or not access.enabled or "reservas" not in (access.modules or []):
+    # Spec 048 (decision 16): the module on the list is enough; whether the
+    # client's people can sign in (``enabled``) is not the agent's business.
+    if access is None or not access.reservas_on:
         raise ToolError(NOT_ACTIVE)
     ctx = await load_ctx(session, tenant_id)
     if ctx is None:

@@ -100,6 +100,20 @@ def neutralise_tags(text: str, tag: str) -> str:
     )
 
 
+def inert(text: str, tags: tuple[str, ...]) -> str:
+    """Texto que nunca lleva marcado —un turno de una conversación, un criterio de
+    una prueba—, sin forma de abrir ni cerrar ninguna etiqueta del bloque.
+
+    :func:`neutralise_tags` borra los cierres de cada etiqueta de ``tags``, pero
+    solo desactiva la apertura de las que tienen guion bajo: ``<plan>`` o
+    ``<criterios>`` seguirían siendo marcado. Aquí, después, cualquier ángulo que
+    quede pasa a comilla angular (U+2039 y U+203A): se lee igual y no es una
+    etiqueta. Spec 047, T217 (revisión de seguridad del 2026-10-30)."""
+    for tag in tags:
+        text = neutralise_tags(text, tag)
+    return text.replace("<", "\u2039").replace(">", "\u203a")
+
+
 def fence(text: str, *, tag: str, title: str | None = None) -> str:
     """Envuelve ``text`` en su delimitador, ya neutralizado.
 
@@ -172,5 +186,6 @@ __all__ = [
     "fence",
     "fence_only",
     "fenced_block",
+    "inert",
     "neutralise_tags",
 ]

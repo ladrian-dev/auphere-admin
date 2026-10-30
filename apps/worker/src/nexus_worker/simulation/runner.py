@@ -7,7 +7,8 @@ El playground y las pruebas corren **el mismo grafo que atiende el canal**
    versión del historial), con el paquete entero que vería el canal: zona
    horaria, asignaciones de modelo, banderas y agente (``agent_loader.bundle_of``);
 2. el registro de herramientas es el **simulado** (``SimulatedRegistry``): la
-   agenda y la hora no son las de verdad y nada sale fuera;
+   agenda y la hora no son las de verdad y nada sale fuera, ni una lectura de un
+   conector ni una consulta al dueño;
 3. la **hora** es la simulada (``turn_clock.simulated_clock``).
 
 La conversación es de verdad en la base, en el canal ``qa_playground`` del
@@ -44,7 +45,7 @@ from nexus_api.db.models import (
 )
 from nexus_api.db.models.channel import QA_PLAYGROUND_PROVIDER
 
-from nexus_worker.simulation.registry import SimulatedRegistry
+from nexus_worker.simulation.registry import SimulatedRegistry, load_connector_tools
 from nexus_worker.simulation.world import World
 
 log = structlog.get_logger(__name__)
@@ -103,7 +104,7 @@ class TurnOutcome:
 
 
 async def _channel(session: Any, tenant_id: uuid.UUID) -> Channel:
-    channel = (
+    channel: Channel | None = (
         await session.scalars(
             sa.select(Channel).where(
                 Channel.tenant_id == tenant_id,
@@ -185,6 +186,7 @@ async def run_turn(
         llm_proxy_partner_scope,
         partner_id_for_tenant_standalone,
     )
+    from nexus_api.services.reservations.passing import reservas_enabled
 
     from nexus_worker.runtime.agent_loader import AgentLoader, bundle_of
     from nexus_worker.runtime.pipeline import build_pipeline
@@ -195,7 +197,10 @@ async def run_turn(
         cfg = await session.get(AgentConfig, version_id)
         if cfg is None:
             raise LookupError("unknown_version")
+        cfg_agent_id = cfg.agent_id
         bundle = await bundle_of(session, tenant_id, cfg)
+        connector_tools = await load_connector_tools(session)
+        reservas_on = await reservas_enabled(session, tenant_id)
         if model_policy:
             bundle = dataclasses.replace(
                 bundle, policies={**bundle.policies, "model_policy": dict(model_policy)}
@@ -221,7 +226,9 @@ async def run_turn(
         agent_loader=loader,
         llm_router=llm_router or default_router(),
         checkpointer=MemorySaver(),
-        mcp_registry=SimulatedRegistry(world),
+        mcp_registry=SimulatedRegistry(
+            world, connector_tools=connector_tools, reservas_on=reservas_on
+        ),
         use_ucm_formatter=False,
     )
     before = len(world.actions)
@@ -235,6 +242,9 @@ async def run_turn(
         "customer_id": str(conv.customer_id),
         "inbound_message_id": str(inbound_id),
         "user_message": text,
+        # El agente que se prueba, como en el canal: sus activaciones de
+        # conectores, su conocimiento y su memoria son los suyos.
+        "agent_id": str(cfg_agent_id),
     }
     config = {"configurable": {"thread_id": f"sim:{conv.conversation_id}"}}
     # El proxy de modelos es fail-closed: cada salto lleva la clave virtual del

@@ -123,6 +123,13 @@ class BusinessProfile(Base):
             name="ck_business_profiles_currency",
         ),
         CheckConstraint("content_rev >= 1", name="ck_business_profiles_rev"),
+        CheckConstraint(
+            "sector IS NULL OR (jsonb_typeof(sector) = 'object' "
+            "AND sector ? 'key' AND sector ? 'label' "
+            "AND (sector->>'key') ~ '^[a-z_]{1,40}$' "
+            "AND char_length(sector->>'label') BETWEEN 1 AND 40)",
+            name="ck_business_profiles_sector",
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -151,6 +158,10 @@ class BusinessProfile(Base):
     content_rev: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=1, server_default="1"
     )
+    #: Spec 047, enmienda del 2026-10-29 (requisito 57.1, migración 0206): el sector
+    #: del negocio, ``{key, label, confidence, source, decided_by}``; ``None``
+    #: mientras se identifica. Se lee con ``services.business.sector.stored``.
+    sector: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -469,5 +480,54 @@ class BusinessFaq(UUIDPrimaryKey, Base):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+# ── Spec 047, enmienda del 2026-10-29 (migración 0206): los agentes sugeridos ──
+
+SUGGESTED_AGENT_STATUSES: tuple[str, ...] = ("open", "dismissed", "superseded")
+SUGGESTED_AGENT_ROLES: tuple[str, ...] = ("reception", "sales", "billing", "support")
+
+
+class SuggestedAgent(UUIDPrimaryKey, Base):
+    """Un agente que propone el constructor del cliente (requisito 60.6). No se crea
+    solo: «Crear este agente» abre «Nuevo agente» relleno y «Descartar» lo aparta
+    (no vuelve). ``name_key`` es el nombre normalizado, para no repetirlo."""
+
+    __tablename__ = "suggested_agents"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_suggested_agents_tenant_id"),
+        CheckConstraint(
+            f"status IN ({_in(SUGGESTED_AGENT_STATUSES)})", name="ck_suggested_agents_status"
+        ),
+        CheckConstraint(
+            f"role IS NULL OR role IN ({_in(SUGGESTED_AGENT_ROLES)})",
+            name="ck_suggested_agents_role",
+        ),
+        CheckConstraint(
+            "(status = 'open') = (decided_at IS NULL)", name="ck_suggested_agents_decided"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "job_id"],
+            ["jobs.tenant_id", "jobs.id"],
+            name="fk_suggested_agents_job",
+            ondelete="SET NULL",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(60), nullable=False)
+    description: Mapped[str] = mapped_column(String(1024), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(12), nullable=False, default="open", server_default="open"
+    )
+    #: La huella de la ficha con la que se propuso.
+    fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()

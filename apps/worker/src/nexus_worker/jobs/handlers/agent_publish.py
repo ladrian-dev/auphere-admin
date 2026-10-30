@@ -29,7 +29,13 @@ from nexus_api.services import publishing
 from nexus_api.services.testing import runs as runs_service
 from nexus_api.services.testing.suites import ensure_suite, list_tests
 
-from nexus_worker.jobs.handlers.agent_tests import JudgeFactory, default_judge, run_suite
+from nexus_worker.jobs.handlers.agent_tests import (
+    CustomerFactory,
+    JudgeFactory,
+    default_customer,
+    default_judge,
+    run_suite,
+)
 from nexus_worker.jobs.registry import (
     JobContext,
     JobFailed,
@@ -83,10 +89,14 @@ async def _needs_run(ctx: JobContext, agent_id: uuid.UUID) -> uuid.UUID | None:
 
 
 def make_publish_handler(
-    *, judge_factory: JudgeFactory | None = None, router_factory: Callable[[], Any] | None = None
+    *,
+    judge_factory: JudgeFactory | None = None,
+    router_factory: Callable[[], Any] | None = None,
+    customer_factory: CustomerFactory | None = None,
 ) -> JobHandler:
     make_judge = judge_factory or default_judge
     make_router = router_factory or default_router
+    make_customer = customer_factory or default_customer
 
     async def handle(ctx: JobContext) -> JobOutcome:
         agent_id = ctx.agent_id
@@ -100,7 +110,13 @@ def make_publish_handler(
         await ctx.progress(step="testing")
         run_id = await _needs_run(ctx, agent_id)
         if run_id is not None:
-            await run_suite(ctx, run_id, judge=make_judge(ctx.tenant_id), router=make_router())
+            await run_suite(
+                ctx,
+                run_id,
+                judge=make_judge(ctx.tenant_id),
+                router=make_router(),
+                customer=make_customer(ctx.tenant_id),
+            )
 
         await ctx.progress(step="deciding")
         try:

@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
@@ -45,10 +45,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from nexus_api.core.guardrails.untrusted import fence
 from nexus_api.core.tenant_context import require_current_tenant, tenant_scoped_session
-from nexus_api.services.agent_spec.compiler import compile_spec
+from nexus_api.services.agent_spec import missing
+from nexus_api.services.agent_spec.compiler import compile_spec, uncovered_promises
 from nexus_api.services.agent_spec.legacy import LEGACY_DEPLOYMENT
-from nexus_api.services.agent_spec.schema import AgentSpec, dump
+from nexus_api.services.agent_spec.missing import MissingCapability, Source
+from nexus_api.services.agent_spec.retired import RETIRED_TOOLS
+from nexus_api.services.agent_spec.schema import TOOL_NAME_PATTERN, AgentSpec, dump
 from nexus_api.services.agent_spec.validator import Context, load_context, validate_spec
+from nexus_api.services.builder.guides import generated as guides_generated
+from nexus_api.services.builder.guides import render as render_guide
+from nexus_api.services.builder.guides import resolve as guides_resolve
+from nexus_api.services.builder.guides.resolve import ResolvedGuide
+from nexus_api.services.builder.guides.roles import patterns_text, roles_for
 from nexus_api.services.business.compilation import Facts, render_facts
 
 log = structlog.get_logger(__name__)
@@ -89,6 +97,8 @@ AGENT_TARGETS: Final = frozenset(
 )
 
 PROMPT_FILE: Final = Path(__file__).with_name("prompts") / "agent_draft.md"
+#: Where a version keeps what the builder left out (``policies["builder"]``).
+BUILDER_POLICY: Final = "builder"
 
 Complete = Callable[[list[dict[str, str]]], Awaitable[str]]
 Progress = Callable[..., Awaitable[bool]]
@@ -98,6 +108,14 @@ class BuilderUnavailable(Exception):
     """El modelo no respondió o no devolvió un borrador que se pueda leer."""
 
     code = "builder_unavailable"
+
+
+class FactsUnavailable(Exception):
+    """Spec 047, enmienda del 2026-10-30 (65.12): la ficha del negocio no se pudo
+    leer. Sin ella no se escribe un borrador genérico: el trabajo falla con su
+    código y la consola lo explica."""
+
+    code = "facts_unavailable"
 
 
 class DraftInputInvalid(ValueError):
@@ -132,6 +150,20 @@ class Draft:
     tests: list[dict[str, Any]] = field(default_factory=list)
     connect: list[dict[str, str]] = field(default_factory=list)
     dropped_tools: list[dict[str, str]] = field(default_factory=list)
+    #: Spec 047, enmienda del 2026-10-30 (65.3 y 65.4): lo que se quedó fuera por
+    #: no tenerlo, más las promesas sin herramienta del borrador.
+    lacking: list[MissingCapability] = field(default_factory=list)
+
+    @property
+    def missing(self) -> list[dict[str, Any]]:
+        """Lo que falta, como lo lee la consola (``contracts/console-api.md`` §11)."""
+        return [m.to_json() for m in missing.merge(missing.from_promises(self.spec), self.lacking)]
+
+    @property
+    def builder_missing(self) -> list[dict[str, Any]]:
+        """Lo que el constructor dejó fuera, para guardarlo en la versión: las
+        promesas del AgentSpec se calculan en cada lectura del borrador."""
+        return [m.to_json() for m in self.lacking]
 
 
 # ── lo que se le da al modelo ───────────────────────────────────────────────
@@ -142,32 +174,95 @@ def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+AGENDA_PREFIX: Final = "reservas."
+_TOOL_NAME: Final = re.compile(TOOL_NAME_PATTERN)
+
+
 def _catalog_lines(ctx: Context) -> list[str]:
+    """Lo que el constructor ve del catálogo: cada herramienta que puede usar, con
+    lo que hace (``capability_names``) y si este cliente la tiene. Una con un
+    nombre que el AgentSpec no admite (las de Composio, en mayúsculas y sin punto)
+    no se enseña: si el modelo la eligiera, el borrador entero no validaría."""
+    from nexus_api.api.console.capability_names import description_of
+
     lines = []
     for name in sorted(ctx.tools):
         info = ctx.tools[name]
-        if info.status in {"internal", "deprecated"} or not info.integration_offered:
+        if (
+            info.status in {"internal", "deprecated"}
+            or not info.integration_offered
+            or name in RETIRED_TOOLS
+            or not _TOOL_NAME.fullmatch(name)
+        ):
             continue
-        state = (
-            "nativa"
-            if info.integration is None
-            else (
-                f"necesita {info.integration}: "
-                + ("conectada" if info.connected else "SIN CONECTAR")
-            )
-        )
-        lines.append(f"- {name} ({state})")
+        if info.integration is None:
+            state = "nativa"
+        elif info.connected:
+            state = f"necesita {info.integration}: conectada"
+        elif info.activatable:
+            state = f"necesita {info.integration}: SIN CONECTAR"
+        else:
+            # D67: lo que no es un conector (el módulo Reservas, el catálogo de
+            # Meta del canal) no se conecta desde el agente: está o no está.
+            state = f"necesita {info.integration}: SIN ACTIVAR para este cliente, no la uses"
+        what = description_of(name, "tool", "es")
+        lines.append(f"- {name} ({state})" + (f": {what}" if what else ""))
     return lines
 
 
-def build_messages(request: DraftRequest, facts: Facts, ctx: Context) -> list[dict[str, str]]:
+def available_lines(ctx: Context, *, only: Iterable[str] | None = None) -> list[str]:
+    """Spec 047, enmienda del 2026-10-30 (65.7): las herramientas disponibles para
+    el cliente (65.2), con lo que hace cada una según ``capability_names``. Las
+    reciben el copiloto y el constructor del cliente; ``only`` las limita (las del
+    agente)."""
+    from nexus_api.api.console.capability_names import description_of
+
+    wanted = set(only) if only is not None else None
+    lines = []
+    for name in ctx.available_tools():
+        if wanted is not None and name not in wanted:
+            continue
+        info = ctx.tools[name]
+        state = "" if info.connected else f" (pendiente de conectar {info.integration})"
+        what = description_of(name, "tool", "es")
+        lines.append(f"- {name}{state}" + (f": {what}" if what else ""))
+    return lines
+
+
+def _guide_block(guide: ResolvedGuide | None) -> str:
+    """La guía del sector (58.2): vallada siempre, porque la generada sale de un
+    modelo alimentado con una etiqueta que no es de fiar (§III)."""
+    if guide is None or guide.guide is None:
+        return ""
+    title = f"Guía del sector: {guide.label}"
+    if guide.source == "generated":
+        title += " (generada para este cliente)"
+    return fence(render_guide(guide.guide), tag="guia_del_sector", title=title)
+
+
+def build_messages(
+    request: DraftRequest,
+    facts: Facts,
+    ctx: Context,
+    *,
+    guide: ResolvedGuide | None = None,
+    roles: list[str] | None = None,
+) -> list[dict[str, str]]:
+    """Lo que recibe el constructor (58.2): la descripción y la ficha valladas, la
+    guía del sector guardado, los patrones de papel que encajan con la descripción
+    (ejemplos combinables, no papeles fijos) y el catálogo con lo que este cliente
+    tiene y lo que hace cada herramienta. La identidad sale de la ficha y la
+    descripción, nunca de la guía ni de los patrones."""
     system = PROMPT_FILE.read_text(encoding="utf-8")
+    chosen = roles or roles_for(request.description)
     user = "\n\n".join(
         part
         for part in (
             f"Nombre del agente: {request.name}",
             fence(request.description, tag="descripcion", title="¿Qué tiene que hacer?"),
             fence(render_facts(facts), tag="ficha", title="Ficha del negocio"),
+            _guide_block(guide),
+            "<patrones_del_papel>\n" + patterns_text(chosen) + "\n</patrones_del_papel>",
             "<herramientas>\n" + "\n".join(_catalog_lines(ctx)) + "\n</herramientas>",
         )
         if part
@@ -232,21 +327,58 @@ def sanitize(
 ) -> Draft:
     """De lo que dijo el modelo a un AgentSpec que pasa el validador. Lo que no
     cabe se quita y se cuenta; nada de lo que dijo el modelo sobre la identidad,
-    el aviso de IA o la plataforma sobrevive."""
+    el aviso de IA o la plataforma sobrevive.
+
+    Spec 047, enmienda del 2026-10-30 (65.3 y 65.4): lo que no tenemos no entra.
+    Una integración que no es un conector ofrecido, un módulo apagado, una
+    herramienta que no existe y un procedimiento o una regla que prometen algo que
+    ninguna herramienta del agente hace salen del borrador y se anotan en
+    ``missing``; nunca acaban en «Conectar {X}». El agente se queda con su
+    alternativa: pasar a una persona (la sección de límites del prompt, 65.6)."""
     dropped: list[dict[str, str]] = []
     connect: dict[str, str] = {}
+    lacking: list[MissingCapability] = []
+    offered = ctx.offered_connectors()
+    skill_ok = ctx.skill_integrations()
+
+    def lack(slug: str, source: Source, skill: str | None = None) -> None:
+        if slug in skill_ok and source != "skill":
+            return  # lo tiene el cliente y no se conecta: nada que pedir ni que decir
+        lacking.append(
+            missing.not_offered(
+                slug, module=slug in missing.MODULE_LABELS, source=source, skill=skill
+            )
+        )
 
     def usable(name: str) -> bool:
+        # Spec 048 (CE-004): ningún agente nuevo nace con ``booking.*``.
+        if name in RETIRED_TOOLS:
+            dropped.append({"tool": name, "why": "tool_retired"})
+            return False
         info = ctx.tools.get(name)
         if info is None:
             dropped.append({"tool": name, "why": "tool_unknown"})
+            lacking.append(missing.tool(name))
             return False
-        if info.status in {"internal", "deprecated"} or not info.integration_offered:
+        if (
+            info.status in {"internal", "deprecated"}
+            or not info.integration_offered
+            or not _TOOL_NAME.fullmatch(name)
+        ):
             dropped.append({"tool": name, "why": "tool_not_allowed"})
             return False
         if info.integration is not None and not info.connected:
-            connect.setdefault(info.integration, f"Para usar {name}")
+            # Spec 047, enmienda del 2026-10-29 (requisito 62.1, D53 y D62): con un
+            # conector con activación, se guarda «pendiente de conexión», con su
+            # petición; el runtime no la ve hasta que la conexión exista y esté
+            # activada para el agente (garantías 2 y 9, ``activations.tool_policy``).
+            if info.activatable and info.integration in offered:
+                connect.setdefault(info.integration, f"Para usar {name}")
+                return True
+            # Sin activación que la retenga (el módulo Reservas apagado, el
+            # catálogo de Meta sin enlazar), fuera, y se dice qué falta (65.3).
             dropped.append({"tool": name, "why": "tool_not_connected"})
+            lack(info.integration, "tool")
             return False
         return True
 
@@ -264,6 +396,13 @@ def sanitize(
             keep.append(name)
     tools = keep[:60]
 
+    def promises(text: str) -> bool:
+        """65.4: lo que promete algo que ninguna de sus herramientas hace se queda
+        fuera, anotado."""
+        found = uncovered_promises(text, tools)
+        lacking.extend(missing.action(p.key, p.label, None) for p in found)
+        return bool(found)
+
     procedures = []
     for i, proc in enumerate(raw.get("procedures") or []):
         if not isinstance(proc, Mapping):
@@ -277,6 +416,8 @@ def sanitize(
         if not (pid and steps and title and when):
             continue
         cited = [t for t in dict.fromkeys(str(x) for x in proc.get("tools") or []) if t in tools]
+        if promises(f"{when}. {steps}"):
+            continue
         item: dict[str, Any] = {"id": pid[:40], "title": title, "when": when, "steps": steps}
         if cited:
             item["tools"] = cited[:10]
@@ -292,15 +433,18 @@ def sanitize(
             sections.append({"title": title, "body": body})
             budget -= len(body)
     if not sections:
-        sections = [{"title": "Qué haces", "body": request.description}]
+        # 65.12: sin instrucciones no hay borrador genérico; es un fallo del
+        # constructor y la consola ofrece «Desde una plantilla» o «En blanco».
+        raise BuilderUnavailable("no_instructions")
 
     for req in raw.get("connection_requests") or []:
-        if isinstance(req, Mapping) and re.fullmatch(
-            r"[a-z0-9_]{1,40}", str(req.get("integration") or "")
-        ):
-            connect.setdefault(
-                str(req["integration"]), _str(req.get("reason"), 200) or "Lo pide una habilidad"
-            )
+        slug = str(req.get("integration") or "") if isinstance(req, Mapping) else ""
+        if not re.fullmatch(r"[a-z0-9_]{1,40}", slug):
+            continue
+        if slug in offered:
+            connect.setdefault(slug, _str(req.get("reason"), 200) or "Lo pide una habilidad")
+        else:
+            lack(slug, "connection_request")
     skills = []
     for skill in raw.get("skills") or []:
         if not isinstance(skill, Mapping):
@@ -314,6 +458,9 @@ def sanitize(
             if isinstance(integ, str) and re.fullmatch(r"[a-z0-9_]{1,40}", integ)
             else None
         )
+        if integ is not None and integ not in skill_ok:
+            lack(integ, "skill", key)
+            continue
         item = {"key": key[:60], "enabled": bool(skill.get("enabled", True)), "integration": integ}
         if skill.get("fallback"):
             item["fallback"] = _str(skill.get("fallback"), 300)
@@ -366,7 +513,13 @@ def sanitize(
         for f in raw.get("faqs") or []
         if isinstance(f, Mapping) and f.get("q") and f.get("a")
     ][:100]
-    rules = [_str(r, 300) for r in raw.get("rules") or [] if isinstance(r, str) and r.strip()][:30]
+    rules = [
+        rule
+        for rule in (
+            _str(r, 300) for r in raw.get("rules") or [] if isinstance(r, str) and r.strip()
+        )
+        if not promises(rule)
+    ][:30]
 
     doc: dict[str, Any] = {
         "schema_version": "1",
@@ -415,6 +568,7 @@ def sanitize(
         tests=_tests(raw),
         connect=[{"integration": k, "reason": v} for k, v in connect.items()],
         dropped_tools=dropped,
+        lacking=missing.merge(lacking),
     )
 
 
@@ -532,20 +686,33 @@ _PAYING = re.compile(r"\b(cobr\w*|pago|pagos|deuda\w*)\b", re.I)
 _USTED = re.compile(r"\busted\b", re.I)
 
 
-def offline_output(request: DraftRequest, facts: Facts, ctx: Context) -> dict[str, Any]:
-    """Un borrador determinista a partir de la descripción y del catálogo, para
-    recorrer el flujo entero en local sin claves de ningún proveedor. Nunca se
-    usa con un proveedor de verdad."""
+def offline_output(
+    request: DraftRequest,
+    facts: Facts,
+    ctx: Context,
+    *,
+    guide: ResolvedGuide | None = None,
+    tools_hint: list[str] | None = None,
+) -> dict[str, Any]:
+    """Un borrador determinista a partir de la descripción, del catálogo y, si la
+    hay, de la guía del sector: para recorrer el flujo entero en local sin claves
+    de ningún proveedor, y para «Desde una plantilla» (58.6), que pasa las
+    herramientas de su plantilla en ``tools_hint``. Nunca se usa con un proveedor
+    de verdad."""
     text = request.description
     booking = bool(_BOOKING.search(text))
     paying = bool(_PAYING.search(text))
-    available = sorted(
-        n for n, i in ctx.tools.items() if i.status not in {"internal", "deprecated"}
-    )
+    # 65.2: solo lo disponible para el cliente; la agenda, solo con Reservas
+    # encendido (un módulo apagado no se «conecta»: se queda fuera).
+    available = ctx.available_tools()
     tools: list[str] = []
     procedures: list[dict[str, Any]] = []
-    if booking:
-        tools = [n for n in available if n.startswith("reservas.")][:6]
+    if tools_hint is not None:
+        tools = [n for n in dict.fromkeys(tools_hint) if n in available]
+    agenda = [n for n in available if n.startswith(AGENDA_PREFIX)]
+    books = booking and any(n in agenda for n in ("reservas.create", "reservas.answer_offer"))
+    if books:
+        tools += agenda[:6]
         procedures.append(
             {
                 "id": "reservar",
@@ -553,17 +720,46 @@ def offline_output(request: DraftRequest, facts: Facts, ctx: Context) -> dict[st
                 "when": "Cuando alguien pide una cita o pregunta por huecos",
                 "steps": "Pregunta el servicio y el día. Busca huecos, ofrece dos y confirma "
                 "con fecha y hora en palabras. Recuerda la política de cancelación.",
-                "tools": tools[:3],
+                "tools": [n for n in agenda if n in ("reservas.find_slots", "reservas.create")],
             }
         )
-    connection_requests: list[dict[str, str]] = []
-    if paying:
-        pay = [n for n in available if n.startswith("payments.")]
-        tools += pay[:2]
-        if not pay:
-            connection_requests.append(
-                {"integration": "stripe", "reason": "Para cobrar con enlace"}
+    elif booking:
+        # 65.4: sin agenda, la alternativa y no la promesa.
+        procedures.append(
+            {
+                "id": "pedir_cita",
+                "title": "Pedir una cita",
+                "when": "Cuando alguien pide una cita o pregunta por huecos",
+                "steps": "Toma el servicio, el día y la hora que prefiere, y pasa la "
+                "conversación al equipo para que se la confirme. No prometas ninguna hora.",
+            }
+        )
+    if guide is not None and guide.guide is not None:
+        have = {p["id"] for p in procedures}
+        for proc in guide.guide.procedures[:6]:
+            pid = _ID.sub("_", proc.title.lower()).strip("_")[:40]
+            if not pid or pid in have:
+                continue
+            have.add(pid)
+            procedures.append(
+                {
+                    "id": pid,
+                    "title": proc.title[:80],
+                    "when": proc.when or proc.title,
+                    "steps": proc.steps,
+                }
             )
+    if paying:
+        # Lo que de verdad cobra o lleva los cobros, y la revisión de un
+        # comprobante. Nunca una integración inventada (65.3).
+        from nexus_api.api.console.capability_names import TOOL_ACTIONS
+
+        tools += [
+            n
+            for n in available
+            if n == "payments.request_review"
+            or TOOL_ACTIONS.get(n, frozenset()) & {"charge", "collect"}
+        ][:4]
     questions: list[dict[str, Any]] = []
     discarded = {"count": 0, "reasons": []}
     if booking:
@@ -657,7 +853,7 @@ def offline_output(request: DraftRequest, facts: Facts, ctx: Context) -> dict[st
             "critical": True,
         },
     ]
-    if booking:
+    if books:
         tests += [
             {
                 "name": "Pide cita para mañana",
@@ -678,6 +874,23 @@ def offline_output(request: DraftRequest, facts: Facts, ctx: Context) -> dict[st
                 "critical": False,
             },
         ]
+    elif booking:
+        tests.append(
+            {
+                "name": "Pide cita sin agenda",
+                "persona": "Cliente habitual",
+                "first_message": "Hola, ¿me das cita para mañana por la tarde?",
+                "plan": "Pide una cita y espera la respuesta.",
+                "expected_state": {"escalated": True},
+                "criteria": [
+                    {
+                        "key": "no_promise",
+                        "text": "Toma los datos y pasa la cita al equipo, sin prometer hora.",
+                    }
+                ],
+                "critical": True,
+            }
+        )
     return {
         "voice": {
             "tone": "Cercano y claro",
@@ -695,7 +908,6 @@ def offline_output(request: DraftRequest, facts: Facts, ctx: Context) -> dict[st
         ],
         "procedures": procedures,
         "tools": list(dict.fromkeys(tools)),
-        "connection_requests": connection_requests,
         "escalation": {
             "triggers": ["asks_for_human", "failed_attempts", "complaint"],
             "failed_attempts": 2,
@@ -756,13 +968,17 @@ async def build_agent_draft(
         ctx = await load_context(session, partner_id=await _partner_of(session))
         facts = await _business_facts(session)
         model_policy = await default_model_policy(session)
+        guide = await guides_resolve.for_client(session)
 
     await progress(step="writing")
+    # 58.4: sin guía del sector, primero la del cliente, solo con su etiqueta.
+    guide = await ensure_client_guide(sm, tenant_id, guide, complete=complete, job_id=job_id)
+    roles = roles_for(request.description)
     if complete is None:
-        raw = offline_output(request, facts, ctx)
+        raw = offline_output(request, facts, ctx, guide=guide)
     else:
         try:
-            text = await complete(build_messages(request, facts, ctx))
+            text = await complete(build_messages(request, facts, ctx, guide=guide, roles=roles))
         except BuilderUnavailable:
             raise
         except Exception as exc:  # el proveedor no respondió
@@ -777,7 +993,9 @@ async def build_agent_draft(
 
     try:
         async with sm() as session, tenant_scoped_session(session, tenant_id):
-            agent_id = await write_new_agent(session, draft, actor=actor, job_id=job_id)
+            agent_id = await write_new_agent(
+                session, draft, actor=actor, job_id=job_id, guide=guide
+            )
     except AgentError as exc:  # el nombre se ocupó mientras se construía
         raise DraftInputInvalid(exc.code) from exc
     log.info(
@@ -795,6 +1013,10 @@ async def build_agent_draft(
         "discarded": draft.discarded,
         "connect": draft.connect,
         "dropped_tools": draft.dropped_tools,
+        # 65.4: «No tenemos herramienta para: …» (contracts/console-api.md §11).
+        "missing_capabilities": draft.missing,
+        "sector_guide": _guide_summary(guide),
+        "roles": roles,
         "blocks": list(BLOCKS),
         "tests": {"case": len(draft.tests)},
         # 15.9: el registro de cada uso, resumido; nunca la descripción entera.
@@ -806,24 +1028,69 @@ async def build_agent_draft(
 
 
 async def _business_facts(session: AsyncSession) -> Facts:
-    """La ficha para un agente que aún no existe: atiende todos los servicios."""
+    """La ficha para un agente que aún no existe: atiende todos los servicios.
+
+    Una ficha incompleta no impide construir (``load_facts`` la lee como esté);
+    una que no se puede leer, sí (65.12): :class:`FactsUnavailable`, nunca un
+    borrador sobre una ficha vacía."""
     from nexus_api.db.models import Agent
-    from nexus_api.services.business.compilation import load_facts
+    from nexus_api.services.business import compilation
 
     probe = Agent(id=uuid.uuid4(), tenant_id=require_current_tenant(), name="·")
     probe.serves_all_services = True
     try:
-        return await load_facts(session, probe)
-    except Exception:  # la ficha incompleta no impide construir
-        log.warning("builder.facts_unavailable", exc_info=True)
-        return Facts(name="")
+        return await compilation.load_facts(session, probe)
+    except Exception as exc:
+        log.warning("builder.facts_unavailable", error=type(exc).__name__)
+        raise FactsUnavailable() from exc
+
+
+def _guide_summary(guide: ResolvedGuide | None) -> dict[str, Any] | None:
+    if guide is None:
+        return None
+    return {"source": guide.source, "label": guide.label}
+
+
+async def ensure_client_guide(
+    sm: async_sessionmaker[AsyncSession],
+    tenant_id: uuid.UUID,
+    guide: ResolvedGuide | None,
+    *,
+    complete: Complete | None,
+    job_id: uuid.UUID | None,
+) -> ResolvedGuide | None:
+    """Si el sector del cliente no tiene guía (``missing``), la genera **para ese
+    cliente** con su etiqueta y la guía genérica (58.4, ``guides/generated.py``) y
+    la guarda; si ya la tiene, la devuelve tal cual."""
+    if guide is None or guide.source != "missing":
+        return guide
+    built, tests, from_model = await guides_generated.generate(guide.label, complete)
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        row = await guides_generated.store(
+            session, label=guide.label, guide=built, tests=tests, job_id=job_id
+        )
+        resolved = await guides_resolve.for_client(session)
+    log.info(
+        "builder.guide_generated",
+        tenant_id=str(tenant_id),
+        guide_id=str(row.id),
+        label_key=row.label_key,
+        from_model=from_model,
+    )
+    return resolved
 
 
 async def write_new_agent(
-    session: AsyncSession, draft: Draft, *, actor: str, job_id: uuid.UUID | None
+    session: AsyncSession,
+    draft: Draft,
+    *,
+    actor: str,
+    job_id: uuid.UUID | None,
+    guide: ResolvedGuide | None = None,
 ) -> uuid.UUID:
     """El agente nace con su primer borrador (17.2): la versión ``staged`` con el
-    AgentSpec y el prompt compilado, y la suite con las pruebas del caso."""
+    AgentSpec y el prompt compilado, y la suite con las pruebas del caso y las del
+    sector (la guía resuelta del cliente: de Auphere o generada para él)."""
     from nexus_api.db.models import Job
     from nexus_api.services import agents as agent_service
     from nexus_api.services.agent_config_service import AgentConfigService
@@ -842,6 +1109,9 @@ async def write_new_agent(
     runtime_policy = runtime_model_policy(draft.spec)
     if runtime_policy is not None:
         policies["model_policy"] = runtime_policy
+    # 65.4: lo que el constructor dejó fuera por no tenerlo, para el borrador
+    # (las promesas del AgentSpec se calculan al leerlo).
+    policies[BUILDER_POLICY] = {"missing_capabilities": draft.builder_missing}
     service = AgentConfigService(session)
     cfg = await service.stage_new_version(
         actor=actor,
@@ -854,8 +1124,9 @@ async def write_new_agent(
     )
     suite = await ensure_suite(session, agent.id)
     await replace_case_tests(session, suite, draft.tests)
-    # 21.1: las 12 del sector del cliente, de la batería común vigente.
-    await add_sector_tests(session, suite)
+    # 21.1 y 58.4: las 12 del sector del cliente, de su guía. 65.8: las que
+    # necesitan una acción que sus herramientas no hacen, «No aplica».
+    await add_sector_tests(session, suite, guide=guide, tools=list(draft.spec.tools or []))
     cfg.spec = {
         **dump(draft.spec),
         "test_suite": {"suite_id": str(suite.id), "revision": suite.revision},
@@ -870,6 +1141,81 @@ async def write_new_agent(
     return agent.id
 
 
+# ── «Desde una plantilla» (58.6) ────────────────────────────────────────────
+
+
+def _template_description(display_name: str, tools: list[str]) -> str:
+    """Lo que hace un agente de esa plantilla, en palabras de negocio, cuando la
+    persona no lo escribió: decide qué herramientas pide (D67). Solo dice lo que
+    hacen las herramientas que el cliente tiene (65.5): sin agenda, ni una cita."""
+    from nexus_api.api.console.capability_names import actions_of
+
+    does = actions_of(tools)
+    jobs = ["responde las dudas del negocio con su ficha"]
+    if "book" in does:
+        jobs.append("da citas")
+    if "modify_booking" in does:
+        jobs.append("cambia y cancela citas")
+    if any(t.startswith(("woocommerce.", "catalog.")) for t in tools):
+        jobs.append("vende los productos del catálogo")
+    if any(t.startswith("billing.") for t in tools):
+        jobs.append("recuerda los pagos pendientes")
+    if any(t.startswith("inventory.") for t in tools):
+        jobs.append("consulta las existencias")
+    return f"Agente de {display_name} por WhatsApp: " + ", ".join(jobs) + "."
+
+
+async def draft_from_template(
+    session: AsyncSession,
+    *,
+    template_id: str,
+    name: str,
+    description: str | None,
+    actor: str,
+) -> uuid.UUID:
+    """«Empezar desde una plantilla» como el constructor (58.6): un AgentSpec
+    estructurado salido de la guía del sector de la plantilla y de sus herramientas
+    (las que este cliente tiene, D67), con las pruebas del caso y las del sector del
+    cliente. Sin modelo: es la alternativa cuando el constructor no responde (15.8).
+    Dentro de la transacción del cliente. ``SeedTemplateNotFound`` si no existe."""
+    from nexus_api.services.builder.guides.catalog import (
+        auphere_guide,
+        generic_guide,
+        template_tools,
+    )
+    from nexus_api.services.builder.guides.schema import label_key
+    from nexus_api.services.builder.sectors import OTHER, TEMPLATE_SECTOR
+    from nexus_api.services.router_catalog import default_model_policy
+    from nexus_api.services.templating.seed_templates import load_seed_template
+
+    template = load_seed_template(template_id)
+    ctx = await load_context(session, partner_id=await _partner_of(session))
+    facts = await _business_facts(session)
+    # 65.2: de la plantilla, solo lo que el cliente tiene disponible; la
+    # descripción no promete lo que no podrá hacer.
+    available = set(ctx.available_tools())
+    hint = [t for t in template_tools((template_id,)) if t in available]
+    text = (description or "").strip()
+    if len(text) < DESCRIPTION_MIN:
+        text = _template_description(template.display_name or template_id, hint)
+    request = DraftRequest.clean(name, text[:DESCRIPTION_MAX])
+    model_policy = await default_model_policy(session)
+    found = auphere_guide(TEMPLATE_SECTOR.get(template_id, OTHER)) or generic_guide()
+    template_guide = ResolvedGuide(
+        source="template", label=found.label, label_key=label_key(found.label), guide=found.guide
+    )
+    raw = offline_output(request, facts, ctx, guide=template_guide, tools_hint=hint)
+    draft = sanitize(raw, request, ctx, facts, model_policy=model_policy)
+    client_guide = await guides_resolve.for_client(session)
+    if client_guide is not None and client_guide.source == "missing":
+        built, tests, _from_model = await guides_generated.generate(client_guide.label, None)
+        await guides_generated.store(
+            session, label=client_guide.label, guide=built, tests=tests, job_id=None
+        )
+        client_guide = await guides_resolve.for_client(session)
+    return await write_new_agent(session, draft, actor=actor, job_id=None, guide=client_guide)
+
+
 __all__ = [
     "AGENT_TARGETS",
     "BLOCKS",
@@ -880,8 +1226,12 @@ __all__ = [
     "Draft",
     "DraftInputInvalid",
     "DraftRequest",
+    "FactsUnavailable",
+    "available_lines",
     "build_agent_draft",
     "build_messages",
+    "draft_from_template",
+    "ensure_client_guide",
     "offline_output",
     "parse_output",
     "sanitize",

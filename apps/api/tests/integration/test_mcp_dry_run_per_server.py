@@ -24,10 +24,10 @@ them through. We patch ``run`` to a deterministic stub and assert the
 envelope returns ``status == "ok"``.
 
 Coverage policy: every public-namespace tool with non-empty
-side_effects is covered. The single internal-only namespace
-(``agendapro_public.*``) is covered because the booking facade
-delegates to it via ``dispatch_internal``; the dry_run gate covers
-that path too. Composio proxies are tested with one synthesised
+side_effects is covered. There is no internal-only namespace any more
+(spec 048 retired ``agendapro_public.*``); the gate on ``dispatch_internal``
+is pinned with a synthetic tool in ``tests/unit/test_mcp_dry_run.py``.
+Composio proxies are tested with one synthesised
 instance — the class enforces ``side_effects = ("external_api",)``
 unconditionally, so coverage of one proxy is coverage of all.
 
@@ -70,10 +70,6 @@ Catalog snapshot (2026-05-19) — keep this in sync if a tool is added:
    woocommerce.update_order
    woocommerce.add_order_note
    composio_proxy.<dynamic>     (one synthesised)
-
-Internal namespace (``dispatch_internal`` path):
-   agendapro_public.check_availability
-   agendapro_public.create_appointment
 """
 
 from __future__ import annotations
@@ -83,7 +79,7 @@ from typing import Any
 
 import pytest
 from nexus_mcp.base import ToolBase, make_envelope
-from nexus_mcp.registry import MCPRegistry, get_internal_caller_token
+from nexus_mcp.registry import MCPRegistry
 
 from nexus_api.core.tenant_context import tenant_context
 
@@ -197,12 +193,6 @@ def _all_read_only_public_tools() -> list[ToolBase]:
     return [t for t in instances if not t.side_effects]
 
 
-def _all_internal_side_effecting_tools() -> list[ToolBase]:
-    from nexus_mcp.servers.agendapro_public import build_agendapro_public_tools
-
-    return [t for t in build_agendapro_public_tools() if t.side_effects]
-
-
 def _composio_proxy() -> ToolBase:
     """Synthesise a composio proxy instance. The class enforces
     ``side_effects = ("external_api",)`` unconditionally, so one proxy
@@ -229,7 +219,6 @@ def _composio_proxy() -> ToolBase:
 
 _SIDE_EFFECTING_PUBLIC = [*_all_side_effecting_public_tools(), _composio_proxy()]
 _READ_ONLY_PUBLIC = _all_read_only_public_tools()
-_SIDE_EFFECTING_INTERNAL = _all_internal_side_effecting_tools()
 
 
 @pytest.fixture
@@ -300,33 +289,6 @@ async def test_dry_run_lets_read_only_public_tool_pass(tool, audit_collector, au
     assert audit_collector == [], (
         f"{tool.name}: audit fired for a read-only tool — {audit_collector}"
     )
-
-
-# ── internal side-effecting (dispatch_internal path) ────────────────────────
-
-
-@pytest.mark.parametrize(
-    "tool",
-    _SIDE_EFFECTING_INTERNAL,
-    ids=[t.name for t in _SIDE_EFFECTING_INTERNAL],
-)
-async def test_dry_run_blocks_internal_side_effecting_tool(tool, audit_callback, audit_collector):
-    """The internal namespace (``agendapro_public.*``) reaches dispatch
-    via ``dispatch_internal``. The gate applies there too, otherwise
-    public ``booking.create_appointment`` would be blocked while its
-    subprocess delegate would still run.
-    """
-    _block_invoke(tool)
-    reg = MCPRegistry(internal_tools=[tool], dry_run=True, dry_run_audit=audit_callback)
-    with tenant_context(uuid.uuid4()):
-        envelope = await reg.dispatch_internal(
-            tool.name, {}, caller_token=get_internal_caller_token()
-        )
-
-    assert envelope["status"] == "skipped:dry_run"
-    assert envelope["result"]["blocked_by"] == "dry_run"
-    assert len(audit_collector) == 1
-    assert audit_collector[0][0] == tool.name
 
 
 # ── coverage assertion ──────────────────────────────────────────────────────
