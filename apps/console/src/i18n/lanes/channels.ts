@@ -163,8 +163,8 @@ export const channelsMessages = {
   "ch.catalog.clear": { es: "Desconectar", en: "Disconnect" },
   "ch.catalog.clear.title": { es: "Desconectar el catálogo {name}", en: "Disconnect the catalogue {name}" },
   "ch.catalog.clear.body": {
-    es: "El agente deja de enseñar productos como tarjetas. El catálogo sigue en Commerce Manager y puedes volver a conectarlo cuando quieras.",
-    en: "The agent stops showing products as cards. The catalogue stays in Commerce Manager and you can connect it again whenever you want.",
+    es: "El agente deja de enseñar productos como tarjetas. El catálogo sigue en Commerce Manager y enlazado a la cuenta de WhatsApp en Meta (eso se quita desde el Administrador de WhatsApp). Puedes volver a conectarlo cuando quieras.",
+    en: "The agent stops showing products as cards. The catalogue stays in Commerce Manager and linked to the WhatsApp account at Meta (you remove that from WhatsApp Manager). You can connect it again whenever you want.",
   },
   "ch.catalog.permission": {
     es: "La conexión de WhatsApp no incluyó el permiso de catálogo. Vuelve a conectar el número para concederlo.",

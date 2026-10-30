@@ -62,11 +62,6 @@ class _CatalogSim:
         self.linked = next(c for c in self.catalogs if c["id"] == kw["catalog_id"])
         return {"success": True}
 
-    async def unlink_catalog(self, **kw: Any) -> dict[str, Any]:
-        self._hit("unlink_catalog", kw)
-        self.linked = None
-        return {"success": True}
-
     async def close(self) -> None:
         pass
 
@@ -180,7 +175,7 @@ async def test_linking_stores_id_and_name_and_audits_who(
     assert audit.before_json == {"catalog": None}
 
 
-async def test_changing_unlinks_the_old_one_first(
+async def test_changing_links_the_new_one_without_unlinking(
     client, console_world, db_session, monkeypatch
 ) -> None:
     a = console_world["a"]
@@ -193,22 +188,23 @@ async def test_changing_unlinks_the_old_one_first(
     )
     assert r.status_code == 200, r.text
     assert r.json()["catalog"]["id"] == "CAT_FLORES"
-    assert sim.names() == ["list_catalogs", "unlink_catalog", "link_catalog"]
-    assert sim.calls[1][1]["catalog_id"] == "CAT_PLANTAS"
+    # Graph no admite DELETE en /{waba}/product_catalogs: se enlaza el nuevo.
+    assert sim.names() == ["list_catalogs", "link_catalog"]
+    assert sim.calls[1][1]["catalog_id"] == "CAT_FLORES"
     audit = await db_session.scalar(
         sa.select(AuditLog)
         .where(AuditLog.action == "console.channel.catalog")
         .order_by(AuditLog.created_at.desc())
     )
     assert audit is not None
-    assert audit.after_json["meta"] == {"unlinked": "CAT_PLANTAS", "linked": "CAT_FLORES"}
+    assert audit.after_json["meta"] == {"replaced": "CAT_PLANTAS", "linked": "CAT_FLORES"}
 
 
-async def test_when_the_new_one_fails_after_unlinking_the_card_says_so(
+async def test_when_the_new_one_fails_the_old_one_stays_and_the_card_says_why(
     client, console_world, db_session, monkeypatch
 ) -> None:
-    """Honesto y reversible: sin catálogo y con el motivo, no fingiendo que el
-    viejo sigue."""
+    """No se desenlazó nada, así que el viejo sigue, y la tarjeta dice el
+    motivo del rechazo."""
     a = console_world["a"]
     _sim(
         monkeypatch,
@@ -222,8 +218,8 @@ async def test_when_the_new_one_fails_after_unlinking_the_card_says_so(
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["catalog"] is None
-    assert body["catalog_state"] == "none"
+    assert body["catalog"]["id"] == "CAT_PLANTAS"
+    assert body["catalog_state"] == "linked"
     assert body["catalog_error"]["code"] == "catalog_meta_rejected"
     assert "Invalid parameter" in body["catalog_error"]["message"]
 
@@ -247,7 +243,7 @@ async def test_a_catalog_of_another_business_is_refused_and_nothing_changes(
 # ── T012 · desconectar ───────────────────────────────────────────────────
 
 
-async def test_clearing_unlinks_and_forgets(
+async def test_clearing_forgets_without_calling_meta(
     client, console_world, db_session, monkeypatch, fake_redis
 ) -> None:
     a = console_world["a"]
@@ -259,9 +255,10 @@ async def test_clearing_unlinks_and_forgets(
     r = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
     assert r.status_code == 200, r.text
     assert r.json()["catalog"] is None and r.json()["catalog_state"] == "none"
-    assert sim.names() == ["unlink_catalog"]
+    assert sim.calls == [], "Graph no admite DELETE en /{waba}/product_catalogs"
     fila = await _reload(db_session, canal.id)
     assert "catalog_id" not in fila.config and "catalog_name" not in fila.config
+    assert fila.config["catalog_detached"] == "CAT_FLORES"
     assert await fake_redis.get("nexus:catalog:waba:W-1") is None, "la caché no se invalidó"
 
 
@@ -276,19 +273,47 @@ async def test_clearing_without_a_catalog_does_not_call_meta(
     assert sim.calls == []
 
 
-async def test_if_meta_refuses_to_unlink_the_catalog_stays_and_says_why(
-    client, console_world, db_session, monkeypatch
+async def test_a_detached_catalog_is_not_adopted_again_while_meta_keeps_it(
+    client, console_world, db_session, monkeypatch, fake_redis
 ) -> None:
+    """Meta sigue con el catálogo enlazado (no hay DELETE), pero el partner lo
+    desconectó: la conciliación no lo vuelve a poner. Si Meta cambia a otro,
+    manda Meta otra vez."""
     a = console_world["a"]
-    _sim(monkeypatch, linked=FLORES, fail={"unlink_catalog": _permission()})
+    _sim(monkeypatch, linked=FLORES)
     canal = await _canal(
         db_session, a["tenant_id"], catalog_id="CAT_FLORES", catalog_name="Flores y ramos"
     )
     r = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
     assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["catalog"]["id"] == "CAT_FLORES"
-    assert body["catalog_error"]["code"] == "catalog_permission_missing"
+
+    body = await _overview(client, a)
+    (row,) = [c for c in body["channels"] if c["id"] == str(canal.id)]
+    assert row["catalog"] is None and row["catalog_state"] == "none"
+
+    await fake_redis.delete("nexus:catalog:waba:W-1")
+    _sim(monkeypatch, linked=PLANTAS)
+    body = await _overview(client, a)
+    (row,) = [c for c in body["channels"] if c["id"] == str(canal.id)]
+    assert row["catalog"]["id"] == "CAT_PLANTAS"
+    fila = await _reload(db_session, canal.id)
+    assert "catalog_detached" not in fila.config
+
+
+async def test_linking_again_after_detaching_clears_the_mark(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    sim = _sim(monkeypatch, catalogs=[FLORES], linked=FLORES)
+    canal = await _canal(db_session, a["tenant_id"], catalog_detached="CAT_FLORES")
+    r = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog"]["id"] == "CAT_FLORES"
+    assert sim.names() == ["list_catalogs", "link_catalog"]
+    fila = await _reload(db_session, canal.id)
+    assert "catalog_detached" not in fila.config
 
 
 # ── T013 · permisos ──────────────────────────────────────────────────────
@@ -509,7 +534,7 @@ async def test_on_a_coexistence_number_the_catalog_is_declared_not_linked(
     gone = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
     assert gone.status_code == 200 and gone.json()["catalog"] is None
     assert gone.json()["catalog_state"] == "coexistence"
-    assert "unlink_catalog" not in sim.names()
+    assert "link_catalog" not in sim.names()
 
 
 async def test_linking_that_meta_refuses_by_smb_declares_and_learns(

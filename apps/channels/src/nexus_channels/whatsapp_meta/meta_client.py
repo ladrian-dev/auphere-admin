@@ -494,9 +494,10 @@ class MetaClient:
     #
     # Un catálogo es del negocio (``business_id``) y se enlaza a la cuenta de
     # WhatsApp Business (``waba_id``): una cuenta tiene **un** catálogo. Las
-    # cuatro llamadas piden ``catalog_management`` en el token, además de
+    # llamadas piden ``catalog_management`` en el token, además de
     # ``whatsapp_business_management``; sin él Meta contesta con ``code``
-    # 10/200, y el que llama lo traduce (no este cliente).
+    # 10/200, y el que llama lo traduce (no este cliente). No hay
+    # ``unlink``: el edge ``/{waba}/product_catalogs`` no admite DELETE.
 
     async def list_catalogs(
         self,
@@ -539,19 +540,6 @@ class MetaClient:
             f"/{waba_id}/product_catalogs",
             access_token=access_token,
             json_body={"catalog_id": catalog_id},
-        )
-
-    async def unlink_catalog(
-        self,
-        *,
-        waba_id: str,
-        catalog_id: str,
-        access_token: str,
-    ) -> dict[str, Any]:
-        return await self._delete(
-            f"/{waba_id}/product_catalogs",
-            access_token=access_token,
-            params={"catalog_id": catalog_id},
         )
 
     async def search_products(

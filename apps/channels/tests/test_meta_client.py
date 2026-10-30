@@ -345,15 +345,14 @@ async def test_get_linked_catalog_is_none_when_the_waba_has_none() -> None:
             assert await client.get_linked_catalog(waba_id="WABA_1", access_token=_TOKEN) is None
 
 
-async def test_link_and_unlink_catalog_hit_the_waba_edge() -> None:
+async def test_link_catalog_hits_the_waba_edge_and_there_is_no_unlink() -> None:
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
         link = mock.post("/WABA_1/product_catalogs").respond(200, json={"success": True})
-        unlink = mock.delete("/WABA_1/product_catalogs").respond(200, json={"success": True})
         async with MetaClient(_SECRET) as client:
             await client.link_catalog(waba_id="WABA_1", catalog_id="CAT_1", access_token=_TOKEN)
-            await client.unlink_catalog(waba_id="WABA_1", catalog_id="CAT_1", access_token=_TOKEN)
         assert json.loads(link.calls.last.request.content) == {"catalog_id": "CAT_1"}
-        assert unlink.calls.last.request.url.params["catalog_id"] == "CAT_1"
+    # Graph no admite DELETE en /{waba}/product_catalogs (spec 050 D11).
+    assert not hasattr(MetaClient, "unlink_catalog")
 
 
 async def test_search_products_filters_by_name_and_caps_the_limit() -> None:

@@ -462,6 +462,17 @@ async def reconcile_catalogs(
                     states[ch.id] = "permission_missing"
                     continue
                 found = verdict.get("catalog")
+                detached = cfg.get("catalog_detached")
+                if detached is not None:
+                    if isinstance(found, dict) and found.get("id") == detached:
+                        # El partner lo desconectó y Meta lo sigue teniendo
+                        # (no hay DELETE): para Auphere no hay catálogo.
+                        found = None
+                    else:
+                        # Meta cambió (otro catálogo o ninguno): manda Meta.
+                        cfg.pop("catalog_detached", None)
+                        ch.config = cfg
+                        flag_modified(ch, "config")
                 if (found or {}).get("id") != cfg.get("catalog_id") or not cfg.get(
                     "catalog_checked_at"
                 ):
@@ -570,10 +581,11 @@ async def set_channel_catalog(
 ) -> ChannelDetailOut:
     """Enlazar un catálogo a la cuenta del número (o cambiarlo).
 
-    Con otro ya enlazado, primero se desenlaza y luego se enlaza el nuevo
-    (research D4). Si el segundo paso falla, el canal queda **sin** catálogo
-    y con el motivo: honesto y reversible. Meta primero y base después es
-    seguro aquí porque la conciliación al listar adopta lo que Meta tenga.
+    Cambiar es enlazar el nuevo **sin desenlazar antes**: el edge
+    ``/{waba}/product_catalogs`` de Graph no admite DELETE (referencia de
+    Graph; spec 050 research D11). Si Meta rechaza el nuevo, el viejo sigue
+    y la tarjeta dice el motivo. Meta primero y base después es seguro aquí
+    porque la conciliación al listar adopta lo que Meta tenga.
     """
     ch, creds, waba_id, business_id = await _channel_with_creds(scope.session, channel_id)
     cfg = dict(ch.config or {})
@@ -608,15 +620,6 @@ async def set_channel_catalog(
         if before is not None and before.id == body.catalog_id:
             return _detail(ch, await channel_logos(scope.session), "linked")
 
-        if before is not None:
-            try:
-                await client.unlink_catalog(
-                    waba_id=waba_id, catalog_id=before.id, access_token=creds.bisuat
-                )
-            except MetaAPIError as exc:
-                raise _meta_refusal(exc) from exc
-            meta["unlinked"] = before.id
-            _write_catalog(cfg, None)
         try:
             await client.link_catalog(
                 waba_id=waba_id, catalog_id=body.catalog_id, access_token=creds.bisuat
@@ -630,9 +633,9 @@ async def set_channel_catalog(
                 cfg.pop("catalog_error", None)
                 meta["declared"] = body.catalog_id
                 return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
-            if isinstance(exc, MetaTransientError) and before is None:
+            if isinstance(exc, MetaTransientError):
                 raise _meta_refusal(exc) from exc
-            # El viejo ya no está y el nuevo no entró: se dice, no se finge.
+            # El nuevo no entró y el viejo (si había) sigue: se dice el motivo.
             cfg["catalog_error"] = {
                 "code": "catalog_permission_missing"
                 if catalog_permission_missing(exc)
@@ -645,6 +648,9 @@ async def set_channel_catalog(
         else:
             _write_catalog(cfg, chosen)
             cfg.pop("catalog_error", None)
+            cfg.pop("catalog_detached", None)
+            if before is not None:
+                meta["replaced"] = before.id
             meta["linked"] = body.catalog_id
     finally:
         await client.close()
@@ -682,8 +688,14 @@ async def clear_channel_catalog(
     scope: ClientScope = Depends(client_scope("channels:write")),
     redis: Redis = Depends(get_redis),
 ) -> ChannelDetailOut:
-    """Desenlazar el catálogo. Si Meta rechaza, el catálogo sigue y se dice:
-    borrar a ciegas dejaría a Meta enseñando productos que la consola no ve."""
+    """Dejar de usar el catálogo en este número.
+
+    No se llama a Meta: el edge ``/{waba}/product_catalogs`` de Graph no
+    admite DELETE (spec 050 research D11). El agente deja de mandar tarjetas
+    porque el worker lee ``config.catalog_id``, y ``catalog_detached`` evita
+    que la conciliación vuelva a adoptar ese mismo catálogo mientras Meta lo
+    siga teniendo enlazado. Quitar el enlace en Meta se hace desde el
+    Administrador de WhatsApp."""
     ch = await scope.session.get(Channel, channel_id)
     if ch is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
@@ -691,36 +703,14 @@ async def clear_channel_catalog(
     before = _catalog_of(cfg)
     if before is None:
         return _detail(ch, await channel_logos(scope.session), "none")
-    creds = await _creds_for(scope.session, ch)
-    waba_id = str(cfg.get("waba_id") or (creds.waba_id if creds else "") or "")
+    waba_id = str(cfg.get("waba_id") or "")
     meta: dict[str, Any] = {}
     if is_coexistence(cfg):
         # Nada que deshacer en Meta: el enlace vive en la app del teléfono.
         meta["skipped"] = "coexistence"
-    elif creds is not None and waba_id:
-        client = build_meta_client()
-        try:
-            await client.unlink_catalog(
-                waba_id=waba_id, catalog_id=before.id, access_token=creds.bisuat
-            )
-            meta["unlinked"] = before.id
-        except MetaAPIError as exc:
-            cfg["catalog_error"] = {
-                "code": "catalog_permission_missing"
-                if catalog_permission_missing(exc)
-                else "catalog_meta_rejected",
-                "message": getattr(exc, "message", str(exc))[:200],
-                "at": _now(),
-            }
-            ch.config = cfg
-            flag_modified(ch, "config")
-            log.warning("channel.catalog.unlink_failed", channel_id=str(ch.id), error=str(exc))
-            return _detail(ch, await channel_logos(scope.session), "linked")
-        finally:
-            await client.close()
     else:
-        # Sin credencial no hay nada que deshacer en Meta: se anota.
-        meta["skipped"] = "no_credentials"
+        cfg["catalog_detached"] = before.id
+        meta["detached"] = before.id
     _write_catalog(cfg, None)
     cfg.pop("catalog_error", None)
     ch.config = cfg
