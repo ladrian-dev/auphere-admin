@@ -1118,6 +1118,28 @@ WALLET_LANES: dict[str, str] = {
 }
 
 
+@pytest.fixture
+def month_end_far(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The balance notice only fires when the balance runs out before the month
+    ends, so on the last days of every month it stays quiet and the tests that
+    spend at the real clock failed (CI of 2026-10-30). This keeps the month end at
+    least 20 days ahead in the two modules that read it; whether the balance
+    lasts is what those tests check, not the calendar."""
+    from datetime import UTC, datetime, timedelta
+
+    from nexus_api.services import console_reporting
+
+    real = console_reporting.month_bounds
+
+    def bounds(now: Any = None) -> tuple[Any, Any, int, int]:
+        start, end, elapsed, days = real(now)
+        floor = (now or datetime.now(UTC)) + timedelta(days=20)
+        return start, max(end, floor), elapsed, days
+
+    monkeypatch.setattr("nexus_api.services.lite_home.month_bounds", bounds)
+    monkeypatch.setattr("nexus_api.services.wallet_alerts.month_bounds", bounds)
+
+
 async def spend_from_wallet(
     *,
     partner_id: uuid.UUID,
