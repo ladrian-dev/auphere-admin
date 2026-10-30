@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 from nexus_api.core.tenant_context import tenant_context
-from nexus_channels.whatsapp_meta.exceptions import MetaTransientError
+from nexus_channels.whatsapp_meta.exceptions import MetaAPIError, MetaTransientError
 from pydantic import ValidationError
 
 from nexus_mcp.base import ToolError
@@ -35,13 +35,18 @@ PLANTA = {"retailer_id": "SKU-PLANTA", "name": "Monstera", "price": "22 EUR"}
 
 
 class _FakeMeta:
-    def __init__(self, rows: list[dict[str, Any]], *, fail: bool = False) -> None:
+    def __init__(
+        self, rows: list[dict[str, Any]], *, fail: bool = False, error: Exception | None = None
+    ) -> None:
         self.rows = rows
         self.fail = fail
+        self.error = error
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     async def search_products(self, **kw: Any) -> list[dict[str, Any]]:
         self.calls.append(("search", kw))
+        if self.error is not None:
+            raise self.error
         if self.fail:
             raise MetaTransientError("down", status_code=503)
         return self.rows[: kw["limit"]]
@@ -55,9 +60,14 @@ class _FakeMeta:
 
 
 def _wire(
-    monkeypatch, rows, *, linked: tuple[str, str] | None = ("CAT_1", "EAA-canal"), fail=False
+    monkeypatch,
+    rows,
+    *,
+    linked: tuple[str, str] | None = ("CAT_1", "EAA-canal"),
+    fail=False,
+    error: Exception | None = None,
 ) -> _FakeMeta:
-    fake = _FakeMeta(rows, fail=fail)
+    fake = _FakeMeta(rows, fail=fail, error=error)
     monkeypatch.setattr(catalog_tools, "build_meta_client", lambda: fake)
 
     async def _resolve(_tenant: uuid.UUID, _customer: uuid.UUID | None):
@@ -115,6 +125,16 @@ async def test_meta_down_is_a_readable_error(monkeypatch) -> None:
     _wire(monkeypatch, [RAMO], fail=True)
     with tenant_context(TENANT), pytest.raises(ToolError, match="catalog_unavailable"):
         await SearchProducts().invoke({"query": "ramo"})
+
+
+async def test_a_permission_refusal_is_not_presented_as_try_again(monkeypatch) -> None:
+    """QA 2026-10-30 (INC-30): «Meta no respondió, inténtalo de nuevo» made
+    the agent retry a refusal that only a person can fix."""
+    _wire(monkeypatch, [RAMO], error=MetaAPIError("(#10) Permission denied", code=10))
+    with tenant_context(TENANT), pytest.raises(ToolError) as info:
+        await SearchProducts().invoke({"query": "ramo"})
+    assert str(info.value).startswith("catalog_permission_missing")
+    assert "No lo reintentes" in str(info.value)
 
 
 async def test_the_tool_refuses_an_llm_supplied_tenant_or_token() -> None:

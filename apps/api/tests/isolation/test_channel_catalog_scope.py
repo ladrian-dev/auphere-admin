@@ -36,7 +36,7 @@ async def test_another_tenant_cannot_list_link_or_clear_and_meta_is_never_asked(
     assert r.status_code == 404
     r = await client.put(
         _url(a, canal_a, "catalog").replace(a["ref"], b["ref"]),
-        json={"catalog_id": "CAT_FLORES"},
+        json={"catalog_id": "1001000000001"},
         headers=b["headers"](),
     )
     assert r.status_code == 404

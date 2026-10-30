@@ -25,8 +25,8 @@ from tests.unit.test_endpoint_console_channels import (
 
 pytestmark = pytest.mark.asyncio
 
-FLORES = {"id": "CAT_FLORES", "name": "Flores y ramos", "product_count": 12}
-PLANTAS = {"id": "CAT_PLANTAS", "name": "Plantas", "product_count": 4}
+FLORES = {"id": "1001000000001", "name": "Flores y ramos", "product_count": 12}
+PLANTAS = {"id": "1001000000002", "name": "Plantas", "product_count": 4}
 
 
 class _CatalogSim:
@@ -99,13 +99,13 @@ async def test_lists_the_business_catalogs_and_which_one_is_linked(
 ) -> None:
     a = console_world["a"]
     sim = _sim(monkeypatch, catalogs=[FLORES, PLANTAS])
-    canal = await _canal(db_session, a["tenant_id"], catalog_id="CAT_PLANTAS")
+    canal = await _canal(db_session, a["tenant_id"], catalog_id="1001000000002")
     r = await client.get(_url(a, canal, "catalogs"), headers=a["headers"]())
     assert r.status_code == 200, r.text
     body = r.json()
-    assert [i["id"] for i in body["items"]] == ["CAT_FLORES", "CAT_PLANTAS"]
+    assert [i["id"] for i in body["items"]] == ["1001000000001", "1001000000002"]
     assert body["items"][0]["name"] == "Flores y ramos"
-    assert body["linked_id"] == "CAT_PLANTAS"
+    assert body["linked_id"] == "1001000000002"
     assert sim.calls[0][1]["business_id"] == "BIZ-1"
     assert sim.calls[0][1]["access_token"] == "EAA-canal"
 
@@ -148,12 +148,12 @@ async def test_linking_stores_id_and_name_and_audits_who(
     sim = _sim(monkeypatch, catalogs=[FLORES])
     canal = await _canal(db_session, a["tenant_id"])
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
     )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["catalog"] == {
-        "id": "CAT_FLORES",
+        "id": "1001000000001",
         "name": "Flores y ramos",
         "checked_at": body["catalog"]["checked_at"],
     }
@@ -162,7 +162,7 @@ async def test_linking_stores_id_and_name_and_audits_who(
     assert sim.calls[1][1]["waba_id"] == "W-1"
 
     fila = await _reload(db_session, canal.id)
-    assert fila.config["catalog_id"] == "CAT_FLORES"
+    assert fila.config["catalog_id"] == "1001000000001"
     assert fila.config["catalog_name"] == "Flores y ramos"
     audit = await db_session.scalar(
         sa.select(AuditLog)
@@ -170,8 +170,8 @@ async def test_linking_stores_id_and_name_and_audits_who(
         .order_by(AuditLog.created_at.desc())
     )
     assert audit is not None
-    assert audit.after_json["catalog"]["id"] == "CAT_FLORES"
-    assert audit.after_json["meta"] == {"linked": "CAT_FLORES"}
+    assert audit.after_json["catalog"]["id"] == "1001000000001"
+    assert audit.after_json["meta"] == {"linked": "1001000000001"}
     assert audit.before_json == {"catalog": None}
 
 
@@ -181,23 +181,23 @@ async def test_changing_links_the_new_one_without_unlinking(
     a = console_world["a"]
     sim = _sim(monkeypatch, catalogs=[FLORES, PLANTAS], linked=PLANTAS)
     canal = await _canal(
-        db_session, a["tenant_id"], catalog_id="CAT_PLANTAS", catalog_name="Plantas"
+        db_session, a["tenant_id"], catalog_id="1001000000002", catalog_name="Plantas"
     )
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
     )
     assert r.status_code == 200, r.text
-    assert r.json()["catalog"]["id"] == "CAT_FLORES"
+    assert r.json()["catalog"]["id"] == "1001000000001"
     # Graph no admite DELETE en /{waba}/product_catalogs: se enlaza el nuevo.
     assert sim.names() == ["list_catalogs", "link_catalog"]
-    assert sim.calls[1][1]["catalog_id"] == "CAT_FLORES"
+    assert sim.calls[1][1]["catalog_id"] == "1001000000001"
     audit = await db_session.scalar(
         sa.select(AuditLog)
         .where(AuditLog.action == "console.channel.catalog")
         .order_by(AuditLog.created_at.desc())
     )
     assert audit is not None
-    assert audit.after_json["meta"] == {"replaced": "CAT_PLANTAS", "linked": "CAT_FLORES"}
+    assert audit.after_json["meta"] == {"replaced": "1001000000002", "linked": "1001000000001"}
 
 
 async def test_when_the_new_one_fails_the_old_one_stays_and_the_card_says_why(
@@ -212,13 +212,13 @@ async def test_when_the_new_one_fails_the_old_one_stays_and_the_card_says_why(
         linked=PLANTAS,
         fail={"link_catalog": MetaAPIError("(#100) Invalid parameter", status_code=400, code=100)},
     )
-    canal = await _canal(db_session, a["tenant_id"], catalog_id="CAT_PLANTAS")
+    canal = await _canal(db_session, a["tenant_id"], catalog_id="1001000000002")
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["catalog"]["id"] == "CAT_PLANTAS"
+    assert body["catalog"]["id"] == "1001000000002"
     assert body["catalog_state"] == "linked"
     assert body["catalog_error"]["code"] == "catalog_meta_rejected"
     assert "Invalid parameter" in body["catalog_error"]["message"]
@@ -231,7 +231,7 @@ async def test_a_catalog_of_another_business_is_refused_and_nothing_changes(
     sim = _sim(monkeypatch, catalogs=[FLORES])
     canal = await _canal(db_session, a["tenant_id"])
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_AJENO"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000004"}, headers=a["headers"]()
     )
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "catalog_not_owned"
@@ -249,7 +249,7 @@ async def test_clearing_forgets_without_calling_meta(
     a = console_world["a"]
     sim = _sim(monkeypatch, linked=FLORES)
     canal = await _canal(
-        db_session, a["tenant_id"], catalog_id="CAT_FLORES", catalog_name="Flores y ramos"
+        db_session, a["tenant_id"], catalog_id="1001000000001", catalog_name="Flores y ramos"
     )
     await fake_redis.set("nexus:catalog:waba:W-1", "{}")
     r = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
@@ -258,7 +258,7 @@ async def test_clearing_forgets_without_calling_meta(
     assert sim.calls == [], "Graph no admite DELETE en /{waba}/product_catalogs"
     fila = await _reload(db_session, canal.id)
     assert "catalog_id" not in fila.config and "catalog_name" not in fila.config
-    assert fila.config["catalog_detached"] == "CAT_FLORES"
+    assert fila.config["catalog_detached"] == "1001000000001"
     assert await fake_redis.get("nexus:catalog:waba:W-1") is None, "la caché no se invalidó"
 
 
@@ -282,7 +282,7 @@ async def test_a_detached_catalog_is_not_adopted_again_while_meta_keeps_it(
     a = console_world["a"]
     _sim(monkeypatch, linked=FLORES)
     canal = await _canal(
-        db_session, a["tenant_id"], catalog_id="CAT_FLORES", catalog_name="Flores y ramos"
+        db_session, a["tenant_id"], catalog_id="1001000000001", catalog_name="Flores y ramos"
     )
     r = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
     assert r.status_code == 200, r.text
@@ -295,7 +295,7 @@ async def test_a_detached_catalog_is_not_adopted_again_while_meta_keeps_it(
     _sim(monkeypatch, linked=PLANTAS)
     body = await _overview(client, a)
     (row,) = [c for c in body["channels"] if c["id"] == str(canal.id)]
-    assert row["catalog"]["id"] == "CAT_PLANTAS"
+    assert row["catalog"]["id"] == "1001000000002"
     fila = await _reload(db_session, canal.id)
     assert "catalog_detached" not in fila.config
 
@@ -305,12 +305,12 @@ async def test_linking_again_after_detaching_clears_the_mark(
 ) -> None:
     a = console_world["a"]
     sim = _sim(monkeypatch, catalogs=[FLORES], linked=FLORES)
-    canal = await _canal(db_session, a["tenant_id"], catalog_detached="CAT_FLORES")
+    canal = await _canal(db_session, a["tenant_id"], catalog_detached="1001000000001")
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
     )
     assert r.status_code == 200, r.text
-    assert r.json()["catalog"]["id"] == "CAT_FLORES"
+    assert r.json()["catalog"]["id"] == "1001000000001"
     assert sim.names() == ["list_catalogs", "link_catalog"]
     fila = await _reload(db_session, canal.id)
     assert "catalog_detached" not in fila.config
@@ -329,7 +329,9 @@ async def test_reading_needs_read_and_writing_needs_write(
     r = await client.get(_url(a, canal, "catalogs"), headers=analista["headers"]())
     assert r.status_code == 200, r.text
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=analista["headers"]()
+        _url(a, canal, "catalog"),
+        json={"catalog_id": "1001000000001"},
+        headers=analista["headers"](),
     )
     assert r.status_code == 403
     r = await client.delete(_url(a, canal, "catalog"), headers=analista["headers"]())
@@ -355,11 +357,11 @@ async def test_the_card_adopts_what_meta_has(
     canal = await _canal(db_session, a["tenant_id"])  # sin catálogo guardado
     body = await _overview(client, a)
     (ch,) = [c for c in body["channels"] if c["id"] == str(canal.id)]
-    assert ch["catalog"]["id"] == "CAT_FLORES" and ch["catalog"]["name"] == "Flores y ramos"
+    assert ch["catalog"]["id"] == "1001000000001" and ch["catalog"]["name"] == "Flores y ramos"
     assert ch["catalog_state"] == "linked"
     assert sim.names() == ["get_linked_catalog"]
     fila = await _reload(db_session, canal.id)
-    assert fila.config["catalog_id"] == "CAT_FLORES"
+    assert fila.config["catalog_id"] == "1001000000001"
 
 
 async def test_metas_truth_replaces_ours_and_absence_erases(
@@ -368,17 +370,17 @@ async def test_metas_truth_replaces_ours_and_absence_erases(
     a = console_world["a"]
     _sim(monkeypatch, linked=PLANTAS)
     canal = await _canal(
-        db_session, a["tenant_id"], catalog_id="CAT_FLORES", catalog_name="Flores y ramos"
+        db_session, a["tenant_id"], catalog_id="1001000000001", catalog_name="Flores y ramos"
     )
     body = await _overview(client, a)
     (ch,) = [c for c in body["channels"] if c["id"] == str(canal.id)]
-    assert ch["catalog"]["id"] == "CAT_PLANTAS"
+    assert ch["catalog"]["id"] == "1001000000002"
 
     _sim(monkeypatch, linked=None)
     # La caché de la WABA aún dice PLANTAS: la conciliación la respeta 5 min.
     body = await _overview(client, a)
     (ch,) = [c for c in body["channels"] if c["id"] == str(canal.id)]
-    assert ch["catalog"]["id"] == "CAT_PLANTAS"
+    assert ch["catalog"]["id"] == "1001000000002"
 
 
 async def test_a_check_that_fails_keeps_ours_and_says_unchecked(
@@ -389,15 +391,15 @@ async def test_a_check_that_fails_keeps_ours_and_says_unchecked(
         monkeypatch, fail={"get_linked_catalog": MetaTransientError("down", status_code=503)}
     )
     canal = await _canal(
-        db_session, a["tenant_id"], catalog_id="CAT_FLORES", catalog_name="Flores y ramos"
+        db_session, a["tenant_id"], catalog_id="1001000000001", catalog_name="Flores y ramos"
     )
     body = await _overview(client, a)
     (ch,) = [c for c in body["channels"] if c["id"] == str(canal.id)]
-    assert ch["catalog"]["id"] == "CAT_FLORES"
+    assert ch["catalog"]["id"] == "1001000000001"
     assert ch["catalog_state"] == "unchecked"
     assert sim.names() == ["get_linked_catalog"]
     fila = await _reload(db_session, canal.id)
-    assert fila.config["catalog_id"] == "CAT_FLORES", "borró lo guardado sin saber"
+    assert fila.config["catalog_id"] == "1001000000001", "borró lo guardado sin saber"
 
 
 async def test_permission_missing_is_a_state_not_an_error(
@@ -426,8 +428,8 @@ async def test_one_call_per_waba_and_none_without_credentials(
     body = await _overview(client, a)
     ids = {c["id"]: c for c in body["channels"]}
     assert sim.names() == ["get_linked_catalog"], "una cuenta, una llamada"
-    assert ids[str(uno.id)]["catalog"]["id"] == "CAT_FLORES"
-    assert ids[str(dos.id)]["catalog"]["id"] == "CAT_FLORES", (
+    assert ids[str(uno.id)]["catalog"]["id"] == "1001000000001"
+    assert ids[str(dos.id)]["catalog"]["id"] == "1001000000001", (
         "dos números de la misma cuenta comparten catálogo"
     )
     assert ids[str(suelto.id)]["catalog_state"] == "none"
@@ -455,7 +457,7 @@ async def test_the_catalog_costs_nothing_the_meter_sees(
     antes = await eventos()
     await client.get(_url(a, canal, "catalogs"), headers=a["headers"]())
     await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
     )
     await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
     assert await eventos() == antes
@@ -481,12 +483,12 @@ async def test_a_coexistence_number_is_not_asked_and_keeps_its_catalog(
 ) -> None:
     a = console_world["a"]
     sim = _sim(monkeypatch, catalogs=[FLORES], linked=None)
-    canal = await _canal(db_session, a["tenant_id"], mode="coexistence", catalog_id="CAT_FLORES")
+    canal = await _canal(db_session, a["tenant_id"], mode="coexistence", catalog_id="1001000000001")
     r = await client.get(f"/console/clients/{a['ref']}/channels/overview", headers=a["headers"]())
     assert r.status_code == 200, r.text
     row = next(c for c in r.json()["channels"] if c["id"] == str(canal.id))
     assert row["catalog_state"] == "coexistence"
-    assert row["catalog"]["id"] == "CAT_FLORES"
+    assert row["catalog"]["id"] == "1001000000001"
     assert sim.names() == []
 
 
@@ -495,11 +497,11 @@ async def test_meta_refusing_by_smb_teaches_the_mode_instead_of_blaming_a_permis
 ) -> None:
     a = console_world["a"]
     _sim(monkeypatch, fail={"get_linked_catalog": _smb()})
-    canal = await _canal(db_session, a["tenant_id"], catalog_id="CAT_FLORES")
+    canal = await _canal(db_session, a["tenant_id"], catalog_id="1001000000001")
     r = await client.get(f"/console/clients/{a['ref']}/channels/overview", headers=a["headers"]())
     row = next(c for c in r.json()["channels"] if c["id"] == str(canal.id))
     assert row["catalog_state"] == "coexistence"
-    assert row["catalog"]["id"] == "CAT_FLORES"
+    assert row["catalog"]["id"] == "1001000000001"
     fila = await _reload(db_session, canal.id)
     assert fila.config["mode"] == "coexistence"
 
@@ -511,24 +513,24 @@ async def test_on_a_coexistence_number_the_catalog_is_declared_not_linked(
     sim = _sim(monkeypatch, catalogs=[FLORES, PLANTAS], linked=None)
     canal = await _canal(db_session, a["tenant_id"], mode="coexistence")
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
     )
     assert r.status_code == 200, r.text
     assert r.json()["catalog_state"] == "coexistence"
     assert r.json()["catalog"]["name"] == "Flores y ramos"
     assert sim.names() == ["list_catalogs"]  # ni link ni unlink
     fila = await _reload(db_session, canal.id)
-    assert fila.config["catalog_id"] == "CAT_FLORES"
+    assert fila.config["catalog_id"] == "1001000000001"
 
     # Uno que Meta no lista se apunta igual, con el nombre que escribió el
     # partner: la app del teléfono es la que manda, no la lista de Meta.
     otro = await client.put(
         _url(a, canal, "catalog"),
-        json={"catalog_id": "CAT_OTRO", "catalog_name": "Ramos de la app"},
+        json={"catalog_id": "1001000000003", "catalog_name": "Ramos de la app"},
         headers=a["headers"](),
     )
     assert otro.status_code == 200, otro.text
-    assert otro.json()["catalog"]["id"] == "CAT_OTRO"
+    assert otro.json()["catalog"]["id"] == "1001000000003"
     assert otro.json()["catalog"]["name"] == "Ramos de la app"
 
     gone = await client.delete(_url(a, canal, "catalog"), headers=a["headers"]())
@@ -544,14 +546,14 @@ async def test_linking_that_meta_refuses_by_smb_declares_and_learns(
     sim = _sim(monkeypatch, catalogs=[FLORES], linked=None, fail={"link_catalog": _smb()})
     canal = await _canal(db_session, a["tenant_id"])
     r = await client.put(
-        _url(a, canal, "catalog"), json={"catalog_id": "CAT_FLORES"}, headers=a["headers"]()
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
     )
     assert r.status_code == 200, r.text
     assert r.json()["catalog_state"] == "coexistence"
     assert r.json()["catalog_error"] is None
     fila = await _reload(db_session, canal.id)
     assert fila.config["mode"] == "coexistence"
-    assert fila.config["catalog_id"] == "CAT_FLORES"
+    assert fila.config["catalog_id"] == "1001000000001"
     assert sim.names() == ["list_catalogs", "link_catalog"]
 
 
@@ -591,3 +593,20 @@ async def test_a_coexistence_number_declares_the_catalog_even_when_meta_will_not
         _url(a, cloud, "catalog"), json={"catalog_id": "999"}, headers=a["headers"]()
     )
     assert bad.status_code == 409 and bad.json()["detail"]["code"] == "catalog_permission_missing"
+
+
+async def test_a_catalog_id_that_is_not_digits_is_refused_before_meta(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """QA 2026-10-30 (INC-27): the id goes into a Graph path, so the server
+    checks it too, not only the console."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch, catalogs=[FLORES], linked=None)
+    canal = await _canal(db_session, a["tenant_id"], mode="coexistence")
+    r = await client.put(
+        _url(a, canal, "catalog"),
+        json={"catalog_id": "123/products?x="},
+        headers=a["headers"](),
+    )
+    assert r.status_code == 422
+    assert sim.calls == []

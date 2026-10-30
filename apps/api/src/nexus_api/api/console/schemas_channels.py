@@ -63,7 +63,9 @@ class CatalogListOut(BaseModel):
 class CatalogSetIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    catalog_id: str = Field(min_length=1, max_length=64)
+    #: Meta's catalogue ids are digits. Checked here too, not only in the
+    #: console: the id goes into a Graph path (QA 2026-10-30, INC-27).
+    catalog_id: str = Field(min_length=1, max_length=32, pattern=r"^[0-9]+$")
     #: Only read on a coexistence number when Meta will not list the
     #: catalogues: the name the partner typed, shown on the card as is.
     catalog_name: str | None = Field(default=None, max_length=120)
