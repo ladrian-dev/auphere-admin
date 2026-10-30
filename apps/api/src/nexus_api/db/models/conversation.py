@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     SmallInteger,
     String,
@@ -377,6 +378,14 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         UniqueConstraint(
             "tenant_id", "channel_id", "recipient_phone", name="uq_optout_tenant_channel_phone"
         ),
+        # Garantía 1: (tenant_id, customer_id) → customers (tenant_id, id). A
+        # deleted customer lets go of the column; the opt-out stays by phone.
+        ForeignKeyConstraint(
+            ["tenant_id", "customer_id"],
+            ["customers.tenant_id", "customers.id"],
+            name="fk_optout_customer",
+            ondelete="SET NULL (customer_id)",
+        ),
     )
 
     channel_id: Mapped[uuid.UUID] = mapped_column(
@@ -390,9 +399,7 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # Migration 0206 — spec 050: who opted out, of what, and through which path.
     # ``marketing`` blocks marketing templates and broadcasts only; ``all``
     # (every row before 0206) blocks every send but the opt-out confirmation.
-    customer_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=True
-    )
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     scope: Mapped[str] = mapped_column(String(12), nullable=False, default="marketing")
     source: Mapped[str] = mapped_column(String(12), nullable=False, default="keyword")
     lifted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)

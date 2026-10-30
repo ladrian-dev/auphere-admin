@@ -105,12 +105,15 @@ def upgrade() -> None:
     # ── whatsapp_opt_outs ────────────────────────────────────────────────
     op.add_column(
         "whatsapp_opt_outs",
-        sa.Column(
-            "customer_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("customers.id", ondelete="CASCADE"),
-            nullable=True,
-        ),
+        sa.Column("customer_id", sa.dialects.postgresql.UUID(as_uuid=True), nullable=True),
+    )
+    # Garantía 1: between client tables the key carries ``tenant_id``. A
+    # customer the retention deletes lets go of the column only: the opt-out
+    # stays, by phone, because a consent withdrawn is not forgotten.
+    op.execute(
+        "ALTER TABLE whatsapp_opt_outs ADD CONSTRAINT fk_optout_customer "
+        "FOREIGN KEY (tenant_id, customer_id) REFERENCES customers (tenant_id, id) "
+        "ON DELETE SET NULL (customer_id)"
     )
     op.add_column(
         "whatsapp_opt_outs",
@@ -252,6 +255,7 @@ def downgrade() -> None:
     op.drop_column("whatsapp_opt_outs", "lifted_by")
     op.drop_column("whatsapp_opt_outs", "source")
     op.drop_column("whatsapp_opt_outs", "scope")
+    op.execute("ALTER TABLE whatsapp_opt_outs DROP CONSTRAINT IF EXISTS fk_optout_customer")
     op.drop_column("whatsapp_opt_outs", "customer_id")
     op.drop_index("ix_customers_tenant_phone", table_name="customers")
     op.drop_index("uq_customers_tenant_bsuid", table_name="customers")
