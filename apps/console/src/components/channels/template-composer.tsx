@@ -41,8 +41,10 @@ import {
   type ButtonDraft,
 } from "./template-rules";
 
-type Category = "UTILITY" | "MARKETING" | "AUTHENTICATION";
-const CATEGORIES: Category[] = ["UTILITY", "MARKETING", "AUTHENTICATION"];
+type Category = "UTILITY" | "MARKETING";
+// Authentication is not offered: Meta only takes it with its fixed one-time
+// code format, so free text and buttons are always rejected (QA 2026-10-30).
+const CATEGORIES: Category[] = ["UTILITY", "MARKETING"];
 
 function issueText(t: ReturnType<typeof useT>, issue: BodyIssue): string {
   switch (issue.code) {
@@ -60,7 +62,8 @@ function Counter({ value, max }: { value: string; max: number }) {
   const t = useT();
   const near = value.length > max * 0.9;
   return (
-    <span className={cn("text-xs tabular-nums", near ? "text-status-warning" : "text-muted-foreground")} aria-live="polite">
+    // No aria-live: a screen reader would read it on every keystroke.
+    <span className={cn("text-xs tabular-nums", near ? "text-status-warning-text" : "text-muted-foreground")}>
       {t("tpl.compose.counter", { n: value.length, max })}
     </span>
   );
@@ -103,6 +106,7 @@ export function TemplateComposer({
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [touched, setTouched] = React.useState(false);
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
 
   const variables = templateVariables(body);
   const issues = bodyIssues(body);
@@ -143,7 +147,13 @@ export function TemplateComposer({
 
   function submit() {
     setTouched(true);
-    if (!ready) return;
+    if (!ready) {
+      // Say where: the fields mark themselves invalid once touched; focus the first.
+      requestAnimationFrame(() => {
+        formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      });
+      return;
+    }
     setServerError(null);
     startTransition(async () => {
       const res = await createTemplateAction({
@@ -180,6 +190,7 @@ export function TemplateComposer({
         </DialogHeader>
 
         <form
+          ref={formRef}
           noValidate
           className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
           onSubmit={(e) => {
@@ -191,26 +202,27 @@ export function TemplateComposer({
             {/* 1 · What it is for */}
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-1 text-sm font-medium">{t("tpl.compose.purpose")}</legend>
-              <div role="radiogroup" aria-label={t("tpl.compose.purpose")} className="grid gap-2 sm:grid-cols-3">
-                {CATEGORIES.map((c) => {
-                  const selected = category === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setCategory(c)}
-                      className={cn(
-                        "flex flex-col items-start gap-1 rounded-md border p-3 text-left text-sm transition-colors",
-                        selected ? "border-foreground" : "border-border hover:border-foreground/40",
-                      )}
-                    >
+              {/* Native radios, as in the connect dialog and the audience: arrows work. */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {CATEGORIES.map((c) => (
+                  <label
+                    key={c}
+                    className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-input p-3 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring motion-reduce:transition-none"
+                  >
+                    <input
+                      type="radio"
+                      name="tpl-category"
+                      value={c}
+                      checked={category === c}
+                      onChange={() => setCategory(c)}
+                      className="mt-1 size-4 shrink-0 accent-primary"
+                    />
+                    <span className="grid min-w-0 gap-1">
                       <span className="font-medium">{t(`tpl.category.${c}` as MessageKey)}</span>
                       <span className="text-xs text-muted-foreground">{t(`tpl.category.${c}.help` as MessageKey)}</span>
-                    </button>
-                  );
-                })}
+                    </span>
+                  </label>
+                ))}
               </div>
             </fieldset>
 
@@ -443,7 +455,7 @@ export function TemplateComposer({
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
                   {t("common.cancel")}
                 </Button>
-                <Button type="submit" loading={pending} disabled={pending || !ready}>
+                <Button type="submit" loading={pending} disabled={pending}>
                   {t("tpl.form.submit")}
                 </Button>
               </div>
