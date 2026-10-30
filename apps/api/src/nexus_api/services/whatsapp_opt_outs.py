@@ -12,9 +12,13 @@ reminder crons and the operator panel:
 - :func:`lift` — the opt-out ends. Meta's ``resume`` lifts Meta's; an
   operator may lift a stop word's or an operator's, with a reason, and never
   Meta's (only the person can: ``lifted_by_person_only``).
-- :func:`blocks` — whether a send must not leave. A marketing opt-out blocks
-  marketing templates and broadcasts only, so the agent still answers the
-  person and a utility reminder still goes; an ``all`` one blocks everything.
+- :func:`blocks` — whether a send must not leave. Marketing (templates and
+  broadcasts) is blocked by any active opt-out: the person decides. Anything
+  else — the agent's replies, appointment and payment reminders, utility
+  templates — is blocked only by an opt-out **the business** recorded
+  (``source=operator``): the store decides who stops getting reminders, not
+  the customer (owner's decision, QA 2026-10-30, INC-18). A pre-050 ``all``
+  row from a stop word no longer blocks them.
 
 The person is the customer row when there is one (``customer_id``), else the
 phone Meta gave. A person known only by BSUID and not yet a customer cannot
@@ -231,8 +235,10 @@ async def blocks(
     marketing: bool,
 ) -> bool:
     """Whether a send to this person must not leave. ``marketing`` is true
-    for a marketing template or a broadcast; a reply, a utility or an
-    authentication template is not marketing."""
+    for a marketing template or a broadcast; a reply, a reminder, a utility
+    or an authentication template is not marketing, and only an opt-out the
+    business recorded (``source=operator``) blocks it. ``channel_id=None``
+    looks across every number of the business."""
     conditions = _person(customer_id, phone)
     if not conditions:
         return False
@@ -242,5 +248,5 @@ async def blocks(
     if channel_id is not None:
         query = query.where(WhatsAppOptOut.channel_id == channel_id)
     if not marketing:
-        query = query.where(WhatsAppOptOut.scope == "all")
+        query = query.where(WhatsAppOptOut.source == "operator")
     return await session.scalar(query.limit(1)) is not None

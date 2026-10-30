@@ -46,9 +46,8 @@ from nexus_api.db.models import (
     MessageDirection,
     MessageStatus,
     ReservationOutbox,
-    WhatsAppOptOut,
 )
-from nexus_api.services import whatsapp_templates
+from nexus_api.services import whatsapp_opt_outs, whatsapp_templates
 from nexus_api.services.channel_routing import (
     CHANNEL_ROLE_AGENT,
     ChannelResolutionError,
@@ -177,17 +176,13 @@ class _Sender:
         return reason
 
     async def _opted_out(self, digits: str) -> bool:
-        """La baja vale en cualquiera de los números del negocio (RLS acota al
-        cliente), como en ``cobranza_reminder_cron``."""
-        found = await self.session.scalar(
-            sa.select(WhatsAppOptOut.id)
-            .where(
-                WhatsAppOptOut.recipient_phone.in_((digits, f"+{digits}")),
-                WhatsAppOptOut.opted_in_at.is_(None),
-            )
-            .limit(1)
+        """Un recordatorio de cita no es publicidad: solo lo para una baja que
+        puso el negocio, no el «STOP» del cliente (decisión del owner, QA
+        2026-10-30, INC-18). Vale en cualquiera de los números del negocio
+        (RLS acota al cliente), como en ``cobranza_reminder_cron``."""
+        return await whatsapp_opt_outs.blocks(
+            self.session, channel_id=None, phone=digits, marketing=False
         )
-        return found is not None
 
     async def _channel(self, notice: automation.Notice) -> Channel | None:
         if notice.conversation_id is not None:
