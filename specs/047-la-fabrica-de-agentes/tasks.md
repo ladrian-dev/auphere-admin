@@ -2354,10 +2354,10 @@ Va después de T201, T202 y T206, con una sola sesión en `apps/api`. Diseño en
   `test_54`); y el paso a Reservas da el mapa 1:1 más `reservas.services`, no las
   nueve. Queda: `PUT …/capabilities` sigue escribiendo `draft.tools` de un agente
   estructurado, porque la consola nueva llega a esa pantalla desde las citas del
-  copiloto (D79, decide Luis); el renderer en producción (Chromium y su salida a la
+  copiloto (D79; resuelta el mismo día: por el AgentSpec y el validador); el renderer en producción (Chromium y su salida a la
   VPC), pendiente de infraestructura; y `verify.sh` entero (T219).
   Hecho (2026-10-30): la revisión no dio hallazgos críticos ni altos, y la suite de
-  aislamiento está en verde tras los arreglos. Lo que queda es de gravedad baja (D79)
+  aislamiento está en verde tras los arreglos. Lo que queda es
   o de infraestructura (el renderer, que está apagado).
 - [ ] T218 Los gates de UI sobre las pantallas tocadas: cinco estados, WCAG 2.2 AA,
   responsive y tokens.

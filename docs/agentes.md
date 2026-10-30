@@ -173,9 +173,10 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   escribe un borrador genérico.
 - **Herramientas solo por el AgentSpec** (65.10). `PUT /console/clients/{ref}/tools`,
   `PATCH …/draft` con `tools` y, desde la T217, `POST …/agent/versions` con `tools`
-  dan `409 structured_agent` a un agente estructurado. Queda abierta `PUT
-  …/capabilities` (encender o apagar una herramienta): la consola nueva llega a
-  ella desde las citas del copiloto y no se ha cerrado para no romperla (D79).
+  dan `409 structured_agent` a un agente estructurado. `PUT …/capabilities`
+  (encender o apagar una herramienta, a la que llevan las citas del copiloto)
+  sigue abierta, pero en un agente estructurado edita su AgentSpec y pasa por el
+  validador, como `PATCH …/draft` (D79).
 - **El bloqueo por herramienta que no se lee cierra** (T217, garantía 2): si el
   turno no puede leer `tenant_connector_tool_overrides` (`blocked` o
   `needs_approval`), no ofrece ninguna herramienta, ni las de la casa

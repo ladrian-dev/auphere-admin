@@ -294,6 +294,38 @@ async def test_staging_a_version_with_tools_is_not_a_way_around_the_spec(
     assert after["tools"] == before["tools"] and after["revision"] == before["revision"]
 
 
+async def test_capabilities_change_a_structured_agent_through_its_spec(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """D79 (Luis, 2026-10-30: «Por el validador»; 65.10): «Capacidades» sigue
+    encendiendo y apagando herramientas de un agente estructurado, pero por su
+    AgentSpec y el validador. Antes escribía ``draft.tools`` a pelo y la versión
+    acababa con herramientas que su documento no tenía."""
+    await turn_reservas_on(db_session, biz)
+    body = await _job(client, biz, fake_redis, FakeBuilder(reply=RECEPTION), name="Recepción")
+    agent_id = body["result"]["agent_id"]
+    before = await _draft(client, biz, agent_id)
+    assert before["spec"]["mode"] == "structured"
+    tool = before["spec"]["tools"][0]
+    url = f"{_agents_url(biz)}/capabilities?agent={agent_id}"
+
+    off = await client.put(
+        url, json={"key": tool, "kind": "tool", "enabled": False}, headers=biz.headers()
+    )
+    assert off.status_code == 200, off.text
+    after = await _draft(client, biz, agent_id)
+    assert tool not in after["spec"]["tools"]
+    assert tool not in after["tools"]
+
+    on = await client.put(
+        url, json={"key": tool, "kind": "tool", "enabled": True}, headers=biz.headers()
+    )
+    assert on.status_code == 200, on.text
+    again = await _draft(client, biz, agent_id)
+    assert tool in again["spec"]["tools"]
+    assert tool in again["tools"]
+
+
 async def test_the_old_template_routes_are_closed_for_the_new_console(
     client: Any, db_session: AsyncSession, biz: Biz
 ) -> None:

@@ -1443,7 +1443,19 @@ la base no responde para la política, tampoco para eso.
 
 ---
 
-### D79 · `PUT …/capabilities` sigue escribiendo `draft.tools` (pendiente)
+### D79 · `PUT …/capabilities` cambia un agente estructurado por su AgentSpec
+
+**Decidida por Luis el 2026-10-30: «Por el validador».** En un agente
+estructurado, encender o apagar una herramienta en «Capacidades» edita
+`spec.tools` y pasa por el mismo camino que `PATCH …/draft`: lo que no tenemos
+se quita y queda anotado (65.3), `validate_spec` decide (un problema da
+`422 spec_invalid`) y `write_spec` recompila el prompt y deja `draft.tools`
+igual que el documento (`_set_spec_tool`, `api/console/capabilities_client.py`).
+Los agentes «instructions» siguen escribiendo `draft.tools`, como antes. La
+pantalla y las citas del copiloto no cambian. Prueba:
+`test_capabilities_change_a_structured_agent_through_its_spec`.
+
+Lo que sigue es el contexto que llevó a la decisión.
 
 **Contexto.** La revisión pidió `409 structured_agent` también aquí. Un grep en
 `apps/console` muestra que la consola nueva llega a esta ruta con agentes
