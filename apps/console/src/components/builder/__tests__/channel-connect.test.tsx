@@ -20,6 +20,7 @@ vi.mock("@/app/(console)/clients/[ref]/agents/channel-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
   whatsappSignupAction: sdk.whatsappSignupAction,
   listCatalogsAction: vi.fn(),
+  listTemplatesAction: vi.fn(async () => ({ ok: true, data: { items: [], approved: 0, rejected: 0, pending: 0 } })),
   metaSocialConnectAction: sdk.metaSocialConnectAction,
   metaSocialCompleteAction: vi.fn(),
 }));
