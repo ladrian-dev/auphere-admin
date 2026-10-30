@@ -17,6 +17,34 @@ Autorizadas por el owner el 2026-10-30. Todas van en `develop` y llegan **solo a
 | INC-09 · Token revocado para siempre | `b67704bd` | Con el acceso perdido 7 días seguidos (`token_revoked`, `permission_lost`, `no_credentials`), el cron desconecta el canal: borra el token, pone `disconnected_at` (arranca el plazo de 30 días) y lo audita | `test_access_lost_for_a_week_disconnects_and_starts_the_clock` |
 | INC-13 · El revisor no encuentra el catálogo | `c66994a1` + borradores | Sección «Catálogo» en la página del número de WhatsApp (la misma fila, selector y desconectar). Rutas de `app-review-reviewer-instructions.md` y `app-review-reviewer-setup.md` reescritas para la consola v2. **Esos dos ficheros son borradores tuyos sin versionar: los dejé modificados y sin commit** | `test_the_channel_page_shows_the_numbers_catalogue`; `channel-comments.test.tsx` |
 
+## Segunda tanda (2026-10-30, tarde), tras verificar `c99aed95` en staging
+
+`c99aed95` está desplegado en staging: el OpenAPI de staging coincide al 100 % con el código (rutas y esquemas) y T-WH-01…04 siguen en PASS. La tabla de Consumo, sin el botón en la columna Bolsa, está comprobada en el navegador.
+
+| Incidencia | Commit | Qué cambia | Prueba de regresión |
+|---|---|---|---|
+| CI roja de `073967bb` | `c99aed95` | Migración `0211_audit_words_meta_fixes`: frases de Auditoría para `channel.meta_social.access_lost` y `console.channel.comments` | `test_console_audit_words.py` |
+| INC-37 · DM a un canal en pausa descartado | `b7fa55d1` | Instagram y Messenger encolan aunque el canal esté en pausa o degradado, como WhatsApp; el turno del worker lo guarda para una persona. Solo se descarta si está desconectado | `test_a_paused_channel_keeps_the_message_and_a_disconnected_one_does_not` |
+| INC-21 · Botones o medios en un turno de comentario | `d2bc4333` | En un turno de comentario, las opciones van como líneas de la respuesta privada y el pie de un adjunto va como esa respuesta. Un adjunto sin pie da error de capacidad, no de Meta | `test_in_a_comment_turn_buttons_and_media_become_the_one_private_reply` |
+| INC-19 · «Cancelar» era una baja | `2c76e6a1` | Fuera «cancelar», «cancela» y «salir» de las palabras de baja; llegan al agente | `test_only_unambiguous_words_are_an_opt_out` |
+| INC-15 · 409 engañoso al registrar | `72fbb2d0` | Solo un rechazo de Meta (4xx) es `number_held_by_previous_owner`. Un timeout o un 5xx sale como 502 | `test_meta_not_answering_the_register_is_not_blamed_on_a_previous_owner` |
+| INC-20 · Lote mixto con el número de Auphere | `91600ea0` | El canal del dueño se detecta por elemento, no por el primer número del POST | `TestMixedBatch` |
+
+Regresión local de la segunda tanda (sobre `91600ea0`):
+- mypy `--strict`: limpio en los cuatro paquetes.
+- API: **392 passed**.
+- channels: **102 passed**.
+- worker unit: **654 passed**.
+- mcp: **130 passed**.
+
+### Decisión pendiente
+
+- **INC-18 (no tocada):** los cron de cobranza y reservas bloquean con cualquier baja, también las de marketing. El código lo justifica en cobranza («una baja significa dejar de perseguirme», por cumplimiento). Desde la 050, «STOP» es una baja de marketing; relajarlo haría que un deudor que escribió STOP siguiera recibiendo recordatorios. Es una decisión de cumplimiento del owner, no un bug.
+
+### Hallazgo nuevo
+
+- **INC-38 (P3, consola):** React #418 (desajuste de hidratación de texto) al cargar la ficha del agente, y probablemente Clientes, en staging. La página funciona porque React la vuelve a pintar en el cliente. El origen no está determinado: no se ha comprobado si existía antes de estos cambios, que no tocan esas pantallas. Habría que reproducirlo en local con el build de desarrollo, que dice qué texto difiere.
+
 ## Verificación local (sobre `c66994a1`)
 
 - mypy `--strict`: limpio en api, worker, channels y mcp.

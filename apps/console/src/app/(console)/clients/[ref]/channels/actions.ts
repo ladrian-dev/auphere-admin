@@ -10,6 +10,7 @@ import type {
   ChannelDetail,
   MetaSocialConnectResult,
   TemplateCreated,
+  TemplateList,
   TestSendResult,
   WhatsAppSignupResult,
 } from "@/lib/backend/channels";
@@ -113,6 +114,20 @@ const button = z.object({
   phone_number: z.string().max(20).optional(),
 });
 
+/**
+ * The client's templates, for the number's page (QA 2026-10-30: they only
+ * lived on a page no tab of the v2 console leads to). `null` = WhatsApp is
+ * not connected (409 upstream), as on the client's channels page.
+ */
+export async function listTemplatesAction(raw: unknown): Promise<ActionResult<TemplateList | null>> {
+  const body = z.object({ ref }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:read")) return forbidden();
+  const res = await run(() => backendFor(principal).listTemplates(body.ref));
+  if (!res.ok && res.status === 409) return { ok: true, data: null };
+  return res;
+}
+
 export async function createTemplateAction(raw: unknown): Promise<ActionResult<TemplateCreated>> {
   const body = z
     .object({
@@ -137,7 +152,7 @@ export async function createTemplateAction(raw: unknown): Promise<ActionResult<T
       footer_text: tpl.footer_text || undefined,
     }),
   );
-  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(r)}/channels`);
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(r)}`, "layout");
   return res;
 }
 
@@ -146,7 +161,7 @@ export async function deleteTemplateAction(raw: unknown): Promise<ActionResult<{
   const principal = await requirePrincipal();
   if (!can(principal.role, "channels:write")) return forbidden();
   const res = await run(() => backendFor(principal).deleteTemplate(body.ref, body.name));
-  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}/channels`);
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }
 

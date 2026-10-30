@@ -13,7 +13,11 @@ issues, the same mechanism the WhatsApp Embedded Signup uses:
 
 from __future__ import annotations
 
-from nexus_channels.meta_social.adapter import MetaSocialChannelAdapter, SendContext
+from nexus_channels.meta_social.adapter import (
+    MetaSocialChannelAdapter,
+    SendContext,
+    SocialProfile,
+)
 from nexus_channels.meta_social.exceptions import (
     MetaSocialConnectError,
     MetaSocialWindowClosed,
@@ -57,6 +61,7 @@ __all__ = [
     "MetaSocialWindowClosed",
     "SendContext",
     "SocialEvent",
+    "SocialProfile",
     "entry_account_ids",
     "is_messages_disabled",
     "is_permission_error",

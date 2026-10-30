@@ -28,6 +28,7 @@ import { triggerText } from "./block-view";
 import type { Result } from "./builder-model";
 import { ChannelAccount, hasAccountFacts } from "./channel-account";
 import { ChannelCatalogSection } from "./channel-catalog";
+import { ChannelTemplates } from "./channel-templates";
 import { InstagramCommentsSection } from "./channel-comments";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
 import {
@@ -283,6 +284,7 @@ export function ChannelConfigPage({
               ...(account ? [{ id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }] : []),
               ...(page.instagram_comments ? [{ id: "canal-comentarios", label: "builder.channel.comments.title" as MessageKey }] : []),
               ...(page.catalog_state ? [{ id: "canal-catalogo", label: "ch.catalog" as MessageKey }] : []),
+              ...(page.type === "whatsapp" && !disconnected ? [{ id: "canal-plantillas", label: "tpl.title" as MessageKey }] : []),
             ].map((s) => (
               <li key={s.id} className="min-w-0">
                 <a
@@ -433,6 +435,8 @@ export function ChannelConfigPage({
                 />
               </PageSection>
             ) : null}
+
+            {page.type === "whatsapp" && !disconnected ? <ChannelTemplates refId={refId} manage={canWrite} /> : null}
 
             {page.instagram_comments ? (
               <PageSection id="canal-comentarios" title={t("builder.channel.comments.title")} intro={t("builder.channel.comments.intro")}>

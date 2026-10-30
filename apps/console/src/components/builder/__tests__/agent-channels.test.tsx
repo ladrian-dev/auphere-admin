@@ -14,7 +14,9 @@ const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error:
 vi.mock("sonner", () => ({ toast }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/agents/channel-actions", () => ({}));
-vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({}));
+vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
+  listTemplatesAction: vi.fn(async () => ({ ok: true, data: { items: [], approved: 0, rejected: 0, pending: 0 } })),
+}));
 
 const { AgentChannelsPanel } = await import("../agent-channels");
 const { OwnerLinkPanel } = await import("../owner-link-panel");

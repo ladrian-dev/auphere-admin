@@ -162,6 +162,52 @@ async def test_interactive_becomes_quick_replies() -> None:
     ]
 
 
+async def test_in_a_comment_turn_buttons_and_media_become_the_one_private_reply() -> None:
+    """QA 2026-10-30 (INC-21): quick replies and attachments ignored the
+    comment context and went as a DM by ``recipient.id``, which Meta refuses."""
+    rec = Recorder()
+    adapter = _adapter(PROVIDER_INSTAGRAM, rec)
+    block = {
+        "type": "button",
+        "body": {"text": "Pick one"},
+        "action": {"buttons": [{"type": "reply", "reply": {"id": "a", "title": "Morning"}}]},
+    }
+    await adapter.send_interactive(
+        from_phone="ACC",
+        recipient="IGSID",
+        interactive=block,
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:C_9",
+    )
+    body = rec.calls[-1][3]
+    assert body["recipient"] == {"comment_id": "C_9"}
+    assert body["message"] == {"text": "Pick one\n• Morning"}
+
+    await adapter.send_image(
+        from_phone="ACC",
+        recipient="IGSID",
+        link="https://s3/x.jpg",
+        caption="Our menu",
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:C_10",
+    )
+    body = rec.calls[-1][3]
+    assert body["recipient"] == {"comment_id": "C_10"}
+    assert body["message"] == {"text": "Our menu"}
+
+    with pytest.raises(ChannelCapabilityError):
+        await adapter.send_audio(
+            from_phone="ACC",
+            recipient="IGSID",
+            link="https://s3/x.ogg",
+            tenant_id=TENANT,
+            channel_id=CHANNEL,
+            context_message_id="comment:C_11",
+        )
+
+
 async def test_templates_do_not_exist_here() -> None:
     with pytest.raises(ChannelCapabilityError):
         await _adapter(PROVIDER_INSTAGRAM, Recorder()).send_template()
@@ -185,3 +231,40 @@ async def test_attachment_download_refuses_foreign_hosts() -> None:
     adapter = _adapter(PROVIDER_INSTAGRAM, Recorder())
     with pytest.raises(ValueError):
         await adapter.fetch_media_bytes(media_id="url:https://evil.example.com/x", tenant_id=TENANT)
+
+
+async def test_the_profile_brings_the_name_and_the_picture_bytes() -> None:
+    """Owner, 2026-10-30: the inbox shows the person's name and photo. The
+    picture's CDN link expires, so the adapter hands over its bytes; only
+    Meta's hosts and images, and a missing picture keeps the name."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "scontent.xx.fbcdn.net":
+            return httpx.Response(200, content=b"\x89PNG", headers={"content-type": "image/png"})
+        if request.url.path.endswith("/IGSID_1"):
+            return httpx.Response(
+                200,
+                json={"name": "Ana", "profile_pic": "https://scontent.xx.fbcdn.net/p.png"},
+            )
+        if request.url.path.endswith("/IGSID_2"):
+            return httpx.Response(
+                200, json={"username": "ana.store", "profile_pic": "https://evil.example/p.png"}
+            )
+        return httpx.Response(404, json={"error": {"message": "no", "code": 100}})
+
+    client = MetaSocialClient("secret", transport=httpx.MockTransport(handler))
+
+    async def loader(*, tenant_id: uuid.UUID, channel_id: uuid.UUID) -> SendContext:
+        return SendContext(account_id="ACC", token="TOKEN")
+
+    adapter = MetaSocialChannelAdapter(client, provider=PROVIDER_INSTAGRAM, context_loader=loader)
+    found = await adapter.fetch_profile(recipient="IGSID_1", tenant_id=TENANT, channel_id=CHANNEL)
+    assert found is not None
+    assert (found.name, found.picture, found.picture_mime) == ("Ana", b"\x89PNG", "image/png")
+
+    foreign = await adapter.fetch_profile(recipient="IGSID_2", tenant_id=TENANT, channel_id=CHANNEL)
+    assert foreign is not None and foreign.name == "ana.store" and foreign.picture is None
+
+    assert (
+        await adapter.fetch_profile(recipient="NOPE", tenant_id=TENANT, channel_id=CHANNEL) is None
+    )

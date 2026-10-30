@@ -73,8 +73,8 @@ from nexus_api.db.models import (
     MessageStatus,
     Tenant,
     TenantStatus,
-    WhatsAppOptOut,
 )
+from nexus_api.services import whatsapp_opt_outs
 from nexus_api.services.channel_routing import (
     CHANNEL_ROLE_NOTIFICATIONS,
     ChannelResolutionError,
@@ -589,23 +589,14 @@ async def _queue_reminder(
     if already is not None:
         return None
 
-    # Opt-out is checked across EVERY channel of the tenant, not just the one
-    # we are about to send from. The table is keyed per channel because that
-    # is where the STOP arrived, but a debtor who said BAJA means "stop
-    # chasing me", not "stop chasing me from this number". Once a business
-    # runs two lines, the per-channel check would let a reminder through on
-    # the second one — a compliance failure in a collections vertical, and
-    # one nobody would notice until a debtor complained.
-    #
-    # RLS scopes the query to the tenant, so this is exactly "any active
-    # opt-out this business holds for this phone".
-    opted_out = await session.scalar(
-        sa.select(WhatsAppOptOut.id).where(
-            WhatsAppOptOut.recipient_phone == wa_identifier,
-            WhatsAppOptOut.opted_in_at.is_(None),
-        )
-    )
-    if opted_out is not None:
+    # A payment reminder is not marketing: the customer's STOP does not stop
+    # it, only the business can (an operator opt-out). Owner's decision on
+    # 2026-10-30 (QA, INC-18): the store decides who stops getting reminders.
+    # Checked across EVERY number of the business (``channel_id=None``; RLS
+    # scopes it to the tenant), not only the one the reminder leaves from.
+    if await whatsapp_opt_outs.blocks(
+        session, channel_id=None, phone=wa_identifier, marketing=False
+    ):
         log.info(
             "cobranza_reminder.skipped_opt_out",
             tenant_id=str(tenant_id),

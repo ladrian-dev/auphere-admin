@@ -14,7 +14,7 @@ const t = (k: MessageKey, v?: Record<string, string | number>) => translate("es"
 const conv = (o: Partial<Conversation> = {}): Conversation =>
   ({
     id: "c1",
-    contact: { name: "Ana López", handle: "+34 600 000 000", initials: "AL" },
+    contact: { name: "Ana López", handle: "+34 600 000 000", initials: "AL", has_avatar: false },
     channel: { kind: "whatsapp" },
     agent: { id: "a1", name: "Recepción" },
     state: "waiting",
@@ -162,7 +162,7 @@ describe("row words", () => {
 describe("the waiting ones, pinned (spec 044, R10)", () => {
   const since = new Date(Date.now() - 12 * 60_000).toISOString();
   const waiting = conv({ id: "w1", waiting: { reason: "Pide que le devuelvan la seña", since } });
-  const other = conv({ id: "o1", state: "agent", contact: { name: "Benjamín Soto", handle: "+56 9 1111 2222", initials: "BS" }, unread: false });
+  const other = conv({ id: "o1", state: "agent", contact: { name: "Benjamín Soto", handle: "+56 9 1111 2222", initials: "BS", has_avatar: false }, unread: false });
 
   it("with «Todas» and no search, they go first under «Esperan a una persona · N», with the reason and the wait", async () => {
     list({ data: page([other, waiting]) });

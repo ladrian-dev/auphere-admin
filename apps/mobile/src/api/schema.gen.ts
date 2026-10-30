@@ -629,6 +629,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/lite/inbox/conversations/{conversation_id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Avatar
+         * @description The profile picture of the person in this conversation (Instagram /
+         *     Messenger; owner, 2026-10-30), streamed like a message's media: RLS
+         *     decides whose it is and no storage link reaches the browser.
+         */
+        get: operations["read_avatar_console_lite_inbox_conversations__conversation_id__avatar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/lite/inbox/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -2269,6 +2291,11 @@ export interface components {
             first_message_at: string | null;
             /** Handle */
             handle: string;
+            /**
+             * Has Avatar
+             * @default false
+             */
+            has_avatar: boolean;
             /** Name */
             name: string;
             next_booking?: components["schemas"]["NextBookingOut"] | null;
@@ -3097,6 +3124,11 @@ export interface components {
         nexus_api__api__console__lite__inbox__ContactOut: {
             /** Handle */
             handle: string;
+            /**
+             * Has Avatar
+             * @default false
+             */
+            has_avatar: boolean;
             /** Initials */
             initials: string;
             /** Name */
@@ -5660,6 +5692,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_avatar_console_lite_inbox_conversations__conversation_id__avatar_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

@@ -198,7 +198,7 @@ async def test_a_stop_word_is_marketing_and_reaches_the_inbox_without_a_turn(
 # ── what an opt-out blocks ───────────────────────────────────────────────────
 
 
-async def test_marketing_is_blocked_utility_goes_and_an_old_row_blocks_all(
+async def test_marketing_is_blocked_and_only_the_business_blocks_the_rest(
     db_session: AsyncSession, biz: Biz, line: uuid.UUID
 ) -> None:
     from nexus_worker.streams.outbound import _is_marketing
@@ -226,7 +226,8 @@ async def test_marketing_is_blocked_utility_goes_and_an_old_row_blocks_all(
         assert not await blocks(False, customer_id=customer_id)
         assert await blocks(True, phone=f"+{PHONE}")
 
-        # A pre-050 row: scope 'all' blocks a reply too.
+        # A pre-050 row from a stop word (scope 'all') no longer blocks a
+        # reply or a reminder: only the business does (owner, INC-18).
         db_session.add(
             WhatsAppOptOut(
                 tenant_id=biz.tenant_id,
@@ -239,7 +240,26 @@ async def test_marketing_is_blocked_utility_goes_and_an_old_row_blocks_all(
             )
         )
         await db_session.flush()
-        assert await blocks(False, phone="34622000002")
+        assert not await blocks(False, phone="34622000002")
+        assert await blocks(True, phone="34622000002")
+
+        # One the business recorded blocks reminders too, on every number.
+        db_session.add(
+            WhatsAppOptOut(
+                tenant_id=biz.tenant_id,
+                channel_id=line,
+                recipient_phone="34622000003",
+                scope="all",
+                source="operator",
+                reason="operator_manual",
+                opted_out_at=datetime.now(UTC),
+            )
+        )
+        await db_session.flush()
+        assert await blocks(False, phone="34622000003")
+        assert await whatsapp_opt_outs.blocks(
+            db_session, channel_id=None, phone="34622000003", marketing=False
+        )
 
         def msg(payload: dict[str, Any] | None) -> Message:
             return Message(template_payload=payload)

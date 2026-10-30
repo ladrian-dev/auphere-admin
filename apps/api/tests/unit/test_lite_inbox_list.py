@@ -228,3 +228,53 @@ async def test_without_the_inbox_module_there_is_no_inbox(
     assert (await client.get(COUNTS, headers=member["headers"]())).status_code == 403
     # Una persona del partner no alcanza la Bandeja de nadie.
     assert (await client.get(LIST, headers=w["headers"]())).status_code == 403
+
+
+async def test_a_stored_profile_picture_is_served_through_the_api(
+    client, db_session, console_world
+) -> None:
+    """Owner, 2026-10-30: the inbox shows the person's photo (Instagram /
+    Messenger). The list says ``has_avatar`` and the API streams the bytes:
+    no storage link reaches the browser, and another client's id is a 404."""
+    from nexus_api.db.models import Customer
+    from nexus_api.services.media_storage import get_media_storage
+
+    w = console_world["a"]
+    inbox = await make_inbox(
+        db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"], conversations=2
+    )
+    stored = await get_media_storage().put_inbound(
+        tenant_slug="t", wamid="avatar-x", content=b"\x89PNG", content_type="image/png"
+    )
+    first = (
+        await db_session.execute(
+            sa.select(Conversation.customer_id).where(Conversation.id == inbox["conversations"][0])
+        )
+    ).scalar_one()
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == first).values(avatar_s3_key=stored.key)
+    )
+    await db_session.commit()
+
+    items = (await client.get(LIST, headers=inbox["headers"]())).json()["items"]
+    by_id = {i["id"]: i for i in items}
+    assert by_id[str(inbox["conversations"][0])]["contact"]["has_avatar"] is True
+    assert by_id[str(inbox["conversations"][1])]["contact"]["has_avatar"] is False
+    assert "avatar_url" not in by_id[str(inbox["conversations"][0])]["contact"]
+
+    pic = await client.get(f"{LIST}/{inbox['conversations'][0]}/avatar", headers=inbox["headers"]())
+    assert pic.status_code == 200, pic.text
+    assert pic.content == b"\x89PNG" and pic.headers["content-type"] == "image/png"
+    none = await client.get(
+        f"{LIST}/{inbox['conversations'][1]}/avatar", headers=inbox["headers"]()
+    )
+    assert none.status_code == 404
+
+    other = console_world["b"]
+    theirs = await make_inbox(
+        db_session, partner_id=other["partner_id"], tenant_id=other["tenant_id"]
+    )
+    foreign = await client.get(
+        f"{LIST}/{inbox['conversations'][0]}/avatar", headers=theirs["headers"]()
+    )
+    assert foreign.status_code == 404

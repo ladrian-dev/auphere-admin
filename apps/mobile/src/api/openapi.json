@@ -1615,6 +1615,11 @@
             "title": "Handle",
             "type": "string"
           },
+          "has_avatar": {
+            "default": false,
+            "title": "Has Avatar",
+            "type": "boolean"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -6844,6 +6849,11 @@
             "title": "Handle",
             "type": "string"
           },
+          "has_avatar": {
+            "default": false,
+            "title": "Has Avatar",
+            "type": "boolean"
+          },
           "initials": {
             "title": "Initials",
             "type": "string"
@@ -10843,6 +10853,97 @@
           }
         },
         "summary": "Send Attachment",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/inbox/conversations/{conversation_id}/avatar": {
+      "get": {
+        "description": "The profile picture of the person in this conversation (Instagram /\nMessenger; owner, 2026-10-30), streamed like a message's media: RLS\ndecides whose it is and no storage link reaches the browser.",
+        "operationId": "read_avatar_console_lite_inbox_conversations__conversation_id__avatar_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Avatar",
         "tags": [
           "console",
           "console-lite"

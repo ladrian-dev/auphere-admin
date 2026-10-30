@@ -109,6 +109,9 @@ class Customer(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     bsuid: Mapped[str | None] = mapped_column(String(160), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Migration 0212 — Instagram / Messenger: where the worker stored the
+    # person's profile picture (Meta's CDN link expires). None on WhatsApp.
+    avatar_s3_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     preferences: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     kg_node_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

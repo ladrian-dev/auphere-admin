@@ -37,6 +37,7 @@ from nexus_api.db.models import (
     AuditLog,
     Channel,
     Conversation,
+    Customer,
     Message,
     MessageDirection,
     MessageStatus,
@@ -123,6 +124,43 @@ async def read_media(
                 "inline" if inline else "attachment", msg.media_filename
             ),
             "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+        },
+    )
+
+
+@router.get("/conversations/{conversation_id}/avatar")
+async def read_avatar(
+    conversation_id: uuid.UUID = Path(...),
+    scope: LiteScope = Depends(lite_scope("inbox")),
+) -> Response:
+    """The profile picture of the person in this conversation (Instagram /
+    Messenger; owner, 2026-10-30), streamed like a message's media: RLS
+    decides whose it is and no storage link reaches the browser."""
+    key = (
+        await scope.session.execute(
+            sa.select(Customer.avatar_s3_key)
+            .join(Conversation, Conversation.customer_id == Customer.id)
+            .join(Channel, Channel.id == Conversation.channel_id)
+            .where(Conversation.id == conversation_id, _in_inbox())
+        )
+    ).scalar_one_or_none()
+    if not key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar")
+    try:
+        body, content_type = await get_media_storage().get_object(key)
+    except MediaStorageError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar") from None
+    declared = (content_type or "").split(";")[0].strip().lower()
+    if not declared.startswith("image/") or declared not in INLINE_TYPES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar")
+    return Response(
+        content=body,
+        media_type=declared,
+        headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "private, max-age=3600",
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "sandbox; default-src 'none'",
         },

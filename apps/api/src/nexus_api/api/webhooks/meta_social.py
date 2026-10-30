@@ -197,7 +197,10 @@ async def _enqueue_once(
     if prior is not None:
         log.info("webhook.meta_social.dedupe_db_hit", tenant_id=str(tenant_id))
         return False
-    if channel_id is None or channel_status != ChannelStatus.ACTIVE:
+    # Paused or degraded still enqueues, as on WhatsApp: the worker's turn
+    # gate keeps the message for a person («Canal en pausa») instead of the
+    # webhook dropping it (QA 2026-10-30, INC-37).
+    if channel_id is None or channel_status is ChannelStatus.DISCONNECTED:
         log.warning("webhook.meta_social.channel_not_active", tenant_id=str(tenant_id))
         return False
     if event.kind == "comment" and channel_config.get("comments_enabled") is False:

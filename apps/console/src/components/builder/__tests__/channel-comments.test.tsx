@@ -13,7 +13,9 @@ const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error:
 vi.mock("sonner", () => ({ toast }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/agents/channel-actions", () => ({}));
-vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({}));
+vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
+  listTemplatesAction: vi.fn(async () => ({ ok: true, data: { items: [], approved: 0, rejected: 0, pending: 0 } })),
+}));
 
 const { ChannelConfigPage } = await import("../channel-page");
 type Actions = NonNullable<React.ComponentProps<typeof ChannelConfigPage>["actions"]>;
@@ -110,5 +112,14 @@ describe("los comentarios de un canal de Instagram", () => {
     unmount();
     view(instagram(), vi.fn());
     expect(screen.queryByRole("region", { name: "Catálogo" })).toBeNull();
+  });
+
+  it("el número de WhatsApp tiene sus plantillas en su página, con «Nueva plantilla»; Instagram no", async () => {
+    const { unmount } = view(page({ catalog: null, catalog_state: "none", catalog_error: null }), vi.fn());
+    expect(await screen.findByRole("region", { name: "Plantillas de mensaje" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Plantillas de mensaje" })).toHaveAttribute("href", "#canal-plantillas");
+    unmount();
+    view(instagram(), vi.fn());
+    expect(screen.queryByRole("region", { name: "Plantillas de mensaje" })).toBeNull();
   });
 });

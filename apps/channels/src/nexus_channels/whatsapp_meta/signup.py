@@ -50,6 +50,8 @@ from nexus_channels.whatsapp_meta.credentials import (
     MetaCredentialsRepository,
 )
 from nexus_channels.whatsapp_meta.exceptions import (
+    MetaAPIError,
+    MetaTransientError,
     PhoneRegisterRefused,
     RegisterPhoneError,
     SubscribeWebhookError,
@@ -183,7 +185,13 @@ class EmbeddedSignupOrchestrator:
                     access_token=bisuat,
                     pin=pin,
                 )
-            except Exception as exc:
+            except MetaAPIError as exc:
+                # Only Meta refusing the number is «the previous owner still
+                # holds it»; a timeout or a 5xx is Meta not answering and goes
+                # out as such (502), not as a 409 that sends the partner after
+                # the wrong person (QA 2026-10-30, INC-15).
+                if isinstance(exc, MetaTransientError) or (exc.status_code or 0) >= 500:
+                    raise
                 raise PhoneRegisterRefused(
                     f"register_phone failed for pn={phone_number_id}: {exc}"
                 ) from exc

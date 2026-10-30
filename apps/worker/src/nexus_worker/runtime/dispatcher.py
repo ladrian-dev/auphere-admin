@@ -73,11 +73,12 @@ from nexus_api.services import conversation_control, inbox_lifecycle, push_event
 from nexus_api.services.channel_config import gate_audience
 from nexus_api.services.channel_routing import config_agent_enabled, config_role
 from nexus_api.services.inbox_stream import publish_inbox_event
+from sqlalchemy.dialects.postgresql import JSONB
 
 from nexus_worker.metering.budget import evaluate as evaluate_budget
 from nexus_worker.metering.collector import record_media_unit, usage_turn
 from nexus_worker.multimodal import ProcessedMedia, get_media_processor
-from nexus_worker.multimodal.media_fetch import fetch_inbound_media
+from nexus_worker.multimodal.media_fetch import fetch_inbound_media, store_profile_picture
 from nexus_worker.observability.tracing import trace_turn, update_trace
 from nexus_worker.persistence.messages import (
     persist_inbound_message,
@@ -391,8 +392,13 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
             no_turn=event.opted_out,
         )
         # Spec 049: Instagram / Messenger events carry no name; it is read
-        # once per person, after this transaction (a Graph call).
-        needs_profile = customer.name is None
+        # once per person, after this transaction (a Graph call). The picture
+        # too (owner, 2026-10-30), once: ``profile_checked`` stops a person
+        # Meta gives no picture for from costing a Graph call per message.
+        needs_profile = customer.name is None or (
+            customer.avatar_s3_key is None
+            and not (customer.preferences or {}).get("profile_checked")
+        )
         customer_id = customer.id
 
     if needs_profile and event.provider in _profile_fetchers:
@@ -413,25 +419,50 @@ def set_profile_fetcher(provider: str, fetcher: Any | None) -> None:
 
 
 async def fill_profile(event: InboundEvent, *, customer_id: uuid.UUID) -> None:
-    """Best-effort: no name, no harm — the inbox shows a generic one."""
+    """Best-effort: no name or picture, no harm — the inbox shows a generic
+    name and the initials. Never overwrites a name already there."""
     fetcher = _profile_fetchers.get(event.provider)
     if fetcher is None:
         return
     try:
-        name = await fetcher(
+        profile = await fetcher(
             recipient=event.user_id, tenant_id=event.tenant_id, channel_id=event.channel_id
         )
     except Exception as exc:
         log.info("pipeline.profile_unavailable", provider=event.provider, error=type(exc).__name__)
         return
-    if not name:
+    if profile is None:
         return
+    # A fetcher may still answer with the bare name (tests, older adapters).
+    name = profile if isinstance(profile, str) else getattr(profile, "name", None)
+    picture = None if isinstance(profile, str) else getattr(profile, "picture", None)
+    avatar_key = (
+        await store_profile_picture(
+            tenant_id=event.tenant_id,
+            customer_id=customer_id,
+            content=picture,
+            content_type=getattr(profile, "picture_mime", None),
+        )
+        if picture
+        else None
+    )
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, event.tenant_id):
+        if name:
+            await session.execute(
+                sa.update(Customer)
+                .where(Customer.id == customer_id, Customer.name.is_(None))
+                .values(name=name)
+            )
+        values: dict[str, Any] = {
+            "preferences": Customer.preferences.op("||")(
+                sa.cast(sa.literal('{"profile_checked": true}'), JSONB)
+            )
+        }
+        if avatar_key:
+            values["avatar_s3_key"] = avatar_key
         await session.execute(
-            sa.update(Customer)
-            .where(Customer.id == customer_id, Customer.name.is_(None))
-            .values(name=name)
+            sa.update(Customer).where(Customer.id == customer_id).values(**values)
         )
 
 

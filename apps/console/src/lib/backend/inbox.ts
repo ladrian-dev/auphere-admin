@@ -16,7 +16,8 @@ export type InboxAuthor = { kind: InboxAuthorKind; name: string | null; is_me: b
 
 export type InboxConversation = {
   id: string;
-  contact: { name: string; handle: string; initials: string };
+  /** `has_avatar`: Instagram / Messenger picture, served by the BFF (never a storage link). */
+  contact: { name: string; handle: string; initials: string; has_avatar?: boolean };
   channel: { kind: string };
   agent: { id: string; name: string } | null;
   state: InboxState;
@@ -57,7 +58,7 @@ export type InboxDetail = {
   control_version: number;
   window: { open: boolean; closes_at: string | null };
   channel: { kind: string; connected: boolean };
-  contact: { name: string; handle: string; first_message_at: string | null; conversations: number };
+  contact: { name: string; handle: string; first_message_at: string | null; conversations: number; has_avatar?: boolean };
   summary: string | null;
   waiting_reason: string | null;
   /** Spec 045 (R3.2): when the agent asked for a person; `null` unless `state = "waiting"`. */
@@ -92,6 +93,7 @@ export type SavedReply = { id: string; title: string; body: string };
 /** Backend paths the BFF route handlers proxy. */
 export const inboxStreamPath = "/console/lite/inbox/stream";
 export const inboxMediaPath = (messageId: string) => `/console/lite/inbox/messages/${encodeURIComponent(messageId)}/media`;
+export const inboxAvatarPath = (conversationId: string) => `/console/lite/inbox/conversations/${encodeURIComponent(conversationId)}/avatar`;
 export const inboxAttachmentPath = (conversationId: string) =>
   `/console/lite/inbox/conversations/${encodeURIComponent(conversationId)}/attachments`;
 

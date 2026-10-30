@@ -248,7 +248,9 @@ async def test_without_a_phone_nothing_goes_out_and_history_says_so(salon, templ
     )
 
 
-async def test_who_opted_out_is_not_written_to(salon, templates) -> None:
+async def test_a_customers_stop_does_not_stop_the_appointment_reminder(salon, templates) -> None:
+    """Owner's decision (QA 2026-10-30, INC-18): the store decides who stops
+    getting reminders, not the customer. A «BAJA» only stops marketing."""
     tid = salon["tenant_id"]
     rid, now, _start = await _ask(salon)
     async with scoped(tid) as s:
@@ -259,6 +261,28 @@ async def test_who_opted_out_is_not_written_to(salon, templates) -> None:
                 recipient_phone=DIGITS,
                 reason="keyword_stop",
                 trigger_keyword="BAJA",
+                opted_out_at=now - timedelta(days=10),
+            )
+        )
+
+    await _send(tid, now)
+
+    assert len(await messages(tid)) == 1
+    row = await _row(tid, f"ask:{rid}:auto")
+    assert row.skip_reason is None
+
+
+async def test_who_the_business_opted_out_is_not_written_to(salon, templates) -> None:
+    tid = salon["tenant_id"]
+    rid, now, _start = await _ask(salon)
+    async with scoped(tid) as s:
+        s.add(
+            WhatsAppOptOut(
+                tenant_id=tid,
+                channel_id=salon["channel_id"],
+                recipient_phone=DIGITS,
+                source="operator",
+                reason="operator_manual",
                 opted_out_at=now - timedelta(days=10),
             )
         )

@@ -249,16 +249,17 @@ def extract_phone_number_id(payload: dict[str, Any]) -> str | None:
     return None
 
 
+#: Only words that cannot mean anything else. «Cancelar», «cancela» and
+#: «salir» were here: a customer answering a booking reminder with «Cancelar»
+#: was opted out of marketing and the agent never saw it (QA 2026-10-30,
+#: INC-19). Those go to the agent, which handles both intents.
 _OPT_OUT_KEYWORDS: frozenset[str] = frozenset(
     {
         "stop",
         "unsubscribe",
         "baja",
-        "cancelar",
-        "cancela",
         "darme de baja",
         "no quiero más mensajes",
-        "salir",
     }
 )
 
