@@ -291,6 +291,7 @@ export const builderChannelsMessages = {
   "builder.channel.wait.hint": { es: "Hasta 500 caracteres.", en: "Up to 500 characters." },
   "builder.channel.wait.tooLong": { es: "Como mucho 500 caracteres.", en: "At most 500 characters." },
 
+  "builder.channel.wizardStep": { es: "Paso {n} de {total} · {title}", en: "Step {n} of {total} · {title}" },
   "builder.channel.catalog.intro": {
     es: "El catálogo de Commerce Manager con el que el agente enseña productos como tarjetas en este número.",
     en: "The Commerce Manager catalogue the agent uses to show products as cards on this number.",

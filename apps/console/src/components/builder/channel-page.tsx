@@ -335,6 +335,13 @@ export function ChannelConfigPage({
               disconnect={actions.menu?.disconnect}
             />
           ) : null}
+          {unconfigured && !disconnected && canWrite ? (
+            // The wizard's third step lives here (QA 2026-10-30): the person
+            // just connected the channel and still has to say who it answers.
+            <p className="text-sm text-muted-foreground" data-slot="wizard-step">
+              {t("builder.channel.wizardStep", { n: 3, total: 4, title: t("channels.proto.step.configure") })}
+            </p>
+          ) : null}
           {disconnected ? <Callout tone="info">{t("builder.channel.page.disconnected")}</Callout> : null}
           {!canWrite ? <p className="text-sm text-muted-foreground">{t("builder.channel.page.readonly")}</p> : null}
 

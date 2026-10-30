@@ -17,7 +17,7 @@ import type { MetaSocialConnectResult, WhatsAppSignupResult } from "@/lib/backen
 
 import type { Result } from "./builder-model";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
-import { channelHref, channelStateText, channelSummary, isConfiguredState } from "./channel-model";
+import { channelHref, channelStateText, channelSummary } from "./channel-model";
 import { ChannelWizard, type ChannelKind, type WizardStep } from "./channel-picker";
 import { CONNECT_ACTIONS, ConnectWhatsApp, type ConnectActions, type ConnectStage, type Placed } from "./connect-whatsapp-dialog";
 import { visibleTone } from "./life-model";
@@ -180,8 +180,11 @@ export function AgentChannelsPanel({
   }
 
   const list = data.channels;
-  const step: WizardStep =
-    stage !== null || connecting || social.working ? 1 : list.length > 0 && list.every((c) => isConfiguredState(c.visible_state)) ? 3 : 0;
+  // The wizard only shows while choosing a channel (none yet, or «Añadir otro
+  // canal»): choosing, or Meta's window open. «Configurar» happens on the
+  // channel's page, which says «Paso 3 de 4» itself (QA 2026-10-30: it showed
+  // «¡Listo!» while the person was still choosing).
+  const step: WizardStep = stage !== null || connecting || social.working ? 1 : 0;
   const count = (kind: string) => list.filter((c) => c.type === kind).length;
   const wizard = canWrite ? (
     <ChannelWizard

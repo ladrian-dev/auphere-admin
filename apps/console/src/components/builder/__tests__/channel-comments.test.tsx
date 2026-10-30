@@ -103,6 +103,8 @@ describe("los comentarios de un canal de Instagram", () => {
     expect(screen.getByRole("radio", { name: /A todos/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Activar solo para mi equipo" })).toBeNull();
     expect(screen.getByRole("button", { name: "Activar para todos" })).toBeInTheDocument();
+    // The wizard's third step lives on the channel's page.
+    expect(screen.getByText("Paso 3 de 4 · Configurar el canal")).toBeInTheDocument();
   });
 
   it("el número de WhatsApp enseña su catálogo con «Conectar catálogo»; Instagram no tiene la sección", () => {
