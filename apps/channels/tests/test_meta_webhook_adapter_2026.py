@@ -163,3 +163,15 @@ async def test_the_client_sends_a_bsuid_as_recipient() -> None:
     await client.send_text(phone_number_id="PN", access_token="T", to="34611000001", body="hola")
     assert "recipient" in bodies[0] and "to" not in bodies[0]
     assert bodies[1]["to"] == "34611000001" and "recipient" not in bodies[1]
+
+
+def test_only_unambiguous_words_are_an_opt_out() -> None:
+    """QA 2026-10-30 (INC-19): «Cancelar» answering a booking reminder was an
+    opt-out of marketing and never reached the agent."""
+    from nexus_channels.whatsapp_meta.webhook_adapter import is_opt_out_text
+
+    assert is_opt_out_text("STOP") == (True, "stop")
+    assert is_opt_out_text("Baja.") == (True, "baja")
+    assert is_opt_out_text("darme de baja")[0] is True
+    for answer in ("Cancelar", "cancela!", "Salir", "quiero cancelar mi cita"):
+        assert is_opt_out_text(answer) == (False, None), answer
