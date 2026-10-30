@@ -17,7 +17,7 @@ import {
   ResumeConnectorButton,
   SyncButton,
 } from "../../_integrations/connector-actions";
-import { AgendaProSetupDialog, WooCommerceSetupDialog } from "../../_integrations/setup-wizards";
+import { WooCommerceSetupDialog } from "../../_integrations/setup-wizards";
 import { ToolOverrides } from "./tool-overrides";
 
 export const dynamic = "force-dynamic";
@@ -92,8 +92,6 @@ export default async function TenantConnectorPage({ params }: { params: Promise<
         {!live ? (
           isComposio ? (
             <InitiateConsentButton {...common} ownerPhone={tenant.owner_phone} />
-          ) : slug === "agendapro" ? (
-            <AgendaProSetupDialog tenantId={id} currentUrl={tenant.agendapro_public_url} />
           ) : slug === "woocommerce" ? (
             <WooCommerceSetupDialog tenantId={id} alreadyConnected={false} />
           ) : (
@@ -103,9 +101,6 @@ export default async function TenantConnectorPage({ params }: { params: Promise<
           <>
             {tc.status === "pending" || tc.status === "needs_reauth" ? <ReissueConsentButton {...common} /> : null}
             {isComposio && tc.status === "connected" ? <SyncButton {...common} /> : null}
-            {slug === "agendapro" ? (
-              <AgendaProSetupDialog tenantId={id} currentUrl={tenant.agendapro_public_url} />
-            ) : null}
             {slug === "woocommerce" ? <WooCommerceSetupDialog tenantId={id} alreadyConnected /> : null}
             {tc.status === "paused" ? <ResumeConnectorButton {...common} /> : null}
             {["connected", "partial", "needs_reauth"].includes(tc.status) ? <PauseConnectorButton {...common} /> : null}

@@ -218,35 +218,6 @@ export async function connectWooCommerceSetupAction(
   }
 }
 
-// ── AgendaPro public link (ADR-017) ────────────────────────────────────────
-
-/**
- * Save the tenant's public AgendaPro URL. The new public browser MCP
- * (future session) reads this column to scrape availability and create
- * appointments via the public booking link. Cancel / modify / list
- * appointments are out of scope for the public flow and the agent
- * escalates them to the owner via the backchannel (ADR-018).
- *
- * Pass an empty string (or null) to clear the URL.
- */
-export async function agendaProSetPublicUrlAction(
-  tenantId: string,
-  publicUrl: string | null,
-): Promise<ActionResult<{ public_url: string | null }>> {
-  await requireOperator();
-  try {
-    const result = await backend.setAgendaProPublicUrl(tenantId, publicUrl);
-    if (!result) {
-      return { ok: false, error: "El backend no retornó datos." };
-    }
-    revalidatePath(`/tenants/${tenantId}`, "layout");
-    revalidatePath(`/tenants/${tenantId}`);
-    return { ok: true, data: { public_url: result.public_url } };
-  } catch (err) {
-    return { ok: false, error: toError(err) };
-  }
-}
-
 // ── WhatsApp template (HSM) management ─────────────────────────────────────
 
 export async function listWhatsAppTemplatesAction(

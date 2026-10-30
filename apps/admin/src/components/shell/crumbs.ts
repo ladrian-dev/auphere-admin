@@ -31,8 +31,13 @@ const PAGE: Record<string, Record<string, string>> = {
   router: { anomalies: "Anomalías" },
   // Spec 047 (T117): the «WhatsApp login» beta by country.
   channels: { "whatsapp-login": "Beta «WhatsApp login»" },
-  // Spec 047 (T087, T090, T100).
-  builder: { "sector-tests": "Pruebas del sector", "judge-calibration": "Calibración del juez", eval: "Evaluación" },
+  // Spec 047 (T087, T090, T100, T201).
+  builder: {
+    "sector-tests": "Pruebas del sector",
+    "judge-calibration": "Calibración del juez",
+    eval: "Evaluación",
+    "sector-guides": "Sectores sin guía",
+  },
 };
 
 /** Tabs and sub-pages, by the section they hang from. */
@@ -106,6 +111,13 @@ export function crumbsFor(pathname: string, names: Record<string, string>): Crum
       // The record under a section: a client, a partner, a ticket, a connector.
       const fallback = section === "tickets" ? "Ticket" : section === "connectors" ? seg : "…";
       out.push({ label: name(seg, fallback), href: href(i) });
+      continue;
+    }
+    if (section === "builder" && segs[1] === "sector-guides") {
+      // Spec 047 (T201): `/builder/sector-guides/{client}/{guide}` is one
+      // record, a client's generated guide; the client alone is not a page.
+      if (i === 2) continue;
+      out.push({ label: name(seg, "Guía generada"), href: href(i) });
       continue;
     }
     if (section === "qa") {

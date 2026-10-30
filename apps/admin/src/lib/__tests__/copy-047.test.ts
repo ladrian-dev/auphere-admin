@@ -18,6 +18,13 @@ const SCREENS = [
   "tenants/[id]/sovereign.ts",
   "partners/[id]/limits/page.tsx",
   "builder/sector-tests/page.tsx",
+  // T201 (58.5): «Sectores sin guía».
+  "builder/sector-guides/page.tsx",
+  "builder/sector-guides/sector-guides.ts",
+  "builder/sector-guides/missing-labels.tsx",
+  "builder/sector-guides/generated-guide.tsx",
+  "builder/sector-guides/promote-dialog.tsx",
+  "builder/sector-guides/[tenantId]/[guideId]/page.tsx",
 ];
 
 function literals(source: string): string[] {
