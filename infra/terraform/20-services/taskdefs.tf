@@ -318,7 +318,13 @@ locals {
       local.adot_sidecar["api"],
     ]
     runner = [
-      merge(local.app_base["runner"], { command = ["nexus-runner"] }),
+      merge(local.app_base["runner"], {
+        command = ["nexus-runner"]
+        # Spec 047 (T203): el navegador de respaldo. Listas vacías salvo con
+        # ``renderer_enabled`` (renderer.tf), así que apagado no cambia nada.
+        environment = concat(local.app_base["runner"].environment, local.renderer_runner_environment)
+        secrets     = concat(local.app_base["runner"].secrets, local.renderer_runner_secrets)
+      }),
       local.adot_sidecar["runner"],
     ]
     scheduler = [

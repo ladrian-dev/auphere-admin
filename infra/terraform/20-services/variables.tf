@@ -131,8 +131,6 @@ variable "app_secret_keys" {
     "NEXUS_EMBED_JWT_SECRET",
     "NEXUS_LANGFUSE_HOST",
     "OPENAI_API_KEY",
-    "BROWSERBASE_API_KEY",
-    "BROWSERBASE_PROJECT_ID",
     # Correo transaccional (Resend). Sin estas dos, ``email_enabled`` es False
     # y ``operator_alert_email`` es None: los recibos mensuales de partner se
     # generan pero no se envían, y las ``platform_alert`` del platform-watcher

@@ -28,6 +28,11 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API="$ROOT/apps/api"
 PKGS=(api worker channels mcp)
+# Spec 047 (T203): el navegador de respaldo tiene su propio entorno y su propio
+# lock —Playwright no entra en la API ni en el worker—, así que se revisa con
+# el suyo y no con el de la API.
+REN="$ROOT/apps/renderer"
+REN_RUN=(uv run --locked --extra dev --directory "$REN")
 
 FAILED=()
 step() {
@@ -54,6 +59,10 @@ run_lint() {
   step "mypy · worker"   uv run --directory "$API" mypy --strict "$ROOT/apps/worker/src/nexus_worker"
   step "mypy · channels" uv run --directory "$API" mypy --strict "$ROOT/apps/channels/src/nexus_channels"
   step "mypy · mcp"      uv run --directory "$API" mypy --strict "$ROOT/apps/mcp/src/nexus_mcp"
+
+  step "ruff check · renderer"  "${REN_RUN[@]}" ruff check src tests
+  step "ruff format · renderer" "${REN_RUN[@]}" ruff format --check src tests
+  step "mypy · renderer"        "${REN_RUN[@]}" mypy --strict src/nexus_renderer
 }
 
 run_py() {
@@ -62,6 +71,8 @@ run_py() {
   step "pytest · worker"   uv run --directory "$API" pytest "$ROOT/apps/worker/tests" -q
   step "pytest · channels" uv run --directory "$API" pytest "$ROOT/apps/channels/tests" -q
   step "pytest · mcp"      uv run --directory "$API" pytest "$ROOT/apps/mcp/tests" -q
+  # Sin navegador: Playwright va simulado y el proxy, con sockets locales.
+  step "pytest · renderer" "${REN_RUN[@]}" pytest -q
 }
 
 run_js() {
@@ -140,7 +151,7 @@ run_locks() {
   branch="$(git -C "$ROOT" branch --show-current)"
   base="$(git -C "$ROOT" rev-parse --verify -q origin/develop || git -C "$ROOT" rev-parse -q --verify develop)"
   if [ -n "$base" ] && [ "$branch" != "develop" ] && [ "$branch" != "main" ]; then
-    step "locks · sin cambios vs develop" git -C "$ROOT" diff --quiet "$base" -- pnpm-lock.yaml apps/api/uv.lock uv.lock
+    step "locks · sin cambios vs develop" git -C "$ROOT" diff --quiet "$base" -- pnpm-lock.yaml apps/api/uv.lock uv.lock apps/renderer/uv.lock
   fi
 }
 
