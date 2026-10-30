@@ -63,7 +63,11 @@ const fresh = page({
   config: { ...page().config, audience: { mode: "unset", test_numbers: [], exceptions: [] }, escalation: { recipients: [], summary: true } },
 });
 
-function panel(data: AgentChannels = empty(), over: Partial<Actions> = {}, { canWrite = true, pages = {} as React.ComponentProps<typeof AgentChannelsPanel>["pages"] } = {}) {
+function panel(
+  data: AgentChannels = empty(),
+  over: Partial<Actions> = {},
+  { canWrite = true, pages = {} as React.ComponentProps<typeof AgentChannelsPanel>["pages"], meta = META as typeof META | null } = {},
+) {
   const actions: Actions = {
     reload: vi.fn(async () => ok(empty())),
     menu: { move: vi.fn(), pause: vi.fn(), resume: vi.fn(), disconnect: vi.fn() },
@@ -80,7 +84,7 @@ function panel(data: AgentChannels = empty(), over: Partial<Actions> = {}, { can
   };
   const view = render(
     <LocaleProvider locale="es">
-      <AgentChannelsPanel refId={REF} agentId={RECEPCION} channels={data} pages={pages} canWrite={canWrite} clientName="Barbería Cultor" meta={META} actions={actions} />
+      <AgentChannelsPanel refId={REF} agentId={RECEPCION} channels={data} pages={pages} canWrite={canWrite} clientName="Barbería Cultor" meta={meta} actions={actions} />
     </LocaleProvider>,
   );
   return { ...view, actions };
@@ -114,7 +118,7 @@ describe("sin canales: el asistente (§7.1)", () => {
     const whatsapp = within(grid()).getByRole("button", { name: "Conectar WhatsApp" });
     expect(within(grid()).getAllByRole("button")).toHaveLength(1);
     expect(within(whatsapp).getByText("Atiende a los clientes en su número de WhatsApp Business, por la API de Meta.")).toBeVisible();
-    expect(within(whatsapp).getByText("Coexistencia o Cloud API. El negocio puede seguir usando su app.")).toBeVisible();
+    expect(within(whatsapp).getByText("Coexistencia (el negocio sigue con su app) o Cloud API (el número pasa entero a Auphere).")).toBeVisible();
     expect(within(whatsapp).getByText("Conectar")).toBeVisible();
 
     // El resto no es un botón: apagado, con su insignia y sin «Conectar».
@@ -312,6 +316,17 @@ describe("el logo de WhatsApp en la configuración del canal", () => {
     );
     const header = screen.getByRole("heading", { level: 2, name: "+34 611 20 48 93" }).closest("header") as HTMLElement;
     expect(header.querySelector("[data-brand=whatsapp]")).not.toBeNull();
+  });
+});
+
+describe("sin Meta en esta consola no hay botones apagados (QA 2026-10-30)", () => {
+  it("solo el aviso de que lo conecta Auphere y el enlace para el dueño", async () => {
+    panel(empty(), {}, { meta: null });
+    await userEvent.click(within(grid()).getByRole("button", { name: "Conectar WhatsApp" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryAllByRole("radio")).toHaveLength(0);
+    expect(within(dialog).queryByRole("button", { name: "Conectar" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Compartir un enlace" })).toBeInTheDocument();
   });
 });
 

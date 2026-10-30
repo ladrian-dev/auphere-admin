@@ -44,8 +44,8 @@ export const channelsProtoMessages = {
     en: "Serves customers on their WhatsApp Business number, through Meta’s API.",
   },
   "channels.proto.kind.whatsapp.note": {
-    es: "Coexistencia o Cloud API. El negocio puede seguir usando su app.",
-    en: "Coexistence or Cloud API. The business can keep using its app.",
+    es: "Coexistencia (el negocio sigue con su app) o Cloud API (el número pasa entero a Auphere).",
+    en: "Coexistence (the business keeps its app) or Cloud API (the number moves entirely to Auphere).",
   },
   "channels.proto.kind.messenger": { es: "Mensajes de la página de Facebook del negocio.", en: "Messages to the business’s Facebook page." },
   "channels.proto.kind.instagram": {

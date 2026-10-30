@@ -196,9 +196,12 @@ export function ConnectWhatsApp({
                 </DialogDescription>
               </DialogHeader>
               {configured ? null : <Callout tone="info" title={t("ch.connect.byAuphere.title")}>{t("ch.connect.byAuphere.body")}</Callout>}
+              {/* Only what can be used: a mode this console has not enabled is
+                  not shown greyed out (§V, «ni botón apagado»; QA 2026-10-30). */}
+              {configured ? (
               <fieldset className="grid min-w-0 gap-3">
                 <legend className="sr-only">{t("channels.proto.connect.modes")}</legend>
-                {MODES.map((m) => {
+                {MODES.filter(available).map((m) => {
                   const on = available(m);
                   return (
                     <label
@@ -229,6 +232,7 @@ export function ConnectWhatsApp({
                   );
                 })}
               </fieldset>
+              ) : null}
               <div className="flex min-w-0 items-start gap-3 rounded-lg bg-muted px-4 py-3 text-sm" data-slot="connect-share">
                 <LinkIcon aria-hidden="true" className="mt-1 size-4 shrink-0 text-muted-foreground" />
                 <p className="min-w-0 text-pretty text-muted-foreground">
@@ -251,15 +255,16 @@ export function ConnectWhatsApp({
                   <Button variant="ghost" onClick={() => go(null)}>
                     {t("common.cancel")}
                   </Button>
-                  <Button
-                    disabled={!available(mode)}
-                    onClick={() => {
-                      go(null);
-                      void start(mode);
-                    }}
-                  >
-                    {t("channels.proto.connect.go")}
-                  </Button>
+                  {available(mode) ? (
+                    <Button
+                      onClick={() => {
+                        go(null);
+                        void start(mode);
+                      }}
+                    >
+                      {t("channels.proto.connect.go")}
+                    </Button>
+                  ) : null}
                 </div>
               </DialogFooter>
             </>
