@@ -27,6 +27,7 @@ import type { AudienceMode, ChannelChange, ChannelConfigIn, ChannelPage, Instagr
 import { triggerText } from "./block-view";
 import type { Result } from "./builder-model";
 import { ChannelAccount, hasAccountFacts } from "./channel-account";
+import { ChannelCatalogSection } from "./channel-catalog";
 import { InstagramCommentsSection } from "./channel-comments";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
 import {
@@ -281,6 +282,7 @@ export function ChannelConfigPage({
               // Spec 050 (4.1): la cuenta en Meta, cuando Meta dice algo de ella.
               ...(account ? [{ id: "canal-cuenta", label: "builder.channel.account.title" as MessageKey }] : []),
               ...(page.instagram_comments ? [{ id: "canal-comentarios", label: "builder.channel.comments.title" as MessageKey }] : []),
+              ...(page.catalog_state ? [{ id: "canal-catalogo", label: "ch.catalog" as MessageKey }] : []),
             ].map((s) => (
               <li key={s.id} className="min-w-0">
                 <a
@@ -414,6 +416,21 @@ export function ChannelConfigPage({
             {account ? (
               <PageSection id="canal-cuenta" title={t("builder.channel.account.title")} intro={t("builder.channel.account.intro")}>
                 <ChannelAccount account={account} />
+              </PageSection>
+            ) : null}
+
+            {page.catalog_state ? (
+              <PageSection id="canal-catalogo" title={t("ch.catalog")} intro={t("builder.channel.catalog.intro")}>
+                <ChannelCatalogSection
+                  refId={refId}
+                  page={page}
+                  canWrite={canWrite && !disconnected}
+                  onChanged={() =>
+                    void actions.reload(ids).then((res) => {
+                      if (res.ok) setPage(res.data);
+                    })
+                  }
+                />
               </PageSection>
             ) : null}
 

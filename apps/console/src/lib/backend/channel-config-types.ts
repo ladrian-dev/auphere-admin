@@ -9,7 +9,7 @@
  * Ninguna respuesta lleva mensajes de clientes finales ni costes.
  */
 
-import type { MetaSocialOffer } from "./channels";
+import type { Catalog, CatalogError, CatalogState, MetaSocialOffer } from "./channels";
 
 /** A quién responde el agente en este número (32.1): sin decidir, solo el equipo o todos. */
 export type AudienceMode = "unset" | "team_only" | "everyone";
@@ -97,6 +97,10 @@ export type ChannelPage = {
   whatsapp?: WhatsAppAccount | null;
   /** Spec 049: los comentarios de una cuenta de Instagram; ausente en los demás. */
   instagram_comments?: InstagramComments | null;
+  /** Spec 022 en la página del número: el catálogo guardado. `catalog_state` es nulo fuera de WhatsApp. */
+  catalog?: Catalog | null;
+  catalog_state?: CatalogState | null;
+  catalog_error?: CatalogError | null;
 };
 
 /**

@@ -102,4 +102,13 @@ describe("los comentarios de un canal de Instagram", () => {
     expect(screen.queryByRole("button", { name: "Activar solo para mi equipo" })).toBeNull();
     expect(screen.getByRole("button", { name: "Activar para todos" })).toBeInTheDocument();
   });
+
+  it("el número de WhatsApp enseña su catálogo con «Conectar catálogo»; Instagram no tiene la sección", () => {
+    const { unmount } = view(page({ catalog: null, catalog_state: "none", catalog_error: null }), vi.fn());
+    expect(screen.getByRole("region", { name: "Catálogo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Conectar catálogo" })).toBeInTheDocument();
+    unmount();
+    view(instagram(), vi.fn());
+    expect(screen.queryByRole("region", { name: "Catálogo" })).toBeNull();
+  });
 });

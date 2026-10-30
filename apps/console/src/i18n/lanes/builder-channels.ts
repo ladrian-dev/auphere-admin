@@ -291,6 +291,10 @@ export const builderChannelsMessages = {
   "builder.channel.wait.hint": { es: "Hasta 500 caracteres.", en: "Up to 500 characters." },
   "builder.channel.wait.tooLong": { es: "Como mucho 500 caracteres.", en: "At most 500 characters." },
 
+  "builder.channel.catalog.intro": {
+    es: "El catálogo de Commerce Manager con el que el agente enseña productos como tarjetas en este número.",
+    en: "The Commerce Manager catalogue the agent uses to show products as cards on this number.",
+  },
   // Spec 049 (historia 3): los comentarios de una cuenta de Instagram.
   "builder.channel.comments.title": { es: "Comentarios", en: "Comments" },
   "builder.channel.comments.intro": {

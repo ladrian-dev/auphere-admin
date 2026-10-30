@@ -610,3 +610,21 @@ async def test_a_catalog_id_that_is_not_digits_is_refused_before_meta(
     )
     assert r.status_code == 422
     assert sim.calls == []
+
+
+async def test_the_channel_page_shows_the_numbers_catalogue(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """QA 2026-10-30: the catalogue was only on a screen no tab leads to. The
+    number's page now carries it (spec 050 research D11)."""
+    a = console_world["a"]
+    sim = _sim(monkeypatch, catalogs=[FLORES], linked=FLORES)
+    canal = await _canal(
+        db_session, a["tenant_id"], catalog_id="1001000000001", catalog_name="Flores y ramos"
+    )
+    url = f"/console/clients/{a['ref']}/channels/{canal.id}"
+    body = (await client.get(url, headers=a["headers"]())).json()
+    assert body["catalog"]["id"] == "1001000000001"
+    assert body["catalog_state"] == "linked"
+    assert body["catalog_error"] is None
+    assert sim.calls == [], "the page does not ask Meta; the channel list does"

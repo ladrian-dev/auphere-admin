@@ -458,7 +458,8 @@ export function CatalogRow({
   onConnect,
   onClear,
 }: {
-  channel: ChannelDetail;
+  /** Solo lo del catálogo: la página del número la pinta también (spec 050 D11). */
+  channel: Pick<ChannelDetail, "catalog" | "catalog_state" | "catalog_error">;
   manage: boolean;
   pending: boolean;
   onConnect: () => void;

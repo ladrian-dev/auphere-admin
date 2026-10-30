@@ -53,7 +53,7 @@ from nexus_api.services.agent_lifecycle import ChannelFacts, channel_visible_sta
 
 from .agent_draft_routes import agent_in_path, etag, parse_revision
 from .deps import ClientScope, client_scope
-from .schemas_channels import MetaSocialOfferOut
+from .schemas_channels import CatalogErrorOut, CatalogOut, CatalogState, MetaSocialOfferOut
 
 router = APIRouter(prefix="/clients/{ref}")
 
@@ -218,6 +218,13 @@ class ChannelPageOut(BaseModel):
     whatsapp: WhatsAppAccountOut | None = None
     #: Spec 049: los comentarios de una cuenta de Instagram; ``None`` en otros canales.
     instagram_comments: InstagramCommentsIO | None = None
+    #: Spec 022 en la página del número (spec 050 research D11): el catálogo
+    #: guardado, sin preguntar a Meta (eso lo hace la lista de canales). Solo
+    #: en WhatsApp; ``catalog_state`` es ``None`` en los demás. Antes solo se
+    #: veía en una pantalla a la que no lleva ninguna pestaña (QA 2026-10-30).
+    catalog: CatalogOut | None = None
+    catalog_state: CatalogState | None = None
+    catalog_error: CatalogErrorOut | None = None
 
 
 class ChangeOut(BaseModel):
@@ -389,7 +396,21 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
         allowed=allowed,
         whatsapp=whatsapp_account_of(channel),
         instagram_comments=_comments_of(channel),
+        **_catalog_fields(channel),
     )
+
+
+def _catalog_fields(channel: Channel) -> dict[str, Any]:
+    if channel.type is not ChannelType.WHATSAPP or channel.status is ChannelStatus.DISCONNECTED:
+        return {}
+    from .channels import _catalog_error_of, _catalog_of, is_coexistence
+
+    cfg = channel.config or {}
+    catalog = _catalog_of(cfg)
+    state: CatalogState = (
+        "coexistence" if is_coexistence(cfg) else ("linked" if catalog else "none")
+    )
+    return {"catalog": catalog, "catalog_state": state, "catalog_error": _catalog_error_of(cfg)}
 
 
 def _comments_of(channel: Channel) -> InstagramCommentsIO | None:

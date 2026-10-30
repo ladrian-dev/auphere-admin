@@ -210,6 +210,7 @@ export function CatalogPicker({
   offer = false,
   preloaded = null,
   coexistence = false,
+  onApplied,
 }: {
   refId: string;
   channelId: string;
@@ -220,6 +221,8 @@ export function CatalogPicker({
   coexistence?: boolean;
   /** La lista ya pedida (la oferta tras el alta la pide para decidir si abrirse). */
   preloaded?: CatalogList | null;
+  /** Tras guardar, para la pantalla que guarda el canal en su propio estado (la página del número). */
+  onApplied?: () => void;
 }) {
   const t = useT();
   const router = useRouter();
@@ -268,6 +271,7 @@ export function CatalogPicker({
         toast.error(key ? t(key, { message: res.data.catalog_error.message ?? "" }) : t("common.error.backend"));
       }
       router.refresh();
+      onApplied?.();
     });
   }
 
