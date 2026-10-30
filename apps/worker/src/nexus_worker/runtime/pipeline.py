@@ -1391,6 +1391,44 @@ async def _dispatch_memory_tool(
     return envelope, text
 
 
+_CONVERSATION_ARG = "conversation_id"
+
+
+def _requires_conversation(parameters: dict[str, Any]) -> bool:
+    return _CONVERSATION_ARG in (parameters.get("required") or [])
+
+
+def _hide_conversation_arg(defs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The tool definitions without a required ``conversation_id``.
+
+    ``_dispatch_tool`` fills it with the turn's conversation. Asking the model
+    for an internal UUID it cannot know makes it invent one or, worse, refuse
+    the call («I can't transfer you, the conversation ID isn't available»):
+    the hand-off to a person never happened. An optional one stays visible.
+    """
+    out: list[dict[str, Any]] = []
+    for d in defs:
+        fn = d.get("function") or {}
+        params = fn.get("parameters") or {}
+        if not _requires_conversation(params):
+            out.append(d)
+            continue
+        params = {
+            **params,
+            "properties": {
+                k: v for k, v in (params.get("properties") or {}).items() if k != _CONVERSATION_ARG
+            },
+            "required": [r for r in params["required"] if r != _CONVERSATION_ARG],
+        }
+        out.append({**d, "function": {**fn, "parameters": params}})
+    return out
+
+
+def _tool_requires_conversation(registry: MCPRegistry, name: str) -> bool:
+    defs = registry.get_tool_definitions((name,))
+    return bool(defs) and _requires_conversation(defs[0].parameters)
+
+
 async def _dispatch_tool(
     registry: MCPRegistry,
     call: ToolCall,
@@ -1410,12 +1448,15 @@ async def _dispatch_tool(
     ``response.send_interactive`` / ``notification.*`` require it, but it is
     an internal UUID the LLM cannot know — it hallucinates one, which then
     fails ``_load_conversation`` ("conversation not found"). We inject the
-    real value whenever the tool declares the field, so the model never has
-    to (and cannot corrupt) it.
+    real value whenever the model sent the field or the tool requires it (the
+    model never sees a required one: ``_hide_conversation_arg``), so the model
+    never has to (and cannot corrupt) it.
     """
     args = dict(call.arguments or {})
-    if conversation_id and "conversation_id" in args:
-        args["conversation_id"] = conversation_id
+    if conversation_id and (
+        _CONVERSATION_ARG in args or _tool_requires_conversation(registry, call.name)
+    ):
+        args[_CONVERSATION_ARG] = conversation_id
     try:
         envelope: dict[str, Any] = await registry.dispatch(
             call.name, args, whitelist=available_names
@@ -1512,6 +1553,8 @@ def make_handler_node(
                     n for n in available_names if not scoped_registry.is_side_effecting(n)
                 )
             available_defs = scoped_registry.get_openai_tools(available_names)
+            if state.get("conversation_id"):
+                available_defs = _hide_conversation_arg(available_defs)
             kg_snapshot = await _load_kg_snapshot_text(tenant_id)
             knowledge, knowledge_sources = await _load_knowledge(
                 tenant_id, _agent_uuid(state), str(state.get("user_message") or "")

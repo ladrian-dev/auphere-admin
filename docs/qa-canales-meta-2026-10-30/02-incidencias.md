@@ -153,4 +153,12 @@ Fecha: 2026-10-30. Código revisado: `develop` en `9e7c71b5`. Staging: ver READM
 |---|---|---|---|---|---|
 | INC-37 | IG, Messenger | Un DM que llega a un canal en pausa o degradado se descarta, en vez de guardarse para una persona como en WhatsApp | `apps/api/src/nexus_api/api/webhooks/meta_social.py`, `_enqueue_once`: `channel_status != ACTIVE` → `return False` (QA-código) | CONFIRMADA | Guardar el mensaje y dejar que la puerta del turno decida, como en WhatsApp |
 
+## Añadidas al preparar la cuenta de revisión (2026-10-31)
+
+| ID | Canal | Título | Evidencia (origen) | Causa | Propuesta |
+|---|---|---|---|---|---|
+| INC-38 | Todos | Un partner de staging sin clave del proxy LiteLLM no puede usar la IA: el constructor, el chat de prueba y las pruebas fallan con `missing partner virtual key`. Además, `nexus/staging/litellm-admin` estaba vacío desde el 2026-09-01 | Logs de `/nexus/staging/api` y `/runner` (Staging) | CONFIRMADA | Dar clave al partner de revisión (hecho: `scripts/ops/staging-litellm-partner-key.sh`) y rellenar el secreto de administración (hecho: `staging-litellm-admin-secret.sh`). Falta un paso en el alta de partners de staging |
+| INC-39 | Todos | El agente dice «te paso con el equipo» y no pasa la conversación. `escalate.escalate_to_human` exige `conversation_id`, un UUID interno que el modelo no conoce, y el sistema solo lo rellenaba si el modelo lo escribía; si no, el modelo se negaba («the conversation ID isn't available») | Prueba «Pide hablar con una persona» de Ava (Staging); `apps/worker/src/nexus_worker/runtime/pipeline.py`, `_dispatch_tool` (QA-código) | CONFIRMADA | El modelo ya no ve un `conversation_id` obligatorio y el sistema lo rellena siempre (corregido en develop) |
+| INC-40 | Todos | Un agente del constructor sin la herramienta de escalar en su lista no tiene forma de recibirla desde la consola (el copiloto no toca `/tools` y no hay editor). La ficha «Cuándo pasa a una persona» solo escribe texto en el prompt | `copilot_model.py:41, 92`; `compiler.py:138-147` (Delegada) | PROBABLE | Añadir `escalate.escalate_to_human` al borrador cuando hay disparadores de escalado |
+
 El estado de cada incidencia corregida está en `06-correcciones.md`.
