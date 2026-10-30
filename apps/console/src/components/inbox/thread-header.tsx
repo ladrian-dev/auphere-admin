@@ -5,6 +5,8 @@ import { Button, cn } from "@nexus/ui";
 import { useT } from "@/i18n/client";
 import type { InboxDetail } from "@/lib/backend/inbox";
 
+import { ContactAvatar } from "./contact-avatar";
+
 /**
  * The top of an open conversation (spec 030, R9, R12): who it is, who
  * answers now, and the three actions that do not need the composer —
@@ -55,9 +57,7 @@ export function ThreadHeader({
       <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={onBack} aria-label={t("inbox.back")}>
         <ArrowLeft />
       </Button>
-      <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-sm font-semibold text-accent-deep">
-        {initials}
-      </span>
+      <ContactAvatar conversationId={detail.id} hasAvatar={detail.contact.has_avatar} initials={initials} className="size-10 text-sm" />
       <div className="flex min-w-0 flex-1 flex-col">
         <h2 className="truncate text-base font-semibold" title={detail.contact.name}>
           {detail.contact.name}

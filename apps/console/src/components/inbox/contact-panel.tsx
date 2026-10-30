@@ -6,6 +6,7 @@ import { Button, Textarea, cn } from "@nexus/ui";
 import { useLocale, useT } from "@/i18n/client";
 import type { InboxActivity, InboxDetail } from "@/lib/backend/inbox";
 
+import { ContactAvatar } from "./contact-avatar";
 import { eventText } from "./event-text";
 import { clock, dayLabel } from "./inbox-model";
 
@@ -53,9 +54,7 @@ export function ContactPanel({
   return (
     <aside aria-label={t("inbox.panel")} className="flex min-h-0 w-full flex-col overflow-y-auto bg-card">
       <div className="flex items-center gap-3 border-b border-border p-4">
-        <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-full bg-accent-soft text-base font-semibold text-accent-deep">
-          {initials}
-        </span>
+        <ContactAvatar conversationId={detail.id} hasAvatar={detail.contact.has_avatar} initials={initials} className="size-12 text-base" />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-base font-semibold" title={detail.contact.name}>
             {detail.contact.name}

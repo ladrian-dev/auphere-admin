@@ -61,7 +61,7 @@ describe("the Bandeja says who takes it and why it waits (50.7)", () => {
       assignee: null,
       agent: null,
       channel: { kind: "whatsapp" },
-      contact: { name: "Ana López", handle: "+56 9 1111 2222", initials: "AL" },
+      contact: { name: "Ana López", handle: "+56 9 1111 2222", initials: "AL", has_avatar: false },
       last_message: { at: "2026-10-28T11:00:00Z", author: { kind: "contact", name: null, is_me: false }, preview: "¿Abren mañana?", has_media: false },
       unread: true,
       tags: [],

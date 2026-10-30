@@ -76,6 +76,10 @@ class ContactOut(BaseModel):
     name: str
     handle: str
     initials: str
+    #: Instagram / Messenger: the person's profile picture is stored and
+    #: served at ``/inbox/conversations/{id}/avatar`` (owner, 2026-10-30).
+    #: No storage link reaches the browser. False on WhatsApp.
+    has_avatar: bool = False
 
 
 class LastMessageOut(BaseModel):
@@ -152,6 +156,7 @@ class NextBookingOut(BaseModel):
 class ContactDetailOut(BaseModel):
     name: str
     handle: str
+    has_avatar: bool = False
     first_message_at: datetime | None
     conversations: int
     next_booking: NextBookingOut | None = None
@@ -343,6 +348,7 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
         contact=ContactDetailOut(
             name=d.contact_name,
             handle=d.contact_handle,
+            has_avatar=bool(d.contact_avatar_key),
             first_message_at=d.first_message_at,
             conversations=d.conversations,
             next_booking=await _next_booking(scope, conv),
@@ -439,7 +445,10 @@ async def list_conversations(
                 waiting_reason=codes.get(i.id),
                 id=i.id,
                 contact=ContactOut(
-                    name=i.contact_name, handle=i.contact_handle, initials=_initials(i.contact_name)
+                    name=i.contact_name,
+                    handle=i.contact_handle,
+                    initials=_initials(i.contact_name),
+                    has_avatar=bool(i.contact_avatar_key),
                 ),
                 channel={"kind": i.channel_kind},
                 agent=({"id": str(i.agent[0]), "name": i.agent[1]} if i.agent else None),

@@ -58,6 +58,25 @@ async def _tenant_slug_for(tenant_id: uuid.UUID) -> str:
     return slug or str(tenant_id)
 
 
+async def store_profile_picture(
+    *, tenant_id: uuid.UUID, customer_id: uuid.UUID, content: bytes, content_type: str | None
+) -> str | None:
+    """Spec 049 (owner, 2026-10-30): keep a person's Instagram / Messenger
+    profile picture in our storage — Meta's CDN link expires. Returns the
+    key, or None on any failure (the inbox shows the initials)."""
+    try:
+        stored = await get_media_storage().put_inbound(
+            tenant_slug=await _tenant_slug_for(tenant_id),
+            wamid=f"avatar-{customer_id}",
+            content=content,
+            content_type=content_type,
+        )
+    except Exception as exc:
+        log.warning("media_fetch.avatar_failed", tenant_id=str(tenant_id), error=str(exc))
+        return None
+    return str(stored.key)
+
+
 async def fetch_inbound_media(
     *,
     tenant_id: uuid.UUID,

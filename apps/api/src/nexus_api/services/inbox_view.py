@@ -148,6 +148,8 @@ class ListItem:
     waiting_since: datetime | None = None
     # Spec 047 (53.2): «La atiende {agente}» — only when Recepción handed it over.
     handled_by: tuple[uuid.UUID, str] | None = None
+    #: Instagram / Messenger: where the person's profile picture is stored.
+    contact_avatar_key: str | None = None
 
 
 @dataclass
@@ -277,6 +279,7 @@ async def list_conversations(
             Customer.name,
             Customer.identifier,
             Channel.type,
+            Customer.avatar_s3_key,
             unread.label("unread"),
             agent_col.label("agent_id"),
             handled_by_col().label("handled_by"),
@@ -364,7 +367,7 @@ async def list_conversations(
             waiting_by_conv = await _last_escalations(session, waiting_ids)
 
     show_agents = len(agents) > 1
-    for conv, name, identifier, channel_type, is_unread, agent_id, handled_by in shown:
+    for conv, name, identifier, channel_type, avatar_key, is_unread, agent_id, handled_by in shown:
         msg = last_by_conv.get(conv.id)
         last = (
             LastMessage(
@@ -382,6 +385,7 @@ async def list_conversations(
                 id=conv.id,
                 contact_name=str(name or identifier),
                 contact_handle=str(identifier),
+                contact_avatar_key=avatar_key,
                 channel_kind=str(getattr(channel_type, "value", channel_type)),
                 state=state_of(conv),
                 assignee=assignee,
@@ -539,6 +543,8 @@ class Detail:
     agent: tuple[uuid.UUID, str] | None = None
     # Spec 047 (53.2): «La atiende {agente}» — only when Recepción handed it over.
     handled_by: tuple[uuid.UUID, str] | None = None
+    #: Instagram / Messenger: where the person's profile picture is stored.
+    contact_avatar_key: str | None = None
 
 
 def _event_detail(event: ConversationEvent) -> str | None:
@@ -659,6 +665,7 @@ async def detail(
         channel_connected=bool(channel and channel.status == ChannelStatus.ACTIVE),
         contact_name=str((customer.name or customer.identifier) if customer else "—"),
         contact_handle=str(customer.identifier if customer else ""),
+        contact_avatar_key=customer.avatar_s3_key if customer else None,
         first_message_at=first,
         conversations=rows_for_customer + reopened,
         summary=(payload.get("customer_summary") or None) if last_escalation else None,

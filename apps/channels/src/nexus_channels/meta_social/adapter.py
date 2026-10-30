@@ -45,6 +45,19 @@ log = structlog.get_logger(__name__)
 QUICK_REPLY_MAX = 13
 QUICK_REPLY_TITLE_MAX = 20
 MEDIA_MAX_BYTES = 25 * 1024 * 1024
+#: A profile picture larger than this is not a profile picture.
+PROFILE_PICTURE_MAX_BYTES = 2 * 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class SocialProfile:
+    """Who wrote, as Meta tells the business (Business Asset User Profile
+    Access): the display name and, when Meta gives one, the picture's bytes —
+    its CDN link expires, so the caller stores the bytes."""
+
+    name: str | None
+    picture: bytes | None = None
+    picture_mime: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,19 +255,23 @@ class MetaSocialChannelAdapter:
 
     async def fetch_profile(
         self, *, recipient: str, tenant_id: uuid.UUID, channel_id: uuid.UUID
-    ) -> str | None:
-        """The person's display name (Business Asset User Profile Access).
-        ``None`` on any failure: the inbox shows a generic name instead."""
+    ) -> SocialProfile | None:
+        """The person's name and profile picture (Business Asset User Profile
+        Access). ``None`` on any failure: the inbox shows a generic name and
+        the initials instead. A picture that cannot be fetched leaves the
+        name (owner's decision on 2026-10-30: name and photo in the inbox)."""
         try:
             ctx = await self._load(tenant_id=tenant_id, channel_id=channel_id)
             if self.is_instagram:
                 data = await self._client.user_profile(
-                    user_id=recipient, access_token=ctx.token, fields="name,username"
+                    user_id=recipient, access_token=ctx.token, fields="name,username,profile_pic"
                 )
                 name = data.get("name") or data.get("username")
             else:
                 data = await self._client.user_profile(
-                    user_id=recipient, access_token=ctx.token, fields="first_name,last_name"
+                    user_id=recipient,
+                    access_token=ctx.token,
+                    fields="first_name,last_name,profile_pic",
                 )
                 name = " ".join(p for p in (data.get("first_name"), data.get("last_name")) if p)
         except Exception as exc:
@@ -262,7 +279,26 @@ class MetaSocialChannelAdapter:
                 "meta_social.profile.unavailable", provider=self.provider, error=type(exc).__name__
             )
             return None
-        return str(name)[:255] if name else None
+        picture: bytes | None = None
+        mime: str | None = None
+        url = data.get("profile_pic")
+        if isinstance(url, str) and url:
+            try:
+                picture, mime = await self._client.download_attachment(
+                    url, max_bytes=PROFILE_PICTURE_MAX_BYTES
+                )
+            except Exception as exc:
+                log.info(
+                    "meta_social.profile.picture_unavailable",
+                    provider=self.provider,
+                    error=type(exc).__name__,
+                )
+                picture, mime = None, None
+        if mime is not None and not mime.startswith("image/"):
+            picture, mime = None, None
+        return SocialProfile(
+            name=str(name)[:255] if name else None, picture=picture, picture_mime=mime
+        )
 
     # ── internals ───────────────────────────────────────────────────────
 

@@ -296,3 +296,42 @@ async def test_graph_refusals_say_what_they_mean(ig):
         assert channel is not None
         assert channel.status is ChannelStatus.DEGRADED
         assert channel.config["needs_attention"] == "messages_disabled"
+
+
+async def test_the_profile_keeps_the_name_and_the_picture_once(ig, monkeypatch):
+    """Owner, 2026-10-30: the inbox shows the person's name and photo. The
+    worker stores the picture (Meta's link expires), never overwrites a name,
+    and does not ask again once checked."""
+    from nexus_channels.meta_social import SocialProfile
+    from nexus_worker.runtime import dispatcher
+
+    from nexus_api.services.media_storage import get_media_storage
+
+    calls: list[str] = []
+
+    async def fetcher(*, recipient: str, tenant_id: uuid.UUID, channel_id: uuid.UUID):
+        calls.append(recipient)
+        return SocialProfile(name="Ana", picture=b"\x89PNG", picture_mime="image/png")
+
+    monkeypatch.setitem(dispatcher._profile_fetchers, "meta_instagram", fetcher)
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, ig["tenant_id"]):
+        customer_id = (await session.execute(select(Customer.id))).scalar_one()
+    event = dispatcher.InboundEvent(
+        tenant_id=ig["tenant_id"],
+        channel_id=ig["channel_id"],
+        user_id=IGSID,
+        content="hola",
+        provider="meta_instagram",
+    )
+    await dispatcher.fill_profile(event, customer_id=customer_id)
+
+    async with sm() as session, tenant_scoped_session(session, ig["tenant_id"]):
+        customer = await session.get(Customer, customer_id)
+        assert customer is not None
+        assert customer.name == "Ana"
+        assert customer.avatar_s3_key and "avatar-" in customer.avatar_s3_key
+        assert customer.preferences.get("profile_checked") is True
+    data, mime = await get_media_storage().get_object(customer.avatar_s3_key)
+    assert (data, mime) == (b"\x89PNG", "image/png")
+    assert calls == [IGSID]

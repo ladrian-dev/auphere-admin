@@ -8,6 +8,7 @@ import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { InboxConversation, InboxWaiting } from "@/lib/backend/inbox";
 
+import { ContactAvatar } from "./contact-avatar";
 import { listTime, waitingFor, type WaitingFor } from "./inbox-model";
 
 /**
@@ -55,9 +56,7 @@ export function ConversationRow({
       )}
     >
       <span className="relative size-10 shrink-0">
-        <span className="grid size-10 place-items-center rounded-full bg-accent-soft text-sm font-semibold text-accent-deep" aria-hidden="true">
-          {c.contact.initials}
-        </span>
+        <ContactAvatar conversationId={c.id} hasAvatar={c.contact.has_avatar} initials={c.contact.initials} className="size-10 text-sm" />
         <span
           className="absolute -right-1 -bottom-1 grid size-5 place-items-center rounded-full bg-card text-primary-text ring-1 ring-border"
           aria-hidden="true"

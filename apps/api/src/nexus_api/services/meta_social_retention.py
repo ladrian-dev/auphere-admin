@@ -68,6 +68,16 @@ async def erase_customer_in_channel(
             .execution_options(synchronize_session=False)
         )
 
+    # Their profile picture came from this channel (Instagram / Messenger):
+    # it goes whatever else they have. The object in storage is left to its
+    # lifecycle rule; nothing points at it any more.
+    await session.execute(
+        sa.update(Customer)
+        .where(Customer.id == customer_id)
+        .values(avatar_s3_key=None)
+        .execution_options(synchronize_session=False)
+    )
+
     # The person exists only through this channel when no other channel has
     # a conversation with them: then their identity goes too.
     elsewhere = await session.scalar(
@@ -85,7 +95,7 @@ async def erase_customer_in_channel(
         await session.execute(
             sa.update(Customer)
             .where(Customer.id == customer_id)
-            .values(identifier=f"erased:{customer_id}", name=None, preferences={})
+            .values(identifier=f"erased:{customer_id}", name=None, username=None, preferences={})
             .execution_options(synchronize_session=False)
         )
     await session.flush()
