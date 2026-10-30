@@ -18,6 +18,7 @@ import sqlalchemy as sa
 
 from nexus_api.config import get_settings
 from nexus_api.db.models import AuditLog, ClientPhone
+from nexus_api.services.email_catalog import EmailKind
 from tests.conftest import add_client_member, add_client_phone, make_client_access
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -156,11 +157,11 @@ async def test_asking_to_delete_the_account_tells_auphere_once_a_day(
 ) -> None:
     sent: list[dict[str, Any]] = []
 
-    async def _send(**kw: Any) -> bool:
-        sent.append(kw)
+    async def _send(kind: EmailKind, **kw: Any) -> bool:
+        sent.append({"kind": kind, **kw})
         return True
 
-    monkeypatch.setattr("nexus_api.services.account_deletion.send_email", _send)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _send)
     monkeypatch.setattr(get_settings(), "security_contact_email", "seguridad@auphere.test")
 
     first = await client.post(
@@ -171,8 +172,19 @@ async def test_asking_to_delete_the_account_tells_auphere_once_a_day(
     )
 
     assert first.status_code == again.status_code == 202
-    assert len(sent) == 1
-    assert sent[0]["to"] == "seguridad@auphere.test"
+    [mail] = sent
+    assert mail["to"] == "seguridad@auphere.test"
+    # Spec 051 (catálogo §20): el aviso interno, en español; responder le
+    # escribe a quien lo pidió, no a soporte.
+    assert mail["kind"] == EmailKind.INTERNAL_ALERT
+    assert mail["locale"] == "es"
+    requester = mail["reply_to"]
+    assert "@" in requester, "la persona que lo pidió"
+    assert mail["subject"] == f"[Auphere] Petición de borrado de cuenta: {requester}"
+    variables = mail["variables"]
+    assert variables["HEADING"] == "Una persona pide borrar su cuenta de Auphere Customers"
+    assert variables["KIND"] == "client_account.deletion_requested"
+    assert f"Cuenta: {requester}" in variables["DETAIL"].split("<br>")
     rows = await db_session.scalar(
         sa.select(sa.func.count())
         .select_from(AuditLog)

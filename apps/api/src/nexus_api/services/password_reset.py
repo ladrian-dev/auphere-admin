@@ -207,49 +207,47 @@ async def redeem(session: AsyncSession, *, token: str, password: str) -> Console
 
 
 async def send_reset_mail(*, email: str, token: str, locale: str = "es") -> bool:
-    """El correo con el enlace. Devuelve si salió; **nadie decide nada con eso**.
+    """El correo con el enlace (``password_reset``). Devuelve si salió; **nadie
+    decide nada con eso**.
 
-    ``send_email`` no lanza: devuelve ``False`` tanto si no hay proveedor como
-    si el proveedor rechazó. Quien llama registra el fallo y contesta lo mismo
-    de siempre — decir «no pudimos enviarlo» revelaría que la cuenta existe
-    (R1.3, D-3 de la evaluación).
+    ``send_template`` no lanza: devuelve ``False`` tanto si el entorno no envía
+    como si el proveedor rechazó. Quien llama registra el fallo y contesta lo
+    mismo de siempre — decir «no pudimos enviarlo» revelaría que la cuenta
+    existe (R1.3, D-3 de la evaluación).
 
-    **Remitente explícito**: sin él ``send_email`` hereda el de los recibos, y
-    un correo para recuperar una cuenta no puede venir de «facturación».
+    El remitente sale de la ficha del tipo en el catálogo, y no es el de los
+    cobros: un correo para recuperar una cuenta no puede venir de facturación.
+    El texto —un solo uso, una hora y que se cerrará la sesión en todos los
+    dispositivos— vive en la plantilla (spec 051); aquí solo va el enlace,
+    **absoluto**, que en modo registro es lo único que queda escrito.
     """
-    from nexus_api.config import get_settings
-    from nexus_api.services.email import send_email
+    from nexus_api.services.email import send_template
+    from nexus_api.services.email_catalog import EmailKind, console_link, email_locale
 
-    settings = get_settings()
-    link = f"{settings.console_base_url.rstrip('/')}/reset/{token}"
-    if locale == "en":
-        subject = "Reset your Auphere password"
-        body = (
-            "<p>Someone asked to reset the password of this Auphere account. "
-            "The link below works <strong>once</strong> and expires in one hour.</p>"
-            f'<p><a href="{link}">{link}</a></p>'
-            "<p>Resetting also signs you out everywhere and unregisters your "
-            "machines: you will sign in again on each one.</p>"
-            "<p>If it wasn't you, ignore this message — nothing has changed.</p>"
-        )
-    else:
-        subject = "Restablece tu contraseña de Auphere"
-        body = (
-            "<p>Alguien ha pedido restablecer la contraseña de esta cuenta de "
-            "Auphere. El enlace de abajo sirve <strong>una vez</strong> y caduca "
-            "en una hora.</p>"
-            f'<p><a href="{link}">{link}</a></p>'
-            "<p>Restablecerla cierra además todas tus sesiones y da de baja tus "
-            "máquinas: tendrás que volver a entrar en cada una.</p>"
-            "<p>Si no has sido tú, ignora este mensaje: no ha cambiado nada.</p>"
-        )
-    return await send_email(
-        to=email, subject=subject, html=body, from_addr=settings.signup_from_email
+    lang = email_locale(locale)
+    return await send_template(
+        EmailKind.PASSWORD_RESET,
+        to=email,
+        subject=(
+            "Reset your Auphere password" if lang == "en" else "Restablece tu contraseña de Auphere"
+        ),
+        variables={"RESET_URL": console_link(f"/reset/{token}")},
+        locale=lang,
     )
 
 
+def _changed_at(when: datetime, lang: str) -> str:
+    """«30/10/2026 a las 16:20 UTC» / «October 30, 2026 at 16:20 UTC»."""
+    from nexus_api.services.email_catalog import format_day_en
+
+    when = when.astimezone(UTC)
+    if lang == "en":
+        return f"{format_day_en(when.date())} at {when:%H:%M} UTC"
+    return f"{when:%d/%m/%Y} a las {when:%H:%M} UTC"
+
+
 async def send_changed_notice(*, email: str, locale: str = "es") -> bool:
-    """«Tu contraseña ha cambiado» — Requisito 4.
+    """«Tu contraseña se ha cambiado» (``password_changed``) — Requisito 4.
 
     **Va después de la transacción, y ése es todo su diseño** (R4.4). Si el
     aviso pudiera deshacer el restablecimiento, un proveedor de correo con un
@@ -261,49 +259,38 @@ async def send_changed_notice(*, email: str, locale: str = "es") -> bool:
     que trae un enlace entrena a pulsar enlaces dentro de correos sobre tu
     contraseña, que es justo el gesto que un suplantador necesita. Lo único que
     lleva es la hora y una dirección a la que escribir — y escribir a alguien
-    no es entrar en ningún sitio.
+    no es entrar en ningún sitio. Desde la spec 051 el ``mailto:`` lo pone la
+    plantilla, que no admite otro enlace (``links_allowed=False`` en la ficha);
+    el código solo pasa las dos variables, y ninguna es una URL.
 
     Dice **cuándo** en UTC y con la zona escrita. Una hora sin zona no sirve
     para lo único que tiene que servir: que alguien pueda decir «yo a esa hora
     no estaba».
     """
     from nexus_api.config import get_settings
-    from nexus_api.services.email import send_email
+    from nexus_api.services.email import send_template
+    from nexus_api.services.email_catalog import EmailKind, email_locale
 
     settings = get_settings()
     contact = settings.security_contact_email.strip()
     if not contact:
         # En producción no se llega aquí: la guardia de arranque lo impide.
         # En local sí, y entonces el aviso sale igual —R4.1 no admite
-        # condiciones— pero el agujero queda dicho en vez de escondido.
+        # condiciones— con la dirección de respuestas, que alguien lee; pero el
+        # agujero queda dicho en vez de escondido.
         log.warning("password_reset.notice_without_contact")
-    when = _now().strftime("%d/%m/%Y %H:%M UTC" if locale != "en" else "%Y-%m-%d %H:%M UTC")
-    quien = f'<a href="mailto:{contact}">{contact}</a>' if contact else "Auphere"
-    if locale == "en":
-        subject = "Your Auphere password was changed"
-        body = (
-            f"<p>The password of this Auphere account was changed on <strong>{when}</strong>.</p>"
-            "<p>Every open session was closed and every registered machine was "
-            "unregistered, so you will sign in again on each one.</p>"
-            f"<p><strong>If it wasn't you, write to {quien} now.</strong> Whoever "
-            "did it can get in with the new password.</p>"
-            "<p>This message carries no link on purpose: nothing here signs you "
-            "in. Open Auphere the way you normally do.</p>"
-        )
-    else:
-        subject = "Tu contraseña de Auphere ha cambiado"
-        body = (
-            f"<p>La contraseña de esta cuenta de Auphere cambió el "
-            f"<strong>{when}</strong>.</p>"
-            "<p>Se cerraron todas las sesiones abiertas y se dieron de baja todas "
-            "las máquinas, así que tendrás que volver a entrar en cada una.</p>"
-            f"<p><strong>Si no has sido tú, escribe a {quien} ahora mismo.</strong> "
-            "Quien lo haya hecho puede entrar con la contraseña nueva.</p>"
-            "<p>Este mensaje no lleva ningún enlace a propósito: desde aquí no se "
-            "entra a ninguna parte. Abre Auphere como lo haces siempre.</p>"
-        )
-    return await send_email(
-        to=email, subject=subject, html=body, from_addr=settings.signup_from_email
+        contact = settings.email_reply_to
+    lang = email_locale(locale)
+    return await send_template(
+        EmailKind.PASSWORD_CHANGED,
+        to=email,
+        subject=(
+            "Your Auphere password has been changed"
+            if lang == "en"
+            else "Se ha cambiado la contraseña de tu cuenta de Auphere"
+        ),
+        variables={"CHANGED_AT": _changed_at(_now(), lang), "SECURITY_CONTACT": contact},
+        locale=lang,
     )
 
 

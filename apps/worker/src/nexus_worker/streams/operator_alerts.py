@@ -316,6 +316,9 @@ async def _channel_plan(session: AsyncSession, target: str | None) -> _ChannelPl
 
 #: El aviso sin resumen: no dice quién ni qué pidió (requisito 33.2).
 _NO_SUMMARY = ["un cliente", "Abre la Bandeja para verla"]
+#: Lo que pone ``_render_params`` cuando no sabe quién escribió ni por qué.
+_UNKNOWN_CUSTOMER = "cliente"
+_UNKNOWN_REASON = "sin motivo informado"
 
 
 async def _alert_channel_recipients(
@@ -342,8 +345,8 @@ async def _alert_channel_recipients(
                 await _send_whatsapp(plan, recipient.phone_e164, params, adapters, tenant_id)
             else:
                 partner_person = await _is_partner_person(session, recipient.email)
-                params = full if plan.summary and not partner_person else _NO_SUMMARY
-                await _send_escalation_email(recipient.email, params)
+                summary = full if plan.summary and not partner_person else None
+                await _send_escalation_email(recipient.email, summary, tenant_id)
         except Exception as exc:
             errors.append(f"{recipient.via}: {type(exc).__name__}: {exc}")
             log.warning(
@@ -442,22 +445,59 @@ async def _is_partner_person(session: AsyncSession, email: str | None) -> bool:
     return found is not None
 
 
-async def _send_escalation_email(email: str | None, params: list[str]) -> None:
-    from html import escape
+#: Spec 051 (catálogo §17): el correo de un escalado. ``CONTACT`` va a media
+#: frase, así que el valor por defecto va en minúscula.
+_ESCALATED_SUBJECT = {
+    "es": "Una conversación con {contact} necesita tu atención",
+    "en": "A conversation with {contact} needs your attention",
+}
+_SOMEONE = {"es": "un cliente", "en": "a customer"}
+_REASON_LINE = {
+    "es": "El motivo que ha indicado el agente es: «{reason}».",
+    "en": 'The reason the agent gave: "{reason}".',
+}
+#: Sin resumen (el canal lo apagó, o lo recibe una persona del partner, 33.4):
+#: ni quién ni por qué.
+_NO_REASON_LINE = {
+    "es": "Abre la conversación para ver los detalles.",
+    "en": "Open the conversation to see the details.",
+}
 
-    from nexus_api.services.email import send_email
+
+async def _send_escalation_email(
+    email: str | None, summary: list[str] | None, tenant_id: uuid.UUID
+) -> None:
+    """``conversation_escalated`` a un destinatario del canal, en el idioma de
+    su cuenta. ``summary`` es ``[quién, por qué]`` de ``_render_params``, o
+    ``None`` cuando no le toca el resumen."""
+    from nexus_api.services.email import send_localized
+    from nexus_api.services.email_catalog import EmailKind, console_link, email_locale
 
     if not email:
         raise RuntimeError("no_email")
-    who, why = params[0], params[1]
-    ok = await send_email(
-        to=email,
-        subject="Una conversación espera a una persona",
-        html=(
-            f"<p>{escape(who)} espera a una persona.</p>"
-            f"<p>Motivo: {escape(why)}</p>"
-            "<p>Ábrela en la Bandeja para atenderla.</p>"
-        ),
+    who, why = (summary[0], summary[1]) if summary else (None, None)
+    # Los valores por defecto de ``_render_params`` sirven para la plantilla de
+    # WhatsApp; en el correo son la frase sin nombre y sin motivo.
+    contact = who if who and who != _UNKNOWN_CUSTOMER else None
+    reason = why if why and why != _UNKNOWN_REASON else None
+    inbox_url = console_link("/inbox")
+
+    def _compose(locale: str) -> tuple[str, dict[str, str]]:
+        lang = email_locale(locale)
+        name = contact or _SOMEONE[lang]
+        line = _REASON_LINE[lang].format(reason=reason) if reason else _NO_REASON_LINE[lang]
+        return _ESCALATED_SUBJECT[lang].format(contact=name), {
+            "CONTACT": name,
+            "REASON_LINE": line,
+            "INBOX_URL": inbox_url,
+        }
+
+    ok = await send_localized(
+        EmailKind.CONVERSATION_ESCALATED,
+        to=[email],
+        compose=_compose,
+        # Garantía 6: el correo es del cliente que escaló.
+        tenant_id=tenant_id,
     )
     if not ok:
         raise RuntimeError("email_not_sent")
@@ -575,7 +615,7 @@ async def _render_params(
     from the KG when needed."""
     after = cast(dict[str, Any] | None, audit_row.after_json) or {}
     if template == "alert_escalation_v1":
-        customer_label = "cliente"
+        customer_label = _UNKNOWN_CUSTOMER
         customer_id = after.get("customer_id")
         if not customer_id:
             # ``escalate.escalate_to_human`` audits the conversation, not the
@@ -596,10 +636,10 @@ async def _render_params(
                 )
                 cust = cust_row.first()
                 if cust:
-                    customer_label = cust[0] or cust[1] or "cliente"
+                    customer_label = cust[0] or cust[1] or _UNKNOWN_CUSTOMER
             except (ValueError, TypeError):
                 pass
-        reason = str(after.get("reason") or "sin motivo informado")
+        reason = str(after.get("reason") or _UNKNOWN_REASON)
         return [customer_label, reason]
     if template == "alert_needs_reauth_v1":
         return []

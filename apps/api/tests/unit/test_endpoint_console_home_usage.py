@@ -48,6 +48,8 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 from nexus_api.services import usage_alerts
+from nexus_api.services.console_reporting import month_bounds
+from nexus_api.services.email_catalog import EmailKind, format_month
 from tests.conftest import add_console_member, give_recharged_balance
 
 pytestmark = pytest.mark.asyncio
@@ -314,30 +316,60 @@ async def test_usage_alerts_settings_and_permissions(client, console_world, db_s
     assert forbidden.status_code == 403
 
 
+def _capture_mail(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """Spec 051: what reaches ``send_localized``; ``compose`` is called per language."""
+    sent: list[dict] = []
+
+    async def _fake_send(kind, **kwargs):
+        sent.append({"kind": kind, **kwargs})
+        return True
+
+    monkeypatch.setattr("nexus_api.services.email.send_localized", _fake_send)
+    return sent
+
+
+def _period(locale: str) -> str:
+    since = month_bounds(None)[0]
+    return format_month(since.year, since.month, locale)
+
+
 async def test_crossing_80_percent_notifies_once_and_emails(
     client, console_world, db_session, monkeypatch
 ) -> None:
     a = console_world["a"]
-    sent: list[dict] = []
-
-    async def _fake_send(**kwargs):
-        sent.append(kwargs)
-        return True
-
-    monkeypatch.setattr(usage_alerts, "send_email", _fake_send)
+    sent = _capture_mail(monkeypatch)
     await db_session.execute(
         sa.update(Partner)
         .where(Partner.id == a["partner_id"])
-        .values(usage_cap_messages_month=100, usage_alert_recipients=["ops@example.com"])
+        .values(usage_cap_messages_month=10_000, usage_alert_recipients=["ops@example.com"])
     )
     await db_session.commit()
-    await _seed_usage(db_session, a["tenant_id"], [("channel.message", "channel", 85, 0.01)])
+    await _seed_usage(db_session, a["tenant_id"], [("channel.message", "channel", 8_500, 0.01)])
 
     partner = await db_session.get(Partner, a["partner_id"])
     await db_session.commit()  # the service manages its own short transactions
     ev = await usage_alerts.evaluate_partner_usage_alerts(db_session, partner)
     assert ev.percent == 85.0 and ev.created == [80] and ev.emailed is True
-    assert len(sent) == 1 and sent[0]["to"] == ["ops@example.com"] and "80" in sent[0]["subject"]
+    assert len(sent) == 1
+    mail = sent[0]
+    assert mail["kind"] is EmailKind.USAGE_CAP_THRESHOLD
+    assert mail["to"] == ["ops@example.com"]
+    assert mail["partner_id"] == a["partner_id"]
+    subject, variables = mail["compose"]("es")
+    assert subject == "Llevas el 85 % de tu límite mensual de mensajes"
+    assert variables == {
+        "PARTNER_NAME": "Console Partner A",
+        "PERCENT": "85",
+        "USED": "8.500",
+        "CAP": "10.000",
+        "PERIOD": _period("es"),
+        "USAGE_URL": variables["USAGE_URL"],
+    }
+    assert variables["USAGE_URL"].endswith("/usage")
+    subject_en, variables_en = mail["compose"]("en")
+    assert subject_en == "You've used 85% of your monthly message limit"
+    assert variables_en["USED"] == "8,500" and variables_en["CAP"] == "10,000"
+    assert variables_en["PERIOD"] == _period("en")
 
     # Re-evaluating (cron tick, or opening /console/home) never duplicates.
     ev2 = await usage_alerts.evaluate_partner_usage_alerts(db_session, partner)
@@ -364,12 +396,44 @@ async def test_crossing_80_percent_notifies_once_and_emails(
     assert any(i["kind"] == "usage_alerts_unread" and i["href"] == "/usage/alerts" for i in pend)
 
     # Crossing 100 % adds the cap_reached one (and only that one).
-    await _seed_usage(db_session, a["tenant_id"], [("channel.message", "channel", 20, 0.01)])
+    await _seed_usage(db_session, a["tenant_id"], [("channel.message", "channel", 2_000, 0.01)])
     ev3 = await usage_alerts.evaluate_partner_usage_alerts(db_session, partner)
     assert ev3.created == [100] and len(sent) == 2
+    reached = sent[1]
+    assert reached["kind"] is EmailKind.USAGE_CAP_REACHED
+    assert reached["partner_id"] == a["partner_id"]
+    subject, variables = reached["compose"]("es")
+    assert subject == "Has alcanzado tu límite mensual de mensajes"
+    assert variables == {
+        "PARTNER_NAME": "Console Partner A",
+        "CAP": "10.000",
+        "PERIOD": _period("es"),
+        "ALERTS_URL": variables["ALERTS_URL"],
+    }
+    assert variables["ALERTS_URL"].endswith("/usage/alerts")
+    assert reached["compose"]("en")[0] == "You've reached your monthly message limit"
     # Service is NOT cut: nothing changes on the partner/tenants.
     await db_session.refresh(partner)
     assert partner.status == "active"
+
+
+async def test_without_a_cap_there_is_no_usage_email(
+    console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    sent = _capture_mail(monkeypatch)
+    await db_session.execute(
+        sa.update(Partner)
+        .where(Partner.id == a["partner_id"])
+        .values(usage_cap_messages_month=None, usage_alert_recipients=["ops@example.com"])
+    )
+    await db_session.commit()
+    await _seed_usage(db_session, a["tenant_id"], [("channel.message", "channel", 500, 0.01)])
+    partner = await db_session.get(Partner, a["partner_id"])
+    await db_session.commit()
+    ev = await usage_alerts.evaluate_partner_usage_alerts(db_session, partner)
+    assert ev.created == [] and ev.emailed is False
+    assert sent == []
 
 
 # ── CP-25 receipts download ────────────────────────────────────────────

@@ -131,12 +131,12 @@ variable "app_secret_keys" {
     "NEXUS_EMBED_JWT_SECRET",
     "NEXUS_LANGFUSE_HOST",
     "OPENAI_API_KEY",
-    # Correo transaccional (Resend). Sin estas dos, ``email_enabled`` es False
-    # y ``operator_alert_email`` es None: los recibos mensuales de partner se
-    # generan pero no se envían, y las ``platform_alert`` del platform-watcher
-    # (DLQ, ráfagas de error) no salen de CloudWatch — nadie se entera.
+    # Correo transaccional (Resend). Sin la clave, en producción
+    # ``email_delivers`` es False: los recibos mensuales de partner se generan
+    # pero no se envían. Staging la necesita para los correos de acceso, los
+    # únicos que envía (spec 051, docs/correos.md). Las ``platform_alert`` ya
+    # no van por correo (spec 051, R9): se vigilan desde el registro.
     "NEXUS_RESEND_API_KEY",
-    "NEXUS_OPERATOR_ALERT_EMAIL",
     # ─── Membresías y cobro (spec 005) ────────────────────────────────────
     # Esta lista la comparten los dos workspaces. Las cuatro existen en
     # ``nexus/staging/app`` desde 2026-09-13; en ``nexus/prod/app`` **NO**.

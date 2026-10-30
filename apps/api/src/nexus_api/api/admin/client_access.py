@@ -206,13 +206,15 @@ async def set_client_access(
 
 
 async def _send(
-    invitation_id: uuid.UUID, email: str, token: str, client: str, expires_at: datetime
+    tenant_id: uuid.UUID, email: str, token: str, client: str, expires_at: datetime
 ) -> bool:
+    # El correo es del cliente (spec 051, garantía 6): su registro lleva el tenant.
     return await send_client_invitation(
         email=email,
         client_name=client,
         accept_path=INVITE_ACCEPT_PATH.format(token=token),
         expires_at=expires_at,
+        tenant_id=tenant_id,
     )
 
 
@@ -237,7 +239,7 @@ async def invite_client_member(
             client = await client_access.client_name(session, invitation)
     except ClientAccessError as exc:
         raise _error(exc) from None
-    sent = await _send(invitation.id, invitation.email, token, client, invitation.expires_at)
+    sent = await _send(invitation.tenant_id, invitation.email, token, client, invitation.expires_at)
     return ClientInvitationOut(
         id=invitation.id,
         email=invitation.email,
@@ -269,7 +271,7 @@ async def resend_client_invitation(
             client = await client_access.client_name(session, invitation)
     except ClientAccessError as exc:
         raise _error(exc) from None
-    sent = await _send(invitation.id, invitation.email, token, client, invitation.expires_at)
+    sent = await _send(invitation.tenant_id, invitation.email, token, client, invitation.expires_at)
     return ClientInvitationOut(
         id=invitation.id,
         email=invitation.email,

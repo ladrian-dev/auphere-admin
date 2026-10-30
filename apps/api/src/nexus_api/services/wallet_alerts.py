@@ -42,10 +42,12 @@ from nexus_api.db.models import (
     NotificationKind,
     NotificationSeverity,
     Partner,
+    PartnerTenant,
+    Tenant,
 )
 from nexus_api.metering.wallet import purchased_spent_since, read_wallet
 from nexus_api.services.console_reporting import month_bounds
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import EmailKind, console_link, format_month
 
 log = structlog.get_logger(__name__)
 
@@ -102,27 +104,48 @@ async def _emit_client_out_of_quota(
         email=not recipients,
     )
     if row is not None and recipients:
-        await _email_client_out_of_quota(partner, ref, recipients)
+        name = await _client_display_name(session, partner.id, ref)
+        await _email_client_out_of_quota(partner, ref, name, recipients)
     return row
 
 
-async def _email_client_out_of_quota(partner: Partner, ref: str, recipients: list[str]) -> bool:
-    subject = f"[Auphere] {partner.name}: {ref} se ha quedado sin saldo"
-    html = (
-        '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-        'max-width:560px;margin:0 auto;color:#111">'
-        f"<p style='font-size:16px;margin:0 0 8px'><strong>El cliente {ref} ha agotado su "
-        "saldo y sus mensajes no se están atendiendo.</strong></p>"
-        "<p style='margin:0'>Habla con tu cliente y súbele el tope en la sección "
-        "Consumo de la consola. En cuanto tenga saldo, el agente vuelve a contestar solo.</p>"
-        "</div>"
+async def _client_display_name(session: AsyncSession, partner_id: uuid.UUID, ref: str) -> str:
+    """El nombre con el que el partner conoce al cliente: el que le puso en el
+    mapeo, si no el de su tenant, y si no hay ninguno, su referencia."""
+    found = (
+        await session.execute(
+            sa.select(PartnerTenant.client_name, Tenant.name)
+            .join(Tenant, Tenant.id == PartnerTenant.tenant_id)
+            .where(PartnerTenant.partner_id == partner_id, PartnerTenant.external_client_ref == ref)
+        )
+    ).first()
+    if found is None:
+        return ref
+    client_name, tenant_name = found
+    return client_name or tenant_name or ref
+
+
+async def _email_client_out_of_quota(
+    partner: Partner, ref: str, name: str, recipients: list[str]
+) -> bool:
+    """Spec 051: ``client_out_of_quota``, en el idioma de cada destinatario."""
+    from nexus_api.services.email import send_localized
+
+    def compose(locale: str) -> tuple[str, dict[str, str]]:
+        subject = (
+            f"{name} has run out of balance"
+            if locale == "en"
+            else f"{name} se ha quedado sin saldo"
+        )
+        return subject, {"CLIENT_NAME": name, "USAGE_URL": console_link("/usage")}
+
+    return await send_localized(
+        EmailKind.CLIENT_OUT_OF_QUOTA,
+        to=recipients,
+        compose=compose,
+        partner_id=partner.id,
+        client_ref=ref,
     )
-    try:
-        await send_email(to=recipients, subject=subject, html=html)
-        return True
-    except Exception as exc:  # pragma: no cover - best effort
-        log.warning("wallet_alerts.client_email_failed", partner_id=str(partner.id), error=str(exc))
-        return False
 
 
 async def notify_client_out_of_quota_detached(tenant_id: uuid.UUID) -> ConsoleNotification | None:
@@ -430,46 +453,85 @@ async def evaluate_partner_wallet_alerts(
     return result
 
 
+def _clients_out_note(count: int, locale: str) -> str:
+    """La frase de ``wallet_low`` sobre los clientes que ya no contestan."""
+    if count <= 0:
+        return ""
+    if locale == "en":
+        if count == 1:
+            return (
+                "Also, one of your clients has already reached its own limit and isn't "
+                "replying, even though you still have balance left."
+            )
+        return (
+            f"Also, {count} of your clients have already reached their own limit and aren't "
+            "replying, even though you still have balance left."
+        )
+    if count == 1:
+        return (
+            "Además, uno de tus clientes ya ha llegado a su propio límite y no está "
+            "respondiendo, aunque todavía te quede saldo."
+        )
+    return (
+        f"Además, {count} de tus clientes ya han llegado a su propio límite y no están "
+        "respondiendo, aunque todavía te quede saldo."
+    )
+
+
 async def _notify_by_email(partner: Partner, ev: WalletAlertEvaluation, since: datetime) -> bool:
-    recipients = [r for r in (partner.usage_alert_recipients or []) if isinstance(r, str) and r]
+    """Spec 051: ``wallet_low`` al 80 %, ``wallet_empty`` al 100 %. Si los dos
+    umbrales se cruzan a la vez, solo sale el de 100 %: el de 80 % ya llega tarde.
+
+    A la lista de alertas del partner, en el idioma de la cuenta de cada uno.
+    """
+    from nexus_api.services.email import send_localized
+
+    recipients = _alert_recipients(partner)
     if not recipients:
         return False
     top = max(ev.created)
-    period = f"{since:%Y-%m}"
+    billing_url = console_link("/billing")
+
     if top >= 100:
-        subject = f"[Auphere] {partner.name}: saldo agotado — los agentes han dejado de responder"
-        headline = "Se ha agotado el saldo del mes y vuestros agentes ya no están contestando."
-        note = (
-            "Esto no es un aviso preventivo: los mensajes que lleguen ahora no reciben "
-            "respuesta. Escribidnos y recargamos el saldo."
+
+        def compose_empty(locale: str) -> tuple[str, dict[str, str]]:
+            subject = (
+                "Your balance has run out and your agents have stopped replying"
+                if locale == "en"
+                else "Tu saldo se ha agotado y tus agentes no responden"
+            )
+            return subject, {
+                "PARTNER_NAME": partner.name,
+                "PERIOD": format_month(since.year, since.month, locale),
+                "BILLING_URL": billing_url,
+            }
+
+        return await send_localized(
+            EmailKind.WALLET_EMPTY, to=recipients, compose=compose_empty, partner_id=partner.id
         )
-    else:
-        subject = f"[Auphere] {partner.name}: queda el {100 - top} % del saldo ({period})"
-        headline = f"Habéis consumido el {top} % del saldo del mes."
-        note = (
-            "Cuando se agote, los agentes dejarán de responder a vuestros clientes. "
-            "Avisadnos antes de llegar ahí y lo ampliamos."
+
+    # El porcentaje real, hacia abajo: nunca dice más del que hay, y como el
+    # umbral es entero, nunca dice menos que el umbral cruzado.
+    percent = str(int(ev.percent_used if ev.percent_used is not None else top))
+    clients_out = len(ev.clients_out)
+
+    def compose_low(locale: str) -> tuple[str, dict[str, str]]:
+        subject = (
+            f"You've used {percent}% of this month's balance"
+            if locale == "en"
+            else f"Has usado el {percent} % del saldo de este mes"
         )
-    extra = ""
-    if ev.clients_out:
-        extra = (
-            f"<p style='margin:12px 0 0'>Además, <strong>{len(ev.clients_out)}</strong> "
-            "cliente(s) ya han agotado su tope y no están respondiendo, "
-            "aunque quede saldo general.</p>"
-        )
-    html = (
-        '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-        'max-width:560px;margin:0 auto;color:#111">'
-        f"<p style='font-size:16px;margin:0 0 8px'><strong>{headline}</strong></p>"
-        f"<p style='margin:0'>{note}</p>{extra}"
-        f"<p style='color:#666;font-size:13px;margin:20px 0 0'>Periodo {period}.</p></div>"
+        return subject, {
+            "PARTNER_NAME": partner.name,
+            "PERCENT_USED": percent,
+            "PERIOD": format_month(since.year, since.month, locale),
+            "CLIENTS_OUT_NOTE": _clients_out_note(clients_out, locale),
+            "BILLING_URL": billing_url,
+        }
+
+    return await send_localized(
+        EmailKind.WALLET_LOW, to=recipients, compose=compose_low, partner_id=partner.id
     )
-    try:
-        await send_email(to=recipients, subject=subject, html=html)
-        return True
-    except Exception as exc:  # pragma: no cover - best effort
-        log.warning("wallet_alerts.email_failed", partner_id=str(partner.id), error=str(exc))
-        return False
 
 
 __all__ = [

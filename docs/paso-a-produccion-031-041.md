@@ -39,9 +39,11 @@ consola vieja no pide.
 - [ ] **Meta**: añadir `console.auphere.com` a los dominios permitidos de la app
   (lo necesita la página del dueño, `/connect/whatsapp`).
 - [ ] **Tratamiento fiscal** de las facturas decidido.
-- [ ] **Correo**: el aviso de 3D Secure se envía con Resend. Sin
-  `RESEND_API_KEY` real en producción no sale el correo (el aviso en la consola
-  sí).
+- [ ] **Correo**: el aviso de 3D Secure se envía con Resend
+  (`auphere-charge-confirm-*`). Sin `RESEND_API_KEY` real en producción no sale
+  el correo (el aviso en la consola sí). Desde la spec 051, además, las
+  plantillas tienen que estar publicadas y `scripts/check_email_templates.py` en
+  verde (`docs/correos.md`).
 - [ ] **Admin en Vercel** (`auphere-admin`, admin.auphere.com): hoy se
   despliega a mano y sin Root Directory. Con el monorepo necesita
   **Root Directory `apps/admin`** e **«Include source files outside of the Root

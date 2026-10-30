@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from nexus_api.services.email_catalog import EmailKind, console_link
 from nexus_api.services.password_reset import REQUESTS_PER_WINDOW
 from tests.conftest import make_console_account
 
@@ -24,11 +25,11 @@ RESET = "/app/password-reset"
 def _mail_sink(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     sent: list[dict[str, Any]] = []
 
-    async def _fake(**kwargs: Any) -> bool:
-        sent.append(kwargs)
+    async def _fake(kind: EmailKind, **kwargs: Any) -> bool:
+        sent.append({"kind": kind, **kwargs})
         return True
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
     return sent
 
 
@@ -49,7 +50,8 @@ async def test_with_and_without_an_account_the_answer_is_identical(
     # Solo a quien tiene cuenta, y con el enlace de la página web.
     assert len(sent) == 1
     assert email in str(sent[0].get("to"))
-    assert "/reset/" in sent[0]["html"]
+    assert sent[0]["kind"] is EmailKind.PASSWORD_RESET
+    assert sent[0]["variables"]["RESET_URL"].startswith(console_link("/reset/"))
 
 
 async def test_the_cap_answers_like_any_other_request(client, db_session, monkeypatch) -> None:

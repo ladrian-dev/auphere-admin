@@ -10,16 +10,19 @@ Rules the endpoints enforce (each has a test):
 - ``team:manage`` (owner, admin) for every write; ``team:read`` for the
   list.
 
-Invitation delivery: the accept link is e-mailed when e-mail is
-configured and ALWAYS returned once to the inviter (``accept_path``) so
-it can be shared by hand — the pilot partners are two, and a broken SMTP
-must not block onboarding.
+Invitation delivery: the accept link is e-mailed (``team_invite`` of the
+spec 051 catalogue, with an absolute, clickable link) and ALWAYS returned
+once to the inviter (``accept_path``) so it can be shared by hand — an
+environment that does not send, or a provider having a bad day, must not
+block onboarding. ``email_sent`` is what ``send_template`` answered.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +32,7 @@ from nexus_api.core.console_auth import ConsolePrincipal, require_console_princi
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.db.models import (
     AuditLog,
+    ConsoleAccount,
     PartnerInvitation,
     PartnerLocalExecPolicy,
     PartnerMembership,
@@ -39,7 +43,13 @@ from nexus_api.repositories.partner_membership import (
     PartnerMembershipRepository,
 )
 from nexus_api.services import principal_access
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import (
+    ROLE_LABELS,
+    EmailKind,
+    console_link,
+    email_locale,
+    format_day,
+)
 from nexus_api.services.local_exec_policy import LocalExecPolicyRepository
 from nexus_api.services.membership_limits import (
     TierLimitReached,
@@ -111,6 +121,62 @@ def _self_change() -> HTTPException:
     )
 
 
+async def _invite_locale(session: AsyncSession, *, invitee: str, inviter: str) -> str:
+    """The language of the invitation (spec 051, §1 of the catalogue).
+
+    The invitee's console account language if they already have one —
+    they are who reads it. Otherwise the inviter's: someone inviting in
+    English is most likely inviting someone who reads English. Spanish
+    when neither has an account.
+    """
+    wanted = [e.strip().lower() for e in (invitee, inviter) if e and e.strip()]
+    rows = await session.execute(
+        sa.select(sa.func.lower(ConsoleAccount.email), ConsoleAccount.locale).where(
+            sa.func.lower(ConsoleAccount.email).in_(wanted)
+        )
+    )
+    found = {email: loc for email, loc in rows.all()}
+    for email in wanted:
+        if email in found:
+            return email_locale(found[email])
+    return "es"
+
+
+async def _send_invite(
+    principal: ConsolePrincipal,
+    *,
+    to: str,
+    role: str,
+    locale: str,
+    expires_at: datetime,
+    accept_path: str,
+) -> bool:
+    """``team_invite``. Never raises: ``send_template`` answers whether it went."""
+    from nexus_api.services.email import send_template
+
+    inviter = principal.membership.display_name or principal.membership.email
+    partner = principal.partner.name
+    subject = (
+        f"{inviter} invited you to join {partner} on Auphere"
+        if locale == "en"
+        else f"{inviter} te ha invitado a unirte a {partner} en Auphere"
+    )
+    return await send_template(
+        EmailKind.TEAM_INVITE,
+        to=to,
+        subject=subject,
+        variables={
+            "INVITER": inviter,
+            "PARTNER_NAME": partner,
+            "ROLE_LABEL": ROLE_LABELS[locale].get(role, role),
+            "EXPIRES_ON": format_day(expires_at.date(), locale),
+            "ACCEPT_URL": console_link(accept_path),
+        },
+        locale=locale,
+        partner_id=principal.partner.id,
+    )
+
+
 @router.get("", response_model=TeamOut)
 async def get_team(
     principal: ConsolePrincipal = Depends(require_console_principal("team:read")),
@@ -178,17 +244,16 @@ async def invite(
         session.add(
             _platform_audit(principal, "console.member.invite", email=email, role=body.role)
         )
+        locale = await _invite_locale(session, invitee=email, inviter=principal.membership.email)
 
     accept_path = INVITE_ACCEPT_PATH.format(token=token)
-    sent = await send_email(
+    sent = await _send_invite(
+        principal,
         to=email,
-        subject=f"{principal.partner.name} te invita a la consola de Auphere",
-        html=(
-            f"<p>{principal.membership.email} te ha invitado a la consola de "
-            f"<strong>{principal.partner.name}</strong> con el rol <strong>{body.role}</strong>.</p>"
-            f"<p>La invitación caduca el {invitation.expires_at:%Y-%m-%d}.</p>"
-            f"<p>Ruta de aceptación: <code>{accept_path}</code></p>"
-        ),
+        role=body.role,
+        locale=locale,
+        expires_at=invitation.expires_at,
+        accept_path=accept_path,
     )
     return InvitationCreatedOut(
         **_invitation_out(invitation).model_dump(), accept_path=accept_path, email_sent=sent

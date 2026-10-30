@@ -87,6 +87,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.exception("respond_catalog.refresh_failed")
 
     log.info("api.startup", env=settings.environment, version=__version__)
+    from nexus_api.services.email import log_delivery_mode
+
+    log_delivery_mode("api")
     try:
         yield
     finally:

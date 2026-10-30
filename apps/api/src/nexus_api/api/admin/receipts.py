@@ -29,14 +29,14 @@ from nexus_api.schemas.receipt import (
     ReceiptSendOut,
     ReceiptSummaryOut,
 )
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import EmailKind
 from nexus_api.services.partner_receipt import (
     PartnerNotFound,
     ReceiptResult,
     due_date_for,
     generate_partner_receipt,
 )
-from nexus_api.services.partner_receipt_email import receipt_subject, render_receipt_html
+from nexus_api.services.partner_receipt_email import receipt_email
 
 log = structlog.get_logger(__name__)
 
@@ -211,10 +211,14 @@ async def send_receipt(
 
 
 async def _mail(receipt: ReceiptResult) -> bool:
+    """Spec 051: the ``receipt`` template, in the language of the billing account."""
+    from nexus_api.services.email import send_localized
+
     if not receipt.billing_email:
         return False
-    return await send_email(
+    return await send_localized(
+        EmailKind.RECEIPT,
         to=receipt.billing_email,
-        subject=receipt_subject(receipt),
-        html=render_receipt_html(receipt),
+        compose=lambda locale: receipt_email(receipt, locale),
+        partner_id=receipt.partner_id,
     )
