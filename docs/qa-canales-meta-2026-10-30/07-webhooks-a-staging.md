@@ -4,6 +4,20 @@
 
 **Lo hace el owner**, porque la app de Meta `957213733862330` es la misma para staging y producción.
 
+## Estado
+
+**Hecho el 2026-10-30 (noche)** por el owner, con ayuda de Claude en su Chrome:
+
+| Objeto | URL | Campos suscritos |
+|---|---|---|
+| Instagram | `https://api.staging.auphere.com/webhook/meta`, verificada por Meta | 8: `comments`, `mentions`, `message_reactions`, `messages`, `messaging_handover`, `messaging_postbacks`, `messaging_referral`, `messaging_seen` |
+| Page | `https://api.staging.auphere.com/webhook/meta`, verificada por Meta | 7: `messages`, `message_echoes`, `message_reactions`, `message_reads`, `messaging_handovers`, `messaging_postbacks`, `messaging_referrals` |
+| WhatsApp Business Account | **Sin tocar:** `https://webhooks.auphere.com/webhook/meta` | — |
+
+Pendiente:
+- `messaging_policy_enforcement` en Page **no** está suscrito, y la lista de revisión de Messenger lo pide.
+- Comprobar con un DM real que llega a staging. Hace falta conectar antes una cuenta de Instagram y una Página en staging.
+
 ## Por qué es seguro hoy
 
 - Producción (`main` = `daf0ca15`) aún no tiene la spec 049: hoy descarta todos los eventos de `instagram` y `page`. Mientras dure el cambio, producción no pierde nada que use.
