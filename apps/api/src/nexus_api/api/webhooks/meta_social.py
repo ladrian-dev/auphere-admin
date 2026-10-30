@@ -162,7 +162,27 @@ async def _enqueue(
     else:
         log.info("webhook.meta_social.dedupe_redis_hit", tenant_id=str(tenant_id))
         return False
+    try:
+        return await _enqueue_once(
+            event, event_id=event_id, tenant_id=tenant_id, session=session, redis=redis
+        )
+    except BaseException:
+        # The 5xx makes Meta retry; a mark left here would drop that retry for
+        # EVENT_DEDUPE_TTL and lose the message (QA 2026-10-30, INC-17).
+        await redis.delete(dedupe_key)
+        raise
 
+
+async def _enqueue_once(
+    event: SocialEvent,
+    *,
+    event_id: str,
+    tenant_id: uuid.UUID,
+    session: AsyncSession,
+    redis: Redis,
+) -> bool:
+    inbound = event.inbound
+    assert inbound is not None
     async with tenant_scoped_session(session, tenant_id):
         prior = await session.scalar(
             select(Message.id).where(Message.provider_message_id == event_id)

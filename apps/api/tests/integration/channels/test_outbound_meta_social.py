@@ -252,3 +252,47 @@ async def test_dead_token_flags_the_channel_not_whatsapp(ig):
         assert channel is not None
         assert channel.status is ChannelStatus.DEGRADED
         assert channel.config["needs_attention"] == "token_revoked"
+
+
+@dataclass
+class Refuses:
+    """Graph answering a send with a fixed error envelope."""
+
+    code: int
+    subcode: int | None = None
+    message: str = "refused"
+    provider: str = "meta_instagram"
+    channel_type: str = "instagram"
+
+    async def send_text(self, **kwargs: Any) -> SendResult:
+        from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
+
+        raise MetaAPIError(self.message, status_code=400, code=self.code, subcode=self.subcode)
+
+
+async def test_graph_refusals_say_what_they_mean(ig):
+    """QA 2026-10-30 (INC-22): every refusal left as failure_code "10" and a
+    disabled Instagram inbox never marked the channel."""
+    await _set_last_dm(ig, timedelta(hours=1))
+    window = await _pending(ig, "uno")
+    await _drain(ig, Refuses(code=10, subcode=2018278))
+    assert (await _read(ig, window)).failure_code == "window_closed"
+
+    gone = await _pending(ig, "dos")
+    await _drain(ig, Refuses(code=551))
+    assert (await _read(ig, gone)).failure_code == "recipient_gone"
+
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, ig["tenant_id"]):
+        channel = await session.get(Channel, ig["channel_id"])
+        assert channel is not None and channel.status is ChannelStatus.ACTIVE
+
+    off = await _pending(ig, "tres")
+    await _drain(ig, Refuses(code=200))
+    msg = await _read(ig, off)
+    assert msg.status is MessageStatus.FAILED and msg.failure_code == "messages_disabled"
+    async with sm() as session, tenant_scoped_session(session, ig["tenant_id"]):
+        channel = await session.get(Channel, ig["channel_id"])
+        assert channel is not None
+        assert channel.status is ChannelStatus.DEGRADED
+        assert channel.config["needs_attention"] == "messages_disabled"

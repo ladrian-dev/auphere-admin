@@ -81,7 +81,13 @@ from nexus_api.services.media_storage import MediaStorageError, get_media_storag
 from nexus_api.services.meta_social_service import PROBLEM_REASON_OF
 from nexus_api.services.meta_window import PERSON_ACTORS, decide, private_reply_allowed
 from nexus_channels.base import ChannelCapabilityError
-from nexus_channels.meta_social import COMMENT_PREFIX, META_SOCIAL_PROVIDERS
+from nexus_channels.meta_social import COMMENT_PREFIX, META_SOCIAL_PROVIDERS, PROVIDER_INSTAGRAM
+from nexus_channels.meta_social.exceptions import (
+    is_messages_disabled,
+    is_permission_error,
+    is_recipient_unavailable,
+    is_window_error,
+)
 from nexus_channels.whatsapp_meta.exceptions import TokenInvalidatedError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -699,6 +705,10 @@ async def _send_one(
         )
         return
     except Exception as exc:
+        if provider in META_SOCIAL_PROVIDERS and await _social_send_refused(
+            session, msg=msg, exc=exc, provider=provider, channel_id=channel_id
+        ):
+            return
         await _handle_send_exception(
             session=session,
             msg=msg,
@@ -1029,6 +1039,44 @@ async def _meta_social_gate(
     if not decision.allowed:
         return {}, decision.reason or "window_closed"
     return {"human_agent": decision.human_agent}, None
+
+
+async def _social_send_refused(
+    session: AsyncSession,
+    *,
+    msg: Message,
+    exc: Exception,
+    provider: str,
+    channel_id: uuid.UUID,
+) -> bool:
+    """What an Instagram / Messenger refusal means, said once. ``True`` if it
+    was one of these (terminal, never retried). Before, every refusal left as
+    ``failure_code = "10"`` and a disabled inbox never marked the channel
+    (QA 2026-10-30, INC-22)."""
+    if is_window_error(exc):
+        code = "window_closed"
+    elif is_recipient_unavailable(exc):
+        code = "recipient_gone"  # failure_code is varchar(20)
+    elif provider == PROVIDER_INSTAGRAM and is_messages_disabled(exc):
+        code = "messages_disabled"
+        await _flag_meta_social_channel(session, channel_id=channel_id, reason=code)
+    elif is_permission_error(exc):
+        code = "permission_lost"
+        await _flag_meta_social_channel(session, channel_id=channel_id, reason=code)
+    else:
+        return False
+    msg.attempts += 1
+    msg.status = MessageStatus.FAILED
+    msg.failed_at = datetime.now(UTC)
+    msg.failure_code = code
+    msg.last_error = f"{type(exc).__name__}: {exc}"[:500]
+    log.warning(
+        "outbound.dispatcher.meta_social_refused",
+        message_id=str(msg.id),
+        provider=provider,
+        failure_code=code,
+    )
+    return True
 
 
 async def _flag_meta_social_channel(

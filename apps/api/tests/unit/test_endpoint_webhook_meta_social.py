@@ -213,6 +213,31 @@ async def test_redrive_is_processed_once(client, db_session, fake_redis, seed_te
     )
 
 
+async def test_a_failed_enqueue_lets_metas_retry_through(
+    client, db_session, fake_redis, seed_tenants, no_peer, monkeypatch
+):
+    """QA 2026-10-30 (INC-17): the dedupe mark was set before enqueueing and
+    never released, so Meta's retry after a failure was dropped for 48 h."""
+    from nexus_api.api.webhooks import meta_social as route
+
+    await _seed(db_session, seed_tenants["a"])
+    body, headers = _signed(_dm(mid="m_retry"))
+    real = route.xadd_capped
+
+    async def boom(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("redis stream down")
+
+    monkeypatch.setattr(route, "xadd_capped", boom)
+    with pytest.raises(RuntimeError):
+        await client.post("/webhook/meta", content=body, headers=headers)
+    assert await fake_redis.get("nexus:msocial:meta_instagram:m_retry") is None
+
+    monkeypatch.setattr(route, "xadd_capped", real)
+    again = await client.post("/webhook/meta", content=body, headers=headers)
+    assert again.json()["status"] == "ok"
+    assert [e for e in await _entries(fake_redis) if e.get("provider_message_id") == "m_retry"]
+
+
 async def test_comment_carries_its_reference(client, db_session, fake_redis, seed_tenants, no_peer):
     await _seed(db_session, seed_tenants["a"])
     body, headers = _signed(_comment("C_enq"))
