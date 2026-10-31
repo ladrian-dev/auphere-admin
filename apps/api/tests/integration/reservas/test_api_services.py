@@ -7,6 +7,7 @@ Corte (30 min) y Color (90 min).
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -180,7 +181,9 @@ async def test_list_filters_and_closed_days(client, db_session, console_world) -
     assert r.status_code == 200, r.text
     body = r.json()
     assert len(body["items"]) == 1
-    assert len(body["closed_days"]) == 1  # un domingo en ocho días
+    # Los domingos de esos ocho días: uno, o dos si mañana es domingo.
+    sundays = sum((start + timedelta(days=i)).weekday() == 6 for i in range((end - start).days + 1))
+    assert len(body["closed_days"]) == sundays
     none = await client.get(
         f"{BASE}/bookings",
         headers=h(),
