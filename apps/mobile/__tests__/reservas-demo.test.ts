@@ -1,7 +1,7 @@
 import { demoModeOf, demoStateOf } from "@/config";
 import { createDemo } from "@/api/reservas-demo";
 import { ApiError } from "@/api/errors";
-import { addDays, sinceMinutes } from "@/lib/reservas-model";
+import { addDays, sinceMinutes, weekday } from "@/lib/reservas-model";
 
 /**
  * Spec 044, Requisito 18 and research D2: example data for Reservas, only in a
@@ -70,7 +70,9 @@ describe("the example source", () => {
   it("refuses a slot that is no longer free, and answers the same key once", async () => {
     const demo = createDemo("services", null);
     const now = sinceMinutes((await run(demo.range("2026-01-01", "2026-01-01"))).now);
-    const tomorrow = addDays(now.date, 1);
+    // The next weekday: the example shop is closed on Sunday (this failed every Saturday).
+    let tomorrow = addDays(now.date, 1);
+    while (weekday(tomorrow) > 5) tomorrow = addDays(tomorrow, 1);
     const slots = await run(demo.freeSlots({ date: tomorrow, serviceId: "s-corte" }));
     const first = slots[0]!;
     const body = { date: tomorrow, time: first.time, customer: { name: "Lucía Fernández", phone: null }, serviceId: "s-corte", proId: first.pro?.id ?? null };
