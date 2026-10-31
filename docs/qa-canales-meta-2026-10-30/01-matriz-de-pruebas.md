@@ -139,5 +139,5 @@ Cliente «Meta Review Demo» del partner «Auphere AIaaS», agente «Ava» v1. C
 | Nombre de quien escribe (IG) | PASS | El panel muestra «Andres Matos \| Product Designer» |
 | MS-03 | PASS | Página conectada y suscrita (los mensajes llegan) |
 | MS-04 | PASS | DM recibido y guardado (21:40:12) |
-| MS-05 | FAIL | Meta rechaza el envío: `permission_lost`, canal «Degradado» (INC-48) |
+| MS-05 | PASS en el segundo intento | 21:40 UTC: Meta rechazó la respuesta (`permission_lost`, INC-48). 23:42–23:43 UTC, con `051f97af`: dos mensajes, dos respuestas enviadas, con eco y lectura de Meta. La causa del primer rechazo no quedó registrada (el log con el código de Meta llegó después) |
 | MS-07 | FAIL | El contacto de Messenger sale como PSID, sin nombre |
