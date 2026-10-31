@@ -42,6 +42,7 @@ class FakeGraph:
         self.business: str | None = "BIZ_1"
         self.subscribe_error: dict[str, Any] | None = None
         self.granular_scopes: list[dict[str, Any]] = []
+        self.portfolio_instagram: list[dict[str, Any]] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/v26.0")
@@ -62,6 +63,10 @@ class FakeGraph:
             return httpx.Response(200, json={"data": self.pages})
         if path == "/debug_token":
             return httpx.Response(200, json={"data": {"granular_scopes": self.granular_scopes}})
+        if path == "/BIZ_1/instagram_accounts":
+            return httpx.Response(200, json={"data": self.portfolio_instagram})
+        if path == "/BIZ_1/owned_instagram_accounts":
+            return httpx.Response(400, json={"error": {"message": "no", "code": 100}})
         if path.endswith("/subscribed_apps"):
             if request.method == "POST" and self.subscribe_error:
                 return httpx.Response(400, json={"error": self.subscribe_error})
@@ -240,6 +245,26 @@ async def test_the_account_linked_to_a_granted_page_connects_as_a_last_resort(
     await _beta(db_session, a["partner_id"], ["instagram"])
     graph.instagram_accounts = []
     graph.pages[0]["instagram_business_account"] = {"id": IG_ID}
+
+    r = await client.post(
+        _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "CODE"}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["channel"]["username"] == "demo.store"
+
+
+async def test_the_portfolio_account_connects_when_the_grant_names_none(
+    client, console_world, db_session, graph
+) -> None:
+    # Staging, 2026-10-31: the ``instagram_*`` permissions came without
+    # targets and no Page was shared; the portfolio has the account.
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["instagram"])
+    graph.instagram_accounts = []
+    graph.granular_scopes = [{"scope": "instagram_basic"}, {"scope": "instagram_manage_messages"}]
+    graph.pages = []
+    graph.portfolio_instagram = [{"id": IG_ID, "username": "demo.store"}]
 
     r = await client.post(
         _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "CODE"}

@@ -16,8 +16,11 @@ Endpoints (Meta docs, 2026-10):
 - ``GET /me/accounts`` — the Pages granted, each with its Page token and
   its linked ``instagram_business_account``.
 - ``GET /debug_token`` — ``granular_scopes``: the assets picked per
-  permission. The Instagram accounts are there even when
-  ``assigned_instagram_accounts`` comes back empty (staging, 2026-10-31).
+  permission, when Meta fills them in.
+- ``GET /{business_id}/instagram_accounts`` and ``/owned_instagram_accounts``
+  — the accounts of the client's portfolio. Last resort when the token
+  carries the ``instagram_*`` permissions without saying which account
+  (staging, 2026-10-31).
 - ``POST|GET|DELETE /{id}/subscribed_apps`` — webhooks per account or Page.
 - ``POST /{id}/messages`` — Send API (``{IG_ID}`` or ``{PAGE_ID}``).
 - ``POST /{comment_id}/replies`` — public reply to an Instagram comment.
@@ -123,6 +126,18 @@ class MetaSocialClient(MetaClient):
             if isinstance(g, dict) and g.get("scope"):
                 out[str(g["scope"])] = [str(t) for t in g.get("target_ids") or []]
         return out
+
+    async def business_instagram_accounts(
+        self, *, business_id: str, edge: str, access_token: str
+    ) -> list[dict[str, Any]]:
+        """``GET /{business_id}/instagram_accounts`` (the accounts the portfolio
+        can use) or ``/owned_instagram_accounts`` (the ones it owns)."""
+        data = await self._get(
+            f"/{business_id}/{edge}",
+            access_token=access_token,
+            params={"fields": "id,username", "limit": 50},
+        )
+        return [a for a in data.get("data") or [] if isinstance(a, dict) and a.get("id")]
 
     async def pages(self, *, access_token: str) -> list[dict[str, Any]]:
         data = await self._get(

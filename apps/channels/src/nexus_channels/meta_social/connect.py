@@ -137,7 +137,7 @@ class MetaSocialConnector:
         if not business_id:
             raise MetaSocialConnectError("no_business_portfolio")
 
-        accounts, page_tokens = await self._granted(kind, token)
+        accounts, page_tokens = await self._granted(kind, token, business_id)
         if not accounts:
             raise MetaSocialConnectError(
                 "no_instagram_account" if kind == "instagram" else "no_page"
@@ -197,46 +197,67 @@ class MetaSocialConnector:
         await self._redis.delete(key)
         return outcome
 
-    async def _picked_instagram_ids(self, token: str) -> list[str]:
+    async def _picked_instagram_ids(self, token: str, business_id: str) -> tuple[list[str], str]:
         """The Instagram accounts the business ticked in the login, when
-        ``assigned_instagram_accounts`` says none: the targets of the
-        ``instagram_*`` permissions, then the account linked to each Page
-        granted. In that order, without repeats."""
-        ids: list[str] = []
+        ``assigned_instagram_accounts`` says none, and where they were found.
+
+        In order, the first that answers with accounts: the targets of the
+        ``instagram_*`` permissions; the account linked to each Page granted;
+        the accounts the client's portfolio can use, then owns. Staging,
+        2026-10-31: the ticked account came with the ``instagram_*``
+        permissions but no targets and no Page. Each source is logged, so the
+        one that works is known without guessing again.
+        """
         try:
             targets = await self._client.granted_targets(access_token=token, app_id=self._app_id)
         except MetaAPIError as exc:
-            log.info("meta_social.connect.granular_scopes_unavailable", code=exc.code)
+            log.info("meta_social.connect.source", source="granular_scopes", error=exc.code)
             targets = {}
+        ids = [t for scope, ts in targets.items() if scope.startswith("instagram_") for t in ts]
         log.info(
-            "meta_social.connect.granular_scopes",
+            "meta_social.connect.source",
+            source="granular_scopes",
             scopes=sorted(targets),
-            instagram_targets=sum(len(v) for k, v in targets.items() if k.startswith("instagram_")),
+            count=len(ids),
         )
-        for scope, target_ids in targets.items():
-            if scope.startswith("instagram_"):
-                ids += target_ids
-        if not ids:
+        if ids:
+            return list(dict.fromkeys(ids)), "granular_scopes"
+
+        try:
+            pages = await self._client.pages(access_token=token)
+        except MetaAPIError as exc:
+            log.info("meta_social.connect.source", source="pages", error=exc.code)
+            pages = []
+        for p in pages:
+            linked = p.get("instagram_business_account")
+            if isinstance(linked, dict) and linked.get("id"):
+                ids.append(str(linked["id"]))
+        log.info("meta_social.connect.source", source="pages", pages=len(pages), count=len(ids))
+        if ids:
+            return list(dict.fromkeys(ids)), "pages"
+
+        for edge in ("instagram_accounts", "owned_instagram_accounts"):
             try:
-                pages = await self._client.pages(access_token=token)
+                found = await self._client.business_instagram_accounts(
+                    business_id=business_id, edge=edge, access_token=token
+                )
             except MetaAPIError as exc:
-                log.info("meta_social.connect.pages_unavailable", code=exc.code)
-                pages = []
-            for p in pages:
-                linked = p.get("instagram_business_account")
-                if isinstance(linked, dict) and linked.get("id"):
-                    ids.append(str(linked["id"]))
-        return list(dict.fromkeys(ids))
+                log.info("meta_social.connect.source", source=edge, error=exc.code)
+                continue
+            log.info("meta_social.connect.source", source=edge, count=len(found))
+            if found:
+                return list(dict.fromkeys(str(a["id"]) for a in found)), edge
+        return [], "none"
 
     async def _granted(
-        self, kind: Kind, token: str
+        self, kind: Kind, token: str, business_id: str
     ) -> tuple[list[ConnectableAccount], dict[str, str]]:
         if kind == "instagram":
             raw = await self._client.assigned_instagram_accounts(access_token=token)
             source = "assigned"
             if not raw:
-                raw = [{"id": i} for i in await self._picked_instagram_ids(token)]
-                source = "picked"
+                picked, source = await self._picked_instagram_ids(token, business_id)
+                raw = [{"id": i} for i in picked]
             log.info("meta_social.connect.instagram_accounts", source=source, count=len(raw))
             accounts = []
             for a in raw:
