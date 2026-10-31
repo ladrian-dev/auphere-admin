@@ -13,7 +13,11 @@ Endpoints (Meta docs, 2026-10):
 - ``GET /me/assigned_instagram_accounts`` — the Instagram accounts the
   business granted. ``/me`` with this token is the system user, not the
   account.
-- ``GET /me/accounts`` — the Pages granted, each with its Page token.
+- ``GET /me/accounts`` — the Pages granted, each with its Page token and
+  its linked ``instagram_business_account``.
+- ``GET /debug_token`` — ``granular_scopes``: the assets picked per
+  permission. The Instagram accounts are there even when
+  ``assigned_instagram_accounts`` comes back empty (staging, 2026-10-31).
 - ``POST|GET|DELETE /{id}/subscribed_apps`` — webhooks per account or Page.
 - ``POST /{id}/messages`` — Send API (``{IG_ID}`` or ``{PAGE_ID}``).
 - ``POST /{comment_id}/replies`` — public reply to an Instagram comment.
@@ -105,11 +109,29 @@ class MetaSocialClient(MetaClient):
         )
         return [a for a in data.get("data") or [] if isinstance(a, dict) and a.get("id")]
 
+    async def granted_targets(self, *, access_token: str, app_id: str) -> dict[str, list[str]]:
+        """What the business picked in the login, per permission: the
+        ``granular_scopes`` of ``GET /debug_token``, read with the app token.
+
+        ``{"instagram_basic": ["1784…"], "pages_show_list": ["1050…"]}``.
+        """
+        data = await self.debug_token(
+            input_token=access_token, admin_access_token=f"{app_id}|{self._app_secret}"
+        )
+        out: dict[str, list[str]] = {}
+        for g in (data.get("data") or {}).get("granular_scopes") or []:
+            if isinstance(g, dict) and g.get("scope"):
+                out[str(g["scope"])] = [str(t) for t in g.get("target_ids") or []]
+        return out
+
     async def pages(self, *, access_token: str) -> list[dict[str, Any]]:
         data = await self._get(
             "/me/accounts",
             access_token=access_token,
-            params={"fields": "id,name,access_token,tasks,picture{url}", "limit": 50},
+            params={
+                "fields": "id,name,access_token,tasks,picture{url},instagram_business_account",
+                "limit": 50,
+            },
         )
         return [p for p in data.get("data") or [] if isinstance(p, dict) and p.get("id")]
 

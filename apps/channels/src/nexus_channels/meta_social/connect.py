@@ -197,11 +197,47 @@ class MetaSocialConnector:
         await self._redis.delete(key)
         return outcome
 
+    async def _picked_instagram_ids(self, token: str) -> list[str]:
+        """The Instagram accounts the business ticked in the login, when
+        ``assigned_instagram_accounts`` says none: the targets of the
+        ``instagram_*`` permissions, then the account linked to each Page
+        granted. In that order, without repeats."""
+        ids: list[str] = []
+        try:
+            targets = await self._client.granted_targets(access_token=token, app_id=self._app_id)
+        except MetaAPIError as exc:
+            log.info("meta_social.connect.granular_scopes_unavailable", code=exc.code)
+            targets = {}
+        log.info(
+            "meta_social.connect.granular_scopes",
+            scopes=sorted(targets),
+            instagram_targets=sum(len(v) for k, v in targets.items() if k.startswith("instagram_")),
+        )
+        for scope, target_ids in targets.items():
+            if scope.startswith("instagram_"):
+                ids += target_ids
+        if not ids:
+            try:
+                pages = await self._client.pages(access_token=token)
+            except MetaAPIError as exc:
+                log.info("meta_social.connect.pages_unavailable", code=exc.code)
+                pages = []
+            for p in pages:
+                linked = p.get("instagram_business_account")
+                if isinstance(linked, dict) and linked.get("id"):
+                    ids.append(str(linked["id"]))
+        return list(dict.fromkeys(ids))
+
     async def _granted(
         self, kind: Kind, token: str
     ) -> tuple[list[ConnectableAccount], dict[str, str]]:
         if kind == "instagram":
             raw = await self._client.assigned_instagram_accounts(access_token=token)
+            source = "assigned"
+            if not raw:
+                raw = [{"id": i} for i in await self._picked_instagram_ids(token)]
+                source = "picked"
+            log.info("meta_social.connect.instagram_accounts", source=source, count=len(raw))
             accounts = []
             for a in raw:
                 profile: dict[str, Any] = {}

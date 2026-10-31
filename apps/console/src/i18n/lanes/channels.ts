@@ -90,8 +90,8 @@ export const channelsMessages = {
   },
   "ch.connect.veil.title": { es: "Estamos en la ventana de Meta", en: "We are in Meta's window" },
   "ch.connect.veil.body": {
-    es: "Termina ahí los pasos de WhatsApp. Cuando acabes, esta pantalla se actualiza sola.",
-    en: "Finish the WhatsApp steps there. When you are done, this screen updates on its own.",
+    es: "Termina ahí los pasos. Cuando acabes, esta pantalla se actualiza sola.",
+    en: "Finish the steps there. When you are done, this screen updates on its own.",
   },
   "ch.connect.numberInUse": { es: "Ese número ya está conectado en otro cliente. Nada ha cambiado.", en: "That number is already connected on another client. Nothing changed." },
   "ch.connect.byAuphere.title": { es: "El número lo conecta Auphere", en: "Auphere connects the number" },

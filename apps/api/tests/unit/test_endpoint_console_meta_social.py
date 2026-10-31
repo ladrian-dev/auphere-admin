@@ -41,6 +41,7 @@ class FakeGraph:
         ]
         self.business: str | None = "BIZ_1"
         self.subscribe_error: dict[str, Any] | None = None
+        self.granular_scopes: list[dict[str, Any]] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/v26.0")
@@ -59,6 +60,8 @@ class FakeGraph:
             return httpx.Response(200, json={"data": self.instagram_accounts})
         if path == "/me/accounts":
             return httpx.Response(200, json={"data": self.pages})
+        if path == "/debug_token":
+            return httpx.Response(200, json={"data": {"granular_scopes": self.granular_scopes}})
         if path.endswith("/subscribed_apps"):
             if request.method == "POST" and self.subscribe_error:
                 return httpx.Response(400, json={"error": self.subscribe_error})
@@ -204,6 +207,62 @@ async def test_several_accounts_ask_to_choose_then_complete(
         json={"nonce": first["nonce"], "account_id": IG_ID},
     )
     assert again.status_code == 409 and again.json()["detail"]["code"] == "pending_expired"
+
+
+async def test_the_ticked_account_connects_when_assigned_comes_back_empty(
+    client, console_world, db_session, graph
+) -> None:
+    # Staging, 2026-10-31: the account was ticked in the login, yet
+    # ``assigned_instagram_accounts`` said none. The token's own grant has it.
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["instagram"])
+    graph.instagram_accounts = []
+    graph.granular_scopes = [
+        {"scope": "instagram_basic", "target_ids": [IG_ID]},
+        {"scope": "instagram_manage_messages", "target_ids": [IG_ID]},
+        {"scope": "business_management"},
+    ]
+
+    r = await client.post(
+        _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "CODE"}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["channel"]["username"] == "demo.store"
+    [(_, _, params)] = [c for c in graph.calls if c[1] == "/debug_token"]
+    assert params["input_token"] == "SUAT-1"
+
+
+async def test_the_account_linked_to_a_granted_page_connects_as_a_last_resort(
+    client, console_world, db_session, graph
+) -> None:
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["instagram"])
+    graph.instagram_accounts = []
+    graph.pages[0]["instagram_business_account"] = {"id": IG_ID}
+
+    r = await client.post(
+        _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "CODE"}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["channel"]["username"] == "demo.store"
+
+
+async def test_no_account_anywhere_says_so_and_creates_nothing(
+    client, console_world, db_session, graph
+) -> None:
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["instagram"])
+    graph.instagram_accounts = []
+
+    r = await client.post(
+        _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "CODE"}
+    )
+
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "no_instagram_account"
+    assert await db_session.scalar(sa.select(sa.func.count()).select_from(Channel)) == 0
 
 
 async def test_no_portfolio_says_how_to_fix_and_creates_nothing(
