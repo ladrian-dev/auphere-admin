@@ -116,3 +116,28 @@ Todos usan **mocks** de Meta. No validan la integración real.
 
 Cada uno de estos huecos necesita su prueba de regresión, que se indica en la incidencia.
 | AUTO-CI | CI de GitHub de `9e7c71b5` (run 41046402212: lint, api, console, admin, mobile, renderer, terraform) | Verde; despliegue a staging con éxito | PASS [M] |
+
+## Resultados en staging con cuentas reales del owner (2026-10-31)
+
+Cliente «Meta Review Demo» del partner «Auphere AIaaS», agente «Ava» v1. Canales: Instagram @somos.auphere y Messenger «Auphere» en «A todos» (temporal, para probar y grabar), WhatsApp +34672138367 en «Solo mi equipo» con +34666261967. Staging en `e693a571`. Evidencia: logs de `/nexus/staging/{api,runner,egress}` y panel de operador.
+
+| ID | Resultado | Evidencia |
+|---|---|---|
+| T-ENV-01 | PASS | `openapi.json` de staging = develop (576 rutas) |
+| T-WH-01…04 | PASS | 403 / 401 / 401 / 401 |
+| WA-05 | PASS | Página del canal: audiencia con «Solo mi equipo», catálogo, plantillas, escalado, cuenta en Meta |
+| WA-06 | PASS | Diagnóstico: token, número, webhook, calidad GREEN, TIER_250, plantillas 2/0/0 |
+| WA-07 | PASS | Mensajes reales entran (`inbound_enqueued`); los que no son del equipo quedan `out_of_audience` |
+| WA-08 | PASS | Desde +34666261967: entra 21:51:42, gate `open`, respuesta enviada una vez 21:51:52 |
+| CAT-01 | PASS | El selector se abre |
+| CAT-02 | FAIL (esperado) | «Tu negocio no tiene catálogos» y sin campo manual en coexistencia (INC-29) |
+| IG-03 / IG-04 | PASS tras INC-41 | `@somos.auphere` conectada (`source=assigned`) |
+| IG-05 / IG-06 | PASS tras INC-43 e INC-46 | DM recibido, guardado y respondido una sola vez |
+| IG-08 | PASS | «I want to talk to a person»: intent `escalate`, `tool_calls=1` (arreglo INC-39), conversación en `human_takeover` |
+| IG-07 | FAIL | El comentario no generó webhook (`comment: true` nunca llega); por confirmar si es el acceso estándar de Meta |
+| IG-10 / MS audiencia | FAIL | Solo «A todos» (INC-44) |
+| Nombre de quien escribe (IG) | PASS | El panel muestra «Andres Matos \| Product Designer» |
+| MS-03 | PASS | Página conectada y suscrita (los mensajes llegan) |
+| MS-04 | PASS | DM recibido y guardado (21:40:12) |
+| MS-05 | FAIL | Meta rechaza el envío: `permission_lost`, canal «Degradado» (INC-48) |
+| MS-07 | FAIL | El contacto de Messenger sale como PSID, sin nombre |
