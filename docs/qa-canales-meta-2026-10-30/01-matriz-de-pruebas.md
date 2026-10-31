@@ -134,7 +134,7 @@ Cliente «Meta Review Demo» del partner «Auphere AIaaS», agente «Ava» v1. C
 | IG-03 / IG-04 | PASS tras INC-41 | `@somos.auphere` conectada (`source=assigned`) |
 | IG-05 / IG-06 | PASS tras INC-43 e INC-46 | DM recibido, guardado y respondido una sola vez |
 | IG-08 | PASS | «I want to talk to a person»: intent `escalate`, `tool_calls=1` (arreglo INC-39), conversación en `human_takeover` |
-| IG-07 | FAIL | El comentario no generó webhook (`comment: true` nunca llega); por confirmar si es el acceso estándar de Meta |
+| IG-07 | BLOQUEADA por Meta | El comentario de las 22:02 UTC no generó ningún webhook. La guía oficial de webhooks de Instagram: sin acceso avanzado (App Review) no llegan avisos de `comments`. `instagram_manage_comments` está sin aprobar |
 | IG-10 / MS audiencia | FAIL | Solo «A todos» (INC-44) |
 | Nombre de quien escribe (IG) | PASS | El panel muestra «Andres Matos \| Product Designer» |
 | MS-03 | PASS | Página conectada y suscrita (los mensajes llegan) |
