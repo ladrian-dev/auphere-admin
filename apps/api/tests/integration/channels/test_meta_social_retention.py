@@ -269,3 +269,36 @@ async def test_operator_erases_one_person_only(client, db_session, admin_headers
         "private text of PSID_1",
         "private text of PSID_2",
     }
+
+
+async def test_an_instagram_message_id_fits(db_session):
+    # QA canales Meta, 2026-10-31: a real Instagram ``mid`` is ~230 characters.
+    # At ``varchar(160)`` the inbound DM failed to save and never reached the
+    # inbox; the message it reacts to or answers can be one too.
+    w = await _world(db_session)
+    conv = (
+        await db_session.execute(
+            select(Conversation).where(Conversation.tenant_id == w["tenant_id"]).limit(1)
+        )
+    ).scalar_one()
+    mid = "bmV3X2lnX2RtX2l0ZAW06MTpJR01lc3NhZA2VJRDox" + "N" * 190
+    assert len(mid) > 230
+    db_session.add(
+        Message(
+            tenant_id=w["tenant_id"],
+            conversation_id=conv.id,
+            direction=MessageDirection.INBOUND,
+            status=MessageStatus.DELIVERED,
+            content="Hola",
+            tool_calls=[],
+            provider_message_id=mid,
+            context_message_id=mid,
+            reaction_target_wamid=mid,
+        )
+    )
+    await db_session.commit()
+
+    stored = (
+        await db_session.execute(select(Message).where(Message.provider_message_id == mid))
+    ).scalar_one()
+    assert stored.context_message_id == mid

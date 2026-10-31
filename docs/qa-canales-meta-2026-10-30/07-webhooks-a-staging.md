@@ -13,6 +13,7 @@
 | Instagram | `https://api.staging.auphere.com/webhook/meta`, verificada por Meta | 8: `comments`, `mentions`, `message_reactions`, `messages`, `messaging_handover`, `messaging_postbacks`, `messaging_referral`, `messaging_seen` |
 | Page | `https://api.staging.auphere.com/webhook/meta`, verificada por Meta | 7: `messages`, `message_echoes`, `message_reactions`, `message_reads`, `messaging_handovers`, `messaging_postbacks`, `messaging_referrals` |
 | WhatsApp Business Account | **Sin tocar:** `https://webhooks.auphere.com/webhook/meta` | — |
+| WhatsApp +34672138367 («Andres Matos \| Auphere») | Conectado en staging a «Meta Review Demo» el 2026-10-31 16:40: su WABA manda a `https://api.staging.auphere.com/webhook/meta` (`override_callback_uri`). El owner confirma que ningún cliente de producción lo usa | — |
 
 Pendiente:
 - `messaging_policy_enforcement` en Page **no** está suscrito, y la lista de revisión de Messenger lo pide.

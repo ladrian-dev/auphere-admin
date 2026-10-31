@@ -274,7 +274,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # the webhook can ``ON CONFLICT DO NOTHING`` the dedupe. Populated for
     # both inbound (parsed from webhook) and outbound (recorded once the provider
     # accepts the send).
-    provider_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Status callback lifecycle. ``status`` advances through SENT →
     # DELIVERED → READ on the receiver side; ``failed_at`` + ``failure_code``
     # capture a terminal failure from Meta (e.g. 131026 recipient unable,
@@ -305,12 +305,12 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # reacted to. For outbound reactions we set both before sending; for
     # inbound the webhook fills them when ``type=reaction``.
     reaction_emoji: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    reaction_target_wamid: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    reaction_target_wamid: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     # Quoted reply: when the customer (or the agent) cites a previous
     # message, this column holds the cited wamid. The pipeline uses it to
     # surface context that would otherwise be lost.
-    context_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    context_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     # Interactive component payload — populated by the checkpoint node
     # when the agent's turn included a ``response.send_interactive``
