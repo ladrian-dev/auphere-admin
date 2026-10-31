@@ -274,7 +274,8 @@ async def test_operator_erases_one_person_only(client, db_session, admin_headers
 async def test_an_instagram_message_id_fits(db_session):
     # QA canales Meta, 2026-10-31: a real Instagram ``mid`` is ~230 characters.
     # At ``varchar(160)`` the inbound DM failed to save and never reached the
-    # inbox; the message it reacts to or answers can be one too.
+    # inbox; the message it reacts to or answers can be one too, and the sent
+    # reply's id is kept in ``trace_id`` as well (0214).
     w = await _world(db_session)
     conv = (
         await db_session.execute(
@@ -292,6 +293,7 @@ async def test_an_instagram_message_id_fits(db_session):
             content="Hola",
             tool_calls=[],
             provider_message_id=mid,
+            trace_id=mid,
             context_message_id=mid,
             reaction_target_wamid=mid,
         )

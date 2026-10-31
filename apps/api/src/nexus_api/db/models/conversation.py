@@ -252,7 +252,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    trace_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    trace_id: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     tool_calls: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     # Block F: outbound retry bookkeeping. Populated only by the outbound
     # dispatcher; inbound rows leave them untouched.
@@ -408,7 +408,7 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     lifted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reason: Mapped[str] = mapped_column(String(40), nullable=False)
     trigger_keyword: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    source_wamid: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    source_wamid: Mapped[str | None] = mapped_column(String(512), nullable=True)
     opted_out_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     opted_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
