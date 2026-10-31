@@ -6,7 +6,11 @@ Both objects share the Messenger Platform envelope::
      "entry": [{"id": "<IG_ID | PAGE_ID>", "time": ...,
                 "messaging": [ {sender, recipient, timestamp, message | postback
                                 | reaction | read | referral} ],
-                "changes":   [ {"field": "comments" | "mentions" | ..., "value": {...}} ]}]}
+                "changes":   [ {"field": "comments" | "mentions" | "feed" | ...,
+                                "value": {...}} ]}]}
+
+A comment arrives as ``comments`` on Instagram and as ``feed`` with
+``item=comment`` on a Page; both become the same ``comment`` event.
 
 ``entry.id`` is the business's account or Page — the identifier the tenant
 is resolved from. ``sender.id`` is the person (IGSID / PSID), assigned by
@@ -272,7 +276,33 @@ def _change_event(change: dict[str, Any], *, provider: str, account_id: str) -> 
     value = _dict(change.get("value"))
     if field == "comments" and provider == PROVIDER_INSTAGRAM:
         return _comment_event(value, provider=provider, account_id=account_id)
+    if field == "feed" and provider == PROVIDER_MESSENGER:
+        return _page_comment_event(value, account_id=account_id)
     return SocialEvent("other", provider, account_id, detail=str(field))
+
+
+def _page_comment_event(value: dict[str, Any], *, account_id: str) -> SocialEvent:
+    """A comment on one of the Page's posts (``feed``, ``item=comment``). Only
+    a new one is a turn: edits, deletions, reactions and posts are not."""
+    if value.get("item") != "comment" or value.get("verb") != "add":
+        return SocialEvent(
+            "other",
+            PROVIDER_MESSENGER,
+            account_id,
+            detail=f"feed:{value.get('item')}:{value.get('verb')}",
+        )
+    # Same shape as Instagram's, so the turn and the reply are the same code.
+    author = _dict(value.get("from"))
+    return _comment_event(
+        {
+            "id": value.get("comment_id"),
+            "from": {"id": author.get("id"), "username": author.get("name")},
+            "text": value.get("message"),
+            "media": {"media_product_type": "PAGE_POST"},
+        },
+        provider=PROVIDER_MESSENGER,
+        account_id=account_id,
+    )
 
 
 def _comment_event(value: dict[str, Any], *, provider: str, account_id: str) -> SocialEvent:

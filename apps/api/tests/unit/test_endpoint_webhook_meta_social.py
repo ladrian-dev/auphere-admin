@@ -273,6 +273,46 @@ async def test_comment_carries_its_reference(client, db_session, fake_redis, see
     assert entry["customer_name"] == "maria"
 
 
+async def test_a_page_comment_is_enqueued_for_the_page(
+    client, db_session, fake_redis, seed_tenants, no_peer
+):
+    # Owner, 2026-10-31: comments on the Page's posts reach the agent too.
+    await _seed(db_session, seed_tenants["a"], provider="meta_messenger", identifier=PAGE_ID)
+    feed = {
+        "object": "page",
+        "entry": [
+            {
+                "id": PAGE_ID,
+                "time": 1730200000,
+                "changes": [
+                    {
+                        "field": "feed",
+                        "value": {
+                            "item": "comment",
+                            "verb": "add",
+                            "comment_id": "POST_C_enq",
+                            "from": {"id": "U_77", "name": "Pedro Matos"},
+                            "message": "How much does it cost?",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    body, headers = _signed(feed)
+
+    r = await client.post("/webhook/meta", content=body, headers=headers)
+
+    assert r.json()["status"] == "ok"
+    [entry] = [
+        e
+        for e in await _entries(fake_redis)
+        if e.get("provider_message_id") == "comment:POST_C_enq"
+    ]
+    assert entry["provider"] == "meta_messenger"
+    assert entry["context_message_id"] == "comment:POST_C_enq"
+
+
 async def test_business_own_comment_and_disabled_comments(
     client, db_session, fake_redis, seed_tenants, no_peer
 ):

@@ -24,6 +24,7 @@ is live under another client.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import secrets
 import uuid
@@ -47,7 +48,12 @@ from nexus_channels.meta_social.exceptions import (
     is_messages_disabled,
     is_permission_error,
 )
-from nexus_channels.meta_social.graph import INSTAGRAM_FIELDS, MESSENGER_FIELDS, MetaSocialClient
+from nexus_channels.meta_social.graph import (
+    INSTAGRAM_FIELDS,
+    MESSENGER_FIELDS,
+    MESSENGER_OPTIONAL_FIELDS,
+    MetaSocialClient,
+)
 from nexus_channels.meta_social.webhook_adapter import PROVIDER_INSTAGRAM, PROVIDER_MESSENGER
 from nexus_channels.whatsapp_meta.exceptions import (
     MetaAPIError,
@@ -319,11 +325,8 @@ class MetaSocialConnector:
         if owner is not None and uuid.UUID(str(owner)) != tenant_id:
             raise MetaSocialConnectError("already_connected_elsewhere")
 
-        fields = INSTAGRAM_FIELDS if kind == "instagram" else MESSENGER_FIELDS
         try:
-            await self._client.subscribe(
-                object_id=account.id, access_token=creds.send_token, fields=fields
-            )
+            await self._subscribe(kind, object_id=account.id, token=creds.send_token)
         except MetaAPIError as exc:
             if kind == "instagram" and is_messages_disabled(exc):
                 raise MetaSocialConnectError("messages_disabled") from exc
@@ -443,16 +446,48 @@ class MetaSocialConnector:
         ours = [a for a in apps if str(a.get("id")) == self._app_id]
         subscribed = set((ours[0].get("subscribed_fields") or []) if ours else [])
         if ours and set(fields) <= subscribed:
+            if kind == "messenger" and not set(MESSENGER_OPTIONAL_FIELDS) <= subscribed:
+                # The Page's comments: asked for again, never a failure.
+                with contextlib.suppress(MetaAPIError):
+                    await self._subscribe(
+                        kind, object_id=channel.provider_identifier, token=creds.send_token
+                    )
             return HealthResult(ok=True)
         try:
-            await self._client.subscribe(
-                object_id=channel.provider_identifier, access_token=creds.send_token, fields=fields
+            await self._subscribe(
+                kind, object_id=channel.provider_identifier, token=creds.send_token
             )
         except MetaAPIError as exc:
             if kind == "instagram" and is_messages_disabled(exc):
                 return HealthResult(ok=False, reason="messages_disabled")
             return HealthResult(ok=False, reason="subscribe_failed")
         return HealthResult(ok=True, resubscribed=True)
+
+    async def _subscribe(self, kind: Kind, *, object_id: str, token: str) -> None:
+        """Subscribe the account or Page. A Page is asked for its comments
+        (``MESSENGER_OPTIONAL_FIELDS``) too; when Meta refuses those, it is
+        subscribed to messaging alone and still connects."""
+        if kind == "instagram":
+            await self._client.subscribe(
+                object_id=object_id, access_token=token, fields=INSTAGRAM_FIELDS
+            )
+            return
+        try:
+            await self._client.subscribe(
+                object_id=object_id,
+                access_token=token,
+                fields=MESSENGER_FIELDS + MESSENGER_OPTIONAL_FIELDS,
+            )
+        except MetaAPIError as exc:
+            log.info(
+                "meta_social.subscribe.optional_refused",
+                fields=list(MESSENGER_OPTIONAL_FIELDS),
+                code=exc.code,
+                meta_message=exc.message[:200],
+            )
+            await self._client.subscribe(
+                object_id=object_id, access_token=token, fields=MESSENGER_FIELDS
+            )
 
 
 def _account_dict(a: ConnectableAccount) -> dict[str, Any]:

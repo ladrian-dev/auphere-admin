@@ -41,6 +41,7 @@ class FakeGraph:
         ]
         self.business: str | None = "BIZ_1"
         self.subscribe_error: dict[str, Any] | None = None
+        self.subscribe_error_only_with: str | None = None
         self.granular_scopes: list[dict[str, Any]] = []
         self.portfolio_instagram: list[dict[str, Any]] = []
 
@@ -68,7 +69,12 @@ class FakeGraph:
         if path == "/BIZ_1/owned_instagram_accounts":
             return httpx.Response(400, json={"error": {"message": "no", "code": 100}})
         if path.endswith("/subscribed_apps"):
-            if request.method == "POST" and self.subscribe_error:
+            only = self.subscribe_error_only_with
+            if (
+                request.method == "POST"
+                and self.subscribe_error
+                and (only is None or only in params.get("subscribed_fields", "").split(","))
+            ):
                 return httpx.Response(400, json={"error": self.subscribe_error})
             return httpx.Response(200, json={"success": True})
         if path == f"/{IG_ID}":
@@ -480,9 +486,8 @@ async def test_the_partner_sets_the_public_reply_to_comments(
     assert len(audits) == 2
 
 
-async def test_comment_settings_are_only_for_instagram(
-    client, console_world, db_session, graph
-) -> None:
+async def test_a_page_has_comment_settings_too(client, console_world, db_session, graph) -> None:
+    # Owner, 2026-10-31: the agent answers the comments on the Page's posts.
     a = console_world["a"]
     await _beta(db_session, a["partner_id"], ["messenger"])
     r = await client.post(
@@ -490,9 +495,28 @@ async def test_comment_settings_are_only_for_instagram(
     )
     channel_id = r.json()["channel"]["id"]
     url = f"/console/clients/{a['ref']}/channels/{channel_id}"
-    assert (await client.get(url, headers=a["headers"]())).json()["instagram_comments"] is None
+    page = (await client.get(url, headers=a["headers"]())).json()
+    assert page["instagram_comments"] == {"enabled": True, "public_reply": None}
     r = await client.put(
         f"{url}/comments", headers=a["headers"](), json={"enabled": True, "public_reply": "Hi"}
     )
-    assert r.status_code == 409
-    assert r.json()["detail"]["code"] == "not_instagram"
+    assert r.status_code == 200, r.text
+    assert r.json()["instagram_comments"] == {"enabled": True, "public_reply": "Hi"}
+
+
+async def test_a_page_subscribes_its_posts_and_still_connects_without_them(
+    client, console_world, db_session, graph
+) -> None:
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["messenger"])
+    graph.subscribe_error = {"message": "needs pages_read_engagement", "code": 200}
+    graph.subscribe_error_only_with = "feed"
+
+    r = await client.post(
+        _url(a, "messenger/connect"), headers=a["headers"](), json={"code": "CODE"}
+    )
+
+    assert r.status_code == 200, r.text
+    asked = [c[2]["subscribed_fields"] for c in graph.calls if c[1].endswith("/subscribed_apps")]
+    assert "feed" in asked[0] and "messages" in asked[0]
+    assert "feed" not in asked[1] and "messages" in asked[1]

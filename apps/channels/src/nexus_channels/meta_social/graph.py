@@ -23,7 +23,8 @@ Endpoints (Meta docs, 2026-10):
   (staging, 2026-10-31).
 - ``POST|GET|DELETE /{id}/subscribed_apps`` — webhooks per account or Page.
 - ``POST /{id}/messages`` — Send API (``{IG_ID}`` or ``{PAGE_ID}``).
-- ``POST /{comment_id}/replies`` — public reply to an Instagram comment.
+- ``POST /{comment_id}/replies`` — public reply to an Instagram comment;
+  ``POST /{comment_id}/comments`` on a Page's post.
 - ``GET /{IGSID|PSID}`` — the person's name and picture (Business Asset
   User Profile Access).
 """
@@ -60,6 +61,12 @@ MESSENGER_FIELDS: Final = (
     "message_echoes",
     "messaging_policy_enforcement",
 )
+#: Asked for on top of ``MESSENGER_FIELDS``, never instead of them: the Page's
+#: posts (``feed``), where its comments arrive. Meta refuses it without the
+#: Page-content permissions, and a Page that can only message must still
+#: connect and stay healthy (owner, 2026-10-31: the agent answers Page
+#: comments too).
+MESSENGER_OPTIONAL_FIELDS: Final = ("feed",)
 
 #: Hosts Meta serves message attachments from. Anything else is refused, so
 #: a crafted payload cannot make the worker fetch an arbitrary URL.
@@ -190,10 +197,12 @@ class MetaSocialClient(MetaClient):
         return await self._post(f"/{sender_id}/messages", access_token=access_token, json_body=body)
 
     async def reply_comment(
-        self, *, comment_id: str, access_token: str, message: str
+        self, *, comment_id: str, access_token: str, message: str, edge: str = "replies"
     ) -> dict[str, Any]:
+        """Public reply under a comment: ``/replies`` on Instagram,
+        ``/comments`` on a Page's post."""
         return await self._post(
-            f"/{comment_id}/replies", access_token=access_token, params={"message": message}
+            f"/{comment_id}/{edge}", access_token=access_token, params={"message": message}
         )
 
     async def user_profile(self, *, user_id: str, access_token: str, fields: str) -> dict[str, Any]:

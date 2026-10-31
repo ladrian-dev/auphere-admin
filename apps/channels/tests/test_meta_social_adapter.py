@@ -59,7 +59,7 @@ class Recorder:
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
         self.calls.append((request.method, request.url.path, dict(request.url.params), body))
-        if request.url.path.endswith("/replies"):
+        if request.url.path.endswith(("/replies", "/comments")):
             return httpx.Response(200, json={"id": "R_1"})
         return httpx.Response(
             200, json={"recipient_id": "U", "message_id": f"mid.{len(self.calls)}"}
@@ -139,6 +139,26 @@ async def test_private_reply_goes_to_the_comment_once_then_public_line() -> None
     assert len(body["message"]["text"].encode()) <= 1000
     _, path, params, _ = rec.calls[1]
     assert path == "/v26.0/C_1/replies" and params["message"] == "We sent you a DM"
+
+
+async def test_a_page_comment_gets_a_private_reply_and_a_line_under_the_post() -> None:
+    # Owner, 2026-10-31: same as Instagram, from the Page; the public line
+    # goes to ``/comments`` (a Page's post), not ``/replies``.
+    rec = Recorder()
+    await _adapter(PROVIDER_MESSENGER, rec, public_reply="We sent you a message").send_text(
+        from_phone="ACC",
+        recipient="U_77",
+        text="It depends on the plan; let me tell you here.",
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:POST_1_C_9",
+    )
+    assert len(rec.calls) == 2
+    _, path, _, body = rec.calls[0]
+    assert path == "/v26.0/ACC/messages"
+    assert body["recipient"] == {"comment_id": "POST_1_C_9"}
+    _, path, params, _ = rec.calls[1]
+    assert path == "/v26.0/POST_1_C_9/comments" and params["message"] == "We sent you a message"
 
 
 async def test_interactive_becomes_quick_replies() -> None:

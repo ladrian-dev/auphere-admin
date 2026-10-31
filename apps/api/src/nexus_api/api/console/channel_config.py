@@ -413,8 +413,13 @@ def _catalog_fields(channel: Channel) -> dict[str, Any]:
     return {"catalog": catalog, "catalog_state": state, "catalog_error": _catalog_error_of(cfg)}
 
 
+#: The channels whose comments the agent answers: Instagram, and a Page's
+#: posts on Messenger (owner, 2026-10-31). The field keeps its old name.
+_COMMENT_CHANNELS = frozenset({ChannelType.INSTAGRAM, ChannelType.MESSENGER})
+
+
 def _comments_of(channel: Channel) -> InstagramCommentsIO | None:
-    if channel.type is not ChannelType.INSTAGRAM:
+    if channel.type not in _COMMENT_CHANNELS:
         return None
     cfg = channel.config or {}
     reply = cfg.get("comment_public_reply")
@@ -640,11 +645,12 @@ async def put_instagram_comments(
     scope: ClientScope = Depends(client_scope("channels:write")),
     redis: Redis = Depends(get_redis),
 ) -> ChannelPageOut:
-    """Spec 049 (Historia 3): si el agente atiende los comentarios y qué línea
-    publica bajo el comentario al contestar en privado. Guarda al pulsar,
+    """Spec 049 (Historia 3): si el agente atiende los comentarios (de Instagram
+    o de las publicaciones de la Página) y qué línea publica bajo el comentario
+    al contestar en privado. Guarda al pulsar,
     como el catálogo, y queda en la auditoría."""
     channel = await _channel(scope, channel_id)
-    if channel.type is not ChannelType.INSTAGRAM:
+    if channel.type not in _COMMENT_CHANNELS:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "not_instagram"})
     if channel.status is ChannelStatus.DISCONNECTED:
         raise HTTPException(

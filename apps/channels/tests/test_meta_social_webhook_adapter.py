@@ -224,6 +224,53 @@ def test_business_own_comment_never_reaches_the_agent() -> None:
     assert ev.kind == "echo"
 
 
+def _page_feed(value: dict[str, object]) -> dict[str, object]:
+    return {
+        "object": "page",
+        "entry": [{"id": PAGE, "changes": [{"field": "feed", "value": value}]}],
+    }
+
+
+def test_a_page_comment_is_a_turn_like_an_instagram_one() -> None:
+    # Owner, 2026-10-31: the agent answers the comments on the Page's posts.
+    [ev] = iter_events(
+        _page_feed(
+            {
+                "item": "comment",
+                "verb": "add",
+                "comment_id": "POST_1_C_9",
+                "post_id": f"{PAGE}_POST_1",
+                "from": {"id": "U_77", "name": "Pedro Matos"},
+                "message": "How much does it cost?",
+            }
+        )
+    )
+    assert ev.kind == "comment"
+    assert ev.provider == PROVIDER_MESSENGER
+    inbound = ev.inbound
+    assert inbound is not None
+    assert inbound.context_message_id == f"{COMMENT_PREFIX}POST_1_C_9"
+    assert inbound.sender_identifier == "U_77"
+    assert inbound.sender_name == "Pedro Matos"
+    assert inbound.text == "How much does it cost?"
+    assert inbound.raw_event_type == "comment:PAGE_POST"
+
+
+def test_only_a_new_page_comment_is_a_turn() -> None:
+    edited = {"item": "comment", "verb": "edited", "comment_id": "C", "from": {"id": "U"}}
+    post = {"item": "status", "verb": "add", "post_id": "P", "from": {"id": "U"}}
+    own = {
+        "item": "comment",
+        "verb": "add",
+        "comment_id": "C",
+        "from": {"id": PAGE},
+        "message": "Hi",
+    }
+    assert [e.kind for e in iter_events(_page_feed(edited))] == ["other"]
+    assert [e.kind for e in iter_events(_page_feed(post))] == ["other"]
+    assert [e.kind for e in iter_events(_page_feed(own))] == ["echo"]
+
+
 def test_entry_account_ids_in_order() -> None:
     payload = {"object": "page", "entry": [{"id": "A"}, {"id": "B"}, {"id": "A"}]}
     assert entry_account_ids(payload) == ["A", "B"]

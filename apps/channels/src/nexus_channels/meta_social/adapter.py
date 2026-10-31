@@ -369,9 +369,9 @@ class MetaSocialChannelAdapter:
     async def _private_reply(
         self, ctx: SendContext, *, comment_id: str, text: str, channel_id: uuid.UUID
     ) -> SendResult:
-        if not self.is_instagram:
-            raise ChannelCapabilityError("Private replies are only wired for Instagram comments.")
-        # One message per comment: what does not fit is cut, not split.
+        # Instagram and a Page's post alike: the Send API takes
+        # ``recipient.comment_id``. One message per comment: what does not fit
+        # is cut, not split.
         chunk = (self._chunks(text) or [text])[0]
         raw = await self._client.send(
             sender_id=ctx.account_id,
@@ -382,7 +382,10 @@ class MetaSocialChannelAdapter:
         if ctx.public_comment_reply:
             try:
                 await self._client.reply_comment(
-                    comment_id=comment_id, access_token=ctx.token, message=ctx.public_comment_reply
+                    comment_id=comment_id,
+                    access_token=ctx.token,
+                    message=ctx.public_comment_reply,
+                    edge="replies" if self.is_instagram else "comments",
                 )
             except Exception as exc:
                 # The private reply already reached the person; a missing
