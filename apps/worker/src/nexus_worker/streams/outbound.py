@@ -1075,6 +1075,13 @@ async def _social_send_refused(
         message_id=str(msg.id),
         provider=provider,
         failure_code=code,
+        # What Meta said, so a refusal is diagnosed from the log and not
+        # guessed (staging, 2026-10-31: Messenger «permission_lost»). No token
+        # travels in a Graph error.
+        meta_code=getattr(exc, "code", None),
+        meta_subcode=getattr(exc, "subcode", None),
+        meta_message=str(getattr(exc, "message", "") or "")[:300],
+        fbtrace_id=getattr(exc, "fbtrace_id", None),
     )
     return True
 
