@@ -33,7 +33,7 @@ export type MetaSignupConfig = {
  * everything around it. Without this, the popup floats over a busy console
  * and the eye does not know which of the two is asking for attention.
  */
-export function MetaWindowVeil({ open }: { open: boolean }) {
+export function MetaWindowVeil({ open, note }: { open: boolean; note?: MessageKey }) {
   const t = useT();
   if (!open) return null;
   return (
@@ -45,6 +45,7 @@ export function MetaWindowVeil({ open }: { open: boolean }) {
     >
       <p className="text-lg font-medium">{t("ch.connect.veil.title")}</p>
       <p className="max-w-md text-sm text-pistachio/80">{t("ch.connect.veil.body")}</p>
+      {note ? <p className="max-w-md text-sm text-pistachio/80">{t(note)}</p> : null}
     </div>
   );
 }

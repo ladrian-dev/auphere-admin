@@ -115,7 +115,7 @@ export function useMetaSocialConnect({
 
   const dialog = (
     <>
-      <MetaWindowVeil open={working && !choice} />
+      <MetaWindowVeil open={working && !choice} note="ch.social.veil.access" />
       <Dialog open={failure !== null} onOpenChange={(o) => !o && setFailure(null)}>
         <DialogContent showCloseButton={false} className="justify-items-center gap-4 p-8 text-center sm:max-w-120" data-slot="meta-social-failure">
           <CircleAlert aria-hidden="true" className="size-8 text-destructive" />

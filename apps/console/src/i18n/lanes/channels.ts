@@ -438,6 +438,11 @@ export const channelsMessages = {
   // ── spec 049: Instagram y Messenger ───────────────────────────────
   "ch.social.connect.instagram": { es: "Conectar Instagram", en: "Connect Instagram" },
   "ch.social.connect.messenger": { es: "Conectar Messenger", en: "Connect Messenger" },
+  // Meta's review asks the app to tell the admin to grant access to the business's assets (business_management).
+  "ch.social.veil.access": {
+    es: "Quien administra la cuenta o la Página tiene que dar a Auphere acceso explícito a los activos del negocio en esa ventana.",
+    en: "Whoever manages the account or Page must give Auphere explicit access to the business's assets in that window.",
+  },
   "ch.social.choose.instagram": { es: "¿Qué cuenta de Instagram conectas?", en: "Which Instagram account do you connect?" },
   "ch.social.choose.messenger": { es: "¿Qué Página de Facebook conectas?", en: "Which Facebook Page do you connect?" },
   "ch.social.choose.body": {

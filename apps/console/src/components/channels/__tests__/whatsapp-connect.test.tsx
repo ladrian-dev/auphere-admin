@@ -95,6 +95,15 @@ describe("mientras la ventana de Meta está abierta (2026-09-30)", () => {
     expect(veil.className).toContain("bg-dark-green");
   });
 
+  it("en Instagram y Messenger recuerda dar acceso a los activos del negocio (revisión de Meta)", () => {
+    render(
+      <LocaleProvider locale="en">
+        <MetaWindowVeil open note="ch.social.veil.access" />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("explicit access to the business's assets");
+  });
+
   it("y desaparece en cuanto Meta devuelve", () => {
     render(
       <LocaleProvider locale="es">
