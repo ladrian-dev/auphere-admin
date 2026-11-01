@@ -3,7 +3,7 @@
 import { Bot, WifiOff } from "lucide-react";
 import * as React from "react";
 
-import { Alert, AlertDescription, Button, Sheet, SheetContent, SheetTitle, cn } from "@nexus/ui";
+import { Alert, AlertDescription, Button, ConfirmDialog, Sheet, SheetContent, SheetTitle, cn } from "@nexus/ui";
 
 import {
   archiveReplyAction,
@@ -17,6 +17,8 @@ import {
   openConversationAction,
   reopenAction,
   repliesAction,
+  archiveChatAction,
+  clearChatAction,
   resolveAction,
   sendMessageAction,
   setNoteAction,
@@ -53,6 +55,8 @@ export type InboxInitial = {
   query: string;
   /** Spec 030: one agent's numbers only; `agents` is empty with one agent. */
   agent: string | null;
+  /** Only this kind of channel (owner, 2026-11-01). */
+  channel: string | null;
   agents: { id: string; name: string }[];
   page: InboxPage | null;
   selectedId: string | null;
@@ -129,12 +133,13 @@ function useWide(ref: React.RefObject<HTMLElement | null>): boolean {
   return wide;
 }
 
-function syncUrl(selectedId: string | null, filter: InboxFilter, query: string, agent: string | null): void {
+function syncUrl(selectedId: string | null, filter: InboxFilter, query: string, agent: string | null, channel: string | null): void {
   const params = new URLSearchParams();
   if (selectedId) params.set("c", selectedId);
   if (filter !== "all") params.set("filter", filter);
   if (query.trim()) params.set("q", query.trim());
   if (agent) params.set("agent", agent);
+  if (channel) params.set("channel", channel);
   const qs = params.toString();
   window.history.replaceState(null, "", qs ? `/inbox?${qs}` : "/inbox");
 }
@@ -163,6 +168,11 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
   const [filter, setFilter] = React.useState<InboxFilter>(initial.filter);
   const [query, setQuery] = React.useState(initial.query);
   const [agent, setAgent] = React.useState<string | null>(initial.agent);
+  const [channel, setChannel] = React.useState<string | null>(initial.channel);
+  // What the client has: kept while a list loads, so the filter does not jump.
+  const [channelKinds, setChannelKinds] = React.useState<string[]>(initial.page?.channel_kinds ?? []);
+  const [confirming, setConfirming] = React.useState<"clear" | "delete" | null>(null);
+  const [confirmError, setConfirmError] = React.useState<string | null>(null);
   const [page, setPage] = React.useState<InboxPage | null>(initial.page);
   const [listLoading, setListLoading] = React.useState(false);
   const [listFailed, setListFailed] = React.useState(initial.page === null);
@@ -215,20 +225,21 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
   }, [notice]);
 
   // ── reads ───────────────────────────────────────────────────────────
-  const latest = React.useRef({ filter, query, agent, selectedId });
-  latest.current = { filter, query, agent, selectedId };
+  const latest = React.useRef({ filter, query, agent, channel, selectedId });
+  latest.current = { filter, query, agent, channel, selectedId };
 
   /** `reset`: the filter or the search changed — the old rows are not an answer
    *  any more, so the list shows its loading (or its error). A background
    *  refresh that fails keeps what is on screen. */
   const refreshList = React.useCallback(async (reset = false) => {
-    const { filter: f, query: q, agent: a } = latest.current;
+    const { filter: f, query: q, agent: a, channel: c } = latest.current;
     if (reset) setPage(null);
     setListLoading(true);
-    const r = guard(await listConversationsAction({ filter: f, q: q.trim() || undefined, agent: a ?? undefined }));
+    const r = guard(await listConversationsAction({ filter: f, q: q.trim() || undefined, agent: a ?? undefined, channel: c ?? undefined }));
     setListLoading(false);
     if (r.ok) {
       setPage(r.data);
+      setChannelKinds(r.data.channel_kinds);
       setCounts(r.data.counts);
       setListFailed(false);
     } else if (reset) {
@@ -257,7 +268,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       setThreadLoading(true);
       setDetail(null);
       setItems([]);
-      syncUrl(id, latest.current.filter, latest.current.query, latest.current.agent);
+      syncUrl(id, latest.current.filter, latest.current.query, latest.current.agent, latest.current.channel);
       await refreshOpen(id, true);
       setThreadLoading(false);
       setPage((p) => (p ? { ...p, items: p.items.map((c) => (c.id === id ? { ...c, unread: false } : c)) } : p));
@@ -278,11 +289,11 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       firstRun.current = false;
       return;
     }
-    syncUrl(latest.current.selectedId, filter, query, agent);
+    syncUrl(latest.current.selectedId, filter, query, agent, channel);
     const id = window.setTimeout(() => void refreshList(true), query ? 250 : 0);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshList reads the latest filter/query itself
-  }, [filter, query, agent]);
+  }, [filter, query, agent, channel]);
 
   // ── live ────────────────────────────────────────────────────────────
   const pendingList = React.useRef<number | null>(null);
@@ -362,12 +373,37 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     back();
     void refreshList();
   }
+  async function clearChat() {
+    if (!detail) return;
+    setConfirmError(null);
+    const r = guard(await clearChatAction({ id: detail.id }));
+    if (!r.ok) {
+      setConfirmError(t("inbox.error.action"));
+      return;
+    }
+    setConfirming(null);
+    setNotice(t("inbox.toast.cleared"));
+    await control(r);
+  }
+  async function deleteChat() {
+    if (!detail) return;
+    setConfirmError(null);
+    const r = guard(await archiveChatAction({ id: detail.id }));
+    if (!r.ok) {
+      setConfirmError(t("inbox.error.action"));
+      return;
+    }
+    setConfirming(null);
+    setNotice(t("inbox.toast.deleted"));
+    back();
+    void refreshList();
+  }
   function back() {
     setSelectedId(null);
     latest.current.selectedId = null;
     setDetail(null);
     setItems([]);
-    syncUrl(null, latest.current.filter, latest.current.query, latest.current.agent);
+    syncUrl(null, latest.current.filter, latest.current.query, latest.current.agent, latest.current.channel);
   }
 
   function send(text: string): Promise<boolean> {
@@ -473,6 +509,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       filter,
       q: query.trim() || undefined,
       agent: agent ?? undefined,
+      channel: channel ?? undefined,
       cursor: page.next_cursor,
     });
     setLoadingMore(false);
@@ -573,6 +610,9 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
             onFilter={setFilter}
             onQuery={setQuery}
             onAgent={setAgent}
+            channel={channel}
+            channelKinds={channelKinds}
+            onChannel={setChannel}
             onOpen={(id) => void open(id)}
             onMore={() => void more()}
             onRetry={() => void refreshList(true)}
@@ -580,6 +620,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
               setFilter("all");
               setQuery("");
               setAgent(null);
+              setChannel(null);
             }}
           />
         </div>
@@ -613,6 +654,25 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
                 onResolve={() => void resolve()}
                 onReopen={() => void reopen()}
                 onTogglePanel={togglePanel}
+                onClearChat={() => {
+                  setConfirmError(null);
+                  setConfirming("clear");
+                }}
+                onDeleteChat={() => {
+                  setConfirmError(null);
+                  setConfirming("delete");
+                }}
+              />
+              <ConfirmDialog
+                open={confirming !== null}
+                onOpenChange={(o) => !o && setConfirming(null)}
+                destructive
+                title={confirming === "clear" ? t("inbox.clear.title") : t("inbox.delete.title")}
+                description={confirming === "clear" ? t("inbox.clear.body") : t("inbox.delete.body")}
+                confirmLabel={confirming === "clear" ? t("inbox.action.clear") : t("inbox.action.delete")}
+                cancelLabel={t("common.cancel")}
+                error={confirmError}
+                onConfirm={confirming === "clear" ? clearChat : deleteChat}
               />
               <Thread
                 items={optimistic}

@@ -103,7 +103,7 @@ export function inboxApi(call: Call) {
   const enc = encodeURIComponent;
   const ifMatch = (version?: number) => (version === undefined ? undefined : { "If-Match": String(version) });
   return {
-    inboxList: (p: { filter?: InboxFilter; q?: string; agent?: string; cursor?: string; limit?: number } = {}) =>
+    inboxList: (p: { filter?: InboxFilter; q?: string; agent?: string; channel?: string; cursor?: string; limit?: number } = {}) =>
       call<InboxPage>(`${C}${q(p)}`),
     inboxCounts: () => call<InboxCounts>("/console/lite/inbox/counts"),
     inboxDetail: (id: string) => call<InboxDetail>(`${C}/${enc(id)}`),
@@ -123,6 +123,8 @@ export function inboxApi(call: Call) {
       }),
     inboxResolve: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/resolve`, { method: "POST" }),
     inboxReopen: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/reopen`, { method: "POST" }),
+    inboxClear: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/clear`, { method: "POST" }),
+    inboxArchive: (id: string) => call<null>(`${C}/${enc(id)}/archive`, { method: "POST" }),
     inboxSetTags: (id: string, tags: string[]) =>
       call<{ tags: string[] }>(`${C}/${enc(id)}/tags`, { method: "PUT", body: { tags } }),
     inboxSuggestedTags: () => call<{ tags: string[] }>("/console/lite/inbox/tags"),

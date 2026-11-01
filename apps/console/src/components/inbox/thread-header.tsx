@@ -2,6 +2,7 @@ import { ArrowLeft, Check, Mail, PanelRight, RotateCcw } from "lucide-react";
 
 import { Button, cn } from "@nexus/ui";
 
+import { RowActions } from "@/components/row-actions";
 import { useT } from "@/i18n/client";
 import type { InboxDetail } from "@/lib/backend/inbox";
 
@@ -10,9 +11,10 @@ import { ContactAvatar } from "./contact-avatar";
 
 /**
  * The top of an open conversation (spec 030, R9, R12): who it is, who
- * answers now, and the three actions that do not need the composer —
- * mark as unread, resolve / reopen, show the contact panel. Icon buttons
- * carry their name for assistive tech and as a `title` for the eye.
+ * answers now, and the actions that do not need the composer — mark as
+ * unread, resolve / reopen, show the contact panel; clearing and deleting the
+ * chat, rarer and heavier, in the «⋯» menu. Icon buttons carry their name for
+ * assistive tech and as a `title` for the eye.
  */
 export function ThreadHeader({
   detail,
@@ -24,6 +26,8 @@ export function ThreadHeader({
   onResolve,
   onReopen,
   onTogglePanel,
+  onClearChat,
+  onDeleteChat,
 }: {
   detail: InboxDetail;
   initials: string;
@@ -34,6 +38,8 @@ export function ThreadHeader({
   onResolve: () => void;
   onReopen: () => void;
   onTogglePanel: () => void;
+  onClearChat: () => void;
+  onDeleteChat: () => void;
 }) {
   const t = useT();
   const resolved = detail.state === "resolved";
@@ -90,6 +96,14 @@ export function ThreadHeader({
         >
           <PanelRight />
         </IconAction>
+        <RowActions
+          menu
+          ariaLabel={t("inbox.action.more")}
+          actions={[
+            { label: t("inbox.action.clear"), onSelect: onClearChat, disabled: busy },
+            { label: t("inbox.action.delete"), onSelect: onDeleteChat, disabled: busy },
+          ]}
+        />
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { Inbox, Search } from "lucide-react";
 
 import { Alert, AlertDescription, Button, NativeSelect, Skeleton, cn } from "@nexus/ui";
 
+import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
 import { useT } from "@/i18n/client";
 import type { InboxCounts, InboxFilter, InboxPage } from "@/lib/backend/inbox";
 
@@ -29,6 +30,8 @@ export function ConversationList({
   query,
   agent,
   agents,
+  channel,
+  channelKinds,
   counts,
   selectedId,
   now,
@@ -36,6 +39,7 @@ export function ConversationList({
   onFilter,
   onQuery,
   onAgent,
+  onChannel,
   onOpen,
   onMore,
   onRetry,
@@ -49,6 +53,10 @@ export function ConversationList({
   agent: string | null;
   /** Empty with one agent: then there is nothing to choose. */
   agents: { id: string; name: string }[];
+  /** The kind it shows, `null` for all of them. */
+  channel: string | null;
+  /** The kinds this client has: with one, there is nothing to choose. */
+  channelKinds: string[];
   counts: InboxCounts;
   selectedId: string | null;
   now: Date;
@@ -56,12 +64,16 @@ export function ConversationList({
   onFilter: (f: InboxFilter) => void;
   onQuery: (q: string) => void;
   onAgent: (agent: string | null) => void;
+  onChannel: (channel: string | null) => void;
   onOpen: (id: string) => void;
   onMore: () => void;
   onRetry: () => void;
   onClear: () => void;
 }) {
   const t = useT();
+  const kinds = channelKinds.filter(hasBrandLogo);
+  const channelName = (kind: string) =>
+    kind === "instagram" ? t("inbox.channel.instagram") : kind === "messenger" ? t("inbox.channel.messenger") : kind === "whatsapp" ? t("inbox.channel.whatsapp") : kind;
   const label = (f: InboxFilter) =>
     f === "all"
       ? t("inbox.filter.all")
@@ -104,6 +116,28 @@ export function ConversationList({
             </Button>
           ))}
         </div>
+        {kinds.length > 1 ? (
+          <div role="group" aria-label={t("inbox.filter.channel")} className="flex flex-wrap items-center gap-1">
+            <Button type="button" size="sm" variant={channel === null ? "secondary" : "ghost"} aria-pressed={channel === null} onClick={() => onChannel(null)}>
+              {t("inbox.filter.channel.all")}
+            </Button>
+            {kinds.map((kind) => (
+              <Button
+                key={kind}
+                type="button"
+                size="sm"
+                variant={channel === kind ? "secondary" : "ghost"}
+                aria-pressed={channel === kind}
+                aria-label={channelName(kind)}
+                title={channelName(kind)}
+                onClick={() => onChannel(channel === kind ? null : kind)}
+                className="px-1"
+              >
+                <BrandLogo brand={kind} size="sm" className="size-5 rounded-full" />
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {agents.length > 1 ? (
           <NativeSelect
             id={INBOX_AGENT_FILTER_ID}
