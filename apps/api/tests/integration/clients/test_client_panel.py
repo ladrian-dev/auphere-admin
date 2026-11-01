@@ -159,7 +159,11 @@ async def test_the_bar_by_agent_the_month_and_the_four_that_spend_most(
             c["tenant_id"],
             spend * USD,
             agent_id=agent["agent_id"],
-            at=datetime.now(UTC) - timedelta(minutes=30),
+            # Within this month even in its first half hour (CI on 1 Nov, 00:18 UTC).
+            at=max(
+                datetime.now(UTC) - timedelta(minutes=30),
+                datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0),
+            ),
         )
     await add_conversations(
         db_session, c["tenant_id"], agents[0]["channel_id"], count=4, escalated=1
