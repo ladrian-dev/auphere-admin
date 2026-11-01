@@ -38,8 +38,10 @@ Todo esto queda en el **borrador de revisión**, sin enviar.
 
 ## Decisiones del owner
 
-1. **Comentarios de Instagram.** El 2026-10-31 los comentarios no generaron webhook. La matriz oficial de Meta dice que `comments` con Facebook Login necesita también `pages_manage_metadata`, `pages_read_engagement` y `pages_show_list`, y la respuesta privada, `pages_messaging`. La configuración «Instagram API (Unified Login)» (`1157578836735566`) no los pide. Intenté añadirlos y el sistema de permisos lo bloqueó porque no estaba autorizado. **Propuesta:** añadirlos, reconectar Instagram y repetir el comentario. Si siguen sin llegar, se graba con la notificación de prueba del Dashboard, como explica `08` §4.
+1. **Comentarios de Instagram.** El 2026-10-31 los comentarios no generaron webhook. La matriz oficial de Meta dice que `comments` con Facebook Login necesita también `pages_manage_metadata`, `pages_read_engagement` y `pages_show_list`, y la respuesta privada, `pages_messaging`. La configuración «Instagram API (Unified Login)» (`1157578836735566`) no los pide. Intenté añadirlos y el sistema de permisos lo bloqueó porque no estaba autorizado. **Propuesta:** añadirlos, reconectar Instagram y repetir el comentario.
+   **Hecho el 2026-11-01:** con los 4 permisos y «Páginas» en la configuración, y tras reconectar, el comentario llega, Ava responde en privado y deja la línea pública «We sent you a private message 📩» (configurada ese día en el canal de Instagram). Si siguen sin llegar, se graba con la notificación de prueba del Dashboard, como explica `08` §4.
 2. **Idioma de Ava.** No lo cambié. Ava tiene un borrador **v2** que creó el sistema el 2026-10-31 a las 19:14, al activar Reservas en el acceso del cliente. Tiene 14 habilidades (clínica estética, reservas…), frente a las 5 de la v1. Cambiar el idioma desde la consola publicaría ese borrador. La consola no tiene un botón para descartarlo (la API sí: `DELETE …/draft`). Ava ya responde en inglés a quien escribe en inglés. **Propuesta:** descartar la v2 y entonces poner el inglés como idioma principal.
+   **Hecho el 2026-11-01:** la v2 se descartó. Se probó el inglés como idioma principal en una v3, pero Ava pasó a contestar en inglés a quien escribe en español (INC-55). Además, la puerta no la dejaba publicar por pruebas «Not sure» (INC-54). La v3 también se descartó. Ava sigue en la **v1**, que responde en inglés a quien escribe en inglés, y eso basta para los vídeos.
 3. **`messaging_policy_enforcement`.** Lo pide la revisión de Messenger y el webhook de la Página no lo tiene suscrito. El 2026-10-30 el owner dijo «Ahora no». Cada Página sí lo pide en su suscripción.
 4. **Human Agent.** El vídeo necesita una conversación cuya última respuesta del cliente tenga **más de 24 h**. La de Messenger con la cuenta del owner cumple 24 h el **2026-11-01 a las 23:42 UTC** (00:42 del 2 en Madrid), contando desde el último mensaje de prueba. No hay que escribir en ella hasta grabar ese vídeo.
 5. **Canales abiertos.** Instagram y Messenger siguen en «A todos», y WhatsApp en «Solo mi equipo». En Instagram ha escrito al menos una persona ajena a las pruebas y Ava le contestó. Al terminar de grabar, pasarlos a «Sin configurar».
@@ -50,6 +52,10 @@ Todo esto queda en el **borrador de revisión**, sin enviar.
 En la publicación de la Página «Auphere» del 27 de octubre, con la cuenta «Andres Matos»:
 - «Test: how much does it cost?» (00:32 UTC, se descartó antes del arreglo).
 - «Test 2: do you work with dental clinics?» (03:19 UTC) y la respuesta de Auphere «We sent you a private message 📩».
+
+En la publicación de Instagram «5 métricas que importan de un agente» de @somos.auphere (22 de septiembre), con la cuenta «andresmatos.ux», el 2026-11-01:
+- «Test 3: do you offer a free trial?» (sin respuesta pública: aún no estaba configurada).
+- «Test 4: can it book appointments?» y la respuesta de @somos.auphere «We sent you a private message 📩».
 
 Los de la tarde del 31 los escribió el owner: «How much does it cost to?» en Instagram y «How much does it cost?» en Facebook.
 
