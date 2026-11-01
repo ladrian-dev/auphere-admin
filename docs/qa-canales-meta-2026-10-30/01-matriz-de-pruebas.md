@@ -133,7 +133,7 @@ Cliente «Meta Review Demo» del partner «Auphere AIaaS», agente «Ava» v1. C
 | CAT-02 | FAIL (esperado) | «Tu negocio no tiene catálogos» y sin campo manual en coexistencia (INC-29) |
 | IG-03 / IG-04 | PASS tras INC-41 | `@somos.auphere` conectada (`source=assigned`) |
 | IG-05 / IG-06 | PASS tras INC-43 e INC-46 | DM recibido, guardado y respondido una sola vez |
-| IG-08 | PASS | «I want to talk to a person»: intent `escalate`, `tool_calls=1` (arreglo INC-39), conversación en `human_takeover` |
+| IG-08 | PASS | «I want to talk to a person»: intent `escalate`, `tool_calls=1` (arreglo INC-39), conversación en `human_takeover`. 2026-11-01 00:27 UTC: repetido desde andresmatos.ux; el operador contesta desde el panel y llega a Instagram |
 | IG-07 | BLOQUEADA por Meta | El comentario de las 22:02 UTC no generó ningún webhook. La guía oficial de webhooks de Instagram: sin acceso avanzado (App Review) no llegan avisos de `comments`. `instagram_manage_comments` está sin aprobar |
 | IG-10 / MS audiencia | FAIL | Solo «A todos» (INC-44) |
 | Nombre de quien escribe (IG) | PASS | El panel muestra «Andres Matos \| Product Designer» |
@@ -141,3 +141,14 @@ Cliente «Meta Review Demo» del partner «Auphere AIaaS», agente «Ava» v1. C
 | MS-04 | PASS | DM recibido y guardado (21:40:12) |
 | MS-05 | PASS en el segundo intento | 21:40 UTC: Meta rechazó la respuesta (`permission_lost`, INC-48). 23:42–23:43 UTC, con `051f97af`: dos mensajes, dos respuestas enviadas, con eco y lectura de Meta. La causa del primer rechazo no quedó registrada (el log con el código de Meta llegó después) |
 | MS-07 | FAIL | El contacto de Messenger sale como PSID, sin nombre |
+
+### Noche del 2026-11-01 (Claude, con las cuentas del owner en su Chrome)
+
+| ID | Resultado | Evidencia |
+|---|---|---|
+| IG-05/06 en inglés | PASS | 00:26–00:27 UTC, andresmatos.ux: «Hi! What does Auphere do?» y «How much does it cost?» respondidas en inglés en unos 5 s, con enlace a auphere.com |
+| IG-08 + operador | PASS | Traspaso (`escalate`, `tool_calls=1`) y respuesta del operador desde el panel de staging que llega a Instagram |
+| MS-04/05 | PASS | 00:29 UTC: «What does Auphere do?» respondida en inglés |
+| MS traspaso + operador | PASS | 00:30 UTC: traspaso (`escalate`, `tool_calls=1`) y respuesta del operador que llega a Messenger |
+| Comentario de Página (INC-51) | PASS con `d9a0d101` | 03:19 UTC: el aviso `feed` llega sin `message`; staging lee el comentario de Graph (`pages_read_user_content`), Ava contesta en privado por Messenger y publica «We sent you a private message 📩» debajo (`pages_manage_engagement`) |
+| IG-07 (comentario de Instagram) | BLOQUEADA por Meta | Ver `08-videos-revision-meta.md` §4: hace falta la revisión o los permisos de Página en la configuración de Instagram |
