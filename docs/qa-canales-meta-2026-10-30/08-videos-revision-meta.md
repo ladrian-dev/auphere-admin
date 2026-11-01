@@ -91,9 +91,9 @@ Los textos de uso son **borradores en inglés**: el formulario es en inglés y l
   3. Cliente → agente → Channels → Instagram → Connect.
   4. Ventana de Facebook Login for Business con la elección de la cuenta de Instagram.
   5. Pantalla de permisos aceptada.
-  6. Vuelta a la consola con la tarjeta que muestra **@usuario y foto**.
+  6. Vuelta a la consola con el canal que muestra **@usuario**. La consola no enseña la foto de la cuenta: aunque `connect.py` la lee, ninguna pantalla usa `picture_url` (comprobado el 2026-11-01). No prometerla en el texto.
 - **Requisito específico** [Oficial]: en el texto hay que nombrar los campos concretos que se usan y dónde salen en la app. El vídeo tiene que enseñar la elección de la cuenta de Instagram.
-- **Borrador:** «Auphere is a customer-messaging platform used by agencies to run an AI assistant and a team inbox for their client businesses. When a business connects its Instagram professional account through Facebook Login for Business, we read the account's `id`, `username` and `profile_picture_url`. We show them on the channel card in the console, so the business can confirm the right account is connected. The `id` routes each incoming DM to the correct client workspace.»
+- **Borrador:** «Auphere is a customer-messaging platform used by agencies to run an AI assistant and a team inbox for their client businesses. When a business connects its Instagram professional account through Facebook Login for Business, we read the account's `id` and `username`. We show the username on the channel in the console, so the business can confirm the right account is connected. The `id` routes each incoming DM to the correct client workspace.»
 
 #### `instagram_manage_messages`
 
