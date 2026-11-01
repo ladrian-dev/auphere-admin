@@ -344,6 +344,29 @@ async def resolve(session: AsyncSession, conversation: Conversation, *, actor: s
     return True
 
 
+async def clear(session: AsyncSession, conversation: Conversation) -> None:
+    """«Vaciar el chat» (owner, 2026-11-01). Nothing is erased (constitution §IV:
+    borrar no existe): the Inbox and the agent read from ``attended_at`` on, so
+    moving it to now leaves the chat empty for both. The rows stay for the
+    retention rules. The Meta window (``last_inbound_at``, ``last_dm_at``) is
+    the channel's, not the chat's, and does not move."""
+    conversation.attended_at = _now()
+    conversation.last_attended_inbound_at = None
+    conversation.last_message_at = None
+    await session.flush()
+
+
+async def archive(session: AsyncSession, conversation: Conversation, *, actor: str) -> None:
+    """«Eliminar el chat» (owner, 2026-11-01): out of the Inbox, archived rather
+    than erased (constitution §IV). ``attended_at = NULL`` is exactly a
+    conversation that does not exist for the Inbox (spec 045, R1); if the contact
+    writes again it reopens with the agent and only the new messages show."""
+    await resolve(session, conversation, actor=actor)
+    conversation.attended_at = None
+    conversation.last_attended_inbound_at = None
+    await session.flush()
+
+
 async def reopen(session: AsyncSession, conversation: Conversation, *, actor: str) -> bool:
     """Vuelve a la lista y responde el agente. Idempotente."""
     if conversation.status != ConversationStatus.CLOSED:

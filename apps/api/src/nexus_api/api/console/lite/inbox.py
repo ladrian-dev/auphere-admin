@@ -31,6 +31,7 @@ from nexus_api.db.models import (
     AuditLog,
     Channel,
     ChannelStatus,
+    ChannelType,
     ContactNote,
     Conversation,
     ConversationEventKind,
@@ -420,6 +421,7 @@ async def list_conversations(
     agent: uuid.UUID | None = Query(
         default=None, description="Only this agent's numbers (spec 030)"
     ),
+    channel: ChannelType | None = Query(default=None, description="Only this kind of channel"),
 ) -> ConversationPageOut:
     try:
         page = await inbox_view.list_conversations(
@@ -431,6 +433,7 @@ async def list_conversations(
             cursor=cursor,
             limit=limit,
             agent=agent,
+            channel=channel,
         )
     except (ValueError, UnicodeDecodeError):
         raise HTTPException(
@@ -800,6 +803,35 @@ async def resolve(
         await scope.session.flush()
         _publish(redis, scope, conv.id)
     return await _detail_out(scope, conv)
+
+
+@router.post("/conversations/{conversation_id}/clear", response_model=ConversationDetailOut)
+async def clear(
+    conversation_id: uuid.UUID = ConversationId,
+    scope: LiteScope = Depends(lite_scope("inbox")),
+    redis: Redis = Depends(get_redis),
+) -> ConversationDetailOut:
+    """«Vaciar el chat»: empty for the Inbox and for the agent, not erased."""
+    conv = await _conversation(scope, conversation_id)
+    await inbox_lifecycle.clear(scope.session, conv)
+    _audit(scope, "inbox.cleared", conv.id, {})
+    await scope.session.flush()
+    _publish(redis, scope, conv.id)
+    return await _detail_out(scope, conv)
+
+
+@router.post("/conversations/{conversation_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
+async def archive(
+    conversation_id: uuid.UUID = ConversationId,
+    scope: LiteScope = Depends(lite_scope("inbox")),
+    redis: Redis = Depends(get_redis),
+) -> None:
+    """«Eliminar el chat»: out of the Inbox, archived rather than erased."""
+    conv = await _conversation(scope, conversation_id)
+    await inbox_lifecycle.archive(scope.session, conv, actor=f"client:{_me(scope)}")
+    _audit(scope, "inbox.archived", conv.id, {})
+    await scope.session.flush()
+    _publish(redis, scope, conv.id)
 
 
 @router.post("/conversations/{conversation_id}/reopen", response_model=ConversationDetailOut)

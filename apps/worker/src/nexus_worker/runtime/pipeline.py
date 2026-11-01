@@ -2221,17 +2221,24 @@ async def _load_recent_history(
     """
     if not conversation_id:
         return []
-    from nexus_api.db.models import Message, MessageDirection
+    from nexus_api.db.models import Conversation, Message, MessageDirection
+    from sqlalchemy import func as _func
     from sqlalchemy import select as _select
+    from sqlalchemy import text as _text
 
     conv_uuid = uuid.UUID(conversation_id)
+    # What the Inbox stopped showing («Vaciar», «Eliminar») the agent forgets too.
+    floor = _func.coalesce(
+        _select(Conversation.attended_at).where(Conversation.id == conv_uuid).scalar_subquery(),
+        _text("'-infinity'::timestamptz"),
+    )
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, tenant_id):
         rows = (
             (
                 await session.execute(
                     _select(Message)
-                    .where(Message.conversation_id == conv_uuid)
+                    .where(Message.conversation_id == conv_uuid, Message.created_at >= floor)
                     .order_by(Message.created_at.desc())
                     .limit(limit + 1)
                 )

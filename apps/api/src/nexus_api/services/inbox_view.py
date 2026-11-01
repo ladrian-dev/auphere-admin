@@ -11,6 +11,7 @@ partner, no conversaciones del negocio: no aparecen nunca.
 from __future__ import annotations
 
 import base64
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -26,6 +27,7 @@ from nexus_api.db.models import (
     AgentStatus,
     Channel,
     ChannelStatus,
+    ChannelType,
     ClientMembership,
     ContactNote,
     Conversation,
@@ -251,8 +253,22 @@ def author_of(
     return Author(kind="agent")
 
 
+#: How a contact's reaction is stored (``api/webhooks/meta*.py``).
+_REACTION = re.compile(r"^\[reaction:(?P<emoji>.*?):on=.*\]$", re.DOTALL)
+
+
+def _readable(content: str | None) -> str | None:
+    """What a person reads for a stored message: a reaction is its emoji, not
+    the internal id of the message it points at (INC-57)."""
+    mark = _REACTION.match(content or "")
+    if mark is None:
+        return content
+    emoji = mark["emoji"]
+    return "✕" if emoji == "(removed)" else emoji
+
+
 def _preview(content: str | None) -> str:
-    text = " ".join((content or "").split())
+    text = " ".join((_readable(content) or "").split())
     return text if len(text) <= PREVIEW_CHARS else text[: PREVIEW_CHARS - 1].rstrip() + "…"
 
 
@@ -266,6 +282,7 @@ async def list_conversations(
     cursor: str | None,
     limit: int,
     agent: uuid.UUID | None = None,
+    channel: ChannelType | None = None,
 ) -> ListPage:
     page = ListPage()
     unread = unread_expr(me)
@@ -298,6 +315,8 @@ async def list_conversations(
             base = base.where(unread)
     if agent is not None:
         base = base.where(agent_col == agent)
+    if channel is not None:
+        base = base.where(Channel.type == channel)
     if q:
         like = f"%{q.strip()}%"
         in_messages = (
@@ -729,6 +748,9 @@ async def thread(
     ev_stmt = sa.select(ConversationEvent).where(
         ConversationEvent.conversation_id == conversation.id
     )
+    if conversation.attended_at is not None:
+        # «Vaciar» (2026-11-01) moves this floor: what happened before goes with it.
+        ev_stmt = ev_stmt.where(ConversationEvent.created_at >= conversation.attended_at)
     if before:
         b_at, _ = decode_cursor(before)
         if b_at is not None:
@@ -758,7 +780,7 @@ async def thread(
                 at=m.created_at,
                 direction=str(getattr(m.direction, "value", m.direction)),
                 author=author_of(m.direction, m.actor_kind, m.actor_id, me=me, names=names),
-                text=m.content or None,
+                text=_readable(m.content) or None,
                 media_kind=m.media_kind,
                 media_filename=m.media_filename,
                 media_transcript=m.media_transcript,
