@@ -20,10 +20,12 @@ Es el guion práctico para grabar hoy en **staging**. Los requisitos y los texto
    - Instagram web: Más → Configuración → Idioma.
    - La app de Instagram del móvil.
    - La consola ya sale en inglés.
-2. **Textos en español que se ven en la consola** (cambiarlos o no enseñarlos):
-   - Bajo «Meta Review Demo»: «Agencia de asistentes con IA».
-   - En Settings de Ava: «Agente Ava configurado antes de la fábrica de agentes.».
-   - Si quieres, los paso a inglés antes de grabar.
+2. **Textos en español que se ven en la consola:**
+   - Bajo «Meta Review Demo» ya pone «AI assistant agency»: el «Niche» se cambió el 2026-11-01.
+   - Quedan en español y **no hay que enseñarlos**:
+     - en Settings de Ava, «Agente Ava configurado antes de la fábrica de agentes.». Es parte de la versión de Ava: cambiarlo exige publicar una versión nueva, y la puerta la bloquea (INC-54);
+     - en Business, el «Sector» y la sede «CEDE PRINCIPAL».
+   - Ningún vídeo pasa por esas pantallas.
 3. **Navegador:**
    - Ventana de 1440 px de ancho o menos, zoom al 100 %.
    - Una ventana sin pestañas personales a la vista y sin la barra de marcadores.
