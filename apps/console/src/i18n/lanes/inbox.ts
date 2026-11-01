@@ -5,11 +5,11 @@
  */
 export const inboxMessages = {
   "inbox.title": { es: "Bandeja de entrada", en: "Inbox" },
-  // Spec 045 (R6.2): only WhatsApp by Meta is in use — the intro names nothing else.
-  "inbox.intro.one": { es: "Tu agente responde en WhatsApp. Tú entras cuando hace falta.", en: "Your agent answers on WhatsApp. You step in when needed." },
+  // Spec 049: the client may answer on Instagram and Messenger too — the Inbox names no channel it may not have.
+  "inbox.intro.one": { es: "Tu agente responde a tus clientes. Tú entras cuando hace falta.", en: "Your agent answers your customers. You step in when needed." },
   "inbox.intro.many": {
-    es: "Tus agentes responden en WhatsApp. Tú entras cuando hace falta.",
-    en: "Your agents answer on WhatsApp. You step in when needed.",
+    es: "Tus agentes responden a tus clientes. Tú entras cuando hace falta.",
+    en: "Your agents answer your customers. You step in when needed.",
   },
   "inbox.agents.active": { es: "{count} agentes activos", en: "{count} active agents" },
   "inbox.live.reconnecting": { es: "Reconectando…", en: "Reconnecting…" },
@@ -39,8 +39,8 @@ export const inboxMessages = {
   "inbox.list.loading": { es: "Cargando conversaciones", en: "Loading conversations" },
   "inbox.empty.title": { es: "Aún no hay conversaciones", en: "No conversations yet" },
   "inbox.empty.body": {
-    es: "Cuando alguien escriba a tu WhatsApp, la conversación aparecerá aquí.",
-    en: "When someone messages your WhatsApp, the conversation will show up here.",
+    es: "Cuando alguien te escriba, la conversación aparecerá aquí.",
+    en: "When someone messages you, the conversation will show up here.",
   },
   "inbox.empty.filtered": { es: "No hay conversaciones con estos filtros.", en: "No conversations match these filters." },
   "inbox.empty.clear": { es: "Ver todas las conversaciones", en: "See all conversations" },
@@ -126,8 +126,8 @@ export const inboxMessages = {
   "inbox.composer.hint": { es: "Enter envía · Mayúsculas+Enter salta de línea", en: "Enter sends · Shift+Enter adds a line" },
   "inbox.composer.send": { es: "Enviar", en: "Send" },
   "inbox.composer.agent": {
-    es: "El agente está respondiendo en WhatsApp. Si quieres escribir tú, toma el control.",
-    en: "The agent is answering on WhatsApp. If you want to write yourself, take over.",
+    es: "El agente está respondiendo. Si quieres escribir tú, toma el control.",
+    en: "The agent is answering. If you want to write yourself, take over.",
   },
   "inbox.composer.other": {
     es: "{name} está atendiendo esta conversación.",
@@ -142,12 +142,12 @@ export const inboxMessages = {
     en: "Conversation resolved. If the contact writes again, it reopens and the agent answers.",
   },
   "inbox.composer.window_closed": {
-    es: "Pasaron más de 24 horas desde el último mensaje del contacto. WhatsApp no deja escribirle hasta que vuelva a escribir.",
-    en: "More than 24 hours have passed since the contact's last message. WhatsApp won't let you write until they write again.",
+    es: "Pasó el plazo para escribir a este contacto desde su último mensaje. Podrás hacerlo cuando vuelva a escribir.",
+    en: "The time to write to this contact since their last message has passed. You can write when they write again.",
   },
   "inbox.composer.channel_disconnected": {
-    es: "Tu número de WhatsApp está desconectado. Pide a quien lo gestiona que lo vuelva a conectar.",
-    en: "Your WhatsApp number is disconnected. Ask whoever manages it to reconnect it.",
+    es: "Este canal está desconectado. Pide a quien lo gestiona que lo vuelva a conectar.",
+    en: "This channel is disconnected. Ask whoever manages it to reconnect it.",
   },
   "inbox.composer.not_assigned_to_you": {
     es: "Ya no atiendes esta conversación. Toma el control para escribir.",
@@ -177,6 +177,7 @@ export const inboxMessages = {
   "inbox.panel.attends": { es: "Atiende", en: "Answering" },
   "inbox.panel.channel": { es: "Canal", en: "Channel" },
   "inbox.panel.phone": { es: "Teléfono", en: "Phone" },
+  "inbox.panel.account": { es: "Cuenta", en: "Account" },
   "inbox.panel.first": { es: "Primer mensaje", en: "First message" },
   "inbox.panel.conversations": { es: "Conversaciones", en: "Conversations" },
   "inbox.panel.activity": { es: "Actividad", en: "Activity" },
@@ -196,6 +197,8 @@ export const inboxMessages = {
   "inbox.panel.note.saved": { es: "Guardada", en: "Saved" },
   "inbox.panel.note.error": { es: "No se pudo guardar", en: "Couldn't save" },
   "inbox.channel.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
+  "inbox.channel.instagram": { es: "Instagram", en: "Instagram" },
+  "inbox.channel.messenger": { es: "Messenger", en: "Messenger" },
   // ── search from anywhere (R7.4) ─────────────────────────────────
   "inbox.globalSearch": { es: "Buscar en la bandeja", en: "Search the inbox" },
 } as const;

@@ -82,8 +82,14 @@ export function ContactPanel({
           <dt className="text-muted-foreground">{t("inbox.panel.attends")}</dt>
           <dd className="min-w-0 truncate">{attends}</dd>
           <dt className="text-muted-foreground">{t("inbox.panel.channel")}</dt>
-          <dd>{t("inbox.channel.whatsapp")}</dd>
-          <dt className="text-muted-foreground">{t("inbox.panel.phone")}</dt>
+          <dd>
+            {detail.channel.kind === "instagram"
+              ? t("inbox.channel.instagram")
+              : detail.channel.kind === "messenger"
+                ? t("inbox.channel.messenger")
+                : t("inbox.channel.whatsapp")}
+          </dd>
+          <dt className="text-muted-foreground">{detail.channel.kind === "whatsapp" ? t("inbox.panel.phone") : t("inbox.panel.account")}</dt>
           <dd className="[overflow-wrap:anywhere]">{detail.contact.handle}</dd>
           <dt className="text-muted-foreground">{t("inbox.panel.first")}</dt>
           <dd>{firstText}</dd>

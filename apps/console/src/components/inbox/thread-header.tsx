@@ -5,6 +5,7 @@ import { Button, cn } from "@nexus/ui";
 import { useT } from "@/i18n/client";
 import type { InboxDetail } from "@/lib/backend/inbox";
 
+import { ChannelBadge } from "./channel-badge";
 import { ContactAvatar } from "./contact-avatar";
 
 /**
@@ -57,7 +58,10 @@ export function ThreadHeader({
       <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={onBack} aria-label={t("inbox.back")}>
         <ArrowLeft />
       </Button>
-      <ContactAvatar conversationId={detail.id} hasAvatar={detail.contact.has_avatar} initials={initials} className="size-10 text-sm" />
+      <span className="relative size-10 shrink-0">
+        <ContactAvatar conversationId={detail.id} hasAvatar={detail.contact.has_avatar} initials={initials} className="size-10 text-sm" />
+        <ChannelBadge kind={detail.channel.kind} />
+      </span>
       <div className="flex min-w-0 flex-1 flex-col">
         <h2 className="truncate text-base font-semibold" title={detail.contact.name}>
           {detail.contact.name}

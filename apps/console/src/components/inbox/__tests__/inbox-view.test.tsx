@@ -55,7 +55,7 @@ describe("InboxView", () => {
 
     await act(async () => refuse({ ok: false, status: 409, message: "", code: "window_closed" }));
     await waitFor(() => expect(within(log).queryByText("Te reservo el sábado")).toBeNull());
-    expect(screen.getByRole("alert")).toHaveTextContent("Pasaron más de 24 horas");
+    expect(screen.getByRole("alert")).toHaveTextContent("Pasó el plazo para escribir");
     expect(screen.getByRole("textbox", { name: "Escribir un mensaje" })).toHaveValue("Te reservo el sábado");
   });
 

@@ -1,5 +1,3 @@
-import { MessageCircle } from "lucide-react";
-
 import { cn } from "@nexus/ui";
 
 import { formatNumber } from "@nexus/ui";
@@ -8,6 +6,7 @@ import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { InboxConversation, InboxWaiting } from "@/lib/backend/inbox";
 
+import { ChannelBadge } from "./channel-badge";
 import { ContactAvatar } from "./contact-avatar";
 import { listTime, waitingFor, type WaitingFor } from "./inbox-model";
 
@@ -57,12 +56,7 @@ export function ConversationRow({
     >
       <span className="relative size-10 shrink-0">
         <ContactAvatar conversationId={c.id} hasAvatar={c.contact.has_avatar} initials={c.contact.initials} className="size-10 text-sm" />
-        <span
-          className="absolute -right-1 -bottom-1 grid size-5 place-items-center rounded-full bg-card text-primary-text ring-1 ring-border"
-          aria-hidden="true"
-        >
-          <MessageCircle className="size-3" />
-        </span>
+        <ChannelBadge kind={c.channel.kind} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex min-w-0 items-baseline justify-between gap-2">

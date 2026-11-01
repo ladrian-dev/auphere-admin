@@ -56,17 +56,17 @@ describe("a conversation that waits for a person", () => {
   });
 });
 
-/** Spec 045 (R6.2, R6.4): the Inbox's head names WhatsApp only, and the agents when there are several. */
+/** Spec 045 (R6.2, R6.4): the Inbox's head names no channel (spec 049), and the agents when there are several. */
 describe("the Inbox's head", () => {
   beforeEach(resetActions);
 
-  it("says who answers where, naming only WhatsApp", () => {
+  it("says who answers, naming no channel", () => {
     const { unmount } = renderInbox();
-    expect(screen.getByText("Tu agente responde en WhatsApp. Tú entras cuando hace falta.")).toBeInTheDocument();
+    expect(screen.getByText("Tu agente responde a tus clientes. Tú entras cuando hace falta.")).toBeInTheDocument();
     unmount();
     renderInbox({ agents: AGENTS });
-    expect(screen.getByText("Tus agentes responden en WhatsApp. Tú entras cuando hace falta.")).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/Instagram|Messenger/);
+    expect(screen.getByText("Tus agentes responden a tus clientes. Tú entras cuando hace falta.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/WhatsApp|Instagram|Messenger/);
   });
 
   it("one agent: no «agentes activos» pill", () => {
@@ -87,5 +87,19 @@ describe("the Inbox's head", () => {
     const filters = screen.getByRole("group", { name: "Filtros" });
     expect(within(filters).getAllByRole("button").map((b) => b.textContent)).toEqual(["Todas", "Sin leer", "Necesita humano", "Resueltas"]);
     expect(screen.queryByRole("tab")).toBeNull();
+  });
+});
+
+/** Owner, 2026-11-01: the corner of the picture says which channel it came through. */
+describe("the channel of a conversation", () => {
+  it.each(["instagram", "messenger", "whatsapp"])("%s shows its logo on the picture", (kind) => {
+    const { container } = row(conversation({ channel: { kind } }));
+    expect(container.querySelector("[data-slot=brand-logo]")).toHaveAttribute("data-brand", kind);
+  });
+
+  it("a kind without a logo keeps a neutral bubble", () => {
+    const { container } = row(conversation({ channel: { kind: "webchat" } }));
+    expect(container.querySelector("[data-slot=brand-logo]")).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 });
