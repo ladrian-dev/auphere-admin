@@ -55,9 +55,9 @@ Se graba el **bloque A** (login y conexión) una vez por canal y se reutiliza al
 | 7 | MS-4 Comentarios de la Página | `pages_read_user_content`, `pages_manage_engagement` | Ahora |
 | 8 | MS-3 Contenido de la Página | `pages_read_engagement` | Ahora (ver §3) |
 | 9 | PROF Nombre y foto de quien escribe | Business Asset User Profile Access | Sale de las tomas de IG-2 y MS-2 |
-| 10 | HA Human Agent | Human Agent | **Desde las 00:42 de Madrid** (23:42 UTC del 1 de noviembre) |
+| 10 | HA Human Agent | Human Agent | **Mañana 2 de noviembre, desde las 09:00 de Madrid** (cuando staging despierta) |
 
-**Sobre HA:** el hilo de Messenger de tu cuenta personal cumple 24 h a las 00:42. **No escribas en él antes.** Si hace falta escribir hoy por Messenger, usa otra cuenta de Facebook con rol en la app.
+**Sobre HA:** en el hilo de Messenger de tu cuenta personal, el último DM es de las 00:29 UTC del 1 de noviembre y el último comentario, de las 03:19 UTC. La ventana de envío (`last_dm_at`) se cierra a las 01:29 de Madrid del día 2, y la bandeja lo verá con más de 24 h desde las 04:19; staging está aparcado de 03:00 a 09:00. **No escribas ni comentes con esa cuenta antes de grabarlo:** un comentario suyo cae en la misma conversación. Si hace falta escribir hoy por Messenger, usa otra cuenta de Facebook con rol en la app.
 
 ## 2. Guion por vídeo
 
@@ -142,7 +142,7 @@ Cada vídeo empieza con un rótulo de 2 s: `Permission: <nombre>`. Los rótulos 
 - Montaje de IG-2 y MS-2: en la bandeja se ven **el nombre y la foto** de quien escribe, con zoom.
 - Rótulo: «We show the customer's name and profile picture so the team knows who they are talking to».
 
-### HA · Human Agent (1-1,5 min), desde las 00:42 de Madrid
+### HA · Human Agent (1-1,5 min), mañana desde las 09:00 de Madrid
 
 1. Bandeja: la conversación de Messenger de tu cuenta personal, con el último mensaje del cliente **de hace más de 24 h**.
    - Rótulo: «Last customer message: more than 24 h ago. The AI assistant can no longer reply».
