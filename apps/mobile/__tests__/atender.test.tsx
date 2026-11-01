@@ -46,7 +46,7 @@ describe("the control card (R6.1)", () => {
 describe("the box (R6.3, R6.5)", () => {
   it("with the 24 h window closed it says so before anyone types, and there is no box", async () => {
     await render(<Composer mode={{ kind: "mine", blocked: "window_closed" }} online focusSignal={0} replies={null} t={t} onSend={jest.fn()} onAttach={jest.fn()} onReplies={jest.fn()} />);
-    expect(screen.getByText(/WhatsApp no deja escribirle hasta que vuelva a escribir/)).toBeTruthy();
+    expect(screen.getByText(/Podrás hacerlo cuando vuelva a escribir/)).toBeTruthy();
     expect(screen.queryByLabelText("Escribir un mensaje")).toBeNull();
   });
 
