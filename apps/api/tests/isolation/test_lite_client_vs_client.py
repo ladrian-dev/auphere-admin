@@ -279,6 +279,8 @@ _INBOX_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("POST", "/console/lite/inbox/conversations/{conversation_id}/messages", {"text": "hola"}),
     ("POST", "/console/lite/inbox/conversations/{conversation_id}/resolve", None),
     ("POST", "/console/lite/inbox/conversations/{conversation_id}/reopen", None),
+    ("POST", "/console/lite/inbox/conversations/{conversation_id}/clear", None),
+    ("POST", "/console/lite/inbox/conversations/{conversation_id}/archive", None),
     ("PUT", "/console/lite/inbox/conversations/{conversation_id}/tags", {"tags": ["x"]}),
     ("PUT", "/console/lite/inbox/conversations/{conversation_id}/note", {"body": "x"}),
     ("PATCH", "/console/lite/inbox/replies/{reply_id}", {"body": "x"}),
