@@ -292,7 +292,7 @@ def _page_comment_event(value: dict[str, Any], *, account_id: str) -> SocialEven
             detail=f"feed:{value.get('item')}:{value.get('verb')}",
         )
     comment_id = value.get("comment_id")
-    if not comment_id or not isinstance(value.get("message"), str) or not value["message"]:
+    if not comment_id:
         # The key names only, never the content: enough to see what Meta sent.
         return SocialEvent(
             "other",
@@ -300,22 +300,36 @@ def _page_comment_event(value: dict[str, Any], *, account_id: str) -> SocialEven
             account_id,
             detail=f"feed_comment_incomplete:{','.join(sorted(value))}",
         )
-    # Same shape as Instagram's, so the turn and the reply are the same code.
     author = _dict(value.get("from"))
-    # Meta can leave out ``from`` for a person (staging, 2026-11-01: the first
-    # real Page comment came without it). The private reply only needs the
-    # comment, so the comment stands in for the sender; the Page's own
+    # Meta can leave out ``from`` for a person; the private reply only needs
+    # the comment, so the comment stands in for the sender. The Page's own
     # comments always carry ``from`` and stay echoes.
-    author_id = author.get("id") or f"{COMMENT_PREFIX}{comment_id}"
-    return _comment_event(
-        {
-            "id": comment_id,
-            "from": {"id": author_id, "username": author.get("name")},
-            "text": value.get("message"),
-            "media": {"media_product_type": "PAGE_POST"},
-        },
-        provider=PROVIDER_MESSENGER,
-        account_id=account_id,
+    author_id = str(author.get("id") or f"{COMMENT_PREFIX}{comment_id}")
+    if author_id == account_id:
+        return SocialEvent(
+            "echo", PROVIDER_MESSENGER, account_id, detail=f"{COMMENT_PREFIX}{comment_id}"
+        )
+    # Staging, 2026-11-01: with standard access the event came without
+    # ``message``. ``text`` is then empty and the route reads the comment from
+    # Graph (``pages_read_user_content``) before it becomes a turn.
+    message = value.get("message")
+    ref = f"{COMMENT_PREFIX}{comment_id}"
+    return SocialEvent(
+        "comment",
+        PROVIDER_MESSENGER,
+        account_id,
+        inbound=InboundMessage(
+            kind=InboundMessageKind.TEXT,
+            provider=PROVIDER_MESSENGER,
+            provider_message_id=ref[:255],
+            provider_identifier=account_id,
+            sender_identifier=author_id,
+            sender_name=str(author["name"]) if author.get("name") else None,
+            text=message if isinstance(message, str) else "",
+            context_message_id=ref[:160],
+            raw_event_type="comment:PAGE_POST",
+            received_at=datetime.now(UTC),
+        ),
     )
 
 

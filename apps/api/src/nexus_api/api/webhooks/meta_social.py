@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 import structlog
 from nexus_channels.meta_social import SocialEvent, entry_account_ids, iter_events, provider_for
+from nexus_channels.meta_social.webhook_adapter import COMMENT_PREFIX
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -207,17 +208,36 @@ async def _enqueue_once(
         log.info("webhook.meta_social.comment_skipped_disabled", tenant_id=str(tenant_id))
         return False
 
+    content = _render_content(inbound)
+    user_id = inbound.sender_identifier
+    customer_name = inbound.sender_name
+    if event.kind == "comment" and not (inbound.text or "").strip():
+        # A Page comment whose event came without its text (standard access):
+        # read it from Graph with the Page's token before it becomes a turn.
+        comment = await _read_page_comment(
+            session, tenant_id=tenant_id, channel_id=channel_id, ref=event_id
+        )
+        text = comment.get("message") if comment else None
+        if not isinstance(text, str) or not text.strip():
+            log.info("webhook.meta_social.comment_text_unavailable", tenant_id=str(tenant_id))
+            return False
+        content = text
+        author = comment.get("from") if comment else None
+        if isinstance(author, dict) and author.get("id"):
+            user_id = str(author["id"])
+            customer_name = str(author["name"]) if author.get("name") else customer_name
+
     fields: dict[str, str] = {
         "tenant_id": str(tenant_id),
         "channel_id": str(channel_id),
-        "user_id": inbound.sender_identifier,
-        "content": _render_content(inbound),
+        "user_id": user_id,
+        "content": content,
         "provider": event.provider,
         "provider_message_id": event_id,
         "kind": inbound.kind.value,
     }
-    if inbound.sender_name:
-        fields["customer_name"] = inbound.sender_name
+    if customer_name:
+        fields["customer_name"] = customer_name
     if inbound.media is not None and inbound.kind.value in {
         "audio",
         "image",
@@ -247,6 +267,31 @@ async def _enqueue_once(
         comment=event.kind == "comment",
     )
     return True
+
+
+async def _read_page_comment(
+    session: AsyncSession, *, tenant_id: uuid.UUID, channel_id: uuid.UUID, ref: str
+) -> dict[str, Any] | None:
+    """``GET /{comment-id}?fields=message,from`` with the Page token
+    (``pages_read_user_content``). ``None`` when it cannot be read."""
+    from nexus_channels.meta_social.credentials import SocialCredentialsRepository
+
+    from nexus_api.services import meta_social_service
+
+    async with tenant_scoped_session(session, tenant_id):
+        creds = await SocialCredentialsRepository(session).get(channel_id)
+    if creds is None:
+        return None
+    try:
+        found = await meta_social_service.client().account_profile(
+            object_id=ref.removeprefix(COMMENT_PREFIX),
+            access_token=creds.send_token,
+            fields="message,from",
+        )
+        return dict(found) if isinstance(found, dict) else None
+    except Exception as exc:
+        log.info("webhook.meta_social.comment_read_failed", error=type(exc).__name__)
+        return None
 
 
 def _render_content(inbound: Any) -> str:

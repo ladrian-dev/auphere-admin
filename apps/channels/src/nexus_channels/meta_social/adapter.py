@@ -262,6 +262,17 @@ class MetaSocialChannelAdapter:
         name (owner's decision on 2026-10-30: name and photo in the inbox)."""
         try:
             ctx = await self._load(tenant_id=tenant_id, channel_id=channel_id)
+            if not self.is_instagram and recipient.startswith(COMMENT_PREFIX):
+                # A Page comment that came without ``from``: the comment itself
+                # says who wrote it (``pages_read_user_content``). No picture.
+                comment = await self._client.account_profile(
+                    object_id=recipient.removeprefix(COMMENT_PREFIX),
+                    access_token=ctx.token,
+                    fields="from",
+                )
+                author = comment.get("from")
+                name = author.get("name") if isinstance(author, dict) else None
+                return SocialProfile(name=str(name)[:255] if name else None)
             if self.is_instagram:
                 data = await self._client.user_profile(
                     user_id=recipient, access_token=ctx.token, fields="name,username,profile_pic"

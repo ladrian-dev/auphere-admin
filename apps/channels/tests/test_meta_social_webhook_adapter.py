@@ -267,6 +267,15 @@ def test_a_page_comment_without_its_author_is_still_answered() -> None:
     assert ev.inbound.context_message_id == f"{COMMENT_PREFIX}P_C_1"
 
 
+def test_a_page_comment_without_text_waits_for_the_route_to_read_it() -> None:
+    # Staging, 2026-11-01: with standard access the event came without ``message``.
+    [ev] = iter_events(
+        _page_feed({"item": "comment", "verb": "add", "comment_id": "P_C_2", "from": {"id": "U"}})
+    )
+    assert ev.kind == "comment"
+    assert ev.inbound is not None and ev.inbound.text == ""
+
+
 def test_an_incomplete_page_comment_says_which_keys_came() -> None:
     [ev] = iter_events(_page_feed({"item": "comment", "verb": "add", "post_id": "P"}))
     assert ev.kind == "other"

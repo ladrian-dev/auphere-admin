@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import httpx
 import pytest
 from nexus_channels.whatsapp_meta.signature import sign_meta_request
 from sqlalchemy import text
@@ -90,6 +91,7 @@ async def _seed(
     identifier: str = IG_ID,
     config: dict | None = None,
     status: str = "active",
+    encrypted: str | None = None,
 ) -> None:
     from nexus_api.db.models import Channel, ChannelStatus, ChannelType
 
@@ -108,6 +110,7 @@ async def _seed(
                 provider_identifier=identifier,
                 status=ChannelStatus(status),
                 config=config or {"account_id": identifier},
+                config_encrypted=encrypted,
             )
         )
 
@@ -311,6 +314,81 @@ async def test_a_page_comment_is_enqueued_for_the_page(
     ]
     assert entry["provider"] == "meta_messenger"
     assert entry["context_message_id"] == "comment:POST_C_enq"
+
+
+def _feed_without_text(comment_id: str) -> dict[str, Any]:
+    # What Meta sent in staging on 2026-11-01: no ``message`` and no ``from``.
+    value = {"item": "comment", "verb": "add", "comment_id": comment_id, "post_id": "P"}
+    return {
+        "object": "page",
+        "entry": [{"id": PAGE_ID, "changes": [{"field": "feed", "value": value}]}],
+    }
+
+
+async def _seed_page_with_token(db_session, tenant_id) -> None:
+    from nexus_channels.meta_social.credentials import SocialCredentials
+
+    token = SocialCredentials(token="SU", page_token="PAGE_TOKEN").to_payload()
+    await _seed(
+        db_session, tenant_id, provider="meta_messenger", identifier=PAGE_ID, encrypted=token
+    )
+
+
+def _graph(monkeypatch, handler) -> None:
+    from nexus_channels.meta_social import MetaSocialClient
+
+    from nexus_api.services import meta_social_service
+
+    client = MetaSocialClient("secret", transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(meta_social_service, "_client", client)
+
+
+async def test_a_page_comment_without_text_is_read_from_graph(
+    client, db_session, fake_redis, seed_tenants, no_peer, monkeypatch
+):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(f"{request.url.path}?{request.url.params.get('fields')}")
+        return httpx.Response(
+            200,
+            json={"id": "C_TXT", "message": "How much?", "from": {"id": "U_9", "name": "Pedro"}},
+        )
+
+    _graph(monkeypatch, handler)
+    await _seed_page_with_token(db_session, seed_tenants["a"])
+    body, headers = _signed(_feed_without_text("C_TXT"))
+
+    r = await client.post("/webhook/meta", content=body, headers=headers)
+
+    assert r.json()["status"] == "ok"
+    [entry] = [
+        e for e in await _entries(fake_redis) if e.get("provider_message_id") == "comment:C_TXT"
+    ]
+    assert (entry["content"], entry["user_id"], entry["customer_name"]) == (
+        "How much?",
+        "U_9",
+        "Pedro",
+    )
+    assert seen == ["/v26.0/C_TXT?message,from"]
+
+
+async def test_a_page_comment_whose_text_cannot_be_read_is_not_a_turn(
+    client, db_session, fake_redis, seed_tenants, no_peer, monkeypatch
+):
+    _graph(
+        monkeypatch,
+        lambda request: httpx.Response(400, json={"error": {"message": "no", "code": 10}}),
+    )
+    await _seed_page_with_token(db_session, seed_tenants["a"])
+    body, headers = _signed(_feed_without_text("C_NOPE"))
+
+    r = await client.post("/webhook/meta", content=body, headers=headers)
+
+    assert r.json()["status"] == "ignored"
+    assert not [
+        e for e in await _entries(fake_redis) if e.get("provider_message_id") == "comment:C_NOPE"
+    ]
 
 
 async def test_business_own_comment_and_disabled_comments(

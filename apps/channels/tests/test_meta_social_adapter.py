@@ -288,3 +288,27 @@ async def test_the_profile_brings_the_name_and_the_picture_bytes() -> None:
     assert (
         await adapter.fetch_profile(recipient="NOPE", tenant_id=TENANT, channel_id=CHANNEL) is None
     )
+
+
+async def test_a_page_comment_without_author_gets_its_name_from_the_comment() -> None:
+    """Staging, 2026-11-01: a Page comment came without ``from``; the comment
+    itself names its author (``pages_read_user_content``)."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(f"{request.url.path}?{request.url.params.get('fields')}")
+        if request.url.path.endswith("/P_C_1"):
+            return httpx.Response(200, json={"id": "P_C_1", "from": {"id": "U", "name": "Pedro"}})
+        return httpx.Response(404, json={"error": {"message": "no", "code": 100}})
+
+    client = MetaSocialClient("secret", transport=httpx.MockTransport(handler))
+
+    async def loader(*, tenant_id: uuid.UUID, channel_id: uuid.UUID) -> SendContext:
+        return SendContext(account_id="PAGE", token="PAGE_TOKEN")
+
+    adapter = MetaSocialChannelAdapter(client, provider=PROVIDER_MESSENGER, context_loader=loader)
+    found = await adapter.fetch_profile(
+        recipient="comment:P_C_1", tenant_id=TENANT, channel_id=CHANNEL
+    )
+    assert found is not None and found.name == "Pedro" and found.picture is None
+    assert seen == ["/v26.0/P_C_1?from"]
