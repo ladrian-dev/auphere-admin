@@ -256,6 +256,23 @@ def test_a_page_comment_is_a_turn_like_an_instagram_one() -> None:
     assert inbound.raw_event_type == "comment:PAGE_POST"
 
 
+def test_a_page_comment_without_its_author_is_still_answered() -> None:
+    # Staging, 2026-11-01: the first real Page comment came without ``from``.
+    [ev] = iter_events(
+        _page_feed({"item": "comment", "verb": "add", "comment_id": "P_C_1", "message": "Price?"})
+    )
+    assert ev.kind == "comment"
+    assert ev.inbound is not None
+    assert ev.inbound.sender_identifier == f"{COMMENT_PREFIX}P_C_1"
+    assert ev.inbound.context_message_id == f"{COMMENT_PREFIX}P_C_1"
+
+
+def test_an_incomplete_page_comment_says_which_keys_came() -> None:
+    [ev] = iter_events(_page_feed({"item": "comment", "verb": "add", "post_id": "P"}))
+    assert ev.kind == "other"
+    assert ev.detail == "feed_comment_incomplete:item,post_id,verb"
+
+
 def test_only_a_new_page_comment_is_a_turn() -> None:
     edited = {"item": "comment", "verb": "edited", "comment_id": "C", "from": {"id": "U"}}
     post = {"item": "status", "verb": "add", "post_id": "P", "from": {"id": "U"}}

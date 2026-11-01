@@ -15,6 +15,14 @@
 | WhatsApp Business Account | **Sin tocar:** `https://webhooks.auphere.com/webhook/meta` | — |
 | WhatsApp +34672138367 («Andres Matos \| Auphere») | Conectado en staging a «Meta Review Demo» el 2026-10-31 16:40: su WABA manda a `https://api.staging.auphere.com/webhook/meta` (`override_callback_uri`). El owner confirma que ningún cliente de producción lo usa | — |
 
+**2026-11-01 (comentarios de la Página, decisión del owner):** hecho por Claude en el Chrome del owner:
+- Webhook de Página: campo `feed` suscrito (v26.0).
+- Caso de uso de Messenger: `pages_read_engagement` añadido (Meta lo añadió también al de Instagram).
+- Caso de uso nuevo «Administrar todos los aspectos de tu página», con `pages_read_user_content` y `pages_manage_engagement`.
+- Configuración «Auphere Messenger» (`2188508105420190`): 7 permisos, con esos tres nuevos.
+
+Todo esto entra en el borrador de revisión de Meta, que sigue sin enviarse.
+
 Pendiente:
 - `messaging_policy_enforcement` en Page **no** está suscrito, y la lista de revisión de Messenger lo pide.
 - Comprobar con un DM real que llega a staging. Hace falta conectar antes una cuenta de Instagram y una Página en staging.

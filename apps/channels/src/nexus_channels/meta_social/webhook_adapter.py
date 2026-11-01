@@ -291,12 +291,26 @@ def _page_comment_event(value: dict[str, Any], *, account_id: str) -> SocialEven
             account_id,
             detail=f"feed:{value.get('item')}:{value.get('verb')}",
         )
+    comment_id = value.get("comment_id")
+    if not comment_id or not isinstance(value.get("message"), str) or not value["message"]:
+        # The key names only, never the content: enough to see what Meta sent.
+        return SocialEvent(
+            "other",
+            PROVIDER_MESSENGER,
+            account_id,
+            detail=f"feed_comment_incomplete:{','.join(sorted(value))}",
+        )
     # Same shape as Instagram's, so the turn and the reply are the same code.
     author = _dict(value.get("from"))
+    # Meta can leave out ``from`` for a person (staging, 2026-11-01: the first
+    # real Page comment came without it). The private reply only needs the
+    # comment, so the comment stands in for the sender; the Page's own
+    # comments always carry ``from`` and stay echoes.
+    author_id = author.get("id") or f"{COMMENT_PREFIX}{comment_id}"
     return _comment_event(
         {
-            "id": value.get("comment_id"),
-            "from": {"id": author.get("id"), "username": author.get("name")},
+            "id": comment_id,
+            "from": {"id": author_id, "username": author.get("name")},
             "text": value.get("message"),
             "media": {"media_product_type": "PAGE_POST"},
         },
