@@ -256,8 +256,8 @@ async def prepare_agent_versions(
             continue
         await svc._validate_tools(fields.tools)
         write = await svc.open_draft(actor=actor, agent_id=agent_id)
-        # Un borrador nuevo copia la versión de partida, pero no su AgentSpec:
-        # se lo da esto, ya reescrito.
+        # El borrador copia el AgentSpec de la versión de partida: esto lo cambia
+        # por el ya reescrito.
         target = write.draft
         target.tools = fields.tools
         target.spec = fields.spec

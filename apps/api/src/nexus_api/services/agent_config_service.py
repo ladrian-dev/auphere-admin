@@ -249,6 +249,9 @@ class AgentConfigService:
             created_by=actor,
             agent_id=agent,
         )
+        # The AgentSpec too: without it the draft reads as an agent from before
+        # the factory, and publishing it would lose the instructions.
+        draft.spec = dict(base.spec) if base is not None and base.spec else None
         return DraftWrite(draft=draft, created=True, before=draft_fields(base))
 
     async def finish_draft(self, write: DraftWrite, *, actor: str) -> int | None:

@@ -35,6 +35,7 @@ from nexus_api.services.agent_spec.legacy import (
     spec_from_version,
 )
 from nexus_api.services.agent_spec.schema import AgentSpec, dump
+from nexus_api.services.agents import principal_agent_id
 from nexus_api.services.business.compilation import load_facts
 from nexus_api.services.proposal_state import canonical_hash
 from nexus_api.services.reception import tools_with_handoff
@@ -62,13 +63,20 @@ def spec_state_hash(spec: AgentSpec | None) -> str:
     return canonical_hash(dump(spec) if spec is not None else None)
 
 
+async def _agent_of(scope: ClientScope) -> Agent:
+    """El agente de la ruta: sin ``?agent=``, el principal del cliente."""
+    agent_id = scope.agent_id or await principal_agent_id(scope.session)
+    agent = await scope.session.get(Agent, agent_id) if agent_id is not None else None
+    assert agent is not None
+    return agent
+
+
 async def current_spec(scope: ClientScope) -> tuple[AgentSpec | None, AgentConfig | None]:
     """El AgentSpec del borrador, o de la versión de la que partiría, sin lo que no
     tenemos (65.3): es la base de cada edición y de cada propuesta."""
     from nexus_api.services.agent_spec.validator import load_context
 
-    agent = await scope.session.get(Agent, scope.agent_id)
-    assert agent is not None
+    agent = await _agent_of(scope)
     view = await load_view(scope)
     spec = spec_of(view.target, agent)
     if spec is not None and spec.mode == "structured":
@@ -120,8 +128,7 @@ async def write_spec(
     from nexus_api.services.builder.agent_draft import BUILDER_POLICY
 
     session = scope.session
-    agent = await session.get(Agent, scope.agent_id)
-    assert agent is not None
+    agent = await _agent_of(scope)
     draft, _created = await ensure_draft(
         scope, expected_revision=expected_revision, disclosure_default=False
     )

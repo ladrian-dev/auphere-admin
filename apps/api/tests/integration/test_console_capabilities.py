@@ -517,3 +517,50 @@ async def test_retired_booking_is_not_offered_and_reservas_needs_no_connector(
     crear = items["reservas.create"]
     assert crear["connector"] is None
     assert crear["enabled"] is True and crear["usable"] is True
+
+
+_STRUCTURED: dict = {
+    "schema_version": "1",
+    "mode": "structured",
+    "identity": {"name": "Ava", "description": "Atiende a quien escribe por los canales."},
+    "voice": {"languages": ["es"]},
+    "instructions": {"sections": [{"title": "Qué haces", "body": "Responde lo que te preguntan."}]},
+    "services": {"mode": "all", "faqs": []},
+    "escalation": {},
+    "tools": [],
+    "ai_disclosure": {"decided": False},
+    "model_policy": {"kind": "pinned", "deployment": "nexus/current-binding"},
+    "memory": {"scope": "shared"},
+}
+
+
+async def test_a_structured_agent_keeps_its_instructions_when_a_skill_changes(
+    client, console_world, db_session
+) -> None:
+    """INC-64 e INC-65: sin borrador abierto y sin ``?agent=``, el borrador nuevo
+    perdía el AgentSpec; con borrador abierto, la ruta daba 500."""
+    a = console_world["a"]
+    agent = _agent(a["tenant_id"], tools=[], seed=None)
+    agent.spec = _STRUCTURED
+    db_session.add(agent)
+    await db_session.commit()
+
+    for key in ("notification.send_text", "notification.send_image"):
+        r = await client.put(
+            f"/console/clients/{a['ref']}/capabilities",
+            headers=a["headers"](),
+            json={"key": key, "kind": "tool", "enabled": True},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["capability"]["enabled"] is True
+
+    draft = await db_session.scalar(
+        sa.select(AgentConfig).where(
+            AgentConfig.tenant_id == a["tenant_id"], AgentConfig.status == AgentConfigStatus.STAGED
+        )
+    )
+    assert draft is not None and draft.spec is not None
+    assert draft.spec["mode"] == "structured"
+    assert draft.spec["identity"]["description"] == _STRUCTURED["identity"]["description"]
+    assert draft.spec["tools"] == ["notification.send_text", "notification.send_image"]
+    assert draft.tools == ["notification.send_text", "notification.send_image"]
