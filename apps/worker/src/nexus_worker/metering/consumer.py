@@ -46,13 +46,19 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models.usage_record import USAGE_LINE_BY_SOURCE
 from nexus_api.metering.pricing_policy import UnweightedModel, weights_for
-from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens, uncached_input_tokens
+from nexus_api.metering.quota import (
+    billable_qty_for_meter,
+    priced_input_tokens,
+    quota_tokens,
+    uncached_input_tokens,
+)
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from nexus_worker.metering.budget import add_spend
 from nexus_worker.metering.collector import SOURCE_CHANNEL, USAGE_SOURCES, USAGE_STREAM
 from nexus_worker.metering.pricing import (
+    ModelPrice,
     get_catalog,
     get_unit_prices,
     lane_weights_from,
@@ -237,6 +243,39 @@ def _apply_lane_weights(rows: list[dict[str, Any]], weights: dict[str, dict[str,
                 prompt_tokens=prompt,
                 cache_read=cache_read,
             )
+
+
+def _apply_costs(
+    rows: list[dict[str, Any]],
+    catalog: dict[str, ModelPrice],
+    unit_prices: dict[str, Decimal],
+) -> None:
+    """Pone ``cost_usd`` a cada fila, con cada token valorado una sola vez (INC-70).
+
+    ``quantity`` de ``llm.input_tokens`` es el prompt bruto y lleva dentro lo que
+    ya se paga en las filas de caché. Una fila suelta no lo sabe, así que se agrupa
+    por llamada como en los dos pasos de arriba. No sirve ``billable_qty``: desde
+    la spec 007 lleva el peso de la cuota, y esto son dólares. ``quantity`` no se
+    toca: es lo medido, y de ahí sale el cobro (``_turn_quota``).
+    """
+    tokens: dict[str, dict[str, int]] = {}
+    for row in rows:
+        meter = str(row.get("meter") or "")
+        if meter.startswith("llm."):
+            tokens.setdefault(_llm_call_key(row), {})[meter] = int(row["quantity"] or 0)
+    for row in rows:
+        valued = row
+        if row["meter"] == "llm.input_tokens":
+            call = tokens[_llm_call_key(row)]
+            valued = {
+                **row,
+                "quantity": priced_input_tokens(
+                    call["llm.input_tokens"],
+                    call.get("llm.cache_read", 0),
+                    call.get("llm.cache_write", 0),
+                ),
+            }
+        row["cost_usd"] = price_row(valued, catalog, unit_prices)
 
 
 _INSERT_SQL = sa.text(
@@ -431,8 +470,7 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
             # ninguna consulta nueva.
             _apply_lane_weights(rows, lane_weights_from(catalog))
         if catalog or unit_prices:
-            for row in rows:
-                row["cost_usd"] = price_row(row, catalog, unit_prices)
+            _apply_costs(rows, catalog, unit_prices)
             # WP-20 — el contador de presupuesto se alimenta AQUÍ, con el
             # precio ya calculado. Va unos segundos por detrás del gasto
             # real (el metering es asíncrono) y es un compromiso asumido:

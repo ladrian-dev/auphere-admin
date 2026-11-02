@@ -386,6 +386,11 @@ def price_row(
     casos la fila entra con ``cost_usd NULL`` y se puede reprecificar
     después; valorarla a cero la haría indistinguible de un evento que de
     verdad es gratis.
+
+    Valora ``row["quantity"]`` tal cual. En ``llm.input_tokens`` eso es el prompt
+    bruto, con la caché dentro: quien valore filas reales pasa por
+    ``consumer._apply_costs``, y quien reprecie con SQL (el ``_PRICE_EXPR`` de la
+    0072, la 0076 y la 0114) tiene que restar lo mismo (INC-70).
     """
     meter = row["meter"]
     if meter not in _METER_PRICING and unit_prices is not None and meter in unit_prices:
