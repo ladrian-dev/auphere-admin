@@ -66,9 +66,11 @@ export const MessageBubble = memo(function MessageBubble({
   const delivery = item.delivery ?? null;
   const status =
     delivery === "failed"
-      ? item.failure_reason
-        ? t("inbox.delivery.failed.reason", { reason: item.failure_reason })
-        : t("inbox.delivery.failed")
+      ? item.failure_reason?.includes("HUMAN_AGENT")
+        ? t("inbox.delivery.failed.human_agent")
+        : item.failure_reason && !/MetaAPIError|Meta API error|Exception|Traceback|\(#\d+\)/.test(item.failure_reason)
+          ? t("inbox.delivery.failed.reason", { reason: item.failure_reason })
+          : t("inbox.delivery.failed")
       : delivery && DELIVERY[delivery]
         ? t(DELIVERY[delivery])
         : null;

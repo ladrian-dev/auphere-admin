@@ -211,6 +211,24 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     item,
   ]);
   const [, startTransition] = React.useTransition();
+  // The real message can arrive while the send still waits for its answer:
+  // from then on the provisional copy is the same message twice (INC-60).
+  const shown = React.useMemo(
+    () =>
+      optimistic.filter(
+        (item) =>
+          !(
+            item.id.startsWith("pending-") &&
+            items.some(
+              (real) =>
+                real.direction === "outbound" &&
+                real.text === item.text &&
+                Math.abs(Date.parse(real.at) - Date.parse(item.at)) < 60_000,
+            )
+          ),
+      ),
+    [optimistic, items],
+  );
 
   // ── housekeeping ────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -675,7 +693,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
                 onConfirm={confirming === "clear" ? clearChat : deleteChat}
               />
               <Thread
-                items={optimistic}
+                items={shown}
                 hasOlder={Boolean(nextBefore)}
                 loadingOlder={loadingOlder}
                 contactInitials={initials}

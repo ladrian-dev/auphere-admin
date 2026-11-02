@@ -89,6 +89,10 @@ export const inboxMessages = {
   "inbox.delivery.read": { es: "Leído", en: "Read" },
   "inbox.delivery.failed": { es: "No se envió", en: "Not sent" },
   "inbox.delivery.failed.reason": { es: "No se envió: {reason}", en: "Not sent: {reason}" },
+  "inbox.delivery.failed.human_agent": {
+    es: "No se envió: Meta todavía no permite responder pasadas 24 horas desde el último mensaje del contacto.",
+    en: "Not sent: Meta doesn't allow replies yet more than 24 hours after the contact's last message.",
+  },
   "inbox.media.image": { es: "Imagen", en: "Image" },
   "inbox.media.document": { es: "Documento", en: "Document" },
   "inbox.media.audio": { es: "Audio", en: "Audio" },

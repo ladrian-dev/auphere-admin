@@ -180,6 +180,133 @@ _EMPTY_RESPONSE_FALLBACK = (
     "Disculpa, tuve un inconveniente para completar la respuesta. "
     "¿Puedes intentarlo de nuevo en un momento?"
 )
+_EMPTY_RESPONSE_FALLBACK_EN = (
+    "Sorry, I had a problem completing the answer. Could you try again in a moment?"
+)
+
+#: Enough to tell the two languages of a short message apart when the model is
+#: down and cannot be asked (INC-61). Anything else keeps the Spanish default.
+_ENGLISH_WORDS: frozenset[str] = frozenset(
+    [
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "what",
+        "how",
+        "when",
+        "where",
+        "why",
+        "who",
+        "which",
+        "can",
+        "could",
+        "would",
+        "will",
+        "do",
+        "does",
+        "did",
+        "is",
+        "are",
+        "am",
+        "i",
+        "you",
+        "we",
+        "my",
+        "your",
+        "our",
+        "it",
+        "this",
+        "that",
+        "to",
+        "of",
+        "for",
+        "in",
+        "on",
+        "with",
+        "from",
+        "have",
+        "has",
+        "need",
+        "want",
+        "please",
+        "thanks",
+        "thank",
+        "hi",
+        "hello",
+        "hey",
+        "much",
+        "cost",
+        "price",
+        "book",
+        "talk",
+        "speak",
+        "person",
+        "team",
+        "about",
+    ]
+)
+_SPANISH_WORDS: frozenset[str] = frozenset(
+    [
+        "el",
+        "la",
+        "los",
+        "las",
+        "un",
+        "una",
+        "y",
+        "o",
+        "que",
+        "qué",
+        "como",
+        "cómo",
+        "cuando",
+        "cuándo",
+        "donde",
+        "dónde",
+        "por",
+        "para",
+        "con",
+        "de",
+        "del",
+        "en",
+        "es",
+        "son",
+        "soy",
+        "yo",
+        "tu",
+        "tú",
+        "mi",
+        "nos",
+        "quiero",
+        "necesito",
+        "puedo",
+        "puedes",
+        "gracias",
+        "hola",
+        "buenas",
+        "cuanto",
+        "cuánto",
+        "cuesta",
+        "precio",
+        "cita",
+        "hablar",
+        "persona",
+        "equipo",
+        "sobre",
+    ]
+)
+_WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+
+def _writes_english(text: str | None) -> bool:
+    """Does this message read as English? Only for fixed lines of an outage."""
+    words = [w.lower() for w in _WORD.findall(text or "")]
+    english = sum(w in _ENGLISH_WORDS for w in words)
+    spanish = sum(w in _SPANISH_WORDS for w in words)
+    return english > spanish
+
 
 # LiteLLM replaces an empty assistant text block with this sentinel to
 # satisfy Anthropic's "content must be non-empty" rule when the model
@@ -649,6 +776,10 @@ _HANDOFF_RESPONSE = (
     "Voy a pasar tu consulta a una persona del equipo para que te ayude. "
     "Te escribiremos por aquí en cuanto podamos."
 )
+_HANDOFF_RESPONSE_EN = (
+    "I'm passing your question to someone on the team who can help. "
+    "We'll write to you here as soon as we can."
+)
 
 #: The typed classifier (40.5): an object, never a bare label.
 _CLASSIFY_TYPED_PROMPT = (
@@ -1029,6 +1160,20 @@ async def _escalate_if_signalled(
         {"role": "system", "content": _ESCALATION_NOTE.format(guidance=advice.value.guidance)}
     )
     return None
+
+
+def _apology(state: AgentState) -> str:
+    """The fixed line when the model gives no answer, in the customer's language."""
+    if _writes_english(state.get("user_message")):
+        return _EMPTY_RESPONSE_FALLBACK_EN
+    return _EMPTY_RESPONSE_FALLBACK
+
+
+def _handoff_line(state: AgentState) -> str:
+    """The fixed line when the router hands over, in the customer's language."""
+    if _writes_english(state.get("user_message")):
+        return _HANDOFF_RESPONSE_EN
+    return _HANDOFF_RESPONSE
 
 
 def _intents(state: AgentState) -> int:
@@ -1723,7 +1868,7 @@ def make_handler_node(
                 # Without a chain inside the client's residency the turn does
                 # not leave it (40.7): no call, the neutral reply, the Inbox.
                 iterations = 0
-                final_text = _EMPTY_RESPONSE_FALLBACK
+                final_text = _apology(state)
                 turn_failure = {"kind": "llm_failed", "reason": "no_model", "detail": None}
             elif route is not None and _intents(state) > 1:
                 handoff = await _escalate_if_signalled(
@@ -1738,7 +1883,7 @@ def make_handler_node(
                 )
                 if handoff is not None:
                     iterations = 0
-                    final_text = _HANDOFF_RESPONSE
+                    final_text = _handoff_line(state)
                     turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
             iteration = -1
             for iteration in range(iterations):
@@ -1818,14 +1963,14 @@ def make_handler_node(
                         iteration=iteration,
                         error=str(exc),
                     )
-                    final_text = _EMPTY_RESPONSE_FALLBACK
+                    final_text = _apology(state)
                     turn_failure = {"kind": "llm_failed", "detail": str(exc)}
                     if route is not None:
                         # Spec 047: the Inbox reason of the router (``no_model``,
                         # ``provider_failure``, ``turn_limit``).
                         turn_failure["reason"] = _router_reason(exc)
                         if turn_failure["reason"] == "turn_limit":
-                            final_text = _HANDOFF_RESPONSE
+                            final_text = _handoff_line(state)
                     break
 
                 cleaned_text = _clean_model_text(response.text)
@@ -1969,7 +2114,7 @@ def make_handler_node(
                         draft=final_text,
                     )
                     if handoff is not None:
-                        final_text = _HANDOFF_RESPONSE
+                        final_text = _handoff_line(state)
                         turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
                         break
 
@@ -1980,7 +2125,7 @@ def make_handler_node(
                     intent=intent,
                     iterations=iteration + 1,
                 )
-                final_text = _EMPTY_RESPONSE_FALLBACK
+                final_text = _apology(state)
                 turn_failure = turn_failure or {"kind": "empty_response", "detail": None}
 
             # Per-turn latency summary. ``iterations`` x per-call latency (see

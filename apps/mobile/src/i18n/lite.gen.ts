@@ -278,6 +278,7 @@ export const liteMessages = {
   "inbox.delete.title": { es: "¿Eliminar este chat?", en: "Delete this chat?" },
   "inbox.delivery.delivered": { es: "Entregado", en: "Delivered" },
   "inbox.delivery.failed": { es: "No se envió", en: "Not sent" },
+  "inbox.delivery.failed.human_agent": { es: "No se envió: Meta todavía no permite responder pasadas 24 horas desde el último mensaje del contacto.", en: "Not sent: Meta doesn't allow replies yet more than 24 hours after the contact's last message." },
   "inbox.delivery.failed.reason": { es: "No se envió: {reason}", en: "Not sent: {reason}" },
   "inbox.delivery.pending": { es: "Enviando…", en: "Sending…" },
   "inbox.delivery.read": { es: "Leído", en: "Read" },

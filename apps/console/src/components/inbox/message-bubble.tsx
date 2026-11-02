@@ -73,9 +73,7 @@ export function MessageBubble({
       {failed ? (
         <span role="status" className="flex items-center gap-1 text-xs text-status-danger-text">
           <AlertTriangle className="size-3" aria-hidden="true" />
-          {item.failure_reason
-            ? t("inbox.delivery.failed.reason", { reason: item.failure_reason })
-            : t("inbox.delivery.failed")}
+          {failureText(item.failure_reason, t)}
         </span>
       ) : null}
       {onCorrect && author?.kind === "agent" ? (
@@ -190,4 +188,13 @@ export function MediaPreview({ item, tone }: { item: InboxThreadItem; tone: "lig
       <span className="min-w-0 truncate">{name}</span>
     </a>
   );
+}
+
+/** What the provider answered goes to the logs: a person reads why in their words (INC-59). */
+const RAW_FAILURE = /MetaAPIError|Meta API error|Exception|Traceback|\(#\d+\)/;
+
+function failureText(reason: string | null | undefined, t: ReturnType<typeof useT>): string {
+  if (reason?.includes("HUMAN_AGENT")) return t("inbox.delivery.failed.human_agent");
+  if (!reason || RAW_FAILURE.test(reason)) return t("inbox.delivery.failed");
+  return t("inbox.delivery.failed.reason", { reason });
 }
