@@ -59,6 +59,8 @@ ACTIONS: dict[str, _Action] = {
     ),
     "resolve": _Action("POST", "resolve"),
     "reopen": _Action("POST", "reopen", before=("resolve",)),
+    "clear": _Action("POST", "clear"),
+    "archive": _Action("POST", "archive"),
     "tags": _Action("PUT", "tags", json={"tags": ["vip"]}),
 }
 
