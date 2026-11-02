@@ -183,6 +183,8 @@ async def test_every_route_with_its_id_is_the_same_404(
 ) -> None:
     world = await _world(db_session, console_world)
     body = _BODIES.get((method, path))
+    # A route with a second id: the conversation is what must already say 404.
+    path = path.replace("{message_id}", str(uuid.uuid4()))
     for hidden in world["hidden"]:
         real = await client.request(
             method,
