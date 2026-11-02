@@ -23,6 +23,7 @@ export const a = {
   resolveAction: vi.fn(),
   reopenAction: vi.fn(),
   clearChatAction: vi.fn(),
+  commentPostAction: vi.fn(),
   archiveChatAction: vi.fn(),
   setTagsAction: vi.fn(),
   suggestedTagsAction: vi.fn(),

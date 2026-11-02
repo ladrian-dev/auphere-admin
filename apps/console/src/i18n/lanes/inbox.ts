@@ -87,6 +87,9 @@ export const inboxMessages = {
   "inbox.delivery.sent": { es: "Enviado", en: "Sent" },
   "inbox.delivery.delivered": { es: "Entregado", en: "Delivered" },
   "inbox.delivery.read": { es: "Leído", en: "Read" },
+  "inbox.message.unsent": { es: "El contacto eliminó este mensaje", en: "The contact deleted this message" },
+  "inbox.comment.on": { es: "Comentó en esta publicación", en: "Commented on this post" },
+  "inbox.comment.open": { es: "Ver la publicación", en: "See the post" },
   "inbox.delivery.failed": { es: "No se envió", en: "Not sent" },
   "inbox.delivery.failed.reason": { es: "No se envió: {reason}", en: "Not sent: {reason}" },
   "inbox.delivery.failed.human_agent": {

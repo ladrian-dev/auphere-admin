@@ -713,6 +713,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/lite/inbox/conversations/{conversation_id}/messages/{message_id}/post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Comment Post
+         * @description The post of a comment. ``null`` when Meta does not give it: the comment
+         *     still reads on its own.
+         */
+        get: operations["read_comment_post_console_lite_inbox_conversations__conversation_id__messages__message_id__post_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/lite/inbox/conversations/{conversation_id}/note": {
         parameters: {
             query?: never;
@@ -2317,6 +2338,18 @@ export interface components {
              * @constant
              */
             source: "google";
+        };
+        /**
+         * CommentPostOut
+         * @description The post a comment was left on, as Meta shows it now.
+         */
+        CommentPostOut: {
+            /** Image Url */
+            image_url?: string | null;
+            /** Permalink */
+            permalink?: string | null;
+            /** Text */
+            text?: string | null;
         };
         /** ConfirmationSettings */
         ConfirmationSettings: {
@@ -4026,6 +4059,11 @@ export interface components {
              */
             at: string;
             author?: components["schemas"]["AuthorOut"] | null;
+            /**
+             * Comment
+             * @default false
+             */
+            comment: boolean;
             /** Delivery */
             delivery?: string | null;
             /** Detail */
@@ -4052,6 +4090,11 @@ export interface components {
              * @enum {string}
              */
             type: "message" | "event";
+            /**
+             * Unsent
+             * @default false
+             */
+            unsent: boolean;
         };
         /** TokensOut */
         TokensOut: {
@@ -5923,6 +5966,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_comment_post_console_lite_inbox_conversations__conversation_id__messages__message_id__post_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                /** @description Conversation id (of the session's client) */
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentPostOut"] | null;
                 };
             };
             /** @description Validation Error */

@@ -16,17 +16,23 @@ Fecha: 2026-11-02. App `957213733862330`. Los textos que se pegan en Meta están
 | 4 | **Saldo:** OpenAI con recarga o alerta, y crédito del cliente y del partner | Sin saldo Ava deja de responder (pasó el 2026-11-02) | Owner |
 | 5 | **Llamadas con éxito** de cada permiso en los últimos 30 días, vistas en el Dashboard | Requisito de Meta. Las llamadas tardan hasta 2 días en aparecer | Comprobarlo en el Dashboard |
 
-### Decisiones del owner
+### Decisiones del owner (2026-11-02)
 
-| # | Pregunta | Recomendación |
-|---|---|---|
-| 6 | **`messaging_policy_enforcement`:** la revisión de Messenger pide suscribir este campo del webhook. El 2026-10-30 el owner dijo «Ahora no» | Suscribirlo antes de enviar: es un requisito oficial |
-| 7 | **DM anulado (INC-56):** Meta pide explicar cómo probarlo y la bandeja no lo refleja | Construirlo antes de enviar. Si no, se envía con la frase honesta que hay en el texto |
-| 8 | **MS-3 `pages_read_engagement`:** la bandeja no enseña la publicación junto al comentario | Enviarlo así es arriesgado. Lo más sólido es enseñar la publicación en la bandeja y volver a grabar |
-| 9 | **IG-3 une dos tomas:** la respuesta privada viene de un comentario igual en otra publicación | Aceptable, pero se puede regrabar esa escena en 20 s |
-| 10 | **Human Agent y Business Asset User Profile Access** aún no están pedidos en el borrador | Añadirlos: el owner decidió enseñar nombre y foto, y el texto de Human Agent explica la limitación |
+| # | Pregunta | Decisión | Estado |
+|---|---|---|---|
+| 1 | Cuentas del revisor | Las del owner, de partner y de cliente | Falta poner contraseñas de un solo uso y comprobar que no piden 2FA |
+| 2 | Aparcamiento de staging | Apagado | Hecho: `ScheduledScalingSuspended=true` en los 7 servicios. Al terminar la revisión, volver a `false` |
+| 3 | Canales durante la revisión | Siguen en «Everyone» | Hecho |
+| 6 | `messaging_policy_enforcement` | Suscribirlo | Hecho |
+| 7 | DM anulado (INC-56) | Construirlo | En develop |
+| 8 | Publicación en la bandeja | Construirla | En develop. Falta probarla con Meta real |
+| 9 | IG-3 | Regrabarlo en una sola toma | Pendiente |
+| 10 | Human Agent y nombre y foto | Pedirlos | Añadidos al borrador |
+| — | `catalog_management` | Se queda en este envío | Falta el número por Cloud API, comprobar el acceso al catálogo, su vídeo y su texto |
 
-Fuera de este envío: el catálogo de WhatsApp (`catalog_management`), que necesita un número por Cloud API. Las instrucciones antiguas de `specs/049-meta-instagram-messenger/app-review-reviewer-instructions.md` hablan de ese flujo y no sirven para este envío.
+**Llamadas en el Dashboard (2026-11-02):** `pages_read_user_content` y `pages_manage_engagement` siguen en 0 de 1, aunque se ejecutaron. Probablemente haya que hacerlas desde Graph API Explorer. Human Agent y Business Asset User Profile Access salen con 0, y no está claro que Meta las exija por ser funciones.
+
+**Catálogo:** «Catálogo_productos» (`1472326088011439`), portfolio «Andres Matos», 4 productos aptos. El número nuevo tiene que ir en ese portfolio. Ava no tiene las habilidades de catálogo en su versión activa, y publicar una versión nueva choca con INC-54.
 
 ## 2. Qué vídeo va en cada campo
 
@@ -66,19 +72,19 @@ Custom inbox: every conversation appears in the Auphere inbox of the client cons
 
 Human handoff: when a customer asks for a person, the assistant says so and the conversation shows as "Needs a human" until a team member takes over. To test it, write "I'd like to talk to a person from the team, please."
 
-Unsent messages: today, a message the customer unsends is not removed from the Auphere inbox.
+Unsent messages: when a customer unsends a message, Auphere receives the webhook, removes its content, and the inbox shows "The contact deleted this message". The assistant no longer takes it into account. To test it, unsend a DM and open the conversation.
 
 Auphere does not use ice breakers, quick replies or a persistent menu on Instagram.
 
 Without this permission a business could not answer its customers' Instagram messages from Auphere.
 ```
 
-Si se construye INC-56, hay que cambiar el párrafo «Unsent messages».
+INC-56 quedó construido el 2026-11-02. Si IG-2 no se regraba, el vídeo no enseña esta parte.
 
 ### `instagram_manage_comments`
 
 ```
-Auphere lets a business answer comments on its own Instagram posts. When a customer comments, we receive the comments webhook and the comment appears in the Auphere inbox. The assistant then sends one private reply to the commenter within 7 days, and posts a short public reply under the comment if the business has set one on the channel page. The business can turn comment answering on or off for each channel. Auphere does not hide or delete comments. Without this permission, businesses could not answer questions left in comments from Auphere.
+Auphere lets a business answer comments on its own Instagram posts. When a customer comments, we receive the comments webhook and the comment appears in the Auphere inbox, below the post it was left on. The assistant then sends one private reply to the commenter within 7 days, and posts a short public reply under the comment if the business has set one on the channel page. The business can turn comment answering on or off for each channel. Auphere does not hide or delete comments. Without this permission, businesses could not answer questions left in comments from Auphere.
 ```
 
 ### `business_management`
@@ -108,10 +114,10 @@ Customers message the business's Facebook Page. The message reaches Auphere thro
 ### `pages_read_engagement`
 
 ```
-We read the connected Page's metadata, including its name, to show the admin which Page is connected to the client's assistant in the Auphere console. Without this permission the business could not confirm that the right Page is connected.
+We read the connected Page's metadata, including its name, to show the admin which Page is connected to the client's assistant in the Auphere console. We also read the content of the post a customer commented on (its text, picture and link) and show it above the comment in the inbox, so the team knows what the comment refers to. Without this permission the business could not confirm that the right Page is connected or see which post a comment belongs to.
 ```
 
-Es el texto más flojo: ver la decisión 8. No hay que prometer que se enseña la publicación mientras la bandeja no lo haga.
+La bandeja enseña la publicación desde el 2026-11-02 (`inbox_comment_post`). Hay que confirmarlo en staging con Meta real antes de grabar MS-3.
 
 ### `pages_read_user_content`
 
@@ -159,8 +165,8 @@ Auphere is a web console that agencies use to run an AI assistant and a team inb
 
 TEST ACCOUNTS
 Both use the same URL. No payment or download is needed.
-1) Agency account, to connect channels. Email: [AGENCY EMAIL]. Password: [ENTERED IN THIS FIELD ONLY].
-2) Client account, to read the inbox. Email: [CLIENT EMAIL]. Password: [ENTERED IN THIS FIELD ONLY].
+1) Agency account, to connect channels. Email: contacto@auphere.com. Password: [ENTERED IN THIS FIELD ONLY].
+2) Client account, to read the inbox. Email: andrese.matosm@gmail.com. Password: [ENTERED IN THIS FIELD ONLY].
 
 CONNECT INSTAGRAM OR MESSENGER (agency account)
 1. Sign in. Open Clients > "Meta Review Demo" > Agents > "Ava" > Channels > "Add another channel".

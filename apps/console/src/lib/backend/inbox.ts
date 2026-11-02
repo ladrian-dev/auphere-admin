@@ -84,7 +84,13 @@ export type InboxThreadItem = {
   failure_reason: string | null;
   kind: string | null;
   detail: string | null;
+  /** The customer deleted it on their side: there is nothing left to read. */
+  unsent?: boolean;
+  /** A comment on a post, not a direct message. */
+  comment?: boolean;
 };
+
+export type InboxCommentPost = { text: string | null; image_url: string | null; permalink: string | null };
 
 export type InboxThread = { items: InboxThreadItem[]; next_before: string | null };
 export type InboxSent = { id: string; at: string; delivery: string };
@@ -123,6 +129,8 @@ export function inboxApi(call: Call) {
       }),
     inboxResolve: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/resolve`, { method: "POST" }),
     inboxReopen: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/reopen`, { method: "POST" }),
+    inboxCommentPost: (id: string, messageId: string) =>
+      call<InboxCommentPost | null>(`${C}/${enc(id)}/messages/${enc(messageId)}/post`),
     inboxClear: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/clear`, { method: "POST" }),
     inboxArchive: (id: string) => call<null>(`${C}/${enc(id)}/archive`, { method: "POST" }),
     inboxSetTags: (id: string, tags: string[]) =>

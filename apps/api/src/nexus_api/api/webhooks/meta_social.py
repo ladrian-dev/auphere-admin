@@ -33,7 +33,7 @@ import structlog
 from nexus_channels.meta_social import SocialEvent, entry_account_ids, iter_events, provider_for
 from nexus_channels.meta_social.webhook_adapter import COMMENT_PREFIX
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.config import get_settings
@@ -44,8 +44,9 @@ from nexus_api.core.otel import inject_trace_fields
 from nexus_api.core.streams import stream_for_tier, xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import resolve_tenant, resolve_tenant_tier
-from nexus_api.db.models import ChannelStatus, Message
+from nexus_api.db.models import ChannelStatus, Message, MessageDirection
 from nexus_api.repositories import ChannelRepository
+from nexus_api.services.inbox_stream import publish_inbox_event
 
 log = structlog.get_logger()
 
@@ -99,6 +100,9 @@ async def handle_meta_social(
         tenant_id = owners.get(event.account_id)
         if tenant_id is None:
             continue
+        if event.kind == "deleted" and event.detail:
+            await _mark_unsent(event.detail, tenant_id=tenant_id, session=session, redis=redis)
+            continue
         if event.inbound is None:
             log.info(
                 "webhook.meta_social.event",
@@ -141,6 +145,43 @@ async def _forward(body: bytes, signature: str | None, *, provider: str) -> bool
         return False
     log.info("webhook.meta_social.forwarded", provider=provider, status=resp.status_code)
     return resp.status_code < 400
+
+
+async def _mark_unsent(
+    mid: str, *, tenant_id: uuid.UUID, session: AsyncSession, redis: Redis
+) -> None:
+    """The customer unsent a DM (INC-56): its content goes, as Meta asks, and the
+    row stays as a shape so the thread says a message was deleted there. An
+    empty text is also what the agent's history skips."""
+    if session.in_transaction():
+        await session.rollback()
+    bind_tenant(tenant_id)
+    async with tenant_scoped_session(session, tenant_id):
+        conversation_id = await session.scalar(
+            update(Message)
+            .where(
+                Message.provider_message_id == mid, Message.direction == MessageDirection.INBOUND
+            )
+            .values(
+                content="",
+                media_kind=None,
+                media_s3_key=None,
+                media_mime=None,
+                media_filename=None,
+                media_transcript=None,
+                interactive_payload={"unsent": True},
+            )
+            .returning(Message.conversation_id)
+        )
+        await session.commit()
+    log.info("webhook.meta_social.unsent", tenant_id=str(tenant_id), found=bool(conversation_id))
+    if conversation_id is not None:
+        await publish_inbox_event(
+            redis,
+            tenant_id=tenant_id,
+            event="conversation.updated",
+            conversation_id=conversation_id,
+        )
 
 
 async def _enqueue(

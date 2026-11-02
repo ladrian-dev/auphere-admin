@@ -8,6 +8,7 @@ import type { InboxThreadItem } from "@/lib/backend/inbox";
 
 import { eventText } from "./event-text";
 import { clock, dayLabel, withDaySeparators } from "./inbox-model";
+import type { LoadCommentPost } from "./comment-post";
 import { MessageBubble } from "./message-bubble";
 
 /**
@@ -26,6 +27,7 @@ export function Thread({
   now,
   onOlder,
   onCorrect,
+  loadCommentPost,
 }: {
   items: InboxThreadItem[];
   hasOlder: boolean;
@@ -35,6 +37,7 @@ export function Thread({
   onOlder: () => void;
   /** Spec 047 (52.1): «Corregir esta respuesta» sobre cada respuesta del agente. */
   onCorrect?: (item: InboxThreadItem) => void;
+  loadCommentPost?: LoadCommentPost;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -86,6 +89,7 @@ export function Thread({
             key={row.key}
             item={item}
             contactInitials={contactInitials}
+            loadCommentPost={loadCommentPost}
             onCorrect={onCorrect && item.direction === "outbound" && item.author?.kind === "agent" ? () => onCorrect(item) : undefined}
           />
         );

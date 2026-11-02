@@ -467,3 +467,51 @@ async def test_other_tenant_never_receives_the_event(
     [entry] = [e for e in await _entries(fake_redis) if e.get("provider_message_id") == "m_iso"]
     assert entry["tenant_id"] == str(seed_tenants["a"])
     assert entry["tenant_id"] != str(seed_tenants["b"])
+
+
+async def test_an_unsent_dm_loses_its_content_and_stays_as_a_shape(
+    client, db_session, fake_redis, seed_tenants, no_peer
+):
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models import Conversation, Customer, Message, MessageDirection
+
+    tenant_id = seed_tenants["a"]
+    await _seed(db_session, tenant_id)
+    async with tenant_scoped_session(db_session, tenant_id):
+        channel = (await db_session.execute(text("SELECT id FROM channels LIMIT 1"))).scalar_one()
+        customer = Customer(tenant_id=tenant_id, identifier=IGSID)
+        db_session.add(customer)
+        await db_session.flush()
+        conversation = Conversation(
+            tenant_id=tenant_id, channel_id=channel, customer_id=customer.id
+        )
+        db_session.add(conversation)
+        await db_session.flush()
+        message = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            direction=MessageDirection.INBOUND,
+            content="Mi teléfono es 600",
+            provider_message_id="mid.gone",
+        )
+        db_session.add(message)
+        await db_session.flush()
+        message_id = message.id
+    await db_session.commit()
+
+    body, headers = _signed(_dm(mid="mid.gone", text_="", is_deleted=True))
+    r = await client.post("/webhook/meta", content=body, headers=headers)
+    assert r.status_code == 200, r.text
+    assert await _entries(fake_redis) == []
+
+    db_session.expire_all()
+    async with tenant_scoped_session(db_session, tenant_id):
+        row = await db_session.get(Message, message_id)
+        assert row is not None
+        assert row.content == ""
+        assert row.interactive_payload == {"unsent": True}
+    await db_session.commit()
+
+    # An id nobody has is not an error.
+    body, headers = _signed(_dm(mid="mid.unknown", text_="", is_deleted=True))
+    assert (await client.post("/webhook/meta", content=body, headers=headers)).status_code == 200

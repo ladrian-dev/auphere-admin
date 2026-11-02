@@ -5,6 +5,7 @@ import { z } from "zod";
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
 import type {
+  InboxCommentPost,
   InboxCounts,
   InboxDetail,
   InboxPage,
@@ -126,6 +127,14 @@ export async function reopenAction(raw: unknown): Promise<ActionResult<InboxDeta
   const principal = await inboxPrincipal();
   if (!principal) return forbidden;
   return run(() => backendFor(principal).inboxReopen(p.id));
+}
+
+const commentPostSchema = z.object({ id, messageId: id });
+export async function commentPostAction(raw: unknown): Promise<ActionResult<InboxCommentPost | null>> {
+  const p = commentPostSchema.parse(raw);
+  const principal = await inboxPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).inboxCommentPost(p.id, p.messageId));
 }
 
 /** «Vaciar el chat»: empty for the Inbox and the agent, archived rather than erased. */

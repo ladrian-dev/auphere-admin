@@ -726,6 +726,8 @@ class ThreadItem:
     failure_reason: str | None = None
     event_kind: str | None = None
     detail: str | None = None
+    unsent: bool = False
+    comment: bool = False
 
 
 async def thread(
@@ -786,6 +788,9 @@ async def thread(
                 media_transcript=m.media_transcript,
                 delivery=status if m.direction == MessageDirection.OUTBOUND else None,
                 failure_reason=(m.last_error or m.failure_code) if status == "failed" else None,
+                unsent=bool((m.interactive_payload or {}).get("unsent")),
+                comment=m.direction == MessageDirection.INBOUND
+                and (m.provider_message_id or "").startswith("comment:"),
             )
         )
     for e in evs:

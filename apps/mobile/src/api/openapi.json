@@ -1583,6 +1583,46 @@
         "title": "ClashOut",
         "type": "object"
       },
+      "CommentPostOut": {
+        "description": "The post a comment was left on, as Meta shows it now.",
+        "properties": {
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "permalink": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permalink"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "title": "CommentPostOut",
+        "type": "object"
+      },
       "ConfirmationSettings": {
         "properties": {
           "enabled": {
@@ -6276,6 +6316,11 @@
               }
             ]
           },
+          "comment": {
+            "default": false,
+            "title": "Comment",
+            "type": "boolean"
+          },
           "delivery": {
             "anyOf": [
               {
@@ -6375,6 +6420,11 @@
             ],
             "title": "Type",
             "type": "string"
+          },
+          "unsent": {
+            "default": false,
+            "title": "Unsent",
+            "type": "boolean"
           }
         },
         "required": [
@@ -11400,6 +11450,119 @@
           }
         },
         "summary": "Send Message",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/inbox/conversations/{conversation_id}/messages/{message_id}/post": {
+      "get": {
+        "description": "The post of a comment. ``null`` when Meta does not give it: the comment\nstill reads on its own.",
+        "operationId": "read_comment_post_console_lite_inbox_conversations__conversation_id__messages__message_id__post_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Conversation id (of the session's client)",
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "description": "Conversation id (of the session's client)",
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CommentPostOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Read Comment Post Console Lite Inbox Conversations  Conversation Id  Messages  Message Id  Post Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Comment Post",
         "tags": [
           "console",
           "console-lite"

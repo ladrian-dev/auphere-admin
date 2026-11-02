@@ -80,6 +80,11 @@ describe("Thread", () => {
     expect(document.body.textContent).not.toMatch(/MetaAPIError|#100/);
   });
 
+  it("a message the contact deleted says so, with nothing left to read", () => {
+    view([message({ text: null, unsent: true })]);
+    expect(screen.getByText("El contacto eliminó este mensaje")).toBeInTheDocument();
+  });
+
   it("what happened to the conversation sits in its place", () => {
     view([
       message({ id: "e1", type: "event", kind: "escalated", author: { kind: "agent", name: null, is_me: false }, detail: "Pide un reembolso", text: null }),

@@ -100,6 +100,11 @@ export const MessageBubble = memo(function MessageBubble({
             {who}
           </Text>
         ) : null}
+        {item.unsent ? (
+          <Text variant="body" tone="muted">
+            {t("inbox.message.unsent")}
+          </Text>
+        ) : null}
         {media ? <MediaChip id={item.id} kind={media.kind ?? null} name={media.filename ?? null} t={t} onOpen={onOpen} /> : null}
         {media?.transcript ? (
           <Text variant="footnote" tone="mutedForeground">

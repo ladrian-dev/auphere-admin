@@ -19,6 +19,7 @@ import {
   repliesAction,
   archiveChatAction,
   clearChatAction,
+  commentPostAction,
   resolveAction,
   sendMessageAction,
   setNoteAction,
@@ -211,6 +212,14 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     item,
   ]);
   const [, startTransition] = React.useTransition();
+  const openId = detail?.id;
+  const loadCommentPost = React.useCallback(
+    async (messageId: string) => {
+      if (!openId) return { ok: true as const, data: null };
+      return commentPostAction({ id: openId, messageId });
+    },
+    [openId],
+  );
   // The real message can arrive while the send still waits for its answer:
   // from then on the provisional copy is the same message twice (INC-60).
   const shown = React.useMemo(
@@ -700,6 +709,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
                 now={now}
                 onOlder={() => void older()}
                 onCorrect={setCorrecting}
+                loadCommentPost={loadCommentPost}
               />
               <Composer
                 key={detail.id}

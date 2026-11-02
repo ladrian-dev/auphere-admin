@@ -7,6 +7,8 @@ import { useLocale, useT } from "@/i18n/client";
 import type { InboxThreadItem } from "@/lib/backend/inbox";
 import { inboxMediaUrl } from "@/lib/inbox-urls";
 
+import { CommentPost, type LoadCommentPost } from "./comment-post";
+
 import { clock } from "./inbox-model";
 
 /**
@@ -19,7 +21,9 @@ export function MessageBubble({
   item,
   contactInitials,
   onCorrect,
+  loadCommentPost,
 }: {
+  loadCommentPost?: LoadCommentPost;
   item: InboxThreadItem;
   contactInitials: string;
   /** Spec 047 (52.1): «Corregir esta respuesta», solo sobre una respuesta del agente. */
@@ -41,8 +45,10 @@ export function MessageBubble({
           {contactInitials}
         </span>
         <div className="flex min-w-0 flex-col items-start gap-1">
+          {item.comment && loadCommentPost ? <CommentPost messageId={item.id} load={loadCommentPost} /> : null}
           <MediaPreview item={item} tone="light" />
           {item.text ? <Text tone="contact">{item.text}</Text> : null}
+          {item.unsent ? <span className="text-sm text-muted-foreground italic">{t("inbox.message.unsent")}</span> : null}
           <span className="text-xs text-muted-foreground">{time}</span>
         </div>
       </div>

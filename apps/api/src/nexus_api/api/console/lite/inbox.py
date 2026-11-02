@@ -43,7 +43,7 @@ from nexus_api.db.models import (
     MessageStatus,
     SavedReply,
 )
-from nexus_api.services import conversation_control, inbox_lifecycle, inbox_view
+from nexus_api.services import conversation_control, inbox_comment_post, inbox_lifecycle, inbox_view
 from nexus_api.services import lite_send_idempotency as idempotency
 from nexus_api.services.conversation_control import VersionMismatch
 from nexus_api.services.inbox_stream import publish_inbox_event
@@ -211,6 +211,16 @@ class ThreadItemOut(BaseModel):
     failure_reason: str | None = None
     kind: str | None = None
     detail: str | None = None
+    unsent: bool = False
+    comment: bool = False
+
+
+class CommentPostOut(BaseModel):
+    """The post a comment was left on, as Meta shows it now."""
+
+    text: str | None = None
+    image_url: str | None = None
+    permalink: str | None = None
 
 
 class ThreadOut(BaseModel):
@@ -541,6 +551,8 @@ async def read_thread(
                 failure_reason=i.failure_reason,
                 kind=i.event_kind,
                 detail=i.detail,
+                unsent=i.unsent,
+                comment=i.comment,
             )
             for i in items
         ],
@@ -562,6 +574,23 @@ async def _set_read(scope: LiteScope, conv: Conversation, *, unread: bool) -> No
         row.read_at = datetime.now(UTC)
         row.marked_unread = False
     await scope.session.flush()
+
+
+@router.get(
+    "/conversations/{conversation_id}/messages/{message_id}/post",
+    response_model=CommentPostOut | None,
+)
+async def read_comment_post(
+    message_id: uuid.UUID,
+    conversation_id: uuid.UUID = ConversationId,
+    scope: LiteScope = Depends(lite_scope("inbox")),
+    redis: Redis = Depends(get_redis),
+) -> CommentPostOut | None:
+    """The post of a comment. ``null`` when Meta does not give it: the comment
+    still reads on its own."""
+    conv = await _conversation(scope, conversation_id)
+    post = await inbox_comment_post.read(scope.session, redis, conv, message_id)
+    return CommentPostOut(**post) if post else None
 
 
 @router.post("/conversations/{conversation_id}/read", status_code=status.HTTP_204_NO_CONTENT)
