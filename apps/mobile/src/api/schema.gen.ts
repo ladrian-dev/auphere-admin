@@ -608,6 +608,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/lite/inbox/conversations/{conversation_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive
+         * @description «Eliminar el chat»: out of the Inbox, archived rather than erased.
+         */
+        post: operations["archive_console_lite_inbox_conversations__conversation_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/lite/inbox/conversations/{conversation_id}/attachments": {
         parameters: {
             query?: never;
@@ -645,6 +665,26 @@ export interface paths {
         get: operations["read_avatar_console_lite_inbox_conversations__conversation_id__avatar_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/inbox/conversations/{conversation_id}/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear
+         * @description «Vaciar el chat»: empty for the Inbox and for the agent, not erased.
+         */
+        post: operations["clear_console_lite_inbox_conversations__conversation_id__clear_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2257,6 +2297,11 @@ export interface components {
             /** Walkin Hold */
             walkin_hold: number;
         };
+        /**
+         * ChannelType
+         * @enum {string}
+         */
+        ChannelType: "whatsapp" | "instagram" | "telegram" | "email" | "web" | "tiktok" | "messenger";
         /** ClashLocal */
         ClashLocal: {
             /** End */
@@ -5579,6 +5624,8 @@ export interface operations {
             query?: {
                 /** @description Only this agent's numbers (spec 030) */
                 agent?: string | null;
+                /** @description Only this kind of channel */
+                channel?: components["schemas"]["ChannelType"] | null;
                 cursor?: string | null;
                 filter?: "all" | "unread" | "waiting" | "resolved";
                 limit?: number;
@@ -5638,6 +5685,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationDetailOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_console_lite_inbox_conversations__conversation_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                /** @description Conversation id (of the session's client) */
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -5726,6 +5807,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_console_lite_inbox_conversations__conversation_id__clear_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                /** @description Conversation id (of the session's client) */
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationDetailOut"];
                 };
             };
             /** @description Validation Error */
