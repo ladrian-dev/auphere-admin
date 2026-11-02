@@ -55,9 +55,9 @@ Se graba el **bloque A** (login y conexión) una vez por canal y se reutiliza al
 | 7 | MS-4 Comentarios de la Página | `pages_read_user_content`, `pages_manage_engagement` | Ahora |
 | 8 | MS-3 Contenido de la Página | `pages_read_engagement` | Ahora (ver §3) |
 | 9 | PROF Nombre y foto de quien escribe | Business Asset User Profile Access | Sale de las tomas de IG-2 y MS-2 |
-| 10 | HA Human Agent | Human Agent | **Mañana 2 de noviembre, desde las 09:00 de Madrid** (cuando staging despierta) |
+| 10 | HA Human Agent | Human Agent | Sin toma propia: sale de IG-2 |
 
-**Sobre HA:** en el hilo de Messenger de tu cuenta personal, el último DM es de las 00:29 UTC del 1 de noviembre y el último comentario, de las 03:19 UTC. La ventana de envío (`last_dm_at`) se cierra a las 01:29 de Madrid del día 2, y la bandeja lo verá con más de 24 h desde las 04:19; staging está aparcado de 03:00 a 09:00. **No escribas ni comentes con esa cuenta antes de grabarlo:** un comentario suyo cae en la misma conversación. Si hace falta escribir hoy por Messenger, usa otra cuenta de Facebook con rol en la app.
+**Sobre HA:** ya no hay que reservar ningún hilo de más de 24 h (ver su apartado). MS-2 y MS-4 pueden usar la cuenta personal.
 
 ## 2. Guion por vídeo
 
@@ -142,14 +142,13 @@ Cada vídeo empieza con un rótulo de 2 s: `Permission: <nombre>`. Los rótulos 
 - Montaje de IG-2 y MS-2: en la bandeja se ven **el nombre y la foto** de quien escribe, con zoom.
 - Rótulo: «We show the customer's name and profile picture so the team knows who they are talking to».
 
-### HA · Human Agent (1-1,5 min), mañana desde las 09:00 de Madrid
+### HA · Human Agent (1-1,5 min): sin toma propia
 
-1. Bandeja: la conversación de Messenger de tu cuenta personal, con el último mensaje del cliente **de hace más de 24 h**.
-   - Rótulo: «Last customer message: more than 24 h ago. The AI assistant can no longer reply».
-2. Una persona escribe la respuesta desde la bandeja.
-   - La consola deja escribir 7 días y manda la etiqueta `HUMAN_AGENT` sola cuando la escribe una persona (`services/meta_window.py`).
-3. La respuesta llega a Messenger en el móvil.
-   - Rótulo: «Sent by a human agent with the HUMAN_AGENT tag, within 7 days».
+**Cambio del 2026-11-02.** Meta rechaza la etiqueta antes de aprobarla: «(#100) Cannot tag messages with 'HUMAN_AGENT' without prior approval» (INC-59). No se puede grabar una respuesta real pasadas 24 h. Según `08`, §3.3, con `instagram_manage_messages` en el mismo envío vale el vídeo general.
+
+- Se saca de la parte de IG-2 en que una persona toma el control y responde.
+- Rótulo: «A named team member takes over and replies. After approval, replies between 24 h and 7 days use the HUMAN_AGENT tag».
+- El texto del formulario explica que la etiqueta aún no puede enseñarse porque Meta la bloquea hasta aprobarla.
 
 ## 3. Huecos que afectan a los vídeos
 
