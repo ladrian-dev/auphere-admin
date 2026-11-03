@@ -233,9 +233,8 @@ con «The value cannot be empty or all whitespace». Y lo que es peor, el plan
 el `-var-file`. Lo mismo en producción con `prod.tfvars`, que además fija
 `extra_certificate_arns` (webhooks.auphere.com).
 
-**1.5 · Desplegar.** Push a `develop` dispara `deploy-staging`: espera a `ci` en
-el mismo sha, construye, corre la task de migración (bloqueante: `0112`→`0117`)
-y rueda los cinco servicios.
+**1.5 · Desplegar.** Push a `develop` dispara `deploy-staging`: construye, corre
+la task de migración (bloqueante: `0112`→`0117`) y rueda los cinco servicios.
 
 **1.6 · Escribir los price ids en la base de datos de staging.** Los `UPDATE`
 que imprimió 1.1, contra la base de **ese** entorno. Los ids de test no sirven
@@ -358,8 +357,8 @@ Misma secuencia que las fases 1-3, cambiando:
 - Proyecto Vercel `auphere-console`, rama de producción `main`, dominio
   `console.auphere.com`. **Pareja de claves EdDSA propia**, distinta de staging.
 - Merge a `main` dispara `deploy-prod` con la misma secuencia contra el
-  workspace `prod`. Está protegido por revisores requeridos en el entorno
-  `production` de GitHub.
+  workspace `prod`, más la espera a `ci` en el mismo sha. Está protegido por
+  revisores requeridos en el entorno `production` de GitHub.
 - La app de teammates ya apunta a producción por defecto: no hay que exportar
   nada.
 

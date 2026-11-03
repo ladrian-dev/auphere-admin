@@ -332,7 +332,7 @@ Ningún valor secreto va en este repositorio: los secretos se crean en AWS con
   por correo y bloquea la cuenta tras diez fallos; el límite por IP es del
   borde.
 
-**2. Fusionar en `develop`.** Con `ci` en verde, `deploy-staging` corre las
+**2. Fusionar en `develop`.** `deploy-staging` corre las
 migraciones 0165–0169 y reinicia los servicios (el worker ya lleva
 `push-dispatcher`). Comprobación: `GET https://api.staging.auphere.com/app/config`
 devuelve `sign_in`.
