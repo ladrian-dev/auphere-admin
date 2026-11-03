@@ -137,8 +137,20 @@ Cada tarea adapta **primero** las pruebas existentes de ese sitio para que captu
 - [ ] T027 Después del despliegue a staging, por el owner: recorrer [quickstart.md](quickstart.md) §4, comprobar en Resend que no hay envíos y guardar la consulta de Logs Insights en `evidence/`. _Requisitos: CE-001_
 - [ ] T028 Lectura de cinco segundos de cada plantilla por una persona ajena al proyecto, anotada en `evidence/lectura.md`. _Requisitos: CE-004_
 
+## Enmienda del 2026-11-03 — Quién avisa cuando deja de hacerlo el correo
+
+- [x] T031 Prueba primero, en rojo: `apps/worker/tests/unit/test_platform_alarms_contract.py`. Los `kind` del código y las claves del mapa de Terraform coinciden, en los dos sentidos. El filtro busca el evento que el código registra. La ventana de la alarma es mayor que dos veces `DEDUP_TTL_S`. Las métricas solo llevan `kind`. Las alarmas solo avisan en producción. _Requisitos: 9.4, 9.5, 9.6, 9.7, 9.8, 9.9_
+- [x] T032 `infra/terraform/30-observability/alarms.tf`: los dos filtros de métricas y las siete alarmas. `terraform fmt` y `terraform validate`. Los patrones, probados con `aws logs test-metric-filter` contra una línea real. _Requisitos: 9.4, 9.5, 9.6, 9.8, 9.9_
+- [x] T033 `docs/correos.md` describe lo que existe y deja de dar Datadog por hecho. `docs/paso-a-produccion-031-041.md` añade la condición de CE-006. _Requisitos: 8.1 · CE-006_
+- [x] T034 Plan de Terraform de staging y de producción, revisado y sin aplicar, y la calibración contra los registros reales en `evidence/alarma-calibracion.md`. _Requisitos: 9.5 · CE-007_
+- [ ] T035 **Con el OK del owner**: aplicar en staging y comprobar en el historial de la alarma que `nexus-staging-platform-alert-dlq-entries` pasa a ALARM sin enviar nada y **sigue en ALARM entre dos repeticiones**. La ventana solo está simulada hasta este paso. _Requisitos: 9.4, 9.5, 9.9_
+- [ ] T036 **Con el OK del owner, antes de fusionar en `main`**: aplicar en producción y confirmar que el aviso de `dlq_entries` llega a un buzón que alguien lee. Anotar en `evidence/alarma-calibracion.md` cuánto pasó entre el registro y el aviso, que tiene que ser menos de 15 minutos. _Requisitos: 9.4 · CE-006_
+- [ ] T037 Después de fusionar en `main`: comprobar que no entra ningún correo más de la DLQ por Resend y que la alarma sigue en ALARM. _Requisitos: 9.1, 9.5_
+- [ ] T038 **Con el OK del owner**: una línea en `research/2026-10-30-correos-con-oficio` de la KB enlaza esta enmienda y dice que Datadog no es el sustituto. _Requisitos: §IX_
+
 ## Dependencias
 
 - La Fase 1 bloquea la 2. Dentro de la 2, T014 va antes de T015, y T018 y T019 van al final, cuando ya no queda ningún `send_email`.
 - La Fase 3 depende solo de T004, el catálogo con las variables definitivas, y puede ir en paralelo con la Fase 2.
 - T026 va después de todo lo demás. T027 y T028 son del owner, tras el despliegue.
+- T036 bloquea la fusión de `develop` en `main`. T035 va antes que T036, y T037 después de la fusión.

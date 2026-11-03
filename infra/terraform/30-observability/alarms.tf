@@ -169,6 +169,116 @@ resource "aws_cloudwatch_metric_alarm" "valkey_memory" {
   alarm_actions = local.alarm_actions
 }
 
+# ── Alertas de la plataforma (spec 051, R9) ────────────────────────────
+# `platform_watcher` y la conciliación con Meta ya no mandan correo: solo
+# escriben en el registro del scheduler. Estas alarmas son quienes avisan.
+#
+# Una por tipo, no una para todos. El vigilante repite cada hora lo que sigue
+# roto, así que una alarma compartida se queda en ALARM con la DLQ y un
+# `worker_dead` posterior no cambia su estado: no sale ningún aviso. Contra los
+# registros de prod (27-ago a 3-nov) se habría comido 17 de 20 avisos.
+#
+# La ventana es lo que convierte una repetición en un solo aviso, y tiene que
+# ser mayor que dos repeticiones para aguantar una hora perdida. Con 1 h, la DLQ
+# de prod habría dado hasta 1579 avisos; con 2 h o más, 1. Ver
+# specs/051-correos-con-oficio/evidence/alarma-calibracion.md.
+#
+# Sin `ok_actions`, como las demás: mientras sigue en ALARM no se vuelve a avisar,
+# tampoco si la DLQ crece. Si cae el scheduler entero, no se registra nada y
+# estas alarmas no suenan; el correo tenía el mismo punto ciego.
+
+locals {
+  scheduler_log_group = "/nexus/${terraform.workspace}/scheduler"
+
+  # 36 × 300 s con un solo punto: avisa en minutos y aguanta 3 h en ALARM.
+  alert_period_seconds     = 300
+  alert_evaluation_periods = 36
+
+  # Staging aparca sus servicios de 03:00 a 09:00 y cada mañana registra un
+  # `worker_dead` que no es un fallo. Las alarmas se ven en la consola, sin correo.
+  alert_actions_enabled = terraform.workspace == "prod"
+
+  # Un `kind` por cada `Alert(...)` de platform_watcher.py. Lo comprueba
+  # apps/worker/tests/unit/test_platform_alarms_contract.py.
+  platform_alert_kinds = {
+    queue_backlog      = "La entrada más vieja de una cola de entrada lleva más de 5 min sin procesarse: hay clientes esperando respuesta."
+    dlq_entries        = "Hay mensajes de cliente en nexus:inbound:dlq: agotaron sus reintentos y nadie les va a contestar hasta que se revisen y reinyecten. Solo avisa al empezar: sigue en ALARM mientras la cola tenga entradas, y no avisa si crece."
+    turn_error_burst   = "Un negocio lleva más de 5 turnos fallidos en 10 min. Sus operadores también reciben el WhatsApp."
+    worker_dead        = "Un servicio lleva más de 3 min sin latido. El detalle dice cuál."
+    cache_ratio_low    = "El prompt cache lee menos del 30 % en la hora: algo invalida el prefijo del prompt y cada turno cuesta más del doble."
+    meta_failure_burst = "Más de 20 envíos a Meta fallidos con el mismo código en 10 min. El detalle dice cuál."
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "platform_alert" {
+  name           = "${local.name}-platform-alert"
+  log_group_name = local.scheduler_log_group
+  pattern        = "{ $.event = \"platform_alert\" }"
+
+  metric_transformation {
+    name      = "platform_alerts"
+    namespace = "Nexus"
+    value     = "1"
+
+    # Solo el tipo: es un conjunto cerrado, y el negocio se queda en el registro.
+    dimensions = {
+      kind = "$.kind"
+    }
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "meta_reconciliation" {
+  name           = "${local.name}-meta-reconciliation"
+  log_group_name = local.scheduler_log_group
+  pattern        = "{ $.event = \"ops.meta_reconciliation\" }"
+
+  metric_transformation {
+    name      = "meta_reconciliation_alerts"
+    namespace = "Nexus"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "platform_alert" {
+  for_each = local.platform_alert_kinds
+
+  alarm_name          = "${local.name}-platform-alert-${replace(each.key, "_", "-")}"
+  alarm_description   = "${each.value} Detalle en Logs Insights, grupo ${local.scheduler_log_group}: filter event = \"platform_alert\" and kind = \"${each.key}\". docs/correos.md"
+  namespace           = "Nexus"
+  metric_name         = "platform_alerts"
+  statistic           = "Sum"
+  period              = local.alert_period_seconds
+  evaluation_periods  = local.alert_evaluation_periods
+  datapoints_to_alarm = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    kind = each.key
+  }
+
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
+}
+
+resource "aws_cloudwatch_metric_alarm" "meta_reconciliation" {
+  alarm_name          = "${local.name}-meta-reconciliation"
+  alarm_description   = "La conciliación diaria con Meta encontró mensajes que Meta entregó y no están guardados. Revisa la DLQ y el consumidor de entrantes. Detalle por canal en el admin, en Estado, y en Logs Insights, grupo ${local.scheduler_log_group}: filter event = \"ops.meta_reconciliation\". docs/correos.md"
+  namespace           = "Nexus"
+  metric_name         = "meta_reconciliation_alerts"
+  statistic           = "Sum"
+  period              = local.alert_period_seconds
+  evaluation_periods  = local.alert_evaluation_periods
+  datapoints_to_alarm = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
+}
+
 output "alerts_topic_arn" {
   value = aws_sns_topic.alerts.arn
 }

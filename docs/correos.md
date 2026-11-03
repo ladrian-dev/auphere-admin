@@ -42,14 +42,40 @@ Los provoca siempre una persona, a propósito. Lo que staging **no** envía es l
 
 ---
 
-### La monitorización no va por correo
+### La monitorización no va por Resend
 
-Las alertas del vigilante de la plataforma —cola atascada, mensajes en la DLQ, ráfaga de errores de turno, servicio sin latido, caché degradada, fallos de envío a Meta— y la conciliación diaria con Meta **ya no se envían por correo** (spec 051, requisito 9). Quedan en el registro con nivel de error:
+Las alertas del vigilante de la plataforma —cola atascada, mensajes en la DLQ, ráfaga de errores de turno, servicio sin latido, caché degradada, fallos de envío a Meta— y la conciliación diaria con Meta **ya no salen por Resend** (spec 051, requisito 9). Quedan en el registro de `/nexus/<entorno>/scheduler` con nivel de error:
 
 - `platform_alert`, con `kind`, `subject` y `detail`;
 - `ops.meta_reconciliation`, con el día y los canales afectados.
 
-Ahí las recoge la monitorización (Datadog). La ráfaga de errores de un negocio sigue avisando además por WhatsApp a los operadores, como antes. Las dos alertas internas que piden trabajo a una persona, la consulta de soporte y la petición de borrado de cuenta, siguen saliendo por correo.
+Quien avisa a una persona es una alarma de CloudWatch por cada tipo (`infra/terraform/30-observability/alarms.tf`). En producción, el aviso es un correo de AWS que sale del topic `nexus-prod-alerts`, cuya única suscripción es `contacto@ladrian.dev`.
+
+| Alarma (`nexus-prod-…`) | Salta cuando |
+|---|---|
+| `platform-alert-queue-backlog` | la entrada más vieja de una cola lleva más de 5 min sin procesarse |
+| `platform-alert-dlq-entries` | hay mensajes de cliente en la DLQ |
+| `platform-alert-turn-error-burst` | un negocio lleva más de 5 turnos fallidos en 10 min |
+| `platform-alert-worker-dead` | un servicio lleva más de 3 min sin latido |
+| `platform-alert-cache-ratio-low` | el prompt cache lee menos del 30 % en la hora |
+| `platform-alert-meta-failure-burst` | más de 20 envíos a Meta fallan con el mismo código en 10 min |
+| `meta-reconciliation` | la conciliación diaria encuentra mensajes de Meta sin guardar |
+
+Cómo se comportan:
+
+- **Un aviso por avería, no uno por hora.** El vigilante repite cada hora lo que sigue roto; la alarma avisa al empezar, sigue en ALARM y vuelve a OK tras 3 h sin registrarse. Volver a OK no manda nada.
+- **Un tipo no tapa a otro.** Por eso hay una alarma por tipo: con la DLQ en ALARM, un `worker_dead` sigue avisando.
+- **El correo dice qué mirar, no cuánto.** Lleva la consulta de Logs Insights. Mientras la alarma sigue en ALARM no se vuelve a avisar, tampoco si la DLQ crece.
+- **Si cae el `scheduler` entero, no suena ninguna**, porque nadie registra. El correo de Resend tenía el mismo punto ciego.
+- **En staging existen y no avisan a nadie.** Staging aparca sus servicios de noche y cada mañana registra un `worker_dead` que no es un fallo.
+
+Un tipo nuevo necesita su línea en `platform_alert_kinds`; `apps/worker/tests/unit/test_platform_alarms_contract.py` falla si falta.
+
+**Estado a 2026-11-03:** escritas en Terraform y sin aplicar. Hay que aplicarlas en producción antes de fusionar la spec 051 en `main` (CE-006); hasta entonces, el aviso sigue siendo el correo de Resend de producción.
+
+**Datadog no está montado.** La propuesta del 30 de octubre no consta aprobada, y en la cuenta de AWS no hay ningún filtro de suscripción, rol ni recurso suyo. Si se aprueba, será otra spec.
+
+La ráfaga de errores de un negocio sigue avisando además por WhatsApp a los operadores, como antes. Las dos alertas internas que piden trabajo a una persona, la consulta de soporte y la petición de borrado de cuenta, siguen saliendo por correo de Resend.
 
 ---
 
