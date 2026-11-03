@@ -169,6 +169,10 @@ export const inboxMessages = {
     es: "Pasó el plazo para escribir a este contacto desde su último mensaje. Podrás hacerlo cuando vuelva a escribir.",
     en: "The time to write to this contact since their last message has passed. You can write when they write again.",
   },
+  "inbox.composer.agent_window_closed": {
+    es: "El agente ya no puede responder: pasó el plazo desde el último mensaje del contacto. Podrá hacerlo cuando vuelva a escribir.",
+    en: "The agent can no longer answer: the time since the contact's last message has passed. It can answer when they write again.",
+  },
   "inbox.composer.channel_disconnected": {
     es: "Este canal está desconectado. Pide a quien lo gestiona que lo vuelva a conectar.",
     en: "This channel is disconnected. Ask whoever manages it to reconnect it.",

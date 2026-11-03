@@ -27,6 +27,7 @@ from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 
 from nexus_api.api.deps import get_redis
+from nexus_api.config import get_settings
 from nexus_api.db.models import (
     AuditLog,
     Channel,
@@ -716,8 +717,15 @@ async def _can_send(scope: LiteScope, conv: Conversation) -> Channel:
         raise _conflict("not_assigned_to_you")
     now = datetime.now(UTC)
     channel = await scope.session.get(Channel, conv.channel_id)
-    # Spec 049: a person on Instagram / Messenger has 7 days (HUMAN_AGENT).
-    window = person_window(channel.type.value) if channel is not None else inbox_view.WINDOW
+    # Spec 049: a person on Instagram / Messenger has 7 days once Meta approves
+    # HUMAN_AGENT.
+    window = (
+        person_window(
+            channel.type.value, human_agent_approved=get_settings().meta_human_agent_approved
+        )
+        if channel is not None
+        else inbox_view.WINDOW
+    )
     if conv.last_inbound_at is None or conv.last_inbound_at + window <= now:
         raise _conflict("window_closed")
     if channel is None or channel.status != ChannelStatus.ACTIVE:

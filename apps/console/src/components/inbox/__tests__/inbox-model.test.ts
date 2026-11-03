@@ -19,6 +19,13 @@ describe("composerMode", () => {
     expect(composerMode(detail({ state: "person", assignee: ME }))).toEqual({ kind: "mine", blocked: null });
   });
 
+  it("says when the agent can no longer answer", () => {
+    expect(composerMode(detail({ state: "agent", window: { open: false, closes_at: null } }))).toEqual({
+      kind: "agent",
+      windowClosed: true,
+    });
+  });
+
   it("says why WhatsApp would refuse a send", () => {
     expect(composerMode(detail({ state: "person", assignee: ME, window: { open: false, closes_at: null } }))).toEqual({
       kind: "mine",

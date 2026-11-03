@@ -40,6 +40,12 @@ describe("Composer", () => {
     expect(props.onTakeOver).toHaveBeenCalled();
   });
 
+  it("says the agent can no longer answer when the window closed", () => {
+    view({ kind: "agent", windowClosed: true });
+    expect(screen.getByText(/El agente ya no puede responder/)).toBeInTheDocument();
+    expect(screen.queryByText(/El agente está respondiendo\./)).toBeNull();
+  });
+
   it("another person answering is said with their name", () => {
     view({ kind: "other", name: "Luis" });
     expect(screen.getByText("Luis está atendiendo esta conversación.")).toBeInTheDocument();

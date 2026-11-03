@@ -200,6 +200,10 @@ class Settings(BaseSettings):
     # After Meta approves the permissions: every partner sees Instagram and
     # Messenger, not only the ones in ``partners.beta_channels``.
     meta_social_general_availability: bool = False
+    # After Meta approves Human Agent: a person can answer on Instagram and
+    # Messenger up to 7 days after the last message. Until then, 24 hours:
+    # Meta refuses every message with the tag (INC-59).
+    meta_human_agent_approved: bool = False
 
     # TikTok Business Messaging API — single Auphere developer app, same
     # Tech-Provider shape as Meta: every tenant authorises *this* app over

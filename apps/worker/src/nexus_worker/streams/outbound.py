@@ -603,8 +603,9 @@ async def _send_one(
         return
 
     # Spec 049: Instagram and Messenger only accept what Meta's windows
-    # allow — the agent within 24 h, a person up to 7 days with the
-    # HUMAN_AGENT tag, one private reply per comment within 7 days. Decided
+    # allow — the agent within 24 h, a person too (up to 7 days with the
+    # HUMAN_AGENT tag once Meta approves it), one private reply per comment
+    # within 7 days. Decided
     # here, from who wrote the row, before the adapter is reached.
     extra: dict[str, Any] = {}
     if channel_type in _META_SOCIAL_TYPES:
@@ -614,8 +615,8 @@ async def _send_one(
             msg.failed_at = datetime.now(UTC)
             msg.failure_code = refusal
             msg.last_error = (
-                "outside the window Meta allows: the agent answers within 24 h, a person "
-                "up to 7 days after the customer's last message"
+                "outside the window Meta allows since the customer's last message: 24 h, "
+                "or up to 7 days for a person once Meta approves Human Agent"
             )
             log.info(
                 "outbound.dispatcher.meta_window_closed",
@@ -1035,7 +1036,14 @@ async def _meta_social_gate(
     last_dm_at = await session.scalar(
         sa.select(Conversation.last_inbound_at).where(Conversation.id == msg.conversation_id)
     )
-    decision = decide(now=now, last_dm_at=last_dm_at, actor_kind=msg.actor_kind)
+    from nexus_api.config import get_settings
+
+    decision = decide(
+        now=now,
+        last_dm_at=last_dm_at,
+        actor_kind=msg.actor_kind,
+        human_agent_approved=bool(get_settings().meta_human_agent_approved),
+    )
     if not decision.allowed:
         return {}, decision.reason or "window_closed"
     return {"human_agent": decision.human_agent}, None

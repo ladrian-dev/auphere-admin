@@ -93,7 +93,7 @@ export function Composer({
           <Bot className="size-5 shrink-0 text-primary-text" aria-hidden="true" />
           <p className="min-w-48 flex-1 text-sm text-muted-foreground text-pretty">
             {mode.kind === "agent"
-              ? t("inbox.composer.agent")
+              ? t(mode.windowClosed ? "inbox.composer.agent_window_closed" : "inbox.composer.agent")
               : t("inbox.composer.other", { name: mode.name ?? t("inbox.who.someone") })}
           </p>
           <Button type="button" variant="outline" disabled={busy} onClick={onTakeOver}>

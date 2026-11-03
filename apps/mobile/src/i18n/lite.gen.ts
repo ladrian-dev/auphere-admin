@@ -260,6 +260,7 @@ export const liteMessages = {
   "inbox.comment.open": { es: "Ver la publicación", en: "See the post" },
   "inbox.composer": { es: "Escribir un mensaje", en: "Write a message" },
   "inbox.composer.agent": { es: "El agente está respondiendo. Si quieres escribir tú, toma el control.", en: "The agent is answering. If you want to write yourself, take over." },
+  "inbox.composer.agent_window_closed": { es: "El agente ya no puede responder: pasó el plazo desde el último mensaje del contacto. Podrá hacerlo cuando vuelva a escribir.", en: "The agent can no longer answer: the time since the contact's last message has passed. It can answer when they write again." },
   "inbox.composer.attach": { es: "Adjuntar imagen o PDF", en: "Attach an image or PDF" },
   "inbox.composer.attach.sending": { es: "Enviando {name}…", en: "Sending {name}…" },
   "inbox.composer.attach.size": { es: "Ese archivo pasa de {mb} MB.", en: "That file is over {mb} MB." },

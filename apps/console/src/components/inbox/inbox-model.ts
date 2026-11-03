@@ -14,8 +14,8 @@ export type ComposerMode =
   | { kind: "resolved" }
   /** The agent asked for help and nobody took it yet. */
   | { kind: "waiting"; reason: string | null }
-  /** The agent answers; the person may take over. */
-  | { kind: "agent" }
+  /** The agent answers; the person may take over. `windowClosed`: it no longer can (m-24h). */
+  | { kind: "agent"; windowClosed?: true }
   /** Another person of the business answers. */
   | { kind: "other"; name: string | null }
   /** This person answers; `blocked` says why WhatsApp would refuse a send. */
@@ -24,7 +24,7 @@ export type ComposerMode =
 export function composerMode(detail: Pick<InboxDetail, "state" | "assignee" | "waiting_reason" | "window" | "channel">): ComposerMode {
   if (detail.state === "resolved") return { kind: "resolved" };
   if (detail.state === "waiting" && !detail.assignee) return { kind: "waiting", reason: detail.waiting_reason };
-  if (detail.state === "agent") return { kind: "agent" };
+  if (detail.state === "agent") return detail.window.open ? { kind: "agent" } : { kind: "agent", windowClosed: true };
   if (detail.assignee && !detail.assignee.is_me) return { kind: "other", name: detail.assignee.name };
   if (!detail.channel.connected) return { kind: "mine", blocked: "channel_disconnected" };
   if (!detail.window.open) return { kind: "mine", blocked: "window_closed" };

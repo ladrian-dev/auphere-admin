@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from nexus_api.config import get_settings
 from nexus_api.db.models import (
     Agent,
     AgentStatus,
@@ -665,9 +666,15 @@ async def detail(
         agent_id = handled_id or (channel.agent_id if channel else None) or agents[0][0]
         agent = (agent_id, dict(agents).get(agent_id, "—"))
     now = datetime.now(UTC)
-    # Spec 049: on Instagram and Messenger a person can still answer for 7
-    # days (HUMAN_AGENT); the composer stays open that long.
-    window = person_window(channel.type.value) if channel is not None else WINDOW
+    # Spec 049: on Instagram and Messenger, once Meta approves HUMAN_AGENT, a
+    # person can still answer for 7 days; the composer stays open that long.
+    window = (
+        person_window(
+            channel.type.value, human_agent_approved=get_settings().meta_human_agent_approved
+        )
+        if channel is not None
+        else WINDOW
+    )
     closes = conversation.last_inbound_at + window if conversation.last_inbound_at else None
     payload: dict[str, Any] = last_escalation.payload if last_escalation is not None else {}
     return Detail(

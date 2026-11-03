@@ -7,7 +7,9 @@ Meta's rules (Messenger Platform policy and Instagram Messaging, 2026-10):
 - After 24 hours and **up to 7 days**, only a human may answer, with the
   ``HUMAN_AGENT`` tag. Using it without a person behind the message gets the
   permission revoked — so the tag is decided here from who wrote the message
-  (``actor_kind``), never from anything the agent can set.
+  (``actor_kind``), never from anything the agent can set. Until Meta approves
+  the tag it refuses every message that carries it (INC-59), so that second
+  window only opens with ``human_agent_approved``.
 - A **private reply** to a comment goes once per comment, within 7 days of
   the comment.
 
@@ -42,14 +44,20 @@ class WindowDecision:
     reason: str | None = None
 
 
-def decide(*, now: datetime, last_dm_at: datetime | None, actor_kind: str | None) -> WindowDecision:
+def decide(
+    *,
+    now: datetime,
+    last_dm_at: datetime | None,
+    actor_kind: str | None,
+    human_agent_approved: bool = False,
+) -> WindowDecision:
     """May a direct message go out now, and does it need the tag?"""
     if last_dm_at is None:
         return WindowDecision(allowed=False, reason="window_closed")
     elapsed = now - last_dm_at
     if elapsed < AGENT_WINDOW:
         return WindowDecision(allowed=True)
-    if actor_kind in PERSON_ACTORS and elapsed < HUMAN_AGENT_WINDOW:
+    if human_agent_approved and actor_kind in PERSON_ACTORS and elapsed < HUMAN_AGENT_WINDOW:
         return WindowDecision(allowed=True, human_agent=True)
     return WindowDecision(allowed=False, reason="window_closed")
 
@@ -58,7 +66,9 @@ def private_reply_allowed(*, now: datetime, comment_at: datetime) -> bool:
     return now - comment_at < PRIVATE_REPLY_WINDOW
 
 
-def person_window(channel_type: str) -> timedelta:
+def person_window(channel_type: str, *, human_agent_approved: bool = False) -> timedelta:
     """How long after the person's last message a team member can still
     write — what the inbox uses to show the composer."""
-    return HUMAN_AGENT_WINDOW if channel_type in META_SOCIAL_CHANNEL_TYPES else AGENT_WINDOW
+    if human_agent_approved and channel_type in META_SOCIAL_CHANNEL_TYPES:
+        return HUMAN_AGENT_WINDOW
+    return AGENT_WINDOW

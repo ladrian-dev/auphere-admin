@@ -24,9 +24,17 @@ def test_agent_after_24h_is_refused_never_tagged() -> None:
     assert not d.allowed and not d.human_agent
 
 
-def test_person_after_24h_uses_the_human_agent_tag() -> None:
-    d = decide(now=NOW, last_dm_at=NOW - timedelta(days=3), actor_kind="member")
+def test_person_after_24h_uses_the_human_agent_tag_once_approved() -> None:
+    d = decide(
+        now=NOW, last_dm_at=NOW - timedelta(days=3), actor_kind="member", human_agent_approved=True
+    )
     assert d.allowed and d.human_agent
+
+
+def test_person_after_24h_is_refused_until_meta_approves_the_tag() -> None:
+    """INC-59: Meta refuses every message with the tag before approving it."""
+    d = decide(now=NOW, last_dm_at=NOW - timedelta(days=3), actor_kind="member")
+    assert not d.allowed and not d.human_agent and d.reason == "window_closed"
 
 
 def test_person_within_24h_needs_no_tag() -> None:
@@ -35,13 +43,24 @@ def test_person_within_24h_needs_no_tag() -> None:
 
 
 def test_nobody_after_7_days() -> None:
-    d = decide(now=NOW, last_dm_at=NOW - timedelta(days=7, minutes=1), actor_kind="member")
+    d = decide(
+        now=NOW,
+        last_dm_at=NOW - timedelta(days=7, minutes=1),
+        actor_kind="member",
+        human_agent_approved=True,
+    )
     assert not d.allowed
 
 
 def test_unknown_actor_is_treated_as_automatic() -> None:
-    assert not decide(now=NOW, last_dm_at=NOW - timedelta(days=2), actor_kind=None).allowed
-    assert not decide(now=NOW, last_dm_at=NOW - timedelta(days=2), actor_kind="system").allowed
+    for actor in (None, "system"):
+        d = decide(
+            now=NOW,
+            last_dm_at=NOW - timedelta(days=2),
+            actor_kind=actor,
+            human_agent_approved=True,
+        )
+        assert not d.allowed
 
 
 def test_private_reply_window() -> None:
@@ -50,6 +69,8 @@ def test_private_reply_window() -> None:
 
 
 def test_inbox_window_per_channel() -> None:
-    assert person_window("instagram") == timedelta(days=7)
-    assert person_window("messenger") == timedelta(days=7)
-    assert person_window("whatsapp") == timedelta(hours=24)
+    for channel in ("instagram", "messenger", "whatsapp"):
+        assert person_window(channel) == timedelta(hours=24)
+    assert person_window("instagram", human_agent_approved=True) == timedelta(days=7)
+    assert person_window("messenger", human_agent_approved=True) == timedelta(days=7)
+    assert person_window("whatsapp", human_agent_approved=True) == timedelta(hours=24)

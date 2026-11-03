@@ -22,6 +22,7 @@ from nexus_channels.base import SendResult, SendStatus
 from nexus_worker.streams.outbound import _drain_tenant
 from sqlalchemy import select, update
 
+from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
@@ -194,7 +195,8 @@ async def test_agent_after_24h_is_refused_and_never_tagged(ig):
     assert rec.text_calls == []
 
 
-async def test_person_after_24h_sends_with_human_agent(ig):
+async def test_person_after_24h_sends_with_human_agent_once_approved(ig, monkeypatch):
+    monkeypatch.setattr(get_settings(), "meta_human_agent_approved", True)
     await _set_last_dm(ig, timedelta(days=3))
     rec = Recording()
     msg_id = await _pending(ig, "Soy Ana, del equipo", actor_kind="member")
@@ -205,7 +207,20 @@ async def test_person_after_24h_sends_with_human_agent(ig):
     assert rec.text_calls[0]["human_agent"] is True
 
 
-async def test_nobody_after_7_days(ig):
+async def test_person_after_24h_is_refused_until_meta_approves_the_tag(ig):
+    """INC-59: nothing reaches Meta, which would refuse the tag anyway."""
+    await _set_last_dm(ig, timedelta(days=3))
+    rec = Recording()
+    msg_id = await _pending(ig, "Soy Ana, del equipo", actor_kind="member")
+
+    await _drain(ig, rec)
+
+    assert (await _read(ig, msg_id)).failure_code == "window_closed"
+    assert rec.text_calls == []
+
+
+async def test_nobody_after_7_days(ig, monkeypatch):
+    monkeypatch.setattr(get_settings(), "meta_human_agent_approved", True)
     await _set_last_dm(ig, timedelta(days=8))
     rec = Recording()
     msg_id = await _pending(ig, "too late", actor_kind="member")
