@@ -16,6 +16,7 @@ import {
   undoChannelConfigAction,
 } from "@/app/(console)/clients/[ref]/agents/channel-actions";
 import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
+import { ATTENTION } from "@/components/channels/meta-social-card";
 import { BalanceButton, type BalanceMode } from "@/components/money/balance-button";
 import { CrumbName, openChannelCrumb } from "@/components/shell/crumb-names";
 import { agentHref } from "@/components/shell/routes-v2";
@@ -347,6 +348,11 @@ export function ChannelConfigPage({
             </p>
           ) : null}
           {disconnected ? <Callout tone="info">{t("builder.channel.page.disconnected")}</Callout> : null}
+          {!disconnected && page.needs_attention ? (
+            <Callout tone="warning" title={t("ch.social.attention.title")}>
+              {t(ATTENTION[page.needs_attention] ?? "ch.social.attention.subscribe_failed")}
+            </Callout>
+          ) : null}
           {!canWrite ? <p className="text-sm text-muted-foreground">{t("builder.channel.page.readonly")}</p> : null}
 
           <form

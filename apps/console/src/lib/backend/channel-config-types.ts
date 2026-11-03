@@ -79,6 +79,8 @@ export type ChannelPage = {
   method?: "coexistence" | "cloud_api" | string | null;
   status: string;
   problem_reason: string | null;
+  /** Instagram y Messenger: qué le pasa al canal; la consola dice el paso exacto. */
+  needs_attention?: string | null;
   visible_state: ChannelVisibleState;
   agent: AgentRef | null;
   config: ChannelConfig;

@@ -127,7 +127,13 @@ async def tick_tenant(
             cfg = dict(channel.config or {})
             # A paused channel stays paused: set_health changes what resuming returns.
             if health.ok:
-                if health_degraded(channel) and cfg.get("needs_attention"):
+                # Que la suscripción siga bien no dice que los mensajes sigan
+                # permitidos: eso solo lo aclara un envío que salga.
+                if (
+                    health_degraded(channel)
+                    and cfg.get("needs_attention")
+                    and cfg.get("needs_attention") != "messages_disabled"
+                ):
                     cfg.pop("needs_attention", None)
                     channel.config = cfg
                     set_health(channel, degraded=False)

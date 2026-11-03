@@ -197,6 +197,8 @@ class ChannelPageOut(BaseModel):
     method: Literal["coexistence", "cloud_api"] | None = None
     status: str
     problem_reason: str | None = None
+    #: Instagram y Messenger: qué le pasa al canal, para decir el paso exacto.
+    needs_attention: str | None = None
     visible_state: VisibleOut
     agent: AgentRefOut | None = None
     config: ChannelConfigOut
@@ -382,6 +384,7 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
         method=method_of(channel),
         status=_status(channel),
         problem_reason=channel.problem_reason,
+        needs_attention=(channel.config or {}).get("needs_attention"),
         visible_state=visible_of(channel),
         agent=AgentRefOut(id=agent.id, name=agent.name) if agent is not None else None,
         config=ChannelConfigOut.model_validate(await svc.read_config(session, channel)),

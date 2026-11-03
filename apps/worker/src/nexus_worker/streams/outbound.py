@@ -722,6 +722,8 @@ async def _send_one(
     # rest keeps the label it always had.
     meter_provider = provider if provider in META_SOCIAL_PROVIDERS else "meta"
     msg.status = MessageStatus.SENT
+    if channel_type in _META_SOCIAL_TYPES:
+        await _clear_messages_disabled(session, channel_id)
     msg.last_error = None
     msg.trace_id = result.provider_message_id
     msg.provider_message_id = result.provider_message_id or msg.provider_message_id
@@ -1092,6 +1094,17 @@ async def _social_send_refused(
         fbtrace_id=getattr(exc, "fbtrace_id", None),
     )
     return True
+
+
+async def _clear_messages_disabled(session: AsyncSession, channel_id: uuid.UUID) -> None:
+    """A message went out: the inbox is open again. Only a send can say so, because
+    the health check reads the subscription, which stays fine with messages off."""
+    channel = await session.get(Channel, channel_id)
+    if channel is None or (channel.config or {}).get("needs_attention") != "messages_disabled":
+        return
+    channel.config = {k: v for k, v in channel.config.items() if k != "needs_attention"}
+    set_health(channel, degraded=False)
+    channel.problem_reason = None
 
 
 async def _flag_meta_social_channel(

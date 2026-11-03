@@ -189,6 +189,27 @@ async def test_health_resubscribes_a_dropped_page(db_session, fake_redis):
         assert channel.last_health_check_at is not None
 
 
+async def test_health_does_not_clear_messages_turned_off(db_session, fake_redis):
+    """La suscripción sigue bien con los mensajes apagados: eso no dice nada de ellos."""
+    world = await _world(db_session)
+    sm = get_sessionmaker()
+    async with sm() as s, tenant_scoped_session(s, world["tenant_id"]):
+        channel = await s.get(Channel, world["channel_id"])
+        assert channel is not None
+        channel.status = ChannelStatus.DEGRADED
+        channel.config = {**channel.config, "needs_attention": "messages_disabled"}
+        await s.commit()
+    healthy = _graph(lambda r: httpx.Response(200, json={"data": [], "success": True}))
+
+    await tick_tenant(world["tenant_id"], client=healthy, redis=fake_redis, app_id=APP_ID)
+
+    async with sm() as s, tenant_scoped_session(s, world["tenant_id"]):
+        channel = await s.get(Channel, world["channel_id"])
+        assert channel is not None
+        assert channel.status is ChannelStatus.DEGRADED
+        assert channel.config["needs_attention"] == "messages_disabled"
+
+
 async def test_health_flags_a_revoked_token(db_session, fake_redis):
     world = await _world(db_session)
     revoked = _graph(

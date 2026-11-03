@@ -312,6 +312,15 @@ async def test_graph_refusals_say_what_they_mean(ig):
         assert channel.status is ChannelStatus.DEGRADED
         assert channel.config["needs_attention"] == "messages_disabled"
 
+    back = await _pending(ig, "cuatro")
+    await _drain(ig, Recording())
+    assert (await _read(ig, back)).status is MessageStatus.SENT
+    async with sm() as session, tenant_scoped_session(session, ig["tenant_id"]):
+        channel = await session.get(Channel, ig["channel_id"])
+        assert channel is not None
+        assert channel.status is ChannelStatus.ACTIVE, "un envío que sale aclara el aviso"
+        assert "needs_attention" not in channel.config
+
 
 async def test_the_profile_keeps_the_name_and_the_picture_once(ig, monkeypatch):
     """Owner, 2026-10-30: the inbox shows the person's name and photo. The

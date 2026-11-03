@@ -102,6 +102,12 @@ describe("la página de un canal", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("dice qué le pasa al canal y el paso para arreglarlo", () => {
+    view(page({ needs_attention: "messages_disabled" }));
+    expect(screen.getByText("Necesita atención")).toBeInTheDocument();
+    expect(screen.getByText(/Permitir acceso a los mensajes/)).toBeInTheDocument();
+  });
+
   it("«Excepciones» aparece con «A todos», en su sección y en el índice", async () => {
     const user = userEvent.setup();
     view();
