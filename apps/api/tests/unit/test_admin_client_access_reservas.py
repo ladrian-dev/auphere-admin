@@ -139,6 +139,96 @@ async def test_activating_creates_the_settings_and_stages_the_agent(
     assert "reservas.create" in staged.tools and "escalate.escalate_to_human" in staged.tools
 
 
+async def _versions(tenant_id: uuid.UUID, agent_id: uuid.UUID) -> list[AgentConfig]:
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        rows = await session.execute(
+            sa.select(AgentConfig)
+            .where(AgentConfig.agent_id == agent_id)
+            .order_by(AgentConfig.version)
+        )
+        return list(rows.scalars().all())
+
+
+async def test_switching_the_module_off_reaches_the_published_agent(
+    client, db_session, console_world, admin_headers
+) -> None:
+    w = console_world["a"]
+    agent_id = await _agent(db_session, w["tenant_id"])
+    h = await _headers(db_session, admin_headers)
+    on = await client.put(
+        _url(w["tenant_id"]),
+        headers=h,
+        json={"enabled": True, "modules": ["panel", "reservas"], "reservas": {"mode": "services"}},
+    )
+    assert on.status_code == 200, on.text
+    # La versión activa con la agenda: lo que deja publicar el borrador de activar.
+    async with tenant_scoped_session(db_session, w["tenant_id"]):
+        active = await db_session.scalar(
+            sa.select(AgentConfig).where(
+                AgentConfig.agent_id == agent_id, AgentConfig.status == AgentConfigStatus.ACTIVE
+            )
+        )
+        assert active is not None
+        active.tools = ["reservas.create", "reservas.find_slots", "escalate.escalate_to_human"]
+    await db_session.commit()
+
+    off = await client.put(
+        _url(w["tenant_id"]), headers=h, json={"enabled": True, "modules": ["panel"]}
+    )
+    assert off.status_code == 200, off.text
+
+    versions = await _versions(w["tenant_id"], agent_id)
+    [live] = [v for v in versions if v.status == AgentConfigStatus.ACTIVE]
+    assert live.version > active.version
+    assert live.tools == ["escalate.escalate_to_human"]
+    assert live.override_reason == "reservas_off"
+    assert all(
+        not any(t.startswith("reservas.") for t in v.tools)
+        for v in versions
+        if v.status == AgentConfigStatus.STAGED
+    )
+
+    again = await client.put(
+        _url(w["tenant_id"]), headers=h, json={"enabled": True, "modules": ["panel"]}
+    )
+    assert again.status_code == 200, again.text
+    assert len(await _versions(w["tenant_id"], agent_id)) == len(versions), "repetir no crea nada"
+
+
+async def test_a_template_with_reservas_needs_the_module(
+    client, db_session, console_world, admin_headers
+) -> None:
+    w = console_world["a"]
+    h = await _headers(db_session, admin_headers)
+    body = {
+        "seed_template_ref": "barbershop_v1",
+        "placeholders": {
+            "tenant.name": "Cultor Barber",
+            "tenant.address": "Av. Apoquindo 1234",
+            "tenant.timezone": "America/Santiago",
+            "tenant.business_hours_label": "Lun-Sáb 10-19",
+        },
+    }
+
+    off = await client.post(
+        f"/admin/tenants/{w['tenant_id']}/agent-config/from-seed", headers=h, json=body
+    )
+    assert off.status_code == 409, off.text
+    assert "Reservas" in off.json()["detail"]
+
+    on = await client.put(
+        _url(w["tenant_id"]),
+        headers=h,
+        json={"enabled": True, "modules": ["panel", "reservas"], "reservas": {"mode": "services"}},
+    )
+    assert on.status_code == 200, on.text
+    applied = await client.post(
+        f"/admin/tenants/{w['tenant_id']}/agent-config/from-seed", headers=h, json=body
+    )
+    assert applied.status_code == 201, applied.text
+
+
 async def _live_booking(tenant_id: uuid.UUID) -> uuid.UUID:
     sm = get_sessionmaker()
     starts = datetime.now(UTC) + timedelta(days=2)

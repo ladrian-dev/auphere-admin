@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -187,7 +188,11 @@ async def test_list_seed_templates_includes_barbershop(client, admin_headers):
     assert "reservas.find_slots" in bs["tools_required"]  # spec 048
 
 
-async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenants):
+async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenants, monkeypatch):
+    # Esta plantilla usa Reservas: aquí se prueba el render, no el módulo.
+    monkeypatch.setattr(
+        "nexus_api.api.admin.agent_configs.reservas_enabled", AsyncMock(return_value=True)
+    )
     tid = seed_tenants["a"]
     body = {
         "seed_template_ref": "barbershop_v1",

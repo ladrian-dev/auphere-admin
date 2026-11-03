@@ -48,6 +48,7 @@ from nexus_api.services.prompt_improver import (
     PromptTooLongError,
     improve_prompt,
 )
+from nexus_api.services.reservations.passing import reservas_enabled
 from nexus_api.services.templating import (
     SeedTemplateNotFound,
     SeedTemplatePlaceholderMissing,
@@ -506,6 +507,19 @@ async def stage_agent_config_from_seed(
     # (seed first, then connect) — keeping both orderings symmetric.
     connector_tools = await _safe_connector_tools_for_tenant(session, tenant_id)
     merged_tools = sorted(set(rendered.tools) | connector_tools)
+
+    # Spec 048: un agente solo tiene Reservas si el cliente la tiene. Quitarle
+    # las herramientas no basta: el texto de la plantilla las usa.
+    if any(t.startswith("reservas.") for t in merged_tools) and not (
+        await reservas_enabled(session, tenant_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Esta plantilla usa Reservas y este cliente no lo tiene activo. "
+                "Actívalo en la pestaña Acceso y vuelve a aplicarla."
+            ),
+        )
 
     svc = AgentConfigService(session)
     try:

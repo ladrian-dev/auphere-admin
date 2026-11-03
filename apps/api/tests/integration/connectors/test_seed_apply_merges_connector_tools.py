@@ -12,6 +12,7 @@ these tests pin both orderings to behave the same.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -126,6 +127,14 @@ async def _seed_tenant_with_connector(
     )
     await db_session.commit()
     return connector.id, always_tool.id, blocked_tool.id
+
+
+@pytest.fixture(autouse=True)
+def _reservas_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La plantilla usa Reservas: aquí se prueban los conectores, no el módulo."""
+    monkeypatch.setattr(
+        "nexus_api.api.admin.agent_configs.reservas_enabled", AsyncMock(return_value=True)
+    )
 
 
 async def test_seed_apply_includes_always_mode_connector_tools(client, db_session):

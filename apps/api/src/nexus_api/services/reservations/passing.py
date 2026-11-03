@@ -127,6 +127,10 @@ class _Fields:
 #: servicio, ``reservas.find_slots`` y ``reservas.create`` no reservan en Servicios.
 MAP_EXTRA: Final = ("reservas.services",)
 
+#: What a version published because the module went off says about itself.
+OFF_REASON: Final = "reservas_off"
+OFF_NOTE: Final = "Reservas desactivado: esta versión ya no tiene sus herramientas."
+
 
 def _with_reservas(tools: list[str], *, everything: bool) -> list[str]:
     """``tools`` con ``booking.*`` cambiada por su sustituta. ``everything`` (activar
@@ -302,8 +306,6 @@ async def publish_agent_versions(
     stale. An agent whose active version no longer names it is skipped:
     repeating publishes nothing."""
     from nexus_api.services.agent_config_service import AgentConfigService
-    from nexus_api.services.reception import sync_reception_flag
-    from nexus_api.services.testing.suites import mark_stale
 
     svc = AgentConfigService(session)
     agents = (
@@ -320,45 +322,111 @@ async def publish_agent_versions(
             continue
         # R3.3: the fixed map, never more (T217; plan, decision 26).
         fields = _rewritten(active, enable=True)
-        published = await svc.publish_platform_copy(
-            active,
-            actor=actor,
-            reason=reason,
-            note=note,
-            tools=fields.tools,
-            system_prompt_rendered=fields.system_prompt,
-            spec=fields.spec,
-        )
-        # «Es Recepción» is what the published version says (spec 047, 53.1).
-        await sync_reception_flag(session, agent_id)
-        session.add(
-            AuditLog(
-                tenant_id=published.tenant_id,
-                actor=actor,
-                action="agent.publish",
-                target=f"agent:{agent_id}",
-                before_json={"version": active.agent_version_number},
-                after_json={
-                    "version": published.agent_version_number,
-                    "origin": "platform",
-                    "override_reason": reason,
-                    "accepted_normal_failures": [],
-                },
-            )
-        )
-        # Its tools changed: its tests no longer say anything (spec 047, 21.7).
-        await mark_stale(session, agent_id)
         out.append(
-            PublishedAgent(
-                agent_id=agent_id,
+            await _publish_copy(
+                session,
+                svc,
+                active,
+                fields,
                 name=str(name),
-                version=published.version,
-                number=published.agent_version_number,
-                replaced=active.agent_version_number,
+                actor=actor,
+                reason=reason,
+                note=note,
             )
         )
     await session.flush()
     return out
+
+
+async def publish_without_reservas(session: AsyncSession, *, actor: str) -> list[PublishedAgent]:
+    """Switching the module off reaches the agents at once: each active version
+    that has ``reservas.*`` tools gets a copy without them, so the agent stops
+    offering the calendar. Same mechanism as the automatic pass: no gate, and
+    the version says who and why. The prompt's text is the partner's: it stays."""
+    from nexus_api.services.agent_config_service import AgentConfigService
+
+    svc = AgentConfigService(session)
+    agents = (
+        await session.execute(
+            sa.select(Agent.id, Agent.name)
+            .where(Agent.status == AgentStatus.ACTIVE.value)
+            .order_by(Agent.created_at)
+        )
+    ).all()
+    out: list[PublishedAgent] = []
+    for agent_id, name in agents:
+        active = await svc.configs.get_active(agent_id=agent_id)
+        if active is None:
+            continue
+        fields = _rewritten(active, enable=False)
+        if _same(active, fields):
+            continue
+        out.append(
+            await _publish_copy(
+                session,
+                svc,
+                active,
+                fields,
+                name=str(name),
+                actor=actor,
+                reason=OFF_REASON,
+                note=OFF_NOTE,
+            )
+        )
+    await session.flush()
+    return out
+
+
+async def _publish_copy(
+    session: AsyncSession,
+    svc: Any,
+    active: AgentConfig,
+    fields: _Fields,
+    *,
+    name: str,
+    actor: str,
+    reason: str,
+    note: str,
+) -> PublishedAgent:
+    from nexus_api.services.reception import sync_reception_flag
+    from nexus_api.services.testing.suites import mark_stale
+
+    agent_id = active.agent_id
+    published = await svc.publish_platform_copy(
+        active,
+        actor=actor,
+        reason=reason,
+        note=note,
+        tools=fields.tools,
+        system_prompt_rendered=fields.system_prompt,
+        spec=fields.spec,
+    )
+    # «Es Recepción» is what the published version says (spec 047, 53.1).
+    await sync_reception_flag(session, agent_id)
+    session.add(
+        AuditLog(
+            tenant_id=published.tenant_id,
+            actor=actor,
+            action="agent.publish",
+            target=f"agent:{agent_id}",
+            before_json={"version": active.agent_version_number},
+            after_json={
+                "version": published.agent_version_number,
+                "origin": "platform",
+                "override_reason": reason,
+                "accepted_normal_failures": [],
+            },
+        )
+    )
+    # Its tools changed: its tests no longer say anything (spec 047, 21.7).
+    await mark_stale(session, agent_id)
+    return PublishedAgent(
+        agent_id=agent_id,
+        name=name,
+        version=published.version,
+        number=published.agent_version_number,
+        replaced=active.agent_version_number,
+    )
 
 
 # ── las citas ───────────────────────────────────────────────────────────────

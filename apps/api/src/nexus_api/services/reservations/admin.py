@@ -179,14 +179,13 @@ async def apply_choice(
                 session, tenant_id, actor=actor, now=now, every_agent=True
             )
         else:
-            await prepare_agent_versions(session, enable=False, actor=actor)
+            # Apagar llega al agente al momento: una herramienta que ya no
+            # responde no debe seguir ofreciéndose. El borrador, si lo hay, igual.
+            await passing.publish_without_reservas(session, actor=actor)
+            await passing.prepare_agent_versions(
+                session, enable=False, actor=actor, drafts_only=True
+            )
     await session.flush()
-
-
-async def prepare_agent_versions(session: AsyncSession, *, enable: bool, actor: str) -> int:
-    """El borrador de cada agente activo con (o sin) Reservas, sin promover.
-    Cuántos cambió."""
-    return len(await passing.prepare_agent_versions(session, enable=enable, actor=actor))
 
 
 async def admin_view(
@@ -234,5 +233,4 @@ __all__ = [
     "apply_choice",
     "as_tenant",
     "live_future",
-    "prepare_agent_versions",
 ]
