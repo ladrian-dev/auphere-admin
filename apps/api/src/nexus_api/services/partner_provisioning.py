@@ -248,6 +248,18 @@ async def _seed_agent(
     connector_tools = await _safe_connector_tools_for_tenant(session, tenant.id)
     merged_tools = sorted(set(rendered.tools) | connector_tools)
 
+    # Spec 048: an agent only has Reservas if its client does. Dropping the tools
+    # is not enough: the template's text uses them.
+    from nexus_api.services.reservations.passing import reservas_enabled
+
+    if any(t.startswith("reservas.") for t in merged_tools) and not await reservas_enabled(
+        session, tenant.id
+    ):
+        raise ProvisioningError(
+            f"seed template {seed_template_ref!r} uses Reservas and this client does not "
+            "have it on; choose a template without bookings"
+        )
+
     # Spec 047 (T093, 23.7): the same gate as the console. The partner that
     # provisions takes the AI-disclosure decision of today (CP-31: «yes» by
     # default, attributed to it), so the contract of the partner API holds.
