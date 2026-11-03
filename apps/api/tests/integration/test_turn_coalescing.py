@@ -32,7 +32,7 @@ GROUP = "nexus-worker"
 WINDOW_MS = 3000
 
 
-def _fields(world: Any, content: str) -> dict[str, str]:
+def _fields(world: Any, content: str, **extra: str) -> dict[str, str]:
     return {
         "tenant_id": str(world.tenant_id),
         "channel_id": str(world.channel_id),
@@ -40,11 +40,14 @@ def _fields(world: Any, content: str) -> dict[str, str]:
         "content": content,
         "provider": "meta",
         "provider_message_id": f"wamid.{abs(hash(content))}",
+        **extra,
     }
 
 
-async def _consume(redis: Any, world: Any, content: str, pipeline: Any) -> None:
-    await redis.xadd(STREAM, _fields(world, content))
+async def _consume(
+    redis: Any, world: Any, content: str, pipeline: Any, *, window_ms: int = WINDOW_MS, **extra: str
+) -> None:
+    await redis.xadd(STREAM, _fields(world, content, **extra))
     resp = await redis.xreadgroup(groupname=GROUP, consumername="c1", streams={STREAM: ">"})
     entry_id, raw = resp[0][1][0]
     acked = await consumer_mod.handle_entry(
@@ -54,7 +57,7 @@ async def _consume(redis: Any, world: Any, content: str, pipeline: Any) -> None:
         group=GROUP,
         entry_id=entry_id,
         raw_fields=raw,
-        coalesce_window_ms=WINDOW_MS,
+        coalesce_window_ms=window_ms,
     )
     assert acked is True, "guardado y programado: el stream ya no lo necesita"
 
@@ -90,6 +93,93 @@ async def test_three_quick_messages_are_one_turn(db_session) -> None:
     assert len(rows) == 3
     assert {r.turn_id for r in rows} == {rows[0].id}, "los tres en el mismo turno"
     assert await redis.zcard(queue) == 0, "el turno acabó: no queda nada programado"
+
+
+async def _drain(redis: Any, pipeline: Any) -> int:
+    return await consumer_mod.drain_due_turns(
+        redis,
+        queues=[turns.due_queue(STREAM)],
+        pipeline=pipeline,
+        now_ms=int(time.time() * 1000) + WINDOW_MS + 1,
+    )
+
+
+def _reaction(emoji: str, provider: str = "meta") -> dict[str, str]:
+    return {"reaction_emoji": emoji, "reaction_target_wamid": "mid.abc", "provider": provider}
+
+
+@pytest.mark.parametrize(
+    ("content", "emoji", "provider"),
+    [
+        ("[reaction:❤:on=mid.abc]", "❤", "meta"),
+        ("[reaction:❤:on=mid.abc]", "❤", "meta_instagram"),
+        ("[reaction:(removed):on=mid.abc]", "", "meta_messenger"),
+    ],
+)
+async def test_a_reaction_is_kept_and_opens_no_turn(db_session, content, emoji, provider) -> None:
+    """Spec 049: «se registran sin disparar al agente». Ocurrió en WhatsApp en
+    staging el 2026-10-31: un corazón gastó un turno y el agente contestó."""
+    world = await make_world(db_session)
+    redis = fakeaioredis.FakeRedis()
+    await redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
+    pipeline = RecordingPipeline()
+
+    await _consume(redis, world, content, pipeline, **_reaction(emoji, provider))
+
+    assert await redis.zcard(turns.due_queue(STREAM)) == 0, "nada programado"
+    assert await _drain(redis, pipeline) == 0
+    assert pipeline.calls == []
+    [row] = await inbound_rows(world)
+    assert row.content == content, "la bandeja la sigue enseñando"
+    assert row.skipped_reason is None
+    assert row.turn_id is None
+
+
+async def test_a_reaction_opens_no_turn_without_a_window(db_session) -> None:
+    world = await make_world(db_session)
+    redis = fakeaioredis.FakeRedis()
+    await redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
+    pipeline = RecordingPipeline()
+
+    await _consume(redis, world, "[reaction:❤:on=mid.abc]", pipeline, window_ms=0, **_reaction("❤"))
+
+    assert pipeline.calls == []
+
+
+@pytest.mark.parametrize("reaction_first", [True, False])
+async def test_a_reaction_stays_out_of_the_turn_of_a_message(db_session, reaction_first) -> None:
+    """Ni antes ni dentro de la ráfaga: el agente solo lee lo que le escribieron."""
+    world = await make_world(db_session)
+    redis = fakeaioredis.FakeRedis()
+    await redis.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
+    pipeline = RecordingPipeline()
+    reaction = ("[reaction:❤:on=mid.abc]", _reaction("❤"))
+    text = ("¿abrís mañana?", {})
+
+    for content, extra in (reaction, text) if reaction_first else (text, reaction):
+        await _consume(redis, world, content, pipeline, **extra)
+
+    assert await _drain(redis, pipeline) == 1
+    assert [c["user_message"] for c in pipeline.calls] == ["¿abrís mañana?"]
+    by_content = {r.content: r for r in await inbound_rows(world)}
+    assert by_content["¿abrís mañana?"].turn_id is not None
+    assert by_content["[reaction:❤:on=mid.abc]"].turn_id is None
+
+
+async def test_a_redelivered_reaction_still_opens_no_turn(db_session) -> None:
+    world = await make_world(db_session)
+    reaction = world.event(
+        "[reaction:❤:on=mid.abc]",
+        wamid="reaction:mid.abc:1",
+        reaction_emoji="❤",
+        reaction_target_wamid="mid.abc",
+    )
+
+    first = await accept_inbound(reaction)
+    again = await accept_inbound(reaction)
+
+    assert first.no_turn == "reaction"
+    assert again.duplicate and again.no_turn == "reaction"
 
 
 async def test_each_message_pushes_the_turn_back(db_session) -> None:

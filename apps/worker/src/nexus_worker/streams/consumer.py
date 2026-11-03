@@ -549,8 +549,8 @@ async def _save_and_schedule(
     if accepted.skipped is not None or accepted.conversation_id is None:
         return {"skipped": accepted.skipped or "tenant_unknown"}
     if accepted.no_turn:
-        # Spec 050 (D6): a stop word is kept for the Inbox, never answered.
-        return {"skipped": "opted_out", "conversation_id": str(accepted.conversation_id)}
+        # Saved and never answered: a stop word (spec 050, D6) or a reaction (spec 049).
+        return {"skipped": accepted.no_turn, "conversation_id": str(accepted.conversation_id)}
     await turns.schedule_turn(
         redis,
         queue=turns.due_queue(stream),

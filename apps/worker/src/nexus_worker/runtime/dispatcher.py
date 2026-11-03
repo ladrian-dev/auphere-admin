@@ -259,8 +259,15 @@ class AcceptedInbound:
     duplicate: bool = False
     #: ``tenant_unknown``: no hay cliente al que guardárselo.
     skipped: str | None = None
-    #: Spec 050: guardado, pero sin turno (una palabra de baja).
-    no_turn: bool = False
+    #: Guardado, pero sin turno, y por qué: ``opted_out`` (spec 050, una palabra
+    #: de baja) o ``reaction`` (spec 049, una reacción o su retirada).
+    no_turn: str | None = None
+
+
+def _no_turn_reason(event: InboundEvent) -> str | None:
+    if event.opted_out:
+        return "opted_out"
+    return "reaction" if event.reaction_target_wamid else None
 
 
 _PRIOR_INBOUND_SQL = sa.text(
@@ -329,7 +336,7 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
                     conversation_id=prior[1],
                     message_id=prior[0],
                     duplicate=True,
-                    no_turn=event.opted_out,
+                    no_turn=_no_turn_reason(event),
                 )
 
         customer = await _upsert_customer(
@@ -389,7 +396,7 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
             event.channel_id,
             conversation_id=conversation.id,
             message_id=inbound_msg.id,
-            no_turn=event.opted_out,
+            no_turn=_no_turn_reason(event),
         )
         # Spec 049: Instagram / Messenger events carry no name; it is read
         # once per person, after this transaction (a Graph call). The picture
@@ -1391,7 +1398,7 @@ async def _process_inbound(
     if accepted.skipped is not None or accepted.conversation_id is None:
         return {"skipped": accepted.skipped or "tenant_unknown"}
     if accepted.no_turn:
-        return {"skipped": "opted_out", "conversation_id": str(accepted.conversation_id)}
+        return {"skipped": accepted.no_turn, "conversation_id": str(accepted.conversation_id)}
     result = await run_turn(
         tenant_id=event.tenant_id,
         conversation_id=accepted.conversation_id,
