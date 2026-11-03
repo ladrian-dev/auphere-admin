@@ -44,6 +44,7 @@ from nexus_api.db.models import (
     MessageStatus,
 )
 from nexus_api.db.models.channel import QA_PLAYGROUND_PROVIDER
+from sqlalchemy.exc import IntegrityError
 
 from nexus_worker.simulation.registry import SimulatedRegistry, load_connector_tools
 from nexus_worker.simulation.world import World
@@ -104,15 +105,12 @@ class TurnOutcome:
 
 
 async def _channel(session: Any, tenant_id: uuid.UUID) -> Channel:
-    channel: Channel | None = (
-        await session.scalars(
-            sa.select(Channel).where(
-                Channel.tenant_id == tenant_id,
-                Channel.type == ChannelType.WEB,
-                Channel.provider == QA_PLAYGROUND_PROVIDER,
-            )
-        )
-    ).first()
+    query = sa.select(Channel).where(
+        Channel.tenant_id == tenant_id,
+        Channel.type == ChannelType.WEB,
+        Channel.provider == QA_PLAYGROUND_PROVIDER,
+    )
+    channel: Channel | None = (await session.scalars(query)).first()
     if channel is not None:
         return channel
     channel = Channel(
@@ -123,8 +121,14 @@ async def _channel(session: Any, tenant_id: uuid.UUID) -> Channel:
         config={"qa_playground": True},
         status=ChannelStatus.ACTIVE,
     )
-    session.add(channel)
-    await session.flush()
+    try:
+        async with session.begin_nested():
+            session.add(channel)
+            await session.flush()
+    except IntegrityError:
+        # Una pasada de pruebas abre conversaciones en paralelo y otra lo acaba de
+        # crear: el índice único esperó a que confirmara, así que ya se ve.
+        return (await session.scalars(query)).one()
     return channel
 
 

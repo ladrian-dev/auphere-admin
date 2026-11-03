@@ -15,8 +15,8 @@ nada para el cliente final — el turno ya se respondió. Por eso el bucle
 espera cuando no hay trabajo y no compite por réplicas con el runner.
 
 Cada veredicto se pide con la clave del partner del cliente atada al proxy
-de modelos, como el turno que lo originó: con el proxy obligatorio
-(staging), sin ella el grader no llega al modelo.
+de modelos, como el turno que lo originó: con el proxy obligatorio, sin ella
+el grader no llega al modelo.
 """
 
 from __future__ import annotations

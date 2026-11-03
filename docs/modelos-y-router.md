@@ -177,8 +177,18 @@ el despliegue declara:
 
 Lo que no va enrutado —todo el código de hoy— sale exactamente como antes.
 
+**Staging y producción van por el mismo camino.** Las llamadas salen directas al
+proveedor, con las claves de vendor del entorno, y el techo de gasto es el saldo
+(enmienda de ADR-036, 2026-11-03). Un partner nuevo no necesita nada más para usar
+la IA, nazca desde el panel o dándose de alta solo
+(`tests/integration/test_new_partner_reaches_the_model.py`). El proxy de staging
+sigue encendido sin uso: volver a pasar las llamadas por él es poner
+`llm_via_proxy = true` en `infra/terraform/20-services/staging.tfvars` y aplicar, y
+entonces cada partner necesita de nuevo su clave en
+`nexus/staging/litellm-partner-keys`.
+
 **Quién paga cada llamada.** Donde el proxy LiteLLM es obligatorio
-(`NEXUS_LLM_PROXY_REQUIRED=true`, hoy staging), cada llamada sale con la clave
+(`NEXUS_LLM_PROXY_REQUIRED=true`, hoy ningún entorno), cada llamada sale con la clave
 virtual de quien la paga, del mapa `LITELLM_PROXY_VIRTUAL_KEYS`, y sin ella no
 sale (`LLMProxyUnavailable`, fail-closed):
 
@@ -194,8 +204,9 @@ sale (`LLMProxyUnavailable`, fail-closed):
   llamada sin partner nunca cae en ella por defecto, y dentro del ámbito de
   plataforma no queda ningún partner atado.
 
-Sin el proxy obligatorio (producción, ADR-036) la llamada va al vendor y un
-cliente sin partner es legítimo. Dos barridos lo vigilan: el de las fuentes
+Sin el proxy obligatorio (ADR-036) la llamada va al vendor y un cliente sin
+partner es legítimo. El ámbito se abre igual, porque identifica al partner para
+el medidor. Dos barridos lo vigilan: el de las fuentes
 (`tests/unit/test_llm_proxy_scope_coverage.py`: todo sitio que construye un
 `LiteLLMProvider` abre uno de los dos ámbitos o dice por qué no) y el de los
 trabajos (`tests/integration/test_jobs_reach_the_model_behind_the_proxy.py`:
@@ -349,8 +360,8 @@ tabla (`nexus_worker/platform_models.py`):
 | `customer_sim` (el cliente simulado, T206) | `NEXUS_LLM_CUSTOMER_SIM_MODEL` | el de clasificar |
 | `judge` (el juez) | `NEXUS_LLM_JUDGE_MODEL` | el de clasificar |
 
-Todas salen por el proxy de LiteLLM con la clave del partner del cliente: el
-consumidor de trabajos abre su ámbito para todo el trabajo. La restricción se
+Todas salen en el ámbito del partner del cliente: el consumidor de trabajos lo abre
+para todo el trabajo. La restricción se
 retira en la spec que construya la gestión de modelos (64.4).
 
 El cliente simulado llama con el rol `customer_sim` (tarea `answer` en
@@ -408,7 +419,8 @@ falta, el hop no los ejecuta y el router no los elige.
 | `scaleway/gpt-oss-120b`, `scaleway/gpt-oss-20b` (Apache-2.0), `scaleway/whisper-large-v3` (MIT) | API compatible con OpenAI, París | `store: false` |
 
 **El registro en el proxy** (`router_catalog.litellm_params_for`, para
-`POST /model/new`): Bedrock con `aws_region_name` y **sin clave** (el rol IAM de
+`POST /model/new`). Hoy ningún entorno saca sus llamadas por él, así que activar
+estos despliegues exige decidir antes cómo llegan: Bedrock con `aws_region_name` y **sin clave** (el rol IAM de
 la tarea del proxy necesita `bedrock:InvokeModel` e
 `InvokeModelWithResponseStream` sobre los perfiles `eu.` y sus modelos base en la
 UE); Scaleway con `api_base` y `api_key` del entorno del proxy
