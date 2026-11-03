@@ -1,10 +1,11 @@
 """Fallo ``el-constructor-no-llega-al-modelo-en-staging`` — el barrido de los trabajos.
 
-En staging el proxy LiteLLM es obligatorio (``NEXUS_LLM_PROXY_REQUIRED=true``) y
-cada llamada a un modelo sale con la clave virtual de **un** partner. Un trabajo
-sin partner atado no llega al modelo: «Generar borrador», la lectura de la web,
-el constructor del cliente, las pruebas y la puerta de publicar fallaban
-siempre allí, y en las pruebas (sin proxy) nada lo veía.
+Con el proxy LiteLLM obligatorio (``NEXUS_LLM_PROXY_REQUIRED=true``, staging hasta
+el 2026-11-03) cada llamada a un modelo sale con la clave virtual de **un** partner.
+Un trabajo sin partner atado no llega al modelo: «Generar borrador», la lectura de la
+web, el constructor del cliente, las pruebas y la puerta de publicar fallaban
+siempre allí, y en las pruebas (sin proxy) nada lo veía. Hoy ningún entorno lo
+exige, pero volver a hacerlo es una variable (``llm_via_proxy``): esto sigue vigilado.
 
 Esta prueba **barre** el registro de ``jobs-consumer`` (``default_registry``): cada
 tipo registrado se corre con su manejador de verdad —y sus modelos por defecto,
@@ -195,7 +196,7 @@ async def test_every_job_kind_reaches_the_model_with_its_partners_key(
     await write(client, biz, "PUT", "/hours", {"layout": "daily", "days": WEEK}, revision=0)
     await world(Sweep(client, db_session, console_world, fake_redis, biz))
 
-    # Staging: el proxy es obligatorio y solo conoce la clave de este partner.
+    # El proxy es obligatorio y solo conoce la clave de este partner.
     monkeypatch.setenv("NEXUS_LLM_PROXY_REQUIRED", "true")
     monkeypatch.setenv("LITELLM_PROXY_API_BASE", BASE)
     monkeypatch.setenv("LITELLM_PROXY_VIRTUAL_KEYS", json.dumps({str(biz.partner_id): KEY}))

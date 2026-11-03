@@ -185,6 +185,10 @@ staging: un apply de prod con el flag no crea el servicio. Sin ALB. Sin
 Valkey (el de streams es `noeviction`). Secreto propio
 `nexus/staging/litellm`, no `nexus/staging/app`.
 
+Desde el 2026-11-03 nadie llama por él (enmienda de ADR-036): `llm_via_proxy` está
+en `false` en `staging.tfvars`, y los servicios van directos al proveedor. El proxy
+sigue encendido solo para poder volver atrás, poniéndola a `true` y aplicando.
+
 ```bash
 # Solo: terraform workspace select staging
 

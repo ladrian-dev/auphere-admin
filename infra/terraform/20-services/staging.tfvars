@@ -40,6 +40,11 @@ state_bucket = "nexus-terraform-state-793033583982"
 # pase lo que pase con la variable.
 litellm_enabled = true
 
+# Las llamadas a modelos van directas al proveedor, como en producción, y el
+# proxy sigue encendido sin uso (enmienda de ADR-036, 2026-11-03). Volver a
+# pasarlas por él es poner esto a ``true`` y aplicar.
+llm_via_proxy = false
+
 # Spec 031: los avisos de la app (APNs y FCM). Se encienden **después** de
 # crear las cinco claves en el secreto de este entorno:
 #

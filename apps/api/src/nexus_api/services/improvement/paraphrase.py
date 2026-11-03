@@ -12,7 +12,7 @@ mentira. Sin modelo (``llm_use_inmemory``) no hay paráfrasis y la escribe la
 persona. Un fallo del modelo tampoco tumba la corrección.
 
 La llamada sale con la clave del partner del cliente (``partner_id``): con el
-proxy obligatorio (staging), sin ella no llega.
+proxy obligatorio, sin ella no llega.
 """
 
 from __future__ import annotations
