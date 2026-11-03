@@ -24,13 +24,18 @@ Lo que este módulo decide, y por qué:
 
 from __future__ import annotations
 
+import uuid
+from dataclasses import replace
 from typing import Any
 
 import sqlalchemy as sa
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import (
+    Agent,
+    AgentStatus,
     Channel,
     ChannelStatus,
     ChannelType,
@@ -43,6 +48,7 @@ from nexus_api.db.models import (
     ToolStatus,
 )
 from nexus_api.repositories.audit import AuditRepository
+from nexus_api.services.agents import principal_agent_id
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.skills_catalog import list_skills
 from nexus_api.services.templating.seed_templates import load_seed_template
@@ -68,6 +74,8 @@ from .schemas_capabilities_client import (
     CapabilityUpdatedOut,
     CapabilityUpdateIn,
 )
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/clients/{ref}/capabilities")
 
@@ -338,6 +346,59 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
         )
     await write_spec(scope, checked, expected_revision=None, lacking=lacking)
     return was
+
+
+#: Lo que necesita un agente para enseñar un producto: buscarlo, leer su ficha y
+#: mandar la tarjeta, que sale por ``response.send_interactive`` (INC-71).
+CATALOG_SKILLS = ("catalog.search_products", "catalog.get_product", "response.send_interactive")
+
+
+async def enable_catalog_skills(scope: ClientScope, agent_id: uuid.UUID | None) -> list[str]:
+    """Al conectar un catálogo, sus habilidades se encienden solas en el borrador
+    del agente de ese número. Publicar sigue siendo un paso aparte. Devuelve las
+    que encendió. Nunca rompe el enlace: el catálogo ya está conectado, y lo que no
+    se pudo encender sigue en Habilidades."""
+    from .agent_draft_routes import is_structured
+
+    agent_id = agent_id or await principal_agent_id(scope.session)
+    agent = await scope.session.get(Agent, agent_id) if agent_id is not None else None
+    if agent is None or agent.status != AgentStatus.ACTIVE.value:
+        return []
+    target = replace(scope, agent_id=agent.id)
+    view = await load_view(target)
+    enabled = set(view.target.tools or []) if view.target else set()
+    offered = set(
+        await scope.session.scalars(
+            sa.select(ToolCatalog.name).where(
+                ToolCatalog.name.in_(CATALOG_SKILLS),
+                ToolCatalog.status.notin_([ToolStatus.INTERNAL, ToolStatus.DEPRECATED]),
+            )
+        )
+    )
+    missing = [key for key in CATALOG_SKILLS if key in offered and key not in enabled]
+    if not missing:
+        return []
+    try:
+        async with scope.session.begin_nested():
+            draft, _created = await ensure_draft(target)
+            if is_structured(draft):
+                for key in missing:
+                    await _set_spec_tool(target, key, enabled=True)
+            else:
+                draft.tools = [*(draft.tools or []), *missing]
+                await draft_written(target, draft)
+            added = [key for key in missing if key in (draft.tools or [])]
+            await AuditRepository(scope.session).record(
+                actor=scope.principal.actor,
+                action="console.capability.update",
+                target=f"agent:{agent.id}",
+                before=None,
+                after={"catalog_skills": added},
+            )
+    except Exception as exc:
+        log.warning("channel.catalog.skills_failed", agent_id=str(agent.id), error=str(exc))
+        return []
+    return added
 
 
 @router.put(

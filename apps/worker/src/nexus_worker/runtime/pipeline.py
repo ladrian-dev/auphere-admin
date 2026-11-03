@@ -53,7 +53,7 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -587,6 +587,28 @@ _EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments", "reception"})
 # Spec 047 (requisito 53): Recepción's hand-over is terminal, like the
 # interactive component — once it lands, the target answers, not Recepción.
 _HANDOFF_TOOL_NAME = "reception.handoff"
+
+# With the catalog skills on, an agent whose instructions say «only the business
+# profile» still denied having a product without searching for it (INC-71).
+_CATALOG_SEARCH_TOOL = "catalog.search_products"
+_CATALOG_NOTE = (
+    "CATÁLOGO DE PRODUCTOS: el negocio vende productos con un catálogo de Meta, "
+    "además de lo que dice su ficha. Si el cliente pregunta por un producto, su "
+    f"precio o si lo tenéis, búscalo con {_CATALOG_SEARCH_TOOL} antes de responder, "
+    "y nunca digas que no existe sin buscarlo. Si aparece, manda su tarjeta con "
+    f"{_INTERACTIVE_TOOL_NAME} usando su retailer_id en `products`. Si no aparece, "
+    "dilo y ofrece pasar la consulta al equipo."
+)
+
+
+def _catalog_note_applies(channel_type: str | None, available_names: Iterable[str]) -> bool:
+    """Product cards exist on WhatsApp only, and both tools have to be on offer."""
+    names = set(available_names)
+    return (
+        (channel_type or "whatsapp") == "whatsapp"
+        and _CATALOG_SEARCH_TOOL in names
+        and _INTERACTIVE_TOOL_NAME in names
+    )
 
 
 def _reception_note(bundle: AgentBundle) -> str:
@@ -1710,6 +1732,8 @@ def make_handler_node(
             if admin_role == ROLE_READONLY:
                 # System prompt is messages[0]; keep the note right after it.
                 messages.insert(1, {"role": "system", "content": _READONLY_ADMIN_NOTE})
+            if _catalog_note_applies(state.get("channel_type"), available_names):
+                messages.insert(1, {"role": "system", "content": _CATALOG_NOTE})
             if bundle.reception_targets and _HANDOFF_TOOL_NAME in available_names:
                 # Spec 047 (53.1): Recepción's list, right after its own prompt.
                 messages.insert(1, {"role": "system", "content": _reception_note(bundle)})

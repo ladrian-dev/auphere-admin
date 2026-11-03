@@ -42,6 +42,8 @@ export type ChannelDetail = {
   catalog: Catalog | null;
   catalog_state: CatalogState;
   catalog_error: CatalogError | null;
+  /** Las habilidades que conectar este catálogo encendió en el borrador del agente. */
+  catalog_skills_added?: string[];
   /** Spec 049 — Instagram / Messenger: the account or Page and why it needs
    *  attention, if it does (with the step to fix it). */
   display_name?: string | null;

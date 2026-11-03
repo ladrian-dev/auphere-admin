@@ -15,8 +15,16 @@ import sqlalchemy as sa
 from nexus_channels.whatsapp_meta.exceptions import MetaAPIError, MetaTransientError
 
 from nexus_api.api.console import channels as ch_router
-from nexus_api.db.models import AuditLog, Channel, ChannelStatus
+from nexus_api.api.console.capabilities_client import CATALOG_SKILLS
+from nexus_api.db.models import (
+    AgentConfig,
+    AgentConfigStatus,
+    AuditLog,
+    Channel,
+    ChannelStatus,
+)
 from tests.conftest import add_console_member
+from tests.integration.test_console_capabilities import _STRUCTURED, _agent
 from tests.unit.test_endpoint_console_channels import (
     _channel,
     _reload,
@@ -628,3 +636,101 @@ async def test_the_channel_page_shows_the_numbers_catalogue(
     assert body["catalog_state"] == "linked"
     assert body["catalog_error"] is None
     assert sim.calls == [], "the page does not ask Meta; the channel list does"
+
+
+# ── Conectar un catálogo enciende sus habilidades en el borrador ──
+
+
+async def _with_agent(db_session, tenant_id, *, tools=(), spec=None):
+    agent = _agent(tenant_id, tools=list(tools), seed=None)
+    agent.spec = spec
+    db_session.add(agent)
+    await db_session.commit()
+    return agent
+
+
+async def _draft(db_session, tenant_id):
+    db_session.expire_all()
+    return await db_session.scalar(
+        sa.select(AgentConfig).where(
+            AgentConfig.tenant_id == tenant_id, AgentConfig.status == AgentConfigStatus.STAGED
+        )
+    )
+
+
+async def test_connecting_a_catalog_turns_its_skills_on_in_the_draft(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    _sim(monkeypatch, catalogs=[FLORES])
+    await _with_agent(db_session, a["tenant_id"], tools=["notification.send_text"])
+    canal = await _canal(db_session, a["tenant_id"])
+    r = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog_skills_added"] == list(CATALOG_SKILLS)
+    draft = await _draft(db_session, a["tenant_id"])
+    assert draft is not None
+    assert draft.tools == ["notification.send_text", *CATALOG_SKILLS]
+
+
+async def test_a_structured_agent_keeps_its_instructions_when_a_catalog_connects(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    _sim(monkeypatch, catalogs=[FLORES])
+    await _with_agent(db_session, a["tenant_id"], spec=_STRUCTURED)
+    canal = await _canal(db_session, a["tenant_id"])
+    r = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    draft = await _draft(db_session, a["tenant_id"])
+    assert draft is not None and draft.spec is not None
+    assert draft.spec["identity"]["description"] == _STRUCTURED["identity"]["description"]
+    assert draft.spec["tools"] == list(CATALOG_SKILLS)
+    assert draft.tools == list(CATALOG_SKILLS)
+
+
+async def test_skills_already_on_open_no_draft(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    _sim(monkeypatch, catalogs=[FLORES])
+    await _with_agent(db_session, a["tenant_id"], tools=CATALOG_SKILLS)
+    canal = await _canal(db_session, a["tenant_id"])
+    r = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog_skills_added"] == []
+    assert await _draft(db_session, a["tenant_id"]) is None
+
+
+async def test_a_catalog_meta_refuses_turns_nothing_on(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    _sim(monkeypatch, catalogs=[FLORES], fail={"link_catalog": _permission()})
+    await _with_agent(db_session, a["tenant_id"])
+    canal = await _canal(db_session, a["tenant_id"])
+    r = await client.put(
+        _url(a, canal, "catalog"), json={"catalog_id": "1001000000001"}, headers=a["headers"]()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog_skills_added"] == []
+    assert await _draft(db_session, a["tenant_id"]) is None
+
+
+async def test_a_catalog_chosen_in_metas_window_turns_its_skills_on_too(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    a = console_world["a"]
+    _sim(monkeypatch, catalogs=[FLORES], linked=FLORES)
+    await _with_agent(db_session, a["tenant_id"])
+    await _canal(db_session, a["tenant_id"])
+    assert (await _overview(client, a))["channels"][0]["catalog"]["id"] == FLORES["id"]
+    draft = await _draft(db_session, a["tenant_id"])
+    assert draft is not None
+    assert draft.tools == list(CATALOG_SKILLS)

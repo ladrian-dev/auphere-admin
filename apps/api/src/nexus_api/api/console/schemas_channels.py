@@ -103,6 +103,8 @@ class ChannelDetailOut(ChannelOut):
     catalog: CatalogOut | None = None
     catalog_state: CatalogState = "none"
     catalog_error: CatalogErrorOut | None = None
+    #: Las habilidades que conectar este catálogo encendió en el borrador del agente.
+    catalog_skills_added: list[str] = Field(default_factory=list)
     #: Spec 049 — Instagram / Messenger: the account or Page as the business
     #: knows it, and why it needs attention (``token_revoked``,
     #: ``messages_disabled``, …), if it does.

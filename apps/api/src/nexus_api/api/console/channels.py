@@ -255,7 +255,13 @@ async def channels_overview(
     limit = scope.principal.partner.max_channels_per_client
     creds = await MetaCredentialsRepository(scope.session).get()
     logos = await channel_logos(scope.session)
+    known = {c.id: (c.config or {}).get("catalog_id") for c in rows}
     states = await reconcile_catalogs(scope.session, rows, redis)
+    # Un catálogo elegido en la ventana de Meta entra aquí, al conciliar.
+    for c in rows:
+        adopted = (c.config or {}).get("catalog_id")
+        if adopted and adopted != known[c.id]:
+            await _catalog_skills(scope, c)
     return ChannelsOverviewOut(
         channels=[_detail(c, logos, states.get(c.id)) for c in rows],
         max_channels=limit,
@@ -618,7 +624,9 @@ async def set_channel_catalog(
                 status_code=status.HTTP_409_CONFLICT, detail={"code": "catalog_not_owned"}
             )
         if before is not None and before.id == body.catalog_id:
-            return _detail(ch, await channel_logos(scope.session), "linked")
+            out = _detail(ch, await channel_logos(scope.session), "linked")
+            out.catalog_skills_added = await _catalog_skills(scope, ch)
+            return out
 
         try:
             await client.link_catalog(
@@ -658,6 +666,12 @@ async def set_channel_catalog(
     return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
 
 
+async def _catalog_skills(scope: ClientScope, ch: Channel) -> list[str]:
+    from .capabilities_client import enable_catalog_skills
+
+    return await enable_catalog_skills(scope, ch.agent_id)
+
+
 async def _finish_catalog_change(
     scope: ClientScope,
     redis: Redis,
@@ -671,6 +685,11 @@ async def _finish_catalog_change(
     flag_modified(ch, "config")
     await redis.delete(_cache_key(waba_id))
     after = _catalog_of(cfg)
+    added: list[str] = []
+    if after is not None and (before is None or before.id != after.id):
+        added = await _catalog_skills(scope, ch)
+    if added:
+        meta["skills_added"] = added
     await AuditRepository(scope.session).record(
         actor=scope.principal.actor,
         action="console.channel.catalog",
@@ -679,7 +698,9 @@ async def _finish_catalog_change(
         after={"catalog": after.model_dump(mode="json") if after else None, "meta": meta},
     )
     state: CatalogState = "coexistence" if is_coexistence(cfg) else ("linked" if after else "none")
-    return _detail(ch, await channel_logos(scope.session), state)
+    out = _detail(ch, await channel_logos(scope.session), state)
+    out.catalog_skills_added = added
+    return out
 
 
 @router.delete("/{channel_id}/catalog", response_model=ChannelDetailOut)

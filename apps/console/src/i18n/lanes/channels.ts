@@ -209,7 +209,15 @@ export const channelsMessages = {
     en: "The agent will show products from {to} from the next message on. {from} stays in Commerce Manager.",
   },
   "ch.catalog.replace.confirm": { es: "Sustituir", en: "Replace" },
+  "ch.catalog.offer.linked": {
+    es: "Ya está conectado. Sus habilidades se añaden al borrador del agente: publícalo para que enseñe productos con foto y precio.",
+    en: "It is already connected. Its skills are added to the agent's draft: publish it so the agent can show products with photo and price.",
+  },
   "ch.catalog.done": { es: "Catálogo {name} conectado.", en: "Catalogue {name} connected." },
+  "ch.catalog.done.skills": {
+    es: "Catálogo {name} conectado. Sus habilidades ya están en el borrador del agente: publícalo para que enseñe productos.",
+    en: "Catalogue {name} connected. Its skills are in the agent's draft: publish it so the agent can show products.",
+  },
   "ch.catalog.cleared": { es: "Catálogo desconectado.", en: "Catalogue disconnected." },
   "ch.catalog.err.catalog_not_owned": { es: "Ese catálogo no es de tu negocio.", en: "That catalogue does not belong to your business." },
   "ch.catalog.err.meta_unavailable": { es: "Meta no responde ahora mismo. Inténtalo en unos minutos.", en: "Meta is not answering right now. Try again in a few minutes." },
