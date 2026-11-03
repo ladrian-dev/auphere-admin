@@ -36,6 +36,7 @@ export const channelsProtoMessages = {
   "channels.proto.pending": { es: "Pendiente", en: "Pending" },
   "channels.proto.cta": { es: "Conectar", en: "Connect" },
   "channels.proto.cta.another": { es: "Conectar otro número", en: "Connect another number" },
+  "channels.proto.cta.anotherAccount": { es: "Conectar otra cuenta", en: "Connect another account" },
   "channels.proto.cta.aria": { es: "Conectar {name}", en: "Connect {name}" },
   "channels.proto.connected.one": { es: "1 conectado", en: "1 connected" },
   "channels.proto.connected.other": { es: "{n} conectados", en: "{n} connected" },

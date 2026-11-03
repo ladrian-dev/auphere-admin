@@ -149,7 +149,7 @@ function ChannelCard({ kind, count, onConnect }: { kind: ChannelKind; count: num
       ) : null}
       {open ? (
         <span className="mt-auto inline-flex items-center gap-2 pt-2 text-sm font-medium text-primary-text">
-          {count > 0 ? t("channels.proto.cta.another") : t("channels.proto.cta")}
+          {count > 0 ? t(kind.id === "whatsapp" ? "channels.proto.cta.another" : "channels.proto.cta.anotherAccount") : t("channels.proto.cta")}
           <ArrowRight aria-hidden="true" className="size-4" />
         </span>
       ) : null}
