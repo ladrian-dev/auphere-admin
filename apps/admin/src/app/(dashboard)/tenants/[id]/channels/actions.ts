@@ -72,3 +72,20 @@ export async function liftOptOutAction(tenantId: string, optOutId: string, reaso
     return { ok: false, error: toError(err) };
   }
 }
+
+/** Spec 049 (5.5): the operator signs it, and the request's origin stays in the audit. */
+export async function erasePersonAction(
+  tenantId: string,
+  channelId: string,
+  body: { identifier: string; requested_by: string },
+): Promise<Result<{ erased: boolean; messages_emptied: number }>> {
+  const operator = await requireOperator();
+  try {
+    const data = await backend.erasePerson(tenantId, channelId, body, operator.id);
+    if (!data) return { ok: false, error: "empty_response" };
+    revalidatePath(`/tenants/${tenantId}/channels`);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}

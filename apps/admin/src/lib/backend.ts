@@ -2150,6 +2150,18 @@ export const backend = {
       { method: "DELETE" },
     ),
 
+  /** Spec 049: what a person sent through an Instagram or Messenger channel is emptied. */
+  erasePerson: (
+    tenantId: string,
+    channelId: string,
+    body: { identifier: string; requested_by: string },
+    operatorId: string,
+  ) =>
+    call<{ erased: boolean; messages_emptied: number }>(
+      `/admin/tenants/${tenantId}/channels/${channelId}/erase-person`,
+      { method: "POST", body, headers: { "X-Operator-Id": operatorId } },
+    ),
+
   listOptOuts: (tenantId: string) =>
     call<OptOut[]>(`/admin/tenants/${tenantId}/opt-outs`).then((r) => r ?? []),
 
