@@ -262,7 +262,9 @@ export function PublishBar({
       break;
     case "failing":
       icon = <TriangleAlert aria-hidden="true" className={`${ICON} text-warning`} />;
-      text = t(state.failing === 1 ? "agentProto.bar.failing.one" : "agentProto.bar.failing.other", { n: state.failing, total: state.total });
+      text = state.undecided
+        ? t(state.failing === 1 ? "agentProto.bar.undecided.one" : "agentProto.bar.undecided.other", { n: state.failing, total: state.total })
+        : t(state.failing === 1 ? "agentProto.bar.failing.one" : "agentProto.bar.failing.other", { n: state.failing, total: state.total });
       if (state.save)
         buttons = [
           <Button key="anyway" variant="outline" onClick={save} loading={running} className={PILL}>

@@ -465,6 +465,10 @@ function SkillLines({ spec, refId, onConnect }: { spec: AgentSpec; refId: string
   const missing = new Map([...connectByIntegration(spec.connection_requests, notOffered)].filter(([integration]) => !inUse.has(integration)));
   const named = new Set(skills.map((s) => s.integration).filter((i): i is string => Boolean(i)));
   const loose = [...missing.keys()].filter((integration) => !named.has(integration));
+  // Los interruptores de Habilidades escriben `spec.tools`, no `spec.skills` (INC-69).
+  const switchedOn = Array.isArray(spec.tools) ? spec.tools.length : 0;
+  if (!skills.length && !loose.length && switchedOn)
+    return <p className="text-pretty text-muted-foreground">{t(switchedOn === 1 ? "agentProto.can.tools.one" : "agentProto.can.tools.other", { n: switchedOn })}</p>;
   if (!skills.length && !loose.length) return <p className="text-pretty text-muted-foreground">{t("agentProto.can.none")}</p>;
   return (
     <ul className="grid min-w-0 gap-2" data-slot="builder-skills">

@@ -93,8 +93,9 @@ describe("en qué punto están las pruebas (§5.1)", () => {
 
   it("todas ejecutadas: pasan todas, o cuántas no", () => {
     expect(testsState(summary({ total: 20, passed: 20 }))).toEqual({ kind: "passing", passed: 20, counted: 20 });
-    expect(testsState(summary({ total: 20, passed: 19, failed: 1 }))).toEqual({ kind: "failing", failing: 1, passed: 19, counted: 20 });
-    expect(testsState(summary({ total: 20, passed: 17, flaky: 2, unknown: 1 }))).toEqual({ kind: "failing", failing: 3, passed: 17, counted: 20 });
+    expect(testsState(summary({ total: 20, passed: 19, failed: 1 }))).toEqual({ kind: "failing", failing: 1, passed: 19, counted: 20, undecided: false });
+    expect(testsState(summary({ total: 18, passed: 4, unknown: 14 }))).toEqual({ kind: "failing", failing: 14, passed: 4, counted: 18, undecided: true });
+    expect(testsState(summary({ total: 20, passed: 17, flaky: 2, unknown: 1 }))).toEqual({ kind: "failing", failing: 3, passed: 17, counted: 20, undecided: false });
   });
 });
 
@@ -130,6 +131,7 @@ describe("la barra flotante (§4.5)", () => {
   it("terminadas con fallos: lo dice y deja guardar igualmente si hay borrador", () => {
     expect(barState({ canWrite: true, preview: preview(), tests: { summary: failing, running: false, canRun: true } })).toEqual({
       kind: "failing",
+      undecided: false,
       failing: 1,
       total: 5,
       save: true,

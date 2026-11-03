@@ -47,6 +47,8 @@ export const agentProtoMessages = {
     es: "Hereda la ficha del negocio. Lo que le enseñes aquí solo lo sabe este agente.",
     en: "It inherits the business profile. What you teach it here only this agent knows.",
   },
+  "agentProto.can.tools.one": { es: "{n} habilidad activa. Míralas en Habilidades.", en: "{n} skill on. See them in Skills." },
+  "agentProto.can.tools.other": { es: "{n} habilidades activas. Míralas en Habilidades.", en: "{n} skills on. See them in Skills." },
   "agentProto.can.none": { es: "Sin habilidades: solo responde preguntas.", en: "No skills: it only answers questions." },
   "agentProto.can.connected": { es: "{name} · conectado", en: "{name} · connected" },
   "agentProto.can.procedure": { es: "Para «{title}»: {when}", en: "To “{title}”: {when}" },
@@ -94,6 +96,8 @@ export const agentProtoMessages = {
   "agentProto.chat.now": { es: "Hora simulada: {time}", en: "Simulated time: {time}" },
 
   // ── La barra flotante (§4.5) ────────────────────────────────────────────
+  "agentProto.bar.undecided.one": { es: "{n} de {total} pruebas sin decidir · el juez todavía no decide", en: "{n} of {total} tests undecided · the judge does not decide yet" },
+  "agentProto.bar.undecided.other": { es: "{n} de {total} pruebas sin decidir · el juez todavía no decide", en: "{n} of {total} tests undecided · the judge does not decide yet" },
   "agentProto.bar.failing.one": { es: "{n} de {total} pruebas falla · tiene «Arreglar» en Pruebas", en: "{n} of {total} tests fails · “Fix” is in Tests" },
   "agentProto.bar.failing.other": { es: "{n} de {total} pruebas fallan · tienen «Arreglar» en Pruebas", en: "{n} of {total} tests fail · “Fix” is in Tests" },
   "agentProto.bar.running": { es: "Ejecutando pruebas…", en: "Running tests…" },

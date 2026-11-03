@@ -76,7 +76,7 @@ export function inMore(id: string | null | undefined): boolean {
 export type TestsState =
   | { kind: "none" }
   | { kind: "pending"; pending: number; counted: number }
-  | { kind: "failing"; failing: number; passed: number; counted: number }
+  | { kind: "failing"; failing: number; passed: number; counted: number; undecided: boolean }
   | { kind: "passing"; passed: number; counted: number };
 
 /**
@@ -91,7 +91,11 @@ export function testsState(summary: TestSummary): TestsState {
   const pending = Math.min(counted, summary.not_run + summary.stale);
   if (pending > 0) return { kind: "pending", pending, counted };
   const failing = summary.failed + summary.flaky + summary.unknown;
-  if (failing > 0) return { kind: "failing", failing, passed: summary.passed, counted };
+  if (failing > 0) {
+    // Ninguna falla: el juez no ha decidido. No es lo mismo que decir «fallan» (INC-54).
+    const undecided = summary.failed + summary.flaky === 0;
+    return { kind: "failing", failing, passed: summary.passed, counted, undecided };
+  }
   return { kind: "passing", passed: summary.passed, counted };
 }
 
@@ -130,7 +134,7 @@ export type BarTests = { summary: TestSummary | null; running: boolean; canRun: 
 export type BarState =
   | { kind: "readonly" }
   | { kind: "running" }
-  | { kind: "failing"; failing: number; total: number; save: boolean }
+  | { kind: "failing"; failing: number; total: number; save: boolean; undecided: boolean }
   | { kind: "passing"; passed: number; total: number; saved: boolean; next: "save" | "connect" | null }
   | { kind: "pending"; draft: boolean }
   /** Sin datos de las pruebas: el texto de siempre y «Guardar». */
@@ -152,7 +156,7 @@ export function barState({ canWrite, preview, tests }: { canWrite: boolean; prev
   const state = testsState(tests.summary);
   switch (state.kind) {
     case "failing":
-      return { kind: "failing", failing: state.failing, total: state.counted, save: preview.has_draft };
+      return { kind: "failing", failing: state.failing, total: state.counted, save: preview.has_draft, undecided: state.undecided };
     case "passing":
       return {
         kind: "passing",
