@@ -29,11 +29,12 @@ from nexus_api.db.models import (
     Channel,
     ChannelStatus,
     ChannelType,
+    Conversation,
     Customer,
     Message,
     WhatsAppOptOut,
 )
-from nexus_api.services import whatsapp_opt_outs
+from nexus_api.services import inbox_view, whatsapp_opt_outs
 
 from ..business._business_world import Biz
 
@@ -193,6 +194,64 @@ async def test_a_stop_word_is_marketing_and_reaches_the_inbox_without_a_turn(
         assert msg is not None and msg.skipped_reason == "opted_out"
     [row] = await _rows(db_session, biz)
     assert row.customer_id is not None  # the worker tied it to the person
+
+
+def _inbound(biz: Biz, line: uuid.UUID, text: str, *, wamid: str, opted_out: bool = False) -> Any:
+    from nexus_worker.runtime.dispatcher import InboundEvent
+
+    return InboundEvent(
+        tenant_id=biz.tenant_id,
+        channel_id=line,
+        user_id=PHONE,
+        content=text,
+        customer_phone=PHONE,
+        provider_message_id=wamid,
+        opted_out=opted_out,
+    )
+
+
+async def test_a_stop_word_shows_marked_in_a_conversation_of_the_inbox(
+    db_session: AsyncSession, biz: Biz, line: uuid.UUID
+) -> None:
+    from nexus_worker.runtime.dispatcher import accept_inbound
+
+    first = await accept_inbound(_inbound(biz, line, "hola", wamid="wamid.HOLA"))
+    assert first.conversation_id is not None
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        conversation = await db_session.get(Conversation, first.conversation_id)
+        assert conversation is not None
+        conversation.attended_at = datetime(2020, 1, 1, tzinfo=UTC)
+    await db_session.commit()
+
+    await accept_inbound(_inbound(biz, line, "BAJA", wamid="wamid.BAJA2", opted_out=True))
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        conversation = await db_session.get(Conversation, first.conversation_id)
+        assert conversation is not None
+        items, _ = await inbox_view.thread(
+            db_session, conversation, tenant_id=biz.tenant_id, me="me", before=None, limit=20
+        )
+    assert [(i.text, i.opted_out) for i in items if i.type == "message"] == [
+        ("hola", False),
+        ("BAJA", True),
+    ]
+
+
+async def test_a_stop_word_stays_out_of_the_turn_of_the_next_message(
+    biz: Biz, line: uuid.UUID
+) -> None:
+    from nexus_worker.runtime import turns
+    from nexus_worker.runtime.dispatcher import accept_inbound
+
+    stop = await accept_inbound(_inbound(biz, line, "BAJA", wamid="wamid.BAJA3", opted_out=True))
+    next_message = await accept_inbound(_inbound(biz, line, "hola", wamid="wamid.HOLA3"))
+    assert next_message.conversation_id is not None
+
+    claim = await turns.claim_turn(biz.tenant_id, next_message.conversation_id)
+
+    assert claim.turn is not None
+    assert claim.turn.message_ids == (next_message.message_id,)
+    assert stop.message_id not in claim.turn.message_ids
 
 
 # ── what an opt-out blocks ───────────────────────────────────────────────────

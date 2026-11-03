@@ -97,13 +97,16 @@ def _in_inbox() -> sa.ColumnElement[bool]:
     return sa.and_(_not_playground(), Conversation.attended_at.is_not(None))
 
 
+def _not_silenced() -> sa.ColumnElement[bool]:
+    """Sin los entrantes silenciados (spec 045, R1.4). Una palabra de baja no
+    tiene turno, pero el hilo la enseña marcada (spec 050, 5.3)."""
+    return sa.or_(Message.skipped_reason.is_(None), Message.skipped_reason == "opted_out")
+
+
 def _shown_message() -> sa.ColumnElement[bool]:
     """Los mensajes que el hilo enseña: desde el primero atendido, sin los
-    entrantes silenciados (spec 045, R1.4). Correlacionado con ``Conversation``."""
-    return sa.and_(
-        Message.skipped_reason.is_(None),
-        Message.created_at >= Conversation.attended_at,
-    )
+    silenciados. Correlacionado con ``Conversation``."""
+    return sa.and_(_not_silenced(), Message.created_at >= Conversation.attended_at)
 
 
 def encode_cursor(at: datetime | None, id_: uuid.UUID) -> str:
@@ -735,6 +738,7 @@ class ThreadItem:
     detail: str | None = None
     unsent: bool = False
     comment: bool = False
+    opted_out: bool = False
 
 
 async def thread(
@@ -749,9 +753,7 @@ async def thread(
     """Mensajes y eventos en orden, paginando hacia atrás desde ``before``."""
     names = await member_names(session, tenant_id)
     # Spec 045 (R1.4): desde el primer mensaje atendido, sin los silenciados.
-    msg_stmt = sa.select(Message).where(
-        Message.conversation_id == conversation.id, Message.skipped_reason.is_(None)
-    )
+    msg_stmt = sa.select(Message).where(Message.conversation_id == conversation.id, _not_silenced())
     if conversation.attended_at is not None:
         msg_stmt = msg_stmt.where(Message.created_at >= conversation.attended_at)
     ev_stmt = sa.select(ConversationEvent).where(
@@ -796,6 +798,7 @@ async def thread(
                 delivery=status if m.direction == MessageDirection.OUTBOUND else None,
                 failure_reason=(m.last_error or m.failure_code) if status == "failed" else None,
                 unsent=bool((m.interactive_payload or {}).get("unsent")),
+                opted_out=m.skipped_reason == "opted_out",
                 comment=m.direction == MessageDirection.INBOUND
                 and (m.provider_message_id or "").startswith("comment:"),
             )

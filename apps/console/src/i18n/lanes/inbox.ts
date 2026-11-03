@@ -88,6 +88,10 @@ export const inboxMessages = {
   "inbox.delivery.delivered": { es: "Entregado", en: "Delivered" },
   "inbox.delivery.read": { es: "Leído", en: "Read" },
   "inbox.message.unsent": { es: "El contacto eliminó este mensaje", en: "The contact deleted this message" },
+  "inbox.message.opted_out": {
+    es: "Se dio de baja de la publicidad. El agente no responde a este mensaje.",
+    en: "Opted out of marketing. The agent does not answer this message.",
+  },
   "inbox.comment.on": { es: "Comentó en esta publicación", en: "Commented on this post" },
   "inbox.comment.open": { es: "Ver la publicación", en: "See the post" },
   "inbox.delivery.failed": { es: "No se envió", en: "Not sent" },
@@ -165,13 +169,13 @@ export const inboxMessages = {
     es: "Conversación resuelta. Si el contacto vuelve a escribir, se reabre y responde el agente.",
     en: "Conversation resolved. If the contact writes again, it reopens and the agent answers.",
   },
-  "inbox.composer.window_closed": {
-    es: "Pasó el plazo para escribir a este contacto desde su último mensaje. Podrás hacerlo cuando vuelva a escribir.",
-    en: "The time to write to this contact since their last message has passed. You can write when they write again.",
-  },
   "inbox.composer.agent_window_closed": {
     es: "El agente ya no puede responder: pasó el plazo desde el último mensaje del contacto. Podrá hacerlo cuando vuelva a escribir.",
     en: "The agent can no longer answer: the time since the contact's last message has passed. It can answer when they write again.",
+  },
+  "inbox.composer.window_closed": {
+    es: "Pasó el plazo para escribir a este contacto desde su último mensaje. Podrás hacerlo cuando vuelva a escribir.",
+    en: "The time to write to this contact since their last message has passed. You can write when they write again.",
   },
   "inbox.composer.channel_disconnected": {
     es: "Este canal está desconectado. Pide a quien lo gestiona que lo vuelva a conectar.",

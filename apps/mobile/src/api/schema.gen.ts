@@ -4083,6 +4083,11 @@ export interface components {
             media?: {
                 [key: string]: string | null;
             } | null;
+            /**
+             * Opted Out
+             * @default false
+             */
+            opted_out: boolean;
             /** Text */
             text?: string | null;
             /**

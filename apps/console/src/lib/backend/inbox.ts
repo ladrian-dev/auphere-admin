@@ -88,6 +88,8 @@ export type InboxThreadItem = {
   unsent?: boolean;
   /** A comment on a post, not a direct message. */
   comment?: boolean;
+  /** A stop word: the contact opted out of marketing and the agent did not answer. */
+  opted_out?: boolean;
 };
 
 export type InboxCommentPost = { text: string | null; image_url: string | null; permalink: string | null };

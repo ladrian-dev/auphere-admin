@@ -160,8 +160,9 @@ _RUNNING_SQL = sa.text(
     """
 )
 
-# Una reacción se guarda pero no es un mensaje que contestar: tampoco entra en
-# el turno del siguiente mensaje (spec 049, «se registran sin disparar al agente»).
+# Una reacción o una palabra de baja se guardan pero no son mensajes que
+# contestar: tampoco entran en el turno del siguiente mensaje (spec 049, «se
+# registran sin disparar al agente»; spec 050, D6).
 _UNTAKEN_SQL = sa.text(
     """
     SELECT id
@@ -170,6 +171,7 @@ _UNTAKEN_SQL = sa.text(
        AND direction = 'inbound'
        AND turn_id IS NULL
        AND reaction_target_wamid IS NULL
+       AND skipped_reason IS NULL
        AND created_at > now() - make_interval(secs => :horizon)
      ORDER BY created_at, id
     """

@@ -6402,6 +6402,11 @@
             ],
             "title": "Media"
           },
+          "opted_out": {
+            "default": false,
+            "title": "Opted Out",
+            "type": "boolean"
+          },
           "text": {
             "anyOf": [
               {

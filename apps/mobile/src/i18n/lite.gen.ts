@@ -328,6 +328,7 @@ export const liteMessages = {
   "inbox.media.open": { es: "Abrir {name}", en: "Open {name}" },
   "inbox.media.transcript": { es: "Transcripción: {text}", en: "Transcript: {text}" },
   "inbox.media.video": { es: "Vídeo", en: "Video" },
+  "inbox.message.opted_out": { es: "Se dio de baja de la publicidad. El agente no responde a este mensaje.", en: "Opted out of marketing. The agent does not answer this message." },
   "inbox.message.unsent": { es: "El contacto eliminó este mensaje", en: "The contact deleted this message" },
   "inbox.panel": { es: "Datos del contacto", en: "Contact details" },
   "inbox.panel.account": { es: "Cuenta", en: "Account" },

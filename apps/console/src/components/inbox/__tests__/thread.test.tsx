@@ -81,7 +81,8 @@ describe("Thread", () => {
   });
 
   it("a message the contact deleted says so, with nothing left to read", () => {
-    view([message({ text: null, unsent: true })]);
+    view([message({ id: "stop", text: "BAJA", opted_out: true }), message({ text: null, unsent: true })]);
+    expect(screen.getByText(/Se dio de baja de la publicidad/)).toBeInTheDocument();
     expect(screen.getByText("El contacto eliminó este mensaje")).toBeInTheDocument();
   });
 

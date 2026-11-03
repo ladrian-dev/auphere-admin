@@ -214,6 +214,7 @@ class ThreadItemOut(BaseModel):
     detail: str | None = None
     unsent: bool = False
     comment: bool = False
+    opted_out: bool = False
 
 
 class CommentPostOut(BaseModel):
@@ -554,6 +555,7 @@ async def read_thread(
                 detail=i.detail,
                 unsent=i.unsent,
                 comment=i.comment,
+                opted_out=i.opted_out,
             )
             for i in items
         ],

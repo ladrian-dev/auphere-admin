@@ -49,6 +49,7 @@ export function MessageBubble({
           <MediaPreview item={item} tone="light" />
           {item.text ? <Text tone="contact">{item.text}</Text> : null}
           {item.unsent ? <span className="text-sm text-muted-foreground italic">{t("inbox.message.unsent")}</span> : null}
+          {item.opted_out ? <span className="text-sm text-muted-foreground italic">{t("inbox.message.opted_out")}</span> : null}
           <span className="text-xs text-muted-foreground">{time}</span>
         </div>
       </div>
