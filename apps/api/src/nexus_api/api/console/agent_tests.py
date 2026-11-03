@@ -222,6 +222,11 @@ async def edit_test(
         if reason and len(reason) < 3:
             raise _error("reason_required", status.HTTP_422_UNPROCESSABLE_CONTENT)
         test.not_applicable_reason = reason or None
+    changes = ("name", "first_message", "plan", "expected_state", "critical", "criteria")
+    if test.kind == "sector" and any(getattr(body, field) is not None for field in changes):
+        # 21.6: las del sector se ven y pueden no aplicar, pero no se cambian. Quitarle
+        # «crítica» a una sería saltarse la puerta de publicar.
+        raise _error("sector_test_locked", status.HTTP_409_CONFLICT)
     for field in ("name", "first_message", "plan", "expected_state", "critical"):
         value = getattr(body, field)
         if value is not None:

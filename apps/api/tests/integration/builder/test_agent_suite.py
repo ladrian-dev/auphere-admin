@@ -249,6 +249,41 @@ async def test_not_applicable_only_for_sector_tests_with_a_reason(
     assert run.json()["tests"] == ok.json()["summary"]["total"] - 1
 
 
+async def test_a_sector_test_can_only_not_apply(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """21.6: quitarle «crítica» a una prueba del sector sería saltarse la puerta."""
+    agent_id = await _agent(client, biz, fake_redis)
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await db_session.scalar(
+            sa.select(AgentTestSuite).where(AgentTestSuite.agent_id == agent_id)
+        )
+        assert suite is not None
+        sector = AgentTest(
+            tenant_id=biz.tenant_id,
+            suite_id=suite.id,
+            kind="sector",
+            name="Pide factura",
+            first_message="¿Me hacéis factura?",
+            critical=True,
+            sector_test_ref="barberia_peluqueria@1#factura",
+        )
+        db_session.add(sector)
+        await db_session.commit()
+        sector_id = sector.id
+    url = f"{_url(biz, agent_id)}/tests/{sector_id}"
+
+    for change in ({"critical": False}, {"name": "Otra"}, {"plan": "Otro plan de cliente"}):
+        refused = await client.patch(url, json=change, headers=biz.headers())
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["detail"]["code"] == "sector_test_locked"
+
+    fine = await client.patch(
+        url, json={"not_applicable_reason": "No emitimos facturas"}, headers=biz.headers()
+    )
+    assert fine.status_code == 200, fine.text
+
+
 async def test_running_clears_stale_and_editing_marks_it(
     client: Any, biz: Biz, fake_redis: Any
 ) -> None:
