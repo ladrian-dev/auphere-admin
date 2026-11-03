@@ -12,6 +12,7 @@ import type {
   TestBody,
   TestPatch,
   TestRunAccepted,
+  TestRunEstimate,
   TestRunScope,
   TestSuite,
 } from "./agent-quality-types";
@@ -59,6 +60,11 @@ export function agentQualityApi(call: Call) {
       call<TestRunAccepted>(`${agent(ref, agentId)}/test-runs`, {
         method: "POST",
         body: testId ? { scope, test_id: testId } : { scope },
+      }),
+    estimateAgentTests: (ref: string, agentId: string, scope: TestRunScope) =>
+      call<TestRunEstimate>(`${agent(ref, agentId)}/test-runs`, {
+        method: "POST",
+        body: { scope, dry_run: true },
       }),
     /** Un trabajo (`tests`, `publish`), consultado con espera creciente. */
     getConsoleJob: (jobId: string) => call<QualityJob>(`/console/jobs/${enc(jobId)}`),

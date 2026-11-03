@@ -74,6 +74,17 @@ export const builderQualityMessages = {
     es: "El juez aún no decide: solo cuenta el estado final.",
     en: "The judge does not decide yet: only the final state counts.",
   },
+  "builder.suite.estimate.title.one": { es: "¿Ejecutar {n} prueba?", en: "Run {n} test?" },
+  "builder.suite.estimate.title.other": { es: "¿Ejecutar {n} pruebas?", en: "Run {n} tests?" },
+  "builder.suite.estimate.cost": {
+    es: "Costará aproximadamente {amount} de «Construcción y pruebas». Es una estimación: el coste real se mide en cada llamada.",
+    en: "It will cost about {amount} of “Building and testing”. This is an estimate: the real cost is measured on each call.",
+  },
+  "builder.suite.estimate.unknown": {
+    es: "No podemos estimar cuánto costará: falta el precio de un modelo. El coste real se verá en «Construcción y pruebas».",
+    en: "We can’t estimate what it will cost: a model’s price is missing. The real cost will show in “Building and testing”.",
+  },
+  "builder.suite.estimate.confirm": { es: "Ejecutar", en: "Run" },
   "builder.suite.runAll": { es: "Ejecutar todas", en: "Run all" },
   "builder.suite.runStale": { es: "Ejecutar las desactualizadas", en: "Run the out-of-date ones" },
   "builder.suite.run": { es: "Ejecutar", en: "Run" },

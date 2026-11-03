@@ -850,6 +850,7 @@ export function AgentBuilder({
                   }
                   actions={qualityActions.playground}
                 />
+                {testRun.confirm}
                 <TestsBox
                   refId={refId}
                   tests={testRun}
@@ -881,7 +882,7 @@ export function AgentBuilder({
                 hadActive={draft.active_number !== null}
                 canWrite={writable}
                 refreshKey={refreshKey}
-                tests={{ summary: testRun.suite?.summary ?? null, running: testRun.running !== null, canRun: testRun.canRun, run: () => void testRun.run("all") }}
+                tests={{ summary: testRun.suite?.summary ?? null, running: testRun.running !== null, canRun: testRun.canRun, run: () => void testRun.ask("all") }}
                 pendingQuestions={pendingQuestions}
                 onConnect={channelsTab}
                 onAddTest={writable ? addTestFromGate : undefined}

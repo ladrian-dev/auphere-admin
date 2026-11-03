@@ -9,6 +9,7 @@ import { Button, Callout, Field, Input, StatusBadge, StatusDot, Textarea, format
 import {
   addTestAction,
   qualityJobAction,
+  estimateTestsAction,
   runTestsAction,
   setNotApplicableAction,
   testsAction,
@@ -18,7 +19,8 @@ import type { MessageKey } from "@/i18n/messages";
 import type { AgentTest, QualityJob, TestBody, TestRunAccepted, TestRunScope, TestSuite } from "@/lib/backend/agent-quality-types";
 
 import { sleep, type Result } from "./builder-model";
-import { STATUS_TONE, failedConversation, groupTests, isFailing, isGenerated, naReason, waitForJob } from "./quality-model";
+import { STATUS_TONE, failedConversation, groupTests, isFailing, isGenerated, jobFailureKey, naReason, waitForJob } from "./quality-model";
+import { useRunEstimate, type EstimateRun } from "./run-estimate";
 import { TestConversation } from "./test-conversation";
 
 type Ids = { ref: string; agent: string };
@@ -28,11 +30,14 @@ export type TestListActions = {
   poll: (body: { ref: string; job: string }) => Promise<Result<QualityJob>>;
   notApplicable: (body: Ids & { test: string; reason: string }) => Promise<Result<TestSuite>>;
   add: (body: Ids & { test: TestBody }) => Promise<Result<TestSuite>>;
+  /** Sin ella, la pasada arranca sin preguntar. */
+  estimate?: EstimateRun;
 };
 
 const SERVER_ACTIONS: TestListActions = {
   load: (body) => testsAction(body),
   run: (body) => runTestsAction(body),
+  estimate: (body) => estimateTestsAction(body),
   poll: (body) => qualityJobAction(body),
   notApplicable: (body) => setNotApplicableAction(body),
   add: (body) => addTestAction(body),
@@ -130,6 +135,12 @@ export function TestList({
 
   const can = (what: "add" | "edit" | "run") => canWrite && Boolean(suite?.allowed.includes(what));
 
+  const { ask, dialog: confirmRun } = useRunEstimate({
+    estimate: actions.estimate,
+    ids,
+    start: (scope) => runTests(scope),
+  });
+
   async function runTests(scope: TestRunScope, test?: string) {
     setError(null);
     const res = await actions.run({ ...ids, scope, ...(test ? { test } : {}) });
@@ -151,7 +162,7 @@ export function TestList({
     const done = await waitForJob(() => actions.poll({ ref: refId, job: res.data.job_id }), { wait, cancelled: () => !alive.current });
     if (!alive.current) return;
     setRunning(null);
-    if (!done || !done.ok || done.data.status === "failed") setError(t("builder.suite.error.run"));
+    if (!done || !done.ok || done.data.status === "failed") setError(t(jobFailureKey(done?.ok ? done.data : null)));
     else toast.success(t("builder.suite.ran"));
     await reload();
     onChanged?.();
@@ -173,6 +184,7 @@ export function TestList({
 
   return (
     <div className="grid min-w-0 gap-4" data-slot="test-list">
+      {confirmRun}
       <p className="text-sm text-pretty text-muted-foreground">{t("builder.suite.intro")}</p>
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-sm" data-slot="test-summary">
         <span className="font-medium">{t("builder.suite.summary", { passed: summary.passed, total: counted })}</span>
@@ -183,12 +195,12 @@ export function TestList({
 
       {can("run") ? (
         <div className="flex min-w-0 flex-wrap gap-2">
-          <Button onClick={() => void runTests("all")} loading={running !== null}>
+          <Button onClick={() => void ask("all")} loading={running !== null}>
             <Play aria-hidden="true" />
             {t("builder.suite.runAll")}
           </Button>
           {summary.stale > 0 ? (
-            <Button variant="outline" onClick={() => void runTests("affected")} disabled={running !== null}>
+            <Button variant="outline" onClick={() => void ask("affected")} disabled={running !== null}>
               {t("builder.suite.runStale")}
             </Button>
           ) : null}

@@ -14,6 +14,7 @@ import type {
   QualityJob,
   RestoreResult,
   TestRunAccepted,
+  TestRunEstimate,
   TestSuite,
 } from "@/lib/backend/agent-quality-types";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -154,6 +155,16 @@ export async function runTestsAction(raw: unknown): Promise<ActionResult<TestRun
   const principal = await partner("agents:write");
   if (!principal) return forbidden;
   return run(() => backendFor(principal).runAgentTests(body.ref, body.agent, body.scope, body.scope === "one" ? body.test : undefined));
+}
+
+const estimateSchema = agentSchema.extend({ scope: z.enum(["all", "affected"]) });
+
+/** Cuánto costaría esa pasada (61.8), sin lanzar nada. */
+export async function estimateTestsAction(raw: unknown): Promise<ActionResult<TestRunEstimate>> {
+  const body = estimateSchema.parse(raw);
+  const principal = await partner("agents:write");
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).estimateAgentTests(body.ref, body.agent, body.scope));
 }
 
 const jobSchema = z.object({ ref, job: uuid });

@@ -18,6 +18,11 @@ type Job = { status: string; progress?: { step?: string | null } | null };
  * de siempre (1, 2, 4… 10 s), que vuelve a 1 s cuando el trabajo cambia de
  * paso. `null` si se canceló; el último `Result` si la API dijo que no.
  */
+/** Por qué no terminó una pasada: sin partida no sirve «inténtalo de nuevo» (INC-67). */
+export function jobFailureKey(job: { error_code?: string | null } | null): MessageKey {
+  return job?.error_code === "build_budget_exhausted" ? "money.build.blocked" : "builder.suite.error.run";
+}
+
 export async function waitForJob<J extends Job>(
   poll: () => Promise<Result<J>>,
   opts: { wait: (ms: number) => Promise<void>; cancelled?: () => boolean; onUpdate?: (job: J) => void },

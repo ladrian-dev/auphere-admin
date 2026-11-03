@@ -122,6 +122,12 @@ export type TestBody = {
 export type TestPatch = Partial<Omit<TestBody, "persona">> & { not_applicable_reason?: string };
 export type TestRunScope = "all" | "affected" | "one";
 export type TestRunAccepted = { job_id: string; run_id: string; tests: number };
+/** Lo que costaría una pasada (61.8). `estimate` es `null` si falta el precio de un modelo. */
+export type TestRunEstimate = {
+  tests: number;
+  estimate: { amount_micros: number; currency: string } | null;
+  unknown_prices: string[];
+};
 
 // ── la revisión (requisito 22) ──────────────────────────────────────────────
 

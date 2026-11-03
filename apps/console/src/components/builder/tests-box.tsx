@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@nexus/ui";
 
-import { qualityJobAction, runTestsAction, testsAction } from "@/app/(console)/clients/[ref]/agents/quality-actions";
+import { estimateTestsAction, qualityJobAction, runTestsAction, testsAction } from "@/app/(console)/clients/[ref]/agents/quality-actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { AgentTest, QualityJob, ReviewFinding, TestRunAccepted, TestRunScope, TestSuite } from "@/lib/backend/agent-quality-types";
@@ -15,8 +15,9 @@ import type { AgentTest, QualityJob, ReviewFinding, TestRunAccepted, TestRunScop
 import { findingsByCheck, testsState } from "./agent-proto-model";
 import { integrationName, sleep, type Result } from "./builder-model";
 import { canConnect } from "./missing-model";
-import { failedConversation, isFailing, reviewFixLink, waitForJob } from "./quality-model";
+import { failedConversation, isFailing, jobFailureKey, reviewFixLink, waitForJob } from "./quality-model";
 import type { ReviewSource } from "./review-panel";
+import { useRunEstimate, type EstimateRun } from "./run-estimate";
 import { TestConversation } from "./test-conversation";
 
 type Ids = { ref: string; agent: string };
@@ -24,11 +25,14 @@ export type TestRunActions = {
   load: (body: Ids) => Promise<Result<TestSuite>>;
   run: (body: Ids & { scope: TestRunScope; test?: string }) => Promise<Result<TestRunAccepted>>;
   poll: (body: { ref: string; job: string }) => Promise<Result<QualityJob>>;
+  /** Sin ella, la pasada arranca sin preguntar. */
+  estimate?: EstimateRun;
 };
 
 const SERVER_ACTIONS: TestRunActions = {
   load: (body) => testsAction(body),
   run: (body) => runTestsAction(body),
+  estimate: (body) => estimateTestsAction(body),
   poll: (body) => qualityJobAction(body),
 };
 
@@ -40,6 +44,9 @@ export type TestRun = {
   error: string | null;
   canRun: boolean;
   run: (scope?: TestRunScope) => Promise<void>;
+  /** «Ejecutar»: primero dice cuánto costará y `confirm` pregunta. */
+  ask: (scope?: TestRunScope) => Promise<void>;
+  confirm: React.ReactNode;
   reload: () => Promise<void>;
 };
 
@@ -118,13 +125,24 @@ export function useTestRun({
     const done = await waitForJob(() => actions.poll({ ref: refId, job: res.data.job_id }), { wait, cancelled: () => !alive.current });
     if (!alive.current) return;
     setRunning(null);
-    if (!done || !done.ok || done.data.status === "failed") setError(t("builder.suite.error.run"));
+    if (!done || !done.ok || done.data.status === "failed") setError(t(jobFailureKey(done?.ok ? done.data : null)));
     else toast.success(t("builder.suite.ran"));
     await reload();
     onChanged?.();
   }
 
-  return { suite, running, error, canRun: canWrite && Boolean(suite?.allowed.includes("run")), run, reload };
+  const { ask, dialog } = useRunEstimate({ estimate: actions.estimate, ids, start: run });
+
+  return {
+    suite,
+    running,
+    error,
+    canRun: canWrite && Boolean(suite?.allowed.includes("run")),
+    run,
+    ask: (scope = "all") => ask(scope),
+    confirm: dialog,
+    reload,
+  };
 }
 
 /** Las tres comprobaciones del prototipo, en su orden; las demás salen solo si encuentran algo. */
@@ -211,7 +229,7 @@ export function TestsBox({
           <p className="text-xs text-pretty text-muted-foreground">{t("agentProto.tests.note")}</p>
         </div>
         {canRun && state.kind !== "none" ? (
-          <Button size="sm" variant={done ? "outline" : "default"} onClick={() => void tests.run("all")} disabled={running !== null} className="shrink-0">
+          <Button size="sm" variant={done ? "outline" : "default"} onClick={() => void tests.ask("all")} disabled={running !== null} className="shrink-0">
             <Play aria-hidden="true" />
             {done ? t("agentProto.tests.again") : t("agentProto.tests.runAll")}
           </Button>
