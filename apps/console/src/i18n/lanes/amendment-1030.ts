@@ -53,6 +53,18 @@ export const amendment1030Messages = {
   },
 
   // ── Los códigos nuevos de la API, en palabras (§11 «Códigos nuevos») ─────
+  "common.error.gate_blocked": {
+    es: "No se puede publicar todavía: faltan comprobaciones por pasar. Ábrelo en Ajustes y pulsa «Guardar» para ver cuáles.",
+    en: "It can’t be published yet: some checks have not passed. Open Settings and press “Save” to see which.",
+  },
+  "common.error.spec_invalid": {
+    es: "Este cambio dejaría al agente sin poder funcionar, así que no se ha guardado.",
+    en: "This change would leave the agent unable to work, so it was not saved.",
+  },
+  "common.error.tool_in_use": {
+    es: "No se puede apagar: una tarea o una prueba de este agente la usa. Cámbialas primero.",
+    en: "It can’t be switched off: one of this agent’s tasks or tests uses it. Change them first.",
+  },
   "common.error.structured_agent": {
     es: "Las herramientas de este agente se cambian desde su pantalla, no desde aquí.",
     en: "This agent’s tools are changed from its own screen, not from here.",

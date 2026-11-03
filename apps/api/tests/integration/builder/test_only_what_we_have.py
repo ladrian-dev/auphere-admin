@@ -306,7 +306,8 @@ async def test_capabilities_change_a_structured_agent_through_its_spec(
     agent_id = body["result"]["agent_id"]
     before = await _draft(client, biz, agent_id)
     assert before["spec"]["mode"] == "structured"
-    tool = before["spec"]["tools"][0]
+    named = {t for proc in before["spec"].get("procedures") or [] for t in proc.get("tools") or []}
+    tool = next(t for t in before["spec"]["tools"] if t not in named)
     url = f"{_agents_url(biz)}/capabilities?agent={agent_id}"
 
     off = await client.put(
@@ -324,6 +325,49 @@ async def test_capabilities_change_a_structured_agent_through_its_spec(
     again = await _draft(client, biz, agent_id)
     assert tool in again["spec"]["tools"]
     assert tool in again["tools"]
+
+
+async def test_a_tool_a_task_uses_cannot_be_switched_off(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """Quitarla dejaría al agente sin poder hacer lo que promete: la consola lo
+    dice y el agente no cambia."""
+    await turn_reservas_on(db_session, biz)
+    body = await _job(client, biz, fake_redis, FakeBuilder(reply=RECEPTION), name="Recepción")
+    agent_id = body["result"]["agent_id"]
+    before = await _draft(client, biz, agent_id)
+    tool = before["spec"]["tools"][0]
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        row = await db_session.scalar(
+            sa.select(AgentConfig).where(
+                AgentConfig.agent_id == uuid.UUID(agent_id),
+                AgentConfig.status == AgentConfigStatus.STAGED,
+            )
+        )
+        assert row is not None
+        row.spec = {
+            **row.spec,
+            "procedures": [
+                {
+                    "id": "atender",
+                    "title": "Atender",
+                    "when": "Siempre",
+                    "steps": "Usarla",
+                    "tools": [tool],
+                }
+            ],
+        }
+    await db_session.commit()
+
+    off = await client.put(
+        f"{_agents_url(biz)}/capabilities?agent={agent_id}",
+        json={"key": tool, "kind": "tool", "enabled": False},
+        headers=biz.headers(),
+    )
+
+    assert off.status_code == 422, off.text
+    assert off.json()["detail"]["code"] == "tool_in_use"
+    assert tool in (await _draft(client, biz, agent_id))["spec"]["tools"]
 
 
 async def test_the_old_template_routes_are_closed_for_the_new_console(

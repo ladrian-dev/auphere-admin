@@ -14,6 +14,9 @@ const WORDED: Readonly<Record<string, MessageKey>> = {
   structured_agent: "common.error.structured_agent",
   seed_template_retired: "common.error.seed_template_retired",
   facts_unavailable: "common.error.facts_unavailable",
+  gate_blocked: "common.error.gate_blocked",
+  spec_invalid: "common.error.spec_invalid",
+  tool_in_use: "common.error.tool_in_use",
 };
 
 /**
@@ -28,5 +31,7 @@ export function actionErrorText(res: Failed, t: T): string {
   if (worded) return t(worded);
   if (res.status === 401 || res.status === 403) return t("common.forbidden");
   if (res.status === 0 || res.status >= 500) return t("common.error.backend");
-  return res.message || t("common.error.backend");
+  // Sin frase propia, el `detail` estructurado llega como el JSON de la API: nunca en pantalla.
+  if (!res.message || res.message.startsWith("backend ")) return t("common.error.backend");
+  return res.message;
 }

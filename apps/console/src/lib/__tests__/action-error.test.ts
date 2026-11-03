@@ -13,6 +13,15 @@ describe("actionErrorText", () => {
     expect(actionErrorText({ ok: false, status: 503, message: "upstream timeout at 10.0.0.3" }, t)).toBe("<common.error.backend>");
     expect(actionErrorText({ ok: false, status: 0, message: "" }, t)).toBe("<common.error.backend>");
   });
+  it("the API's raw JSON never reaches a person", () => {
+    const raw = 'backend 422 https://api/x: {"detail":{"code":"something_new"}}';
+    expect(actionErrorText({ ok: false, status: 422, message: raw, code: "something_new" }, t)).toBe("<common.error.backend>");
+  });
+  it("the gate and a refused change have their sentence", () => {
+    expect(actionErrorText({ ok: false, status: 409, message: "backend 409", code: "gate_blocked" }, t)).toBe("<common.error.gate_blocked>");
+    expect(actionErrorText({ ok: false, status: 422, message: "backend 422", code: "spec_invalid" }, t)).toBe("<common.error.spec_invalid>");
+    expect(actionErrorText({ ok: false, status: 422, message: "backend 422", code: "tool_in_use" }, t)).toBe("<common.error.tool_in_use>");
+  });
   it("a human 4xx passes through", () => {
     expect(actionErrorText({ ok: false, status: 409, message: "Ya existe un cliente con esa referencia" }, t)).toBe("Ya existe un cliente con esa referencia");
   });

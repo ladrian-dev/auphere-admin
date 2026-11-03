@@ -312,6 +312,32 @@ async def list_capabilities(
     )
 
 
+#: Lo que una prueba comprueba en su ``expected_state``, y la herramienta que lo hace.
+_STATE_TOOLS = {"booking": frozenset({"reservas.create"})}
+
+
+async def _tool_in_use(scope: ClientScope, spec: Any, target: Any, key: str) -> bool:
+    """¿Apagarla dejaría al agente sin poder hacer lo que promete? Una tarea de su
+    AgentSpec la nombra, o una de sus pruebas espera lo que solo ella hace."""
+    from nexus_api.services.testing.suites import get_suite, list_tests
+
+    if any(key in (proc.tools or []) for proc in spec.procedures or []):
+        return True
+    if target is None:
+        return False
+    states = {k for k, tools in _STATE_TOOLS.items() if key in tools}
+    if not states:
+        return False
+    suite = await get_suite(scope.session, target.agent_id)
+    if suite is None:
+        return False
+    return any(
+        states & set((test.expected_state or {}).keys())
+        for test in await list_tests(scope.session, suite)
+        if not test.not_applicable_reason
+    )
+
+
 async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool:
     """D79 (65.10): an agent with a structured AgentSpec changes its tools through
     that document and the validator, like ``PATCH …/draft``. ``write_spec``
@@ -334,6 +360,11 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
     was = key in tools
     if enabled == was:
         return was
+    if not enabled and await _tool_in_use(scope, spec, _target, key):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "tool_in_use"},
+        )
     doc = dump(spec)
     doc["tools"] = [*tools, key] if enabled else [t for t in tools if t != key]
     ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
