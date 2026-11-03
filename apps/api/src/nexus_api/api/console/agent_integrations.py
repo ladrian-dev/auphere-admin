@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from nexus_api.db.models import AgentConnectorActivation, Connector, TenantConnector
 from nexus_api.services import activations as svc
+from nexus_api.services.connectors import booking_skills
 from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.composio_client import ComposioClientProtocol
@@ -287,6 +288,18 @@ async def put_activation(
         )
     except svc.ActivationError as exc:
         raise _error(exc) from None
+    # Owner, 2026-11-03: activating what can book, unless asked to only read, turns
+    # booking on in this agent's draft.
+    if body.permission != "read" and booking_skills.books(integration):
+        connector, install = await svc.connection_of(scope.session, scope.tenant.id, integration)
+        if install is not None:
+            await booking_skills.enable_booking_skills(
+                scope.session,
+                connector=connector,
+                install=install,
+                agent_id=scope.agent_id,
+                actor=scope.principal.actor,
+            )
     return ActivationOut(permission=row.permission, settings=dict(row.settings or {}))  # type: ignore[arg-type]
 
 

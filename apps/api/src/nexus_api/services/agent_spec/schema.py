@@ -25,6 +25,10 @@ SCHEMA_VERSION: Final = "1"
 MAX_INSTRUCTIONS_CHARS: Final = 8000
 
 TOOL_NAME_PATTERN: Final = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
+#: What a document may name: the above, and a connector's slug as its provider writes
+#: it (``CALENDLY_POST_INVITEE``). The builder proposes only the above (65.3); a
+#: person connecting something is what puts a slug here.
+SPEC_TOOL_NAME_PATTERN: Final = rf"(?:{TOOL_NAME_PATTERN})|^[A-Z][A-Z0-9_]*$"
 _UUID: dict[str, Any] = {"format": "uuid"}
 _UNIQUE: dict[str, Any] = {"uniqueItems": True}
 
@@ -39,7 +43,7 @@ def _unique(values: list[Any] | None) -> list[Any] | None:
     return values
 
 
-ToolName = Annotated[str, Field(pattern=TOOL_NAME_PATTERN)]
+ToolName = Annotated[str, Field(pattern=SPEC_TOOL_NAME_PATTERN)]
 _Uuid = Annotated[str, Field(json_schema_extra=_UUID)]
 _Integration = Annotated[str, Field(pattern=r"^[a-z0-9_]{1,40}$")]
 _Language = Annotated[str, Field(pattern=r"^[a-z]{2,3}(-[A-Z]{2})?$")]

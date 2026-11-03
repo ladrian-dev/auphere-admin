@@ -230,7 +230,7 @@
     "toolName": {
       "description": "Nombre del catálogo de herramientas (con punto, p. ej. `reservas.create`). El transporte lo traduce para los proveedores que no admiten el punto (requisito 41.3).",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+      "pattern": "(?:^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$)|^[A-Z][A-Z0-9_]*$"
     },
     "faq": {
       "type": "object",

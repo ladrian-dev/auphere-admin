@@ -53,6 +53,7 @@ from nexus_api.db.models import (
     ToolStatus,
 )
 from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.connectors.booking_skills import enable_booking_skills
 
 from .composio_client import (
     ComposioClientProtocol,
@@ -415,6 +416,7 @@ async def complete_consent_from_webhook(
     if tc is None:
         return None
 
+    pending_agent: uuid.UUID | None = None
     connector = await session.get(Connector, tc.connector_id)
     if connector is None:  # pragma: no cover — FK guarantees this
         msg = f"orphan tenant_connector {tc.id}"
@@ -427,7 +429,7 @@ async def complete_consent_from_webhook(
         tc.consent_token = None
         tc.consent_token_expires_at = None
         action = "connector.connect_completed"
-        await _apply_pending_activation(session, tc, actor=actor)
+        pending_agent = await _apply_pending_activation(session, tc, actor=actor)
     elif upstream_status == "EXPIRED":
         tc.status = TenantConnectorStatus.NEEDS_REAUTH.value
         action = "connector.needs_reauth"
@@ -498,6 +500,11 @@ async def complete_consent_from_webhook(
     await auto_enable_connector_tools(
         session, tenant_id=tc.tenant_id, connector=connector, actor=actor
     )
+    # Owner, 2026-11-03: what can book turns booking on. After the sync: the first
+    # connection has no tools in the catalog until here.
+    await enable_booking_skills(
+        session, connector=connector, install=tc, agent_id=pending_agent, actor=actor
+    )
     return CompleteConsentResult(
         tenant_connector_id=tc.id,
         tools_added=sync.added,
@@ -509,29 +516,31 @@ async def complete_consent_from_webhook(
 
 async def _apply_pending_activation(
     session: AsyncSession, tc: TenantConnector, *, actor: str
-) -> None:
+) -> uuid.UUID | None:
     """Spec 047 (35.3): connecting from an agent's Integrations tab leaves the
     agent and the permission on the install; when the authorisation completes,
-    the integration is activated for that agent."""
+    the integration is activated for that agent. Returns that agent."""
     import uuid as _uuid
 
     from nexus_api.services.activations import ensure_activation
 
     pending = (tc.config or {}).get("pending_activation")
     if not isinstance(pending, dict) or not pending.get("agent_id"):
-        return
+        return None
     permission = str(pending.get("permission") or "read")
     if permission not in {"read", "ask_before_write", "read_write"}:
         permission = "read"
+    agent_id = _uuid.UUID(str(pending["agent_id"]))
     await ensure_activation(
         session,
         tenant_id=tc.tenant_id,
-        agent_id=_uuid.UUID(str(pending["agent_id"])),
+        agent_id=agent_id,
         install=tc,
         actor=str(pending.get("by") or actor),
         permission=permission,  # type: ignore[arg-type]
     )
     tc.config = {k: v for k, v in (tc.config or {}).items() if k != "pending_activation"}
+    return agent_id
 
 
 async def _on_needs_reauth(

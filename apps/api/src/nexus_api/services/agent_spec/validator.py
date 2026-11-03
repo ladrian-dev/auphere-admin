@@ -43,6 +43,7 @@ from nexus_api.services.agent_spec.retired import RETIRED_TOOLS
 from nexus_api.services.agent_spec.retired import replacement as retired_replacement
 from nexus_api.services.agent_spec.schema import (
     MAX_INSTRUCTIONS_CHARS,
+    SPEC_TOOL_NAME_PATTERN,
     TOOL_NAME_PATTERN,
     AgentSpec,
 )
@@ -80,7 +81,9 @@ SERVER_SIDE_ARGS: Final = frozenset(
     }
 )
 _ALWAYS_INJECTED: Final = "conversation_id"
-_TOOL_NAME: Final = re.compile(TOOL_NAME_PATTERN)
+_TOOL_NAME: Final = re.compile(SPEC_TOOL_NAME_PATTERN)
+#: What the builder may propose (65.3): a connector's provider slug is not one of them.
+_BUILDER_TOOL_NAME: Final = re.compile(TOOL_NAME_PATTERN)
 
 
 @dataclass(frozen=True)
@@ -143,17 +146,24 @@ class Context:
 
     def available_tools(self) -> list[str]:
         """Las herramientas disponibles para el cliente (65.2), por orden."""
-        return sorted(name for name in self.tools if self.usable(name))
+        return sorted(
+            name
+            for name in self.tools
+            if self.usable(name) and _BUILDER_TOOL_NAME.fullmatch(name) is not None
+        )
 
     def offered_connectors(self) -> frozenset[str]:
         """Las integraciones que son un conector ofrecido **para un AgentSpec**: con
-        activación y con al menos una herramienta disponible. Un conector cuyas
-        herramientas el AgentSpec no admite (las de Composio) no lo es: conectarlo
-        no le daría nada al agente (65.3 y 65.13)."""
+        activación y con al menos una herramienta disponible. Uno de Composio no lo
+        es: el constructor no propone conectarlo (65.3 y 65.13). Una persona sí puede,
+        y lo que permita reservar enciende su habilidad (``connectors.booking_skills``)."""
         return frozenset(
             info.integration
             for name, info in self.tools.items()
-            if info.integration is not None and info.activatable and self.usable(name)
+            if info.integration is not None
+            and info.activatable
+            and self.usable(name)
+            and _BUILDER_TOOL_NAME.fullmatch(name) is not None
         )
 
     def skill_integrations(self) -> frozenset[str]:
@@ -163,7 +173,10 @@ class Context:
         here = frozenset(
             info.integration
             for name, info in self.tools.items()
-            if info.integration is not None and info.connected and self.usable(name)
+            if info.integration is not None
+            and info.connected
+            and self.usable(name)
+            and _BUILDER_TOOL_NAME.fullmatch(name) is not None
         )
         return self.offered_connectors() | here
 
