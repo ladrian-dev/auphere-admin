@@ -343,6 +343,63 @@ async def test_what_contradicts_hours_a_person_wrote_stays_a_suggestion(
     assert conflict.current_value["days"]["mon"] == [{"open": "09:00", "close": "13:00"}]
 
 
+async def test_what_a_person_discarded_or_removed_does_not_come_back(
+    client: Any, db_session: AsyncSession, world: dict[str, Any], fake_redis: Any
+) -> None:
+    """60.5: una lectura nueva no vuelve a proponer lo descartado ni repone una
+    pregunta frecuente que una persona quitó."""
+    from datetime import UTC, datetime
+
+    from nexus_api.services.business.sections import Actor
+
+    created, tenant_id = await _cultor(client, db_session, world, info="cultorbarber.com")
+    luis = Actor(kind="partner_member", id=world["a"]["user_id"], origin="console")
+    async with tenant_scoped_session(db_session, tenant_id):
+        week = business_hours.week_from_days(
+            "daily", {"mon": [{"open": "09:00", "close": "13:00"}]}
+        )
+        await business_hours.save_week(db_session, week, actor=luis)
+    with respx.mock(assert_all_called=False) as router:
+        _site(router)
+        router.get(f"{SITE}/").mock(return_value=httpx.Response(200, html=_home([])))
+        await run_reader(fake_redis, FakeExtractor(reply=CULTOR_READ))
+    (proposal,) = await scoped(
+        db_session,
+        tenant_id,
+        sa.select(BusinessSuggestion).where(BusinessSuggestion.pointer == "/hours"),
+    )
+    (faq,) = await scoped(db_session, tenant_id, sa.select(BusinessFaq))
+    async with tenant_scoped_session(db_session, tenant_id):
+        row = await db_session.get(BusinessSuggestion, proposal.id)
+        assert row is not None
+        row.decision = "discarded"
+        row.decided_at = datetime.now(UTC)
+        kept = await db_session.get(BusinessFaq, faq.id)
+        assert kept is not None
+        kept.archived_at = datetime.now(UTC)
+    await db_session.commit()
+
+    again = await client.post(
+        f"/console/clients/{created['ref']}/business/read", headers=world["a"]["headers"]()
+    )
+    assert again.status_code in (200, 202), again.text
+    with respx.mock(assert_all_called=False) as router:
+        _site(router)
+        router.get(f"{SITE}/").mock(return_value=httpx.Response(200, html=_home([])))
+        await run_reader(fake_redis, FakeExtractor(reply=CULTOR_READ))
+
+    rows = await scoped(
+        db_session,
+        tenant_id,
+        sa.select(BusinessSuggestion).where(BusinessSuggestion.pointer == "/hours"),
+    )
+    assert [r.decision for r in rows] == ["discarded"], "lo descartado volvió"
+    live = await scoped(
+        db_session, tenant_id, sa.select(BusinessFaq).where(BusinessFaq.archived_at.is_(None))
+    )
+    assert live == [], "la pregunta quitada volvió"
+
+
 # ── contradicciones e idioma ───────────────────────────────────────────────
 
 

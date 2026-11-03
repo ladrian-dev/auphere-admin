@@ -919,13 +919,16 @@ async def _suggest(
     source_url: str | None,
     translated_from: str | None,
 ) -> bool:
-    """Una sugerencia abierta, salvo que ya haya una igual sin decidir."""
+    """Una sugerencia abierta, salvo que ya haya una igual sin decidir o que una
+    persona ya la haya descartado (60.5)."""
     tenant_id = require_current_tenant()
     exists = await session.scalar(
         sa.select(BusinessSuggestion.id).where(
             BusinessSuggestion.tenant_id == tenant_id,
             BusinessSuggestion.pointer == pointer,
-            BusinessSuggestion.decision.is_(None),
+            sa.or_(
+                BusinessSuggestion.decision.is_(None), BusinessSuggestion.decision == "discarded"
+            ),
             BusinessSuggestion.proposed_value == sa.literal(value, type_=JSONB()),
         )
     )
@@ -1101,11 +1104,16 @@ async def _apply_sections(
         except services_catalog.ServiceError:
             continue
 
-    asked = {_key(f.q): f for f in await faqs.list_faqs(session)}
+    all_faqs = await faqs.list_faqs(session, archived=True)
+    asked = {_key(f.q): f for f in all_faqs if f.archived_at is None}
+    # La que una persona quitó no vuelve con la siguiente lectura (60.5).
+    removed = {_key(f.q) for f in all_faqs if f.archived_at is not None}
     for item in extraction.faqs:
         faq = asked.get(_key(item.get("q")))
         try:
             if faq is None:
+                if _key(item.get("q")) in removed:
+                    continue
                 await faqs.create_faq(
                     session, q=str(item["q"]), a=str(item["a"]), actor=ctx.actor, ctx=ctx
                 )
