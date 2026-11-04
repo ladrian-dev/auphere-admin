@@ -70,10 +70,10 @@ const UNDO_MAX_MS = 10 * 60 * 1000;
  *
  * Como el prototipo aprobado (§4.5): a la izquierda el estado con su icono, a
  * la derecha los botones píldora. Con las pruebas de la pantalla dice en qué
- * punto están («Borrador completo» con «Ejecutar pruebas», «1 de 20 pruebas
- * falla» con «Guardar igualmente», «20 de 20 pruebas pasan · guardado») y solo
- * ofrece guardar lo que hay que guardar. La puerta bloqueada se explica en una
- * hoja lateral («Ver por qué»), no dentro de la barra.
+ * punto están («Borrador completo» con «Ejecutar pruebas» y «Guardar», «1 de 20
+ * pruebas falla» con «Guardar igualmente», «20 de 20 pruebas pasan · guardado»)
+ * y solo ofrece guardar lo que hay que guardar. La puerta bloqueada se explica en
+ * una hoja lateral («Ver por qué»), no dentro de la barra.
  *
  * Enmienda del 2026-10-30 (T228; 65.5 y 65.9): un estructurado sin ninguna
  * prueba que le aplique (`no_applicable_tests`, en `hard`) se dice con las
@@ -302,10 +302,12 @@ export function PublishBar({
     case "pending":
       text = state.draft ? t("agentProto.bar.complete") : t("agentProto.bar.notRun");
       buttons = [
-        <Button key="run" onClick={() => tests?.run()} className={PILL}>
+        <Button key="run" variant={state.draft ? "outline" : "default"} onClick={() => tests?.run()} className={PILL}>
           <Play aria-hidden="true" />
           {t("agentProto.bar.run")}
         </Button>,
+        // Guardar no se salta nada: el trabajo pasa las pruebas antes de decidir.
+        ...(state.draft ? [saveButton] : []),
       ];
       break;
     case "plain":

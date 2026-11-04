@@ -294,12 +294,28 @@ describe("la barra flotante · como el prototipo", () => {
     const { container } = screenWith({ tests: t });
     const bar = screen.getByRole("region", { name: "Acciones del agente" });
     expect(within(bar).getByRole("status")).toHaveTextContent("Borrador completo");
-    expect(within(bar).queryByRole("button", { name: /Guardar/ })).toBeNull();
     const run = within(bar).getByRole("button", { name: "Ejecutar pruebas" });
     expect(run.className).toMatch(/rounded-full/);
     await user.click(run);
     expect(t.run).toHaveBeenCalled();
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("sin ejecutar y con borrador también se puede guardar: el trabajo pasa las pruebas", async () => {
+    const user = userEvent.setup();
+    const t = tests({ passed: 2, not_run: 3 });
+    const { actions } = screenWith({ tests: t, preview: preview({ action: "save_and_connect" }) });
+    const bar = screen.getByRole("region", { name: "Acciones del agente" });
+    await user.click(within(bar).getByRole("button", { name: "Guardar y conectar un canal" }));
+    expect(actions.publish).toHaveBeenCalledWith({ ref: REF, agent: AGENT });
+    expect(t.run).not.toHaveBeenCalled();
+  });
+
+  it("sin ejecutar y sin borrador no hay nada que guardar", () => {
+    screenWith({ tests: tests({ not_run: 5 }), preview: preview({ has_draft: false }) });
+    expect(screen.getByRole("status")).toHaveTextContent("Pruebas sin ejecutar");
+    expect(screen.getByRole("button", { name: "Ejecutar pruebas" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Guardar/ })).toBeNull();
   });
 
   it("en marcha: lo dice y no ofrece nada", () => {
