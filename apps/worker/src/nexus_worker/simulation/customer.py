@@ -10,7 +10,9 @@ on until one of four stops:
 - ``goodbye``: the customer says goodbye without it;
 - ``handoff``: the agent handed the conversation to a person;
 - ``turn_limit``: :data:`MAX_CUSTOMER_TURNS` customer messages without any of
-  the above — a failure with that reason (61.3).
+  the above — a failure with that reason (61.3);
+- ``model_failed``: the agent's model or the customer's did not answer. It says
+  nothing about the agent: the pass is undecided, and nobody is blamed.
 
 **What the customer reads is data.** The persona and the plan were written by the
 partner (or generated), the conversation by a model: all of them go fenced, and
@@ -35,13 +37,15 @@ from typing import Any, Final, Literal, Protocol
 
 from nexus_api.core.guardrails.untrusted import fence, inert
 
+from nexus_worker.simulation.failures import ModelFailure, failure_of_call
 from nexus_worker.simulation.runner import TurnOutcome
 from nexus_worker.simulation.world import World
 
 #: Customer messages per pass, at most (61.3).
 MAX_CUSTOMER_TURNS: Final = 8
-#: Why a conversation ended (``agent_test_results.stop``, migration 0206).
-STOPS: Final[tuple[str, ...]] = ("plan_done", "goodbye", "handoff", "turn_limit")
+#: Why a conversation ended (``agent_test_results.stop``, migrations 0206 and 0216).
+MODEL_FAILED: Final = "model_failed"
+STOPS: Final[tuple[str, ...]] = ("plan_done", "goodbye", "handoff", "turn_limit", MODEL_FAILED)
 MESSAGE_MAX: Final = 1000
 
 Status = Literal["continue", "plan_done", "goodbye"]
@@ -89,6 +93,8 @@ class Conversation:
     stop: str | None = None
     #: The models that answered as the agent, in order (for the judge's check).
     responding: list[str] = field(default_factory=list)
+    #: With ``stop == "model_failed"``: which model, and how.
+    failure: ModelFailure | None = None
 
 
 #: The tags of what the simulated customer reads: nothing inside may open or close
@@ -178,6 +184,10 @@ async def converse(
                 "model": outcome.model,
             }
         )
+        if outcome.failure is not None:
+            talk.stop = MODEL_FAILED
+            talk.failure = outcome.failure
+            return talk
         if world.escalated:
             talk.stop = "handoff"
             return talk
@@ -185,12 +195,16 @@ async def converse(
             return talk
         if turn == max_turns:
             break
-        reply = parse_customer(
-            await customer(
+        try:
+            raw = await customer(
                 customer_messages(persona=persona, plan=plan, transcript=talk.transcript),
                 avoid_model=outcome.model,
             )
-        )
+        except Exception as exc:
+            talk.stop = MODEL_FAILED
+            talk.failure = failure_of_call("customer", exc)
+            return talk
+        reply = parse_customer(raw)
         if reply.status in {"plan_done", "goodbye"}:
             if reply.message:
                 talk.transcript.append(
@@ -253,6 +267,7 @@ def family_of(model: str) -> str:
 
 __all__ = [
     "MAX_CUSTOMER_TURNS",
+    "MODEL_FAILED",
     "STOPS",
     "SYSTEM",
     "Conversation",

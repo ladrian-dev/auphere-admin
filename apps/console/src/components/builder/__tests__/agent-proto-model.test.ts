@@ -29,6 +29,7 @@ function summary(over: Partial<TestSummary> = {}): TestSummary {
     flaky: 0,
     failed: 0,
     unknown: 0,
+    model_failed: 0,
     not_run: 0,
     not_applicable: 0,
     total: 0,
@@ -93,6 +94,9 @@ describe("en qué punto están las pruebas (§5.1)", () => {
 
   it("todas ejecutadas: pasan todas, o cuántas no", () => {
     expect(testsState(summary({ total: 20, passed: 20 }))).toEqual({ kind: "passing", passed: 20, counted: 20 });
+    // Sin modelo no se ha probado: queda pendiente, y no cuenta como que falle.
+    expect(testsState(summary({ total: 3, passed: 2, model_failed: 1, stale: 1 }))).toEqual({ kind: "pending", pending: 1, counted: 3 });
+    expect(testsState(summary({ total: 3, passed: 2, model_failed: 1 }))).toEqual({ kind: "pending", pending: 1, counted: 3 });
     expect(testsState(summary({ total: 20, passed: 19, failed: 1 }))).toEqual({ kind: "failing", failing: 1, passed: 19, counted: 20 });
     expect(testsState(summary({ total: 20, passed: 17, flaky: 2, unknown: 1 }))).toEqual({ kind: "failing", failing: 3, passed: 17, counted: 20 });
   });

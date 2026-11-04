@@ -11,7 +11,9 @@ The eight Fase-0 alerts and where they live:
 1. queue oldest pending > 300 s               → HERE (``queue_backlog``)
 2. entries in ``nexus:inbound:dlq``           → HERE (``dlq_entries``)
 3. turn errors per tenant > 5 in 10 min       → HERE (``turn_error_burst``,
-   also writes ``platform.turn_error_burst`` audit row → WhatsApp template)
+   also writes ``platform.turn_error_burst`` audit row → WhatsApp template).
+   The playground and the tests have their own (``simulated_model_failure_burst``,
+   no audit row): see ``simulation/failures.py`` for why they do not count here.
 4. new ``isolation_events`` row               → isolation_watcher (existing)
 5. worker heartbeat missing > 3 min           → HERE (``worker_dead``)
 6. llm cache read ratio < 0.3 sustained       → HERE (``cache_ratio_low``)
@@ -34,6 +36,8 @@ from dataclasses import dataclass
 
 import structlog
 from redis.asyncio import Redis
+
+from nexus_worker.simulation.failures import COUNTER_PREFIX as SIMULATED_FAILURES_PREFIX
 
 log = structlog.get_logger(__name__)
 
@@ -161,6 +165,32 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                             count=count,
                         )
                     )
+
+    # 3b · a model that does not answer in the playground or the tests. No
+    # ``tenant_id`` on purpose: with one, ``_notify`` writes the audit row that
+    # WhatsApps the owner of the business, who has nothing to do with this.
+    with contextlib.suppress(Exception):
+        pattern = f"{SIMULATED_FAILURES_PREFIX}:*:{window}"
+        async for key in redis.scan_iter(match=pattern, count=100):
+            key_str = key.decode() if isinstance(key, bytes) else key
+            count = int(await redis.get(key_str) or 0)
+            if count > TURN_ERROR_THRESHOLD:
+                tenant_str = key_str.split(":")[3]
+                alerts.append(
+                    Alert(
+                        kind="simulated_model_failure_burst",
+                        dedup_key=f"nexus:alert:sent:simulated_model_failures:{tenant_str}:{window}",
+                        subject="[Auphere] El modelo no responde en las pruebas",
+                        detail=(
+                            f"El cliente {tenant_str} lleva {count} turnos o pasadas sin "
+                            "respuesta del modelo en el chat de prueba o en las pruebas, en "
+                            "la ventana de 10 minutos. Mirar simulation.model_failed en los "
+                            "grupos runner y api; si dice «missing partner virtual key», a su "
+                            "partner le falta la clave del proxy."
+                        ),
+                        count=count,
+                    )
+                )
 
     # 5 · dead workers (heartbeat tracking via last-seen ledger)
     with contextlib.suppress(Exception):

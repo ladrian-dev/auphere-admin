@@ -213,9 +213,30 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   modelo si coincide; el juez que coincide no cuenta, y si es de la misma familia
   la pasada lo avisa (`warnings` en el resumen y `tests.judge_warning` en el log).
   Sin cliente simulado (en local, en memoria), una pasada es un turno.
+- **Si un modelo no responde, no se le apunta al agente** (bug
+  `el-probador-tapa-los-fallos-del-modelo`; `wk/simulation/failures.py`). Si no
+  responde el modelo del agente, el del cliente simulado o el del juez cuyo veredicto
+  hacía falta, la pasada queda sin decidir, con `stop: model_failed`. Una prueba con
+  alguna así y ninguna en rojo es «No se pudo probar» (`status: model_failed`, con
+  `why_untested`): no entra en la nota ni en «Arreglar» y queda desactualizada, así que
+  «las afectadas» y «Guardar» la repiten. Si ninguna pasada tuvo modelo, la pasada queda
+  `failed` con `stopped: model_unavailable` y el trabajo falla con ese código; si alguna
+  lo tuvo, el trabajo termina y `summary.model_failed` dice cuántas pruebas no. En la
+  puerta, una crítica sin probar se salta como `critical_test_untested`; una normal se
+  avisa (`test_untested`). Un turno que agota sus 120 s sigue contando como fallo del
+  agente: no se sabe de qué lado está.
+- **Ninguna pasada sobrevive a su trabajo** (bug
+  `pasadas-huerfanas-tras-fallar-el-trabajo`): si una lanza, las demás se cancelan antes
+  de que el trabajo quede `failed`, y la pasada se cierra con `stopped: internal` o
+  `interrupted`. Si siguieran, llamarían al modelo a la vez que el «Reintentar».
 - **Una pasada viva por agente** (T217): con un trabajo `tests` del agente en cola
   o en marcha, `POST …/test-runs` la devuelve (`202` con su `job_id`, su `run_id`
-  y cuántas pruebas lleva) y no encola otra, como «Volver a leer».
+  y cuántas pruebas lleva) y no encola otra, como «Volver a leer». «Guardar» corre la
+  misma suite y se paga igual, así que se ven: `POST …/test-runs` con la de «Guardar» en
+  marcha responde `409 suite_running`, y «Guardar» con otra viva falla con ese código.
+  Quien lanza una pasada toma antes el bloqueo de la fila del agente
+  (`runs.lock_agent`) y pregunta a `runs.live_run`, que mira el trabajo y no
+  `AgentTestRun.status`, porque esa columna no se entera de una caducidad.
 - **El coste, antes** (61.8): `POST …/test-runs` con `dry_run: true` responde `200`
   con la estimación (`services/testing/estimate.py`: de media 4 turnos del agente,
   4 mensajes del cliente simulado y el juez, por 3 pasadas, a precio) sin encolar
@@ -223,7 +244,10 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
 - **Pasadas** (`agent_test_runs`, `services/testing/runs.py`): todas, las
   afectadas o una; un cambio de la ficha deja desactualizadas las afectadas y las
   vuelve a pasar en segundo plano en los agentes publicados
-  (`business/writes.mark_tests_stale`). Si esa pasada deja pruebas en rojo, el
+  (`business/writes.mark_tests_stale`). Se junta con una viva que aún no ha empezado,
+  sea cual sea su motivo, salvo que sea de una sola prueba. Con una **en marcha** sí
+  encola otra: la que corre empezó antes del cambio y no lo cubre. Si esa pasada deja
+  pruebas en rojo, el
   partner recibe `agent.tests.failing` (una vez por agente y día,
   `wk/jobs/handlers/agent_tests.tell_failing`, requisito 13.7).
 - **Playground** (`api/console/agent_playground.py`): sobre el borrador o una
@@ -236,15 +260,20 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   …»—, y «Preguntar antes de escribir» no pregunta al dueño: queda «Preguntar al
   dueño antes de …» y el turno sigue como si hubiera dicho que sí. Lo mismo en
   las pruebas, que usan el mismo registro, y en el playground de antes (dry-run):
-  con `dry_run` el grafo nunca abre una consulta al dueño.
+  con `dry_run` el grafo nunca abre una consulta al dueño. Si el modelo no responde,
+  `200` con `turn.failure: {reason}` (`llm_failed`, `no_model` o `empty_response`): la
+  burbuja es el texto de emergencia que recibiría un cliente, se guarda en la
+  conversación y la pantalla lo dice, con lo escrito todavía en la caja para repetirlo.
+  El error del proveedor se queda en el registro (`simulation.model_failed`).
 
 ## 4. La puerta
 
 `services/publishing.py`. Publica solo si:
 
 1. el validador da 0 errores;
-2. las pruebas críticas pasan 3 de 3, y un agente estructurado tiene al menos una
-   prueba que aplica (`no_applicable_tests`, que nadie salta; 65.9);
+2. las pruebas críticas pasan 3 de 3 (si un modelo no respondió,
+   `critical_test_untested`), y un agente estructurado tiene al menos una prueba que
+   aplica (`no_applicable_tests`, que nadie salta; 65.9);
 3. la tasa global no baja más de 2 puntos frente a la versión activa;
 4. el aviso de IA está decidido;
 5. la revisión no tiene bloqueantes;

@@ -234,15 +234,36 @@ async def evaluate_gate(
             }
         )
     critical_bad: list[str] = []
+    critical_untested: list[str] = []
     for test in tests:
         if test.not_applicable_reason:
             continue
         out = outcomes[test.id]
         ran_here = run is not None and out.status != "not_run"
-        if test.critical and ran_here and out.status != "passed":
+        if test.critical and ran_here and out.status == "model_failed":
+            critical_untested.append(test.name)
+        elif test.critical and ran_here and out.status != "passed":
             critical_bad.append(test.name)
         elif not test.critical and ran_here and out.status in {"failed", "flaky"}:
             gate.normal_failures.append(test.name)
+        elif ran_here and out.status == "model_failed":
+            gate.warnings.append(
+                {
+                    "condition": "critical_tests",
+                    "code": "test_untested",
+                    "message": f"La prueba «{test.name}» no se pudo probar: el modelo no respondió.",
+                }
+            )
+    for name in critical_untested:
+        # «No se probó» no es «pasa», y tampoco es «no pasa»: el arreglo es repetirla.
+        gate.overridable.append(
+            {
+                "condition": "critical_tests",
+                "code": "critical_test_untested",
+                "message": f"La prueba crítica «{name}» no se pudo probar: el modelo no "
+                "respondió. Vuelve a intentarlo.",
+            }
+        )
     for name in critical_bad:
         gate.overridable.append(
             {
@@ -252,7 +273,10 @@ async def evaluate_gate(
             }
         )
     gate.conditions.append(
-        {"condition": "critical_tests", "ok": not (critical_bad or untested or no_tests)}
+        {
+            "condition": "critical_tests",
+            "ok": not (critical_bad or critical_untested or untested or no_tests),
+        }
     )
     gate.rate = (run.summary or {}).get("rate") if run is not None else None
     if active is not None and active.id != version.id:

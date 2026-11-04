@@ -118,6 +118,7 @@ export const STATUS_TONE: Record<TestStatus, "positive" | "warn" | "danger" | "i
   flaky: "warn",
   failed: "danger",
   unknown: "info",
+  model_failed: "warn",
   not_run: "muted",
   not_applicable: "muted",
 };
@@ -125,6 +126,23 @@ export const STATUS_TONE: Record<TestStatus, "positive" | "warn" | "danger" | "i
 /** Las que no pasan y hay que mirar: tienen «Por qué falló». */
 export function isFailing(status: TestStatus): boolean {
   return status === "failed" || status === "flaky" || status === "unknown";
+}
+
+/** Por qué no empezó una pasada (`POST …/test-runs`). */
+export function runRefusedKey(res: { status: number; code?: string | null }): MessageKey {
+  if (res.code === "build_budget_exhausted" || res.status === 402) return "money.build.blocked";
+  if (res.code === "suite_running") return "builder.suite.error.suiteRunning";
+  if (res.code === "nothing_to_run") return "builder.suite.error.nothing";
+  if (res.code === "no_version") return "builder.suite.error.noVersion";
+  if (res.status === 401 || res.status === 403) return "common.forbidden";
+  return "builder.suite.error.run";
+}
+
+/** Por qué no terminó una pasada que sí empezó. Sin modelo no se ha probado nada, y lo dice. */
+export function runFailedKey(errorCode?: string | null): MessageKey {
+  if (errorCode === "model_unavailable") return "builder.suite.error.model";
+  if (errorCode === "build_budget_exhausted") return "money.build.blocked";
+  return "builder.suite.error.run";
 }
 
 /**

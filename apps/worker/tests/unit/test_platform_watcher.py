@@ -74,6 +74,42 @@ async def test_turn_errors_below_threshold_do_not_alert(delivered) -> None:
     assert [a for a in out if a.kind == "turn_error_burst"] == []
 
 
+async def test_model_failures_of_the_tests_have_their_own_alert_and_no_whatsapp(
+    monkeypatch,
+) -> None:
+    """Un partner que prueba su borrador no despierta al dueño del negocio: con
+    ``tenant_id``, ``_notify`` escribe la fila que le manda el WhatsApp."""
+    written: list[pw.Alert] = []
+
+    async def fake_audit(alert: pw.Alert) -> None:
+        written.append(alert)
+
+    monkeypatch.setattr(pw, "_write_tenant_audit_row", fake_audit)
+    redis = fakeaioredis.FakeRedis()
+    tenant = uuid.uuid4()
+    window = int(time.time()) // 600
+    await redis.set(f"nexus:alert:simulated_model_failures:{tenant}:{window}", "6")
+
+    out = await pw.process_tick(redis)
+
+    (burst,) = [a for a in out if a.kind == "simulated_model_failure_burst"]
+    assert burst.tenant_id is None
+    assert burst.count == 6
+    assert str(tenant) in burst.detail
+    assert written == []
+    assert [a for a in out if a.kind == "turn_error_burst"] == []
+    assert await pw.process_tick(redis) == [], "una vez por ventana"
+
+
+async def test_model_failures_of_the_tests_below_threshold_do_not_alert(delivered) -> None:
+    redis = fakeaioredis.FakeRedis()
+    window = int(time.time()) // 600
+    await redis.set(f"nexus:alert:simulated_model_failures:{uuid.uuid4()}:{window}", "5")
+
+    out = await pw.process_tick(redis)
+    assert [a for a in out if a.kind == "simulated_model_failure_burst"] == []
+
+
 async def test_meta_failure_burst_alert(delivered) -> None:
     redis = fakeaioredis.FakeRedis()
     window = int(time.time()) // 600

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Clock, Info, Send, SlidersHorizontal, Zap } from "lucide-react";
+import { CalendarClock, Clock, Info, Send, SlidersHorizontal, TriangleAlert, Zap } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -47,6 +47,10 @@ const MAX_TEXT = 1000;
  * hora simulada en la zona del negocio (se puede cambiar), la agenda simulada
  * que cambia con lo que hace el agente (20.2) y «Nueva conversación». Nada sale
  * de aquí: ningún envío ni reserva real.
+ *
+ * Si el modelo no respondió, la burbuja es el texto de emergencia que recibiría un
+ * cliente, y debajo se dice que el agente no llegó a contestar. Lo escrito sigue en la
+ * caja, para repetirlo sin volver a escribirlo.
  *
  * Quien solo lee ve la última conversación de prueba sin poder escribir (20.5).
  */
@@ -141,7 +145,7 @@ export function AgentPlayground({
     const res = await actions.send({ ...ids, session: current.session_id, text: message });
     setPending(null);
     if (res.ok) {
-      setText("");
+      if (!res.data.turn.failure) setText("");
       setSession({
         ...current,
         now: res.data.now,
@@ -222,7 +226,9 @@ export function AgentPlayground({
       <ol
         aria-label={t("builder.pg.chat")}
         aria-live="polite"
-        className="flex h-[300px] min-w-0 flex-col gap-2 overflow-y-auto bg-(--chat-bg) p-4"
+        // Se desplaza, y sin nada enfocable dentro el teclado no llegaría a lo que queda abajo.
+        tabIndex={0}
+        className="flex h-[300px] min-w-0 flex-col gap-2 overflow-y-auto bg-(--chat-bg) p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
         data-slot="playground-chat"
       >
         {!turns.length && !pending ? (
@@ -231,7 +237,7 @@ export function AgentPlayground({
           </SystemNote>
         ) : null}
         {turns.map((turn, i) => (
-          <Turn key={i} turn={turn} onWhy={onWhy} />
+          <Turn key={i} turn={turn} onWhy={onWhy} canRetry={writes} />
         ))}
         {pending ? (
           <>
@@ -285,7 +291,7 @@ function SystemNote({ icon, children }: { icon: React.ReactNode; children: React
 }
 
 /** Una burbuja por mensaje, como en WhatsApp: el cliente a la derecha, el agente a la izquierda. */
-function Turn({ turn, onWhy }: { turn: PlaygroundTurn; onWhy?: (turn: PlaygroundTurn) => void }) {
+function Turn({ turn, onWhy, canRetry = false }: { turn: PlaygroundTurn; onWhy?: (turn: PlaygroundTurn) => void; canRetry?: boolean }) {
   const t = useT();
   const mine = turn.role === "customer";
   const who = mine ? t("builder.pg.customer") : t("builder.pg.agent");
@@ -318,7 +324,17 @@ function Turn({ turn, onWhy }: { turn: PlaygroundTurn; onWhy?: (turn: Playground
           ))}
         </ul>
       ) : null}
-      {!mine && onWhy ? (
+      {!mine && turn.failure ? (
+        // Sin `role="alert"`: la lista ya es una región viva y lo diría dos veces.
+        <p className="flex max-w-[94%] min-w-0 items-start gap-2 self-center rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-xs text-pretty text-foreground" data-slot="playground-failure">
+          <TriangleAlert aria-hidden="true" className="mt-px size-3 shrink-0 text-warning" />
+          <span className="min-w-0 wrap-anywhere">
+            {t(`builder.pg.failure.${turn.failure.reason}`)}
+            {canRetry ? ` ${t("builder.pg.failure.retry")}` : ""}
+          </span>
+        </p>
+      ) : null}
+      {!mine && onWhy && !turn.failure ? (
         <Button type="button" variant="ghost" size="xs" onClick={() => onWhy(turn)} data-slot="playground-why">
           {t("builder.copilot.why")}
         </Button>

@@ -2,6 +2,9 @@
 
 - Cada prueba corre **3 veces**: pasa con 3 de 3; con 1 o 2 es «Inestable»; con 0,
   falla; si ninguna pasada se pudo decidir, «No sé».
+- Si un modelo no respondió en una pasada (``stop = model_failed``) y ninguna otra
+  falló, «No se pudo probar»: no dice nada del agente, no entra en la nota y la
+  prueba queda desactualizada para que la siguiente la repita.
 - Una prueba del sector marcada «No aplica» no corre y no cuenta (21.6).
 - Las que fallan llevan «Por qué falló», con lo que se comprobó (21.5).
 - La nota de la suite (de 0 a 100) es la de las pasadas decididas, y alimenta la puerta
@@ -17,7 +20,7 @@ import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, get_args
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +31,13 @@ from nexus_api.db.models.agent_spec import TEST_STOPS, AgentTest, AgentTestResul
 from nexus_api.services.testing.suites import ensure_suite, list_tests
 
 RUNS: Final = 3
-TestStatus = Literal["passed", "flaky", "failed", "unknown", "not_run", "not_applicable"]
+#: Una pasada que no dice nada del agente: un modelo no respondió.
+MODEL_FAILED: Final = "model_failed"
+#: Los trabajos que corren una suite. «Guardar» pasa las pruebas antes de decidir.
+SUITE_JOB_KINDS: Final = ("tests", "publish")
+TestStatus = Literal[
+    "passed", "flaky", "failed", "unknown", "model_failed", "not_run", "not_applicable"
+]
 
 
 @dataclass(frozen=True)
@@ -38,14 +47,21 @@ class TestOutcome:
     passes: int
     decided: int
     why_failed: str | None = None
+    #: «No se pudo probar»: qué modelo no respondió, nunca el error del proveedor.
+    why_untested: str | None = None
     #: Spec 047, enmienda (61.6): cada pasada de la última ejecución, con su
     #: conversación turno a turno y por qué terminó (``served_attempt``).
     attempts: tuple[dict[str, Any], ...] = ()
 
 
-def status_of(attempts: Sequence[bool | None]) -> TestStatus:
+def status_of(attempts: Sequence[bool | None], *, unavailable: int = 0) -> TestStatus:
+    """``unavailable``: cuántas de ``attempts`` no tuvieron modelo. Una pasada en
+    rojo es del agente, tenga o no modelo la de al lado; sin ninguna en rojo, lo que
+    falte por probar no deja decir que pasa."""
     if not attempts:
         return "not_run"
+    if unavailable and False not in attempts:
+        return "model_failed"
     decided = [a for a in attempts if a is not None]
     if not decided:
         return "unknown"
@@ -61,6 +77,14 @@ def why_failed(results: Sequence[AgentTestResult]) -> str | None:
     """«Por qué falló»: la primera explicación de una pasada que falló."""
     for r in sorted(results, key=lambda r: r.attempt):
         if r.passed is False and r.explanation:
+            return r.explanation
+    return None
+
+
+def why_untested(results: Sequence[AgentTestResult]) -> str | None:
+    """Qué modelo no respondió, en la primera pasada que se quedó sin él."""
+    for r in sorted(results, key=lambda r: r.attempt):
+        if r.stop == MODEL_FAILED and r.explanation:
             return r.explanation
     return None
 
@@ -129,13 +153,14 @@ def outcome_of(test: AgentTest, results: Sequence[AgentTestResult]) -> TestOutco
         return TestOutcome(test.id, "not_applicable", 0, 0)
     ordered = sorted(results, key=lambda r: r.attempt)
     attempts = [r.passed for r in ordered]
-    status = status_of(attempts)
+    status = status_of(attempts, unavailable=sum(1 for r in ordered if r.stop == MODEL_FAILED))
     return TestOutcome(
         test.id,
         status,
         passes=sum(1 for a in attempts if a),
         decided=sum(1 for a in attempts if a is not None),
         why_failed=why_failed(results) if status in {"failed", "flaky"} else None,
+        why_untested=why_untested(results) if status == "model_failed" else None,
         attempts=tuple(served_attempt(r) for r in ordered),
     )
 
@@ -143,7 +168,7 @@ def outcome_of(test: AgentTest, results: Sequence[AgentTestResult]) -> TestOutco
 def summarize(
     tests: Sequence[AgentTest], outcomes: Mapping[uuid.UUID, TestOutcome]
 ) -> dict[str, Any]:
-    counts = {k: 0 for k in ("passed", "flaky", "failed", "unknown", "not_run", "not_applicable")}
+    counts = dict.fromkeys(get_args(TestStatus), 0)
     critical_failed: list[str] = []
     passes = decided = 0
     for test in tests:
@@ -203,10 +228,27 @@ def tests_in_scope(
     return live
 
 
-async def live_run(session: AsyncSession, agent_id: uuid.UUID) -> AgentTestRun | None:
-    """La pasada viva del agente, si la hay: la de un trabajo ``tests`` en cola o en
-    marcha, con la caducidad perezosa de ``jobs.get_job``. Spec 047, T217: como
-    mucho una a la vez por agente; quien pide otra recibe esta."""
+async def lock_agent(session: AsyncSession, agent_id: uuid.UUID) -> None:
+    """Quien va a lanzar una pasada espera aquí a quien está lanzando otra: sin esto,
+    dos a la vez no ven ninguna viva y lanzan las dos. ``FOR NO KEY UPDATE``: choca
+    entre lanzadores y no frena a quien solo inserta una fila con FK al agente."""
+    from nexus_api.db.models import Agent
+
+    await session.execute(
+        sa.select(Agent.id)
+        .where(Agent.tenant_id == require_current_tenant(), Agent.id == agent_id)
+        .with_for_update(key_share=True)
+    )
+
+
+async def live_run(
+    session: AsyncSession, agent_id: uuid.UUID, *, excluding: uuid.UUID | None = None
+) -> AgentTestRun | None:
+    """La pasada viva del agente, si la hay: la de un trabajo ``tests`` o ``publish``
+    en cola o en marcha, con la caducidad perezosa de ``jobs.get_job``. Pregunta al
+    trabajo y no a ``AgentTestRun.status``, que no se entera de una caducidad. Spec
+    047, T217: como mucho una a la vez por agente; quien pide otra recibe esta.
+    ``excluding``: el trabajo de quien pregunta."""
     from nexus_api.db.models.jobs import LIVE_JOB_STATUSES, Job
     from nexus_api.services import jobs as jobs_service
 
@@ -217,8 +259,9 @@ async def live_run(session: AsyncSession, agent_id: uuid.UUID) -> AgentTestRun |
             .where(
                 Job.tenant_id == tenant_id,
                 Job.agent_id == agent_id,
-                Job.kind == "tests",
+                Job.kind.in_(SUITE_JOB_KINDS),
                 Job.status.in_(LIVE_JOB_STATUSES),
+                Job.id != excluding if excluding is not None else sa.true(),
             )
             .order_by(Job.created_at.desc(), Job.id.desc())
         )
@@ -312,8 +355,10 @@ async def finish_run(
         run.finished_at = datetime.now(UTC)
         await session.flush()
         return dict(run.summary)
+    untested = {r.test_id for r in await _attempts(session, run) if r.stop == MODEL_FAILED}
     for test in ran:
-        test.stale = False
+        # Lo que no se pudo probar sigue pendiente: «Guardar» y «las afectadas» lo repiten.
+        test.stale = test.id in untested
     _tests, _outcomes, summary = await suite_view(session, run.agent_id)
     run.summary = summary
     run.status = "done"
@@ -323,16 +368,26 @@ async def finish_run(
     return summary
 
 
-async def _own_summary(
-    session: AsyncSession, run: AgentTestRun, ran: Sequence[AgentTest]
-) -> dict[str, Any]:
-    rows = (
+async def _attempts(session: AsyncSession, run: AgentTestRun) -> Sequence[AgentTestResult]:
+    return (
         await session.scalars(
             sa.select(AgentTestResult).where(
                 AgentTestResult.tenant_id == run.tenant_id, AgentTestResult.run_id == run.id
             )
         )
     ).all()
+
+
+async def nothing_tested(session: AsyncSession, run: AgentTestRun) -> bool:
+    """¿Se quedaron sin modelo todas las pasadas de esta ejecución?"""
+    rows = await _attempts(session, run)
+    return bool(rows) and all(r.stop == MODEL_FAILED for r in rows)
+
+
+async def _own_summary(
+    session: AsyncSession, run: AgentTestRun, ran: Sequence[AgentTest]
+) -> dict[str, Any]:
+    rows = await _attempts(session, run)
     by_test: dict[uuid.UUID, list[AgentTestResult]] = {}
     for row in rows:
         by_test.setdefault(row.test_id, []).append(row)
@@ -341,13 +396,17 @@ async def _own_summary(
 
 
 __all__ = [
+    "MODEL_FAILED",
     "RUNS",
+    "SUITE_JOB_KINDS",
     "TestOutcome",
     "TestStatus",
     "create_run",
     "finish_run",
     "latest_results",
     "live_run",
+    "lock_agent",
+    "nothing_tested",
     "outcome_of",
     "record_attempt",
     "status_of",
@@ -356,4 +415,5 @@ __all__ = [
     "target_version",
     "tests_in_scope",
     "why_failed",
+    "why_untested",
 ]

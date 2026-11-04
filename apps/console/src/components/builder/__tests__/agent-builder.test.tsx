@@ -378,7 +378,7 @@ describe("la pantalla del agente · propuestas (15.2, 15.3)", () => {
 /** Todas las pruebas pasan: la barra ofrece guardar. */
 const PASSING = () =>
   suite({
-    summary: { passed: 5, flaky: 0, failed: 0, unknown: 0, not_run: 0, not_applicable: 1, total: 6, stale: 0, critical_failed: [], rate: 100 },
+    summary: { passed: 5, flaky: 0, failed: 0, unknown: 0, model_failed: 0, not_run: 0, not_applicable: 1, total: 6, stale: 0, critical_failed: [], rate: 100 },
     tests: [],
   });
 
@@ -1157,7 +1157,7 @@ describe("la pantalla del agente · pruebas que aplican (65.8, 65.9)", () => {
     decided: 0,
   });
   const tests = suite({
-    summary: { passed: 0, flaky: 0, failed: 0, unknown: 0, not_run: 0, not_applicable: 1, total: 1, stale: 0, critical_failed: [], rate: null },
+    summary: { passed: 0, flaky: 0, failed: 0, unknown: 0, model_failed: 0, not_run: 0, not_applicable: 1, total: 1, stale: 0, critical_failed: [], rate: null },
     tests: [NA],
   });
   const gate = {

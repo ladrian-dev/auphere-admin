@@ -201,12 +201,13 @@ locals {
   # Un `kind` por cada `Alert(...)` de platform_watcher.py. Lo comprueba
   # apps/worker/tests/unit/test_platform_alarms_contract.py.
   platform_alert_kinds = {
-    queue_backlog      = "La entrada más vieja de una cola de entrada lleva más de 5 min sin procesarse: hay clientes esperando respuesta."
-    dlq_entries        = "Hay mensajes de cliente en nexus:inbound:dlq: agotaron sus reintentos y nadie les va a contestar hasta que se revisen y reinyecten. Solo avisa al empezar: sigue en ALARM mientras la cola tenga entradas, y no avisa si crece."
-    turn_error_burst   = "Un negocio lleva más de 5 turnos fallidos en 10 min. Sus operadores también reciben el WhatsApp."
-    worker_dead        = "Un servicio lleva más de 3 min sin latido. El detalle dice cuál."
-    cache_ratio_low    = "El prompt cache lee menos del 30 % en la hora: algo invalida el prefijo del prompt y cada turno cuesta más del doble."
-    meta_failure_burst = "Más de 20 envíos a Meta fallidos con el mismo código en 10 min. El detalle dice cuál."
+    queue_backlog                 = "La entrada más vieja de una cola de entrada lleva más de 5 min sin procesarse: hay clientes esperando respuesta."
+    dlq_entries                   = "Hay mensajes de cliente en nexus:inbound:dlq: agotaron sus reintentos y nadie les va a contestar hasta que se revisen y reinyecten. Solo avisa al empezar: sigue en ALARM mientras la cola tenga entradas, y no avisa si crece."
+    turn_error_burst              = "Un negocio lleva más de 5 turnos fallidos en 10 min. Sus operadores también reciben el WhatsApp."
+    simulated_model_failure_burst = "Un cliente lleva más de 5 turnos o pasadas sin respuesta del modelo en el chat de prueba o en las pruebas, en 10 min. A diferencia de turn_error_burst, no avisa al negocio. Si el registro dice «missing partner virtual key», a su partner le falta la clave del proxy."
+    worker_dead                   = "Un servicio lleva más de 3 min sin latido. El detalle dice cuál."
+    cache_ratio_low               = "El prompt cache lee menos del 30 % en la hora: algo invalida el prefijo del prompt y cada turno cuesta más del doble."
+    meta_failure_burst            = "Más de 20 envíos a Meta fallidos con el mismo código en 10 min. El detalle dice cuál."
   }
 }
 

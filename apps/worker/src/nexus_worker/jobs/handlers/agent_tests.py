@@ -18,6 +18,15 @@ La conversación y por qué terminó se guardan en el resultado de la pasada
 (``transcript`` y ``stop``) para «Por qué falló» (61.6). El cliente simulado y el
 juez usan los modelos de la plataforma (``platform_models.py``).
 
+**Si un modelo no responde** (el del agente, el del cliente simulado o el del juez
+que decide), la pasada no dice nada del agente: queda sin decidir, con ``stop =
+model_failed``. Si ninguna se pudo probar, la pasada queda ``failed`` con ``stopped =
+model_unavailable`` y el trabajo falla con ese código.
+
+**Ninguna pasada sobrevive a su trabajo.** Si una lanza, las demás se cancelan antes
+de que el trabajo quede ``failed``: si siguieran, llamarían al modelo a la vez que el
+«Reintentar» que la consola ofrece al ver el fallo.
+
 Las pruebas corren en paralelo dentro del lote del cliente, nunca mezcladas con
 otro cliente (garantía 7). Se mide en «Construcción y pruebas» (``source=tests``)
 o fuera de las partidas si la paga Auphere (``certification``).
@@ -35,7 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
@@ -59,19 +68,21 @@ from nexus_worker.jobs.registry import (
 from nexus_worker.metering.collector import usage_turn
 from nexus_worker.simulation.customer import (
     MAX_CUSTOMER_TURNS,
+    MODEL_FAILED,
     Conversation,
     Customer,
     converse,
     judge_warnings,
     other_model,
 )
+from nexus_worker.simulation.failures import failure_of_call, note_model_failure
 from nexus_worker.simulation.runner import (
     close_conversation,
     default_router,
     open_conversation,
     run_turn,
 )
-from nexus_worker.simulation.world import seed_world
+from nexus_worker.simulation.world import World, seed_world
 
 log = structlog.get_logger(__name__)
 
@@ -79,6 +90,8 @@ KIND = "tests"
 TIMEOUT_S = 600.0
 #: El estado honesto de una suite que se paró sin partida (T217).
 BUDGET_EXHAUSTED = "build_budget_exhausted"
+#: Y el de una en la que ningún modelo respondió: no se ha probado nada.
+MODEL_UNAVAILABLE = "model_unavailable"
 #: Cuántas pasadas a la vez dentro del lote del cliente.
 PARALLEL = 4
 
@@ -172,13 +185,50 @@ async def _attempt(
         dims: list[dict[str, Any]] = []
     else:
         state = world.final_state()
-        state_ok, checked = judge_service.check_state(test.expected_state or {}, state)
-        said = judge_warnings(judge_model=judge_name, responding=talk.responding)
-        if warnings is not None:
-            warnings.update(said)
-        verdict: judge_service.JudgeResult | None = None
-        # 61.5: el juez no es el modelo que respondió; si lo es, su veredicto no cuenta.
-        if judge is not None and test.criteria and "judge_same_model" not in said:
+        passed, explanation, dims = await _decide(
+            ctx=ctx,
+            test=test,
+            talk=talk,
+            world=world,
+            state=state,
+            judge=judge,
+            judge_blocks=judge_blocks,
+            judge_name=judge_name,
+            warnings=warnings,
+        )
+    finally:
+        await close_conversation(ctx.tenant_id, conv)
+    await _record(ctx, run, test, attempt, passed, dims, explanation, state, talk)
+    return passed
+
+
+async def _decide(
+    *,
+    ctx: JobContext,
+    test: AgentTest,
+    talk: Conversation,
+    world: World,
+    state: dict[str, Any],
+    judge: Judge | None,
+    judge_blocks: bool,
+    judge_name: str | None,
+    warnings: set[str] | None,
+) -> tuple[bool | None, str | None, list[dict[str, Any]]]:
+    """Lo que dice una pasada de la conversación que tuvo: si pasó, por qué no y lo
+    que vio el juez. Sin modelo no dice nada (``stop = model_failed``)."""
+    if talk.failure is not None:
+        if talk.failure.who != "agent":  # el del agente ya lo apuntó ``run_turn``
+            await note_model_failure(ctx.tenant_id, talk.failure)
+        return None, talk.failure.why, []
+    state_ok, checked = judge_service.check_state(test.expected_state or {}, state)
+    said = judge_warnings(judge_model=judge_name, responding=talk.responding)
+    if warnings is not None:
+        warnings.update(said)
+    verdict: judge_service.JudgeResult | None = None
+    judge_down: Exception | None = None
+    # 61.5: el juez no es el modelo que respondió; si lo es, su veredicto no cuenta.
+    if judge is not None and test.criteria and "judge_same_model" not in said:
+        try:
             raw = await judge(
                 judge_service.judge_messages(
                     criteria=test.criteria,
@@ -186,20 +236,42 @@ async def _attempt(
                     actions=[a.phrase for a in world.actions],
                 )
             )
+        except Exception as exc:
+            judge_down = exc
+        else:
             verdict = judge_service.parse_judge(raw, test.criteria)
-        passed = judge_service.attempt_passed(state_ok, verdict, judge_blocks=judge_blocks)
-        dims = [d.to_json() for d in verdict.dimensions] if verdict else []
-        reasons = [c for c in checked if not c.endswith(": ok")]
-        if verdict is not None:
-            reasons += [f"{d.key}: {d.why}" for d in verdict.dimensions if d.verdict == "fail"]
-        explanation = "Se comprobó " + "; ".join(reasons) if passed is False and reasons else None
-        if talk.stop == "turn_limit":
-            # 61.3: el tope sin cumplir el plan es un fallo, con ese motivo.
-            passed = False
-            explanation = TURN_LIMIT_WHY + (f" {explanation}" if explanation else "")
-    finally:
-        await close_conversation(ctx.tenant_id, conv)
-    async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
+    passed = judge_service.attempt_passed(state_ok, verdict, judge_blocks=judge_blocks)
+    needed_the_judge = passed is None or (passed and judge_blocks)
+    if judge_down is not None and needed_the_judge and talk.stop != "turn_limit":
+        # Un estado en rojo o el tope de turnos deciden sin juez. Esto no.
+        talk.stop = MODEL_FAILED
+        talk.failure = failure_of_call("judge", judge_down)
+        await note_model_failure(ctx.tenant_id, talk.failure)
+        return None, talk.failure.why, []
+    dims = [d.to_json() for d in verdict.dimensions] if verdict else []
+    reasons = [c for c in checked if not c.endswith(": ok")]
+    if verdict is not None:
+        reasons += [f"{d.key}: {d.why}" for d in verdict.dimensions if d.verdict == "fail"]
+    explanation = "Se comprobó " + "; ".join(reasons) if passed is False and reasons else None
+    if talk.stop == "turn_limit":
+        # 61.3: el tope sin cumplir el plan es un fallo, con ese motivo.
+        passed = False
+        explanation = TURN_LIMIT_WHY + (f" {explanation}" if explanation else "")
+    return passed, explanation, dims
+
+
+async def _record(
+    ctx: JobContext,
+    run: AgentTestRun,
+    test: AgentTest,
+    attempt: int,
+    passed: bool | None,
+    dims: list[dict[str, Any]],
+    explanation: str | None,
+    state: dict[str, Any],
+    talk: Conversation,
+) -> None:
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, ctx.tenant_id):
         await runs_service.record_attempt(
             session,
             run=run,
@@ -212,7 +284,35 @@ async def _attempt(
             transcript=talk.transcript,
             stop=talk.stop,
         )
-    return passed
+
+
+async def _all_or_none(passes: list[Coroutine[Any, Any, None]]) -> None:
+    """Corre las pasadas; si una lanza, cancela las demás y espera a que acaben antes
+    de propagarlo. ``gather`` solo no las cancela: seguirían llamando al modelo con el
+    trabajo ya ``failed`` (staging, 2026-10-30 y 2026-11-03)."""
+    tasks = [asyncio.create_task(p) for p in passes]
+    try:
+        await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
+async def _close_unfinished(tenant_id: uuid.UUID, run_id: uuid.UUID, exc: BaseException) -> None:
+    """Una pasada que no termina se cierra: la fila no se queda ``running`` para
+    siempre. Nunca tapa el error que la trajo aquí."""
+    stopped = "internal" if isinstance(exc, Exception) else "interrupted"
+    try:
+        async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
+            run = await session.get(AgentTestRun, run_id)
+            if run is not None:
+                run.status = "failed"
+                run.summary = {**(run.summary or {}), "stopped": stopped}
+                run.finished_at = datetime.now(UTC)
+    except Exception as closing:
+        log.warning("jobs.tests.close_failed", run_id=str(run_id), error=type(closing).__name__)
 
 
 async def _partner_of(tenant_id: uuid.UUID) -> uuid.UUID | None:
@@ -310,8 +410,13 @@ async def run_suite(
                 step="running", block={"key": f"{test.id}:{attempt}", "test_id": str(test.id)}
             )
 
-    await asyncio.gather(*(one(t, n) for t in tests for n in range(1, runs_service.RUNS + 1)))
+    try:
+        await _all_or_none([one(t, n) for t in tests for n in range(1, runs_service.RUNS + 1)])
+    except BaseException as exc:
+        await _close_unfinished(ctx.tenant_id, run_id, exc)
+        raise
     not_started = sum(1 for t in tests if decisions.get(t.id) is False)
+    stopped: str | None = None
     async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
         fresh = await session.get(AgentTestRun, run.id)
         assert fresh is not None
@@ -330,6 +435,13 @@ async def run_suite(
                 "not_started": not_started,
             }
             fresh.status = "failed"
+            stopped = BUDGET_EXHAUSTED
+        elif await runs_service.nothing_tested(session, fresh):
+            # Ni un 0 de 17 ni «Pruebas terminadas»: no se ha probado nada.
+            summary = {**summary, "stopped": MODEL_UNAVAILABLE}
+            fresh.summary = {**(fresh.summary or {}), "stopped": MODEL_UNAVAILABLE}
+            fresh.status = "failed"
+            stopped = MODEL_UNAVAILABLE
         elif fresh.reason == "certification":
             # Spec 047 (39.9): la comprobación de calidad decide y, si pasa,
             # certifica para el agente los modelos con los que conversaría.
@@ -349,16 +461,17 @@ async def run_suite(
                 warnings=sorted(warnings),
             )
         reason, sections = fresh.reason, list((fresh.summary or {}).get("sections", []))
-    if not_started:
+    if stopped is not None:
         log.warning(
             "suite.stopped",
             tenant_id=str(ctx.tenant_id),
             agent_id=str(run.agent_id),
             run_id=str(run.id),
-            reason=BUDGET_EXHAUSTED,
+            reason=stopped,
             not_started=not_started,
+            model_failed=summary.get("model_failed"),
         )
-        raise JobFailed(BUDGET_EXHAUSTED)
+        raise JobFailed(stopped)
     await tell_failing(
         ctx.tenant_id, run.agent_id, reason=reason, failed=summary.get("failed"), sections=sections
     )
@@ -371,6 +484,7 @@ async def run_suite(
         passed=summary.get("passed"),
         failed=summary.get("failed"),
         flaky=summary.get("flaky"),
+        model_failed=summary.get("model_failed"),
     )
     return dict(summary)
 
@@ -472,6 +586,7 @@ register()
 __all__ = [
     "BUDGET_EXHAUSTED",
     "KIND",
+    "MODEL_UNAVAILABLE",
     "PARALLEL",
     "customer_model",
     "default_customer",

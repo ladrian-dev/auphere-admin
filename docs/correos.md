@@ -46,7 +46,7 @@ Los provoca siempre una persona, a propósito. Lo que staging **no** envía es l
 
 ### La monitorización no va por Resend
 
-Las alertas del vigilante de la plataforma —cola atascada, mensajes en la DLQ, ráfaga de errores de turno, servicio sin latido, caché degradada, fallos de envío a Meta— y la conciliación diaria con Meta **ya no salen por Resend** (spec 051, requisito 9). Quedan en el registro de `/nexus/<entorno>/scheduler` con nivel de error:
+Las alertas del vigilante de la plataforma —cola atascada, mensajes en la DLQ, ráfaga de errores de turno, modelo sin responder en las pruebas, servicio sin latido, caché degradada, fallos de envío a Meta— y la conciliación diaria con Meta **ya no salen por Resend** (spec 051, requisito 9). Quedan en el registro de `/nexus/<entorno>/scheduler` con nivel de error:
 
 - `platform_alert`, con `kind`, `subject` y `detail`;
 - `ops.meta_reconciliation`, con el día y los canales afectados.
@@ -58,6 +58,7 @@ Quien avisa a una persona es una alarma de CloudWatch por cada tipo (`infra/terr
 | `platform-alert-queue-backlog` | la entrada más vieja de una cola lleva más de 5 min sin procesarse |
 | `platform-alert-dlq-entries` | hay mensajes de cliente en la DLQ |
 | `platform-alert-turn-error-burst` | un negocio lleva más de 5 turnos fallidos en 10 min |
+| `platform-alert-simulated-model-failure-burst` | un cliente lleva más de 5 turnos o pasadas sin respuesta del modelo en el chat de prueba o en las pruebas, en 10 min |
 | `platform-alert-worker-dead` | un servicio lleva más de 3 min sin latido |
 | `platform-alert-cache-ratio-low` | el prompt cache lee menos del 30 % en la hora |
 | `platform-alert-meta-failure-burst` | más de 20 envíos a Meta fallan con el mismo código en 10 min |
@@ -70,6 +71,8 @@ Cómo se comportan:
 - **El correo dice qué mirar, no cuánto.** Lleva la consulta de Logs Insights. Mientras la alarma sigue en ALARM no se vuelve a avisar, tampoco si la DLQ crece.
 - **Si cae el `scheduler` entero, no suena ninguna**, porque nadie registra. El correo de Resend tenía el mismo punto ciego.
 - **En staging existen y no avisan a nadie.** Staging aparca sus servicios de noche y cada mañana registra un `worker_dead` que no es un fallo.
+
+**El chat de prueba y las pruebas no cuentan para `turn_error_burst`.** Esa alerta escribe `platform.turn_error_burst`, y de ahí sale un WhatsApp al dueño del negocio: un partner que prueba su borrador no puede despertarlo. Por eso tienen su tipo, `simulated_model_failure_burst`, sin fila de auditoría (`apps/worker/src/nexus_worker/simulation/failures.py`). Al revés no se cubre todo: `turn_error_burst` solo cuenta los turnos de canal que lanzan una excepción, y un fallo del modelo en un canal no lanza, porque el handler responde con el texto de emergencia y pasa a una persona.
 
 Un tipo nuevo necesita su línea en `platform_alert_kinds`; `apps/worker/tests/unit/test_platform_alarms_contract.py` falla si falta.
 

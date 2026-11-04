@@ -18,7 +18,7 @@ import type { MessageKey } from "@/i18n/messages";
 import type { AgentTest, QualityJob, TestBody, TestRunAccepted, TestRunScope, TestSuite } from "@/lib/backend/agent-quality-types";
 
 import { sleep, type Result } from "./builder-model";
-import { STATUS_TONE, failedConversation, groupTests, isFailing, isGenerated, naReason, waitForJob } from "./quality-model";
+import { STATUS_TONE, failedConversation, groupTests, isFailing, isGenerated, naReason, runFailedKey, runRefusedKey, waitForJob } from "./quality-model";
 import { TestConversation } from "./test-conversation";
 
 type Ids = { ref: string; agent: string };
@@ -41,8 +41,11 @@ const SERVER_ACTIONS: TestListActions = {
 /**
  * Las pruebas del agente (spec 047, historia 8; requisito 21): todas, por tipo
  * (del caso, del sector, añadidas), cada una con su estado —«Pasa»,
- * «Inestable», «Falla», «No sé», «Sin ejecutar», «No aplica»— y
+ * «Inestable», «Falla», «No sé», «No se pudo probar», «Sin ejecutar», «No aplica»— y
  * «Desactualizada» cuando cambió algo desde la última pasada.
+ *
+ * «No se pudo probar» es que un modelo no respondió: no le apunta nada al agente,
+ * así que no lleva «Por qué falló» ni «Arreglar», y se puede repetir.
  *
  * La que no pasa trae «Por qué falló» con lo que se comprobó (el estado final,
  * no lo que dijo el agente), la conversación con el cliente simulado turno a
@@ -134,24 +137,15 @@ export function TestList({
     setError(null);
     const res = await actions.run({ ...ids, scope, ...(test ? { test } : {}) });
     if (!res.ok) {
-      setError(
-        res.code === "build_budget_exhausted" || res.status === 402
-          ? t("money.build.blocked")
-          : res.code === "nothing_to_run"
-          ? t("builder.suite.error.nothing")
-          : res.code === "no_version"
-            ? t("builder.suite.error.noVersion")
-            : res.status === 401 || res.status === 403
-              ? t("common.forbidden")
-              : t("builder.suite.error.run"),
-      );
+      setError(t(runRefusedKey(res)));
       return;
     }
     setRunning({ count: res.data.tests });
     const done = await waitForJob(() => actions.poll({ ref: refId, job: res.data.job_id }), { wait, cancelled: () => !alive.current });
     if (!alive.current) return;
     setRunning(null);
-    if (!done || !done.ok || done.data.status === "failed") setError(t("builder.suite.error.run"));
+    if (!done || !done.ok) setError(t("builder.suite.error.run"));
+    else if (done.data.status === "failed") setError(t(runFailedKey(done.data.error_code)));
     else toast.success(t("builder.suite.ran"));
     await reload();
     onChanged?.();
@@ -180,6 +174,12 @@ export function TestList({
         {summary.stale > 0 ? <StatusBadge tone="warn">{t("builder.suite.stale", { n: summary.stale })}</StatusBadge> : null}
       </div>
       {!suite.judge_calibrated ? <Callout tone="info">{t("builder.suite.judge")}</Callout> : null}
+      {summary.model_failed > 0 && !error && !running ? (
+        <Callout tone="warning">
+          {t("builder.suite.modelFailed", { n: summary.model_failed })}
+          {can("run") ? ` ${t("builder.suite.modelFailed.retry")}` : ""}
+        </Callout>
+      ) : null}
 
       {can("run") ? (
         <div className="flex min-w-0 flex-wrap gap-2">
@@ -230,6 +230,7 @@ export function TestList({
                 test={test}
                 canEdit={can("edit")}
                 canRun={can("run") && running === null}
+                canRetry={can("run")}
                 onRun={() => void runTests("one", test.id)}
                 onFix={onFix && canWrite ? () => onFix(test) : undefined}
                 onWhy={onWhy ? () => onWhy(test) : undefined}
@@ -279,6 +280,7 @@ function TestRow({
   test,
   canEdit,
   canRun,
+  canRetry,
   onRun,
   onFix,
   onWhy,
@@ -287,6 +289,8 @@ function TestRow({
   test: AgentTest;
   canEdit: boolean;
   canRun: boolean;
+  /** Puede repetirla, aunque ahora corra otra pasada: decide lo que se le pide. */
+  canRetry: boolean;
   onRun: () => void;
   onFix?: () => void;
   onWhy?: () => void;
@@ -315,10 +319,10 @@ function TestRow({
     <li aria-labelledby={nameId} className="grid min-w-0 gap-2 rounded-md border border-border p-3" data-slot="test-row" data-status={test.status}>
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
         <div className="grid min-w-0 flex-1 basis-48 gap-1">
-          <span id={nameId} className="text-sm font-medium text-pretty break-words">
+          <span id={nameId} className="text-sm font-medium text-pretty wrap-anywhere">
             {test.name}
           </span>
-          <span className="text-xs text-pretty break-words text-muted-foreground">{t("builder.suite.first", { text: test.first_message })}</span>
+          <span className="text-xs text-pretty wrap-anywhere text-muted-foreground">{t("builder.suite.first", { text: test.first_message })}</span>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {isGenerated(test) ? (
@@ -337,6 +341,12 @@ function TestRow({
       {test.not_applicable_reason ? (
         // La razón puede llegar con su «No aplica» delante (65.8): no se repite.
         <p className="text-xs text-pretty break-words text-muted-foreground">{t("builder.suite.na.shown", { reason: naReason(test.not_applicable_reason) })}</p>
+      ) : null}
+      {test.status === "model_failed" ? (
+        <p className="text-xs text-pretty wrap-anywhere text-muted-foreground" data-slot="test-untested">
+          {t("builder.suite.untested", { why: test.why_untested || t("builder.suite.untested.why") })}
+          {canRetry ? ` ${t("builder.suite.untested.retry")}` : ""}
+        </p>
       ) : null}
       {failing ? (
         <details className="min-w-0 text-sm" data-slot="test-why">

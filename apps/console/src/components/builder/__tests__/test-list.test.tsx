@@ -73,6 +73,53 @@ describe("la lista de pruebas (21.5)", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("«No se pudo probar» no le apunta nada al agente: sin «Por qué falló» ni «Arreglar»", async () => {
+    const untested = TESTS[0]!;
+    const list = suite({
+      tests: [{ ...untested, status: "model_failed", passes: 0, decided: 0, stale: true, why_failed: null, why_untested: "El modelo del agente no respondió.", name: "Sin modelo" }],
+      summary: { ...suite().summary, model_failed: 1 },
+    });
+    const { container } = screenWith({ suite: list });
+    const item = row("Sin modelo");
+    expect(within(item).getByText("No se pudo probar")).toBeVisible();
+    expect(within(item).getByText(/El modelo del agente no respondió\./)).toBeVisible();
+    expect(within(item).queryByText("Por qué falló")).toBeNull();
+    expect(within(item).queryByRole("button", { name: /Arreglar/ })).toBeNull();
+    expect(within(item).getByRole("button", { name: /Ejecutar/ })).toBeVisible();
+    expect(screen.getByText(/Sin probar porque el modelo no respondió: 1\./)).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("a quien solo lee no le pide que las ejecute: no puede", () => {
+    const list = suite({
+      tests: [{ ...TESTS[0]!, status: "model_failed", passes: 0, decided: 0, stale: true, why_failed: null, why_untested: "El modelo del agente no respondió.", name: "Sin modelo" }],
+      summary: { ...suite().summary, model_failed: 1 },
+      allowed: [],
+    });
+    screenWith({ suite: list, canWrite: false });
+    expect(within(row("Sin modelo")).getByText(/El modelo del agente no respondió\./)).toBeVisible();
+    expect(screen.getByText(/Sin probar porque el modelo no respondió: 1\./)).toBeVisible();
+    expect(screen.queryByText(/Vuelve a ejecutar/)).toBeNull();
+  });
+
+  it("una pasada sin modelo lo dice, en vez de «La pasada no terminó»", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { poll: vi.fn(async () => ok(job({ kind: "tests", status: "failed", error_code: "model_unavailable" }))) });
+    await user.click(screen.getByRole("button", { name: "Ejecutar todas" }));
+    expect(await screen.findByText(/No se pudo probar: ningún modelo respondió/)).toBeVisible();
+    expect(screen.queryByText("La pasada no terminó. Inténtalo de nuevo.")).toBeNull();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("con las pruebas de «Guardar» en marcha lo dice y no espera a nada", async () => {
+    const user = userEvent.setup();
+    const poll = vi.fn<Actions["poll"]>();
+    screenWith({}, { run: vi.fn(async () => fail(409, "suite_running")), poll });
+    await user.click(screen.getByRole("button", { name: "Ejecutar todas" }));
+    expect(await screen.findByText(/Se están pasando ahora mismo para guardar/)).toBeVisible();
+    expect(poll).not.toHaveBeenCalled();
+  });
+
   it("«Por qué falló» enseña lo que se comprobó y «Arreglar» abre el borrador", async () => {
     const user = userEvent.setup();
     const { onFix } = screenWith();
@@ -195,7 +242,7 @@ describe("la lista de pruebas · solo lo que tenemos (65.8, 65.9)", () => {
 
   it("un estructurado sin ninguna prueba que le aplique lo dice; con alguna, o uno de antes, no", () => {
     const none = suite({
-      summary: { passed: 0, flaky: 0, failed: 0, unknown: 0, not_run: 0, not_applicable: 1, total: 1, stale: 0, critical_failed: [], rate: null },
+      summary: { passed: 0, flaky: 0, failed: 0, unknown: 0, model_failed: 0, not_run: 0, not_applicable: 1, total: 1, stale: 0, critical_failed: [], rate: null },
       tests: [AUTO[4]!],
     });
     const { unmount } = screenWith({ suite: none, structured: true });

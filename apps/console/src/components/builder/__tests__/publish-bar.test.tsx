@@ -52,6 +52,7 @@ function gate(over: Partial<Gate> = {}): Gate {
   };
 }
 const blocked = (g: Gate) => ok(job({ status: "failed", error_code: "gate_blocked", progress: { step: "blocked", blocks: [{ key: "gate", ...g }] } }));
+const failedWith = (error_code: string) => ok(job({ status: "failed", error_code }));
 
 function screenWith(props: Partial<React.ComponentProps<typeof PublishBar>> = {}, actions: Partial<Actions> = {}) {
   const full: Actions = {
@@ -217,6 +218,53 @@ describe("la puerta (23.1, 23.2, 23.3)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("No hay borrador que guardar.")).toBeVisible();
   });
+
+  it("dice por qué no se pudo guardar: sin modelo no es que la puerta lo pare", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { poll: vi.fn(async () => failedWith("model_unavailable")) });
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByText(/No se pudo probar esta versión porque ningún modelo respondió/)).toBeVisible();
+    expect(screen.queryByText("No se pudo guardar. Inténtalo de nuevo.")).toBeNull();
+  });
+
+  describe("con la hoja del diff abierta, un fallo no se queda debajo de ella", () => {
+    const withDiff = preview({ action: "save_changes", diff: [{ part: "rules", label: "Reglas", change: "add" }] });
+
+    async function saveFromSheet(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+      const sheet = await screen.findByRole("dialog", { name: "Qué cambia al guardar" });
+      await user.type(within(sheet).getByRole("textbox", { name: /Nota del cambio/ }), "Lista de espera");
+      await user.click(within(sheet).getByRole("button", { name: "Guardar cambios" }));
+    }
+
+    it("el trabajo falló: se cierra, lo dice y conserva la nota", async () => {
+      const user = userEvent.setup();
+      screenWith({ preview: withDiff }, { poll: vi.fn(async () => failedWith("model_unavailable")) });
+      await saveFromSheet(user);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(screen.getByRole("alert")).toHaveTextContent(/ningún modelo respondió/);
+      // El botón que abrió la hoja ya no está: el foco no se pierde en <body>.
+      await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
+      await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+      const again = await screen.findByRole("dialog", { name: "Qué cambia al guardar" });
+      expect(within(again).getByRole("textbox", { name: /Nota del cambio/ })).toHaveValue("Lista de espera");
+    });
+
+    it("la petición ni empezó: también", async () => {
+      const user = userEvent.setup();
+      screenWith({ preview: withDiff }, { publish: vi.fn(async () => fail(500)) });
+      await saveFromSheet(user);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(screen.getByRole("alert")).toHaveTextContent("No se pudo guardar. Inténtalo de nuevo.");
+    });
+  });
+
+  it("con una pasada de pruebas en marcha pide esperar a que termine", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { poll: vi.fn(async () => failedWith("suite_running")) });
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByText(/Hay una pasada de pruebas en marcha/)).toBeVisible();
+  });
 });
 
 /**
@@ -229,6 +277,7 @@ describe("la barra flotante · como el prototipo", () => {
     flaky: 0,
     failed: 0,
     unknown: 0,
+    model_failed: 0,
     not_run: 0,
     not_applicable: 0,
     total: 5,

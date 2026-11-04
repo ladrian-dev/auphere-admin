@@ -147,6 +147,61 @@ describe("el probador (20.2, 20.3, 20.4)", () => {
     expect(box).toHaveValue("hola");
   });
 
+  it("si el modelo no respondió lo dice, y la burbuja es lo que recibiría un cliente", async () => {
+    const user = userEvent.setup();
+    const apology = "Disculpa, tuve un inconveniente para completar la respuesta.";
+    const send = vi.fn<Actions["send"]>(async () =>
+      ok({ ...REPLY, turn: { role: "agent", bubbles: [apology], several_bubbles: false, actions: [], failure: { reason: "llm_failed" } } }),
+    );
+    const onWhy = vi.fn();
+    const { container } = screenWith({ sessions: [session()], onWhy }, { send });
+    const box = screen.getByRole("textbox", { name: "Mensaje del cliente" });
+    await user.type(box, "¿A qué hora abrís?");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+
+    expect(await screen.findByText(apology)).toBeVisible();
+    expect(screen.getByText(/El modelo no respondió, así que el agente no llegó a contestar.*Inténtalo de nuevo en un rato/)).toBeVisible();
+    // No hay nada que explicar: el agente no dijo eso.
+    expect(screen.queryByRole("button", { name: "¿Por qué dijo esto?" })).toBeNull();
+    // La lista ya anuncia lo que llega: una alerta dentro lo diría dos veces.
+    expect(within(screen.getByRole("list", { name: "Conversación de prueba" })).queryByRole("alert")).toBeNull();
+    // Reintentar no obliga a escribirlo otra vez.
+    expect(box).toHaveValue("¿A qué hora abrís?");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[1]![0].text).toBe("¿A qué hora abrís?");
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("al volver a abrir la conversación sigue diciendo qué turnos no llegaron al modelo", async () => {
+    const failed = (reason: "no_model" | "empty_response") => ({ role: "agent" as const, bubbles: ["Disculpa."], several_bubbles: false, actions: [], failure: { reason } });
+    screenWith({ sessions: [session({ transcript: [failed("no_model"), failed("empty_response")] })] });
+    expect(screen.getByText(/No hay ningún modelo disponible para este cliente/)).toBeVisible();
+    expect(screen.getByText(/El modelo devolvió una respuesta vacía/)).toBeVisible();
+  });
+
+  it("con el teclado se llega a la conversación y se desplaza: el aviso alarga el turno", () => {
+    screenWith({ sessions: [session()] });
+    expect(screen.getByRole("list", { name: "Conversación de prueba" })).toHaveAttribute("tabindex", "0");
+  });
+
+  it("a quien solo lee no le pide que lo intente de nuevo: no puede escribir", () => {
+    const failed = { role: "agent" as const, bubbles: ["Disculpa."], several_bubbles: false, actions: [], failure: { reason: "llm_failed" as const } };
+    screenWith({ sessions: [session({ transcript: [failed], allowed: [] })], canWrite: false });
+    expect(screen.getByText(/El modelo no respondió/)).toBeVisible();
+    expect(screen.queryByText(/nténtalo de nuevo/)).toBeNull();
+  });
+
+  it("un turno sano no dice nada del modelo", async () => {
+    const user = userEvent.setup();
+    screenWith({ sessions: [session()] });
+    await user.type(screen.getByRole("textbox", { name: "Mensaje del cliente" }), "hola");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(screen.queryByText("El agente está escribiendo…")).toBeNull());
+    expect(screen.queryByText(/El modelo no respondió/)).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Mensaje del cliente" })).toHaveValue("");
+  });
+
   it("quien solo lee ve la conversación sin poder escribir ni cambiar la hora (20.5)", async () => {
     const readonly: PlaygroundSession = session({
       allowed: [],

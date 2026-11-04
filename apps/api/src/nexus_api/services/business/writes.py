@@ -60,7 +60,7 @@ import sqlalchemy as sa
 import structlog
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, SessionTransaction
 
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import AuditLog
@@ -184,19 +184,46 @@ _HOOKED: Final = "nexus.business.after_commit.hooked"
 _PENDING: set[asyncio.Task[None]] = set()
 
 
+@dataclass(frozen=True)
+class _AfterCommit:
+    fn: Callable[[], Awaitable[None]]
+    #: Los *savepoints* abiertos al registrarlo: si uno se deshace, esto con él.
+    savepoints: tuple[SessionTransaction, ...]
+
+
+def _open_savepoints(sync: Session) -> tuple[SessionTransaction, ...]:
+    found: list[SessionTransaction] = []
+    current = sync.get_nested_transaction()
+    while current is not None:
+        if current.nested:
+            found.append(current)
+        current = current.parent
+    return tuple(found)
+
+
 def _run_after_commit(sync: Session) -> None:
-    callbacks: list[Callable[[], Awaitable[None]]] = sync.info.pop(_AFTER_COMMIT, [])
-    if not callbacks:
+    # SQLAlchemy también avisa al soltar un *savepoint*, y toda escritura de la ficha
+    # va en uno: lo de fuera aún puede deshacerse, y el trabajo que avisamos aún no se
+    # ve. Se reconoce porque el savepoint sigue abierto mientras avisa.
+    if sync.in_nested_transaction():
+        return
+    pending: list[_AfterCommit] = sync.info.pop(_AFTER_COMMIT, [])
+    if not pending:
         return
     loop = asyncio.get_event_loop()
-    for fn in callbacks:
-        task = loop.create_task(_safe(fn))
+    for item in pending:
+        task = loop.create_task(_safe(item.fn))
         _PENDING.add(task)
         task.add_done_callback(_PENDING.discard)
 
 
-def _drop_after_commit(sync: Session) -> None:
-    sync.info.pop(_AFTER_COMMIT, None)
+def _drop_after_commit(sync: Session, undone: SessionTransaction) -> None:
+    pending: list[_AfterCommit] = sync.info.get(_AFTER_COMMIT, [])
+    if undone.nested:
+        # Solo lo suyo: lo que la transacción dejó antes sigue en pie.
+        sync.info[_AFTER_COMMIT] = [p for p in pending if undone not in p.savepoints]
+    elif undone.parent is None:
+        sync.info.pop(_AFTER_COMMIT, None)
 
 
 async def _safe(fn: Callable[[], Awaitable[None]]) -> None:
@@ -210,10 +237,10 @@ def after_commit(session: AsyncSession, fn: Callable[[], Awaitable[None]]) -> No
     """``fn`` corre en segundo plano cuando la transacción **exterior** de
     ``session`` se confirma, y nunca si hace rollback."""
     sync = session.sync_session
-    sync.info.setdefault(_AFTER_COMMIT, []).append(fn)
+    sync.info.setdefault(_AFTER_COMMIT, []).append(_AfterCommit(fn, _open_savepoints(sync)))
     if not sync.info.get(_HOOKED):
         event.listen(sync, "after_commit", _run_after_commit)
-        event.listen(sync, "after_rollback", _drop_after_commit)
+        event.listen(sync, "after_soft_rollback", _drop_after_commit)
         sync.info[_HOOKED] = True
 
 
@@ -479,14 +506,14 @@ async def mark_tests_stale(
     """Las pruebas afectadas de cada agente del cliente quedan desactualizadas
     (21.7) y las de cada agente **publicado** vuelven a pasar en segundo plano
     (13.7): una pasada de las afectadas, con su versión activa, encolada al
-    confirmar. Una por agente, no una por cambio: si ya hay una en cola, se le
-    suman las secciones. ``only_agent``: lo que cambió solo lo ve ese agente (su
-    capa de conocimiento, 37.3). Devuelve cuántos agentes publicados quedaron en
-    cola."""
+    confirmar. Una por agente, no una por cambio: si ya hay una que aún no ha
+    empezado y las cubre, se le suman las secciones. Una **en marcha** no cubre el
+    cambio, porque empezó antes: entonces sí se encola otra, y los cambios siguientes
+    se juntan con esa. ``only_agent``: lo que cambió solo lo ve ese agente (su capa
+    de conocimiento, 37.3). Devuelve cuántos agentes publicados quedaron en cola."""
     from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus
-    from nexus_api.db.models.agent_spec import AgentTestRun
     from nexus_api.services.jobs import create_job
-    from nexus_api.services.testing.runs import create_run
+    from nexus_api.services.testing.runs import create_run, live_run, lock_agent
     from nexus_api.services.testing.suites import get_suite, list_tests, mark_stale
 
     tenant_id = require_current_tenant()
@@ -516,20 +543,12 @@ async def mark_tests_stale(
         suite = await get_suite(session, agent_id)
         if suite is None or not any(t.stale for t in await list_tests(session, suite)):
             continue
-        pending = await session.scalar(
-            sa.select(AgentTestRun)
-            .where(
-                AgentTestRun.tenant_id == tenant_id,
-                AgentTestRun.agent_id == agent_id,
-                AgentTestRun.reason == "business_change",
-                AgentTestRun.status == "queued",
-            )
-            .with_for_update()
-        )
-        if pending is not None:
-            summary = dict(pending.summary or {})
+        await lock_agent(session, agent_id)
+        live = await live_run(session, agent_id)
+        if live is not None and live.status == "queued" and live.scope != "one":
+            summary = dict(live.summary or {})
             summary["sections"] = sorted({*summary.get("sections", []), *sections})
-            pending.summary = summary
+            live.summary = summary
             continue
         job = await create_job(session, kind="tests", agent_id=agent_id, created_by=None)
         run = await create_run(

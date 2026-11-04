@@ -5,7 +5,7 @@ import Link from "next/link";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button } from "@nexus/ui";
+import { Button, Callout } from "@nexus/ui";
 
 import { qualityJobAction, runTestsAction, testsAction } from "@/app/(console)/clients/[ref]/agents/quality-actions";
 import { useT } from "@/i18n/client";
@@ -15,7 +15,7 @@ import type { AgentTest, QualityJob, ReviewFinding, TestRunAccepted, TestRunScop
 import { findingsByCheck, testsState } from "./agent-proto-model";
 import { integrationName, sleep, type Result } from "./builder-model";
 import { canConnect } from "./missing-model";
-import { failedConversation, isFailing, reviewFixLink, waitForJob } from "./quality-model";
+import { failedConversation, isFailing, reviewFixLink, runFailedKey, runRefusedKey, waitForJob } from "./quality-model";
 import type { ReviewSource } from "./review-panel";
 import { TestConversation } from "./test-conversation";
 
@@ -101,24 +101,15 @@ export function useTestRun({
     setError(null);
     const res = await actions.run({ ...ids, scope });
     if (!res.ok) {
-      setError(
-        res.code === "build_budget_exhausted" || res.status === 402
-          ? t("money.build.blocked")
-          : res.code === "nothing_to_run"
-            ? t("builder.suite.error.nothing")
-            : res.code === "no_version"
-              ? t("builder.suite.error.noVersion")
-              : res.status === 401 || res.status === 403
-                ? t("common.forbidden")
-                : t("builder.suite.error.run"),
-      );
+      setError(t(runRefusedKey(res)));
       return;
     }
     setRunning({ count: res.data.tests });
     const done = await waitForJob(() => actions.poll({ ref: refId, job: res.data.job_id }), { wait, cancelled: () => !alive.current });
     if (!alive.current) return;
     setRunning(null);
-    if (!done || !done.ok || done.data.status === "failed") setError(t("builder.suite.error.run"));
+    if (!done || !done.ok) setError(t("builder.suite.error.run"));
+    else if (done.data.status === "failed") setError(t(runFailedKey(done.data.error_code)));
     else toast.success(t("builder.suite.ran"));
     await reload();
     onChanged?.();
@@ -226,6 +217,12 @@ export function TestsBox({
         <p role="alert" className="mx-4 mb-3 text-sm text-pretty text-destructive">
           {error}
         </p>
+      ) : null}
+      {suite.summary.model_failed > 0 && !error && !running ? (
+        <Callout tone="warning" className="mx-4 mb-3">
+          {t("builder.suite.modelFailed", { n: suite.summary.model_failed })}
+          {canRun ? ` ${t("builder.suite.modelFailed.retry")}` : ""}
+        </Callout>
       ) : null}
 
       {first ? (

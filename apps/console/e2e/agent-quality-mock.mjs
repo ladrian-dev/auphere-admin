@@ -11,7 +11,9 @@
  * Los trabajos tardan una consulta en terminar. Guarda el estado en memoria.
  *
  * `POST /__test/reset` vuelve al principio y `GET /__test/state` enseña lo que
- * llegó. No verifica tokens: no es la puerta, es el otro lado del cable.
+ * llegó. `POST /__test/model {mode}` simula el modelo: `down` (ninguno responde),
+ * `partial` (una prueba se queda sin él) o `saving` (la suite de «Guardar» está en
+ * marcha). No verifica tokens: no es la puerta, es el otro lado del cable.
  */
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
@@ -79,6 +81,8 @@ function fresh() {
     publishes: [],
     undoUntil: null,
     restored: [],
+    model: "up",
+    untested: null,
   };
 }
 let state = fresh();
@@ -91,8 +95,17 @@ function testView(t) {
   let passes = 0;
   let decided = 0;
   let why = null;
+  let untested = false;
   if (na) status = "not_applicable";
-  else if (state.ran) {
+  else if (state.untested === "all") {
+    status = "model_failed";
+    untested = true;
+  } else if (state.untested === "one" && t.id.endsWith("f001")) {
+    status = "model_failed";
+    untested = true;
+    passes = 2;
+    decided = 2;
+  } else if (state.ran) {
     decided = 3;
     if (t.id.endsWith("f002")) {
       status = "failed";
@@ -118,11 +131,12 @@ function testView(t) {
     critical: t.critical,
     not_applicable_reason: na ?? null,
     sector_test_ref: t.kind === "sector" ? "barber.x" : null,
-    stale: !state.ran && !na,
+    stale: untested || (!state.ran && !na),
     status,
     passes,
     decided,
     why_failed: why,
+    why_untested: untested ? "El modelo del agente no respondió." : null,
   };
 }
 
@@ -135,6 +149,7 @@ function suiteView() {
       flaky: count("flaky"),
       failed: count("failed"),
       unknown: count("unknown"),
+      model_failed: count("model_failed"),
       not_run: count("not_run"),
       not_applicable: count("not_applicable"),
       total: tests.length,
@@ -221,11 +236,22 @@ function jobView(id) {
   if (job.polls < 2) return { ...base, status: "running", progress: { step: job.kind === "publish" ? "testing" : null, blocks: [] }, result: null, error_code: null, finished_at: null };
   if (!job.finished) {
     job.finished = true;
-    if (job.kind === "tests") state.ran = true;
-    if (job.kind === "publish") job.outcome = publish(job.body);
+    if (job.kind === "tests") {
+      state.ran = state.model !== "down";
+      state.untested = state.model === "down" ? "all" : state.model === "partial" ? "one" : null;
+    }
+    if (job.kind === "publish") {
+      if (state.model === "down") job.outcome = { error: "model_unavailable" };
+      else if (state.model === "saving") job.outcome = { error: "suite_running" };
+      else job.outcome = publish(job.body);
+    }
+  }
+  if (job.kind === "tests" && state.model === "down") {
+    return { ...base, status: "failed", progress: { step: null, blocks: [] }, result: null, error_code: "model_unavailable", finished_at: NOW };
   }
   if (job.kind === "publish" && job.outcome.error) {
-    return { ...base, status: "failed", progress: { step: "blocked", blocks: [{ key: "gate", ...job.outcome.gate }] }, result: null, error_code: job.outcome.error, finished_at: NOW };
+    const blocks = job.outcome.gate ? [{ key: "gate", ...job.outcome.gate }] : [];
+    return { ...base, status: "failed", progress: { step: "blocked", blocks }, result: null, error_code: job.outcome.error, finished_at: NOW };
   }
   return { ...base, status: "done", progress: { step: null, blocks: [] }, result: job.kind === "publish" ? job.outcome.result : { tests: TESTS.length }, error_code: null, finished_at: NOW };
 }
@@ -360,6 +386,10 @@ const server = createServer(async (req, res) => {
     state = fresh();
     return send(res, 200, { ok: true });
   }
+  if (route === "POST /__test/model") {
+    state.model = (await json(req)).mode;
+    return send(res, 200, { ok: true });
+  }
   if (route === "GET /__test/state") return send(res, 200, { publishes: state.publishes, notApplicable: state.notApplicable, restored: state.restored, versions: state.versions });
   if (route === "POST /console/auth/session") return send(res, 200, { principal: PRINCIPAL });
   if (route === "GET /console/me")
@@ -404,6 +434,17 @@ const server = createServer(async (req, res) => {
     if (!s) return send(res, 404, { detail: { code: "unknown_session" } });
     if (req.method === "POST" && pgm[2]) {
       const body = await json(req);
+      if (state.model === "down") {
+        const failed = {
+          role: "agent",
+          bubbles: ["Disculpa, tuve un inconveniente para completar la respuesta. ¿Podrías intentarlo de nuevo en un momento?"],
+          several_bubbles: false,
+          actions: [],
+          failure: { reason: "llm_failed" },
+        };
+        s.transcript.push({ role: "customer", bubbles: [body.text], several_bubbles: false, actions: [] }, failed);
+        return send(res, 200, { turn: failed, now: s.now, agenda: s.agenda });
+      }
       const turn = {
         role: "agent",
         bubbles: ["¡Claro! Mañana a las 11 tengo hueco para un corte.", "Te la dejo reservada. Si no puedes venir, avísanos con 24 horas."],
@@ -438,6 +479,7 @@ const server = createServer(async (req, res) => {
     return send(res, 200, suiteView());
   }
   if (route === `POST ${agentBase}/test-runs`) {
+    if (state.model === "saving") return send(res, 409, { detail: { code: "suite_running" } });
     const id = randomUUID();
     state.jobs[id] = { kind: "tests", polls: 0 };
     return send(res, 202, { job_id: id, run_id: randomUUID(), tests: TESTS.length - Object.keys(state.notApplicable).length });

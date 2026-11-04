@@ -35,5 +35,4 @@ Ninguna.
 ## Follow-ups
 
 - Sin desplegar hasta que la rama llegue a `develop`.
-- Sigue abierto de dónde salió el segundo trabajo `tests` del mismo segundo.
-- Fuera de alcance: si `gather` falla por otro motivo, las pasadas hermanas siguen corriendo con el trabajo ya en `failed`.
+- Cerrado en `.specify/bugs/pasadas-huerfanas-tras-fallar-el-trabajo/`: no había un segundo trabajo en el mismo segundo, y las pasadas hermanas ya no sobreviven a su trabajo.

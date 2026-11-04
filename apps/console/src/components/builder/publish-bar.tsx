@@ -134,6 +134,13 @@ export function PublishBar({
   const [gateOpen, setGateOpen] = React.useState(false);
   const running = step !== null;
 
+  // Mientras guarda no hay botones: el que abrió la hoja ya no está y, sin esto, el foco se
+  // pierde en <body> y quien va con teclado vuelve a empezar desde arriba.
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
+
   const reload = React.useCallback(async () => {
     const res = await actions.preview(ids);
     if (res.ok) setPreview(res.data);
@@ -165,6 +172,8 @@ export function PublishBar({
     const res = await actions.publish({ ...ids, ...(note.trim() ? { note: note.trim() } : {}), ...body });
     if (!res.ok) {
       setStep(null);
+      // La hoja es modal: lo que hay detrás ni se ve ni lo lee un lector de pantalla.
+      setDiffOpen(false);
       setError(
         res.code === "override_forbidden"
           ? t("builder.publish.error.forbidden")
@@ -183,6 +192,7 @@ export function PublishBar({
     setStep(null);
     if (!done) return;
     if (!done.ok) {
+      setDiffOpen(false);
       setError(t("builder.publish.error.generic"));
       return;
     }
@@ -211,12 +221,17 @@ export function PublishBar({
       setGateOpen(true);
       return;
     }
+    setDiffOpen(false);
     setError(
       job.error_code === "override_forbidden"
         ? t("builder.publish.error.forbidden")
         : job.error_code === "no_draft"
           ? t("builder.publish.error.noDraft")
-          : t("builder.publish.error.generic"),
+          : job.error_code === "model_unavailable"
+            ? t("builder.publish.error.model")
+            : job.error_code === "suite_running"
+              ? t("builder.publish.error.suiteRunning")
+              : t("builder.publish.error.generic"),
     );
   }
 
@@ -322,7 +337,12 @@ export function PublishBar({
   return (
     <div role="region" aria-label={t("builder.publish.bar")} className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2" data-slot="publish-bar">
       {error ? (
-        <p role="alert" className="inline-flex min-w-0 items-center gap-2 text-sm text-pretty text-destructive">
+        <p
+          ref={errorRef}
+          tabIndex={-1}
+          role="alert"
+          className="inline-flex min-w-0 items-center gap-2 rounded-sm text-sm text-pretty text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
           <CircleAlert aria-hidden="true" className={ICON} />
           <span className="min-w-0">{error}</span>
         </p>

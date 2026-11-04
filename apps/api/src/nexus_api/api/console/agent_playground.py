@@ -9,7 +9,8 @@ cliente, con hora y agenda de mentira:
   la zona del negocio y la agenda sembrada desde la ficha;
 - ``POST …/sessions/{id}/messages`` [``agents:write``] ``{text}`` → las burbujas
   de WhatsApp (y si hubo más de una, 20.4), «Lo que habría hecho» (20.3) y la
-  agenda como queda;
+  agenda como queda. Si el modelo no respondió, ``200`` con ``turn.failure``: la
+  burbuja es el texto de emergencia que recibiría un cliente, no lo que dijo el agente;
 - ``PATCH …/sessions/{id}`` [``agents:write``] ``{now}``: cambiar la hora (20.2);
 - ``GET …/sessions`` y ``GET …/sessions/{id}`` [``agents:read``]: el analyst lo ve
   en solo lectura (20.5);
@@ -77,11 +78,19 @@ class ActionOut(BaseModel):
     phrase: str
 
 
+class TurnFailureOut(BaseModel):
+    """Por qué la burbuja no es del agente. El motivo y nada más: el error del
+    proveedor se queda en el registro (``simulation.model_failed``)."""
+
+    reason: Literal["llm_failed", "no_model", "empty_response"]
+
+
 class TurnOut(BaseModel):
     role: Literal["customer", "agent"]
     bubbles: list[str]
     several_bubbles: bool = False
     actions: list[ActionOut] = Field(default_factory=list)
+    failure: TurnFailureOut | None = None
 
 
 class SessionOut(BaseModel):
@@ -300,6 +309,7 @@ async def send_message(
             bubbles=outcome.bubbles,
             several_bubbles=outcome.several_bubbles,
             actions=[ActionOut(**a) for a in outcome.actions],
+            failure=TurnFailureOut(reason=outcome.failure.reason) if outcome.failure else None,
         )
         transcript = list(data.get("transcript") or [])
         transcript.append(
