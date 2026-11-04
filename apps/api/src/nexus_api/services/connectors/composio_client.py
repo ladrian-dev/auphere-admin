@@ -441,13 +441,18 @@ class LiveComposioClient(ComposioClientProtocol):
                 user_id=user_id,
                 connected_account_id=connection_id,
                 arguments=arguments,
+                # Without a pinned version the SDK refuses every call. The catalog
+                # and the agent's tools follow the provider's latest anyway.
+                dangerously_skip_version_check=True,
             )
         except Exception as exc:
             raise _translate_composio_error(exc) from exc
+        # The SDK returns a plain dict: ``getattr`` found nothing, so a tool came back
+        # empty and a failed one looked successful.
         return ToolExecution(
-            data=dict(getattr(result, "data", {}) or {}),
-            error=getattr(result, "error", None),
-            log_id=getattr(result, "log_id", None),
+            data=dict(result.get("data") or {}),
+            error=result.get("error"),
+            log_id=result.get("log_id"),
         )
 
 
