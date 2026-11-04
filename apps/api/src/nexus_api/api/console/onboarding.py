@@ -19,6 +19,8 @@ read tenant by tenant in short scoped transactions, the same pattern as
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +43,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.repositories.partner_membership import invitation_is_live_clause
 from nexus_api.services.console_traffic import customer_conversation_ids, customer_facing_channel
 
 from .schemas_onboarding import OnboardingOut, OnboardingStepOut
@@ -72,8 +75,9 @@ async def onboarding(
                 .select_from(PartnerInvitation)
                 .where(
                     PartnerInvitation.partner_id == partner_id,
-                    PartnerInvitation.status.in_(
-                        [InvitationStatus.PENDING.value, InvitationStatus.ACCEPTED.value]
+                    sa.or_(
+                        PartnerInvitation.status == InvitationStatus.ACCEPTED.value,
+                        invitation_is_live_clause(datetime.now(UTC)),
                     ),
                 )
             )

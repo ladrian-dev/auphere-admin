@@ -41,7 +41,7 @@ const phone = (o: Partial<ClientPhoneOut> = {}): ClientPhoneOut => ({
 });
 
 async function openPhones() {
-  render(<MembersList tenantId="t1" members={[member]} />);
+  render(<MembersList tenantId="t1" members={[member]} onResent={vi.fn()} onRevoked={vi.fn()} />);
   await userEvent.click(screen.getByRole("button", { name: "Teléfonos de valeria@flor.test" }));
   return screen.findByRole("dialog");
 }
@@ -126,7 +126,14 @@ describe("PhonesDialog", () => {
   });
 
   it("an invitation has no phones button", () => {
-    render(<MembersList tenantId="t1" members={[{ ...member, kind: "invitation", status: "pending" }]} />);
+    render(
+      <MembersList
+        tenantId="t1"
+        members={[{ ...member, kind: "invitation", status: "pending" }]}
+        onResent={vi.fn()}
+        onRevoked={vi.fn()}
+      />,
+    );
     expect(screen.queryByRole("button", { name: /Teléfonos de/ })).toBeNull();
   });
 });

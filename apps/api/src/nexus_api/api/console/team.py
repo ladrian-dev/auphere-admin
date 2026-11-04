@@ -4,7 +4,8 @@ top of the CP-02 repositories).
 Rules the endpoints enforce (each has a test):
 
 - the last active owner cannot be demoted, suspended or removed → 409;
-- one pending invitation per e-mail → 409;
+- one live invitation per e-mail → 409; one past its term does not count,
+  neither here nor in the list (``invitation_is_live_clause``);
 - you cannot change your own role or remove yourself (ask another
   owner/admin) → 409 — prevents the "locked myself out" ticket;
 - ``team:manage`` (owner, admin) for every write; ``team:read`` for the

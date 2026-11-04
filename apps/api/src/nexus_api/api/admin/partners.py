@@ -220,11 +220,8 @@ async def list_partner_members(
     import sqlalchemy as sa
 
     from nexus_api.db.models.console_identity import ConsoleAccount
-    from nexus_api.db.models.partner_membership import (
-        InvitationStatus,
-        PartnerInvitation,
-        PartnerMembership,
-    )
+    from nexus_api.db.models.partner_membership import PartnerInvitation, PartnerMembership
+    from nexus_api.repositories.partner_membership import invitation_is_live_clause
 
     await _get_partner_or_404(session, partner_id)
     rows = (
@@ -243,7 +240,7 @@ async def list_partner_members(
             await session.execute(
                 sa.select(PartnerInvitation)
                 .where(PartnerInvitation.partner_id == partner_id)
-                .where(PartnerInvitation.status == InvitationStatus.PENDING.value)
+                .where(invitation_is_live_clause(datetime.now(UTC)))
                 .order_by(PartnerInvitation.created_at)
             )
         )

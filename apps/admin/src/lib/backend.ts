@@ -95,7 +95,8 @@ export type ClientInvitationOut = {
   email: string;
   status: string;
   expires_at: string;
-  accept_path: string;
+  /** The whole link, the one the e-mail carries. The API's `accept_path` opens nothing from the panel. */
+  accept_url: string;
   email_sent: boolean;
 };
 

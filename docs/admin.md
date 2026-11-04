@@ -55,7 +55,7 @@ Cabecera con estado, consola, clientes, personas, saldo y alta. Pestañas:
 |---|---|
 | Resumen | Nombre, correo de contacto y de facturación (editables y auditados); qué tiene encendido |
 | Clientes | Uso de 30 días por cliente y mapeos `external_client_ref` → cliente, enlazados |
-| Equipo | Personas (`GET /admin/partners/{id}/members`) e invitaciones pendientes |
+| Equipo | Personas (`GET /admin/partners/{id}/members`) e invitaciones vivas: una pasada de plazo no sale, aunque nadie haya abierto su enlace |
 | Módulos | Consola encendida y qué secciones y servicios tiene (spec 032): rejilla Operar · Cuenta · Asistente; el Companion se enciende aquí |
 | Facturas | Saldo recargado, pool semanal y asignado en US$; recarga en dólares con confirmación e idempotencia; «¿cuadra el libro?»; movimientos con tipo (spec 033); tarjeta, modo de cobro, cobros y la línea de crédito del pospago (spec 041); recibos |
 | Configuración | Límites (broadcast, rate limits, blueprint), modelos, claves API e impersonación |

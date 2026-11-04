@@ -30,7 +30,6 @@ from nexus_api.core.console_auth import ConsolePrincipal, require_console_princi
 from nexus_api.db.models import (
     ConsoleNotification,
     ConsoleNotificationRead,
-    InvitationStatus,
     PartnerInvitation,
     PartnerTenant,
     Tenant,
@@ -38,6 +37,7 @@ from nexus_api.db.models import (
     WhatsAppTemplateStatus,
 )
 from nexus_api.metering.wallet import allocations_for, credit_burn, read_wallet
+from nexus_api.repositories.partner_membership import invitation_is_live_clause
 from nexus_api.services.console_home import (
     REVIEW_WINDOW,
     SnapshotResult,
@@ -315,8 +315,7 @@ async def home(
                     .select_from(PartnerInvitation)
                     .where(
                         PartnerInvitation.partner_id == principal.partner.id,
-                        PartnerInvitation.status == InvitationStatus.PENDING.value,
-                        PartnerInvitation.expires_at > now,
+                        invitation_is_live_clause(now),
                     )
                 )
                 if inv:

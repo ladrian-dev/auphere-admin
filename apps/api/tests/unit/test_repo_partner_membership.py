@@ -5,18 +5,22 @@ What is pinned here:
 - a user belongs to exactly one partner (``UNIQUE (user_id)``);
 - an invitation expires 21 days after creation and a dead link is
   indistinguishable from a wrong one;
+- an overdue invitation is not alive: it leaves the list and does not stand
+  in the way of inviting that address again, even with two requests at once;
 - the last active owner of a partner can neither be demoted, suspended
   nor removed (``LastOwnerError`` — the console maps it to 409).
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from nexus_api.db.models import (
     INVITATION_TTL,
@@ -312,3 +316,192 @@ async def test_one_pending_invitation_per_email_and_partner(db_session) -> None:
     await db_session.commit()
     assert again.id != first_id
     assert [i.id for i in await invitations.list_pending(a)] == [again.id]
+
+
+# ── an overdue invitation is not alive (bug reinvitar-tras-vencer-da-409) ──
+
+
+async def _make_overdue(db_session, invitation: PartnerInvitation) -> None:
+    await db_session.execute(
+        sa.update(PartnerInvitation)
+        .where(PartnerInvitation.id == invitation.id)
+        .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    await db_session.commit()
+
+
+async def _invitation_row(db_session, invitation_id: uuid.UUID) -> PartnerInvitation:
+    row = await db_session.scalar(
+        sa.select(PartnerInvitation)
+        .where(PartnerInvitation.id == invitation_id)
+        .execution_options(populate_existing=True)
+    )
+    assert row is not None
+    return row
+
+
+async def test_live_clause_is_pending_and_within_its_term(db_session) -> None:
+    from nexus_api.repositories.partner_membership import invitation_is_live_clause
+
+    a = await _partner(db_session, f"pa-{uuid.uuid4().hex[:6]}")
+    now = datetime.now(UTC)
+    later, earlier = now + timedelta(days=1), now - timedelta(days=1)
+    cases = {
+        "live@example.com": (InvitationStatus.PENDING, later),
+        "at-the-limit@example.com": (InvitationStatus.PENDING, now),
+        "overdue@example.com": (InvitationStatus.PENDING, earlier),
+        "expired@example.com": (InvitationStatus.EXPIRED, later),
+        "revoked@example.com": (InvitationStatus.REVOKED, later),
+        "accepted@example.com": (InvitationStatus.ACCEPTED, later),
+    }
+    db_session.add_all(
+        PartnerInvitation(
+            partner_id=a,
+            email=email,
+            role="builder",
+            token_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            status=status.value,
+            expires_at=expires_at,
+        )
+        for email, (status, expires_at) in cases.items()
+    )
+    await db_session.commit()
+
+    live = await db_session.scalars(
+        sa.select(PartnerInvitation.email).where(
+            PartnerInvitation.partner_id == a, invitation_is_live_clause(now)
+        )
+    )
+    assert list(live) == ["live@example.com"]
+
+
+async def test_list_pending_leaves_out_an_overdue_invitation(db_session) -> None:
+    a = await _partner(db_session, f"pa-{uuid.uuid4().hex[:6]}")
+    invitations = PartnerInvitationRepository(db_session)
+    overdue, _ = await invitations.create(
+        partner_id=a, email="late@example.com", role="builder", invited_by=None
+    )
+    alive, _ = await invitations.create(
+        partner_id=a, email="alive@example.com", role="builder", invited_by=None
+    )
+    await db_session.commit()
+    await _make_overdue(db_session, overdue)
+
+    assert [i.id for i in await invitations.list_pending(a)] == [alive.id]
+
+
+async def test_reinviting_retires_only_the_overdue_row_of_that_address(db_session) -> None:
+    a = await _partner(db_session, f"pa-{uuid.uuid4().hex[:6]}")
+    b = await _partner(db_session, f"pb-{uuid.uuid4().hex[:6]}")
+    invitations = PartnerInvitationRepository(db_session)
+    old, old_token = await invitations.create(
+        partner_id=a, email="again@example.com", role="builder", invited_by=None
+    )
+    other_address, _ = await invitations.create(
+        partner_id=a, email="other@example.com", role="builder", invited_by=None
+    )
+    other_partner, _ = await invitations.create(
+        partner_id=b, email="again@example.com", role="builder", invited_by=None
+    )
+    await db_session.commit()
+    for row in (old, other_address, other_partner):
+        await _make_overdue(db_session, row)
+
+    new, new_token = await invitations.create(
+        partner_id=a, email="AGAIN@example.com", role="analyst", invited_by=None
+    )
+    await db_session.commit()
+
+    assert (await _invitation_row(db_session, old.id)).status == InvitationStatus.EXPIRED.value
+    assert new.status == InvitationStatus.PENDING.value
+    assert new.expires_at > datetime.now(UTC)
+    # Neither the partner next door nor another address of this one is touched.
+    for untouched in (other_address, other_partner):
+        row = await _invitation_row(db_session, untouched.id)
+        assert row.status == InvitationStatus.PENDING.value
+    assert await invitations.get_pending_by_token(old_token) is None
+    resolved = await invitations.get_pending_by_token(new_token)
+    assert resolved is not None
+    assert resolved.id == new.id
+
+
+async def _wait_until_a_query_waits_on_a_lock(db_session, *, timeout: float = 10.0) -> None:
+    """Polls ``pg_stat_activity``: a fixed sleep would pass without proving the
+    race happened. Each test run owns its database, so nothing else counts."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        waiting = await db_session.scalar(
+            sa.text(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND wait_event_type = 'Lock'"
+            )
+        )
+        await db_session.rollback()
+        if waiting:
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError("the second re-invitation never waited on the first one")
+
+
+async def test_simultaneous_reinvitations_leave_one_live_row(db_session, test_engine) -> None:
+    a = await _partner(db_session, f"pa-{uuid.uuid4().hex[:6]}")
+    old, _ = await PartnerInvitationRepository(db_session).create(
+        partner_id=a, email="race@example.com", role="builder", invited_by=None
+    )
+    await db_session.commit()
+    await _make_overdue(db_session, old)
+    old_id = old.id  # the polling below rolls back, which expires ``old``
+    factory = async_sessionmaker(bind=test_engine, expire_on_commit=False)
+
+    async with factory() as first, factory() as second:
+        winner, _ = await PartnerInvitationRepository(first).create(
+            partner_id=a, email="race@example.com", role="builder", invited_by=None
+        )
+        race = asyncio.create_task(
+            PartnerInvitationRepository(second).create(
+                partner_id=a, email="race@example.com", role="builder", invited_by=None
+            )
+        )
+        await _wait_until_a_query_waits_on_a_lock(db_session)
+        assert not race.done()
+        await first.commit()
+        # The loser sees the row the winner just committed: the same conflict
+        # as inviting over a live invitation, which the console answers with 409.
+        with pytest.raises(IntegrityError):
+            await race
+        await second.rollback()
+
+    live = await PartnerInvitationRepository(db_session).list_pending(a)
+    assert [i.id for i in live] == [winner.id]
+    assert (await _invitation_row(db_session, old_id)).status == InvitationStatus.EXPIRED.value
+
+
+async def test_reinvitation_goes_through_if_the_one_ahead_rolls_back(
+    db_session, test_engine
+) -> None:
+    a = await _partner(db_session, f"pa-{uuid.uuid4().hex[:6]}")
+    old, _ = await PartnerInvitationRepository(db_session).create(
+        partner_id=a, email="race@example.com", role="builder", invited_by=None
+    )
+    await db_session.commit()
+    await _make_overdue(db_session, old)
+    old_id = old.id  # the polling below rolls back, which expires ``old``
+    factory = async_sessionmaker(bind=test_engine, expire_on_commit=False)
+
+    async with factory() as first, factory() as second:
+        await PartnerInvitationRepository(first).create(
+            partner_id=a, email="race@example.com", role="builder", invited_by=None
+        )
+        race = asyncio.create_task(
+            PartnerInvitationRepository(second).create(
+                partner_id=a, email="race@example.com", role="builder", invited_by=None
+            )
+        )
+        await _wait_until_a_query_waits_on_a_lock(db_session)
+        await first.rollback()
+        survivor, _ = await race
+        await second.commit()
+
+    live = await PartnerInvitationRepository(db_session).list_pending(a)
+    assert [i.id for i in live] == [survivor.id]
+    assert (await _invitation_row(db_session, old_id)).status == InvitationStatus.EXPIRED.value

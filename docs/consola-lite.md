@@ -35,9 +35,19 @@ Pestaña **Acceso** en la ficha del tenant del admin
   agente reserva aunque el acceso de las personas esté apagado; `enabled` solo
   dice quién puede entrar.
 - **Personas**: invitación de un solo uso (hash SHA-256, 21 días) por correo
-  y también impresa al operador (`accept_path`). Reenviar retira el enlace
-  anterior. Revocar a una persona o apagar el acceso **cierra sus sesiones**
-  en la misma transacción.
+  y también impresa al operador. Reenviar retira el enlace anterior. Revocar a
+  una persona o apagar el acceso **cierra sus sesiones** en la misma
+  transacción.
+- **El enlace para pasar a mano** es `accept_url`: absoluto, lo construye la API
+  con `console_link` desde `NEXUS_CONSOLE_BASE_URL`, igual que el del correo.
+  `accept_path` sigue en la respuesta, pero desde el panel no abre nada. El
+  panel lo enseña una sola vez, con su resultado, en un aviso que se queda hasta
+  que el operador lo cierra o hasta que un enlace nuevo o una revocación lo deja
+  sin efecto (`access/people-section.tsx`). Si el correo no salió, es una alerta
+  y no un toast. El token vive en la memoria de la página, nunca en su dirección,
+  así que recargar pierde el aviso: de ahí en adelante, Reenviar. Ni el panel ni
+  la API guardan si el correo salió; esa fecha solo existe para la invitación de
+  propietario (spec 052).
 - **Operador identificado**: cada llamada lleva `X-Operator-Id` (ADR-034); sin
   él, 400. La auditoría escribe `operator:<correo>` con el tenant del cliente,
   y la Auditoría del partner lo enseña como «Auphere».

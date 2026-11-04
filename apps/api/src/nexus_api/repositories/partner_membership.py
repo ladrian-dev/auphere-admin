@@ -23,6 +23,7 @@ import uuid
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
+from sqlalchemy import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import (
@@ -56,6 +57,20 @@ def hash_invitation_token(plaintext: str) -> str:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def invitation_is_live_clause(now: datetime) -> ColumnElement[bool]:
+    """What "live" means for an invitation: pending and still within its term.
+
+    **The one definition.** ``status`` alone does not say it: nothing marks a
+    row when its term ends, so a ``pending`` row can be long dead. Whoever asks
+    "is there an invitation in force?" asks it with this, never with the status
+    (spec 052, criterion 3.9, relies on it too).
+    """
+    return sa.and_(
+        PartnerInvitation.status == InvitationStatus.PENDING.value,
+        PartnerInvitation.expires_at > now,
+    )
 
 
 class PartnerMembershipRepository:
@@ -211,11 +226,13 @@ class PartnerInvitationRepository:
         self._session = session
 
     async def list_pending(self, partner_id: uuid.UUID) -> list[PartnerInvitation]:
+        """The invitations in force: one past its term is not listed, whether or
+        not its row has been marked yet."""
         result = await self._session.execute(
             sa.select(PartnerInvitation)
             .where(
                 PartnerInvitation.partner_id == partner_id,
-                PartnerInvitation.status == InvitationStatus.PENDING.value,
+                invitation_is_live_clause(_now()),
             )
             .order_by(PartnerInvitation.created_at.desc())
         )
@@ -249,9 +266,9 @@ class PartnerInvitationRepository:
         if invitation.status != InvitationStatus.PENDING.value:
             return None
         if invitation.expires_at <= _now():
-            # Mark it lazily; the partner's list shows it as expired and
-            # the e-mail can be re-invited (the partial unique index only
-            # blocks a second PENDING row).
+            # Best effort, and nothing may rely on it: the console routes answer
+            # 404 from inside their transaction, so this mark is rolled back.
+            # The list reads the date and ``create`` retires the row by itself.
             invitation.status = InvitationStatus.EXPIRED.value
             await self._session.flush()
             return None
@@ -267,19 +284,43 @@ class PartnerInvitationRepository:
     ) -> tuple[PartnerInvitation, str]:
         """Create a pending invitation. Returns ``(row, plaintext_token)``;
         the plaintext is what goes into the e-mail link and is never
-        stored. Raises ``ValueError`` on an unknown role."""
+        stored. Raises ``ValueError`` on an unknown role, and
+        ``IntegrityError`` if that address already has a live invitation.
+
+        A row past its term gives way first. The partial unique index only sees
+        the status (``now()`` cannot go in an index predicate), so it would
+        still count that row, and nothing else marks it.
+
+        The index stays the arbiter under concurrency. Two callers both try to
+        retire the same row: the second waits on the row lock, finds that it no
+        longer matches once the first commits, and its insert hits the row the
+        first one created. One wins; the other gets the same ``IntegrityError``.
+        """
         if role not in {r.value for r in PartnerRole}:
             raise ValueError(f"unknown role: {role!r}")
+        address = email.strip().lower()
+        now = _now()
+        await self._session.execute(
+            sa.update(PartnerInvitation)
+            .where(
+                PartnerInvitation.partner_id == partner_id,
+                PartnerInvitation.email == address,
+                PartnerInvitation.status == InvitationStatus.PENDING.value,
+                sa.not_(invitation_is_live_clause(now)),
+            )
+            .values(status=InvitationStatus.EXPIRED.value)
+            .execution_options(synchronize_session="fetch")
+        )
         plaintext = secrets.token_urlsafe(32)
         invitation = PartnerInvitation(
             id=uuid.uuid4(),
             partner_id=partner_id,
-            email=email.strip().lower(),
+            email=address,
             role=role,
             token_hash=hash_invitation_token(plaintext),
             invited_by=invited_by,
             status=InvitationStatus.PENDING.value,
-            expires_at=_now() + INVITATION_TTL,
+            expires_at=now + INVITATION_TTL,
         )
         self._session.add(invitation)
         await self._session.flush()
