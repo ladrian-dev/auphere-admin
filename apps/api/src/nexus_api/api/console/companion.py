@@ -420,6 +420,11 @@ async def partner_budget_in_tx(session: AsyncSession, partner_id: uuid.UUID) -> 
     snapshot = await read_wallet(partner_id)
     cap = await _pool_size(session, partner_id)
     remaining = snapshot.included_remaining if snapshot else 0
+    # Sin pool (un partner nuevo nace así, migración 0216) el tope es su saldo:
+    # recargar abre el Companion, y el débito ya gasta de ahí. Quien tiene pool
+    # sigue parándose al agotarlo.
+    if cap <= 0 and snapshot:
+        cap = remaining = snapshot.available
     resets_at = snapshot.included_expires_at if snapshot else None
     return CompanionBudgetOut(
         used=max(0, cap - remaining),

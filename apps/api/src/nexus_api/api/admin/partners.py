@@ -143,7 +143,7 @@ async def _with_facts(session: AsyncSession, partners: list[Partner]) -> list[Pa
         row.clients_count = int(clients.get(p.id, 0))
         row.members_count = int(members.get(p.id, 0))
         snap = await read_wallet(p.id)
-        row.available_cents = None if snap is None else credits_to_cents(snap.available)
+        row.available_cents = None if snap is None else credits_to_cents(snap.purchased_remaining)
         # Spec 041: the card and how it is charged, read under the same GUC.
         try:
             billing = await billing_summary(p.id)

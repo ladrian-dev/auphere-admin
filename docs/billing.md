@@ -28,6 +28,12 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 > cliente se repone **una vez por mes de calendario** y lo que ve un cliente como saldo
 > nunca supera el recargado de su partner.
 
+> **Desde el 2026-11-03 un partner nuevo nace con 0 US$, también en el pool**
+> (`partners.weekly_pool_tokens` = 0, migración 0216). Los que ya existían conservan el
+> suyo. El panel de Auphere llama «Saldo disponible» solo a lo recargado. Sin pool, el
+> tope del Companion es el saldo recargado: no arranca hasta que el partner recarga. Quien
+> conserva pool sigue parándose al agotarlo, aunque tenga saldo recargado.
+
 ## Pagos del partner fuera de Stripe (2026-10-20)
 
 - **Quien paga es el partner**, no su cliente. Los pagos por transferencia, cripto u otro medio se anotan en el Admin, en **Partners → el partner → Facturas → «Pagos recibidos fuera de Stripe»**, eligiendo el cliente y el mes que cubren.

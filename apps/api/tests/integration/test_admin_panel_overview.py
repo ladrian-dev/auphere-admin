@@ -52,7 +52,8 @@ async def test_overview_counts_partners_clients_and_money(
     client, console_world, admin_headers
 ) -> None:
     a, b = console_world["a"], console_world["b"]
-    # 1 US$ = 100 000 credits (billing/pricing.py). 2.5 US$ + 1.25 US$.
+    # 1 US$ = 100 000 credits (billing/pricing.py). 2.5 US$ + 1 US$; the 0.25 US$
+    # of B's pool is not balance.
     await _wallet(a["partner_id"], purchased=250_000)
     await _wallet(b["partner_id"], purchased=100_000, included=25_000)
     await _exhaust_cap(b["partner_id"], b["tenant_id"])
@@ -65,7 +66,7 @@ async def test_overview_counts_partners_clients_and_money(
     assert body["partners"]["active"] >= 2
     assert body["clients"]["active"] >= 2
     # The sum of each partner's own balance, read under that partner's GUC.
-    assert body["balance_cents"] == 250 + 125
+    assert body["balance_cents"] == 250 + 100
     assert body["unreadable"] == []
     without_cap = {row["tenant_id"] for row in body["clients_without_cap"]}
     assert without_cap == {str(b["tenant_id"])}

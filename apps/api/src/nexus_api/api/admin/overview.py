@@ -93,8 +93,9 @@ CARD_NEWS_DAYS = 14
 class OverviewOut(BaseModel):
     partners: PartnerCounts
     clients: ClientCounts
-    #: Sum of every partner's available balance in US$ cents (rounded down
-    #: per partner, as each console shows it). None if no balance was read.
+    #: Sum of every partner's available balance in US$ cents, without the weekly
+    #: pool (rounded down per partner, as each console shows it). None if no
+    #: balance was read.
     balance_cents: int | None
     tickets_open: int
     open_tickets: list[OpenTicketOut]
@@ -128,7 +129,7 @@ async def get_overview(session: AsyncSession = Depends(get_db_session)) -> Overv
         if snap is None:
             continue
         readable += 1
-        balance = (balance or 0) + credits_to_cents(snap.available)
+        balance = (balance or 0) + credits_to_cents(snap.purchased_remaining)
     if partners and readable == 0:
         balance = None
 
