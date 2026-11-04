@@ -128,6 +128,52 @@ async def enable_booking_skills(
         return []
 
 
+async def enable_after_sync(
+    session: AsyncSession,
+    *,
+    connector: Connector,
+    install: TenantConnector,
+    actor: str,
+) -> None:
+    """A sync reaches the agents connected before the catalog had these tools: each
+    one this connection is activated for, unless only to read. Once per agent: what
+    a person took out of a draft afterwards stays out."""
+    if not books(connector.slug):
+        return
+    agents = await session.scalars(
+        sa.select(AgentConnectorActivation.agent_id)
+        .join(Agent, Agent.id == AgentConnectorActivation.agent_id)
+        .where(
+            AgentConnectorActivation.connector_id == install.id,
+            AgentConnectorActivation.permission != "read",
+            Agent.status == AgentStatus.ACTIVE.value,
+        )
+    )
+    for agent_id in list(agents):
+        if await _already_enabled(session, connector, install, agent_id):
+            continue
+        await enable_booking_skills(
+            session, connector=connector, install=install, agent_id=agent_id, actor=actor
+        )
+
+
+async def _already_enabled(
+    session: AsyncSession, connector: Connector, install: TenantConnector, agent_id: uuid.UUID
+) -> bool:
+    found = await session.scalar(
+        sa.select(AuditLog.id)
+        .where(
+            AuditLog.tenant_id == install.tenant_id,
+            AuditLog.action == "connector.tools_auto_enabled",
+            AuditLog.target == f"connector:{connector.slug}",
+            AuditLog.after_json["agent_id"].astext == str(agent_id),
+            AuditLog.after_json["booking"].as_boolean().is_(True),
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
 async def _write_draft(
     session: AsyncSession,
     connector: Connector,
@@ -194,4 +240,10 @@ async def _write_draft(
     return added
 
 
-__all__ = ["BOOKING_TOOLS", "books", "books_elsewhere", "enable_booking_skills"]
+__all__ = [
+    "BOOKING_TOOLS",
+    "books",
+    "books_elsewhere",
+    "enable_after_sync",
+    "enable_booking_skills",
+]

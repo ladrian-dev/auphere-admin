@@ -53,7 +53,10 @@ from nexus_api.db.models import (
     ToolStatus,
 )
 from nexus_api.services.agent_config_service import AgentConfigService
-from nexus_api.services.connectors.booking_skills import enable_booking_skills
+from nexus_api.services.connectors.booking_skills import (
+    enable_after_sync,
+    enable_booking_skills,
+)
 
 from .composio_client import (
     ComposioClientProtocol,
@@ -631,6 +634,27 @@ async def reconcile_connector_status(
         composio=composio,
         actor=actor,
     )
+
+
+async def resync(
+    session: AsyncSession,
+    *,
+    tenant_connector: TenantConnector,
+    connector: Connector,
+    composio: ComposioClientProtocol,
+    actor: str,
+) -> SyncToolsResult:
+    """A sync someone asked for: the catalog, and the booking skills of the agents
+    that were connected before the catalog had them."""
+    result = await sync_tools_for(
+        session,
+        tenant_connector=tenant_connector,
+        connector=connector,
+        composio=composio,
+        actor=actor,
+    )
+    await enable_after_sync(session, connector=connector, install=tenant_connector, actor=actor)
+    return result
 
 
 async def sync_tools_for(
@@ -1269,6 +1293,7 @@ __all__ = [
     "disconnect_connector",
     "initiate_consent",
     "reissue_consent",
+    "resync",
     "sync_tools_for",
     "upsert_override",
 ]

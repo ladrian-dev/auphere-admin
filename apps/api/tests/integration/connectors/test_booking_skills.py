@@ -146,6 +146,77 @@ async def test_reading_only_is_not_enough_to_book(db_session: AsyncSession, biz:
     assert row is not None and row.permission == "read_write"
 
 
+async def _activate(
+    db_session: AsyncSession, biz: Biz, install: Any, agent_id: Any, perm: str
+) -> None:
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        db_session.add(
+            AgentConnectorActivation(
+                tenant_id=biz.tenant_id,
+                agent_id=agent_id,
+                connector_id=install.id,
+                permission=perm,
+                settings={},
+                created_by="test",
+            )
+        )
+    await db_session.commit()
+
+
+async def _after_sync(db_session: AsyncSession, biz: Biz, connector: Any, install: Any) -> None:
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        await booking_skills.enable_after_sync(
+            db_session, connector=connector, install=install, actor="test"
+        )
+    await db_session.commit()
+
+
+async def test_a_sync_reaches_an_agent_connected_before_the_tools_existed(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    connector, install, agent_id = await _world(db_session, biz, tools=[])
+    await _activate(db_session, biz, install, agent_id, "read_write")
+
+    await _after_sync(db_session, biz, connector, install)
+
+    draft = await _draft(db_session, biz, agent_id)
+    assert draft is not None and {READ, WRITE} <= set(draft.tools)
+
+
+async def test_a_sync_leaves_an_agent_that_only_reads_or_does_not_use_it(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    connector, install, agent_id = await _world(db_session, biz, tools=[])
+    await _after_sync(db_session, biz, connector, install)
+    assert await _draft(db_session, biz, agent_id) is None, "not activated: not this agent"
+
+    await _activate(db_session, biz, install, agent_id, "read")
+    await _after_sync(db_session, biz, connector, install)
+    assert await _draft(db_session, biz, agent_id) is None, "reading stays reading"
+
+
+async def test_a_sync_does_not_bring_back_what_a_person_took_out(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    connector, install, agent_id = await _world(db_session, biz, tools=[])
+    await _activate(db_session, biz, install, agent_id, "read_write")
+    await _after_sync(db_session, biz, connector, install)
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        draft = await db_session.scalar(
+            sa.select(AgentConfig).where(
+                AgentConfig.agent_id == agent_id, AgentConfig.status == AgentConfigStatus.STAGED
+            )
+        )
+        assert draft is not None
+        draft.tools = [t for t in draft.tools if t != WRITE]
+    await db_session.commit()
+
+    await _after_sync(db_session, biz, connector, install)
+
+    after = await _draft(db_session, biz, agent_id)
+    assert after is not None and WRITE not in after.tools
+
+
 async def test_an_agent_with_our_calendar_does_not_get_a_second_one(
     db_session: AsyncSession, biz: Biz
 ) -> None:

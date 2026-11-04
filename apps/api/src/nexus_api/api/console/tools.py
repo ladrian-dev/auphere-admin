@@ -472,7 +472,7 @@ async def sync_connector(
                 deprecated=reconciled.tools_deprecated,
                 unchanged_count=0,
             )
-        result = await connector_service.sync_tools_for(
+        result = await connector_service.resync(
             scope.session,
             tenant_connector=tc,
             connector=connector,
@@ -681,7 +681,7 @@ async def _sync_after_connect(
                 deprecated=len(reconciled.tools_deprecated),
                 at=now,
             )
-        result = await connector_service.sync_tools_for(
+        result = await connector_service.resync(
             scope.session,
             tenant_connector=tc,
             connector=connector,
