@@ -65,7 +65,8 @@ NAME_MAX: Final = 40
 DESCRIPTION_MIN: Final = 20
 DESCRIPTION_MAX: Final = 1024
 MAX_QUESTIONS: Final = 5
-CASE_TESTS: Final = 8
+#: Solo lo específico de este agente: lo común ya lo cubre la batería del sector (66.1).
+CASE_TESTS: Final = 4
 
 #: Los bloques del borrador, en el orden en que la pantalla los pinta.
 BLOCKS: Final = (
@@ -674,7 +675,9 @@ def _tests(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "critical": bool(t.get("critical", False)),
             }
         )
-        if len(out) >= CASE_TESTS:
+        # El recorte a ``CASE_TESTS`` va después de quitar lo que repite el sector: el
+        # generador sin modelo escribe primero lo común.
+        if len(out) >= 2 * CASE_TESTS:
             break
     return out
 
@@ -916,7 +919,8 @@ def offline_output(
         "rules": ["No inventes precios, horarios ni direcciones: usa la ficha del negocio."],
         "questions": questions,
         "discarded": discarded,
-        "tests": tests[:CASE_TESTS],
+        # Sin recortar: el recorte va después de quitar lo que repite el sector.
+        "tests": tests,
     }
 
 
@@ -1096,7 +1100,12 @@ async def write_new_agent(
     from nexus_api.services.agent_config_service import AgentConfigService
     from nexus_api.services.agent_spec.legacy import runtime_model_policy
     from nexus_api.services.business.compilation import load_facts
-    from nexus_api.services.testing.sector_catalog import add_sector_tests
+    from nexus_api.services.testing.sector_catalog import (
+        add_sector_tests,
+        covers,
+        not_applicable_reason,
+        sector_items,
+    )
     from nexus_api.services.testing.suites import ensure_suite, replace_case_tests
 
     tenant_id = require_current_tenant()
@@ -1123,10 +1132,20 @@ async def write_new_agent(
         note="Borrador del constructor",
     )
     suite = await ensure_suite(session, agent.id)
-    await replace_case_tests(session, suite, draft.tests)
+    # 66.1: la que cubre una del sector que va a correr no entra, y si sobran, las
+    # críticas primero (``sorted`` no cambia el orden de las demás).
+    tools = list(draft.spec.tools or [])
+    running = [
+        item
+        for item in await sector_items(session, guide)
+        if not not_applicable_reason(item, tools)
+    ]
+    case = [t for t in draft.tests if not any(covers(item, t) for item in running)]
+    case = sorted(case, key=lambda t: not t.get("critical"))
+    await replace_case_tests(session, suite, case[:CASE_TESTS])
     # 21.1 y 58.4: las 12 del sector del cliente, de su guía. 65.8: las que
     # necesitan una acción que sus herramientas no hacen, «No aplica».
-    await add_sector_tests(session, suite, guide=guide, tools=list(draft.spec.tools or []))
+    await add_sector_tests(session, suite, guide=guide, tools=tools)
     cfg.spec = {
         **dump(draft.spec),
         "test_suite": {"suite_id": str(suite.id), "revision": suite.revision},

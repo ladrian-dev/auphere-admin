@@ -204,7 +204,8 @@ async def test_without_the_agenda_the_booking_tests_do_not_apply_and_do_not_bloc
 ) -> None:
     body = await _job(client, biz, fake_redis, FakeBuilder(reply=RECEPTION), name="Atención")
     tests = await _sector_tests(db_session, biz)
-    assert len(tests) == 12
+    # Requisito 66: las que no aplican se guardan, para volver si llega la herramienta.
+    assert {"book", "closed_day", "hours", "human"} <= set(tests)
     for key in ("book", "closed_day"):
         reason = tests[key].not_applicable_reason
         assert reason == "Este agente no tiene herramienta para reservar citas.", key

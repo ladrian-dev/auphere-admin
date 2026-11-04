@@ -925,6 +925,7 @@ describe("la pantalla del agente · Avanzado sin «Calidad» (64.1)", () => {
     screenWith({}, { advanced });
     await openMore();
     const region = screen.getByRole("region", { name: "Avanzado" });
+    await userEvent.click(within(region).getByRole("heading", { name: "Avanzado" }));
     expect(within(region).getByText("El modelo de este agente lo gestiona Auphere.")).toBeVisible();
     expect(within(region).queryByRole("heading", { name: "Calidad" })).toBeNull();
     expect(screen.queryByText(/Fijar un modelo/)).toBeNull();
@@ -1214,8 +1215,10 @@ describe("la pantalla del agente · pruebas que aplican (65.8, 65.9)", () => {
     const user = userEvent.setup();
     withTests();
     await openMore(user);
+    await user.click(within(screen.getByRole("region", { name: "Pruebas" })).getByRole("heading", { name: "Pruebas" }));
     const list = document.querySelector("[data-slot=test-list]") as HTMLElement;
     expect(within(list).getByText("Ninguna prueba aplica a este agente. Añade una que le aplique: sin ella no se puede guardar.")).toBeVisible();
+    await user.click(within(list).getByText("1 no aplica a este agente"));
     expect(within(list).getByText("No aplica: este agente no tiene herramienta para reservar citas.")).toBeVisible();
   });
 
@@ -1224,5 +1227,15 @@ describe("la pantalla del agente · pruebas que aplican (65.8, 65.9)", () => {
     withTests({ ...SPEC, mode: "instructions" });
     await openMore(user);
     expect(screen.queryByText(/Ninguna prueba aplica a este agente/)).toBeNull();
+  });
+});
+
+describe("la pantalla del agente · «Más ajustes» no es una página entera (66.6)", () => {
+  it("sus secciones van plegadas, y un enlace a algo de dentro la abre", () => {
+    screenWith({}, { initialSection: "agente-calidad" });
+    const advanced = document.getElementById("agente-avanzado") as HTMLElement;
+    expect(advanced.querySelector("details")?.open).toBe(true);
+    const others = ["agente-pruebas", "agente-revision", "agente-historial"].map((id) => document.getElementById(id));
+    for (const section of others) expect(section?.querySelector("details")?.open ?? false).toBe(false);
   });
 });

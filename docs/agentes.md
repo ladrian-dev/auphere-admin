@@ -237,10 +237,28 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   Quien lanza una pasada toma antes el bloqueo de la fila del agente
   (`runs.lock_agent`) y pregunta a `runs.live_run`, que mira el trabajo y no
   `AgentTestRun.status`, porque esa columna no se entera de una caducidad.
-- **El coste, antes** (61.8): `POST …/test-runs` con `dry_run: true` responde `200`
-  con la estimación (`services/testing/estimate.py`: de media 4 turnos del agente,
-  4 mensajes del cliente simulado y el juez, por 3 pasadas, a precio) sin encolar
-  nada. Un precio que no se conoce no es cero: `estimate: null` y `unknown_prices`.
+- **El coste, antes** (61.8, enmendado por el 66.5): `POST …/test-runs` con
+  `dry_run: true` responde `200` con la estimación (`services/testing/estimate.py`,
+  calibrada con 20 pasadas de staging: 3 llamadas del agente con la mayor parte del
+  prompt en caché, 2 del clasificador, 2 mensajes del cliente simulado y el juez, por 3
+  pasadas, a precio) y lo que queda de «Construcción y pruebas» (`budget`), sin encolar
+  nada. La consola solo pregunta si no cabe. Un precio que no se conoce no es cero:
+  `estimate: null` y `unknown_prices`.
+- **Una suite que merece lo que cuesta** (requisito 66): el constructor deja como mucho
+  4 pruebas del caso, solo de lo específico del agente; de la batería de 12 del sector
+  entran todas las críticas que aplican y, hasta 8 entre las dos, las demás. Una del caso
+  que ya cubre una del sector no entra (`covers`: misma pregunta, mismo estado esperado,
+  y una crítica solo la sustituye otra crítica). `reconcile_suite`
+  (`services/testing/sector_catalog.py`) recalcula «No aplica» al guardar el borrador y,
+  antes de cada pasada, archiva lo que sobra contra esa versión. No toca lo que tocó una
+  persona (`created_by_kind`).
+- **Quién simula y quién juzga** (`platform_models.py`): el cliente simulado y el juez
+  usan `llm_simulation_model` (Terra por defecto, `NEXUS_LLM_CUSTOMER_SIM_MODEL` y
+  `NEXUS_LLM_JUDGE_MODEL` mandan). Si el juez es un modelo que respondió en esa
+  conversación, juzga otro de la plataforma (`_judge_for`): saltárselo dejaba en «No
+  sé» toda prueba sin estado final, y una crítica en «No sé» bloquea la puerta.
+- **El plazo del constructor**: `BUILD_CALL_TIMEOUT_S` (120 s) sin reintentos del SDK,
+  no los 30 s de un turno de chat, que el borrador no cabe en ellos.
 - **Pasadas** (`agent_test_runs`, `services/testing/runs.py`): todas, las
   afectadas o una; un cambio de la ficha deja desactualizadas las afectadas y las
   vuelve a pasar en segundo plano en los agentes publicados

@@ -1188,6 +1188,11 @@ class LiteLLMProvider:
     """
 
     timeout_s: float = 30.0
+    #: Reintentos del SDK del proveedor ante un corte. ``None``: los suyos (dos). Un
+    #: trabajo que escribe mucho pone 0 y un plazo largo: repetir una generación que
+    #: no cupo en el plazo paga lo mismo tres veces y termina igual (el constructor en
+    #: staging, 2026-11-04: tres cortes de 30 s y 91 s de espera por trabajo).
+    max_retries: int | None = None
     context_management: dict[str, Any] | None = field(
         default_factory=default_context_management_from_env
     )
@@ -1303,6 +1308,8 @@ class LiteLLMProvider:
             "metadata": {"tenant_id": str(tenant_id), "role": role},
             "timeout": self.timeout_s,
         }
+        if self.max_retries is not None:
+            kwargs["max_retries"] = self.max_retries
         if tools:
             kwargs["tools"] = tools
             # Context editing only makes sense for calls that carry tools —

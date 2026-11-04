@@ -36,6 +36,10 @@ class WorkerSettings(BaseSettings):
     # The fallback model lives hardcoded in ``main.py`` — see comment there.
     llm_classify_model: str = "openai/gpt-5.6-sol"
     llm_respond_model: str = "openai/gpt-5.6-sol"
+    # El cliente simulado y el juez de las pruebas: una conversación por pasada no
+    # necesita el modelo de responder, y el juez no puede ser el modelo juzgado
+    # (si lo es, su veredicto no cuenta y la prueba se queda en «No sé»).
+    llm_simulation_model: str = "openai/gpt-5.6-terra"
     llm_use_inmemory: bool = False
 
     # Redis Stream names.

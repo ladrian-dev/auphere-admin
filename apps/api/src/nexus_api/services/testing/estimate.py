@@ -1,16 +1,22 @@
 """What running an agent's suite will cost, before running it — spec 047, amendment
-of 2026-10-29 (requirement 61.8; research D52).
+of 2026-10-29 (requirement 61.8; research D52), recalibrated on 2026-11-04.
 
-Since the amendment a pass is a conversation, not one turn: on average
-:data:`AGENT_TURNS` turns of the agent, :data:`CUSTOMER_CALLS` messages of the
-simulated customer and :data:`JUDGE_CALLS` call to the judge, three passes per
-test. The estimate multiplies that by each model's current price (the catalog's,
-``model_prices``) with a nominal token size per call, at the partner's price (the
-same multiplier as «Construcción y pruebas»). A price that is not known is never
-a zero cost: the estimate is ``None`` and says which model is missing.
+A pass is a conversation: :data:`AGENT_CALLS` calls of the agent (its tool loop
+included), :data:`CLASSIFY_CALLS` to the classifier, :data:`CUSTOMER_CALLS` messages of
+the simulated customer and :data:`JUDGE_CALLS` to the judge, three passes per test. The
+sizes are the ones measured in staging (2026-10-30 to 2026-11-04, 20 runs): the agent
+resends a prompt of about 6,000 tokens, three quarters of it from the cache. Counting
+that prompt as fresh, with four turns on the agent's model for everyone, said $10.97
+for a suite that cost $2 to $3.
 
-It is an estimate, not a quote: the real cost is measured per call in
-«Construcción y pruebas» (``usage_records``, ``source = tests``).
+The estimate multiplies that by each model's current price (the catalog's,
+``model_prices``), at the partner's price (the same multiplier as «Construcción y
+pruebas»). A price that is not known is never a zero cost: the estimate is ``None`` and
+says which model is missing.
+
+It is an estimate, not a quote: the real cost is measured per call in «Construcción y
+pruebas» (``usage_records``, ``source = tests``). The console only asks when it does not
+fit in what is left of that budget (requirement 66.5).
 """
 
 from __future__ import annotations
@@ -26,13 +32,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.services.router_catalog import Price, TokenEstimate, estimate_cost_micros
 from nexus_api.services.testing.runs import RUNS
 
-AGENT_TURNS: Final = 4
-CUSTOMER_CALLS: Final = 4
+AGENT_CALLS: Final = 3
+CLASSIFY_CALLS: Final = 2
+CUSTOMER_CALLS: Final = 2
 JUDGE_CALLS: Final = 1
-#: Nominal size of each call: the agent resends its prompt, tools and history.
-AGENT_CALL: Final = TokenEstimate(input_tokens=3_000, output_tokens=250)
-CUSTOMER_CALL: Final = TokenEstimate(input_tokens=900, output_tokens=80)
-JUDGE_CALL: Final = TokenEstimate(input_tokens=1_500, output_tokens=150)
+#: Size of each call, as measured: the agent resends its prompt, tools and history,
+#: most of it from the cache, and writes little.
+AGENT_CALL: Final = TokenEstimate(input_tokens=1_500, cache_read_tokens=4_500, output_tokens=45)
+CLASSIFY_CALL: Final = TokenEstimate(input_tokens=140, output_tokens=35)
+CUSTOMER_CALL: Final = TokenEstimate(input_tokens=400, output_tokens=60)
+JUDGE_CALL: Final = TokenEstimate(input_tokens=1_200, output_tokens=120)
 #: The partner's price over the provider's cost, as in «Construcción y pruebas».
 PRICE_MULTIPLIER: Final = Decimal("2.2")
 
@@ -60,13 +69,16 @@ def estimate_suite(
     tests: int,
     prices: Mapping[str, Price | None],
     agent_model: str,
+    classify_model: str | None = None,
     customer_model: str | None,
     judge_model: str | None,
 ) -> SuiteEstimate:
     """The estimate for ``tests`` tests (pure)."""
     passes = max(0, tests) * RUNS
     plan = [
-        ("agent", agent_model, passes * AGENT_TURNS, AGENT_CALL),
+        ("agent", agent_model, passes * AGENT_CALLS, AGENT_CALL),
+        ("classify", classify_model, passes * CLASSIFY_CALLS if classify_model else 0,
+         CLASSIFY_CALL),
         ("customer_sim", customer_model, passes * CUSTOMER_CALLS if customer_model else 0,
          CUSTOMER_CALL),
         ("judge", judge_model, passes * JUDGE_CALLS if judge_model else 0, JUDGE_CALL),
@@ -89,7 +101,12 @@ def estimate_suite(
     return SuiteEstimate(
         amount_micros=amount,
         calls=calls,
-        models={"agent": agent_model, "customer_sim": customer_model, "judge": judge_model},
+        models={
+            "agent": agent_model,
+            "classify": classify_model,
+            "customer_sim": customer_model,
+            "judge": judge_model,
+        },
         unknown=unknown,
     )
 
@@ -115,7 +132,8 @@ async def estimate_for_agent(
     agent_model = (
         pinned if pinned in snapshot.deployments else get_worker_settings().llm_respond_model
     )
-    models = {agent_model, platform_model("customer_sim"), platform_model("judge")}
+    classify_model = get_worker_settings().llm_classify_model
+    models = {agent_model, classify_model, platform_model("customer_sim"), platform_model("judge")}
     prices: dict[str, Price | None] = {
         model: (
             snapshot.deployments[model].current_price() if model in snapshot.deployments else None
@@ -126,13 +144,15 @@ async def estimate_for_agent(
         tests=tests,
         prices=prices,
         agent_model=agent_model,
+        classify_model=classify_model,
         customer_model=platform_model("customer_sim"),
         judge_model=platform_model("judge"),
     )
 
 
 __all__ = [
-    "AGENT_TURNS",
+    "AGENT_CALLS",
+    "CLASSIFY_CALLS",
     "CUSTOMER_CALLS",
     "JUDGE_CALLS",
     "SuiteEstimate",

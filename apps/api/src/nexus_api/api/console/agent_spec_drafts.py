@@ -39,7 +39,8 @@ from nexus_api.services.agents import principal_agent_id
 from nexus_api.services.business.compilation import load_facts
 from nexus_api.services.proposal_state import canonical_hash
 from nexus_api.services.reception import tools_with_handoff
-from nexus_api.services.testing.suites import mark_stale
+from nexus_api.services.testing.sector_catalog import reconcile_suite
+from nexus_api.services.testing.suites import get_suite, mark_stale
 
 from .agent_drafts import draft_written, ensure_draft, load_view
 from .deps import ClientScope
@@ -169,6 +170,11 @@ async def write_spec(
         policies[BUILDER_POLICY] = {"missing_capabilities": [m.to_json() for m in merged]}
     draft.policies = _sync_disclosure(policies, spec, actor=scope.principal.actor)
     await mark_stale(session, agent.id)
+    # Requisito 66: al cambiar las herramientas, las pruebas dejan de pedir lo de antes.
+    # Sin compactar: un borrador se puede descartar; lo que se archiva, no.
+    suite = await get_suite(session, agent.id)
+    if suite is not None:
+        await reconcile_suite(session, suite, tools=list(draft.tools or []), compact=False)
     await draft_written(scope, draft)
     return draft
 

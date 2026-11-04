@@ -59,3 +59,19 @@ describe("la tarjeta de pruebas, sin modelo", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
+
+describe("la tarjeta de pruebas, sin decidir (66.6)", () => {
+  const unknown = { ...TESTS[0]!, name: "Pregunta el precio", status: "unknown" as const, stale: false, critical: true, why_failed: null };
+  const failed = { ...TESTS[0]!, name: "Reserva una cita", status: "failed" as const, stale: false, critical: false };
+
+  it("«No sé» no se llama fallo ni ofrece «Arreglar»", () => {
+    box({ suite: suite({ tests: [unknown] }) });
+    expect(screen.getByText("Sin decidir: «Pregunta el precio»")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Arreglar/ })).toBeNull();
+  });
+
+  it("lo que falla va antes, aunque lo que no se decidió sea crítico", () => {
+    box({ suite: suite({ tests: [unknown, failed] }) });
+    expect(screen.getByText("Falla «Reserva una cita»")).toBeInTheDocument();
+  });
+});

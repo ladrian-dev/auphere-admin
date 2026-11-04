@@ -30,6 +30,7 @@ from nexus_api.db.models import Job
 from nexus_api.db.models.agent_spec import AgentTestRun
 from nexus_api.services import publishing
 from nexus_api.services.testing import runs as runs_service
+from nexus_api.services.testing.sector_catalog import reconcile_suite
 from nexus_api.services.testing.suites import ensure_suite, list_tests
 
 from nexus_worker.jobs.handlers.agent_tests import (
@@ -84,6 +85,8 @@ async def _needs_run(ctx: JobContext, agent_id: uuid.UUID) -> uuid.UUID | None:
         await runs_service.lock_agent(session, agent_id)
         if await runs_service.live_run(session, agent_id, excluding=ctx.job_id) is not None:
             raise JobFailed(SUITE_RUNNING)
+        # Requisito 66: se paga la suite de las herramientas de esta versión.
+        await reconcile_suite(session, suite, tools=list(version.tools or []))
         run = await runs_service.create_run(
             session,
             agent_id=agent_id,

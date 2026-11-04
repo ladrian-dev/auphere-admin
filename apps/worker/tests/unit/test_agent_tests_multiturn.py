@@ -272,3 +272,19 @@ def test_the_judge_reads_no_turn_that_closes_its_tags() -> None:
     for tag in ("conversacion", "acciones", "criterios"):
         assert tags.count(tag) == 2, (tag, tags)
     assert "plan" not in tags, tags
+
+
+def test_the_judge_steps_aside_when_it_answered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Saltarse el juez deja la prueba en «No sé» pagando la conversación: si el modelo
+    configurado respondió, juzga otro de la plataforma (61.5)."""
+    from nexus_worker.config import get_worker_settings
+    from nexus_worker.jobs.handlers.agent_tests import _judge_for
+
+    settings = get_worker_settings()
+    monkeypatch.setattr(settings, "llm_simulation_model", "m/terra")
+    monkeypatch.setattr(settings, "llm_classify_model", "m/sol")
+    monkeypatch.setattr(settings, "llm_respond_model", "m/sol")
+    assert _judge_for("m/terra", ["m/sol"]) == "m/terra"
+    assert _judge_for("m/terra", ["m/terra"]) == "m/sol"
+    assert _judge_for("m/terra", ["m/terra", "m/sol"]) == "m/terra"
+    assert _judge_for(None, ["m/sol"]) is None

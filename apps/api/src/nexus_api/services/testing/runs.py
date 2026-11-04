@@ -74,9 +74,10 @@ def status_of(attempts: Sequence[bool | None], *, unavailable: int = 0) -> TestS
 
 
 def why_failed(results: Sequence[AgentTestResult]) -> str | None:
-    """«Por qué falló»: la primera explicación de una pasada que falló."""
+    """«Por qué falló» o «Por qué no se decidió»: la primera explicación de una pasada
+    que no pasó. La que se quedó sin modelo tiene la suya, en :func:`why_untested`."""
     for r in sorted(results, key=lambda r: r.attempt):
-        if r.passed is False and r.explanation:
+        if r.passed is not True and r.stop != MODEL_FAILED and r.explanation:
             return r.explanation
     return None
 

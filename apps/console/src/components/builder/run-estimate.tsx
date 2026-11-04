@@ -20,10 +20,17 @@ export function estimateCents(estimate: TestRunEstimate["estimate"]): number | n
   return Math.max(1, Math.round(estimate.amount_micros / 10_000));
 }
 
+/** ¿Hay algo que preguntar? Solo si la pasada no cabe en lo que queda de la partida. */
+export function doesNotFit(data: TestRunEstimate): boolean {
+  if (!data.estimate || !data.budget) return false;
+  return data.estimate.amount_micros > data.budget.remaining_micros;
+}
+
 /**
- * Antes de una pasada, cuánto costará (spec 047, 61.8). Es una estimación: lo
- * medido sale en «Construcción y pruebas». Si no se puede estimar, la pasada
- * arranca igual y es ella la que dice qué pasa (sin partida, sin versión).
+ * Antes de una pasada (spec 047, 61.8, enmendado por el 66.5). «Construcción y pruebas» la
+ * paga Auphere hasta el tope, así que una pasada normal no pregunta nada: lo medido sale
+ * en Uso. Solo se pregunta si no cabe en lo que queda, porque entonces no terminará. Si no
+ * se puede estimar, arranca igual y es ella la que dice qué pasa (sin partida, sin versión).
  */
 export function useRunEstimate({
   estimate,
@@ -36,19 +43,20 @@ export function useRunEstimate({
 }): { ask: (scope: TestRunScope) => Promise<void>; dialog: React.ReactNode } {
   const t = useT();
   const locale = useLocale();
-  const [asked, setAsked] = React.useState<{ scope: TestRunScope; tests: number; cents: number | null } | null>(null);
+  const [asked, setAsked] = React.useState<{ scope: TestRunScope; tests: number; cents: number; left: number } | null>(null);
 
   async function ask(scope: TestRunScope) {
-    if (!estimate) {
+    const res = estimate ? await estimate({ ...ids, scope }) : null;
+    if (!res?.ok || !doesNotFit(res.data)) {
       await start(scope);
       return;
     }
-    const res = await estimate({ ...ids, scope });
-    if (!res.ok) {
-      await start(scope);
-      return;
-    }
-    setAsked({ scope, tests: res.data.tests, cents: estimateCents(res.data.estimate) });
+    setAsked({
+      scope,
+      tests: res.data.tests,
+      cents: estimateCents(res.data.estimate) ?? 0,
+      left: Math.floor((res.data.budget?.remaining_micros ?? 0) / 10_000),
+    });
   }
 
   const dialog = (
@@ -58,11 +66,10 @@ export function useRunEstimate({
         if (!open) setAsked(null);
       }}
       title={t(asked?.tests === 1 ? "builder.suite.estimate.title.one" : "builder.suite.estimate.title.other", { n: asked?.tests ?? 0 })}
-      description={
-        asked?.cents != null
-          ? t("builder.suite.estimate.cost", { amount: formatMoney(asked.cents, locale) })
-          : t("builder.suite.estimate.unknown")
-      }
+      description={t("builder.suite.estimate.cost", {
+        amount: formatMoney(asked?.cents ?? 0, locale),
+        left: formatMoney(asked?.left ?? 0, locale),
+      })}
       confirmLabel={t("builder.suite.estimate.confirm")}
       cancelLabel={t("common.cancel")}
       onConfirm={() => {

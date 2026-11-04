@@ -340,6 +340,9 @@ export function AgentBuilder({
     }
     scrollTo.current = null;
     const el = document.getElementById(id) ?? (row ? document.getElementById(`fila-${row}`) : null);
+    // Sus secciones van plegadas: lo enlazado se abre, sea la sección o algo de dentro.
+    const folded = el?.querySelector(":scope > details") ?? el?.closest("details");
+    if (folded instanceof HTMLDetailsElement) folded.open = true;
     if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
   }, [hash, moreOpen, openRow, writable, tick, tab]);
   const copilot = React.useRef<CopilotHandle>(null);
@@ -732,7 +735,7 @@ export function AgentBuilder({
                 ) : null}
                 {quality ? (
                   <>
-                    <ScreenSection id="agente-pruebas" title={t("builder.screen.tests")}>
+                    <ScreenSection id="agente-pruebas" title={t("builder.screen.tests")} summary={<TestsLine tests={draft.tests} />}>
                       <TestList
                         refId={refId}
                         agentId={draft.agent_id}
@@ -978,13 +981,25 @@ function excerpt(text: string, max = 80): string {
 }
 
 /** Una parte de la pantalla del agente con su título (h3) y su ancla. */
-function ScreenSection({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+/**
+ * Una sección de «Más ajustes», plegada: abiertas todas a la vez son una página entera de
+ * pruebas, revisión e historial (requisito 66.6). Un enlace a algo de dentro la abre.
+ */
+function ScreenSection({ id, title, summary, children }: { id: string; title: string; summary?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="grid min-w-0 scroll-mt-24 gap-3 rounded-lg border border-border bg-card p-4 sm:p-6">
-      <h2 id={`${id}-title`} className="text-base font-semibold">
-        {title}
-      </h2>
-      {children}
+    <section id={id} aria-labelledby={`${id}-title`} className="min-w-0 scroll-mt-24 rounded-lg border border-border bg-card">
+      <details className="group min-w-0">
+        <summary className="flex min-h-11 min-w-0 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:px-6 [&::-webkit-details-marker]:hidden">
+          <span className="grid min-w-0 gap-1">
+            <h2 id={`${id}-title`} className="text-base font-semibold">
+              {title}
+            </h2>
+            {summary ? <span className="min-w-0 text-xs text-pretty text-muted-foreground">{summary}</span> : null}
+          </span>
+          <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+        </summary>
+        <div className="grid min-w-0 gap-4 px-4 pb-4 sm:px-6 sm:pb-6">{children}</div>
+      </details>
     </section>
   );
 }

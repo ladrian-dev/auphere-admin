@@ -283,8 +283,9 @@ implementa (fase 27). Cambiar algo aquí exige avisar a las dos partes.
   el trabajo falla con `model_unavailable` (bug `el-probador-tapa-los-fallos-del-modelo`).
 - `POST /agents/{agent_id}/test-runs` devuelve además `estimate: Money` antes de
   encolar si se pide con `dry_run: true`. Implementado (D71): `200 {tests, estimate:
-  Money | null, calls: {agent, customer_sim, judge}, unknown_prices: [model]}`, sin
-  encolar nada; `estimate` es `null` si falta el precio de algún modelo.
+  Money | null, calls: {agent, classify, customer_sim, judge}, unknown_prices: [model],
+  budget: {remaining_micros, state}}`, sin encolar nada; `estimate` es `null` si falta
+  el precio de algún modelo. La consola solo pregunta si no cabe en `budget` (66.5).
 
 ### Canal (requisito 63.1)
 

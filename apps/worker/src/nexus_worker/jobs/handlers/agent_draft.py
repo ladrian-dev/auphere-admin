@@ -47,8 +47,12 @@ from nexus_worker.metering.collector import SOURCE_BUILDER, usage_turn
 log = structlog.get_logger(__name__)
 
 KIND = "agent_draft"
-#: 30 s en el p90 es el objetivo; el plazo deja margen a un modelo lento.
-TIMEOUT_S = 180.0
+#: 30 s en el p90 es el objetivo; el plazo deja margen a un modelo lento y a la guía
+#: que se genera antes si el cliente no tiene sector (dos llamadas).
+TIMEOUT_S = 270.0
+#: Lo que espera una llamada del constructor. El borrador es un JSON largo y a unos
+#: 60 tokens/s no cabe en los 30 s del proveedor, que valen para un turno de chat.
+BUILD_CALL_TIMEOUT_S = 120.0
 ROLE = "build"
 UNAVAILABLE = "builder_unavailable"
 
@@ -69,7 +73,10 @@ def default_complete(tenant_id: uuid.UUID) -> Complete | None:
 
     if get_worker_settings().llm_use_inmemory:
         return None
-    provider = LiteLLMProvider(context_management=None)
+    # Sin reintentos del SDK: repetir una generación cortada paga lo mismo otra vez.
+    provider = LiteLLMProvider(
+        context_management=None, timeout_s=BUILD_CALL_TIMEOUT_S, max_retries=0
+    )
     model = build_model()
 
     async def complete(messages: list[dict[str, str]]) -> str:
@@ -125,6 +132,8 @@ def make_agent_draft_handler(*, complete_factory: CompleteFactory | None = None)
                 tenant_id=str(ctx.tenant_id),
                 job_id=str(ctx.job_id),
                 why=str(exc),
+                # Solo el tipo: el mensaje del proveedor puede citar el prompt.
+                cause=type(exc.__cause__).__name__ if exc.__cause__ else None,
             )
             raise JobFailed(UNAVAILABLE) from exc
         return JobOutcome(result=result)
@@ -141,6 +150,7 @@ register()
 
 
 __all__ = [
+    "BUILD_CALL_TIMEOUT_S",
     "KIND",
     "TIMEOUT_S",
     "UNAVAILABLE",

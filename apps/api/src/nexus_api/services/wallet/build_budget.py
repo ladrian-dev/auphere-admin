@@ -86,6 +86,22 @@ async def require_room(session: AsyncSession, partner_id: uuid.UUID) -> None:
         raise WalletError("build_budget_exhausted", 402)
 
 
+async def read_for_partner(partner_id: uuid.UUID) -> BudgetState | None:
+    """Lo que le queda al partner, en su propia sesión: la partida tiene RLS por partner.
+    ``None`` para los partners sin la consola nueva, que no tienen esta partida."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.base import get_sessionmaker
+
+    async with get_sessionmaker()() as session, session.begin():
+        v2 = await session.scalar(
+            sa.select(Partner.console_v2_enabled_at).where(Partner.id == partner_id)
+        )
+        if v2 is None:
+            return None
+        await apply_partner_to_session(session, partner_id)
+        return await read(session, partner_id)
+
+
 async def require_room_for_partner(partner_id: uuid.UUID) -> None:
     """El freno de la partida para los partners con la consola nueva (los de hoy
     siguen con el tope de tokens del playground). En su propia sesión: la partida

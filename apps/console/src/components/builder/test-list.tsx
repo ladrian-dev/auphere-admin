@@ -175,6 +175,28 @@ export function TestList({
 
   const { summary } = suite;
   const counted = summary.total - summary.not_applicable;
+  const applying = suite.tests.filter((test) => test.status !== "not_applicable");
+  const notApplying = suite.tests.filter((test) => test.status === "not_applicable");
+  const row = (test: AgentTest) => (
+    <TestRow
+      key={test.id}
+      test={test}
+      canEdit={can("edit")}
+      canRun={can("run") && running === null}
+      canRetry={can("run")}
+      onRun={() => void runTests("one", test.id)}
+      onFix={onFix && canWrite ? () => onFix(test) : undefined}
+      onWhy={onWhy ? () => onWhy(test) : undefined}
+      onNotApplicable={async (reason) => {
+        const res = await actions.notApplicable({ ...ids, test: test.id, reason });
+        if (res.ok) {
+          setSuite(res.data);
+          onChanged?.();
+        }
+        return res;
+      }}
+    />
+  );
 
   return (
     <div className="grid min-w-0 gap-4" data-slot="test-list">
@@ -225,7 +247,7 @@ export function TestList({
         <Callout tone="warning">{t("builder.suite.noneApplies")}</Callout>
       ) : null}
       {!suite.tests.length ? <p className="text-sm text-muted-foreground">{t("builder.suite.empty")}</p> : null}
-      {groupTests(suite.tests).map((group) => (
+      {groupTests(applying).map((group) => (
         <div key={group.kind} className="grid min-w-0 gap-2">
           <h3 className="text-sm font-semibold" id={`tests-${group.kind}`}>
             {t(`builder.suite.kind.${group.kind}` as MessageKey)} · {group.tests.length}
@@ -236,29 +258,19 @@ export function TestList({
             </p>
           ) : null}
           <ul aria-labelledby={`tests-${group.kind}`} className="grid min-w-0 gap-2">
-            {group.tests.map((test) => (
-              <TestRow
-                key={test.id}
-                test={test}
-                canEdit={can("edit")}
-                canRun={can("run") && running === null}
-                canRetry={can("run")}
-                onRun={() => void runTests("one", test.id)}
-                onFix={onFix && canWrite ? () => onFix(test) : undefined}
-                onWhy={onWhy ? () => onWhy(test) : undefined}
-                onNotApplicable={async (reason) => {
-                  const res = await actions.notApplicable({ ...ids, test: test.id, reason });
-                  if (res.ok) {
-                    setSuite(res.data);
-                    onChanged?.();
-                  }
-                  return res;
-                }}
-              />
-            ))}
+            {group.tests.map(row)}
           </ul>
         </div>
       ))}
+      {notApplying.length ? (
+        // No cuentan ni cuestan (65.8): plegadas, para que la lista sea lo que se va a correr.
+        <details className="min-w-0 text-sm" data-slot="tests-not-applicable">
+          <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            {notApplying.length === 1 ? t("builder.suite.na.group.one") : t("builder.suite.na.group.other", { n: notApplying.length })}
+          </summary>
+          <ul className="mt-2 grid min-w-0 gap-2">{notApplying.map(row)}</ul>
+        </details>
+      ) : null}
 
       {can("add") ? (
         adding ? (
@@ -314,6 +326,8 @@ function TestRow({
   const [reviving, setReviving] = React.useState(false);
   const [reviveError, setReviveError] = React.useState(false);
   const failing = isFailing(test.status);
+  /** «No sé» no es un fallo del agente: se explica, y no hay nada que arreglar. */
+  const undecided = test.status === "unknown";
 
   /** «Vuelve a aplicar»: una sola vez mientras se guarda; si no se puede, lo dice aquí. */
   async function revive() {
@@ -362,9 +376,9 @@ function TestRow({
       ) : null}
       {failing ? (
         <details className="min-w-0 text-sm" data-slot="test-why">
-          <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{t("builder.suite.why")}</summary>
+          <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{t(undecided ? "builder.suite.why.undecided" : "builder.suite.why")}</summary>
           <div className="mt-1 grid min-w-0 gap-2">
-            <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{test.why_failed || t("builder.suite.why.none")}</p>
+            <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{test.why_failed || t(undecided ? "builder.suite.why.undecided.none" : "builder.suite.why.none")}</p>
             {conversation ? <TestConversation transcript={conversation.transcript} stop={conversation.stop} /> : null}
           </div>
         </details>
@@ -373,7 +387,7 @@ function TestRow({
         <NotApplicableForm name={test.name} onCancel={() => setMarking(false)} onSave={onNotApplicable} onDone={() => setMarking(false)} />
       ) : (
         <div className="flex min-w-0 flex-wrap gap-2 empty:hidden">
-          {failing && onFix ? (
+          {failing && !undecided && onFix ? (
             <Button size="sm" variant="outline" onClick={onFix} aria-label={t("builder.suite.fix.label", { name: test.name })}>
               <Wrench aria-hidden="true" />
               {t("builder.suite.fix")}
@@ -471,6 +485,9 @@ function AddTestForm({ onAdd, onCancel }: { onAdd: (body: TestBody) => Promise<R
   const nameRef = React.useRef<HTMLInputElement>(null);
   // Al abrirse (con su botón o desde la puerta), el foco va a su primer campo: el botón ya no está.
   React.useEffect(() => {
+    // Desde la puerta, su sección puede seguir plegada: sin abrirla, el foco no llega.
+    const folded = nameRef.current?.closest("details");
+    if (folded) folded.open = true;
     nameRef.current?.focus();
   }, []);
 

@@ -30,25 +30,41 @@ function view(estimate: EstimateRun | undefined, start = vi.fn()) {
   return start;
 }
 
-describe("el coste antes de una pasada (61.8)", () => {
-  it("dice cuánto costará y solo arranca al confirmar", async () => {
+const BUDGET = { remaining_micros: 30_000_000, state: "ok" as const };
+
+describe("el coste antes de una pasada (61.8 y 66.5)", () => {
+  it("una pasada que cabe arranca sin preguntar", async () => {
     const start = view(async () => ({
       ok: true,
-      data: { tests: 18, estimate: { amount_micros: 1_250_000, currency: "USD" }, unknown_prices: [] },
+      data: { tests: 8, estimate: { amount_micros: 1_250_000, currency: "USD" }, unknown_prices: [], budget: BUDGET },
+    }));
+    await userEvent.click(screen.getByRole("button", { name: "Ejecutar todas" }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith("all"));
+    expect(screen.queryByText(/Costaría/)).not.toBeInTheDocument();
+  });
+
+  it("si no cabe en lo que queda lo dice, y solo arranca al confirmar", async () => {
+    const start = view(async () => ({
+      ok: true,
+      data: {
+        tests: 18,
+        estimate: { amount_micros: 1_250_000, currency: "USD" },
+        unknown_prices: [],
+        budget: { remaining_micros: 400_000, state: "warning" as const },
+      },
     }));
     await userEvent.click(screen.getByRole("button", { name: "Ejecutar todas" }));
     expect(await screen.findByText("¿Ejecutar 18 pruebas?")).toBeInTheDocument();
-    expect(screen.getByText(/Costará aproximadamente 1,25/)).toBeInTheDocument();
+    expect(screen.getByText(/Costaría unos 1,25.*te quedan 0,40/)).toBeInTheDocument();
     expect(start).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Ejecutar" }));
     await waitFor(() => expect(start).toHaveBeenCalledWith("all"));
   });
 
-  it("sin precio de un modelo lo dice, y no enseña un cero", async () => {
-    view(async () => ({ ok: true, data: { tests: 1, estimate: null, unknown_prices: ["m"] } }));
+  it("sin precio de un modelo no enseña un cero: arranca", async () => {
+    const start = view(async () => ({ ok: true, data: { tests: 1, estimate: null, unknown_prices: ["m"], budget: BUDGET } }));
     await userEvent.click(screen.getByRole("button", { name: "Ejecutar todas" }));
-    expect(await screen.findByText("¿Ejecutar 1 prueba?")).toBeInTheDocument();
-    expect(screen.getByText(/No podemos estimar/)).toBeInTheDocument();
+    await waitFor(() => expect(start).toHaveBeenCalledWith("all"));
   });
 
   it("si no se puede estimar, la pasada dice qué pasa", async () => {

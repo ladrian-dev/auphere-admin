@@ -1431,7 +1431,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 #### Criterios de aceptación
 
 1. Cada agente DEBE tener una suite con tres tipos de prueba:
-   - las del caso, generadas desde su descripción, 8 por defecto;
+   - las del caso, generadas desde su descripción, como mucho 4 (enmendado por el 66.1);
    - las del sector, de la batería común de su nicho, 12 por defecto;
    - las añadidas por personas o creadas desde conversaciones y correcciones.
 2. Cada prueba DEBE tener nombre, persona simulada, primer mensaje, plan, estado esperado y criterio, y DEBE estar marcada como crítica o normal.
@@ -2474,6 +2474,37 @@ Enmienda los requisitos 16.5, 22.1 y 23.1, y precisa el 58.2.
 - **Taxonomía de tareas**, **catálogo de pruebas del sector** y **catálogo de integraciones**, cada uno con su versión. Las integraciones declaran sus ajustes.
 - **Cambio de referencia**: el cambio del BCE de cada día.
 
+### Requisito 66 — Una suite que merece lo que cuesta (enmienda del 2026-11-04)
+
+**Historia de usuario:** Como partner, quiero que las pruebas de un agente sean pocas, que decidan algo y que no me asusten con un precio que no es. Así las corro de verdad en lugar de saltarme la puerta.
+
+Lo sustenta el estudio de staging del 2026-11-04 (`.specify/bugs/la-suite-no-decide-y-se-repite/assessment.md`): 19 pruebas, 11 sin poder decidir, seis pares repetidos, y las 5 versiones guardadas del agente, todas saltándose la puerta.
+
+#### Criterios de aceptación
+
+1. CUANDO el constructor prepare un agente, ENTONCES el sistema DEBE dejar como mucho 4 pruebas del caso, de lo específico de ese agente, las críticas primero, y DEBE descartar la que ya cubra una del sector que vaya a correr: misma pregunta y mismo estado esperado. Una crítica solo la sustituye otra crítica.
+2. CUANDO se añada la batería del sector, ENTONCES el sistema DEBE añadir todas las críticas que apliquen y las demás solo hasta 8 pruebas entre el caso y el sector. Las que no apliquen se guardan «No aplica» y no cuentan. La batería publicada sigue siendo de 12.
+3. CUANDO cambien las herramientas de un agente, ENTONCES el sistema DEBE recalcular «No aplica» en las del sector que escribió el sistema, y eso se puede deshacer. CUANDO vaya a empezar una pasada, ENTONCES DEBE además archivar contra esa versión lo que sobra: lo que cubre el punto 1, la prueba para agentes sin agenda si el agente reserva y lo que pase de 8. El sistema NO DEBE tocar las pruebas de una persona, ni las que editó o reactivó, ni archivar nada al guardar un borrador.
+4. CUANDO se ejecute una prueba, ENTONCES el juez DEBE ser un modelo que no respondió en esa conversación. SI el configurado respondió, DEBE juzgar otro de la plataforma, en lugar de quedarse la prueba sin veredicto.
+5. CUANDO alguien ejecute las pruebas y la estimación quepa en lo que queda de «Construcción y pruebas», ENTONCES la consola DEBE arrancar sin preguntar. SOLO SI no cabe, DEBE decir cuánto costaría y cuánto queda, y pedir confirmación. Enmienda el 61.8. La estimación DEBE salir de lo medido, con la caché.
+6. CUANDO alguien abra «Más ajustes», ENTONCES sus secciones DEBEN estar plegadas, y un enlace a algo de dentro DEBE abrir la suya. Las pruebas que no aplican DEBEN ir aparte y plegadas. «No sé» NO DEBE llamarse «Por qué falló» ni ofrecer «Arreglar».
+7. CUANDO una llamada del constructor escriba el borrador, ENTONCES el sistema DEBE darle un plazo propio y NO DEBE repetirla por un corte.
+
+Enmienda los requisitos 21.1 (8 + 12 pruebas) y 61.8.
+
+### Requisito 67 — Las herramientas de un conector, a la vista y por agente (enmienda del 2026-11-04)
+
+**Historia de usuario:** Como partner, quiero ver qué permite un conector y encender o apagar cada herramienta para un agente. Así decido qué puede hacer sin ir a otra pantalla.
+
+#### Criterios de aceptación
+
+1. CUANDO alguien abra las herramientas de un conector conectado desde la pestaña de conectores del agente, ENTONCES el sistema DEBE listar las de ese conector, separando las que consultan de las que cambian algo, con las recomendadas primero y buscador si son muchas.
+2. CUANDO alguien encienda o apague una, ENTONCES el sistema DEBE escribirlo en el borrador, por la misma ruta que Capacidades, y DEBE decir que rige al guardar.
+3. SI una herramienta la usa una tarea del agente, ENTONCES el sistema NO DEBE dejar apagarla y DEBE decir por qué.
+4. SI una herramienta que cambia algo está encendida con el permiso «Solo lectura», ENTONCES el sistema DEBE decir que hace falta otro permiso.
+5. CUANDO alguien guarde los ajustes de un conector o lo vuelva a autorizar, ENTONCES el sistema NO DEBE volver a encender lo que una persona apagó.
+6. El sistema NO DEBE ofrecer encender todas de golpe.
+
 ## Criterios de éxito *(obligatorio)*
 
 - **CE-001**: Un partner que nunca usó la consola crea un cliente y deja un agente respondiendo bien en el playground en menos de 10 minutos, sin ayuda (mediana de 5 partners en una prueba de uso).
@@ -2532,6 +2563,7 @@ Enmienda los requisitos 16.5, 22.1 y 23.1, y precisa el 58.2.
   - **Se enmienda** (owner, 2026-10-26): su requisito 4 decía que activar un cliente exige agente publicado, canal que conversa y saldo. Ahora no se activa el cliente, que siempre está activo (requisito 4.7): se activa cada canal, y «A todos» exige agente publicado y saldo (requisito 32.8). Su tarea T011 no se construye. La enmienda está escrita también en la spec 046.
 - **KB**: `architecture/agent-isolation.md` gana la garantía 9, y se escribe `decisions/ADR-049-la-fabrica-de-agentes.md`.
 - **Spec 048, retirar AgendaPro** (2026-10-29): sale el conector AgendaPro y las herramientas `booking.*`; la agenda de todos los agentes es Reservas (`reservas.*`). Las guías del sector (requisito 58) salen de las plantillas ya pasadas a Reservas, así que la 048 va antes que las tareas de la guía (fase 27).
+- **Enmienda del 2026-11-04** (requisitos 66 y 67): el estudio de staging de ese día y la petición de Luis. Pendiente de su revisión; enmienda 21.1 y 61.8.
 - **Enmienda del 2026-10-29** (requisitos 57 a 64): la sustenta `research/2026-10-29-auditoria-del-constructor/_index.md` y la recoge ADR-049 §Enmiendas.
 - **Spec 016 H4**: el modelo del agente pasa a la versión.
 - **Spec 024**: la audiencia pasa al canal.

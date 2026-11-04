@@ -126,10 +126,11 @@ async def test_the_agent_is_born_with_its_first_draft_not_when_opening_the_scree
                 .where(AgentTestSuite.agent_id == agent_id, AgentTest.archived_at.is_(None))
             )
         ).all()
-    # 8 del caso y las 12 del sector de una barbería (21.1).
-    assert sum(1 for t in tests if t.kind == "case") == 8
+    # Requisito 66: como mucho 4 del caso y, con las críticas, 8 entre las dos.
+    assert sum(1 for t in tests if t.kind == "case") == 4
     sector = [t for t in tests if t.kind == "sector"]
-    assert len(sector) == 12
+    assert 0 < len(sector) <= 12
+    assert sum(1 for t in tests if not t.not_applicable_reason) <= 10
     assert all(t.sector_test_ref.startswith("barberia_peluqueria@1#") for t in sector)
     assert sum(1 for t in tests if t.critical and t.kind == "case") == 1
 
@@ -271,7 +272,7 @@ async def test_a_business_answer_goes_to_the_ficha_and_can_stay_in_this_agent_on
     draft = await _draft(db_session, biz.tenant_id, agent_id)
     assert draft.spec["voice"]["register"] == "usted"
     assert "Avisa con 24 horas." in draft.system_prompt_rendered
-    assert out["tests_stale"] == 20
+    assert out["tests_stale"] == 10
 
     # Con la política ya en la ficha, el constructor ya no la pregunta.
     body3, _agent3 = await _built(client, db_session, biz, fake_redis)
@@ -391,7 +392,7 @@ async def test_editing_a_block_marks_the_tests_not_run(
     got = await client.get(url, headers=biz.headers())
     assert got.status_code == 200, got.text
     draft = got.json()
-    assert draft["tests"] == {"total": 20, "stale": 0, "case": 8, "sector": 12}
+    assert draft["tests"] == {"total": 10, "stale": 0, "case": 4, "sector": 6}
     spec = draft["spec"]
     spec["rules"] = ["No ofrezcas descuentos.", "Pide siempre el nombre."]
     resp = await client.patch(
@@ -399,7 +400,7 @@ async def test_editing_a_block_marks_the_tests_not_run(
     )
     assert resp.status_code == 200, resp.text
     out = resp.json()
-    assert out["tests"]["stale"] == 20
+    assert out["tests"]["stale"] == 10
     assert "Pide siempre el nombre." in out["system_prompt"]
     assert out["revision"] == draft["revision"] + 1
     # Una herramienta que no existe no entra (15.4).

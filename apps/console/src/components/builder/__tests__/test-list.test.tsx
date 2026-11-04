@@ -52,12 +52,19 @@ const row = (name: string) => screen.getByRole("listitem", { name }) as HTMLElem
 
 beforeEach(() => toast.success.mockClear());
 
+/** Las que no aplican van plegadas (66.6). */
+function openNotApplicable() {
+  const folded = document.querySelector("[data-slot=tests-not-applicable]") as HTMLDetailsElement;
+  folded.open = true;
+}
+
 describe("la lista de pruebas (21.5)", () => {
   it("las agrupa por tipo y dice el estado de cada una, y pasa axe", async () => {
     const { container } = screenWith();
     expect(screen.getByRole("heading", { name: "Del caso · 3" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Del sector · 2" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Del sector · 1" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Añadidas por tu equipo · 1" })).toBeVisible();
+    openNotApplicable();
     expect(within(row("Pregunta el horario")).getByText("Pasa")).toBeVisible();
     expect(within(row("Reserva una cita")).getByText("Falla")).toBeVisible();
     expect(within(row("Reserva una cita")).getByText("Crítica")).toBeVisible();
@@ -69,7 +76,7 @@ describe("la lista de pruebas (21.5)", () => {
     expect(within(row("Pide cita para un perro")).getByText("No aplica: No atendemos mascotas")).toBeVisible();
     expect(within(row("Pregunta por la tarjeta regalo")).getByText("No sé")).toBeVisible();
     expect(screen.getByText("1 de 5 pasan")).toBeVisible();
-    expect(screen.queryByText(/El juez aún no decide/)).toBeNull();
+    expect(screen.queryByText(/El juez aún no está calibrado/)).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -181,7 +188,7 @@ describe("la lista de pruebas (21.5)", () => {
 
   it("sin el juez calibrado lo dice, y quien solo lee no ve botones", () => {
     screenWith({ suite: suite({ judge_calibrated: false, allowed: [] }), canWrite: false });
-    expect(screen.getByText("El juez aún no decide: solo cuenta el estado final.")).toBeVisible();
+    expect(screen.getByText("El juez aún no está calibrado: si ve un problema, la prueba queda en «No sé» en lugar de fallar.")).toBeVisible();
     expect(screen.queryByRole("button", { name: /Ejecutar/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /No aplica|Arreglar|Añadir/ })).toBeNull();
     // «Por qué falló» sí se ve: leer no es escribir.
@@ -215,6 +222,7 @@ describe("la lista de pruebas · solo lo que tenemos (65.8, 65.9)", () => {
 
   it("la que llega «No aplica» se ve así, con su razón y sin repetir «No aplica»", async () => {
     const { container } = screenWith({ suite: suite({ tests: AUTO }) });
+    openNotApplicable();
     const dog = row("Pide cita para un perro");
     expect(within(dog).getByText("No aplica")).toBeVisible();
     expect(within(dog).getByText("No aplica: este agente no tiene herramienta para reservar citas.")).toBeVisible();
@@ -269,5 +277,17 @@ describe("la lista de pruebas · solo lo que tenemos (65.8, 65.9)", () => {
     );
     expect(screen.getByRole("form", { name: "Añadir una prueba" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: /Nombre de la prueba/ })).toHaveFocus();
+  });
+});
+
+describe("la lista de pruebas · lo que se va a correr (66.6)", () => {
+  it("las que no aplican van aparte y plegadas, y «No sé» no se trata como un fallo", () => {
+    screenWith();
+    const folded = document.querySelector("[data-slot=tests-not-applicable]") as HTMLDetailsElement;
+    expect(folded.open).toBe(false);
+    expect(within(folded).getByText("1 no aplica a este agente")).toBeInTheDocument();
+    const undecided = row("Pregunta por la tarjeta regalo");
+    expect(within(undecided).getByText("Por qué no se decidió")).toBeInTheDocument();
+    expect(within(undecided).queryByRole("button", { name: /Arreglar/ })).toBeNull();
   });
 });

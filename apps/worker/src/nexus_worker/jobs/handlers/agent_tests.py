@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -95,7 +95,8 @@ MODEL_UNAVAILABLE = "model_unavailable"
 #: Cuántas pasadas a la vez dentro del lote del cliente.
 PARALLEL = 4
 
-Judge = Callable[[list[dict[str, str]]], Awaitable[str]]
+#: ``model``: solo cuando el configurado es el que respondió (:func:`_judge_for`).
+Judge = Callable[..., Awaitable[str]]
 JudgeFactory = Callable[[uuid.UUID], Judge | None]
 CustomerFactory = Callable[[uuid.UUID], Customer | None]
 
@@ -107,6 +108,23 @@ def judge_model() -> str:
     return platform_model("judge")
 
 
+def _judge_for(configured: str | None, responding: Sequence[str]) -> str | None:
+    """El juez de esta conversación: el configurado o, si ese respondió en ella, el
+    primer modelo de la plataforma que no lo hizo (61.5). Saltarse el juez dejaría la
+    prueba en «No sé» pagando la conversación. Sin salida, el configurado (y se avisa)."""
+    if configured is None or configured not in set(responding):
+        return configured
+    from nexus_worker.config import get_worker_settings
+
+    settings = get_worker_settings()
+    others = (
+        settings.llm_simulation_model,
+        settings.llm_classify_model,
+        settings.llm_respond_model,
+    )
+    return next((m for m in others if m and m not in set(responding)), configured)
+
+
 def default_judge(tenant_id: uuid.UUID) -> Judge | None:
     """El juez, de otra familia que el agente; sin él en local (en memoria)."""
     from nexus_worker.config import get_worker_settings
@@ -116,11 +134,11 @@ def default_judge(tenant_id: uuid.UUID) -> Judge | None:
     if settings.llm_use_inmemory:
         return None
     provider = LiteLLMProvider(context_management=None)
-    model = judge_model()
+    configured = judge_model()
 
-    async def judge(messages: list[dict[str, str]]) -> str:
+    async def judge(messages: list[dict[str, str]], *, model: str | None = None) -> str:
         return await provider.acomplete(
-            tenant_id=tenant_id, role="judge", model=model, messages=messages
+            tenant_id=tenant_id, role="judge", model=model or configured, messages=messages
         )
 
     return judge
@@ -221,21 +239,21 @@ async def _decide(
             await note_model_failure(ctx.tenant_id, talk.failure)
         return None, talk.failure.why, []
     state_ok, checked = judge_service.check_state(test.expected_state or {}, state)
-    said = judge_warnings(judge_model=judge_name, responding=talk.responding)
+    chosen = _judge_for(judge_name, talk.responding)
+    said = judge_warnings(judge_model=chosen, responding=talk.responding)
     if warnings is not None:
         warnings.update(said)
     verdict: judge_service.JudgeResult | None = None
     judge_down: Exception | None = None
     # 61.5: el juez no es el modelo que respondió; si lo es, su veredicto no cuenta.
     if judge is not None and test.criteria and "judge_same_model" not in said:
+        messages = judge_service.judge_messages(
+            criteria=test.criteria,
+            transcript=talk.transcript,
+            actions=[a.phrase for a in world.actions],
+        )
         try:
-            raw = await judge(
-                judge_service.judge_messages(
-                    criteria=test.criteria,
-                    transcript=talk.transcript,
-                    actions=[a.phrase for a in world.actions],
-                )
-            )
+            raw = await (judge(messages) if chosen == judge_name else judge(messages, model=chosen))
         except Exception as exc:
             judge_down = exc
         else:
@@ -253,6 +271,9 @@ async def _decide(
     if verdict is not None:
         reasons += [f"{d.key}: {d.why}" for d in verdict.dimensions if d.verdict == "fail"]
     explanation = "Se comprobó " + "; ".join(reasons) if passed is False and reasons else None
+    if passed is None and reasons:
+        # Sin calibrar, el juez no tumba la pasada; lo que vio se dice igual (66.6).
+        explanation = "El juez no lo dio por bueno: " + "; ".join(reasons)
     if talk.stop == "turn_limit":
         # 61.3: el tope sin cumplir el plan es un fallo, con ese motivo.
         passed = False

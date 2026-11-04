@@ -78,6 +78,7 @@ export const agentProtoMessages = {
   "agentProto.tests.again": { es: "Repetir", en: "Run again" },
   "agentProto.tests.progress": { es: "Avance de las pruebas", en: "Test progress" },
   "agentProto.tests.fail.title": { es: "Falla «{name}»", en: "“{name}” fails" },
+  "agentProto.tests.undecided.title": { es: "Sin decidir: «{name}»", en: "Undecided: “{name}”" },
   "agentProto.tests.fail.more.one": { es: "Y 1 más sin pasar.", en: "And 1 more not passing." },
   "agentProto.tests.fail.more.other": { es: "Y {n} más sin pasar.", en: "And {n} more not passing." },
   "agentProto.tests.allPass": { es: "Todas pasan.", en: "All pass." },
@@ -96,8 +97,8 @@ export const agentProtoMessages = {
   "agentProto.chat.now": { es: "Hora simulada: {time}", en: "Simulated time: {time}" },
 
   // ── La barra flotante (§4.5) ────────────────────────────────────────────
-  "agentProto.bar.undecided.one": { es: "{n} de {total} pruebas sin decidir · el juez todavía no decide", en: "{n} of {total} tests undecided · the judge does not decide yet" },
-  "agentProto.bar.undecided.other": { es: "{n} de {total} pruebas sin decidir · el juez todavía no decide", en: "{n} of {total} tests undecided · the judge does not decide yet" },
+  "agentProto.bar.undecided.one": { es: "{n} de {total} pruebas sin decidir · el juez vio algo que revisar", en: "{n} of {total} tests undecided · the judge saw something to review" },
+  "agentProto.bar.undecided.other": { es: "{n} de {total} pruebas sin decidir · el juez vio algo que revisar", en: "{n} of {total} tests undecided · the judge saw something to review" },
   "agentProto.bar.failing.one": { es: "{n} de {total} pruebas falla · tiene «Arreglar» en Pruebas", en: "{n} of {total} tests fails · “Fix” is in Tests" },
   "agentProto.bar.failing.other": { es: "{n} de {total} pruebas fallan · tienen «Arreglar» en Pruebas", en: "{n} of {total} tests fail · “Fix” is in Tests" },
   "agentProto.bar.running": { es: "Ejecutando pruebas…", en: "Running tests…" },

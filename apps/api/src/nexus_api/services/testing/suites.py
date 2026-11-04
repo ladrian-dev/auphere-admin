@@ -2,10 +2,11 @@
 
 Cada agente tiene una suite con tres tipos de prueba:
 
-- **del caso** (``case``): las genera el constructor desde la descripción, 8 por
-  defecto;
-- **del sector** (``sector``): las 12 de la batería común de su nicho
-  (``sector_test_catalog``), cada una con ``sector@versión#clave``;
+- **del caso** (``case``): las genera el constructor desde la descripción, como mucho
+  4, de lo específico de ese agente (requisito 66);
+- **del sector** (``sector``): de la batería de 12 de su nicho
+  (``sector_test_catalog``), cada una con ``sector@versión#clave``: las críticas que
+  aplican y, hasta 8 entre las dos, las demás (``sector_catalog.reconcile_suite``);
 - **añadidas** (``person``, ``conversation``, ``correction``): por personas, o
   desde conversaciones y correcciones.
 

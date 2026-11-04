@@ -64,12 +64,17 @@ def _subset(expected: Any, actual: Any, path: str, checked: list[str]) -> bool:
 _ADVISORY: Final = frozenset({"answered_from"})
 
 
+def firm_state(expected: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Lo que de verdad se comprueba de un estado esperado."""
+    return {k: v for k, v in (expected or {}).items() if k not in _ADVISORY}
+
+
 def check_state(
     expected: Mapping[str, Any], final: Mapping[str, Any]
 ) -> tuple[bool | None, list[str]]:
     """``(None, [])`` si la prueba no espera ningún estado; si no, si se cumple
     y lo que se comprobó, en palabras."""
-    wanted = {k: v for k, v in (expected or {}).items() if k not in _ADVISORY}
+    wanted = firm_state(expected)
     if not wanted:
         return None, []
     checked: list[str] = []

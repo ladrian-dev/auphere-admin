@@ -239,6 +239,8 @@ async def edit_test(
     if body.criteria is not None:
         test.criteria = [c.model_dump() for c in body.criteria]
         test.stale = True
+    # Requisito 66.3: desde aquí es de una persona; el sistema ya no la archiva ni la marca.
+    test.created_by_kind = "partner_member"
     await bump(scope.session, suite)
     await scope.session.flush()
     return await _suite_out(scope)
@@ -275,19 +277,40 @@ async def start_run(
         if agent is None or agent.tenant_id != mapping.tenant_id or agent.status != "active":
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent")
         suite = await ensure_suite(session, agent_id)
+        from nexus_api.services.testing.sector_catalog import reconcile_suite
         from nexus_api.services.testing.suites import list_tests
 
+        # Requisito 66: lo que se va a pagar es la suite de las herramientas de hoy. Una
+        # estimación la cuenta igual y lo deshace: no escribe nada.
+        target = await runs_service.target_version(session, agent_id)
+        trial = await session.begin_nested() if body.dry_run else None
+        if target is not None:
+            await reconcile_suite(session, suite, tools=list(target.tools or []))
         tests = await list_tests(session, suite)
         chosen = runs_service.tests_in_scope(tests, scope=body.scope, test_id=body.test_id)
+        if trial is not None:
+            await trial.rollback()
         if not chosen:
             raise _error("nothing_to_run", status.HTTP_409_CONFLICT)
-        if await runs_service.target_version(session, agent_id) is None:
+        if target is None:
             raise _error("no_version", status.HTTP_409_CONFLICT)
         if body.dry_run:
             from nexus_api.services.testing.estimate import estimate_for_agent
+            from nexus_api.services.wallet.build_budget import read_for_partner
 
             estimate = await estimate_for_agent(session, agent_id, tests=len(chosen))
-            return JSONResponse({"tests": len(chosen), **estimate.out()})
+            room = await read_for_partner(principal.partner.id)
+            return JSONResponse(
+                {
+                    "tests": len(chosen),
+                    **estimate.out(),
+                    "budget": (
+                        {"remaining_micros": room.remaining_micros, "state": room.state}
+                        if room is not None
+                        else None
+                    ),
+                }
+            )
         live = await runs_service.live_run(session, agent_id)
         if live is not None and live.job_id is not None:
             if live.reason == "publish":

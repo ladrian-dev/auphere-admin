@@ -44,7 +44,7 @@ export type TestRun = {
   error: string | null;
   canRun: boolean;
   run: (scope?: TestRunScope) => Promise<void>;
-  /** «Ejecutar»: primero dice cuánto costará y `confirm` pregunta. */
+  /** «Ejecutar»: arranca, salvo que no quepa en la partida; entonces `confirm` pregunta. */
   ask: (scope?: TestRunScope) => Promise<void>;
   confirm: React.ReactNode;
   reload: () => Promise<void>;
@@ -207,7 +207,9 @@ export function TestsBox({
         : t("agentProto.tests.state.done", { passed: state.passed, total: state.counted });
   // La que falla y tiene su resultado al día; las críticas primero.
   const failing = running ? [] : suite.tests.filter((x) => isFailing(x.status) && !x.stale).sort((a, b) => Number(b.critical) - Number(a.critical));
-  const first = failing[0];
+  // Lo que falla va antes que lo que no se pudo decidir, que no es un fallo del agente (66.6).
+  const first = failing.find((x) => x.status !== "unknown") ?? failing[0];
+  const undecided = first?.status === "unknown";
   const conversation = first ? failedConversation(first) : null;
 
   return (
@@ -244,9 +246,9 @@ export function TestsBox({
       ) : null}
 
       {first ? (
-        <div role="alert" className="mx-4 mb-4 grid min-w-0 gap-2 rounded-md bg-status-danger-bg p-3 text-sm" data-slot="tests-fail">
-          <p className="text-sm font-medium text-pretty break-words">{t("agentProto.tests.fail.title", { name: first.name })}</p>
-          <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{first.why_failed || t("builder.suite.why.none")}</p>
+        <div role="alert" className={`mx-4 mb-4 grid min-w-0 gap-2 rounded-md p-3 text-sm ${undecided ? "bg-muted" : "bg-status-danger-bg"}`} data-slot="tests-fail">
+          <p className="text-sm font-medium text-pretty break-words">{t(undecided ? "agentProto.tests.undecided.title" : "agentProto.tests.fail.title", { name: first.name })}</p>
+          <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{first.why_failed || t(undecided ? "builder.suite.why.undecided.none" : "builder.suite.why.none")}</p>
           {conversation ? (
             // Enmienda del 2026-10-29 (61.6): la conversación con el cliente simulado, turno a turno.
             <details className="min-w-0" data-slot="tests-fail-conversation">
@@ -263,10 +265,12 @@ export function TestsBox({
           ) : null}
           {canWrite ? (
             <div className="flex min-w-0 flex-wrap gap-2">
-              <Button size="sm" onClick={() => onFix(first)} aria-label={t("builder.suite.fix.label", { name: first.name })}>
-                <Wrench aria-hidden="true" />
-                {t("builder.suite.fix")}
-              </Button>
+              {undecided ? null : (
+                <Button size="sm" onClick={() => onFix(first)} aria-label={t("builder.suite.fix.label", { name: first.name })}>
+                  <Wrench aria-hidden="true" />
+                  {t("builder.suite.fix")}
+                </Button>
+              )}
               {onWhy ? (
                 <Button size="sm" variant="outline" onClick={() => onWhy(first)} aria-label={t("builder.copilot.why.test", { name: first.name })}>
                   {t("builder.copilot.why")}

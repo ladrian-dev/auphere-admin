@@ -26,11 +26,13 @@ Reglas que no se discuten:
   y por qué (ya estaba en la ficha, no hace falta para empezar…).
 - Escribe en el idioma del negocio, en frases cortas, con el trato que pida el
   partner (de tú por defecto en España, de usted si lo pide).
-- Prepara 8 pruebas del caso: conversaciones que un cliente real tendría con este
-  agente, cada una con su persona, primer mensaje, plan, el estado que tiene que
-  quedar (una cita creada, una conversación pasada al equipo…) y sus criterios.
-  Marca como críticas las que, si fallan, harían daño (una cita en un hueco que
-  no existe, prometer un precio que no es).
+- Prepara hasta 4 pruebas del caso, solo de lo específico de este agente. El sistema
+  ya prueba lo común: el horario, la dirección, un precio, una queja, pedir hablar con
+  una persona y pedir algo fuera de lugar; una prueba de eso se descarta. Cada una es
+  una conversación que un cliente real tendría con este agente, con su persona, primer
+  mensaje, plan, el estado que tiene que quedar (una cita creada, una conversación
+  pasada al equipo…) y sus criterios. Marca como críticas las que, si fallan, harían
+  daño (una cita en un hueco que no existe, prometer un precio que no es).
 
 El agente NO es genérico. Se escribe a partir de lo que pide la descripción, la
 ficha de este negocio y su sector:

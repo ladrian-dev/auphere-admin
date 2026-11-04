@@ -28,7 +28,11 @@ def test_the_deployment_decides_each_model(task: str, monkeypatch: pytest.Monkey
     env, family = PLATFORM_MODELS[task]
     monkeypatch.delenv(env, raising=False)
     settings = get_worker_settings()
-    expected = settings.llm_respond_model if family == "respond" else settings.llm_classify_model
+    expected = {
+        "respond": settings.llm_respond_model,
+        "classify": settings.llm_classify_model,
+        "simulation": settings.llm_simulation_model,
+    }[family]
     assert platform_model(task) == expected
     monkeypatch.setenv(env, "anthropic/claude-haiku-5-5")
     assert platform_model(task) == "anthropic/claude-haiku-5-5"
@@ -43,6 +47,17 @@ def test_the_handlers_ask_the_platform_table(monkeypatch: pytest.MonkeyPatch) ->
     assert client_read.read_source_model() == platform_model("read_source")
     assert sector_identify.sector_model() == platform_model("sector")
     assert agent_tests.judge_model() == platform_model("judge")
+
+
+@pytest.mark.parametrize("task", ["customer_sim", "judge"])
+def test_the_simulation_does_not_use_the_model_it_tests(
+    task: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Con el juez en el modelo de responder, su veredicto no cuenta y las pruebas sin
+    estado final se quedan en «No sé» para siempre (staging, 2026-11-04: 11 de 17)."""
+    env, _family = PLATFORM_MODELS[task]
+    monkeypatch.delenv(env, raising=False)
+    assert platform_model(task) != get_worker_settings().llm_respond_model
 
 
 def test_an_unknown_task_is_an_error() -> None:

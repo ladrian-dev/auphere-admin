@@ -23,6 +23,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from nexus_api.api.console.capability_names import actions_of
 from nexus_api.services.business.hours import Hours, Shift, SpecialDay, Week, intervals_on
 
 #: Cada cuánto se ofrecen huecos si el servicio no dice su duración.
@@ -209,8 +210,16 @@ class World:
             (str(a.args.get("reason")) for a in reversed(handoffs) if a.args.get("reason")),
             None,
         )
+        # Un conector de calendario (Google Calendar, Calendly) no toca la agenda
+        # simulada: su cita es la acción que dejó apuntada (65.5).
+        elsewhere = [
+            a
+            for a in self.actions
+            if "book" in actions_of((a.tool,)) and not a.tool.startswith("reservas.")
+        ]
+        booked = len(confirmed) + len(elsewhere)
         state: dict[str, Any] = {
-            "booking": {"created": bool(confirmed), "count": len(confirmed), "items": items},
+            "booking": {"created": booked > 0, "count": booked, "items": items},
             "escalated": self.escalated,
             "actions": [a.tool for a in self.actions],
             "payment": {"requested": any(a.tool.startswith("payments.") for a in self.actions)},
