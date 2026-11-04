@@ -412,7 +412,7 @@ requisitos 1 y 2.
   convierte en la plantilla al dueño (hasta que la ola 4 traiga los
   destinatarios por canal) y, si el canal tiene `config.wait_message`, ese
   mensaje como mucho una vez cada 6 h por conversación. Sin saldo, además, los
-  avisos de hoy al partner y al cliente (uno por cliente y día).
+  avisos de hoy al partner y al cliente (uno por cliente, hasta que recupere saldo).
 - **Un turno por ráfaga y uno a la vez**: cada entrante programa el turno de su
   conversación a +3 s (`NEXUS_RUNNER_COALESCE_WINDOW_MS`) en una cola diferida de
   Redis; el turno toma con el candado de la base todos los mensajes sin

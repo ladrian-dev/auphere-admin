@@ -7,8 +7,10 @@ silencio en algo que alguien ve.
 
 from __future__ import annotations
 
+import importlib.util
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -440,7 +442,103 @@ async def _mapped_client(db_session, partner: Partner, name: str, *, cap: int, r
     return tenant_id, ref
 
 
-async def test_out_of_quota_notice_is_once_per_client_and_day_and_emails(db_session, mails) -> None:
+async def test_out_of_quota_is_said_once_until_the_client_recovers(db_session, mails) -> None:
+    """Enmienda del 2026-11-03: el cron no repite cada día a un cliente sin saldo
+    y, cuando lo recupera, un segundo agotamiento vuelve a avisar."""
+    partner = await _partner(db_session, available=CAP)
+    tenant_id, ref = await _mapped_client(db_session, partner, "vuelve", cap=50_000, remaining=0)
+
+    async def _sent_notices() -> int:
+        found = await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(ConsoleNotification)
+            .where(
+                ConsoleNotification.partner_id == partner.id,
+                ConsoleNotification.kind == "client.out_of_quota",
+            )
+        )
+        # El evaluador, como el cron, empieza sin transacción abierta.
+        await db_session.commit()
+        return int(found or 0)
+
+    async def _set_remaining(remaining: int) -> None:
+        await db_session.execute(
+            sa.update(PartnerAllocation)
+            .where(PartnerAllocation.tenant_id == tenant_id)
+            .values(remaining=remaining)
+        )
+        await db_session.commit()
+
+    tomorrow = datetime.now(UTC) + timedelta(days=1)
+    assert await notify_client_out_of_quota_detached(tenant_id) is not None
+    assert await _sent_notices() == 1
+
+    await evaluate_partner_wallet_alerts(db_session, partner, now=tomorrow)
+    assert await _sent_notices() == 1, "al día siguiente sigue sin saldo: no se repite"
+
+    await _set_remaining(10)
+    await evaluate_partner_wallet_alerts(db_session, partner, now=tomorrow)
+    assert await _sent_notices() == 1, "con saldo, nada que avisar"
+
+    await _set_remaining(0)
+    await evaluate_partner_wallet_alerts(db_session, partner, now=tomorrow)
+    assert await _sent_notices() == 2, "recuperó saldo y lo volvió a agotar"
+    assert ref
+
+
+async def test_the_rollout_does_not_repeat_a_notice_already_sent(db_session) -> None:
+    """La migración 0216 traslada el último aviso con fecha a la clave sin fecha:
+    quien sigue sin saldo no recibe otro correo al desplegar."""
+    path = Path(__file__).parents[2] / "alembic" / "versions" / "0216_out_of_balance_notice_once.py"
+    spec = importlib.util.spec_from_file_location("migration_0216", path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    partner = await _partner(db_session, available=CAP)
+    key = f"partner:{partner.id}:client.out_of_quota:viejo"
+    for day in ("2026-11-02", "2026-11-03"):
+        db_session.add(
+            ConsoleNotification(
+                id=uuid.uuid4(),
+                partner_id=partner.id,
+                kind="client.out_of_quota",
+                severity=NotificationSeverity.WARNING.value,
+                external_client_ref="viejo",
+                payload={},
+                dedupe_key=f"{key}:{day}",
+                created_at=datetime.fromisoformat(f"{day}T00:06:00+00:00"),
+            )
+        )
+    other = f"partner:{partner.id}:wallet:80:2026-11-03"
+    db_session.add(
+        ConsoleNotification(
+            id=uuid.uuid4(),
+            partner_id=partner.id,
+            kind="partner.wallet.low",
+            severity=NotificationSeverity.WARNING.value,
+            payload={},
+            dedupe_key=other,
+        )
+    )
+    await db_session.commit()
+
+    await db_session.execute(sa.text(migration.CARRY_LATEST_NOTICE))
+    await db_session.commit()
+
+    keys = set(
+        (
+            await db_session.scalars(
+                sa.select(ConsoleNotification.dedupe_key).where(
+                    ConsoleNotification.partner_id == partner.id
+                )
+            )
+        ).all()
+    )
+    assert keys == {key, f"{key}:2026-11-02", other}
+
+
+async def test_out_of_quota_notice_is_once_per_client_and_emails(db_session, mails) -> None:
     partner = await _partner(db_session, available=CAP)
     partner.usage_alert_recipients = ["ops@example.com"]
     await db_session.commit()
@@ -453,9 +551,7 @@ async def test_out_of_quota_notice_is_once_per_client_and_day_and_emails(db_sess
     assert row.severity == NotificationSeverity.WARNING.value
     assert row.external_client_ref == ref
     assert row.payload == {"external_client_ref": ref, "remaining": 0}
-    assert row.dedupe_key == (
-        f"partner:{partner.id}:client.out_of_quota:{ref}:{datetime.now(UTC):%Y-%m-%d}"
-    )
+    assert row.dedupe_key == f"partner:{partner.id}:client.out_of_quota:{ref}"
     assert len(sent) == 1
     mail = sent[0]
     assert mail["kind"] is EmailKind.CLIENT_OUT_OF_QUOTA
@@ -470,7 +566,7 @@ async def test_out_of_quota_notice_is_once_per_client_and_day_and_emails(db_sess
     assert variables["USAGE_URL"].endswith("/usage")
     assert mail["compose"]("en")[0] == "agotado has run out of balance"
 
-    # Un segundo turno saltado el mismo día no crea otro aviso ni otro correo.
+    # Otro turno saltado, sin haber recuperado saldo, no crea otro aviso ni otro correo.
     assert await notify_client_out_of_quota_detached(tenant_id) is None
     count = await db_session.scalar(
         sa.select(sa.func.count())

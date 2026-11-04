@@ -38,7 +38,7 @@ Los provoca siempre una persona, a propósito. Lo que staging **no** envía es l
 
 **La clave de Resend ya no decide si se envía; decide el modo.** Staging tenía la clave en su secreto y escribía a personas reales desde el dominio de producción. Quitar la clave lo habría apagado del todo, en silencio, y el día que alguien la volviera a poner habría vuelto a escribirlo todo. Staging **necesita** la clave para los correos de acceso.
 
-**Para probar en staging una plantilla que no es de acceso**, se pone `NEXUS_EMAIL_DELIVERY=resend` y se despliega. El arranque lo deja escrito como `warning` (`email.delivery_mode` con `real_email_outside_production=true`), para que se encuentre y se quite. `NEXUS_EMAIL_DELIVERY=log` apaga también los de acceso.
+**Para probar en staging una plantilla que no es de acceso**, se pone `NEXUS_EMAIL_DELIVERY=resend`. No basta con desplegar: la variable no está en ninguna definición de tarea, así que hay que añadirla en el bloque de staging de `common_env` (`infra/terraform/20-services/taskdefs.tf`) y aplicar Terraform. El arranque lo deja escrito como `warning` (`email.delivery_mode` con `real_email_outside_production=true`), para que se encuentre y se quite. `NEXUS_EMAIL_DELIVERY=log` apaga también los de acceso.
 
 ---
 
@@ -71,7 +71,7 @@ Cómo se comportan:
 
 Un tipo nuevo necesita su línea en `platform_alert_kinds`; `apps/worker/tests/unit/test_platform_alarms_contract.py` falla si falta.
 
-**Estado a 2026-11-03:** escritas en Terraform y sin aplicar. Hay que aplicarlas en producción antes de fusionar la spec 051 en `main` (CE-006); hasta entonces, el aviso sigue siendo el correo de Resend de producción.
+**Estado a 2026-11-03:** aplicadas en staging, donde no envían nada. Sin aplicar en producción: hay que aplicarlas allí al pasar la spec 051 a `main` (CE-006); hasta entonces, el aviso sigue siendo el correo de Resend de producción.
 
 **Datadog no está montado.** La propuesta del 30 de octubre no consta aprobada, y en la cuenta de AWS no hay ningún filtro de suscripción, rol ni recurso suyo. Si se aprueba, será otra spec.
 

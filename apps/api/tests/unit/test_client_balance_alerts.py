@@ -16,6 +16,7 @@ con los días que le quedan. Lo que fija este archivo:
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -122,9 +123,38 @@ async def test_out_of_quota_tells_the_client_too(db_session, console_world, mail
     assert mail["variables"]["CONSOLE_URL"].endswith("/")
     assert mail["client_ref"] == w["ref"] and mail["tenant_id"] == w["tenant_id"]
 
-    # Una vez al día.
+    # Una sola vez mientras siga sin saldo.
     await wallet_alerts.notify_client_out_of_quota_detached(w["tenant_id"])
     assert len(await _rows(db_session, w["partner_id"], "client.balance_out")) == 1
+
+
+async def test_out_of_balance_is_said_once_until_it_recovers(
+    db_session, console_world, mails
+) -> None:
+    """Enmienda del 2026-11-03: ni el cron de mañana lo repite, ni se queda callado
+    si el cliente recupera saldo y lo vuelve a agotar."""
+    w = console_world["a"]
+    await make_client_access(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    await add_client_member(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    await _fund(db_session, w["partner_id"], 5_000_000)
+    await _allocation(db_session, w["tenant_id"], cap=5000, remaining=0)
+    await wallet_alerts.notify_client_out_of_quota_detached(w["tenant_id"])
+    assert len(await _rows(db_session, w["partner_id"], "client.balance_out")) == 1
+    await db_session.commit()
+
+    tomorrow = datetime.now(UTC) + timedelta(days=1)
+    await wallet_alerts.evaluate_client_balance_alerts(db_session, w["partner_id"], now=tomorrow)
+    assert len(await _rows(db_session, w["partner_id"], "client.balance_out")) == 1
+    await db_session.commit()
+
+    await _allocation(db_session, w["tenant_id"], cap=500_000, remaining=400_000)
+    await wallet_alerts.evaluate_client_balance_alerts(db_session, w["partner_id"], now=tomorrow)
+    assert len(await _rows(db_session, w["partner_id"], "client.balance_out")) == 1
+    await db_session.commit()
+
+    await _allocation(db_session, w["tenant_id"], cap=500_000, remaining=0)
+    await wallet_alerts.evaluate_client_balance_alerts(db_session, w["partner_id"], now=tomorrow)
+    assert len(await _rows(db_session, w["partner_id"], "client.balance_out")) == 2
 
 
 async def test_without_lite_access_only_the_partner_hears(db_session, console_world, mails) -> None:

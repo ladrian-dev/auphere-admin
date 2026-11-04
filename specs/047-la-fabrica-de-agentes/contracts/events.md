@@ -96,7 +96,7 @@ Columnas: tipo · gravedad · a quién · por dónde · deduplicación · enlace
 |---|---|---|---|---|---|
 | `client.wallet.low` | Aviso | Partner y cliente | Campana, correo, push | 1 al mes por cliente; se rearma al subir | Asignar saldo (partner) / Consumo (cliente) |
 | `client.wallet.not_enough` | Aviso | Partner y cliente | Campana, correo, push | 1 al mes por cliente | Ídem |
-| `client.wallet.empty` | Crítico | Partner y cliente | Campana, correo, push | 1 al día por cliente | Ídem |
+| `client.wallet.empty` | Crítico | Partner y cliente | Campana, correo, push | 1 por cliente hasta que recupere saldo (enmienda del 2026-11-03) | Ídem |
 | `client.wallet.refill_short` | Aviso | Partner | Campana, correo | 1 al mes | Consumo |
 | `client.balance_request` | Aviso | Owners y admins | Campana, correo | 1 al día por cliente | Modal «Asignar saldo» |
 | `agent.cap.warning` | Aviso | Partner y cliente | Campana, correo, push | 1 al mes por agente | Tope del agente |

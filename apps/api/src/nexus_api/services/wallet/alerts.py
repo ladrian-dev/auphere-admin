@@ -7,7 +7,8 @@
   empezar el mes más lo asignado en el mes). Una vez al mes; se puede apagar.
 - «No llega a fin de mes» (``not_enough``): al ritmo de los últimos 7 días no
   llega. Una vez al mes. Con menos de 3 días de consumo no se estima.
-- «Agotada» (``empty``): saldo cero. Una vez al día.
+- «Agotada» (``empty``): saldo cero. Una sola vez, hasta que recupere saldo
+  (enmienda del owner, 2026-11-03).
 - Se **rearman** al subir el saldo (asignar, rellenar, mover hacia ella).
 
 **El tope del agente** (``agent.cap.*``, mensual UTC, en la moneda de la bolsa):
@@ -104,7 +105,7 @@ async def evaluate_bag(
     out: list[Alert] = []
     state = await bag_state(session, bag, today)
     base = {"balance_micros": bag.balance_micros, "currency": bag.currency}
-    if state == "empty" and bag.empty_alerted_on != today:
+    if state == "empty" and bag.empty_alerted_on is None:
         bag.empty_alerted_on = today
         out.append(Alert("client.wallet.empty", "critical", bag.tenant_id, base))
     elif state == "low" and bag.alert_low_enabled and bag.low_alerted_month != month:
@@ -182,7 +183,13 @@ async def announce(alerts: list[Alert]) -> None:
     from nexus_api.services.channel_config import announce as tell
 
     for alert in alerts:
-        dedupe = f"{alert.kind}:{alert.tenant_id}:{datetime.now(UTC).date().isoformat()}"
+        # «Agotada» ya la limita ``empty_alerted_on``: una clave con fecha callaría
+        # un segundo agotamiento del mismo día, tras haber recuperado saldo.
+        dedupe = (
+            None
+            if alert.kind == "client.wallet.empty"
+            else f"{alert.kind}:{alert.tenant_id}:{datetime.now(UTC).date().isoformat()}"
+        )
         # La bolsa y el tope del agente: al partner y a las personas del cliente
         # (events.md §3, campana, correo y push).
         await tell(
