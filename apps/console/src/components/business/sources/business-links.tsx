@@ -101,7 +101,7 @@ export function BusinessLinks({
   /** Dentro de la tarjeta de Negocio, que ya pone el título. */
   bare?: boolean;
   save?: (body: { ref: string; revision: number; links: ReturnType<typeof linksFrom> }) => Promise<Result<{ links: LinkItem[]; revision: number }>>;
-  onSaved?: (revision: number) => void;
+  onSaved?: (revision: number, links: readonly LinkItem[]) => void;
 }) {
   const t = useT();
   const [rows, setRows] = React.useState<LinkRow[]>(() => rowsFrom(links));
@@ -133,7 +133,7 @@ export function BusinessLinks({
       setRows(rowsFrom(res.data.links));
       setRev(res.data.revision);
       toast.success(t("business.socials.saved"));
-      onSaved?.(res.data.revision);
+      onSaved?.(res.data.revision, res.data.links);
     });
   }
 

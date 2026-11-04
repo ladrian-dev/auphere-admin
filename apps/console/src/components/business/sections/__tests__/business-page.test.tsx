@@ -138,7 +138,7 @@ describe("BusinessSectionsView", () => {
     page({
       sources: ok({ items: [], removed: [], max_bytes: 10_000_000, allowed: ["add"] }),
       record: ok({
-        spec: { links: [{ id: "l1", network: "instagram", url: null, handle: "cultorbarber" }] },
+        spec: { links: [{ network: "instagram", handle: "cultorbarber" }] },
         valid: true,
         problems: [],
         sections: [{ section: "links", state: "complete", revision: 3, updated_at: null, updated_by: null, origin: null, pending_suggestions: 0 }],
@@ -158,6 +158,55 @@ describe("BusinessSectionsView", () => {
     ]);
     expect(screen.getByRole("region", { name: "Documentos y webs" })).toBeVisible();
     expect(within(screen.getByRole("region", { name: "Redes sociales" })).getByDisplayValue("cultorbarber")).toBeVisible();
+  });
+
+  it("shows the saved networks as the API sends them: no id, and only their url or their handle", () => {
+    page({
+      record: ok({
+        spec: {
+          links: [
+            { network: "web", url: "https://cultorbarber.com" },
+            { network: "instagram", handle: "cultorbarber" },
+            { network: "linkedin", url: "https://www.linkedin.com/company/cultor" },
+          ],
+        },
+        valid: true,
+        problems: [],
+        sections: [{ section: "links", state: "complete", revision: 3, updated_at: null, updated_by: null, origin: null, pending_suggestions: 0 }],
+        provenance: {},
+        suggestions: [],
+        allowed: ["edit"],
+      }),
+    });
+    const links = within(screen.getByRole("region", { name: "Redes sociales" }));
+    expect(links.getByLabelText("Usuario en Instagram")).toHaveValue("cultorbarber");
+    expect(links.getByDisplayValue("https://cultorbarber.com")).toBeVisible();
+    expect(links.getByDisplayValue("cultor")).toBeVisible();
+  });
+
+  it("saving the networks takes the «Falta» off at once", async () => {
+    const { putLinksAction } = await import("@/app/(console)/clients/[ref]/client-v2-actions");
+    vi.mocked(putLinksAction).mockResolvedValueOnce({
+      ok: true,
+      data: { revision: 1, links: [{ id: "l1", network: "instagram", url: null, handle: "cultorbarber" }] },
+    });
+    page({
+      record: ok({
+        spec: { links: [] },
+        valid: true,
+        problems: [],
+        sections: [{ section: "links", state: "pending", revision: 0, updated_at: null, updated_by: null, origin: null, pending_suggestions: 0 }],
+        provenance: {},
+        suggestions: [],
+        allowed: ["edit"],
+      }),
+    });
+    const links = within(screen.getByRole("region", { name: "Redes sociales" }));
+    expect(links.getByText("Falta")).toBeVisible();
+    await userEvent.type(links.getByLabelText("Usuario en Instagram"), "cultorbarber");
+    await userEvent.click(links.getByRole("button", { name: "Guardar redes" }));
+    expect(putLinksAction).toHaveBeenCalledWith({ ref: "barberia-cultor", revision: 0, links: [{ network: "instagram", handle: "cultorbarber" }] });
+    await vi.waitFor(() => expect(links.queryByText("Falta")).toBeNull());
   });
 
   it("the index scrolls sideways on a phone without widening the page", () => {

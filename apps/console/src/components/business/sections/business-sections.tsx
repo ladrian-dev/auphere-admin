@@ -50,11 +50,19 @@ const ORDER: readonly { key: Key; id: string; title: MessageKey; api?: Reloadabl
   { key: "links", id: "business-links", title: "business.socials.section" },
 ];
 
-/** Las redes guardadas, como las devuelve `GET /business` (`spec.links`). */
+/**
+ * Las redes guardadas, como las devuelve `GET /business` (`spec.links`). Ese
+ * documento es portable y no lleva `id`, y cada enlace trae solo su `url` o su
+ * `handle`; aquí el `id` es solo la clave de la fila.
+ */
 function linksOf(record: BusinessRecord): LinkItem[] {
   const raw = record.spec.links;
   if (!Array.isArray(raw)) return [];
-  return raw.filter((l): l is LinkItem => typeof l === "object" && l !== null && typeof (l as LinkItem).id === "string" && typeof (l as LinkItem).network === "string");
+  return raw.flatMap((l, i) => {
+    if (typeof l !== "object" || l === null || typeof (l as LinkItem).network !== "string") return [];
+    const { network, url, handle } = l as LinkItem;
+    return [{ id: `saved-${i}`, network, url: url ?? null, handle: handle ?? null }];
+  });
 }
 
 /**
@@ -74,7 +82,7 @@ function linksOf(record: BusinessRecord): LinkItem[] {
 export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId: string; canWrite: boolean; data: BusinessData }) {
   const t = useT();
   const [data, setData] = React.useState(initial);
-  const [linksRevision, setLinksRevision] = React.useState<number | null>(null);
+  const [linksSaved, setLinksSaved] = React.useState<{ revision: number; filled: boolean } | null>(null);
   const [, startTransition] = React.useTransition();
   const locations = data.locations.ok ? data.locations.data.items : [];
   const record = data.record?.ok ? data.record.data : null;
@@ -103,7 +111,8 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
 
   function stateOf(key: Key): SectionState | null {
     if (key === "sources") return data.sources?.ok ? (data.sources.data.items.length ? "complete" : "pending") : stateIn("sources");
-    if (key === "links") return stateIn("links");
+    // Lo mismo que hace la API al guardar (`put_links`): con enlaces, completa.
+    if (key === "links") return linksSaved ? (linksSaved.filled ? "complete" : "pending") : stateIn("links");
     const entry = data[key];
     return entry?.ok ? entry.data.state : null;
   }
@@ -176,9 +185,9 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
             <BusinessLinks
               refId={refId}
               links={linksOf(record)}
-              revision={linksRevision ?? record.sections.find((x) => x.section === "links")?.revision ?? 0}
+              revision={linksSaved?.revision ?? record.sections.find((x) => x.section === "links")?.revision ?? 0}
               canWrite={canWrite}
-              onSaved={setLinksRevision}
+              onSaved={(revision, links) => setLinksSaved({ revision, filled: links.length > 0 })}
               bare
             />
           </SectionFrame>
