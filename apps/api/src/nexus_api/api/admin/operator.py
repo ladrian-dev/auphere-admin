@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
 from nexus_api.db.models import OperatorAccount
+from nexus_api.services import operator_identity
 
 
 async def require_operator(
@@ -43,6 +44,23 @@ async def require_operator(
             detail="X-Operator-Id must be an operator principal id",
         )
     return account
+
+
+async def require_enabled_operator(
+    operator: OperatorAccount = Depends(require_operator),
+) -> OperatorAccount:
+    """Lo mismo, y además habilitado: una cuenta deshabilitada no es un operador
+    válido (spec 052, R6.3). Misma respuesta que para quien no es operador.
+
+    ``require_operator`` se queda como está: lo usan rutas de otras specs que
+    tendrían que decidirlo con su propia prueba.
+    """
+    if not operator_identity.load_operator_view(operator).ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Operator-Id must be an operator principal id",
+        )
+    return operator
 
 
 def _actor(operator: OperatorAccount) -> str:

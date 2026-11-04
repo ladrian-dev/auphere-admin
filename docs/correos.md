@@ -30,9 +30,11 @@ No hay HTML en el código. Si un sitio necesita mandar algo que el catálogo no 
 
 - confirmar el alta;
 - «ya tienes cuenta»;
-- la invitación al equipo y la de cliente;
+- la invitación al equipo, también la de propietario que emite un operador desde el panel (spec 052), y la de cliente;
 - restablecer la contraseña;
 - el aviso de que la contraseña cambió.
+
+**En staging, crear un partner en el panel escribe de verdad a la dirección que se ponga** (spec 052): es un correo de acceso.
 
 Los provoca siempre una persona, a propósito. Lo que staging **no** envía es lo automático: recibos, cobros, alertas de saldo y consumo, avisos de la consola y alertas internas. Son los correos que escribirían a un cliente real sin que nadie lo pidiera. Cada ficha del catálogo dice si es de acceso (`EmailSpec.access`).
 

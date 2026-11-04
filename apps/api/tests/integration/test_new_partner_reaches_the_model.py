@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.config import get_settings
 from nexus_api.db.models import Partner, PartnerMembership
 from nexus_api.repositories.signup import SignupRequestRepository
+from nexus_api.services import operator_identity
 from tests.conftest import add_console_member, console_headers, mint_console_token
 
 from .builder._builder_world import start_draft
@@ -35,18 +36,26 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 async def _born_from_panel(
     client: Any, db_session: AsyncSession, admin_headers: dict[str, str], _: Any
 ) -> Callable[[], dict[str, str]]:
+    operator = await operator_identity.create_account(
+        db_session,
+        email=f"op-{uuid.uuid4().hex[:8]}@auphere.test",
+        password="operator-password-1",
+        role="admin",
+    )
+    await db_session.commit()
     resp = await client.post(
         "/admin/partners",
-        headers=admin_headers,
-        json={"name": "Agencia del Panel", "slug": f"panel-{uuid.uuid4().hex[:8]}"},
+        headers={**admin_headers, "X-Operator-Id": str(operator.id)},
+        json={
+            "name": "Agencia del Panel",
+            "slug": f"panel-{uuid.uuid4().hex[:8]}",
+            "owner_email": f"duena-{uuid.uuid4().hex[:8]}@example.com",
+        },
     )
     assert resp.status_code == 201, resp.text
     partner_id = uuid.UUID(resp.json()["id"])
-    # Lo que hace hoy el operador a mano tras crearlo (la spec 052 lo trae de serie).
-    partner = await db_session.get(Partner, partner_id)
-    assert partner is not None
-    partner.console_enabled = True
-    await db_session.commit()
+    # Spec 052: nace con la consola encendida; ya no hay que encenderla a mano.
+    assert resp.json()["console_enabled"] is True
     member = await add_console_member(db_session, partner_id=partner_id, role="owner")
     return member["headers"]
 

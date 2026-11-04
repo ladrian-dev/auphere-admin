@@ -5,6 +5,7 @@ from typing import Any
 import structlog
 
 from nexus_api.config import settings
+from nexus_api.core.logging_context import RedactAccessLog
 
 
 def configure_logging() -> None:
@@ -39,3 +40,7 @@ def configure_logging() -> None:
     # unless something is actually wrong.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # Spec 052 (CE-005): abrir un enlace con token no lo deja en el registro.
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, RedactAccessLog) for f in access.filters):
+        access.addFilter(RedactAccessLog())

@@ -355,6 +355,10 @@ class PartnerInvitationRepository:
         - ``already_member`` — the user already belongs to a partner
           (v1: exactly one). Same partner or another, it is a conflict.
         """
+        # Spec 052 (R5.3): the row is taken before deciding. Otherwise an
+        # operator revoking at this very moment reads «revoked» while the person
+        # goes in on the status read before the revoke committed.
+        await self._session.refresh(invitation, with_for_update=True)
         now = _now()
         if invitation.status != InvitationStatus.PENDING.value:
             raise InvitationError("not_pending", "invitation is no longer pending")

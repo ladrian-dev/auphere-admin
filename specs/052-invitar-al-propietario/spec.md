@@ -1,6 +1,6 @@
 # Especificación: Invitar al propietario
 
-**Rama**: `052-invitar-al-propietario` · **Creada**: 2026-11-03 · **Estado**: Borrador, pendiente de aprobación
+**Rama**: `052-invitar-al-propietario` · **Creada**: 2026-11-03 · **Estado**: Aprobada por Luis el 2026-11-03, tal cual, con sus decisiones D1 a D8 · **Implementación**: `052-invitar-al-propietario-impl`
 
 **Entrada**: descripción del usuario: «comunmente los crearemos nosotros desde el admin panel asi que ese correo deberia llegar». Parte como requisito de que crear un partner desde el panel hace llegar el correo a su propietario, y deja resuelto a qué dirección va, cómo se reenvía o revoca y qué ve el operador si el envío falla.
 

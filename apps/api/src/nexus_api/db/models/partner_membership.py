@@ -172,6 +172,9 @@ class PartnerInvitation(UUIDPrimaryKey, Base):
         ForeignKey("partner_memberships.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Spec 052: the last send the provider accepted. Null means it is not known
+    # to have gone out, which is not the same as having failed.
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

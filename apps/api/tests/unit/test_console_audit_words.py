@@ -104,6 +104,38 @@ async def test_codes_become_words_and_refs_become_names(db_session) -> None:
     )
 
 
+async def test_inviting_an_owner_reads_as_a_sentence_signed_by_auphere(db_session) -> None:
+    """Spec 052 (R6.4): the console shows the operator as Auphere's team, and the
+    panel names the person (``actor_label``)."""
+    audit_module.reset_vocabulary_cache_for_tests()
+    vocab = await audit_module.load_vocabulary(db_session, force=True)
+    after = {"email": "duena@negocio.test", "role": "owner"}
+
+    def row(action: str) -> AuditLog:
+        return AuditLog(
+            tenant_id=None,
+            actor="operator:ana@auphere.com",
+            action=action,
+            target="partner:x",
+            after_json=after,
+        )
+
+    for action in (
+        "partner.owner_invited",
+        "partner.owner_invitation_resent",
+        "partner.owner_invitation_revoked",
+    ):
+        for lang in ("es", "en"):
+            sentence = audit_module.summarise(row(action), None, vocab, lang, partner_name="Acme")
+            assert sentence.startswith("Auphere "), sentence
+            assert "duena@negocio.test" in sentence and "Acme" in sentence
+            assert "?" not in sentence and "ana@auphere.com" not in sentence
+            named = audit_module.summarise(
+                row(action), None, vocab, lang, partner_name="Acme", actor_label="ana@auphere.com"
+            )
+            assert named.startswith("ana@auphere.com ")
+
+
 async def test_the_actions_written_outside_the_console_read_as_sentences(db_session) -> None:
     """What staging showed as «Auphere · connector.disconnect ·
     connector:googlesheets», with the payloads the real writers store."""

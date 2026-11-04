@@ -12,6 +12,7 @@ import { getOperator } from "@/lib/session";
 import { formatCents, statusLabel } from "@/lib/format";
 
 import { ImpersonateBannerView } from "./impersonate-banner";
+import { OwnerNotice } from "./owner-notice";
 import { PartnerTabs } from "./tabs";
 
 const STATUS_TONE = {
@@ -48,6 +49,8 @@ export default async function PartnerLayout({
     ? await backend.listActiveImpersonations(operator.id)
     : [];
   const live = matchImpersonationBanner(cookieId, partner.id, active);
+  // Spec 052 (R3.12). Si falla, la cabecera calla: la ficha no se cae por esto.
+  const team = await backend.getPartnerMembers(partner.id).catch(() => null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -76,6 +79,7 @@ export default async function PartnerLayout({
             </span>
             <span className="font-mono text-xs">{partner.slug}</span>
           </div>
+          <OwnerNotice partnerId={partner.id} team={team} />
         </div>
         {/* Spec 031 (R4.3): the facts the operator asks first, before any tab. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">

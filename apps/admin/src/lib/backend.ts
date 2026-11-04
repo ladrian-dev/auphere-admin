@@ -985,9 +985,58 @@ export type PartnerInvitation = {
   role: string;
   expires_at: string;
   created_at: string;
+  /** Spec 052: the last send the provider accepted; null is «not on record». */
+  last_sent_at: string | null;
+  /** An owner invitation no person of the partner issued: only these have actions. */
+  from_auphere: boolean;
 };
 
-export type PartnerMembersOut = { members: PartnerMember[]; invitations: PartnerInvitation[] };
+/** Spec 052: what the Team tab and the header of the file paint. */
+export type PartnerOwnerState = {
+  has_active_owner: boolean;
+  can_invite: boolean;
+  can_resend: boolean;
+  block: "suspended" | "console_off" | null;
+  expired_email: string | null;
+  expired_at: string | null;
+  suggested_email: string | null;
+};
+
+export type PartnerMembersOut = {
+  members: PartnerMember[];
+  invitations: PartnerInvitation[];
+  owner: PartnerOwnerState;
+};
+
+/** Spec 052: what happened to one send. The only place the link exists. */
+export type OwnerInvitationResult = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+  last_sent_at: string | null;
+  email_sent: boolean;
+  accept_url: string;
+};
+
+export type OwnerInvitationRevoked = {
+  id: string;
+  email: string;
+  status: string;
+  /** False if this call changed nothing: there may be another link alive. */
+  changed: boolean;
+};
+
+/** Spec 052 (R6.4): one platform audit row of a partner, as a sentence. */
+export type PartnerAuditLine = {
+  id: string;
+  action: string;
+  actor: string;
+  summary: string;
+  created_at: string;
+};
 
 export type PartnerCardNews = {
   partner_id: string;
@@ -1252,8 +1301,10 @@ export type AdminInstance = {
 export type PartnerCreateInput = {
   name: string;
   slug: string;
-  contact_email?: string | null;
+  owner_email: string;
 };
+
+export type PartnerCreatedOut = PartnerOut & { invitation: OwnerInvitationResult };
 
 export type PartnerUpdateInput = Partial<{
   name: string;
@@ -2325,8 +2376,36 @@ export const backend = {
   getPartner: (partnerId: string) =>
     call<PartnerOut>(`/admin/partners/${partnerId}`, { optional: true }),
 
-  createPartner: (body: PartnerCreateInput) =>
-    call<PartnerOut>("/admin/partners", { method: "POST", body }),
+  createPartner: (body: PartnerCreateInput, operatorId: string) =>
+    call<PartnerCreatedOut>("/admin/partners", {
+      method: "POST",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  inviteOwner: (partnerId: string, email: string, operatorId: string) =>
+    call<OwnerInvitationResult>(`/admin/partners/${partnerId}/invitations`, {
+      method: "POST",
+      body: { email },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  resendOwnerInvitation: (partnerId: string, invitationId: string, operatorId: string) =>
+    call<OwnerInvitationResult>(`/admin/partners/${partnerId}/invitations/${invitationId}/resend`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  revokeOwnerInvitation: (partnerId: string, invitationId: string, operatorId: string) =>
+    call<OwnerInvitationRevoked>(`/admin/partners/${partnerId}/invitations/${invitationId}/revoke`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listPartnerAuditLog: (partnerId: string, limit = 100) =>
+    call<PartnerAuditLine[]>(`/admin/partners/${partnerId}/audit-log?limit=${limit}`).then((r) => r ?? []),
 
   updatePartner: (partnerId: string, body: PartnerUpdateInput) =>
     call<PartnerOut>(`/admin/partners/${partnerId}`, {

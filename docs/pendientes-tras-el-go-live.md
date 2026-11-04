@@ -16,11 +16,17 @@ completa en [`go-live-consola-y-teammates.md`](go-live-consola-y-teammates.md).
 
 **Es el hueco más grande, y no es un fallo: es alcance que la spec 005 no cubría.**
 
+> **Actualizado el 2026-11-03.** La vía del operador ya no es el script. El alta
+> normal se hace desde el panel, que invita al propietario (spec 052,
+> [`registro-de-partners.md`](registro-de-partners.md) §0), y también existe el alta
+> autónoma (spec 006). `seed_console_memberships.py` queda para desarrollo y
+> emergencias. Lo que sigue es lo que se escribió el 2026-09-13.
+
 El catálogo de membresías existe en producción —Pro 20 $, Team 60 $, Business
 150 $, con sus `stripe_price_id` escritos— y el checkout funciona. Pero un
-partner nuevo no puede llegar solo: el alta se hace con
+partner nuevo no puede llegar solo: en esa fecha el alta se hacía con
 `apps/api/scripts/seed_console_memberships.py`, que ejecuta un operador con
-acceso a la VPC, y solo después esa persona puede entrar en la consola y
+acceso a la VPC, y solo después esa persona podía entrar en la consola y
 contratar.
 
 Comprobado el 2026-09-13 contra la cuenta en modo live: **0 suscripciones, 0

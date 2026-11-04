@@ -45,6 +45,16 @@ export function fullDateTime(input: string | Date | null | undefined): string {
   return ES_DTF.format(date);
 }
 
+const ES_LONG_DATE = new Intl.DateTimeFormat("es", { dateStyle: "long", timeZone: "UTC" });
+
+/** «24 de noviembre de 2026». En UTC: es la fecha que dice el correo de una
+ *  invitación, y no cambia entre el servidor y el navegador al hidratar. */
+export function longDate(input: string | Date | null | undefined): string {
+  if (!input) return "—";
+  const date = typeof input === "string" ? new Date(input) : input;
+  return ES_LONG_DATE.format(date);
+}
+
 export function planLabel(plan: string): string {
   switch (plan) {
     case "essential":

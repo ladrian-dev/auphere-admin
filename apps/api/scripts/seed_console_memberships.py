@@ -1,4 +1,12 @@
-"""Alta de un partner piloto en la consola (PLAN-CONSOLE-V1 CP-33).
+"""Para desarrollo y emergencias: el alta normal se hace desde el panel.
+
+Crear un partner en el panel de operador invita a su propietario, y su pestaña
+Equipo invita, reenvía y revoca, sin acceso a la VPC (spec 052). Este script sirve
+para levantar un entorno de desarrollo y para desbloquear a alguien. No deja
+constancia del envío en ``last_sent_at``, así que el panel dirá «no consta el
+envío» de lo que salga de aquí.
+
+Alta de un partner piloto en la consola (PLAN-CONSOLE-V1 CP-33).
 
 Enciende ``partners.console_enabled`` y emite la **invitación de owner**
 para la persona que va a administrar la consola. Por defecto NO crea la

@@ -47,21 +47,31 @@ partners (cada uno leído con su GUC), tickets abiertos, altas pendientes y clie
 tope. «Necesita tu atención» enlaza cada caso. Una sección ilegible se nombra en
 `unreadable` y la pantalla se pinta parcial.
 
+## Alta de partner (`/partners/new`)
+
+Nombre, identificador y «Correo del propietario», obligatorio: esa dirección queda
+también como correo de contacto. Crear enciende la consola e invita a esa persona como
+propietaria. El resultado se queda en la misma URL, y es lo único que enseña el enlace
+de la invitación: ver [`registro-de-partners.md`](registro-de-partners.md) §0.
+
 ## Ficha de partner (`/partners/{id}`)
 
-Cabecera con estado, consola, clientes, personas, saldo y alta. Pestañas:
+Cabecera con estado, consola, clientes, personas, saldo y alta. Si el partner no
+tiene propietario activo, lo dice en todas las pestañas, con el estado de la invitación
+si la hay y el enlace a Equipo (spec 052). Pestañas:
 
 | Pestaña | Contenido |
 |---|---|
 | Resumen | Nombre, correo de contacto y de facturación (editables y auditados); qué tiene encendido |
 | Clientes | Uso de 30 días por cliente y mapeos `external_client_ref` → cliente, enlazados |
-| Equipo | Personas (`GET /admin/partners/{id}/members`) e invitaciones vivas: una pasada de plazo no sale, aunque nadie haya abierto su enlace |
+| Equipo | Personas (`GET /admin/partners/{id}/members`), invitar, reenviar y revocar al propietario, e invitaciones vivas del partner sin acciones: una pasada de plazo no sale, aunque nadie haya abierto su enlace (spec 052, [`registro-de-partners.md`](registro-de-partners.md) §0) |
 | Módulos | Consola encendida y qué secciones y servicios tiene (spec 032): rejilla Operar · Cuenta · Asistente; el Companion se enciende aquí |
 | Facturas | Saldo recargado, pool semanal y asignado en US$; recarga en dólares con confirmación e idempotencia; «¿cuadra el libro?»; movimientos con tipo (spec 033); tarjeta, modo de cobro, cobros y la línea de crédito del pospago (spec 041); recibos |
 | Configuración | Límites (broadcast, rate limits, blueprint), modelos, claves API e impersonación |
 | Consola nueva | Ensayo, activación y vuelta atrás de la consola de la fábrica, con el historial de informes (spec 047, [abajo](#palancas-del-partner-y-del-cliente-spec-047)) |
 | Tope y moneda | El tope mensual de «Construcción y pruebas», los «Pedir ampliación» y la moneda de la cuenta (spec 047, [abajo](#palancas-del-partner-y-del-cliente-spec-047)) |
-| Conocimiento · Auditoría | Sin cambios |
+| Auditoría | Las acciones de plataforma sobre el partner, en una frase y nombrando al operador (`GET /admin/partners/{id}/audit-log`, spec 052), y la actividad del embed |
+| Conocimiento | Sin cambios |
 
 Grupos: Observar (Resumen, Clientes, Auditoría), Configurar (Módulos, Configuración,
 Conocimiento, Consola nueva) y Cuenta (Equipo, Facturas, Tope y moneda).

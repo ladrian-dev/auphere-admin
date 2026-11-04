@@ -15,6 +15,8 @@ consumer extracts it, so one WhatsApp message is one trace end-to-end
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 from fastapi import FastAPI
 from opentelemetry import propagate, trace
@@ -24,6 +26,8 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from sqlalchemy.ext.asyncio import AsyncEngine
+
+from nexus_api.core.logging_context import safe_path
 
 log = structlog.get_logger(__name__)
 
@@ -88,13 +92,29 @@ def build_provider(service_name: str) -> TracerProvider:
     return provider
 
 
+def redact_span_path(span: Any, scope: dict[str, Any]) -> None:
+    """La ruta del span, sin tokens (spec 052, CE-005). ``http.route`` ya es la
+    plantilla; las demás llevan la ruta tal cual y salen de la máquina."""
+    if span is None or not span.is_recording():
+        return
+    path = str(scope.get("path") or "")
+    safe = safe_path(path)
+    if safe == path:
+        return
+    attributes = getattr(span, "attributes", None) or {}
+    for key in ("http.target", "url.path", "http.url", "url.full"):
+        value = attributes.get(key)
+        if isinstance(value, str):
+            span.set_attribute(key, value.replace(path, safe))
+
+
 def install(app: FastAPI, engine: AsyncEngine) -> None:
     global _provider, _redis_installed
     if _provider is None:
         _provider = build_provider("nexus-api")
         trace.set_tracer_provider(_provider)
     if id(app) not in _installed_apps:
-        FastAPIInstrumentor.instrument_app(app)
+        FastAPIInstrumentor.instrument_app(app, server_request_hook=redact_span_path)
         _installed_apps.add(id(app))
     if id(engine) not in _installed_engines:
         SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
