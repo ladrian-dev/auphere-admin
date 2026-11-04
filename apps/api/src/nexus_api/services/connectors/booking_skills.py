@@ -12,6 +12,7 @@ decision about the customer's booking, so a person opts in.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from typing import Any, Final
 
 import sqlalchemy as sa
@@ -48,12 +49,27 @@ BOOKING_TOOLS: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 
+#: What actually takes a booking in a connector's calendar.
+_BOOKS: Final = frozenset(
+    {
+        "CALENDLY_POST_INVITEE",
+        "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK",
+        "GOOGLECALENDAR_CREATE_EVENT",
+    }
+)
+
 #: An agent with Auphere's own calendar does not get a second one: it would book in both.
 _OWN_CALENDAR: Final = "reservas.create"
 
 
 def books(slug: str) -> bool:
     return slug in BOOKING_TOOLS
+
+
+def books_elsewhere(tools: Iterable[str] | None) -> bool:
+    """The other way round: this agent already books through a connector, so
+    switching Reservas on must not give it a second calendar."""
+    return not _BOOKS.isdisjoint(tools or ())
 
 
 def _valid_spec(spec: dict[str, Any]) -> bool:
@@ -178,4 +194,4 @@ async def _write_draft(
     return added
 
 
-__all__ = ["BOOKING_TOOLS", "books", "enable_booking_skills"]
+__all__ = ["BOOKING_TOOLS", "books", "books_elsewhere", "enable_booking_skills"]

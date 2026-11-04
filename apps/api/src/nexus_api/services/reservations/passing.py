@@ -235,6 +235,7 @@ async def prepare_agent_versions(
     ``drafts_only``: only the drafts the agents already have; an agent without
     one gets none (the automatic pass publishes its active version instead)."""
     from nexus_api.services.agent_config_service import AgentConfigService
+    from nexus_api.services.connectors.booking_skills import books_elsewhere
     from nexus_api.services.testing.suites import mark_stale
 
     svc = AgentConfigService(session)
@@ -254,6 +255,9 @@ async def prepare_agent_versions(
         if base is None:
             continue
         if only_booking and not version_names_booking(base):
+            continue
+        # Dos agendas, no: el panel dice cuáles se quedaron fuera (``admin_view``).
+        if enable and not only_booking and books_elsewhere(base.tools):
             continue
         fields = _rewritten(base, enable=enable, everything=not only_booking)
         if _same(base, fields):

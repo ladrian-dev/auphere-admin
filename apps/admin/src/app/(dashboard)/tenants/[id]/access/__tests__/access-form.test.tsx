@@ -33,7 +33,7 @@ function access(o: Partial<ClientAccessOut> = {}): ClientAccessOut {
 }
 
 function reservas(o: Partial<ClientReservasOut> = {}): ClientReservasOut {
-  return { mode: "capacity", capacity_kind: "restaurant", live_future: 0, agents_pending_promotion: [], ...o };
+  return { mode: "capacity", capacity_kind: "restaurant", live_future: 0, agents_pending_promotion: [], agents_with_other_calendar: [], ...o };
 }
 
 const saveButton = () => screen.getByRole("button", { name: "Guardar acceso" });
@@ -62,6 +62,29 @@ describe("AccessForm", () => {
     expect(screen.getByText(/Elige al menos un módulo/)).toBeTruthy();
     await userEvent.click(screen.getByRole("checkbox", { name: /^Panel/ }));
     expect(save).toHaveProperty("disabled", false);
+  });
+
+  it("keeps the modules it does not show when saving", async () => {
+    h.set.mockResolvedValue({ ok: true, data: access({ enabled: true, modules: ["panel", "agents", "business"] }) });
+    render(<AccessForm tenantId="t1" access={access({ enabled: true, modules: ["panel", "inbox", "agents", "business", "usage"], whatsapp_connected: true })} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: /Consumo/ }));
+    await userEvent.click(saveButton());
+    expect(h.set).toHaveBeenCalledWith("t1", { enabled: true, modules: ["panel", "inbox", "agents", "business"] });
+  });
+
+  it("says which agents did not get Reservas because they book elsewhere", () => {
+    render(
+      <AccessForm
+        tenantId="t1"
+        access={access({
+          enabled: true,
+          modules: ["reservas"],
+          reservas: reservas({ agents_with_other_calendar: [{ agent_id: "a1", name: "Ventas" }] }),
+        })}
+      />,
+    );
+    expect(screen.getByText(/ya reservan con un conector/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ventas" })).toHaveAttribute("href", "/tenants/t1/agent?agent=a1");
   });
 
   it("sends only what changed, modules in sidebar order", async () => {

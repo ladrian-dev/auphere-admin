@@ -35,6 +35,8 @@ export const MODULE_LABELS: Record<ClientModule, { label: string; description: s
     label: "Reservas",
     description: "Su agenda: lo que reserva el agente por WhatsApp y lo que apunta su equipo.",
   },
+  agents: { label: "Agentes", description: "Sus agentes: ver cómo trabajan y qué hacen." },
+  business: { label: "Negocio", description: "La ficha de su negocio." },
   usage: { label: "Consumo", description: "Su saldo, su gasto por día y el detalle técnico. Solo lectura." },
 };
 
@@ -125,3 +127,7 @@ export const PHONE_REASONS: Record<string, string> = {
 };
 
 export const PHONE_GONE = "Ese teléfono ya no está en la lista. Vuelve a abrirla.";
+
+/** An agent that books through a connector does not get a second calendar. */
+export const AGENT_OTHER_CALENDAR =
+  "Estos agentes ya reservan con un conector, así que no se les añadió Reservas: reservarían en dos sitios. Para pasarlos a Reservas, apaga primero esa habilidad.";

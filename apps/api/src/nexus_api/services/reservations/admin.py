@@ -194,7 +194,10 @@ async def admin_view(
     settings = await session.get(ReservationSettings, tenant_id)
     if settings is None:
         return None
+    from nexus_api.services.connectors.booking_skills import books_elsewhere
+
     pending: list[dict[str, Any]] = []
+    other_calendar: list[dict[str, Any]] = []
     agents = (
         await session.execute(
             sa.select(Agent.id, Agent.name).where(Agent.status == AgentStatus.ACTIVE.value)
@@ -216,11 +219,23 @@ async def admin_view(
         )
         if staged is not None:
             pending.append({"agent_id": agent_id, "name": str(name), "version": int(staged)})
+        tools = await session.scalar(
+            sa.select(AgentConfig.tools)
+            .where(
+                AgentConfig.agent_id == agent_id,
+                AgentConfig.status.in_([AgentConfigStatus.ACTIVE, AgentConfigStatus.STAGED]),
+            )
+            .order_by(AgentConfig.version.desc())
+            .limit(1)
+        )
+        if books_elsewhere(tools):
+            other_calendar.append({"agent_id": agent_id, "name": str(name)})
     return {
         "mode": settings.mode,
         "capacity_kind": settings.capacity_kind,
         "live_future": await live_future(session, now),
         "agents_pending_promotion": pending,
+        "agents_with_other_calendar": other_calendar,
     }
 
 

@@ -65,6 +65,11 @@ class ClientMemberOut(BaseModel):
     expires_at: datetime | None = None
 
 
+class OtherCalendarAgentOut(BaseModel):
+    agent_id: uuid.UUID
+    name: str
+
+
 class PendingAgentOut(BaseModel):
     agent_id: uuid.UUID
     name: str
@@ -78,6 +83,8 @@ class ClientReservasOut(BaseModel):
     capacity_kind: str | None
     live_future: int
     agents_pending_promotion: list[PendingAgentOut]
+    #: Ya reservan con un conector: activar Reservas no les da una segunda agenda.
+    agents_with_other_calendar: list[OtherCalendarAgentOut] = []
 
 
 class ClientAccessOut(BaseModel):

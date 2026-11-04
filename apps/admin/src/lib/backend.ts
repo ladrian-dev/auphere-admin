@@ -33,7 +33,7 @@ const CONSOLE_URL = (process.env.NEXUS_CONSOLE_URL ?? "http://localhost:3110").r
 );
 
 // ── Spec 030: acceso del cliente a su consola lite ────────────────────────
-export type ClientModule = "panel" | "inbox" | "reservas" | "usage";
+export type ClientModule = "panel" | "inbox" | "reservas" | "usage" | "agents" | "business";
 /** Spec 043: how the business books — with a person of the team, or by headcount. */
 export type ReservasMode = "services" | "capacity";
 /** Spec 043: the kind of an Aforo business. It brings the words and the starting values. */
@@ -46,6 +46,8 @@ export type ClientReservasOut = {
   live_future: number;
   /** Agents with a version prepared by the (de)activation that nobody promoted yet. */
   agents_pending_promotion: { agent_id: string; name: string; version: number }[];
+  /** Agents that already book through a connector: switching Reservas on leaves them out. */
+  agents_with_other_calendar: { agent_id: string; name: string }[];
 };
 /** Spec 043: `on_live` only counts when the mode changes; the API defaults to `refuse`. */
 export type ClientReservasIn = {

@@ -17,6 +17,7 @@ import type {
 
 import { setAccessAction } from "./actions";
 import {
+  AGENT_OTHER_CALENDAR,
   AGENT_PENDING_PROMOTION,
   CAPACITY_KIND_ORDER,
   CAPACITY_KINDS,
@@ -60,7 +61,11 @@ export function AccessForm({ tenantId, access }: { tenantId: string; access: Cli
     );
   }
 
-  const ordered = ORDER.filter((m) => modules.has(m));
+  const shown = ORDER.filter((m) => modules.has(m));
+  // What this form does not show (spec 047: Agentes, Negocio) stays as it was: saving
+  // the rest must not take it away from the client.
+  const kept = access.modules.filter((m) => !ORDER.includes(m));
+  const ordered = [...shown, ...kept];
   const withReservas = modules.has("reservas");
   const chosenKind = mode === "capacity" ? kind : null;
   // The settings go only when Reservas is switched on, or its mode or kind change.
@@ -72,10 +77,12 @@ export function AccessForm({ tenantId, access }: { tenantId: string; access: Cli
   const modeChanges = withReservas && stored !== null && mode !== null && mode !== stored.mode;
   const missingMode = withReservas && mode === null;
   const missingKind = withReservas && mode === "capacity" && kind === null;
-  const dirty = enabled !== access.enabled || ordered.join(",") !== access.modules.join(",") || reservasDirty;
+  const stored_shown = ORDER.filter((m) => access.modules.includes(m));
+  const dirty = enabled !== access.enabled || shown.join(",") !== stored_shown.join(",") || reservasDirty;
   const missingModules = enabled && ordered.length === 0;
   const inboxLocked = !access.whatsapp_connected && !access.modules.includes("inbox");
   const pendingAgents = stored?.agents_pending_promotion ?? [];
+  const otherCalendar = withReservas ? (stored?.agents_with_other_calendar ?? []) : [];
 
   function toggle(m: ClientModule, on: boolean) {
     setModules((prev) => {
@@ -205,6 +212,23 @@ export function AccessForm({ tenantId, access }: { tenantId: string; access: Cli
                   className="rounded-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
                   {`${a.name}, versión ${a.version}`}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Callout>
+      ) : null}
+      {otherCalendar.length > 0 ? (
+        <Callout tone="info">
+          <p>{AGENT_OTHER_CALENDAR}</p>
+          <ul className="mt-1 grid gap-1">
+            {otherCalendar.map((a) => (
+              <li key={a.agent_id} className="min-w-0">
+                <Link
+                  href={`/tenants/${tenantId}/agent?agent=${encodeURIComponent(a.agent_id)}`}
+                  className="rounded-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  {a.name}
                 </Link>
               </li>
             ))}

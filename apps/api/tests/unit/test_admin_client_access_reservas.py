@@ -196,6 +196,38 @@ async def test_switching_the_module_off_reaches_the_published_agent(
     assert len(await _versions(w["tenant_id"], agent_id)) == len(versions), "repetir no crea nada"
 
 
+async def test_an_agent_that_books_with_a_connector_does_not_get_a_second_calendar(
+    client, db_session, console_world, admin_headers
+) -> None:
+    w = console_world["a"]
+    agent_id = await _agent(db_session, w["tenant_id"])
+    async with tenant_scoped_session(db_session, w["tenant_id"]):
+        active = await db_session.scalar(
+            sa.select(AgentConfig).where(
+                AgentConfig.agent_id == agent_id, AgentConfig.status == AgentConfigStatus.ACTIVE
+            )
+        )
+        assert active is not None
+        active.tools = ["CALENDLY_POST_INVITEE", "escalate.escalate_to_human"]
+    await db_session.commit()
+    h = await _headers(db_session, admin_headers)
+
+    r = await client.put(
+        _url(w["tenant_id"]),
+        headers=h,
+        json={"enabled": True, "modules": ["panel", "reservas"], "reservas": {"mode": "services"}},
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()["reservas"]
+    assert body["agents_pending_promotion"] == []
+    assert body["agents_with_other_calendar"] == [
+        {"agent_id": str(agent_id), "name": "Agente de reservas"}
+    ]
+    versions = await _versions(w["tenant_id"], agent_id)
+    assert all(not any(t.startswith("reservas.") for t in v.tools) for v in versions)
+
+
 async def test_a_template_with_reservas_needs_the_module(
     client, db_session, console_world, admin_headers
 ) -> None:
