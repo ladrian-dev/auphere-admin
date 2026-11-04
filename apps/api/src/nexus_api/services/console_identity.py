@@ -69,6 +69,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.db.models.client_access import CONSOLE_V2_MODULES
 
 log = structlog.get_logger(__name__)
 
@@ -327,7 +328,14 @@ async def _load_client_view(session: AsyncSession, account: ConsoleAccount) -> P
         or not modules
     ):
         return view(ACCESS_DISABLED)
-    return view(ACCESS_OK, modules)
+    # Spec 047 (``data-model.md`` §10): con la consola nueva, Agentes y Negocio vienen
+    # por defecto. El menú dice lo mismo que ``core.client_auth``, que ya los permite.
+    return view(
+        ACCESS_OK,
+        access.ordered_modules(
+            also=CONSOLE_V2_MODULES if partner.console_v2_enabled_at is not None else ()
+        ),
+    )
 
 
 # ── cuentas ───────────────────────────────────────────────────────────
