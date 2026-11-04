@@ -170,7 +170,12 @@ async def tool_policy(
     strict = await partner_on_v2(session, tenant_id)
     blocked: set[str] = set()
     approval: set[str] = set()
-    for name, read_only, connection_id in rows:
+    from nexus_api.services.connectors.service import name_says_it_writes
+
+    for name, catalog_read_only, connection_id in rows:
+        # Una fila vieja del catálogo puede decir que lee lo que su nombre dice que escribe
+        # (``…_CALENDAR_LIST_DELETE``): el permiso «Solo leer» no la deja pasar.
+        read_only = catalog_read_only and not name_says_it_writes(name)
         if connection_id is None:
             # Sin conexión no hay nada que activar: en la consola nueva, nunca;
             # fuera de ella, como hasta ahora (lo de antes no cambia).

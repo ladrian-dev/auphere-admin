@@ -27,6 +27,7 @@ import { channelsMessages } from "./lanes/channels";
 import { channelsProtoMessages } from "./lanes/channels-proto";
 import { clientsProtoMessages } from "./lanes/clients-proto";
 import { companionMessages } from "./lanes/companion";
+import { connectorToolsMessages } from "./lanes/connector-tools";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { inboxMessages } from "./lanes/inbox";
 import { liteMessages } from "./lanes/lite";
@@ -598,6 +599,7 @@ const messages = {
   ...liteAgentsMessages,
   ...agentImproveMessages,
   ...builderConnectorsMessages,
+  ...connectorToolsMessages,
   ...builderModelQualityMessages,
   ...clientsProtoMessages,
   ...agentProtoMessages,

@@ -25,8 +25,9 @@ Lo que este módulo decide, y por qué:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 import structlog
@@ -48,14 +49,17 @@ from nexus_api.db.models import (
     ToolStatus,
 )
 from nexus_api.repositories.audit import AuditRepository
+from nexus_api.services.activations import needs_connector
 from nexus_api.services.agents import principal_agent_id
 from nexus_api.services.connectors import service as connector_service
+from nexus_api.services.connectors.booking_skills import _BOOKS
 from nexus_api.services.skills_catalog import list_skills
 from nexus_api.services.templating.seed_templates import load_seed_template
 
 from .agent_drafts import DraftView, draft_written, ensure_draft, load_view
 from .capability_names import (
     FUNCTIONS,
+    TOOL_ACTIONS,
     business_name,
     description_of,
     function_of,
@@ -312,30 +316,78 @@ async def list_capabilities(
     )
 
 
-#: Lo que una prueba comprueba en su ``expected_state``, y la herramienta que lo hace.
-_STATE_TOOLS = {"booking": frozenset({"reservas.create"})}
+#: Lo que una prueba comprueba en su ``expected_state``, y las herramientas que lo
+#: hacen: la agenda de Auphere o el calendario de un conector (``booking_skills``).
+_STATE_TOOLS = {"booking": frozenset({"reservas.create", *_BOOKS})}
+
+#: Por qué no se puede apagar: una tarea la nombra, una prueba espera lo que solo ella
+#: hace, o el texto promete lo que solo ella cumple.
+InUse = Literal["task", "test", "promise"]
+
+#: Las que caben en un AgentSpec (``agent_spec.schema``). Se comprueba antes de validar
+#: para poder decirlo con palabras: el validador solo devuelve el error del esquema.
+_MAX_SPEC_TOOLS = 60
 
 
-async def _tool_in_use(scope: ClientScope, spec: Any, target: Any, key: str) -> bool:
-    """¿Apagarla dejaría al agente sin poder hacer lo que promete? Una tarea de su
-    AgentSpec la nombra, o una de sus pruebas espera lo que solo ella hace."""
+def _keeps_a_promise(spec: Any, key: str, on: set[str]) -> bool:
+    """La revisión bloquea al agente estructurado cuyo texto promete lo que ninguna
+    herramienta hace (65.5). En uno de antes solo avisa, así que no se le niega nada."""
+    from nexus_api.services.agent_spec.missing import from_promises
+
+    if spec.mode != "structured" or key not in TOOL_ACTIONS:
+        return False
+    with_it = from_promises(spec.model_copy(update={"tools": sorted(on)}))
+    without = from_promises(spec.model_copy(update={"tools": sorted(on - {key})}))
+    return bool({m.key for m in without} - {m.key for m in with_it})
+
+
+async def tools_in_use(
+    scope: ClientScope, spec: Any, target: Any, keys: Iterable[str]
+) -> dict[str, InUse]:
+    """¿Apagarlas dejaría al agente sin poder hacer lo que promete? Las de ``keys``
+    que sí, y por qué. Lo que otra de las encendidas también hace no depende de ella."""
     from nexus_api.services.testing.suites import get_suite, list_tests
 
-    if any(key in (proc.tools or []) for proc in spec.procedures or []):
-        return True
-    if target is None:
-        return False
-    states = {k for k, tools in _STATE_TOOLS.items() if key in tools}
-    if not states:
-        return False
-    suite = await get_suite(scope.session, target.agent_id)
-    if suite is None:
-        return False
-    return any(
-        states & set((test.expected_state or {}).keys())
-        for test in await list_tests(scope.session, suite)
-        if not test.not_applicable_reason
-    )
+    on = {*(spec.tools or []), *((target.tools or []) if target is not None else [])}
+    tasks = {name for proc in spec.procedures or [] for name in proc.tools or []}
+    expected: set[str] | None = None
+    out: dict[str, InUse] = {}
+    for key in keys:
+        if key in tasks:
+            out[key] = "task"
+            continue
+        states = {
+            state
+            for state, tools in _STATE_TOOLS.items()
+            if key in tools and not tools & (on - {key})
+        }
+        if states and target is not None:
+            if expected is None:
+                suite = await get_suite(scope.session, target.agent_id)
+                tests = await list_tests(scope.session, suite) if suite is not None else []
+                expected = {
+                    state
+                    for test in tests
+                    # Las del sector aplican según las herramientas: contarlas sería un
+                    # candado circular, encender lo único que reserva impediría apagarlo.
+                    if not test.not_applicable_reason and test.kind != "sector"
+                    for state in (test.expected_state or {})
+                }
+            if states & expected:
+                out[key] = "test"
+                continue
+        if _keeps_a_promise(spec, key, on):
+            out[key] = "promise"
+    return out
+
+
+async def _refuse_if_in_use(scope: ClientScope, spec: Any, target: Any, key: str) -> None:
+    why = (await tools_in_use(scope, spec, target, [key])).get(key)
+    if why is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "tool_in_use", "locked_by": why},
+        )
 
 
 async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool:
@@ -343,7 +395,11 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
     that document and the validator, like ``PATCH …/draft``. ``write_spec``
     recompiles the prompt and leaves ``draft.tools`` equal to the document. What we
     do not have is dropped and noted (65.3), never written. Returns whether the tool
-    was on before."""
+    was on before.
+
+    What connecting turned on can be on the draft's list and not in the document
+    (``auto_enable_connector_tools``): for the screen it is on, so one switch neither
+    misses it nor takes the others with it."""
     from nexus_api.services.agent_spec import missing
     from nexus_api.services.agent_spec.schema import dump
     from nexus_api.services.agent_spec.validator import (
@@ -357,19 +413,29 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
     spec, _target = await current_spec(scope)
     assert spec is not None
     tools = list(spec.tools or [])
-    was = key in tools
+    listed = list(_target.tools or []) if _target is not None else []
+    was = key in tools or key in listed
     if enabled == was:
         return was
-    if not enabled and await _tool_in_use(scope, spec, _target, key):
+    if not enabled:
+        await _refuse_if_in_use(scope, spec, _target, key)
+    wanted = [*tools, key] if enabled else [t for t in tools if t != key]
+    if len(wanted) > _MAX_SPEC_TOOLS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "tool_in_use"},
+            detail={"code": "too_many_tools", "max": _MAX_SPEC_TOOLS},
         )
+    outside = [t for t in listed if t not in tools and t != key and needs_connector(t)]
     doc = dump(spec)
-    doc["tools"] = [*tools, key] if enabled else [t for t in tools if t != key]
     ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
-    doc, lacking = missing.strip_doc(doc, ctx)
-    checked, problems = validate_spec(doc, ctx, author="person")
+    # Si lo de fuera no cabe en el documento, manda el documento, como en cualquier
+    # otra escritura: el cambio que se pidió no se rechaza por algo que no se pidió.
+    for names in ([*wanted, *outside], wanted) if outside else (wanted,):
+        doc["tools"] = names
+        cleaned, lacking = missing.strip_doc(doc, ctx)
+        checked, problems = validate_spec(cleaned, ctx, author="person")
+        if checked is not None and not problems:
+            break
     if checked is None or problems:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -481,8 +547,19 @@ async def update_capability(
             if body.enabled and body.key not in names:
                 names.append(body.key)
             elif not body.enabled and body.key in names:
+                # Lo mismo que un agente estructurado: lo que usa no se apaga, y lo
+                # que cambia deja sus pruebas desactualizadas.
+                from .agent_spec_drafts import current_spec
+
+                spec, target = await current_spec(scope)
+                if spec is not None:
+                    await _refuse_if_in_use(scope, spec, target, body.key)
                 names.remove(body.key)
             draft.tools = names
+            if before["enabled"] != body.enabled:
+                from nexus_api.services.testing.suites import mark_stale
+
+                await mark_stale(scope.session, draft.agent_id)
         else:
             catalogue = {s.name: s for s in list_skills()}
             skill = catalogue.get(body.key)
@@ -545,7 +622,15 @@ async def update_capability(
         action="console.capability.update",
         target=f"capability:{body.key}",
         before=before or None,
-        after={"key": body.key, "kind": body.kind, "enabled": body.enabled, "mode": body.mode},
+        # El agente: lo que una persona apaga en uno no se vuelve a encender solo
+        # (``connector_service.switched_off_by_a_person``).
+        after={
+            "key": body.key,
+            "kind": body.kind,
+            "enabled": body.enabled,
+            "mode": body.mode,
+            "agent_id": str(draft.agent_id),
+        },
     )
 
     view = await load_view(scope)

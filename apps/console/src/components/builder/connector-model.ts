@@ -1,6 +1,6 @@
 import type { MessageKey } from "@/i18n/messages";
 import { messages } from "@/i18n/messages";
-import type { AgentConnector, ConnectorPermission, SettingsSchema } from "@/lib/backend/agent-connectors-types";
+import type { AgentConnector, ConnectorPermission, ConnectorTool, SettingsSchema, ToolLockedBy } from "@/lib/backend/agent-connectors-types";
 import type { AgentSpec, SpecSkill } from "@/lib/backend/builder-types";
 
 /**
@@ -157,6 +157,73 @@ export function agentConnectorsHref(ref: string, agentId: string): string {
 export function skillsUsing(spec: AgentSpec | null | undefined, slug: string): SpecSkill[] {
   const skills = (spec?.skills ?? []) as SpecSkill[];
   return skills.filter((s) => s?.integration === slug);
+}
+
+// ── Las herramientas de un conector ──────────────────────────────────────────
+
+/** Tiene sus herramientas a la vista el conector que este agente usa y funciona. */
+export function hasTools(c: AgentConnector): boolean {
+  return rowState(c) === "on";
+}
+
+/** Hasta aquí se ven todas y sin buscador. Un conector puede traer cientos (Stripe, 426). */
+export const TOOLS_FOLD_FROM = 12;
+
+export type ToolsView = {
+  read: ConnectorTool[];
+  write: ConnectorTool[];
+  shown: number;
+  /** Hay más de las que se ven, o las hubo: «Ver todas» y «Ver menos». */
+  foldable: boolean;
+};
+
+/**
+ * Lo que se ve de la lista, en el orden de la API (lo recomendado primero):
+ * buscando, en todas. Si no, y hay muchas, lo recomendado, lo encendido, lo que
+ * no se puede apagar y lo que estaba encendido al abrir (`pinned`): una fila no
+ * desaparece bajo el dedo de quien acaba de apagarla. Sin nada de eso, las
+ * primeras, para no enseñar una pantalla vacía de algo que tiene cientos.
+ */
+export function toolsView(tools: readonly ConnectorTool[], filter: { q: string; all: boolean; pinned: ReadonlySet<string> }): ToolsView {
+  const needle = filter.q.trim().toLowerCase();
+  const first = tools.filter((t) => t.suggested || t.enabled || t.locked || filter.pinned.has(t.name));
+  const folded = first.length ? first : tools.slice(0, TOOLS_FOLD_FROM);
+  const canFold = tools.length > TOOLS_FOLD_FROM && folded.length < tools.length;
+  const list = needle
+    ? tools.filter((t) => `${t.title} ${t.description} ${t.name}`.toLowerCase().includes(needle))
+    : canFold && !filter.all
+      ? folded
+      : tools;
+  return {
+    read: list.filter((t) => t.read_only),
+    write: list.filter((t) => !t.read_only),
+    shown: list.length,
+    foldable: !needle && canFold,
+  };
+}
+
+export function lockedText(t: T, by: ToolLockedBy | null | undefined): string {
+  return t(`connTools.locked.${by ?? "task"}` as MessageKey);
+}
+
+/**
+ * Por qué no cambió una herramienta, con palabras: la API solo nombra el caso. Lo
+ * que rechaza el validador viene en `problems`, y el que importa aquí es el
+ * argumento con el que el agente podría elegir a un cliente que no le escribe.
+ */
+export function toolFailure(t: T, res: { status: number; code?: string | null; info?: Record<string, unknown> }): string {
+  if (res.status === 401 || res.status === 403) return t("common.forbidden");
+  if (res.code === "tool_in_use") return lockedText(t, res.info?.locked_by as ToolLockedBy | undefined);
+  if (res.code === "too_many_tools") return t("connTools.failed.full", { max: Number(res.info?.max ?? 60) });
+  if (res.status === 404) return t("connTools.failed.gone");
+  if (res.code === "spec_invalid") {
+    const problems = Array.isArray(res.info?.problems) ? (res.info.problems as { code?: unknown }[]) : [];
+    const codes = problems.map((p) => p?.code);
+    if (codes.includes("end_customer_argument")) return t("connTools.failed.customer");
+    if (codes.includes("tool_unknown") || codes.includes("tool_not_allowed")) return t("connTools.failed.gone");
+    return t("common.error.spec_invalid");
+  }
+  return t("connTools.failed.unknown");
 }
 
 // ── Los ajustes declarados en el catálogo (36.2) ─────────────────────────────

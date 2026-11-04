@@ -10,6 +10,7 @@ import type {
   ConnectResult,
   ConnectorPermission,
   ConnectorSettings,
+  ConnectorTools,
   ConnectConsent,
   Disconnected,
 } from "./agent-connectors-types";
@@ -37,6 +38,9 @@ export function agentConnectorsApi(call: Call) {
   return {
     listAgentConnectors: (ref: string, agentId: string, filter: { q?: string; category?: string } = {}) =>
       call<AgentConnector[]>(`${agent(ref, agentId)}/integrations${q(filter)}`),
+    /** Lo que deja hacer el conector. Encender y apagar es `setCapability`, un cambio por llamada. */
+    connectorTools: (ref: string, agentId: string, slug: string, lang: string) =>
+      call<ConnectorTools>(`${agent(ref, agentId)}/integrations/${enc(slug)}/tools${q({ lang })}`),
     connectConnector: (ref: string, body: ConnectBody) => call<ConnectResult>(`${client(ref)}/connections`, { method: "POST", body }),
     setActivation: (ref: string, agentId: string, slug: string, body: { permission: ConnectorPermission; settings: ConnectorSettings }) =>
       call<Activation>(`${agent(ref, agentId)}/activations/${enc(slug)}`, { method: "PUT", body }),

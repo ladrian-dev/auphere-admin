@@ -55,6 +55,35 @@ export type AgentConnector = {
   settings_schema: SettingsSchema | null;
 };
 
+/** Por qué no se puede apagar una herramienta: una tarea, una prueba o el texto del agente. */
+export type ToolLockedBy = "task" | "test" | "promise";
+
+/** Lo que deja hacer un conector, con su estado en este agente. */
+export type ConnectorTool = {
+  /** El nombre del catálogo: la clave para encenderla, nunca lo que se enseña. */
+  name: string;
+  /** Su nombre de negocio, o uno legible si aún no lo tiene. */
+  title: string;
+  description: string;
+  read_only: boolean;
+  /** En el borrador, o en lo publicado si no hay borrador. */
+  enabled: boolean;
+  enabled_in_active: boolean;
+  locked: boolean;
+  locked_by: ToolLockedBy | null;
+  /** Con «Solo leer» una de escritura encendida sigue sin actuar. */
+  needs_write_permission: boolean;
+  suggested: boolean;
+};
+
+/** `GET …/agents/{id}/integrations/{slug}/tools`: lo recomendado primero. */
+export type ConnectorTools = {
+  slug: string;
+  name: string;
+  permission: ConnectorPermission | null;
+  tools: ConnectorTool[];
+};
+
 /** `POST /connections`: autorizar y activar en un paso (35.3, 35.4). */
 export type ConnectBody = { integration: string; agent_id?: string; permission?: ConnectorPermission };
 /** Ya autorizada: se activó sin pedirla otra vez. */

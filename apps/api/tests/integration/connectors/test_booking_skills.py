@@ -20,6 +20,7 @@ from nexus_api.db.models import (
     AgentConfig,
     AgentConfigStatus,
     AgentConnectorActivation,
+    AuditLog,
     Connector,
     Partner,
     TenantConnector,
@@ -277,3 +278,28 @@ def test_calendly_books_with_tools_we_sync_and_never_cancels() -> None:
         for tools in booking_skills.BOOKING_TOOLS.values()
         for tool in tools
     )
+
+
+async def test_a_sync_respects_a_switch_left_off_before_any_auto_enable(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    """Requisito 67.5: apagó la herramienta antes de que la sincronización la encendiera
+    nunca, así que no hay rastro de auto-encendido que la frene."""
+    connector, install, agent_id = await _world(db_session, biz, tools=[])
+    await _activate(db_session, biz, install, agent_id, "read_write")
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        db_session.add(
+            AuditLog(
+                tenant_id=biz.tenant_id,
+                actor="person@example.com",
+                action="console.capability.update",
+                target=f"capability:{WRITE}",
+                before_json={},
+                after_json={"enabled": False, "agent_id": str(agent_id)},
+            )
+        )
+    await db_session.commit()
+
+    await _after_sync(db_session, biz, connector, install)
+
+    assert await _draft(db_session, biz, agent_id) is None

@@ -26,9 +26,11 @@ import {
 import {
   agentConnectorsAction,
   connectConnectorAction,
+  connectorToolsAction,
   reconnectConnectionAction,
   removeActivationAction,
   setActivationAction,
+  setConnectorToolAction,
 } from "@/app/(console)/clients/[ref]/agents/connector-actions";
 import { connectApiKeyAction } from "@/app/(console)/clients/[ref]/integrations/actions";
 import { connectorStatusKey, splitCredentials } from "@/components/agent-tools/lib";
@@ -42,12 +44,15 @@ import type {
   ConnectResult,
   ConnectorPermission,
   ConnectorSettings,
+  ConnectorTools,
 } from "@/lib/backend/agent-connectors-types";
 import type { ConnectorOut } from "@/lib/backend/agent-tools-types";
 import type { AgentSpec } from "@/lib/backend/builder-types";
+import type { CapabilityUpdated } from "@/lib/backend/capabilities";
 
 import { skillName, type Result } from "./builder-model";
 import { ConnectorLogo, CredentialsForm, PermissionRadios, SettingsDialog } from "./connector-parts";
+import { ConnectorToolsDialog } from "./connector-tools-dialog";
 import {
   CONNECTED_FILTER,
   authKindLabel,
@@ -58,6 +63,7 @@ import {
   descriptionKey,
   filterConnectors,
   filterCounts,
+  hasTools,
   isBroken,
   orderConnectors,
   permissionLabel,
@@ -74,6 +80,8 @@ export type AgentConnectorsActions = {
   remove?: (body: Ids & { slug: string }) => Promise<Result<AffectedSkills>>;
   reconnect?: (body: { ref: string; connection: string }) => Promise<Result<ConnectConsent>>;
   saveKey?: (body: { ref: string; slug: string; secrets: Record<string, string>; endpoint_meta: Record<string, unknown> }) => Promise<Result<ConnectorOut>>;
+  tools?: (body: Ids & { slug: string; lang: "es" | "en" }) => Promise<Result<ConnectorTools>>;
+  setTool?: (body: Ids & { key: string; enabled: boolean }) => Promise<Result<CapabilityUpdated>>;
   /** Abrir la autorización del proveedor (los tests no abren ventanas). */
   open?: (url: string) => void;
 };
@@ -85,6 +93,8 @@ const SERVER_ACTIONS: Required<AgentConnectorsActions> = {
   remove: (body) => removeActivationAction(body),
   reconnect: (body) => reconnectConnectionAction(body),
   saveKey: (body) => connectApiKeyAction(body),
+  tools: (body) => connectorToolsAction(body),
+  setTool: (body) => setConnectorToolAction(body),
   open: (url) => void window.open(url, "_blank", "noopener,noreferrer"),
 };
 
@@ -120,6 +130,8 @@ export type AgentConnectorsHandle = { connect: (slug: string) => boolean };
  *   agente» para quitarlo. Quitarlo pide confirmación y dice qué habilidades
  *   se quedan sin él (35.7).
  * - **Roto**: «Reconectar». Cada conexión tiene su página (36.1).
+ * - **Herramientas**: lo que deja hacer ese conector, de una en una
+ *   (`connector-tools-dialog.tsx`). También para quien solo puede leer.
  *
  * Las acciones de las filas siguen la regla de los tres puntos: con más de dos
  * botones en la lista, cada fila las lleva en su «⋯» (`row-actions-rule.ts`).
@@ -164,6 +176,7 @@ export function AgentConnectorsPanel({
   const [pending, setPending] = React.useState<Pending[]>([]);
   const [target, setTarget] = React.useState<ConnectTarget | null>(null);
   const [settingsOf, setSettingsOf] = React.useState<AgentConnector | null>(null);
+  const [toolsOf, setToolsOf] = React.useState<AgentConnector | null>(null);
   const [removing, setRemoving] = React.useState<AgentConnector | null>(null);
   const [rowError, setRowError] = React.useState<{ slug: string; text: string } | null>(null);
   const alive = React.useRef(true);
@@ -409,6 +422,7 @@ export function AgentConnectorsPanel({
                 }}
                 onReconnect={() => void reconnect(c)}
                 onSettings={() => setSettingsOf(c)}
+                onTools={() => setToolsOf(c)}
                 onRemove={() => setRemoving(c)}
               />
             ))}
@@ -428,6 +442,22 @@ export function AgentConnectorsPanel({
           onDone={() => {
             void load();
             onConnected?.();
+          }}
+        />
+      ) : null}
+
+      {toolsOf ? (
+        <ConnectorToolsDialog
+          key={toolsOf.slug}
+          connector={toolsOf}
+          canWrite={canWrite}
+          load={(lang) => actions.tools({ ...ids, slug: toolsOf.slug, lang })}
+          save={(key, enabled) => actions.setTool({ ...ids, key, enabled })}
+          onClose={() => setToolsOf(null)}
+          onChanged={() => onConnected?.()}
+          onOpenSettings={() => {
+            setToolsOf(null);
+            setSettingsOf(toolsOf);
           }}
         />
       ) : null}
@@ -473,7 +503,8 @@ export function AgentConnectorsPanel({
  * Una fila como el prototipo (§9; 63.3): el logo, el nombre con su categoría,
  * la nota —qué hace, si lo pide una habilidad y cómo se autoriza— y su acción:
  * «Conectar» (el principal si lo pide una habilidad), «Conectado» con
- * «Ajustes» y «Quitar», o «Reconectar» y su página si la conexión no está bien.
+ * «Herramientas», «Ajustes» y «Quitar», o «Reconectar» y su página si la conexión
+ * no está bien.
  */
 function ConnectorRow({
   connector: c,
@@ -485,6 +516,7 @@ function ConnectorRow({
   onConnect,
   onReconnect,
   onSettings,
+  onTools,
   onRemove,
 }: {
   connector: AgentConnector;
@@ -496,6 +528,7 @@ function ConnectorRow({
   onConnect: () => void;
   onReconnect: () => void;
   onSettings: () => void;
+  onTools: () => void;
   onRemove: () => void;
 }) {
   const t = useT();
@@ -528,7 +561,8 @@ function ConnectorRow({
         </div>
         {note.length ? <p className="text-sm text-pretty text-muted-foreground">{note.join(" · ")}</p> : null}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      {/* `max-w-full`: con tres botones en un móvil, envuelve en vez de salirse. */}
+      <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
         {state === "on" ? (
           <StatusBadge tone="positive" dot={false} data-slot="connector-state">
             <span className="inline-flex items-center gap-1">
@@ -536,6 +570,11 @@ function ConnectorRow({
               {t("agentConn.connected")}
             </span>
           </StatusBadge>
+        ) : null}
+        {hasTools(c) ? (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={onTools} aria-label={t("connTools.named", { name: c.name })} aria-haspopup="dialog">
+            {t("connTools.open")}
+          </Button>
         ) : null}
         {kinds.map((kind) => {
           switch (kind) {

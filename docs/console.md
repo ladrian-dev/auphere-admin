@@ -475,6 +475,29 @@ tiene su página en `/clients/{ref}/integrations/{connectionId}` (`?agent=` para
 volver): cuenta, estado, última comprobación, agentes con su permiso y ajustes,
 «Reconectar» y «Desconectar para todos», que primero lista lo afectado.
 
+**Herramientas de un conector** (`components/builder/connector-tools-dialog.tsx`):
+cada fila que este agente usa lleva «Herramientas», también para quien solo puede
+leer. `GET …/agents/{id}/integrations/{slug}/tools` devuelve lo que ese conector
+deja hacer, con su estado en este agente; encender y apagar sigue siendo
+`PUT …/capabilities?agent=`, una herramienta por llamada, así que la lista del
+agente no cambia de forma y el turno no cambia. Dos grupos, «Consulta» y «Cambia».
+Con más de 12 hay buscador y se ve primero lo recomendado (`BOOKING_TOOLS` en los
+calendarios, y lo que pide la plantilla del sector), lo encendido y lo que no se
+puede apagar, con «Ver todas (N)» para el resto. No hay encendido en bloque. El
+cambio se ve al momento y vuelve atrás con palabras si la API no lo acepta:
+`tool_in_use`, `too_many_tools` (60, el máximo de un AgentSpec) o `spec_invalid`
+(`end_customer_argument`: el agente podría elegir a un cliente que no le escribe).
+Una herramienta no se puede apagar si una tarea la nombra, si una prueba espera un
+`booking` y es la última que lo hace, o si en un agente estructurado es la única que
+cumple algo que promete su texto (`locked_by`: `task`, `test`, `promise`), porque la
+revisión lo bloquearía al publicar. Todo va al borrador y deja las pruebas
+desactualizadas, también en los agentes sin AgentSpec estructurado. Con «Solo leer»
+una de escritura encendida no actúa, y la fila lo dice y lleva a «Ajustes».
+
+Lo que apaga una persona se queda apagado: ni guardar «Ajustes» ni volver a autorizar
+lo traen de vuelta (`connector_service.enable_booking_once`,
+`switched_off_by_a_person`, que lee `console.capability.update` con su `agent_id`).
+
 **Avanzado: el modelo lo gestiona Auphere** (spec 047, requisito 64, D55): mientras
 no exista la gestión de modelos en el panel de operador, Avanzado no enseña
 «Calidad» ni «Fijar un modelo»; dice en una línea que el modelo de este agente lo

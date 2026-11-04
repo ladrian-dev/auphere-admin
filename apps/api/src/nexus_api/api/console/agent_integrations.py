@@ -12,6 +12,10 @@ T128 (requisitos 35 y 36; ``contracts/console-api.md`` §6).
   esquema del catálogo (35.1, 35.5, 36.2);
 - ``DELETE /…/agents/{agent_id}/activations/{integration}``: devuelve las
   habilidades afectadas (35.7);
+- ``GET /clients/{ref}/agents/{agent_id}/integrations/{slug}/tools``: lo que ese
+  conector deja hacer, con su estado en este agente. Encender y apagar es
+  ``PUT /clients/{ref}/capabilities?agent=``, un cambio por llamada: esta lectura no
+  abre otra forma de escribir la lista del agente;
 - ``GET /clients/{ref}/connections/{id}``: la cuenta, la salud con la hora de la
   última comprobación, los agentes con su permiso y los ajustes (36.1);
 - ``POST /…/connections/{id}/reconnect`` · ``POST /…/connections/{id}/disconnect``
@@ -23,16 +27,23 @@ Nunca devuelve credenciales.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from nexus_api.db.models import AgentConnectorActivation, Connector, TenantConnector
+from nexus_api.db.models import (
+    AgentConnectorActivation,
+    Connector,
+    TenantConnector,
+    ToolCatalog,
+    ToolStatus,
+)
 from nexus_api.services import activations as svc
 from nexus_api.services.connectors import booking_skills
 from nexus_api.services.connectors import catalog as connector_catalog
@@ -41,7 +52,11 @@ from nexus_api.services.connectors.composio_client import ComposioClientProtocol
 from nexus_api.services.connectors.runtime import get_composio_client
 
 from .agent_draft_routes import agent_in_path
-from .deps import ClientScope, client_scope
+from .agent_drafts import load_view
+from .agent_spec_drafts import current_spec
+from .capabilities_client import InUse, _recommended, tools_in_use
+from .capability_names import business_name, description_of
+from .deps import ClientScope, client_scope, client_sector
 from .tools import _logo, start_consent
 
 router = APIRouter(prefix="/clients/{ref}")
@@ -72,6 +87,32 @@ class IntegrationOut(BaseModel):
     connection: ConnectionStateOut | None = None
     activation: ActivationOut | None = None
     settings_schema: dict[str, Any] | None = None
+
+
+class ConnectorToolOut(BaseModel):
+    name: str
+    #: El nombre de negocio, o uno legible sacado del catálogo si aún no lo tiene.
+    title: str
+    description: str
+    read_only: bool
+    #: En lo que se está editando (el borrador, o lo publicado si no hay borrador).
+    enabled: bool
+    enabled_in_active: bool
+    #: Apagarla dejaría al agente sin poder hacer lo que promete.
+    locked: bool
+    locked_by: InUse | None = None
+    #: Encendida o no, no actúa hasta que el permiso del conector deje escribir.
+    needs_write_permission: bool
+    #: Lo que hace falta para reservar con este conector, o lo que pide su sector.
+    suggested: bool
+
+
+class ConnectorToolsOut(BaseModel):
+    slug: str
+    name: str
+    permission: Permission | None = None
+    #: Primero lo recomendado, después lo encendido y luego por nombre.
+    tools: list[ConnectorToolOut]
 
 
 class ConnectIn(BaseModel):
@@ -207,6 +248,103 @@ async def agent_integrations(
     return out
 
 
+# ── las herramientas de un conector ────────────────────────────────────────
+
+
+def _readable(name: str, connector: Connector) -> str:
+    """El nombre de una herramienta que aún no tiene nombre de negocio. Nada
+    desaparece por no estar traducido, y el nombre del catálogo no se enseña:
+    ``GOOGLECALENDAR_CALENDAR_LIST_DELETE`` se lee «Calendar list delete»."""
+    toolkit = connector.mcp_server_ref.partition(":")[2]
+    words = re.split(r"[^a-z0-9]+", name.lower())
+    for prefix in (connector.slug.lower(), toolkit.lower()):
+        parts = re.split(r"[^a-z0-9]+", prefix)
+        if prefix and words[: len(parts)] == parts:
+            words = words[len(parts) :]
+            break
+    text = " ".join(w for w in words if w)
+    return text.capitalize() if text else name
+
+
+@router.get("/agents/{agent_id}/integrations/{slug}/tools", response_model=ConnectorToolsOut)
+async def connector_tools(
+    slug: str = Path(min_length=1, max_length=80),
+    lang: str = Query(default="es", pattern="^(es|en)$"),
+    scope: ClientScope = Depends(agent_in_path("agents:read")),
+) -> ConnectorToolsOut:
+    assert scope.agent_id is not None
+    try:
+        connector, install = await svc.connection_of(scope.session, scope.tenant.id, slug)
+    except svc.ActivationError as exc:
+        raise _error(exc) from None
+    # Igual que en el catálogo del agente: un canal no es un conector aquí.
+    if (connector.provider_meta or {}).get("channel_only") is True:
+        raise _error(svc.ActivationError("unknown_integration", 404))
+    rows = (
+        await scope.session.scalars(
+            sa.select(ToolCatalog).where(
+                ToolCatalog.connector_id == connector.id,
+                ToolCatalog.status.notin_([ToolStatus.INTERNAL, ToolStatus.DEPRECATED]),
+            )
+        )
+    ).all()
+    permission = (
+        await scope.session.scalar(
+            sa.select(AgentConnectorActivation.permission).where(
+                AgentConnectorActivation.agent_id == scope.agent_id,
+                AgentConnectorActivation.connector_id == install.id,
+            )
+        )
+        if install is not None
+        else None
+    )
+    view = await load_view(scope)
+    spec, target = await current_spec(scope)
+    enabled = set(view.target.tools or []) if view.target else set()
+    active = set(view.active.tools or []) if view.active else set()
+    in_use = (
+        await tools_in_use(scope, spec, target, [t.name for t in rows if t.name in enabled])
+        if spec is not None
+        else {}
+    )
+    booking = booking_skills.BOOKING_TOOLS.get(connector.slug, ())
+    recommended = await _recommended(await client_sector(scope.session))
+
+    def rank(tool: ConnectorToolOut) -> tuple[int, bool, str]:
+        place = booking.index(tool.name) if tool.name in booking else len(booking)
+        return (place if tool.suggested else len(booking) + 1, not tool.enabled, tool.title.lower())
+
+    tools: list[ConnectorToolOut] = []
+    for tool in rows:
+        named = business_name(tool.name, "tool", lang)
+        said = description_of(tool.name, "tool", lang) or tool.description or ""
+        # Una fila de antes puede decir que lee lo que su nombre dice que borra.
+        read_only = tool.read_only and not connector_service.name_says_it_writes(tool.name)
+        why = in_use.get(tool.name)
+        tools.append(
+            ConnectorToolOut(
+                name=tool.name,
+                title=named if named != tool.name else _readable(tool.name, connector),
+                # Sin nombre de catálogo a la vista; lo largo no cabe en la fila.
+                description="" if tool.name in said else said[:400],
+                read_only=read_only,
+                enabled=tool.name in enabled,
+                enabled_in_active=tool.name in active,
+                locked=why is not None,
+                locked_by=why,
+                needs_write_permission=not read_only and permission in (None, "read"),
+                suggested=tool.name in booking or tool.name in recommended,
+            )
+        )
+    tools.sort(key=rank)
+    return ConnectorToolsOut(
+        slug=connector.slug,
+        name=connector.display_name,
+        permission=permission,
+        tools=tools,
+    )
+
+
 # ── conectar y activar ─────────────────────────────────────────────────────
 
 
@@ -289,11 +427,12 @@ async def put_activation(
     except svc.ActivationError as exc:
         raise _error(exc) from None
     # Owner, 2026-11-03: activating what can book, unless asked to only read, turns
-    # booking on in this agent's draft.
+    # booking on in this agent's draft. Once: «Ajustes» saves here too, and saving
+    # does not undo what a person switched off.
     if body.permission != "read" and booking_skills.books(integration):
         connector, install = await svc.connection_of(scope.session, scope.tenant.id, integration)
         if install is not None:
-            await booking_skills.enable_booking_skills(
+            await connector_service.enable_booking_once(
                 scope.session,
                 connector=connector,
                 install=install,

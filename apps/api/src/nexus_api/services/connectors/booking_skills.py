@@ -136,8 +136,11 @@ async def enable_after_sync(
     actor: str,
 ) -> None:
     """A sync reaches the agents connected before the catalog had these tools: each
-    one this connection is activated for, unless only to read. Once per agent: what
-    a person took out of a draft afterwards stays out."""
+    one this connection is activated for, unless only to read. Once per agent, and
+    never over a person: what they took out or switched off stays out (67.5)."""
+    # ``service`` imports this module.
+    from nexus_api.services.connectors.service import switched_off_by_a_person
+
     if not books(connector.slug):
         return
     agents = await session.scalars(
@@ -151,6 +154,13 @@ async def enable_after_sync(
     )
     for agent_id in list(agents):
         if await _already_enabled(session, connector, install, agent_id):
+            continue
+        if await switched_off_by_a_person(
+            session,
+            tenant_id=install.tenant_id,
+            agent_id=agent_id,
+            names=BOOKING_TOOLS.get(connector.slug, ()),
+        ):
             continue
         await enable_booking_skills(
             session, connector=connector, install=install, agent_id=agent_id, actor=actor
@@ -183,7 +193,8 @@ async def _write_draft(
     actor: str,
 ) -> list[str]:
     from nexus_api.services.agent_config_service import AgentConfigService
-    from nexus_api.services.testing.suites import mark_stale
+    from nexus_api.services.testing.sector_catalog import reconcile_suite
+    from nexus_api.services.testing.suites import get_suite, mark_stale
 
     svc = AgentConfigService(session)
     draft = await svc.configs.get_draft(agent_id=agent_id)
@@ -227,6 +238,10 @@ async def _write_draft(
         target.spec = spec
     await svc.finish_draft(write, actor=actor)
     await mark_stale(session, agent_id)
+    # Requisito 66.3: conectar lo que reserva cambia qué pruebas aplican.
+    suite = await get_suite(session, agent_id)
+    if suite is not None:
+        await reconcile_suite(session, suite, tools=tools, compact=False)
     session.add(
         AuditLog(
             tenant_id=install.tenant_id,

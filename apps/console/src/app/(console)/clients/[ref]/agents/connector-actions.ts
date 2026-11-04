@@ -12,8 +12,10 @@ import type {
   ConnectionPage,
   ConnectResult,
   ConnectConsent,
+  ConnectorTools,
   Disconnected,
 } from "@/lib/backend/agent-connectors-types";
+import type { CapabilityUpdated } from "@/lib/backend/capabilities";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /**
@@ -90,6 +92,24 @@ const removeSchema = agentSchema.extend({ slug });
 export async function removeActivationAction(raw: unknown): Promise<ActionResult<AffectedSkills>> {
   const body = removeSchema.parse(raw);
   return write(body.ref, (api) => api.removeActivation(body.ref, body.agent, body.slug));
+}
+
+const toolsSchema = agentSchema.extend({ slug, lang: z.enum(["es", "en"]) });
+
+/** Lo que deja hacer este conector, con su estado en este agente. */
+export async function connectorToolsAction(raw: unknown): Promise<ActionResult<ConnectorTools>> {
+  const body = toolsSchema.parse(raw);
+  const principal = await partner("agents:read");
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).connectorTools(body.ref, body.agent, body.slug, body.lang));
+}
+
+const toolSchema = agentSchema.extend({ key: z.string().min(1).max(128), enabled: z.boolean() });
+
+/** Una herramienta, una llamada: la misma puerta que Habilidades, así que la lista del agente no cambia de forma. */
+export async function setConnectorToolAction(raw: unknown): Promise<ActionResult<CapabilityUpdated>> {
+  const body = toolSchema.parse(raw);
+  return write(body.ref, (api) => api.setCapability(body.ref, { key: body.key, kind: "tool", enabled: body.enabled }, body.agent));
 }
 
 // ── La página de cada conexión (36) ─────────────────────────────────────────

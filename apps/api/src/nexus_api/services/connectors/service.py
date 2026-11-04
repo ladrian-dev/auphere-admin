@@ -30,7 +30,9 @@ audit row.
 from __future__ import annotations
 
 import json
+import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -54,6 +56,9 @@ from nexus_api.db.models import (
 )
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.connectors.booking_skills import (
+    BOOKING_TOOLS,
+    _agent_or_principal,
+    _already_enabled,
     enable_after_sync,
     enable_booking_skills,
 )
@@ -190,6 +195,8 @@ async def _write_audit(
 _TOOL_SLUG_ANNOTATIONS: dict[str, dict[str, bool]] = {
     # Google Calendar — common slug patterns from Composio.
     "GOOGLECALENDAR_LIST_EVENTS": {"read_only": True, "destructive": False},
+    "GOOGLECALENDAR_EVENTS_LIST": {"read_only": True, "destructive": False},
+    "GOOGLECALENDAR_FIND_FREE_SLOTS": {"read_only": True, "destructive": False},
     "GOOGLECALENDAR_FIND_EVENT": {"read_only": True, "destructive": False},
     "GOOGLECALENDAR_GET_EVENT": {"read_only": True, "destructive": False},
     "GOOGLECALENDAR_LIST_CALENDARS": {"read_only": True, "destructive": False},
@@ -232,6 +239,44 @@ def _drop_blank_tools(tools: list[ComposioTool], *, connector_slug: str) -> list
     return kept
 
 
+#: Verbs that change something. A name that carries one is never read-only, whatever
+#: else it says: ``_LIST_`` made ``GOOGLECALENDAR_CALENDAR_LIST_DELETE`` read-only.
+#: Nouns that look like verbs (``POST``, ``SHARE``) stay out: whole words only.
+_WRITE_VERBS = frozenset(
+    {
+        "ADD",
+        "APPEND",
+        "CANCEL",
+        "CLEAR",
+        "CREATE",
+        "DELETE",
+        "DESTROY",
+        "EDIT",
+        "ERASE",
+        "INSERT",
+        "MODIFY",
+        "MOVE",
+        "PATCH",
+        "PUBLISH",
+        "PURGE",
+        "REMOVE",
+        "RENAME",
+        "REPLACE",
+        "REVOKE",
+        "SEND",
+        "TRASH",
+        "UPDATE",
+        "UPLOAD",
+        "UPSERT",
+        "WRITE",
+    }
+)
+
+
+def name_says_it_writes(name: str) -> bool:
+    return not _WRITE_VERBS.isdisjoint(re.split(r"[^A-Z0-9]+", name.upper()))
+
+
 def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     """Resolve read_only / destructive for a tool.
 
@@ -242,12 +287,17 @@ def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     2. Hard-coded mapping in ``_TOOL_SLUG_ANNOTATIONS``.
     3. Heuristic on slug prefix (LIST_, GET_, FIND_, SEARCH_ → read_only).
     4. Conservative fallback: destructive=true.
+
+    From step 1 on, a name that says it changes something is never read-only.
     """
     hint = hint_for_slug(tool.slug)
     if hint is not None:
         return {"read_only": hint["read_only"], "destructive": hint["destructive"]}
+    writes = name_says_it_writes(tool.slug)
     tags = tool.raw_tags or {}
     if "readOnlyHint" in tags or "destructiveHint" in tags:
+        if writes and tags.get("readOnlyHint"):
+            return {"read_only": False, "destructive": True}
         return {
             "read_only": bool(tags.get("readOnlyHint", False)),
             "destructive": bool(tags.get("destructiveHint", False)),
@@ -255,9 +305,10 @@ def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     if tool.slug in _TOOL_SLUG_ANNOTATIONS:
         return dict(_TOOL_SLUG_ANNOTATIONS[tool.slug])
     upper = tool.slug.upper()
-    for prefix in ("_LIST_", "_GET_", "_FIND_", "_SEARCH_", "_READ_"):
-        if prefix in upper:
-            return {"read_only": True, "destructive": False}
+    if not writes:
+        for prefix in ("_LIST_", "_GET_", "_FIND_", "_SEARCH_", "_READ_"):
+            if prefix in upper:
+                return {"read_only": True, "destructive": False}
     return {"read_only": False, "destructive": True}
 
 
@@ -505,7 +556,7 @@ async def complete_consent_from_webhook(
     )
     # Owner, 2026-11-03: what can book turns booking on. After the sync: the first
     # connection has no tools in the catalog until here.
-    await enable_booking_skills(
+    await enable_booking_once(
         session, connector=connector, install=tc, agent_id=pending_agent, actor=actor
     )
     return CompleteConsentResult(
@@ -514,6 +565,60 @@ async def complete_consent_from_webhook(
         tools_deprecated=sync.deprecated,
         auto_enabled=auto_enabled,
         blocked_pending_operator=blocked,
+    )
+
+
+async def switched_off_by_a_person(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    names: Iterable[str],
+) -> set[str]:
+    """Which of ``names`` a person left off in this agent, with a switch of the
+    console: the last thing they did with each one."""
+    targets = {f"capability:{name}": name for name in names}
+    if not targets:
+        return set()
+    rows = await session.execute(
+        select(AuditLog.target, AuditLog.after_json["enabled"].astext)
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == "console.capability.update",
+            AuditLog.target.in_(targets),
+            AuditLog.after_json["agent_id"].astext == str(agent_id),
+            AuditLog.after_json["enabled"].astext.in_(["true", "false"]),
+        )
+        .order_by(AuditLog.created_at)
+    )
+    last = {target: enabled for target, enabled in rows.all()}
+    return {targets[target] for target, enabled in last.items() if enabled == "false"}
+
+
+async def enable_booking_once(
+    session: AsyncSession,
+    *,
+    connector: Connector,
+    install: TenantConnector,
+    agent_id: uuid.UUID | None,
+    actor: str,
+) -> list[str]:
+    """What can book turns booking on once per agent, and never over a person: saving
+    its settings or authorizing it again does not undo a switch left off."""
+    names = BOOKING_TOOLS.get(connector.slug)
+    if not names:
+        return []
+    target = await _agent_or_principal(session, agent_id)
+    if target is None:
+        return []
+    if await _already_enabled(session, connector, install, target):
+        return []
+    if await switched_off_by_a_person(
+        session, tenant_id=install.tenant_id, agent_id=target, names=names
+    ):
+        return []
+    return await enable_booking_skills(
+        session, connector=connector, install=install, agent_id=target, actor=actor
     )
 
 
@@ -866,7 +971,11 @@ async def auto_enable_connector_tools(
         return []
 
     current = set(base.tools)
-    added = [name for name in candidates if name not in current]
+    # Reconnecting comes through here too: what a person left off stays off.
+    left_off = await switched_off_by_a_person(
+        session, tenant_id=tenant_id, agent_id=base.agent_id, names=candidates
+    )
+    added = [name for name in candidates if name not in current and name not in left_off]
     # Spec 047 (T128): the agent that gets the tools also gets its activation, so
     # the per-agent rule never takes away what connecting just gave.
     from nexus_api.services.activations import ensure_activations_for_tools
