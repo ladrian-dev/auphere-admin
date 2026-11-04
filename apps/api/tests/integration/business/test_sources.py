@@ -342,6 +342,24 @@ async def test_a_web_page_is_read_and_a_dead_one_says_unreachable(
     )
 
 
+async def test_a_social_profile_is_refused_as_a_website_and_leaves_no_source(
+    client: Any, db_session: AsyncSession, world: dict[str, Any], fake_redis: Any
+) -> None:
+    a = world["a"]
+    c = await _cultor(client, db_session, world)
+    for url in (
+        "https://www.instagram.com/jemmas_hair/",
+        "https://facebook.com/cultorbarber",
+        "https://www.tiktok.com/@cultorbarber",
+    ):
+        refused = await client.post(
+            f"{c['base']}/sources", json={"url": url}, headers=a["headers"]()
+        )
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["detail"]["code"] == "social_url"
+    assert (await _sources(client, a["headers"](), c["base"]))["items"] == []
+
+
 async def test_rereading_brings_changes_as_proposals_never_overwrites(
     client: Any, db_session: AsyncSession, world: dict[str, Any], fake_redis: Any
 ) -> None:

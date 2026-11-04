@@ -49,7 +49,7 @@ function timeOf(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 }
 
-const KNOWN = new Set(["too_large", "unsupported_type", "invalid_url", "undo_window_closed"]);
+const KNOWN = new Set(["too_large", "unsupported_type", "invalid_url", "social_url", "undo_window_closed"]);
 
 /**
  * «Documentos y webs» de la ficha (spec 047, T071, requisito 12): subir un

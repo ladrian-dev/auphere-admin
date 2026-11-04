@@ -396,8 +396,8 @@ export const businessMessages = {
   "business.history.section.links": { es: "Redes", en: "Social profiles" },
   "business.sources.title": { es: "Documentos y webs", en: "Documents and websites" },
   "business.sources.intro": {
-    es: "Lo que suban aquí lo usan todos los agentes del negocio desde el siguiente mensaje. Las webs se vuelven a leer cada semana.",
-    en: "What you add here is used by every agent of the business from the next message on. Websites are read again every week.",
+    es: "Lo que suban aquí lo usan todos los agentes del negocio desde el siguiente mensaje. Si una web cambia, pulsa «Volver a leer».",
+    en: "What you add here is used by every agent of the business from the next message on. If a website changes, press «Read again».",
   },
   "business.sources.limit": { es: "Hasta 10 MB: PDF, Word, fotos de cartas, TXT, MD y HTML.", en: "Up to 10 MB: PDF, Word, photos of menus, TXT, MD and HTML." },
   "business.sources.upload": { es: "Subir archivo", en: "Upload a file" },
@@ -430,6 +430,10 @@ export const businessMessages = {
     en: "That type of file cannot be read. Upload a PDF, a Word file, a photo, a TXT, an MD or an HTML.",
   },
   "business.sources.error.invalid_url": { es: "Escribe una dirección que empiece por https://", en: "Type an address that starts with https://" },
+  "business.sources.error.social_url": {
+    es: "Las redes no dejan leer sus perfiles. Añade ese enlace en «Redes sociales».",
+    en: "Social networks do not let us read their profiles. Add that link under «Social media».",
+  },
   "business.sources.error.undo_window_closed": { es: "Pasaron los 10 minutos: ya no se puede recuperar.", en: "The 10 minutes are over: it can no longer be brought back." },
   "business.sources.error.generic": { es: "No se pudo hacer. Inténtalo de nuevo.", en: "It could not be done. Try again." },
   "business.socials.title": { es: "Redes", en: "Social profiles" },

@@ -229,6 +229,17 @@ describe("documentos y webs", () => {
     expect(toast.error).toHaveBeenCalledWith("Ese archivo pasa de 10 MB.");
   });
 
+  it("el enlace de una red no se lee como web: dice dónde va y no borra lo escrito", async () => {
+    const user = userEvent.setup();
+    const addUrl = vi.fn(async () => ({ ok: false as const, status: 422, message: "social_url", code: "social_url" }));
+    wrap(<BusinessSources refId="cultor" canWrite initial={sources()} actions={{ addUrl }} />);
+    const field = screen.getByLabelText("Dirección de una web");
+    await user.type(field, "https://www.instagram.com/jemmas_hair/");
+    await user.click(screen.getByRole("button", { name: "Añadir web" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Las redes no dejan leer sus perfiles. Añade ese enlace en «Redes sociales»."));
+    expect(field).toHaveValue("https://www.instagram.com/jemmas_hair/");
+  });
+
   it("quitar deja de usarse y el aviso trae «Deshacer» (10 minutos)", async () => {
     const user = userEvent.setup();
     const remove = vi.fn(async () => ok({ id: source({}).id, restore_until: new Date(Date.now() + 600_000).toISOString() }));

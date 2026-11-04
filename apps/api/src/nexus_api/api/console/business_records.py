@@ -492,7 +492,7 @@ async def list_sources(scope: ClientScope = Depends(client_scope(_READ))) -> Sou
     responses={
         413: {"description": "too_large: más de 10 MB"},
         415: {"description": "unsupported_type"},
-        422: {"description": "invalid_url"},
+        422: {"description": "invalid_url, social_url: el enlace de una red va en sus redes"},
     },
     openapi_extra={
         "requestBody": {

@@ -61,6 +61,7 @@ from nexus_api.db.models.business import BusinessChange, BusinessProfile
 from nexus_api.db.models.jobs import LIVE_JOB_STATUSES
 from nexus_api.services import knowledge_indexer as indexer
 from nexus_api.services.business import client_spec
+from nexus_api.services.business.links import classify_url
 from nexus_api.services.business.sections import READER, Actor, touch_section
 from nexus_api.services.business.writes import write_section
 
@@ -323,10 +324,14 @@ async def add_url(
     created_by: str | None = None,
 ) -> tuple[KnowledgeDocument, Job]:
     """Una web del negocio. Las guardas (dirección pública, tamaño) se aplican al
-    leerla, en el trabajo."""
+    leerla, en el trabajo. El enlace de una red va en «Redes sociales»: sus perfiles
+    piden iniciar sesión y aquí solo darían una fuente que no se puede leer."""
     clean = url.strip()
     if not _URL.match(clean):
         raise SourceError("invalid_url", 422)
+    detected = classify_url(clean)
+    if detected is not None and detected.network != "web":
+        raise SourceError("social_url", 422)
     before = await _view(session)
     doc = KnowledgeDocument(
         tenant_id=require_current_tenant(),
