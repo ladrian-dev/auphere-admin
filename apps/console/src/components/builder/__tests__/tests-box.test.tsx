@@ -27,7 +27,7 @@ const untested = suite({
 });
 
 function box(over: Partial<Tests> = {}, canWrite = true) {
-  const tests: Tests = { suite: untested, running: null, error: null, canRun: canWrite, run: vi.fn(), reload: vi.fn(), ...over };
+  const tests: Tests = { suite: untested, running: null, error: null, canRun: canWrite, run: vi.fn(), ask: vi.fn(), confirm: null, reload: vi.fn(), ...over };
   return render(
     <LocaleProvider locale="es">
       <TestsBox refId={REF} tests={tests} review={null} canWrite={canWrite} onFix={vi.fn()} onEdit={vi.fn()} onAll={vi.fn()} />
