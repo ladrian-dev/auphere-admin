@@ -56,7 +56,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import structlog
 from langgraph.graph import END, START, StateGraph
@@ -2417,15 +2417,55 @@ async def _load_recent_history(
         )
 
     history: list[dict[str, str]] = []
+    done: list[list[Any]] = []
     for m in reversed(rows):  # DB gave newest-first; replay oldest-first
         if exclude_message_id and str(m.id) == exclude_message_id:
             continue
+        if m.direction != MessageDirection.INBOUND:
+            done.append(m.tool_calls or [])
         content = (m.content or "").strip()
         if not content:
             continue
         role = "user" if m.direction == MessageDirection.INBOUND else "assistant"
         history.append({"role": role, "content": content})
-    return history[-limit:]
+    note = _tools_already_used(done)
+    # Last, not first: right after the header it would merge into the cached system
+    # block (``llm.py::_with_prompt_caching``) and every tool used would rewrite it.
+    return history[-limit:] + ([note] if note else [])
+
+
+#: How many tool results a turn is reminded of, most recent first to go.
+_TOOLS_REMEMBERED: Final = 10
+
+
+def _tools_already_used(turns: Iterable[Iterable[Any]]) -> dict[str, str] | None:
+    """What the agent did with its tools earlier in the conversation, as a system
+    note. History only keeps the text of each message, so a later turn read its own
+    «your appointment is booked» with nothing behind it and took it back. Only the
+    tool, its status and when: never its arguments nor what it returned."""
+    seen: dict[tuple[str, str], str] = {}
+    for calls in turns:
+        for call in calls:
+            if not isinstance(call, dict) or not call.get("tool"):
+                continue
+            # A text row and its interactive row carry the same envelopes.
+            key = (str(call["tool"]), str(call.get("executed_at") or ""))
+            seen[key] = str(call.get("status") or "unknown")
+    if not seen:
+        return None
+    lines = [
+        f"- {executed_at[:16].replace('T', ' ')} UTC · {tool}: {status}"
+        for (tool, executed_at), status in list(seen.items())[-_TOOLS_REMEMBERED:]
+    ]
+    return {
+        "role": "system",
+        "content": (
+            "What you already did with your tools in this conversation. This comes from the "
+            "system, not from the customer. If you told the customer something was done and "
+            "its tool shows ok here, it is done: do not deny it or take it back. Never mention "
+            "this list.\n" + "\n".join(lines)
+        ),
+    }
 
 
 def make_grade_outcome_node(
