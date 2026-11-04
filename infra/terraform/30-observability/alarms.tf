@@ -1,5 +1,11 @@
 locals {
   alarm_actions = [aws_sns_topic.alerts.arn]
+
+  # Todas las alarmas de este stack avisan solo en prod. Staging aparca sus
+  # servicios de 03:00 a 09:00 y cada mañana registra un `worker_dead` que no es un
+  # fallo: sus alarmas se ven en la consola, sin correo y sin suscriptor. Lo
+  # comprueba apps/worker/tests/unit/test_platform_alarms_contract.py.
+  alert_actions_enabled = terraform.workspace == "prod"
 }
 
 # ── ALB / API ──────────────────────────────────────────────────────────
@@ -20,7 +26,8 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx" {
     LoadBalancer = local.services.alb_arn_suffix
   }
 
-  alarm_actions = local.alarm_actions
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_unhealthy_hosts" {
@@ -40,7 +47,8 @@ resource "aws_cloudwatch_metric_alarm" "api_unhealthy_hosts" {
     TargetGroup  = local.services.api_target_group_arn_suffix
   }
 
-  alarm_actions = local.alarm_actions
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
 }
 
 # ── Runner: cola envejeciendo pese al autoescalado ─────────────────────
@@ -92,7 +100,8 @@ resource "aws_cloudwatch_metric_alarm" "runner_queue_stalled" {
     }
   }
 
-  alarm_actions = local.alarm_actions
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
 
   # Verificado el 2026-08-12 contra CloudWatch: `m0` publica un punto cada
   # 300 s incluso con la cola a cero, y `m1` (stream priority) no existe
@@ -124,7 +133,8 @@ resource "aws_cloudwatch_metric_alarm" "aurora_acu_ceiling" {
     DBClusterIdentifier = "${local.name}-aurora"
   }
 
-  alarm_actions = local.alarm_actions
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
@@ -143,7 +153,8 @@ resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
     DBClusterIdentifier = "${local.name}-aurora"
   }
 
-  alarm_actions = local.alarm_actions
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
 }
 
 # ── Valkey ─────────────────────────────────────────────────────────────
@@ -166,7 +177,8 @@ resource "aws_cloudwatch_metric_alarm" "valkey_memory" {
     ReplicationGroupId = "${local.name}-valkey"
   }
 
-  alarm_actions = local.alarm_actions
+  actions_enabled = local.alert_actions_enabled
+  alarm_actions   = local.alarm_actions
 }
 
 # ── Alertas de la plataforma (spec 051, R9) ────────────────────────────
@@ -200,10 +212,6 @@ locals {
   # 36 × 300 s con un solo punto: avisa en minutos y aguanta 3 h en ALARM.
   alert_period_seconds     = 300
   alert_evaluation_periods = 36
-
-  # Staging aparca sus servicios de 03:00 a 09:00 y cada mañana registra un
-  # `worker_dead` que no es un fallo. Las alarmas se ven en la consola, sin correo.
-  alert_actions_enabled = terraform.workspace == "prod"
 
   # Un `kind` por cada `Alert(...)` de platform_watcher.py. Lo comprueba
   # apps/worker/tests/unit/test_platform_alarms_contract.py.

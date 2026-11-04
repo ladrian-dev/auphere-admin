@@ -83,9 +83,9 @@ jobs:
             --push \
             infra/grafana
 
-      # El servicio puede no existir todavía (grafana_enabled=false por
-      # defecto en 30-observability). Empujar la imagen y no rodar nada es
-      # un resultado válido; fallar aquí no aportaría nada.
+      # El servicio puede no existir todavía (grafana_enabled lo declara cada
+      # entorno en su .tfvars de 30-observability). Empujar la imagen y no
+      # rodar nada es un resultado válido; fallar aquí no aportaría nada.
       - name: roll grafana si el servicio existe
         run: |
           set -euo pipefail

@@ -78,6 +78,7 @@ CLAUDE.md
 *.tfstate
 *.tfstate.*
 *.tfplan
+**/infra/terraform/**/*.plan
 infra/terraform/backend.hcl
 .envrc
 storybook-static/

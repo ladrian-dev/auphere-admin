@@ -27,11 +27,78 @@ terraform init -backend-config=../backend.hcl
 terraform workspace new staging   # o: terraform workspace select staging
 terraform apply
 # ... repetir para 10-data, 20-services, 30-observability
+# 20-services y 30-observability llevan además -var-file=<workspace>.tfvars.
 ```
 
 Los stacks se leen entre sí vía `terraform_remote_state` usando el MISMO
 workspace: aplicar `20-services` en workspace `staging` lee los outputs de
 `00-network`/`10-data` del workspace `staging`.
+
+## Cómo aplicar `30-observability`
+
+Lo que difiere por entorno vive en `staging.tfvars` y `prod.tfvars`, y **no se
+aplica con `-target`**: el plan completo es el que hay que leer.
+
+```bash
+export AWS_PROFILE=nexus AWS_REGION=eu-south-2   # el perfil por defecto es de otra cuenta
+cd infra/terraform/30-observability
+terraform init -backend-config=../backend.hcl
+terraform workspace select staging               # o prod
+
+terraform plan -var-file=staging.tfvars -out=staging.tfplan
+terraform apply staging.tfplan
+```
+
+Los planes se guardan como `*.tfplan`, que git ignora. Un plan lleva dentro el
+estado, con sus valores: no lo guardes con otra extensión, y este repo es público.
+
+**Por qué olvidar algo no destruye nada.** `state_bucket`, `grafana_enabled` y
+`alert_email` no tienen `default` a propósito. Antes, `grafana_enabled` valía
+`false` si no se decía otra cosa, y un plan normal en staging destruía Grafana.
+
+| Error | Qué pasa |
+|---|---|
+| Sin `-var-file`, con `-input=false` | `No value for required variable`, exit 1 |
+| Sin `-var-file`, en una terminal | Terraform pregunta los valores. En staging no hay forma de contestar: `alert_email` tiene que ser `null`, y eso no se puede teclear |
+| El `.tfvars` del otro entorno | `Resource precondition failed` en `aws_sns_topic.alerts`, exit 1. Terraform pinta encima un `Plan: … to destroy`, y es un plan fallido: **no se puede aplicar** |
+
+**Quién recibe avisos.** Solo prod: `alert_email` tiene destinatario y las alarmas
+van con `actions_enabled = true`. Staging no tiene suscriptor y todas sus alarmas
+van con `actions_enabled = false`: aparca sus servicios de noche y cada mañana
+registra un `worker_dead` que no es un fallo. Se miran en la consola.
+
+### Hasta aplicarlo en los dos entornos
+
+`imports.tf` adopta lo que ya existe en AWS sin recrearlo. En prod, y solo hasta
+borrar ese archivo, hace falta una cosa más antes del plan:
+
+```bash
+export TF_VAR_alert_subscription_arn_to_import="$(aws sns list-subscriptions-by-topic \
+  --topic-arn arn:aws:sns:eu-south-2:793033583982:nexus-prod-alerts \
+  --query 'Subscriptions[0].SubscriptionArn' --output text)"
+```
+
+**Ese ARN no se escribe en ningún archivo.** La suscripción se confirmó sin
+autenticar, así que con su ARN `sns:Unsubscribe` no pide firma, y este repo es
+público. Tampoco pegues la salida del plan en ningún sitio público: lo imprime.
+
+Mientras no se aplique, cada plan enseña esto, y es lo esperado:
+
+| Entorno | Plan | Qué es |
+|---|---|---|
+| staging | `0 to add, 6 to change, 0 to destroy` | Las 6 alarmas anteriores a la spec 051 pasan a `actions_enabled = false` y pierden `ok_actions`. `runner-queue-stalled` además coge los 4 periodos de evaluación que ya tiene prod |
+| prod | `9 to import, 9 to add, 2 to change, 0 to destroy` | **Importa** la suscripción, 6 filtros y 2 alarmas hechos a mano. **Crea** las 7 alarmas y 2 filtros de la spec 051. **Cambia** solo las etiquetas de las 2 alarmas importadas, que no tenían ninguna |
+
+Los dos, además, avisan de que `aws_sns_topic_subscription.email` deja de estar
+gestionada (`Some objects will no longer be managed by Terraform`). Es una entrada
+del estado que apunta a un ARN que ya no existe: se olvida, y no se destruye nada.
+
+Crear las alarmas de la spec 051 en prod hace sonar la de la DLQ si sigue con
+entradas: es un correo, y es lo que se quiere comprobar (spec 051, T036).
+
+**Cuando estén aplicados los dos,** cada plan tiene que decir `No changes`. Entonces
+borra `imports.tf` y la línea `alert_subscription_arn_to_import` de `staging.tfvars`,
+en un commit aparte: hasta ese momento, prod sigue pidiendo la variable.
 
 ## Decisiones fijadas (y por qué)
 
@@ -69,10 +136,10 @@ workspace: aplicar `20-services` en workspace `staging` lee los outputs de
 
 ## Grafana (WP-30b, `30-observability`)
 
-Apagado por defecto (`grafana_enabled = false`) para que un `apply` de las
-alarmas en un workspace nuevo no levante un servicio de más sin pedirlo.
-Encenderlo por primera vez son cuatro pasos, y el orden importa porque ECS
-**aborta el arranque de la task si un `valueFrom` no resuelve** — un
+Cada entorno lo declara en su `.tfvars`: `grafana_enabled = true` en staging,
+donde está en marcha, y `false` en prod. La variable no tiene `default`.
+Encenderlo por primera vez en un entorno son cuatro pasos, y el orden importa
+porque ECS **aborta el arranque de la task si un `valueFrom` no resuelve** — un
 secreto vacío no da un error legible, da un servicio reintentando con
 `runningCount = 0` para siempre.
 
@@ -83,8 +150,10 @@ aws ecs run-task --cluster nexus-<ws> --task-definition nexus-<ws>-migrate ... \
   --overrides '{"containerOverrides":[{"name":"migrate","command":["sh","-lc",
     "psql \"$DATABASE_URL\" -c '\''CREATE DATABASE grafana'\''"]}]}'
 
-# 2. El secreto, ANTES del servicio.
-terraform apply -target=aws_secretsmanager_secret.grafana -var grafana_enabled=true
+# 2. El secreto, ANTES del servicio. Aquí sí hay -target, porque el resto de
+#    Grafana todavía no puede arrancar.
+terraform apply -target=aws_secretsmanager_secret.grafana \
+  -var-file=<ws>.tfvars -var grafana_enabled=true
 aws secretsmanager put-secret-value --secret-id nexus/<ws>/grafana --secret-string \
   '{"GF_SECURITY_ADMIN_PASSWORD":"...","NEXUS_REPORTING_DB_PASSWORD":"..."}'
 
@@ -92,8 +161,8 @@ aws secretsmanager put-secret-value --secret-id nexus/<ws>/grafana --secret-stri
 docker buildx build --platform linux/arm64 -f infra/grafana/Dockerfile \
   -t <ecr>/nexus-grafana:staging --push infra/grafana
 
-# 4. El resto del stack.
-terraform apply -var grafana_enabled=true
+# 4. El resto del stack: `grafana_enabled = true` en <ws>.tfvars, y aplicar.
+terraform apply -var-file=<ws>.tfvars
 ```
 
 Falta un paso que **no** hace Terraform: la migración `0078` crea el rol

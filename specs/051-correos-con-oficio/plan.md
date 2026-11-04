@@ -188,6 +188,8 @@ Las cifras están en [`evidence/alarma-calibracion.md`](evidence/alarma-calibrac
 - En staging, sin `-var grafana_enabled=true`, el plan **destruye Grafana** (11 recursos). Además quita `ok_actions` de 6 alarmas y crea una suscripción que pedirá confirmación.
 - En producción, el plan crea `aws_sns_topic_subscription.email`, que existe en AWS pero no en el estado.
 
+Resueltas el 2026-11-03: el stack lleva `staging.tfvars` y `prod.tfvars`, importa lo que existe y ya no se aplica con `-target`. Cómo aplicarlo está en `infra/terraform/README.md`.
+
 **Constitution Check, lo que cambia.**
 
 | # | Principio | ¿Cumple? | Prueba / justificación |
