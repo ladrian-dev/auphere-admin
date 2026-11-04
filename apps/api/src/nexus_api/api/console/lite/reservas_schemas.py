@@ -97,9 +97,13 @@ class BusinessHoursOut(BaseModel):
 
 
 class CalendarStatus(BaseModel):
-    status: Literal["none", "connected"]
+    """``last_error`` es un código nuestro (``connection``, ``auth``, ``calendar_gone``,
+    ``read``, ``write``), nunca el texto del proveedor."""
+
+    status: Literal["none", "connected", "needs_reauth", "error"]
     calendar_name: str | None = None
     last_sync_at: datetime | None = None
+    last_error: str | None = None
 
 
 class StaffOut(BaseModel):
@@ -526,8 +530,13 @@ class CalendarItemOut(BaseModel):
 
 
 class CalendarOut(BaseModel):
+    """``connection`` distingue «no se conectó» de «hay que volver a conectar», y
+    ``unavailable``, una cuenta sin calendarios de un proveedor que no responde."""
+
     provider: Literal["google"]
     connected: bool
+    connection: Literal["none", "connected", "needs_reauth"] = "none"
+    unavailable: bool = False
     calendars: list[CalendarItemOut]
 
 

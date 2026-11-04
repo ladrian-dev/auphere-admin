@@ -20,6 +20,7 @@ load the module and use ``FakeComposioClient``.
 from __future__ import annotations
 
 import abc
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -435,7 +436,9 @@ class LiveComposioClient(ComposioClientProtocol):
         arguments: dict[str, Any],
     ) -> ToolExecution:
         try:
-            result = await _maybe_async(
+            # El SDK es síncrono: en el bucle de eventos, cada llamada a una herramienta
+            # paraba al worker o a la API entera mientras durase.
+            result: Any = await asyncio.to_thread(
                 self._client.tools.execute,
                 tool_slug,
                 user_id=user_id,

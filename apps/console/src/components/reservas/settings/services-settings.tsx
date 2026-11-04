@@ -41,6 +41,7 @@ import { failureMessage } from "../model/vocab";
 import { Initials } from "../shared";
 import { HoursEditor } from "./hours-editor";
 import { BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
+import { StaffCalendarsSection } from "./staff-calendars";
 
 /** The lengths a service can have in the design: 30 min to 3 h. */
 export const DURATIONS = [30, 45, 60, 90, 120, 180] as const;
@@ -60,6 +61,7 @@ export function ServicesSettings() {
       </div>
       <div className="flex min-w-0 flex-col gap-6">
         <TeamSection />
+        <StaffCalendarsSection />
         <ServicesSection />
       </div>
     </div>
@@ -240,7 +242,6 @@ function StaffDialog({ member, onClose }: { member: StaffMember | null; onClose:
             <Field
               label={t("reservas.team.email")}
               optionalLabel={t("reservas.optional")}
-              hint={t("reservas.team.email.hint")}
               error={touched && !emailOk ? t("reservas.team.email.invalid") : null}
             >
               {(a11y) => <Input {...a11y} type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={200} autoComplete="off" />}

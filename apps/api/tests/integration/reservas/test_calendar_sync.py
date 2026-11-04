@@ -43,7 +43,7 @@ class FakeGoogle:
         return [{"id": "lucia@agenda", "name": "Lucía"}]
 
     async def busy(
-        self, conn: Connection, calendar_id: str, start: datetime, end: datetime
+        self, conn: Connection, calendar_id: str, start: datetime, end: datetime, *, tz: Any
     ) -> list[Busy]:
         return list(self._busy)
 
@@ -201,7 +201,12 @@ async def test_a_booking_on_top_of_busy_shows_a_clash(client, db_session, consol
 
 async def test_agent_google_calendar_writes_stay_blocked() -> None:
     """R10.5: la sincronización es del sistema; para el agente, escribir en
-    Google Calendar sigue naciendo bloqueado (spec 023)."""
+    Google Calendar sigue naciendo bloqueado (spec 023).
+
+    Solo fija el modo con el que nace en el catálogo, no lo que acaba teniendo un
+    agente: ``connectors/booking_skills.py`` pone ``GOOGLECALENDAR_CREATE_EVENT`` en
+    su borrador al conectar la cuenta (owner, 2026-11-03). Qué calendario usa un
+    agente para reservar es una decisión abierta: esta prueba no la responde."""
     from nexus_api.services.connectors.composio_client import ComposioTool
     from nexus_api.services.connectors.service import _default_mode_for, _derive_annotations
 
@@ -289,7 +294,9 @@ async def test_a_description_cannot_pass_for_one_of_ours() -> None:
             }
         )
     )
-    busy = await gateway.busy(Connection("tenant_x", "ca"), "cal", start, start + timedelta(days=1))
+    busy = await gateway.busy(
+        Connection("tenant_x", "ca"), "cal", start, start + timedelta(days=1), tz=TZ
+    )
     assert [b.event_id for b in busy] == ["spoof"]
 
 

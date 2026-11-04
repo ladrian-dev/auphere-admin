@@ -387,12 +387,27 @@ async def read_calendar(scope: LiteScope = Depends(SCOPE)) -> CalendarOut:
     await _ctx(scope)
     conn = await calendar_sync.connection_of(scope.session, scope.principal.tenant_id)
     if conn is None:
-        return CalendarOut(provider="google", connected=False, calendars=[])
+        return CalendarOut(
+            provider="google",
+            connected=False,
+            connection=await calendar_sync.connection_state(scope.session),
+            calendars=[],
+        )
+    unavailable = False
     try:
         cals = await calendar_sync.default_gateway().list_calendars(conn)
-    except Exception:  # el proveedor caído no rompe la pantalla
+    except Exception:  # el proveedor caído no rompe la pantalla, y la pantalla lo dice
         cals = []
-    return CalendarOut.model_validate({"provider": "google", "connected": True, "calendars": cals})
+        unavailable = True
+    return CalendarOut.model_validate(
+        {
+            "provider": "google",
+            "connected": True,
+            "connection": "connected",
+            "unavailable": unavailable,
+            "calendars": cals,
+        }
+    )
 
 
 @router.put("/staff/{staff_id}/calendar", response_model=StaffOut)

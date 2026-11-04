@@ -16,6 +16,11 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import Reservation
+from nexus_api.services.reservations.calendar_sync import (
+    ERROR_AUTH,
+    ERROR_CONNECTION,
+    connection_state,
+)
 from nexus_api.services.reservations.core import Ctx
 
 
@@ -70,21 +75,50 @@ async def clash_count(session: AsyncSession, ctx: Ctx, now: datetime) -> int:
     return int(count or 0)
 
 
+def _status_of(connection: str, last_error: str | None) -> str:
+    """``needs_reauth``: hace falta que alguien vuelva a conectar la cuenta. ``error``:
+    algo falló en la última pasada y puede arreglarse solo o cambiando el calendario."""
+    if connection != "connected" or last_error == ERROR_AUTH:
+        return "needs_reauth"
+    return "error" if last_error else "connected"
+
+
 async def staff_calendar_status(session: AsyncSession) -> dict[uuid.UUID, dict[str, Any]]:
-    """``staff_id`` → ``{"status": "connected", "calendar_name", "last_sync_at"}``
-    para quien tiene un calendario asociado. Sin la P3, nadie."""
+    """``staff_id`` → ``{"status", "calendar_name", "last_sync_at", "last_error"}`` para
+    quien tiene un calendario asociado. ``last_error`` es un código de ``calendar_sync``,
+    nunca el texto del proveedor. Sin la P3, nadie."""
     has = await session.scalar(
         sa.text("SELECT to_regclass('reservation_staff_calendars') IS NOT NULL")
     )
     if not has:
         return {}
-    rows = await session.execute(
-        sa.text("SELECT staff_id, calendar_name, last_sync_at FROM reservation_staff_calendars")
-    )
-    return {
-        sid: {"status": "connected", "calendar_name": name, "last_sync_at": synced}
-        for sid, name, synced in rows.all()
-    }
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT staff_id, calendar_name, last_sync_at, last_error "
+                "FROM reservation_staff_calendars"
+            )
+        )
+    ).all()
+    if not rows:
+        return {}
+    connection = await connection_state(session)
+    out: dict[uuid.UUID, dict[str, Any]] = {}
+    for sid, name, synced, error in rows:
+        # La conexión la cambia el proveedor entre dos pasadas: se mira aquí, y la
+        # pantalla no espera al cron para decir que hay que volver a conectar, ni para
+        # dejar de decirlo.
+        if connection == "connected":
+            code = None if error == ERROR_CONNECTION else error
+        else:
+            code = error or ERROR_CONNECTION
+        out[sid] = {
+            "status": _status_of(connection, code),
+            "calendar_name": name,
+            "last_sync_at": synced,
+            "last_error": code,
+        }
+    return out
 
 
 __all__ = ["clash_count", "clashes_for", "staff_calendar_status"]

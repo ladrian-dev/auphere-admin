@@ -1042,6 +1042,7 @@
         "type": "object"
       },
       "CalendarOut": {
+        "description": "``connection`` distingue «no se conectó» de «hay que volver a conectar», y\n``unavailable``, una cuenta sin calendarios de un proveedor que no responde.",
         "properties": {
           "calendars": {
             "items": {
@@ -1054,10 +1055,25 @@
             "title": "Connected",
             "type": "boolean"
           },
+          "connection": {
+            "default": "none",
+            "enum": [
+              "none",
+              "connected",
+              "needs_reauth"
+            ],
+            "title": "Connection",
+            "type": "string"
+          },
           "provider": {
             "const": "google",
             "title": "Provider",
             "type": "string"
+          },
+          "unavailable": {
+            "default": false,
+            "title": "Unavailable",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1069,6 +1085,7 @@
         "type": "object"
       },
       "CalendarStatus": {
+        "description": "``last_error`` es un código nuestro (``connection``, ``auth``, ``calendar_gone``,\n``read``, ``write``), nunca el texto del proveedor.",
         "properties": {
           "calendar_name": {
             "anyOf": [
@@ -1080,6 +1097,17 @@
               }
             ],
             "title": "Calendar Name"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
           },
           "last_sync_at": {
             "anyOf": [
@@ -1096,7 +1124,9 @@
           "status": {
             "enum": [
               "none",
-              "connected"
+              "connected",
+              "needs_reauth",
+              "error"
             ],
             "title": "Status",
             "type": "string"

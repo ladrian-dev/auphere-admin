@@ -254,7 +254,7 @@ Contrato: [`worker-y-avisos.md`](../specs/043-reservas/contracts/worker-y-avisos
 | `reservations-cron` | 60 s | Pide confirmación y recuerda a su hora, libera en Aforo lo no confirmado 1 h antes (solo si la pregunta salió), cierra como `done`, caduca la lista, abre ofertas de Aforo (solo con el módulo encendido) |
 | `reservation-offers-cron` | 15 s | Vence plazos y escribe al siguiente candidato |
 | `reservation-outbox-cron` | 10 s | Envía `reservation_outbox`: texto dentro de la ventana de 24 h, plantilla aprobada fuera; sin plantilla, teléfono, canal o con la baja pedida, `skipped` y evento `notify_failed`; lo que ya no aplica (ya confirmó, ya se canceló), `stale` sin evento. Escribe el `Message` pendiente: lo entrega y lo mide el despachador de salida, como cualquier saliente |
-| `reservation-calendar-cron` | 120 s | P3: el ocupado de Google entra, los «Ocupado» salen. Sin `composio_api_key` no hace nada (el cliente simulado del proveedor borraría el ocupado real) |
+| `reservation-calendar-cron` | 120 s | P3: quita los eventos que sobran, escribe los que faltan y lee el ocupado, cada parte con su propio fallo. Sin conexión sana deja de bloquear (ver [Google Calendar](#google-calendar-p3)). Sin `composio_api_key` no hace nada (el cliente simulado del proveedor borraría el ocupado real) |
 
 Los cuatro recorren los clientes **activos con `reservation_settings`**, tengan
 o no el módulo encendido: al apagarlo, las reservas futuras siguen recibiendo
@@ -272,17 +272,62 @@ lo que no cabe en la ventana no sale, y el historial de la reserva lo dice.
 
 ## Google Calendar (P3)
 
-Solo Google (decisión del owner). Usa la conexión de Google Calendar que el
-cliente hizo en el proveedor de consentimientos (spec 023); cada persona del
-equipo se asocia a un calendario de esa cuenta (`PUT …/staff/{id}/calendar`).
-Lo hace el sistema: las herramientas de Google Calendar del agente siguen
-bloqueadas. Entra el «ocupado» (solo inicio y fin, `reservation_busy`); sale cada
-reserva viva como «Ocupado» sin cliente ni servicio; a la vuelta se reconoce
-por el id del evento guardado en la reserva, no por un texto que cualquiera
-puede escribir en una invitación. El calendario de cada persona tiene que ser
-de la cuenta conectada (`unknown_calendar` si no). Los nombres de las acciones y argumentos del proveedor viven en
-`ComposioGoogleCalendar`: **verificar contra el conector real en staging**
-antes de encenderlo para un cliente.
+Solo Google (decisión del owner). Usa la conexión de Google Calendar que hizo
+quien gestiona los agentes en el proveedor de consentimientos (spec 023): la
+persona de un cliente no tiene pantalla para conectarla. Cada persona del equipo
+se asocia a un calendario de esa cuenta en **Ajustes → Calendarios de Google**
+(`GET …/calendar`, `PUT …/staff/{id}/calendar`).
+
+Entra el «ocupado» (solo inicio y fin, `reservation_busy`); un evento de todo el
+día ocupa el día en la zona del negocio, y uno marcado como disponible no bloquea.
+Sale cada reserva viva como «Ocupado», sin cliente ni servicio. A la vuelta se
+reconoce por el id del evento guardado en la reserva, no por un texto que
+cualquiera puede escribir en una invitación. El calendario de cada persona tiene
+que ser de la cuenta conectada (`unknown_calendar` si no) y admitir escritura: los
+de solo lectura no se ofrecen.
+
+**Una pasada, tres partes que no dependen unas de otras:** borrar lo que sobra,
+escribir lo que falta y leer. Lo que se escribe en Google se apunta en su propia
+transacción, reserva por reserva: Google no se deshace con un `ROLLBACK`, y perder
+un id significaba un «Ocupado» repetido cada dos minutos. Un 404 o 410 al borrar
+cuenta como borrado: alguien lo quitó a mano.
+
+**Mover.** `reservations.external_event_id` guarda `<calendario> <evento>`, porque
+el evento sigue donde se escribió aunque la reserva cambie de persona o la persona
+de calendario. `move_booking` le antepone `moved `, y la pasada siguiente lo borra
+de su calendario y escribe el nuevo; hasta que consigue borrarlo no escribe otro.
+Cambiar o soltar el calendario de una persona hace lo mismo con los eventos de sus
+reservas por venir.
+
+**Con datos viejos no se bloquea** (decisión de 2026-11-04). Un hueco ofrecido de
+más se ve como un choque en la agenda; uno bloqueado de más es un cliente que nadie
+atiende.
+
+| Situación | Qué pasa con el ocupado | `status` · `last_error` | Qué dice la pantalla |
+|---|---|---|---|
+| Todo bien | Se renueva en cada pasada | `connected` · `null` | «Sincronizado hoy 10:30», o «Primera sincronización en curso» |
+| La lectura falla | Se mantiene `BUSY_STALE_AFTER` (30 min) desde la última lectura buena y se quita | `error` · `read` | No pudimos leer; si sigue media hora, deja de bloquear |
+| La escritura falla | Sigue igual | `error` · `write` | No pudimos escribir todas sus reservas; se sigue intentando |
+| Google rechaza el permiso | Se quita en esa pasada | `needs_reauth` · `auth` | Hay que volver a conectar; lo de Google no bloquea huecos |
+| El calendario ya no existe | Se quita en esa pasada | `error` · `calendar_gone` | Elige otro; lo de Google no bloquea huecos |
+| La conexión está en `needs_reauth`, `paused` o ya no existe | Se quita en la pasada siguiente | `needs_reauth` · `connection` | Hay que volver a conectar; lo de Google no bloquea huecos |
+
+`last_sync_at` es la última pasada en la que salió todo. `last_error` es un código
+nuestro y la pantalla lo traduce: el texto del proveedor no se guarda, no sale por
+la API y no va a los registros, porque puede traer un token o el título de la cita
+de otra persona. Registros, todos con `tenant_id`: `reservation_calendar.read_failed`,
+`.write_failed`, `.event_without_id`, `.busy_dropped` y `.connection_unhealthy` (este,
+una vez, no cada dos minutos). Llevan el tipo de error, nunca su texto.
+
+Los nombres de las acciones y argumentos viven en `ComposioGoogleCalendar` y salen
+del catálogo público de Composio (`docs.composio.dev/toolkits/googlecalendar`,
+leído el 2026-11-04): `GOOGLECALENDAR_EVENTS_LIST`, `GOOGLECALENDAR_CREATE_EVENT`,
+`GOOGLECALENDAR_DELETE_EVENT` y `GOOGLECALENDAR_LIST_CALENDARS`. **Ese catálogo no
+describe la forma de las respuestas**, y esto no se ha probado con una cuenta de
+Google de verdad: **verificarlo en staging** antes de encenderlo para un cliente.
+Una respuesta que no es un listado cuenta como fallo de lectura, no como calendario
+vacío. Si al crear un evento la respuesta no trae su id, se guarda `?` para no volver
+a crearlo: ese evento no se podrá mover, y lo dice `.event_without_id`.
 
 ## Probarlo en local
 

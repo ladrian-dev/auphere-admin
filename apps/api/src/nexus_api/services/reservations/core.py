@@ -651,6 +651,18 @@ def _local_hm(ctx: Ctx, at: datetime) -> dict[str, str]:
     return {"date": loc.date().isoformat(), "start": loc.strftime("%H:%M")}
 
 
+#: Delante de ``external_event_id``: el evento de Google ya no es el de esta reserva y
+#: la pasada siguiente lo borra de donde vive y escribe el nuevo
+#: (``calendar_sync``). Sin el prefijo, una reserva movida seguía bloqueando su hora
+#: antigua en Google y dejaba libre la nueva (R10.3).
+EVENT_MOVED = "moved "
+
+
+def _event_no_longer_matches(res: Reservation) -> None:
+    if res.external_event_id and not res.external_event_id.startswith(EVENT_MOVED):
+        res.external_event_id = f"{EVENT_MOVED}{res.external_event_id}"
+
+
 async def move_booking(
     session: AsyncSession,
     ctx: Ctx,
@@ -673,6 +685,7 @@ async def move_booking(
     if as_agent:
         _agent_window(ctx, start, now)
     before = _local_hm(ctx, res.starts_at)
+    was = (res.staff_id, res.starts_at, res.ends_at)
     if res.mode == "services":
         svc = await _service(session, res.service_id)
         target = staff_id or res.staff_id
@@ -718,6 +731,8 @@ async def move_booking(
         res.party_size = n
         res.starts_at = start
         res.ends_at = start + rules.stay
+    if (res.staff_id, res.starts_at, res.ends_at) != was:
+        _event_no_longer_matches(res)
     if res.status != "pending":
         res.status = "confirmed"
     _bump(res)
@@ -876,6 +891,7 @@ def late_minutes(res: Reservation, now: datetime) -> int | None:
 
 
 __all__ = [
+    "EVENT_MOVED",
     "SYSTEM",
     "Actor",
     "CapacityDay",

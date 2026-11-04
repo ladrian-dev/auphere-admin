@@ -101,6 +101,21 @@ describe("reservas actions", () => {
     ).rejects.toThrow();
   });
 
+  it("the calendars: read the account, link one, and let it go with null", async () => {
+    h.setClient(["reservas"]);
+    await actions.calendarAccountAction();
+    expect(h.backend.reservasCalendar).toHaveBeenCalled();
+    await actions.staffCalendarAction({ id: STAFF, calendar_id: "lucia@agenda" });
+    expect(h.backend.reservasSetStaffCalendar).toHaveBeenCalledWith(STAFF, "lucia@agenda");
+    await actions.staffCalendarAction({ id: STAFF, calendar_id: null });
+    expect(h.backend.reservasSetStaffCalendar).toHaveBeenCalledWith(STAFF, null);
+    await expect(actions.staffCalendarAction({ id: "nope", calendar_id: null })).rejects.toThrow();
+
+    h.setClient(["panel"]);
+    await expect(actions.calendarAccountAction()).resolves.toEqual(forbidden);
+    await expect(actions.staffCalendarAction({ id: STAFF, calendar_id: null })).resolves.toEqual(forbidden);
+  });
+
   it("team, services, blocks, walk-ins and the waitlist reach their routes", async () => {
     h.setClient(["reservas"]);
     await actions.createStaffAction({ name: "Lucía", email: null, hours: null, idempotencyKey: KEY });

@@ -10,6 +10,7 @@ import {
   type Booking,
   type BookingDetail,
   type BusinessHoursOut,
+  type CalendarAccount,
   type CancelledBooking,
   type CancelPreview,
   type CapacitySlots,
@@ -338,6 +339,23 @@ export async function archiveStaffAction(raw: unknown): Promise<ActionResult<nul
   const principal = await reservasPrincipal();
   if (!principal) return forbidden;
   return run(() => backendFor(principal).reservasArchiveStaff(p.id));
+}
+
+// ── calendars (§8, P3) ───────────────────────────────────────────────────
+
+export async function calendarAccountAction(): Promise<ActionResult<CalendarAccount>> {
+  const principal = await reservasPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).reservasCalendar());
+}
+
+/** `calendar_id: null` lets the calendar go. */
+const staffCalendarSchema = z.object({ id, calendar_id: z.string().trim().min(1).max(255).nullable() });
+export async function staffCalendarAction(raw: unknown): Promise<ActionResult<StaffMember>> {
+  const p = staffCalendarSchema.parse(raw);
+  const principal = await reservasPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).reservasSetStaffCalendar(p.id, p.calendar_id));
 }
 
 const duration = z

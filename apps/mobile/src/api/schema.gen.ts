@@ -2162,29 +2162,50 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** CalendarOut */
+        /**
+         * CalendarOut
+         * @description ``connection`` distingue «no se conectó» de «hay que volver a conectar», y
+         *     ``unavailable``, una cuenta sin calendarios de un proveedor que no responde.
+         */
         CalendarOut: {
             /** Calendars */
             calendars: components["schemas"]["CalendarItemOut"][];
             /** Connected */
             connected: boolean;
             /**
+             * Connection
+             * @default none
+             * @enum {string}
+             */
+            connection: "none" | "connected" | "needs_reauth";
+            /**
              * Provider
              * @constant
              */
             provider: "google";
+            /**
+             * Unavailable
+             * @default false
+             */
+            unavailable: boolean;
         };
-        /** CalendarStatus */
+        /**
+         * CalendarStatus
+         * @description ``last_error`` es un código nuestro (``connection``, ``auth``, ``calendar_gone``,
+         *     ``read``, ``write``), nunca el texto del proveedor.
+         */
         CalendarStatus: {
             /** Calendar Name */
             calendar_name?: string | null;
+            /** Last Error */
+            last_error?: string | null;
             /** Last Sync At */
             last_sync_at?: string | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "none" | "connected";
+            status: "none" | "connected" | "needs_reauth" | "error";
         };
         /** CancelIn */
         CancelIn: {

@@ -44,6 +44,8 @@ export const a = {
   createServiceAction: vi.fn(),
   updateServiceAction: vi.fn(),
   archiveServiceAction: vi.fn(),
+  calendarAccountAction: vi.fn(),
+  staffCalendarAction: vi.fn(),
 };
 
 export const router = { push: vi.fn(), refresh: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() };
@@ -61,6 +63,10 @@ export function resetMocks() {
   toasts.success.mockReset();
   toasts.error.mockReset();
   a.cancelPreviewAction.mockResolvedValue({ ok: true, data: { can_offer: false, candidates: 0, why_not: "waitlist_off" } });
+  a.calendarAccountAction.mockResolvedValue({
+    ok: true,
+    data: { provider: "google", connected: false, connection: "none", unavailable: false, calendars: [] },
+  });
 }
 
 export const ViewRef: { current: React.ComponentType<{ initial: ReservasInitial }> | null } = { current: null };

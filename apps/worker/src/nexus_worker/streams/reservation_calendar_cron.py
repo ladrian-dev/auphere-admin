@@ -4,8 +4,12 @@
 Por cada cliente con Reservas que conectó Google Calendar en el proveedor de
 consentimientos (spec 023) y asoció un calendario a alguien del equipo, una
 pasada de ``calendar_sync.sync_tenant``: entra el «ocupado» de cada persona,
-salen sus reservas vivas como «Ocupado» y se borran las que ya no lo son. Sin
-conexión o sin personas asociadas, no llama a nadie.
+salen sus reservas vivas como «Ocupado» y se borran las que ya no lo son o se
+movieron. Sin nada que sincronizar, no llama a nadie.
+
+**Sin conexión sana no se bloquea con datos viejos.** Si hay calendarios asociados y
+la cuenta necesita volver a conectarse, el ocupado se quita y la pantalla lo dice
+(``calendar_sync.connection_lost``).
 
 **Solo con el proveedor de verdad.** Sin ``composio_api_key`` la API cae en el
 cliente simulado del proveedor; sincronizar contra él borraría el ocupado real
@@ -21,7 +25,6 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime
 
-import sqlalchemy as sa
 import structlog
 from nexus_api.config import get_settings
 from nexus_api.services.reservations import calendar_sync
@@ -59,9 +62,9 @@ def make_process(factory: GatewayFactory = live_gateway) -> ProcessTenant:
     ) -> dict[str, int] | None:
         conn = await calendar_sync.connection_of(session, tenant_id)
         if conn is None:
+            await calendar_sync.connection_lost(session, now=now)
             return None
-        mapped = await session.scalar(sa.text("SELECT 1 FROM reservation_staff_calendars LIMIT 1"))
-        if mapped is None:
+        if not await calendar_sync.has_work(session, now=now):
             return None
         if not gateway:
             gateway.append(factory())

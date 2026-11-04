@@ -4,7 +4,7 @@ import type { Call } from "../backend";
  * Lane `reservas` (spec 043): the client's Reservas, all under
  * `/console/lite/reservas/*` (`contracts/lite-api.md` §2–§7, frozen on
  * 2026-10-22). No client reference travels: the API takes the client from the
- * verified person. The calendar routes (§8, P3) are not here yet.
+ * verified person.
  *
  * Writes that create carry an `Idempotency-Key` (the screen keeps it across
  * retries of the same submit); writes that change a booking or the settings
@@ -81,7 +81,26 @@ export type StaffMember = {
   effective_hours: WeekHours;
   position: number;
   archived: boolean;
-  calendar: { status: "none" | "connected"; calendar_name?: string | null; last_sync_at?: string | null };
+  calendar: StaffCalendar;
+};
+/**
+ * `last_error` is a code of ours (`connection`, `auth`, `calendar_gone`, `read`,
+ * `write`), never the provider's text. `last_sync_at`: the last pass where everything worked.
+ */
+export type StaffCalendar = {
+  status: "none" | "connected" | "needs_reauth" | "error";
+  calendar_name?: string | null;
+  last_sync_at?: string | null;
+  last_error?: string | null;
+};
+/** `GET …/calendar` (§8, P3): the client's Google account and the calendars one can write to. */
+export type CalendarAccount = {
+  provider: "google";
+  connected: boolean;
+  connection: "none" | "connected" | "needs_reauth";
+  /** The account is connected and Google didn't answer: not the same as having no calendars. */
+  unavailable: boolean;
+  calendars: { id: string; name: string }[];
 };
 export type StaffInput = { name: string; email: string | null; hours: WeekHours | null };
 export type StaffPatch = Partial<StaffInput & { position: number }>;
@@ -338,6 +357,11 @@ export function reservasApi(call: Call) {
     reservasUpdateService: (id: string, body: ServicePatch) =>
       call<ReservasService>(`${R}/services/${enc(id)}`, { method: "PATCH", body }),
     reservasArchiveService: (id: string) => call<null>(`${R}/services/${enc(id)}/archive`, { method: "POST" }),
+
+    // §8 calendars (P3)
+    reservasCalendar: () => call<CalendarAccount>(`${R}/calendar`),
+    reservasSetStaffCalendar: (id: string, calendarId: string | null) =>
+      call<StaffMember>(`${R}/staff/${enc(id)}/calendar`, { method: "PUT", body: { calendar_id: calendarId } }),
 
     // §4 bookings
     reservasBookings: (p: BookingsQuery) => call<BookingsPage>(`${R}/bookings${reservasQuery(p)}`),
