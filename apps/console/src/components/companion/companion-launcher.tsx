@@ -113,6 +113,7 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
   const setOpen = React.useCallback((next: boolean) => setUserOpen(next), []);
 
   const [budgetExhausted, setBudgetExhausted] = React.useState(false);
+  const [noBalance, setNoBalance] = React.useState(false);
   const [now, setNow] = React.useState(() => Date.now());
   const controller = useCompanion(companionTransport);
   const { openThread, refreshThreads, state } = controller;
@@ -152,7 +153,10 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
     loadedRef.current = true;
     void (async () => {
       const [threads, budget] = await Promise.all([refreshThreads(), companionClient.budget()]);
-      if (budget.ok) setBudgetExhausted(budget.data.exhausted);
+      if (budget.ok) {
+        setBudgetExhausted(budget.data.exhausted);
+        setNoBalance(budget.data.cap === 0);
+      }
       const wanted = new URLSearchParams(window.location.search).get(URL_PARAM);
       const target = wanted && threads.some((th) => th.id === wanted) ? wanted : null;
       if (target) await openThread(target);
@@ -186,7 +190,7 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
   const disabledReason = !allowed
     ? t("companion.bubble.disabled.role")
     : budgetExhausted
-      ? t("companion.bubble.disabled.cap")
+      ? t(noBalance ? "companion.paused.noBalance.body" : "companion.bubble.disabled.cap")
       : null;
 
   const label = !allowed
@@ -244,6 +248,7 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
             suggestions={suggestions}
             currentUserId={userId}
             exhausted={budgetExhausted}
+            noBalance={noBalance}
           />
         </CompanionLocaleProvider>
       ) : null}

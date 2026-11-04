@@ -178,7 +178,8 @@ class PartnerOut(BaseModel):
     activated_at: datetime | None = None
     clients_count: int | None = None
     members_count: int | None = None
-    #: Available balance in US$ cents, rounded down like the console shows it.
+    #: Available balance in US$ cents, rounded down like the console shows it:
+    #: what was recharged, without the weekly pool (spec 047, 46.1).
     #: None when the ledger could not be read (fail-closed, never a guess).
     available_cents: int | None = None
     #: Spec 041: how the partner is charged and its card (never more than the

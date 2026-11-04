@@ -276,7 +276,7 @@ async def usage_overview(
                 log.warning("admin.usage.partner_unreadable", partner_id=str(p.id), error=str(exc))
                 burn = None
             try:
-                available: int | None = (await _wallet_out(p.id)).available_cents
+                available: int | None = (await _wallet_out(p.id)).purchased_cents
             except Exception:  # pragma: no cover - a balance that cannot be read is not zero
                 available = None
             return p, burn, available

@@ -32,7 +32,8 @@ pendiente y emite otra), ``--console-origin https://console.auphere.com``
 (origen del enlace; sin él, el de la consola del entorno,
 ``console_base_url``), ``--email`` (manda la invitación de equipo del
 catálogo, ``team_invite`` de la spec 051, en el idioma de la cuenta de la
-persona si ya tiene una; best-effort — el enlace se imprime SIEMPRE).
+persona si ya tiene una; best-effort — el enlace se imprime salvo que el correo
+haya salido, porque esta salida acaba en los logs de la tarea).
 
 ``--set-password '…'`` es el atajo de **desarrollo y piloto**: crea el
 principal y la membresía directamente, sin invitación ni enlace. Sirve
@@ -294,8 +295,10 @@ async def main() -> int:
         print(
             f"✓ invitation {invitation.id} ({args.role}) for {email}, expires {invitation.expires_at:%Y-%m-%d}"
         )
-        print(f"  accept link: {link}")
 
+        # El enlace abre la cuenta y esta salida acaba en los logs de la tarea:
+        # solo se imprime si hace falta pasarlo a mano.
+        print_link = True
         if args.email:
             from nexus_api.config import get_settings
             from nexus_api.services import console_identity
@@ -321,6 +324,9 @@ async def main() -> int:
                 print(
                     f"  e-mail {'sent' if sent else 'NOT sent (provider error or no real key) — send the link by hand'}"
                 )
+                print_link = not sent
+        if print_link:
+            print(f"  accept link: {link}")
     await engine.dispose()
     return 0
 
