@@ -183,9 +183,16 @@ resource "aws_cloudwatch_metric_alarm" "valkey_memory" {
 # de prod habría dado hasta 1579 avisos; con 2 h o más, 1. Ver
 # specs/051-correos-con-oficio/evidence/alarma-calibracion.md.
 #
-# Sin `ok_actions`, como las demás: mientras sigue en ALARM no se vuelve a avisar,
-# tampoco si la DLQ crece. Si cae el scheduler entero, no se registra nada y
-# estas alarmas no suenan; el correo tenía el mismo punto ciego.
+# La DLQ no repite: el vigilante registra una vez por cada tanda de entradas
+# nuevas, con una marca por id (bug dlq-sin-salida). Si repitiera mientras haya
+# entradas, una cola que nadie vacía dejaría su alarma en ALARM para siempre, y un
+# mensaje que muriera hoy no produciría ninguna transición. Así vuelve a OK 3 h
+# después de la última entrada nueva, queden o no viejas dentro, y lo siguiente
+# que muera vuelve a avisar. Lo que muere dentro de esas 3 h va en el mismo aviso.
+#
+# Sin `ok_actions`, como las demás: mientras sigue en ALARM no se vuelve a avisar.
+# Si cae el scheduler entero, no se registra nada y estas alarmas no suenan; el
+# correo tenía el mismo punto ciego. La DLQ avisa al volver: la marca no caduca.
 
 locals {
   scheduler_log_group = "/nexus/${terraform.workspace}/scheduler"
@@ -202,7 +209,7 @@ locals {
   # apps/worker/tests/unit/test_platform_alarms_contract.py.
   platform_alert_kinds = {
     queue_backlog                 = "La entrada más vieja de una cola de entrada lleva más de 5 min sin procesarse: hay clientes esperando respuesta."
-    dlq_entries                   = "Hay mensajes de cliente en nexus:inbound:dlq: agotaron sus reintentos y nadie les va a contestar hasta que se revisen y reinyecten. Solo avisa al empezar: sigue en ALARM mientras la cola tenga entradas, y no avisa si crece."
+    dlq_entries                   = "Ha muerto un mensaje de cliente: agotó sus reintentos, está en nexus:inbound:dlq y nadie va a contestarlo hasta que se reinyecte. Míralo con ./scripts/ops/dlq.sh ${terraform.workspace} list y luego reinyéctalo o descártalo; los comandos, en docs/dlq.md. Avisa por lo nuevo aunque queden entradas viejas: lo que muera en las 3 h siguientes va en este aviso, y después vuelve a sonar."
     turn_error_burst              = "Un negocio lleva más de 5 turnos fallidos en 10 min. Sus operadores también reciben el WhatsApp."
     simulated_model_failure_burst = "Un cliente lleva más de 5 turnos o pasadas sin respuesta del modelo en el chat de prueba o en las pruebas, en 10 min. A diferencia de turn_error_burst, no avisa al negocio. Si el registro dice «missing partner virtual key», a su partner le falta la clave del proxy."
     worker_dead                   = "Un servicio lleva más de 3 min sin latido. El detalle dice cuál."

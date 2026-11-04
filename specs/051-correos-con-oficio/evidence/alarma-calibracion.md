@@ -78,3 +78,7 @@ Lo que añadiría un `apply` sin `-target`, que no es de esta enmienda:
 - **La ventana en AWS.** Las cifras de arriba son una simulación de cómo evalúa CloudWatch. Se comprueba en T035, con el `dlq_entries` de staging: la alarma tiene que seguir en ALARM entre dos repeticiones.
 - **Los 15 minutos de R9.4.** Se miden en T036.
 - **`ops.meta_reconciliation` en producción.** No se puede probar hasta que `develop` llegue a `main`.
+
+## Después de esta calibración: la DLQ ya no repite
+
+El arreglo `dlq-sin-salida` (2026-11-03) hace que `dlq_entries` se registre por cada tanda de entradas nuevas, no cada hora. Las cifras de arriba siguen valiendo para los tipos que repiten. Con las mismas 25 muertes de producción, la DLQ da 6 registros en vez de 1658 y 1 aviso por el incidente, y un mensaje nuevo con esas 25 dentro da un aviso más en vez de ninguno. La ventana de 3 h no cambia. Ver `.specify/bugs/dlq-sin-salida/assessment.md`.
