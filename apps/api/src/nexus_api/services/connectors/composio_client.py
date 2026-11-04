@@ -215,6 +215,10 @@ class ComposioClientProtocol(abc.ABC):
 # ── live impl ───────────────────────────────────────────────────────────────
 
 
+#: The provider's largest page, enough for any toolkit we connect.
+_ALL_TOOLS = 1000
+
+
 class LiveComposioClient(ComposioClientProtocol):
     """Wrapper over the official ``composio`` Python SDK v3."""
 
@@ -396,10 +400,13 @@ class LiveComposioClient(ComposioClientProtocol):
         # ``user_id`` only matters to the wrapped tools' executor.
         del user_id
         try:
-            kwargs: dict[str, Any] = {"toolkits": [toolkit]}
-            if limit:
-                kwargs["limit"] = limit
-            tools = await _maybe_async(self._client.tools.get_raw_composio_tools, **kwargs)
+            # The provider answers 20 per page by default and the SDK reads only
+            # the first page: the rest of a toolkit never reached the catalog.
+            tools = await _maybe_async(
+                self._client.tools.get_raw_composio_tools,
+                toolkits=[toolkit],
+                limit=limit or _ALL_TOOLS,
+            )
         except Exception as exc:
             raise _translate_composio_error(exc) from exc
         out: list[ComposioTool] = []

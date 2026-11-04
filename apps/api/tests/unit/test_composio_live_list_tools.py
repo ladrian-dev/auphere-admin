@@ -74,6 +74,15 @@ async def test_las_etiquetas_de_lista_sirven_para_las_anotaciones() -> None:
     assert got[1].raw_tags == {}
 
 
+async def test_sin_limite_pide_todas_las_herramientas() -> None:
+    """El proveedor responde 20 por página y el SDK solo lee la primera: Google
+    Calendar se quedaba en las 20 primeras por orden alfabético, sin
+    ``GOOGLECALENDAR_CREATE_EVENT`` (staging, 2026-11-04)."""
+    client, tools = _client()
+    await client.list_tools(user_id="tenant-x", toolkit="googlecalendar")
+    assert tools.raw_calls == [{"toolkits": ["googlecalendar"], "limit": 1000}]
+
+
 async def test_pide_el_toolkit_y_respeta_el_limite() -> None:
     client, tools = _client()
     await client.list_tools(user_id="tenant-x", toolkit="calendly", limit=50)
