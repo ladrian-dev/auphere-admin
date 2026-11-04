@@ -41,7 +41,8 @@ export function ErasePersonDialog({ tenantId, channelId }: { tenantId: string; c
         toast.error(res.error === "person not found" ? "No hay nadie con ese identificador en este canal." : `No se pudo borrar: ${res.error}`);
         return;
       }
-      toast.success(`Datos borrados: ${res.data.messages_emptied} mensajes vaciados.`);
+      const n = res.data.messages_emptied;
+      toast.success(`Datos borrados: ${n === 1 ? "1 mensaje vaciado" : `${n} mensajes vaciados`}.`);
       setOpen(false);
       setIdentifier("");
       setRequestedBy("");
