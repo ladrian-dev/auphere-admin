@@ -755,6 +755,20 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Cancels a booked appointment and notifies whoever had it.",
         "appointments",
     ),
+    ("tool", "GOOGLECALENDAR_FIND_FREE_SLOTS"): _t(
+        "Ver huecos libres en Google Calendar",
+        "See free slots in Google Calendar",
+        "Consulta qué horas están libres en el calendario del negocio.",
+        "Checks which times are free in the business's calendar.",
+        "appointments",
+    ),
+    ("tool", "GOOGLECALENDAR_CREATE_EVENT"): _t(
+        "Crear una cita en Google Calendar",
+        "Create an appointment in Google Calendar",
+        "Añade la cita como un evento en el calendario del negocio.",
+        "Adds the appointment as an event in the business's calendar.",
+        "appointments",
+    ),
     ("tool", "HUBSPOT_SEARCH_CONTACTS"): _t(
         "Buscar un contacto",
         "Find a contact",
@@ -958,6 +972,10 @@ TOOL_ACTIONS: Final[dict[str, frozenset[Action]]] = {
     "reservas.create": frozenset({"book"}),
     "reservas.answer_offer": frozenset({"book"}),
     "booking.create_appointment": frozenset({"book"}),
+    # A connector's calendar keeps the promise too (owner, 2026-11-03).
+    "CALENDLY_POST_INVITEE": frozenset({"book"}),
+    "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK": frozenset({"book"}),
+    "GOOGLECALENDAR_CREATE_EVENT": frozenset({"book"}),
     "reservas.reschedule": frozenset({"modify_booking"}),
     "reservas.cancel": frozenset({"modify_booking"}),
     "booking.modify_appointment": frozenset({"modify_booking"}),

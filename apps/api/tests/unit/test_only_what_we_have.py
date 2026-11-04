@@ -345,6 +345,27 @@ def test_the_missing_actions_of_a_spec_are_listed_for_the_console() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "GOOGLECALENDAR_CREATE_EVENT",
+        "CALENDLY_POST_INVITEE",
+        "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK",
+    ],
+)
+def test_a_connector_that_books_keeps_the_promise_of_booking(tool: str) -> None:
+    from nexus_api.services.agent_spec.missing import from_promises
+
+    assert from_promises(_spec("Da cita a los clientes.", [tool])) == []
+
+
+def test_finding_free_slots_does_not_keep_the_promise_of_booking() -> None:
+    from nexus_api.services.agent_spec.missing import from_promises
+
+    missing = from_promises(_spec("Da cita a los clientes.", ["GOOGLECALENDAR_FIND_FREE_SLOTS"]))
+    assert [m.key for m in missing] == ["book"]
+
+
 def test_a_procedure_that_promises_without_a_tool_leaves_and_the_alternative_stays() -> None:
     """65.4: el borrador no se queda con la promesa. Un procedimiento que promete
     algo que ninguna de sus herramientas hace se quita y se anota."""
