@@ -44,13 +44,20 @@ variable "region" {
 }
 
 variable "state_bucket" {
-  type = string
+  description = "Viene de <workspace>.tfvars. Si Terraform te lo pregunta, te falta -var-file."
+  type        = string
 }
 
+# Sin default, como `grafana_enabled`: un valor por defecto aquí es lo que permitía
+# que olvidar un -var cambiase un entorno. Ver el README.
 variable "alert_email" {
-  description = "Destinatario de las alarmas. El default no es cosmético: un topic sin suscripción convierte cada alarma en un mensaje al vacío, y ese es justo el modo de fallo que estas alarmas existen para cazar."
+  description = "Viene de <workspace>.tfvars. Si Terraform te lo pregunta, te falta -var-file. Destinatario de las alarmas del entorno; null en un entorno que no avisa a nadie."
   type        = string
-  default     = "contacto@ladrian.dev"
+
+  validation {
+    condition     = var.alert_email == null || can(regex("^[^@ ]+@[^@ ]+$", var.alert_email))
+    error_message = "alert_email tiene que ser una dirección de correo, o null si el entorno no avisa a nadie."
+  }
 }
 
 data "terraform_remote_state" "services" {
@@ -95,13 +102,17 @@ resource "aws_sns_topic" "alerts" {
   name = "${local.name}-alerts"
 
   # Un topic sin suscriptores no es media alarma: es cero alarma con aspecto
-  # de estar montada. Staging vivió así desde WP-23 y nadie lo notó, que es
-  # exactamente el síntoma. Se rechaza el apply antes que heredar el hueco en
-  # prod, donde detrás hay clientes de Facelad y Amacrux.
+  # de estar montada. En prod se rechaza, porque detrás hay clientes de Facelad
+  # y Amacrux. En staging es lo decidido, y sus alarmas lo dicen con
+  # `actions_enabled = false` (ver `alert_actions_enabled` en alarms.tf).
+  #
+  # La misma guarda para el otro error caro: pasar el -var-file de otro entorno,
+  # que con el de prod en staging destruiría Grafana. Si cambia el destino, por
+  # ejemplo a un canal de chat, suscríbelo aquí antes de vaciar esta variable.
   lifecycle {
     precondition {
-      condition     = var.alert_email != ""
-      error_message = "alert_email vacío dejaría ${local.name}-alerts sin suscriptores. Si el destino pasa a ser un canal de chat, suscríbelo aquí explícitamente antes de vaciar esta variable."
+      condition     = (var.alert_email != null) == local.alert_actions_enabled
+      error_message = "alert_email no cuadra con el workspace ${terraform.workspace}: prod tiene que tener destinatario y staging ninguno. Lo normal es haber pasado el -var-file de otro entorno: usa ${terraform.workspace}.tfvars."
     }
   }
 }
@@ -110,8 +121,17 @@ resource "aws_sns_topic" "alerts" {
 # clic la suscripción queda en PendingConfirmation y no entrega nada. La
 # comprobación de que quedó Confirmed va en el runbook, no aquí — Terraform da
 # por bueno el recurso en cuanto lo crea.
-resource "aws_sns_topic_subscription" "email" {
+resource "aws_sns_topic_subscription" "alert_email" {
+  count = var.alert_email == null ? 0 : 1
+
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "email"
   endpoint  = var.alert_email
+
+  # Estos dos solo los usa el proveedor al crear; AWS no los guarda, y una
+  # suscripción importada los trae a null. Sin esto, cada plan enseñaría un cambio
+  # que no toca nada en AWS.
+  lifecycle {
+    ignore_changes = [confirmation_timeout_in_minutes, endpoint_auto_confirms]
+  }
 }

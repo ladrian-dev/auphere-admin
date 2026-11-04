@@ -12,12 +12,17 @@
 /** «Lo que habría hecho: …», en el lenguaje del negocio (20.3). */
 export type PlaygroundAction = { tool: string; phrase: string };
 
+/** Por qué la burbuja no es del agente: es el texto de emergencia que recibiría un cliente. */
+export type PlaygroundFailureReason = "llm_failed" | "no_model" | "empty_response";
+
 /** Un turno: lo que escribió el cliente simulado o las burbujas del agente (20.4). */
 export type PlaygroundTurn = {
   role: "customer" | "agent";
   bubbles: string[];
   several_bubbles: boolean;
   actions: PlaygroundAction[];
+  /** El modelo no respondió. Ausente en las conversaciones de antes. */
+  failure?: { reason: PlaygroundFailureReason } | null;
 };
 
 /** Una cita de la agenda simulada; `when` ya viene dicho en la zona del negocio. */
@@ -45,8 +50,8 @@ export type PlaygroundReply = { turn: PlaygroundTurn; now: string; agenda: SimBo
 
 // ── las pruebas (requisito 21) ──────────────────────────────────────────────
 
-export type TestStatus = "passed" | "flaky" | "failed" | "unknown" | "not_run" | "not_applicable";
-export const TEST_STATUSES: readonly TestStatus[] = ["passed", "flaky", "failed", "unknown", "not_run", "not_applicable"];
+export type TestStatus = "passed" | "flaky" | "failed" | "unknown" | "model_failed" | "not_run" | "not_applicable";
+export const TEST_STATUSES: readonly TestStatus[] = ["passed", "flaky", "failed", "unknown", "model_failed", "not_run", "not_applicable"];
 
 export type TestCriterion = { key: string; text: string };
 
@@ -56,9 +61,9 @@ export type TestCriterion = { key: string; text: string };
  * cada uno; en el del agente, lo que habría hecho, ya en palabras del negocio.
  */
 export type TestTurn = { role: "customer" | "agent"; text: string; actions: string[] };
-/** Por qué terminó la conversación: plan cumplido, despedida, paso a una persona o 8 turnos. */
-export type TestStop = "plan_done" | "goodbye" | "handoff" | "turn_limit";
-export const TEST_STOPS: readonly TestStop[] = ["plan_done", "goodbye", "handoff", "turn_limit"];
+/** Por qué terminó la conversación: plan cumplido, despedida, paso a una persona, 8 turnos o un modelo que no respondió. */
+export type TestStop = "plan_done" | "goodbye" | "handoff" | "turn_limit" | "model_failed";
+export const TEST_STOPS: readonly TestStop[] = ["plan_done", "goodbye", "handoff", "turn_limit", "model_failed"];
 /** Una pasada (requisito 21.4) con su conversación. */
 export type TestAttempt = { passed?: boolean | null; transcript?: TestTurn[] | null; stop?: TestStop | null };
 
@@ -82,6 +87,8 @@ export type AgentTest = {
   decided: number;
   /** Lo que se comprobó: el estado final, no lo que dijo el agente (21.3, 21.5). */
   why_failed: string | null;
+  /** Con `status: "model_failed"`: qué modelo no respondió. No hay nada que arreglar en el agente. */
+  why_untested?: string | null;
   /**
    * La conversación de la pasada que se enseña en «Por qué falló» y por qué
    * terminó (61.6). Ausentes en respuestas de antes de la fase 27; la consola

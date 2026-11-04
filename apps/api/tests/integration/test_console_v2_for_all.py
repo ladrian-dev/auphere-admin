@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import Partner
+from nexus_api.services import operator_identity
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -26,8 +27,17 @@ async def test_a_partner_created_from_the_panel_is_born_on_the_new_console(
     client: Any, db_session: AsyncSession, admin_headers: dict[str, str]
 ) -> None:
     slug = f"todos-{uuid.uuid4().hex[:8]}"
+    operator = await operator_identity.create_account(
+        db_session,
+        email=f"op-{uuid.uuid4().hex[:8]}@auphere.test",
+        password="operator-password-1",
+        role="admin",
+    )
+    await db_session.commit()
     created = await client.post(
-        "/admin/partners", headers=admin_headers, json={"name": "Agencia Todos", "slug": slug}
+        "/admin/partners",
+        headers={**admin_headers, "X-Operator-Id": str(operator.id)},
+        json={"name": "Agencia Todos", "slug": slug, "owner_email": f"duena-{slug}@example.com"},
     )
     assert created.status_code == 201, created.text
     async with db_session.begin():

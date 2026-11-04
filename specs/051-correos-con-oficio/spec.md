@@ -6,6 +6,8 @@
 
 Decisiones del owner del 2026-10-30, recogidas en la nota de KB: plantillas **alojadas en Resend**; en staging el log guarda **metadatos y enlaces de acción**; respuestas a soporte; firma **«El equipo de Auphere»**.
 
+**Enmienda del 2026-11-03, pendiente del OK del owner**: la tercera revisión retiró el correo contando con que Datadog recogería los `platform_alert`. Datadog sigue sin aprobarse y en la cuenta de AWS nada lee esos registros: en staging, `platform_alert` se registró 117 veces en 30 días sin que nadie se enterara. Al fusionar `develop` en `main`, producción perdería su único aviso. Esta enmienda añade a la R9 una alarma de CloudWatch que avisa a una persona (9.4 a 9.8), y hace de su aplicación en producción una condición para esa fusión (CE-006).
+
 **Tercera revisión del owner, el mismo día**: las alertas de **monitorización** dejan de enviarse por correo, porque se va a monitorizar con Datadog. Son las seis del vigilante de la plataforma y la conciliación diaria con Meta. Siguen escribiéndose en el registro, como `platform_alert` con nivel de error, para que Datadog las recoja. Las dos alertas internas que piden trabajo a una persona (la consulta de soporte de un partner y la petición de borrado de cuenta) siguen saliendo por correo.
 
 **Segunda revisión del owner, el mismo día**: en staging llegan de verdad **solo los correos de acceso**, los que hacen falta para seguir operando (confirmar el alta, «ya tienes cuenta», invitación al equipo, invitación de cliente, restablecer la contraseña y aviso de contraseña cambiada). Todo lo demás —recibos, cobros, alertas de saldo y consumo, avisos y alertas internas— queda en el registro.
@@ -23,7 +25,7 @@ Decisiones del owner del 2026-10-30, recogidas en la nota de KB: plantillas **al
 
 | Campo | Valor |
 |---|---|
-| **Superficie de confianza** | `0`: la API y el worker, que ya envían correo por Resend. No se abre ninguna superficie nueva: Resend ya es proveedor, y las plantillas viven en la misma cuenta que hoy envía |
+| **Superficie de confianza** | `0`: la API y el worker, que ya envían correo por Resend. No se abre ninguna superficie nueva: Resend ya es proveedor, y las plantillas viven en la misma cuenta que hoy envía. Las alarmas de la R9 usan CloudWatch y SNS, que ya vigilan la plataforma |
 | **Garantías de aislamiento tocadas** | **6**: el registro de cada correo, enviado o retenido, lleva el negocio (partner o cliente) al que pertenece cuando lo tiene. **1, solo rozada**: el destinatario y los datos de cada correo se siguen resolviendo donde hoy, desde el contexto del servidor; esta spec cambia la forma del correo, no a quién va ni con qué datos |
 | **Nota de KB que la justifica** | `[[research/2026-10-30-correos-con-oficio]]` · `[[../brand/voice-and-copy]]` · `[[../brand/brand-system]]` |
 | **Qué se mide** | Nada de modelo. Cada correo cuesta lo mismo en Resend que hoy; staging deja de gastar cuota. Ningún correo gasta saldo de partner |
@@ -243,6 +245,20 @@ Las reglas que specs anteriores escribieron sobre el contenido de ciertos correo
 
 9.3 La consulta de soporte y la petición de borrado de cuenta DEBEN seguir enviándose por correo.
 
+**Enmienda del 2026-11-03.** Dejar de enviar un aviso exige que otro lo sustituya antes. El canal de alarmas de hoy es el correo de AWS SNS: no sale de la plataforma ni pasa por Resend, y lo que este requisito quería evitar era la repetición cada hora, que 9.5 impide.
+
+9.4 CUANDO se registra un `platform_alert` en producción, ENTONCES el sistema DEBE avisar a una persona por el canal de alarmas de la plataforma en menos de 15 minutos, con una alarma propia para cada tipo, de forma que un tipo que persiste no tape a otro.
+
+9.5 MIENTRAS un tipo siga registrándose, el sistema NO DEBE repetir el aviso: avisa cuando empieza, y otra vez solo si vuelve a registrarse tras tres horas sin hacerlo.
+
+9.6 CUANDO se registra `ops.meta_reconciliation` en producción, ENTONCES el sistema DEBE avisar a una persona de la misma forma, con su propia alarma.
+
+9.7 Todo tipo de `platform_alert` que el código pueda registrar DEBE tener su alarma, y toda alarma DEBE corresponder a un tipo que el código registre.
+
+9.8 El aviso y la métrica de la que sale NO DEBEN llevar `tenant_id` ni datos de un negocio: cuentan por tipo, y el detalle sigue en el registro.
+
+9.9 DONDE el entorno no es producción, las alarmas DEBEN existir y NO DEBEN avisar a nadie. Staging aparca sus servicios de 03:00 a 09:00, hora de Madrid, y cada mañana registra un `worker_dead` que no es un fallo.
+
 ### Requisito 8 — Documentación viva
 
 8.1 Los documentos de `docs/` que describen el envío de correo (recuperar la contraseña, registro de partners, paso a producción) DEBEN describir el modo por entorno, el catálogo y cómo cambiar una plantilla, en el mismo cambio que el código.
@@ -260,6 +276,8 @@ Las reglas que specs anteriores escribieron sobre el contenido de ciertos correo
 - **CE-003**: **ningún** sitio del código compone HTML de correo; la prueba de barrido lo confirma.
 - **CE-004**: en una lectura de cinco segundos de cada correo, una persona ajena al proyecto sabe decir qué pasó y qué tiene que hacer. Se registra en `evidence/`.
 - **CE-005**: las pruebas existentes sobre el contenido de los correos de las specs 006 y 011 siguen en verde, adaptadas.
+- **CE-006**: `develop` no se fusiona en `main` con esta spec hasta que las alarmas estén aplicadas en producción y el aviso de `dlq_entries` haya llegado a un buzón que alguien lee. La DLQ de producción tenía 25 entradas el 2026-11-03, así que ese aviso sale en la primera hora.
+- **CE-007**: contra los `platform_alert` reales de producción del 27-ago al 3-nov, la DLQ da **1** aviso donde el correo dio 1630 (`evidence/alarma-calibracion.md`).
 
 ## Supuestos
 
@@ -269,11 +287,15 @@ Las reglas que specs anteriores escribieron sobre el contenido de ciertos correo
 - El tipo de letra de marca (Helvena) no está disponible en los clientes de correo: el tema de la plantilla cae a la familia sin serifa del sistema.
 - support@auphere.com existe y alguien lo lee; si no existe aún, es configuración del owner y no bloquea el código.
 - Con las plantillas alojadas fuera de git, el texto de los cuerpos no se versiona en el repositorio: el catálogo y la comprobación son la red de seguridad.
+- Alguien lee `contacto@ladrian.dev`, la única suscripción del topic de alarmas de producción. Cambiarla es configuración del owner y no cambia esta enmienda.
+- Las alarmas leen lo que registra el `scheduler`. Si cae el `scheduler` entero, no se registra nada y ninguna de estas alarmas suena. El correo tenía el mismo punto ciego, así que no es una regresión.
+- Mientras una alarma sigue en ALARM no vuelve a avisar, tampoco si la DLQ crece. Para saber que crece hay que mirar el detalle del registro.
 
 ## Fuera de alcance
 
 - Correos de marketing, boletines y difusiones.
 - Notificaciones que no son correo (push, WhatsApp, avisos dentro de la consola).
 - Seguimiento de aperturas o clics: se mantienen apagados.
-- **Las alertas de monitorización por correo** (Requisito 9): se retiran, y su sustituto es Datadog, fuera de esta spec.
+- **Las alertas de monitorización por correo de Resend** (Requisito 9): se retiran. Las sustituyen las alarmas de CloudWatch de los criterios 9.4 a 9.9. Datadog, si se aprueba, será otra spec, y entonces decidirá qué hacer con estas alarmas.
+- **Vaciar la DLQ de producción** y **cambiar qué mide `dlq_entries`** (hoy, si la cola tiene entradas; no si han llegado nuevas): son otro trabajo. Esta enmienda solo hace que alguien se entere.
 - **Correos que hoy no existen.** El impago de la membresía (`billing.payment_failed`, `billing.unpaid`, `billing.canceled`) no manda correo. Se encontró en el inventario y es otra conversación: añadirlo cambia lo que el producto hace, no cómo lo dice.

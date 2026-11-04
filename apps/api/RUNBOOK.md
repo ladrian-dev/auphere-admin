@@ -300,6 +300,14 @@ Cuando llega `alert_isolation_v1` por WhatsApp al teléfono operador:
 
 ---
 
+## Playbook — alarma `platform-alert-dlq-entries`
+
+Ha muerto un mensaje de cliente: agotó sus reintentos y está en
+`nexus:inbound:dlq`. Mirar, descartar y reinyectar se hace con
+`./scripts/ops/dlq.sh <staging|prod> list`. Todo en [`docs/dlq.md`](../../docs/dlq.md).
+
+---
+
 ## Playbook — alerta `alert_whatsapp_burst_v1`
 
 Trigger: ≥5 errores 5xx contra la Cloud API en una ventana de 2min (Bloque

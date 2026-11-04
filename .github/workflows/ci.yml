@@ -1,9 +1,15 @@
 name: ci
 
+# Solo de camino a producción. En ``develop`` ya no corre sola: tardaba más de
+# una hora y frenaba cada arreglo de staging (decisión de Luis, 2026-11-03;
+# docs/develop-sin-tuberia.md). ``workflow_dispatch`` es para lanzarla a mano
+# sobre develop antes de abrir el PR a main.
 on:
   pull_request:
+    branches: [main]
   push:
-    branches: [main, develop]
+    branches: [main]
+  workflow_dispatch:
 
 # Un grupo por evento: el de un PR por su número, el de un push por su rama.
 # Con ``ci-${{ github.ref }}`` a secas, el run de un PR que GitHub lanza al

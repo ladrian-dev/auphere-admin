@@ -10,6 +10,7 @@ through the service token (CP-02/CP-26).
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -737,6 +738,91 @@ async def test_invitation_revoke_and_expiry(client, console_world, db_session) -
         json={"password": "console-dev-2026!!"},
     )
     assert accept.status_code == 404
+
+
+# ── reinviting after the term (bug reinvitar-tras-vencer-da-409) ───────
+
+
+async def _invite(client, headers, email: str = "late@example.com"):
+    return await client.post(
+        "/console/team/invitations", headers=headers, json={"email": email, "role": "analyst"}
+    )
+
+
+async def _let_it_expire(db_session, invitation_id: str) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from nexus_api.db.models import PartnerInvitation
+
+    await db_session.execute(
+        sa.update(PartnerInvitation)
+        .where(PartnerInvitation.id == uuid.UUID(invitation_id))
+        .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    await db_session.commit()
+
+
+async def test_reinvite_after_expiry_works_and_the_list_tells_the_truth(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    _invite_mail_sink(monkeypatch)
+    h = console_world["a"]["headers"]
+    first = await _invite(client, h())
+    assert first.status_code == 201, first.text
+    old_token = first.json()["accept_path"].removeprefix("/invite/")
+
+    await _let_it_expire(db_session, first.json()["id"])
+    team = (await client.get("/console/team", headers=h())).json()
+    assert team["invitations"] == []
+
+    second = await _invite(client, h())
+    assert second.status_code == 201, second.text
+    new_token = second.json()["accept_path"].removeprefix("/invite/")
+    assert new_token != old_token
+
+    team = (await client.get("/console/team", headers=h())).json()
+    assert [i["id"] for i in team["invitations"]] == [second.json()["id"]]
+    assert (
+        await client.get(f"/console/invitations/{old_token}", headers=_svc_headers())
+    ).status_code == 404
+    assert (
+        await client.get(f"/console/invitations/{new_token}", headers=_svc_headers())
+    ).status_code == 200
+    # A live invitation still blocks a second one: only the overdue row gives way.
+    assert (await _invite(client, h())).status_code == 409
+
+
+async def test_reinvite_works_whether_or_not_someone_opened_the_dead_link(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    _invite_mail_sink(monkeypatch)
+    h = console_world["a"]["headers"]
+    first = await _invite(client, h())
+    token = first.json()["accept_path"].removeprefix("/invite/")
+    await _let_it_expire(db_session, first.json()["id"])
+
+    assert (
+        await client.get(f"/console/invitations/{token}", headers=_svc_headers())
+    ).status_code == 404
+    assert (await _invite(client, h())).status_code == 201
+
+
+async def test_two_simultaneous_reinvites_one_wins_the_other_gets_409(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    _invite_mail_sink(monkeypatch)
+    h = console_world["a"]["headers"]
+    first = await _invite(client, h())
+    await _let_it_expire(db_session, first.json()["id"])
+
+    answers = await asyncio.gather(_invite(client, h()), _invite(client, h()))
+
+    assert sorted(a.status_code for a in answers) == [201, 409], [a.text for a in answers]
+    loser = next(a for a in answers if a.status_code == 409)
+    winner = next(a for a in answers if a.status_code == 201)
+    assert loser.json()["detail"] == "an invitation for this e-mail is already pending"
+    team = (await client.get("/console/team", headers=h())).json()
+    assert [i["id"] for i in team["invitations"]] == [winner.json()["id"]]
 
 
 # ── keys (CP-27) ───────────────────────────────────────────────────────

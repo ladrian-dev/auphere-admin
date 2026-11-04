@@ -28,6 +28,7 @@ from nexus_api.api.admin import (
     overview,
     partner_access,
     partner_billing,
+    partner_invitations,
     partner_knowledge,
     partner_llm,
     partner_models,
@@ -89,6 +90,8 @@ router.include_router(auphere_channels.router)
 router.include_router(backchannel_owners.router)
 router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
+# Spec 052: invitar, reenviar y revocar al propietario de un partner.
+router.include_router(partner_invitations.router)
 router.include_router(channels_overview.router)
 router.include_router(tenants_health.router)
 router.include_router(tenant_capabilities.router)

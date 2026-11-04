@@ -9,8 +9,10 @@ módulos e invita o revoca a sus personas. Dos reglas de esta puerta:
   ``operator_auth.principals``. Sin operador, no hay cambio: la auditoría tiene
   que nombrar a una persona (``operator:<correo>``), no un prefijo del token.
 * **El token de la invitación sale una vez.** Va en el correo y en la
-  respuesta (``accept_path``) para que el operador pueda pasarlo a mano si el
-  correo no llega; en la base solo queda su hash.
+  respuesta (``accept_url``) para que el operador pueda pasarlo a mano si el
+  correo no llega; en la base solo queda su hash. ``accept_url`` lo construye
+  ``console_link``, como el del correo: el panel vive en otro host y una ruta
+  relativa no le sirve para nada.
 """
 
 from __future__ import annotations
@@ -28,10 +30,11 @@ from nexus_api.api.admin.operator import operator_actor, require_operator
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.security import require_admin_token
 from nexus_api.core.tenant_context import declare_tenant
-from nexus_api.db.models import ClientPhone, OperatorAccount
+from nexus_api.db.models import ClientInvitation, ClientPhone, OperatorAccount
 from nexus_api.services import client_access, client_phones
 from nexus_api.services.client_access import AccessView, ClientAccessError
 from nexus_api.services.client_invitation_email import send_client_invitation
+from nexus_api.services.email_catalog import console_link
 from nexus_api.services.reservations import admin as reservations_admin
 
 router = APIRouter(prefix="/tenants", dependencies=[Depends(require_admin_token)])
@@ -133,7 +136,22 @@ class ClientInvitationOut(BaseModel):
     status: str
     expires_at: datetime
     accept_path: str
+    # Lo que se pasa a mano: el enlace completo, el mismo que lleva el correo.
+    accept_url: str
     email_sent: bool
+
+
+def _invitation_out(invitation: ClientInvitation, token: str, sent: bool) -> ClientInvitationOut:
+    path = INVITE_ACCEPT_PATH.format(token=token)
+    return ClientInvitationOut(
+        id=invitation.id,
+        email=invitation.email,
+        status=invitation.status,
+        expires_at=invitation.expires_at,
+        accept_path=path,
+        accept_url=console_link(path),
+        email_sent=sent,
+    )
 
 
 def _out(view: AccessView) -> ClientAccessOut:
@@ -240,14 +258,7 @@ async def invite_client_member(
     except ClientAccessError as exc:
         raise _error(exc) from None
     sent = await _send(invitation.tenant_id, invitation.email, token, client, invitation.expires_at)
-    return ClientInvitationOut(
-        id=invitation.id,
-        email=invitation.email,
-        status=invitation.status,
-        expires_at=invitation.expires_at,
-        accept_path=INVITE_ACCEPT_PATH.format(token=token),
-        email_sent=sent,
-    )
+    return _invitation_out(invitation, token, sent)
 
 
 @router.post(
@@ -272,14 +283,7 @@ async def resend_client_invitation(
     except ClientAccessError as exc:
         raise _error(exc) from None
     sent = await _send(invitation.tenant_id, invitation.email, token, client, invitation.expires_at)
-    return ClientInvitationOut(
-        id=invitation.id,
-        email=invitation.email,
-        status=invitation.status,
-        expires_at=invitation.expires_at,
-        accept_path=INVITE_ACCEPT_PATH.format(token=token),
-        email_sent=sent,
-    )
+    return _invitation_out(invitation, token, sent)
 
 
 @router.post(

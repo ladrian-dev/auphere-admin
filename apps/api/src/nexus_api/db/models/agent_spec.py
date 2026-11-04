@@ -185,7 +185,8 @@ class AgentTestRun(UUIDPrimaryKey, Base):
     paid_by: Mapped[str] = mapped_column(String(12), nullable=False, default="partner")
     cost_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    #: ``{"passed", "failed", "flaky", "unknown", "not_applicable", "critical_failed", "rate"}``.
+    #: ``{"passed", "failed", "flaky", "unknown", "model_failed", "not_applicable",
+    #: "critical_failed", "rate"}``, y ``stopped`` si no terminó.
     summary: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
@@ -315,8 +316,9 @@ __all__ = [
 
 # ── Spec 047, enmienda del 2026-10-29 (migración 0206): las guías generadas ──
 
-#: Por qué termina la conversación de una pasada (requisito 61.3).
-TEST_STOPS: tuple[str, ...] = ("plan_done", "goodbye", "handoff", "turn_limit")
+#: Por qué termina la conversación de una pasada (requisito 61.3). ``model_failed``:
+#: un modelo no respondió y la pasada no dice nada del agente (migración 0216).
+TEST_STOPS: tuple[str, ...] = ("plan_done", "goodbye", "handoff", "turn_limit", "model_failed")
 GENERATED_GUIDE_STATUSES: tuple[str, ...] = ("generated", "reviewed", "promoted", "archived")
 
 

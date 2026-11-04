@@ -104,6 +104,7 @@ export function suite(over: Partial<TestSuite> = {}): TestSuite {
       flaky: 1,
       failed: 1,
       unknown: 1,
+      model_failed: 0,
       not_run: 1,
       not_applicable: 1,
       total: 6,

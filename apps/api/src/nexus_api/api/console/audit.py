@@ -181,6 +181,10 @@ async def partner_member_emails(session: AsyncSession, partner_id: uuid.UUID) ->
     return {str(user_id): str(email) for user_id, email in rows if email}
 
 
+#: El valor del filtro «Auphere» de la Auditoría.
+AUPHERE_FILTER = "admin:"
+
+
 def _human_actor(actor: str, emails: dict[str, str] | None = None) -> str:
     # ``console:maria@x.com`` → ``maria@x.com``; ``admin:1a2b3c4d`` → ``Auphere``.
     if actor.startswith("console:"):
@@ -251,15 +255,17 @@ def summarise(
     names_by_ref: Mapping[str, str] | None = None,
     connector_names: Mapping[str, str] | None = None,
     partner_name: str | None = None,
+    actor_label: str | None = None,
 ) -> str:
     after = row.after_json or {}
     before = row.before_json or {}
     # Spec 029: every placeholder of the vocabulary is filled in
-    # ``audit_words``, in words, never with a code or «?».
+    # ``audit_words``, in words, never with a code or «?». ``actor_label`` is the
+    # operator panel's: it names the person where the console says «Auphere».
     values = audit_words.values(
         after=after,
         before=before,
-        actor=_human_actor(row.actor, emails),
+        actor=actor_label or _human_actor(row.actor, emails),
         client_name=client_name,
         lang=lang,
         names_by_ref=names_by_ref or {},
@@ -387,7 +393,10 @@ def _base_stmt(
         # Spec 029: «filtrar por categoría» (spec 017 R11.5). An unknown
         # category is an empty list, and an empty IN matches nothing.
         stmt = stmt.where(AuditLog.action.in_(actions))
-    if actor:
+    if actor == AUPHERE_FILTER:
+        # Spec 030 y 052: el equipo de Auphere también escribe ``operator:<correo>``.
+        stmt = stmt.where(sa.or_(AuditLog.actor.like("admin:%"), AuditLog.actor.like("operator:%")))
+    elif actor:
         stmt = stmt.where(AuditLog.actor.ilike(f"%{actor}%"))
     if action:
         stmt = stmt.where(AuditLog.action.like(f"{action}%"))
@@ -469,7 +478,7 @@ async def audit_filters(
     ]
     people += [
         AuditFilterOptionOut(value="companion:", label=COMPANION_ACTOR),
-        AuditFilterOptionOut(value="admin:", label="Auphere"),
+        AuditFilterOptionOut(value=AUPHERE_FILTER, label="Auphere"),
     ]
     clients = sorted(
         (

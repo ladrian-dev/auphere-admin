@@ -256,13 +256,25 @@ async def test_the_20_percent_box_turns_low_off(client: Any, db_session: Any) ->
     assert await _evaluate(db_session, world) == []
 
 
-async def test_empty_fires_every_day_while_it_lasts(client: Any, db_session: Any) -> None:
+async def test_empty_is_said_once_until_the_balance_comes_back(
+    client: Any, db_session: Any
+) -> None:
+    """Enmienda del 2026-11-03 (44.5): una bolsa vacía no avisa cada día."""
     world = await _funded(client, db_session, amount=UNIT)
     await _spend(world, UNIT)
     today = datetime.now(UTC).date()
     assert await _evaluate(db_session, world, today) == ["client.wallet.empty"]
     assert await _evaluate(db_session, world, today) == []
-    assert await _evaluate(db_session, world, today + timedelta(days=1)) == ["client.wallet.empty"]
+    assert await _evaluate(db_session, world, today + timedelta(days=1)) == [], "sigue vacía"
+    resp = await client.post(
+        f"/console/clients/{world.us.ref}/bag/assign",
+        json={"amount": money(UNIT, "USD")},
+        headers=world.headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    assert await _evaluate(db_session, world, today) == [], "con saldo, nada que avisar"
+    await _spend(world, UNIT)
+    assert await _evaluate(db_session, world, today) == ["client.wallet.empty"], "rearmado"
 
 
 async def test_not_enough_reads_the_last_seven_days_and_needs_three(
@@ -326,6 +338,9 @@ async def test_the_alerts_cron_tells_the_partner(
     mine = [t for t in told if t["tenant_id"] == world.us.tenant_id]
     assert [t["kind"] for t in mine] == ["client.wallet.empty"]
     assert mine[0]["severity"] == "critical"
+    # La limita ``empty_alerted_on``: una clave con fecha callaría un segundo
+    # episodio del mismo día.
+    assert mine[0]["dedupe_key"] is None
     await alerts_tick()
     assert len([t for t in told if t["tenant_id"] == world.us.tenant_id]) == 1
 

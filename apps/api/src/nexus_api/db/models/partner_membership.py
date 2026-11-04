@@ -129,7 +129,11 @@ class PartnerInvitation(UUIDPrimaryKey, Base):
             name="ck_partner_invitations_status",
         ),
         # One live invitation per e-mail per partner. Re-inviting means
-        # revoking first (or letting the previous one expire).
+        # revoking first (or letting the previous one expire). The predicate
+        # cannot look at ``expires_at`` (``now()`` is not immutable), so a row
+        # past its term holds its place until ``PartnerInvitationRepository
+        # .create`` retires it. "Live" is ``invitation_is_live_clause``, not
+        # this status.
         Index(
             "uq_partner_invitations_pending_email",
             "partner_id",
@@ -168,6 +172,9 @@ class PartnerInvitation(UUIDPrimaryKey, Base):
         ForeignKey("partner_memberships.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Spec 052: the last send the provider accepted. Null means it is not known
+    # to have gone out, which is not the same as having failed.
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

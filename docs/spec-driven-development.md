@@ -123,6 +123,10 @@ uno corre una lista distinta, y dos listas siempre divergen. Es el mismo
 argumento del recuadro de arriba, aplicado a lo que se ejecuta en vez de a lo
 que se comprueba.
 
+Desde el 2026-11-03 la tubería solo corre de camino a `main`: al fusionar en
+`develop`, lo único que mira el código es lo que corras tú. Ver
+[`develop-sin-tuberia.md`](develop-sin-tuberia.md).
+
 Ha roto la tubería dos veces, las dos por lo mismo: un cron nuevo del worker
 declarado en `bootstrap.py` pero no en su contrato de nombres, con la suite del
 worker sin correr en local.

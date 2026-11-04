@@ -94,9 +94,9 @@ Todas bajo `/console/clients/{ref}`.
 | `POST /agents/{agent_id}/publish/undo` | Deshacer, durante 10 minutos | 24.1 |
 | `GET /agents/{agent_id}/versions` · `GET /agents/{agent_id}/versions/{n}` · `POST /agents/{agent_id}/versions/{n}/restore` | Historial y restaurar (crea un borrador) | 24 |
 | `GET /agents/{agent_id}/tests` · `POST /agents/{agent_id}/tests` · `PATCH /agents/{agent_id}/tests/{id}` | La suite; «No aplica» con razón | 21 |
-| `POST /agents/{agent_id}/test-runs` | `{scope: all \| affected \| one, test_id?}` → `202 {job_id}`. Con una pasada viva del agente, devuelve esa y no encola otra (T217) | 21.4 |
+| `POST /agents/{agent_id}/test-runs` | `{scope: all \| affected \| one, test_id?}` → `202 {job_id}`. Con una pasada viva del agente, devuelve esa y no encola otra (T217). Con la de «Guardar» en marcha, `409 suite_running` | 21.4 |
 | `GET /agents/{agent_id}/review` | Hallazgos con gravedad y arreglo | 22 |
-| `POST /agents/{agent_id}/playground/sessions` · `POST /…/sessions/{id}/messages` · `PATCH /…/sessions/{id}` | Playground sobre el borrador o una versión, con hora y agenda simuladas; devuelve burbujas y «Lo que habría hecho» | 20 |
+| `POST /agents/{agent_id}/playground/sessions` · `POST /…/sessions/{id}/messages` · `PATCH /…/sessions/{id}` | Playground sobre el borrador o una versión, con hora y agenda simuladas; devuelve burbujas y «Lo que habría hecho». Si el modelo no respondió, `turn.failure: {reason: llm_failed \| no_model \| empty_response}` | 20 |
 | `POST /agents/{agent_id}/copilot` | `{message, context?}` → respuesta con citas y propuestas (a un analyst solo le explica) | 19 |
 | `POST /agents/{agent_id}/teach` | `{text, scope: business \| agent}`: se aplica al momento, con historial y deshacer | 37.3 |
 | `GET /agents/{agent_id}/knowledge` · `POST /agents/{agent_id}/knowledge` | Fuentes de la capa del agente | 37 |
@@ -272,12 +272,15 @@ implementa (fase 27). Cambiar algo aquí exige avisar a las dos partes.
 
 - Cada intento de `GET /agents/{agent_id}/tests` (y del detalle de una prueba) añade
   `transcript: [{"role": "customer" | "agent", "text", "actions": [string]}]` y
-  `stop: "plan_done" | "goodbye" | "handoff" | "turn_limit"`.
+  `stop: "plan_done" | "goodbye" | "handoff" | "turn_limit" | "model_failed"`.
   Implementado (T206, D70): cada prueba trae `transcript` y `stop` de la pasada que
   se enseña (la primera que falló o, si ninguna, la primera) y `attempts: [{attempt,
   passed, transcript, stop}]` de la última ejecución.
 - Las pruebas del sector de una guía generada llevan `origin: "generated"`; las
   demás, su `kind` (T201).
+- Si un modelo no respondió y ninguna pasada falló, `status: "model_failed"` con
+  `why_untested`, y `summary.model_failed` cuenta cuántas. Si ninguna pasada tuvo modelo,
+  el trabajo falla con `model_unavailable` (bug `el-probador-tapa-los-fallos-del-modelo`).
 - `POST /agents/{agent_id}/test-runs` devuelve además `estimate: Money` antes de
   encolar si se pide con `dry_run: true`. Implementado (D71): `200 {tests, estimate:
   Money | null, calls: {agent, customer_sim, judge}, unknown_prices: [model]}`, sin

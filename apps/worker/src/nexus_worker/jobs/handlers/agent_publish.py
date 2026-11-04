@@ -4,7 +4,10 @@ La cadena entera, en el worker: compilar → validar → **probar** → revisar 
 decidir → publicar.
 
 - Si el borrador tiene pruebas aplicables que no se han pasado con **esta**
-  versión (o están desactualizadas), se pasan primero (``reason=publish``).
+  versión (o están desactualizadas), se pasan primero (``reason=publish``). Si ya hay
+  una pasada viva del agente, el trabajo falla con ``suite_running``: la misma suite
+  dos veces se paga dos veces. Si ningún modelo responde, falla con
+  ``model_unavailable``, que no es lo mismo que no pasar la puerta.
 - La puerta (``nexus_api.services.publishing``) decide. Si no deja, el trabajo
   falla con ``gate_blocked`` (o ``override_forbidden``) y deja el veredicto, condición
   a condición, en su progreso (el bloque ``gate``), para que la consola diga por
@@ -50,6 +53,7 @@ log = structlog.get_logger(__name__)
 
 KIND = "publish"
 TIMEOUT_S = 900.0
+SUITE_RUNNING = "suite_running"
 PROMOTE_CHANNEL = "nexus:agent_config:promote"
 
 
@@ -76,6 +80,10 @@ async def _needs_run(ctx: JobContext, agent_id: uuid.UUID) -> uuid.UUID | None:
         )
         if done is not None and not any(t.stale for t in tests):
             return None
+        # Bajo el mismo bloqueo que ``POST …/test-runs``: o una o la otra.
+        await runs_service.lock_agent(session, agent_id)
+        if await runs_service.live_run(session, agent_id, excluding=ctx.job_id) is not None:
+            raise JobFailed(SUITE_RUNNING)
         run = await runs_service.create_run(
             session,
             agent_id=agent_id,

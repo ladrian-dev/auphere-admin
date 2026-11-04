@@ -553,6 +553,19 @@ para copiar, las invitaciones pendientes), «Qué puede hacer cada rol»
 (`components/team/roles-table.tsx`) sale del mismo mapa de permisos que la API
 (`lib/permissions.ts`), así que no promete lo que un rol no puede hacer.
 
+**Una invitación pasada de plazo no está viva**, aunque su fila siga `pending`:
+nada la marca al vencer, porque abrir el enlace responde 404 dentro de la
+transacción y esa marca se deshace. Por eso «viva» tiene una sola definición,
+`invitation_is_live_clause` en `repositories/partner_membership.py`, y es lo que
+leen la lista del equipo, el paso «team» del onboarding, los pendientes del home
+y el panel. El índice único no puede mirar la fecha, así que `create` retira la
+fila vencida de esa dirección y ese partner antes de insertar. Con dos peticiones
+a la vez gana una y la otra recibe el 409 de siempre. **No hay cron**, a
+diferencia de las altas (`expire-signups-cron`): nada depende de la marca, y una
+invitación la crea una persona a ritmo humano, de modo que las filas vencidas son
+pocas y no estorban. Razonado en
+`.specify/bugs/reinvitar-tras-vencer-da-409/assessment.md`.
+
 El e2e de estas pantallas y de las de la consola lite corre contra su API
 simulada: `pnpm exec playwright test -c e2e/fabrica.config.ts` (proyectos `lite` y
 `partner`), con la auditoría de la spec 047 (T162) en cada una: axe, 390 px, 200 %,

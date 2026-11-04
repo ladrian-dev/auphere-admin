@@ -2,8 +2,8 @@
 ``contracts/console-api.md`` §4).
 
 - ``GET …/agents/{agent_id}/tests``: toda la suite con el estado de cada prueba
-  («Pasa», «Inestable», «Falla», «No sé», «Sin ejecutar», «No aplica»), su «Por
-  qué falló» y el resumen (21.5);
+  («Pasa», «Inestable», «Falla», «No sé», «No se pudo probar», «Sin ejecutar», «No
+  aplica»), su «Por qué falló» y el resumen (21.5);
 - ``POST …/tests`` [``agents:write``]: una prueba añadida por una persona (21.1);
 - ``PATCH …/tests/{test_id}`` [``agents:write``]: editarla, o marcar una del
   sector «No aplica» con su razón (21.6);
@@ -109,6 +109,9 @@ class TestOut(BaseModel):
     passes: int
     decided: int
     why_failed: str | None
+    #: Con ``status = model_failed``: qué modelo no respondió. No hay nada que arreglar
+    #: en el agente, y por eso no va en ``why_failed``.
+    why_untested: str | None = None
     #: Spec 047, enmienda (58.4): ``generated`` si salió de la guía generada para
     #: este cliente («Generada»); si no, su ``kind``.
     origin: str
@@ -167,6 +170,7 @@ def _test_out(test: AgentTest, outcome: runs_service.TestOutcome) -> TestOut:
         passes=outcome.passes,
         decided=outcome.decided,
         why_failed=outcome.why_failed,
+        why_untested=outcome.why_untested,
         origin="generated" if test.generated_guide_id is not None else test.kind,
         transcript=[TestTurnOut.model_validate(t) for t in shown["transcript"]] if shown else [],
         stop=shown["stop"] if shown else None,
@@ -259,7 +263,9 @@ async def start_run(
 
     Spec 047, T217: como mucho una pasada viva por agente. Si ya hay una, se
     devuelve esa y no se encola nada (como «Volver a leer»): la fila del agente se
-    bloquea para que dos peticiones a la vez no lancen dos."""
+    bloquea para que dos peticiones a la vez no lancen dos. La de «Guardar» no se
+    devuelve, ``409 suite_running``: si la puerta para ese trabajo, esperarlo diría
+    que la pasada no terminó, y sí terminó."""
     await require_build_room(principal.partner.id)
     if body.scope == "one" and body.test_id is None:
         raise _error("test_required", status.HTTP_422_UNPROCESSABLE_CONTENT)
@@ -284,6 +290,8 @@ async def start_run(
             return JSONResponse({"tests": len(chosen), **estimate.out()})
         live = await runs_service.live_run(session, agent_id)
         if live is not None and live.job_id is not None:
+            if live.reason == "publish":
+                raise _error("suite_running", status.HTTP_409_CONFLICT)
             only = (live.summary or {}).get("test_id") if live.scope == "one" else None
             running = runs_service.tests_in_scope(
                 tests, scope=live.scope, test_id=uuid.UUID(str(only)) if only else None

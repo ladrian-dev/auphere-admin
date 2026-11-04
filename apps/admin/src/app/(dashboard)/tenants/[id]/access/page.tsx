@@ -5,8 +5,7 @@ import { backend, BackendError } from "@/lib/backend";
 import { requireOperator } from "@/lib/session";
 
 import { AccessForm } from "./access-form";
-import { InviteForm } from "./invite-form";
-import { MembersList } from "./members-list";
+import { PeopleSection } from "./people-section";
 
 /**
  * Spec 030 — «Acceso»: the client's own console (consola lite).
@@ -63,8 +62,7 @@ export default async function AccessPage({ params }: { params: Promise<{ id: str
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-6">
-            <InviteForm tenantId={id} disabled={!access.enabled} />
-            <MembersList tenantId={id} members={access.members} />
+            <PeopleSection tenantId={id} disabled={!access.enabled} members={access.members} />
           </CardContent>
         </Card>
       ) : null}

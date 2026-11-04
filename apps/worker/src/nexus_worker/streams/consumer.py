@@ -34,7 +34,7 @@ from typing import Any, cast
 
 import structlog
 from nexus_api.core.otel_metrics import record_turn, record_turn_error
-from nexus_api.core.streams import xadd_capped
+from nexus_api.core.streams import INBOUND_DLQ_STREAM, xadd_capped
 from opentelemetry import trace as otel_trace
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -54,7 +54,7 @@ log = structlog.get_logger(__name__)
 # instead of retrying forever (V6 — poison messages used to sit in the PEL
 # silently until someone noticed the conversation had died).
 MAX_DELIVERY_ATTEMPTS = 5
-DLQ_STREAM = "nexus:inbound:dlq"
+DLQ_STREAM = INBOUND_DLQ_STREAM
 
 #: How often the turn poller looks for due turns, and the most it picks up
 #: per look. Far below the 3 s window: the extra latency is a rounding error.
@@ -520,7 +520,8 @@ async def _dead_letter(
 
     The DLQ entry carries the full original payload plus diagnosis fields —
     an operator can replay it by re-publishing the original fields to the
-    source stream once the bug is fixed.
+    source stream once the bug is fixed, with ``nexus_worker.ops.dlq``
+    (docs/dlq.md).
     """
     dlq_fields = {
         **{k: v for k, v in fields.items() if k not in TRACE_FIELDS},

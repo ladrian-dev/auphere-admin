@@ -30,26 +30,58 @@ No hay HTML en el código. Si un sitio necesita mandar algo que el catálogo no 
 
 - confirmar el alta;
 - «ya tienes cuenta»;
-- la invitación al equipo y la de cliente;
+- la invitación al equipo, también la de propietario que emite un operador desde el panel (spec 052), y la de cliente;
 - restablecer la contraseña;
 - el aviso de que la contraseña cambió.
+
+**En staging, crear un partner en el panel escribe de verdad a la dirección que se ponga** (spec 052): es un correo de acceso.
 
 Los provoca siempre una persona, a propósito. Lo que staging **no** envía es lo automático: recibos, cobros, alertas de saldo y consumo, avisos de la consola y alertas internas. Son los correos que escribirían a un cliente real sin que nadie lo pidiera. Cada ficha del catálogo dice si es de acceso (`EmailSpec.access`).
 
 **La clave de Resend ya no decide si se envía; decide el modo.** Staging tenía la clave en su secreto y escribía a personas reales desde el dominio de producción. Quitar la clave lo habría apagado del todo, en silencio, y el día que alguien la volviera a poner habría vuelto a escribirlo todo. Staging **necesita** la clave para los correos de acceso.
 
-**Para probar en staging una plantilla que no es de acceso**, se pone `NEXUS_EMAIL_DELIVERY=resend` y se despliega. El arranque lo deja escrito como `warning` (`email.delivery_mode` con `real_email_outside_production=true`), para que se encuentre y se quite. `NEXUS_EMAIL_DELIVERY=log` apaga también los de acceso.
+**Para probar en staging una plantilla que no es de acceso**, se pone `NEXUS_EMAIL_DELIVERY=resend`. No basta con desplegar: la variable no está en ninguna definición de tarea, así que hay que añadirla en el bloque de staging de `common_env` (`infra/terraform/20-services/taskdefs.tf`) y aplicar Terraform. El arranque lo deja escrito como `warning` (`email.delivery_mode` con `real_email_outside_production=true`), para que se encuentre y se quite. `NEXUS_EMAIL_DELIVERY=log` apaga también los de acceso.
 
 ---
 
-### La monitorización no va por correo
+### La monitorización no va por Resend
 
-Las alertas del vigilante de la plataforma —cola atascada, mensajes en la DLQ, ráfaga de errores de turno, servicio sin latido, caché degradada, fallos de envío a Meta— y la conciliación diaria con Meta **ya no se envían por correo** (spec 051, requisito 9). Quedan en el registro con nivel de error:
+Las alertas del vigilante de la plataforma —cola atascada, mensajes en la DLQ, ráfaga de errores de turno, modelo sin responder en las pruebas, servicio sin latido, caché degradada, fallos de envío a Meta— y la conciliación diaria con Meta **ya no salen por Resend** (spec 051, requisito 9). Quedan en el registro de `/nexus/<entorno>/scheduler` con nivel de error:
 
 - `platform_alert`, con `kind`, `subject` y `detail`;
 - `ops.meta_reconciliation`, con el día y los canales afectados.
 
-Ahí las recoge la monitorización (Datadog). La ráfaga de errores de un negocio sigue avisando además por WhatsApp a los operadores, como antes. Las dos alertas internas que piden trabajo a una persona, la consulta de soporte y la petición de borrado de cuenta, siguen saliendo por correo.
+Quien avisa a una persona es una alarma de CloudWatch por cada tipo (`infra/terraform/30-observability/alarms.tf`). En producción, el aviso es un correo de AWS que sale del topic `nexus-prod-alerts`, cuya única suscripción es `contacto@ladrian.dev`.
+
+| Alarma (`nexus-prod-…`) | Salta cuando |
+|---|---|
+| `platform-alert-queue-backlog` | la entrada más vieja de una cola lleva más de 5 min sin procesarse |
+| `platform-alert-dlq-entries` | muere un mensaje de cliente nuevo, aunque queden viejos en la DLQ. Qué hacer: [`dlq.md`](dlq.md) |
+| `platform-alert-turn-error-burst` | un negocio lleva más de 5 turnos fallidos en 10 min |
+| `platform-alert-simulated-model-failure-burst` | un cliente lleva más de 5 turnos o pasadas sin respuesta del modelo en el chat de prueba o en las pruebas, en 10 min |
+| `platform-alert-worker-dead` | un servicio lleva más de 3 min sin latido |
+| `platform-alert-cache-ratio-low` | el prompt cache lee menos del 30 % en la hora |
+| `platform-alert-meta-failure-burst` | más de 20 envíos a Meta fallan con el mismo código en 10 min |
+| `meta-reconciliation` | la conciliación diaria encuentra mensajes de Meta sin guardar |
+
+Cómo se comportan:
+
+- **Un aviso por avería, no uno por hora.** El vigilante repite cada hora lo que sigue roto; la alarma avisa al empezar, sigue en ALARM y vuelve a OK tras 3 h sin registrarse. Volver a OK no manda nada.
+- **La DLQ no repite: avisa por lo nuevo.** Registra una vez por cada tanda de entradas nuevas, así que vuelve a OK aunque queden entradas viejas y lo siguiente que muera vuelve a avisar. Si repitiera, una cola que nadie vacía dejaría la alarma encendida para siempre y un mensaje de hoy no avisaría a nadie.
+- **Un tipo no tapa a otro.** Por eso hay una alarma por tipo: con la DLQ en ALARM, un `worker_dead` sigue avisando.
+- **El correo dice qué mirar, no cuánto.** Lleva la consulta de Logs Insights y, el de la DLQ, el comando. Mientras la alarma sigue en ALARM no se vuelve a avisar: lo que muere en esas 3 h va en el mismo aviso.
+- **Si cae el `scheduler` entero, no suena ninguna**, porque nadie registra. El correo de Resend tenía el mismo punto ciego. La DLQ avisa cuando vuelve, porque su marca no caduca.
+- **En staging existen y no avisan a nadie.** Staging aparca sus servicios de noche y cada mañana registra un `worker_dead` que no es un fallo.
+
+**El chat de prueba y las pruebas no cuentan para `turn_error_burst`.** Esa alerta escribe `platform.turn_error_burst`, y de ahí sale un WhatsApp al dueño del negocio: un partner que prueba su borrador no puede despertarlo. Por eso tienen su tipo, `simulated_model_failure_burst`, sin fila de auditoría (`apps/worker/src/nexus_worker/simulation/failures.py`). Al revés no se cubre todo: `turn_error_burst` solo cuenta los turnos de canal que lanzan una excepción, y un fallo del modelo en un canal no lanza, porque el handler responde con el texto de emergencia y pasa a una persona.
+
+Un tipo nuevo necesita su línea en `platform_alert_kinds`; `apps/worker/tests/unit/test_platform_alarms_contract.py` falla si falta.
+
+**Estado a 2026-11-03:** aplicadas en staging, donde no envían nada. Sin aplicar en producción: hay que aplicarlas allí al pasar la spec 051 a `main` (CE-006); hasta entonces, el aviso sigue siendo el correo de Resend de producción.
+
+**Datadog no está montado.** La propuesta del 30 de octubre no consta aprobada, y en la cuenta de AWS no hay ningún filtro de suscripción, rol ni recurso suyo. Si se aprueba, será otra spec.
+
+La ráfaga de errores de un negocio sigue avisando además por WhatsApp a los operadores, como antes. Las dos alertas internas que piden trabajo a una persona, la consulta de soporte y la petición de borrado de cuenta, siguen saliendo por correo de Resend.
 
 ---
 

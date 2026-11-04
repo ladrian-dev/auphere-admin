@@ -1941,7 +1941,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 5. El sistema DEBE avisar del saldo de cada bolsa con estos avisos:
    - **«Queda poco»**: cuando lo que queda baja del 20 % de su base, que es el saldo con el que empezó el mes más lo asignado durante el mes. Una vez al mes por cliente.
    - **«No llega a fin de mes»**: cuando, al ritmo de los últimos 7 días, la bolsa se acaba antes del día 1. Una vez al mes por cliente.
-   - **«Agotada»**: cuando llega a cero. Una vez al día por cliente mientras dure.
+   - **«Agotada»**: cuando llega a cero. Una sola vez por cliente, hasta que recupere saldo. *(Enmendado el 2026-11-03 por el owner: antes, una vez al día mientras durara. Un cliente sin saldo escribía cada día a su partner y a su gente, aunque nadie le hubiera escrito a su agente. Vale también para `client.out_of_quota` y `client.balance_out`, los avisos de quien aún no tiene bolsa. Tareas T230 a T233.)*
    Cada aviso DEBE volver a armarse cuando la bolsa recupera saldo por encima de su umbral.
 6. Los avisos al partner DEBEN ir a la campana y al correo de sus destinatarios de alertas, o a owners y admins si no hay destinatarios. Los avisos a las personas del cliente DEBEN ir a la campana, al correo y al push, con lo que queda y a quién pedir saldo (el nombre del partner), sin ningún botón de pedir.
 7. La casilla «Avisarme cuando le quede menos del 20 %» del modal de asignar DEBE controlar el aviso «Queda poco» de ese cliente.

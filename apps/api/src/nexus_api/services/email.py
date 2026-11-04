@@ -74,6 +74,22 @@ def _escaped(value: str) -> str:
     return escape(raw, quote=True) + "…"
 
 
+def _without_links(text: str, variables: Mapping[str, str], link_names: Iterable[str]) -> str:
+    """Quita los enlaces de acción de lo que respondió el proveedor.
+
+    Un proveedor puede citar lo que recibió al rechazarlo, y el registro de un
+    envío real no lleva enlaces (spec 052, R6.5). También su último tramo, que es
+    el token: en un cuerpo JSON las barras pueden venir escapadas.
+    """
+    for name in link_names:
+        link = variables.get(name)
+        if not link:
+            continue
+        for secret in (link, escape(link, quote=True), link.rsplit("/", 1)[-1]):
+            text = text.replace(secret, "[enlace]")
+    return text
+
+
 def _owner_fields(
     owner: str, partner_id: Any, tenant_id: Any, client_ref: str | None
 ) -> dict[str, Any]:
@@ -155,7 +171,8 @@ async def send_template(
         log.error("email.send_failed", error=str(exc), **context)
         return False
     if resp.status_code >= 300:
-        log.error("email.send_failed", status=resp.status_code, body=resp.text[:500], **context)
+        body = _without_links(resp.text, variables, spec.link_variables)[:500]
+        log.error("email.send_failed", status=resp.status_code, body=body, **context)
         return False
     try:
         message_id = resp.json().get("id")

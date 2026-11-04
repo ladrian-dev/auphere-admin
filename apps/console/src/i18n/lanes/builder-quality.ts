@@ -57,6 +57,19 @@ export const builderQualityMessages = {
   "builder.pg.message": { es: "Mensaje del cliente", en: "Customer message" },
   "builder.pg.send": { es: "Enviar", en: "Send" },
   "builder.pg.typing": { es: "El agente está escribiendo…", en: "The agent is typing…" },
+  "builder.pg.failure.llm_failed": {
+    es: "El modelo no respondió, así que el agente no llegó a contestar. Lo de arriba es el texto de emergencia que recibiría un cliente. Esto no dice nada de cómo está configurado el agente.",
+    en: "The model did not answer, so the agent never replied. What you see above is the emergency text a customer would get. This says nothing about how the agent is set up.",
+  },
+  "builder.pg.failure.no_model": {
+    es: "No hay ningún modelo disponible para este cliente, así que el agente no llegó a contestar. Lo de arriba es el texto de emergencia que recibiría un cliente.",
+    en: "No model is available for this client, so the agent never replied. What you see above is the emergency text a customer would get.",
+  },
+  "builder.pg.failure.empty_response": {
+    es: "El modelo devolvió una respuesta vacía. Lo de arriba es el texto de emergencia que recibiría un cliente.",
+    en: "The model returned an empty answer. What you see above is the emergency text a customer would get.",
+  },
+  "builder.pg.failure.retry": { es: "Inténtalo de nuevo en un rato.", en: "Try again in a while." },
   "builder.pg.error.busy": { es: "Aún está respondiendo al mensaje anterior. Espera un momento.", en: "It is still answering the previous message. Wait a moment." },
   "builder.pg.error.timeout": { es: "Tardó demasiado en responder. Vuelve a intentarlo.", en: "It took too long to answer. Try again." },
   "builder.pg.error.gone": { es: "Esta conversación caducó. Empieza otra.", en: "This conversation expired. Start another one." },
@@ -94,7 +107,23 @@ export const builderQualityMessages = {
   "builder.suite.error.nothing": { es: "No hay ninguna prueba que ejecutar.", en: "There is no test to run." },
   "builder.suite.error.noVersion": { es: "El agente aún no tiene un borrador que probar.", en: "The agent has no draft to test yet." },
   "builder.suite.error.run": { es: "La pasada no terminó. Inténtalo de nuevo.", en: "The run did not finish. Try again." },
+  "builder.suite.error.model": {
+    es: "No se pudo probar: ningún modelo respondió. Esto no dice nada del agente. Vuelve a intentarlo en un rato.",
+    en: "Nothing could be tested: no model answered. This says nothing about the agent. Try again in a while.",
+  },
+  "builder.suite.error.suiteRunning": {
+    es: "Se están pasando ahora mismo para guardar esta versión. Mira el resultado cuando termine.",
+    en: "They are running right now to save this version. Check the result when it finishes.",
+  },
   "builder.suite.error.load": { es: "No se pudieron cargar las pruebas.", en: "The tests could not be loaded." },
+  "builder.suite.modelFailed": {
+    es: "Sin probar porque el modelo no respondió: {n}. Esto no dice nada del agente.",
+    en: "Not tested because the model did not answer: {n}. This says nothing about the agent.",
+  },
+  "builder.suite.modelFailed.retry": { es: "Vuelve a ejecutarlas en un rato.", en: "Run them again in a while." },
+  "builder.suite.untested": { es: "{why} Esto no dice nada del agente.", en: "{why} This says nothing about the agent." },
+  "builder.suite.untested.retry": { es: "Vuelve a ejecutarla en un rato.", en: "Run it again in a while." },
+  "builder.suite.untested.why": { es: "Un modelo no respondió.", en: "A model did not answer." },
   "builder.suite.retry": { es: "Reintentar", en: "Retry" },
   "builder.suite.empty": { es: "Este agente aún no tiene pruebas.", en: "This agent has no tests yet." },
   "builder.suite.kind.case": { es: "Del caso", en: "From the case" },
@@ -105,6 +134,7 @@ export const builderQualityMessages = {
   "builder.suite.status.flaky": { es: "Inestable", en: "Flaky" },
   "builder.suite.status.failed": { es: "Falla", en: "Fails" },
   "builder.suite.status.unknown": { es: "No sé", en: "Not sure" },
+  "builder.suite.status.model_failed": { es: "No se pudo probar", en: "Could not be tested" },
   "builder.suite.status.not_run": { es: "Sin ejecutar", en: "Not run" },
   "builder.suite.status.not_applicable": { es: "No aplica", en: "Does not apply" },
   "builder.suite.staleBadge": { es: "Desactualizada", en: "Out of date" },
@@ -227,6 +257,14 @@ export const builderQualityMessages = {
   "builder.publish.override.confirm": { es: "Guardar con este motivo", en: "Save with this reason" },
   "builder.publish.error.forbidden": { es: "Solo un owner o un admin puede saltar la puerta.", en: "Only an owner or an admin can skip the gate." },
   "builder.publish.error.noDraft": { es: "No hay borrador que guardar.", en: "There is no draft to save." },
+  "builder.publish.error.model": {
+    es: "No se pudo probar esta versión porque ningún modelo respondió. Esto no dice nada del agente: vuelve a guardar en un rato.",
+    en: "This version could not be tested because no model answered. This says nothing about the agent: save again in a while.",
+  },
+  "builder.publish.error.suiteRunning": {
+    es: "Hay una pasada de pruebas en marcha. Cuando termine, vuelve a guardar.",
+    en: "A test run is in progress. Save again when it finishes.",
+  },
   "builder.publish.error.generic": { es: "No se pudo guardar. Inténtalo de nuevo.", en: "It could not be saved. Try again." },
 
   // ── Las partes de un cambio (23.5, 24.2) ────────────────────────────────

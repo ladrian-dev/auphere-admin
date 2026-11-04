@@ -32,6 +32,12 @@ DEFAULT_MAXLEN = 100_000
 INBOUND_STREAM_STANDARD = "nexus:inbound:standard"
 INBOUND_STREAM_PRIORITY = "nexus:inbound:priority"
 LEGACY_INBOUND_STREAM = "nexus:inbound"
+#: Every stream the inbound consumer may read. A dead entry can only go back here.
+INBOUND_STREAMS = (INBOUND_STREAM_STANDARD, INBOUND_STREAM_PRIORITY, LEGACY_INBOUND_STREAM)
+
+# WP-04: where an inbound entry goes after exhausting its deliveries. The consumer
+# writes it, the platform watcher alerts on it, ``nexus_worker.ops.dlq`` empties it.
+INBOUND_DLQ_STREAM = "nexus:inbound:dlq"
 
 
 def stream_for_tier(tier: str | None) -> str:

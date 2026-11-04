@@ -1,10 +1,10 @@
 name: deploy-prod
 
-# main → producción AWS, con la MISMA secuencia que deploy-staging:
-# wait-for-ci → build+push → task de migración (BLOQUEANTE) → rodar los 5
-# servicios. Gemelo deliberado de deploy-staging.yml: dos ficheros que se
-# leen igual se comparan de un vistazo, y una diferencia entre entornos que
-# nadie ve es como se cuelan los incidentes.
+# main → producción AWS: wait-for-ci → build+push → task de migración
+# (BLOQUEANTE) → rodar los 5 servicios. Gemelo deliberado de deploy-staging.yml:
+# dos ficheros que se leen igual se comparan de un vistazo, y una diferencia
+# entre entornos que nadie ve es como se cuelan los incidentes. La secuencia
+# solo difiere en esa espera: staging ya no la hace (docs/develop-sin-tuberia.md).
 #
 # ── Lo que este workflow NO hace ────────────────────────────────────────────
 #
@@ -65,8 +65,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Mismo contrato que en staging: el deploy no avanza hasta que el
-          # run de ``ci`` del MISMO sha esté verde.
+          # El workflow ci corre en paralelo sobre el mismo push; el deploy
+          # no avanza hasta que ese run del MISMO sha esté verde. Cualquier
+          # conclusión != success aborta el deploy.
+          #
+          # La espera es de 90 min y no de 30 por una avería del 2026-09-13
+          # (en staging, cuando también esperaba): ``ci`` tardó 36m37s, acabó
+          # en VERDE, y el deploy ya se había rendido seis minutos antes. El
+          # resultado se lee como «el despliegue falló» cuando lo que pasó es
+          # que se esperó de menos. La suite venía creciendo —15m39s, 16m55s,
+          # 21m53s, 36m37s— así que el margen se lo comió el propio proyecto.
+          # Esperar de más no cuesta nada: si ``ci`` se cuelga, el paso
+          # siguiente no arranca igual.
           for i in $(seq 1 180); do
             # Solo el run del push: el de un PR con el mismo sha no es el que
             # cuenta (el 2026-10-20 este paso esperó a uno cancelado).

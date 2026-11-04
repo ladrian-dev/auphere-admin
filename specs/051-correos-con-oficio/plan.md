@@ -159,6 +159,52 @@ docker-compose.yml                          # sin mailhog
 docs/correos.md                             # nuevo
 ```
 
+## Enmienda del 2026-11-03: quién avisa cuando deja de hacerlo el correo (R9.4 a R9.9)
+
+**Por qué es una enmienda y no una spec nueva.** La R9 retiró el correo y dejó su sustituto «fuera de esta spec». Ese hueco lo abre esta spec y bloquea su paso a producción: separarlo dejaría el cierre en una spec y el riesgo en otra. No es un cambio trivial (cambia quién se entera de una avería) ni un hotfix (producción aún avisa por correo).
+
+**Qué se hace.** En `infra/terraform/30-observability/alarms.tf`:
+
+- un filtro de métricas sobre `/nexus/<entorno>/scheduler` con el patrón `{ $.event = "platform_alert" }`, que publica `Nexus/platform_alerts` con la dimensión `kind`;
+- otro con el patrón `{ $.event = "ops.meta_reconciliation" }`, que publica `Nexus/meta_reconciliation_alerts`, sin dimensiones;
+- una alarma por `kind` (`for_each` sobre un mapa cerrado) y una para la conciliación, todas hacia el topic `nexus-<entorno>-alerts`, con `actions_enabled` solo en producción.
+
+| Decisión | Por qué | Alternativa descartada |
+|---|---|---|
+| CloudWatch y SNS | Ya existen, con la suscripción confirmada. Se aplica en minutos, sin dependencia ni proveedor nuevos | Datadog: sin aprobar, y su propuesta son cinco fases. No puede ser la condición para fusionar |
+| Una alarma por `kind` | El vigilante repite cada hora lo que sigue roto, así que una alarma compartida queda en ALARM por la DLQ y lo demás no cambia su estado. En producción se habría comido 17 de los 20 avisos de `cache_ratio_low` | Una alarma para todo, o dos (DLQ y resto) |
+| Ventana de 3 h: `period = 300`, `evaluation_periods = 36`, `datapoints_to_alarm = 1` | Avisa en minutos y no vuelve a OK entre dos repeticiones horarias, aunque se pierda una. La repetición casi siempre supera la hora por segundos: con 1 h de ventana, la DLQ de producción habría dado hasta 1579 avisos; con 2 h o más, 1 | `period = 3600`: tarda en avisar y vuelve a OK si falta una hora |
+| Sin `ok_actions` | Como las demás alarmas de este stack: se avisa de lo que hay que atender | Avisar también al volver a OK |
+| Solo avisa en producción | Staging aparca los servicios por la noche y da un `worker_dead` falso cada mañana (28 avisos en 30 días). Su topic no tiene suscriptores | Mandarle a Luis un correo diario de staging |
+
+Las cifras están en [`evidence/alarma-calibracion.md`](evidence/alarma-calibracion.md).
+
+**Qué mantiene el mapa al día.** `apps/worker/tests/unit/test_platform_alarms_contract.py` lee `kind=` del código y las claves del mapa de Terraform: un tipo nuevo sin alarma rompe la tubería, en vez de quedarse en silencio. Es el mismo fallo que la tabla de la §4 de `docs/spec-driven-development.md` recoge para los crons.
+
+**Orden para aplicar.** Primero staging (se comprueba la transición de `dlq_entries`, sin correo), después producción, y solo con el aviso recibido se fusiona en `main`. Producción ya registra `platform_alert` hoy, así que la alarma no espera a la 051. `ops.meta_reconciliation` llega a producción con `develop`.
+
+**Dos trampas en el `apply` de este stack**, que no son de esta enmienda y por eso se aplica con `-target`:
+
+- En staging, sin `-var grafana_enabled=true`, el plan **destruye Grafana** (11 recursos). Además quita `ok_actions` de 6 alarmas y crea una suscripción que pedirá confirmación.
+- En producción, el plan crea `aws_sns_topic_subscription.email`, que existe en AWS pero no en el estado.
+
+Resueltas el 2026-11-03: el stack lleva `staging.tfvars` y `prod.tfvars`, importa lo que existe y ya no se aplica con `-target`. Cómo aplicarlo está en `infra/terraform/README.md`.
+
+**Constitution Check, lo que cambia.**
+
+| # | Principio | ¿Cumple? | Prueba / justificación |
+|---|---|---|---|
+| I | Aislamiento | ☑ | Ninguna garantía nueva tocada. La métrica solo lleva `kind`; `tenant_id` no sale del registro (R9.8, con prueba). El aviso llega al equipo de Auphere |
+| II | Superficie | ☑ | `0`. CloudWatch y SNS ya vigilan la plataforma |
+| V | Estados honestos | ☑ | `docs/correos.md` deja de nombrar a Datadog como si existiera |
+| VII | Test primero | ☑ | La prueba de contrato se ve en rojo antes del Terraform. El filtro se prueba con `aws logs test-metric-filter` contra una línea real |
+| VIII | Licencias | ☑ | Ninguna dependencia nueva |
+| IX | KB | ☑ | Cuando el owner apruebe, una línea en `research/2026-10-30-correos-con-oficio` enlaza esta enmienda (T038) |
+
+Las filas III, IV y VI no cambian: no hay texto de usuario, ni acción nueva, ni proveedor nuevo.
+
+**Medidor**: nada de modelo. Son 7 alarmas y hasta 7 métricas por entorno, unos 3 US$ al mes a precio de lista (0,10 US$ por alarma en `eu-south-2`, comprobado; 0,30 US$ por métrica, sin comprobar). Se ve en la factura de CloudWatch.
+
 ## Complexity Tracking
 
 | Desviación | Por qué hace falta | Alternativa más simple descartada |

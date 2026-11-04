@@ -390,9 +390,10 @@ class Settings(BaseSettings):
     # ``True``  = su ausencia es un error ruidoso y el turno se descarta.
     #
     # El defecto es ``False`` a propósito: producción no lleva proxy
-    # (``litellm.tf:23`` lo fija a staging) y antes de esta bandera la
+    # (``litellm.tf`` lo fija a staging) y antes de esta bandera la
     # ausencia enmudecía a todo tenant con partner sin error ni alarma —
-    # el corte de 2 h 37 del 31-ago-2026. Staging lo pone a ``True``.
+    # el corte de 2 h 37 del 31-ago-2026. Desde la enmienda del 2026-11-03
+    # tampoco la lleva staging, salvo con ``llm_via_proxy``.
     llm_proxy_required: bool = False
     llm_improve_timeout_s: float = 30.0
     # Token budget guardrails so a runaway prompt doesn't bill us 100k

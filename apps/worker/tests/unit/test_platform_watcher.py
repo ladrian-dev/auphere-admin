@@ -51,6 +51,198 @@ async def test_dedup_suppresses_second_tick(delivered) -> None:
     assert second == []  # same window → deduplicated
 
 
+async def _old_entry(redis, *, age_s: float = 60 * 86_400, now: float | None = None) -> str:
+    now = time.time() if now is None else now
+    raw = await redis.xadd(
+        pw.DLQ_STREAM, {"dlq_error": "boom"}, id=f"{int((now - age_s) * 1000)}-0"
+    )
+    return raw.decode() if isinstance(raw, bytes) else raw
+
+
+async def _dlq_alerts(redis, *, now: float) -> list[pw.Alert]:
+    return [a for a in await pw.process_tick(redis, now=now) if a.kind == "dlq_entries"]
+
+
+async def test_old_entries_alert_once_and_then_stay_quiet(delivered) -> None:
+    """Dos meses con la misma DLQ fueron 1630 registros y una alarma encendida
+    para siempre. Una entrada de la que ya se avisó no vuelve a avisar."""
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    await _old_entry(redis, now=now)
+
+    per_hour = [await _dlq_alerts(redis, now=now + hour * 3600) for hour in range(72)]
+
+    assert [len(alerts) for alerts in per_hour] == [1] + [0] * 71
+
+
+async def test_a_new_entry_alerts_although_old_ones_remain(delivered) -> None:
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    await _old_entry(redis, now=now)
+    await _dlq_alerts(redis, now=now)
+
+    later = now + 30 * 86_400
+    await _old_entry(redis, age_s=0, now=later)
+    [alert] = await _dlq_alerts(redis, now=later + 60)
+
+    assert alert.count == 1, "cuenta las nuevas, no todas"
+    assert "1 entrada nueva" in alert.detail
+    assert "2 en total" in alert.detail
+
+
+async def test_it_says_what_to_do_with_the_command(delivered) -> None:
+    redis = fakeaioredis.FakeRedis()
+    await _old_entry(redis)
+
+    [alert] = await _dlq_alerts(redis, now=time.time())
+
+    assert "./scripts/ops/dlq.sh" in alert.detail
+    assert " list" in alert.detail
+    assert "docs/dlq.md" in alert.detail
+
+
+@pytest.mark.parametrize(
+    ("environment", "name"),
+    [("production", "prod"), ("staging", "staging"), ("dev", "<entorno>")],
+)
+async def test_the_command_names_the_right_environment(environment: str, name: str) -> None:
+    assert pw._dlq_command(environment) == f"./scripts/ops/dlq.sh {name} list"
+
+
+async def test_it_counts_several_new_entries(delivered) -> None:
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    await _old_entry(redis, now=now)
+    await _dlq_alerts(redis, now=now)
+    for index in range(3):
+        await _old_entry(redis, age_s=-index, now=now + 3600)
+
+    [alert] = await _dlq_alerts(redis, now=now + 7200)
+
+    assert alert.count == 3
+    assert "3 entradas nuevas" in alert.detail
+    assert "4 en total" in alert.detail
+
+
+async def test_discarding_old_entries_does_not_hide_a_new_one(delivered) -> None:
+    """Contar con ``XLEN`` fallaría aquí: 25 descartadas y 1 nueva dan menos que antes."""
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    old = [await _old_entry(redis, age_s=86_400 - i, now=now) for i in range(3)]
+    await _dlq_alerts(redis, now=now)
+
+    await redis.xdel(pw.DLQ_STREAM, *old)
+    await _old_entry(redis, age_s=0, now=now + 3600)
+
+    assert len(await _dlq_alerts(redis, now=now + 3660)) == 1
+
+
+async def test_discarding_the_newest_is_not_an_entry_that_arrived(delivered) -> None:
+    """Sin comparar con la marca, la anterior pasaría a ser la «más nueva» y
+    parecería recién llegada."""
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    await _old_entry(redis, age_s=7200, now=now)
+    newest = await _old_entry(redis, age_s=3600, now=now)
+    assert len(await _dlq_alerts(redis, now=now)) == 1
+
+    await redis.xdel(pw.DLQ_STREAM, newest)
+
+    assert await _dlq_alerts(redis, now=now + 7200) == []
+
+
+async def test_an_emptied_dlq_stays_quiet_until_something_new_dies(delivered) -> None:
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    entry = await _old_entry(redis, now=now)
+    await _dlq_alerts(redis, now=now)
+
+    await redis.xdel(pw.DLQ_STREAM, entry)
+    assert await _dlq_alerts(redis, now=now + 3600) == []
+
+    await _old_entry(redis, age_s=0, now=now + 7200)
+    assert len(await _dlq_alerts(redis, now=now + 7260)) == 1
+
+
+async def test_losing_the_mark_alerts_once_more_instead_of_going_silent(delivered) -> None:
+    """Un Valkey restaurado o vaciado: ruido una vez, nunca silencio."""
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    await _old_entry(redis, now=now)
+    await _dlq_alerts(redis, now=now)
+
+    await redis.delete(pw.DLQ_MARK_KEY)
+    for key in await redis.keys("nexus:alert:sent:dlq:*"):
+        await redis.delete(key)
+
+    assert len(await _dlq_alerts(redis, now=now + 86_400)) == 1
+    assert await _dlq_alerts(redis, now=now + 2 * 86_400) == []
+
+
+async def test_the_mark_moves_only_after_the_alert_went_out(monkeypatch) -> None:
+    """Si el aviso no sale, la entrada sigue siendo nueva: mejor repetir que callar."""
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    entry = await _old_entry(redis, now=now)
+
+    async def down(alert: pw.Alert) -> None:
+        raise RuntimeError("el registro no acepta nada")
+
+    monkeypatch.setattr(pw, "_notify", down)
+    with pytest.raises(RuntimeError):
+        await pw.process_tick(redis, now=now)
+    assert await redis.get(pw.DLQ_MARK_KEY) is None
+
+    sink: list[pw.Alert] = []
+
+    async def fine(alert: pw.Alert) -> None:
+        sink.append(alert)
+
+    monkeypatch.setattr(pw, "_notify", fine)
+    # El dedupe de una hora caduca solo en un Valkey de verdad; aquí se borra.
+    await redis.delete(f"nexus:alert:sent:dlq:{entry}")
+    await pw.process_tick(redis, now=now + 2 * pw.DEDUP_TTL_S)
+
+    assert [a.kind for a in sink if a.kind == "dlq_entries"] == ["dlq_entries"]
+    assert (await redis.get(pw.DLQ_MARK_KEY)).decode() == entry
+
+
+async def test_a_failed_mark_repeats_the_alert_instead_of_losing_it(delivered, monkeypatch) -> None:
+    redis = fakeaioredis.FakeRedis()
+    now = time.time()
+    await _old_entry(redis, now=now)
+    real_set = redis.set
+
+    async def no_mark(key, *args, **kwargs):
+        if key == pw.DLQ_MARK_KEY:
+            raise ConnectionError("valkey no contesta")
+        return await real_set(key, *args, **kwargs)
+
+    monkeypatch.setattr(redis, "set", no_mark)
+
+    assert len(await _dlq_alerts(redis, now=now)) == 1, "el fallo de la marca no tumba la vuelta"
+    assert await redis.get(pw.DLQ_MARK_KEY) is None
+
+
+async def test_the_detail_carries_nothing_of_the_message(delivered) -> None:
+    redis = fakeaioredis.FakeRedis()
+    await redis.xadd(
+        pw.DLQ_STREAM,
+        {
+            "content": "quiero cancelar mi cita",
+            "user_id": "34600111222",
+            "tenant_id": str(uuid.uuid4()),
+            "dlq_error": "value too long [parameters: ('+34600111222',)]",
+        },
+    )
+
+    [alert] = await _dlq_alerts(redis, now=time.time())
+
+    assert "34600111222" not in alert.detail
+    assert "cancelar" not in alert.detail
+    assert alert.tenant_id is None, "no avisa al negocio: es una alerta de la plataforma"
+
+
 async def test_turn_error_burst_alert(delivered) -> None:
     redis = fakeaioredis.FakeRedis()
     tenant = uuid.uuid4()
@@ -72,6 +264,42 @@ async def test_turn_errors_below_threshold_do_not_alert(delivered) -> None:
 
     out = await pw.process_tick(redis)
     assert [a for a in out if a.kind == "turn_error_burst"] == []
+
+
+async def test_model_failures_of_the_tests_have_their_own_alert_and_no_whatsapp(
+    monkeypatch,
+) -> None:
+    """Un partner que prueba su borrador no despierta al dueño del negocio: con
+    ``tenant_id``, ``_notify`` escribe la fila que le manda el WhatsApp."""
+    written: list[pw.Alert] = []
+
+    async def fake_audit(alert: pw.Alert) -> None:
+        written.append(alert)
+
+    monkeypatch.setattr(pw, "_write_tenant_audit_row", fake_audit)
+    redis = fakeaioredis.FakeRedis()
+    tenant = uuid.uuid4()
+    window = int(time.time()) // 600
+    await redis.set(f"nexus:alert:simulated_model_failures:{tenant}:{window}", "6")
+
+    out = await pw.process_tick(redis)
+
+    (burst,) = [a for a in out if a.kind == "simulated_model_failure_burst"]
+    assert burst.tenant_id is None
+    assert burst.count == 6
+    assert str(tenant) in burst.detail
+    assert written == []
+    assert [a for a in out if a.kind == "turn_error_burst"] == []
+    assert await pw.process_tick(redis) == [], "una vez por ventana"
+
+
+async def test_model_failures_of_the_tests_below_threshold_do_not_alert(delivered) -> None:
+    redis = fakeaioredis.FakeRedis()
+    window = int(time.time()) // 600
+    await redis.set(f"nexus:alert:simulated_model_failures:{uuid.uuid4()}:{window}", "5")
+
+    out = await pw.process_tick(redis)
+    assert [a for a in out if a.kind == "simulated_model_failure_burst"] == []
 
 
 async def test_meta_failure_burst_alert(delivered) -> None:

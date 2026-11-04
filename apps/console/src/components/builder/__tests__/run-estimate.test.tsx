@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
 
-import { jobFailureKey } from "../quality-model";
+import { runFailedKey } from "../quality-model";
 import { estimateCents, useRunEstimate, type EstimateRun } from "../run-estimate";
 
 const IDS = { ref: "r", agent: "a" };
@@ -65,8 +65,7 @@ describe("el coste antes de una pasada (61.8)", () => {
 
 describe("por qué no terminó una pasada (INC-67)", () => {
   it("sin partida no dice «inténtalo de nuevo»", () => {
-    expect(jobFailureKey({ error_code: "build_budget_exhausted" })).toBe("money.build.blocked");
-    expect(jobFailureKey({ error_code: "internal" })).toBe("builder.suite.error.run");
-    expect(jobFailureKey(null)).toBe("builder.suite.error.run");
+    expect(runFailedKey("build_budget_exhausted")).toBe("money.build.blocked");
+    expect(runFailedKey("internal")).toBe("builder.suite.error.run");
   });
 });

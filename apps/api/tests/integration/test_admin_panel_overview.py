@@ -175,6 +175,31 @@ async def test_members_lists_people_and_pending_invitations(
     assert missing.status_code == 404
 
 
+async def test_members_does_not_show_an_invitation_past_its_term_as_pending(
+    client, console_world, admin_headers, db_session
+) -> None:
+    a = console_world["a"]
+    now = datetime.now(UTC)
+    db_session.add_all(
+        PartnerInvitation(
+            partner_id=a["partner_id"],
+            email=email,
+            role="analyst",
+            token_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            expires_at=expires_at,
+        )
+        for email, expires_at in (
+            ("viva@partner-a.example", now + timedelta(days=1)),
+            ("vencida@partner-a.example", now - timedelta(days=1)),
+        )
+    )
+    await db_session.commit()
+
+    res = await client.get(f"/admin/partners/{a['partner_id']}/members", headers=admin_headers)
+    assert res.status_code == 200, res.text
+    assert [i["email"] for i in res.json()["invitations"]] == ["viva@partner-a.example"]
+
+
 async def test_instance_names_environment_schema_and_commit(client, admin_headers) -> None:
     res = await client.get("/admin/instance", headers=admin_headers)
     assert res.status_code == 200, res.text

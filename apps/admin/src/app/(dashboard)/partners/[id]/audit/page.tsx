@@ -7,6 +7,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  EmptyState,
+  ErrorState,
   Eyebrow,
   Table,
   TableBody,
@@ -31,14 +33,54 @@ export default async function PartnerAuditPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [partner, entries] = await Promise.all([
+  const [partner, entries, lines] = await Promise.all([
     backend.getPartner(id),
     backend.listPartnerAudit(id, AUDIT_LIMIT),
+    // Spec 052 (R6.4). Si falla, se dice en su tarjeta: la del embed sigue.
+    backend.listPartnerAuditLog(id, AUDIT_LIMIT).catch(() => null),
   ]);
   if (!partner) notFound();
 
   return (
     <div className="grid gap-6">
+      <Card>
+        <CardHeader>
+          <Eyebrow>Auditoría</Eyebrow>
+          <CardTitle>Acciones sobre el partner</CardTitle>
+          <CardDescription>
+            Quién lo creó, quién invitó a su propietario y qué se cambió desde
+            este panel o en su nombre. Últimas {AUDIT_LIMIT}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {lines === null ? (
+            <ErrorState
+              title="No se pudo leer"
+              description="La API no respondió. La actividad del embed, abajo, sí está al día."
+            />
+          ) : lines.length === 0 ? (
+            <EmptyState
+              title="Sin acciones registradas"
+              description="Las de este partner aparecerán aquí."
+              readonly
+            />
+          ) : (
+            <ol className="grid min-w-0 gap-3">
+              {lines.map((line) => (
+                <li key={line.id} className="grid min-w-0 gap-1 text-sm">
+                  <span className="text-pretty wrap-anywhere">{line.summary}</span>
+                  <time
+                    dateTime={line.created_at}
+                    className="text-xs text-muted-foreground tabular-nums"
+                  >
+                    {fullDateTime(line.created_at)}
+                  </time>
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <Eyebrow>Auditoría</Eyebrow>

@@ -2404,6 +2404,22 @@ Va después de T201, T202 y T206, con una sola sesión en `apps/api`. Diseño en
 
 ---
 
+## Fase 29 — Enmienda del 2026-11-03: «sin saldo» se dice una vez (requisito 44.5)
+
+El owner, al recibir cada noche `client.out_of_quota` por dos clientes de prueba:
+un cliente sin saldo avisa **una sola vez**, hasta que recupere saldo. Cubre las
+dos vías: la bolsa (`client.wallet.empty`) y quien aún no la tiene
+(`client.out_of_quota` y `client.balance_out`). Enmienda también el 2.2 de la
+spec 016. **Coste conocido y aceptado:** un cliente activo que siga perdiendo
+mensajes no lo recuerda cada día.
+
+- [x] T230 Pruebas primero, en rojo: `tests/integration/wallet/test_agent_cap_and_alerts.py`, `tests/integration/test_wallet_alerts.py` y `tests/unit/test_client_balance_alerts.py`. _Requisitos: 44.5_
+- [x] T231 La bolsa: `evaluate_bag` solo avisa con `empty_alerted_on` vacío, que ya rearman las subidas de saldo; `announce` deja de usar una clave con fecha para este aviso. _Requisitos: 44.5_
+- [x] T232 Sin bolsa: claves sin fecha en `wallet_alerts.py`; el cron suelta la clave de quien la puerta del canal vuelve a dejar pasar (`quota_state`, la misma lectura que la puerta, para que soltar no pueda repetir el aviso cada 15 minutos). Sin columna nueva. _Requisitos: 44.5_
+- [x] T233 Migración `0216`: el último aviso con fecha de cada cliente pasa a la clave sin fecha, para que el despliegue no mande otra tanda. _Requisitos: 44.5_
+
+---
+
 ## Dependencias y orden
 
 - **Fase 1** bloquea todo. **Fase 2** (las puertas) se escribe en rojo al principio

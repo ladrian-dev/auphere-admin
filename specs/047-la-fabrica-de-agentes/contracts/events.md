@@ -96,7 +96,7 @@ Columnas: tipo · gravedad · a quién · por dónde · deduplicación · enlace
 |---|---|---|---|---|---|
 | `client.wallet.low` | Aviso | Partner y cliente | Campana, correo, push | 1 al mes por cliente; se rearma al subir | Asignar saldo (partner) / Consumo (cliente) |
 | `client.wallet.not_enough` | Aviso | Partner y cliente | Campana, correo, push | 1 al mes por cliente | Ídem |
-| `client.wallet.empty` | Crítico | Partner y cliente | Campana, correo, push | 1 al día por cliente | Ídem |
+| `client.wallet.empty` | Crítico | Partner y cliente | Campana, correo, push | 1 por cliente hasta que recupere saldo (enmienda del 2026-11-03) | Ídem |
 | `client.wallet.refill_short` | Aviso | Partner | Campana, correo | 1 al mes | Consumo |
 | `client.balance_request` | Aviso | Owners y admins | Campana, correo | 1 al día por cliente | Modal «Asignar saldo» |
 | `agent.cap.warning` | Aviso | Partner y cliente | Campana, correo, push | 1 al mes por agente | Tope del agente |
@@ -176,7 +176,7 @@ garantía 6 (`test_49`) lo rechaza.
 | `turn.effect` | `turn_id`, `effect` (`reserve`, `charge`, `send_link`, `reply`), `idempotency_key`, `replayed` |
 | `llm.route_decision` | `decision_id` (el que enlaza `usage_records.route_decision_id`), `turn_id` o `job_id`, `conversation_id`, `agent_version`, `task`, `profile`, `policy_version`, `candidates_rejected` (lista de `{deployment, reason}`), `chosen`, `fallback_used`, `escalated`, `latency_ms`, `cost_micros`, `price_micros` |
 | `builder.job` | `job_id`, `kind` (`agent_draft`, `client_profile`, `tests`, `fix`, `copilot`), `status`, `duration_ms`, `cost_micros`, `validator_errors` |
-| `suite.run` | `run_id`, `version_id`, `policy`, `passed`, `flaky`, `failed`, `cost_micros` |
+| `suite.run` | `run_id`, `version_id`, `policy`, `passed`, `flaky`, `failed`, `model_failed`, `cost_micros` |
 | `gate.decision` | `version_id`, `outcome` (`published`, `blocked`, `override`), `blocking` (códigos). No se llama `result`: la garantía 6 prohíbe ese nombre en los eventos |
 | `wallet.transfer` | `transfer_id`, `kind`, `amount_micros`, `currency`, `fx_rate`, `fx_date` |
 | `channel.echo_takeover` | `conversation_id`, `until` |

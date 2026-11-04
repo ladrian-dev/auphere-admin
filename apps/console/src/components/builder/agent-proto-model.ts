@@ -81,14 +81,15 @@ export type TestsState =
 
 /**
  * En qué punto están: las que cuentan son todas menos las «No aplica». Con
- * alguna sin ejecutar o desactualizada (editar un bloque las deja así), no han
- * terminado. Terminadas, o pasan todas o se dice cuántas no (falla, inestable o
- * sin decidir).
+ * alguna sin ejecutar o desactualizada (editar un bloque las deja así), o que no
+ * se pudo probar porque el modelo no respondió, no han terminado. Terminadas, o
+ * pasan todas o se dice cuántas no (falla, inestable o sin decidir).
  */
 export function testsState(summary: TestSummary): TestsState {
   const counted = Math.max(0, summary.total - summary.not_applicable);
   if (!counted) return { kind: "none" };
-  const pending = Math.min(counted, summary.not_run + summary.stale);
+  // Las que no se pudieron probar ya suelen contar como desactualizadas: no se suman dos veces.
+  const pending = Math.min(counted, summary.not_run + Math.max(summary.stale, summary.model_failed ?? 0));
   if (pending > 0) return { kind: "pending", pending, counted };
   const failing = summary.failed + summary.flaky + summary.unknown;
   if (failing > 0) {

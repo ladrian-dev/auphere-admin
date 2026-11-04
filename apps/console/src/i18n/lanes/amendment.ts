@@ -150,6 +150,7 @@ export const amendmentMessages = {
     es: "Terminó porque el agente pasó la conversación a una persona.",
     en: "It ended because the agent handed the conversation to a person.",
   },
+  "builder.suite.stop.model_failed": { es: "Terminó porque un modelo no respondió.", en: "It ended because a model did not answer." },
   "builder.suite.stop.turn_limit": {
     es: "Llegó a 8 turnos del cliente sin cumplir el plan.",
     en: "It reached 8 customer turns without completing the plan.",

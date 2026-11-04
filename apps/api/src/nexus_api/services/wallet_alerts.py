@@ -70,9 +70,32 @@ def wallet_dedupe_key(partner_id: uuid.UUID, threshold: int, since: datetime) ->
     return f"partner:{partner_id}:wallet:{threshold}:{since:%Y-%m}"
 
 
-def client_out_of_quota_dedupe_key(partner_id: uuid.UUID, ref: str, now: datetime) -> str:
-    """Uno por cliente y día (spec 016, R2.3)."""
-    return f"partner:{partner_id}:client.out_of_quota:{ref}:{now:%Y-%m-%d}"
+def client_out_of_quota_dedupe_key(partner_id: uuid.UUID, ref: str) -> str:
+    """Uno por cliente hasta que recupere saldo (spec 047, enmienda de 44.5): el
+    cron suelta la clave con :func:`_rearm_out_of_quota`."""
+    return f"partner:{partner_id}:client.out_of_quota:{ref}"
+
+
+async def _rearm_out_of_quota(
+    session: AsyncSession, partner_id: uuid.UUID, still_out: list[str]
+) -> None:
+    """Quien la puerta del canal vuelve a dejar pasar puede volver a avisar.
+
+    ``still_out`` sale de ``quota_state``, la misma lectura que la puerta: con
+    otra, un cliente bloqueado vería soltarse su clave y cada turno saltado
+    volvería a avisar, cada 15 minutos.
+    """
+    await session.execute(
+        sa.update(ConsoleNotification)
+        .where(
+            ConsoleNotification.partner_id == partner_id,
+            ConsoleNotification.kind == NotificationKind.CLIENT_OUT_OF_QUOTA.value,
+            ConsoleNotification.dedupe_key.is_not(None),
+            ConsoleNotification.external_client_ref.not_in(still_out),
+        )
+        .values(dedupe_key=None)
+        .execution_options(synchronize_session=False)
+    )
 
 
 def _alert_recipients(partner: Partner) -> list[str]:
@@ -80,18 +103,17 @@ def _alert_recipients(partner: Partner) -> list[str]:
 
 
 async def _emit_client_out_of_quota(
-    session: AsyncSession, partner: Partner, ref: str, *, now: datetime | None = None
+    session: AsyncSession, partner: Partner, ref: str
 ) -> ConsoleNotification | None:
     """Aviso «{cliente} se ha quedado sin cupo» en la campana y por correo.
 
     Spec 016 (R2.2-R2.3). Dentro de la transacción del llamador. Si el
     partner tiene ``usage_alert_recipients`` el correo va a ellos con un
     texto que dice qué hacer; si no, ``emit`` avisa a owners y admins como
-    con cualquier ``warning``. Un segundo aviso el mismo día no se crea.
+    con cualquier ``warning``. No se crea otro hasta que recupere saldo.
     """
     from nexus_api.services.console_notifications import emit
 
-    ts = now or datetime.now(UTC)
     recipients = _alert_recipients(partner)
     row = await emit(
         session,
@@ -100,7 +122,7 @@ async def _emit_client_out_of_quota(
         data={"external_client_ref": ref, "remaining": 0},
         severity=NotificationSeverity.WARNING,
         external_client_ref=ref,
-        dedupe_key=client_out_of_quota_dedupe_key(partner.id, ref, ts),
+        dedupe_key=client_out_of_quota_dedupe_key(partner.id, ref),
         email=not recipients,
     )
     if row is not None and recipients:
@@ -194,10 +216,12 @@ async def notify_client_out_of_quota_detached(tenant_id: uuid.UUID) -> ConsoleNo
 
 
 def client_balance_dedupe_key(tenant_id: uuid.UUID, kind: str, now: datetime) -> str:
-    """Agotado: uno por cliente y día (como el del partner). «No llega a fin
-    de mes»: uno por cliente y mes — repetirlo cada día sería ruido."""
-    period = f"{now:%Y-%m-%d}" if kind == "balance_out" else f"{now:%Y-%m}"
-    return f"client:{tenant_id}:{kind}:{period}"
+    """Agotado: uno por cliente hasta que recupere saldo (como el del partner).
+    «No llega a fin de mes»: uno por cliente y mes — repetirlo cada día sería
+    ruido."""
+    if kind == "balance_out":
+        return f"client:{tenant_id}:{kind}"
+    return f"client:{tenant_id}:{kind}:{now:%Y-%m}"
 
 
 async def _lite_enabled(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
@@ -267,7 +291,7 @@ async def evaluate_client_balance_alerts(
     transacción abierta y gestiona las suyas, cortas.
     """
     from nexus_api.db.models import ClientAccess, PartnerTenant
-    from nexus_api.metering.wallet import allocations_for, credit_burn
+    from nexus_api.metering.wallet import allocations_for, credit_burn, quota_state
     from nexus_api.services.console_home import REVIEW_WINDOW
     from nexus_api.services.console_home_blocks import days_until
     from nexus_api.services.lite_home import balance_notice, balance_of
@@ -298,11 +322,17 @@ async def evaluate_client_balance_alerts(
     allocations = await allocations_for(partner_id, tenant_ids)
     burn = await credit_burn(partner_id, tenant_ids, ts - REVIEW_WINDOW)
     to_month_end = days_until(until, ts)
+    gate_closed = await quota_state(partner_id, tenant_ids)
 
     told: list[str] = []
+    recovered: list[str] = []
     for tenant_id in tenant_ids:
         balance = balance_of(allocations.get(tenant_id), burn.get(tenant_id, 0))
         notice = balance_notice(balance, to_month_end)
+        # Se rearma solo si también la puerta le deja pasar: el aviso «agotado»
+        # lo dispara el turno saltado (ver ``_rearm_out_of_quota``).
+        if notice != "balance_out" and not gate_closed.get(tenant_id, True):
+            recovered.append(client_balance_dedupe_key(tenant_id, "balance_out", ts))
         if notice is None:
             continue
         async with session.begin():
@@ -317,6 +347,14 @@ async def evaluate_client_balance_alerts(
             )
         if row is not None:
             told.append(refs[tenant_id])
+    if recovered:
+        async with session.begin():
+            await session.execute(
+                sa.update(ConsoleNotification)
+                .where(ConsoleNotification.dedupe_key.in_(recovered))
+                .values(dedupe_key=None)
+                .execution_options(synchronize_session=False)
+            )
     return told
 
 
@@ -411,11 +449,12 @@ async def evaluate_partner_wallet_alerts(
     if not await bags_on(partner.id):
         async with session.begin():
             result.clients_out = await clients_without_quota(session, partner.id)
+            await _rearm_out_of_quota(session, partner.id, result.clients_out)
     # Spec 016 (R2.2): red de seguridad. El aviso por cliente lo dispara el
     # turno saltado; si el despachador no llegó a avisar, lo hace el cron.
     for ref in result.clients_out:
         async with session.begin():
-            await _emit_client_out_of_quota(session, partner, ref, now=now)
+            await _emit_client_out_of_quota(session, partner, ref)
 
     for threshold in THRESHOLDS:
         if result.percent_used < threshold:

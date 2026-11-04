@@ -23,7 +23,7 @@ export default defineConfig({
   testDir: ".",
   // `.e2e.ts`, no `.spec.ts`: la suite de siempre (`playwright.config.ts`) va
   // contra una API de verdad, que no tiene `/__test/*`.
-  testMatch: /agent-quality\.e2e\.ts/,
+  testMatch: /agent-(quality|model-failures)\.e2e\.ts/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

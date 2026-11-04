@@ -18,10 +18,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.api.admin.operator import operator_actor, require_enabled_operator
+from nexus_api.api.admin.partner_invitations import invitation_error, result_out
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.partner_keys import generate_api_key
 from nexus_api.core.security import require_admin_token
-from nexus_api.db.models import Partner, PartnerApiKey, PartnerTenant, Tenant
+from nexus_api.db.models import (
+    AuditLog,
+    OperatorAccount,
+    Partner,
+    PartnerApiKey,
+    PartnerTenant,
+    Tenant,
+)
 from nexus_api.repositories import AuditRepository
 from nexus_api.repositories.partner import (
     EmbedAuditRepository,
@@ -35,6 +44,9 @@ from nexus_api.schemas.partner import (
     ApiKeyOut,
     ApiKeyRotateIn,
     EmbedAuditEntryOut,
+    OwnerStateOut,
+    PartnerAuditLineOut,
+    PartnerCreatedOut,
     PartnerCreateIn,
     PartnerInvitationOut,
     PartnerMemberOut,
@@ -45,7 +57,9 @@ from nexus_api.schemas.partner import (
     PartnerUpdateIn,
     PartnerUsageOut,
 )
+from nexus_api.services import owner_invitation
 from nexus_api.services.console_v2 import born_on_new_console
+from nexus_api.services.owner_invitation import OwnerInvitationError
 
 log = structlog.get_logger(__name__)
 
@@ -156,45 +170,58 @@ async def list_partners(session: AsyncSession = Depends(get_db_session)) -> list
     return await _with_facts(session, list(partners))
 
 
-@router.post("", response_model=PartnerOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PartnerCreatedOut, status_code=status.HTTP_201_CREATED)
 async def create_partner(
     body: PartnerCreateIn,
     session: AsyncSession = Depends(get_db_session),
-    actor: str = Depends(require_admin_token),
-) -> PartnerOut:
+    operator: OperatorAccount = Depends(require_enabled_operator),
+) -> PartnerCreatedOut:
+    """Spec 052: en una transacción, el partner con la consola encendida, la
+    invitación de su propietario y la auditoría de ambos. El correo sale después,
+    fuera de ella: si no sale, el partner y la invitación siguen en pie y el
+    operador lo ve en la respuesta, con el enlace."""
+    actor = operator_actor(operator)
     try:
         async with session.begin():
             partner = await PartnerRepository(session).create(
-                # Nace con la consola nueva, la de todos los partners.
+                # Nace con la consola nueva, la de todos los partners, y encendida:
+                # el correo llevaría, si no, a una pantalla de «sin acceso» (D4).
                 born_on_new_console(
                     Partner(
                         id=uuid.uuid4(),
                         name=body.name,
                         slug=body.slug,
-                        contact_email=body.contact_email,
+                        console_enabled=True,
                     )
                 )
             )
-            await session.refresh(partner)
             await EmbedAuditRepository(session).record(
                 event="partner.created",
                 partner_id=partner.id,
                 payload={"slug": body.slug},
             )
+            issued = await owner_invitation.issue_for_new_partner(
+                session, partner, email=body.owner_email, actor=actor
+            )
+            await session.refresh(partner)
             await AuditRepository(session).record(
-                actor=_admin_actor(actor),
+                actor=actor,
                 action="partner.create",
                 target=f"partner:{partner.id}",
                 before=None,
                 after=_partner_snapshot(partner),
                 platform=True,
             )
+    except OwnerInvitationError as exc:
+        raise invitation_error(exc) from None
     except IntegrityError as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"slug {body.slug!r} is already taken",
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "slug_taken"}
         ) from exc
-    return PartnerOut.model_validate(partner)
+    delivered = await owner_invitation.deliver(issued)
+    return PartnerCreatedOut(
+        **PartnerOut.model_validate(partner).model_dump(), invitation=result_out(delivered)
+    )
 
 
 @router.get("/{partner_id}", response_model=PartnerOut)
@@ -212,6 +239,7 @@ async def list_partner_members(
     session: AsyncSession = Depends(get_db_session),
 ) -> PartnerMembersOut:
     """Spec 031 (R4.6): who works in this partner's console, and who is invited.
+    Spec 052: only live invitations, and what can be done about its owner.
 
     ``partner_memberships`` and ``partner_invitations`` are platform tables
     (no RLS: the console gate reads them before any scope exists); the
@@ -220,13 +248,9 @@ async def list_partner_members(
     import sqlalchemy as sa
 
     from nexus_api.db.models.console_identity import ConsoleAccount
-    from nexus_api.db.models.partner_membership import (
-        InvitationStatus,
-        PartnerInvitation,
-        PartnerMembership,
-    )
+    from nexus_api.db.models.partner_membership import PartnerMembership
 
-    await _get_partner_or_404(session, partner_id)
+    partner = await _get_partner_or_404(session, partner_id)
     rows = (
         await session.execute(
             sa.select(PartnerMembership, ConsoleAccount.last_login_at)
@@ -238,18 +262,7 @@ async def list_partner_members(
             .order_by(PartnerMembership.created_at)
         )
     ).all()
-    invitations = (
-        (
-            await session.execute(
-                sa.select(PartnerInvitation)
-                .where(PartnerInvitation.partner_id == partner_id)
-                .where(PartnerInvitation.status == InvitationStatus.PENDING.value)
-                .order_by(PartnerInvitation.created_at)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    state = await owner_invitation.read_state(session, partner)
     return PartnerMembersOut(
         members=[
             PartnerMemberOut(
@@ -271,9 +284,20 @@ async def list_partner_members(
                 role=i.role,
                 expires_at=i.expires_at,
                 created_at=i.created_at,
+                last_sent_at=i.last_sent_at,
+                from_auphere=owner_invitation.is_from_auphere(i),
             )
-            for i in invitations
+            for i in state.invitations
         ],
+        owner=OwnerStateOut(
+            has_active_owner=state.has_active_owner,
+            can_invite=state.can_invite,
+            can_resend=state.can_resend,
+            block=state.block,
+            expired_email=state.expired_email,
+            expired_at=state.expired_at,
+            suggested_email=state.suggested_email,
+        ),
     )
 
 
@@ -707,3 +731,58 @@ async def list_audit(
         partner_id, limit=min(limit, 500)
     )
     return [EmbedAuditEntryOut.model_validate(e) for e in entries]
+
+
+def _panel_actor(actor: str, emails: dict[str, str]) -> str:
+    """El panel es de Auphere: aquí un operador se nombra, donde la consola dice
+    «Auphere». Los demás, como en la consola: una persona del partner por su correo."""
+    from nexus_api.api.console.audit import _human_actor
+
+    if actor.startswith("operator:"):
+        return actor.removeprefix("operator:")
+    return _human_actor(actor, emails)
+
+
+@router.get("/{partner_id}/audit-log", response_model=list[PartnerAuditLineOut])
+async def list_platform_audit(
+    partner_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> list[PartnerAuditLineOut]:
+    """Spec 052 (R6.4): las acciones de plataforma sobre este partner, en una frase.
+
+    ``/audit``, arriba, es solo el *embed*: lo que hace un operador no sale ahí.
+    Solo se entrega la frase, nunca ``before_json`` ni ``after_json``.
+    """
+    import sqlalchemy as sa
+
+    from nexus_api.api.console.audit import load_vocabulary, partner_member_emails, summarise
+
+    # Primero: abren su propia transacción y chocarían con la que abre leer el partner.
+    vocab = await load_vocabulary(session)
+    emails = await partner_member_emails(session, partner_id)
+    partner = await _get_partner_or_404(session, partner_id)
+    rows = await session.scalars(
+        sa.select(AuditLog)
+        .where(AuditLog.tenant_id.is_(None), AuditLog.target == f"partner:{partner_id}")
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(limit)
+    )
+    return [
+        PartnerAuditLineOut(
+            id=row.id,
+            action=row.action,
+            actor=_panel_actor(row.actor, emails),
+            summary=summarise(
+                row,
+                None,
+                vocab,
+                "es",
+                emails,
+                partner_name=partner.name,
+                actor_label=_panel_actor(row.actor, emails),
+            ),
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]

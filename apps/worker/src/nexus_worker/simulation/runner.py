@@ -44,7 +44,9 @@ from nexus_api.db.models import (
     MessageStatus,
 )
 from nexus_api.db.models.channel import QA_PLAYGROUND_PROVIDER
+from sqlalchemy.exc import IntegrityError
 
+from nexus_worker.simulation.failures import ModelFailure, failure_of_turn, note_model_failure
 from nexus_worker.simulation.registry import SimulatedRegistry, load_connector_tools
 from nexus_worker.simulation.world import World
 
@@ -97,6 +99,8 @@ class TurnOutcome:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     model: str | None = None
     intent: str | None = None
+    #: La burbuja es el texto de emergencia y el agente no llegó a contestar.
+    failure: ModelFailure | None = None
 
     @property
     def several_bubbles(self) -> bool:
@@ -104,15 +108,12 @@ class TurnOutcome:
 
 
 async def _channel(session: Any, tenant_id: uuid.UUID) -> Channel:
-    channel: Channel | None = (
-        await session.scalars(
-            sa.select(Channel).where(
-                Channel.tenant_id == tenant_id,
-                Channel.type == ChannelType.WEB,
-                Channel.provider == QA_PLAYGROUND_PROVIDER,
-            )
-        )
-    ).first()
+    query = sa.select(Channel).where(
+        Channel.tenant_id == tenant_id,
+        Channel.type == ChannelType.WEB,
+        Channel.provider == QA_PLAYGROUND_PROVIDER,
+    )
+    channel: Channel | None = (await session.scalars(query)).first()
     if channel is not None:
         return channel
     channel = Channel(
@@ -123,8 +124,14 @@ async def _channel(session: Any, tenant_id: uuid.UUID) -> Channel:
         config={"qa_playground": True},
         status=ChannelStatus.ACTIVE,
     )
-    session.add(channel)
-    await session.flush()
+    try:
+        async with session.begin_nested():
+            session.add(channel)
+            await session.flush()
+    except IntegrityError:
+        # Una pasada de pruebas abre conversaciones en paralelo y otra lo acaba de
+        # crear: el índice único esperó a que confirmara, así que ya se ve.
+        return (await session.scalars(query)).one()
     return channel
 
 
@@ -257,6 +264,9 @@ async def run_turn(
     with tenant_context(tenant_id), simulated_clock(world.now_at), scope:
         final = await asyncio.wait_for(pipeline.ainvoke(state, config=config), timeout=timeout_s)
     final = final or {}
+    failure = failure_of_turn(final)
+    if failure is not None:
+        await note_model_failure(tenant_id, failure)
     response = str(final.get("response") or "").strip()
     bubbles = [b for b in [response, *world.bubbles] if b]
     # El reloj avanza un poco por turno, como en una conversación de verdad.
@@ -270,6 +280,7 @@ async def run_turn(
         ],
         model=final.get("response_model"),
         intent=final.get("intent"),
+        failure=failure,
     )
 
 

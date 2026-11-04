@@ -351,11 +351,13 @@ describe("kindPreview", () => {
 
 describe("MembersList", () => {
   it("shows each state and an empty state", () => {
-    const { rerender } = render(<MembersList tenantId="t1" members={[]} />);
+    const { rerender } = render(<MembersList tenantId="t1" members={[]} onResent={vi.fn()} onRevoked={vi.fn()} />);
     expect(screen.getByText("Nadie tiene acceso todavía.")).toBeTruthy();
     rerender(
       <MembersList
         tenantId="t1"
+        onResent={vi.fn()}
+        onRevoked={vi.fn()}
         members={[
           { id: "1", kind: "member", email: "a@x.test", name: "Ana", status: "active", since: "2026-10-01T00:00:00Z", expires_at: null },
           { id: "2", kind: "invitation", email: "b@x.test", name: null, status: "pending", since: null, expires_at: "2026-10-29T00:00:00Z" },
