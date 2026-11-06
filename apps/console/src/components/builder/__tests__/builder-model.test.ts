@@ -18,6 +18,7 @@ import {
   tabOfSection,
   toggleLanguage,
   withBlock,
+  withExample,
 } from "../builder-model";
 
 /**
@@ -201,5 +202,24 @@ describe("toggleLanguage", () => {
     expect(toggleLanguage(["es"], "en")).toEqual(["es", "en"]);
     expect(toggleLanguage(["es", "en", "pt"], "es")).toEqual(["en", "pt"]);
     expect(toggleLanguage(["es", "en", "pt", "fr", "it"], "de")).toEqual(["es", "en", "pt", "fr", "it"]);
+  });
+});
+
+describe("withExample (spec 055)", () => {
+  it("fills an empty description", () => {
+    expect(withExample("  ", "Ejemplo.", 100)).toEqual({ kind: "ok", text: "Ejemplo." });
+  });
+
+  it("adds it in its own paragraph, leaving what was written as it was", () => {
+    expect(withExample("Lo mío.\n", "Ejemplo.", 100)).toEqual({ kind: "ok", text: "Lo mío.\n\nEjemplo." });
+  });
+
+  it("does not repeat it", () => {
+    expect(withExample("Lo mío.\n\nEjemplo.", "Ejemplo.", 100)).toEqual({ kind: "already" });
+  });
+
+  it("never cuts: without room it says so", () => {
+    expect(withExample("x".repeat(95), "Ejemplo.", 100)).toEqual({ kind: "no_room" });
+    expect(withExample("", "y".repeat(101), 100)).toEqual({ kind: "no_room" });
   });
 });

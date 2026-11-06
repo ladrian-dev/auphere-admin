@@ -145,8 +145,80 @@ describe("ServicesSection", () => {
     expect(actions.create).toHaveBeenCalledWith({
       ref: "flor",
       revision: 2,
-      body: { name: "Boda", description: null, bookable: true, duration_min: 90, price: { kind: "amount", amount_minor: 45000 } },
+      body: { name: "Boda", description: null, bookable: true, duration_min: 90, price: { kind: "amount", amount_minor: 45000 }, category: null },
     });
+  });
+
+  it("spec 055: each row uses the decimals of its own currency", () => {
+    section({ services: { ...SERVICES, currency: "USD", exponent: 2, items: [svc({ exponent: 0 })] } });
+    expect(screen.getByText("15.000 CLP")).toBeVisible();
+  });
+
+  it("spec 055: without a business currency it asks for one and invents none", async () => {
+    const user = userEvent.setup();
+    const { actions } = section({ services: { ...SERVICES, currency: "XXX", currency_set: false, exponent: 2, items: [] } });
+    await user.click(screen.getByRole("button", { name: "Añadir servicio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Añadir servicio" });
+    await user.type(within(dialog).getByRole("textbox", { name: /Nombre/ }), "Boda");
+    await user.click(within(dialog).getByRole("radio", { name: "Importe" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Importe" }), "15,50");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar servicio" }));
+    expect(await within(dialog).findByText("Elige la moneda de los precios.")).toBeVisible();
+    expect(actions.create).not.toHaveBeenCalled();
+    await user.selectOptions(within(dialog).getByRole("combobox", { name: /Moneda de los precios/ }), "USD");
+    expect(within(dialog).getByRole("textbox", { name: "Importe en USD" })).toHaveValue("15,50");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar servicio" }));
+    expect(actions.create).toHaveBeenCalledWith({
+      ref: "flor",
+      revision: 2,
+      body: { name: "Boda", description: null, bookable: false, duration_min: null, price: { kind: "amount", amount_minor: 1550 }, price_currency: "USD", category: null },
+    });
+  });
+
+  it("spec 055: groups by category, alphabetically, with «Sin categoría» last", () => {
+    section({
+      services: {
+        ...SERVICES,
+        items: [
+          svc({ id: "11111111-1111-4111-8111-111111111111", name: "Consulta", category: null }),
+          svc({ id: "22222222-2222-4222-8222-222222222222", name: "Tinte", category: "Color" }),
+          svc({ id: "33333333-3333-4333-8333-333333333333", name: "Básico", category: "Corte" }),
+          svc({ id: "44444444-4444-4444-8444-444444444444", name: "Heavy", category: "Corte" }),
+        ],
+      },
+    });
+    const rows = screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((r) => (r.querySelector("th") ?? r.querySelector("td span"))?.textContent);
+    expect(rows).toEqual(["Color", "Tinte", "Corte", "Básico", "Heavy", "Sin categoría", "Consulta"]);
+  });
+
+  it("spec 055: without any category the list looks as it always did", () => {
+    section();
+    expect(screen.queryByText("Sin categoría")).toBeNull();
+  });
+
+  it("spec 055: the dialog suggests the categories in use and sends the one written", async () => {
+    const user = userEvent.setup();
+    const { actions } = section({ services: { ...SERVICES, items: [svc({ category: "Corte" })] } });
+    await user.click(screen.getByRole("button", { name: "Añadir servicio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Añadir servicio" });
+    const box = within(dialog).getByRole("combobox", { name: /Categoría/ });
+    expect([...document.querySelectorAll(`#${box.getAttribute("list")} option`)].map((o) => o.getAttribute("value"))).toEqual(["Corte"]);
+    await user.type(within(dialog).getByRole("textbox", { name: /Nombre/ }), "Heavy");
+    await user.type(box, " Corte ");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar servicio" }));
+    expect(actions.create).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ name: "Heavy", category: "Corte" }) }));
+  });
+
+  it("spec 055: the client's console shows the groups but does not edit the category", async () => {
+    const user = userEvent.setup();
+    section({ categorizable: false, services: { ...SERVICES, items: [svc({ category: "Corte" })] } });
+    expect(screen.getByText("Corte")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Añadir servicio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Añadir servicio" });
+    expect(within(dialog).queryByRole("combobox", { name: /Categoría/ })).toBeNull();
   });
 
   it("chooses who offers a service; those that serve all are always in", async () => {

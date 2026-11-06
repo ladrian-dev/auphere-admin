@@ -74,6 +74,7 @@ export function business(over: Partial<BusinessSections> = {}): BusinessSections
       state: "complete",
       allowed: ["edit"],
       currency: "CLP",
+      currency_set: true,
       exponent: 0,
       agents: [{ id: AGENT, name: "Recepción", serves_all: true }],
       items: [
@@ -85,6 +86,7 @@ export function business(over: Partial<BusinessSections> = {}): BusinessSections
           duration_min: 30,
           price: { kind: "amount", amount_minor: 15000 },
           currency: "CLP",
+          exponent: 0,
           staff: "all",
           agents: { mode: "all_agents", agent_ids: [] },
           used_by: [{ id: AGENT, name: "Recepción" }],

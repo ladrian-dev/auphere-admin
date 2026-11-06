@@ -10,13 +10,17 @@ import type { Money } from "@/lib/backend/reservas";
 
 export type Locale = "es" | "en";
 
+/**
+ * ISO 4217, as the API's `services_catalog` has it. Not Intl: for COP or HUF it
+ * says 0 decimals while ISO, and so the stored minor unit, has 2 (spec 055).
+ */
+const ZERO_DECIMALS = new Set(["BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF"]);
+const THREE_DECIMALS = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
+
 /** How many decimals the currency's minor unit has (CLP 0, EUR 2). */
 export function minorDigits(currency: string): number {
-  try {
-    return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    return 2;
-  }
+  const code = currency.toUpperCase();
+  return ZERO_DECIMALS.has(code) ? 0 : THREE_DECIMALS.has(code) ? 3 : 2;
 }
 
 /** «$15.000» (es-CL reads it the same) · `null` when there is no price. */
@@ -24,7 +28,7 @@ export function formatPrice(price: Money | null | undefined, locale: Locale): st
   if (!price) return null;
   const digits = minorDigits(price.currency);
   try {
-    return new Intl.NumberFormat(locale, { style: "currency", currency: price.currency }).format(
+    return new Intl.NumberFormat(locale, { style: "currency", currency: price.currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(
       price.amount_minor / 10 ** digits,
     );
   } catch {

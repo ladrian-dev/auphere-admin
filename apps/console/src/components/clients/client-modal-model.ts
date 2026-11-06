@@ -194,6 +194,16 @@ export const PRICE_CURRENCIES = [
   "GTQ", "HNL", "NIO", "CRC", "CUP", "DOP", "COP", "PEN", "BOB", "CLP", "ARS", "UYU", "PYG", "BRL",
 ] as const;
 
+/** La lista de monedas, con la actual si es otra: no se pierde al abrir el selector. */
+export function currencyOptions(current: string | null | undefined): string[] {
+  return current && !(PRICE_CURRENCIES as readonly string[]).includes(current) ? [current, ...PRICE_CURRENCIES] : [...PRICE_CURRENCIES];
+}
+
+/** La lista de países, con el actual si es otro. */
+export function countryOptions(current: string | null | undefined): string[] {
+  return current && !(COUNTRIES as readonly string[]).includes(current) ? [current, ...COUNTRIES] : [...COUNTRIES];
+}
+
 /** Con «Solo UE» encendido por defecto (UE y EEE). */
 const EU_EEA = new Set([
   "ES", "PT", "FR", "DE", "IT", "NL", "BE", "LU", "IE", "AT", "FI", "GR", "CY", "MT", "SK", "SI", "EE",

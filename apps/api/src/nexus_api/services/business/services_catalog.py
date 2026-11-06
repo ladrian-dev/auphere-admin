@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Final, Literal
 
@@ -49,9 +49,12 @@ from nexus_api.services.business import client_spec, section_write, writes
 from nexus_api.services.business.sections import Actor
 
 NAME_MAX: Final = 120
+CATEGORY_MAX: Final = 40
 DESCRIPTION_MAX: Final = 1000
 DURATION_MIN, DURATION_MAX, DURATION_STEP = 5, 480, 5
 MAX_SERVICES: Final = 500
+#: ISO 4217: «sin moneda». La de una fila sin importe en un negocio sin moneda; no se pinta.
+NO_CURRENCY: Final = "XXX"
 #: Quien escribe cuando no escribe una persona.
 SYSTEM_ACTOR: Final = Actor(kind="system", id="services", origin="system")
 
@@ -162,6 +165,83 @@ async def business_currency(session: AsyncSession, tenant_id: uuid.UUID | None =
     return CURRENCY_BY_MARKET.get(market, "CLP")
 
 
+async def known_currency(session: AsyncSession, tenant_id: uuid.UUID | None = None) -> str | None:
+    """Spec 055 (D2): la moneda de los precios que de verdad se sabe. A diferencia
+    de :func:`business_currency`, no se inventa una: sin perfil ni mercado, ``None``."""
+    tid = tenant_id or require_current_tenant()
+    profile = await session.get(BusinessProfile, tid)
+    if profile is not None and profile.price_currency:
+        return profile.price_currency
+    tenant = await session.get(Tenant, tid)
+    return CURRENCY_BY_MARKET.get((tenant.market or "").upper() if tenant else "")
+
+
+def rescale(amount_minor: int, from_currency: str, to_currency: str) -> int:
+    """El mismo número visible en otra moneda, sin convertir (spec 055, D3): 15,50
+    EUR son 15,50 USD, y 15.000 CLP son 15.000,00 USD. Al bajar decimales, redondea."""
+    gained = exponent(to_currency) - exponent(from_currency)
+    if gained >= 0:
+        return int(amount_minor * 10**gained)
+    divisor = int(10**-gained)
+    return (amount_minor + divisor // 2) // divisor
+
+
+async def price_change_summary(session: AsyncSession, currency: str) -> tuple[int, bool]:
+    """Cuántos servicios vivos con importe cambiarían a ``currency``, y si alguno se
+    redondea. Es lo que dice la confirmación."""
+    count, rounds = 0, False
+    for svc in await list_services(session):
+        if price_kind_of(svc) != "amount" or svc.price_minor is None or svc.currency == currency:
+            continue
+        count += 1
+        scaled = rescale(int(svc.price_minor), svc.currency, currency)
+        rounds = rounds or rescale(scaled, currency, svc.currency) != int(svc.price_minor)
+    return count, rounds
+
+
+async def move_to_currency(session: AsyncSession, currency: str) -> int:
+    """Todos los servicios, archivados también, pasan a ``currency`` con el mismo
+    número. Devuelve cuántos vivos con importe cambiaron. Las reservas ya hechas
+    guardan los suyos y no se tocan. Sin commit: va con el cambio de moneda."""
+    moved = 0
+    for svc in await list_services(session, archived=True):
+        if svc.currency == currency:
+            continue
+        if price_kind_of(svc) == "amount" and svc.price_minor is not None:
+            svc.price_minor = rescale(int(svc.price_minor), svc.currency, currency)
+            moved += 1 if svc.archived_at is None else 0
+        svc.currency = currency
+    await session.flush()
+    return moved
+
+
+async def currency_for_amount(
+    session: AsyncSession,
+    chosen: str | None,
+    *,
+    actor: Actor,
+    ctx: writes.WriteContext | None,
+) -> str | None:
+    """La moneda de un importe que se va a guardar (spec 055, requisitos 3.1 y 3.2).
+    Si el negocio no tiene ninguna y una persona eligió una, queda para todo el
+    negocio. Si no eligió, se le pide. ``None``: quien escribe no es una persona y
+    no se sabe la moneda, y entonces el llamante decide."""
+    from nexus_api.services.business import profile_edits
+
+    known = await known_currency(session)
+    if known is not None:
+        return known
+    if chosen:
+        code = chosen.upper()
+        await profile_edits.update_basics(
+            session, {"price_currency": code}, actor=actor, services_noted_by_caller=True
+        )
+        return code
+    if actor.kind in profile_edits.PERSON_KINDS and (ctx is None or ctx.kind != "undo"):
+        raise ServiceError("price_currency_required", "price")
+    return None
+
+
 # ── validar ─────────────────────────────────────────────────────────────────
 
 
@@ -175,6 +255,18 @@ class ServiceData:
     amount_minor: int | None = None
     #: ``None`` = todo el equipo; una lista = esas personas (Reservas).
     staff_ids: tuple[uuid.UUID, ...] | None = None
+    #: La moneda elegida en el modal, si el negocio aún no tiene (spec 055, D2).
+    price_currency: str | None = None
+    #: Spec 055 (D5): lo que lo agrupa; ``None`` es sin categoría.
+    category: str | None = None
+
+
+def clean_category(value: str | None) -> str | None:
+    """Recortada, con los espacios de dentro colapsados; vacía es ninguna."""
+    category = " ".join((value or "").split()) or None
+    if category and len(category) > CATEGORY_MAX:
+        raise ServiceError("category_too_long", "category")
+    return category
 
 
 def validate(data: ServiceData) -> ServiceData:
@@ -196,6 +288,7 @@ def validate(data: ServiceData) -> ServiceData:
             raise ServiceError("duration_invalid", "duration_min")
     elif data.duration_min is not None:
         raise ServiceError("duration_not_allowed", "duration_min")
+    category = clean_category(data.category)
     if data.price_kind not in PRICE_KINDS:
         raise ServiceError("price_invalid", "price")
     amount: int | None = None
@@ -213,7 +306,22 @@ def validate(data: ServiceData) -> ServiceData:
         price_kind=data.price_kind,
         amount_minor=amount,
         staff_ids=data.staff_ids,
+        price_currency=data.price_currency,
+        category=category,
     )
+
+
+async def same_category(
+    session: AsyncSession, category: str | None, *, exclude: uuid.UUID | None = None
+) -> str | None:
+    """Spec 055 (requisito 7.3): «corte» y «Corte» son una. Si un servicio vivo del
+    cliente ya la usa, sin distinguir mayúsculas, se adopta su forma."""
+    if not category:
+        return None
+    for svc in await list_services(session):
+        if svc.id != exclude and svc.category and svc.category.casefold() == category.casefold():
+            return svc.category
+    return category
 
 
 # ── leer ────────────────────────────────────────────────────────────────────
@@ -368,6 +476,7 @@ async def _write(
 def _assign(svc: ReservationService, data: ServiceData) -> None:
     svc.name = data.name
     svc.description = data.description
+    svc.category = data.category
     svc.bookable = data.bookable
     svc.duration_minutes = data.duration_min
     svc.price_kind = data.price_kind
@@ -407,10 +516,17 @@ async def create_service(
     existing = await list_services(session, archived=True)
     if len([s for s in existing if s.archived_at is None]) >= MAX_SERVICES:
         raise ServiceError("too_many_services", "name")
+    currency = await known_currency(session)
+    if clean.price_kind == "amount":
+        currency = await currency_for_amount(session, clean.price_currency, actor=actor, ctx=ctx)
+        if currency is None:
+            # Un precio leído de la web sin moneda: no se inventa, lo confirma el equipo.
+            clean = replace(clean, price_kind="none", amount_minor=None)
+    clean = replace(clean, category=await same_category(session, clean.category))
     svc = ReservationService(
         id=service_id or uuid.uuid4(),
         tenant_id=require_current_tenant(),
-        currency=await business_currency(session),
+        currency=currency or NO_CURRENCY,
         all_staff=True,
         position=max((s.position for s in existing), default=0) + 1,
     )
@@ -471,12 +587,22 @@ async def update_service(
             description=changes.get("description", svc.description),
             price_kind=str(kind),
             amount_minor=amount,
+            category=changes.get("category", svc.category),
         )
     )
+    clean = replace(clean, category=await same_category(session, clean.category, exclude=svc.id))
     staff = changes.get("staff", "keep")
+    currency = svc.currency
+    if clean.price_kind == "amount" and isinstance(price, Mapping):
+        # Un importe que se escribe es de la moneda del negocio (requisito 3.1).
+        currency = (
+            await currency_for_amount(session, changes.get("price_currency"), actor=actor, ctx=ctx)
+            or svc.currency
+        )
 
     async def change() -> None:
         _assign(svc, clean)
+        svc.currency = currency
         if changes.get("archived") is False:
             svc.archived_at = None
         if staff != "keep":
@@ -489,7 +615,11 @@ async def update_service(
         actor=actor,
         ctx=ctx,
         expected_revision=expected_revision,
-        pointers=[f"/services/{service_id}/{key}" for key in changes if key != "archived"],
+        pointers=[
+            f"/services/{service_id}/{key}"
+            for key in changes
+            if key not in ("archived", "price_currency")
+        ],
         change=change,
     )
 
@@ -536,6 +666,7 @@ async def duplicate_service(
         tenant_id=src.tenant_id,
         name=name,
         description=src.description,
+        category=src.category,
         bookable=src.bookable,
         duration_minutes=src.duration_minutes,
         price_kind=price_kind_of(src),
@@ -712,6 +843,7 @@ def _data_of(item: Mapping[str, Any]) -> ServiceData:
         description=item.get("description"),
         price_kind=str(price.get("kind") or "none"),
         amount_minor=int(amount) if amount is not None else None,
+        category=item.get("category"),
         staff_ids=None
         if staff == "all" or not isinstance(staff, list)
         else tuple(u for u in (_uuid(s) for s in staff) if u is not None),
@@ -734,10 +866,19 @@ async def _restore_section(
             continue
         changes: dict[str, Any] = {
             k: item.get(k)
-            for k in ("name", "description", "bookable", "duration_min", "price", "staff")
+            for k in (
+                "name",
+                "description",
+                "category",
+                "bookable",
+                "duration_min",
+                "price",
+                "staff",
+            )
             if k in item
         }
         changes.setdefault("description", None)
+        changes.setdefault("category", None)
         changes.setdefault("duration_min", None)
         if bool(item.get("archived")):
             last = await archive_service(session, svc.id, actor=ctx.actor, ctx=ctx) or last
@@ -817,6 +958,7 @@ async def _apply_ops(
 writes.register_section_adapter("services", restore=_restore_section, apply=_apply_ops)
 
 __all__ = [
+    "CATEGORY_MAX",
     "CURRENCY_BY_MARKET",
     "SYSTEM_ACTOR",
     "ServiceData",
@@ -825,17 +967,23 @@ __all__ = [
     "archive_service",
     "assignments",
     "business_currency",
+    "clean_category",
     "client_agents",
     "create_service",
     "duplicate_service",
     "exponent",
     "format_amount",
     "get_service",
+    "known_currency",
     "list_services",
+    "move_to_currency",
     "note_reservas_write",
     "offers",
+    "price_change_summary",
     "price_kind_of",
     "price_view",
+    "rescale",
+    "same_category",
     "section_view",
     "services_for_agent",
     "set_agent_services",

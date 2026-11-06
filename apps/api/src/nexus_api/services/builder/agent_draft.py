@@ -311,7 +311,7 @@ def _policy_filled(facts: Facts, pointer: str) -> bool:
     labels = {
         "/policies/cancellation": "Cancelación",
         "/policies/payments": "Pagos",
-        "/policies/deposit": "Señal",
+        "/policies/deposit": "Señal o anticipo",
         "/policies/no_show": "Si no se presenta",
     }
     label = labels.get(pointer)

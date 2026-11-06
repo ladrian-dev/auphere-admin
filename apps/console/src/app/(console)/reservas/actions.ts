@@ -368,6 +368,8 @@ const serviceSchema = z.object({
   name,
   duration_minutes: duration,
   price_minor: z.number().int().min(0).max(1_000_000_000).nullable(),
+  price_currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  category: z.string().max(80).nullable().optional(),
   staff_ids: z.array(id).max(200).nullable(),
   idempotencyKey: key,
 });
@@ -383,6 +385,8 @@ const servicePatchSchema = z.object({
   name: name.optional(),
   duration_minutes: duration.optional(),
   price_minor: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+  price_currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  category: z.string().max(80).nullable().optional(),
   staff_ids: z.array(id).max(200).nullable().optional(),
   position: z.number().int().min(0).optional(),
 });

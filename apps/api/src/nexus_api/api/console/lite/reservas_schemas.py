@@ -61,6 +61,8 @@ class SettingsOut(BaseModel):
     capacity_kind: str | None
     timezone: str
     currency: str
+    #: Spec 055: si ``currency`` se sabe de verdad; si no, el modal pide elegirla.
+    currency_set: bool = True
     business_hours: dict[str, list[dict[str, str]]] | None
     business_hours_label: str | None
     hours_missing: bool
@@ -142,6 +144,8 @@ class MoneyOut(BaseModel):
 class ServiceOut(BaseModel):
     id: uuid.UUID
     name: str
+    #: Spec 055: lo que lo agrupa; ``None`` es sin categoría.
+    category: str | None = None
     duration_minutes: int
     price: MoneyOut | None
     staff: Literal["all", "some"]
@@ -159,6 +163,9 @@ class ServiceIn(_In):
     duration_minutes: int = Field(ge=15, le=480, multiple_of=15)
     price_minor: int | None = Field(default=None, ge=0)
     staff_ids: list[uuid.UUID] | None = None
+    #: Spec 055: solo se usa si el negocio aún no tiene moneda de precios.
+    price_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    category: str | None = Field(default=None, max_length=80)
 
 
 class ServicePatchIn(_In):
@@ -169,6 +176,8 @@ class ServicePatchIn(_In):
     staff_ids: list[uuid.UUID] | None = None
     all_staff: bool | None = None
     position: int | None = Field(default=None, ge=0, le=1000)
+    price_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    category: str | None = Field(default=None, max_length=80)
 
 
 # ── reservas ────────────────────────────────────────────────────────────────

@@ -9,11 +9,11 @@ import { reloadSectionAction, savePoliciesAction } from "@/app/(console)/clients
 import { decideSuggestionAction } from "@/app/(console)/clients/[ref]/client-v2-actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import { POLICY_KEYS, type Policies, type PoliciesBody, type PolicyKey } from "@/lib/backend/business-sections";
+import { POLICY_KEYS, type Policies, type PoliciesBody, type PolicyKey, type SectionState } from "@/lib/backend/business-sections";
 import type { Suggestion } from "@/lib/backend/client-records";
 
 import { asText, policySuggestions, sourceKey } from "./proposals-model";
-import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useSectionEdit, type Result } from "./section-frame";
+import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useReportState, useSectionEdit, type Result } from "./section-frame";
 import { SuggestionCard, type Decision } from "./suggestion-card";
 
 export type PoliciesActions = {
@@ -27,6 +27,9 @@ const SERVER_ACTIONS: PoliciesActions = {
   decide: (b) => decideSuggestionAction(b),
   reload: (b) => reloadSectionAction(b),
 };
+
+/** Spec 055 (requisito 6): lo que no se entiende solo con su nombre lleva una línea. */
+const HINT: Partial<Record<PolicyKey, MessageKey>> = { deposit: "business.policies.deposit.hint" };
 
 const LABEL: Record<PolicyKey, MessageKey> = {
   cancellation: "business.policies.cancellation",
@@ -57,12 +60,14 @@ export function PoliciesSection({
   suggestions: initialSuggestions,
   canWrite,
   actions = SERVER_ACTIONS,
+  onStateChange,
 }: {
   refId: string;
   policies: Policies;
   suggestions: Suggestion[] | null;
   canWrite: boolean;
   actions?: PoliciesActions;
+  onStateChange?: (state: SectionState) => void;
 }) {
   const t = useT();
   const [policies, setPolicies] = React.useState(initial);
@@ -71,6 +76,7 @@ export function PoliciesSection({
   const [problem, setProblem] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const edit = useSectionEdit("business-policies");
+  useReportState(policies.state, onStateChange);
   const byKey = policySuggestions(suggestions ?? []);
 
   function cancel() {
@@ -130,11 +136,14 @@ export function PoliciesSection({
       <p className="text-sm text-pretty text-muted-foreground">{t("business.proposals.everyAgent")}</p>
       {canWrite && edit.editing ? (
         <form onSubmit={submit} className="grid min-w-0 gap-4" noValidate>
-          {POLICY_KEYS.map((key) => (
-            <Field key={key} label={t(LABEL[key])} className="min-w-0">
+          {POLICY_KEYS.map((key) => {
+            const hint = HINT[key];
+            return (
+            <Field key={key} label={t(LABEL[key])} hint={hint ? t(hint) : undefined} className="min-w-0">
               {(a11y) => <Textarea {...a11y} value={values[key]} rows={2} maxLength={1000} onChange={(e) => setValues({ ...values, [key]: e.target.value })} />}
             </Field>
-          ))}
+            );
+          })}
           {problem === "conflict" ? <ConflictNotice onReload={reloadAfterConflict} /> : null}
           {problem && problem !== "conflict" ? (
             <p role="alert" className="text-sm text-destructive">
@@ -155,6 +164,7 @@ export function PoliciesSection({
           rows={POLICY_KEYS.map((key) => {
             const value = policies[key];
             const proposals = byKey.get(key) ?? [];
+            const hint = HINT[key];
             return {
               label: t(LABEL[key]),
               value: (
@@ -162,6 +172,7 @@ export function PoliciesSection({
                   <p className={`min-w-0 text-pretty break-words whitespace-pre-line ${value ? "" : "text-muted-foreground"}`}>
                     {value || t("business.policies.none")}
                   </p>
+                  {hint ? <p className="text-xs text-pretty text-muted-foreground">{t(hint)}</p> : null}
                   {proposals.length ? (
                     <ul className="grid min-w-0 gap-2">
                       {proposals.map((s) => (

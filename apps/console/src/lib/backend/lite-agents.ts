@@ -87,7 +87,7 @@ export type LiteBusiness = {
 export type LiteUndo = { section: string; revision: number | null; change_id: string | null };
 
 /** Un servicio nuevo: el nombre, y lo demás como en la ficha. Quién lo hace es del partner. */
-export type LiteServiceNew = { name: string; description?: string | null; bookable?: boolean; duration_min?: number | null; price?: Price };
+export type LiteServiceNew = { name: string; description?: string | null; bookable?: boolean; duration_min?: number | null; price?: Price; price_currency?: string };
 /** Lo que cambia la lite de un servicio: precio, duración, descripción y si es reservable (no el nombre). */
 export type LiteServicePatch = Omit<ServiceBody, "name">;
 

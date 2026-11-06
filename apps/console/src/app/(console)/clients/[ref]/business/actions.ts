@@ -105,6 +105,7 @@ const basicsSchema = z.object({
       eu_only: z.boolean(),
       // Requisito 57.5: una clave de la lista o «otro» con su etiqueta (1–40). La API valida la clave.
       sector: z.object({ key: z.string().min(1).max(40).regex(/^[a-z_]+$/), label: z.string().trim().min(1).max(40) }),
+      confirm_price_change: z.boolean(),
     })
     .partial(),
 });
@@ -192,6 +193,8 @@ const serviceBody = z.object({
   bookable: z.boolean().optional(),
   duration_min: z.number().int().min(5).max(480).nullable().optional(),
   price: price.optional(),
+  price_currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  category: z.string().max(80).nullable().optional(),
 });
 
 export async function createServiceAction(raw: unknown): Promise<ActionResult<Services>> {

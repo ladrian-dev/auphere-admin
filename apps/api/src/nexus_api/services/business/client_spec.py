@@ -225,6 +225,8 @@ class Service(_Strict):
     id: _Uuid | SkipJsonSchema[None] = None
     name: str = Field(min_length=1, max_length=120)
     description: _Text1000 | SkipJsonSchema[None] = None
+    #: Spec 055: lo que lo agrupa («Corte»).
+    category: Annotated[str, Field(min_length=1, max_length=40)] | SkipJsonSchema[None] = None
     bookable: bool
     duration_min: _Duration | SkipJsonSchema[None] = None
     price: PriceNone | PriceAmount | SkipJsonSchema[None] = None
@@ -521,6 +523,8 @@ async def _services_view(session: AsyncSession, tenant_id: uuid.UUID) -> list[di
         item: dict[str, Any] = {"id": str(row.id), "name": row.name, "bookable": row.bookable}
         if row.description:
             item["description"] = row.description
+        if row.category:
+            item["category"] = row.category
         if row.duration_minutes is not None:
             item["duration_min"] = row.duration_minutes
         if row.price_kind == "amount" and row.price_minor is not None:

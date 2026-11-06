@@ -3514,6 +3514,18 @@
           },
           "price": {
             "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__PriceIn"
+          },
+          "price_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Currency"
           }
         },
         "required": [
@@ -3569,6 +3581,18 @@
                 "type": "null"
               }
             ]
+          },
+          "price_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Currency"
           }
         },
         "title": "LiteServicePatchIn",
@@ -5160,6 +5184,11 @@
             "title": "Currency",
             "type": "string"
           },
+          "currency_set": {
+            "default": true,
+            "title": "Currency Set",
+            "type": "boolean"
+          },
           "exponent": {
             "title": "Exponent",
             "type": "integer"
@@ -5261,6 +5290,11 @@
           "currency": {
             "title": "Currency",
             "type": "string"
+          },
+          "currency_set": {
+            "default": true,
+            "title": "Currency Set",
+            "type": "boolean"
           },
           "hours_missing": {
             "title": "Hours Missing",
@@ -7225,6 +7259,18 @@
       "nexus_api__api__console__lite__reservas_schemas__ServiceIn": {
         "additionalProperties": false,
         "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "duration_minutes": {
             "maximum": 480.0,
             "minimum": 15.0,
@@ -7237,6 +7283,18 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "price_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Currency"
           },
           "price_minor": {
             "anyOf": [
@@ -7278,6 +7336,17 @@
           "archived": {
             "title": "Archived",
             "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
           },
           "duration_minutes": {
             "title": "Duration Minutes",
@@ -7350,6 +7419,18 @@
             ],
             "title": "All Staff"
           },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "clear_price": {
             "default": false,
             "title": "Clear Price",
@@ -7394,6 +7475,18 @@
               }
             ],
             "title": "Position"
+          },
+          "price_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Currency"
           },
           "price_minor": {
             "anyOf": [
@@ -7476,6 +7569,17 @@
             "title": "Bookable",
             "type": "boolean"
           },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -7501,6 +7605,10 @@
               }
             ],
             "title": "Duration Min"
+          },
+          "exponent": {
+            "title": "Exponent",
+            "type": "integer"
           },
           "id": {
             "format": "uuid",
@@ -7546,6 +7654,7 @@
           "duration_min",
           "price",
           "currency",
+          "exponent",
           "staff",
           "agents",
           "used_by",

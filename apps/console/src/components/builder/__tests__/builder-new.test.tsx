@@ -233,14 +233,35 @@ describe("«Nuevo agente» · describir (§3.1)", () => {
     expect(nameBox()).toHaveValue("Recepción");
     expect((descriptionBox() as HTMLTextAreaElement).value).toMatch(/^Atiende el WhatsApp del negocio: da citas/);
     expect(generate()).toBeEnabled();
-    // Un nombre escrito no se pisa; la descripción se sustituye.
-    await user.clear(nameBox());
-    await user.type(nameBox(), "Mostrador");
-    await user.click(within(examples).getByRole("button", { name: "Cobros" }));
-    expect(nameBox()).toHaveValue("Mostrador");
-    expect((descriptionBox() as HTMLTextAreaElement).value).toMatch(/^Recuerda los pagos pendientes/);
     // Textos generales: ni negocios ni personas concretas.
     expect((descriptionBox() as HTMLTextAreaElement).value).not.toMatch(/Marta|barber|clínica/i);
+  });
+
+  it("spec 055: un ejemplo se añade a lo escrito, no lo repite y no pisa el nombre", async () => {
+    const user = userEvent.setup();
+    screenWith({});
+    const examples = screen.getByRole("group", { name: "Empieza con un ejemplo:" });
+    await user.type(nameBox(), "Mostrador");
+    await user.type(descriptionBox(), "Mi texto escrito a mano.");
+    await user.click(within(examples).getByRole("button", { name: "Cobros" }));
+    expect(nameBox()).toHaveValue("Mostrador");
+    const once = (descriptionBox() as HTMLTextAreaElement).value;
+    expect(once).toMatch(/^Mi texto escrito a mano\.\n\nRecuerda los pagos pendientes/);
+    await user.click(within(examples).getByRole("button", { name: "Cobros" }));
+    expect((descriptionBox() as HTMLTextAreaElement).value).toBe(once);
+  });
+
+  it("spec 055: si el ejemplo no cabe, lo escrito sigue igual y se dice", async () => {
+    const user = userEvent.setup();
+    render(
+      <LocaleProvider locale="es">
+        <BuilderNew refId={REF} options={OPTIONS} initial={{ description: "x".repeat(OPTIONS.description_max - 5) }} actions={{ start: vi.fn(), poll: vi.fn(), answer: vi.fn() }} />
+      </LocaleProvider>,
+    );
+    const before = (descriptionBox() as HTMLTextAreaElement).value;
+    await user.click(within(screen.getByRole("group", { name: "Empieza con un ejemplo:" })).getByRole("button", { name: "Soporte" }));
+    expect((descriptionBox() as HTMLTextAreaElement).value).toBe(before);
+    expect(screen.getByText("Ese ejemplo no cabe: acorta la descripción para añadirlo.")).toBeVisible();
   });
 
   it("«Crear este agente» del cliente llega con su nombre y su descripción (18.4)", () => {

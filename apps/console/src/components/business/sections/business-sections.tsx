@@ -83,7 +83,24 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
   const t = useT();
   const [data, setData] = React.useState(initial);
   const [linksSaved, setLinksSaved] = React.useState<{ revision: number; filled: boolean } | null>(null);
+  // Spec 055 (requisito 4): lo que cada sección avisó; va antes que la carga inicial.
+  const [reported, setReported] = React.useState<Partial<Record<Key, SectionState>>>({});
+  const reportState = React.useCallback(
+    (key: Key) => (state: SectionState) => setReported((prev) => (prev[key] === state ? prev : { ...prev, [key]: state })),
+    [],
+  );
+  // Spec 055: la moneda es de los dos, y cambiarla sube la revisión de los dos. La
+  // sección que no la cambió se vuelve a leer y a montar, para no quedarse con lo viejo.
+  const [versions, setVersions] = React.useState({ basics: 0, services: 0 });
   const [, startTransition] = React.useTransition();
+  function reloadAfterCurrency(key: "basics" | "services") {
+    startTransition(async () => {
+      const res = await reloadSectionAction({ ref: refId, section: key });
+      if (!res?.ok) return;
+      setData((prev) => ({ ...prev, [key]: res }));
+      setVersions((prev) => ({ ...prev, [key]: prev[key] + 1 }));
+    });
+  }
   const locations = data.locations.ok ? data.locations.data.items : [];
   const record = data.record?.ok ? data.record.data : null;
   // Sin ficha no se sabe qué hay sugerido (`null`); con ella, sus propuestas pendientes.
@@ -114,7 +131,7 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
     // Lo mismo que hace la API al guardar (`put_links`): con enlaces, completa.
     if (key === "links") return linksSaved ? (linksSaved.filled ? "complete" : "pending") : stateIn("links");
     const entry = data[key];
-    return entry?.ok ? entry.data.state : null;
+    return entry?.ok ? (reported[key] ?? entry.data.state) : null;
   }
 
   function failedFrame(item: (typeof ORDER)[number], onRetry?: () => void) {
@@ -129,7 +146,7 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
     switch (item.key) {
       case "basics":
         return data.basics.ok ? (
-          <BasicsSection refId={refId} basics={data.basics.data} canWrite={canWrite} sectors={data.sectors} sectorProposal={sectorSuggestion(suggestions)} />
+          <BasicsSection key={versions.basics} refId={refId} basics={data.basics.data} onPriceCurrencyChange={() => reloadAfterCurrency("services")} canWrite={canWrite} sectors={data.sectors} sectorProposal={sectorSuggestion(suggestions)} onStateChange={reportState("basics")} />
         ) : (
           failedFrame(item, () => retry("basics", "basics"))
         );
@@ -147,7 +164,7 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
         );
       case "hours":
         return data.hours.ok ? (
-          <HoursSection refId={refId} hours={data.hours.data} locations={locations} canWrite={canWrite} confirmable>
+          <HoursSection refId={refId} hours={data.hours.data} locations={locations} canWrite={canWrite} confirmable onStateChange={reportState("hours")}>
             {data.specialDates.ok ? (
               <SpecialDatesSection refId={refId} specialDates={data.specialDates.data} locations={locations} canWrite={canWrite} nested />
             ) : null}
@@ -157,19 +174,19 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
         );
       case "services":
         return data.services.ok ? (
-          <ServicesSection refId={refId} services={data.services.data} canWrite={canWrite} confirmable />
+          <ServicesSection key={versions.services} refId={refId} services={data.services.data} onPriceCurrencyChange={() => reloadAfterCurrency("basics")} canWrite={canWrite} confirmable onStateChange={reportState("services")} />
         ) : (
           failedFrame(item, () => retry("services", "services"))
         );
       case "policies":
         return data.policies?.ok ? (
-          <PoliciesSection refId={refId} policies={data.policies.data} suggestions={suggestions} canWrite={canWrite} />
+          <PoliciesSection refId={refId} policies={data.policies.data} suggestions={suggestions} canWrite={canWrite} onStateChange={reportState("policies")} />
         ) : (
           failedFrame(item, () => retry("policies", "policies"))
         );
       case "faqs":
         return data.faqs?.ok ? (
-          <FaqsSection refId={refId} faqs={data.faqs.data} suggestions={suggestions} canWrite={canWrite} />
+          <FaqsSection refId={refId} faqs={data.faqs.data} suggestions={suggestions} canWrite={canWrite} onStateChange={reportState("faqs")} />
         ) : (
           failedFrame(item, () => retry("faqs", "faqs"))
         );

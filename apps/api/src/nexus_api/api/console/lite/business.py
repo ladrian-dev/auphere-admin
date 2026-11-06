@@ -65,6 +65,7 @@ from ..business import (
     week_of,
 )
 from ..schemas_business_sections import (
+    CurrencyCode,
     HoursIn,
     HoursOut,
     LocationIn,
@@ -106,6 +107,7 @@ class LiteServiceIn(_In):
     bookable: bool = True
     duration_min: int | None = None
     price: PriceIn = Field(default_factory=lambda: PriceIn(kind="none"))
+    price_currency: CurrencyCode | None = None
 
 
 class LiteServicePatchIn(_In):
@@ -115,6 +117,7 @@ class LiteServicePatchIn(_In):
     bookable: bool | None = None
     duration_min: int | None = None
     price: PriceIn | None = None
+    price_currency: CurrencyCode | None = None
 
 
 class LitePersonOut(BaseModel):
@@ -549,6 +552,7 @@ async def post_service(
         price_kind=body.price.kind,
         amount_minor=body.price.amount_minor,
         staff_ids=None,
+        price_currency=body.price_currency,
     )
     created, out = await _run(
         scope,

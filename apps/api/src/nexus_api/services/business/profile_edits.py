@@ -40,7 +40,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import require_current_tenant
-from nexus_api.db.models import PartnerTenant, Tenant
+from nexus_api.db.models import AuditLog, PartnerTenant, Tenant
 from nexus_api.db.models.business import BusinessLink, BusinessProfile
 from nexus_api.services.business import client_spec
 from nexus_api.services.business import sector as sector_service
@@ -54,12 +54,14 @@ from nexus_api.services.business.profile import (
     clean_name,
     is_valid_timezone,
 )
-from nexus_api.services.business.sections import Actor
+from nexus_api.services.business.sections import Actor, touch_section
 from nexus_api.services.business.writes import (
     NothingWritten,
     Op,
     SectionWritten,
     WriteContext,
+    audit_actor_of,
+    mark_tests_stale,
     register_section_adapter,
     write_section,
 )
@@ -198,9 +200,14 @@ async def update_basics(
     source_url: str | None = None,
     undo_of: Any = None,
     audit: bool = True,
+    services_noted_by_caller: bool = False,
 ) -> Edited:
     """Los datos básicos del cliente del contexto. Valida todo antes de
-    escribir nada (``InvalidField``, ``BagCurrencyLocked``)."""
+    escribir nada (``InvalidField``, ``BagCurrencyLocked``).
+
+    ``services_noted_by_caller``: quien llama ya está escribiendo Servicios con su
+    revisión (un importe con la moneda elegida en el modal), y subirla aquí lo haría
+    chocar consigo mismo."""
     clean = _clean_basics(changes)
     tenant_id = require_current_tenant()
     await _ensure_profile(session)
@@ -208,6 +215,9 @@ async def update_basics(
     tenant = await session.get(Tenant, tenant_id)
     assert tenant is not None  # el contexto viene de un cliente que existe
     before = (await client_spec.section_view(session, "basics"))["business"]
+    from nexus_api.services.business import services_catalog
+
+    currency_before = await services_catalog.known_currency(session)
 
     for key, value in clean.items():
         if key == "name":
@@ -229,6 +239,10 @@ async def update_basics(
     changed = [k for k in BASICS_FIELDS if before.get(k) != after.get(k)]
     if not changed:
         return Edited(written=None, changed=[], before=before, after=after)
+    # Spec 055 (D3): los servicios siguen a la moneda del negocio. Antes de anotar
+    # Datos básicos, que es lo que recompila lo que leen los agentes.
+    currency_now = clean.get("price_currency") if "price_currency" in changed else None
+    moved = await services_catalog.move_to_currency(session, currency_now) if currency_now else 0
     written = await write_section(
         session,
         "basics",
@@ -246,6 +260,23 @@ async def update_basics(
         undo_of=undo_of,
         audit=audit,
     )
+    if currency_now:
+        # La revisión sube para que un modal abierto choque con su conflicto; no deja
+        # entrada propia en el historial porque se deshace al deshacer Datos básicos.
+        if not services_noted_by_caller:
+            await touch_section(session, "services", actor=actor)
+            await mark_tests_stale(session, sections=["services"])
+        session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor=audit_actor or audit_actor_of(actor),
+                action="business.price_currency_changed",
+                target="business:services",
+                before_json={"currency": currency_before},
+                after_json={"currency": currency_now, "services": moved},
+            )
+        )
+        await session.flush()
     if actor.kind in PERSON_KINDS:
         await _after_person_basics(session, changed, after, actor=actor)
     return Edited(written=written, changed=changed, before=before, after=after)

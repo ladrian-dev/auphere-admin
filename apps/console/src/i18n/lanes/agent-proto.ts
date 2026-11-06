@@ -125,6 +125,10 @@ export const agentProtoMessages = {
     en: "As you would explain it to someone new: what it solves, how it talks and when it hands the conversation over to a person.",
   },
   "agentProto.new.examples": { es: "Empieza con un ejemplo:", en: "Start from an example:" },
+  "agentProto.new.example.noRoom": {
+    es: "Ese ejemplo no cabe: acorta la descripción para añadirlo.",
+    en: "That example does not fit: shorten the description to add it.",
+  },
   "agentProto.new.example.reception": { es: "Recepción y citas", en: "Front desk and bookings" },
   "agentProto.new.example.reception.name": { es: "Recepción", en: "Front desk" },
   "agentProto.new.example.reception.text": {

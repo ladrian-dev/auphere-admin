@@ -212,8 +212,9 @@ Columna izquierda: `section.card.card-b` (`padding:14px 18px 18px`, `gap:18px`,
    cuándo pasa la conversación a una persona."`.
 3. Debajo del textarea, fila de chips (`aria-label="Ejemplos"`): «Empieza con un
    ejemplo:» (12 px muted) + cuatro chips: «Recepción y citas», «Ventas», «Soporte»,
-   «Cobros». Pulsar uno **sustituye** la descripción por su texto (con el nombre del
-   cliente dentro) y, si el nombre está vacío, pone «Recepción» (para «Recepción y
+   «Cobros». Pulsar uno **añade** su texto a la descripción, en un párrafo aparte
+   (corregido por la spec 055: antes la sustituía y borraba lo escrito), con el nombre
+   del cliente dentro, y, si el nombre está vacío, pone «Recepción» (para «Recepción y
    citas») o la etiqueta del chip:
    - Recepción y citas: «Atiende el WhatsApp de {cliente}: da citas, las cambia o
      cancela y responde precios y horarios. Tono cercano y breve, de tú. Si alguien se

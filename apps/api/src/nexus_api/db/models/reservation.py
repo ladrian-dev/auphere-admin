@@ -190,6 +190,8 @@ class ReservationService(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base
     #: ``None`` only when the service is not bookable (spec 047).
     duration_minutes: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    #: Spec 055: what groups it («Corte»); ``None`` is no category. Never empty.
+    category: Mapped[str | None] = mapped_column(String(40), nullable=True)
     bookable: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )

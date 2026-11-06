@@ -251,6 +251,23 @@ async def get_basics(response: Response, scope: ClientScope = Depends(READ)) -> 
     return out
 
 
+async def _refuse_unconfirmed_price_change(
+    scope: ClientScope, currency: str | None, body: BasicsIn
+) -> None:
+    """Spec 055 (requisito 3.3): cambiar la moneda con servicios con importe se
+    confirma sabiendo cuántos cambian, y no se escribe nada hasta entonces."""
+    if not currency or body.confirm_price_change:
+        return
+    if currency == await services_catalog.known_currency(scope.session, scope.tenant.id):
+        return
+    count, rounds = await services_catalog.price_change_summary(scope.session, currency)
+    if count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "prices_would_change", "count": count, "rounds": rounds},
+        )
+
+
 @router.put("/basics", response_model=BasicsOut)
 async def put_basics(
     body: BasicsIn,
@@ -259,7 +276,8 @@ async def put_basics(
     scope: ClientScope = Depends(WRITE),
 ) -> BasicsOut:
     expected = required_revision(if_match)
-    changes = body.model_dump(exclude_unset=True)
+    changes = body.model_dump(exclude_unset=True, exclude={"confirm_price_change"})
+    await _refuse_unconfirmed_price_change(scope, changes.get("price_currency"), body)
     _, out = await _run(
         scope,
         response,
@@ -723,10 +741,12 @@ async def services_view(
                 id=svc.id,
                 name=svc.name,
                 description=svc.description,
+                category=svc.category,
                 bookable=svc.bookable,
                 duration_min=svc.duration_minutes,
                 price=PriceOut(**services_catalog.price_view(svc)),
                 currency=svc.currency,
+                exponent=services_catalog.exponent(svc.currency),
                 staff="all" if svc.all_staff else await services_catalog.staff_of(session, svc.id),
                 agents=AgentsOfService(
                     mode="list" if listed else "all_agents", agent_ids=list(listed)
@@ -738,13 +758,14 @@ async def services_view(
                 archived=svc.archived_at is not None,
             )
         )
-    currency = await services_catalog.business_currency(session, tenant_id)
+    currency = await services_catalog.known_currency(session, tenant_id)
     revision, state = await section_meta(session, tenant_id, "services")
     return ServicesOut(
         revision=revision,
         state=state,
         allowed=allowed,
-        currency=currency,
+        currency=currency or services_catalog.NO_CURRENCY,
+        currency_set=currency is not None,
         exponent=services_catalog.exponent(currency),
         items=items,
         agents=[
@@ -774,6 +795,8 @@ def _service_data(body: ServiceIn) -> services_catalog.ServiceData:
         price_kind=body.price.kind,
         amount_minor=body.price.amount_minor,
         staff_ids=None if body.staff == "all" else tuple(body.staff),
+        price_currency=body.price_currency,
+        category=body.category,
     )
 
 

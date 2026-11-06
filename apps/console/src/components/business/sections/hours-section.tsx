@@ -8,10 +8,10 @@ import { Button, ConfirmDialog, NativeSelect } from "@nexus/ui";
 import { loadHoursAction, saveHoursAction } from "@/app/(console)/clients/[ref]/business/actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { Day, Hours, HoursBody, Layout, Location } from "@/lib/backend/business-sections";
+import type { Day, Hours, HoursBody, Layout, Location, SectionState } from "@/lib/backend/business-sections";
 
 import { blockRows, blocksLoss, bodyFromDraft, draftFromHours, readRows, setRow, shiftsText, toBlocks, validateDraft, type HoursDraft, type Row } from "./hours-model";
-import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useSectionEdit, type Result } from "./section-frame";
+import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useReportState, useSectionEdit, type Result } from "./section-frame";
 import { ShiftEditor } from "./shift-editor";
 
 type Save = (body: { ref: string; revision: number; locationId: string | null; body: HoursBody }) => Promise<Result<Hours>>;
@@ -39,6 +39,7 @@ export function HoursSection({
   load = (b) => loadHoursAction(b),
   children,
   confirmable = false,
+  onStateChange,
 }: {
   refId: string;
   hours: Hours;
@@ -49,6 +50,7 @@ export function HoursSection({
   children?: React.ReactNode;
   /** «Es correcto» de lo leído de la web: solo en la consola del partner. */
   confirmable?: boolean;
+  onStateChange?: (state: SectionState) => void;
 }) {
   const t = useT();
   const [hours, setHours] = React.useState(initial);
@@ -59,6 +61,7 @@ export function HoursSection({
   const [pending, startTransition] = React.useTransition();
   const base = React.useId();
   const edit = useSectionEdit("business-hours");
+  useReportState(hours.state, onStateChange);
   const editing = canWrite && edit.editing;
   const editable = editing && !inherit;
   const live = locations.filter((l) => !l.archived);

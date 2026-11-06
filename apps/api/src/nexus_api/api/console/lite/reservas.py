@@ -182,7 +182,7 @@ async def _remember(
 # ── ajustes y horario ───────────────────────────────────────────────────────
 
 
-def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
+async def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
     s = ctx.settings
     week = ctx.hours.week if ctx.hours is not None else None
     lang = "es"
@@ -192,6 +192,7 @@ def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
             "capacity_kind": s.capacity_kind,
             "timezone": str(ctx.tz),
             "currency": ctx.currency,
+            "currency_set": await services_catalog.known_currency(scope.session) is not None,
             "business_hours": week_canonical(week),
             "business_hours_label": week_label(week, lang),
             "hours_missing": week is None,
@@ -220,7 +221,7 @@ def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
 
 @router.get("/settings", response_model=SettingsOut)
 async def read_settings(scope: LiteScope = Depends(SCOPE)) -> SettingsOut:
-    return _settings_out(scope, await _ctx(scope))
+    return await _settings_out(scope, await _ctx(scope))
 
 
 @router.patch("/settings", response_model=SettingsOut)
@@ -244,7 +245,7 @@ async def patch_settings(
     ctx.settings.version += 1
     ctx.settings.updated_by = scope.principal.actor
     await scope.session.flush()
-    return _settings_out(scope, ctx)
+    return await _settings_out(scope, ctx)
 
 
 @router.put("/business-hours", response_model=BusinessHoursOut)
@@ -466,11 +467,39 @@ async def _service_staff(scope: LiteScope, service_id: uuid.UUID) -> list[uuid.U
     return list(rows.scalars())
 
 
+async def _amount_currency(scope: LiteScope, chosen: str | None) -> str:
+    """Spec 055 (requisitos 3.1 y 3.2): la moneda de un importe que se escribe."""
+    try:
+        currency = await services_catalog.currency_for_amount(
+            scope.session, chosen, actor=_ficha_actor(scope), ctx=None
+        )
+    except services_catalog.ServiceError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": exc.code, "field": exc.field}
+        ) from None
+    assert currency is not None  # una persona, o la elige o se rechaza arriba
+    return currency
+
+
+async def _category(
+    scope: LiteScope, value: str | None, *, exclude: uuid.UUID | None = None
+) -> str | None:
+    """Spec 055 (requisitos 7.1 y 7.3): la misma regla que en la ficha."""
+    try:
+        clean = services_catalog.clean_category(value)
+    except services_catalog.ServiceError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": exc.code, "field": exc.field}
+        ) from None
+    return await services_catalog.same_category(scope.session, clean, exclude=exclude)
+
+
 async def _service_out(scope: LiteScope, s: ReservationService) -> ServiceOut:
     return ServiceOut.model_validate(
         {
             "id": s.id,
             "name": s.name,
+            "category": s.category,
             "duration_minutes": s.duration_minutes,
             "price": {"amount_minor": s.price_minor, "currency": s.currency}
             if s.price_minor is not None
@@ -543,13 +572,19 @@ async def create_service(
             return await _service_out(scope, found)
     before = await services_catalog.section_view(scope.session)
     count = await scope.session.scalar(sa.select(sa.func.count()).select_from(ReservationService))
+    currency = (
+        await _amount_currency(scope, body.price_currency)
+        if body.price_minor is not None
+        else (await services_catalog.known_currency(scope.session) or services_catalog.NO_CURRENCY)
+    )
     svc = ReservationService(
         tenant_id=ctx.tenant_id,
         name=body.name.strip(),
+        category=await _category(scope, body.category),
         duration_minutes=body.duration_minutes,
         price_minor=body.price_minor,
         price_kind="amount" if body.price_minor is not None else "none",
-        currency=ctx.currency,
+        currency=currency,
         all_staff=True,
         position=int(count or 0) + 1,
     )
@@ -579,12 +614,16 @@ async def patch_service(
     data = body.model_dump(exclude_unset=True)
     if data.get("name"):
         svc.name = data["name"].strip()
+    if "category" in data:
+        svc.category = await _category(scope, data["category"], exclude=svc.id)
     if data.get("duration_minutes"):
         svc.duration_minutes = int(data["duration_minutes"])
     if data.get("clear_price"):
         svc.price_minor = None
         svc.price_kind = "none"
     elif "price_minor" in data:
+        if data["price_minor"] is not None:
+            svc.currency = await _amount_currency(scope, data.get("price_currency"))
         svc.price_minor = data["price_minor"]
         svc.price_kind = "amount" if svc.price_minor is not None else "none"
     if "staff_ids" in data or data.get("all_staff"):

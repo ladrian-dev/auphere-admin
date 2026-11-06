@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.console_auth import ConsoleService, require_console_service
-from nexus_api.services import console_identity, password_reset
+from nexus_api.services import console_identity, invitation_reissue, password_reset
 from nexus_api.services.console_identity import PasswordPolicyError
 from nexus_api.services.one_time_code_limits import CodeRateLimited, CodeRateLimiter
 
@@ -144,8 +144,12 @@ async def request_reset_link(
         locale = account.locale if account else "es"
 
     if plaintext is None:
-        # Sin cuenta no sale ningún correo: mandar uno a una dirección que no
-        # pidió nada convierte esta ruta en un remitente de correo ajeno.
+        # Sin cuenta no sale el correo de restablecer: mandar uno a una dirección
+        # que no pidió nada convierte esta ruta en un remitente de correo ajeno.
+        # Spec 055: pero si esa dirección tiene una invitación sin aceptar, lo que
+        # le deja entrar es la invitación, y se reenvía. Siempre en segundo plano,
+        # haya o no: buscarla aquí haría que el reloj dijera lo que el cuerpo calla.
+        background.add_task(invitation_reissue.resend_for_forgot, email)
         return
 
     # Fuera de la transacción y **fuera de la respuesta**: mandar correo no debe

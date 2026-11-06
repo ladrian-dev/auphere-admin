@@ -43,6 +43,8 @@ export type ReservasSettings = {
   capacity_kind: CapacityKind | null;
   timezone: string;
   currency: string;
+  /** Spec 055: si `currency` se sabe de verdad; si no, el modal pide elegirla. */
+  currency_set?: boolean;
   business_hours: WeekHours;
   business_hours_label: string | null;
   hours_missing: boolean;
@@ -108,6 +110,8 @@ export type StaffPatch = Partial<StaffInput & { position: number }>;
 export type ReservasService = {
   id: string;
   name: string;
+  /** Spec 055: lo que lo agrupa; `null` es sin categoría. */
+  category?: string | null;
   duration_minutes: number;
   /** `null` = no cost. */
   price: Money | null;
@@ -117,7 +121,7 @@ export type ReservasService = {
   archived: boolean;
 };
 /** `staff_ids: null` = the whole team. */
-export type ServiceInput = { name: string; duration_minutes: number; price_minor: number | null; staff_ids: string[] | null };
+export type ServiceInput = { name: string; duration_minutes: number; price_minor: number | null; staff_ids: string[] | null; price_currency?: string; category?: string | null };
 export type ServicePatch = Partial<ServiceInput & { position: number }>;
 
 // ── §4 bookings ──────────────────────────────────────────────────────────

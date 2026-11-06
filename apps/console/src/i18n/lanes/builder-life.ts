@@ -128,7 +128,7 @@ export const builderLifeMessages = {
   "builder.cb.section.other": { es: "Otros datos", en: "Other details" },
   "builder.cb.policy.cancellation": { es: "Cancelación", en: "Cancellation" },
   "builder.cb.policy.payments": { es: "Pagos", en: "Payments" },
-  "builder.cb.policy.deposit": { es: "Señal", en: "Deposit" },
+  "builder.cb.policy.deposit": { es: "Señal o anticipo", en: "Deposit" },
   "builder.cb.policy.no_show": { es: "No presentarse", en: "No-show" },
   "builder.cb.faq.q": { es: "Pregunta", en: "Question" },
   "builder.cb.faq.a": { es: "Respuesta", en: "Answer" },

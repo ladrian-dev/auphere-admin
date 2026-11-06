@@ -474,7 +474,7 @@ describe("Negocio · recuperarse de un error (T218)", () => {
     expect(biz.reloadSectionAction).toHaveBeenCalledWith({ ref: REF, section: "policies" });
     expect(await within(policies).findByRole("textbox", { name: "Cancelación" })).toHaveValue("Avisa con 12 horas.");
     expect(within(policies).queryByRole("alert")).toBeNull();
-    await user.type(within(policies).getByRole("textbox", { name: "Señal" }), "10 €");
+    await user.type(within(policies).getByRole("textbox", { name: /Señal o anticipo/ }), "10 €");
     await user.click(within(policies).getByRole("button", { name: "Guardar políticas" }));
     expect(biz.savePoliciesAction).toHaveBeenLastCalledWith(expect.objectContaining({ revision: 3 }));
   });

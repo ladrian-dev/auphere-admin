@@ -71,3 +71,25 @@ export function parseAmount(text: string, exponent: number): number | null {
 }
 
 export type PriceChoice = Price["kind"];
+
+/**
+ * Spec 055 (requisito 7.4): los servicios agrupados por categoría, por orden
+ * alfabético y «Sin categoría» al final (`category: null`). Sin ninguna
+ * categoría, un solo grupo: la lista se ve como siempre.
+ */
+export function byCategory<T extends { category?: string | null }>(items: readonly T[], locale: string): { category: string | null; items: T[] }[] {
+  const groups = new Map<string | null, T[]>();
+  for (const item of items) {
+    const key = item.category || null;
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  const named = [...groups.keys()].filter((k): k is string => k !== null).sort((a, b) => a.localeCompare(b, locale, { sensitivity: "base" }));
+  return [...named, ...(groups.has(null) ? [null] : [])].map((category) => ({ category, items: groups.get(category) ?? [] }));
+}
+
+/** Las categorías que ya usa el negocio, para sugerirlas al escribir. */
+export function categoriesOf(items: readonly { category?: string | null; archived?: boolean }[], locale: string): string[] {
+  const seen = new Map<string, string>();
+  for (const item of items) if (item.category && !item.archived && !seen.has(item.category.toLocaleLowerCase(locale))) seen.set(item.category.toLocaleLowerCase(locale), item.category);
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, locale, { sensitivity: "base" }));
+}

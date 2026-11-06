@@ -89,6 +89,8 @@ class BasicsIn(_In):
     price_currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] | None = None
     eu_only: bool | None = None
     sector: SectorIn | None = None
+    #: Spec 055: acepta que los servicios con importe pasen a la moneda nueva.
+    confirm_price_change: bool = False
 
 
 class BasicsOut(_Section):
@@ -203,6 +205,9 @@ class SpecialDatesOut(_Section):
 # ── servicios ──────────────────────────────────────────────────────────────
 
 
+CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
+
+
 class PriceIn(_In):
     kind: Literal["none", "free", "amount"]
     amount_minor: int | None = Field(default=None, ge=0, le=10**12)
@@ -230,6 +235,9 @@ class ServiceIn(_In):
     price: PriceIn = Field(default_factory=lambda: PriceIn(kind="none"))
     #: Quién lo hace en Reservas: ``"all"`` o la lista de personas.
     staff: Literal["all"] | list[uuid.UUID] = "all"
+    #: Spec 055: solo se usa si el negocio aún no tiene moneda de precios.
+    price_currency: CurrencyCode | None = None
+    category: Annotated[str, StringConstraints(max_length=80)] | None = None
 
 
 class ServicePatchIn(_In):
@@ -239,6 +247,8 @@ class ServicePatchIn(_In):
     duration_min: int | None = None
     price: PriceIn | None = None
     staff: Literal["all"] | list[uuid.UUID] | None = None
+    price_currency: CurrencyCode | None = None
+    category: Annotated[str, StringConstraints(max_length=80)] | None = None
 
 
 class ServiceAgentsIn(_In):
@@ -265,10 +275,13 @@ class ServiceOut(_Out):
     id: uuid.UUID
     name: str
     description: str | None
+    category: str | None = None
     bookable: bool
     duration_min: int | None
     price: PriceOut
     currency: str
+    #: Spec 055: los decimales de la moneda de esta fila.
+    exponent: int
     staff: Literal["all"] | list[uuid.UUID]
     agents: AgentsOfService
     #: «Lo usan» (requisito 11.2).
@@ -278,7 +291,10 @@ class ServiceOut(_Out):
 
 class ServicesOut(_Section):
     #: La moneda de los precios del negocio y sus decimales (requisito 11.7).
+    #: Spec 055: sin moneda elegida es ``XXX`` y ``currency_set`` es falso; no se
+    #: inventa una. Sigue siendo texto: la app móvil instalada lo lee así.
     currency: str
+    currency_set: bool = True
     exponent: int
     items: list[ServiceOut]
     agents: list[AgentOption]

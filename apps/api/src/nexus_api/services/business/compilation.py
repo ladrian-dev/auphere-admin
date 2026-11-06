@@ -83,7 +83,7 @@ PREAMBLE: Final = (
 _POLICIES: Final = (
     ("cancellation", "Cancelación"),
     ("payments", "Pagos"),
-    ("deposit", "Señal"),
+    ("deposit", "Señal o anticipo"),
     ("no_show", "Si no se presenta"),
 )
 
@@ -213,7 +213,8 @@ async def load_facts(session: AsyncSession, agent: Agent) -> Facts:
 
     offered: list[str] = []
     for svc in await services_catalog.services_for_agent(session, agent.id):
-        parts = [svc.name]
+        # Spec 055 (D7): la categoría delante, como dato; sin ella, la línea de siempre.
+        parts = [svc.category, svc.name] if svc.category else [svc.name]
         if svc.description:
             parts.append(svc.description)
         if svc.bookable and svc.duration_minutes:

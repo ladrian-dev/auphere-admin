@@ -43,13 +43,9 @@ from nexus_api.repositories.partner_membership import (
     PartnerInvitationRepository,
     PartnerMembershipRepository,
 )
-from nexus_api.services import principal_access
+from nexus_api.services import invitation_reissue, principal_access
 from nexus_api.services.email_catalog import (
-    ROLE_LABELS,
-    EmailKind,
-    console_link,
     email_locale,
-    format_day,
 )
 from nexus_api.services.local_exec_policy import LocalExecPolicyRepository
 from nexus_api.services.membership_limits import (
@@ -152,29 +148,18 @@ async def _send_invite(
     expires_at: datetime,
     accept_path: str,
 ) -> bool:
-    """``team_invite``. Never raises: ``send_template`` answers whether it went."""
-    from nexus_api.services.email import send_template
-
-    inviter = principal.membership.display_name or principal.membership.email
-    partner = principal.partner.name
-    subject = (
-        f"{inviter} invited you to join {partner} on Auphere"
-        if locale == "en"
-        else f"{inviter} te ha invitado a unirte a {partner} en Auphere"
-    )
-    return await send_template(
-        EmailKind.TEAM_INVITE,
-        to=to,
-        subject=subject,
-        variables={
-            "INVITER": inviter,
-            "PARTNER_NAME": partner,
-            "ROLE_LABEL": ROLE_LABELS[locale].get(role, role),
-            "EXPIRES_ON": format_day(expires_at.date(), locale),
-            "ACCEPT_URL": console_link(accept_path),
-        },
-        locale=locale,
+    """``team_invite``. Never raises: ``send_template`` answers whether it went.
+    The mail itself lives in ``invitation_reissue`` (spec 055), which also sends
+    it again when the invited person asks to recover a password they never had."""
+    return await invitation_reissue.send_team_invite(
+        inviter=principal.membership.display_name or principal.membership.email,
         partner_id=principal.partner.id,
+        partner_name=principal.partner.name,
+        to=to,
+        role=role,
+        locale=locale,
+        expires_at=expires_at,
+        accept_path=accept_path,
     )
 
 

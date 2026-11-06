@@ -2982,6 +2982,8 @@ export interface components {
             /** Name */
             name: string;
             price?: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceIn"];
+            /** Price Currency */
+            price_currency?: string | null;
         };
         /**
          * LiteServicePatchIn
@@ -2995,6 +2997,8 @@ export interface components {
             /** Duration Min */
             duration_min?: number | null;
             price?: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceIn"] | null;
+            /** Price Currency */
+            price_currency?: string | null;
         };
         /** LiteSpendMonthOut */
         LiteSpendMonthOut: {
@@ -3309,10 +3313,14 @@ export interface components {
         };
         /** ServiceIn */
         nexus_api__api__console__lite__reservas_schemas__ServiceIn: {
+            /** Category */
+            category?: string | null;
             /** Duration Minutes */
             duration_minutes: number;
             /** Name */
             name: string;
+            /** Price Currency */
+            price_currency?: string | null;
             /** Price Minor */
             price_minor?: number | null;
             /** Staff Ids */
@@ -3322,6 +3330,8 @@ export interface components {
         nexus_api__api__console__lite__reservas_schemas__ServiceOut: {
             /** Archived */
             archived: boolean;
+            /** Category */
+            category?: string | null;
             /** Duration Minutes */
             duration_minutes: number;
             /**
@@ -3346,6 +3356,8 @@ export interface components {
         nexus_api__api__console__lite__reservas_schemas__ServicePatchIn: {
             /** All Staff */
             all_staff?: boolean | null;
+            /** Category */
+            category?: string | null;
             /**
              * Clear Price
              * @default false
@@ -3357,6 +3369,8 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+            /** Price Currency */
+            price_currency?: string | null;
             /** Price Minor */
             price_minor?: number | null;
             /** Staff Ids */
@@ -3382,12 +3396,16 @@ export interface components {
             archived: boolean;
             /** Bookable */
             bookable: boolean;
+            /** Category */
+            category?: string | null;
             /** Currency */
             currency: string;
             /** Description */
             description: string | null;
             /** Duration Min */
             duration_min: number | null;
+            /** Exponent */
+            exponent: number;
             /**
              * Id
              * Format: uuid
@@ -3733,6 +3751,11 @@ export interface components {
             created_id?: string | null;
             /** Currency */
             currency: string;
+            /**
+             * Currency Set
+             * @default true
+             */
+            currency_set: boolean;
             /** Exponent */
             exponent: number;
             /** Items */
@@ -3762,6 +3785,11 @@ export interface components {
             confirmation: components["schemas"]["ConfirmationSettings"];
             /** Currency */
             currency: string;
+            /**
+             * Currency Set
+             * @default true
+             */
+            currency_set: boolean;
             /** Hours Missing */
             hours_missing: boolean;
             /**

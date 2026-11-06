@@ -42,6 +42,7 @@ import {
   NICHE_MAX,
   NO_EDITS,
   canSubmit,
+  currencyOptions,
   displayName,
   draftProblems,
   isEuEea,
@@ -292,7 +293,7 @@ export function ClientModal({ mode, open, onOpenChange, initial, onCreated, onSa
             >
               {t("business.settings.toggle")}
               {/* Como el prototipo: lo que se va a guardar, sin abrir. */}
-              <span className="font-normal text-muted-foreground">{` · ${settings.timezone.replaceAll("_", " ")} · ${settings.wallet_currency}`}</span>
+              <span className="font-normal text-muted-foreground">{` · ${settings.timezone.replaceAll("_", " ")} · ${settings.price_currency ?? t("business.settings.priceCurrencyNone")}`}</span>
               <ChevronDown aria-hidden="true" className={more ? "rotate-180 transition-transform motion-reduce:transition-none" : "transition-transform motion-reduce:transition-none"} />
             </Button>
             <div id={ids.more} hidden={!more} className={more ? "grid min-w-0 gap-3 sm:grid-cols-2" : "hidden"}>
@@ -392,9 +393,9 @@ function LinkChips({
 }
 
 /**
- * «Más ajustes», como el prototipo aprobado: la zona horaria y la moneda (euros
- * o dólares). El país, la moneda de los precios y «Solo UE» se deducen de lo
- * escrito y se cambian después en Datos básicos.
+ * «Más ajustes»: la zona horaria y las dos monedas, cada una con su nombre (spec
+ * 055, D1: un «Moneda» a secas hacía creer que era la de los precios). El país y
+ * «Solo UE» se deducen de lo escrito y se cambian después en Datos básicos.
  */
 function MoreSettings({
   settings,
@@ -421,7 +422,24 @@ function MoreSettings({
           </NativeSelect>
         )}
       </Field>
-      <Field label={t("business.settings.currency")} hint={t("business.settings.walletCurrency.hint")}>
+      <Field label={t("business.settings.priceCurrency")} hint={t("business.settings.priceCurrency.hint")}>
+        {(a11y) => (
+          <NativeSelect
+            {...a11y}
+            value={settings.price_currency ?? ""}
+            onChange={(e) => onChange("price_currency", e.target.value || null)}
+            wrapperClassName="w-full"
+          >
+            <option value="">{t("business.settings.priceCurrencyNone")}</option>
+            {currencyOptions(settings.price_currency).map((c) => (
+              <option key={c} value={c}>
+                {`${c} · ${displayName(locale, "currency", c)}`}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
+      </Field>
+      <Field label={t("business.settings.walletCurrency")} hint={t("business.settings.walletCurrency.hint")}>
         {(a11y) => (
           <NativeSelect {...a11y} value={settings.wallet_currency} onChange={(e) => onChange("wallet_currency", e.target.value as Settings["wallet_currency"])} wrapperClassName="w-full">
             {(["EUR", "USD"] as const).map((c) => (

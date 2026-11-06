@@ -36,7 +36,9 @@ import { useReservas } from "../context";
 import { formatMinutes } from "../model/dates";
 import { sameWeek, weekInvalidDays } from "../model/hours";
 import { useIdempotencyKey } from "../model/idempotency";
-import { formatPrice, parsePrice, priceInput } from "../model/money";
+import { byCategory, categoriesOf } from "@/components/business/sections/services-model";
+import { currencyOptions, displayName } from "@/components/clients/client-modal-model";
+import { formatPrice, minorDigits, parsePrice, priceInput } from "../model/money";
 import { failureMessage } from "../model/vocab";
 import { Initials } from "../shared";
 import { HoursEditor } from "./hours-editor";
@@ -295,8 +297,15 @@ function ServicesSection() {
       ) : services.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("reservas.svc.empty")}</p>
       ) : (
+        <div className="grid min-w-0 gap-3">
+          {byCategory(services, locale).map((group, _i, all) => (
+            <div key={group.category ?? ""} className="grid min-w-0 gap-1" data-slot="service-category">
+              {/* Spec 055 (requisito 7.4): sin ninguna categoría, la lista de siempre. */}
+              {all.some((g) => g.category !== null) ? (
+                <h3 className="text-xs font-medium text-muted-foreground">{group.category ?? t("reservas.svc.category.none")}</h3>
+              ) : null}
         <ul className="flex min-w-0 flex-col divide-y divide-border">
-          {services.map((s) => (
+          {group.items.map((s) => (
             <li key={s.id} className="flex min-w-0 flex-wrap items-center gap-3 py-2">
               <span className="flex min-w-0 flex-1 basis-40 flex-col">
                 <span className="truncate text-sm font-medium" title={s.name}>
@@ -318,6 +327,9 @@ function ServicesSection() {
             </li>
           ))}
         </ul>
+            </div>
+          ))}
+        </div>
       )}
       {editing ? <ServiceDialog service={editing === "new" ? null : editing} onClose={() => setEditing(null)} /> : null}
       <ConfirmDialog
@@ -343,13 +355,19 @@ function ServicesSection() {
 }
 
 function ServiceDialog({ service, onClose }: { service: ReservasService | null; onClose: () => void }) {
-  const { t, data, settings, refresh } = useReservas();
+  const { t, locale, data, settings, refresh } = useReservas();
   const key = useIdempotencyKey();
-  const currency = service?.price?.currency ?? settings.currency;
+  // Spec 055 (requisitos 3.1 y 3.2): un importe es de la moneda del negocio; sin
+  // ninguna, se elige aquí y queda para todos sus precios.
+  const unset = settings.currency_set === false;
+  const [chosen, setChosen] = React.useState("");
+  const currency = unset ? chosen || "USD" : settings.currency;
   const team = data.staff ?? [];
   const [name, setName] = React.useState(service?.name ?? "");
+  const [category, setCategory] = React.useState(service?.category ?? "");
+  const categories = categoriesOf(data.services ?? [], locale);
   const [duration, setDuration] = React.useState<number>(service?.duration_minutes ?? 30);
-  const [price, setPrice] = React.useState(priceInput(service?.price?.amount_minor, currency));
+  const [price, setPrice] = React.useState(priceInput(service?.price?.amount_minor, service?.price?.currency ?? currency));
   const [who, setWho] = React.useState<"all" | "some">(service?.staff ?? "all");
   const [some, setSome] = React.useState<string[]>(service?.staff_ids ?? []);
   const [touched, setTouched] = React.useState(false);
@@ -357,7 +375,9 @@ function ServiceDialog({ service, onClose }: { service: ReservasService | null; 
   const [error, setError] = React.useState<string | null>(null);
   const parsed = parsePrice(price, currency);
   const durations = DURATIONS.includes(duration as (typeof DURATIONS)[number]) ? [...DURATIONS] : [...DURATIONS, duration].sort((a, b) => a - b);
-  const ready = name.trim() !== "" && parsed.kind !== "invalid" && (who === "all" || some.length > 0);
+  const needsCurrency = unset && parsed.kind === "ok" && !chosen;
+  const decimals = minorDigits(currency) > 0;
+  const ready = name.trim() !== "" && parsed.kind !== "invalid" && !needsCurrency && (who === "all" || some.length > 0);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -370,6 +390,8 @@ function ServiceDialog({ service, onClose }: { service: ReservasService | null; 
       duration_minutes: duration,
       price_minor: parsed.kind === "ok" ? parsed.minor : null,
       staff_ids: who === "all" ? null : some,
+      category: category.trim() || null,
+      ...(unset && parsed.kind === "ok" ? { price_currency: chosen } : {}),
     };
     try {
       const res = service
@@ -401,6 +423,18 @@ function ServiceDialog({ service, onClose }: { service: ReservasService | null; 
           <Field label={t("reservas.svc.name")} required requiredLabel={t("reservas.required")} error={touched && !name.trim() ? t("reservas.form.nameRequired") : null}>
             {(a11y) => <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("reservas.svc.name.placeholder")} maxLength={120} />}
           </Field>
+          <Field label={t("reservas.svc.category")} optionalLabel={t("reservas.optional")} hint={t("reservas.svc.category.hint")}>
+            {(a11y) => (
+              <>
+                <Input {...a11y} value={category} maxLength={40} list="reservas-svc-categories" autoComplete="off" onChange={(e) => setCategory(e.target.value)} />
+                <datalist id="reservas-svc-categories">
+                  {categories.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </>
+            )}
+          </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={t("reservas.svc.duration")}>
               {(a11y) => (
@@ -416,12 +450,32 @@ function ServiceDialog({ service, onClose }: { service: ReservasService | null; 
             <Field
               label={t("reservas.svc.price")}
               optionalLabel={t("reservas.optional")}
-              hint={t("reservas.svc.price.hint", { currency })}
-              error={parsed.kind === "invalid" ? t("reservas.svc.price.invalid") : null}
+              hint={unset && !chosen ? undefined : t("reservas.svc.price.hint", { currency })}
+              error={parsed.kind === "invalid" ? t(decimals ? "reservas.svc.price.invalid.decimals" : "reservas.svc.price.invalid") : null}
             >
-              {(a11y) => <Input {...a11y} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="15000" maxLength={16} />}
+              {(a11y) => <Input {...a11y} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={decimals ? (locale === "en" ? "15.50" : "15,50") : "15000"} maxLength={16} />}
             </Field>
           </div>
+          {unset && parsed.kind === "ok" ? (
+            <Field
+              label={t("reservas.svc.currency")}
+              required
+              requiredLabel={t("reservas.required")}
+              hint={t("reservas.svc.currency.hint")}
+              error={touched && !chosen ? t("reservas.svc.currency.required") : null}
+            >
+              {(a11y) => (
+                <NativeSelect {...a11y} value={chosen} onChange={(e) => setChosen(e.target.value)} wrapperClassName="w-full">
+                  <option value="">{t("reservas.svc.currency.choose")}</option>
+                  {currencyOptions(null).map((c) => (
+                    <option key={c} value={c}>
+                      {`${c} · ${displayName(locale, "currency", c)}`}
+                    </option>
+                  ))}
+                </NativeSelect>
+              )}
+            </Field>
+          ) : null}
           <fieldset className="grid gap-2">
             <legend className="mb-2 text-sm font-medium">{t("reservas.svc.who")}</legend>
             <label className="flex items-center gap-3 text-sm">

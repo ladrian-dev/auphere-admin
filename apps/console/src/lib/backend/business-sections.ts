@@ -57,7 +57,7 @@ export type Basics = SectionMeta & {
    */
   sector?: Sector | null;
 };
-export type BasicsBody = Partial<Omit<Basics, keyof SectionMeta | "sector">> & { sector?: SectorBody };
+export type BasicsBody = Partial<Omit<Basics, keyof SectionMeta | "sector">> & { sector?: SectorBody; confirm_price_change?: boolean };
 
 /** Las cuatro políticas del negocio (requisito 8.1), tal cual entran en el prompt. */
 export const POLICY_KEYS = ["cancellation", "payments", "deposit", "no_show"] as const;
@@ -125,17 +125,23 @@ export type Service = {
   id: string;
   name: string;
   description: string | null;
+  /** Spec 055: lo que lo agrupa; `null` es sin categoría. */
+  category?: string | null;
   bookable: boolean;
   duration_min: number | null;
   price: Price;
   currency: string;
+  /** Spec 055: los decimales de la moneda de esta fila. */
+  exponent?: number;
   staff: "all" | string[];
   agents: { mode: "all_agents" | "list"; agent_ids: string[] };
   used_by: AgentRef[];
   archived: boolean;
 };
 export type Services = SectionMeta & {
+  /** Spec 055: sin moneda elegida llega `XXX` con `currency_set: false`; no se inventa una. */
   currency: string;
+  currency_set?: boolean;
   exponent: number;
   items: Service[];
   agents: AgentOption[];
@@ -147,6 +153,9 @@ export type ServiceBody = {
   bookable?: boolean;
   duration_min?: number | null;
   price?: Price;
+  /** Spec 055: la moneda elegida en el modal, si el negocio aún no tiene. */
+  price_currency?: string;
+  category?: string | null;
 };
 
 export function businessSectionsApi(call: Call) {

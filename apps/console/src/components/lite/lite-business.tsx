@@ -204,7 +204,7 @@ export function LiteBusinessView({ initial, actions = SERVER_ACTIONS }: { initia
           load={(b) => sections.hours.load(b)}
         />
         <SpecialDatesSection refId="" specialDates={data.special_dates} locations={live} canWrite={data.special_dates.allowed.includes("edit")} actions={sections.special} />
-        <ServicesSection refId="" services={data.services} canWrite={data.services.allowed.includes("edit")} actions={sections.services} renameable={false} />
+        <ServicesSection refId="" services={data.services} canWrite={data.services.allowed.includes("edit")} actions={sections.services} renameable={false} categorizable={false} />
         <LocationsSection
           refId=""
           locations={data.locations}

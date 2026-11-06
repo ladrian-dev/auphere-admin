@@ -11,6 +11,7 @@ vi.mock("@/app/(console)/clients/[ref]/business/actions", () => ({
   saveHoursAction: vi.fn(),
   loadHoursAction: vi.fn(),
   saveBasicsAction: vi.fn(),
+  savePoliciesAction: vi.fn(),
   createLocationAction: vi.fn(),
   updateLocationAction: vi.fn(),
   archiveLocationAction: vi.fn(),
@@ -207,6 +208,97 @@ describe("BusinessSectionsView", () => {
     await userEvent.click(links.getByRole("button", { name: "Guardar redes" }));
     expect(putLinksAction).toHaveBeenCalledWith({ ref: "barberia-cultor", revision: 0, links: [{ network: "instagram", handle: "cultorbarber" }] });
     await vi.waitFor(() => expect(links.queryByText("Falta")).toBeNull());
+  });
+
+  describe("spec 055: the price currency", () => {
+    it("Datos básicos offers country and currency as lists, and asks before moving prices", async () => {
+      const { saveBasicsAction } = await import("@/app/(console)/clients/[ref]/business/actions");
+      const save = vi.mocked(saveBasicsAction);
+      save.mockReset();
+      save.mockResolvedValueOnce({ ok: false, status: 409, message: "", code: "prices_would_change", info: { count: 3, rounds: false } });
+      save.mockResolvedValueOnce(ok({ ...BASICS, revision: 2, price_currency: "USD" }));
+      const user = userEvent.setup();
+      page();
+      const basics = within(screen.getByRole("region", { name: "Datos básicos" }));
+      await user.click(basics.getByRole("button", { name: "Editar Datos básicos" }));
+      expect(basics.getByRole("combobox", { name: /País/ })).toHaveValue("ES");
+      await user.selectOptions(basics.getByRole("combobox", { name: /Moneda de los precios/ }), "USD");
+      await user.click(basics.getByRole("button", { name: "Guardar datos básicos" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText(/3 servicios con precio pasarán a USD con el mismo número/)).toBeVisible();
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(save.mock.calls[0]?.[0]).toMatchObject({ body: { price_currency: "USD" } });
+      await user.click(within(dialog).getByRole("button", { name: "Cambiar la moneda" }));
+      await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      expect(save.mock.calls[1]?.[0]).toMatchObject({ body: { price_currency: "USD", confirm_price_change: true } });
+    });
+
+    it("cancelling the warning saves nothing", async () => {
+      const { saveBasicsAction } = await import("@/app/(console)/clients/[ref]/business/actions");
+      const save = vi.mocked(saveBasicsAction);
+      save.mockReset();
+      save.mockResolvedValueOnce({ ok: false, status: 409, message: "", code: "prices_would_change", info: { count: 1, rounds: true } });
+      const user = userEvent.setup();
+      page();
+      const basics = within(screen.getByRole("region", { name: "Datos básicos" }));
+      await user.click(basics.getByRole("button", { name: "Editar Datos básicos" }));
+      await user.selectOptions(basics.getByRole("combobox", { name: /Moneda de los precios/ }), "CLP");
+      await user.click(basics.getByRole("button", { name: "Guardar datos básicos" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText(/CLP no usa decimales/)).toBeVisible();
+      await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("spec 055: the index mark changes when a section saves", () => {
+    const index = () => within(screen.getByRole("navigation", { name: "Secciones de Negocio" }));
+
+    it("saving Horarios marks it complete without reloading", async () => {
+      const { saveHoursAction } = await import("@/app/(console)/clients/[ref]/business/actions");
+      vi.mocked(saveHoursAction).mockResolvedValueOnce(ok({ ...HOURS, revision: 1, state: "complete" as const }));
+      const user = userEvent.setup();
+      page();
+      expect(index().getByRole("link", { name: /Horarios.*Pendiente/ })).toBeVisible();
+      const hours = within(screen.getByRole("region", { name: "Horarios" }));
+      await user.click(hours.getByRole("button", { name: "Editar Horarios" }));
+      await user.click(hours.getByRole("button", { name: "Guardar horario" }));
+      await vi.waitFor(() => expect(index().getByRole("link", { name: /Horarios.*Completa/ })).toBeVisible());
+    });
+
+    it("saving Datos básicos marks it complete, and a failed save leaves the mark alone", async () => {
+      const { saveBasicsAction } = await import("@/app/(console)/clients/[ref]/business/actions");
+      const user = userEvent.setup();
+      page({ basics: ok({ ...BASICS, state: "pending" as const }) });
+      const basics = within(screen.getByRole("region", { name: "Datos básicos" }));
+      await user.click(basics.getByRole("button", { name: "Editar Datos básicos" }));
+      vi.mocked(saveBasicsAction).mockResolvedValueOnce({ ok: false, status: 503, message: "down" });
+      await user.click(basics.getByRole("button", { name: "Guardar datos básicos" }));
+      await vi.waitFor(() => expect(basics.getByRole("alert")).toBeVisible());
+      expect(index().getByRole("link", { name: /Datos básicos.*Pendiente/ })).toBeVisible();
+      vi.mocked(saveBasicsAction).mockResolvedValueOnce(ok({ ...BASICS, revision: 2, state: "complete" as const }));
+      await user.click(basics.getByRole("button", { name: "Guardar datos básicos" }));
+      await vi.waitFor(() => expect(index().getByRole("link", { name: /Datos básicos.*Completa/ })).toBeVisible());
+    });
+
+    it("saving Políticas marks it complete", async () => {
+      const { savePoliciesAction } = await import("@/app/(console)/clients/[ref]/business/actions");
+      const policies = { ...meta, revision: 0, state: "pending" as const, cancellation: null, payments: null, deposit: null, no_show: null };
+      vi.mocked(savePoliciesAction).mockResolvedValueOnce(ok({ ...policies, revision: 1, state: "complete" as const, cancellation: "24 h" }));
+      const user = userEvent.setup();
+      page({ policies: ok(policies) });
+      const section = within(screen.getByRole("region", { name: "Políticas" }));
+      await user.click(section.getByRole("button", { name: "Editar Políticas" }));
+      await user.click(section.getByRole("button", { name: "Guardar políticas" }));
+      await vi.waitFor(() => expect(index().getByRole("link", { name: /Políticas.*Completa/ })).toBeVisible());
+    });
+
+    it("«Es correcto» marks the section complete in the index too", async () => {
+      const user = userEvent.setup();
+      page();
+      await user.click(within(screen.getByRole("region", { name: "Servicios" })).getByRole("button", { name: "Es correcto" }));
+      await vi.waitFor(() => expect(index().getByRole("link", { name: /Servicios.*Completa/ })).toBeVisible());
+    });
   });
 
   it("the index scrolls sideways on a phone without widening the page", () => {

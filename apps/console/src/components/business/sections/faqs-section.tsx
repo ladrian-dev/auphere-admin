@@ -9,11 +9,11 @@ import { Button, Field, Input, Textarea } from "@nexus/ui";
 import { archiveFaqAction, createFaqAction, reloadSectionAction, updateFaqAction } from "@/app/(console)/clients/[ref]/business/actions";
 import { decideSuggestionAction } from "@/app/(console)/clients/[ref]/client-v2-actions";
 import { useT } from "@/i18n/client";
-import type { Faq, FaqBody, FaqPatch, Faqs } from "@/lib/backend/business-sections";
+import type { Faq, FaqBody, FaqPatch, Faqs, SectionState } from "@/lib/backend/business-sections";
 import type { Suggestion } from "@/lib/backend/client-records";
 
 import { asFaq, faqSuggestions, sourceKey, type FaqValue } from "./proposals-model";
-import { ConflictNotice, SectionFrame, problemOf, useSectionEdit, type Result } from "./section-frame";
+import { ConflictNotice, SectionFrame, problemOf, useReportState, useSectionEdit, type Result } from "./section-frame";
 import { SuggestionCard, type Decision } from "./suggestion-card";
 
 export type FaqsActions = {
@@ -48,16 +48,19 @@ export function FaqsSection({
   suggestions: initialSuggestions,
   canWrite,
   actions = SERVER_ACTIONS,
+  onStateChange,
 }: {
   refId: string;
   faqs: Faqs;
   suggestions: Suggestion[] | null;
   canWrite: boolean;
   actions?: FaqsActions;
+  onStateChange?: (state: SectionState) => void;
 }) {
   const t = useT();
   const suggestedId = React.useId();
   const [faqs, setFaqs] = React.useState(initial);
+  useReportState(faqs.state, onStateChange);
   const [suggestions, setSuggestions] = React.useState(() => (initialSuggestions ? faqSuggestions(initialSuggestions) : null));
   const add = useSectionEdit("business-faqs");
   const confirmed = faqs.items.filter((f) => !f.suggested);

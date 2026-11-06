@@ -127,20 +127,27 @@ describe("ClientModal · Nuevo cliente", () => {
     await user.type(within(dialog).getByRole("textbox", { name: /Información adicional/ }), "flor-y-encanto.cl");
     await within(dialog).findByRole("list", { name: "Enlaces que irán a la ficha" });
     const toggle = within(dialog).getByRole("button", { name: /Más ajustes/ });
-    expect(toggle).toHaveTextContent("Más ajustes · America/Santiago · USD");
+    expect(toggle).toHaveTextContent("Más ajustes · America/Santiago · CLP");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(within(dialog).getByRole("combobox", { name: "Zona horaria" })).toHaveValue("America/Santiago");
-    const currency = within(dialog).getByRole("combobox", { name: "Moneda" });
+    const currency = within(dialog).getByRole("combobox", { name: /Moneda del saldo en Auphere/ });
     expect(currency).toHaveValue("USD");
     expect(within(currency).getAllByRole("option").map((o) => o.getAttribute("value"))).toEqual(["EUR", "USD"]);
-    // El país, la moneda de los precios y «Solo UE» se deducen y no se piden.
+    // El país y «Solo UE» se deducen y no se piden.
     expect(within(dialog).queryByRole("combobox", { name: "País" })).toBeNull();
-    expect(within(dialog).queryByRole("combobox", { name: /Moneda de los precios/ })).toBeNull();
+    // Spec 055 (D1): las dos monedas, cada una con su nombre.
+    expect(within(dialog).getByRole("combobox", { name: /Moneda de los precios/ })).toBeVisible();
     expect(within(dialog).queryByRole("switch", { name: "Solo UE" })).toBeNull();
+    // Spec 055 (D1): el resumen dice la de los precios, y elegir el saldo no la cambia.
     await user.selectOptions(currency, "EUR");
-    expect(toggle).toHaveTextContent("Más ajustes · America/Santiago · EUR");
+    expect(toggle).toHaveTextContent("Más ajustes · America/Santiago · CLP");
+    const prices = within(dialog).getByRole("combobox", { name: /Moneda de los precios/ });
+    expect(prices).toHaveValue("CLP");
+    await user.selectOptions(prices, "USD");
+    expect(toggle).toHaveTextContent("Más ajustes · America/Santiago · USD");
+    expect(currency).toHaveValue("EUR");
   });
 
   it("los ejemplos de los campos no aluden a ningún nicho", () => {

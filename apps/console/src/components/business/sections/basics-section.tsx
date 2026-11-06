@@ -3,16 +3,17 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Field, Input, NativeSelect, StatusBadge, Textarea } from "@nexus/ui";
+import { Button, ConfirmDialog, Field, Input, NativeSelect, StatusBadge, Textarea } from "@nexus/ui";
 
 import { reloadSectionAction, saveBasicsAction } from "@/app/(console)/clients/[ref]/business/actions";
 import { decideSuggestionAction } from "@/app/(console)/clients/[ref]/client-v2-actions";
-import { useT } from "@/i18n/client";
-import type { Basics, BasicsBody, Sector, SectorOption } from "@/lib/backend/business-sections";
+import { countryOptions, currencyOptions, displayName } from "@/components/clients/client-modal-model";
+import { useLocale, useT } from "@/i18n/client";
+import type { Basics, BasicsBody, SectionState, Sector, SectorOption } from "@/lib/backend/business-sections";
 import type { Suggestion } from "@/lib/backend/client-records";
 
 import { sectorLabelOf } from "./proposals-model";
-import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useSectionEdit, type Result } from "./section-frame";
+import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useReportState, useSectionEdit, type Result } from "./section-frame";
 
 type Save = (body: { ref: string; revision: number; body: BasicsBody }) => Promise<Result<Basics>>;
 type Decide = (body: { ref: string; id: string; decision: "accept" | "discard" }) => Promise<Result<unknown>>;
@@ -51,6 +52,8 @@ export function BasicsSection({
   save = (b) => saveBasicsAction(b),
   decide = (b) => decideSuggestionAction(b),
   reload = (b) => reloadSectionAction(b),
+  onStateChange,
+  onPriceCurrencyChange,
 }: {
   refId: string;
   basics: Basics;
@@ -62,8 +65,12 @@ export function BasicsSection({
   save?: Save;
   decide?: Decide;
   reload?: Reload;
+  onStateChange?: (state: SectionState) => void;
+  /** Spec 055: la moneda cambió, y con ella los servicios y su revisión. */
+  onPriceCurrencyChange?: () => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const [basics, setBasics] = React.useState(initial);
   const [values, setValues] = React.useState(() => valuesOf(initial));
   const [euOnly, setEuOnly] = React.useState(initial.eu_only);
@@ -73,8 +80,11 @@ export function BasicsSection({
   // La propuesta de sector que se está decidiendo: sus botones esperan (un doble clic no la manda dos veces).
   const [deciding, setDeciding] = React.useState<"accept" | "discard" | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
+  // Spec 055 (requisito 3.3): lo que dijo la API antes de cambiar la moneda.
+  const [priceChange, setPriceChange] = React.useState<{ currency: string; count: number; rounds: boolean } | null>(null);
   const [pending, startTransition] = React.useTransition();
   const edit = useSectionEdit("business-basics");
+  useReportState(basics.state, onStateChange);
   const hasSector = basics.sector !== undefined;
   const options = sectorOptions(sectors?.ok ? sectors.data : [], basics.sector ?? null);
 
@@ -113,6 +123,10 @@ export function BasicsSection({
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    send(false);
+  }
+
+  function send(confirmPriceChange: boolean) {
     const before = valuesOf(basics);
     const body: BasicsBody = {};
     for (const key of FIELDS) {
@@ -129,9 +143,12 @@ export function BasicsSection({
     }
     setSectorError(null);
     if (changed) body.sector = changed;
+    if (confirmPriceChange) body.confirm_price_change = true;
     startTransition(async () => {
       const res = await save({ ref: refId, revision: basics.revision, body });
       if (res.ok) {
+        const currencyChanged = res.data.price_currency !== basics.price_currency;
+        setPriceChange(null);
         setBasics(res.data);
         setValues(valuesOf(res.data));
         setEuOnly(res.data.eu_only);
@@ -139,8 +156,14 @@ export function BasicsSection({
         setProblem(null);
         edit.close();
         toast.success(t("business.section.saved"));
+        if (currencyChanged) onPriceCurrencyChange?.();
         return;
       }
+      if (res.status === 409 && res.code === "prices_would_change") {
+        setPriceChange({ currency: values.price_currency.trim().toUpperCase(), count: Number(res.info?.count ?? 0), rounds: Boolean(res.info?.rounds) });
+        return;
+      }
+      setPriceChange(null);
       const code = problemOf(res);
       setProblem(
         code === "conflict"
@@ -189,14 +212,26 @@ export function BasicsSection({
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             {FIELDS.filter((k) => k !== "info").map((key) => (
               <Field key={key} label={label[key]} required={REQUIRED.has(key)} className="min-w-0">
-                {(a11y) => (
+                {(a11y) =>
+                  // Spec 055 (D11): país y moneda se eligen; escribirlos es la forma fácil de equivocarse.
+                  key === "country" || key === "price_currency" ? (
+                    <NativeSelect {...a11y} value={values[key]} onChange={(e) => setValues({ ...values, [key]: e.target.value })} wrapperClassName="w-full">
+                      {!values[key] ? <option value="">{t("business.basics.none")}</option> : null}
+                      {(key === "country" ? countryOptions(values[key]) : currencyOptions(values[key])).map((code) => (
+                        <option key={code} value={code}>
+                          {`${code} · ${displayName(locale, key === "country" ? "region" : "currency", code)}`}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  ) : (
                   <Input
                     {...a11y}
                     value={values[key]}
                     maxLength={key === "name" ? 60 : key === "niche" ? 80 : key === "website" ? 300 : 64}
                     onChange={(e) => setValues({ ...values, [key]: e.target.value })}
                   />
-                )}
+                  )
+                }
               </Field>
             ))}
           </div>
@@ -294,6 +329,28 @@ export function BasicsSection({
           ]}
         />
       )}
+      <ConfirmDialog
+        open={priceChange !== null}
+        onOpenChange={(open) => {
+          if (!open) setPriceChange(null);
+        }}
+        title={priceChange ? t("business.basics.currency_change.title", { currency: priceChange.currency }) : ""}
+        description={
+          priceChange
+            ? [
+                priceChange.count === 1
+                  ? t("business.basics.currency_change.one", { currency: priceChange.currency })
+                  : t("business.basics.currency_change.other", { count: priceChange.count, currency: priceChange.currency }),
+                priceChange.rounds ? t("business.basics.currency_change.rounds", { currency: priceChange.currency }) : "",
+              ]
+                .filter(Boolean)
+                .join(" ")
+            : ""
+        }
+        confirmLabel={t("business.basics.currency_change.confirm")}
+        cancelLabel={t("business.section.cancel")}
+        onConfirm={() => send(true)}
+      />
     </SectionFrame>
   );
 }

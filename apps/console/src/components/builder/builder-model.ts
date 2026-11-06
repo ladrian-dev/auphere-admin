@@ -89,6 +89,17 @@ export function cleanName(name: string): string {
   return name.split(/\s+/).filter(Boolean).join(" ");
 }
 
+/**
+ * Spec 055 (requisito 5): un ejemplo se añade a lo escrito, en un párrafo aparte,
+ * y nunca se recorta ni pisa nada. Si no cabe entero, lo dice y no cambia el texto.
+ */
+export function withExample(current: string, example: string, max: number): { kind: "ok"; text: string } | { kind: "already" } | { kind: "no_room" } {
+  const written = current.trimEnd();
+  if (written.includes(example)) return { kind: "already" };
+  const text = written ? `${written}\n\n${example}` : example;
+  return text.length > max ? { kind: "no_room" } : { kind: "ok", text };
+}
+
 export type DescribeProblem = "name" | "description" | null;
 
 /** ¿Se puede pedir «Generar borrador»? Los mismos límites que la API (17.1). */

@@ -32,6 +32,7 @@ import {
   groupTemplates,
   nextDelay,
   sleep,
+  withExample,
   type Result,
   type StepState,
 } from "./builder-model";
@@ -69,7 +70,7 @@ const LINK = "cursor-pointer font-medium text-primary-text underline underline-o
  * y la barra de vidrio abajo—.
  *
  * - **Describir** (§3.1): a la izquierda el nombre, «¿Qué tiene que hacer?» y
- *   cuatro ejemplos que la rellenan (y el nombre, si está vacío); debajo, discreto,
+ *   cuatro ejemplos que se añaden a ella (y el nombre, si está vacío); debajo, discreto,
  *   «Otras formas de empezar»: una plantilla (por grupos, la del partner primero y
  *   sin elegir sola) o en blanco (17.8, 17.9). A la derecha, «Probar el agente ·
  *   Aún no». La barra dice qué falta y «Generar borrador» espera a que esté.
@@ -316,12 +317,17 @@ export function BuilderNew({
     setJobId(res.data.job_id);
   }
 
-  /** Un ejemplo sustituye la descripción y, si no hay nombre, pone el suyo (§3.1). */
+  /** Un ejemplo se añade a la descripción y, si no hay nombre, pone el suyo (§3.1; spec 055, requisito 5). */
   function pickExample(key: (typeof EXAMPLES)[number]) {
-    setDescription(t(`agentProto.new.example.${key}.text` as MessageKey).slice(0, limits.description_max));
+    const added = withExample(description, t(`agentProto.new.example.${key}.text` as MessageKey), limits.description_max);
+    descriptionRef.current?.focus();
+    if (added.kind === "no_room") {
+      setErrors((prev) => ({ ...prev, description: t("agentProto.new.example.noRoom") }));
+      return;
+    }
+    if (added.kind === "ok") setDescription(added.text);
     if (!cleanName(name)) setName(t(`agentProto.new.example.${key}.name` as MessageKey).slice(0, nameMax));
     setErrors((prev) => ({ ...prev, name: undefined, description: undefined }));
-    descriptionRef.current?.focus();
   }
 
   function toggleTemplates() {

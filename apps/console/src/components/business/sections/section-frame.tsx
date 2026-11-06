@@ -41,6 +41,21 @@ export function useSectionEdit(id: string) {
 }
 
 /**
+ * Spec 055 (requisito 4): avisa al índice cuando cambia el estado de la sección,
+ * venga de donde venga: guardar, «Es correcto», aceptar algo sugerido o releer.
+ * El estado sale de la respuesta de la API, así que un guardado fallido no avisa.
+ */
+export function useReportState(state: SectionState, report?: (state: SectionState) => void) {
+  const latest = React.useRef(report);
+  React.useEffect(() => {
+    latest.current = report;
+  });
+  React.useEffect(() => {
+    latest.current?.(state);
+  }, [state]);
+}
+
+/**
  * La marca del índice (prototipo): un círculo de 16 px. Completa, con su ✓;
  * leída de la web, con el globo; pendiente, un anillo; opcional, el anillo al
  * 50 %. El nombre del estado va para los lectores de pantalla.
