@@ -228,7 +228,8 @@ async def test_without_a_guide_one_is_generated_for_the_client_from_the_label_al
     assert "Clase de prueba" in builder.prompt, "el borrador recibe la guía generada"
 
     sector_tests = await _tests(db_session, gym, "sector")
-    assert len(sector_tests) == 12
+    # De las 12 de la guía, las críticas y hasta 8 entre el caso y el sector (66.2).
+    assert 0 < len(sector_tests) <= 12
     assert {t.generated_guide_id for t in sector_tests} == {guide.id}
     listed = await client.get(
         f"/console/clients/{gym.ref}/agents/{body['result']['agent_id']}/tests",
@@ -289,7 +290,7 @@ async def test_a_converted_guide_is_used_instead_of_generating(
     assert builder.guide_calls == []
     assert "¿Tenéis piscina?" in builder.prompt
     sector_tests = await _tests(db_session, gym, "sector")
-    assert len(sector_tests) == 12
+    assert 0 < len(sector_tests) <= 12
     assert all(
         t.sector_test_ref and t.sector_test_ref.startswith("gimnasio@1#") for t in sector_tests
     )
@@ -322,8 +323,13 @@ async def test_from_a_template_is_a_structured_agent_with_case_and_sector_tests(
     tools = cfg.spec.get("tools") or []
     assert any(t.startswith("reservas.") for t in tools)
     assert not [t for t in tools if t.startswith("booking.")]
-    assert len(await _tests(db_session, biz, "case")) >= 6
-    assert len(await _tests(db_session, biz, "sector")) == 12
+    # Requisito 66: como mucho 4 del caso, y sin repetir lo que ya prueba el sector.
+    case = await _tests(db_session, biz, "case")
+    sector = await _tests(db_session, biz, "sector")
+    assert len(case) <= 4
+    assert sector, "la batería del sector entra aunque el caso no aporte nada"
+    running = [t for t in (*case, *sector) if not t.not_applicable_reason]
+    assert 0 < len(running) <= 8 or all(t.critical for t in running)
 
 
 async def test_the_agenda_only_when_reservas_is_on_for_the_client(

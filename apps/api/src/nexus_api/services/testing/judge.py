@@ -40,6 +40,23 @@ JUDGE_TASK: Final = "judge"
 # ── el estado final ─────────────────────────────────────────────────────────
 
 
+#: Lo que se dice cuando no se cumple: si se esperaba que sí, y si se esperaba que no.
+_IN_WORDS: Final[dict[str, tuple[str, str]]] = {
+    "/escalated": (
+        "tenía que pasar a una persona y no pasó",
+        "no tenía que pasar a una persona y pasó",
+    ),
+    "/booking/created": (
+        "tenía que quedar una cita y no quedó",
+        "no tenía que quedar una cita y quedó",
+    ),
+    "/payment/requested": (
+        "tenía que pedir un pago y no lo pidió",
+        "no tenía que pedir un pago y lo pidió",
+    ),
+}
+
+
 def _subset(expected: Any, actual: Any, path: str, checked: list[str]) -> bool:
     if isinstance(expected, Mapping):
         if not isinstance(actual, Mapping):
@@ -50,23 +67,70 @@ def _subset(expected: Any, actual: Any, path: str, checked: list[str]) -> bool:
             ok = _subset(value, actual.get(key), f"{path}/{key}", checked) and ok
         return ok
     good = bool(expected == actual)
-    checked.append(
-        f"{path}: se esperaba {json.dumps(expected, ensure_ascii=False)} y quedó "
-        f"{json.dumps(actual, ensure_ascii=False)}"
-        if not good
-        else f"{path}: ok"
-    )
+    if good:
+        checked.append(f"{path}: ok")
+    elif path in _IN_WORDS and isinstance(expected, bool):
+        checked.append(_IN_WORDS[path][0 if expected else 1])
+    else:
+        checked.append(
+            f"{path}: se esperaba {json.dumps(expected, ensure_ascii=False)} y quedó "
+            f"{json.dumps(actual, ensure_ascii=False)}"
+        )
     return good
 
 
 #: Claves del estado esperado que solo dicen de dónde sale una respuesta: el
 #: juez las mira, el estado no.
 _ADVISORY: Final = frozenset({"answered_from"})
+#: Lo único que el mundo simulado dice al final (``World.final_state``, y lo fija una
+#: prueba del worker). Una clave que no esté aquí no se puede cumplir nunca: daría un rojo
+#: falso, y una crítica en rojo cierra la puerta (bug
+#: ``las-pruebas-esperan-lo-que-no-se-mide``). ``None``: un valor, sin nada dentro.
+CHECKABLE_STATE: Final[Mapping[str, frozenset[str] | None]] = {
+    "escalated": None,
+    "booking": frozenset({"created", "count"}),
+    "payment": frozenset({"requested"}),
+    "escalation": frozenset({"to"}),
+}
 
 
 def firm_state(expected: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Lo que de verdad se comprueba de un estado esperado."""
-    return {k: v for k, v in (expected or {}).items() if k not in _ADVISORY}
+    """Lo que de verdad se comprueba de un estado esperado: lo que se puede medir."""
+    out: dict[str, Any] = {}
+    for key, value in (expected or {}).items():
+        if key not in CHECKABLE_STATE:
+            continue
+        inner = CHECKABLE_STATE[key]
+        if inner is None:
+            out[key] = value
+        elif isinstance(value, Mapping):
+            kept = {k: v for k, v in value.items() if k in inner}
+            if kept:
+                out[key] = kept
+    return out
+
+
+def clean_state(expected: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Lo que se guarda de un estado esperado: lo que se mide y de dónde sale la respuesta."""
+    advisory = {k: v for k, v in (expected or {}).items() if k in _ADVISORY}
+    return {**advisory, **firm_state(expected)}
+
+
+def unknown_state_keys(expected: Mapping[str, Any] | None) -> list[str]:
+    """Lo que no se puede medir de un estado esperado, para decírselo a quien lo escribió."""
+    unknown: list[str] = []
+    for key, value in (expected or {}).items():
+        if key in _ADVISORY:
+            continue
+        if key not in CHECKABLE_STATE:
+            unknown.append(str(key))
+            continue
+        inner = CHECKABLE_STATE[key]
+        if inner is not None and isinstance(value, Mapping):
+            unknown.extend(f"{key}.{k}" for k in value if k not in inner)
+        elif inner is not None:
+            unknown.append(str(key))
+    return sorted(unknown)
 
 
 def check_state(
@@ -112,7 +176,10 @@ JUDGE_SYSTEM: Final = (
     "Eres el juez de las pruebas de un agente de WhatsApp de un negocio. Lees una "
     "conversación SIMULADA (no hay clientes reales) y decides, criterio a criterio, si el "
     "agente lo cumplió. Para cada criterio responde exactamente uno de: pass, fail, unknown. "
-    "Usa unknown («No sé») si la conversación no te deja saberlo. No inventes criterios. "
+    "En <ficha> tienes los datos reales del negocio: compara con ellos lo que dice el "
+    "agente. Si da un dato que no está en la ficha o la contradice, es fail. "
+    "Usa unknown («No sé») solo si ni la conversación ni la ficha te dejan saberlo. "
+    "No inventes criterios. "
     'Responde solo con JSON: {"dimensions": [{"key": str, "verdict": "pass"|"fail"|"unknown", '
     '"why": str}]}'
 )
@@ -120,7 +187,7 @@ JUDGE_SYSTEM: Final = (
 
 #: Las etiquetas del bloque del juez: nada de lo que va dentro puede abrirlas ni
 #: cerrarlas (T217).
-JUDGE_TAGS: Final = ("conversacion", "acciones", "criterios")
+JUDGE_TAGS: Final = ("conversacion", "acciones", "criterios", "ficha")
 
 
 def judge_messages(
@@ -128,11 +195,15 @@ def judge_messages(
     criteria: Sequence[Mapping[str, Any]],
     transcript: Sequence[Mapping[str, Any]],
     actions: Sequence[str],
+    reference: str | None = None,
 ) -> list[dict[str, str]]:
     """Lo que lee el juez. La conversación la escribieron el borrador y el cliente
     simulado, y los criterios y las acciones salen de la prueba y de lo que hizo el
     agente: todo es dato, y cada trozo pasa por ``inert`` (spec 047, T217) para que
-    un turno no pueda cerrar ``<conversacion>`` y escribirle al juez sus criterios."""
+    un turno no pueda cerrar ``<conversacion>`` y escribirle al juez sus criterios.
+
+    ``reference``: los datos del negocio con los que comparar (66.9). Sin ellos, «dice el
+    horario de la ficha» solo puede salir «No sé». También son dato."""
 
     def safe(value: Any) -> str:
         return inert(str(value or ""), JUDGE_TAGS)
@@ -143,8 +214,9 @@ def judge_messages(
     ]
     crit = "\n".join(f"- {safe(c.get('key'))}: {safe(c.get('text'))}" for c in criteria)
     actions = [safe(a) for a in actions]
+    ficha = f"<ficha>\n{safe(reference)}\n</ficha>\n" if reference else ""
     user = (
-        "<conversacion>\n" + "\n".join(lines) + "\n</conversacion>\n"
+        ficha + "<conversacion>\n" + "\n".join(lines) + "\n</conversacion>\n"
         "<acciones>\n" + "\n".join(actions) + "\n</acciones>\n"
         "<criterios>\n" + crit + "\n</criterios>"
     )

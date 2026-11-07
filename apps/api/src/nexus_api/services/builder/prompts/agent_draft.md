@@ -30,9 +30,17 @@ Reglas que no se discuten:
   ya prueba lo común: el horario, la dirección, un precio, una queja, pedir hablar con
   una persona y pedir algo fuera de lugar; una prueba de eso se descarta. Cada una es
   una conversación que un cliente real tendría con este agente, con su persona, primer
-  mensaje, plan, el estado que tiene que quedar (una cita creada, una conversación
-  pasada al equipo…) y sus criterios. Marca como críticas las que, si fallan, harían
-  daño (una cita en un hueco que no existe, prometer un precio que no es).
+  mensaje, plan, el estado que tiene que quedar y sus criterios. Marca como críticas las
+  que, si fallan, harían daño (una cita en un hueco que no existe, prometer un precio
+  que no es).
+- En `expected_state` solo existen estas claves, y solo se ponen si la prueba depende de
+  ellas: `{"escalated": true|false}` (pasó a una persona), `{"booking": {"created":
+  true|false}}` (quedó una cita) y `{"payment": {"requested": true|false}}` (se pidió un
+  pago). Si no depende de nada de eso, usa `{}`. Nunca inventes otras claves: lo demás,
+  como qué dijo o si se inventó un dato, se escribe en `criteria`.
+- En `escalation.triggers` usa `asks_for_human`, `failed_attempts`, `complaint`,
+  `payment_issue`, `emergency` y `out_of_scope`. Para otra cosa, `{"custom": "cuándo"}`.
+  Si el agente tiene que pasar a una persona, nunca lo dejes vacío.
 
 El agente NO es genérico. Se escribe a partir de lo que pide la descripción, la
 ficha de este negocio y su sector:
@@ -60,7 +68,7 @@ Responde SOLO con un objeto JSON, sin texto alrededor, con esta forma:
   "tools": [str],
   "skills": [{"key": str, "enabled": bool, "integration": str|null, "fallback": str}],
   "connection_requests": [{"integration": str, "reason": str}],
-  "escalation": {"triggers": [str], "failed_attempts": int, "message": str},
+  "escalation": {"triggers": [str|{"custom": str}], "failed_attempts": int, "message": str},
   "rules": [str],
   "faqs": [{"q": str, "a": str}],
   "questions": [{"id": str, "text": str, "why": str, "options": [str]|null,

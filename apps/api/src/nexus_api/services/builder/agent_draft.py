@@ -58,6 +58,7 @@ from nexus_api.services.builder.guides import resolve as guides_resolve
 from nexus_api.services.builder.guides.resolve import ResolvedGuide
 from nexus_api.services.builder.guides.roles import patterns_text, roles_for
 from nexus_api.services.business.compilation import Facts, render_facts
+from nexus_api.services.testing.judge import clean_state, unknown_state_keys
 
 log = structlog.get_logger(__name__)
 
@@ -305,6 +306,7 @@ _ID = re.compile(r"[^a-z0-9_]+")
 _TRIGGERS: Final = frozenset(
     {"asks_for_human", "failed_attempts", "complaint", "payment_issue", "emergency", "out_of_scope"}
 )
+_DEFAULT_TRIGGERS: Final = ("asks_for_human", "failed_attempts", "complaint")
 
 
 def _policy_filled(facts: Facts, pointer: str) -> bool:
@@ -481,11 +483,21 @@ def sanitize(
 
     esc_raw = _mapping(raw.get("escalation"))
     triggers: list[Any] = []
-    for trig in esc_raw.get("triggers") or ["asks_for_human", "failed_attempts", "complaint"]:
-        if isinstance(trig, str) and trig in _TRIGGERS and trig not in triggers:
-            triggers.append(trig)
+    for trig in esc_raw.get("triggers") or []:
+        if isinstance(trig, str) and trig in _TRIGGERS:
+            trigger: Any = trig
+        elif isinstance(trig, str) and trig.strip():
+            # Un disparador en palabras sigue siendo un disparador: tirarlo dejaba al agente
+            # sin pasar nunca a una persona, aunque su descripción lo pidiera.
+            trigger = {"custom": _str(trig, 300)}
         elif isinstance(trig, Mapping) and trig.get("custom"):
-            triggers.append({"custom": _str(trig["custom"], 300)})
+            trigger = {"custom": _str(trig["custom"], 300)}
+        else:
+            continue
+        if trigger not in triggers:
+            triggers.append(trigger)
+    if not triggers:
+        triggers = list(_DEFAULT_TRIGGERS)
     try:
         attempts = min(5, max(1, int(esc_raw.get("failed_attempts") or 2)))
     except (TypeError, ValueError):
@@ -663,6 +675,10 @@ def _tests(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
             if isinstance(c, Mapping) and c.get("text")
         ][:6]
         expected = _mapping(t.get("expected_state"))
+        invented = unknown_state_keys(expected)
+        if invented:
+            # El prompt dice cuáles son. Se cuenta para ver si hay que afinarlo.
+            log.info("builder.tests.state_dropped", test=name, keys=invented)
         out.append(
             {
                 "kind": "case",
@@ -670,7 +686,7 @@ def _tests(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "persona": _text(t.get("persona"), 500),
                 "first_message": first,
                 "plan": _text(t.get("plan"), 1000),
-                "expected_state": dict(expected),
+                "expected_state": clean_state(expected),
                 "criteria": criteria,
                 "critical": bool(t.get("critical", False)),
             }

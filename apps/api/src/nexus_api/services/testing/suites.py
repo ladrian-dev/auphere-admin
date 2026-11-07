@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models.agent_spec import AgentTest, AgentTestSuite
+from nexus_api.services.testing.judge import clean_state
 
 #: Las secciones de la ficha que afectan a cada prueba por defecto (21.7). Una
 #: prueba sin ``expected_state`` que las nombre queda afectada por cualquiera.
@@ -86,7 +87,8 @@ def _test_row(suite: AgentTestSuite, item: Mapping[str, Any], *, kind: str, by: 
         persona=str(item.get("persona") or ""),
         first_message=str(item["first_message"])[:2000],
         plan=str(item.get("plan") or ""),
-        expected_state=dict(item.get("expected_state") or {}),
+        # Solo lo que se puede medir: lo demás no se cumpliría nunca (66.8).
+        expected_state=clean_state(item.get("expected_state")),
         criteria=list(item.get("criteria") or []),
         critical=bool(item.get("critical", False)),
         sector_test_ref=item.get("sector_test_ref"),

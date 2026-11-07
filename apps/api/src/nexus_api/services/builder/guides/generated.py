@@ -73,6 +73,9 @@ SYSTEM: Final = (
     '"tests": [{"key": str, "name": str, "persona": str, "first_message": str, '
     '"plan": str, "expected_state": object, "criteria": [{"key": str, "text": str}], '
     '"critical": bool}]}\n'
+    'En "expected_state" solo existen {"escalated": bool}, {"booking": {"created": bool}} y '
+    '{"payment": {"requested": bool}}; usa {} si la prueba no depende de eso y escribe lo '
+    'demás en "criteria".\n'
     "Exactamente 12 pruebas, con claves distintas en minúsculas y guiones bajos; de 1 a 10 "
     "preguntas; como mucho 10 procedimientos y 10 riesgos."
 )
