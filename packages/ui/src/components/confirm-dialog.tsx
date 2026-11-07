@@ -38,6 +38,11 @@ type ConfirmDialogProps = {
   children?: React.ReactNode;
   /** Keeps the confirm button disabled while the extra fields are not valid. */
   confirmDisabled?: boolean;
+  /**
+   * Where focus goes on close, when what opened the dialog no longer exists (the confirmed
+   * action removed it). Nothing returned: focus goes back to what opened it, as usual.
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
 };
 
 /**
@@ -58,6 +63,7 @@ function ConfirmDialog({
   error,
   children,
   confirmDisabled = false,
+  returnFocus,
 }: ConfirmDialogProps) {
   const copy = useUiCopy();
   const confirmLabel = confirmLabelProp ?? copy.confirm;
@@ -88,7 +94,11 @@ function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => onOpenChange(next)}>
-      <DialogContent showCloseButton={false} aria-busy={pending || undefined}>
+      <DialogContent
+        showCloseButton={false}
+        aria-busy={pending || undefined}
+        finalFocus={() => returnFocus?.() ?? true}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}

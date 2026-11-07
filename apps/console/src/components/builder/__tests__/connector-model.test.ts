@@ -13,6 +13,7 @@ import {
   filterCounts,
   orderConnectors,
   rowActions,
+  rowLayout,
   rowState,
   settingFields,
   settingLabel,
@@ -122,5 +123,25 @@ describe("los conectores · los ajustes declarados (36.2)", () => {
       "Identificador del negocio: abc",
       "Enviar recordatorios: No",
     ]);
+  });
+});
+
+describe("rowLayout: una acción principal por fila", () => {
+  const named = (name: string) => catalog().find((c) => c.name === name)!;
+
+  it("con el conector en marcha, sus herramientas; quitar, lo último del menú", () => {
+    expect(rowLayout(named("WooCommerce"), true)).toEqual({ primary: "tools", menu: ["settings", "remove"] });
+  });
+
+  it("sin permiso de escritura, nada que cambie nada", () => {
+    expect(rowLayout(named("WooCommerce"), false)).toEqual({ primary: "tools", menu: ["page"] });
+  });
+
+  it("sin conectar, conectar y nada más", () => {
+    expect(rowLayout(named("Google Calendar"), true)).toEqual({ primary: "connect", menu: [] });
+  });
+
+  it("roto, reconectar va antes que todo", () => {
+    expect(rowLayout(named("HubSpot"), true).primary).toBe("reconnect");
   });
 });

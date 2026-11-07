@@ -52,6 +52,12 @@ function panel(data: AgentConnector[] | null | "lazy" = catalog(), over: Partial
   return { ...view, actions };
 }
 
+/** Lo secundario de una fila está en su menú (`rowLayout`). */
+async function fromMenu(user: ReturnType<typeof userEvent.setup>, connector: string, item: string) {
+  await user.click(screen.getByRole("button", { name: `Más acciones de ${connector}` }));
+  await user.click(await screen.findByRole("menuitem", { name: item }));
+}
+
 const row = (name: string) => screen.getAllByRole("listitem").find((li) => within(li).queryByRole("heading", { name })) as HTMLElement;
 const names = () =>
   within(screen.getByRole("list", { name: "Conectores para este agente" }))
@@ -74,8 +80,10 @@ describe("la sección Conectores · leer (H10)", () => {
     expect(within(row("WooCommerce")).getByText("Tienda")).toBeVisible();
     expect(within(row("WooCommerce")).getByText("Conectado")).toBeVisible();
     expect(within(row("WooCommerce")).getByText(/lo necesita una habilidad de este agente/)).toBeVisible();
-    expect(within(row("WooCommerce")).getByRole("button", { name: "Ajustes de WooCommerce" })).toBeVisible();
-    expect(within(row("WooCommerce")).getByRole("button", { name: "Quitar WooCommerce" })).toBeVisible();
+    // Una acción principal, sus herramientas; lo demás en su menú (guías de Apple).
+    expect(within(row("WooCommerce")).getByRole("button", { name: "Herramientas de WooCommerce" })).toBeVisible();
+    expect(within(row("WooCommerce")).queryByRole("button", { name: "Quitar WooCommerce" })).not.toBeInTheDocument();
+    expect(within(row("WooCommerce")).getByRole("button", { name: "Más acciones de WooCommerce" })).toBeVisible();
     // Sin conectar: la nota dice que lo pide una habilidad y cómo se autoriza; «Conectar» es el principal.
     const gcal = row("Google Calendar");
     expect(within(gcal).getByText("Calendario")).toBeVisible();
@@ -129,6 +137,23 @@ describe("la sección Conectores · leer (H10)", () => {
     expect(within(row("WooCommerce")).getByText(/Solo leer/)).toBeVisible();
     expect(within(row("WooCommerce")).getByRole("link", { name: "Ver su página de WooCommerce" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /Conectar|Ajustes|Quitar|Reconectar/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("la sección Conectores · una acción por fila (guías de Apple)", () => {
+  it("el menú lleva lo secundario, y quitar va al final y en rojo", async () => {
+    const user = userEvent.setup();
+    panel();
+    await user.click(screen.getByRole("button", { name: "Más acciones de WooCommerce" }));
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual(["Ajustes", "Quitar"]);
+    expect(items.at(-1)).toHaveAttribute("data-variant", "destructive");
+  });
+
+  it("una fila sin conectar no tiene menú: solo su acción", () => {
+    panel();
+    expect(within(row("Google Calendar")).getByRole("button", { name: "Conectar Google Calendar" })).toBeVisible();
+    expect(within(row("Google Calendar")).queryByRole("button", { name: /Más acciones/ })).not.toBeInTheDocument();
   });
 });
 
@@ -257,7 +282,7 @@ describe("la sección Conectores · «Ajustes» y «Quitar» (35.5, 35.7; 63.3)"
   it("el permiso se cambia dentro de «Ajustes» y se guarda con sus ajustes", async () => {
     const user = userEvent.setup();
     const { actions } = panel();
-    await user.click(screen.getByRole("button", { name: "Ajustes de WooCommerce" }));
+    await fromMenu(user, "WooCommerce", "Ajustes");
     const dialog = await screen.findByRole("dialog", { name: "Ajustes de WooCommerce en este agente" });
     const group = within(dialog).getByRole("radiogroup", { name: "Permiso en este agente" });
     expect(within(group).getByRole("radio", { name: /Solo leer/ })).toBeChecked();
@@ -273,7 +298,7 @@ describe("la sección Conectores · «Ajustes» y «Quitar» (35.5, 35.7; 63.3)"
   it("«Quitar» pide confirmación con las habilidades que lo piden, y al quitarlo dice lo que pierde", async () => {
     const user = userEvent.setup();
     const { actions } = panel();
-    await user.click(screen.getByRole("button", { name: "Quitar WooCommerce" }));
+    await fromMenu(user, "WooCommerce", "Quitar");
     const dialog = await screen.findByRole("dialog", { name: "Quitar WooCommerce de este agente" });
     expect(within(dialog).getByText("Se quedan sin él estas habilidades: Pedidos consultar.")).toBeVisible();
     expect(actions.remove).not.toHaveBeenCalled();
@@ -283,10 +308,22 @@ describe("la sección Conectores · «Ajustes» y «Quitar» (35.5, 35.7; 63.3)"
     expect(within(row("WooCommerce")).getByRole("button", { name: "Conectar WooCommerce" })).toBeVisible();
   });
 
+  it("al quitarlo, el foco se queda en su fila: el menú desde el que se abrió ya no existe", async () => {
+    const user = userEvent.setup();
+    panel();
+    await fromMenu(user, "WooCommerce", "Quitar");
+    const dialog = await screen.findByRole("dialog", { name: "Quitar WooCommerce de este agente" });
+    await user.click(within(dialog).getByRole("button", { name: "Quitar de este agente" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(row("WooCommerce")).getByRole("button", { name: "Conectar WooCommerce" })).toHaveFocus(),
+    );
+  });
+
   it("un error de la API se dice en la fila", async () => {
     const user = userEvent.setup();
     panel(catalog(), { remove: vi.fn(async () => fail(409, "connection_not_authorized")) });
-    await user.click(screen.getByRole("button", { name: "Quitar WooCommerce" }));
+    await fromMenu(user, "WooCommerce", "Quitar");
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Quitar de este agente" }));
     expect(await within(row("WooCommerce")).findByRole("alert")).toHaveTextContent("La conexión no está autorizada. Vuelve a conectarla.");
   });
@@ -296,7 +333,7 @@ describe("la sección Conectores · «Ajustes» y «Quitar» (35.5, 35.7; 63.3)"
     const activate = vi.fn().mockResolvedValueOnce(fail(422, "invalid_settings", { errors: [{ field: "store_url", message: "bad" }] }));
     activate.mockImplementation(async ({ permission, settings }) => ok({ permission, settings }));
     const { actions } = panel(catalog(), { activate });
-    await user.click(screen.getByRole("button", { name: "Ajustes de WooCommerce" }));
+    await fromMenu(user, "WooCommerce", "Ajustes");
     const dialog = await screen.findByRole("dialog", { name: "Ajustes de WooCommerce en este agente" });
     const field = within(dialog).getByRole("textbox", { name: "Dirección de la tienda" });
     expect(field).toHaveValue("https://tienda.example");

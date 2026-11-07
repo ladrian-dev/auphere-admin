@@ -59,6 +59,24 @@ export function rowActions(c: AgentConnector, canWrite: boolean): RowActionKind[
   }
 }
 
+/** Lo que se puede hacer con una fila: lo de `rowActions` y abrir sus herramientas. */
+export type RowItem = RowActionKind | "tools";
+
+/**
+ * Una acción principal por fila y el resto en su menú (guías de Apple: una acción
+ * destacada, las secundarias agrupadas y la destructiva al final). Lo que deja la fila
+ * sin funcionar va primero; con el conector en marcha, sus herramientas, que es a lo que
+ * se viene. Por eso quitar no está nunca a un clic de abrir.
+ */
+export function rowLayout(c: AgentConnector, canWrite: boolean): { primary: RowItem | null; menu: RowItem[] } {
+  const kinds = rowActions(c, canWrite);
+  const items: RowItem[] = [...(hasTools(c) ? (["tools"] as const) : []), ...kinds];
+  const order: RowItem[] = ["connect", "reconnect", "tools", "settings", "page", "remove"];
+  const sorted = order.filter((kind) => items.includes(kind));
+  const [primary = null, ...menu] = sorted;
+  return { primary, menu };
+}
+
 const NAMED_CATEGORIES = new Set(["booking", "calendar", "billing", "catalog", "ecommerce", "messaging", "docs", "crm"]);
 /** Una categoría que la consola no sabe nombrar cae en «El resto», como en Conectores del cliente. */
 export const OTHER_CATEGORY = "other";

@@ -54,12 +54,11 @@ export const builderConnectorsMessages = {
   "agentConn.reconnect": { es: "Reconectar", en: "Reconnect" },
   "agentConn.page": { es: "Ver su página", en: "Open its page" },
   // H10 (63.3): cada botón de la fila lleva el nombre del conector para quien no ve la fila.
+  "agentConn.more.named": { es: "Más acciones de {name}", en: "More actions for {name}" },
   "agentConn.page.named": { es: "Ver su página de {name}", en: "Open the {name} page" },
   "agentConn.connect.named": { es: "Conectar {name}", en: "Connect {name}" },
   "agentConn.reconnect.named": { es: "Reconectar {name}", en: "Reconnect {name}" },
-  "agentConn.settings.named": { es: "Ajustes de {name}", en: "{name} settings" },
   "agentConn.remove.short": { es: "Quitar", en: "Remove" },
-  "agentConn.remove.named": { es: "Quitar {name}", en: "Remove {name}" },
   "agentConn.connected": { es: "Conectado", en: "Connected" },
   "agentConn.settings.permission": { es: "Permiso en este agente", en: "Permission for this agent" },
   "agentConn.searchLabel": { es: "Buscar conector", en: "Search connector" },

@@ -475,6 +475,10 @@ tiene su página en `/clients/{ref}/integrations/{connectionId}` (`?agent=` para
 volver): cuenta, estado, última comprobación, agentes con su permiso y ajustes,
 «Reconectar» y «Desconectar para todos», que primero lista lo afectado.
 
+**Una acción por fila** (`connector-model.rowLayout`), como piden las guías de Apple: lo
+que arregla el conector («Conectar», «Reconectar») o, con él en marcha, «Herramientas».
+El resto va en su «⋯», y «Quitar» al final y en rojo, con su confirmación.
+
 **Herramientas de un conector** (`components/builder/connector-tools-dialog.tsx`):
 cada fila que este agente usa lleva «Herramientas», también para quien solo puede
 leer. `GET …/agents/{id}/integrations/{slug}/tools` devuelve lo que ese conector

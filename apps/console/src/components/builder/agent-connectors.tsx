@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, ExternalLink, Search } from "lucide-react";
+import { CircleCheck, ExternalLink, MoreHorizontal, Search } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 import { toast } from "sonner";
@@ -15,6 +15,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   Input,
   SegmentedControl,
   Skeleton,
@@ -63,11 +68,10 @@ import {
   descriptionKey,
   filterConnectors,
   filterCounts,
-  hasTools,
   isBroken,
   orderConnectors,
   permissionLabel,
-  rowActions,
+  rowLayout,
   rowState,
   skillsUsing,
 } from "./connector-model";
@@ -133,8 +137,8 @@ export type AgentConnectorsHandle = { connect: (slug: string) => boolean };
  * - **Herramientas**: lo que deja hacer ese conector, de una en una
  *   (`connector-tools-dialog.tsx`). También para quien solo puede leer.
  *
- * Las acciones de las filas siguen la regla de los tres puntos: con más de dos
- * botones en la lista, cada fila las lleva en su «⋯» (`row-actions-rule.ts`).
+ * Cada fila tiene una acción principal y el resto en su «⋯» (`rowLayout`): lo que
+ * arregla el conector o, con él en marcha, sus herramientas. Quitar va al final del menú.
  *
  * `connectors` en `undefined` se lee al montar (la lectura llama al catálogo
  * del proveedor y no frena el resto de la pantalla); en `null`, no se pudo leer.
@@ -179,6 +183,8 @@ export function AgentConnectorsPanel({
   const [toolsOf, setToolsOf] = React.useState<AgentConnector | null>(null);
   const [removing, setRemoving] = React.useState<AgentConnector | null>(null);
   const [rowError, setRowError] = React.useState<{ slug: string; text: string } | null>(null);
+  const root = React.useRef<HTMLDivElement>(null);
+  const removedSlug = React.useRef<string | null>(null);
   const alive = React.useRef(true);
   React.useEffect(
     () => () => {
@@ -235,6 +241,16 @@ export function AgentConnectorsPanel({
     return t("agentConn.error.unknown");
   }
 
+  /** El menú desde el que se quitó ya no está: el foco se queda en la fila, no se pierde. */
+  function rowAfterRemoving(): HTMLElement | null {
+    const slug = removedSlug.current;
+    removedSlug.current = null;
+    if (!slug || !root.current) return null;
+    const rows = root.current.querySelectorAll<HTMLElement>("[data-slot='agent-connector']");
+    const row = Array.from(rows).find((el) => el.dataset.slug === slug);
+    return row?.querySelector<HTMLElement>("button:not(:disabled), a[href]") ?? null;
+  }
+
   async function remove(c: AgentConnector) {
     setBusy(c.slug);
     const res = await actions.remove({ ...ids, slug: c.slug });
@@ -243,6 +259,7 @@ export function AgentConnectorsPanel({
     setRemoving(null);
     if (!res.ok) return setRowError({ slug: c.slug, text: errorText(res) });
     patch(c.slug, { activation: null });
+    removedSlug.current = c.slug;
     const lost = [...res.data.skills.map(skillName), ...res.data.procedures];
     toast.success(lost.length ? t("agentConn.remove.affected", { name: c.name, list: lost.join(", ") }) : t("agentConn.remove.done", { name: c.name }));
   }
@@ -334,7 +351,7 @@ export function AgentConnectorsPanel({
   ];
 
   return (
-    <div className="grid min-w-0 gap-4" data-slot="agent-connectors">
+    <div ref={root} className="grid min-w-0 gap-4" data-slot="agent-connectors">
       <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("agentConn.intro")}</p>
       {!canWrite ? <p className="text-sm text-muted-foreground">{t("agentConn.readonly")}</p> : null}
 
@@ -494,6 +511,7 @@ export function AgentConnectorsPanel({
         cancelLabel={t("common.cancel")}
         destructive
         onConfirm={() => (removing ? remove(removing) : undefined)}
+        returnFocus={rowAfterRemoving}
       />
     </div>
   );
@@ -534,7 +552,7 @@ function ConnectorRow({
   const t = useT();
   const state = rowState(c);
   const desc = descriptionKey(c.slug);
-  const kinds = rowActions(c, canWrite);
+  const { primary, menu } = rowLayout(c, canWrite);
   const status = c.connection?.status ?? null;
   const note = [
     desc ? t(desc) : null,
@@ -545,7 +563,7 @@ function ConnectorRow({
     state === "on" && !canWrite && c.activation ? permissionLabel(t, c.activation.permission) : null,
   ].filter(Boolean);
   return (
-    <li className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-4 sm:px-5" data-slot="agent-connector" data-state={state} aria-busy={busy || undefined}>
+    <li className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-4 sm:px-5" data-slot="agent-connector" data-slug={c.slug} data-state={state} aria-busy={busy || undefined}>
       <ConnectorLogo refId={refId} slug={c.slug} name={c.name} logo={c.logo} />
       <div className="grid min-w-0 flex-1 basis-56 gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -561,7 +579,7 @@ function ConnectorRow({
         </div>
         {note.length ? <p className="text-sm text-pretty text-muted-foreground">{note.join(" · ")}</p> : null}
       </div>
-      {/* `max-w-full`: con tres botones en un móvil, envuelve en vez de salirse. */}
+      {/* `max-w-full`: en un móvil, envuelve en vez de salirse. */}
       <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
         {state === "on" ? (
           <StatusBadge tone="positive" dot={false} data-slot="connector-state">
@@ -571,50 +589,73 @@ function ConnectorRow({
             </span>
           </StatusBadge>
         ) : null}
-        {hasTools(c) ? (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={onTools} aria-label={t("connTools.named", { name: c.name })} aria-haspopup="dialog">
+        {primary === "tools" ? (
+          <Button size="sm" variant="outline" disabled={busy} onClick={onTools} aria-label={t("connTools.named", { name: c.name })} aria-haspopup="dialog">
             {t("connTools.open")}
           </Button>
+        ) : primary === "connect" ? (
+          <Button size="sm" variant={c.needed ? "default" : "outline"} disabled={busy} onClick={onConnect} aria-label={t("agentConn.connect.named", { name: c.name })}>
+            {t("agentConn.connect")}
+          </Button>
+        ) : primary === "reconnect" ? (
+          <Button size="sm" disabled={busy} loading={busy} onClick={onReconnect} aria-label={t("agentConn.reconnect.named", { name: c.name })}>
+            {t("agentConn.reconnect")}
+          </Button>
+        ) : primary === "page" && c.connection ? (
+          <Link href={connectionHref(refId, c.connection.id, agentId)} aria-label={t("agentConn.page.named", { name: c.name })} className={buttonVariants({ size: "sm", variant: "outline" })}>
+            {t("agentConn.page")}
+          </Link>
         ) : null}
-        {kinds.map((kind) => {
-          switch (kind) {
-            case "connect":
-              return (
-                <Button key={kind} size="sm" variant={c.needed ? "default" : "outline"} disabled={busy} onClick={onConnect} aria-label={t("agentConn.connect.named", { name: c.name })}>
-                  {t("agentConn.connect")}
-                </Button>
-              );
-            case "reconnect":
-              return (
-                <Button key={kind} size="sm" disabled={busy} loading={busy} onClick={onReconnect} aria-label={t("agentConn.reconnect.named", { name: c.name })}>
-                  {t("agentConn.reconnect")}
-                </Button>
-              );
-            case "settings":
-              return (
-                <Button key={kind} size="sm" variant="ghost" disabled={busy} onClick={onSettings} aria-label={t("agentConn.settings.named", { name: c.name })}>
-                  {t("agentConn.settings")}
-                </Button>
-              );
-            case "remove":
-              return (
-                <Button key={kind} size="sm" variant="ghost" disabled={busy} loading={busy} onClick={onRemove} aria-label={t("agentConn.remove.named", { name: c.name })}>
-                  {t("agentConn.remove.short")}
-                </Button>
-              );
-            case "page":
-              return c.connection ? (
-                <Link
-                  key={kind}
-                  href={connectionHref(refId, c.connection.id, agentId)}
-                  aria-label={t("agentConn.page.named", { name: c.name })}
-                  className={buttonVariants({ size: "sm", variant: "outline" })}
-                >
-                  {t("agentConn.page")}
-                </Link>
-              ) : null;
-          }
-        })}
+        {/* Un solo elemento no necesita un menú: su enlace, a la vista. */}
+        {menu.length === 1 && menu[0] === "page" && c.connection ? (
+          <Link
+            href={connectionHref(refId, c.connection.id, agentId)}
+            aria-label={t("agentConn.page.named", { name: c.name })}
+            className={buttonVariants({ size: "sm", variant: "ghost" })}
+          >
+            {t("agentConn.page")}
+          </Link>
+        ) : menu.length ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={t("agentConn.more.named", { name: c.name })}
+              disabled={busy}
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+              data-slot="connector-more"
+            >
+              <MoreHorizontal aria-hidden="true" className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {menu.map((kind) => {
+                switch (kind) {
+                  case "settings":
+                    return (
+                      <DropdownMenuItem key={kind} onClick={onSettings}>
+                        {t("agentConn.settings")}
+                      </DropdownMenuItem>
+                    );
+                  case "page":
+                    return c.connection ? (
+                      <DropdownMenuItem key={kind} render={<Link href={connectionHref(refId, c.connection.id, agentId)} />}>
+                        {t("agentConn.page")}
+                      </DropdownMenuItem>
+                    ) : null;
+                  case "remove":
+                    return (
+                      <React.Fragment key={kind}>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={onRemove}>
+                          {t("agentConn.remove.short")}
+                        </DropdownMenuItem>
+                      </React.Fragment>
+                    );
+                  default:
+                    return null;
+                }
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
       {error ? (
         <p role="alert" className="basis-full text-sm text-pretty text-destructive">
