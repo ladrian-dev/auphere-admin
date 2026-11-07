@@ -34,8 +34,11 @@ class WorkerSettings(BaseSettings):
     # explicitly through fixtures.
     #
     # The fallback model lives hardcoded in ``main.py`` — see comment there.
-    llm_classify_model: str = "openai/gpt-5.6-sol"
+    # Clasificar devuelve una palabra: tiene su propio modelo, barato y rápido (requisito 69).
+    llm_classify_model: str = "anthropic/claude-haiku-5-5"
     llm_respond_model: str = "openai/gpt-5.6-sol"
+    # Leer una web o identificar el sector extrae datos de un texto largo: no es clasificar.
+    llm_extract_model: str = "openai/gpt-5.6-sol"
     # El cliente simulado y el juez de las pruebas: una conversación por pasada no
     # necesita el modelo de responder, y el juez no puede ser el modelo juzgado
     # (si lo es, su veredicto no cuenta y la prueba se queda en «No sé»).

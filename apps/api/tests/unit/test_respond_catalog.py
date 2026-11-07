@@ -68,17 +68,23 @@ def test_un_id_inventado_sigue_siendo_un_error_humano() -> None:
         require_hop_model(UNKNOWN_MODEL_ID)
 
 
-def test_companion_respond_and_classify_defaults_are_sol() -> None:
+def test_companion_and_respond_defaults_are_sol() -> None:
     assert Settings.model_fields["llm_companion_model"].default == SOL_MODEL_ID
     assert WorkerSettings.model_fields["llm_respond_model"].default == SOL_MODEL_ID
-    assert WorkerSettings.model_fields["llm_classify_model"].default == SOL_MODEL_ID
     assert Settings.model_fields["llm_companion_model"].default in RESPOND_MODEL_ID_SET
     assert WorkerSettings.model_fields["llm_respond_model"].default in RESPOND_MODEL_ID_SET
-    assert WorkerSettings.model_fields["llm_classify_model"].default in RESPOND_MODEL_ID_SET
+
+
+def test_the_classifier_has_its_own_model_that_a_hop_accepts() -> None:
+    """Requisito 69: no se ofrece para responder, y el transporte lo deja salir."""
+    model = WorkerSettings.model_fields["llm_classify_model"].default
+    assert model == "anthropic/claude-haiku-5-5"
+    assert model not in RESPOND_MODEL_ID_SET
+    assert model in respond_catalog.BOOT_HOP_MODEL_IDS
 
 
 def test_playground_classify_and_respond_are_sol() -> None:
-    assert QA_CLASSIFY_MODEL == SOL_MODEL_ID
+    assert QA_CLASSIFY_MODEL == "anthropic/claude-haiku-5-5"
     assert QA_RESPOND_MODEL == SOL_MODEL_ID
     assert hop_models_in_catalog(QA_CLASSIFY_MODEL, QA_RESPOND_MODEL)
 

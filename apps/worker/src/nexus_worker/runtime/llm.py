@@ -51,7 +51,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Final, Generic, Protocol, TypeVar
 
 import structlog
 from nexus_api.core.errors import IsolationViolation
@@ -469,6 +469,21 @@ def current_hop() -> RouteHop | None:
     return _current_hop.get()
 
 
+#: Clasificar con Claude: la etiqueta cabe de sobra y no hay nada que razonar.
+#: ``allowed_openai_params``: si el mapa de modelos de LiteLLM aún no conoce el modelo,
+#: rechazaría ``thinking`` antes de salir, sin ninguna petición, y clasificaría siempre la
+#: reserva sin que se notara. LiteLLM lo consume: no llega al proveedor.
+CLASSIFY_ON_ANTHROPIC: Final[dict[str, Any]] = {
+    "max_tokens": 32,
+    "thinking": {"type": "disabled"},
+    "allowed_openai_params": ["thinking"],
+}
+
+
+class EmptyClassification(RuntimeError):
+    """El modelo no dio etiqueta (un rechazo llega así): que clasifique el siguiente."""
+
+
 def task_for_call(role: str, *, has_tools: bool) -> str | None:
     """The task of this call: the hop's, or the one its role implies."""
     hop = current_hop()
@@ -648,6 +663,7 @@ class LLMProvider(Protocol):
         role: str,
         model: str,
         messages: list[dict[str, str]],
+        extra: dict[str, Any] | None = None,
     ) -> str: ...
 
     async def acomplete_with_tools(
@@ -745,13 +761,14 @@ class InMemoryProvider:
         role: str,
         model: str,
         messages: list[dict[str, str]],
+        extra: dict[str, Any] | None = None,
     ) -> str:
         call = LLMCall(
             tenant_id=tenant_id,
             role=role,
             model=model,
             messages=list(messages),
-            extra=_with_hop(None),
+            extra=_with_hop(extra),
         )
         async with self._lock:
             self.calls.append(call)
@@ -1231,6 +1248,7 @@ class LiteLLMProvider:
         role: str,
         model: str,
         messages: list[dict[str, str]],
+        extra: dict[str, Any] | None = None,
     ) -> str:
         response = await self._raw_complete(
             tenant_id=tenant_id,
@@ -1238,6 +1256,7 @@ class LiteLLMProvider:
             model=model,
             messages=messages,
             tools=None,
+            extra=extra,
         )
         choices = response["choices"]
         if not choices:
@@ -1688,6 +1707,14 @@ class LLMRouter:
     cooldowns: CooldownBook = field(default_factory=CooldownBook)
     #: Backoff between attempts of a routed call; None = ``_RETRY_BACKOFF_S``.
     retry_backoff_s: float | None = None
+    #: Requisito 69.1: si no responde el clasificador, clasifica este. Las simulaciones no
+    #: dan reserva a responder, pero sin reserva aquí una caída de Anthropic sería un fallo
+    #: del agente en la prueba. Vacío: ``fallback_model``.
+    classify_fallback_model: str = ""
+
+    @property
+    def classify_fallback(self) -> str:
+        return self.classify_fallback_model or self.fallback_model
 
     async def _call_with_resilience(
         self,
@@ -1760,17 +1787,25 @@ class LLMRouter:
         global classify model."""
 
         async def invoke(model: str) -> str:
-            return await self.provider.acomplete(
+            # Requisito 69: una palabra. Solo aquí, en la etiqueta suelta: el tipado y el
+            # sector usan el mismo rol y necesitan más salida.
+            options = {"extra": CLASSIFY_ON_ANTHROPIC} if model.startswith("anthropic/") else {}
+            text = await self.provider.acomplete(
                 tenant_id=tenant_id,
                 role="classify",
                 model=model,
                 messages=messages,
+                **options,
             )
+            if not text.strip():
+                raise EmptyClassification(model)
+            return text
 
+        chain = [self.classify_model, self.classify_fallback]
         return await self._call_with_resilience(
             tenant_id=tenant_id,
             role="classify",
-            models=tuple(models) or self._model_chain(self.classify_model),
+            models=tuple(models) or tuple(dict.fromkeys(m for m in chain if m)),
             invoke=invoke,
         )
 

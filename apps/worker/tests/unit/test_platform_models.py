@@ -30,7 +30,7 @@ def test_the_deployment_decides_each_model(task: str, monkeypatch: pytest.Monkey
     settings = get_worker_settings()
     expected = {
         "respond": settings.llm_respond_model,
-        "classify": settings.llm_classify_model,
+        "extract": settings.llm_extract_model,
         "simulation": settings.llm_simulation_model,
     }[family]
     assert platform_model(task) == expected
@@ -63,3 +63,16 @@ def test_the_simulation_does_not_use_the_model_it_tests(
 def test_an_unknown_task_is_an_error() -> None:
     with pytest.raises(KeyError):
         platform_model("respond_to_customer")
+
+
+def test_only_classifying_uses_the_classifier_model() -> None:
+    """Requisito 69: un modelo dedicado a clasificar. Leer una web y sacar el sector
+    extraen datos de un texto largo: siguen en otro."""
+    settings = get_worker_settings()
+    assert settings.llm_classify_model == "anthropic/claude-haiku-5-5"
+    assert settings.llm_extract_model != settings.llm_classify_model
+    assert {family for _env, family in PLATFORM_MODELS.values()} == {
+        "respond",
+        "extract",
+        "simulation",
+    }

@@ -161,6 +161,14 @@ def _traced(name: str, fn: NodeFn) -> NodeFn:
 
 VALID_INTENTS = ("book", "queue", "info", "escalate", "fallback")
 
+
+def classification_label(raw: str | None) -> str:
+    """La etiqueta de lo que respondió el clasificador. «book.» o «Book» siguen siendo
+    ``book``: cambiar de modelo no puede mandar turnos a ``fallback`` por un punto."""
+    words = re.findall(r"[a-z_]+", (raw or "").lower())
+    return words[0] if words else ""
+
+
 # Hard cap on the handler's ReAct loop. Without it a model that keeps
 # requesting tools would loop forever and burn cost (Anthropic, OpenAI and
 # Vercel all mandate an explicit iteration cap). The final iteration is
@@ -1285,7 +1293,7 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
                         bundle.model_bindings,
                         "classify",
                         default_model=llm.classify_model,
-                        global_fallback=llm.fallback_model,
+                        global_fallback=llm.classify_fallback,
                     ),
                 )
             except Exception as exc:
@@ -1294,7 +1302,7 @@ def make_classify_node(loader: AgentLoader, llm: LLMRouter) -> NodeFn:
                 # a graceful reply instead of leaving the message stuck.
                 log.error("classify.llm_failed", tenant_id=str(tenant_id), error=str(exc))
                 raw = ""
-            intent = (raw or "").strip().lower()
+            intent = classification_label(raw)
             if intent not in VALID_INTENTS:
                 log.info("classify.unknown_label_using_fallback", raw=raw)
                 intent = "fallback"

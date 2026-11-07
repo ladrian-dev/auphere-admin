@@ -277,6 +277,10 @@ que sirve manda al proveedor **las mismas llamadas**, sin afinidad, sin
 memoria si algún despliegue podría ganar `classify` antes de leer nada del
 cliente). Contra la base, `T/integration/models/test_router_in_the_graph.py`.
 
+**El modelo de clasificar sin router** es `llm_classify_model`: Claude Haiku 5.5 desde la
+enmienda del 2026-11-05 (requisito 69), sin razonamiento (`CLASSIFY_ON_ANTHROPIC`), con
+la de responder como reserva. Está en el catálogo con sus precios y sus pesos (0221).
+
 **El clasificador tipado** (40.5) devuelve `ClassifyResult` —intención, si
 necesita herramientas, riesgo, complejidad, idioma y **cuántas peticiones trae**
 (`intents`)— y lo deja en `AgentState.classification`. Uno inválido es un turno

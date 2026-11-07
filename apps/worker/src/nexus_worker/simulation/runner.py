@@ -79,6 +79,7 @@ def default_router() -> Any:
         classify_model=settings.llm_classify_model,
         respond_model=model,
         fallback_model="",
+        classify_fallback_model=settings.llm_respond_model,
     )
 
 
