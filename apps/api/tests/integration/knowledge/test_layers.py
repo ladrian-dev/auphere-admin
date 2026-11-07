@@ -191,7 +191,7 @@ async def test_teach_asks_the_scope_applies_now_and_undoes(
             sa.select(KnowledgeRevision.rev).where(KnowledgeRevision.agent_id == kw.ventas)
         )
     await db_session.commit()
-    assert list(runs) == [kw.ventas], "vuelven a pasar las pruebas de quien lo ve, y solo esas"
+    assert list(runs) == [], "quedan desactualizadas, y no se pasan solas (68.9)"
     assert audit is not None and audit.after_json["scope"] == "agent"
     assert rev == 2, "la revisión de la capa sube"
 

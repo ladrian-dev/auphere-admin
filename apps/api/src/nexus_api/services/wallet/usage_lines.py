@@ -9,6 +9,7 @@ De dónde sale cada partida (todo del libro, nunca de restar topes):
 - **Conversaciones** (la paga la bolsa del cliente): los cobros de turno de las
   bolsas (``client_wallet_entries`` ``debit_turn``) y, para lo cobrado antes de
   las bolsas, los débitos de la cuenta con cliente (``usage_ledger`` ``debit``).
+- **Pruebas a cargo del cliente** (la bolsa, requisito 68): los cobros ``debit_tests``.
 - **Companion y teammates** (la cuenta): los débitos sin cliente.
 - **Construcción y pruebas** (Auphere, hasta el tope): lo medido con ese origen, a
   precio (coste por 2,2). El mes en curso es el de ``partner_build_budget``, el
@@ -43,15 +44,21 @@ from nexus_api.services.console_reporting import reporting_transaction
 from nexus_api.services.wallet import fx
 from nexus_api.services.wallet.bags import as_client
 
-Line = Literal["conversations", "meta", "build", "companion"]
+Line = Literal["conversations", "client_tests", "meta", "build", "companion"]
 Payer = Literal["client_bag", "business_meta", "auphere", "account"]
-LINES: Final[tuple[Line, ...]] = ("conversations", "meta", "build", "companion")
+LINES: Final[tuple[Line, ...]] = ("conversations", "client_tests", "meta", "build", "companion")
 #: Quién paga cada partida (46.4).
 PAYER: Final[dict[Line, Payer]] = {
     "conversations": "client_bag",
+    "client_tests": "client_bag",
     "meta": "business_meta",
     "build": "auphere",
     "companion": "account",
+}
+#: El asiento de la bolsa de cada partida que paga la bolsa.
+_BAG_ENTRY: Final[dict[str, str]] = {
+    "conversations": "debit_turn",
+    "client_tests": "debit_tests",
 }
 #: Precio = coste por 2,2; en cien milésimas.
 PRICE_MULTIPLIER: Final = Decimal("2.2")
@@ -202,29 +209,32 @@ async def spend(
         usd = (await _rates(session, {"USD"}, currency))["USD"]
         # La bolsa y la estimación de Meta son del cliente: una a una, con su
         # contexto puesto (garantía 1).
-        bag_rows: list[tuple[uuid.UUID, date, str, int]] = []
+        bag_rows: list[tuple[uuid.UUID, date, str, str, int]] = []
         meta_rows: list[tuple[uuid.UUID, date, int]] = []
-        for tid in tenant_ids if ("conversations" in lines or "meta" in lines) else []:
+        bag_kinds = [kind for line, kind in _BAG_ENTRY.items() if line in lines]
+        for tid in tenant_ids if (bag_kinds or "meta" in lines) else []:
             await as_client(session, tid)
-            if "conversations" in lines:
+            if bag_kinds:
                 day = _utc_day(ClientWalletEntry.created_at)
-                for d, cur, total in (
+                for kind, d, cur, total in (
                     await session.execute(
                         sa.select(
+                            ClientWalletEntry.kind,
                             day,
                             ClientWalletEntry.currency,
                             sa.func.sum(-ClientWalletEntry.amount_micros),
                         )
                         .where(
                             ClientWalletEntry.tenant_id == tid,
-                            ClientWalletEntry.kind == "debit_turn",
+                            ClientWalletEntry.kind.in_(bag_kinds),
                             ClientWalletEntry.created_at >= since,
                             ClientWalletEntry.created_at < until,
                         )
-                        .group_by(day, ClientWalletEntry.currency)
+                        .group_by(ClientWalletEntry.kind, day, ClientWalletEntry.currency)
                     )
                 ).all():
-                    bag_rows.append((tid, d, str(cur), int(total or 0)))
+                    line = next(k for k, v in _BAG_ENTRY.items() if v == kind)
+                    bag_rows.append((tid, d, line, str(cur), int(total or 0)))
             if "meta" in lines:
                 for d, cost in (
                     await session.execute(
@@ -240,11 +250,11 @@ async def spend(
                     )
                 ).all():
                     meta_rows.append((tid, d, int(Decimal(str(cost or 0)) * UNITS)))
-        rates = await _rates(session, {r[2] for r in bag_rows}, currency)
-    for tid, d, cur, total in bag_rows:
+        rates = await _rates(session, {r[3] for r in bag_rows}, currency)
+    for tid, d, line, cur, total in bag_rows:
         if cur != currency:
-            out.approx_lines.add("conversations")
-        out.cells[(d, "conversations", tid)] += fx.convert(total, rates[cur])
+            out.approx_lines.add(line)
+        out.cells[(d, line, tid)] += fx.convert(total, rates[cur])
     if "meta" in lines and tenant_ids:
         out.approx_lines.add("meta")
     for tid, d, amount in meta_rows:

@@ -87,6 +87,7 @@ SOURCE_COMPANION = "companion"
 # tráfico del cliente (``usage_turn``), que es justo lo que no puede pasar.
 SOURCE_BUILDER = "builder"
 SOURCE_TESTS = "tests"
+SOURCE_TESTS_CLIENT = "tests_client"
 SOURCE_READER = "reader"
 SOURCE_INDEXER = "indexer"
 SOURCE_SUGGESTIONS = "suggestions"

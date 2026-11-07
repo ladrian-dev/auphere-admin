@@ -503,30 +503,17 @@ def _jsonable(value: Mapping[str, Any] | list[Any] | None) -> dict[str, Any] | N
 async def mark_tests_stale(
     session: AsyncSession, *, sections: Sequence[str], only_agent: uuid.UUID | None = None
 ) -> int:
-    """Las pruebas afectadas de cada agente del cliente quedan desactualizadas
-    (21.7) y las de cada agente **publicado** vuelven a pasar en segundo plano
-    (13.7): una pasada de las afectadas, con su versión activa, encolada al
-    confirmar. Una por agente, no una por cambio: si ya hay una que aún no ha
-    empezado y las cubre, se le suman las secciones. Una **en marcha** no cubre el
-    cambio, porque empezó antes: entonces sí se encola otra, y los cambios siguientes
-    se juntan con esa. ``only_agent``: lo que cambió solo lo ve ese agente (su capa
-    de conocimiento, 37.3). Devuelve cuántos agentes publicados quedaron en cola."""
-    from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus
-    from nexus_api.services.jobs import create_job
-    from nexus_api.services.testing.runs import create_run, live_run, lock_agent
-    from nexus_api.services.testing.suites import get_suite, list_tests, mark_stale
+    """Las pruebas afectadas de cada agente del cliente quedan desactualizadas (21.7).
+    No se pasan solas: Auphere paga una pasada completa por agente (requisito 68.9, que
+    enmienda el 13.7). ``only_agent``: lo que cambió solo lo ve ese agente (su capa de
+    conocimiento, 37.3). Devuelve cuántas pruebas se marcaron."""
+    from nexus_api.db.models import Agent
+    from nexus_api.services.testing.suites import mark_stale
 
     tenant_id = require_current_tenant()
     agents = (
-        await session.execute(
-            sa.select(Agent.id, AgentConfig)
-            .outerjoin(
-                AgentConfig,
-                sa.and_(
-                    AgentConfig.agent_id == Agent.id,
-                    AgentConfig.status == AgentConfigStatus.ACTIVE,
-                ),
-            )
+        await session.scalars(
+            sa.select(Agent.id)
             .where(
                 Agent.tenant_id == tenant_id,
                 Agent.status == "active",
@@ -535,34 +522,10 @@ async def mark_tests_stale(
             .order_by(Agent.created_at, Agent.id)
         )
     ).all()
-    queued = 0
-    for agent_id, active in agents:
-        await mark_stale(session, agent_id, sections=sections)
-        if active is None:
-            continue  # un borrador no habla con nadie: no hay nada que volver a pasar
-        suite = await get_suite(session, agent_id)
-        if suite is None or not any(t.stale for t in await list_tests(session, suite)):
-            continue
-        await lock_agent(session, agent_id)
-        live = await live_run(session, agent_id)
-        if live is not None and live.status == "queued" and live.scope != "one":
-            summary = dict(live.summary or {})
-            summary["sections"] = sorted({*summary.get("sections", []), *sections})
-            live.summary = summary
-            continue
-        job = await create_job(session, kind="tests", agent_id=agent_id, created_by=None)
-        run = await create_run(
-            session,
-            agent_id=agent_id,
-            scope="affected",
-            reason="business_change",
-            job_id=job.id,
-            version=active,
-        )
-        run.summary = {"sections": sorted(set(sections))}
-        _enqueue_after_commit(session, job)
-        queued += 1
-    return queued
+    marked = 0
+    for agent_id in agents:
+        marked += await mark_stale(session, agent_id, sections=sections)
+    return marked
 
 
 def _enqueue_after_commit(session: AsyncSession, job: Any) -> None:

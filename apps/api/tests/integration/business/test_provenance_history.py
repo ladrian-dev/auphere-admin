@@ -427,11 +427,11 @@ async def test_a_change_by_the_clients_person_tells_the_partner_once_an_hour(
     assert (f"client:{marta['user_id']}", "app") in who
 
 
-async def test_a_change_marks_the_agents_tests_stale_in_the_background(
+async def test_a_change_marks_the_agents_tests_stale_and_runs_nothing(
     client: Any, db_session: AsyncSession, world: dict[str, Any]
 ) -> None:
-    """Requisito 13.7 (y 21.7): las pruebas afectadas quedan desactualizadas, y
-    las del agente publicado vuelven a pasar en segundo plano."""
+    """Requisito 68.9 (enmienda el 13.7): las pruebas afectadas quedan desactualizadas,
+    y no se pasan solas: Auphere paga una pasada completa por agente."""
     from nexus_api.db.models.agent_spec import AgentTest, AgentTestRun
     from nexus_api.services.testing.suites import add_test, ensure_suite
 
@@ -460,17 +460,7 @@ async def test_a_change_marks_the_agents_tests_stale_in_the_background(
         tests = (
             await db_session.scalars(sa.select(AgentTest).execution_options(populate_existing=True))
         ).all()
-    # Uno por agente publicado, no uno por cambio; el borrador no habla con nadie.
-    assert [j.agent_id for j in jobs] == [citas["agent_id"]]
-    (job,) = jobs
-    assert job.status == "queued"
-    (run,) = runs
-    assert (run.agent_id, run.reason, run.scope) == (
-        citas["agent_id"],
-        "business_change",
-        "affected",
-    )
-    assert run.summary["sections"] == ["links"]
+    assert jobs == [] and runs == [], "ninguna pasada por su cuenta"
     # Las pruebas de los dos agentes quedan desactualizadas.
     assert all(t.stale for t in tests) and len(tests) == 2
 

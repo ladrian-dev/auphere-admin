@@ -236,6 +236,7 @@ async def prepare_agent_versions(
     one gets none (the automatic pass publishes its active version instead)."""
     from nexus_api.services.agent_config_service import AgentConfigService
     from nexus_api.services.connectors.booking_skills import books_elsewhere
+    from nexus_api.services.testing.billing import return_the_pass
     from nexus_api.services.testing.suites import mark_stale
 
     svc = AgentConfigService(session)
@@ -273,6 +274,7 @@ async def prepare_agent_versions(
         revision = await svc.finish_draft(write, actor=actor)
         # Cambió el borrador: sus pruebas dejan de valer (spec 047, 21.7).
         await mark_stale(session, agent_id)
+        await return_the_pass(session, agent_id)
         out.append(PreparedAgent(agent_id, str(name), target.version, revision))
     return out
 
@@ -393,6 +395,7 @@ async def _publish_copy(
     note: str,
 ) -> PublishedAgent:
     from nexus_api.services.reception import sync_reception_flag
+    from nexus_api.services.testing.billing import return_the_pass
     from nexus_api.services.testing.suites import mark_stale
 
     agent_id = active.agent_id
@@ -424,6 +427,7 @@ async def _publish_copy(
     )
     # Its tools changed: its tests no longer say anything (spec 047, 21.7).
     await mark_stale(session, agent_id)
+    await return_the_pass(session, agent_id)
     return PublishedAgent(
         agent_id=agent_id,
         name=name,

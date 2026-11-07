@@ -300,13 +300,14 @@ export function PublishBar({
         ];
       break;
     case "pending":
-      text = state.draft ? t("agentProto.bar.complete") : t("agentProto.bar.notRun");
+      text = state.draft ? t(preview.tests_on_save ? "agentProto.bar.complete" : "agentProto.bar.completeNoTests") : t("agentProto.bar.notRun");
       buttons = [
         <Button key="run" variant={state.draft ? "outline" : "default"} onClick={() => tests?.run()} className={PILL}>
           <Play aria-hidden="true" />
           {t("agentProto.bar.run")}
         </Button>,
-        // Guardar no se salta nada: el trabajo pasa las pruebas antes de decidir.
+        // La primera vez, el trabajo pasa las pruebas antes de decidir; después no las
+        // repite, y la puerta sigue mirando lo demás (requisito 68).
         ...(state.draft ? [saveButton] : []),
       ];
       break;
@@ -402,6 +403,9 @@ export function PublishBar({
           </SheetHeader>
           <div className="grid min-w-0 gap-4 overflow-y-auto px-4 pb-4">
             <DiffList rows={preview.diff} />
+            <p className="text-sm text-pretty text-muted-foreground" data-slot="publish-tests-note">
+              {t(preview.tests_on_save ? "builder.publish.tests.first" : preview.next_full_pass === "client_bag" ? "builder.publish.tests.notAgain" : "builder.publish.tests.notAgainFree")}
+            </p>
             <Field label={t("builder.publish.note")}>
               {(a11y) => <Input {...a11y} value={note} maxLength={500} autoComplete="off" onChange={(e) => setNote(e.target.value)} />}
             </Field>

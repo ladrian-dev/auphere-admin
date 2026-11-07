@@ -109,7 +109,7 @@ describe("«Por qué falló», turno a turno (61.6)", () => {
       <LocaleProvider locale="es">
         <TestsBox
           refId={REF}
-          tests={{ suite: suite({ tests: [t] }), running: null, error: null, canRun: false, run: vi.fn(), ask: vi.fn(), confirm: null, reload: vi.fn() }}
+          tests={{ suite: suite({ tests: [t] }), running: null, pending: false, error: null, canRun: false, run: vi.fn(), ask: vi.fn(), confirm: null, reload: vi.fn() }}
           review={null}
           canWrite
           onFix={vi.fn()}

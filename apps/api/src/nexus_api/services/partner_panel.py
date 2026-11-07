@@ -171,7 +171,8 @@ async def build_panel(
         )
         per_client: dict[uuid.UUID, int] = defaultdict(int)
         for (_d, line, tid), amount in month.cells.items():
-            if line == "conversations" and tid is not None:
+            # Lo que le gasta su bolsa, como «Gasto del mes» de Consumo (46.7).
+            if line in {"conversations", "client_tests"} and tid is not None:
                 per_client[tid] += amount
         by_id = {c.tenant_id: c for c in clients}
         ranked = sorted(per_client.items(), key=lambda kv: (-kv[1], by_id[kv[0]].ref))
@@ -189,7 +190,7 @@ async def build_panel(
                     SpendShare("line", None, None, line, amount, line in month.approx_lines)
                 )
         # El total es lo que paga el partner, como «Gasto del mes» de Consumo.
-        panel.spend_total = month.total(lines=("conversations", "companion"))
+        panel.spend_total = month.total(lines=("conversations", "client_tests", "companion"))
     except Exception as exc:
         log.warning("partner_panel.money_failed", error=type(exc).__name__)
         panel.errors.append("money")

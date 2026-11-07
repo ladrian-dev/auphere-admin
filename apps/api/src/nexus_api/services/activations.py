@@ -527,8 +527,7 @@ async def disconnect_impact(
 
 async def on_needs_reauth(session: AsyncSession, install: TenantConnector) -> int:
     """La autorización caducó (36.3): las pruebas de los agentes que la usan quedan
-    desactualizadas y se vuelven a pasar; el aviso al partner sale aparte. Devuelve
-    cuántos agentes."""
+    desactualizadas; el aviso al partner sale aparte. Devuelve cuántos agentes."""
     from nexus_api.services.business.writes import mark_tests_stale
 
     agents = (

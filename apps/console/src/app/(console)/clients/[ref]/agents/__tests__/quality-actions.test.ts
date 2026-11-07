@@ -42,9 +42,9 @@ describe("las acciones de probar y guardar", () => {
 
   it("las pruebas: ejecutar con su alcance y «No aplica» con su razón", async () => {
     await actions.runTestsAction({ ...ids, scope: "all" });
-    expect(h.backend.runAgentTests).toHaveBeenLastCalledWith("demo", AGENT, "all", undefined);
+    expect(h.backend.runAgentTests).toHaveBeenLastCalledWith("demo", AGENT, "all", undefined, undefined);
     await actions.runTestsAction({ ...ids, scope: "one", test: TEST });
-    expect(h.backend.runAgentTests).toHaveBeenLastCalledWith("demo", AGENT, "one", TEST);
+    expect(h.backend.runAgentTests).toHaveBeenLastCalledWith("demo", AGENT, "one", TEST, undefined);
     await expect(actions.runTestsAction({ ...ids, scope: "one" })).rejects.toThrow();
     await actions.setNotApplicableAction({ ...ids, test: TEST, reason: "  no atendemos mascotas " });
     expect(h.backend.editAgentTest).toHaveBeenCalledWith("demo", AGENT, TEST, { not_applicable_reason: "no atendemos mascotas" });

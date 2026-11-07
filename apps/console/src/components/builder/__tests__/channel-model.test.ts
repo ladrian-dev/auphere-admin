@@ -196,7 +196,7 @@ describe("el conocimiento de un agente (37.3, 12.2)", () => {
     expect(visibleSources([live, restorable, gone], now)).toEqual({ live: [live], restorable: [restorable] });
   });
 
-  it("«Enseñar» pide el texto y siempre el alcance, y dice qué pruebas se vuelven a pasar", () => {
+  it("«Enseñar» pide el texto y siempre el alcance, y dice qué pruebas quedan desactualizadas", () => {
     expect(teachProblem("  ", "agent")).toBe("builder.teach.required.text");
     expect(teachProblem("Cerramos en agosto", null)).toBe("builder.teach.required.scope");
     expect(teachProblem("x".repeat(5001), "agent")).toBe("builder.teach.tooLong");

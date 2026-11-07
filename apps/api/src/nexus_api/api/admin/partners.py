@@ -673,7 +673,7 @@ async def partner_usage(
                         )
                     ).where(
                         UsageRecord.occurred_at >= since,
-                        UsageRecord.source.in_(("channel", "companion")),
+                        UsageRecord.source.in_(("channel", "companion", "tests_client")),
                     )
                 ) or Decimal(0)
         finally:

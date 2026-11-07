@@ -4,10 +4,10 @@ of 2026-10-29 (requirement 61.8; research D52), recalibrated on 2026-11-04.
 A pass is a conversation: :data:`AGENT_CALLS` calls of the agent (its tool loop
 included), :data:`CLASSIFY_CALLS` to the classifier, :data:`CUSTOMER_CALLS` messages of
 the simulated customer and :data:`JUDGE_CALLS` to the judge, three passes per test. The
-sizes are the ones measured in staging (2026-10-30 to 2026-11-04, 20 runs): the agent
-resends a prompt of about 6,000 tokens, three quarters of it from the cache. Counting
-that prompt as fresh, with four turns on the agent's model for everyone, said $10.97
-for a suite that cost $2 to $3.
+sizes are the ones measured in staging (2026-10-30 to 2026-11-05): the agent resends a
+prompt of up to 6,000 tokens, most of it from the cache. A suite of 17 tests with tools
+cost $1.63 to $2.91 and one of 8 without them, $0.52. Counting that prompt as fresh, with
+four turns on the agent's model for everyone, said $10.97.
 
 The estimate multiplies that by each model's current price (the catalog's,
 ``model_prices``), at the partner's price (the same multiplier as «Construcción y
@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.services.router_catalog import Price, TokenEstimate, estimate_cost_micros
 from nexus_api.services.testing.runs import RUNS
 
-AGENT_CALLS: Final = 3
+AGENT_CALLS: Final = 2
 CLASSIFY_CALLS: Final = 2
 CUSTOMER_CALLS: Final = 2
 JUDGE_CALLS: Final = 1
@@ -41,7 +41,8 @@ JUDGE_CALLS: Final = 1
 AGENT_CALL: Final = TokenEstimate(input_tokens=1_500, cache_read_tokens=4_500, output_tokens=45)
 CLASSIFY_CALL: Final = TokenEstimate(input_tokens=140, output_tokens=35)
 CUSTOMER_CALL: Final = TokenEstimate(input_tokens=400, output_tokens=60)
-JUDGE_CALL: Final = TokenEstimate(input_tokens=1_200, output_tokens=120)
+#: With the business data to check against (66.9).
+JUDGE_CALL: Final = TokenEstimate(input_tokens=800, output_tokens=120)
 #: The partner's price over the provider's cost, as in «Construcción y pruebas».
 PRICE_MULTIPLIER: Final = Decimal("2.2")
 

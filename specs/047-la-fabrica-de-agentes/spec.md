@@ -595,7 +595,7 @@ Cada sección dice su procedencia:
 - «Propuesto por el constructor»;
 - «Editado por Marta desde la app».
 
-Cada sección tiene un historial con «Deshacer». Si dos personas editan a la vez, el segundo guardado avisa del conflicto. Los cambios se aplican al momento y vuelven a pasar las pruebas de los agentes en segundo plano; si alguna falla, avisan.
+Cada sección tiene un historial con «Deshacer». Si dos personas editan a la vez, el segundo guardado avisa del conflicto. Los cambios se aplican al momento y las pruebas afectadas quedan desactualizadas, sin pasarse solas (requisito 68.9).
 
 **Por qué esta prioridad**: escriben en la ficha el partner, el constructor y el negocio, y sin procedencia ni deshacer nadie se fía de lo que dice el agente.
 
@@ -737,7 +737,7 @@ Si el conocimiento no cabe entero en el contexto, se busca lo relevante. Cada re
 1. **Dado** una tarifa mayorista en el conocimiento propio de Ventas, **cuando** alguien se la pregunta a Recepción, **entonces** Recepción no la conoce.
 2. **Dado** un negocio con más conocimiento del que cabe en el contexto, **cuando** se pregunta un dato concreto, **entonces** el agente lo encuentra, y la respuesta guarda de qué documento salió.
 3. **Dado** una fuente que se quita, **cuando** se quita, **entonces** ningún agente la usa desde el siguiente mensaje.
-4. **Dado** «Enseñar» con «Para todo el negocio», **cuando** se guarda, **entonces** lo saben todos los agentes y se vuelven a pasar sus pruebas.
+4. **Dado** «Enseñar» con «Para todo el negocio», **cuando** se guarda, **entonces** lo saben todos los agentes y sus pruebas quedan desactualizadas (requisito 68.9).
 
 ---
 
@@ -1281,7 +1281,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
    El sistema DEBE registrar cada cambio en la auditoría con quién lo hizo y desde dónde.
 6. WHEN una persona del cliente cambia la ficha THEN el sistema DEBE avisar al partner en la campana de qué cambió.
-7. WHEN cambia la ficha THEN el sistema DEBE volver a pasar en segundo plano las pruebas afectadas de los agentes del cliente y avisar si alguna falla.
+7. WHEN cambia la ficha THEN el sistema DEBE marcar como desactualizadas las pruebas afectadas de los agentes del cliente, sin pasarlas por su cuenta (enmendado por el 68.9).
 
 ### Requisito 14 — El Panel del cliente
 
@@ -1378,7 +1378,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    DEBE decir cuántas preguntas descartó y por qué. NO DEBE mostrar recuentos fijos.
 5. WHEN una respuesta es un dato del negocio THEN el sistema DEBE guardarla en la ficha por defecto y permitir «Solo este agente». El formulario DEBE decir dónde se guarda.
 6. Cada habilidad que necesite una integración no conectada DEBE enseñar «Conectar {integración}» en su misma fila.
-7. Cada bloque del borrador DEBE poder editarse en línea. Editar un bloque DEBE marcar las pruebas como no ejecutadas.
+7. Cada bloque del borrador DEBE poder editarse en línea. Editar un bloque DEBE marcar las pruebas como no ejecutadas, salvo el nombre, el tono, el trato y el saludo (enmendado por el 68.10).
 8. El sistema DEBE ofrecer como alternativas «Empezar desde una plantilla» (las plantillas actuales, en los 6 grupos de la spec 046 más «Otro») y «En blanco».
 9. WHERE el partner tiene plantilla por defecto, «Nuevo agente» DEBE ofrecerla la primera, sin aplicarla sola.
 
@@ -1439,7 +1439,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 4. El sistema DEBE ejecutar cada prueba 3 veces y darla por pasada solo si pasa las 3. Si pasa 1 o 2, DEBE marcarla «Inestable».
 5. La lista DEBE enseñar todas las pruebas con su estado. Las que fallan DEBEN llevar «Por qué falló», con lo que se comprobó.
 6. El sistema DEBE permitir marcar una prueba del sector como «No aplica», escribiendo la razón.
-7. WHEN cambian la ficha, el conocimiento o el borrador THEN el sistema DEBE marcar como desactualizadas las pruebas afectadas.
+7. WHEN cambian la ficha, el conocimiento o el borrador THEN el sistema DEBE marcar como desactualizadas las pruebas afectadas (enmendado por el 68.3, el 68.9 y el 68.10).
 8. El juez de las pruebas DEBE evaluar una dimensión por criterio, con la opción «No sé», y estar calibrado contra etiquetas humanas en español antes de bloquear una publicación.
 
 ### Requisito 22 — La revisión automática
@@ -2003,6 +2003,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    - **«Conversaciones»**: la IA de los turnos de canal y todo lo que cuelga de ellos (clasificar, transcribir, ver imágenes, juzgar, escalar y las decisiones del router). La paga la bolsa de cada cliente.
    - **«Mensajes de Meta»**: lo que Meta factura al negocio por las plantillas y por los mensajes de servicio que pasan de los 1.000 gratuitos al mes por número. Se enseña aparte, como estimación, y no sale de la bolsa.
    - **«Construcción y pruebas»**: el constructor, el playground, las pruebas y simulaciones con su juez, la lectura de webs y documentos, la indexación del conocimiento, las sugerencias semanales y las certificaciones que lanza el partner. La paga Auphere hasta el tope mensual del partner.
+   - **«Pruebas a cargo del cliente»**: las pasadas completas que se piden después de la primera de cada agente (requisito 68). La paga la bolsa del cliente.
    - **«Companion y teammates»**: lo que gastan el asistente de la consola y los teammates, primero del pool incluido y después de la cuenta. Se mide como hoy (los teammates quedan fuera de alcance).
 5. La partida «Construcción y pruebas» DEBE tener un tope mensual en dinero, a precio y en la moneda de la cuenta. Lo fija Auphere por partner; por defecto, 50. Sustituye al tope de 2 M de tokens del playground y nunca se enseña en tokens (spec 033).
    - Al 80 %, DEBE avisar a owners, admins y builders.
@@ -2478,7 +2479,7 @@ Enmienda los requisitos 16.5, 22.1 y 23.1, y precisa el 58.2.
 
 **Historia de usuario:** Como partner, quiero que las pruebas de un agente sean pocas, que decidan algo y que no me asusten con un precio que no es. Así las corro de verdad en lugar de saltarme la puerta.
 
-Lo sustenta el estudio de staging del 2026-11-04 (`.specify/bugs/la-suite-no-decide-y-se-repite/assessment.md`): 19 pruebas, 11 sin poder decidir, seis pares repetidos, y las 5 versiones guardadas del agente, todas saltándose la puerta.
+Lo sustenta el estudio de staging del 2026-11-04 (`.specify/bugs/la-suite-no-decide-y-se-repite/assessment.md`): 19 pruebas, 11 sin poder decidir, seis pares repetidos, y las 5 versiones guardadas del agente, todas saltándose la puerta. Los puntos 8 a 11 salen de la pasada real del 2026-11-05 (`.specify/bugs/las-pruebas-esperan-lo-que-no-se-mide/assessment.md`).
 
 #### Criterios de aceptación
 
@@ -2489,8 +2490,12 @@ Lo sustenta el estudio de staging del 2026-11-04 (`.specify/bugs/la-suite-no-dec
 5. CUANDO alguien ejecute las pruebas y la estimación quepa en lo que queda de «Construcción y pruebas», ENTONCES la consola DEBE arrancar sin preguntar. SOLO SI no cabe, DEBE decir cuánto costaría y cuánto queda, y pedir confirmación. Enmienda el 61.8. La estimación DEBE salir de lo medido, con la caché.
 6. CUANDO alguien abra «Más ajustes», ENTONCES sus secciones DEBEN estar plegadas, y un enlace a algo de dentro DEBE abrir la suya. Las pruebas que no aplican DEBEN ir aparte y plegadas. «No sé» NO DEBE llamarse «Por qué falló» ni ofrecer «Arreglar».
 7. CUANDO una llamada del constructor escriba el borrador, ENTONCES el sistema DEBE darle un plazo propio y NO DEBE repetirla por un corte.
+8. Una prueba SOLO DEBE esperar lo que el mundo simulado sabe medir: si pasó a una persona, si quedó una cita y si se pidió un pago. SI el constructor o una guía escriben otra clave, ENTONCES el sistema DEBE quitarla al guardar. SI una prueba ya guardada la tiene, ENTONCES NO DEBE contar como fallo. SI la escribe una persona por la API, ENTONCES DEBE responder `422 unknown_state_key` con las claves.
+9. CUANDO el juez decida una prueba, ENTONCES DEBE tener los datos del negocio con los que comparar, los mismos que lee el agente. Sin ellos, «dice el horario de la ficha» solo puede salir «No sé».
+10. CUANDO una prueba falle por el estado, ENTONCES el sistema DEBE decirlo en palabras («tenía que quedar una cita y no quedó»), no con rutas internas.
+11. CUANDO el constructor describa cuándo pasar a una persona con sus palabras, ENTONCES el sistema DEBE conservarlo. SI no dice nada que se pueda usar, ENTONCES DEBE aplicar los disparadores por defecto, no dejar al agente sin ninguno.
 
-Enmienda los requisitos 21.1 (8 + 12 pruebas) y 61.8.
+Enmienda los requisitos 21.1 (8 + 12 pruebas) y 61.8. El punto 5 lo enmienda el 68.4: una pasada a cargo de la bolsa siempre pregunta.
 
 ### Requisito 67 — Las herramientas de un conector, a la vista y por agente (enmienda del 2026-11-04)
 
@@ -2504,6 +2509,41 @@ Enmienda los requisitos 21.1 (8 + 12 pruebas) y 61.8.
 4. SI una herramienta que cambia algo está encendida con el permiso «Solo lectura», ENTONCES el sistema DEBE decir que hace falta otro permiso.
 5. CUANDO alguien guarde los ajustes de un conector o lo vuelva a autorizar, ENTONCES el sistema NO DEBE volver a encender lo que una persona apagó.
 6. El sistema NO DEBE ofrecer encender todas de golpe.
+7. Cada fila DEBE tener una acción principal a la vista, y el resto en su menú, con lo destructivo al final, como en las guías de Apple. SI solo queda una acción secundaria, DEBE ir a la vista.
+
+### Requisito 68 — Auphere paga una pasada completa por agente (enmienda del 2026-11-05)
+
+**Historia de usuario:** Como Auphere, quiero pagar la primera pasada completa de cada agente y no la de cada actualización. Así el coste de construir no crece con cada cambio, y quien quiera repetirlas entera lo decide sabiendo que sale de la bolsa del cliente.
+
+Decisión de Luis del 2026-11-05: «los paga auphere pero solo debe ejecutarse una única vez no cada vez que se actualiza el agente, si se requiere también pasar las pruebas completas en cada actualización se cobrará en la bolsa del cliente». Y cambiar el nombre o el tono no repite pruebas.
+
+#### Criterios de aceptación
+
+1. CUANDO termine la primera pasada de todas las pruebas de un agente con algún resultado que diga algo del agente, ENTONCES el sistema DEBE dar por gastada la pasada que paga Auphere. Una pasada en la que ningún modelo respondió, o que se paró sin terminar, NO DEBE contar.
+2. MIENTRAS un agente no haya gastado esa pasada, CUANDO se guarde, ENTONCES el sistema DEBE pasar las pruebas antes de decidir, a cargo de «Construcción y pruebas».
+3. CUANDO se guarde un agente que ya la gastó, ENTONCES el sistema NO DEBE pasar pruebas por su cuenta y la puerta NO DEBE bloquear porque esa versión no se probó. El último resultado de cada prueba DEBE seguir contando en la puerta, sea de la versión que sea: descartar el borrador o restaurar otra versión NO DEBE borrar una crítica en rojo. Enmienda los requisitos 23.1 y 21.7.
+4. CUANDO alguien pida otra pasada de todas las pruebas de un agente que ya gastó la suya, ENTONCES la DEBE pagar la bolsa del cliente, y la consola DEBE decir cuánto costaría y cuánto queda antes de arrancar, cada vez. Sin esa confirmación, la API DEBE responder `409 charge_not_confirmed`. SI ahora son más pruebas de las que se aceptaron, DEBE responder `409 charge_changed`.
+5. SI lo que queda en la bolsa no llega a 1,5 veces lo estimado, ENTONCES el sistema NO DEBE arrancar (`402 client_bag_not_enough`) y la consola DEBE llevar al saldo del cliente. SI falta el precio de un modelo, ENTONCES NO DEBE arrancar (`409 charge_unknown`) y DEBE decir por qué, sin ofrecer saldo.
+6. MIENTRAS corre una pasada a cargo de la bolsa, SI lo que queda baja de lo que cuestan 2 pruebas, ENTONCES las que faltan NO DEBEN empezar (`client_bag_low`): una prueba no deja sin saldo a un agente que está atendiendo. Tampoco cuenta para el tope de gasto del agente ni para los días que le quedan a la bolsa.
+7. CUANDO alguien repita una prueba, las que no pasan, o las desactualizadas si no son todas, ENTONCES lo DEBE seguir pagando «Construcción y pruebas», hasta su tope.
+8. SI el cliente tiene consumo ilimitado o el partner no cobra de las bolsas, ENTONCES esa otra pasada DEBE seguir en «Construcción y pruebas».
+9. CUANDO cambie la ficha o el conocimiento, ENTONCES el sistema DEBE marcar desactualizadas las pruebas afectadas y NO DEBE pasarlas por su cuenta. Enmienda el requisito 13.7.
+10. CUANDO un cambio del borrador solo toque el nombre, el tono, el trato o el saludo, ENTONCES el sistema NO DEBE marcar ninguna prueba como desactualizada. Enmienda los requisitos 17.7 y 21.7.
+11. Consumo DEBE enseñar lo cobrado así en su propia partida, «Pruebas a cargo del cliente», que paga la bolsa. Enmienda el requisito 46.4.
+12. La consola DEBE decir al guardar, y junto a «Ejecutar pruebas», si las pruebas se pasan y quién las paga.
+13. SI al guardar la puerta ya la cierra algo que ninguna prueba arregla (el validador, el aviso de IA o la calidad sin comprobar), o un bloqueante de la revisión sin motivo para saltarlo, ENTONCES el trabajo DEBE fallar con `gate_blocked` sin pasar las pruebas y NO DEBE gastar la pasada del punto 1.
+14. CUANDO Auphere cambie un agente por su cuenta (el paso a Reservas, apagar el módulo) y sus pruebas queden desactualizadas, ENTONCES las pasadas de antes de ese cambio NO DEBEN contar para el punto 1: la siguiente pasada completa la DEBE pagar «Construcción y pruebas», también al guardar. Decidido sin Luis el 2026-11-05: el cliente no pidió ese cambio.
+
+### Requisito 69 — El clasificador tiene su propio modelo (enmienda del 2026-11-05)
+
+**Historia de usuario:** Como Auphere, quiero que clasificar un mensaje use un modelo dedicado a eso, barato y rápido. Devuelve una palabra, y con el modelo de responder era el 7,5 % del gasto de staging.
+
+#### Criterios de aceptación
+
+1. CUANDO el pipeline clasifique un mensaje, ENTONCES el sistema DEBE usar Claude Haiku 5.5 (`anthropic/claude-haiku-5-5`) sin razonamiento y con un límite de salida corto, también en las pruebas y en el playground. SI ese modelo falla o no da etiqueta, ENTONCES DEBE clasificar el de responder.
+2. La lectura de webs y la identificación del sector NO DEBEN usar el modelo del clasificador. Extraen datos de textos largos y conservan el modelo que tenían.
+3. El juez NO DEBE elegir el modelo del clasificador mientras haya otro disponible.
+4. El modelo DEBE estar en el catálogo con sus precios y sus tres pesos: un turno que lo use se cobra como cualquier otro.
 
 ## Criterios de éxito *(obligatorio)*
 

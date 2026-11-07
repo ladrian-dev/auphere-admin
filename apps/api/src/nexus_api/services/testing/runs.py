@@ -229,6 +229,26 @@ def tests_in_scope(
     return live
 
 
+async def tests_of_run(
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    tests: Iterable[AgentTest],
+    *,
+    scope: str,
+    test_id: uuid.UUID | None = None,
+) -> list[AgentTest]:
+    """Lo que corre una pasada de ``scope``. ``failed`` (68.7) mira la última pasada de
+    cada prueba: las que no pasan, y las que aún no se han pasado."""
+    if scope != "failed":
+        return tests_in_scope(tests, scope=scope, test_id=test_id)
+    latest = await latest_results(session, agent_id)
+    return [
+        t
+        for t in tests_in_scope(tests, scope="all")
+        if outcome_of(t, latest.get(t.id, [])).status != "passed"
+    ]
+
+
 async def lock_agent(session: AsyncSession, agent_id: uuid.UUID) -> None:
     """Quien va a lanzar una pasada espera aquí a quien está lanzando otra: sin esto,
     dos a la vez no ven ninguna viva y lanzan las dos. ``FOR NO KEY UPDATE``: choca
@@ -415,6 +435,7 @@ __all__ = [
     "summarize",
     "target_version",
     "tests_in_scope",
+    "tests_of_run",
     "why_failed",
     "why_untested",
 ]

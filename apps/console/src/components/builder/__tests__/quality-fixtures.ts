@@ -114,6 +114,7 @@ export function suite(over: Partial<TestSuite> = {}): TestSuite {
     },
     tests: TESTS,
     judge_calibrated: true,
+    next_full_pass: "auphere",
     allowed: ["add", "edit", "run"],
     ...over,
   };
@@ -164,6 +165,8 @@ export function preview(over: Partial<PublishPreview> = {}): PublishPreview {
     diff: [],
     gate: null,
     can_override: false,
+    tests_on_save: true,
+    next_full_pass: "auphere",
     ...over,
   };
 }

@@ -2,8 +2,6 @@
 
 - **Ninguna pasada sobrevive a su trabajo**: al fallar una, las demás se cancelan
   antes de que el trabajo quede ``failed``, y la pasada se cierra.
-- **Cada productor mira lo mismo**: un cambio de la ficha se junta con la que aún
-  no ha empezado, dos a la vez encolan una, y una fila muerta no se traga nada.
 - **«Guardar» y «Probar» se ven**: los dos corren la misma suite.
 """
 
@@ -17,15 +15,12 @@ import pytest
 import sqlalchemy as sa
 from nexus_worker.jobs.handlers import agent_tests as tests_handler
 from nexus_worker.runtime.llm import InMemoryProvider, LLMRouter
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import tenant_scoped_session
-from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus, Job
+from nexus_api.db.models import Job
 from nexus_api.db.models.agent_spec import AgentTest, AgentTestRun, AgentTestSuite
 from nexus_api.services import jobs as jobs_service
-from nexus_api.services.business.writes import drain_after_commit, mark_tests_stale
 
 from ..business._business_world import Biz, new_business, write
 from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft, turn_reservas_on
@@ -92,21 +87,6 @@ async def _agent(
     return agent_id
 
 
-async def _published(client: Any, biz: Biz, fake_redis: Any, db_session: AsyncSession) -> uuid.UUID:
-    """Un agente **publicado**: solo esos vuelven a pasar sus pruebas al cambiar la
-    ficha (13.7). Publicarlo no deja nada vivo."""
-    agent_id = await _agent(client, biz, fake_redis, db_session)
-    async with tenant_scoped_session(db_session, biz.tenant_id):
-        config = await db_session.scalar(
-            sa.select(AgentConfig).where(
-                AgentConfig.agent_id == agent_id, AgentConfig.status == AgentConfigStatus.STAGED
-            )
-        )
-        assert config is not None
-        config.status = AgentConfigStatus.ACTIVE
-    return agent_id
-
-
 async def _tests_jobs(db_session: AsyncSession, biz: Biz, agent_id: uuid.UUID) -> list[Job]:
     async with tenant_scoped_session(db_session, biz.tenant_id):
         rows = await db_session.scalars(
@@ -116,14 +96,6 @@ async def _tests_jobs(db_session: AsyncSession, biz: Biz, agent_id: uuid.UUID) -
             .execution_options(populate_existing=True)
         )
         return list(rows.all())
-
-
-async def _change_the_ficha(tenant_id: uuid.UUID) -> int:
-    """Lo que hace cada escritura de la ficha, en su propia transacción."""
-    async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
-        queued = await mark_tests_stale(session, sections=["hours"])
-    await drain_after_commit()
-    return queued
 
 
 # ── ninguna pasada sobrevive a su trabajo ──────────────────────────────────────
@@ -203,72 +175,6 @@ async def test_when_a_pass_blows_up_the_others_die_with_the_job(
     assert again.json()["job_id"] != resp.json()["job_id"]
 
 
-# ── un cambio de la ficha ─────────────────────────────────────────────────────
-
-
-async def test_a_change_of_the_ficha_joins_a_manual_run_that_has_not_started(
-    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
-) -> None:
-    agent_id = await _published(client, biz, fake_redis, db_session)
-    resp = await client.post(
-        f"{_url(biz, agent_id)}/test-runs", json={"scope": "all"}, headers=biz.headers()
-    )
-    assert resp.status_code == 202, resp.text
-
-    assert await _change_the_ficha(biz.tenant_id) == 0
-    jobs = await _tests_jobs(db_session, biz, agent_id)
-    assert [str(j.id) for j in jobs] == [resp.json()["job_id"]], "la que aún no empezó lo cubre"
-
-
-async def test_two_changes_at_once_queue_one(
-    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
-) -> None:
-    agent_id = await _published(client, biz, fake_redis, db_session)
-    # Ya desactualizadas: marcarlas no escribe nada, así que tampoco se bloquean filas.
-    async with tenant_scoped_session(db_session, biz.tenant_id):
-        await db_session.execute(sa.update(AgentTest).values(stale=True))
-    await asyncio.gather(*(_change_the_ficha(biz.tenant_id) for _ in range(4)))
-    jobs = await _tests_jobs(db_session, biz, agent_id)
-    assert len(jobs) == 1, [str(j.id) for j in jobs]
-
-
-async def test_a_dead_queued_row_does_not_swallow_the_next_change(
-    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
-) -> None:
-    """La fila de la pasada no se entera de que su trabajo caducó: se queda
-    ``queued``. Quien manda es el trabajo."""
-    agent_id = await _published(client, biz, fake_redis, db_session)
-    assert await _change_the_ficha(biz.tenant_id) == 1
-    (dead,) = await _tests_jobs(db_session, biz, agent_id)
-    async with tenant_scoped_session(db_session, biz.tenant_id):
-        assert await jobs_service.fail_job(db_session, dead.id, error_code="timeout")
-
-    assert await _change_the_ficha(biz.tenant_id) == 1
-    jobs = await _tests_jobs(db_session, biz, agent_id)
-    assert len(jobs) == 2
-    assert jobs[-1].status == "queued"
-
-
-async def test_a_change_during_a_running_pass_queues_one_more_and_only_one(
-    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
-) -> None:
-    """La que corre empezó antes del cambio y no lo cubre: hace falta otra. La
-    siguiente se junta con esa."""
-    agent_id = await _published(client, biz, fake_redis, db_session)
-    assert await _change_the_ficha(biz.tenant_id) == 1
-    (first,) = await _tests_jobs(db_session, biz, agent_id)
-    async with tenant_scoped_session(db_session, biz.tenant_id):
-        started = await jobs_service.start_job(db_session, first.id)
-        assert started is not None
-        await db_session.execute(
-            sa.update(AgentTestRun).where(AgentTestRun.job_id == first.id).values(status="running")
-        )
-
-    assert await _change_the_ficha(biz.tenant_id) == 1
-    assert await _change_the_ficha(biz.tenant_id) == 0
-    assert len(await _tests_jobs(db_session, biz, agent_id)) == 2
-
-
 # ── «Guardar» y «Probar» ──────────────────────────────────────────────────────
 
 
@@ -280,6 +186,23 @@ async def test_saving_with_a_live_run_says_so_instead_of_paying_twice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     agent_id = await _agent(client, biz, fake_redis, db_session)
+    # Con lo que ninguna prueba arregla, la puerta para antes (68.13): este borrador puede salir.
+    draft = (await client.get(f"{_url(biz, agent_id)}/draft", headers=biz.headers())).json()
+    decided = await client.patch(
+        f"{_url(biz, agent_id)}/draft",
+        json={
+            "spec": {
+                **draft["spec"],
+                "ai_disclosure": {
+                    "decided": True,
+                    "mode": "first_message",
+                    "text": "Soy el asistente virtual.",
+                },
+            }
+        },
+        headers={**biz.headers(), "If-Match": f'"{draft["revision"]}"'},
+    )
+    assert decided.status_code == 200, decided.text
     run = await client.post(
         f"{_url(biz, agent_id)}/test-runs", json={"scope": "all"}, headers=biz.headers()
     )
@@ -327,29 +250,3 @@ async def test_asking_for_a_run_while_saving_runs_the_same_suite_says_so(
     assert resp.status_code == 409, resp.text
     assert resp.json()["detail"]["code"] == "suite_running"
     assert await _tests_jobs(db_session, biz, agent_id) == []
-
-
-async def test_the_lock_does_not_block_what_only_checks_the_agent_exists(
-    db_session: AsyncSession, client: Any, biz: Biz, fake_redis: Any
-) -> None:
-    """``mark_tests_stale`` corre dentro de una escritura de la ficha: no puede frenar
-    a quien inserta filas con FK a ``agents``, como los turnos de un canal."""
-    agent_id = await _published(client, biz, fake_redis, db_session)
-    sm = get_sessionmaker()
-    async with sm() as holder, tenant_scoped_session(holder, biz.tenant_id):
-        await mark_tests_stale(holder, sections=["hours"])
-        async with sm() as other, tenant_scoped_session(other, biz.tenant_id):
-            await other.execute(sa.text("SET LOCAL lock_timeout = '500ms'"))
-            found = await other.scalar(
-                sa.select(Agent.id)
-                .where(Agent.id == agent_id)
-                .with_for_update(read=True, key_share=True)
-            )
-            assert found == agent_id
-            # Y entre lanzadores sí choca: ``start_run`` pide ``FOR UPDATE``.
-            with pytest.raises(DBAPIError, match="could not obtain lock"):
-                async with other.begin_nested():
-                    await other.execute(
-                        sa.select(Agent.id).where(Agent.id == agent_id).with_for_update(nowait=True)
-                    )
-    await drain_after_commit()

@@ -297,6 +297,51 @@ async def test_refill_on_day_one_goes_first_to_who_runs_out_first_and_reports_th
     assert await _reconciled(db_session, world) == []
 
 
+async def test_tests_charged_to_the_bag_do_not_move_it_up_the_refill_queue(
+    client: Any, db_session: Any
+) -> None:
+    """Una pasada a cargo de la bolsa es de una vez: no dice a qué ritmo se gasta (68.11).
+    España gastó más este mes, pero casi todo en pruebas: atendiendo, gasta menos."""
+    world = await money_world(db_session, purchased=30 * UNIT)
+    await _assign(client, world, world.us.ref, 10 * UNIT, "USD")
+    await _assign(client, world, world.es.ref, 10 * UNIT, "EUR")
+    charges = {
+        world.us.tenant_id: [("debit_turn", 3 * UNIT)],
+        world.es.tenant_id: [("debit_turn", UNIT), ("debit_tests", 3 * UNIT)],
+    }
+    async with db_session.begin():
+        await apply_partner_to_session(db_session, world.partner_id)
+        for tenant_id, entries in charges.items():
+            await as_client(db_session, tenant_id)
+            bag = await db_session.get(ClientWallet, tenant_id)
+            assert bag is not None
+            bag.refill_up_to_micros = 20 * UNIT
+            for n, (kind, spent) in enumerate(entries):
+                bag.balance_micros -= spent
+                bag.month_spent_micros += spent
+                db_session.add(
+                    ClientWalletEntry(
+                        tenant_id=tenant_id,
+                        partner_id=world.partner_id,
+                        kind=kind,
+                        amount_micros=-spent,
+                        balance_after_micros=bag.balance_micros,
+                        currency=bag.currency,
+                        usage_ref=f"channel:t-{tenant_id.hex[:6]}-{n}",
+                    )
+                )
+    # España: 6 EUR y 1 al mes, 6 meses. EE. UU.: 7 USD y 3 al mes, algo más de 2. Le toca
+    # primero a EE. UU. Contando las pruebas, España (6 EUR y 4 al mes) se le adelantaba.
+    now = datetime.now(UTC)
+    first_of_next = (now.replace(day=28) + timedelta(days=4)).replace(day=1)
+    async with db_session.begin():
+        await apply_partner_to_session(db_session, world.partner_id)
+        short = await bags.refill_all(db_session, partner_id=world.partner_id, now=first_of_next)
+    assert [s["tenant_id"] for s in short][-1] == str(world.es.tenant_id)
+    assert (await bag_of(db_session, world, world.es.tenant_id)).balance_micros == 6 * UNIT
+    assert (await bag_of(db_session, world, world.us.tenant_id)).balance_micros > 7 * UNIT
+
+
 async def test_the_refill_cron_runs_only_on_day_one() -> None:
     from nexus_worker.streams.wallet_crons import refill_tick
 

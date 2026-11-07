@@ -94,6 +94,54 @@ export const builderQualityMessages = {
     en: "It would cost about {amount} and {left} of “Building and testing” is left this month. If it runs out, the remaining tests do not start.",
   },
   "builder.suite.estimate.confirm": { es: "Ejecutar", en: "Run" },
+  "builder.suite.charge.title.one": { es: "¿Ejecutar {n} prueba con cargo al cliente?", en: "Run {n} test, charged to the client?" },
+  "builder.suite.charge.title.other": { es: "¿Ejecutar {n} pruebas con cargo al cliente?", en: "Run {n} tests, charged to the client?" },
+  "builder.suite.charge.body": {
+    es: "Auphere ya pagó la primera pasada de este agente. Esta sale de la bolsa del cliente: unos {amount}. Ahora tiene {left}.",
+    en: "Auphere already paid for this agent’s first run. This one comes out of the client’s bag: about {amount}. It has {left} now.",
+  },
+  "builder.suite.charge.confirm": { es: "Ejecutar y cobrar", en: "Run and charge" },
+  "builder.suite.noBag.title": { es: "No hay saldo suficiente", en: "Not enough balance" },
+  "builder.suite.noBag.body": {
+    es: "Esta pasada costaría unos {amount} y la bolsa del cliente tiene {left}. Hace falta margen para no dejar sin saldo a los agentes que atienden.",
+    en: "This run would cost about {amount} and the client’s bag has {left}. It needs some margin so the agents serving customers keep their balance.",
+  },
+  "builder.suite.noBag.confirm": { es: "Ver el saldo del cliente", en: "See the client’s balance" },
+  "builder.suite.noPrice.title": { es: "No se puede calcular el coste", en: "The cost cannot be worked out" },
+  "builder.suite.noPrice.body": {
+    es: "Falta el precio de un modelo, y no se cobra a un cliente sin decirle cuánto. Avisa a Auphere. Repetir las pruebas que no pasan sigue disponible.",
+    en: "A model’s price is missing, and a client is not charged without saying how much. Tell Auphere. Repeating the tests that do not pass is still available.",
+  },
+  "builder.suite.noPrice.confirm": { es: "Entendido", en: "Got it" },
+  "builder.suite.nextOnTheBag": {
+    es: "Auphere ya pagó la primera pasada completa. Repetir las que no pasan o las desactualizadas no le cuesta nada al cliente. Ejecutarlas todas otra vez sale de su bolsa.",
+    en: "Auphere already paid for the first full run. Repeating the ones that do not pass or are out of date costs the client nothing. Running them all again comes out of their bag.",
+  },
+  "builder.suite.runFailed": { es: "Repetir las que no pasan", en: "Repeat the ones that do not pass" },
+  "builder.suite.error.bag": {
+    es: "La bolsa del cliente no llega para ejecutar todas las pruebas. Asígnale saldo o repite solo las que no pasan.",
+    en: "The client’s bag does not cover running all the tests. Assign balance or repeat only the ones that do not pass.",
+  },
+  "builder.suite.error.bagLow": {
+    es: "La bolsa del cliente se quedó justa y las pruebas que faltaban no empezaron, para no dejar sin saldo a los agentes que atienden.",
+    en: "The client’s bag ran low and the remaining tests did not start, so the agents serving customers keep their balance.",
+  },
+  "builder.suite.error.charge": {
+    es: "Esta pasada se cobra a la bolsa del cliente y hay que confirmarlo. Vuelve a pulsar y lo verás antes de empezar.",
+    en: "This run is charged to the client’s bag and needs confirming. Press again to see it before it starts.",
+  },
+  "builder.publish.tests.first": {
+    es: "Al guardar se ejecutan las pruebas. Esta primera pasada la paga Auphere.",
+    en: "Saving runs the tests. Auphere pays for this first run.",
+  },
+  "builder.publish.tests.notAgain": {
+    es: "Al guardar no se repiten las pruebas. Si quieres ejecutarlas antes, el coste sale de la bolsa del cliente.",
+    en: "Saving does not run the tests again. If you want to run them first, the cost comes out of the client’s bag.",
+  },
+  "builder.publish.tests.notAgainFree": {
+    es: "Al guardar no se repiten las pruebas. Si quieres, puedes ejecutarlas antes.",
+    en: "Saving does not run the tests again. You can run them first if you want.",
+  },
   "builder.suite.runAll": { es: "Ejecutar todas", en: "Run all" },
   "builder.suite.runStale": { es: "Ejecutar las desactualizadas", en: "Run the out-of-date ones" },
   "builder.suite.run": { es: "Ejecutar", en: "Run" },

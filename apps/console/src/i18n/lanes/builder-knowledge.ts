@@ -102,16 +102,16 @@ export const builderKnowledgeMessages = {
     en: "Every agent of this client will know it, including the ones you create later.",
   },
   "builder.teach.retest.none": {
-    es: "Después se vuelven a pasar las pruebas de los agentes que lo sepan.",
-    en: "Afterwards, the tests of the agents that know it run again.",
+    es: "Después, las pruebas de los agentes que lo sepan quedan desactualizadas.",
+    en: "Afterwards, the tests of the agents that know it are marked out of date.",
   },
   "builder.teach.retest.agent": {
-    es: "Después se vuelven a pasar las pruebas de este agente.",
-    en: "Afterwards, this agent’s tests run again.",
+    es: "Después, las pruebas de este agente quedan desactualizadas.",
+    en: "Afterwards, this agent’s tests are marked out of date.",
   },
   "builder.teach.retest.business": {
-    es: "Después se vuelven a pasar las pruebas de todos los agentes del cliente.",
-    en: "Afterwards, the tests of every agent of the client run again.",
+    es: "Después, las pruebas de todos los agentes del cliente quedan desactualizadas.",
+    en: "Afterwards, the tests of every agent of the client are marked out of date.",
   },
   "builder.teach.required.scope": { es: "Elige quién debe saberlo.", en: "Choose who should know it." },
   "builder.teach.required.text": { es: "Escribe lo que debe saber.", en: "Write what it should know." },

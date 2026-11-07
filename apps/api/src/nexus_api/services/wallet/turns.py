@@ -69,6 +69,37 @@ async def charge_turn(
     return debit
 
 
+async def charge_tests(
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    agent_id: uuid.UUID | None,
+    amount_usd: int,
+    usage_ref: str,
+) -> bags.Debit:
+    """Una pasada de pruebas a cargo de la bolsa (requisito 68). No suma al gasto del
+    agente: su tope habla de lo que gasta atendiendo. Si aun así la bolsa llega a cero,
+    los agentes se pausan «sin saldo», como con un turno: sin dinero no hay turno que cobrar."""
+    from nexus_api.services import agent_states
+
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        debit = await bags.debit_turn(
+            session,
+            partner_id=partner_id,
+            tenant_id=tenant_id,
+            amount_usd=amount_usd,
+            usage_ref=usage_ref,
+            agent_id=agent_id,
+            kind="debit_tests",
+        )
+    if debit.emptied and not debit.duplicate:
+        async with sm() as session, tenant_scoped_session(session, tenant_id):
+            await agent_states.pause_for_balance(session)
+    return debit
+
+
 async def after_balance_up(tenant_id: uuid.UUID) -> list[uuid.UUID]:
     from nexus_api.services import agent_states
 
@@ -76,4 +107,4 @@ async def after_balance_up(tenant_id: uuid.UUID) -> list[uuid.UUID]:
         return await agent_states.resume_after_balance(session)
 
 
-__all__ = ["after_balance_up", "bags_on", "charge_turn"]
+__all__ = ["after_balance_up", "bags_on", "charge_tests", "charge_turn"]

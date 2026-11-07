@@ -146,6 +146,7 @@ en Consumo, la lista de clientes, el Panel y la consola lite:
 | Partida | Quién la paga | De dónde sale |
 |---|---|---|
 | Conversaciones | la bolsa del cliente | `client_wallet_entries` `debit_turn` (y los débitos de cuenta con cliente de antes) |
+| Pruebas a cargo del cliente | la bolsa del cliente | `client_wallet_entries` `debit_tests`: las pasadas completas pedidas después de la primera de cada agente (spec 047, requisito 68). La que sigue a un cambio que hizo Auphere por su cuenta no se cobra (68.14). No cuentan para el tope del agente ni para el ritmo de la bolsa |
 | Mensajes de Meta | el negocio, a Meta | la estimación diaria de `messages.cost_usd` (`daily_cost_snapshots`); siempre «aprox.», nunca sale de la bolsa |
 | Construcción y pruebas | Auphere, hasta el tope | lo medido con origen de construcción, a precio (coste × 2,2); el mes en curso es `partner_build_budget` |
 | Companion y teammates | la cuenta | los débitos sin cliente |

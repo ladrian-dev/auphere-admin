@@ -146,7 +146,7 @@ export async function setNotApplicableAction(raw: unknown): Promise<ActionResult
 }
 
 const runSchema = agentSchema
-  .extend({ scope: z.enum(["all", "affected", "one"]), test: uuid.optional() })
+  .extend({ scope: z.enum(["all", "affected", "failed", "one"]), test: uuid.optional(), confirmed_tests: z.number().int().positive().optional() })
   .refine((b) => b.scope !== "one" || b.test !== undefined, { message: "test_required", path: ["test"] });
 
 /** Una pasada (3 repeticiones por prueba, 21.4) → `202 {job_id}`. */
@@ -154,10 +154,10 @@ export async function runTestsAction(raw: unknown): Promise<ActionResult<TestRun
   const body = runSchema.parse(raw);
   const principal = await partner("agents:write");
   if (!principal) return forbidden;
-  return run(() => backendFor(principal).runAgentTests(body.ref, body.agent, body.scope, body.scope === "one" ? body.test : undefined));
+  return run(() => backendFor(principal).runAgentTests(body.ref, body.agent, body.scope, body.scope === "one" ? body.test : undefined, body.confirmed_tests));
 }
 
-const estimateSchema = agentSchema.extend({ scope: z.enum(["all", "affected"]) });
+const estimateSchema = agentSchema.extend({ scope: z.enum(["all", "affected", "failed"]) });
 
 /** Cuánto costaría esa pasada (61.8), sin lanzar nada. */
 export async function estimateTestsAction(raw: unknown): Promise<ActionResult<TestRunEstimate>> {

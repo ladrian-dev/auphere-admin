@@ -56,10 +56,10 @@ export function agentQualityApi(call: Call) {
       call<TestSuite>(`${agent(ref, agentId)}/tests`, { method: "POST", body }),
     editAgentTest: (ref: string, agentId: string, testId: string, body: TestPatch) =>
       call<TestSuite>(`${agent(ref, agentId)}/tests/${enc(testId)}`, { method: "PATCH", body }),
-    runAgentTests: (ref: string, agentId: string, scope: TestRunScope, testId?: string) =>
+    runAgentTests: (ref: string, agentId: string, scope: TestRunScope, testId?: string, confirmedTests?: number) =>
       call<TestRunAccepted>(`${agent(ref, agentId)}/test-runs`, {
         method: "POST",
-        body: testId ? { scope, test_id: testId } : { scope },
+        body: { scope, ...(testId ? { test_id: testId } : {}), ...(confirmedTests ? { confirmed_tests: confirmedTests } : {}) },
       }),
     estimateAgentTests: (ref: string, agentId: string, scope: TestRunScope) =>
       call<TestRunEstimate>(`${agent(ref, agentId)}/test-runs`, {

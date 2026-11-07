@@ -65,8 +65,8 @@ export type AgentCapOut = { agent_id: string; monthly_cap_micros: number | null;
 
 // ── Consumo (requisito 46) ─────────────────────────────────────────────────
 
-export type UsageLine = "conversations" | "meta" | "build" | "companion";
-export const USAGE_LINES: readonly UsageLine[] = ["conversations", "meta", "build", "companion"];
+export type UsageLine = "conversations" | "client_tests" | "meta" | "build" | "companion";
+export const USAGE_LINES: readonly UsageLine[] = ["conversations", "client_tests", "meta", "build", "companion"];
 export type Payer = "client_bag" | "business_meta" | "auphere" | "account";
 export type LineState = "ok" | "warning" | "exhausted";
 

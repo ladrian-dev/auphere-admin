@@ -213,8 +213,8 @@ export const moneyMessages = {
   "money.chart.line": { es: "Partida", en: "Line" },
   "money.chart.partnerPays": { es: "Lo que pagas tú", en: "What you pay" },
   "money.chart.partnerPaysNote": {
-    es: "Lo que sale de tu dinero: las conversaciones y el Companion. Elige una partida para ver Meta o «Construcción y pruebas».",
-    en: "What comes out of your money: conversations and the Companion. Choose a line to see Meta or “Building and testing”.",
+    es: "Lo que sale de tu dinero: las conversaciones, las pruebas a cargo del cliente y el Companion. Elige una partida para ver Meta o «Construcción y pruebas».",
+    en: "What comes out of your money: conversations, tests paid by the client and the Companion. Choose a line to see Meta or “Building and testing”.",
   },
   "money.chart.approxNote": { es: "Es una estimación.", en: "It is an estimate." },
   "money.chart.total": { es: "{amount} en {days} días", en: "{amount} in {days} days" },
@@ -229,12 +229,17 @@ export const moneyMessages = {
   "money.lines.title": { es: "Partidas", en: "Lines" },
   "money.lines.description": { es: "En qué se va este mes y quién paga cada cosa.", en: "Where this month goes and who pays for each thing." },
   "money.line.conversations": { es: "Conversaciones", en: "Conversations" },
+  "money.line.client_tests": { es: "Pruebas a cargo del cliente", en: "Tests paid by the client" },
   "money.line.meta": { es: "Mensajes de Meta", en: "Meta messages" },
   "money.line.build": { es: "Construcción y pruebas", en: "Building and testing" },
   "money.line.companion": { es: "Companion y teammates", en: "Companion and teammates" },
   "money.line.conversations.payer": {
     es: "La paga la bolsa de cada cliente: la IA de sus conversaciones y lo que cuelga de ellas.",
     en: "Paid by each client’s bag: the AI of their conversations and everything around them.",
+  },
+  "money.line.client_tests.payer": {
+    es: "La paga la bolsa de cada cliente: las pasadas completas que se piden después de la primera de cada agente, que paga Auphere.",
+    en: "Paid by each client’s bag: the full test runs requested after each agent’s first one, which Auphere pays for.",
   },
   "money.line.meta.payer": {
     es: "La paga el negocio, a Meta: plantillas y mensajes de servicio por encima de los 1.000 gratis al mes. Es una estimación y no sale de la bolsa.",

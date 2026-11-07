@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { axeViolations } from "@nexus/ui/test/axe";
@@ -27,7 +28,7 @@ const untested = suite({
 });
 
 function box(over: Partial<Tests> = {}, canWrite = true) {
-  const tests: Tests = { suite: untested, running: null, error: null, canRun: canWrite, run: vi.fn(), ask: vi.fn(), confirm: null, reload: vi.fn(), ...over };
+  const tests: Tests = { suite: untested, running: null, pending: false, error: null, canRun: canWrite, run: vi.fn(), ask: vi.fn(), confirm: null, reload: vi.fn(), ...over };
   return render(
     <LocaleProvider locale="es">
       <TestsBox refId={REF} tests={tests} review={null} canWrite={canWrite} onFix={vi.fn()} onEdit={vi.fn()} onAll={vi.fn()} />
@@ -73,5 +74,38 @@ describe("la tarjeta de pruebas, sin decidir (66.6)", () => {
   it("lo que falla va antes, aunque lo que no se decidió sea crítico", () => {
     box({ suite: suite({ tests: [unknown, failed] }) });
     expect(screen.getByText("Falla «Reserva una cita»")).toBeInTheDocument();
+  });
+});
+
+describe("quién paga, en la tarjeta (68.7)", () => {
+  const onTheBag = (summary: Partial<ReturnType<typeof suite>["summary"]>) => suite({ next_full_pass: "client_bag", summary: { ...suite().summary, ...summary } });
+
+  it("lo que no pasa se repite primero, y volver a ejecutarlas todas se dice aparte", async () => {
+    const ask = vi.fn();
+    box({ suite: onTheBag({ total: 8, not_applicable: 0, passed: 6, failed: 2, stale: 0 }), ask });
+    await userEvent.click(screen.getByRole("button", { name: "Repetir las que no pasan" }));
+    expect(ask).toHaveBeenCalledWith("failed");
+    await userEvent.click(screen.getByRole("button", { name: "Repetir todas" }));
+    expect(ask).toHaveBeenCalledWith("all");
+    expect(screen.getByText(/sale de la bolsa del cliente/)).toBeVisible();
+  });
+
+  it("con parte desactualizada y todo en verde, se ofrece esa parte", async () => {
+    const ask = vi.fn();
+    box({ suite: onTheBag({ total: 8, not_applicable: 0, passed: 8, failed: 0, stale: 3 }), ask });
+    await userEvent.click(screen.getByRole("button", { name: "Ejecutar las desactualizadas" }));
+    expect(ask).toHaveBeenCalledWith("affected");
+  });
+
+  it("con todas desactualizadas no hay atajo: eso es una pasada completa", () => {
+    box({ suite: onTheBag({ total: 8, not_applicable: 0, passed: 8, failed: 0, stale: 8 }) });
+    expect(screen.queryByRole("button", { name: "Ejecutar las desactualizadas" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Repetir todas" })).toBeVisible();
+  });
+
+  it("mientras se estima o arranca, los botones no se pueden volver a pulsar", () => {
+    box({ suite: onTheBag({ total: 8, not_applicable: 0, passed: 6, failed: 2, stale: 0 }), pending: true });
+    expect(screen.getByRole("button", { name: "Repetir las que no pasan" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Repetir todas" })).toBeDisabled();
   });
 });

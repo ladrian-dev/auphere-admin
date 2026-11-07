@@ -90,6 +90,8 @@ KIND = "tests"
 TIMEOUT_S = 600.0
 #: El estado honesto de una suite que se paró sin partida (T217).
 BUDGET_EXHAUSTED = "build_budget_exhausted"
+#: Requisito 68.6: una pasada a cargo de la bolsa no la deja sin saldo.
+CLIENT_BAG_LOW = "client_bag_low"
 #: Y el de una en la que ningún modelo respondió: no se ha probado nada.
 MODEL_UNAVAILABLE = "model_unavailable"
 #: Cuántas pasadas a la vez dentro del lote del cliente.
@@ -119,8 +121,9 @@ def _judge_for(configured: str | None, responding: Sequence[str]) -> str | None:
     settings = get_worker_settings()
     others = (
         settings.llm_simulation_model,
-        settings.llm_classify_model,
+        # Antes el de responder: el clasificador es para clasificar, no para juzgar.
         settings.llm_respond_model,
+        settings.llm_classify_model,
     )
     return next((m for m in others if m and m not in set(responding)), configured)
 
@@ -161,6 +164,7 @@ async def _attempt(
     customer: Customer | None = None,
     judge_name: str | None = None,
     warnings: set[str] | None = None,
+    reference: str | None = None,
 ) -> bool | None:
     sm = get_sessionmaker()
     # 61.7: cada pasada empieza con la agenda simulada sembrada de nuevo.
@@ -213,6 +217,7 @@ async def _attempt(
             judge_blocks=judge_blocks,
             judge_name=judge_name,
             warnings=warnings,
+            reference=reference,
         )
     finally:
         await close_conversation(ctx.tenant_id, conv)
@@ -231,6 +236,7 @@ async def _decide(
     judge_blocks: bool,
     judge_name: str | None,
     warnings: set[str] | None,
+    reference: str | None = None,
 ) -> tuple[bool | None, str | None, list[dict[str, Any]]]:
     """Lo que dice una pasada de la conversación que tuvo: si pasó, por qué no y lo
     que vio el juez. Sin modelo no dice nada (``stop = model_failed``)."""
@@ -251,6 +257,7 @@ async def _decide(
             criteria=test.criteria,
             transcript=talk.transcript,
             actions=[a.phrase for a in world.actions],
+            reference=reference,
         )
         try:
             raw = await (judge(messages) if chosen == judge_name else judge(messages, model=chosen))
@@ -270,7 +277,7 @@ async def _decide(
     reasons = [c for c in checked if not c.endswith(": ok")]
     if verdict is not None:
         reasons += [f"{d.key}: {d.why}" for d in verdict.dimensions if d.verdict == "fail"]
-    explanation = "Se comprobó " + "; ".join(reasons) if passed is False and reasons else None
+    explanation = "Se comprobó: " + "; ".join(reasons) if passed is False and reasons else None
     if passed is None and reasons:
         # Sin calibrar, el juez no tumba la pasada; lo que vio se dice igual (66.6).
         explanation = "El juez no lo dio por bueno: " + "; ".join(reasons)
@@ -358,6 +365,34 @@ async def _has_room(partner_id: uuid.UUID) -> bool:
     return True
 
 
+async def _bag_has_room(partner_id: uuid.UUID, tenant_id: uuid.UUID, agent_id: uuid.UUID) -> bool:
+    """¿Queda en la bolsa para otra prueba, sin dejar sin saldo a quien atiende? (68.6)"""
+    from nexus_api.services.testing.billing import bag_keeps_room
+
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
+        kept: bool = await bag_keeps_room(
+            session, partner_id=partner_id, tenant_id=tenant_id, agent_id=agent_id
+        )
+    return kept
+
+
+async def _business_data(tenant_id: uuid.UUID, agent_id: uuid.UUID) -> str | None:
+    """Los datos del negocio para que el juez compare (66.9), los mismos que lee el agente.
+    Si no se pueden leer, juzga sin ellos: dirá «No sé», que es lo que sabe."""
+    from nexus_api.db.models import Agent
+    from nexus_api.services.business.compilation import load_facts, render_facts
+
+    try:
+        async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
+            agent = await session.get(Agent, agent_id)
+            return render_facts(await load_facts(session, agent)) if agent is not None else None
+    except Exception as exc:
+        log.warning(
+            "tests.business_data_failed", tenant_id=str(tenant_id), error=type(exc).__name__
+        )
+        return None
+
+
 async def run_suite(
     ctx: JobContext,
     run_id: uuid.UUID,
@@ -378,17 +413,24 @@ async def run_suite(
         scope_test = None
         if run.scope == "one":
             scope_test = uuid.UUID(str((run.summary or {}).get("test_id")))
-        tests = runs_service.tests_in_scope(
-            await list_tests(session, suite), scope=run.scope, test_id=scope_test
+        tests = await runs_service.tests_of_run(
+            session,
+            run.agent_id,
+            await list_tests(session, suite),
+            scope=run.scope,
+            test_id=scope_test,
         )
         judge_blocks = await judge_service.judge_calibrated(session)
         session.expunge_all()
-    paid = run.paid_by == "partner"
-    source = "tests" if paid else "certification"
+    on_the_bag = run.paid_by == "client_bag"
+    paid = run.paid_by == "partner" or on_the_bag
+    source = "tests_client" if on_the_bag else ("tests" if paid else "certification")
     partner_id = await _partner_of(ctx.tenant_id) if paid else None
+    out_of_money = CLIENT_BAG_LOW if on_the_bag else BUDGET_EXHAUSTED
     gate = asyncio.Semaphore(PARALLEL)
     warnings: set[str] = set()
     judge_name = judge_model() if judge is not None else None
+    reference = await _business_data(ctx.tenant_id, run.agent_id) if judge is not None else None
     # T217: whether each test may start, decided once (at its first pass to get
     # the gate) and in order; once the budget runs out, no other test starts.
     decisions: dict[uuid.UUID, bool] = {}
@@ -400,7 +442,11 @@ async def run_suite(
         async with deciding:
             if test.id not in decisions:
                 stopped = any(not ok for ok in decisions.values())
-                decisions[test.id] = not stopped and await _has_room(partner_id)
+                decisions[test.id] = not stopped and (
+                    await _bag_has_room(partner_id, ctx.tenant_id, run.agent_id)
+                    if on_the_bag
+                    else await _has_room(partner_id)
+                )
             return decisions[test.id]
 
     async def one(test: AgentTest, attempt: int) -> None:
@@ -426,6 +472,7 @@ async def run_suite(
                     customer=customer,
                     judge_name=judge_name,
                     warnings=warnings,
+                    reference=reference,
                 )
             await ctx.progress(
                 step="running", block={"key": f"{test.id}:{attempt}", "test_id": str(test.id)}
@@ -449,14 +496,14 @@ async def run_suite(
         )
         if not_started:
             # T217: an honest state — what did not start, and why.
-            summary = {**summary, "stopped": BUDGET_EXHAUSTED, "not_started": not_started}
+            summary = {**summary, "stopped": out_of_money, "not_started": not_started}
             fresh.summary = {
                 **(fresh.summary or {}),
-                "stopped": BUDGET_EXHAUSTED,
+                "stopped": out_of_money,
                 "not_started": not_started,
             }
             fresh.status = "failed"
-            stopped = BUDGET_EXHAUSTED
+            stopped = out_of_money
         elif await runs_service.nothing_tested(session, fresh):
             # Ni un 0 de 17 ni «Pruebas terminadas»: no se ha probado nada.
             summary = {**summary, "stopped": MODEL_UNAVAILABLE}
@@ -553,7 +600,7 @@ def default_customer(tenant_id: uuid.UUID) -> Customer | None:
         return None
     provider = LiteLLMProvider(context_management=None)
     model = customer_model()
-    alternatives = [judge_model(), settings.llm_classify_model, settings.llm_respond_model]
+    alternatives = [judge_model(), settings.llm_respond_model, settings.llm_classify_model]
 
     async def customer(messages: list[dict[str, str]], *, avoid_model: str | None = None) -> str:
         chosen = other_model(model, avoid=avoid_model, alternatives=alternatives)

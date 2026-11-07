@@ -77,7 +77,7 @@ export function AgentKnowledgePanel({
   /** `null` si no se pudo leer: se dice y se deja reintentar. */
   knowledge: AgentKnowledge | null;
   canWrite: boolean;
-  /** Se enseñó algo: las pruebas de los agentes que lo saben se vuelven a pasar. */
+  /** Se enseñó algo: las pruebas de los agentes que lo saben quedan desactualizadas. */
   onTaught?: () => void;
   actions?: AgentKnowledgeActions;
 }) {

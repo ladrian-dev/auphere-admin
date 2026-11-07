@@ -2418,6 +2418,22 @@ mensajes no lo recuerda cada día.
 - [x] T232 Sin bolsa: claves sin fecha en `wallet_alerts.py`; el cron suelta la clave de quien la puerta del canal vuelve a dejar pasar (`quota_state`, la misma lectura que la puerta, para que soltar no pueda repetir el aviso cada 15 minutos). Sin columna nueva. _Requisitos: 44.5_
 - [x] T233 Migración `0216`: el último aviso con fecha de cada cliente pasa a la clave sin fecha, para que el despliegue no mande otra tanda. _Requisitos: 44.5_
 
+### Enmienda del 2026-11-05: una pasada por agente
+
+- [x] T234 Migración `0220`: origen `tests_client`, partida `client_tests`, `paid_by = client_bag`, alcance `failed` y asiento `debit_tests`. _Requisitos: 68.4, 68.7, 68.11_
+- [x] T235 `services/testing/billing.py`: si la pasada de Auphere ya se gastó, quién paga la que se pide, y cuánto cuesta y cuánto queda en la moneda de quien paga. _Requisitos: 68.1, 68.4, 68.5, 68.7, 68.8_
+- [x] T236 `POST …/test-runs`: `payer`, `charge`, `left` y `fits` en la estimación; `confirmed_tests`; alcance `failed`. _Requisitos: 68.4, 68.5, 68.7_
+- [x] T237 `publish`: solo pasa las pruebas si el agente no gastó su pasada; la puerta ya no bloquea por no probar. `publish-preview` dice `tests_on_save`. _Requisitos: 68.2, 68.3, 68.12_
+- [x] T238 Worker: la pasada a cargo de la bolsa mide con `tests_client`, cobra `debit_tests` por pasada y se para con `client_bag_low`. _Requisitos: 68.4, 68.6_
+- [x] T239 La ficha y el conocimiento ya no encolan pruebas; nombre, tono, trato y saludo no las marcan. _Requisitos: 68.9, 68.10_
+- [x] T240 Consumo: la partida «Pruebas a cargo del cliente». _Requisitos: 68.11_
+- [x] T241 Consola: el modal dice quién paga y cuánto; «Repetir las que no pasan»; «Asignar saldo» si no llega. Corrige las unidades de la estimación. _Requisitos: 68.4, 68.5, 68.7, 68.12_
+- [x] T242 Migración `0221` y configuración: Claude Haiku 5.5 en el catálogo y como clasificador, sin razonamiento; la lectura y el sector, con su propio modelo. _Requisitos: 69.1, 69.2, 69.3, 69.4_
+- [x] T244 Lo que una prueba espera se limita a lo que se mide (`CHECKABLE_STATE`), el juez compara con la ficha, los fallos se dicen en palabras y los disparadores en palabras se conservan. _Requisitos: 66.8, 66.9, 66.10, 66.11_
+- [x] T243 Conectores del agente: una acción principal por fila y el resto en su menú, siguiendo las guías de Apple. _Requisitos: 67.7_
+- [x] T245 `publish`: lo que ninguna prueba arregla para el trabajo antes de pasarlas (`stopped_before_testing`). _Requisitos: 68.13_
+- [x] T246 Un cambio de Auphere devuelve la pasada: `agents.tests_pass_returned_at` en la migración `0220` y `billing.return_the_pass` en `passing.py`. _Requisitos: 68.14_
+
 ---
 
 ## Dependencias y orden

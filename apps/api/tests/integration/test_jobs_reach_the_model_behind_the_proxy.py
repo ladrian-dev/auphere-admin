@@ -152,6 +152,24 @@ async def _tests(s: Sweep) -> None:
 
 async def _publish(s: Sweep) -> None:
     agent_id = await _agent(s)
+    # Sin decidir el aviso de IA, la puerta para antes de llamar a ningún modelo (68.13).
+    url = f"/console/clients/{s.biz.ref}/agents/{agent_id}/draft"
+    draft = (await s.client.get(url, headers=s.biz.headers())).json()
+    decided = await s.client.patch(
+        url,
+        json={
+            "spec": {
+                **draft["spec"],
+                "ai_disclosure": {
+                    "decided": True,
+                    "mode": "first_message",
+                    "text": "Soy el asistente virtual.",
+                },
+            }
+        },
+        headers={**s.biz.headers(), "If-Match": f'"{draft["revision"]}"'},
+    )
+    assert decided.status_code == 200, decided.text
     resp = await s.client.post(
         f"/console/clients/{s.biz.ref}/agents/{agent_id}/publish",
         json={},

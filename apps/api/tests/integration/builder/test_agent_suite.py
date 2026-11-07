@@ -177,8 +177,7 @@ async def test_three_runs_pass_three_of_three_and_two_of_three_is_flaky(
     flaky = await _run(client, biz, agent_id, fake_redis, test_id, router=Booker({1, 3}).router)
     assert (flaky["status"], flaky["passes"]) == ("flaky", 2)
     # «Por qué falló»: lo que se comprobó en la pasada que falló.
-    assert "booking/created" in (flaky["why_failed"] or "")
-    assert "se esperaba true" in (flaky["why_failed"] or "")
+    assert "tenía que quedar una cita y no quedó" in (flaky["why_failed"] or "")
 
     failed = await _run(client, biz, agent_id, fake_redis, test_id, router=Booker(set()).router)
     assert (failed["status"], failed["passes"]) == ("failed", 0)
@@ -469,10 +468,10 @@ async def test_the_cost_is_estimated_before_running_the_suite(
     assert resp.status_code == 200, resp.text
     out = resp.json()
     assert out["tests"] > 0
-    assert out["calls"]["agent"] == out["tests"] * 3 * 3
+    assert out["calls"]["agent"] == out["tests"] * 3 * 2
     assert "estimate" in out and "unknown_prices" in out
     # Sin la consola nueva no hay partida que mirar: la consola no pregunta (66.5).
-    assert out["budget"] is None
+    assert (out["payer"], out["left"], out["fits"]) == ("auphere", None, True)
     if out["estimate"] is not None:
         assert out["estimate"]["currency"] == "USD" and out["estimate"]["amount_micros"] > 0
     async with tenant_scoped_session(db_session, biz.tenant_id):
@@ -499,8 +498,10 @@ async def test_with_the_new_console_the_estimate_says_what_is_left(
         headers=biz.headers(),
     )
     assert resp.status_code == 200, resp.text
-    budget = resp.json()["budget"]
-    assert budget["remaining_micros"] > 0 and budget["state"] == "ok"
+    out = resp.json()
+    assert out["payer"] == "auphere"
+    assert out["left"]["amount_micros"] == 50 * 100_000, "50 por defecto, en cien milésimas"
+    assert out["fits"] is True
 
 
 # ── T217: el gasto de las pruebas tiene tope ────────────────────────────────

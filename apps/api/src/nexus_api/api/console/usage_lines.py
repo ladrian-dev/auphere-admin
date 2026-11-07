@@ -112,7 +112,7 @@ class UsageDetailOut(BaseModel):
 
 
 #: Lo que el partner paga de su dinero: el gasto del mes (46.1).
-_PARTNER_PAYS = ("conversations", "companion")
+_PARTNER_PAYS = ("conversations", "client_tests", "companion")
 
 
 @router.get("/summary", response_model=UsageSummaryOut)
@@ -159,7 +159,11 @@ async def usage_summary(
                     name=m.client_name,
                     bag=_money(bag.balance_micros, bag.currency) if bag is not None else None,
                     month_spent=_money(
-                        lines.total(lines=("conversations",), tenant=m.tenant_id, since=month_day),
+                        lines.total(
+                            lines=("conversations", "client_tests"),
+                            tenant=m.tenant_id,
+                            since=month_day,
+                        ),
                         currency,
                     ),
                     days_left=days_left,

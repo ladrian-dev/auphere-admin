@@ -29,6 +29,8 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus, Channel
 from nexus_api.services import jobs as jobs_service
 from nexus_api.services import publishing
+from nexus_api.services.testing import billing
+from nexus_api.services.testing.billing import saves_without_testing
 
 from .agent_draft_routes import agent_in_path
 from .deps import ClientScope, resolve_mapping
@@ -79,6 +81,10 @@ class PreviewOut(BaseModel):
     diff: list[dict[str, Any]]
     gate: dict[str, Any] | None
     can_override: bool
+    #: Requisito 68: «Guardar» pasa las pruebas antes de decidir. Solo la primera vez.
+    tests_on_save: bool
+    #: Quién pagaría ahora una pasada de todas: lo que se dice al guardar.
+    next_full_pass: billing.Payer
 
 
 class UndoOut(BaseModel):
@@ -144,6 +150,10 @@ async def publish_preview(scope: ClientScope = Depends(agent_in_path("agents:rea
     )
     has_channels = bool(channels)
     gate = None
+    assert scope.agent_id is not None
+    tests_on_save = not await saves_without_testing(
+        scope.session, scope.agent_id, scope.principal.partner.id
+    )
     if staged is not None:
         agent = await scope.session.get(Agent, scope.agent_id)
         assert agent is not None
@@ -153,8 +163,8 @@ async def publish_preview(scope: ClientScope = Depends(agent_in_path("agents:rea
             version=staged,
             active=active,
             partner_id=scope.principal.partner.id,
-            # «Guardar» publica por el trabajo, que pasa las pruebas antes.
-            tests_will_run=True,
+            # «Guardar» publica por el trabajo, que la primera vez pasa las pruebas antes.
+            tests_will_run=tests_on_save,
         )
         gate = result.to_json()
     action: Literal["save", "save_and_connect", "save_changes"] = (
@@ -167,6 +177,13 @@ async def publish_preview(scope: ClientScope = Depends(agent_in_path("agents:rea
         diff=_plain_diff(active, staged) if staged is not None else [],
         gate=gate,
         can_override=scope.principal.role in publishing.OVERRIDE_ROLES,
+        tests_on_save=tests_on_save,
+        next_full_pass=await billing.next_full_pass(
+            scope.session,
+            agent_id=scope.agent_id,
+            partner_id=scope.principal.partner.id,
+            tenant_id=scope.tenant.id,
+        ),
     )
 
 

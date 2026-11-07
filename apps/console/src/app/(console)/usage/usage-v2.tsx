@@ -30,7 +30,7 @@ type Search = { days?: string; client?: string; line?: string };
  * 2. La tabla por cliente, con «Cambiar saldo», «Mover» y «Ver su gasto».
  * 3. «Gasto por día»: la gráfica de bloques de 7, 30 o 90 días, por cliente y
  *    por partida, con su tabla para lectores de pantalla.
- * 4. Las cuatro partidas con quién paga cada una, y la de construcción con su
+ * 4. Las partidas con quién paga cada una, y la de construcción con su
  *    tope y «Pedir ampliación».
  * 5. El detalle técnico, plegado, y «Descargar CSV».
  *

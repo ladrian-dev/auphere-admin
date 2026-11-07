@@ -15,7 +15,7 @@ const SCOPES: readonly TeachScope[] = ["agent", "business"];
  * «Enseñar» (spec 047, requisito 37.3): lo que debe saber, con las palabras de
  * la persona, y **siempre** dónde se guarda —«Solo este agente» o «Todo el
  * negocio (todos los agentes)»—. No hay alcance por defecto: sin elegirlo no se
- * manda. Dice qué pruebas se vuelven a pasar según el alcance.
+ * manda. Dice qué pruebas quedan desactualizadas según el alcance.
  *
  * `onTeach` devuelve el texto del error, o `null` si se aplicó.
  */

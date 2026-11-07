@@ -169,7 +169,8 @@ async def write_spec(
         merged = missing.merge(builder_missing(draft), noted)
         policies[BUILDER_POLICY] = {"missing_capabilities": [m.to_json() for m in merged]}
     draft.policies = _sync_disclosure(policies, spec, actor=scope.principal.actor)
-    await mark_stale(session, agent.id)
+    if _changes_behaviour(previous, doc):
+        await mark_stale(session, agent.id)
     # Requisito 66: al cambiar las herramientas, las pruebas dejan de pedir lo de antes.
     # Sin compactar: un borrador se puede descartar; lo que se archiva, no.
     suite = await get_suite(session, agent.id)
@@ -177,6 +178,25 @@ async def write_spec(
         await reconcile_suite(session, suite, tools=list(draft.tools or []), compact=False)
     await draft_written(scope, draft)
     return draft
+
+
+def _changes_behaviour(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    """Requisito 68.10: el nombre, el tono, el trato y el saludo no repiten pruebas."""
+
+    def what_counts(doc: dict[str, Any]) -> dict[str, Any]:
+        out = {k: v for k, v in doc.items() if k != "test_suite"}
+        identity = dict(out.get("identity") or {})
+        identity.pop("name", None)
+        out["identity"] = identity
+        voice = {
+            k: v
+            for k, v in dict(out.get("voice") or {}).items()
+            if k not in {"tone", "register", "register_", "greeting"} and v is not None
+        }
+        out["voice"] = voice
+        return out
+
+    return what_counts(before) != what_counts(after)
 
 
 __all__ = ["builder_missing", "current_spec", "spec_of", "spec_state_hash", "write_spec"]

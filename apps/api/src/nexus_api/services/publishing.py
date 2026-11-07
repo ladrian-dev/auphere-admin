@@ -224,7 +224,26 @@ async def evaluate_gate(
                 "de guardar.",
             }
         )
-    untested = bool(applicable) and run is None and not tests_will_run
+    # Requisito 68.3: Auphere paga una pasada completa por agente, y guardar no la repite.
+    # Después, una versión sin pasada propia se avisa y no se bloquea por eso; lo que se sabe
+    # de cada prueba sigue contando, sea de la versión que sea: descartar el borrador o
+    # restaurar otra no borra una crítica en rojo. Se arregla repitiéndola, sin coste.
+    from nexus_api.services.testing.billing import saves_without_testing
+
+    tested_before = (
+        bool(applicable)
+        and run is None
+        and await saves_without_testing(session, agent.id, partner_id)
+    )
+    if tested_before:
+        gate.warnings.append(
+            {
+                "condition": "critical_tests",
+                "code": "version_not_tested",
+                "message": "Esta versión no ha repetido las pruebas.",
+            }
+        )
+    untested = bool(applicable) and run is None and not tests_will_run and not tested_before
     if untested:
         gate.overridable.append(
             {
@@ -239,7 +258,7 @@ async def evaluate_gate(
         if test.not_applicable_reason:
             continue
         out = outcomes[test.id]
-        ran_here = run is not None and out.status != "not_run"
+        ran_here = (run is not None or tested_before) and out.status != "not_run"
         if test.critical and ran_here and out.status == "model_failed":
             critical_untested.append(test.name)
         elif test.critical and ran_here and out.status != "passed":
@@ -261,7 +280,7 @@ async def evaluate_gate(
                 "condition": "critical_tests",
                 "code": "critical_test_untested",
                 "message": f"La prueba crítica «{name}» no se pudo probar: el modelo no "
-                "respondió. Vuelve a intentarlo.",
+                "respondió. Vuelve a ejecutarla.",
             }
         )
     for name in critical_bad:
@@ -269,7 +288,8 @@ async def evaluate_gate(
             {
                 "condition": "critical_tests",
                 "code": "critical_test_failing",
-                "message": f"La prueba crítica «{name}» no pasa 3 de 3.",
+                "message": f"La prueba crítica «{name}» no pasa 3 de 3. Repetirla no tiene coste "
+                "para el cliente.",
             }
         )
     gate.conditions.append(
@@ -411,6 +431,36 @@ async def _versions(
     staged = next((r for r in rows if r.status is AgentConfigStatus.STAGED), None)
     active = next((r for r in rows if r.status is AgentConfigStatus.ACTIVE), None)
     return staged, active
+
+
+async def stopped_before_testing(
+    session: AsyncSession,
+    *,
+    agent_id: uuid.UUID,
+    partner_id: uuid.UUID | None,
+    override_reason: str | None = None,
+) -> GateResult | None:
+    """La puerta, si ya la cierra algo que ninguna prueba arregla: el validador, el aviso de
+    IA, la calidad sin comprobar, o un bloqueante de la revisión sin motivo para saltarlo.
+    Pasar las pruebas antes costaría dinero y, en un agente nuevo, la única pasada que paga
+    Auphere (68.13). Sin borrador no dice nada: de eso se ocupa quien lo pide."""
+    agent = await session.get(Agent, agent_id)
+    staged, active = await _versions(session, agent_id)
+    if agent is None or staged is None:
+        return None
+    gate = await evaluate_gate(
+        session,
+        agent=agent,
+        version=staged,
+        active=active,
+        partner_id=partner_id,
+        tests_will_run=True,
+    )
+    # «Sin pruebas que apliquen» sí depende de ellas: el trabajo aún reconcilia la suite.
+    closed = any(item["condition"] != "critical_tests" for item in gate.hard)
+    skippable = bool(" ".join((override_reason or "").split()))
+    in_review = not skippable and any(i["condition"] == "review" for i in gate.overridable)
+    return gate if closed or in_review else None
 
 
 @dataclass

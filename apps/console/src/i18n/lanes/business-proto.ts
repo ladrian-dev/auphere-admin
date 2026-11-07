@@ -14,7 +14,7 @@ export const businessProtoMessages = {
     en: "Confirmed. It no longer shows as waiting for review.",
   },
   // D6 de `clientes.md`: el prototipo dice que se vuelven a pasar las pruebas al
-  // guardar la ficha. La API no lo hace, así que se dice lo que sí pasa.
+  // guardar la ficha. La API solo las marca (68.9), así que se dice lo que sí pasa.
   "business.page.note": {
     es: "Lo heredan todos sus agentes. Los cambios se aplican desde el siguiente mensaje.",
     en: "All its agents inherit it. Changes apply from the next message.",

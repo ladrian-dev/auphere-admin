@@ -56,7 +56,12 @@ from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from nexus_worker.metering.budget import add_spend
-from nexus_worker.metering.collector import SOURCE_CHANNEL, USAGE_SOURCES, USAGE_STREAM
+from nexus_worker.metering.collector import (
+    SOURCE_CHANNEL,
+    SOURCE_TESTS_CLIENT,
+    USAGE_SOURCES,
+    USAGE_STREAM,
+)
 from nexus_worker.metering.pricing import (
     ModelPrice,
     get_catalog,
@@ -337,10 +342,56 @@ def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str
     return turns
 
 
+def _by_source_and_agent(
+    rows: list[dict[str, Any]],
+) -> dict[tuple[str, Any], list[dict[str, Any]]]:
+    """Un lote junta las filas de un cliente, sean de lo que sean: cada una se cobra según
+    su origen y a su agente, nunca según la primera (bug ``un-lote-cobra-por-su-primera-fila``)."""
+    groups: dict[tuple[str, Any], list[dict[str, Any]]] = {}
+    for row in rows:
+        source = str(row.get("source") or SOURCE_CHANNEL)
+        groups.setdefault((source, row.get("agent_id")), []).append(row)
+    return groups
+
+
 async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
-    source = str((rows[0] or {}).get("source") or SOURCE_CHANNEL) if rows else SOURCE_CHANNEL
-    if source != SOURCE_CHANNEL:
-        return
+    for (source, agent_id), group in _by_source_and_agent(rows).items():
+        if source == SOURCE_CHANNEL:
+            await _debit_channel_rows(tenant_id, group, agent_id)
+        elif source == SOURCE_TESTS_CLIENT:
+            await _debit_tests_rows(tenant_id, group, agent_id)
+
+
+async def _debit_tests_rows(
+    tenant_id: uuid.UUID, rows: list[dict[str, Any]], agent_id: Any
+) -> None:
+    """Requisito 68: una pasada a cargo de la bolsa, una entrada por pasada. Si falla, la
+    entrada se reintenta (el cobro es idempotente por su referencia)."""
+    # Sin partner o sin catálogo no se acusa la entrada: se reintenta, y el cobro es
+    # idempotente. Una pasada que pidió la bolsa no se queda sin cobrar en silencio.
+    partner_id = await _partner_for(tenant_id)
+    if partner_id is None:
+        raise RuntimeError(f"bag pass without a partner: tenant {tenant_id}")
+    from nexus_api.services.wallet.turns import charge_tests
+
+    weights = lane_weights_from(await get_catalog())
+    if not weights:
+        raise RuntimeError("bag pass without a catalog to price it")
+    for turn, qty in _turn_quota(rows, weights).items():
+        if qty <= 0:
+            continue
+        await charge_tests(
+            partner_id=partner_id,
+            tenant_id=tenant_id,
+            agent_id=uuid.UUID(str(agent_id)) if agent_id else None,
+            amount_usd=qty,
+            usage_ref=f"{SOURCE_TESTS_CLIENT}:{turn}",
+        )
+
+
+async def _debit_channel_rows(
+    tenant_id: uuid.UUID, rows: list[dict[str, Any]], agent_id: Any
+) -> None:
     partner_id = await _partner_for(tenant_id)
     if partner_id is None:
         return
@@ -361,8 +412,6 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
         except Exception as exc:  # pragma: no cover - defensivo
             log.warning("metering.catalog_unavailable_for_weights", error=str(exc))
             return
-    # Spec 030: the agent the turn ran for — same for every row of an entry.
-    agent_id = (rows[0] or {}).get("agent_id") if rows else None
     # Owner, 2026-10-20: a client with unlimited consumption is measured the
     # same and written as ``absorbed`` — Auphere covers it; the partner's
     # balance and the client's cap do not move. Unreadable → raise and retry,

@@ -6,6 +6,7 @@
  * `api/console/agent_{playground,tests,review,publish}.py`. El cliente de la API
  * es `./agent-quality.ts`.
  */
+import type { Currency } from "@nexus/ui";
 
 // ── el playground (requisito 20) ────────────────────────────────────────────
 
@@ -115,6 +116,8 @@ export type TestSuite = {
   /** Sin calibrar, el juez no decide: solo cuenta el estado final (21.8). */
   judge_calibrated: boolean;
   allowed: ("add" | "edit" | "run")[];
+  /** Quién pagaría ahora una pasada de todas (requisito 68). */
+  next_full_pass: RunPayer;
 };
 
 export type TestBody = {
@@ -127,18 +130,24 @@ export type TestBody = {
   critical?: boolean;
 };
 export type TestPatch = Partial<Omit<TestBody, "persona">> & { not_applicable_reason?: string };
-export type TestRunScope = "all" | "affected" | "one";
+export type TestRunScope = "all" | "affected" | "failed" | "one";
 export type TestRunAccepted = { job_id: string; run_id: string; tests: number };
+/** Quién paga una pasada (requisito 68): la partida de Auphere o la bolsa del cliente. */
+export type RunPayer = "auphere" | "client_bag";
+/** Cien milésimas de la moneda, como todo el dinero de la consola. */
+export type RunMoney = { amount_micros: number; currency: Currency };
 /**
- * Lo que costaría una pasada (61.8) y lo que queda de «Construcción y pruebas» (66.5).
- * `estimate` es `null` si falta el precio de un modelo.
+ * Quién paga una pasada, cuánto costaría y cuánto queda (61.8, 66.5 y 68), en la moneda de
+ * quien paga. `charge` es `null` si falta el precio de un modelo; `left`, si el partner no
+ * tiene partida. `fits` lo decide la API: la consola no compara importes.
  */
 export type TestRunEstimate = {
   tests: number;
-  estimate: { amount_micros: number; currency: string } | null;
   unknown_prices: string[];
-  /** `null` si el partner no tiene esta partida (sin la consola nueva). */
-  budget?: { remaining_micros: number; state: "ok" | "warning" | "exhausted" } | null;
+  payer: RunPayer;
+  charge: RunMoney | null;
+  left: RunMoney | null;
+  fits: boolean;
 };
 
 // ── la revisión (requisito 22) ──────────────────────────────────────────────
@@ -188,6 +197,10 @@ export type PublishPreview = {
   diff: DiffRow[];
   gate: Gate | null;
   can_override: boolean;
+  /** «Guardar» pasa las pruebas antes de decidir: solo la primera vez (requisito 68). */
+  tests_on_save: boolean;
+  /** Quién pagaría ahora una pasada de todas. */
+  next_full_pass: RunPayer;
 };
 
 export type PublishBody = { note?: string; accept_normal_failures?: boolean; override_reason?: string };

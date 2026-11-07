@@ -18,7 +18,7 @@ export function usageCsvHref(days: number, client: string): string {
   return `/api/usage/export?${params.toString()}`;
 }
 
-const isLine = (l: string | null): l is UsageLine => l === "conversations" || l === "meta" || l === "build" || l === "companion";
+const isLine = (l: string | null): l is UsageLine => l === "conversations" || l === "client_tests" || l === "meta" || l === "build" || l === "companion";
 
 /**
  * El detalle técnico de Consumo, plegado (spec 047, requisito 46.6): los

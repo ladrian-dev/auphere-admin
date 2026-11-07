@@ -26,7 +26,7 @@ import { TestConversation } from "./test-conversation";
 type Ids = { ref: string; agent: string };
 export type TestListActions = {
   load: (body: Ids) => Promise<Result<TestSuite>>;
-  run: (body: Ids & { scope: TestRunScope; test?: string }) => Promise<Result<TestRunAccepted>>;
+  run: (body: Ids & { scope: TestRunScope; test?: string; confirmed_tests?: number }) => Promise<Result<TestRunAccepted>>;
   poll: (body: { ref: string; job: string }) => Promise<Result<QualityJob>>;
   notApplicable: (body: Ids & { test: string; reason: string }) => Promise<Result<TestSuite>>;
   add: (body: Ids & { test: TestBody }) => Promise<Result<TestSuite>>;
@@ -105,7 +105,7 @@ export function TestList({
   const locale = useLocale();
   const ids = React.useMemo(() => ({ ref: refId, agent: agentId }), [refId, agentId]);
   const [suite, setSuite] = React.useState(initial);
-  const [running, setRunning] = React.useState<{ count: number } | null>(null);
+  const [running, setRunning] = React.useState<{ count: number; scope: TestRunScope } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [adding, setAdding] = React.useState(false);
   const alive = React.useRef(true);
@@ -138,20 +138,25 @@ export function TestList({
 
   const can = (what: "add" | "edit" | "run") => canWrite && Boolean(suite?.allowed.includes(what));
 
-  const { ask, dialog: confirmRun } = useRunEstimate({
+  const starting = React.useRef(false);
+
+  const { ask, dialog: confirmRun, pending } = useRunEstimate({
     estimate: actions.estimate,
     ids,
-    start: (scope) => runTests(scope),
+    start: (scope, confirmedTests) => runTests(scope, undefined, confirmedTests),
   });
 
-  async function runTests(scope: TestRunScope, test?: string) {
+  async function runTests(scope: TestRunScope, test?: string, confirmedTests?: number) {
+    if (starting.current) return;
+    starting.current = true;
     setError(null);
-    const res = await actions.run({ ...ids, scope, ...(test ? { test } : {}) });
+    const res = await actions.run({ ...ids, scope, ...(test ? { test } : {}), ...(confirmedTests ? { confirmed_tests: confirmedTests } : {}) });
+    starting.current = false;
     if (!res.ok) {
       setError(t(runRefusedKey(res)));
       return;
     }
-    setRunning({ count: res.data.tests });
+    setRunning({ count: res.data.tests, scope });
     const done = await waitForJob(() => actions.poll({ ref: refId, job: res.data.job_id }), { wait, cancelled: () => !alive.current });
     if (!alive.current) return;
     setRunning(null);
@@ -175,6 +180,11 @@ export function TestList({
 
   const { summary } = suite;
   const counted = summary.total - summary.not_applicable;
+  const onTheBag = suite.next_full_pass === "client_bag";
+  const offerFailed = onTheBag && counted > summary.passed;
+  // Todas las desactualizadas son una pasada entera, y esa la cobra «Ejecutar todas».
+  const offerStale = summary.stale > 0 && (!onTheBag || summary.stale < counted);
+  const busy = running !== null || pending;
   const applying = suite.tests.filter((test) => test.status !== "not_applicable");
   const notApplying = suite.tests.filter((test) => test.status === "not_applicable");
   const row = (test: AgentTest) => (
@@ -215,14 +225,26 @@ export function TestList({
         </Callout>
       ) : null}
 
+      {can("run") && onTheBag ? <p className="text-sm text-pretty text-muted-foreground">{t("builder.suite.nextOnTheBag")}</p> : null}
       {can("run") ? (
         <div className="flex min-w-0 flex-wrap gap-2">
-          <Button onClick={() => void ask("all")} loading={running !== null}>
-            <Play aria-hidden="true" />
+          {offerFailed ? (
+            <Button onClick={() => void ask("failed")} loading={running?.scope === "failed"} disabled={busy}>
+              <Play aria-hidden="true" />
+              {t("builder.suite.runFailed")}
+            </Button>
+          ) : null}
+          {offerStale && onTheBag ? (
+            <Button variant={offerFailed ? "outline" : "default"} onClick={() => void ask("affected")} loading={running?.scope === "affected"} disabled={busy}>
+              {t("builder.suite.runStale")}
+            </Button>
+          ) : null}
+          <Button variant={onTheBag && (offerFailed || offerStale) ? "outline" : "default"} onClick={() => void ask("all")} loading={running?.scope === "all"} disabled={busy}>
+            {onTheBag && (offerFailed || offerStale) ? null : <Play aria-hidden="true" />}
             {t("builder.suite.runAll")}
           </Button>
-          {summary.stale > 0 ? (
-            <Button variant="outline" onClick={() => void ask("affected")} disabled={running !== null}>
+          {offerStale && !onTheBag ? (
+            <Button variant="outline" onClick={() => void ask("affected")} loading={running?.scope === "affected"} disabled={busy}>
               {t("builder.suite.runStale")}
             </Button>
           ) : null}

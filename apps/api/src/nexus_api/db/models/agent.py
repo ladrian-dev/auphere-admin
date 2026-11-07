@@ -91,6 +91,11 @@ class Agent(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     )
     #: The monthly cap, in the currency of the client's bag (requisito 44.1).
     monthly_cap_micros: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: The last change Auphere made to this agent on its own. A full test pass from before it
+    #: no longer spends the one Auphere pays for (spec 047, 68.14).
+    tests_pass_returned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

@@ -130,6 +130,8 @@ USAGE_LINE_BY_SOURCE: dict[str, str] = {
     "qa": "build",
     "builder": "build",
     "tests": "build",
+    # Requisito 68: la pasada entera que se pide después de la primera. La paga la bolsa.
+    "tests_client": "client_tests",
     "reader": "build",
     "indexer": "build",
     "suggestions": "build",

@@ -90,8 +90,8 @@ async def teach(
 
 
 async def retest(session: AsyncSession, *, agent_id: uuid.UUID | None) -> int:
-    """Vuelve a pasar las pruebas de los agentes que ven el cambio: todos si es
-    de la capa del negocio, solo ese si es de su capa (37.3)."""
+    """Marca desactualizadas las pruebas de los agentes que ven el cambio: todos si es
+    de la capa del negocio, solo ese si es de su capa (37.3). No las pasa (68.9)."""
     from nexus_api.services.business.writes import mark_tests_stale
 
     return await mark_tests_stale(session, sections=["knowledge"], only_agent=agent_id)

@@ -3,11 +3,14 @@
 La cadena entera, en el worker: compilar → validar → **probar** → revisar →
 decidir → publicar.
 
-- Si el borrador tiene pruebas aplicables que no se han pasado con **esta**
-  versión (o están desactualizadas), se pasan primero (``reason=publish``). Si ya hay
-  una pasada viva del agente, el trabajo falla con ``suite_running``: la misma suite
-  dos veces se paga dos veces. Si ningún modelo responde, falla con
-  ``model_unavailable``, que no es lo mismo que no pasar la puerta.
+- Si la puerta ya la cierra algo que ninguna prueba arregla, se dice sin pasarlas: no se
+  gasta dinero ni la pasada de Auphere en un borrador que no puede salir (68.13).
+- Si el agente nunca ha terminado una pasada completa, se pasa primero
+  (``reason=publish``), a cargo de «Construcción y pruebas». Después ya no: Auphere paga
+  una por agente y guardar no la repite (requisito 68). Si ya hay una pasada viva del
+  agente, el trabajo falla con ``suite_running``: la misma suite dos veces se paga dos
+  veces. Si ningún modelo responde, falla con ``model_unavailable``, que no es lo mismo
+  que no pasar la puerta.
 - La puerta (``nexus_api.services.publishing``) decide. Si no deja, el trabajo
   falla con ``gate_blocked`` (o ``override_forbidden``) y deja el veredicto, condición
   a condición, en su progreso (el bloque ``gate``), para que la consola diga por
@@ -30,6 +33,7 @@ from nexus_api.db.models import Job
 from nexus_api.db.models.agent_spec import AgentTestRun
 from nexus_api.services import publishing
 from nexus_api.services.testing import runs as runs_service
+from nexus_api.services.testing.billing import saves_without_testing
 from nexus_api.services.testing.sector_catalog import reconcile_suite
 from nexus_api.services.testing.suites import ensure_suite, list_tests
 
@@ -58,14 +62,19 @@ SUITE_RUNNING = "suite_running"
 PROMOTE_CHANNEL = "nexus:agent_config:promote"
 
 
-async def _needs_run(ctx: JobContext, agent_id: uuid.UUID) -> uuid.UUID | None:
+async def _needs_run(
+    ctx: JobContext, agent_id: uuid.UUID, partner_id: uuid.UUID | None
+) -> uuid.UUID | None:
     """Una pasada nueva si el borrador tiene pruebas aplicables que esta versión
-    no ha pasado, o desactualizadas. Devuelve su id, o ``None``."""
+    no ha pasado, o desactualizadas, y el agente no ha gastado la suya (68.2 y 68.3).
+    Devuelve su id, o ``None``."""
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
         version = await runs_service.target_version(session, agent_id)
         if version is None:
             raise JobFailed("no_draft")
+        if await saves_without_testing(session, agent_id, partner_id):
+            return None
         suite = await ensure_suite(session, agent_id)
         tests = runs_service.tests_in_scope(await list_tests(session, suite), scope="all")
         if not tests:
@@ -77,6 +86,8 @@ async def _needs_run(ctx: JobContext, agent_id: uuid.UUID) -> uuid.UUID | None:
                 AgentTestRun.agent_config_id == version.id,
                 AgentTestRun.status == "done",
                 AgentTestRun.scope == "all",
+                # Una comprobación de calidad corre con otra política de modelo (68.2).
+                AgentTestRun.reason != "certification",
             )
         )
         if done is not None and not any(t.stale for t in tests):
@@ -99,6 +110,19 @@ async def _needs_run(ctx: JobContext, agent_id: uuid.UUID) -> uuid.UUID | None:
         return run_id
 
 
+async def _report_blocked(
+    ctx: JobContext, agent_id: uuid.UUID, gate: publishing.GateResult
+) -> None:
+    log.info(
+        "gate.decision",
+        tenant_id=str(ctx.tenant_id),
+        agent_id=str(agent_id),
+        outcome="blocked",
+        blocking=sorted({str(c.get("code")) for c in [*gate.hard, *gate.overridable]}),
+    )
+    await ctx.progress(step="blocked", block={"key": "gate", **gate.to_json()})
+
+
 def make_publish_handler(
     *,
     judge_factory: JudgeFactory | None = None,
@@ -118,8 +142,21 @@ def make_publish_handler(
             job = await session.get(Job, ctx.job_id)
             data = dict((job.progress or {}).get("input") or {}) if job is not None else {}
 
+        partner_id = uuid.UUID(data["partner_id"]) if data.get("partner_id") else None
+        # Lo que ninguna prueba arregla se dice antes de pagarlas (68.13).
+        async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
+            stopped = await publishing.stopped_before_testing(
+                session,
+                agent_id=agent_id,
+                partner_id=partner_id,
+                override_reason=data.get("override_reason"),
+            )
+        if stopped is not None:
+            await _report_blocked(ctx, agent_id, stopped)
+            raise JobFailed("gate_blocked")
+
         await ctx.progress(step="testing")
-        run_id = await _needs_run(ctx, agent_id)
+        run_id = await _needs_run(ctx, agent_id, partner_id)
         if run_id is not None:
             await run_suite(
                 ctx,
@@ -137,7 +174,7 @@ def make_publish_handler(
                     agent_id=agent_id,
                     actor=str(data.get("actor") or "console"),
                     role=str(data.get("role") or ""),
-                    partner_id=uuid.UUID(data["partner_id"]) if data.get("partner_id") else None,
+                    partner_id=partner_id,
                     note=data.get("note"),
                     accept_normal_failures=bool(data.get("accept_normal_failures")),
                     override_reason=data.get("override_reason"),
@@ -151,16 +188,7 @@ def make_publish_handler(
                     "gate": done.gate.to_json(),
                 }
         except publishing.GateBlocked as exc:
-            log.info(
-                "gate.decision",
-                tenant_id=str(ctx.tenant_id),
-                agent_id=str(agent_id),
-                outcome="blocked",
-                blocking=sorted(
-                    {str(c.get("code")) for c in [*exc.gate.hard, *exc.gate.overridable]}
-                ),
-            )
-            await ctx.progress(step="blocked", block={"key": "gate", **exc.gate.to_json()})
+            await _report_blocked(ctx, agent_id, exc.gate)
             raise JobFailed("gate_blocked") from exc
         except publishing.OverrideForbidden as exc:
             raise JobFailed("override_forbidden") from exc

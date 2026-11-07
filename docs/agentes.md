@@ -98,6 +98,19 @@ Todo lo largo es un **trabajo** (`jobs`, `services/jobs.py`) que corre el worker
   partida antes de cada prueba: agotada, las que faltan no empiezan, la empezada
   termina sus tres pasadas, la pasada queda `failed` con `stopped:
   build_budget_exhausted` y `not_started`, y el trabajo falla con ese código.
+- **Quién paga las pruebas** (requisito 68, `services/testing/billing.py`): la primera
+  pasada de todas las pruebas de cada agente, Auphere. Después, guardar no las repite y
+  otra pasada entera sale de la bolsa del cliente, cada vez con confirmación
+  (`confirmed_tests`: sin ella, `409 charge_not_confirmed`; si ahora son más pruebas, `409
+  charge_changed`) y con 1,5 veces lo estimado en la bolsa (si no, `402
+  client_bag_not_enough`; sin precio, `409 charge_unknown`). Mide con `source = tests_client`, cobra
+  un asiento `debit_tests` por pasada y sale en Consumo como «Pruebas a cargo del
+  cliente». No cuenta para el tope del agente ni para los días que le quedan a la bolsa.
+  Si lo que queda baja de lo que cuestan 2 pruebas, las que faltan no empiezan
+  (`client_bag_low`). Repetir una prueba, las que no pasan (`scope: failed`) o las
+  desactualizadas si no son todas sigue en la partida. Un cliente con consumo ilimitado,
+  o un partner sin bolsas, también. Una pasada que se paró, o que solo dejó «No sé», no gasta
+  la de Auphere.
 
 ### Solo lo que tenemos (enmienda del 2026-10-30, requisito 65)
 
@@ -241,9 +254,11 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   `dry_run: true` responde `200` con la estimación (`services/testing/estimate.py`,
   calibrada con 20 pasadas de staging: 3 llamadas del agente con la mayor parte del
   prompt en caché, 2 del clasificador, 2 mensajes del cliente simulado y el juez, por 3
-  pasadas, a precio) y lo que queda de «Construcción y pruebas» (`budget`), sin encolar
-  nada. La consola solo pregunta si no cabe. Un precio que no se conoce no es cero:
-  `estimate: null` y `unknown_prices`.
+  pasadas, a precio), quién la paga (`payer`), cuánto y cuánto queda (`charge`, `left`,
+  en cien milésimas y en la moneda de quien paga) y si llega (`fits`), sin encolar nada.
+  `estimate` sigue en millonésimas de dólar: la consola no compara importes. Pregunta
+  siempre si paga la bolsa y, si paga Auphere, solo si no cabe. Un precio que no se
+  conoce no es cero: `charge: null` y `unknown_prices`.
 - **Una suite que merece lo que cuesta** (requisito 66): el constructor deja como mucho
   4 pruebas del caso, solo de lo específico del agente; de la batería de 12 del sector
   entran todas las críticas que aplican y, hasta 8 entre las dos, las demás. Una del caso
@@ -252,6 +267,15 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   (`services/testing/sector_catalog.py`) recalcula «No aplica» al guardar el borrador y,
   antes de cada pasada, archiva lo que sobra contra esa versión. No toca lo que tocó una
   persona (`created_by_kind`).
+- **Lo que una prueba puede esperar** (66.8, `judge.CHECKABLE_STATE`): `escalated`,
+  `booking.created`, `booking.count`, `payment.requested` y `escalation.to`, lo único que
+  dice `World.final_state`; lo fija `wk/tests/unit/test_checkable_state_contract.py`. Otra
+  clave se quita al guardar (`suites._test_row`) y, si ya está guardada, no cuenta. Por la
+  API, `422 unknown_state_key`. Lo demás se escribe en `criteria`, y el juez lo compara
+  con la ficha (66.9): recibe los datos del negocio en `<ficha>`, los mismos que el agente.
+- **Quién clasifica** (requisito 69): Claude Haiku 5.5 (`llm_classify_model`), sin
+  razonamiento y con 32 tokens de salida, porque devuelve una palabra. Si falla, cae al
+  de responder. La lectura de webs y el sector no lo usan: van con `llm_extract_model`.
 - **Quién simula y quién juzga** (`platform_models.py`): el cliente simulado y el juez
   usan `llm_simulation_model` (Terra por defecto, `NEXUS_LLM_CUSTOMER_SIM_MODEL` y
   `NEXUS_LLM_JUDGE_MODEL` mandan). Si el juez es un modelo que respondió en esa
@@ -260,14 +284,10 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
 - **El plazo del constructor**: `BUILD_CALL_TIMEOUT_S` (120 s) sin reintentos del SDK,
   no los 30 s de un turno de chat, que el borrador no cabe en ellos.
 - **Pasadas** (`agent_test_runs`, `services/testing/runs.py`): todas, las
-  afectadas o una; un cambio de la ficha deja desactualizadas las afectadas y las
-  vuelve a pasar en segundo plano en los agentes publicados
-  (`business/writes.mark_tests_stale`). Se junta con una viva que aún no ha empezado,
-  sea cual sea su motivo, salvo que sea de una sola prueba. Con una **en marcha** sí
-  encola otra: la que corre empezó antes del cambio y no lo cubre. Si esa pasada deja
-  pruebas en rojo, el
-  partner recibe `agent.tests.failing` (una vez por agente y día,
-  `wk/jobs/handlers/agent_tests.tell_failing`, requisito 13.7).
+  afectadas, las que no pasan o una. Un cambio de la ficha o del conocimiento deja
+  desactualizadas las afectadas y no las pasa (`business/writes.mark_tests_stale`,
+  requisito 68.9). Tampoco las marca cambiar el nombre, el tono, el trato o el saludo
+  (`agent_spec_drafts._changes_behaviour`, 68.10).
 - **Playground** (`api/console/agent_playground.py`): sobre el borrador o una
   versión, con hora y agenda simuladas; el «cliente» lo escribe la propia persona
   del partner. Corre como el agente del canal (sus activaciones de conectores, su
@@ -310,11 +330,27 @@ usan los tres sitios que publican: la consola, el admin y la API de partners. Ca
 decisión deja el evento `gate.decision` (`outcome`: `published`, `blocked`;
 `blocking`: los códigos).
 
-**«No se probó» no es «pasa»**: una versión con pruebas y sin una pasada suya no
-pasa (`tests_not_run`, en la condición de las críticas, y se salta como una
-crítica). «Guardar» no lo ve nunca —el trabajo `publish` pasa las pruebas antes
-de decidir, y su vista previa no lo cuenta—; lo ven quienes publican en la
-petición: la ruta de antes de la consola (`…/agent/versions/{v}/publish`, que
+**Lo que ninguna prueba arregla se dice antes de pagarlas**
+(`publishing.stopped_before_testing`, requisito 68.13). Si el validador, el aviso de IA o la
+calidad sin comprobar cierran la puerta, o la revisión tiene un bloqueante y nadie dio un
+motivo para saltarlo, el trabajo `publish` falla con `gate_blocked` sin pasar las pruebas: un
+borrador que no puede salir no gasta la pasada que paga Auphere. Con un motivo, las pasa.
+
+**Un cambio que hace Auphere por su cuenta devuelve la pasada** (`billing.return_the_pass`,
+requisito 68.14). El paso a Reservas y apagar el módulo reescriben las herramientas del agente
+y dejan sus pruebas desactualizadas sin que el cliente haya pedido nada, así que las pasadas de
+antes de ese cambio (`agents.tests_pass_returned_at`) ya no cuentan: la siguiente la paga Auphere,
+y guardar la vuelve a pasar una vez.
+
+**«No se probó» no es «pasa»**, mientras el agente no haya gastado su pasada: una
+versión con pruebas y sin una pasada suya no pasa (`tests_not_run`, en la condición
+de las críticas, y se salta como una crítica). Después ya no bloquea: la pantalla dice que
+guardar no las repite y queda `version_not_tested` en el veredicto. El último resultado de
+cada prueba sigue contando, sea de la versión que sea, así que descartar el borrador o
+restaurar otra versión no borra una crítica en rojo; se arregla repitiéndola, sin coste
+para el cliente (requisito 68.3). «Guardar» no lo ve nunca —la primera vez, el trabajo `publish` pasa
+las pruebas antes de decidir, y `publish-preview` lo dice con `tests_on_save`—; lo ven
+quienes publican en la petición: la ruta de antes de la consola (`…/agent/versions/{v}/publish`, que
 sigue viva porque el Companion publica por ella) y el panel de operador. El
 **promote del panel de operador** es siempre un salto auditado: sin `reason`,
 `422 reason_required`; con él, salta lo que salta un owner y el motivo queda en
@@ -363,7 +399,7 @@ responden `409 model_policy_managed` (`services/agent_spec/model_policy.py`).
 - **Capas** (`services/knowledge/`): la del negocio (`agent_id` NULL) la ven todos
   los agentes del cliente; la de un agente, solo él. Búsqueda híbrida exacta
   (texto y vectores `halfvec(1024)` en `knowledge_chunk_vectors`, RRF k=60).
-  «Enseñar» (`teach.py`) escribe en la capa que se elija y vuelve a pasar las
+  «Enseñar» (`teach.py`) escribe en la capa que se elija y deja desactualizadas las
   pruebas de quien lo ve. Las fuentes de cada respuesta quedan en `turn_sources`.
 - **Activaciones** (`services/activations.py`): una conexión por cliente y una
   activación por agente con su permiso (`read`, `ask_before_write`,

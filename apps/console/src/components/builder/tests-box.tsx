@@ -23,7 +23,7 @@ import { TestConversation } from "./test-conversation";
 type Ids = { ref: string; agent: string };
 export type TestRunActions = {
   load: (body: Ids) => Promise<Result<TestSuite>>;
-  run: (body: Ids & { scope: TestRunScope; test?: string }) => Promise<Result<TestRunAccepted>>;
+  run: (body: Ids & { scope: TestRunScope; test?: string; confirmed_tests?: number }) => Promise<Result<TestRunAccepted>>;
   poll: (body: { ref: string; job: string }) => Promise<Result<QualityJob>>;
   /** Sin ella, la pasada arranca sin preguntar. */
   estimate?: EstimateRun;
@@ -41,10 +41,12 @@ export type TestRun = {
   suite: TestSuite | null;
   /** Cuántas se están ejecutando; `null` si no corre ninguna pasada. */
   running: { count: number } | null;
+  /** Se está estimando o arrancando: el botón ya se pulsó. */
+  pending: boolean;
   error: string | null;
   canRun: boolean;
-  run: (scope?: TestRunScope) => Promise<void>;
-  /** «Ejecutar»: arranca, salvo que no quepa en la partida; entonces `confirm` pregunta. */
+  run: (scope?: TestRunScope, confirmedTests?: number) => Promise<void>;
+  /** «Ejecutar»: arranca, salvo que la pague la bolsa o no quepa en la partida; entonces `confirm` pregunta. */
   ask: (scope?: TestRunScope) => Promise<void>;
   confirm: React.ReactNode;
   reload: () => Promise<void>;
@@ -103,10 +105,14 @@ export function useTestRun({
     if (enabled) void reload();
   }, [refreshKey, reload, enabled]);
 
-  async function run(scope: TestRunScope = "all") {
-    if (running) return;
+  const starting = React.useRef(false);
+
+  async function run(scope: TestRunScope = "all", confirmedTests?: number) {
+    if (running || starting.current) return;
+    starting.current = true;
     setError(null);
-    const res = await actions.run({ ...ids, scope });
+    const res = await actions.run({ ...ids, scope, ...(confirmedTests ? { confirmed_tests: confirmedTests } : {}) });
+    starting.current = false;
     if (!res.ok) {
       setError(t(runRefusedKey(res)));
       return;
@@ -122,11 +128,12 @@ export function useTestRun({
     onChanged?.();
   }
 
-  const { ask, dialog } = useRunEstimate({ estimate: actions.estimate, ids, start: run });
+  const { ask, dialog, pending } = useRunEstimate({ estimate: actions.estimate, ids, start: run });
 
   return {
     suite,
     running,
+    pending,
     error,
     canRun: canWrite && Boolean(suite?.allowed.includes("run")),
     run,
@@ -178,7 +185,7 @@ export function TestsBox({
 }) {
   const t = useT();
   const titleId = React.useId();
-  const { suite, running, error, canRun } = tests;
+  const { suite, running, pending, error, canRun } = tests;
 
   if (!suite) {
     return (
@@ -198,6 +205,10 @@ export function TestsBox({
 
   const state = testsState(suite.summary);
   const done = state.kind === "failing" || state.kind === "passing";
+  const onTheBag = suite.next_full_pass === "client_bag";
+  const counted = suite.summary.total - suite.summary.not_applicable;
+  // Lo que se puede repetir sin coste para el cliente va primero (68.7).
+  const free: TestRunScope | null = !onTheBag ? null : counted > suite.summary.passed ? "failed" : suite.summary.stale > 0 && suite.summary.stale < counted ? "affected" : null;
   const label = running
     ? t("agentProto.tests.state.running", { n: running.count })
     : state.kind === "none"
@@ -214,18 +225,26 @@ export function TestsBox({
 
   return (
     <section id="agente-pruebas-resumen" aria-labelledby={titleId} className="grid min-w-0 scroll-mt-24 overflow-hidden rounded-lg border border-border bg-card" data-slot="tests-box">
-      <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-3">
-        <div className="grid min-w-0 gap-1">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <div className="grid min-w-0 flex-1 basis-48 gap-1">
           <h2 id={titleId} className="text-sm font-medium text-pretty">
             {t("agentProto.tests.title", { state: label })}
           </h2>
-          <p className="text-xs text-pretty text-muted-foreground">{t("agentProto.tests.note")}</p>
+          <p className="text-xs text-pretty text-muted-foreground">{t(onTheBag ? "agentProto.tests.note.bag" : "agentProto.tests.note")}</p>
         </div>
         {canRun && state.kind !== "none" ? (
-          <Button size="sm" variant={done ? "outline" : "default"} onClick={() => void tests.ask("all")} disabled={running !== null} className="shrink-0">
-            <Play aria-hidden="true" />
-            {done ? t("agentProto.tests.again") : t("agentProto.tests.runAll")}
-          </Button>
+          <div className="flex min-w-0 flex-wrap gap-2">
+            {free ? (
+              <Button size="sm" variant={done ? "outline" : "default"} onClick={() => void tests.ask(free)} disabled={running !== null || pending}>
+                <Play aria-hidden="true" />
+                {t(free === "failed" ? "builder.suite.runFailed" : "builder.suite.runStale")}
+              </Button>
+            ) : null}
+            <Button size="sm" variant={done || free ? "outline" : "default"} onClick={() => void tests.ask("all")} disabled={running !== null || pending}>
+              {free ? null : <Play aria-hidden="true" />}
+              {onTheBag ? t("agentProto.tests.againAll") : done ? t("agentProto.tests.again") : t("agentProto.tests.runAll")}
+            </Button>
+          </div>
         ) : null}
       </div>
 

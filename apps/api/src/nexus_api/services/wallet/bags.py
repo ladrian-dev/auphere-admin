@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Any, Final
 
@@ -550,10 +550,12 @@ async def debit_turn(
     amount_usd: int,
     usage_ref: str,
     agent_id: uuid.UUID | None,
+    kind: str = "debit_turn",
 ) -> Debit:
     """Cobrar un turno (``amount_usd`` en cien milésimas de USD, la unidad de la
     medición) de la bolsa, en su moneda. Si cruza el cero, solo lo que quedaba; la
-    misma ``usage_ref`` no cobra dos veces (43.8)."""
+    misma ``usage_ref`` no cobra dos veces (43.8). ``kind``: ``debit_tests`` para una
+    pasada de pruebas (68.6), que no cuenta como gasto de atender."""
     await as_client(session, tenant_id)
     seen = await session.scalar(
         sa.select(ClientWalletEntry.amount_micros).where(ClientWalletEntry.usage_ref == usage_ref)
@@ -569,9 +571,7 @@ async def debit_turn(
     was = bag.balance_micros
     bag.balance_micros -= spent
     bag.month_spent_micros += spent
-    session.add(
-        _entry(bag, kind="debit_turn", amount=-spent, usage_ref=usage_ref, agent_id=agent_id)
-    )
+    session.add(_entry(bag, kind=kind, amount=-spent, usage_ref=usage_ref, agent_id=agent_id))
     await session.flush()
     return Debit(
         spent=spent, balance_after=bag.balance_micros, emptied=was > 0 and bag.balance_micros == 0
@@ -642,6 +642,19 @@ async def return_all(*, partner_id: uuid.UUID, tenant_id: uuid.UUID, actor: str)
     return amount
 
 
+async def _spent_attending(session: AsyncSession, bag: ClientWallet) -> int:
+    """El gasto del mes de la bolsa sin las pruebas a su cargo: una pasada es de una vez y no
+    dice a qué ritmo se gasta (requisito 68.11)."""
+    tests = await session.scalar(
+        sa.select(sa.func.coalesce(sa.func.sum(-ClientWalletEntry.amount_micros), 0)).where(
+            ClientWalletEntry.tenant_id == bag.tenant_id,
+            ClientWalletEntry.kind == "debit_tests",
+            ClientWalletEntry.created_at >= datetime.combine(bag.month, time.min, UTC),
+        )
+    )
+    return max(0, bag.month_spent_micros - int(tests or 0))
+
+
 async def refill_all(
     session: AsyncSession, *, partner_id: uuid.UUID, now: datetime | None = None
 ) -> list[dict[str, Any]]:
@@ -660,7 +673,7 @@ async def refill_all(
         )
         if found is None:
             continue
-        pace = found.month_spent_micros / max(1, datetime.now(UTC).day)
+        pace = await _spent_attending(session, found) / max(1, datetime.now(UTC).day)
         order.append((found.balance_micros / pace if pace else float("inf"), tenant_id))
 
     shortfalls: list[dict[str, Any]] = []

@@ -272,7 +272,8 @@ async def test_a_business_answer_goes_to_the_ficha_and_can_stay_in_this_agent_on
     draft = await _draft(db_session, biz.tenant_id, agent_id)
     assert draft.spec["voice"]["register"] == "usted"
     assert "Avisa con 24 horas." in draft.system_prompt_rendered
-    assert out["tests_stale"] == 10
+    # La política marca las afectadas; el trato no marca ninguna (68.10).
+    assert 0 < out["tests_stale"] < 10
 
     # Con la política ya en la ficha, el constructor ya no la pregunta.
     body3, _agent3 = await _built(client, db_session, biz, fake_redis)

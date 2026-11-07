@@ -45,7 +45,7 @@ export function teachProblem(text: string, scope: TeachScope | null): MessageKey
   return null;
 }
 
-/** Qué pruebas se vuelven a pasar, dicho según el alcance elegido. */
+/** Qué pruebas quedan desactualizadas, dicho según el alcance elegido. */
 export function retestKey(scope: TeachScope | null): MessageKey {
   return scope === "agent" ? "builder.teach.retest.agent" : scope === "business" ? "builder.teach.retest.business" : "builder.teach.retest.none";
 }

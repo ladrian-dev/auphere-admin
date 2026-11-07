@@ -136,7 +136,7 @@ describe("la sección Conocimiento del agente", () => {
 });
 
 describe("«Enseñar» (37.3)", () => {
-  it("no se manda sin elegir el alcance, y dice qué pruebas se vuelven a pasar", async () => {
+  it("no se manda sin elegir el alcance, y dice qué pruebas quedan desactualizadas", async () => {
     const user = userEvent.setup();
     const { actions, onTaught, baseElement } = panel();
     await user.click(screen.getByRole("button", { name: "Enseñar" }));
@@ -150,7 +150,7 @@ describe("«Enseñar» (37.3)", () => {
     expect(await axeViolations(baseElement)).toEqual([]);
 
     await user.click(within(dialog).getByRole("radio", { name: /Solo este agente/ }));
-    expect(within(dialog).getByText("Después se vuelven a pasar las pruebas de este agente.")).toBeVisible();
+    expect(within(dialog).getByText("Después, las pruebas de este agente quedan desactualizadas.")).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "Enseñar" }));
     expect(actions.teach).toHaveBeenCalledWith({ ref: REF, agent: RECEPCION, text: "Cerramos en agosto", scope: "agent" });
     expect(toast.success).toHaveBeenCalledWith("Aprendido. Solo lo sabe Recepción.", expect.objectContaining({ action: expect.anything() }));

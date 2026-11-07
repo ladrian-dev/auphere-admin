@@ -130,6 +130,9 @@ export function isFailing(status: TestStatus): boolean {
 
 /** Por qué no empezó una pasada (`POST …/test-runs`). */
 export function runRefusedKey(res: { status: number; code?: string | null }): MessageKey {
+  if (res.code === "client_bag_not_enough") return "builder.suite.error.bag";
+  if (res.code === "charge_not_confirmed" || res.code === "charge_changed") return "builder.suite.error.charge";
+  if (res.code === "charge_unknown") return "builder.suite.noPrice.body";
   if (res.code === "build_budget_exhausted" || res.status === 402) return "money.build.blocked";
   if (res.code === "suite_running") return "builder.suite.error.suiteRunning";
   if (res.code === "nothing_to_run") return "builder.suite.error.nothing";
@@ -142,6 +145,7 @@ export function runRefusedKey(res: { status: number; code?: string | null }): Me
 export function runFailedKey(errorCode?: string | null): MessageKey {
   if (errorCode === "model_unavailable") return "builder.suite.error.model";
   if (errorCode === "build_budget_exhausted") return "money.build.blocked";
+  if (errorCode === "client_bag_low") return "builder.suite.error.bagLow";
   return "builder.suite.error.run";
 }
 
