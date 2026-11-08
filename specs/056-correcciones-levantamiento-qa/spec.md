@@ -1,6 +1,6 @@
 # Especificación: Correcciones del levantamiento QA de la consola del cliente
 
-**Rama**: `056-correcciones-levantamiento-qa` · **Creada**: 2026-11-07 · **Estado**: Borrador, pendiente de aprobación del owner con sus decisiones D1 a D10
+**Rama**: `056-correcciones-levantamiento-qa` · **Creada**: 2026-11-07 · **Estado**: Aprobada por el owner el 2026-11-07, con D3 cambiada por él (el partner hace lo mismo que el panel, sin solicitudes)
 
 **Entrada**: el «Levantamiento funcional — Consola de partners Auphere» de QA (exploración de `console.staging.auphere.com` el 6 y 7 de noviembre, en modo solo lectura), revisado contra `develop` en el informe [Revisión del levantamiento QA](https://claude.ai/artifact/Kitdp2E22q2URvcB4NBmnc). Más dos cambios que pidió el owner el 2026-11-07: «el tab Agentes y Negocio no debe aparecer en la consola de customers» y «hoy se le puede activar la consola de customers solo desde el admin panel», que pasa a poder hacerse desde la consola de partners.
 
@@ -9,8 +9,8 @@
 | Campo | Valor |
 |---|---|
 | **Superficie de confianza** | `0`: la API de la consola, la consola, el panel de operador y el runtime del agente, que ya existen. No se abre ninguna superficie |
-| **Garantías de aislamiento tocadas** | **1** (RLS): el partner pasa a escribir el acceso de sus clientes, y solo de los suyos. **C8 de ADR-041** (el partner nunca lee el cuerpo de un mensaje): dar acceso a la consola del cliente es dar acceso a su Bandeja, así que el Requisito 4 la protege. **8, rozada**: el freno de citas lee lo que hicieron las herramientas en la misma conversación, nunca en otra |
-| **Nota de KB que la justifica** | `[[ADR-041-consola-lite-del-cliente-final]]`, que esta spec **enmienda** (L2: quién da el acceso). La nota de enmienda se escribe en la KB al aprobarse la spec, antes de `/speckit-plan`. El origen completo está en el informe enlazado arriba |
+| **Garantías de aislamiento tocadas** | **1** (RLS): el partner pasa a escribir el acceso de sus clientes, y solo de los suyos. **C8 de ADR-041** (el partner nunca lee el cuerpo de un mensaje): sus rutas siguen sin cuerpos (Requisito 4). Queda abierto, **aceptado por el owner hasta una solución estable** (D3), que un partner que invite a una persona suya a la consola del cliente lea la Bandeja. **8, rozada**: el freno de citas lee lo que hicieron las herramientas en la misma conversación, nunca en otra |
+| **Nota de KB que la justifica** | `[[ADR-041-consola-lite-del-cliente-final]]`, sección «Enmienda · 2026-11-07 (spec 056)»: L2 (quién da el acceso), L3 (Agentes y Negocio) y el riesgo de C8. La spec 047 (R50.1 y R50.2) lleva la enmienda tachada. El origen completo está en el informe enlazado arriba |
 | **Qué se mide** | **Modelo**: el freno de citas comprueba con el modelo de clasificación las respuestas candidatas que hablan de una cita. Esa llamada va dentro del turno y entra en su cobro a la bolsa del cliente, igual que hoy `classify` y `respond`. Nada más gasta |
 
 ## Origen
@@ -46,7 +46,7 @@ Las preguntas que haría `/speckit-clarify`, resueltas con una propuesta. El own
 |---|---|---|---|
 | D1 | ¿Qué hace el agente si va a afirmar una cita que no existe? | **No se envía así.** Se repite el turno una vez, diciéndole que no hay reserva hecha y que reserve primero o diga la verdad. Si vuelve a afirmarla, la conversación pasa a una persona con el motivo «El agente dio por hecha una cita que no existe» | Reintentar arregla el caso normal sin escalar de más. Pasar a una persona es el único final seguro |
 | D2 | ¿Qué pasa con Agentes y Negocio del cliente? | **Desaparecen de la consola del cliente y de la app**, para todos los clientes, también los que ya los tenían. Pausar agentes y números y editar la ficha pasan a ser solo del partner. El cliente conserva lo que edita desde Reservas › Ajustes (horario, equipo y servicios que se reservan) y «Corregir esta respuesta» | Lo pidió el owner. Enmienda la spec 047, R50.1, R50.2 y R50.4 en la parte del cliente |
-| D3 | ¿Puede el partner abrir la Bandeja de su cliente a quien invite? | **Lo que abre la Bandeja a alguien pasa por Auphere.** El partner enciende el acceso, elige Panel, Reservas y Consumo, invita y revoca. Pero **encender la Bandeja** y **invitar a alguien mientras la Bandeja está encendida** quedan como solicitud, que Auphere aprueba o rechaza desde el panel. Para los clientes directos de Auphere (su partner interno) no hay solicitud: el partner ya es Auphere | Quien entra en la consola del cliente lee los mensajes de sus clientes. Si el partner pudiera invitar libremente, podría invitarse a sí mismo y leer lo que C8 le prohíbe. Así C8 sigue entera. **Alternativa**: el partner lo hace todo sin solicitud. Es más simple, pero enmienda C8 y L6, que pasarían a decir «el partner no recibe cuerpos por sus rutas, y cada persona que invita queda auditada y a la vista del cliente» |
+| D3 | ¿Puede el partner abrir la Bandeja de su cliente a quien invite? | **Decisión del owner (2026-11-07): sí, como hoy el panel.** La pestaña Acceso del partner hace lo mismo que la del panel, Bandeja incluida, sin solicitudes ni aprobación de Auphere. Se buscará una solución estable más adelante | Se propuso que lo que abre la Bandeja pasara por Auphere, y el owner lo rechazó: «por ahora deja la funcionalidad como está». **Riesgo aceptado**: un partner puede invitar a una persona suya y leer la Bandeja del cliente, que es lo que C8 prohíbe. Sus rutas siguen sin cuerpos. Queda escrito en la enmienda de ADR-041 y en `docs/consola-lite.md` |
 | D4 | ¿Dónde vive el acceso en la consola de partners y quién lo usa? | **Una pestaña «Acceso» en la ficha del cliente**, junto a Panel, Negocio y Agentes, con su propia dirección. Dentro, dos tarjetas: «Consola del cliente» y «Personas». La usan owner y admin; los demás roles no ven la pestaña. El panel de operador conserva su pestaña Acceso, con las mismas reglas | Es una página del cliente, como sus otras pestañas. Invitar a alguien a los datos de un negocio es una decisión de quien gestiona la cuenta, no de quien construye agentes |
 | D5 | ¿Un editor o dos para horario y servicios? | **El mismo editor, con las mismas reglas, en la ficha (partner) y en Reservas › Ajustes (cliente).** Desde Reservas el cliente crea servicios con su nombre, pero no renombra uno existente, igual que hoy en Negocio | Dos editores con reglas distintas sobre el mismo dato pierden datos. Con D2, la ficha queda para el partner y Reservas para el cliente |
 | D6 | ¿Qué hace el filtro «Todas» de la Bandeja? | **Mantener la regla de la spec 030 y llamarlo «Abiertas».** Si no hay abiertas pero sí resueltas, el estado vacío lo dice y lleva a Resueltas | La regla tiene sentido: lo resuelto no pide nada. Lo que confunde es el nombre |
@@ -91,7 +91,7 @@ La persona de un negocio entra en su consola o en la app y ve Panel, Bandeja, Re
 
 ### Historia 3 — El partner abre la consola a su cliente sin pedírselo a Auphere (Prioridad: P1)
 
-Desde la ficha de un cliente, el owner o admin del partner enciende su consola, elige los módulos, invita a sus personas y las revoca. Lo que abre la Bandeja a alguien queda pendiente de Auphere (D3).
+Desde la ficha de un cliente, el owner o admin del partner enciende su consola, elige los módulos, invita a sus personas y las revoca, igual que hoy Auphere desde el panel (D3).
 
 **Por qué esta prioridad**: hoy cada cliente nuevo de un partner necesita que Auphere entre en el panel. No escala.
 
@@ -101,7 +101,7 @@ Desde la ficha de un cliente, el owner o admin del partner enciende su consola, 
 
 1. **Dado** un owner de partner, **cuando** abre la pestaña Acceso de su cliente y enciende Panel y Reservas, **entonces** queda guardado y auditado con su nombre.
 2. **Dado** un cliente sin Bandeja, **cuando** el partner invita a una persona, **entonces** le llega la invitación y entra en Panel y Reservas.
-3. **Dado** un partner que no es el de Auphere, **cuando** pide encender la Bandeja, **entonces** queda «Pendiente de Auphere» y Auphere lo ve en el panel.
+3. **Dado** un cliente con WhatsApp conectado, **cuando** el partner enciende la Bandeja, **entonces** sus personas la ven al entrar, igual que si la hubiera encendido Auphere.
 4. **Dado** un builder o un analyst, **cuando** abre la ficha del cliente, **entonces** no ve la pestaña Acceso.
 
 ---
@@ -160,11 +160,10 @@ La consola del cliente no enseña texto técnico, valida igual en todas partes, 
 - **Un enlace guardado de la app a Negocio o a un agente**: abre el primer módulo del cliente, no una pantalla rota.
 - **Datos ya guardados que no cumplen las reglas unificadas** (Requisito 5): se enseñan tal cual, marcados «Revísalo», y nunca se cambian sin que alguien guarde.
 - **El partner apaga el acceso** con personas dentro: se cierran sus sesiones, como hoy desde el panel.
-- **Una solicitud de Bandeja pendiente cuando el partner apaga el acceso o revoca a la persona**: la solicitud se retira sola.
-- **Auphere rechaza una solicitud**: el partner ve «Rechazada por Auphere» con la fecha, y puede volver a pedirla.
+- **El partner y Auphere cambian el acceso del mismo cliente a la vez**: gana el último que guarda, como hoy entre dos operadores del panel, y los dos cambios quedan en la auditoría.
 - **Una respuesta que menciona una cita pasada** («tu cita de ayer»): no es una cita afirmada. El freno solo mira las que la respuesta da por hechas ahora.
 - **Un agente que reserva con un calendario conectado** (Google Calendar o Calendly) y no con Reservas: una reserva creada con éxito por esa herramienta cuenta como reserva hecha.
-- **Ausencia diseñada (§V)**: quien no puede gestionar el acceso no ve la pestaña. Un partner que no es el de Auphere no ve un interruptor de Bandeja apagado: ve «Pedir la Bandeja».
+- **Ausencia diseñada (§V)**: quien no puede gestionar el acceso no ve la pestaña. Un cliente que no puede tener Bandeja (sin WhatsApp conectado) no la ve entre los módulos, como hoy en el panel.
 
 ## Requisitos *(obligatorio)*
 
@@ -219,21 +218,15 @@ La consola del cliente no enseña texto técnico, valida igual en todas partes, 
 9. El panel de operador DEBE conservar su pestaña Acceso, con las mismas reglas que la del partner y sin los módulos Agentes ni Negocio.
 10. IF la persona del partner intenta gestionar el acceso de un cliente que no es suyo THEN el sistema DEBE responder el mismo 404 que con un cliente inexistente.
 
-### Requisito 4 — La Bandeja sigue protegida (C8)
+### Requisito 4 — Las rutas del partner siguen sin cuerpos (C8)
 
-**Historia de usuario:** Como negocio, quiero que la agencia que me vende el agente no pueda leer lo que me escriben mis clientes, aunque gestione mi acceso.
+**Historia de usuario:** Como negocio, quiero que la agencia que me vende el agente no reciba por sus pantallas lo que me escriben mis clientes, aunque gestione mi acceso.
 
 #### Criterios de aceptación
 
-1. WHERE el partner no es el partner interno de Auphere EL sistema DEBE convertir en solicitud, pendiente de Auphere:
-   - encender la Bandeja;
-   - invitar o reenviar la invitación a una persona mientras la Bandeja está encendida.
-2. WHILE una solicitud está pendiente el sistema NO DEBE dar a nadie acceso a la Bandeja por ella. La persona invitada no recibe nada hasta que Auphere aprueba.
-3. El panel de operador DEBE enseñar las solicitudes pendientes, con el partner, el cliente, la persona y quién la pidió, y DEBE permitir aprobarlas o rechazarlas. La decisión DEBE quedar auditada con el operador.
-4. WHEN Auphere decide THEN el partner DEBE verlo en la pestaña Acceso («Aprobada» o «Rechazada por Auphere», con la fecha).
-5. WHERE el partner es el partner interno de Auphere EL sistema DEBE aplicar los cambios al momento, sin solicitud.
-6. El partner NO DEBE recibir el cuerpo de ningún mensaje por ninguna ruta nueva. El barrido de aislamiento de `/console/*` DEBE cubrir las rutas nuevas sin excepción nueva.
-7. Revocar a una persona y apagar el acceso NO DEBEN necesitar solicitud: quitar acceso nunca abre la Bandeja a nadie.
+1. El partner NO DEBE recibir el cuerpo de ningún mensaje por ninguna ruta, nueva o de antes. El barrido de aislamiento de `/console/*` DEBE cubrir las rutas nuevas sin excepción nueva.
+2. Las rutas nuevas del acceso NO DEBEN devolver nada de la Bandeja del cliente: ni conversaciones, ni contactos, ni el texto de los avisos.
+3. La enmienda de ADR-041 y `docs/consola-lite.md` DEBEN decir el riesgo que el owner aceptó en D3: una persona invitada por el partner lee la Bandeja del cliente.
 
 ### Requisito 5 — Un solo juego de reglas para horario y servicios
 
@@ -241,7 +234,7 @@ La consola del cliente no enseña texto técnico, valida igual en todas partes, 
 
 #### Criterios de aceptación
 
-1. La ficha del partner y Reservas › Ajustes del cliente DEBEN aceptar y rechazar exactamente los mismos valores de horario: número de turnos por día, paso de las horas, horas posibles y horarios por sede.
+1. La ficha del partner y Reservas › Ajustes del cliente DEBEN aceptar y rechazar exactamente los mismos valores del horario del negocio: número de turnos por día, paso de las horas, horas posibles y turnos que cruzan la medianoche. Reservas edita solo el horario de todo el negocio. El horario propio de una sede se enseña allí sin poder editarse, y guardar desde Reservas NO DEBE cambiarlo.
 2. Las dos DEBEN aceptar y rechazar exactamente los mismos valores de servicio: duraciones, tipo de precio (Sin precio, Gratis, Importe), importe máximo y categoría.
 3. IF el cliente guarda desde Reservas un horario o un servicio THEN el sistema NO DEBE cambiar ninguna parte que el cliente no tocó.
 4. Desde Reservas el cliente DEBE poder crear un servicio con su nombre, y NO DEBE poder renombrar uno existente.
@@ -302,7 +295,7 @@ La consola del cliente no enseña texto técnico, valida igual en todas partes, 
 #### Criterios de aceptación
 
 1. Archivar un servicio o una sede desde la ficha DEBE pedir confirmación, como archivar en Reservas.
-2. «Deshacer» un cambio de la ficha DEBE pedir confirmación, diciendo qué cambio se deshace.
+2. «Deshacer» un cambio de la ficha DEBE pedir confirmación, diciendo qué cambio se deshace. Con el Requisito 2 desaparece la única pantalla que lo enseña hoy (Negocio del cliente): la confirmación va en el componente de historial de la ficha, que es el que la enseñe cuando se monte.
 3. WHEN se cierra un diálogo de Reservas con datos escritos THEN DEBE preguntar antes de descartarlos.
 
 ### Requisito 13 — Un formato de dinero y de teléfono
@@ -351,7 +344,6 @@ Lo que ya hace el código desde el commit `87b7c4cc`, escrito como requisito par
 
 - **Acceso del cliente**: si sus personas pueden entrar y qué módulos ven. Pertenece al cliente (tenant) y la RLS lo alcanza por su `tenant_id`. Lo escriben Auphere y, desde esta spec, su partner.
 - **Persona del cliente**: alguien invitado a la consola de un cliente, con su estado y su invitación. Pertenece al cliente.
-- **Solicitud de acceso a la Bandeja** (nueva): lo que pide el partner y decide Auphere, con quién la pidió, para qué persona o módulo, su estado (pendiente, aprobada, rechazada, retirada) y quién decidió. Pertenece al cliente, y el partner solo ve las de sus clientes.
 - **Constancia del freno de citas** (nueva): cada vez que el freno actúa, con la conversación, el agente y el resultado (reintento o paso a una persona), sin el texto del mensaje. Pertenece al cliente.
 
 ## Criterios de éxito *(obligatorio)*
@@ -365,6 +357,7 @@ Lo que ya hace el código desde el commit `87b7c4cc`, escrito como requisito par
 
 ## Fuera de alcance
 
+- Impedir que un partner lea la Bandeja de su cliente invitando a una persona suya (D3): el owner lo deja para una solución estable más adelante.
 - La regla que impide que dos personas usen el mismo calendario: la trae la spec 043 (R12.4) en la rama `reservas-fuente-unica-631d6d`. **Es una dependencia**: esa rama debe estar fusionada antes de cerrar esta spec.
 - Un levantamiento de la consola de partners, del panel y de la app: es otra ronda de QA.
 - Ctrl K en pantallas estrechas: en un teléfono no hay teclado con Ctrl.
@@ -375,7 +368,6 @@ Lo que ya hace el código desde el commit `87b7c4cc`, escrito como requisito par
 
 ## Supuestos
 
-- El partner interno de Auphere (el de los clientes directos) se distingue sin datos nuevos: ya está en configuración por su slug (`auphere_partner_slugs`, spec 030, plan D10).
 - La app Auphere Customers ya decide sus pestañas por los módulos del cliente, así que el Requisito 2 no necesita versión nueva de la app salvo para los enlaces directos. Si la necesita, va en la siguiente versión por las tiendas.
 - La invitación de un solo uso, su caducidad y el cierre de sesiones al revocar son los del panel de hoy, y se reutilizan.
 - Los datos de prueba de Jemma's Hair (Juan y Roxi con el mismo correo) no son una regla del producto.

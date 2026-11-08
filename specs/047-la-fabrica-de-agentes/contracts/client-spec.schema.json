@@ -81,6 +81,7 @@
           "id": { "type": "string", "format": "uuid" },
           "name": { "type": "string", "minLength": 1, "maxLength": 120 },
           "description": { "type": "string", "maxLength": 1000 },
+          "category": { "description": "Spec 055: lo que lo agrupa («Corte»).", "type": "string", "minLength": 1, "maxLength": 40 },
           "bookable": { "type": "boolean" },
           "duration_min": { "type": "integer", "minimum": 5, "maximum": 480 },
           "price": {

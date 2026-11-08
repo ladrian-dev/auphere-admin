@@ -85,6 +85,7 @@ conversación pasa a «Espera a una persona» en la Bandeja.
 | `escalated` | «Pidió una persona» / «{disparador}» | Requisito 33 |
 | `human_takeover` | «La lleva una persona» | Una persona tomó el control, o un eco de coexistencia (requisito 30.11) |
 | `reception_loop` | «Derivaciones en bucle» | Requisito 53.5 |
+| `booking_unbacked` | «El agente dio por hecha una cita que no existe» (en: «The agent confirmed a booking that does not exist») | Spec 056, requisito 1.2: el freno de citas, tras un reintento. No lo libera la siguiente respuesta del agente (no es de `GATE_REASONS`); con Bandeja, el agente se calla en la conversación |
 
 ## 3. Avisos
 
@@ -110,7 +111,7 @@ Columnas: tipo · gravedad · a quién · por dónde · deduplicación · enlace
 | `client.read.done` / `client.read.failed` | Info / Aviso | Quien lanzó la lectura | Campana | Ninguna | Negocio |
 | `agent.tests.failing` | Aviso | Partner | Campana | 1 por agente y día | Pruebas del agente |
 | `agent.suggestions.ready` | Info | Partner | Campana | 1 por agente y semana | Rendimiento |
-| `agent.correction.proposed` | Info | Partner | Campana | Ninguna | Mejoras del agente |
+| `agent.correction.proposed` | Info | Partner | Campana | Ninguna; spec 056: uno por lote de «Todo el negocio», con `agents_count` y `batch_id` | Mejoras del agente |
 | `build.budget.warning` | Aviso | Owners, admins y builders | Campana, correo | 1 al mes | Consumo |
 | `build.budget.exhausted` | Crítico | Owners, admins y builders | Campana, correo | 1 al mes | Consumo |
 | `model.retirement` | Aviso | Partner con agentes fijados | Campana, correo | 1 por despliegue y partner, a 30 días y a 7 días | Calidad del agente |
@@ -138,6 +139,12 @@ siguen como están. Los avisos de la cuenta del partner (`wallet.low` y
 
 El texto del push nunca lleva datos de un cliente final.
 
+Spec 056 (requisito 8): el aviso `inbox.waiting` de la campana gana `handled`.
+Cuando la conversación deja de esperar (la toman, la devuelven, la resuelven o la
+eliminan, la puerta del turno se abre o el cliente se queda sin Bandeja), pasa a
+atendido (`console_notifications.handled_at`): sigue en la lista y no cuenta en el
+número de la campana.
+
 ## 4. Auditoría
 
 Categorías de hoy: Agentes, Conocimiento, Canales, Clientes, Consumo, Equipo,
@@ -158,6 +165,8 @@ de API, sistema) y el origen (`console`, `lite_web`, `app`, `admin`, `api`,
 | Consumo | `wallet.assigned`, `wallet.lowered`, `wallet.moved`, `wallet.refill_set`, `wallet.currency_changed`, `balance.requested`, `build_budget.extension_requested` | — |
 | Mejora | `suggestion.accepted`, `suggestion.discarded`, `correction.proposed` | — |
 | Operador | `deployment.created`, `deployment.activated`, `deployment.retired`, `deployment.unavailable`, `router.policy_changed`, `certification.run`, `partner.console_v2_enabled`, `partner.console_v2_disabled`, `partner.build_budget_changed`, `beta.whatsapp_login_country`, `client.sovereign_set` | `deployment.unavailable` |
+| Mejora (spec 056) | `correction.batch_accepted`, `correction.batch_discarded`: objetivo `correction_batch:{id}`, `after = {agents, skipped}` (y `discard_reason` al descartar). La escribe `console:<correo>`. `correction.proposed` gana `batch_id`, `agents` y `skipped` (`{agent_id, code}`, los agentes en los que la regla no validó) | — |
+| Agentes (spec 056) | `agent.booking_brake`: objetivo `conversation:{id}`, `after = {agent_id, turn_id, outcome}` con `outcome` en `retried`, `handed_off` o `grader_fallback`, y nunca el texto. La escribe `system:worker`, solo en un turno de canal (el Playground y las pruebas del agente solo dejan el evento de log) | — |
 
 La agrupación «{n} más como esta» junta filas seguidas con la misma persona,
 acción, cliente y día (requisito 49.1).
@@ -181,6 +190,8 @@ garantía 6 (`test_49`) lo rechaza.
 | `wallet.transfer` | `transfer_id`, `kind`, `amount_micros`, `currency`, `fx_rate`, `fx_date` |
 | `channel.echo_takeover` | `conversation_id`, `until` |
 | `reception.handoff` | `conversation_id`, `from_agent_id`, `to_agent_id`, `hop` |
+| `console.request_error` (consola, `src/instrumentation.ts`) | `digest`, `route`, `route_type`, `cause_code`. Spec 056, requisito 10.2. Nunca `error.message`, cabeceras ni cookies |
+| `booking.brake` | `conversation_id`, `turn_id`, `outcome` (`retried`, `handed_off`, `classifier_failed_closed`, `grader_fallback`). Spec 056, requisito 1.5. Nunca el texto del mensaje (y no se llama `result`, que la garantía 6 prohíbe) |
 
 ## 6. Avisos de Meta que se consumen (coexistencia, requisito 30)
 

@@ -2111,10 +2111,11 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
 #### Criterios de aceptación
 
-1. La consola lite y la app DEBEN tener dos secciones nuevas:
-   - **«Agentes»**: el estado de cada agente (con los textos y colores del requisito 25), sus canales y «Pausar» o «Reanudar»;
-   - **«Negocio»**: el horario con sus turnos y sus fechas especiales, los servicios con su precio y su duración, y las sedes.
-2. Cualquier persona del cliente DEBE poder pausar y reanudar sus agentes y sus canales, editar la ficha y corregir respuestas (no hay papeles). Cada cambio DEBE:
+1. ~~La consola lite y la app DEBEN tener dos secciones nuevas:~~
+   - ~~**«Agentes»**: el estado de cada agente (con los textos y colores del requisito 25), sus canales y «Pausar» o «Reanudar»;~~
+   - ~~**«Negocio»**: el horario con sus turnos y sus fechas especiales, los servicios con su precio y su duración, y las sedes.~~
+   (Luis, 2026-11-07, spec 056, Requisito 2: Agentes y Negocio no aparecen en la consola del cliente ni en la app. Pausar y editar la ficha son del partner.)
+2. ~~Cualquier persona del cliente DEBE poder pausar y reanudar sus agentes y sus canales, editar la ficha y corregir respuestas (no hay papeles).~~ Cualquier persona del cliente DEBE poder corregir respuestas (no hay papeles); pausar y editar la ficha dejan de ser suyos (spec 056). Cada cambio DEBE:
    - llevar su nombre y su origen («desde la app» o «desde la web») en la ficha y en la auditoría;
    - avisar al partner.
 3. Las personas del cliente NO DEBEN poder crear, archivar ni publicar agentes, cambiar sus instrucciones o su calidad, conectar canales o integraciones ni tocar la bolsa.

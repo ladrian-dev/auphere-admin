@@ -32,7 +32,7 @@
 ## Notas
 
 - **Detalles técnicos a propósito.** Como la spec 055, el «Origen» y el encabezado nombran commits, rutas y la regla C8 para que se puedan comprobar. Los requisitos describen comportamiento: dicen qué ve y qué puede hacer cada persona, no cómo se construye. Las rutas que aparecen en ellos (`/agentes`, `/negocio`) son las que ve la persona en la barra de direcciones.
-- **Decisiones pendientes del owner.** Ninguna marca abierta: D1 a D10 llevan una propuesta. La spec no pasa a `/speckit-plan` hasta que el owner las apruebe o las cambie. **D3** (la Bandeja pasa por Auphere) es la que decide si C8 se enmienda.
-- **Puertas de la constitución.** Superficie declarada (`0`). Garantías tocadas declaradas (1, C8 y la 8 rozada), con su prueba pedida en los Requisitos 3.10, 4.6 y 2.5. Medidor declarado (Requisito 1.6). Sin dependencias nuevas.
+- **Decisiones.** Aprobadas por el owner el 2026-11-07. Cambió D3: el partner hace lo mismo que el panel, Bandeja incluida, y el riesgo para C8 queda aceptado y escrito hasta una solución estable.
+- **Puertas de la constitución.** Superficie declarada (`0`). Garantías tocadas declaradas (1, C8 y la 8 rozada), con su prueba pedida en los Requisitos 3.10, 4.1 y 2.5. Medidor declarado (Requisito 1.6). Sin dependencias nuevas.
 - **Dependencia externa.** La regla del calendario compartido viene de la rama `reservas-fuente-unica-631d6d`, que tiene que estar fusionada antes de cerrar esta spec.
 - **Pendiente antes de `/speckit-plan`.** La nota de KB con la enmienda de ADR-041 y de la spec 047 (R50), por la constitución §IX.
