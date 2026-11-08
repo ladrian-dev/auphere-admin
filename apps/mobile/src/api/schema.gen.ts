@@ -1406,26 +1406,6 @@ export interface paths {
         patch: operations["patch_business_hours_console_lite_reservas_business_hours_patch"];
         trace?: never;
     };
-    "/console/lite/reservas/calendar": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read Calendar
-         * @description P3: la cuenta de Google Calendar del cliente y sus calendarios.
-         */
-        get: operations["read_calendar_console_lite_reservas_calendar_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/console/lite/reservas/occupancy": {
         parameters: {
             query?: never;
@@ -1627,8 +1607,73 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Put Staff Calendar */
+        /**
+         * Put Staff Calendar
+         * @description Elige un calendario de su cuenta, o ``null`` para desconectarlo.
+         */
         put: operations["put_staff_calendar_console_lite_reservas_staff__staff_id__calendar_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/staff/{staff_id}/calendar/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Staff Calendar
+         * @description El enlace para que ese profesional autorice **su** cuenta. Se devuelve una vez, a
+         *     quien lo pidió.
+         */
+        post: operations["connect_staff_calendar_console_lite_reservas_staff__staff_id__calendar_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/staff/{staff_id}/calendar/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Staff Calendar
+         * @description Mira ya cómo quedó ese profesional: al volver de Google y al reintentar, sin esperar
+         *     a la pasada. Pulsarlo muchas veces no llama a Google más de una vez cada poco.
+         */
+        post: operations["refresh_staff_calendar_console_lite_reservas_staff__staff_id__calendar_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/console/lite/reservas/staff/{staff_id}/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Staff Calendars
+         * @description Los calendarios de la cuenta de **ese** profesional en los que se puede escribir.
+         */
+        get: operations["list_staff_calendars_console_lite_reservas_staff__staff_id__calendars_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2157,46 +2202,56 @@ export interface components {
             /** Revision */
             revision: number;
         };
-        /** CalendarItemOut */
+        /**
+         * CalendarConnectIn
+         * @description ``share``: el enlace es para enviárselo al profesional, que no vuelve a la consola.
+         */
+        CalendarConnectIn: {
+            /**
+             * Share
+             * @default false
+             */
+            share: boolean;
+        };
+        /**
+         * CalendarItemOut
+         * @description Un calendario de la cuenta de ese profesional. ``used_by``: quién del negocio lo
+         *     usa ya; un calendario, un profesional (R12.4).
+         */
         CalendarItemOut: {
             /** Id */
             id: string;
             /** Name */
             name: string;
-        };
-        /**
-         * CalendarOut
-         * @description ``connection`` distingue «no se conectó» de «hay que volver a conectar», y
-         *     ``unavailable``, una cuenta sin calendarios de un proveedor que no responde.
-         */
-        CalendarOut: {
-            /** Calendars */
-            calendars: components["schemas"]["CalendarItemOut"][];
-            /** Connected */
-            connected: boolean;
             /**
-             * Connection
-             * @default none
-             * @enum {string}
-             */
-            connection: "none" | "connected" | "needs_reauth";
-            /**
-             * Provider
-             * @constant
-             */
-            provider: "google";
-            /**
-             * Unavailable
+             * Primary
              * @default false
              */
-            unavailable: boolean;
+            primary: boolean;
+            /** Used By */
+            used_by?: string | null;
+        };
+        /** CalendarLinkOut */
+        CalendarLinkOut: {
+            /** Redirect Url */
+            redirect_url: string;
         };
         /**
          * CalendarStatus
-         * @description ``last_error`` es un código nuestro (``connection``, ``auth``, ``calendar_gone``,
-         *     ``read``, ``write``), nunca el texto del proveedor.
+         * @description El calendario de un profesional. ``pending``: se pidió la autorización y no ha
+         *     terminado. ``needs_calendar``: conectado y sin calendario que usar. ``needs_reauth``:
+         *     hay que volver a conectar. ``account`` es la cuenta que quedó conectada. ``last_error``
+         *     es un código nuestro (``connection``, ``auth``, ``calendar_gone``, ``read``, ``write``,
+         *     ``calendar_in_use``, ``no_calendar``, ``new_account_refused``), nunca el texto del proveedor.
          */
         CalendarStatus: {
+            /** Account */
+            account?: string | null;
+            /**
+             * Business Busy
+             * @default false
+             */
+            business_busy: boolean;
             /** Calendar Name */
             calendar_name?: string | null;
             /** Last Error */
@@ -2207,7 +2262,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "none" | "connected" | "needs_reauth" | "error";
+            status: "none" | "pending" | "connected" | "needs_calendar" | "needs_reauth" | "error";
         };
         /** CancelIn */
         CancelIn: {
@@ -3377,6 +3432,11 @@ export interface components {
             staff: "all" | "some";
             /** Staff Ids */
             staff_ids: string[];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: ("no_staff" | "does_not_fit")[];
         };
         /**
          * ServicePatchIn
@@ -4003,6 +4063,11 @@ export interface components {
             /** Calendar Id */
             calendar_id?: string | null;
         };
+        /** StaffCalendarsOut */
+        StaffCalendarsOut: {
+            /** Calendars */
+            calendars: components["schemas"]["CalendarItemOut"][];
+        };
         /** StaffIn */
         StaffIn: {
             /** Email */
@@ -4047,6 +4112,11 @@ export interface components {
             name: string;
             /** Position */
             position: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: "no_hours"[];
         };
         /** StaffPatchIn */
         StaffPatchIn: {
@@ -7603,39 +7673,6 @@ export interface operations {
             };
         };
     };
-    read_calendar_console_lite_reservas_calendar_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-                "X-App-Platform"?: string | null;
-                "X-App-Version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CalendarOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     occupancy_console_lite_reservas_occupancy_get: {
         parameters: {
             query: {
@@ -8169,6 +8206,115 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_staff_calendar_console_lite_reservas_staff__staff_id__calendar_connect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarConnectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarLinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_staff_calendar_console_lite_reservas_staff__staff_id__calendar_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_staff_calendars_console_lite_reservas_staff__staff_id__calendars_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCalendarsOut"];
                 };
             };
             /** @description Validation Error */

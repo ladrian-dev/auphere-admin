@@ -987,7 +987,21 @@
         "title": "BusinessHoursPatchIn",
         "type": "object"
       },
+      "CalendarConnectIn": {
+        "additionalProperties": false,
+        "description": "``share``: el enlace es para enviárselo al profesional, que no vuelve a la consola.",
+        "properties": {
+          "share": {
+            "default": false,
+            "title": "Share",
+            "type": "boolean"
+          }
+        },
+        "title": "CalendarConnectIn",
+        "type": "object"
+      },
       "CalendarItemOut": {
+        "description": "Un calendario de la cuenta de ese profesional. ``used_by``: quién del negocio lo\nusa ya; un calendario, un profesional (R12.4).",
         "properties": {
           "id": {
             "title": "Id",
@@ -996,6 +1010,22 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "primary": {
+            "default": false,
+            "title": "Primary",
+            "type": "boolean"
+          },
+          "used_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used By"
           }
         },
         "required": [
@@ -1005,52 +1035,38 @@
         "title": "CalendarItemOut",
         "type": "object"
       },
-      "CalendarOut": {
-        "description": "``connection`` distingue «no se conectó» de «hay que volver a conectar», y\n``unavailable``, una cuenta sin calendarios de un proveedor que no responde.",
+      "CalendarLinkOut": {
         "properties": {
-          "calendars": {
-            "items": {
-              "$ref": "#/components/schemas/CalendarItemOut"
-            },
-            "title": "Calendars",
-            "type": "array"
-          },
-          "connected": {
-            "title": "Connected",
-            "type": "boolean"
-          },
-          "connection": {
-            "default": "none",
-            "enum": [
-              "none",
-              "connected",
-              "needs_reauth"
-            ],
-            "title": "Connection",
+          "redirect_url": {
+            "title": "Redirect Url",
             "type": "string"
-          },
-          "provider": {
-            "const": "google",
-            "title": "Provider",
-            "type": "string"
-          },
-          "unavailable": {
-            "default": false,
-            "title": "Unavailable",
-            "type": "boolean"
           }
         },
         "required": [
-          "provider",
-          "connected",
-          "calendars"
+          "redirect_url"
         ],
-        "title": "CalendarOut",
+        "title": "CalendarLinkOut",
         "type": "object"
       },
       "CalendarStatus": {
-        "description": "``last_error`` es un código nuestro (``connection``, ``auth``, ``calendar_gone``,\n``read``, ``write``), nunca el texto del proveedor.",
+        "description": "El calendario de un profesional. ``pending``: se pidió la autorización y no ha\nterminado. ``needs_calendar``: conectado y sin calendario que usar. ``needs_reauth``:\nhay que volver a conectar. ``account`` es la cuenta que quedó conectada. ``last_error``\nes un código nuestro (``connection``, ``auth``, ``calendar_gone``, ``read``, ``write``,\n``calendar_in_use``, ``no_calendar``, ``new_account_refused``), nunca el texto del proveedor.",
         "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
+          "business_busy": {
+            "default": false,
+            "title": "Business Busy",
+            "type": "boolean"
+          },
           "calendar_name": {
             "anyOf": [
               {
@@ -1088,7 +1104,9 @@
           "status": {
             "enum": [
               "none",
+              "pending",
               "connected",
+              "needs_calendar",
               "needs_reauth",
               "error"
             ],
@@ -5923,6 +5941,22 @@
         "title": "StaffCalendarIn",
         "type": "object"
       },
+      "StaffCalendarsOut": {
+        "properties": {
+          "calendars": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarItemOut"
+            },
+            "title": "Calendars",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calendars"
+        ],
+        "title": "StaffCalendarsOut",
+        "type": "object"
+      },
       "StaffIn": {
         "additionalProperties": false,
         "properties": {
@@ -6052,6 +6086,15 @@
           "position": {
             "title": "Position",
             "type": "integer"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "const": "no_hours",
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -7413,6 +7456,18 @@
               "type": "string"
             },
             "title": "Staff Ids",
+            "type": "array"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "enum": [
+                "no_staff",
+                "does_not_fit"
+              ],
+              "type": "string"
+            },
+            "title": "Warnings",
             "type": "array"
           }
         },
@@ -15934,89 +15989,6 @@
         ]
       }
     },
-    "/console/lite/reservas/calendar": {
-      "get": {
-        "description": "P3: la cuenta de Google Calendar del cliente y sus calendarios.",
-        "operationId": "read_calendar_console_lite_reservas_calendar_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-App-Platform",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Platform"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-App-Version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CalendarOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Read Calendar",
-        "tags": [
-          "console",
-          "console-lite"
-        ]
-      }
-    },
     "/console/lite/reservas/occupancy": {
       "get": {
         "operationId": "occupancy_console_lite_reservas_occupancy_get",
@@ -17430,6 +17402,7 @@
     },
     "/console/lite/reservas/staff/{staff_id}/calendar": {
       "put": {
+        "description": "Elige un calendario de su cuenta, o ``null`` para desconectarlo.",
         "operationId": "put_staff_calendar_console_lite_reservas_staff__staff_id__calendar_put",
         "parameters": [
           {
@@ -17524,6 +17497,295 @@
           }
         },
         "summary": "Put Staff Calendar",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/reservas/staff/{staff_id}/calendar/connect": {
+      "post": {
+        "description": "El enlace para que ese profesional autorice **su** cuenta. Se devuelve una vez, a\nquien lo pidió.",
+        "operationId": "connect_staff_calendar_console_lite_reservas_staff__staff_id__calendar_connect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "staff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Staff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarConnectIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Connect Staff Calendar",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/reservas/staff/{staff_id}/calendar/refresh": {
+      "post": {
+        "description": "Mira ya cómo quedó ese profesional: al volver de Google y al reintentar, sin esperar\na la pasada. Pulsarlo muchas veces no llama a Google más de una vez cada poco.",
+        "operationId": "refresh_staff_calendar_console_lite_reservas_staff__staff_id__calendar_refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "staff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Staff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Staff Calendar",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/reservas/staff/{staff_id}/calendars": {
+      "get": {
+        "description": "Los calendarios de la cuenta de **ese** profesional en los que se puede escribir.",
+        "operationId": "list_staff_calendars_console_lite_reservas_staff__staff_id__calendars_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "staff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Staff Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffCalendarsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Staff Calendars",
         "tags": [
           "console",
           "console-lite"
