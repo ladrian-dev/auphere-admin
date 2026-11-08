@@ -17,6 +17,14 @@ Cada versión de un agente (`agent_configs`) guarda su **AgentSpec**
   migración 0189 pasó cada prompt propio a «instructions»
   (`services/agent_spec/legacy.spec_from_version`); el ensayo de la consola nueva
   comprueba que sigue compilando los mismos bytes (sección 7).
+- **Herramientas de un agente «instructions».** Las manda la versión
+  (`agent_configs.tools`), que es lo que construye el runtime y lo que escriben los
+  interruptores de Habilidades. La spec guardada lleva una copia de la última
+  edición, y `api/console/agent_spec_drafts.spec_of` no la usa: lee la lista de la
+  versión (lo que la copia ya nombraba más lo que tiene forma de catálogo). Así la
+  ficha, la revisión y la puerta ven lo encendido, y editar las instrucciones no lo
+  borra (QA de staging del 2026-11-08). En uno «structured» los interruptores
+  escriben la spec y las dos listas son la misma.
 - **Validador** (`services/agent_spec/validator.py`): errores que bloquean la
   puerta (herramientas desconocidas, límites, coherencia con la ficha) y avisos.
 - **Revisión** (`services/agent_spec/review.py`, `api/console/agent_review.py`):

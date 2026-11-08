@@ -46,11 +46,27 @@ from .agent_drafts import draft_written, ensure_draft, load_view
 from .deps import ClientScope
 
 
+def _version_tools(stored: list[str] | None, version: list[str] | None) -> list[str]:
+    """Las herramientas de un agente de instrucciones, leídas de la versión.
+
+    QA de staging del 2026-11-08: los interruptores de Habilidades escriben la versión
+    (``agent_configs.tools``, lo que construye el runtime) y no la spec, que guarda la
+    lista de la última vez que se editó. Leída de la spec, la ficha y la revisión no veían
+    lo encendido, y la siguiente edición la mandaba de vuelta y lo borraba. Se queda lo que
+    la spec ya nombraba (aunque no tenga la forma del catálogo) y lo del catálogo, en el
+    orden de la versión."""
+    named = set(stored or [])
+    return [t for t in dict.fromkeys(version or []) if t in named or _TOOL.match(t)][:60]
+
+
 def spec_of(cfg: AgentConfig | None, agent: Agent) -> AgentSpec | None:
     if cfg is None:
         return None
     if cfg.spec:
-        return AgentSpec.model_validate(cfg.spec)
+        spec = AgentSpec.model_validate(cfg.spec)
+        if spec.mode == "instructions":
+            spec = spec.model_copy(update={"tools": _version_tools(spec.tools, cfg.tools)})
+        return spec
     return spec_from_version(
         agent_name=agent.name,
         system_prompt_rendered=cfg.system_prompt_rendered or "",
