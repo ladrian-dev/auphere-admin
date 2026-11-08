@@ -86,6 +86,22 @@ def test_meta_accepts_the_shape(name: str) -> None:
     assert len(body) <= 1024
 
 
+#: Meta rechaza un cuerpo con demasiadas variables para su largo (code 100, subcode 2388293).
+#: Medido en staging el 2026-11-08: aceptó las de 17 caracteres fijos o más por variable y
+#: rechazó el recordatorio y el cambio, con unos 10.
+MIN_FIXED_CHARS_PER_VARIABLE = 16
+
+
+@pytest.mark.parametrize("name", sorted(SPECS))
+def test_each_variable_has_enough_text_around_it(name: str) -> None:
+    body = SPECS[name].body
+    variables = VAR.findall(body)
+    fixed = len(VAR.sub("", body))
+    assert fixed / len(variables) >= MIN_FIXED_CHARS_PER_VARIABLE, (
+        f"{name}: {fixed} caracteres fijos para {len(variables)} variables"
+    )
+
+
 def test_the_offer_greets_by_name() -> None:
     """15.8: el aviso del hueco libre empieza saludando, como los otros cinco."""
     assert SPECS["reserva_hueco_libre"].body.startswith("Hola, {{nombre}}.")

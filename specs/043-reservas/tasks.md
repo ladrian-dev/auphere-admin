@@ -203,3 +203,5 @@ acción de auditoría es texto libre y el CHECK del espejo ya admite `PENDING`.
   _Requisitos: 15_
 - [ ] T106 En staging, tras desplegar: las seis aparecen `PENDING` o aprobadas en la WABA de un cliente de prueba con Reservas, y una reserva fuera de la ventana sale con su plantilla aprobada. A mano.
   _Requisitos: 15.1, 15.10_
+- [x] T107 Hallazgo de T106 en staging (2026-11-08): Meta rechazó `reserva_recordatorio` y `reserva_cambiada` (code 100, subcode 2388293: demasiadas variables para su largo). Llevan más texto fijo, igual en `TEXTS`, y una prueba exige 16 caracteres fijos por variable. Las cuatro que Meta aceptó no cambian.
+  _Requisitos: 15.1, 15.8_

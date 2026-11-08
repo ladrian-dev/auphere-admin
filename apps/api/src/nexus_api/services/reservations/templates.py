@@ -169,7 +169,9 @@ def _spec(name: str, body: str) -> TemplateSpec:
 #: rehace sola (15.3): ``reserva_hueco_libre`` saluda por el nombre (el outbox ya
 #: mandaba ``nombre`` y Meta rechaza una variable que el texto no lleva), y la
 #: petición de confirmación y el recordatorio dicen ``{{cuando}} en {{negocio}}``
-#: (``{{negocio}} {{cuando}}`` son dos variables seguidas, formato no válido).
+#: (``{{negocio}} {{cuando}}`` son dos variables seguidas, formato no válido). El
+#: recordatorio y el cambio llevan más texto fijo: con 4 variables en una frase corta, Meta
+#: los rechazó en staging (code 100, subcode 2388293, 2026-11-08).
 CATALOG: Final[tuple[TemplateSpec, ...]] = (
     _spec(
         "reserva_confirmada",
@@ -183,11 +185,13 @@ CATALOG: Final[tuple[TemplateSpec, ...]] = (
     ),
     _spec(
         "reserva_recordatorio",
-        "Hola, {{nombre}}. Te recordamos tu reserva {{cuando}} en {{negocio}} ({{detalle}}).",
+        "Hola, {{nombre}}. Te escribimos para recordarte tu reserva {{cuando}} en {{negocio}} "
+        "({{detalle}}). Si no puedes venir, avísanos por aquí y la cambiamos.",
     ),
     _spec(
         "reserva_cambiada",
-        "Hola, {{nombre}}. Tu reserva en {{negocio}} cambió: ahora es {{cuando}} ({{detalle}}).",
+        "Hola, {{nombre}}. Te avisamos de que tu reserva en {{negocio}} cambió: ahora es "
+        "{{cuando}} ({{detalle}}). Si esa hora no te viene bien, escríbenos por aquí.",
     ),
     _spec(
         "reserva_cancelada",

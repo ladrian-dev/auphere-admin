@@ -49,13 +49,15 @@ motivo. Variables con nombre:
 |---|---|---|
 | `reserva_confirmada` | `nombre`, `negocio`, `cuando`, `detalle` | «Hola, {{nombre}}. Tu reserva en {{negocio}} quedó para {{cuando}} ({{detalle}}). Si necesitas cambiarla, escríbenos por aquí.» |
 | `reserva_pide_confirmacion` | `nombre`, `cuando`, `negocio`, `detalle` | «Hola, {{nombre}}. Te esperamos {{cuando}} en {{negocio}} ({{detalle}}). ¿Nos confirmas que vienes? Responde SÍ o NO.» |
-| `reserva_recordatorio` | `nombre`, `cuando`, `negocio`, `detalle` | «Hola, {{nombre}}. Te recordamos tu reserva {{cuando}} en {{negocio}} ({{detalle}}).» |
-| `reserva_cambiada` | `nombre`, `negocio`, `cuando`, `detalle` | «Hola, {{nombre}}. Tu reserva en {{negocio}} cambió: ahora es {{cuando}} ({{detalle}}).» |
+| `reserva_recordatorio` | `nombre`, `cuando`, `negocio`, `detalle` | «Hola, {{nombre}}. Te escribimos para recordarte tu reserva {{cuando}} en {{negocio}} ({{detalle}}). Si no puedes venir, avísanos por aquí y la cambiamos.» |
+| `reserva_cambiada` | `nombre`, `negocio`, `cuando`, `detalle` | «Hola, {{nombre}}. Te avisamos de que tu reserva en {{negocio}} cambió: ahora es {{cuando}} ({{detalle}}). Si esa hora no te viene bien, escríbenos por aquí.» |
 | `reserva_cancelada` | `nombre`, `negocio`, `cuando` | «Hola, {{nombre}}. Tu reserva en {{negocio}} para {{cuando}} quedó cancelada. Si quieres otra hora, escríbenos por aquí.» |
 | `reserva_hueco_libre` | `nombre`, `negocio`, `cuando`, `detalle`, `minutos` | «Hola, {{nombre}}. Mensaje automático de {{negocio}}: se liberó un hueco {{cuando}} ({{detalle}}). ¿Lo quieres? Responde SÍ en los próximos {{minutos}} minutos y te lo reservamos.» |
 
 Ningún texto lleva dos variables seguidas (`{{negocio}} {{cuando}}`): Meta suele rechazarlo por
-formato, y una rechazada no se rehace sola (revisión del 2026-11-08). El catálogo que se manda
+formato, y una rechazada no se rehace sola (revisión del 2026-11-08). Cada variable lleva al menos 16 caracteres
+de texto fijo: con menos, Meta rechazó en staging el recordatorio y el cambio por tener demasiadas
+variables para su largo (code 100, subcode 2388293). El catálogo que se manda
 a Meta es `services/reservations/templates.py`, y una prueba comprueba que sus variables son
 las del outbox.
 

@@ -411,8 +411,14 @@ TEXTS: dict[str, str] = {
         "Hola, {nombre}. Te esperamos {cuando} en {negocio} ({detalle}). "
         "¿Nos confirmas que vienes? Responde SÍ o NO."
     ),
-    "reminder": "Hola, {nombre}. Te recordamos tu reserva {cuando} en {negocio} ({detalle}).",
-    "moved": "Hola, {nombre}. Tu reserva en {negocio} cambió: ahora es {cuando} ({detalle}).",
+    "reminder": (
+        "Hola, {nombre}. Te escribimos para recordarte tu reserva {cuando} en {negocio} "
+        "({detalle}). Si no puedes venir, avísanos por aquí y la cambiamos."
+    ),
+    "moved": (
+        "Hola, {nombre}. Te avisamos de que tu reserva en {negocio} cambió: ahora es "
+        "{cuando} ({detalle}). Si esa hora no te viene bien, escríbenos por aquí."
+    ),
     "cancelled": (
         "Hola, {nombre}. Tu reserva en {negocio} para {cuando} quedó cancelada. "
         "Si quieres otra hora, escríbenos por aquí."
