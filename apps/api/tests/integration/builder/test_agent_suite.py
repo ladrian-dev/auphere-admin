@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 import pytest
 import sqlalchemy as sa
 from nexus_worker.jobs.handlers import agent_tests as tests_handler
+from nexus_worker.runtime import booking_brake
 from nexus_worker.runtime.llm import InMemoryProvider, LLMRouter, ToolCall
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,6 +57,14 @@ def _monday() -> date:
     return today + timedelta(days=(7 - today.weekday()) % 7 or 7)
 
 
+def _is_the_brake(call: Any) -> bool:
+    return any(
+        m.get("role") == "system"
+        and str(m.get("content") or "").startswith(booking_brake.CLASSIFY_PROMPT)
+        for m in call.messages
+    )
+
+
 class Booker:
     """Un agente de mentira que reserva en las pasadas que se le digan."""
 
@@ -71,6 +80,11 @@ class Booker:
         )
 
     def _respond(self, call: Any) -> str:
+        if call.role == "classify" and _is_the_brake(call):
+            # El freno de citas (spec 056) pregunta por la respuesta de una pasada
+            # que no reservó: «Te he reservado…» sin reserva sí lo afirma. No es un
+            # turno nuevo, así que no cuenta como pasada.
+            return "YES"
         if call.role == "classify":
             self.attempt += 1
             if self.attempt in self.books_on:

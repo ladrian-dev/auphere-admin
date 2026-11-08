@@ -186,6 +186,39 @@ async def test_it_runs_the_draft_with_simulated_time_and_agenda(
     assert (monday - timedelta(days=1)).strftime("%d/%m/%Y") in seen and "23:3" in seen
 
 
+async def test_a_booking_of_an_earlier_turn_backs_the_reply_of_the_next_one(
+    client: Any, biz: Biz, fake_redis: Any, scripted: InMemoryProvider
+) -> None:
+    """Fallo ``el-freno-no-reconoce-la-agenda-simulada`` (spec 056, requisito 1).
+    La cita del primer turno está en la agenda simulada y no en ``reservations``:
+    «te esperamos» en el segundo turno, sin herramientas, sale tal cual. Antes lo
+    paraba el freno y acababa en la frase de traspaso."""
+    agent_id = await _agent(client, biz, fake_redis)
+    session = (await client.post(_url(biz, agent_id), json={}, headers=biz.headers())).json()
+    url = f"{_url(biz, agent_id)}/{session['session_id']}/messages"
+    monday = _next_monday()
+    _script(
+        scripted,
+        [
+            ToolCall(
+                id="c1",
+                name="reservas.create",
+                arguments={"date": monday.isoformat(), "time": "10:00", "idempotency_key": "k1"},
+            )
+        ],
+        "Listo, te reservé el lunes a las 10:00.",
+        intent="book",
+    )
+    first = await client.post(url, json={"text": "Cita el lunes a las 10"}, headers=biz.headers())
+    assert first.status_code == 200, first.text
+    assert first.json()["turn"]["bubbles"] == ["Listo, te reservé el lunes a las 10:00."]
+
+    _script(scripted, [], "Perfecto, te esperamos el lunes a las 10:00.", intent="book")
+    sent = await client.post(url, json={"text": "Gracias"}, headers=biz.headers())
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["turn"]["bubbles"] == ["Perfecto, te esperamos el lunes a las 10:00."]
+
+
 async def test_no_side_effect_leaves_the_simulation(
     client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any, scripted: InMemoryProvider
 ) -> None:

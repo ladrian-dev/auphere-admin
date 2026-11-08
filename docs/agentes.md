@@ -451,16 +451,28 @@ repite herramientas (`tool_once`).
      `status: ok`;
    - una cita que sigue en pie: `reservas.list_mine` con reservas y
      `reservas.confirm_attendance`;
-   - el Playground (`skipped:dry_run`) y el reintento de un turno (`replayed`);
+   - el playground de antes (`skipped:dry_run`) y el reintento de un turno
+     (`replayed`);
    - **no** respaldan un error, un `approval_*` ni el enlace de un solo uso de
      Calendly (con él reserva el cliente).
 
    Con una reserva hecha en el turno, la respuesta sale sin cambios y sin
-   llamadas.
+   llamadas. **La agenda simulada** del Playground y de las pruebas
+   (`simulation/registry.py`) contesta con la forma de la herramienta de verdad,
+   hecha con sus mismos modelos de salida (`booking`, `refused`, `first_fit`…):
+   el freno la lee como la del canal. Lo que la agenda rechaza es `refused` con
+   `status: ok`, y lo que la herramienta no acepta, un error; las `booking.*`
+   retiradas fallan siempre con error, como las de verdad. Una prueba unitaria
+   (`apps/worker/tests/unit/test_booking_brake_simulation.py`) pasa al freno los
+   sobres que produce el propio registro simulado, para que las dos formas no
+   vuelvan a separarse.
 3. **Turnos anteriores de esa conversación**, solo si el filtro acertó: una
    reserva viva de Reservas con su `conversation_id`, o el éxito de un calendario
    conectado o de `booking.*` en sus salidas desde `attended_at`. De Reservas
-   manda la agenda: un `ok` viejo pudo cancelarse. Si en este turno se intentó una
+   manda la agenda: un `ok` viejo pudo cancelarse. En el Playground y en las
+   pruebas la agenda es la simulada, cuyas citas no llegan a `reservations`: una
+   cita en pie en ella respalda (`MCPRegistry.simulated_booking_stands`, que el
+   registro simulado responde con su mundo). Si en este turno se intentó una
    reserva y no salió, lo de antes no la cubre: la respuesta puede estar dando
    por hecha la nueva, y el clasificador recibe la pregunta estrecha (solo cuenta
    una cita hecha, confirmada o cambiada ahora).

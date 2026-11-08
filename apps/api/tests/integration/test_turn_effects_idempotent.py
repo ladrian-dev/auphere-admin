@@ -6,7 +6,8 @@ el stream: mismo mensaje, mismo turno. Cada efecto pasa por ``turn_effects`` con
 la clave ``turno:acción``:
 
 - la reserva (una herramienta con efecto) ocurre una vez y el reintento recibe
-  la misma respuesta;
+  la misma respuesta, que respalda la confirmación ante el freno de citas (spec
+  056): la herramienta es ``reservas.create`` y contesta con su forma de verdad;
 - la respuesta al contacto se escribe una vez;
 - el turno se mide con el mismo ``turn_id`` en los dos intentos, así que el
   débito (``channel:{turno}``, idempotente en el libro) se cobra una vez.
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
 
@@ -26,6 +28,7 @@ import sqlalchemy as sa
 from langgraph.checkpoint.memory import MemorySaver
 from nexus_mcp import MCPRegistry
 from nexus_mcp.base import InputModel, OutputModel, ToolBase
+from nexus_mcp.servers.reservas.schemas import BookingBrief, CreateOutput
 from nexus_worker.metering import consumer as metering
 from nexus_worker.metering.collector import USAGE_STREAM, record_llm_usage
 from nexus_worker.runtime.agent_loader import AgentLoader
@@ -41,31 +44,40 @@ from ._turn_world import make_world, outbound_rows
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
-TOOL = "testshop.reserve"
+TOOL = "reservas.create"
 
 
 class _ReserveIn(InputModel):
     slot: str
 
 
-class _ReserveOut(OutputModel):
-    booking_id: str
-
-
 class CountingReserve(ToolBase):
-    """Una reserva de verdad, contada. Si el reintento la repite, se ve."""
+    """Una reserva de verdad, contada. Si el reintento la repite, se ve. Contesta
+    con la salida de ``reservas.create`` (``CreateOutput``): con otra forma el
+    freno de citas no la reconocería y la confirmación no saldría."""
 
     name = TOOL
     description = "Reserva un hueco en la agenda del negocio."
     input_model = _ReserveIn
-    output_model = _ReserveOut
+    output_model = CreateOutput
     side_effects = ("mutates_db",)
     runs: ClassVar[int] = 0
 
     async def run(self, payload: InputModel) -> OutputModel:
         assert isinstance(payload, _ReserveIn)
         CountingReserve.runs += 1
-        return _ReserveOut(booking_id=f"booking-{CountingReserve.runs}")
+        return CreateOutput(
+            booking=BookingBrief(
+                id=uuid.uuid4(),
+                status="confirmed",
+                date=date(2026, 11, 13),
+                start="18:00",
+                end="18:30",
+                starts_at=datetime(2026, 11, 13, 17, 0, tzinfo=UTC),
+                party_size=1,
+                service_name="Corte",
+            )
+        )
 
 
 class CrashAfterTheTurn:
@@ -94,11 +106,11 @@ class CrashAfterTheTurn:
 def _graph() -> Any:
     def responder(call: Any) -> str:
         if call.role == "classify":
-            return "info"
+            return "book"
         return "Te reservé mañana a las 18:00." if _saw_tool(call) else ""
 
     def tool_caller(call: Any) -> list[ToolCall]:
-        if call.role == "info" and not _saw_tool(call):
+        if call.role == "book" and not _saw_tool(call):
             return [ToolCall(id="r1", name=TOOL, arguments={"slot": "mañana 18:00"})]
         return []
 
@@ -158,7 +170,7 @@ async def test_a_retried_turn_reserves_once_and_answers_once(db_session) -> None
     rows = await _effects(world)
     keys = {r["idempotency_key"]: r["effect"] for r in rows}
     turn = rows[0]["turn_id"]
-    assert keys[f"{turn}:{TOOL}:1"] == "tool", "la clave es turno:acción:n"
+    assert keys[f"{turn}:{TOOL}:1"] == "reserve", "la clave es turno:acción:n"
     assert keys[f"{turn}:reply:1"] == "reply"
     assert {r["turn_id"] for r in rows} == {turn}, "todo cuelga del mismo turno"
 

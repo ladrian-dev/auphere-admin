@@ -155,6 +155,13 @@ class MCPRegistry:
         to record — its dispatch gate blocks and audits the write itself."""
         del name, args
 
+    def simulated_booking_stands(self) -> bool:
+        """A simulated world: does a booking stand in its agenda? The booking
+        brake (spec 056) reads it for the earlier turns of a simulated
+        conversation, whose bookings never reach the database. A real registry
+        has no simulated agenda: the brake reads ``reservations`` itself."""
+        return False
+
     # ── registration ─────────────────────────────────────────────────────
 
     def register(self, tool: ToolBase) -> None:

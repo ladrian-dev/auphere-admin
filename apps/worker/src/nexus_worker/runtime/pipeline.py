@@ -2203,7 +2203,13 @@ def make_handler_node(
                     break
                 draft = booking_brake.draft_text(final_text, interactive_payload)
                 if not await booking_brake.unbacked_claim(
-                    llm, bundle, brake, text=draft, envelopes=envelopes
+                    llm,
+                    bundle,
+                    brake,
+                    text=draft,
+                    envelopes=envelopes,
+                    # The Playground and the tests: their agenda is the simulated one.
+                    simulated_agenda=scoped_registry.simulated_booking_stands(),
                 ):
                     break
                 if attempt == booking_brake.ATTEMPTS - 1:

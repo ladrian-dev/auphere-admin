@@ -17,7 +17,10 @@ module, right after its ReAct loop produced the draft:
    envelopes of its outbound messages since ``attended_at`` for the tools that
    are not Reservas (a connector's calendar, the old ``booking.*``). For
    Reservas the agenda is the source of truth: an old ``ok`` may have been
-   cancelled since.
+   cancelled since. In the Playground and the agent's tests the agenda is the
+   simulated one (``MCPRegistry.simulated_booking_stands``), whose bookings never
+   reach ``reservations``; its tools answer with the real tools' shapes, so step
+   2 reads them as it reads the channel's.
 4. **One classifier call** (:func:`claims_booking`), only with a hit and
    nothing behind it: the same ``llm.classify`` + ``chain_for(..., "classify")``
    path as the graph's classifier, so the meter takes it inside the turn's
@@ -382,15 +385,18 @@ async def unbacked_claim(
     *,
     text: str,
     envelopes: Iterable[Any],
+    simulated_agenda: bool = False,
 ) -> bool:
-    """The brake's whole question: is this a claim with nothing behind it?"""
+    """The brake's whole question: is this a claim with nothing behind it?
+    ``simulated_agenda``: a booking stands in the simulated world of the
+    Playground or of a test pass, which the database does not know."""
     if not might_claim(text):
         return False
     seen = list(envelopes)
     if is_backed(seen):
         return False
     tried = attempted(seen)
-    earlier = await conversation_backed(turn.tenant_id, turn.conversation_id)
+    earlier = simulated_agenda or await conversation_backed(turn.tenant_id, turn.conversation_id)
     if earlier and not tried:
         return False
     return await claims_booking(llm, bundle, text, turn=turn, only_new=earlier)

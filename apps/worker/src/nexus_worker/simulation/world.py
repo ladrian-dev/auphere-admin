@@ -47,6 +47,8 @@ class SimBooking:
     starts_at: str  # ISO, UTC
     duration_min: int
     status: str = "confirmed"  # confirmed | cancelled
+    #: ``idempotency_key`` de ``reservas.create``: repetirla devuelve esta reserva.
+    key: str | None = None
 
 
 @dataclass
@@ -125,9 +127,9 @@ class World:
                     return svc
         return None
 
-    def _taken(self, start: datetime, end: datetime) -> bool:
+    def _taken(self, start: datetime, end: datetime, ignoring: SimBooking | None = None) -> bool:
         for b in self.bookings:
-            if b.status != "confirmed":
+            if b.status != "confirmed" or b is ignoring:
                 continue
             bs = datetime.fromisoformat(b.starts_at)
             be = bs + timedelta(minutes=b.duration_min)
@@ -135,15 +137,18 @@ class World:
                 return True
         return False
 
-    def slots(self, day: date, duration_min: int | None) -> list[str]:
-        """Los huecos libres de ``day`` (hora local ``HH:MM``), desde ahora."""
+    def slots(
+        self, day: date, duration_min: int | None, *, ignoring: SimBooking | None = None
+    ) -> list[str]:
+        """Los huecos libres de ``day`` (hora local ``HH:MM``), desde ahora.
+        ``ignoring``: una cita que se cambia de hora no ocupa su propio hueco."""
         length = timedelta(minutes=duration_min or SLOT_STEP_MIN)
         step = timedelta(minutes=SLOT_STEP_MIN)
         out: list[str] = []
         for start, end in intervals_on(self.hours(), day):
             at = start
             while at + length <= end:
-                if at >= self.now_at and not self._taken(at, at + length):
+                if at >= self.now_at and not self._taken(at, at + length, ignoring):
                     out.append(at.astimezone(self.tz).strftime("%H:%M"))
                 at += step
         return out
@@ -165,6 +170,14 @@ class World:
         )
         self.bookings.append(booking)
         return booking
+
+    def move(self, booking: SimBooking, *, day: date, at: str) -> bool:
+        """Cambia la cita de hora, la misma cita, si el hueco existe y está libre."""
+        if at not in self.slots(day, booking.duration_min, ignoring=booking):
+            return False
+        local = datetime.combine(day, time.fromisoformat(at), tzinfo=self.tz)
+        booking.starts_at = local.astimezone(UTC).isoformat()
+        return True
 
     def booking(self, booking_id: str | None) -> SimBooking | None:
         return next((b for b in self.bookings if b.id == booking_id), None)
