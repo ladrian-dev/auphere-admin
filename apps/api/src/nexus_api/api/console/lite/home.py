@@ -40,6 +40,8 @@ class AgentSpendOut(BaseModel):
 class LiteSpendMonthOut(BaseModel):
     total_cents: int
     by_agent: list[AgentSpendOut] | None = None
+    #: Spec 047: con bolsas, la moneda de la bolsa (EUR o USD); sin ellas, USD.
+    currency: str = "USD"
 
 
 class LiteWaitingOut(BaseModel):

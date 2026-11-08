@@ -168,6 +168,18 @@ que cada cifra coincida al céntimo con la que el partner ve de ese cliente
   partner entero: ni su saldo, ni lo gastado fuera de clientes, ni su tope de
   mensajes, ni sus alertas. Saldo de solo lectura (C2): sin comprar, sin mover
   topes, sin alertas.
+- **Con bolsas, el gasto es el de la bolsa** (spec 047, 46.7; bug
+  `gasto-del-mes-a-cero-con-bolsas`, `.specify/bugs/gasto-del-mes-a-cero-con-bolsas/`).
+  El turno se cobra solo de la bolsa (`wallet/turns.charge_turn`) y el libro de
+  la cuenta no lo ve, así que «Gasto del mes», el reparto por agente, la
+  proyección y la gráfica de Consumo salen de `wallet/bags.bag_spend`: el gasto
+  del mes de la bolsa (`spent_this_month`, la misma cifra que la bolsa del
+  partner) y sus cobros `debit_turn` y `debit_tests` por día UTC y agente. Van en
+  la moneda de la bolsa (`currency` en `spend_month`, en `month` de
+  `/usage/summary` y en `/usage/spend`) y la consola formatea con ella. El Panel
+  del cliente en la consola del partner (`/console/clients/{ref}/panel`) lee lo
+  mismo. Sin bolsas, el libro de siempre. Lo fija
+  `tests/integration/wallet/test_client_month_spend_from_bag.py`.
 - **Consola**: `/` y `/usage` son las mismas URLs para las dos personas; la
   página pinta `LitePanel` / `LiteUsage` (`components/lite/`) para un cliente.
   El CSV sale por `/api/lite/usage/export` (`proxyClientDownload`, guarda de

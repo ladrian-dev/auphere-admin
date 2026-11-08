@@ -72,10 +72,13 @@ export type LiteBalance = {
   month_days_left: number;
   /** Local date (`YYYY-MM-DD`) it runs out at that pace; `null` without spend or allocation. Today when used up. */
   runs_out_on: string | null;
+  /** Spec 047: the bag's currency (EUR or USD); absent reads as USD. */
+  currency?: string;
 };
 
 export type LiteHome = {
-  spend_month: { total_cents: number; by_agent: { agent_id: string; name: string; cents: number }[] | null } | null;
+  /** With bags, what the bag charged this month, in `currency` (spec 047, 46.7); absent reads as USD. */
+  spend_month: { total_cents: number; by_agent: { agent_id: string; name: string; cents: number }[] | null; currency?: string } | null;
   conversations: { last_7d: number; prev_7d: number | null; daily: { day: string; count: number }[] } | null;
   waiting: { count: number; first_conversation_id: string | null } | null;
   balance: LiteBalance | null;
@@ -86,7 +89,7 @@ export type LiteHome = {
 /** `/console/lite/usage/*` — the Consumo of one client (spec 030, R5). */
 export type LiteUsageSummary = {
   balance: LiteHome["balance"];
-  month: { spent_cents: number; projection_cents: number | null; conversations: number | null; avg_per_conversation_cents: number | null } | null;
+  month: { spent_cents: number; projection_cents: number | null; conversations: number | null; avg_per_conversation_cents: number | null; currency?: string } | null;
   by_agent: { agent_id: string; name: string; conversations: number; spent_cents: number; share_pct: number }[] | null;
   errors: string[];
 };

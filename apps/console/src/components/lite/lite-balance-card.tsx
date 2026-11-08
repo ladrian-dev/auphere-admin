@@ -61,7 +61,7 @@ export function LiteBalanceCard({
           {t("lite.kpi.balance")}
         </h2>
       </div>
-      {remaining != null ? <MoneyFigure cents={remaining} locale={locale} /> : <p className="text-4xl font-semibold tracking-tight text-muted-foreground">—</p>}
+      {remaining != null ? <MoneyFigure cents={remaining} currency={balance?.currency} locale={locale} /> : <p className="text-4xl font-semibold tracking-tight text-muted-foreground">—</p>}
       {until ? <p className="text-base font-medium text-pretty">{t("lite.usage.balance.until", { date: until })}</p> : null}
       {runway ? (
         <Meter

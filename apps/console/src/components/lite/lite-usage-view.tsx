@@ -5,8 +5,8 @@ import { Alert, AlertDescription, EmptyState, Metric, PageHeader, Section, forma
 import { SpendChart } from "@/app/(console)/usage/spend-chart";
 import { SpendControls } from "@/app/(console)/usage/spend-controls";
 import type { Locale, MessageKey } from "@/i18n/messages";
+import { formatAmount } from "@/lib/amount";
 import type { LiteSpend, LiteUsageDetail, LiteUsageSummary } from "@/lib/backend/lite";
-import { formatMoney } from "@/lib/money";
 
 import { LiteBalanceCard } from "./lite-balance-card";
 import { detailFamilies } from "./lite-model";
@@ -53,9 +53,10 @@ export function LiteUsageView({
   now?: Date;
 }) {
   const n = (v: number) => formatNumber(v, locale);
-  const money = (cents: number) => formatMoney(cents, locale);
   const balance = summary?.balance ?? null;
   const month = summary?.month ?? null;
+  // Spec 047: with bags every amount is the bag's, in its currency; without them, US$.
+  const money = (cents: number) => formatAmount({ amount_minor: cents, currency: month?.currency ?? "USD" }, locale);
   const byAgent = summary?.by_agent && summary.by_agent.length > 1 ? summary.by_agent : null;
   const whole = periodSpend !== undefined ? periodSpend : agent ? null : spend;
   const periodCents = whole ? whole.series_cents.reduce((sum, c) => sum + c, 0) : null;
@@ -172,7 +173,7 @@ export function LiteUsageView({
           ) : detail.buckets.length === 0 ? (
             <EmptyState title={t("usage.empty")} description={t("usage.period", { days })} readonly />
           ) : (
-            <DetailTable totals={detail.totals_by_meter} periodCents={periodCents} days={days} t={t} locale={locale} />
+            <DetailTable totals={detail.totals_by_meter} periodCents={periodCents} currency={whole?.currency ?? "USD"} days={days} t={t} locale={locale} />
           )}
         </div>
       </details>
@@ -190,12 +191,14 @@ export function LiteUsageView({
 function DetailTable({
   totals,
   periodCents,
+  currency,
   days,
   t,
   locale,
 }: {
   totals: Record<string, number>;
   periodCents: number | null;
+  currency: string;
   days: number;
   t: T;
   locale: Locale;
@@ -252,7 +255,7 @@ function DetailTable({
               <td className="px-4 py-3 text-right tabular-nums">{n(families.model)}</td>
               <td className="px-4 py-3 text-right tabular-nums">{n(families.media)}</td>
               {families.other != null ? <td className="px-4 py-3 text-right tabular-nums">{n(families.other)}</td> : null}
-              <td className="px-4 py-3 text-right font-medium tabular-nums">{periodCents == null ? "—" : formatMoney(periodCents, locale)}</td>
+              <td className="px-4 py-3 text-right font-medium tabular-nums">{periodCents == null ? "—" : formatAmount({ amount_minor: periodCents, currency }, locale)}</td>
             </tr>
           </tbody>
         </table>

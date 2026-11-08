@@ -18,6 +18,7 @@ y pinta el resto (constitución §V). Nunca un cero donde no se sabe.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -44,6 +45,7 @@ from nexus_api.services.console_home_blocks import (
     trend_block,
 )
 from nexus_api.services.console_reporting import month_bounds
+from nexus_api.services.wallet.bags import bag_spend
 
 log = structlog.get_logger(__name__)
 
@@ -65,6 +67,8 @@ class LiteConversations:
 class LiteSpendMonth:
     total_cents: int
     by_agent: list[AgentSpend] | None = None
+    #: Spec 047: con bolsas, la moneda de la bolsa; sin ellas, la del libro (USD).
+    currency: str = "USD"
 
 
 @dataclass(frozen=True)
@@ -224,11 +228,16 @@ async def agent_spend(
     tenant_id: uuid.UUID,
     since: datetime,
     total_cents: int,
+    burn: Mapping[uuid.UUID | None, int] | None = None,
 ) -> list[AgentSpend] | None:
     """Spec 030 (R4.2, R5.3): the month's spend per agent, or ``None`` with a
     single agent — a one-row breakdown says nothing. What was spent before
     agents existed is the principal's; an archived agent appears only if it
-    spent something."""
+    spent something.
+
+    ``burn`` is what each agent spent; without it, the account's ledger. With
+    bags it is the bag's charges (``bags.bag_spend``): the ledger never sees a
+    turn the bag paid."""
     agents = (
         await session.execute(
             sa.select(Agent.id, Agent.name, Agent.status)
@@ -239,7 +248,8 @@ async def agent_spend(
     active = [a for a in agents if a.status == AgentStatus.ACTIVE.value]
     if len(active) < 2:
         return None
-    burn = await credit_burn_by_agent(partner_id, tenant_id, since)
+    if burn is None:
+        burn = await credit_burn_by_agent(partner_id, tenant_id, since)
     principal = active[0].id
     rows = [
         (a.id, a.name, burn.get(a.id, 0) + (burn.get(None, 0) if a.id == principal else 0))
@@ -329,13 +339,20 @@ async def lite_home(
         log.warning("lite_home.balance_failed", error=str(exc))
         out.errors.append("balance")
     try:
-        month_burn = await credit_burn(partner_id, [tenant_id], since)
-        prev_start = (since - timedelta(days=1)).replace(day=1)
-        prev = await credit_burn(partner_id, [tenant_id], prev_start, prev_start + (now - since))
+        # Spec 047 (46.7): con bolsas el turno se cobra solo de la bolsa y el libro
+        # de la cuenta no lo ve (bug ``gasto-del-mes-a-cero-con-bolsas``).
+        charged = await bag_spend(partner_id, tenant_id, since=since, now=now)
+        by_agent: Mapping[uuid.UUID | None, int] | None = None
+        if charged is not None:
+            month_credits = charged.month
+            by_agent = charged.by_agent(since.date())
+        else:
+            month_burn = await credit_burn(partner_id, [tenant_id], since)
+            month_credits = month_burn.get(tenant_id, 0)
         block = spend_block(
             [row],
-            {tenant_id: month_burn.get(tenant_id, 0)},
-            prev.get(tenant_id, 0),
+            {tenant_id: month_credits},
+            0,
             daily_7d=burn_7d / REVIEW_WINDOW.days,
             days_left=days_until(until, now),
         )
@@ -347,7 +364,9 @@ async def lite_home(
                 tenant_id=tenant_id,
                 since=since,
                 total_cents=block.cents,
+                burn=by_agent,
             ),
+            currency=charged.currency if charged is not None else block.currency,
         )
     except Exception as exc:
         log.warning("lite_home.spend_failed", error=str(exc))

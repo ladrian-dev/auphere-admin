@@ -1198,6 +1198,7 @@ async def get_client_panel(
     from nexus_api.metering.wallet import credit_burn, credit_burn_by_agent
     from nexus_api.services.console_reporting import month_bounds
     from nexus_api.services.lite_home import split_cents
+    from nexus_api.services.wallet.bags import bag_spend
 
     now = datetime.now(UTC)
     tenant = scope.tenant
@@ -1212,7 +1213,15 @@ async def get_client_panel(
         )
     )
     since, until, _elapsed, _days = month_bounds(now)
-    month_credits = (await credit_burn(partner_id, [tenant.id], since)).get(tenant.id, 0)
+    # Spec 047 (46.7): con bolsas el turno se cobra solo de la bolsa y el libro de
+    # la cuenta no lo ve: el mes y el reparto salen de la bolsa, en su moneda, con
+    # las mismas cuentas que la consola lite (bug ``gasto-del-mes-a-cero-con-bolsas``).
+    from_bag = await bag_spend(partner_id, tenant.id, since=since, now=now)
+    spend_currency = from_bag.currency if from_bag is not None else CURRENCY
+    if from_bag is not None:
+        month_credits = from_bag.month
+    else:
+        month_credits = (await credit_burn(partner_id, [tenant.id], since)).get(tenant.id, 0)
     month_cents = blocks.spend_block(
         [blocks.ClientRow(tenant.id, scope.ref, tenant.name, tenant.status)],
         {tenant.id: month_credits},
@@ -1221,7 +1230,11 @@ async def get_client_panel(
         days_left=0.0,
     ).cents
     try:
-        by_agent = await credit_burn_by_agent(partner_id, tenant.id, since)
+        by_agent = (
+            from_bag.by_agent(since.date())
+            if from_bag is not None
+            else await credit_burn_by_agent(partner_id, tenant.id, since)
+        )
     except Exception as exc:
         log.warning("console.panel.burn_by_agent_failed", error=type(exc).__name__)
         by_agent = {}
@@ -1260,7 +1273,7 @@ async def get_client_panel(
             AgentShareOut(
                 agent_id=sh.agent_id,
                 name=sh.name,
-                spent=_money(sh.cents),  # type: ignore[arg-type]
+                spent=_money(sh.cents, spend_currency),  # type: ignore[arg-type]
                 share_pct=sh.share_pct,
             )
             for sh in blocks.spend_shares(figures)
@@ -1272,17 +1285,17 @@ async def get_client_panel(
             handed_to_person=month.handed_to_person,
             resolved_without_person=month.resolved_without_person,
             resolved_pct=month.resolved_pct,
-            spent=_money(month_cents),  # type: ignore[arg-type]
+            spent=_money(month_cents, spend_currency),  # type: ignore[arg-type]
         ),
         top_agents=[
             TopAgentOut(
                 agent_id=f.agent_id,
                 name=f.name,
                 visible_state=_visible_out(visible[f.agent_id]),
-                spent=_money(f.cents),  # type: ignore[arg-type]
+                spent=_money(f.cents, spend_currency),  # type: ignore[arg-type]
                 conversations=f.conversations,
                 spend_per_conversation=_money(
-                    blocks.per_conversation_cents(f.cents, f.conversations)
+                    blocks.per_conversation_cents(f.cents, f.conversations), spend_currency
                 ),
                 cap=MoneyOut(amount_micros=int(caps[f.agent_id]), currency=bag.currency)  # type: ignore[arg-type]
                 if caps.get(f.agent_id) is not None

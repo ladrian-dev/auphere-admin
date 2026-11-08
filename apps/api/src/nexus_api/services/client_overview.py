@@ -336,7 +336,7 @@ async def _bags_from_wallets(
     from nexus_api.core.partner_context import apply_partner_to_session
     from nexus_api.db.models import ClientWallet
     from nexus_api.services.wallet import alerts as wallet_alerts
-    from nexus_api.services.wallet.bags import as_client, bags_active
+    from nexus_api.services.wallet.bags import as_client, bags_active, spent_this_month
 
     today = now.date()
     out: dict[uuid.UUID, BagBlock] = {}
@@ -361,7 +361,9 @@ async def _bags_from_wallets(
                     None, None, None, None, False, ("empty",), True,
                 )  # fmt: skip
                 continue
-            base, balance, spent = bag.month_base_micros, bag.balance_micros, bag.month_spent_micros
+            # El gasto del mes es el que lee la consola lite (``bags.bag_spend``).
+            base, balance = bag.month_base_micros, bag.balance_micros
+            spent = spent_this_month(bag, now)
             pace = await wallet_alerts.pace_per_day(session, bag, today)
             pct_spent = round(spent / base * 100, 1) if base > 0 else None
             empty = balance <= 0

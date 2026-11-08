@@ -112,6 +112,12 @@ ficha. Sustituye a `partner_allocations` (que era un tope de gasto, no dinero).
   `usage_ref` no cobra dos veces. La puerta del turno (`allow_channel_turn`) abre
   mientras la bolsa tenga saldo; con la bolsa a cero los agentes publicados se
   pausan «sin saldo» y vuelven solos al subir el saldo (solo esos).
+- **El gasto del mes de un cliente** sale de su bolsa, nunca del libro de la
+  cuenta, que no ve los turnos que paga la bolsa: `bags.bag_spend` (consola lite
+  y Panel del cliente del partner) y `bags.spent_this_month` (la bolsa en la
+  lista y la ficha del partner). `month_spent_micros` solo vuelve a cero con el
+  primer movimiento del mes, así que hasta entonces el gasto del mes es cero, no
+  el del mes pasado (bug `gasto-del-mes-a-cero-con-bolsas`).
 - **El tope de cada agente** (`agents.monthly_cap_micros`, mes UTC, moneda de la
   bolsa): al 80 % avisa una vez al mes; al 100 % pausa ese agente (`agent_cap`)
   hasta el mes siguiente o hasta que se sube. Puede estar por encima de la bolsa.

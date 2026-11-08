@@ -120,7 +120,7 @@ export function LitePanelView({
                 <Metric
                   icon={<Wallet />}
                   label={t("lite.kpi.balance")}
-                  value={balance.assigned && balance.remaining_cents != null ? formatMoneyCompact(balance.remaining_cents, locale) : "—"}
+                  value={balance.assigned && balance.remaining_cents != null ? formatMoneyCompact(balance.remaining_cents, locale, balance.currency) : "—"}
                   progress={
                     runway
                       ? {

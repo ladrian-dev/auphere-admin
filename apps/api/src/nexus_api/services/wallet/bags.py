@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any, Final
 
@@ -613,6 +613,94 @@ async def balance_left(partner_id: uuid.UUID, tenant_id: uuid.UUID) -> tuple[int
     return int(row[0]), str(row[1])
 
 
+#: Lo que la bolsa cobra como gasto: los turnos y las pruebas a su cargo (68.6).
+SPEND_KINDS: Final = ("debit_turn", "debit_tests")
+#: El ritmo de la proyección: los últimos 7 días, como en el libro de la cuenta.
+PROJECTION_WINDOW: Final = timedelta(days=7)
+
+AgentKey = uuid.UUID | None
+
+
+def spent_this_month(bag: ClientWallet, now: datetime | None = None) -> int:
+    """El gasto del mes (UTC) de la bolsa. ``month_spent_micros`` solo vuelve a
+    cero al tocar la bolsa (``_roll``): hasta el primer movimiento del mes guarda
+    lo del mes pasado, y este mes aún no lleva nada gastado."""
+    return int(bag.month_spent_micros) if bag.month == month_of(now) else 0
+
+
+@dataclass(frozen=True)
+class BagSpend:
+    """Lo cobrado de la bolsa de un cliente, en su moneda (cien milésimas).
+
+    ``month`` es la cifra del mes que enseña la consola del partner
+    (:func:`spent_this_month`); ``cells``, los cobros por día UTC y agente desde
+    el ``since`` pedido; ``last_7d``, los de los últimos 7 días por agente, para
+    la proyección. ``None`` como agente: lo cobrado sin agente (del principal)."""
+
+    currency: str
+    month: int
+    cells: dict[tuple[date, AgentKey], int]
+    last_7d: dict[AgentKey, int]
+
+    def by_agent(self, since: date) -> dict[AgentKey, int]:
+        out: dict[AgentKey, int] = {}
+        for (day, agent), amount in self.cells.items():
+            if day >= since:
+                out[agent] = out.get(agent, 0) + amount
+        return out
+
+
+async def bag_spend(
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    *,
+    since: datetime,
+    now: datetime | None = None,
+) -> BagSpend | None:
+    """Spec 047 (46.7): con bolsas el turno se cobra **solo** de la bolsa y el libro
+    de la cuenta no lo ve, así que el gasto del cliente se lee aquí. ``None``: el
+    partner sigue con ``partner_allocations`` y el gasto es el del libro.
+
+    En la sesión del partner con el contexto del cliente puesto (las tablas de la
+    bolsa son del cliente, garantía 1), con el filtro del cliente escrito también."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.base import get_sessionmaker
+
+    now = now or datetime.now(UTC)
+    day = sa.cast(sa.func.timezone("UTC", ClientWalletEntry.created_at), sa.Date)
+    charged = sa.func.sum(-ClientWalletEntry.amount_micros)
+    mine = (
+        ClientWalletEntry.tenant_id == tenant_id,
+        ClientWalletEntry.kind.in_(SPEND_KINDS),
+    )
+    async with get_sessionmaker()() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        if not await bags_active(session, partner_id):
+            return None
+        await as_client(session, tenant_id)
+        bag = await session.get(ClientWallet, tenant_id)
+        cells = (
+            await session.execute(
+                sa.select(day, ClientWalletEntry.agent_id, charged)
+                .where(*mine, ClientWalletEntry.created_at >= since)
+                .group_by(day, ClientWalletEntry.agent_id)
+            )
+        ).all()
+        recent = (
+            await session.execute(
+                sa.select(ClientWalletEntry.agent_id, charged)
+                .where(*mine, ClientWalletEntry.created_at >= now - PROJECTION_WINDOW)
+                .group_by(ClientWalletEntry.agent_id)
+            )
+        ).all()
+    return BagSpend(
+        currency=bag.currency if bag is not None else "USD",
+        month=spent_this_month(bag, now) if bag is not None else 0,
+        cells={(d, agent): int(total or 0) for d, agent, total in cells},
+        last_7d={agent: int(total or 0) for agent, total in recent},
+    )
+
+
 async def return_all(*, partner_id: uuid.UUID, tenant_id: uuid.UUID, actor: str) -> int:
     """Antes de borrar un cliente, su bolsa vuelve entera a la cuenta (43.13).
 
@@ -709,12 +797,15 @@ async def refill_all(
 
 __all__ = [
     "EUROZONE",
+    "SPEND_KINDS",
+    "BagSpend",
     "Debit",
     "WalletError",
     "as_client",
     "assign",
     "assignable",
     "bag_for_update",
+    "bag_spend",
     "bags_active",
     "balance_left",
     "change_currency",
@@ -728,4 +819,5 @@ __all__ = [
     "partner_tenants",
     "refill_all",
     "return_all",
+    "spent_this_month",
 ]

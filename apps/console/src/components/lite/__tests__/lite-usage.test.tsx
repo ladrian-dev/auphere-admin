@@ -75,6 +75,27 @@ describe("LiteUsageView", () => {
     for (const bar of bars) expect(bar.tabIndex).toBe(0);
   });
 
+  it("reads every amount in the bag's currency (bug gasto-del-mes-a-cero-con-bolsas)", () => {
+    const { container } = view({
+      summary: summary({
+        balance: { ...summary().balance!, currency: "EUR" },
+        month: { spent_cents: 1626, projection_cents: 8401, conversations: 70, avg_per_conversation_cents: 23, currency: "EUR" },
+        by_agent: [
+          { agent_id: "a1", name: "Citas", conversations: 41, spent_cents: 950, share_pct: 58 },
+          { agent_id: "a2", name: "Ventas", conversations: 29, spent_cents: 676, share_pct: 42 },
+        ],
+      }),
+      spend: { ...spend, currency: "EUR" },
+    });
+    const cards = screen.getByRole("region", { name: "Saldo y gasto" });
+    expect(within(cards).getByText("30,13 €", { selector: ".sr-only" })).toBeTruthy();
+    expect(within(cards).getByText("16,26 €")).toBeTruthy();
+    expect(screen.getByText(/A este ritmo, 84,01\s€/)).toBeTruthy();
+    expect(screen.getByText("9,50 €")).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: /: / })[0]?.getAttribute("aria-label")).toMatch(/2,40\s€/);
+    expect(container.textContent).not.toContain("US$");
+  });
+
   it("does not project an empty month", () => {
     view({ summary: summary({ month: { spent_cents: 0, projection_cents: null, conversations: 0, avg_per_conversation_cents: null } }) });
     expect(screen.getByText("Sin gasto este mes")).toBeTruthy();
