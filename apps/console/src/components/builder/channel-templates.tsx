@@ -41,13 +41,13 @@ export function ChannelTemplates({ refId, manage }: { refId: string; manage: boo
 
   if (state.loading && state.list === null && state.error === null) {
     return (
-      <div id="canal-plantillas" className="scroll-mt-24 rounded-md border border-border bg-card p-4 text-sm text-muted-foreground sm:p-6" aria-busy="true">
+      <div id="canal-plantillas" className="min-w-0 scroll-mt-24 rounded-md border border-border bg-card p-4 text-sm text-muted-foreground sm:p-6" aria-busy="true">
         {t("tpl.loading")}
       </div>
     );
   }
   return (
-    <div className="rounded-md border border-border bg-card p-4 sm:p-6" data-slot="channel-templates">
+    <div className="min-w-0 rounded-md border border-border bg-card p-4 sm:p-6" data-slot="channel-templates">
       <TemplatesSection refId={refId} list={state.list} error={state.error} manage={manage} onChanged={() => setVersion((v) => v + 1)} sectionId="canal-plantillas" headingLevel={3} />
     </div>
   );
