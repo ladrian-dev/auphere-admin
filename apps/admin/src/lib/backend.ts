@@ -47,9 +47,16 @@ export type ClientReservasOut = {
   live_future: number;
   /** Agents with a version prepared by the (de)activation that nobody promoted yet. */
   agents_pending_promotion: { agent_id: string; name: string; version: number }[];
-  /** Agents that already book through a connector: switching Reservas on leaves them out. */
+  /** Agents whose live version still books outside Reservas, until their draft is published. */
   agents_with_other_calendar: { agent_id: string; name: string }[];
 };
+export type ReservasNotReadyReason =
+  | "reservas_off"
+  | "hours_missing"
+  | "no_staff"
+  | "no_services"
+  | "no_bookable_service"
+  | "no_capacity";
 /** Spec 043: `on_live` only counts when the mode changes; the API defaults to `refuse`. */
 export type ClientReservasIn = {
   mode: ReservasMode;
@@ -80,6 +87,11 @@ export type ClientAccessOut = {
   members: ClientMemberOut[];
   /** Spec 043: `null` while the client never had Reservas settings. */
   reservas: ClientReservasOut | null;
+  /** Spec 043: who still books in Google and what is missing for it to pass. `null`: nobody. */
+  reservas_pending_pass: {
+    agents: { agent_id: string; name: string }[];
+    reasons: ReservasNotReadyReason[];
+  } | null;
 };
 /** Spec 031 (R7.4): one phone of a client person, active or recently closed. */
 export type ClientPhoneOut = {

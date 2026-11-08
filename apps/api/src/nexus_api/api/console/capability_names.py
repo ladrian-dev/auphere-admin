@@ -986,15 +986,11 @@ TOOL_ACTIONS: Final[dict[str, frozenset[Action]]] = {
     "reservas.create": frozenset({"book"}),
     "reservas.answer_offer": frozenset({"book"}),
     "booking.create_appointment": frozenset({"book"}),
-    # A connector's calendar keeps the promise too (owner, 2026-11-03).
+    # Calendly keeps the promise too (owner, 2026-11-03), where Reservas is off. Google
+    # Calendar does not: it is a mirror of Reservas, never where an agent books (043, R11.9).
     "CALENDLY_POST_INVITEE": frozenset({"book"}),
     "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK": frozenset({"book"}),
-    "GOOGLECALENDAR_CREATE_EVENT": frozenset({"book"}),
-    # Spec 056 (requisito 1.3): the booking brake reads this list too, and a
-    # calendar booked with the quick add or moved with an edit keeps the promise.
-    "GOOGLECALENDAR_QUICK_ADD": frozenset({"book"}),
     "reservas.reschedule": frozenset({"modify_booking"}),
-    "GOOGLECALENDAR_UPDATE_EVENT": frozenset({"modify_booking"}),
     "reservas.cancel": frozenset({"modify_booking"}),
     "booking.modify_appointment": frozenset({"modify_booking"}),
     "booking.cancel_appointment": frozenset({"modify_booking"}),

@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -170,6 +170,16 @@ def _error(exc: svc.ActivationError) -> HTTPException:
 # ── el catálogo del agente ─────────────────────────────────────────────────
 
 
+#: Lo que no se ofrece a un agente: Google Calendar se conecta por profesional en
+#: Reservas, y sus herramientas son del sistema (spec 043, R11.8).
+NOT_FOR_AGENTS: Final = connector_service.SYSTEM_ONLY_CONNECTORS
+
+
+def _refuse_if_not_for_agents(slug: str) -> None:
+    if slug in NOT_FOR_AGENTS:
+        raise HTTPException(status_code=409, detail={"code": "connect_from_reservas"})
+
+
 @router.get("/agents/{agent_id}/integrations", response_model=list[IntegrationOut])
 async def agent_integrations(
     q: str | None = Query(default=None, max_length=80),
@@ -212,6 +222,9 @@ async def agent_integrations(
         if (entry.provider_meta or {}).get("channel_only") is True:
             continue
         if needle and needle not in f"{entry.slug} {entry.display_name} {entry.vendor}".lower():
+            continue
+        # No es de un agente: una conexión de antes se quita desde las integraciones del cliente.
+        if entry.slug in NOT_FOR_AGENTS:
             continue
         install = installs.get(entry.slug)
         activation = activations.get(entry.slug)
@@ -357,6 +370,7 @@ async def connect(
     """Autorizar (35.3). Ya autorizada: activa en el agente sin volver a pedirla
     (35.4). Para OAuth devuelve la URL firmada; la activación queda pendiente en
     la conexión y se aplica cuando la autorización termina."""
+    _refuse_if_not_for_agents(body.integration)
     try:
         connector, install = await svc.connection_of(
             scope.session, scope.tenant.id, body.integration
@@ -414,6 +428,7 @@ async def put_activation(
     scope: ClientScope = Depends(agent_in_path("agents:write")),
 ) -> ActivationOut:
     assert scope.agent_id is not None
+    _refuse_if_not_for_agents(integration)
     try:
         row = await svc.activate(
             scope.session,

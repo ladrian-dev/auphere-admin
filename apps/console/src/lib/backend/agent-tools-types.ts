@@ -102,6 +102,8 @@ export type ConnectorOut = {
   credentials_form: CredentialsField[];
   tools_total: number;
   tools_enabled: number;
+  /** Spec 043, R11.8: it is not connected here; a connection from before can only be removed. */
+  managed_elsewhere?: boolean;
   /** Spec 023 (Requisito 4): the client's sector template suggests this connector. A badge, never a filter. */
   recommended?: boolean;
   /** Spec 016 (R7): the outcome of the sync that ran with the connect. Only on the connect response. */

@@ -40,6 +40,16 @@ export function notificationText(locale: Locale, n: Pick<Notification, "kind" | 
   if (n.kind === "client.activated" && n.data?.first === true) {
     return `${translate(locale, "notif.kind.client.activated.first")} ${translate(locale, "notif.kind.client.activated", vars)}`;
   }
+  // Spec 043 (R11.4): sigue reservando en Google, y qué le falta, en palabras.
+  if (n.kind === "reservas.pass_not_ready") {
+    const reasons = Array.isArray(n.data?.reasons) ? (n.data.reasons as unknown[]).map(String) : [];
+    if (reasons.includes("pass_failed")) return translate(locale, "notif.kind.reservas.pass_not_ready.failed", vars);
+    const words = reasons
+      .map((r) => `notif.reservas.reason.${r}` as MessageKey)
+      .filter((key) => key in messages)
+      .map((key) => translate(locale, key));
+    return translate(locale, "notif.kind.reservas.pass_not_ready", { ...vars, missing: words.join(", ") });
+  }
   // Spec 047 (45.7): «Pedir saldo» con su nota, si la trae.
   if (n.kind === "client.balance_request") {
     const by = typeof n.data?.by_name === "string" && n.data.by_name.trim() ? n.data.by_name.trim() : null;

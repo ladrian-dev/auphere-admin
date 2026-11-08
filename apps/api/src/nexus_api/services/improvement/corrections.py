@@ -458,7 +458,10 @@ async def _proposal_for(
     except PatchError:
         raise CorrectionError("invalid_proposal", 422) from None
     partner_id = await _partner_of(session, tenant_id)
-    ctx = await load_context(session, partner_id=partner_id, legacy_chars=legacy_chars_of(spec))
+    # Lo que este agente ya nombra sigue valiendo hasta que pase a Reservas (043, R11.3).
+    ctx = await load_context(
+        session, partner_id=partner_id, legacy_chars=legacy_chars_of(spec), agent_id=agent.id
+    )
     checked, problems = validate_spec(patched, ctx, author="correction")
     if checked is None or problems:
         raise CorrectionError("invalid_proposal", 422, problems=problems_out(problems))

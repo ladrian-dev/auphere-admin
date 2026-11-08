@@ -144,7 +144,41 @@ export function ConnectorCard({
   }
 
   const broken = status === "error" || status === "revoked" || status === "expired";
-  const actions = !canWrite ? null : !installed ? (
+  // Spec 043, R11.8: uno nuevo se conecta por profesional, en un panel que el partner no tiene. Aquí
+  // solo se renueva el de antes, si se cayó, o se quita. Un agente que aún reserva en Google lo
+  // necesita, y lo que hay en ese calendario bloquea horas.
+  const managed = connector.managed_elsewhere === true;
+  const actions = !canWrite ? null : managed && connected ? (
+    <Button size="xs" variant="outline" onClick={() => setDisconnecting(true)} disabled={pending}>
+      {t("connectors.remove")}
+    </Button>
+  ) : managed ? (
+    <span className="flex shrink-0 items-center gap-2">
+      {status === "paused" ? (
+        <Button size="xs" onClick={() => changeStatus("resume")} disabled={pending}>
+          {t("connectors.resume")}
+        </Button>
+      ) : (
+        <Button size="xs" onClick={connect} disabled={pending}>
+          {t("connectors.reconnect")}
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button size="icon-sm" variant="ghost" disabled={pending} aria-label={t("connectors.more", { name })}>
+              <MoreHorizontal aria-hidden="true" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem variant="destructive" onClick={() => setDisconnecting(true)}>
+            {t("connectors.remove")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  ) : !installed ? (
     // Sin conectar: el `+` de cualquier directorio. Lleva su nombre
     // accesible porque un icono solo no dice a qué conector pertenece.
     <Button size="icon-sm" onClick={connect} disabled={pending} aria-label={t("connectors.connect.aria", { name })}>
@@ -187,6 +221,7 @@ export function ConnectorCard({
 
   return (
     <CardShell name={name} refId={refId} connector={connector} pending={pending} actions={actions}>
+      {managed ? <p className="text-xs text-pretty text-muted-foreground">{t("connectors.managedElsewhere")}</p> : null}
       {syncKey ? (
         <p className="flex flex-wrap items-center gap-2 text-xs" role="status">
           <span
@@ -227,9 +262,9 @@ export function ConnectorCard({
       <ConfirmDialog
         open={disconnecting}
         onOpenChange={setDisconnecting}
-        title={t("connectors.disconnect.title", { name })}
-        description={t("connectors.disconnect.body")}
-        confirmLabel={t("connectors.disconnect")}
+        title={t(managed ? "connectors.remove.title" : "connectors.disconnect.title", { name })}
+        description={t(managed ? "connectors.remove.body" : "connectors.disconnect.body")}
+        confirmLabel={t(managed ? "connectors.remove" : "connectors.disconnect")}
         cancelLabel={t("common.cancel")}
         destructive
         onConfirm={() => changeStatus("disconnect")}
@@ -267,7 +302,8 @@ function CardShell({
 }) {
   const t = useT();
   const locale = useLocale();
-  const unlocks = connector.tools_total;
+  // Lo que ya no es de ningún agente no desbloquea nada.
+  const unlocks = connector.managed_elsewhere ? 0 : connector.tools_total;
   const status = connector.status;
   const connected = status === "connected";
   const broken = status === "error" || status === "revoked" || status === "expired";
@@ -326,7 +362,7 @@ function CardShell({
             {unlocks === 1 ? t("int.unlocksOne") : t("int.unlocks", { n: unlocks })}
           </Link>
         ) : null}
-        {connector.tools_enabled > 0 ? (
+        {connector.tools_enabled > 0 && !connector.managed_elsewhere ? (
           <span className="tabular-nums">
             {t("connectors.tools", { on: connector.tools_enabled, total: connector.tools_total })}
           </span>

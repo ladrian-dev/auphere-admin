@@ -220,6 +220,8 @@ async def test_what_the_client_cannot_do_has_no_route(client: Any, shop: Shop) -
     lite_paths = {
         getattr(r, "path", "") for r in app.routes if getattr(r, "path", "").startswith(LITE)
     }
+    # Spec 043, R12: conectar el calendario de un profesional sí es del cliente. No es un conector.
+    lite_paths.discard(f"{LITE}/reservas/staff/{{staff_id}}/calendar/connect")
     for word in ("publish", "quality", "instructions", "bag", "balance", "connect"):
         assert not any(word in p for p in lite_paths), word
     assert not any(p.startswith(f"{LITE}/agents/{{agent_id}}/archive") for p in lite_paths)

@@ -399,6 +399,7 @@ async def _apply_change(
         scope.session,
         partner_id=scope.principal.partner.id,
         legacy_chars=svc.legacy_chars_of(spec),
+        agent_id=scope.agent_id,
     )
     checked, problems = validate_spec(doc, ctx, author=author)
     if checked is None or problems:

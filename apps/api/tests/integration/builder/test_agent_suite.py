@@ -666,7 +666,7 @@ async def test_a_calendar_connected_later_brings_back_what_it_said_did_not_apply
                 ),
             ],
         )
-        tools = ["GOOGLECALENDAR_CREATE_EVENT"]
+        tools = ["CALENDLY_POST_INVITEE"]
         assert await reconcile_suite(db_session, suite, tools=tools, compact=False) == 1
         by_name = {t.name: t for t in await suites_service.list_tests(db_session, suite)}
         assert by_name["Pide cita"].not_applicable_reason is None

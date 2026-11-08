@@ -16,9 +16,9 @@ Reglas para todas:
 
 | Herramienta | `side_effects` | Entrada | Salida |
 |---|---|---|---|
-| `reservas.services` | — | `{}` | Servicios: `{services: [{id, name, duration_minutes, price: {amount_minor, currency}\|null, staff: [{id, name}]}]}`. Aforo: `{mode: "capacity", max_party, unit}` |
+| `reservas.services` | — | `{}` | Servicios: `{services: [{id, name, bookable, why_not?, duration_minutes, price: {amount_minor, currency}\|null, staff: [{id, name}]}]}`. `why_not: no_staff`: nadie lo hace ahora (R14.1). Aforo: `{mode: "capacity", max_party, unit}` |
 | `reservas.find_slots` | — | `{date, service_id?, staff_id?, party_size?}` | `{date, closed, why_closed?, slots: [{time, staff: [{id, name}]?, left?}], first_fit?}`. Respeta antelación mínima y máxima del agente, horario, guardadas (Aforo), bloqueos, ofertas en curso |
-| `reservas.create` | `mutates_db` | `{date, time, service_id?, staff_id?, any_staff?, party_size?, note?, join_waitlist?, idempotency_key}` | `{booking: BookingBrief, idempotent_replay}` o `{refused: "slot_taken\|too_large\|too_soon\|too_far\|closed\|hours_missing", first_fit?}` |
+| `reservas.create` | `mutates_db` | `{date, time, service_id?, staff_id?, any_staff?, party_size?, note?, join_waitlist?, idempotency_key}` | `{booking: BookingBrief, idempotent_replay}` o `{refused: "slot_taken\|too_large\|too_soon\|too_far\|closed\|hours_missing\|not_bookable\|not_offered\|no_staff", first_fit?}` |
 | `reservas.list_mine` | — | `{only_upcoming?: true}` | `{bookings: [BookingBrief]}` |
 | `reservas.reschedule` | `mutates_db` | `{booking_id, date, time, staff_id?}` | `{booking}` o `{refused}` |
 | `reservas.cancel` | `mutates_db` | `{booking_id}` | `{booking, offered_to_waitlist: bool}` |

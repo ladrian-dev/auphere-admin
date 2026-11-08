@@ -219,6 +219,21 @@ PARTNER_NOTICES: Mapping[str, NoticeText] = MappingProxyType(
                 _REVIEW_AGENTS[1],
             ),
         ),
+        "reservas.pass_not_ready": _partner(
+            "/clients/{ref}",
+            es=(
+                "{client} sigue reservando en Google",
+                "Su agente sigue como estaba y aún no reserva en Reservas. Pasará solo en cuanto "
+                "el negocio esté listo; el aviso de la consola dice qué falta.",
+                "Ver el cliente",
+            ),
+            en=(
+                "{client} still books in Google",
+                "Its agent stays as it was and doesn't book in Reservas yet. It will move by "
+                "itself as soon as the business is ready; the console notice says what's missing.",
+                "View the client",
+            ),
+        ),
         "integration.reauth_required": _partner(
             "/clients/{ref}/integrations",
             es=(

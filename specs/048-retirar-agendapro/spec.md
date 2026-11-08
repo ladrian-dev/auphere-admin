@@ -180,7 +180,9 @@ Cuando ninguna versión de ningún agente nombra `booking.*`, una migración bor
 
 ## Fuera de alcance
 
-- **Otros conectores de agenda** (Google Calendar, Calendly): no cambian.
+- **Otros conectores de agenda** (Google Calendar, Calendly): no cambian. *Enmendado por la
+  spec 043, requisito 11 (2026-11-04): Google Calendar deja de ser de los agentes, y Calendly,
+  donde Reservas está encendido.*
 - **Quitar los valores `no_show_scrape` y `async_booking` del enum de Postgres**: exige rehacer el tipo; quedan sin uso.
 - **Reservas por sede**: sigue fuera, como en la 047.
 

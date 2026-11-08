@@ -41,7 +41,7 @@ from nexus_api.db.models import (
     Reservation,
     ReservationSettings,
 )
-from nexus_api.services.reservations import passing
+from nexus_api.services.reservations import calendar_sync, passing
 from nexus_api.services.reservations.core import Actor, cancel_booking, load_ctx
 from nexus_api.services.reservations.passing import LEGACY_PREFIX, RESERVAS_TOOLS
 from nexus_api.services.reservations.settings import apply_defaults
@@ -149,6 +149,10 @@ async def apply_choice(
                 )
                 cancelled += 1
         before = settings.mode
+        if before == "services":
+            # En Aforo no hay profesionales ni panel para soltarlas: nadie podría desconectarlas.
+            for row in await calendar_sync.staff_calendars(session):
+                await calendar_sync.disconnect(session, row.staff_id, now=now)
         apply_defaults(settings, choice.mode, choice.capacity_kind)
         settings.version += 1
         settings.updated_by = actor
@@ -194,8 +198,6 @@ async def admin_view(
     settings = await session.get(ReservationSettings, tenant_id)
     if settings is None:
         return None
-    from nexus_api.services.connectors.booking_skills import books_elsewhere
-
     pending: list[dict[str, Any]] = []
     other_calendar: list[dict[str, Any]] = []
     agents = (
@@ -219,16 +221,15 @@ async def admin_view(
         )
         if staged is not None:
             pending.append({"agent_id": agent_id, "name": str(name), "version": int(staged)})
-        tools = await session.scalar(
-            sa.select(AgentConfig.tools)
-            .where(
+        # Lo que atiende ahora: su borrador ya reserva en Reservas, y hasta publicarlo
+        # esas citas no se ven en la agenda (spec 043, R11.5).
+        live = await session.scalar(
+            sa.select(AgentConfig).where(
                 AgentConfig.agent_id == agent_id,
-                AgentConfig.status.in_([AgentConfigStatus.ACTIVE, AgentConfigStatus.STAGED]),
+                AgentConfig.status == AgentConfigStatus.ACTIVE,
             )
-            .order_by(AgentConfig.version.desc())
-            .limit(1)
         )
-        if books_elsewhere(tools):
+        if passing.version_books_outside(live):
             other_calendar.append({"agent_id": agent_id, "name": str(name)})
     return {
         "mode": settings.mode,

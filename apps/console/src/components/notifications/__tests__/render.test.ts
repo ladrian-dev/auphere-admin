@@ -107,6 +107,22 @@ describe("los avisos de la spec 047 (49.6)", () => {
     }
   });
 
+  it("dice qué falta para pasar a Reservas, en palabras y no en códigos", () => {
+    const n = { kind: "reservas.pass_not_ready", data: { reasons: ["hours_missing", "no_staff"] }, external_client_ref: "flor" };
+    expect(notificationText("es", n, { flor: "Flor y Encanto" })).toBe(
+      "Flor y Encanto: su agente sigue reservando en Google. Para pasar a Reservas falta: el horario del negocio, alguien en el equipo.",
+    );
+    const failed = { ...n, data: { reasons: ["pass_failed"] } };
+    expect(notificationText("en", failed, { flor: "Flor y Encanto" })).toContain("could not move to Reservas");
+    for (const locale of ["es", "en"] as const) {
+      for (const reason of ["reservas_off", "hours_missing", "no_staff", "no_services", "no_bookable_service", "no_capacity"]) {
+        const text = notificationText(locale, { ...n, data: { reasons: [reason] } }, {});
+        expect(text, reason).not.toContain(reason);
+        expect(text, reason).not.toMatch(/\{[a-z_]+\}/);
+      }
+    }
+  });
+
   it("nombra al agente y a quien lo pausó cuando el aviso lo trae", () => {
     const n = { kind: "agent.paused", data: { agent_id: "a1", agent: "Recepción", by: "Marta", origin: "app" }, external_client_ref: "flor" };
     expect(notificationText("es", n, { flor: "Flor y Encanto" })).toBe("Marta pausó Recepción (Flor y Encanto).");

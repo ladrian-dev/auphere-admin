@@ -179,6 +179,9 @@ class ConnectorOut(BaseModel):
     logo_url: str | None
     capabilities: list[str] = Field(default_factory=list)
     installed: bool
+    #: Spec 043, R11.8: no se conecta aquí (Google Calendar, por profesional en Reservas). Una
+    #: conexión de antes se puede quitar, y nada más.
+    managed_elsewhere: bool = False
     status: str | None = None
     scopes_granted: list[str] = Field(default_factory=list)
     connected_at: datetime | None = None

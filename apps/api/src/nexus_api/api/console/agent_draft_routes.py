@@ -392,7 +392,10 @@ async def _patch_spec(
         else None
     )
     ctx = await load_context(
-        scope.session, partner_id=scope.principal.partner.id, legacy_chars=legacy_chars
+        scope.session,
+        partner_id=scope.principal.partner.id,
+        legacy_chars=legacy_chars,
+        agent_id=scope.agent_id,
     )
     # Spec 047, enmienda del 2026-10-30 (65.3, D72): lo que no tenemos no se
     # rechaza, se quita y queda anotado; la consola no edita habilidades ni

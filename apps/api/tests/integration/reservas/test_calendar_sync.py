@@ -11,7 +11,7 @@ Con un doble de la puerta del proveedor (nunca la red):
 
 from __future__ import annotations
 
-import uuid
+import asyncio
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -21,11 +21,12 @@ import sqlalchemy as sa
 
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Connector, Reservation, TenantConnector
+from nexus_api.db.models import Reservation
 from nexus_api.services.reservations import calendar_sync
 from nexus_api.services.reservations.calendar_sync import Busy, Connection
 from nexus_api.services.reservations.core import load_ctx
 from tests.conftest import future_day, make_reservas
+from tests.integration.reservas._calendars import connected
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -39,13 +40,27 @@ class FakeGoogle:
         self.created: list[dict[str, Any]] = []
         self.deleted: list[str] = []
 
-    async def list_calendars(self, conn: Connection) -> list[dict[str, str]]:
+    async def link(self, user_id: str, callback_url: str) -> tuple[str, str]:
+        return "ca", "https://google.test/auth"
+
+    async def account_state(self, connection_id: str) -> str:
+        return "ACTIVE"
+
+    async def revoke(self, connection_id: str) -> None:
+        return None
+
+    async def list_calendars(self, conn: Connection) -> list[dict[str, Any]]:
         return [{"id": "lucia@agenda", "name": "Lucía"}]
 
     async def busy(
         self, conn: Connection, calendar_id: str, start: datetime, end: datetime, *, tz: Any
     ) -> list[Busy]:
-        return list(self._busy)
+        ours = [
+            Busy(c["start"], c["end"], f"ev-{n}")
+            for n, c in enumerate(self.created, start=1)
+            if f"ev-{n}" not in self.deleted
+        ]
+        return [*self._busy, *ours]
 
     async def create_busy(
         self, conn: Connection, calendar_id: str, start: datetime, end: datetime, marker: str
@@ -64,38 +79,10 @@ def _google(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(calendar_sync, "default_gateway", lambda: FakeGoogle([]))
 
 
-async def _connect_google(db_session, tenant_id: uuid.UUID) -> None:
-    connector = (
-        await db_session.execute(
-            sa.select(Connector).where(Connector.mcp_server_ref == "composio:googlecalendar")
-        )
-    ).scalar_one_or_none()
-    if connector is None:
-        connector = Connector(
-            slug="googlecalendar",
-            display_name="Google Calendar",
-            vendor="Google",
-            category="calendar",
-            auth_kind="oauth_composio",
-            mcp_server_ref="composio:googlecalendar",
-        )
-        db_session.add(connector)
-        await db_session.flush()
-    db_session.add(
-        TenantConnector(
-            tenant_id=tenant_id,
-            connector_id=connector.id,
-            status="connected",
-            credentials_ref={"composio_connection_id": "ca_test"},
-        )
-    )
-    await db_session.commit()
-
-
 async def test_busy_in_and_ocupado_out(client, db_session, console_world) -> None:
     w = console_world["a"]
     shop = await make_reservas(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
-    await _connect_google(db_session, w["tenant_id"])
+    await connected(w["tenant_id"], shop["lucia"])
     h = shop["headers"]
     day = future_day()
     put = await client.put(
@@ -123,9 +110,7 @@ async def test_busy_in_and_ocupado_out(client, db_session, console_world) -> Non
     async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
         ctx = await load_ctx(session, w["tenant_id"])
         assert ctx is not None
-        conn = await calendar_sync.connection_of(session, w["tenant_id"])
-        assert conn == Connection(user_id=conn.user_id, connection_id="ca_test")
-        stats = await calendar_sync.sync_tenant(session, ctx, fake, conn, now=datetime.now(UTC))
+        stats = await calendar_sync.sync_tenant(session, ctx, fake, now=datetime.now(UTC))
     assert stats == {"busy": 1, "written": 1, "deleted": 0}
     out = fake.created[0]
     assert out["marker"].startswith(calendar_sync.MARK)
@@ -152,7 +137,7 @@ async def test_busy_in_and_ocupado_out(client, db_session, console_world) -> Non
     async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
         ctx = await load_ctx(session, w["tenant_id"])
         assert ctx is not None
-        await calendar_sync.sync_tenant(session, ctx, fake, conn, now=datetime.now(UTC))
+        await calendar_sync.sync_tenant(session, ctx, fake, now=datetime.now(UTC))
     assert fake.deleted == ["ev-1"]
 
 
@@ -244,10 +229,9 @@ async def test_the_calendar_cron_only_calls_out_when_there_is_something_to_sync(
             return await process(session, w["tenant_id"], datetime.now(UTC))
 
     process = cron.make_process(factory)
-    assert await one_pass(process) is None  # sin conexión
-    await _connect_google(db_session, w["tenant_id"])
-    assert await one_pass(process) is None  # sin nadie asociado
+    assert await one_pass(process) is None  # sin nadie conectado
     assert built == []
+    await connected(w["tenant_id"], shop["lucia"])
 
     put = await client.put(
         f"{BASE}/staff/{shop['lucia']}/calendar",
@@ -259,6 +243,29 @@ async def test_the_calendar_cron_only_calls_out_when_there_is_something_to_sync(
     assert await one_pass(process) == {"busy": 0, "written": 0, "deleted": 0}
     assert await one_pass(process) == {"busy": 0, "written": 0, "deleted": 0}
     assert built == ["gateway"]  # una sola vez
+
+
+async def test_a_client_whose_provider_hangs_does_not_stop_the_cron(
+    client, db_session, console_world, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Revisión, punto 4: el cron pasa por los clientes de uno en uno."""
+    from nexus_worker.streams import reservation_calendar_cron as cron
+
+    w = console_world["a"]
+    shop = await make_reservas(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    await connected(w["tenant_id"], shop["lucia"], calendar_id="lucia@agenda")
+    monkeypatch.setattr(cron, "TENANT_TIMEOUT_SECONDS", 0.05)
+
+    class Hangs:
+        async def busy(self, *_: Any, **__: Any) -> list[Any]:
+            await asyncio.sleep(3600)
+            return []
+
+    process = cron.make_process(lambda: Hangs())  # type: ignore[return-value,arg-type]
+    with pytest.raises(TimeoutError):
+        sm = get_sessionmaker()
+        async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
+            await process(session, w["tenant_id"], datetime.now(UTC))
 
 
 class _Result:
@@ -305,7 +312,7 @@ async def test_our_own_ocupado_does_not_come_back_as_busy(
 ) -> None:
     w = console_world["a"]
     shop = await make_reservas(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
-    await _connect_google(db_session, w["tenant_id"])
+    await connected(w["tenant_id"], shop["lucia"])
     h = shop["headers"]
     day = future_day()
     await client.put(
@@ -328,9 +335,7 @@ async def test_our_own_ocupado_does_not_come_back_as_busy(
     async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
         ctx = await load_ctx(session, w["tenant_id"])
         assert ctx is not None
-        conn = await calendar_sync.connection_of(session, w["tenant_id"])
-        assert conn is not None
-        await calendar_sync.sync_tenant(session, ctx, fake, conn, now=datetime.now(UTC))
+        await calendar_sync.sync_tenant(session, ctx, fake, now=datetime.now(UTC))
     ours = fake.created[0]
     # La pasada siguiente: Google devuelve nuestro «Ocupado» (ev-1) y uno ajeno.
     fake._busy = [
@@ -340,7 +345,7 @@ async def test_our_own_ocupado_does_not_come_back_as_busy(
     async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
         ctx = await load_ctx(session, w["tenant_id"])
         assert ctx is not None
-        stats = await calendar_sync.sync_tenant(session, ctx, fake, conn, now=datetime.now(UTC))
+        stats = await calendar_sync.sync_tenant(session, ctx, fake, now=datetime.now(UTC))
     assert stats["busy"] == 1
 
 
@@ -348,10 +353,10 @@ async def test_only_a_calendar_of_the_connected_account_can_be_chosen(
     client, db_session, console_world
 ) -> None:
     """/cso (apéndice): el calendario de una persona tiene que ser de la cuenta
-    que el cliente conectó; un id cualquiera no se guarda."""
+    que esa persona conectó; un id cualquiera no se guarda."""
     w = console_world["a"]
     shop = await make_reservas(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
-    await _connect_google(db_session, w["tenant_id"])
+    await connected(w["tenant_id"], shop["lucia"])
     url = f"{BASE}/staff/{shop['lucia']}/calendar"
     bad = await client.put(url, headers=shop["headers"](), json={"calendar_id": "otro@ajeno"})
     assert bad.status_code == 422, bad.text

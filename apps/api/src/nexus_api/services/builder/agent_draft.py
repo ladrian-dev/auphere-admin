@@ -49,7 +49,7 @@ from nexus_api.services.agent_spec import missing
 from nexus_api.services.agent_spec.compiler import compile_spec, uncovered_promises
 from nexus_api.services.agent_spec.legacy import LEGACY_DEPLOYMENT
 from nexus_api.services.agent_spec.missing import MissingCapability, Source
-from nexus_api.services.agent_spec.retired import RETIRED_TOOLS
+from nexus_api.services.agent_spec.retired import RETIRED_TOOLS, agent_may_use
 from nexus_api.services.agent_spec.schema import TOOL_NAME_PATTERN, AgentSpec, dump
 from nexus_api.services.agent_spec.validator import Context, load_context, validate_spec
 from nexus_api.services.builder.guides import generated as guides_generated
@@ -194,6 +194,7 @@ def _catalog_lines(ctx: Context) -> list[str]:
             info.status in {"internal", "deprecated"}
             or not info.integration_offered
             or name in RETIRED_TOOLS
+            or not agent_may_use(name)
             or not _TOOL_NAME.fullmatch(name)
         ):
             continue
@@ -355,7 +356,7 @@ def sanitize(
 
     def usable(name: str) -> bool:
         # Spec 048 (CE-004): ningún agente nuevo nace con ``booking.*``.
-        if name in RETIRED_TOOLS:
+        if name in RETIRED_TOOLS or not agent_may_use(name):
             dropped.append({"tool": name, "why": "tool_retired"})
             return False
         info = ctx.tools.get(name)

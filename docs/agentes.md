@@ -439,7 +439,10 @@ repite herramientas (`tool_once`).
    la respuesta sale sin ninguna llamada.
 2. **Lo que la respalda en este turno**, herramienta a herramienta. La lista sale
    de `capability_names.TOOL_ACTIONS` (reservar o cambiar una cita, sin las
-   cancelaciones):
+   cancelaciones), más las tres de Google Calendar: desde la enmienda de la 043
+   (R11.9) no están en `TOOL_ACTIONS`, porque Google ya no es donde reserva un
+   agente, pero un agente que aún no pasó a Reservas las sigue usando (R11.2) y
+   su evento respalda la cita (`booking_brake._CONNECTOR_STILL_BOOKS`):
    - `reservas.create` y `reservas.reschedule`: solo con `booking` y sin
      `refused`. Contestan `status: ok` también al rechazar;
    - `reservas.answer_offer`: solo con `result: booked`;

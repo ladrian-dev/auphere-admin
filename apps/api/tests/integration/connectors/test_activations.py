@@ -147,7 +147,7 @@ async def test_connecting_without_authorization_authorizes_then_activates(
     oauth = await client.post(
         f"/console/clients/{biz.ref}/connections",
         json={
-            "integration": "googlecalendar",
+            "integration": "notion",
             "agent_id": str(ventas),
             "permission": "ask_before_write",
         },

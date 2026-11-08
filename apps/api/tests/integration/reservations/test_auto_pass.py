@@ -566,7 +566,8 @@ async def test_a_failing_client_is_rolled_back_alone_and_logged(
         AgentConfigStatus.ARCHIVED,
         AgentConfigStatus.ACTIVE,
     ]
-    # B is as it was: no Reservas, the same two versions, its tests fresh, no audit.
+    # B is as it was: no Reservas, the same two versions, its tests fresh, and only the note that
+    # it failed (spec 043, R11.4): what rolled back leaves no trace by itself.
     versions_b = await _versions(b["tenant_id"], agent_b)
     assert [(v.version, v.status) for v in versions_b] == [
         (1, AgentConfigStatus.ACTIVE),
@@ -580,11 +581,16 @@ async def test_a_failing_client_is_rolled_back_alone_and_logged(
             await session.get(ReservationSettings, b["tenant_id"]),
             await session.get(ClientAccess, b["tenant_id"]),
             [t.stale for t in (await session.execute(sa.select(AgentTest))).scalars()],
-            await session.scalar(sa.select(sa.func.count()).select_from(AuditLog)),
+            [a.action for a in (await session.execute(sa.select(AuditLog))).scalars()],
         )
 
     settings_b, access_b, stale_b, audit_b = await read(b["tenant_id"], b_state)
-    assert (settings_b, access_b, stale_b, audit_b) == (None, None, [False], 0)
+    assert (settings_b, access_b, stale_b, audit_b) == (
+        None,
+        None,
+        [False],
+        ["reservations.pass_failed"],
+    )
 
     failed = [e for e in logs if e["event"] == "reservations.auto_pass_failed"]
     assert [e["tenant_id"] for e in failed] == [str(b["tenant_id"])]

@@ -55,6 +55,7 @@ from nexus_api.db.models import (
 from nexus_api.repositories.partner_membership import hash_invitation_token
 from nexus_api.services import console_identity, inbox_lifecycle
 from nexus_api.services.reservations import admin as reservations_admin
+from nexus_api.services.reservations import passing as reservations_passing
 
 log = structlog.get_logger(__name__)
 
@@ -91,6 +92,8 @@ class AccessView:
     members: list[MemberRow] = field(default_factory=list)
     #: Spec 043: el modo de Reservas, las vivas y las versiones por promover.
     reservas: dict[str, Any] | None = None
+    #: Spec 043, R11.4: quién sigue reservando en Google y qué le falta para pasar.
+    reservas_pending_pass: dict[str, Any] | None = None
 
 
 def _now() -> datetime:
@@ -191,8 +194,10 @@ async def read_access(session: AsyncSession, tenant_id: uuid.UUID) -> AccessView
     access = await session.get(ClientAccess, tenant_id)
     async with reservations_admin.as_tenant(session, tenant_id):
         reservas = await reservations_admin.admin_view(session, tenant_id, now=_now())
+        pending = await reservations_passing.pending_pass(session, tenant_id, now=_now())
     return AccessView(
         reservas=reservas,
+        reservas_pending_pass=pending,
         eligible=reason is None,
         ineligible_reason=reason,
         partner=partner,

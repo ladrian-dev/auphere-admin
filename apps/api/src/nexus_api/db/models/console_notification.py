@@ -108,6 +108,9 @@ class NotificationKind(str, enum.Enum):
     TEMPLATE_DISABLED = "template.disabled"
     TEMPLATE_QUALITY_DROPPED = "template.quality_dropped"
     TEMPLATE_RECATEGORIZED = "template.recategorized"
+    # Spec 043, R11.4 — a client still books in Google and cannot pass to Reservas
+    # yet, or its pass failed. payload: {external_client_ref, reasons}
+    RESERVAS_PASS_NOT_READY = "reservas.pass_not_ready"
     CHANNEL_ACCOUNT_REVIEW = "channel.account_review"
     CHANNEL_ACCOUNT_ALERT = "channel.account_alert"
     CHANNEL_NAME_REJECTED = "channel.name_rejected"

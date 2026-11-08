@@ -703,7 +703,10 @@ async def _store(batch: Batch, raw: Mapping[str, Any], *, now: datetime) -> Repo
     async with get_sessionmaker()() as session, tenant_scoped_session(session, batch.tenant_id):
         keys, hashes, _lines = await _avoid(session, batch.agent_id, week=batch.week, now=now)
         ctx = await load_context(
-            session, partner_id=batch.partner_id, legacy_chars=batch.legacy_chars
+            session,
+            partner_id=batch.partner_id,
+            legacy_chars=batch.legacy_chars,
+            agent_id=batch.agent_id,
         )
         for item in topics or []:
             if len(report.created) >= MAX_PER_WEEK:

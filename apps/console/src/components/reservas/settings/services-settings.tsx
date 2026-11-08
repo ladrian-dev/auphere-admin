@@ -171,6 +171,7 @@ function TeamSection() {
                   {s.hours === null || sameWeek(s.hours, settings.business_hours) ? t("reservas.team.hours.business") : t("reservas.team.hours.own")}
                   {s.email ? ` · ${s.email}` : ""}
                 </span>
+                {s.warnings?.includes("no_hours") ? <span className="text-xs text-pretty text-warning">{t("reservas.team.warning.noHours")}</span> : null}
               </span>
               <span className="flex shrink-0 gap-1">
                 <Button size="xs" variant="ghost" aria-label={t("reservas.team.edit.aria", { name: s.name })} onClick={() => setEditing(s)}>
@@ -339,6 +340,8 @@ function ServicesSection() {
                   {formatMinutes(s.duration_minutes)} · {priceText(s.price, s.currency, locale, { free: t("business.services.price.free"), none: t("business.services.price.none") })} ·{" "}
                   {s.staff === "all" ? t("reservas.svc.who.all") : s.staff_ids.map(staffName).filter(Boolean).join(", ")}
                 </span>
+                {s.warnings?.includes("no_staff") ? <span className="text-xs text-pretty text-warning">{t("reservas.svc.warning.noStaff")}</span> : null}
+                {s.warnings?.includes("does_not_fit") ? <span className="text-xs text-pretty text-warning">{t("reservas.svc.warning.doesNotFit")}</span> : null}
               </span>
               <span className="flex shrink-0 gap-1">
                 <Button size="xs" variant="ghost" aria-label={t("reservas.svc.edit.aria", { name: s.name })} onClick={() => setEditing(s)}>

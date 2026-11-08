@@ -177,6 +177,16 @@ export const agentToolsMessages = {
   "connectors.pause": { es: "Pausar", en: "Pause" },
   "connectors.resume": { es: "Reanudar", en: "Resume" },
   "connectors.disconnect": { es: "Desconectar", en: "Disconnect" },
+  "connectors.remove": { es: "Quitar", en: "Remove" },
+  "connectors.remove.title": { es: "Quitar {name}", en: "Remove {name}" },
+  "connectors.remove.body": {
+    es: "Sus citas en ese calendario dejarán de bloquear horas en Reservas, así que esas horas se podrán volver a dar. Un agente que aún reserva en Google se quedará sin agenda.",
+    en: "Its appointments in that calendar will stop blocking hours in Reservas, so those hours can be given again. An agent that still books in Google will be left without an agenda.",
+  },
+  "connectors.managedElsewhere": {
+    es: "Uno nuevo ya no se conecta aquí: cada profesional conecta el suyo en Reservas, en Ajustes, en la consola del negocio. Este sigue sirviendo a los agentes que aún reservan en Google, y lo que hay en su calendario bloquea horas.",
+    en: "A new one is no longer connected here: each professional connects their own in Reservas, under Settings, in the business's console. This one still serves agents that book in Google, and what's in its calendar blocks hours.",
+  },
   "connectors.disconnect.title": { es: "Desconectar {name}", en: "Disconnect {name}" },
   "connectors.disconnect.body": { es: "Las herramientas de este conector dejarán de funcionar hasta que lo vuelvas a conectar. Las credenciales se eliminan.", en: "This connector's tools stop working until you connect it again. Credentials are removed." },
   "connectors.consent.opened": { es: "Se abrió la ventana de consentimiento de {name}. Al terminar, pulsa Sincronizar.", en: "The consent window for {name} opened. When done, press Sync." },

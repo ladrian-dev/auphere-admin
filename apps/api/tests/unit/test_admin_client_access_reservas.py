@@ -196,9 +196,12 @@ async def test_switching_the_module_off_reaches_the_published_agent(
     assert len(await _versions(w["tenant_id"], agent_id)) == len(versions), "repetir no crea nada"
 
 
-async def test_an_agent_that_books_with_a_connector_does_not_get_a_second_calendar(
+async def test_an_agent_that_books_with_a_connector_passes_to_reservas_in_its_draft(
     client, db_session, console_world, admin_headers
 ) -> None:
+    """Spec 043, R11.5 (sustituye a la decisión del 2026-11-03): la cita nace en Reservas.
+    Su borrador gana Reservas y pierde el conector; lo que atiende no cambia solo, y
+    mientras tanto el panel dice que sigue reservando fuera."""
     w = console_world["a"]
     agent_id = await _agent(db_session, w["tenant_id"])
     async with tenant_scoped_session(db_session, w["tenant_id"]):
@@ -220,12 +223,16 @@ async def test_an_agent_that_books_with_a_connector_does_not_get_a_second_calend
 
     assert r.status_code == 200, r.text
     body = r.json()["reservas"]
-    assert body["agents_pending_promotion"] == []
+    assert [a["agent_id"] for a in body["agents_pending_promotion"]] == [str(agent_id)]
     assert body["agents_with_other_calendar"] == [
         {"agent_id": str(agent_id), "name": "Agente de reservas"}
     ]
     versions = await _versions(w["tenant_id"], agent_id)
-    assert all(not any(t.startswith("reservas.") for t in v.tools) for v in versions)
+    live = next(v for v in versions if v.status == AgentConfigStatus.ACTIVE)
+    draft = next(v for v in versions if v.status == AgentConfigStatus.STAGED)
+    assert "CALENDLY_POST_INVITEE" in live.tools
+    assert "CALENDLY_POST_INVITEE" not in draft.tools
+    assert "reservas.create" in draft.tools
 
 
 async def test_a_template_with_reservas_needs_the_module(

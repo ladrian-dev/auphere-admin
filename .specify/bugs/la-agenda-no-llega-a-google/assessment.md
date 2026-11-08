@@ -101,10 +101,8 @@ textos, arnés), `docs/reservas.md`.
 
 ## Open Questions
 
-- **R10.5 frente a `booking_skills.py`, para Luis.** La prueba de
-  `test_calendar_sync.py:202` pasa, pero solo fija el modo con el que nace la herramienta:
-  conectar la cuenta pone `GOOGLECALENDAR_CREATE_EVENT` en el borrador del agente (owner,
-  2026-11-03), y R10.5 dice que deben seguir bloqueadas. Qué calendario usa un agente para
-  reservar es la decisión pendiente; este bug no la toca.
-- ¿Debe poder conectar Google Calendar la persona del cliente? Hoy tiene que pedírselo a
-  quien gestiona sus agentes, y es lo que dice la pantalla.
+Resueltas el 2026-11-04 (spec 043, requisitos 11 y 12):
+
+- **R10.5 frente a `booking_skills.py`.** Reservas manda: decisión de Luis. Google Calendar sale de
+  `booking_skills.py` y sus herramientas no son de ningún agente.
+- **¿Debe poder conectar Google Calendar la persona del cliente?** Sí, y por profesional, desde Ajustes.

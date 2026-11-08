@@ -63,8 +63,20 @@ class ClientReservasOut(BaseModel):
     capacity_kind: str | None
     live_future: int
     agents_pending_promotion: list[PendingAgentOut]
-    #: Ya reservan con un conector: activar Reservas no les da una segunda agenda.
+    #: Lo que atiende ahora sigue reservando fuera, hasta publicar su borrador.
     agents_with_other_calendar: list[OtherCalendarAgentOut] = []
+
+
+class ClientReservasPendingAgentOut(BaseModel):
+    agent_id: uuid.UUID
+    name: str
+
+
+class ClientReservasPendingOut(BaseModel):
+    """Spec 043, R11.4: sigue reservando en Google. ``reasons`` vacío: pasa al desplegar."""
+
+    agents: list[ClientReservasPendingAgentOut]
+    reasons: list[str]
 
 
 class ClientAccessPartnerOut(BaseModel):
@@ -81,9 +93,11 @@ class ClientAccessPartnerOut(BaseModel):
 
 
 class ClientAccessOut(ClientAccessPartnerOut):
-    """Lo que ve el operador: lo mismo, con el partner del cliente."""
+    """Lo que ve el operador: lo mismo, con el partner del cliente y los agentes que
+    aún reservan en Google (043, R11.4: el panel de operador; al partner le llega un aviso)."""
 
     partner: PartnerRefOut | None
+    reservas_pending_pass: ClientReservasPendingOut | None = None
 
 
 class ClientReservasIn(BaseModel):
@@ -196,6 +210,11 @@ def access_out(view: AccessView) -> ClientAccessOut:
     return ClientAccessOut(
         **partner_access_out(view).model_dump(),
         partner=PartnerRefOut(id=view.partner.id, name=view.partner.name) if view.partner else None,
+        reservas_pending_pass=(
+            ClientReservasPendingOut.model_validate(view.reservas_pending_pass)
+            if view.reservas_pending_pass
+            else None
+        ),
     )
 
 

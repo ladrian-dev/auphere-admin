@@ -37,6 +37,7 @@ from nexus_api.services.business import services_catalog
 from nexus_api.services.reception import agent_for_conversation
 from nexus_api.services.reservations import waitlist
 from nexus_api.services.reservations.core import (
+    NO_STAFF,
     Actor,
     Ctx,
     NewBooking,
@@ -93,6 +94,7 @@ REFUSALS = {
     "hours_missing",
     "not_bookable",
     "not_offered",
+    "no_staff",
 }
 
 
@@ -223,12 +225,14 @@ class Services(ToolBase):
             items: list[ServiceItem] = []
             for svc in await services_catalog.services_for_agent(session, agent_id):
                 staff = await staff_for_service(session, svc) if svc.bookable else []
+                nobody = svc.bookable and not staff
                 kind = services_catalog.price_kind_of(svc)
                 items.append(
                     ServiceItem(
                         id=svc.id,
                         name=svc.name,
-                        bookable=svc.bookable,
+                        bookable=svc.bookable and not nobody,
+                        why_not=NO_STAFF if nobody else None,
                         duration_minutes=svc.duration_minutes,
                         description=svc.description,
                         price_kind=kind,
@@ -277,6 +281,8 @@ class FindSlots(ToolBase):
                     return FindSlotsOutput(
                         date=payload.date, closed=True, why_closed="not_bookable"
                     )
+                if not await staff_for_service(session, svc):
+                    return FindSlotsOutput(date=payload.date, closed=True, why_closed=NO_STAFF)
                 free = await services_free(
                     session,
                     ctx,
@@ -419,6 +425,9 @@ class Create(ToolBase):
                     return CreateOutput(
                         refused=exc.code, first_fit=ff.get("time") if isinstance(ff, dict) else None
                     )
+                # Esa persona no hace este servicio (R14.4): no es un fallo, es un no.
+                if exc.code == "not_found" and payload.staff_id is not None:
+                    return CreateOutput(refused="not_offered")
                 raise ToolError(exc.code) from None
             return CreateOutput(booking=await _brief(session, ctx, res), idempotent_replay=replay)
 

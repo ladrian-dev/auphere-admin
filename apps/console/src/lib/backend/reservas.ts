@@ -96,26 +96,27 @@ export type StaffMember = {
   position: number;
   archived: boolean;
   calendar: StaffCalendar;
+  /** `no_hours`: their own week has no working day (R14.3). */
+  warnings?: "no_hours"[];
 };
 /**
- * `last_error` is a code of ours (`connection`, `auth`, `calendar_gone`, `read`,
- * `write`), never the provider's text. `last_sync_at`: the last pass where everything worked.
+ * Spec 043, R12: each professional's own connection. `pending`: authorization asked for and
+ * not finished. `needs_calendar`: connected, no calendar to use. `account`: which Google
+ * account it ended up with. `last_error` is a code of ours (`connection`, `auth`,
+ * `calendar_gone`, `read`, `write`, `calendar_in_use`, `no_calendar`, `new_account_refused`), never the provider's
+ * text. `last_sync_at`: the last pass where everything worked.
  */
 export type StaffCalendar = {
-  status: "none" | "connected" | "needs_reauth" | "error";
+  status: "none" | "pending" | "connected" | "needs_calendar" | "needs_reauth" | "error";
   calendar_name?: string | null;
+  account?: string | null;
   last_sync_at?: string | null;
   last_error?: string | null;
+  /** Hours of theirs blocked by the business's Google calendar, until they connect their own. */
+  business_busy?: boolean;
 };
-/** `GET …/calendar` (§8, P3): the client's Google account and the calendars one can write to. */
-export type CalendarAccount = {
-  provider: "google";
-  connected: boolean;
-  connection: "none" | "connected" | "needs_reauth";
-  /** The account is connected and Google didn't answer: not the same as having no calendars. */
-  unavailable: boolean;
-  calendars: { id: string; name: string }[];
-};
+/** `GET …/staff/{id}/calendars`: that person's calendars one can write to. `used_by`: who else on the team has it. */
+export type StaffCalendarOption = { id: string; name: string; primary: boolean; used_by: string | null };
 export type StaffInput = { name: string; email: string | null; hours: WeekHours | null };
 export type StaffPatch = Partial<StaffInput & { position: number }>;
 
@@ -132,6 +133,8 @@ export type ReservasService = {
   staff_ids: string[];
   position: number;
   archived: boolean;
+  /** `no_staff`: nobody active does it. `does_not_fit`: it doesn't fit the hours of those who do (R14). */
+  warnings?: ("no_staff" | "does_not_fit")[];
 };
 /** `staff_ids: null` = the whole team. */
 export type ServiceInput = { name: string; duration_minutes: number; price: Price; staff_ids: string[] | null; price_currency?: string; category?: string | null };
@@ -378,8 +381,11 @@ export function reservasApi(call: Call) {
       call<ReservasService>(`${R}/services/${enc(id)}`, { method: "PATCH", body }),
     reservasArchiveService: (id: string) => call<null>(`${R}/services/${enc(id)}/archive`, { method: "POST" }),
 
-    // §8 calendars (P3)
-    reservasCalendar: () => call<CalendarAccount>(`${R}/calendar`),
+    // §8 each professional's calendar (R12)
+    reservasConnectStaffCalendar: (id: string, share: boolean) =>
+      call<{ redirect_url: string }>(`${R}/staff/${enc(id)}/calendar/connect`, { method: "POST", body: { share } }),
+    reservasRefreshStaffCalendar: (id: string) => call<StaffMember>(`${R}/staff/${enc(id)}/calendar/refresh`, { method: "POST" }),
+    reservasStaffCalendars: (id: string) => call<{ calendars: StaffCalendarOption[] }>(`${R}/staff/${enc(id)}/calendars`),
     reservasSetStaffCalendar: (id: string, calendarId: string | null) =>
       call<StaffMember>(`${R}/staff/${enc(id)}/calendar`, { method: "PUT", body: { calendar_id: calendarId } }),
 

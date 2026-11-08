@@ -38,8 +38,8 @@ from ._activation_world import READ, SLUG, SPEC, WRITE, connect, seed_integratio
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
-GCAL_FREE = "GOOGLECALENDAR_FIND_FREE_SLOTS"
-GCAL_BOOK = "GOOGLECALENDAR_CREATE_EVENT"
+CAL_FREE = "CALENDLY_LIST_EVENT_TYPE_AVAILABLE_TIMES"
+CAL_BOOK = "CALENDLY_POST_INVITEE"
 CAL_INVITE = "CALENDLY_POST_INVITEE"
 CAL_LINK = "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK"
 
@@ -183,19 +183,19 @@ async def test_the_tools_of_a_connector_with_their_state(
 ) -> None:
     connector = await seed_integration(db_session)
     await connect(db_session, biz, connector)
-    await _catalog_tool(db_session, connector, GCAL_BOOK)
+    await _catalog_tool(db_session, connector, CAL_BOOK)
     await _catalog_tool(db_session, connector, "tienda_test.gone", status=ToolStatus.DEPRECATED)
     agent_id = await _agent(db_session, biz, tools=[READ])
     await _settings(client, biz, agent_id, "ask_before_write")
     assert await _draft_tools(db_session, biz, agent_id) >= {READ, WRITE}
     assert (await _switch(client, biz, agent_id, WRITE, enabled=False)).status_code == 200
-    assert (await _switch(client, biz, agent_id, GCAL_BOOK, enabled=True)).status_code == 200
+    assert (await _switch(client, biz, agent_id, CAL_BOOK, enabled=True)).status_code == 200
 
     body = await _tools(client, biz, agent_id)
 
     assert body["slug"] == SLUG and body["permission"] == "ask_before_write"
     tools = _named(body)
-    assert set(tools) == {READ, WRITE, GCAL_BOOK}, "ni lo retirado ni lo de otro conector"
+    assert set(tools) == {READ, WRITE, CAL_BOOK}, "ni lo retirado ni lo de otro conector"
     assert set(tools[READ]) == {
         "name",
         "title",
@@ -210,15 +210,15 @@ async def test_the_tools_of_a_connector_with_their_state(
     }
     assert tools[READ]["enabled"] and tools[READ]["enabled_in_active"] and tools[READ]["read_only"]
     assert not tools[WRITE]["enabled"] and not tools[WRITE]["read_only"]
-    assert tools[GCAL_BOOK]["enabled"] and not tools[GCAL_BOOK]["enabled_in_active"]
+    assert tools[CAL_BOOK]["enabled"] and not tools[CAL_BOOK]["enabled_in_active"]
     assert tools[READ]["title"] == "List items", "un nombre legible, no el del catálogo"
-    assert tools[GCAL_BOOK]["title"] == "Crear una cita en Google Calendar"
+    assert tools[CAL_BOOK]["title"] == "Reservar una cita en Calendly"
     assert body["tools"][0]["name"] == READ, "lo recomendado primero, en su orden"
     assert tools[READ]["suggested"] and tools[WRITE]["suggested"]
-    assert not tools[GCAL_BOOK]["suggested"]
+    assert not tools[CAL_BOOK]["suggested"]
 
     english = _named(await _tools(client, biz, agent_id, lang="en"))
-    assert english[GCAL_BOOK]["title"] == "Create an appointment in Google Calendar"
+    assert english[CAL_BOOK]["title"] == "Book an appointment in Calendly"
 
 
 async def test_what_needs_more_than_reading_says_so(
@@ -312,19 +312,19 @@ async def test_the_only_tool_that_books_is_refused_when_a_test_expects_a_booking
     puerta de publicar lo bloqueaba después."""
     connector = await seed_integration(db_session)
     await connect(db_session, biz, connector)
-    await _catalog_tool(db_session, connector, GCAL_FREE, read_only=True)
-    await _catalog_tool(db_session, connector, GCAL_BOOK)
-    agent_id = await _agent(db_session, biz, tools=[GCAL_FREE, GCAL_BOOK])
+    await _catalog_tool(db_session, connector, CAL_FREE, read_only=True)
+    await _catalog_tool(db_session, connector, CAL_BOOK)
+    agent_id = await _agent(db_session, biz, tools=[CAL_FREE, CAL_BOOK])
     await _expects_booking(db_session, biz, agent_id)
 
     tools = _named(await _tools(client, biz, agent_id))
-    assert tools[GCAL_BOOK]["locked_by"] == "test"
-    assert tools[GCAL_FREE]["locked"] is False
+    assert tools[CAL_BOOK]["locked_by"] == "test"
+    assert tools[CAL_FREE]["locked"] is False
 
-    off = await _switch(client, biz, agent_id, GCAL_BOOK, enabled=False)
+    off = await _switch(client, biz, agent_id, CAL_BOOK, enabled=False)
     assert off.status_code == 422, off.text
     assert off.json()["detail"] == {"code": "tool_in_use", "locked_by": "test"}
-    assert (await _switch(client, biz, agent_id, GCAL_FREE, enabled=False)).status_code == 200
+    assert (await _switch(client, biz, agent_id, CAL_FREE, enabled=False)).status_code == 200
 
 
 async def test_the_only_tool_that_keeps_a_promise_of_the_text_is_refused(
@@ -332,11 +332,11 @@ async def test_the_only_tool_that_keeps_a_promise_of_the_text_is_refused(
 ) -> None:
     connector = await seed_integration(db_session)
     await connect(db_session, biz, connector)
-    await _catalog_tool(db_session, connector, GCAL_BOOK)
-    agent_id = await _agent(db_session, biz, tools=[GCAL_BOOK], text="Da cita a los clientes.")
+    await _catalog_tool(db_session, connector, CAL_BOOK)
+    agent_id = await _agent(db_session, biz, tools=[CAL_BOOK], text="Da cita a los clientes.")
 
-    assert _named(await _tools(client, biz, agent_id))[GCAL_BOOK]["locked_by"] == "promise"
-    off = await _switch(client, biz, agent_id, GCAL_BOOK, enabled=False)
+    assert _named(await _tools(client, biz, agent_id))[CAL_BOOK]["locked_by"] == "promise"
+    off = await _switch(client, biz, agent_id, CAL_BOOK, enabled=False)
     assert off.status_code == 422, off.text
     assert off.json()["detail"] == {"code": "tool_in_use", "locked_by": "promise"}
 
@@ -426,21 +426,21 @@ async def test_what_connecting_listed_outside_the_document_follows_the_switch(
     pantalla está encendida: apagarla la apaga, y apagar otra no se la lleva."""
     connector = await seed_integration(db_session)
     await connect(db_session, biz, connector)
-    await _catalog_tool(db_session, connector, GCAL_FREE, read_only=True)
+    await _catalog_tool(db_session, connector, CAL_FREE, read_only=True)
     agent_id = await _agent(db_session, biz, tools=[READ])
     async with tenant_scoped_session(db_session, biz.tenant_id):
         cfg = await db_session.scalar(
             sa.select(AgentConfig).where(AgentConfig.agent_id == agent_id)
         )
         assert cfg is not None
-        cfg.tools = [READ, WRITE, GCAL_FREE]
+        cfg.tools = [READ, WRITE, CAL_FREE]
     await db_session.commit()
 
     assert (await _switch(client, biz, agent_id, READ, enabled=False)).status_code == 200
-    assert await _draft_tools(db_session, biz, agent_id) == {WRITE, GCAL_FREE}
+    assert await _draft_tools(db_session, biz, agent_id) == {WRITE, CAL_FREE}
 
     assert (await _switch(client, biz, agent_id, WRITE, enabled=False)).status_code == 200
-    assert await _draft_tools(db_session, biz, agent_id) == {GCAL_FREE}
+    assert await _draft_tools(db_session, biz, agent_id) == {CAL_FREE}
 
 
 async def test_a_full_list_is_refused_with_its_code(
@@ -548,8 +548,8 @@ async def test_a_sector_test_does_not_lock_the_only_tool_that_books(
     Encender lo único que reserva volvería aplicables sus pruebas, que impedirían apagarlo."""
     connector = await seed_integration(db_session)
     await connect(db_session, biz, connector)
-    await _catalog_tool(db_session, connector, GCAL_BOOK)
-    agent_id = await _agent(db_session, biz, tools=[GCAL_BOOK])
+    await _catalog_tool(db_session, connector, CAL_BOOK)
+    agent_id = await _agent(db_session, biz, tools=[CAL_BOOK])
     async with tenant_scoped_session(db_session, biz.tenant_id):
         suite = await ensure_suite(db_session, agent_id)
         await add_test(
@@ -565,7 +565,7 @@ async def test_a_sector_test_does_not_lock_the_only_tool_that_books(
         )
     await db_session.commit()
 
-    assert _named(await _tools(client, biz, agent_id))[GCAL_BOOK]["locked_by"] != "test"
+    assert _named(await _tools(client, biz, agent_id))[CAL_BOOK]["locked_by"] != "test"
 
 
 async def test_reading_only_stops_an_old_row_whose_name_says_it_writes(

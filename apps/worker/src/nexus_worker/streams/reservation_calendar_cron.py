@@ -1,15 +1,15 @@
-"""``reservation-calendar-cron`` — el Google Calendar del equipo, cada 2 min
-(spec 043, Historia 7, P3; ``contracts/worker-y-avisos.md``).
+"""``reservation-calendar-cron`` — el Google Calendar de cada profesional, cada 2 min
+(spec 043, requisitos 10, 12 y 13; ``contracts/worker-y-avisos.md``).
 
-Por cada cliente con Reservas que conectó Google Calendar en el proveedor de
-consentimientos (spec 023) y asoció un calendario a alguien del equipo, una
-pasada de ``calendar_sync.sync_tenant``: entra el «ocupado» de cada persona,
-salen sus reservas vivas como «Ocupado» y se borran las que ya no lo son o se
-movieron. Sin nada que sincronizar, no llama a nadie.
+Por cada cliente con Reservas y algún profesional con su calendario conectado desde el
+panel, una pasada de ``calendar_sync.sync_tenant``: termina las autorizaciones en curso,
+entra el «ocupado» de cada persona, salen sus reservas vivas como «Ocupado», se borran
+las que ya no lo son o se movieron, y se termina de desconectar a quien lo pidió. Sin nada
+que sincronizar, no llama a nadie.
 
-**Sin conexión sana no se bloquea con datos viejos.** Si hay calendarios asociados y
-la cuenta necesita volver a conectarse, el ocupado se quita y la pantalla lo dice
-(``calendar_sync.connection_lost``).
+**Cada uno con su conexión, y sin conexión sana no se bloquea con datos viejos.** Si la
+cuenta de una persona necesita volver a conectarse, su ocupado se quita y la pantalla lo
+dice; a los demás no les pasa nada.
 
 **Solo con el proveedor de verdad.** Sin ``composio_api_key`` la API cae en el
 cliente simulado del proveedor; sincronizar contra él borraría el ocupado real
@@ -41,6 +41,8 @@ from nexus_worker.streams.reservations_cron import (
 log = structlog.get_logger(__name__)
 
 DEFAULT_TICK_SECONDS = 120.0
+#: Un proveedor colgado no para al resto: el cron pasa por los clientes de uno en uno.
+TENANT_TIMEOUT_SECONDS = 300.0
 
 GatewayFactory = Callable[[], GoogleCalendarGateway | None]
 
@@ -60,10 +62,6 @@ def make_process(factory: GatewayFactory = live_gateway) -> ProcessTenant:
     async def process(
         session: AsyncSession, tenant_id: uuid.UUID, now: datetime
     ) -> dict[str, int] | None:
-        conn = await calendar_sync.connection_of(session, tenant_id)
-        if conn is None:
-            await calendar_sync.connection_lost(session, now=now)
-            return None
         if not await calendar_sync.has_work(session, now=now):
             return None
         if not gateway:
@@ -75,8 +73,9 @@ def make_process(factory: GatewayFactory = live_gateway) -> ProcessTenant:
         ctx = await load_ctx(session, tenant_id)
         if ctx is None:
             return None
-        stats: dict[str, int] = await calendar_sync.sync_tenant(
-            session, ctx, gateway[0], conn, now=now
+        stats: dict[str, int] = await asyncio.wait_for(
+            calendar_sync.sync_tenant(session, ctx, gateway[0], now=now),
+            timeout=TENANT_TIMEOUT_SECONDS,
         )
         if any(stats.values()):
             log.info("reservation_calendar_cron.tenant", tenant_id=str(tenant_id), **stats)

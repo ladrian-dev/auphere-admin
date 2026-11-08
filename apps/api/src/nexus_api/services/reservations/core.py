@@ -177,6 +177,41 @@ async def staff_for_service(
     return [s for s in staff if s.id in allowed]
 
 
+#: Lo que Ajustes avisa de un servicio y de una persona (spec 043, R14): nada de esto da
+#: un error, da un cliente al que el agente no sabe atender.
+NO_STAFF = "no_staff"
+DOES_NOT_FIT = "does_not_fit"
+NO_HOURS = "no_hours"
+
+
+def staff_warnings(member: ReservationStaff) -> list[str]:
+    """Tiene horario propio y no trabaja ningún día: no es lo mismo que no tener horario
+    propio, que es trabajar el del negocio."""
+    own = parse_business_hours(member.hours) if member.hours else None
+    return [NO_HOURS] if own is not None and not any(own.values()) else []
+
+
+async def service_warnings(
+    session: AsyncSession, ctx: Ctx, service: ReservationService, *, today: date
+) -> list[str]:
+    """Por qué un servicio reservable no se podrá reservar. Se mira la semana que viene:
+    las fechas especiales cuentan, pero un festivo no hace que un servicio «no quepa»."""
+    able = await staff_for_service(session, service)
+    if not able:
+        return [NO_STAFF]
+    if ctx.hours is None or not service.bookable or service.duration_minutes is None:
+        return []
+    duration = timedelta(minutes=service.duration_minutes)
+    for member in able:
+        for offset in range(7):
+            day = today + timedelta(days=offset)
+            for lo, hi in engine.intersect(ctx.day_ranges(day), staff_ranges(ctx, member, day)):
+                start = datetime.combine(day, lo, tzinfo=ctx.tz)
+                if engine.until(day, hi, ctx.tz) - start >= duration:
+                    return []
+    return [DOES_NOT_FIT]
+
+
 def service_duration(service: ReservationService) -> timedelta:
     """Lo que ocupa un servicio. Uno que no se reserva (un producto, un menú,
     spec 047) no tiene duración ni huecos: pedirle uno es un no de negocio."""
@@ -507,6 +542,8 @@ async def create_booking(
     if ctx.mode == "services":
         svc = await _service(session, req.service_id)
         able = await staff_for_service(session, svc)
+        if not able:
+            raise ReservationError(409, NO_STAFF)
         candidates = [s.id for s in able if req.staff_id is None or s.id == req.staff_id]
         if req.staff_id is not None and not candidates:
             raise ReservationError(404, "not_found")

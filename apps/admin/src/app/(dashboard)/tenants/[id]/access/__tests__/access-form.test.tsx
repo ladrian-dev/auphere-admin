@@ -28,6 +28,7 @@ function access(o: Partial<ClientAccessOut> = {}): ClientAccessOut {
     modules: [],
     members: [],
     reservas: null,
+    reservas_pending_pass: null,
     ...o,
   };
 }
@@ -85,7 +86,37 @@ describe("AccessForm", () => {
     expect(h.set).toHaveBeenCalledWith("t1", { enabled: true, modules: ["panel"] });
   });
 
-  it("says which agents did not get Reservas because they book elsewhere", () => {
+  it("says who still books in Google and what is missing, in words", () => {
+    render(
+      <AccessForm
+        tenantId="t1"
+        access={access({
+          reservas_pending_pass: {
+            agents: [{ agent_id: "a1", name: "Recepción" }],
+            reasons: ["hours_missing", "no_staff"],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText(/siguen reservando en Google/)).toBeTruthy();
+    expect(screen.getByText("el horario del negocio")).toBeTruthy();
+    expect(screen.getByText("alguien en el equipo")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Recepción" }).getAttribute("href")).toContain("agent=a1");
+  });
+
+  it("says the next deploy passes it when nothing is missing", () => {
+    render(
+      <AccessForm
+        tenantId="t1"
+        access={access({
+          reservas_pending_pass: { agents: [{ agent_id: "a1", name: "Recepción" }], reasons: [] },
+        })}
+      />,
+    );
+    expect(screen.getByText(/pasan solos a Reservas/)).toBeTruthy();
+  });
+
+  it("says which agents still book outside Reservas until their draft is published", () => {
     render(
       <AccessForm
         tenantId="t1"
@@ -96,7 +127,7 @@ describe("AccessForm", () => {
         })}
       />,
     );
-    expect(screen.getByText(/ya reservan con un conector/)).toBeInTheDocument();
+    expect(screen.getByText(/todavía reservan fuera de Reservas/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ventas" })).toHaveAttribute("href", "/tenants/t1/agent?agent=a1");
   });
 

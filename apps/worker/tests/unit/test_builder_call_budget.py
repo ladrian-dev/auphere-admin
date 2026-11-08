@@ -54,14 +54,24 @@ def _world() -> World:
 
 
 def test_a_connector_calendar_counts_as_a_booking() -> None:
-    """Con Google Calendar la cita no pasa por la agenda simulada: es la acción apuntada."""
+    """Con Calendly la cita no pasa por la agenda simulada: es la acción apuntada."""
+    world = _world()
+    world.bookings = []
+    world.escalated = False
+    world.actions = [Action(tool="CALENDLY_POST_INVITEE", phrase="Crear", args={})]
+    world.timezone = "UTC"
+    state = world.final_state()
+    assert state["booking"]["created"] is True and state["booking"]["count"] == 1
+
+
+def test_google_calendar_is_not_a_booking() -> None:
+    """Spec 043, R11.9: a Google solo sale lo que ya es una reserva."""
     world = _world()
     world.bookings = []
     world.escalated = False
     world.actions = [Action(tool="GOOGLECALENDAR_CREATE_EVENT", phrase="Crear", args={})]
     world.timezone = "UTC"
-    state = world.final_state()
-    assert state["booking"]["created"] is True and state["booking"]["count"] == 1
+    assert world.final_state()["booking"]["created"] is False
 
 
 def test_looking_for_slots_is_not_a_booking() -> None:

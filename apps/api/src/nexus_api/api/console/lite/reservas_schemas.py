@@ -137,12 +137,18 @@ class BusinessHoursPatchIn(_In):
 
 
 class CalendarStatus(BaseModel):
-    """``last_error`` es un código nuestro (``connection``, ``auth``, ``calendar_gone``,
-    ``read``, ``write``), nunca el texto del proveedor."""
+    """El calendario de un profesional. ``pending``: se pidió la autorización y no ha
+    terminado. ``needs_calendar``: conectado y sin calendario que usar. ``needs_reauth``:
+    hay que volver a conectar. ``account`` es la cuenta que quedó conectada. ``last_error``
+    es un código nuestro (``connection``, ``auth``, ``calendar_gone``, ``read``, ``write``,
+    ``calendar_in_use``, ``no_calendar``, ``new_account_refused``), nunca el texto del proveedor."""
 
-    status: Literal["none", "connected", "needs_reauth", "error"]
+    status: Literal["none", "pending", "connected", "needs_calendar", "needs_reauth", "error"]
     calendar_name: str | None = None
+    account: str | None = None
     last_sync_at: datetime | None = None
+    #: Hay horas suyas que bloquea el Google del negocio, hasta que conecte el suyo.
+    business_busy: bool = False
     last_error: str | None = None
 
 
@@ -155,6 +161,8 @@ class StaffOut(BaseModel):
     position: int
     archived: bool
     calendar: CalendarStatus
+    #: ``no_hours``: tiene horario propio y no trabaja ningún día (R14.3).
+    warnings: list[Literal["no_hours"]] = []
 
 
 class StaffListOut(BaseModel):
@@ -194,6 +202,9 @@ class ServiceOut(BaseModel):
     staff_ids: list[uuid.UUID]
     position: int
     archived: bool
+    #: ``no_staff``: no lo hace nadie en activo. ``does_not_fit``: no cabe en el horario de
+    #: quienes lo hacen (R14.1 y R14.2).
+    warnings: list[Literal["no_staff", "does_not_fit"]] = []
 
 
 class ServiceListOut(BaseModel):
@@ -578,19 +589,27 @@ class OfferListOut(BaseModel):
 
 
 class CalendarItemOut(BaseModel):
+    """Un calendario de la cuenta de ese profesional. ``used_by``: quién del negocio lo
+    usa ya; un calendario, un profesional (R12.4)."""
+
     id: str
     name: str
+    primary: bool = False
+    used_by: str | None = None
 
 
-class CalendarOut(BaseModel):
-    """``connection`` distingue «no se conectó» de «hay que volver a conectar», y
-    ``unavailable``, una cuenta sin calendarios de un proveedor que no responde."""
-
-    provider: Literal["google"]
-    connected: bool
-    connection: Literal["none", "connected", "needs_reauth"] = "none"
-    unavailable: bool = False
+class StaffCalendarsOut(BaseModel):
     calendars: list[CalendarItemOut]
+
+
+class CalendarConnectIn(_In):
+    """``share``: el enlace es para enviárselo al profesional, que no vuelve a la consola."""
+
+    share: bool = False
+
+
+class CalendarLinkOut(BaseModel):
+    redirect_url: str
 
 
 class StaffCalendarIn(_In):

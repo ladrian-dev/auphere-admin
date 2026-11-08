@@ -23,6 +23,9 @@ import {
   CAPACITY_KINDS,
   INELIGIBLE,
   MODULE_LABELS,
+  PENDING_PASS_NOT_READY,
+  PENDING_PASS_READY,
+  PENDING_PASS_REASONS,
   RESERVAS_MODES,
   kindPreview,
   liveReservationsText,
@@ -81,6 +84,7 @@ export function AccessForm({ tenantId, access }: { tenantId: string; access: Cli
   const inboxLocked = !access.whatsapp_connected && !access.modules.includes("inbox");
   const pendingAgents = stored?.agents_pending_promotion ?? [];
   const otherCalendar = withReservas ? (stored?.agents_with_other_calendar ?? []) : [];
+  const pendingPass = access.reservas_pending_pass;
 
   function toggle(m: ClientModule, on: boolean) {
     setModules((prev) => {
@@ -210,6 +214,30 @@ export function AccessForm({ tenantId, access }: { tenantId: string; access: Cli
                   className="rounded-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
                   {`${a.name}, versión ${a.version}`}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Callout>
+      ) : null}
+      {pendingPass ? (
+        <Callout tone={pendingPass.reasons.length > 0 ? "warning" : "info"}>
+          <p>{pendingPass.reasons.length > 0 ? PENDING_PASS_NOT_READY : PENDING_PASS_READY}</p>
+          {pendingPass.reasons.length > 0 ? (
+            <ul className="mt-1 list-disc pl-4">
+              {pendingPass.reasons.map((r) => (
+                <li key={r}>{PENDING_PASS_REASONS[r]}</li>
+              ))}
+            </ul>
+          ) : null}
+          <ul className="mt-2 grid gap-1">
+            {pendingPass.agents.map((a) => (
+              <li key={a.agent_id} className="min-w-0">
+                <Link
+                  href={`/tenants/${tenantId}/agent?agent=${encodeURIComponent(a.agent_id)}`}
+                  className="rounded-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  {a.name}
                 </Link>
               </li>
             ))}

@@ -239,21 +239,21 @@ async def test_publish_requires_disclosure_decision(client, console_world, db_se
 async def fake_composio():
     c = FakeComposioClient()
     c.register_tools(
-        "googlecalendar",
+        "notion",
         [
             ComposioTool(
-                slug="GOOGLECALENDAR_LIST_EVENTS",
+                slug="NOTION_SEARCH",
                 description="List",
                 input_schema={"type": "object"},
             )
         ],
     )
     c.register_auth_config(
-        "googlecalendar",
-        "ac_test_gc",
-        display_name="Google Calendar",
-        vendor="Google",
-        category="Calendar",
+        "notion",
+        "ac_test_nt",
+        display_name="Notion",
+        vendor="Notion",
+        category="Docs",
     )
     admin_connectors.set_composio_client_for_tests(c)
     connector_catalog._TOOLKIT_METADATA_CACHE.clear()
@@ -363,7 +363,7 @@ async def test_a_second_consent_after_the_owner_already_authorised_settles_it(
     h = a["headers"]
     base = f"/console/clients/{a['ref']}/connectors"
 
-    first = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    first = await client.post(f"{base}/notion/consent", headers=h())
     assert first.status_code == 201, first.text
     tc = await db_session.scalar(
         sa.select(TenantConnector).where(TenantConnector.tenant_id == a["tenant_id"])
@@ -373,12 +373,12 @@ async def test_a_second_consent_after_the_owner_already_authorised_settles_it(
     # webhook no llega nunca.
     fake_composio._connections[tc.credentials_ref["composio_connection_id"]].status = "ACTIVE"
 
-    again = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    again = await client.post(f"{base}/notion/consent", headers=h())
     assert again.status_code == 409, again.text
     assert "ya" in again.json()["detail"].lower()
     await db_session.refresh(tc)
     assert tc.status == "connected"
-    tools = {c["slug"]: c for c in (await client.get(base, headers=h())).json()}["googlecalendar"]
+    tools = {c["slug"]: c for c in (await client.get(base, headers=h())).json()}["notion"]
     assert tools["status"] == "connected" and tools["tools_total"] >= 1
 
 
@@ -393,13 +393,13 @@ async def test_connectors_never_leak_secrets_and_consent_once(
     assert lst.status_code == 200, lst.text
     slugs = {c["slug"]: c for c in lst.json()}
     assert "tiktok_bm" not in slugs and "whatsapp_meta" not in slugs  # channel_only
-    assert "googlecalendar" in slugs and slugs["googlecalendar"]["installed"] is False
+    assert "notion" in slugs and slugs["notion"]["installed"] is False
     assert "woocommerce" in slugs and slugs["woocommerce"]["auth_kind"] == "api_key"
     assert [f["field"] for f in slugs["woocommerce"]["credentials_form"]][:1] == ["store_url"]
     for c in lst.json():
         assert "credentials_ref" not in c and "consent_token" not in c
 
-    consent = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    consent = await client.post(f"{base}/notion/consent", headers=h())
     assert consent.status_code == 201, consent.text
     assert "consent_token=" in consent.json()["signed_consent_url"]
     tc = await db_session.scalar(
@@ -408,8 +408,8 @@ async def test_connectors_never_leak_secrets_and_consent_once(
     assert tc is not None and tc.status == "pending"
 
     lst2 = {c["slug"]: c for c in (await client.get(base, headers=h())).json()}
-    assert lst2["googlecalendar"]["installed"] and lst2["googlecalendar"]["status"] == "pending"
-    assert "signed_consent_url" not in lst2["googlecalendar"]
+    assert lst2["notion"]["installed"] and lst2["notion"]["status"] == "pending"
+    assert "signed_consent_url" not in lst2["notion"]
 
     # API-key bootstrap: secrets in, never out.
     key = await client.post(
@@ -440,7 +440,7 @@ async def test_connectors_never_leak_secrets_and_consent_once(
             await client.get(f"/console/clients/{b['ref']}/connectors", headers=b["headers"]())
         ).json()
     }
-    assert lb["googlecalendar"]["installed"] is False
+    assert lb["notion"]["installed"] is False
 
 
 # ── CP-14 · skills ─────────────────────────────────────────────────────

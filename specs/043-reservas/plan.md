@@ -18,7 +18,7 @@ va al final, en su propia migración y su propio cron.
 
 **Dependencias**: ninguna nueva (P3 usa el cliente del proveedor de consentimientos que ya existe).
 
-**Almacenamiento**: PostgreSQL 16. Migraciones `0172`–`0174`.
+**Almacenamiento**: PostgreSQL 16. Migraciones `0172`–`0174` y `0223` (enmienda del 2026-11-04).
 
 **Pruebas**: pytest (unit del motor, integración de API/herramientas/crons, isolation) · vitest · Playwright + axe.
 
@@ -116,6 +116,31 @@ apps/console/src/app/(console)/reservas/**, components/reservas/**
 apps/admin/src/app/(dashboard)/tenants/[id]/access/**
 docs/reservas.md (nuevo), docs/consola-lite.md, docs/admin.md
 ```
+
+## Enmienda del 2026-11-04: Reservas manda
+
+**Superficie**: sigue siendo `0`. Conectar va por la API de la consola con el principal de cliente;
+el proveedor de consentimientos ya estaba. El enlace que se comparte es el del proveedor: no hay
+ruta pública nueva.
+
+**Aislamiento**: garantía 1, dos columnas de conexión en una tabla con RLS FORCE y FK compuesta (sin
+cambios), un índice único por cliente y las rutas nuevas en el barrido de
+`test_reservas_client_vs_client.py`. Garantía 2, Google Calendar fuera de la lista del turno
+(`activations.allowed_names`) y de los *blueprints* del proxy, aunque una versión la nombre.
+
+**El paso reutiliza el de la 048**: las dos herramientas de Google entran en `agent_spec.retired` y el
+despliegue las cambia como a `booking.*`, sin la puerta y firmado por Auphere. No hay un mecanismo
+nuevo. A diferencia de `booking.*`, el runtime no las ejecuta para quien las tenga: una cita en Google
+es justo lo que la decisión prohíbe.
+
+**El ref en `external_event_id`** gana al dueño (`<profesional> <calendario> <evento>`), sin columna
+nueva: el evento se alcanza con la conexión de quien lo escribió, y la reserva puede haber cambiado de
+persona. Lo que tuviera el formato de dos partes se sigue leyendo.
+
+**El webhook no se toca.** Abrirlo a estas conexiones pedía leer sin RLS otra tabla; mirar el estado al
+volver y en cada pasada basta, bajo la RLS del cliente.
+
+**Dependencias**: ninguna nueva. `allow_multiple` ya está en el SDK fijado en el lock.
 
 ## Complexity Tracking
 

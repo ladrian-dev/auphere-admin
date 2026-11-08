@@ -276,3 +276,28 @@ async def test_sync_is_noop_when_already_connected(
         select(TenantConnector).where(TenantConnector.tenant_id == tenant_a)
     )
     assert tc_row.status == "connected"
+
+
+async def test_the_page_after_the_provider_says_what_really_happened(client) -> None:
+    """Revisión, punto 17: la página decía «ya está» aunque hubiera fallado."""
+    failed = await client.get("/connectors/oauth-callback?status=failed")
+    assert failed.status_code == 200
+    assert "No se pudo conectar" in failed.text
+    assert "ya está" not in failed.text.lower()
+
+    denied = await client.get("/connectors/oauth-callback?status=denied")
+    assert "No se pudo conectar" in denied.text
+
+    done = await client.get("/connectors/oauth-callback?status=success")
+    assert "Autorización recibida" in done.text
+
+    expired = await client.get("/connectors/oauth-callback?consent_token=tampered.token")
+    assert "enlace ya no sirve" in expired.text
+    assert "ya está" not in expired.text.lower()
+
+    neither = await client.get("/connectors/oauth-callback")
+    assert "ya está" not in neither.text.lower()
+    assert "panel" in neither.text
+
+    injected = await client.get("/connectors/oauth-callback?status=<script>alert(1)</script>")
+    assert "<script>" not in injected.text

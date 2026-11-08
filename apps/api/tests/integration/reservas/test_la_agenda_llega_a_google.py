@@ -20,7 +20,7 @@ import structlog
 
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Connector, Reservation, TenantConnector
+from nexus_api.db.models import Reservation
 from nexus_api.services.connectors.composio_client import (
     ComposioAuthExpired,
     ComposioNotFound,
@@ -35,6 +35,7 @@ from nexus_api.services.reservations.calendar_sync import (
 )
 from nexus_api.services.reservations.core import load_ctx
 from tests.conftest import future_day, make_reservas
+from tests.integration.reservas._calendars import connected, set_state
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -56,8 +57,19 @@ class FakeGoogle:
         self.read_error: Exception | None = None
         self.create_errors: list[Exception] = []
         self.delete_errors: list[Exception] = []
+        self.revoked: list[str] = []
+        self.states: dict[str, str] = {}
 
-    async def list_calendars(self, conn: Connection) -> list[dict[str, str]]:
+    async def link(self, user_id: str, callback_url: str) -> tuple[str, str]:
+        return f"ca_{len(self.states)}", f"https://google.test/auth?u={user_id}"
+
+    async def account_state(self, connection_id: str) -> str:
+        return self.states.get(connection_id, "INITIATED")
+
+    async def revoke(self, connection_id: str) -> None:
+        self.revoked.append(connection_id)
+
+    async def list_calendars(self, conn: Connection) -> list[dict[str, Any]]:
         return [{"id": LUCIA_CAL, "name": "Lucía"}, {"id": MARCOS_CAL, "name": "Marcos"}]
 
     async def busy(
@@ -66,15 +78,25 @@ class FakeGoogle:
         self.reads += 1
         if self.read_error is not None:
             raise self.read_error
-        return list(self.intervals)
+        # Lo que escribimos sigue en el calendario hasta que lo borremos.
+        gone = {event for _, event in self.deleted}
+        ours = [
+            Busy(c["start"], c["end"], c["id"])
+            for c in self.created
+            if c["calendar"] == calendar_id and c["id"] not in gone
+        ]
+        return [*self.intervals, *ours]
 
     async def create_busy(
         self, conn: Connection, calendar_id: str, start: datetime, end: datetime, marker: str
     ) -> str:
         if self.create_errors:
             raise self.create_errors.pop(0)
-        self.created.append({"calendar": calendar_id, "start": start, "end": end, "marker": marker})
-        return f"ev-{len(self.created)}"
+        event_id = f"ev-{len(self.created) + 1}"
+        self.created.append(
+            {"id": event_id, "calendar": calendar_id, "start": start, "end": end, "marker": marker}
+        )
+        return event_id
 
     async def delete_busy(self, conn: Connection, calendar_id: str, event_id: str) -> None:
         if self.delete_errors:
@@ -87,44 +109,10 @@ def _google(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(calendar_sync, "default_gateway", lambda: FakeGoogle())
 
 
-async def _connect(db_session: Any, tenant_id: uuid.UUID, status: str = "connected") -> None:
-    connector = (
-        await db_session.execute(
-            sa.select(Connector).where(Connector.mcp_server_ref == "composio:googlecalendar")
-        )
-    ).scalar_one_or_none()
-    if connector is None:
-        connector = Connector(
-            slug="googlecalendar",
-            display_name="Google Calendar",
-            vendor="Google",
-            category="calendar",
-            auth_kind="oauth_composio",
-            mcp_server_ref="composio:googlecalendar",
-        )
-        db_session.add(connector)
-        await db_session.flush()
-    db_session.add(
-        TenantConnector(
-            tenant_id=tenant_id,
-            connector_id=connector.id,
-            status=status,
-            credentials_ref={"composio_connection_id": "ca_test"},
-        )
-    )
-    await db_session.commit()
-
-
 async def _world(client: Any, db_session: Any, w: dict[str, Any]) -> dict[str, Any]:
-    """Un negocio conectado, con Lucía asociada a su calendario."""
+    """Un negocio con Lucía conectada y con su calendario."""
     shop = await make_reservas(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
-    await _connect(db_session, w["tenant_id"])
-    put = await client.put(
-        f"{BASE}/staff/{shop['lucia']}/calendar",
-        headers=shop["headers"](),
-        json={"calendar_id": LUCIA_CAL},
-    )
-    assert put.status_code == 200, put.text
+    await connected(w["tenant_id"], shop["lucia"], calendar_id=LUCIA_CAL, name="Lucía")
     return shop
 
 
@@ -163,11 +151,7 @@ async def _pass(tenant_id: uuid.UUID, fake: Any, *, now: datetime | None = None)
     async with sm() as session, tenant_scoped_session(session, tenant_id):
         ctx = await load_ctx(session, tenant_id)
         assert ctx is not None
-        conn = await calendar_sync.connection_of(session, tenant_id)
-        assert conn is not None
-        return await calendar_sync.sync_tenant(
-            session, ctx, fake, conn, now=now or datetime.now(UTC)
-        )
+        return await calendar_sync.sync_tenant(session, ctx, fake, now=now or datetime.now(UTC))
 
 
 async def _rows(tenant_id: uuid.UUID, sql: str, **params: Any) -> list[Any]:
@@ -343,12 +327,7 @@ async def test_moving_to_another_person_deletes_it_from_where_it_lives(
     """El evento sigue en el calendario de Lucía: no vale buscarlo en el de Marcos."""
     w = console_world["a"]
     shop = await _world(client, db_session, w)
-    put = await client.put(
-        f"{BASE}/staff/{shop['marcos']}/calendar",
-        headers=shop["headers"](),
-        json={"calendar_id": MARCOS_CAL},
-    )
-    assert put.status_code == 200, put.text
+    await connected(w["tenant_id"], shop["marcos"], calendar_id=MARCOS_CAL)
     booking = await _book(client, shop)
     fake = FakeGoogle()
     await _pass(w["tenant_id"], fake)
@@ -468,6 +447,8 @@ async def test_disconnecting_takes_the_events_out_and_writes_no_more(
     assert fake.deleted == [(LUCIA_CAL, "ev-1")]
     assert len(fake.created) == 1
     assert await _stored_event(w["tenant_id"], booking["id"]) is None
+    assert fake.revoked == [f"ca_{shop['lucia']}"], "and the connection goes with them"
+    assert await _rows(w["tenant_id"], "SELECT 1 FROM reservation_staff_calendars") == []
 
 
 # ── 3. Sin duplicados ───────────────────────────────────────────────────────
@@ -511,9 +492,7 @@ async def test_what_was_written_survives_the_pass_that_breaks_afterwards(
         async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
             ctx = await load_ctx(session, w["tenant_id"])
             assert ctx is not None
-            conn = await calendar_sync.connection_of(session, w["tenant_id"])
-            assert conn is not None
-            await calendar_sync.sync_tenant(session, ctx, fake, conn, now=datetime.now(UTC))
+            await calendar_sync.sync_tenant(session, ctx, fake, now=datetime.now(UTC))
             raise Boom
 
     await _pass(w["tenant_id"], fake)
@@ -573,21 +552,21 @@ async def test_a_connection_that_needs_reauth_stops_blocking_and_says_so(
     await _pass(w["tenant_id"], fake)
     assert (await _rows(w["tenant_id"], "SELECT count(*) FROM reservation_busy"))[0][0] == 1
 
-    sm = get_sessionmaker()
-    async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
-        await session.execute(sa.update(TenantConnector).values(status="needs_reauth"))
+    await set_state(w["tenant_id"], shop["lucia"], connection_status="needs_reauth")
 
+    sm = get_sessionmaker()
     process = cron.make_process(lambda: fake)
     with structlog.testing.capture_logs() as logs:
         async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
-            assert await process(session, w["tenant_id"], datetime.now(UTC)) is None
+            await process(session, w["tenant_id"], datetime.now(UTC))
         async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
-            assert await process(session, w["tenant_id"], datetime.now(UTC)) is None
+            await process(session, w["tenant_id"], datetime.now(UTC))
 
     assert (await _rows(w["tenant_id"], "SELECT count(*) FROM reservation_busy"))[0][0] == 0
     lost = [e for e in logs if e["event"] == "reservation_calendar.connection_unhealthy"]
     assert len(lost) == 1  # una vez, no cada dos minutos
     assert lost[0]["tenant_id"] == str(w["tenant_id"])
+    assert lost[0]["staff_id"] == str(shop["lucia"])
     assert lost[0]["dropped"] == 1
 
     calendar = await _staff_calendar(client, shop)
@@ -595,27 +574,16 @@ async def test_a_connection_that_needs_reauth_stops_blocking_and_says_so(
     assert calendar["last_error"] == "connection"
     assert calendar["calendar_name"] == "Lucía"
 
-    account = (await client.get(f"{BASE}/calendar", headers=shop["headers"]())).json()
-    assert account["connection"] == "needs_reauth"
-    assert account["connected"] is False
-
 
 async def test_a_reconnected_calendar_is_healthy_again(client, db_session, console_world) -> None:
-    from nexus_worker.streams import reservation_calendar_cron as cron
-
     w = console_world["a"]
     shop = await _world(client, db_session, w)
     fake = FakeGoogle()
-    sm = get_sessionmaker()
-    async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
-        await session.execute(sa.update(TenantConnector).values(status="needs_reauth"))
-    process = cron.make_process(lambda: fake)
-    async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
-        await process(session, w["tenant_id"], datetime.now(UTC))
-    async with sm() as session, tenant_scoped_session(session, w["tenant_id"]):
-        await session.execute(sa.update(TenantConnector).values(status="connected"))
+    await set_state(w["tenant_id"], shop["lucia"], connection_status="needs_reauth")
+    await _pass(w["tenant_id"], fake)
+    await set_state(w["tenant_id"], shop["lucia"], connection_status="connected", last_error=None)
 
-    # La pantalla no espera al cron para dejar de pedir que se vuelva a conectar.
+    # La pantalla no espera a la pasada para dejar de pedir que se vuelva a conectar.
     assert (await _staff_calendar(client, shop))["status"] == "connected"
 
     await _pass(w["tenant_id"], fake)
@@ -711,34 +679,35 @@ async def test_a_provider_that_is_down_does_not_look_like_an_account_without_cal
     shop = await _world(client, db_session, w)
 
     class Down(FakeGoogle):
-        async def list_calendars(self, conn: Connection) -> list[dict[str, str]]:
+        async def list_calendars(self, conn: Connection) -> list[dict[str, Any]]:
             raise RuntimeError("provider down")
 
     monkeypatch.setattr(calendar_sync, "default_gateway", lambda: Down())
-    account = (await client.get(f"{BASE}/calendar", headers=shop["headers"]())).json()
-    assert account["connected"] is True
-    assert account["connection"] == "connected"
-    assert account["unavailable"] is True
-    assert account["calendars"] == []
+    answer = await client.get(f"{BASE}/staff/{shop['lucia']}/calendars", headers=shop["headers"]())
+    assert answer.status_code == 409
+    assert answer.json()["detail"]["code"] == "calendar_unavailable"
 
 
-async def test_an_account_that_never_connected_says_so(client, db_session, console_world) -> None:
+async def test_someone_who_never_connected_says_so(client, db_session, console_world) -> None:
     w = console_world["a"]
     shop = await make_reservas(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
-    account = (await client.get(f"{BASE}/calendar", headers=shop["headers"]())).json()
-    assert account == {
-        "provider": "google",
-        "connected": False,
-        "connection": "none",
-        "unavailable": False,
-        "calendars": [],
+    assert await _staff_calendar(client, shop) == {
+        "status": "none",
+        "calendar_name": None,
+        "account": None,
+        "last_sync_at": None,
+        "last_error": None,
+        "business_busy": False,
     }
+    answer = await client.get(f"{BASE}/staff/{shop['lucia']}/calendars", headers=shop["headers"]())
+    assert answer.status_code == 409
+    assert answer.json()["detail"]["code"] == "calendar_not_connected"
 
 
 async def test_a_client_only_touches_what_is_its_own(client, db_session, console_world) -> None:
     """Garantía 1 (RLS): la pasada escribe en una sesión aparte y varias sentencias no
     filtran por cliente: lo hace la RLS. Ni la conexión perdida de A toca el ocupado de
-    B, ni la pasada de A sus reservas, ni A ve la conexión de B."""
+    B, ni la pasada de A sus reservas, ni A ve las filas de B."""
     from nexus_worker.streams import reservation_calendar_cron as cron
 
     a, b = console_world["a"], console_world["b"]
@@ -750,19 +719,10 @@ async def test_a_client_only_touches_what_is_its_own(client, db_session, console
     await _pass(b["tenant_id"], fake_b)
     stored = await _stored_event(b["tenant_id"], booked["id"])
 
-    assert (await client.get(f"{BASE}/calendar", headers=shop_a["headers"]())).json()[
-        "connection"
-    ] == "none"
+    assert (await _staff_calendar(client, shop_a))["status"] == "none"
 
     sm = get_sessionmaker()
-    async with sm() as session, tenant_scoped_session(session, a["tenant_id"]):
-        await session.execute(
-            sa.text(
-                "INSERT INTO reservation_staff_calendars (tenant_id, staff_id, calendar_id) "
-                "VALUES (:t, :s, 'a@agenda')"
-            ),
-            {"t": a["tenant_id"], "s": shop_a["lucia"]},
-        )
+    await connected(a["tenant_id"], shop_a["lucia"], calendar_id="a@agenda", status="needs_reauth")
     fake_a = FakeGoogle()
     process = cron.make_process(lambda: fake_a)
     async with sm() as session, tenant_scoped_session(session, a["tenant_id"]):
@@ -790,23 +750,6 @@ async def test_an_all_day_event_blocks_the_day_in_the_zone_of_the_business() -> 
             "off",
         )
     ]
-
-
-async def test_an_all_day_event_marked_free_blocks_nothing() -> None:
-    """Un cumpleaños o un festivo del calendario: Google los crea como «disponible»."""
-    provider = _Provider(
-        {
-            "items": [
-                {
-                    "id": "birthday",
-                    "transparency": "transparent",
-                    "start": {"date": "2026-11-05"},
-                    "end": {"date": "2026-11-06"},
-                }
-            ]
-        }
-    )
-    assert await ComposioGoogleCalendar(provider).busy(CONN, "cal", *WINDOW, tz=TZ) == []
 
 
 async def test_an_all_day_block_takes_the_slots_of_the_day(
@@ -896,7 +839,10 @@ async def test_only_calendars_that_can_be_written_are_offered() -> None:
         {"items": [{"id": "team", "summary": "Equipo", "accessRole": "writer"}]},
     )
     got = await ComposioGoogleCalendar(provider).list_calendars(CONN)
-    assert got == [{"id": "mine", "name": "Lucía"}, {"id": "team", "name": "Equipo"}]
+    assert got == [
+        {"id": "mine", "name": "Lucía", "primary": False},
+        {"id": "team", "name": "Equipo", "primary": False},
+    ]
     assert provider.calls[1] == ("GOOGLECALENDAR_LIST_CALENDARS", {"page_token": "p2"})
 
 

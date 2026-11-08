@@ -180,8 +180,10 @@ quedan fuera se mantienen.
 ```
 
 - `hours: null` = usa el horario del negocio; `effective_hours` es el que vale.
-- `calendar.status`: `none | connected` (+ `calendar_name`, `last_sync_at`) —
-  P3; hasta entonces siempre `none`.
+- `calendar.status`: `none | pending | connected | needs_calendar | needs_reauth | error`
+  (+ `calendar_name`, `account`, `last_sync_at`, `last_error`, un código nuestro, y
+  `business_busy`: hay horas suyas que bloquea el Google del negocio) — §8.
+- `warnings`: `no_hours` si tiene horario propio y ningún día (R14.3).
 
 ### `POST /console/lite/reservas/staff` — `Idempotency-Key`
 
@@ -502,17 +504,36 @@ noreply, accepted, late_taken, late_won, skipped, stopped`.
 
 ---
 
-## 8. Calendarios — P3
+## 8. El calendario de cada profesional — R12 (enmienda del 2026-11-04)
 
-### `GET /console/lite/reservas/calendar`
+Solo Servicios (`wrong_mode` si no). Un id de otro cliente, el mismo 404 que uno inventado.
+Sustituye a `GET /console/lite/reservas/calendar`, que describía una cuenta por negocio.
 
-`{"provider": "google", "connected": true, "calendars": [{"id": "…", "name": "Lucía"}]}`
-(`connected: false` y `calendars: []` si el cliente no lo ha conectado; se
-conecta en la consola del partner o el panel de operador, como hoy).
+### `POST /console/lite/reservas/staff/{id}/calendar/connect`
+
+`{"share": false}` → `{"redirect_url": "https://…"}`. El enlace del proveedor para que esa persona
+autorice **su** cuenta, con una identidad propia; se devuelve una vez, a quien lo pidió, y caduca
+solo. `share: true` es para enviárselo: a la vuelta no entra en la consola. Una persona con otra
+conexión que no funciona la sustituye cuando la nueva esté, y conserva su calendario. 409
+`calendar_unavailable` (el proveedor no responde o no tiene configurada la autorización),
+`calendar_already_connected` (ya funciona) o `calendar_disconnecting` (se están quitando sus eventos:
+suele ser cosa de minutos, y como mucho de una hora). Deja `reservations.calendar_connect_started`.
+
+### `POST /console/lite/reservas/staff/{id}/calendar/refresh`
+
+→ la persona. Mira ya cómo quedó, sin esperar a la pasada: termina la autorización en curso y hace
+la pasada de esa persona. Al volver de Google y al reintentar. No llama a Google más de una vez
+cada 5 s por persona. Con el proveedor colgado, a los 25 s: 409 `calendar_unavailable`.
+
+### `GET /console/lite/reservas/staff/{id}/calendars`
+
+`{"calendars": [{"id": "…", "name": "…", "primary": true, "used_by": "Lucía"|null}]}`. Los de **su**
+cuenta en los que se puede escribir; `used_by`, quién del negocio lo usa ya. 409
+`calendar_not_connected` o `calendar_unavailable`.
 
 ### `PUT /console/lite/reservas/staff/{id}/calendar`
 
-`{"calendar_id": "…"}` o `{"calendar_id": null}` para soltarlo. → la persona.
-El id tiene que ser uno de `GET …/calendar` (la cuenta que el cliente conectó):
-si no, 422 `unknown_calendar`; sin conexión, 409 `calendar_not_connected`; con el
-proveedor caído, 409 `calendar_unavailable`.
+`{"calendar_id": "…"}` lo elige; `{"calendar_id": null}` desconecta. → la persona. 422
+`unknown_calendar` si no es de su cuenta; 409 `calendar_in_use` con `used_by`;
+`calendar_not_connected`; `calendar_unavailable`. Desconectar deja de bloquear al momento y la
+persona vuelve con `status: none`; la pasada siguiente quita sus eventos y revoca la conexión.

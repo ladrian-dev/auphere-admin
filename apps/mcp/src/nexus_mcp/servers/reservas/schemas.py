@@ -33,6 +33,9 @@ class ServiceItem(OutputModel):
     #: Spec 047: a service that is not bookable (a product, a menu) has no
     #: duration and no times; explain how it is ordered instead.
     bookable: bool = True
+    #: Spec 043, R14.1: ``no_staff``, nobody on the team does it right now, so it cannot be
+    #: booked. Do not promise a time: say so and pass it to a person.
+    why_not: str | None = None
     duration_minutes: int | None
     description: str | None = None
     #: ``none`` (the team confirms it), ``free`` or ``amount`` (``price``).

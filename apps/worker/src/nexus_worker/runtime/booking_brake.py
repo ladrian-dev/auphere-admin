@@ -175,17 +175,27 @@ _NEVER_BACKS: Final = frozenset({"CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK"})
 #: An appointment that is kept: the customer's own bookings, their «yes».
 _KEEPS: Final = frozenset({"reservas.list_mine", "reservas.confirm_attendance"})
 _RESERVAS_BOOKS: Final = frozenset({"reservas.create", "reservas.reschedule"})
+#: Google Calendar is no longer where an agent books (spec 043, R11.9), so it is not
+#: in ``TOOL_ACTIONS``. An agent that has not passed to Reservas yet still runs these
+#: (R11.2), and the event it wrote is the appointment it promised: it backs the reply.
+_CONNECTOR_STILL_BOOKS: Final = frozenset(
+    {"GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_QUICK_ADD", "GOOGLECALENDAR_UPDATE_EVENT"}
+)
 
 
 def booking_tools() -> frozenset[str]:
     """The tools that book or change a booking, from ``capability_names.TOOL_ACTIONS``
-    (``book``, ``modify_booking``), without the cancellations and the link."""
-    return frozenset(
-        name
-        for name, actions in TOOL_ACTIONS.items()
-        if actions & {"book", "modify_booking"}
-        and "cancel" not in name.lower()
-        and name not in _NEVER_BACKS
+    (``book``, ``modify_booking``), without the cancellations and the link, plus the
+    retired Google Calendar ones that an agent which has not passed still runs."""
+    return (
+        frozenset(
+            name
+            for name, actions in TOOL_ACTIONS.items()
+            if actions & {"book", "modify_booking"}
+            and "cancel" not in name.lower()
+            and name not in _NEVER_BACKS
+        )
+        | _CONNECTOR_STILL_BOOKS
     )
 
 

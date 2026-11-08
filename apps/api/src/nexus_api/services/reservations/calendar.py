@@ -17,9 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import Reservation
 from nexus_api.services.reservations.calendar_sync import (
+    BUSY_BUSINESS,
+    DISCONNECTING,
     ERROR_AUTH,
     ERROR_CONNECTION,
-    connection_state,
+    NEEDS_REAUTH,
+    PENDING,
 )
 from nexus_api.services.reservations.core import Ctx
 
@@ -75,18 +78,10 @@ async def clash_count(session: AsyncSession, ctx: Ctx, now: datetime) -> int:
     return int(count or 0)
 
 
-def _status_of(connection: str, last_error: str | None) -> str:
-    """``needs_reauth``: hace falta que alguien vuelva a conectar la cuenta. ``error``:
-    algo falló en la última pasada y puede arreglarse solo o cambiando el calendario."""
-    if connection != "connected" or last_error == ERROR_AUTH:
-        return "needs_reauth"
-    return "error" if last_error else "connected"
-
-
 async def staff_calendar_status(session: AsyncSession) -> dict[uuid.UUID, dict[str, Any]]:
-    """``staff_id`` → ``{"status", "calendar_name", "last_sync_at", "last_error"}`` para
-    quien tiene un calendario asociado. ``last_error`` es un código de ``calendar_sync``,
-    nunca el texto del proveedor. Sin la P3, nadie."""
+    """``staff_id`` → su estado para la pantalla, para quien tiene una fila. Quien se está
+    desconectando ya no tiene ninguna: para la persona, ya está. ``last_error`` es un código
+    de ``calendar_sync``, nunca el texto del proveedor. Sin la P3, nadie."""
     has = await session.scalar(
         sa.text("SELECT to_regclass('reservation_staff_calendars') IS NOT NULL")
     )
@@ -95,30 +90,46 @@ async def staff_calendar_status(session: AsyncSession) -> dict[uuid.UUID, dict[s
     rows = (
         await session.execute(
             sa.text(
-                "SELECT staff_id, calendar_name, last_sync_at, last_error "
-                "FROM reservation_staff_calendars"
-            )
+                "SELECT staff_id, calendar_id, calendar_name, last_sync_at, last_error, "
+                "connection_status, account_label FROM reservation_staff_calendars "
+                "WHERE connection_status <> :gone"
+            ),
+            {"gone": DISCONNECTING},
         )
     ).all()
-    if not rows:
-        return {}
-    connection = await connection_state(session)
-    out: dict[uuid.UUID, dict[str, Any]] = {}
-    for sid, name, synced, error in rows:
-        # La conexión la cambia el proveedor entre dos pasadas: se mira aquí, y la
-        # pantalla no espera al cron para decir que hay que volver a conectar, ni para
-        # dejar de decirlo.
-        if connection == "connected":
-            code = None if error == ERROR_CONNECTION else error
-        else:
-            code = error or ERROR_CONNECTION
-        out[sid] = {
-            "status": _status_of(connection, code),
-            "calendar_name": name,
-            "last_sync_at": synced,
-            "last_error": code,
+    out: dict[uuid.UUID, dict[str, Any]] = {
+        r.staff_id: {
+            "status": _status_of(r.connection_status, r.calendar_id, r.last_error),
+            "calendar_name": r.calendar_name,
+            "account": r.account_label,
+            "last_sync_at": r.last_sync_at,
+            "last_error": r.last_error,
         }
+        for r in rows
+    }
+    # R12.13: hay horas de esta persona que bloquea el Google del negocio.
+    business = await session.scalars(
+        sa.text(
+            "SELECT DISTINCT staff_id FROM reservation_busy WHERE source = :src AND ends_at > now()"
+        ),
+        {"src": BUSY_BUSINESS},
+    )
+    for staff_id in business:
+        out.setdefault(staff_id, {"status": "none"})["business_busy"] = True
     return out
+
+
+def _status_of(connection: str, calendar_id: str | None, last_error: str | None) -> str:
+    """Una salida por estado: ``pending``, a la espera de que se autorice; ``needs_reauth``,
+    hay que volver a conectar; ``needs_calendar``, conectado y sin calendario; ``error``, algo
+    falló en la última pasada y puede arreglarse solo o cambiando de calendario."""
+    if connection == PENDING:
+        return "pending"
+    if connection == NEEDS_REAUTH or last_error in (ERROR_AUTH, ERROR_CONNECTION):
+        return "needs_reauth"
+    if calendar_id is None:
+        return "needs_calendar"
+    return "error" if last_error else "connected"
 
 
 __all__ = ["clash_count", "clashes_for", "staff_calendar_status"]

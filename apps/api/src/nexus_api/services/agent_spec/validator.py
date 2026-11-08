@@ -39,7 +39,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import require_current_tenant
-from nexus_api.services.agent_spec.retired import RETIRED_TOOLS
+from nexus_api.services.agent_spec.retired import RETIRED_TOOLS, agent_may_use
 from nexus_api.services.agent_spec.retired import replacement as retired_replacement
 from nexus_api.services.agent_spec.schema import (
     MAX_INSTRUCTIONS_CHARS,
@@ -128,6 +128,9 @@ class Context:
     foreign_names: tuple[str, ...] = ()
     #: La longitud del prompt migrado, para la regla de «no crece».
     legacy_chars: int | None = None
+    #: Spec 043, R11.3: las de Google Calendar que este agente ya tiene. Siguen hasta que pase a
+    #: Reservas, porque la consola manda la ficha entera y no las podría quitar; una nueva, no.
+    held_tools: frozenset[str] = frozenset()
 
     def usable(self, name: str) -> bool:
         """Spec 047, enmienda del 2026-10-30 (65.2): la herramienta está disponible
@@ -140,6 +143,7 @@ class Context:
             and info.status not in {"internal", "deprecated"}
             and info.integration_offered
             and name not in RETIRED_TOOLS
+            and agent_may_use(name)
             and _TOOL_NAME.fullmatch(name) is not None
             and (info.connected or (info.integration is not None and info.activatable))
         )
@@ -256,6 +260,8 @@ def validate_spec(
     for i, proc in enumerate(spec.procedures or []):
         named.extend((f"/procedures/{i}/tools/{j}", t) for j, t in enumerate(proc.tools or []))
     for pointer, name in named:
+        if name in ctx.held_tools:
+            continue
         # Spec 048 (requisito 2.3): retired by name — the code decides it, so a
         # catalog that has not run 0205 yet does not let it back in.
         instead = retired_replacement(name)
@@ -266,6 +272,17 @@ def validate_spec(
                     "tool_retired",
                     f"{name} está retirada: el agente reserva con Reservas. Usa {instead}.",
                     replacement=instead,
+                )
+            )
+            continue
+        # Spec 043, R11.3: ninguna de Google Calendar es de un agente, tenga o no sustituta.
+        if not agent_may_use(name):
+            problems.append(
+                Problem(
+                    pointer,
+                    "tool_retired",
+                    f"{name} está retirada: Google Calendar lo conecta cada profesional en "
+                    "Reservas, y el agente reserva con Reservas.",
                 )
             )
             continue
@@ -390,6 +407,7 @@ async def load_context(
     *,
     partner_id: uuid.UUID | None,
     legacy_chars: int | None = None,
+    agent_id: uuid.UUID | None = None,
 ) -> Context:
     """Lo que el validador necesita del cliente del contexto."""
     from nexus_api.api.console.capability_names import requires_connector
@@ -490,7 +508,30 @@ async def load_context(
         agent_ids=agent_ids,
         foreign_names=foreign,
         legacy_chars=legacy_chars,
+        held_tools=await _held_tools(session, agent_id) if agent_id is not None else frozenset(),
     )
+
+
+async def _held_tools(session: AsyncSession, agent_id: uuid.UUID) -> frozenset[str]:
+    """Lo que este agente ya nombra y ninguna versión nueva podría nombrar: en su versión activa o
+    en su borrador, en sus herramientas, en el AgentSpec o en sus procedimientos."""
+    from nexus_api.db.models import AgentConfig, AgentConfigStatus
+
+    rows = await session.execute(
+        sa.select(AgentConfig.tools, AgentConfig.spec).where(
+            AgentConfig.agent_id == agent_id,
+            AgentConfig.status.in_((AgentConfigStatus.ACTIVE, AgentConfigStatus.STAGED)),
+        )
+    )
+    names: set[Any] = set()
+    for tools, spec in rows.all():
+        doc = spec if isinstance(spec, Mapping) else {}
+        names.update(tools or [])
+        names.update(doc.get("tools") or [])
+        for procedure in doc.get("procedures") or []:
+            if isinstance(procedure, Mapping):
+                names.update(procedure.get("tools") or [])
+    return frozenset(n for n in names if isinstance(n, str) and not agent_may_use(n))
 
 
 @lru_cache(maxsize=1)

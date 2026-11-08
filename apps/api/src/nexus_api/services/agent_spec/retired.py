@@ -7,6 +7,15 @@ retira en dos pasos: ahora nadie puede añadirla (el validador la rechaza con
 ninguna versión la nombre (requisito 5). Hasta entonces el runtime la sigue
 ejecutando para quien la tiene.
 
+**Google Calendar se retira igual** (spec 043, requisito 11; decisión de Luis del
+2026-11-04: Reservas es la fuente de la verdad). Una cita en Google no aparece en
+Reservas, no lleva recordatorios y deja esa hora libre en la consola. Lo que sale a
+Google lo escribe el sistema (``reservations.calendar_sync``), y a Reservas se llega
+por el mismo paso automático de cada despliegue. Ninguna versión nueva puede nombrarla
+(:func:`agent_may_use`). Una que ya la nombra sigue funcionando hasta que su cliente
+pueda reservar y pase (``activations.tool_policy``): dejarla sin Google y sin Reservas
+sería dejarla sin agenda.
+
 Aquí vive solo lo puro —el mapa y la reescritura de textos—, sin base ni
 modelos, para que lo compartan el validador, el paso a Reservas y las pruebas.
 """
@@ -26,15 +35,50 @@ RETIRED_TOOLS: Final[Mapping[str, str]] = MappingProxyType(
         "booking.modify_appointment": "reservas.reschedule",
         "booking.cancel_appointment": "reservas.cancel",
         "booking.get_appointments": "reservas.list_mine",
+        "GOOGLECALENDAR_FIND_FREE_SLOTS": "reservas.find_slots",
+        "GOOGLECALENDAR_CREATE_EVENT": "reservas.create",
+        "GOOGLECALENDAR_QUICK_ADD": "reservas.create",
+        "GOOGLECALENDAR_UPDATE_EVENT": "reservas.reschedule",
+        "GOOGLECALENDAR_PATCH_EVENT": "reservas.reschedule",
+        "GOOGLECALENDAR_DELETE_EVENT": "reservas.cancel",
+        "GOOGLECALENDAR_FIND_EVENT": "reservas.list_mine",
+        "GOOGLECALENDAR_EVENTS_LIST": "reservas.list_mine",
+        "GOOGLECALENDAR_LIST_EVENTS": "reservas.list_mine",
+        "GOOGLECALENDAR_GET_EVENT": "reservas.list_mine",
     }
 )
-RETIRED_PREFIX: Final = "booking."
+#: Las herramientas de Google Calendar: ninguna es de un agente, tenga o no sustituta.
+SYSTEM_ONLY_PREFIX: Final = "GOOGLECALENDAR_"
+#: Lo que el paso a Reservas quita de una versión aunque no tenga sustituta.
+RETIRED_PREFIX: Final = ("booking.", SYSTEM_ONLY_PREFIX)
 
 #: Un nombre de herramienta retirada dentro de un texto, entero (no
-#: ``policies.booking.x``), o la familia escrita como ``booking.*``.
+#: ``policies.booking.x``), la familia escrita como ``booking.*``, o cualquiera de Google
+#: Calendar, tenga o no sustituta: un texto no puede prometer lo que ya no se tiene.
 _MENTION: Final = re.compile(
-    r"(?<![\w.])(" + "|".join(re.escape(n) for n in RETIRED_TOOLS) + r"|booking\.\*)(?![\w])"
+    r"(?<![\w.])("
+    + "|".join(re.escape(n) for n in RETIRED_TOOLS)
+    + r"|booking\.\*|"
+    + re.escape(SYSTEM_ONLY_PREFIX)
+    + r"[A-Z0-9_]+)(?![\w])"
 )
+
+
+def agent_may_use(name: str) -> bool:
+    """Lo que una versión nueva puede nombrar. Google Calendar es del sistema (R11.3). Lo que
+    hace el turno con una versión de antes lo decide ``activations.tool_policy``."""
+    return not name.startswith(SYSTEM_ONLY_PREFIX)
+
+
+def names_google(node: Any) -> bool:
+    """¿Nombra Google Calendar, en una lista, en un texto o en un documento?"""
+    if isinstance(node, str):
+        return SYSTEM_ONLY_PREFIX in node
+    if isinstance(node, Mapping):
+        return any(names_google(v) for v in node.values())
+    if isinstance(node, list):
+        return any(names_google(v) for v in node)
+    return False
 
 
 def replacement(name: str) -> str | None:
@@ -55,7 +99,7 @@ def rewrite_text(text: str) -> str:
 
     def sub(match: re.Match[str]) -> str:
         name = match.group(1)
-        return "reservas.*" if name == "booking.*" else RETIRED_TOOLS[name]
+        return "reservas.*" if name == "booking.*" else RETIRED_TOOLS.get(name, "Reservas")
 
     return _MENTION.sub(sub, text)
 
@@ -97,8 +141,11 @@ def doc_names_retired(node: Any) -> bool:
 __all__ = [
     "RETIRED_PREFIX",
     "RETIRED_TOOLS",
+    "SYSTEM_ONLY_PREFIX",
+    "agent_may_use",
     "doc_names_retired",
     "mentions_retired",
+    "names_google",
     "names_retired",
     "replacement",
     "rewrite_doc",

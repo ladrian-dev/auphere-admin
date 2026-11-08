@@ -9,9 +9,16 @@ anything by hand:
    one passes in **its own transaction, under its RLS** (``admin.as_tenant``):
    nothing of a client is read or written while another one passes.
 2. A client passes when some active agent's active version or draft names
-   ``booking.*`` (``passing.legacy_client``); otherwise it is skipped, so the
-   next deploy finds nobody.
-3. Without Reservas, it is turned on first (:func:`turn_on_reservas`): capacity
+   ``booking.*`` or a Google Calendar tool or, where Reservas is on, books through a
+   connector (``passing.legacy_client``; spec 043, requirement 11); otherwise it is
+   skipped, so the next deploy finds nobody.
+3. **What books in Google only passes if the client can already book** (spec 043, R11.4). If it
+   cannot, that agent goes on as it was, the log says why
+   (``reservations.auto_pass_not_ready``), the partner is told and the operator panel shows it.
+   The next deploy looks again. Publishing would leave a business that books with Google
+   answering that there is no agenda. It is decided agent by agent: another one with
+   ``booking.*`` passes all the same, and only then is the module switched on.
+   Without Reservas, for ``booking.*``, it is turned on first (:func:`turn_on_reservas`): capacity
    of a restaurant when the business is a restaurant — the saved sector (spec
    047, requirement 57), or else the template its agent comes from — and
    appointments per person otherwise, with the starting values of the mode.
@@ -68,11 +75,14 @@ log = structlog.get_logger(__name__)
 ACTOR: Final = "platform:reservas-pass"
 #: Why it is published without the gate. The console shows it in the history.
 REASON: Final = (
-    "Cambio de la plataforma (spec 048): booking.* se retira y reservas.* la "
-    "sustituye una a una. Se publica sin la puerta de pruebas."
+    "Cambio de la plataforma (specs 048 y 043): booking.* y reservar en Google Calendar "
+    "o en un conector se retiran, y reservas.* los sustituye. Se publica sin la puerta "
+    "de pruebas."
 )
 #: The note of the version it publishes.
 NOTE: Final = "Paso automático a Reservas"
+#: The partner's notice when a client names Google and cannot pass yet, or its pass failed.
+NOT_READY_NOTICE: Final = "reservas.pass_not_ready"
 #: The sector key (and template group) of a restaurant.
 RESTAURANT: Final = "restaurante"
 
@@ -206,30 +216,51 @@ async def turn_on_reservas(
 # ── one client ──────────────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class NotReady:
+    """An agent names Google and the client cannot book yet: that agent stays as it is. What
+    the others had to pass, if anything, is in ``report``."""
+
+    tenant_id: uuid.UUID
+    reasons: list[str]
+    report: passing.PassReport | None = None
+
+
 async def pass_tenant(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     *,
     partner_id: uuid.UUID | None,
     now: datetime,
-) -> passing.PassReport | None:
+) -> passing.PassReport | NotReady | None:
     """One client, under its RLS, in the caller's transaction. ``None`` when
-    no agent of it names ``booking.*``."""
-    if await passing.legacy_client(session, tenant_id, now=now) is None:
+    no agent of it names ``booking.*``, Google Calendar or, with Reservas on, a connector."""
+    legacy = await passing.legacy_client(session, tenant_id, now=now)
+    if legacy is None:
         return None
+    reasons = await passing.not_ready(session, tenant_id, now=now) if legacy.google else []
+    if reasons and not legacy.others:
+        return NotReady(tenant_id, reasons)
+    # Agent by agent: one that waits for its client does not hold back one with ``booking.*``,
+    # which is retired anyway (spec 048). Turning the module on may leave the client ready.
     activated = await turn_on_reservas(session, tenant_id, partner_id=partner_id, now=now)
-    return await passing.pass_to_reservas(
+    if reasons:
+        reasons = await passing.not_ready(session, tenant_id, now=now)
+    report = await passing.pass_to_reservas(
         session,
         tenant_id,
         actor=ACTOR,
         now=now,
-        automatic=passing.Automatic(reason=REASON, note=NOTE, activated=activated),
+        automatic=passing.Automatic(
+            reason=REASON, note=NOTE, activated=activated, keep_google=bool(reasons)
+        ),
     )
+    return NotReady(tenant_id, reasons, report) if reasons else report
 
 
 async def pass_one(
     factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, *, now: datetime
-) -> passing.PassReport | None:
+) -> passing.PassReport | NotReady | None:
     """One client in its own transaction. Its partner is read as the platform
     (``partner_tenants`` is scoped by partner: the client's RLS would hide it);
     everything else under the client's RLS. If anything fails, nothing of it
@@ -260,6 +291,7 @@ class Summary:
 
     passed: list[uuid.UUID] = field(default_factory=list)
     failed: list[uuid.UUID] = field(default_factory=list)
+    not_ready: list[uuid.UUID] = field(default_factory=list)
     activated: int = 0
     published: int = 0
     drafts: int = 0
@@ -281,6 +313,7 @@ class Summary:
             "passed": len(self.passed),
             "failed": len(self.failed),
             "failed_tenants": [str(t) for t in self.failed],
+            "not_ready": len(self.not_ready),
             "activated": self.activated,
             "published": self.published,
             "drafts": self.drafts,
@@ -296,6 +329,47 @@ def describe_error(exc: BaseException) -> str:
     text = error_text(exc)
     inner = exc.__cause__ or exc.__context__
     return f"{text} <- {error_text(inner)}" if inner is not None else text
+
+
+async def _tell_partner(tenant_id: uuid.UUID, reasons: list[str]) -> None:
+    """El partner no tiene panel de Reservas: se entera por sus avisos. ``announce`` no lanza,
+    y el aviso se repite solo si cambia lo que falta."""
+    from nexus_api.services.channel_config import announce
+
+    await announce(
+        tenant_id=tenant_id,
+        kind=NOT_READY_NOTICE,
+        severity="warning",
+        data={"reasons": reasons},
+        dedupe_key=f"{NOT_READY_NOTICE}:{tenant_id}:{','.join(reasons)}",
+    )
+
+
+async def _note_failure(
+    factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, exc: Exception
+) -> None:
+    """Lo que se deshizo no deja rastro, así que el fallo se apunta aparte: sin el texto del
+    error, que puede traer datos de alguien. Esto tampoco para el despliegue."""
+    try:
+        async with factory() as session, session.begin():
+            await declare_tenant(session, tenant_id)
+            async with reservations_admin.as_tenant(session, tenant_id):
+                session.add(
+                    AuditLog(
+                        tenant_id=tenant_id,
+                        actor=ACTOR,
+                        action="reservations.pass_failed",
+                        target=f"tenant:{tenant_id}",
+                        after_json={"error_type": type(exc).__name__},
+                    )
+                )
+    except Exception as note_exc:
+        log.error(
+            "reservations.auto_pass_note_failed",
+            tenant_id=str(tenant_id),
+            error_type=type(note_exc).__name__,
+        )
+    await _tell_partner(tenant_id, ["pass_failed"])
 
 
 async def run(factory: async_sessionmaker[AsyncSession], *, now: datetime | None = None) -> Summary:
@@ -318,9 +392,21 @@ async def run(factory: async_sessionmaker[AsyncSession], *, now: datetime | None
                 tenant_id=str(tenant_id),
                 error=describe_error(exc),
             )
+            await _note_failure(factory, tenant_id, exc)
             continue
         if report is None:
             continue
+        if isinstance(report, NotReady):
+            summary.not_ready.append(tenant_id)
+            log.warning(
+                "reservations.auto_pass_not_ready",
+                tenant_id=str(tenant_id),
+                reasons=report.reasons,
+            )
+            await _tell_partner(tenant_id, report.reasons)
+            if report.report is None:
+                continue
+            report = report.report
         summary.add(report)
         log.info(
             "reservations.auto_passed",
@@ -341,6 +427,7 @@ __all__ = [
     "REASON",
     "AutoPassRefused",
     "Mode",
+    "NotReady",
     "Summary",
     "choose_mode",
     "describe_error",

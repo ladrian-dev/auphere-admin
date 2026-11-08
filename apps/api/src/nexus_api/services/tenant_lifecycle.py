@@ -402,6 +402,31 @@ async def hard_delete_tenant(session: AsyncSession, tenant: Tenant, *, actor: st
     slug, name = tenant.slug, tenant.name
     log.warning("tenant.delete.cascade", tenant_id=str(tenant_id), slug=slug, actor=actor)
 
+    # Spec 043, R12.8: la cuenta de Google de cada profesional es suya. Al borrar el cliente se
+    # va la fila que sabe qué conexión quitar, así que se revoca después de confirmar.
+    connections = [
+        str(c)
+        for c in (
+            await session.execute(
+                sa.text(
+                    "SELECT connection_id FROM reservation_staff_calendars "
+                    "WHERE tenant_id = :t AND connection_id IS NOT NULL "
+                    "UNION ALL SELECT previous_connection_id FROM reservation_staff_calendars "
+                    "WHERE tenant_id = :t AND previous_connection_id IS NOT NULL"
+                ),
+                {"t": str(tenant_id)},
+            )
+        ).scalars()
+    ]
+    if connections:
+        from nexus_api.services.business.writes import after_commit
+        from nexus_api.services.reservations.calendar_sync import let_go_of
+
+        async def _let_go() -> None:
+            await let_go_of(tenant_id, connections)
+
+        after_commit(session, _let_go)
+
     # Spec 047 (43.13): la bolsa del cliente vuelve a la cuenta antes de borrar;
     # su libro se iría con el cliente.
     returned = 0

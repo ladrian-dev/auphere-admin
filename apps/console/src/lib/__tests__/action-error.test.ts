@@ -40,4 +40,9 @@ describe("actionErrorText · solo lo que tenemos", () => {
     expect(actionErrorText({ ok: false, status: 422, message: "gone", code: "seed_template_retired" }, t)).toBe("<common.error.seed_template_retired>");
     expect(actionErrorText({ ok: false, status: 503, message: "facts", code: "facts_unavailable" }, t)).toBe("<common.error.facts_unavailable>");
   });
+
+  it("dice dónde se conecta lo que no se conecta aquí, sin enseñar el código", () => {
+    const text = actionErrorText({ ok: false, status: 409, message: "x", code: "connect_from_reservas" }, ((key: string) => key) as never);
+    expect(text).toBe("common.error.connect_from_reservas");
+  });
 });

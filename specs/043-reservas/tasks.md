@@ -107,3 +107,75 @@ Test primero (§VII). Rutas desde la raíz del repo. `[P]` = paralelizable.
   _Requisitos: 8.3, CE-004_
 - [x] T061 `./scripts/verify.sh` entero en verde; `/cso`.
   _Requisitos: todos_
+
+## Fase 11 — Enmienda del 2026-11-04: Reservas manda
+
+Test primero: cada tarea de pruebas se ve en rojo antes de la siguiente. Solo las pruebas de lo tocado más `./scripts/verify.sh lint`.
+
+- [x] T070 Pruebas en rojo (`tests/integration/reservas/test_reservas_manda.py`, `tests/unit/test_agent_spec_validator.py`): conectar Google no da herramientas; el turno las bloquea; `tool_retired`; el paso automático las cambia y activa Reservas; encender Reservas quita lo de Calendly del borrador; con Reservas, Calendly no añade; sin él, sí; Google no se ofrece a un agente; no cuenta como reservar.
+  _Requisitos: 11.1–11.9_
+- [x] T071 `agent_spec/retired.py`, `connectors/booking_skills.py`, `reservations/passing.py`, `reservations/admin.py`, `reservations/auto_pass.py`, `activations.py`, `api/console/agent_integrations.py`, `api/console/tools.py`, `capability_names.py`; texto del panel de operador.
+  _Requisitos: 11.1–11.9_
+- [x] T072 Migración `0228_staff_calendar_connections.py` (renumerada sobre la 0227 de la spec 056 al llevarla a develop el 2026-11-08): conexión por profesional en `reservation_staff_calendars`, `calendar_id` nulo, índice único parcial `(tenant_id, calendar_id)`; las filas que había pasan a permiso perdido. Reversible.
+  _Requisitos: 12.2–12.4, Entidades clave_
+- [x] T073 Pruebas en rojo (`tests/integration/reservas/test_calendario_por_profesional.py`): identidad propia por profesional; cada estado; calendario principal; `calendar_in_use`; `unknown_calendar`; enlace caducado; permiso perdido solo de uno; desconectar en dos tiempos; mover entre profesionales; proveedor caído; el SDK fuera del bucle.
+  _Requisitos: 12.1–12.12_
+- [x] T074 `services/reservations/calendar_sync.py`, `calendar.py`, cron, `connectors/composio_client.py`, rutas `POST …/calendar/connect`, `POST …/calendar/refresh`, `GET …/calendars` y `PUT …/calendar`; `contracts/lite-api.md`, `data-model.md`. Se ajusta `test_la_agenda_llega_a_google.py` a la conexión por profesional.
+  _Requisitos: 12.1–12.12_
+- [x] T075 Pruebas en rojo y arreglo de lo que vuelve de Google: «Ocupado» borrado o movido a mano, evento rechazado, evento recién escrito.
+  _Requisitos: 13.1–13.5_
+- [x] T076 Pruebas en rojo (`tests/integration/reservas/test_datos_que_dejan_reservar.py`) y arreglo: servicio sin nadie, duración que no cabe, semana vacía, lista de profesionales, archivado, festivo; avisos en `/services` y `/staff`.
+  _Requisitos: 14.1–14.6_
+- [x] T077 Prueba de punta a punta (`tests/integration/reservas/test_reservas_de_punta_a_punta.py`): el agente reserva, mueve y cancela por sus herramientas; se ve en la API; lleva recordatorio; llega al calendario del profesional correcto y solo a ese; dos a la vez no se pisan.
+  _Requisitos: 4.2, 5.2, 6.2, 7.1, 11, 12.6, CE-001_
+- [x] T078 Aislamiento: rutas nuevas en `tests/isolation/test_reservas_client_vs_client.py`; `tests/isolation/test_45_tools_only_from_activations.py` con Google bloqueado.
+  _Requisitos: 12.11, 11.2, CE-002_
+- [x] T079 Consola: `settings/staff-calendars.tsx` por profesional (una acción principal y el resto en menú; los cinco estados; WCAG 2.2 AA), `lib/backend/reservas.ts`, `actions.ts`, textos, avisos de datos; vitest. Vuelta desde Google en `/reservas`.
+  _Requisitos: 12.1, 12.3, 14.1–14.3, 8.3_
+- [x] T080 Prueba en navegador como cliente: local con el doble del proveedor, hecha. **Staging y Google real, pendientes**: el cambio no está desplegado. Gates de UI: axe en vitest, 375 px y escritorio, claro y oscuro, sin hex en línea.
+  _Requisitos: 8.3, 12.1_
+- [x] T081 `docs/reservas.md`, `docs/console.md` si toca; Alembic con un solo head sobre `develop`; `./scripts/verify.sh lint`; `/cso` sobre el cambio. Informe y mensajes de commit.
+  _Requisitos: todos_
+
+## Fase 12 — Revisión independiente del 2026-11-05
+
+Una revisión encontró 24 puntos que las pruebas no cubrían. Test primero; solo las pruebas de lo tocado más `./scripts/verify.sh lint`.
+
+- [x] T082 Pruebas en rojo y arreglo del paso automático: no publica si el cliente no puede reservar (`passing.not_ready`, `auto_pass_not_ready`, aviso `reservas.pass_not_ready`, `reservas_pending_pass` en el panel de operador); el fallo deja el agente funcionando y queda en la auditoría (`reservations.pass_failed`); el turno bloquea Google solo a quien ya pasó (`activations.tool_policy`); Calendly queda en borrador.
+  _Requisitos: 11.2, 11.4, 11.5_
+- [x] T083 Pruebas en rojo y arreglo de lo retirado: todo `GOOGLECALENDAR_*` con su sustituta, reescrito también en el texto, los pasos y `connection_requests`; validador, borrador del constructor y `PUT` de herramientas con `agent_may_use`.
+  _Requisitos: 11.3, 11.4_
+- [x] T084 Pruebas en rojo y arreglo de la pasada: transacción propia con `lock_timeout` para lo que escribe en `reservations`, `wait_for` por cliente en el cron y en `refresh`.
+  _Requisitos: 12.18_
+- [x] T085 Pruebas en rojo y arreglo de conectar otra cuenta: conexión anterior hasta que la nueva funcione (`previous_connection_id`), citas que siguen a la cuenta nueva, vuelta atrás si falla, `needs_reauth` si autoriza sin permiso.
+  _Requisitos: 12.9, 12.14_
+- [x] T086 Pruebas en rojo y arreglo de reservas movidas con un dueño roto y de la marca: se suelta la referencia, se adopta o se borra lo marcado, una marca ajena bloquea.
+  _Requisitos: 12.18, 13.6_
+- [x] T087 Pruebas en rojo y arreglo de lo que dice Google: todo el día, `REVOKED`, textos de permiso y de «no encontrado», respuesta sin id, segundos, nombres largos, sin reintentos del SDK.
+  _Requisitos: 12.12, 13.4_
+- [x] T088 Pruebas en rojo y arreglo del ocupado del Google del negocio (`source = 'business'`, `business_busy`), también en `tests/isolation/test_reservas_client_vs_client.py`.
+  _Requisitos: 12.13_
+- [x] T089 Pruebas en rojo y arreglo de API y datos: servicio con persona archivada, salir de Servicios, módulo apagado, página de vuelta, auditoría, migración con datos y `downgrade`, `row_security = off`.
+  _Requisitos: 12.15–12.17, 14.5_
+- [x] T090 Consola: tarjeta del conector solo con «Quitar», reintento al cargar el equipo, etiqueta visible del enlace, el motivo real al elegir calendario, texto de `calendar_disconnecting`, aviso `reservas.pass_not_ready`. Panel de operador: quién sigue en Google y qué falta.
+  _Requisitos: 11.4, 11.8, 12.1, 12.13_
+- [x] T091 Contrato de la app regenerado (`export_openapi.py`, `pnpm --dir apps/mobile gen`), sin tocar la app. `docs/reservas.md`, contratos y `RUNBOOK.md` al día.
+  _Requisitos: todos_
+
+## Fase 13 — Segunda revisión del 2026-11-05
+
+La suite de consola y una revisión sobre las dos ramas juntas. Prueba primero: cada una, vista en rojo.
+
+- [x] T092 `words.test.ts`: fuera los punto y coma de `connect.notHere` y `stillFailing`. Sin prometer minutos en la página de vuelta ni en `firstSync` y `back.pending`.
+  _Requisitos: 8.3, 12.17_
+- [x] T093 Un agente que espera se puede editar y publicar con lo que ya nombra (`Context.held_tools`, `load_context(agent_id=…)` en cada escritura), y no añadir nada nuevo.
+  _Requisitos: 11.3_
+- [x] T094 Una conexión de Google de antes se puede renovar (`has_live_install`, la tarjeta del conector), y lo leído del negocio sigue bloqueando si falla la lectura o la conexión. `has_work` no olvida lo que quedó tras quitarla.
+  _Requisitos: 11.8, 12.13_
+- [x] T095 Reserva movida con un fallo que dura: se suelta a la hora (`REMOVE_WAITS_AT_MOST`). Cuenta nueva rechazada con conexión anterior: `new_account_refused`. Tope de una hora también sin respuesta de `account_state`.
+  _Requisitos: 12.9, 12.18_
+- [x] T096 La ficha del negocio no acepta ni enseña a una persona archivada, y la migración limpia las listas de antes.
+  _Requisitos: 14.5_
+- [x] T097 Un borrador de Calendly descartado no vuelve. El paso decide agente por agente.
+  _Requisitos: 11.4, 11.5_
+

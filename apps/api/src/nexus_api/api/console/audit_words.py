@@ -29,6 +29,7 @@ PLACEHOLDERS = frozenset(
     {
         "actor",
         "client",
+        "staff",
         "v",
         "status",
         "email",
@@ -337,6 +338,7 @@ def values(
     return Safe(
         actor=actor,
         client=client_name or _client_ref(after.get("client_ref"), names_by_ref, lang),
+        staff=after.get("staff") or _say("someone", lang),
         v=after.get("version", before.get("version", "?")),
         status=word(STATUS, after.get("status"), lang),
         email=after.get("email", before.get("email")) or _say("someone", lang),

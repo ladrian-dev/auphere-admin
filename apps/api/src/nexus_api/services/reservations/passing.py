@@ -34,10 +34,13 @@ Two callers ask for it:
 
 from __future__ import annotations
 
+import re
 import unicodedata
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
+from types import MappingProxyType
 from typing import Any, Final
 
 import sqlalchemy as sa
@@ -63,9 +66,24 @@ from nexus_api.services.agent_spec.retired import (
     RETIRED_TOOLS,
     doc_names_retired,
     mentions_retired,
+    names_google,
     rewrite_doc,
     rewrite_text,
 )
+
+#: Spec 043, R11.5: lo que reserva en un conector, y lo que hace lo mismo en Reservas.
+#: Con Reservas encendido una cita nace ahí: dos agendas son una doble reserva.
+CONNECTOR_TOOLS: Final[Mapping[str, str | None]] = MappingProxyType(
+    {
+        "CALENDLY_WHO_AM_I": None,
+        "CALENDLY_LIST_EVENT_TYPES": "reservas.services",
+        "CALENDLY_LIST_EVENT_TYPE_AVAILABLE_TIMES": "reservas.find_slots",
+        "CALENDLY_POST_INVITEE": "reservas.create",
+        "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK": "reservas.create",
+    }
+)
+#: Las integraciones de una habilidad que dejan de hacer falta al reservar en Reservas.
+_CALENDAR_INTEGRATIONS: Final = frozenset({"googlecalendar", "calendly"})
 
 #: Lo que el agente gana con Reservas (contrato ``agent-tools.md``).
 RESERVAS_TOOLS: tuple[str, ...] = (
@@ -105,8 +123,8 @@ _FUTURE_STATUSES: Final = (AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED
 
 
 def version_names_booking(cfg: AgentConfig | None) -> bool:
-    """¿La versión nombra ``booking.*`` en sus herramientas, su AgentSpec o su
-    texto?"""
+    """¿La versión nombra ``booking.*`` o Google Calendar en sus herramientas, su
+    AgentSpec o su texto?"""
     if cfg is None:
         return False
     return (
@@ -114,6 +132,44 @@ def version_names_booking(cfg: AgentConfig | None) -> bool:
         or doc_names_retired(cfg.spec or {})
         or mentions_retired(cfg.system_prompt_rendered)
     )
+
+
+async def _offer_was_turned_down(
+    session: AsyncSession, agent_id: uuid.UUID, active: AgentConfig
+) -> bool:
+    """¿Reserva en un conector y alguien descartó su borrador después de que esta versión se
+    publicara? Entonces ya se le ofreció. Si publican otra, se le ofrece una vez más."""
+    if version_names_booking(active):
+        return False  # lo retirado pasa de todas formas
+    found = await session.scalar(
+        sa.select(AuditLog.id)
+        .where(
+            AuditLog.action == "agent_config.discard",
+            AuditLog.after_json["agent"].astext == str(agent_id),
+            AuditLog.created_at >= (active.published_at or active.created_at),
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
+def version_names_google(cfg: AgentConfig | None) -> bool:
+    """¿La versión nombra Google Calendar en algún sitio?"""
+    if cfg is None:
+        return False
+    return names_google(list(cfg.tools or [])) or names_google(
+        [cfg.system_prompt_rendered or "", cfg.spec or {}]
+    )
+
+
+def version_books_outside(cfg: AgentConfig | None) -> bool:
+    """¿La versión reserva fuera de Reservas? Lo retirado o un conector que reserva: lo
+    que no puede quedar donde Reservas está encendido (spec 043, R11.5)."""
+    from nexus_api.services.connectors.booking_skills import books_elsewhere
+
+    if cfg is None:
+        return False
+    return version_names_booking(cfg) or books_elsewhere(cfg.tools)
 
 
 @dataclass(frozen=True)
@@ -132,19 +188,77 @@ OFF_REASON: Final = "reservas_off"
 OFF_NOTE: Final = "Reservas desactivado: esta versión ya no tiene sus herramientas."
 
 
+def _swapped(tools: list[str]) -> list[str]:
+    """``tools`` con lo retirado y lo que reservaba en un conector cambiado por su
+    sustituta, y sin lo que no tiene ninguna."""
+    out: list[str] = []
+    for tool in tools:
+        if tool in CONNECTOR_TOOLS:
+            instead = CONNECTOR_TOOLS[tool]
+            if instead is not None:
+                out.append(instead)
+        elif tool in RETIRED_TOOLS:
+            out.append(RETIRED_TOOLS[tool])
+        elif not tool.startswith(LEGACY_PREFIX):
+            out.append(tool)
+    return list(dict.fromkeys(out))
+
+
 def _with_reservas(tools: list[str], *, everything: bool) -> list[str]:
-    """``tools`` con ``booking.*`` cambiada por su sustituta. ``everything`` (activar
+    """``tools`` con lo retirado cambiado por su sustituta. ``everything`` (activar
     Reservas desde Acceso): y las nueve ``reservas.*``. Si no (el paso): solo el mapa
     fijo, más :data:`MAP_EXTRA` si alguna cambió."""
-    kept = [
-        RETIRED_TOOLS.get(t, t)
-        for t in tools
-        if not (t.startswith(LEGACY_PREFIX) and t not in RETIRED_TOOLS)
-    ]
+    kept = _swapped(tools)
     if everything:
         return list(dict.fromkeys([*kept, *RESERVAS_TOOLS]))
-    mapped = any(t in RETIRED_TOOLS for t in tools)
+    mapped = any(t in RETIRED_TOOLS or t in CONNECTOR_TOOLS for t in tools)
     return list(dict.fromkeys([*kept, *(MAP_EXTRA if mapped else ())]))
+
+
+_CONNECTOR_MENTION: Final = re.compile(
+    r"(?<![\w.])(" + "|".join(re.escape(n) for n in CONNECTOR_TOOLS) + r")(?![\w])"
+)
+
+
+def _rewritten_text(text: str) -> str:
+    def sub(match: re.Match[str]) -> str:
+        return CONNECTOR_TOOLS[match.group(1)] or "Reservas"
+
+    return _CONNECTOR_MENTION.sub(sub, rewrite_text(text))
+
+
+def _scrubbed(node: Any) -> Any:
+    """Cada texto del documento sin nombrar lo que reservaba en un conector."""
+    if isinstance(node, str):
+        return _rewritten_text(node)
+    if isinstance(node, Mapping):
+        return {key: _scrubbed(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_scrubbed(value) for value in node]
+    return node
+
+
+def _doc_without_outside(doc: dict[str, Any]) -> dict[str, Any]:
+    """El AgentSpec sin lo que reservaba fuera: en los textos, en cada lista de herramientas,
+    en la integración que pedía una habilidad y en lo que pedía conectar."""
+    tools_before = list(doc.get("tools") or [])
+    procedures_before = [list(p.get("tools") or []) for p in doc.get("procedures") or []]
+    out: dict[str, Any] = _scrubbed(rewrite_doc(doc))
+    if doc.get("tools") is not None:
+        out["tools"] = _swapped(tools_before)
+    for proc, tools in zip(out.get("procedures") or [], procedures_before, strict=True):
+        if tools:
+            proc["tools"] = _swapped(tools)
+    for skill in out.get("skills") or []:
+        if skill.get("integration") in _CALENDAR_INTEGRATIONS:
+            skill["integration"] = "reservas"
+    if out.get("connection_requests"):
+        out["connection_requests"] = [
+            r
+            for r in out["connection_requests"]
+            if r.get("integration") not in _CALENDAR_INTEGRATIONS
+        ]
+    return out
 
 
 def _valid(spec: dict[str, Any]) -> bool:
@@ -170,15 +284,15 @@ def _rewritten(cfg: AgentConfig, *, enable: bool, everything: bool = False) -> _
         new_tools = _with_reservas(tools, everything=everything)
         if spec is not None:
             named = list(spec.get("tools") or [])
-            spec = rewrite_doc(spec)
-            mapped = list(spec.get("tools") or [])
+            spec = _doc_without_outside(spec)
+            mapped = _swapped(named)
             extra = _with_reservas(named, everything=everything)
             spec["tools"] = list(dict.fromkeys([*mapped, *extra]))
             if not _valid(spec):
                 # Al borde de su máximo de herramientas: solo el cambio uno a
                 # uno, sin las que no tenía.
                 spec["tools"] = mapped
-        return _Fields(new_tools, spec, rewrite_text(prompt))
+        return _Fields(new_tools, spec, _rewritten_text(prompt))
     gone = set(RESERVAS_TOOLS)
     if spec is not None:
         spec = dict(spec)
@@ -226,6 +340,7 @@ async def prepare_agent_versions(
     actor: str,
     only_booking: bool = False,
     drafts_only: bool = False,
+    keep_google: bool = False,
 ) -> list[PreparedAgent]:
     """El borrador de cada agente activo, con Reservas (``enable``) o sin ella,
     sin promover. ``only_booking``: solo los que nombran ``booking.*`` (el paso
@@ -233,7 +348,10 @@ async def prepare_agent_versions(
     dice lo que tiene que decir no se toca: repetir no crea nada.
 
     ``drafts_only``: only the drafts the agents already have; an agent without
-    one gets none (the automatic pass publishes its active version instead)."""
+    one gets none (the automatic pass publishes its active version instead).
+
+    ``keep_google``: an agent that names Google Calendar stays as it is, because its client
+    cannot book yet (spec 043, R11.4)."""
     from nexus_api.services.agent_config_service import AgentConfigService
     from nexus_api.services.connectors.booking_skills import books_elsewhere
     from nexus_api.services.testing.billing import return_the_pass
@@ -250,15 +368,20 @@ async def prepare_agent_versions(
     out: list[PreparedAgent] = []
     for agent_id, name in agents:
         draft = await svc.configs.get_draft(agent_id=agent_id)
-        if drafts_only and draft is None:
-            continue
         base = draft if draft is not None else await svc.configs.draft_base(agent_id=agent_id)
         if base is None:
             continue
-        if only_booking and not version_names_booking(base):
+        # Lo que reserva en un conector no se publica sin la puerta (R11.5): su cambio va en un
+        # borrador, aunque no lo tuviera.
+        if drafts_only and draft is None and not books_elsewhere(base.tools):
             continue
-        # Dos agendas, no: el panel dice cuáles se quedaron fuera (``admin_view``).
-        if enable and not only_booking and books_elsewhere(base.tools):
+        if only_booking and not version_books_outside(base):
+            continue
+        # Quien espera a que su cliente pueda reservar se queda como está (R11.4).
+        if keep_google and version_names_google(base):
+            continue
+        # Lo que alguien descartó no vuelve en cada despliegue, con sus pruebas desactualizadas.
+        if only_booking and draft is None and await _offer_was_turned_down(session, agent_id, base):
             continue
         fields = _rewritten(base, enable=enable, everything=not only_booking)
         if _same(base, fields):
@@ -301,7 +424,7 @@ class PublishedAgent:
 
 
 async def publish_agent_versions(
-    session: AsyncSession, *, actor: str, reason: str, note: str
+    session: AsyncSession, *, actor: str, reason: str, note: str, keep_google: bool = False
 ) -> list[PublishedAgent]:
     """Spec 048 (requirement 3.3; plan, decision 12): for each active agent
     whose ACTIVE version names ``booking.*``, publish at once a version equal
@@ -324,7 +447,10 @@ async def publish_agent_versions(
     out: list[PublishedAgent] = []
     for agent_id, name in agents:
         active = await svc.configs.get_active(agent_id=agent_id)
+        # Only what is retired: a connector is not, so it goes through the gate (043, R11.5).
         if active is None or not version_names_booking(active):
+            continue
+        if keep_google and version_names_google(active):
             continue
         # R3.3: the fixed map, never more (T217; plan, decision 26).
         fields = _rewritten(active, enable=True)
@@ -662,6 +788,9 @@ class Automatic:
     reason: str
     note: str
     activated: dict[str, Any] | None = None
+    #: Los agentes que nombran Google Calendar se quedan como están: su cliente aún no puede
+    #: reservar. Los demás pasan igual (spec 043, R11.4).
+    keep_google: bool = False
 
 
 async def pass_to_reservas(
@@ -688,7 +817,11 @@ async def pass_to_reservas(
     published: list[PublishedAgent] = []
     if automatic is not None:
         published = await publish_agent_versions(
-            session, actor=actor, reason=automatic.reason, note=automatic.note
+            session,
+            actor=actor,
+            reason=automatic.reason,
+            note=automatic.note,
+            keep_google=automatic.keep_google,
         )
     agents = await prepare_agent_versions(
         session,
@@ -696,6 +829,7 @@ async def pass_to_reservas(
         actor=actor,
         only_booking=not every_agent,
         drafts_only=automatic is not None,
+        keep_google=automatic.keep_google if automatic is not None else False,
     )
     imports = await import_appointments(session, tenant_id, now=now)
     activated = automatic.activated if automatic is not None else None
@@ -735,6 +869,88 @@ class LegacyClient:
     agents: int
     future_appointments: int
     reservas_enabled: bool
+    #: Alguna versión nombra Google Calendar: esa solo pasa si el cliente ya puede reservar.
+    google: bool = False
+    #: Los agentes con algo que pasar que no nombran Google: no esperan a nadie (spec 048).
+    others: int = 0
+
+
+#: Por qué un cliente aún no puede reservar (spec 043, R11.4). El panel de operador y el aviso al
+#: partner los traducen.
+NOT_READY_REASONS: Final = (
+    "reservas_off",
+    "hours_missing",
+    "no_staff",
+    "no_services",
+    "no_bookable_service",
+    "no_capacity",
+)
+
+
+async def not_ready(session: AsyncSession, tenant_id: uuid.UUID, *, now: datetime) -> list[str]:
+    """Lo que le falta a este cliente para poder tomar una cita. Vacío: puede. Bajo su RLS."""
+    from nexus_api.services.reservations.core import (
+        active_staff,
+        load_ctx,
+        service_warnings,
+    )
+
+    if not await reservas_enabled(session, tenant_id):
+        return ["reservas_off"]
+    ctx = await load_ctx(session, tenant_id)
+    if ctx is None:
+        return ["reservas_off"]
+    reasons: list[str] = []
+    if ctx.hours is None:
+        reasons.append("hours_missing")
+    if ctx.mode != "services":
+        settings = ctx.settings
+        if not settings.seats or not settings.schedule:
+            reasons.append("no_capacity")
+        return reasons
+    if not await active_staff(session):
+        reasons.append("no_staff")
+    services = list(
+        (
+            await session.execute(
+                sa.select(ReservationService).where(
+                    ReservationService.archived_at.is_(None),
+                    ReservationService.bookable.is_(True),
+                )
+            )
+        ).scalars()
+    )
+    if not services:
+        reasons.append("no_services")
+    elif "no_staff" not in reasons and "hours_missing" not in reasons:
+        today = ctx.today(now)
+        fits = [s for s in services if not await service_warnings(session, ctx, s, today=today)]
+        if not fits:
+            reasons.append("no_bookable_service")
+    return reasons
+
+
+async def pending_pass(
+    session: AsyncSession, tenant_id: uuid.UUID, *, now: datetime
+) -> dict[str, Any] | None:
+    """Quién sigue reservando en Google y qué le falta al cliente para pasar. ``None``: nadie.
+    Es lo que dice el panel de operador; se calcula, así que no puede quedarse viejo."""
+    from nexus_api.repositories import AgentConfigRepository
+
+    repo = AgentConfigRepository(session)
+    rows = (
+        await session.execute(
+            sa.select(Agent.id, Agent.name).where(Agent.status == AgentStatus.ACTIVE.value)
+        )
+    ).all()
+    agents: list[dict[str, Any]] = []
+    for agent_id, name in rows:
+        active = await repo.get_active(agent_id=agent_id)
+        if version_names_google(active):
+            agents.append({"agent_id": agent_id, "name": str(name)})
+    if not agents:
+        return None
+    return {"agents": agents, "reasons": await not_ready(session, tenant_id, now=now)}
 
 
 async def reservas_enabled(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
@@ -759,11 +975,23 @@ async def legacy_client(
         await session.execute(sa.select(Agent.id).where(Agent.status == AgentStatus.ACTIVE.value))
     ).scalars()
     agents = 0
+    others = 0
+    google = False
+    # Sin Reservas, un conector que reserva no se toca: Luis no decidió sobre esos
+    # negocios (spec 043, R11.7). Con Reservas, su borrador pasa; hasta publicarlo, el panel lo
+    # dice, y el despliegue siguiente no tiene nada más que hacer (R11.5).
+    enabled = await reservas_enabled(session, tenant_id)
     for agent_id in list(ids):
         active = await repo.get_active(agent_id=agent_id)
         draft = await repo.get_draft(agent_id=agent_id)
-        if version_names_booking(active) or version_names_booking(draft):
+        names_google = version_names_google(active) or version_names_google(draft)
+        google = google or names_google
+        outside = version_books_outside(draft if draft is not None else active)
+        if outside and draft is None and active is not None:
+            outside = not await _offer_was_turned_down(session, agent_id, active)
+        if version_names_booking(active) or version_names_booking(draft) or (enabled and outside):
             agents += 1
+            others += 0 if names_google else 1
     if not agents:
         return None
     future = await session.scalar(
@@ -775,11 +1003,14 @@ async def legacy_client(
         tenant_id=tenant_id,
         agents=agents,
         future_appointments=int(future or 0),
-        reservas_enabled=await reservas_enabled(session, tenant_id),
+        reservas_enabled=enabled,
+        google=google,
+        others=others,
     )
 
 
 __all__ = [
+    "CONNECTOR_TOOLS",
     "IMPORT_KEY",
     "LEGACY_PREFIX",
     "MAP_EXTRA",
@@ -795,9 +1026,12 @@ __all__ = [
     "imported_key",
     "legacy_client",
     "name_key",
+    "not_ready",
     "pass_to_reservas",
+    "pending_pass",
     "prepare_agent_versions",
     "publish_agent_versions",
     "reservas_enabled",
+    "version_books_outside",
     "version_names_booking",
 ]

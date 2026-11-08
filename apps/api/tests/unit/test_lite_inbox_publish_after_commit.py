@@ -203,12 +203,14 @@ async def test_every_lite_route_that_announces_is_checked() -> None:
 
     checked = {(a.method, f"{BASE}/{{conversation_id}}/{a.route}") for a in ACTIONS.values()}
     # Spec 043: Reservas recibe su Redis para la ``Idempotency-Key`` (24 h) de
-    # equipo, servicios, bloqueos y lista de espera; no avisa a la Bandeja.
+    # equipo, servicios, bloqueos y lista de espera, y para no llamar a Google más de una vez
+    # cada 5 s por persona al mirar su calendario (R12). No avisa a la Bandeja.
     reservas = {r for r in announcing if r[1].startswith("/console/lite/reservas/")}
     assert reservas == {
         ("POST", "/console/lite/reservas/blocks"),
         ("POST", "/console/lite/reservas/services"),
         ("POST", "/console/lite/reservas/staff"),
+        ("POST", "/console/lite/reservas/staff/{staff_id}/calendar/refresh"),
         ("POST", "/console/lite/reservas/waitlist"),
     }
     import inspect

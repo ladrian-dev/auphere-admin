@@ -189,6 +189,38 @@ def test_a_retired_booking_tool_is_refused_and_its_reservas_one_proposed() -> No
     assert set(problems_out(others)[0]) == {"pointer", "code", "message"}
 
 
+def test_booking_in_google_calendar_is_refused_and_its_reservas_one_proposed() -> None:
+    """Spec 043, R11.3: Reservas manda. Reservar en Google se retira igual que
+    ``booking.*``, con su sustituta."""
+    _spec, problems = validate_spec(
+        _doc(tools=["GOOGLECALENDAR_FIND_FREE_SLOTS", "GOOGLECALENDAR_CREATE_EVENT"]), CTX
+    )
+    retired = [p for p in problems if p.code == "tool_retired"]
+    assert {(p.pointer, p.replacement) for p in retired} == {
+        ("/tools/0", "reservas.find_slots"),
+        ("/tools/1", "reservas.create"),
+    }
+
+
+def test_any_google_calendar_tool_is_refused_even_without_a_replacement() -> None:
+    """Spec 043, R11.3: ninguna es de un agente, tenga o no sustituta."""
+    _spec, problems = validate_spec(_doc(tools=["GOOGLECALENDAR_CALENDAR_LIST_DELETE"]), CTX)
+    assert [(p.pointer, p.code) for p in problems] == [("/tools/0", "tool_retired")]
+
+
+def test_a_google_tool_the_agent_already_has_is_not_refused() -> None:
+    """Revisión, D1: hasta que pase a Reservas, lo que ya tiene sigue; lo nuevo, no."""
+    from dataclasses import replace
+
+    ctx = replace(CTX, held_tools=frozenset({"GOOGLECALENDAR_CREATE_EVENT"}))
+    _spec, problems = validate_spec(_doc(tools=["GOOGLECALENDAR_CREATE_EVENT"]), ctx)
+    assert problems == []
+    _spec, problems = validate_spec(
+        _doc(tools=["GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_DELETE_EVENT"]), ctx
+    )
+    assert [(p.pointer, p.code) for p in problems] == [("/tools/1", "tool_retired")]
+
+
 def test_retired_by_name_even_where_the_catalog_still_says_active() -> None:
     """The retirement is the code's decision; a catalog that has not run 0205
     yet does not let ``booking.*`` back in."""

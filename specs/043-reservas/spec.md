@@ -1,6 +1,6 @@
 # Especificación: Reservas — el agente reserva y el negocio lo ve, en dos modos
 
-**Rama**: `043-reservas` · **Creada**: 2026-10-22 · **Estado**: Aclarada (decisiones del 2026-10-22 en §Clarifications)
+**Rama**: `043-reservas` · **Creada**: 2026-10-22 · **Estado**: Aclarada (decisiones del 2026-10-22 en §Clarifications) · **Enmendada el 2026-11-04**: Reservas manda y cada profesional conecta su calendario (requisitos 11 a 14)
 
 **Entrada**: diseño de Claude Design (proyecto `e443cbee-f802-4f49-8ec6-422e1d8d97e6`,
 descargado el 2026-10-22): «Consola Customers.dc.html» (Reservas en modo
@@ -202,6 +202,97 @@ con su razón, y se revisan al final. Las 16 dudas de
   servicio**. Lo hace el sistema, no el agente: las herramientas de Google
   Calendar siguen bloqueadas para el agente. Es una historia independiente: la
   043 se fusiona sin ella.
+
+### Session 2026-11-04 (enmienda: Reservas manda)
+
+Decisión de Luis tras leer el estudio de staging
+(https://claude.ai/artifact/FFiwsCpcV27E7DNTbPp4FR): «el calendario nativo de
+auphere debe ser la fuente de la verdad y conectar otros calendarios debe hacerse
+desde el mismo panel ya que cada profesional tiene su propio calendario con sus
+propias horas». **Sustituye a la decisión «owner, 2026-11-03»** de los commits
+`b45a86c7`, `d0a83763` y `82ff213c`, que hacían reservar al agente solo en Google.
+Requisitos 11 a 14. Luis no está para aprobar pasos intermedios: lo demás son
+decisiones de esta sesión, con su razón.
+
+- Q: ¿Qué agenda manda? → A: **Reservas, siempre.** La cita del agente nace en
+  Reservas, lleva sus recordatorios y sale al calendario del profesional como
+  «Ocupado». Google es un espejo y una fuente de «ocupado», nunca el sitio donde
+  se reserva.
+- Q: ¿Las herramientas de Google Calendar del agente? → A: **Ninguna**, ni para
+  leer: los títulos nombran a otros clientes y, con horas de Google a la vista,
+  el agente podría ofrecer un hueco que Reservas no da. `GOOGLECALENDAR_CREATE_EVENT`
+  y `GOOGLECALENDAR_FIND_FREE_SLOTS` quedan **retiradas** con su sustituta, como
+  `booking.*` (spec 048), y el paso automático de cada despliegue las cambia: el
+  mismo mecanismo, no uno nuevo. Quien ya pasó no las toca aunque su versión las nombre;
+  quien aún no puede reservar sigue como estaba (sesión del 2026-11-05).
+- Q: ¿Y Calendly? → A: con **Reservas encendido, tampoco**: conectarlo no da
+  herramientas de reservar, y encender Reservas se las quita al borrador. **Sin
+  Reservas, Calendly sigue como lo dejó Andrés**: es un negocio que no tiene
+  agenda aquí, y Luis no decidió sobre él. Abierto para Luis.
+- Q: ¿Una cuenta de Google por negocio o una por profesional? → A: **por
+  profesional.** Cada uno tiene su cuenta y sus horas, así que cada uno autoriza
+  la suya: una identidad distinta en el proveedor por profesional
+  (`tenant_<slug>_staff_<id>`). Una cuenta compartida también vale: se autoriza en
+  cada profesional y se elige un calendario distinto. La conexión de Google del
+  negocio (spec 023) ya no recibe nada y solo se lee, hasta que cada uno conecte el suyo
+  (sesión del 2026-11-05).
+- Q: ¿Cómo se evita mezclar calendarios? → A: un calendario, un profesional
+  (`calendar_in_use`, también en la base) y la fila dice qué cuenta quedó conectada,
+  para que se vea si Lucía quedó con la cuenta de quien pulsó el botón.
+- Q: ¿Quién conecta, si el profesional no entra en la consola? → A: cualquiera con
+  el módulo, desde Ajustes. **«Conectar»** lleva a Google en ese navegador y
+  **«Copiar enlace»** da uno para enviárselo. El enlace es el del proveedor y caduca
+  solo; lo que no se completa en una hora vuelve a como estaba.
+- Q: ¿«Solo leer»? → A: en el panel no se ofrece. La sincronización lee el ocupado
+  y escribe «Ocupado», y la pantalla lo dice antes de ir a Google. El permiso real
+  lo fija la configuración de autorización del proveedor, no un botón nuestro.
+- Q: ¿Un cambio hecho en Google? → A: **Reservas manda.** Un evento de la persona
+  bloquea y, si pisa una reserva, sale como choque. Nuestro «Ocupado» borrado o
+  movido a mano se vuelve a escribir donde dice la reserva: mover la cita de un
+  cliente sin avisarle no se hace desde otro calendario. Una invitación rechazada
+  no bloquea.
+- Q: ¿Excepciones por persona (vacaciones, un día libre)? → A: siguen fuera de esta
+  enmienda: las cubre su propio calendario (un evento de todo el día bloquea). Sin
+  calendario conectado, hoy no hay forma de cerrar un día a una sola persona. Queda
+  anotado como trabajo aparte.
+
+### Session 2026-11-05 (revisión independiente de la enmienda)
+
+Una revisión encontró lo que las pruebas no cubrían. Luis dormía y pidió que nada quedara a
+medias, así que estas decisiones las tomó la sesión que coordina o esta, con su razón. **Las dos
+primeras son de la sesión que coordina y se le deben decir a Luis.**
+
+- Q: ¿Se publica el agente de un cliente que todavía no puede reservar? → A: **No**. Publicarlo
+  dejaría a un negocio que reservaba con Google respondiendo que no hay agenda, y el partner no
+  tiene panel de Reservas para arreglarlo. El agente sigue como está hasta que esté listo, se
+  registra `reservations.auto_pass_not_ready`, se avisa al partner y se ve en el panel de operador.
+  Los clientes que solo usan `booking.*` siguen el flujo de la spec 048: `booking.*` deja de existir
+  y no hay nada a lo que volver.
+- Q: ¿Calendly se publica solo? → A: **No**. El paso automático publica lo retirado; Calendly, no,
+  y queda en borrador como dice R11.5.
+- Q: ¿Qué pasa con las citas que ya están en el Google del negocio? → A: **No se importan** (un
+  evento no dice de qué cliente es), pero esa hora no se vuelve a dar: siguen bloqueando a quien aún
+  no conectó el suyo. No tienen recordatorio ni se pueden cancelar desde Reservas.
+- Q: ¿Un evento de todo el día? → A: **Bloquea**, salvo cumpleaños y similares (`birthday`,
+  `workingLocation`), aunque Google lo marque como disponible: nace así, y es la forma de cerrar un
+  día. Uno con hora y marcado como disponible, no.
+- Q: ¿Apagar el módulo suelta los calendarios? → A: **No**. Sus reservas por venir y sus avisos
+  siguen vivos, y borrarlas de Google le quitaría esa cita a la persona. Salir de Servicios sí los
+  suelta: en Aforo no hay profesionales ni panel desde el que hacerlo.
+- Q: ¿Se puede editar un agente que espera a que su cliente pueda reservar? → A: **Sí**. La consola
+  manda la ficha entera y no sabe quitar una herramienta: si el validador rechaza la que ya tiene,
+  no se podría cambiar ni el tono. Lo que ya está en su versión activa o en su borrador sigue hasta
+  que pase a Reservas; una nueva, no.
+- Q: ¿Y si a ese agente le caduca la conexión de Google? → A: **Se puede renovar.** R11.2 y R11.8
+  chocaban: sin renovarla se queda sin agenda, justo el motivo de no publicarlo. Uno nuevo se sigue
+  conectando por profesional; uno de antes, si se cayó, se renueva desde las integraciones del
+  cliente, y sigue sin darle herramientas a nadie.
+- Q: ¿Lo leído del Google del negocio caduca si no se puede leer? → A: **No.** «Con datos viejos no
+  se bloquea» vale para el ocupado de una persona, que puede estar libre. Esto son citas que ya se
+  dieron: si se liberan, esa hora se vuelve a dar. Solo deja de bloquear al quitar la conexión o
+  cuando la persona conecta el suyo.
+- Q: ¿Se decide por cliente o por agente? → A: **Por agente.** Uno con Google que espera no retiene a
+  otro con `booking.*`, que se retira de todas formas (spec 048).
 
 **Lo que el diseño trae y no entra**
 
@@ -555,6 +646,174 @@ cliente en un modo, para que su consola y su agente trabajen de esa forma.
 4. Una reserva viva que pisa un «ocupado» DEBE salir marcada como choque.
 5. Las herramientas de Google Calendar del agente DEBEN seguir bloqueadas.
 
+> **Enmienda del 2026-11-04.** R10.1 cambia: ya no hay una cuenta por negocio, cada
+> profesional conecta la suya (requisito 12). R10.5 pasa de ser el modo con el que
+> nace la herramienta a una garantía en cada capa (requisito 11).
+
+### Requisito 11 — Reservas es la única agenda (enmienda del 2026-11-04)
+
+**Historia de usuario:** Como negocio, quiero que toda cita que tome el agente esté
+en Reservas, para verla, que lleve sus recordatorios y que nadie ocupe esa hora.
+
+#### Criterios de aceptación
+
+1. Conectar Google Calendar NO DEBE añadir ninguna herramienta a un agente ni a su
+   borrador, ni al completar la autorización, ni al activar la conexión, ni al
+   sincronizar.
+2. El turno de un agente cuya versión activa tiene `reservas.*` NO DEBE ver ni ejecutar ninguna
+   herramienta del conector Google Calendar, aunque su versión la nombre y la conexión esté
+   activada. El de un agente que aún no pasó DEBE seguir como estaba: quitársela sin darle
+   Reservas lo dejaría sin agenda.
+3. El validador del AgentSpec y la lista de herramientas de la consola DEBEN rechazar toda
+   herramienta `GOOGLECALENDAR_*` con `tool_retired` y su sustituta si la tiene: crear
+   (`reservas.create`), ver huecos (`reservas.find_slots`), mover (`reservas.reschedule`),
+   borrar (`reservas.cancel`) y buscar eventos (`reservas.list_mine`). Lo que ese agente ya nombra
+   en su versión activa o en su borrador NO DEBE impedir editarlo ni publicarlo hasta que pase a
+   Reservas; lo que nombra otro agente del cliente no cuenta.
+4. WHEN corre el paso automático de un despliegue IF una versión activa nombra una
+   herramienta de Google Calendar THEN, si el cliente puede tomar una cita, DEBE publicar una copia
+   sin ella, con su sustituta si la tiene, en `tools`, el AgentSpec y el texto (incluidos los pasos
+   de sus procedimientos), y sin pedir conectar Google ni Calendly; un borrador que la nombra se
+   reescribe igual y no se publica. IF el cliente no puede tomarla (`reservas_off`, `hours_missing`,
+   `no_staff`, `no_services`, `no_bookable_service`, `no_capacity`) THEN NO DEBE encender nada por
+   ese agente ni tocarlo: DEBE registrar `reservations.auto_pass_not_ready` con las razones, avisar
+   al partner (`reservas.pass_not_ready`) y enseñarlo en el panel de operador
+   (`reservas_pending_pass`). Se decide agente por agente: otro del mismo cliente con `booking.*`
+   DEBE pasar igual, como pide la spec 048. IF el paso falla THEN el agente DEBE seguir funcionando como estaba,
+   y DEBE quedar en la auditoría (`reservations.pass_failed`, sin el texto del error) y en un aviso
+   al partner. El despliegue NO DEBE pararse por ello.
+5. WHEN se enciende Reservas THEN el borrador de cada agente activo DEBE ganar
+   `reservas.*` y perder lo que reserva en un conector, sin publicarse; y mientras su
+   versión activa siga reservando en un conector, la pestaña Acceso DEBE decirlo. El paso automático
+   DEBE dejar en un borrador, sin publicarlo, lo que reserva en un conector. IF alguien descartó ese
+   borrador THEN NO DEBE volver, ni repetirse el paso, mientras siga la misma versión activa.
+6. WHERE Reservas está encendido, conectar o activar un conector que reserva NO DEBE
+   añadir sus herramientas de reservar.
+7. WHERE Reservas está apagado, conectar Calendly DEBE seguir como hasta ahora.
+8. Las integraciones que se ofrecen a un agente NO DEBEN incluir Google Calendar, tampoco si el
+   cliente lo tenía conectado. En las integraciones del cliente, una conexión de antes DEBE poder
+   renovarse si se cayó, y quitarse, con un texto que diga dónde se conecta uno nuevo. Conectar uno
+   nuevo DEBE responder 409 `connect_from_reservas`. Renovarla NO DEBE añadir herramientas.
+9. La revisión de lo que promete un agente NO DEBE contar Google Calendar como algo
+   que reserva.
+
+### Requisito 12 — Cada profesional conecta su calendario (enmienda del 2026-11-04)
+
+**Historia de usuario:** Como negocio con varios profesionales, quiero conectar el
+calendario de cada uno desde Reservas, para que cada uno vea sus citas y sus horas
+ocupadas cuenten, sin que se mezclen.
+
+#### Criterios de aceptación
+
+1. Ajustes de Reservas DEBE enseñar, por cada profesional, uno de estos estados con
+   su salida: sin conectar, esperando la autorización, conectado, elegir calendario,
+   permiso perdido, error.
+2. WHEN se pide conectar a un profesional THEN el sistema DEBE crear el enlace de
+   autorización con una identidad propia de ese profesional, nunca la del negocio ni
+   la de otro, y devolverlo solo a quien lo pidió.
+3. WHEN la autorización se completa THEN, al volver al panel o en la pasada siguiente,
+   la fila DEBE quedar conectada, con el calendario principal de esa cuenta si se puede
+   escribir en él y nadie más del negocio lo usa, y DEBE decir qué cuenta es; si no,
+   DEBE pedir que se elija uno.
+4. IF se elige un calendario que ya usa otro profesional del negocio THEN el sistema
+   DEBE responder 409 `calendar_in_use` con su nombre. La base DEBE impedirlo también.
+5. IF se elige un calendario que no es de la cuenta de ese profesional THEN DEBE
+   responder 422 `unknown_calendar`.
+6. Cada pasada DEBE leer y escribir con la conexión del profesional del calendario. Una
+   reserva movida a otro profesional DEBE borrar su evento con la conexión del primero.
+7. IF Google rechaza el permiso o la conexión deja de valer THEN la fila DEBE pasar a
+   permiso perdido, su ocupado DEBE dejar de bloquear en esa pasada, y los demás
+   profesionales NO DEBEN notarlo. «Volver a conectar» DEBE conservar el calendario, y
+   DEBE poder hacerse ante cualquier fallo, no solo ante un permiso perdido.
+8. WHEN se desconecta a un profesional THEN su ocupado DEBE dejar de bloquear al momento
+   y la fila DEBE decir sin conectar; la pasada siguiente DEBE quitar de su calendario
+   los eventos de sus reservas por venir y revocar la conexión, y si ya no puede
+   borrarlos DEBE revocarla igual y no volver a intentarlo.
+   WHEN se borra el cliente THEN la conexión de cada profesional DEBE revocarse al
+   confirmarse el borrado: la cuenta de Google es de esa persona.
+9. IF un enlace no se completa en una hora o el proveedor lo da por fallido THEN la fila
+   DEBE volver a como estaba: con la conexión que funcionaba, si la tenía; si no, sin conectar o, si
+   tenía calendario, permiso perdido. IF autorizó y Google no le deja leer THEN DEBE pasar a permiso
+   perdido o, si tenía una conexión que funcionaba, seguir con ella y decir que la nueva no entró
+   (`new_account_refused`, durante esa hora). IF Google o el proveedor no contestan THEN DEBE
+   esperar, y no más de esa hora.
+10. IF el proveedor no responde o no tiene configurada la autorización THEN conectar
+    DEBE responder 409 `calendar_unavailable` y la pantalla DEBE decirlo.
+11. Un profesional de otro cliente DEBE dar el mismo 404 que uno inventado en toda ruta
+    de calendario, y la identidad del proveedor NO DEBE salir por la API.
+12. Las llamadas al SDK del proveedor NO DEBEN correr en el bucle de eventos, ni reintentarse
+    solas: tras un timeout, repetir una escritura la hace dos veces.
+13. WHERE el cliente está en Servicios y su conexión de Google del negocio (spec 023) sigue en pie,
+    cada pasada del cron DEBE leer de ella el ocupado futuro y hacerlo bloquear a cada profesional
+    que aún no sincroniza el suyo: el calendario que dice su fila de antes o, sin ella, el principal
+    y el que un agente tuviera elegido. Lo que escribimos nosotros NO DEBE contar. WHEN todos
+    sincronizan, o la conexión se quita, NO DEBE leerse ni bloquear más. Nunca se escribe en ella.
+    IF la lectura falla, se rechaza el permiso o la conexión se cae THEN lo leído DEBE seguir
+    bloqueando: son citas ya dadas, y dejar de leerlas no las cancela. La fila de esa persona DEBE
+    decirlo.
+14. WHEN se conecta otra cuenta THEN la conexión anterior DEBE seguir hasta que la nueva funcione.
+    Entonces, cada reserva por venir de esa persona DEBE quedar en su calendario: el evento que está
+    en un calendario al que la cuenta nueva no llega DEBE borrarse con la conexión anterior, si la
+    hay, y escribirse de nuevo, y solo después DEBE revocarse la anterior.
+15. WHEN el cliente deja de estar en Servicios THEN DEBE desconectarse a todos sus profesionales.
+    WHEN se apaga el módulo THEN los calendarios DEBEN seguir sincronizando: las reservas por venir y
+    sus avisos siguen vivos.
+16. Conectar, cambiar de calendario y desconectar DEBEN dejar `AuditLog` con quién y de qué
+    profesional, sin la cuenta de nadie.
+17. La página de vuelta del proveedor NO DEBE decir que está conectado si la autorización falló, si
+    el enlace caducó o si no lo sabe.
+18. Una pasada NO DEBE esperarse a sí misma: lo que escribe en `reservations` DEBE ir en una
+    transacción propia y con `lock_timeout`, y cada cliente del cron y cada `refresh` DEBEN tener un
+    tiempo máximo. IF un dueño no tiene conexión usable o el permiso se perdió THEN la referencia
+    de su evento DEBE soltarse para escribir el nuevo: lo de uno NO DEBE tocar a los demás. IF el
+    fallo al borrar es otro THEN DEBE esperarse, para no duplicar, y no más de una hora en una reserva
+    viva. Lo que quede atrás DEBE reconocerse por su marca y quitarse (13.6).
+
+### Requisito 13 — Lo que cambia en Google vuelve bien (enmienda del 2026-11-04)
+
+#### Criterios de aceptación
+
+1. WHEN aparece en el calendario de un profesional un evento que no es nuestro THEN
+   DEBE contar como ocupado para sus huecos y, si pisa una reserva viva, marcarla como
+   choque.
+2. IF nuestro «Ocupado» de una reserva viva ya no está en su calendario THEN la pasada
+   siguiente DEBE borrarlo por si sigue allí y volver a escribirlo: si es el listado el que
+   no lo trae, NO DEBEN acumularse eventos.
+3. IF nuestro «Ocupado» está a otra hora que su reserva THEN la pasada siguiente DEBE
+   borrarlo y escribirlo a la hora de la reserva. La reserva NO DEBE moverse.
+4. Un evento rechazado por el profesional, un cumpleaños (`birthday`) o un lugar de trabajo
+   (`workingLocation`) NO DEBEN bloquear, ni uno con hora marcado como disponible. Uno de todo el
+   día DEBE bloquear aunque Google lo marque como disponible: nace así, y es la forma de cerrar un día.
+5. Un evento recién escrito en esta pasada NO DEBE volver a escribirse aunque la lectura
+   de esa misma pasada aún no lo traiga.
+6. Lo nuestro DEBE reconocerse por el id que guarda la reserva y, si se perdió, por su marca: la
+   descripción `auphere:reserva:<id>` de un evento que organiza la propia cuenta y de una reserva que
+   existe en este cliente. Nunca DEBE contar como ocupado. IF es la cita de esa persona, a esa hora, y
+   aún no tiene evento THEN DEBE adoptarse; si no, DEBE borrarse. Una marca de otro cliente, de una
+   reserva que no existe o en una invitación de fuera DEBE leerse como ocupado normal.
+
+### Requisito 14 — Los datos que dejan reservar (enmienda del 2026-11-04)
+
+**Historia de usuario:** Como negocio, quiero saber qué en mis datos impide reservar,
+para no descubrirlo por un cliente al que el agente no supo atender.
+
+#### Criterios de aceptación
+
+1. IF un servicio reservable no lo hace nadie en activo THEN `reservas.services` NO DEBE
+   ofrecerlo como reservable sin decirlo, `reservas.find_slots` y `reservas.create`
+   DEBEN responder `no_staff`, y Ajustes DEBE avisarlo en ese servicio.
+2. IF un servicio no cabe en ningún tramo del horario de quienes lo hacen THEN Ajustes
+   DEBE avisarlo en ese servicio y crear una reserva DEBE responder `slot_taken`.
+3. Un profesional sin horario propio DEBE usar el del negocio. Uno con una semana
+   propia sin ningún tramo NO DEBE tener huecos, y Ajustes DEBE avisarlo.
+4. Un servicio con una lista de profesionales DEBE ofrecer huecos solo de esa lista;
+   pedir otro profesional DEBE dar 404 en la consola y `not_offered` en el agente.
+5. Un profesional archivado NO DEBE ofrecer huecos ni contar en un servicio, ni aparecer en su
+   lista, ni en Reservas ni en la ficha del negocio, y ninguna de las dos DEBE aceptarlo: archivarlo
+   DEBE quitarlo de ella, y un servicio DEBE poder seguir editándose.
+6. Una fecha especial del negocio DEBE mandar sobre el horario de cada profesional:
+   un festivo cerrado no da huecos a nadie.
+
 ### Entidades clave
 
 Todas por cliente (`tenant_id`, RLS FORCE); toda referencia entre ellas, clave
@@ -569,8 +828,8 @@ compuesta `(tenant_id, x_id)`.
 - **Evento de reserva**: el historial, sin texto libre (tipo, actor, datos).
 - **Bloqueo** (Aforo): de cuándo a cuándo y una etiqueta.
 - **Entrada de la lista de espera** y **oferta** con sus candidatos.
-- **Calendario de la persona** (P3): qué calendario de Google es suyo y su
-  sincronización.
+- **Calendario de la persona** (P3): su conexión con el proveedor, qué calendario
+  de esa cuenta es suyo y su sincronización.
 
 ## Criterios de éxito *(obligatorio)*
 
@@ -591,6 +850,8 @@ compuesta `(tenant_id, x_id)`.
 - Señas, depósitos, recargos de cancelación — Reservas no mueve dinero.
 - Outlook, Calendly como «otro sistema manda», Cal.com, AgendaPro por API,
   Cronofy/Nylas, Reserve with Google — decisión del owner.
+- Excepciones por persona sin calendario conectado (un día libre, vacaciones) — anotado en
+  la enmienda del 2026-11-04, para otra entrega.
 - Mesas — descartadas por el diseño.
 - Papeles dentro del cliente — spec 030.
 - La app — spec 044 (consume `contracts/`).

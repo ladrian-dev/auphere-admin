@@ -189,6 +189,7 @@ class ComposioClientProtocol(abc.ABC):
         user_id: str,
         auth_config_id: str,
         callback_url: str | None = None,
+        allow_multiple: bool = False,
     ) -> ConnectionRequest: ...
 
     @abc.abstractmethod
@@ -249,7 +250,9 @@ class LiveComposioClient(ComposioClientProtocol):
                 "before using LiveComposioClient"
             )
             raise RuntimeError(msg) from exc
-        self._client = Composio(api_key=api_key)
+        # Sin reintentos: tras un timeout, repetir una escritura la hace dos veces (un evento de
+        # Google duplicado). Quien llama decide si vuelve a intentarlo.
+        self._client = Composio(api_key=api_key, max_retries=0)
 
     async def list_auth_configs(self) -> list[AuthConfigSummary]:
         try:
@@ -357,6 +360,7 @@ class LiveComposioClient(ComposioClientProtocol):
         user_id: str,
         auth_config_id: str,
         callback_url: str | None = None,
+        allow_multiple: bool = False,
     ) -> ConnectionRequest:
         try:
             kwargs: dict[str, Any] = {
@@ -365,6 +369,8 @@ class LiveComposioClient(ComposioClientProtocol):
             }
             if callback_url:
                 kwargs["callback_url"] = callback_url
+            if allow_multiple:
+                kwargs["allow_multiple"] = True
             req = await _maybe_async(self._client.connected_accounts.link, **kwargs)
         except Exception as exc:
             raise _translate_composio_error(exc) from exc
@@ -460,10 +466,12 @@ class LiveComposioClient(ComposioClientProtocol):
 
 
 async def _maybe_async(fn: Any, *args: Any, **kwargs: Any) -> Any:
-    """Call a Composio SDK method; await if it returned a coroutine."""
+    """Call a Composio SDK method, away from the event loop: the SDK is synchronous, and
+    on the loop every call stopped the whole worker or API for as long as it took. Await
+    the result if it turned out to be a coroutine."""
     import inspect
 
-    res = fn(*args, **kwargs)
+    res = await asyncio.to_thread(fn, *args, **kwargs)
     if inspect.isawaitable(res):
         return await res
     return res
@@ -705,12 +713,13 @@ class FakeComposioClient(ComposioClientProtocol):
         user_id: str,
         auth_config_id: str,
         callback_url: str | None = None,
+        allow_multiple: bool = False,
     ) -> ConnectionRequest:
         if self.simulate_unavailable:
             raise ComposioUnavailable("fake: composio down")
         # The SDK refuses a second account for the same user and auth config
         # while one is ACTIVE (``allow_multiple=False``, its default).
-        if any(
+        if not allow_multiple and any(
             c.user_id == user_id and c.auth_config_id == auth_config_id and c.status == "ACTIVE"
             for c in self._connections.values()
         ):

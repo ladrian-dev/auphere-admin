@@ -13,6 +13,18 @@ El agente reserva, mueve y cancela por WhatsApp con las herramientas
 `reservas.*`; el negocio lo ve y lo corrige en su consola o en la app; el
 sistema confirma, recuerda, libera y ofrece los huecos a la lista de espera.
 
+**Reservas es la fuente de la verdad** (Luis, 2026-11-04; spec 043, requisitos 11 a
+14). La cita de un agente nace aquí, lleva sus recordatorios y nadie puede ocupar esa
+hora. Google Calendar es un espejo: cada profesional conecta el suyo desde Ajustes, su
+ocupado bloquea huecos y sus reservas salen allí como «Ocupado». Sus herramientas no son
+de ningún agente nuevo: todas las `GOOGLECALENDAR_*` están retiradas, con su sustituta si la
+tienen (`agent_spec.retired`), y el paso automático las cambia. El turno se las quita a quien ya
+pasó (`activations.tool_policy`) y deja como estaba al agente de un cliente que todavía no puede
+reservar: quitárselas sin darle Reservas lo dejaría sin agenda. Ese agente se puede seguir editando
+y publicando con lo que ya nombra (`Context.held_tools`), y no añadir nada nuevo. **Calendly**: donde Reservas está
+encendido tampoco reserva (conectarlo no da herramientas, y encender Reservas o el paso automático
+dejan un borrador sin él, que no se publica solo); sin Reservas sigue como estaba.
+
 **Reservas es la única agenda de los agentes** (spec
 [`048-retirar-agendapro`](../specs/048-retirar-agendapro/spec.md)). AgendaPro se
 retiró del todo; `booking.*` —la agenda de antes, que escribe en
@@ -32,6 +44,12 @@ la sigue ejecutando para las versiones que ya la tienen, hasta el borrado final
 | `cancel_appointment` | `cancel` |
 | `get_appointments` | `list_mine` |
 
+Lo que reservaba fuera, además: `GOOGLECALENDAR_FIND_FREE_SLOTS` → `find_slots` y
+`GOOGLECALENDAR_CREATE_EVENT` → `create`, siempre; `CALENDLY_POST_INVITEE` y
+`CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK` → `create`,
+`CALENDLY_LIST_EVENT_TYPE_AVAILABLE_TIMES` → `find_slots` y `CALENDLY_LIST_EVENT_TYPES` →
+`services`, donde Reservas está encendido (`passing.CONNECTOR_TOOLS`).
+
 ## Activarlo (panel de operador)
 
 Pestaña **Acceso** del cliente: se marca «Reservas» y se elige el modo (y en
@@ -47,10 +65,12 @@ on_live}` (contrato: [`admin-api.md`](../specs/043-reservas/contracts/admin-api.
   modo cambia, todo en una transacción. Nunca conviven dos modos.
 - Cambiar solo el tipo de Aforo cambia las palabras, no los números.
 - Activar o desactivar **prepara el borrador** de cada agente activo (el único
-  que tiene, spec 047): con `reservas.*` y sin `booking.*`, o sin `reservas.*`.
-  **No lo promueve**: se publica por la puerta; la pestaña enlaza a la pestaña
-  Agente (`agents_pending_promotion`). Activar es además **pasar el cliente a
-  Reservas** (abajo): el AgentSpec y el texto también, y las citas futuras.
+  que tiene, spec 047): con `reservas.*` y sin `booking.*` ni lo que reserva en un
+  conector, o sin `reservas.*`. **No lo promueve**: se publica por la puerta; la pestaña
+  enlaza a la pestaña Agente (`agents_pending_promotion`) y dice quién **sigue reservando
+  fuera** hasta publicar su borrador (`agents_with_other_calendar`). Activar es además
+  **pasar el cliente a Reservas** (abajo): el AgentSpec y el texto también, y las citas
+  futuras.
 - Desactivar el módulo no borra ajustes ni reservas; las futuras siguen
   recibiendo sus recordatorios.
 - **Reservas no depende del acceso de las personas** (spec 048, decisión 16 de
@@ -74,7 +94,16 @@ upgrade head` y del sembrado de conectores (`scripts/release.sh` →
 No hay pantalla ni rutas para hacerlo a mano (requisito 3.8).
 
 - **Quién.** Cada cliente con algún agente activo cuya versión activa o cuyo
-  borrador nombra `booking.*` (herramientas, AgentSpec o texto). La lista de
+  borrador nombra `booking.*` o una herramienta de Google Calendar (herramientas,
+  AgentSpec o texto) o, si ya tiene Reservas, reserva con un conector. Un cliente sin
+  Reservas que solo usa Calendly no se toca. **Con Google, solo pasa si el cliente ya puede
+  reservar** (`passing.not_ready`: módulo, horario, equipo y servicios, o aforo). Si no, no se
+  enciende ni se publica nada: el agente sigue como está, se registra
+  `reservations.auto_pass_not_ready` con las razones, se avisa al partner
+  (`reservas.pass_not_ready`) y el panel de operador lo enseña en Acceso. El siguiente despliegue
+  vuelve a mirar. Se decide agente por agente: otro con `booking.*` pasa igual, y solo entonces se
+  enciende el módulo. Un borrador de Calendly que alguien descartó no vuelve mientras siga la misma
+  versión activa. La lista de
   clientes se lee con el rol de migraciones (solo sus ids); cada cliente pasa
   después en **su propia transacción, bajo su RLS** (`admin.as_tenant`), contra
   la base directa. Un cliente sin agentes con `booking.*` se salta: el segundo
@@ -159,7 +188,7 @@ Qué mirar en el registro del despliegue y cómo repetir el paso: `RUNBOOK.md`,
 | `admin.py` | La activación desde el admin |
 | `passing.py` | Pasar a Reservas (spec 048): reescritura `booking.*` → `reservas.*` de borradores y versiones, publicación sin puerta desde la activa, importación de citas, informe y quién sigue con `booking.*` |
 | `auto_pass.py` | El paso automático de cada despliegue (spec 048): activar Reservas por sector o plantilla, un cliente por transacción bajo su RLS, y sus registros `reservations.auto_pass_*` |
-| `calendar.py`, `calendar_sync.py` | P3: choques con Google Calendar y la sincronización |
+| `calendar.py`, `calendar_sync.py` | P3: choques con Google Calendar, la conexión de cada profesional y la sincronización |
 
 **Sin doble reserva.** No hay `EXCLUDE` en la base (el aforo es una suma, y
 `btree_gist` no está garantizado en Aurora). Las escrituras toman
@@ -303,7 +332,7 @@ Contrato: [`worker-y-avisos.md`](../specs/043-reservas/contracts/worker-y-avisos
 | `reservations-cron` | 60 s | Pide confirmación y recuerda a su hora, libera en Aforo lo no confirmado 1 h antes (solo si la pregunta salió), cierra como `done`, caduca la lista, abre ofertas de Aforo (solo con el módulo encendido) |
 | `reservation-offers-cron` | 15 s | Vence plazos y escribe al siguiente candidato |
 | `reservation-outbox-cron` | 10 s | Envía `reservation_outbox`: texto dentro de la ventana de 24 h, plantilla aprobada fuera; sin plantilla, teléfono, canal o con la baja pedida, `skipped` y evento `notify_failed`; lo que ya no aplica (ya confirmó, ya se canceló), `stale` sin evento. Escribe el `Message` pendiente: lo entrega y lo mide el despachador de salida, como cualquier saliente |
-| `reservation-calendar-cron` | 120 s | P3: quita los eventos que sobran, escribe los que faltan y lee el ocupado, cada parte con su propio fallo. Sin conexión sana deja de bloquear (ver [Google Calendar](#google-calendar-p3)). Sin `composio_api_key` no hace nada (el cliente simulado del proveedor borraría el ocupado real) |
+| `reservation-calendar-cron` | 120 s | P3: termina las autorizaciones en curso, quita los eventos que sobran, escribe los que faltan y lee el ocupado, cada parte y cada profesional con su propio fallo. Sin conexión sana deja de bloquear (ver [Google Calendar](#google-calendar-p3)). Sin `composio_api_key` no hace nada (el cliente simulado del proveedor borraría el ocupado real) |
 
 Los cuatro recorren los clientes **activos con `reservation_settings`**, tengan
 o no el módulo encendido: al apagarlo, las reservas futuras siguen recibiendo
@@ -321,32 +350,110 @@ lo que no cabe en la ventana no sale, y el historial de la reserva lo dice.
 
 ## Google Calendar (P3)
 
-Solo Google (decisión del owner). Usa la conexión de Google Calendar que hizo
-quien gestiona los agentes en el proveedor de consentimientos (spec 023): la
-persona de un cliente no tiene pantalla para conectarla. Cada persona del equipo
-se asocia a un calendario de esa cuenta en **Ajustes → Calendarios de Google**
-(`GET …/calendar`, `PUT …/staff/{id}/calendar`).
+Solo Google (decisión del owner), solo en Servicios. **Cada profesional conecta su cuenta**
+en **Ajustes → Calendarios de Google**, con una identidad propia en el proveedor
+(`tenant_<slug>_staff_<id>`): ni la del negocio ni la de otro. A los agentes no se les ofrece
+Google Calendar: `POST …/connections` y `…/consent` responden 409 `connect_from_reservas` a uno
+nuevo. En las integraciones del cliente, una conexión de antes se puede renovar si se cayó, porque
+un agente que aún reserva en Google la necesita y lo que hay allí bloquea horas, y se puede quitar.
+Renovarla no da herramientas a nadie.
+
+**El Google del negocio (spec 023) solo se lee** (R12.13). Las citas que un agente tomó allí **no se
+importan**: un evento no dice de qué cliente es. Pero esa hora ya está dada: lo que hay en ese
+calendario (`source = 'business'`) bloquea a cada profesional que aún no sincroniza el suyo, y su
+fila lo dice (`business_busy`). No tienen recordatorio ni se pueden cancelar desde Reservas. Si la
+fila de antes dice qué calendario era suyo, solo le bloquea a esa persona; si no, no se sabe de
+quién es la cita y bloquea a todos: dar dos veces una hora es peor que no darla. Cuando todos
+sincronizan, o se quita la conexión, se deja de leer. Lo lee solo el cron, no el botón de una persona.
+**Aquí no vale «con datos viejos no se bloquea»**: si la lectura falla o la conexión se cae, lo
+leído sigue, porque son citas ya dadas y dejar de leerlas no las cancela.
 
 Entra el «ocupado» (solo inicio y fin, `reservation_busy`); un evento de todo el
-día ocupa el día en la zona del negocio, y uno marcado como disponible no bloquea.
-Sale cada reserva viva como «Ocupado», sin cliente ni servicio. A la vuelta se
-reconoce por el id del evento guardado en la reserva, no por un texto que
-cualquiera puede escribir en una invitación. El calendario de cada persona tiene
-que ser de la cuenta conectada (`unknown_calendar` si no) y admitir escritura: los
-de solo lectura no se ofrecen.
+día ocupa el día en la zona del negocio, y uno marcado como disponible, cancelado o
+rechazado por esa persona no bloquea. Sale cada reserva viva como «Ocupado», sin cliente
+ni servicio. A la vuelta se reconoce por el id del evento guardado en la reserva, no por
+un texto que cualquiera puede escribir en una invitación.
+
+**Conectar** (`POST …/staff/{id}/calendar/connect`). «Ir a Google» vuelve a
+`/reservas?tab=settings&calendar_return=<id>`, y el panel pide `…/calendar/refresh` sin
+esperar a la pasada. «Copiar enlace» (`share: true`) es para quien no está delante: el
+enlace del proveedor, que caduca solo, y una página de «ya puedes cerrar esto» a la vuelta.
+La autorización pide leer y escribir: la pantalla lo dice antes de ir a Google, y el permiso
+real lo fija la configuración de autorización del proveedor, no un botón nuestro.
+
+| Estado (`calendar.status`) | Qué dice la fila | Acción principal | En el menú |
+|---|---|---|---|
+| `none` | Sin conectar | Conectar | — |
+| `pending` | Esperando a que autorice | Comprobar | Crear otro enlace, Desconectar |
+| `connected` | La cuenta (y el calendario, si no es el principal) y la última sincronización | — | Cambiar calendario, Desconectar |
+| `needs_calendar` | La cuenta ya la usa otro (`calendar_in_use`), o no tiene calendarios (`no_calendar`) | Elegir calendario, o Conectar otra cuenta | La otra, Desconectar |
+| `needs_reauth` | Hay que volver a conectar; no bloquea huecos | Volver a conectar | Desconectar |
+| `error` | No se pudo leer o escribir, o el calendario ya no existe | Reintentar, o Elegir calendario | Cambiar calendario, Conectar otra cuenta, Desconectar |
+
+Al completarse queda con el **calendario principal** de esa cuenta si nadie más del negocio
+lo usa, y se ve qué cuenta es: así se nota si Lucía quedó con la de quien pulsó el botón.
+**Un calendario, un profesional**: 409 `calendar_in_use` con su nombre, y un índice único en
+la base. Una cuenta compartida vale: se autoriza en cada uno y se elige un calendario distinto.
+
+**Un enlace sin terminar** caduca a la hora, o antes si el proveedor lo da por fallido, y la
+fila vuelve a como estaba. **Volver a conectar** conserva el calendario y revoca la conexión
+anterior. **Desconectar** deja de bloquear al momento y la fila dice «Sin conectar»; la pasada
+siguiente quita sus eventos y revoca la conexión (`disconnecting`), porque las dos cosas hacen
+falta en ese orden y no caben en una petición. Si ya no puede borrarlos, revoca igual y no
+insiste. Archivar a alguien lo desconecta, y borrar el cliente revoca la conexión de cada
+profesional al confirmarse el borrado. Mientras tanto, volver a conectar responde 409
+`calendar_disconnecting`.
+
+**Salir de Servicios desconecta a todos**: en Aforo no hay panel desde el que hacerlo. **Apagar el
+módulo no**: sus reservas por venir y sus avisos siguen vivos, y borrarlas de Google le quitaría esa
+cita a la persona. Sigue sincronizando hasta que se vuelva a encender y se desconecte, o se borre
+el cliente.
+
+**Conectar otra cuenta no suelta la que funciona hasta que la nueva esté** (`previous_connection_id`):
+es la única que llega a sus eventos. Si la nueva no termina, vuelve a ella, y si autorizó y Google no
+le deja leer, la fila lo dice durante una hora (`new_account_refused`). Si termina, cada reserva
+por venir sigue a la cuenta nueva: lo que está en un calendario al que la nueva no llega se borra
+con la anterior y se escribe de nuevo, y luego se revoca la anterior. Una fila de antes de esta
+enmienda no tiene con qué borrar: su evento se queda en el calendario del negocio, sin bloquear.
 
 **Una pasada, tres partes que no dependen unas de otras:** borrar lo que sobra,
-escribir lo que falta y leer. Lo que se escribe en Google se apunta en su propia
-transacción, reserva por reserva: Google no se deshace con un `ROLLBACK`, y perder
-un id significaba un «Ocupado» repetido cada dos minutos. Un 404 o 410 al borrar
-cuenta como borrado: alguien lo quitó a mano.
+escribir lo que falta y leer, cada profesional con su conexión. Lo que se escribe en Google se
+apunta en su propia transacción, reserva por reserva: Google no se deshace con un `ROLLBACK`, y
+perder un id significaba un «Ocupado» repetido cada dos minutos. **La transacción de la pasada no
+escribe nunca en `reservations`**: una fila suya sin confirmar haría esperar para siempre a la
+otra conexión, y Postgres no lo ve como un interbloqueo. Todo va por `_own_tx`, con `lock_timeout`
+de 5 s, y si no se puede apuntar, el evento se quita y se escribe en la pasada siguiente. El cron da
+hasta 300 s a cada cliente y `refresh`, 25 s. Un 404 o 410 al borrar cuenta como borrado: alguien lo
+quitó a mano. «Connected account not found» o «Tool … not found» no: el evento sigue allí.
 
-**Mover.** `reservations.external_event_id` guarda `<calendario> <evento>`, porque
-el evento sigue donde se escribió aunque la reserva cambie de persona o la persona
-de calendario. `move_booking` le antepone `moved `, y la pasada siguiente lo borra
-de su calendario y escribe el nuevo; hasta que consigue borrarlo no escribe otro.
-Cambiar o soltar el calendario de una persona hace lo mismo con los eventos de sus
-reservas por venir.
+**Mover.** `reservations.external_event_id` guarda `<profesional> <calendario> <evento>`, porque
+el evento sigue donde se escribió aunque la reserva cambie de persona o la persona de
+calendario o de cuenta, y solo se alcanza con la conexión de quien lo escribió. `move_booking` le
+antepone `moved `, y la pasada siguiente lo borra de su calendario y escribe el nuevo. Si el fallo
+es temporal, espera a borrarlo para no duplicar, y no más de una hora (`REMOVE_WAITS_AT_MOST`). Si
+nadie puede borrarlo (el dueño no tiene conexión
+o perdió el permiso, o el evento no tiene id), suelta la referencia y escribe el nuevo: lo de uno no
+toca a los demás, y si el viejo vuelve a verse, su marca lo delata. Cambiar de calendario hace lo
+mismo con los eventos de sus reservas por venir.
+
+**Lo nuestro nunca es ocupado.** Se reconoce por el id que guarda la reserva y, si se perdió, por su
+marca: la descripción `auphere:reserva:<id>` de un evento que organiza la propia cuenta, con el id de
+una reserva que existe en este cliente. Si es la cita de esa persona, a esa hora, y aún no tiene
+evento (una creación que no devolvió el id o que dio timeout), se adopta; si no, sobra y se borra.
+Una marca de otro cliente, de una reserva que no existe o en una invitación de fuera no libera nada:
+se lee como ocupado normal.
+
+**Qué bloquea.** Lo cancelado, una invitación rechazada, un cumpleaños (`birthday`) y un lugar de
+trabajo (`workingLocation`), no. Lo de todo el día sí, aunque Google lo marque como disponible: nace
+así y es la forma de cerrar un día, con el coste de que un recordatorio de todo el día también lo
+cierra. Lo que tiene hora y está marcado como disponible, no.
+
+**Lo que cambia en Google vuelve bien.** Reservas manda: mover la cita de un cliente sin avisarle
+no se hace desde otro calendario. Un evento de la persona bloquea y, si pisa una reserva, sale
+como choque. Nuestro «Ocupado» borrado a mano se vuelve a escribir, y uno movido a mano vuelve a
+la hora de la reserva, en la pasada siguiente (`reservation_calendar.event_put_back`). En los dos
+casos se borra antes de escribir: si es el listado el que no lo trae, no se acumulan «Ocupado». Lo
+escrito en esa misma pasada no se mira: la lectura puede no traerlo aún.
 
 **Con datos viejos no se bloquea** (decisión de 2026-11-04). Un hueco ofrecido de
 más se ve como un choque en la agenda; uno bloqueado de más es un cliente que nadie
@@ -359,14 +466,21 @@ atiende.
 | La escritura falla | Sigue igual | `error` · `write` | No pudimos escribir todas sus reservas; se sigue intentando |
 | Google rechaza el permiso | Se quita en esa pasada | `needs_reauth` · `auth` | Hay que volver a conectar; lo de Google no bloquea huecos |
 | El calendario ya no existe | Se quita en esa pasada | `error` · `calendar_gone` | Elige otro; lo de Google no bloquea huecos |
-| La conexión está en `needs_reauth`, `paused` o ya no existe | Se quita en la pasada siguiente | `needs_reauth` · `connection` | Hay que volver a conectar; lo de Google no bloquea huecos |
+| La conexión está en `needs_reauth` | Se quita en la pasada siguiente | `needs_reauth` · `connection` | Hay que volver a conectar; lo de Google no bloquea huecos |
 
-`last_sync_at` es la última pasada en la que salió todo. `last_error` es un código
-nuestro y la pantalla lo traduce: el texto del proveedor no se guarda, no sale por
-la API y no va a los registros, porque puede traer un token o el título de la cita
-de otra persona. Registros, todos con `tenant_id`: `reservation_calendar.read_failed`,
-`.write_failed`, `.event_without_id`, `.busy_dropped` y `.connection_unhealthy` (este,
-una vez, no cada dos minutos). Llevan el tipo de error, nunca su texto.
+Lo que le pasa a un profesional no toca a los demás. `last_sync_at` es la última pasada en la que
+salió todo. `last_error` es un código nuestro y la pantalla lo traduce: el texto del proveedor no
+se guarda, no sale por la API y no va a los registros, porque puede traer un token o el título de
+la cita de otra persona. Registros, todos con `tenant_id` y `staff_id`:
+`reservation_calendar.read_failed`, `.write_failed`, `.event_without_id`, `.busy_dropped`,
+`.connection_unhealthy` (una vez, no cada dos minutos), `.link_failed`, `.account_state_failed`,
+`.revoke_failed`, `.event_put_back`, `.event_adopted`, `.ref_not_saved` y
+`.business_read_failed`. Llevan el tipo de error, nunca su texto. En la auditoría del cliente:
+`reservations.calendar_connect_started`, `.calendar_changed` y `.calendar_disconnected`, con quién y
+de qué profesional, sin la cuenta de nadie.
+
+El webhook del proveedor no interviene: no sabe de estas conexiones (`unknown_connection`, 200) y
+cada una se resuelve mirando su estado (`calendar_sync.settle_pending`), al volver y en cada pasada.
 
 Los nombres de las acciones y argumentos viven en `ComposioGoogleCalendar` y salen
 del catálogo público de Composio (`docs.composio.dev/toolkits/googlecalendar`,
@@ -376,7 +490,26 @@ describe la forma de las respuestas**, y esto no se ha probado con una cuenta de
 Google de verdad: **verificarlo en staging** antes de encenderlo para un cliente.
 Una respuesta que no es un listado cuenta como fallo de lectura, no como calendario
 vacío. Si al crear un evento la respuesta no trae su id, se guarda `?` para no volver
-a crearlo: ese evento no se podrá mover, y lo dice `.event_without_id`.
+a crearlo, lo dice `.event_without_id`, y la lectura siguiente lo adopta por su marca. El SDK va sin
+reintentos: tras un timeout, repetir una escritura la hace dos veces.
+
+## Los datos que dejan reservar
+
+Lo que falla aquí no da un error: da un cliente al que el agente no sabe atender. Por eso se avisa
+en Ajustes antes de que pase (spec 043, requisito 14; `warnings` de `/services` y `/staff`).
+
+| Dato | En Ajustes | El agente | La consola |
+|---|---|---|---|
+| Servicio que no hace nadie en activo | `no_staff` | `reservas.services`: `bookable: false`, `why_not: no_staff`. `find_slots` y `create`: `no_staff` | 409 `no_staff` |
+| Servicio que no cabe en el horario de quienes lo hacen, mirando la semana que viene | `does_not_fit` | Sin huecos; `slot_taken` | Sin huecos; 409 `slot_taken` |
+| Persona con horario propio y ningún día | `no_hours` en la persona | Sin huecos con ella | Sin huecos con ella |
+| Persona sin horario propio | — | El del negocio | El del negocio |
+| Pedir a quien no hace ese servicio | — | `not_offered` | 404 |
+| Persona archivada | Sale de la lista del servicio, también en la ficha del negocio; no puede volver a él y no cuenta | No se ofrece | No se ofrece |
+| Fecha especial cerrada | — | `find_slots`: `closed`; `create`: `slot_taken` | `/slots`: `closed`; 409 `slot_taken` |
+
+**Sin excepciones por persona.** Un día libre de un solo profesional solo se puede expresar con
+su calendario conectado (un evento de todo el día). Sin calendario, hoy no hay forma.
 
 ## Probarlo en local
 
@@ -409,6 +542,8 @@ E2E_BASE_URL=http://localhost:3110 E2E_CLIENT_EMAIL=valeria@cultor.test \
   modos, las dos credenciales; 403 a partner y a cliente sin módulo.
 - `tests/isolation/test_reservas_customer_axis.py`: el agente de una persona no
   toca lo de otra del mismo negocio; ninguna herramienta tiene campo de cliente.
+- Cada ruta de calendario entra en el barrido: un profesional de otro cliente da el mismo
+  404 que uno inventado, y la identidad en el proveedor no sale por la API.
 - `tests/isolation/test_reservas_auto_pass_scope.py` (spec 048): el paso
   automático de un cliente no lee ni escribe nada de otro — ni su sector, ni sus
   servicios y su equipo, ni sus agentes, citas, pruebas, ajustes, acceso o

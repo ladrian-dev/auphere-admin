@@ -42,6 +42,7 @@ from nexus_api.db.models import (
     TenantConnectorStatus,
     ToolCatalog,
 )
+from nexus_api.services.agent_spec.retired import SYSTEM_ONLY_PREFIX
 
 Permission = Literal["read", "ask_before_write", "read_write"]
 PERMISSIONS: Final = ("read", "ask_before_write", "read_write")
@@ -119,6 +120,17 @@ class AffectedSkills:
 # ── el turno ───────────────────────────────────────────────────────────────
 
 
+async def _books_in_reservas(session: AsyncSession, agent_id: uuid.UUID | None) -> bool:
+    if agent_id is None:
+        return False
+    tools = await session.scalar(
+        sa.select(AgentConfig.tools)
+        .where(AgentConfig.agent_id == agent_id, AgentConfig.status == AgentConfigStatus.ACTIVE)
+        .limit(1)
+    )
+    return any(t.startswith("reservas.") for t in tools or [])
+
+
 async def tool_policy(
     session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID | None
 ) -> ToolPolicy:
@@ -172,7 +184,14 @@ async def tool_policy(
     approval: set[str] = set()
     from nexus_api.services.connectors.service import name_says_it_writes
 
+    # Spec 043, R11.2: un agente que ya reserva en Reservas no toca Google, ni aunque su
+    # versión lo nombre. Uno que aún no pasó sigue como estaba: quitárselo sin darle Reservas
+    # lo dejaría sin agenda.
+    passed = await _books_in_reservas(session, agent_id)
     for name, catalog_read_only, connection_id in rows:
+        if passed and name.startswith(SYSTEM_ONLY_PREFIX):
+            blocked.add(name)
+            continue
         # Una fila vieja del catálogo puede decir que lee lo que su nombre dice que escribe
         # (``…_CALENDAR_LIST_DELETE``): el permiso «Solo leer» no la deja pasar.
         read_only = catalog_read_only and not name_says_it_writes(name)

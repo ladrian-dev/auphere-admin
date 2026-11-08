@@ -419,9 +419,18 @@ async def _agent_or_principal(session: AsyncSession, agent_id: uuid.UUID | None)
 
 async def staff_of(session: AsyncSession, service_id: uuid.UUID) -> list[uuid.UUID]:
     rows = await session.scalars(
-        sa.select(ReservationServiceStaff.staff_id).where(
+        sa.select(ReservationServiceStaff.staff_id)
+        .join(
+            ReservationStaff,
+            sa.and_(
+                ReservationStaff.tenant_id == ReservationServiceStaff.tenant_id,
+                ReservationStaff.id == ReservationServiceStaff.staff_id,
+            ),
+        )
+        .where(
             ReservationServiceStaff.tenant_id == require_current_tenant(),
             ReservationServiceStaff.service_id == service_id,
+            ReservationStaff.archived_at.is_(None),
         )
     )
     return sorted(rows.all(), key=str)
@@ -495,7 +504,7 @@ async def _set_staff(
     svc.all_staff = staff_ids is None
     for staff_id in staff_ids or ():
         member = await session.get(ReservationStaff, staff_id)
-        if member is None or member.tenant_id != tenant_id:
+        if member is None or member.tenant_id != tenant_id or member.archived_at is not None:
             raise ServiceError("unknown_staff", "staff")
         session.add(
             ReservationServiceStaff(tenant_id=tenant_id, service_id=svc.id, staff_id=staff_id)

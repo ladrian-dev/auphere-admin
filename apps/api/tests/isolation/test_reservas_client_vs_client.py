@@ -191,6 +191,8 @@ def _body(method: str, path: str, day: Any) -> dict[str, Any] | None:
         return {"notify": False}
     if path.endswith("/calendar"):
         return {"calendar_id": None}
+    if path.endswith("/calendar/connect"):
+        return {}
     if method == "PATCH":
         return {"name": "Otro nombre"}
     return None
@@ -275,3 +277,66 @@ async def test_a_partner_member_and_a_client_without_the_module_get_403(
         assert partner.status_code == 403, (method, path, partner.status_code)
         outsider = await client.request(method, concrete, headers=no_module["headers"](), json=body)
         assert outsider.status_code == 403, (method, path, outsider.status_code)
+
+
+async def test_the_google_of_the_business_only_blocks_its_own_client(
+    db_session, console_world
+) -> None:
+    """Spec 043, R12.13: el ocupado del Google del negocio lo lee su cliente y nadie más, y la
+    conexión de un cliente nunca se usa en la pasada de la vecina."""
+    from datetime import UTC, datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+
+    import sqlalchemy as sa
+
+    from nexus_api.db.models import Connector, TenantConnector
+    from nexus_api.services.reservations import calendar_sync
+    from nexus_api.services.reservations.calendar_sync import Busy, Connection
+    from nexus_api.services.reservations.core import load_ctx
+
+    a, b = console_world["a"], console_world["b"]
+    await make_reservas(db_session, partner_id=a["partner_id"], tenant_id=a["tenant_id"])
+    await make_reservas(db_session, partner_id=b["partner_id"], tenant_id=b["tenant_id"])
+    connector = Connector(
+        slug=calendar_sync.TOOLKIT,
+        display_name="Google Calendar",
+        vendor="Google",
+        category="calendar",
+        auth_kind="oauth_composio",
+        mcp_server_ref=f"composio:{calendar_sync.TOOLKIT}",
+        auto_enable_on_connect=True,
+    )
+    db_session.add(connector)
+    await db_session.flush()
+    connector_id = connector.id
+    await db_session.commit()
+    async with tenant_scoped_session(db_session, a["tenant_id"]):
+        db_session.add(
+            TenantConnector(
+                tenant_id=a["tenant_id"],
+                connector_id=connector_id,
+                status="connected",
+                credentials_ref={"composio_connection_id": "ca_a", "user_id": "tenant_a"},
+            )
+        )
+    await db_session.commit()
+
+    start = datetime.combine(future_day(), time(16, 0), tzinfo=ZoneInfo("UTC"))
+    used: list[str] = []
+
+    class Google:
+        async def busy(self, conn: Connection, *_: Any, **__: Any) -> list[Busy]:
+            used.append(conn.connection_id)
+            return [Busy(start, start + timedelta(hours=1), "cita")]
+
+    async def one_pass(tenant_id: Any) -> int:
+        sm = get_sessionmaker()
+        async with sm() as session, tenant_scoped_session(session, tenant_id):
+            ctx = await load_ctx(session, tenant_id)
+            assert ctx is not None
+            await calendar_sync.sync_tenant(session, ctx, Google(), now=datetime.now(UTC))  # type: ignore[arg-type]
+            return int(await session.scalar(sa.text("SELECT count(*) FROM reservation_busy")) or 0)
+
+    assert await one_pass(a["tenant_id"]) > 0
+    assert await one_pass(b["tenant_id"]) == 0
+    assert set(used) == {"ca_a"}

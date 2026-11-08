@@ -7,6 +7,12 @@ in what it answers with: the person still saves it, and its tests go stale.
 
 A new connector that books is one more line here. What cancels stays out: it is a
 decision about the customer's booking, so a person opts in.
+
+**Reservas is the source of truth** (Luis, 2026-11-04; spec 043, requirement 11). Where
+it is on, no connector gets an agent booking: the appointment must exist there, with
+its reminders, so nobody can take that hour. Google Calendar is not here at all: it is a
+mirror the system writes to (``reservations.calendar_sync``), connected per professional
+from the Reservas panel, and its tools are never an agent's (``agent_spec.retired``).
 """
 
 from __future__ import annotations
@@ -24,17 +30,18 @@ from nexus_api.db.models import (
     AgentConnectorActivation,
     AgentStatus,
     AuditLog,
+    ClientAccess,
     Connector,
     TenantConnector,
     ToolCatalog,
     ToolStatus,
 )
+from nexus_api.services.agent_spec.retired import agent_may_use
 
 log = structlog.get_logger(__name__)
 
-#: What making a booking takes, per connector. Google Calendar has no reading of events
-#: here on purpose: their titles name other customers. A slug the provider does not
-#: return is skipped, so a wrong one is never written to an agent.
+#: What making a booking takes, per connector. A slug the provider does not return is
+#: skipped, so a wrong one is never written to an agent.
 BOOKING_TOOLS: Final[dict[str, tuple[str, ...]]] = {
     "calendly": (
         "CALENDLY_WHO_AM_I",
@@ -43,10 +50,6 @@ BOOKING_TOOLS: Final[dict[str, tuple[str, ...]]] = {
         "CALENDLY_POST_INVITEE",
         "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK",
     ),
-    "googlecalendar": (
-        "GOOGLECALENDAR_FIND_FREE_SLOTS",
-        "GOOGLECALENDAR_CREATE_EVENT",
-    ),
 }
 
 #: What actually takes a booking in a connector's calendar.
@@ -54,7 +57,6 @@ _BOOKS: Final = frozenset(
     {
         "CALENDLY_POST_INVITEE",
         "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK",
-        "GOOGLECALENDAR_CREATE_EVENT",
     }
 )
 
@@ -67,9 +69,11 @@ def books(slug: str) -> bool:
 
 
 def books_elsewhere(tools: Iterable[str] | None) -> bool:
-    """The other way round: this agent already books through a connector, so
-    switching Reservas on must not give it a second calendar."""
-    return not _BOOKS.isdisjoint(tools or ())
+    """This version still books outside Reservas: through a connector, or with a Google
+    Calendar tool from before it was retired. It passes to Reservas, and until it does
+    the panel says so (spec 043, R11.5)."""
+    names = set(tools or ())
+    return not _BOOKS.isdisjoint(names) or any(not agent_may_use(n) for n in names)
 
 
 def _valid_spec(spec: dict[str, Any]) -> bool:
@@ -82,6 +86,12 @@ def _valid_spec(spec: dict[str, Any]) -> bool:
     except ValidationError:
         return False
     return True
+
+
+async def _agenda_is_ours(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """Reservas is on for this client: every appointment is born there (R11.6)."""
+    access = await session.get(ClientAccess, tenant_id)
+    return access is not None and access.reservas_on
 
 
 async def _agent_or_principal(
@@ -202,7 +212,7 @@ async def _write_draft(
     if base is None:
         return []
     current = list(base.tools or [])
-    if _OWN_CALENDAR in current:
+    if _OWN_CALENDAR in current or await _agenda_is_ours(session, install.tenant_id):
         return []
     offered = set(
         await session.scalars(

@@ -158,7 +158,9 @@ async def fix(
     spec, _cfg = await current_spec(scope)
     assert spec is not None
     patched = apply_ops(dump(spec), agent_fix_ops(test, body.value))
-    ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
+    ctx = await load_context(
+        scope.session, partner_id=scope.principal.partner.id, agent_id=scope.agent_id
+    )
     checked, problems = validate_spec(patched, ctx, author="person")
     if checked is None or problems:
         raise HTTPException(

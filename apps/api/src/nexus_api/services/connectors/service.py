@@ -35,7 +35,7 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 import structlog
 from sqlalchemy import select
@@ -76,6 +76,11 @@ from .toolkits import allowlist_for, hint_for_slug
 log = structlog.get_logger(__name__)
 
 # ── exceptions ──────────────────────────────────────────────────────────────
+
+
+#: Connectors whose tools are never an agent's. They are connected elsewhere: Google
+#: Calendar, per professional from Reservas (spec 043, requirements 11 and 12).
+SYSTEM_ONLY_CONNECTORS: Final = frozenset({"googlecalendar"})
 
 
 class ConnectorNotFound(LookupError):
@@ -139,6 +144,20 @@ class SyncToolsResult:
 def _entity_for_tenant(tenant: Tenant) -> str:
     """The Composio user_id for a tenant. Single source of truth."""
     return f"tenant_{tenant.slug}"
+
+
+async def has_live_install(session: AsyncSession, slug: str) -> bool:
+    """¿El cliente de esta transacción tiene ese conector, y nadie lo ha quitado?"""
+    found = await session.scalar(
+        select(TenantConnector.id)
+        .join(Connector, Connector.id == TenantConnector.connector_id)
+        .where(
+            Connector.slug == slug,
+            TenantConnector.status != TenantConnectorStatus.DISCONNECTED.value,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 async def _load_connector_by_slug(session: AsyncSession, slug: str) -> Connector:
@@ -941,6 +960,10 @@ async def auto_enable_connector_tools(
     """
     if not connector.auto_enable_on_connect:
         return []
+    # Google Calendar is the system's (spec 043, R11.1): connecting it gives no agent
+    # anything, not even what only reads.
+    if connector.slug in SYSTEM_ONLY_CONNECTORS:
+        return []
 
     tool_rows = (
         await session.scalars(
@@ -1388,6 +1411,7 @@ async def delete_override(
 
 
 __all__ = [
+    "SYSTEM_ONLY_CONNECTORS",
     "CompleteConsentResult",
     "ConnectorAlreadyConnected",
     "ConnectorNotConfigured",

@@ -103,8 +103,8 @@ entries:
     status: absent
     label: "Google Calendar"
     note: >-
-      No hay conector nativo. La agenda es Reservas (la nativa); si el cliente
-      quiere ver sus citas en Google Calendar, hoy hace falta desarrollo.
+      No es un conector de agente. La agenda es Reservas (la nativa), y cada
+      profesional conecta su Google Calendar desde Ajustes de Reservas.
     eta: null
     replaced_by: []
 

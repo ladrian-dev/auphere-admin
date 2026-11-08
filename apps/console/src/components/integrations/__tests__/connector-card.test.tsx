@@ -167,3 +167,28 @@ describe("Tarjeta de conector · una acción a la vista, ninguna perdida", () =>
     expect(screen.getByText("Conectado")).toBeInTheDocument();
   });
 });
+
+describe("Tarjeta de conector · lo que no se conecta aquí", () => {
+  it("deja solo quitarla y explica dónde se conecta", () => {
+    mount({ slug: "googlecalendar", display_name: "Google Calendar", installed: true, status: "connected", managed_elsewhere: true, tools_total: 12, tools_enabled: 3 });
+    expect(screen.getByRole("button", { name: "Quitar" })).toBeInTheDocument();
+    expect(screen.getByText(/cada profesional conecta el suyo en Reservas/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Más opciones/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reconectar" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /habilidades|desbloquea/i })).toBeNull();
+  });
+
+  it("caída: se puede renovar, porque un agente que aún reserva en Google la necesita", async () => {
+    mount({ slug: "googlecalendar", display_name: "Google Calendar", installed: true, status: "needs_reauth", managed_elsewhere: true });
+    expect(screen.getByRole("button", { name: "Reconectar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quitar" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /Más opciones/ }));
+    expect(await screen.findByRole("menuitem", { name: "Quitar" })).toBeInTheDocument();
+  });
+
+  it("en pausa: se reanuda, no se vuelve a autorizar", () => {
+    mount({ slug: "googlecalendar", display_name: "Google Calendar", installed: true, status: "paused", managed_elsewhere: true });
+    expect(screen.getByRole("button", { name: "Reanudar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reconectar" })).toBeNull();
+  });
+});

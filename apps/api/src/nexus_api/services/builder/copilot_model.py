@@ -72,7 +72,7 @@ async def propose_with_model(
     partner_id: uuid.UUID | None,
 ) -> CopilotAnswer:
     doc = dump(spec)
-    ctx = await load_context(session, partner_id=partner_id)
+    ctx = await load_context(session, partner_id=partner_id, agent_id=agent_id)
     messages = [
         {"role": "system", "content": SYSTEM},
         {

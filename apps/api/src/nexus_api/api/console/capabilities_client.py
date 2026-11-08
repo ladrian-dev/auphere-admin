@@ -50,6 +50,7 @@ from nexus_api.db.models import (
 )
 from nexus_api.repositories.audit import AuditRepository
 from nexus_api.services.activations import needs_connector
+from nexus_api.services.agent_spec.retired import SYSTEM_ONLY_PREFIX
 from nexus_api.services.agents import principal_agent_id
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.booking_skills import _BOOKS
@@ -125,7 +126,11 @@ async def _rows(scope: ClientScope) -> list[sa.Row[Any]]:
         .select_from(ToolCatalog)
         .outerjoin(Connector, Connector.id == ToolCatalog.connector_id)
         .outerjoin(TenantConnector, TenantConnector.connector_id == Connector.id)
-        .where(ToolCatalog.status.notin_([ToolStatus.INTERNAL, ToolStatus.DEPRECATED]))
+        .where(
+            ToolCatalog.status.notin_([ToolStatus.INTERNAL, ToolStatus.DEPRECATED]),
+            # Las de Google Calendar nunca son de un agente (spec 043, R11.2).
+            ToolCatalog.name.notlike(f"{SYSTEM_ONLY_PREFIX}%"),
+        )
         .order_by(ToolCatalog.name)
     )
     return list((await scope.session.execute(stmt)).all())
@@ -317,7 +322,7 @@ async def list_capabilities(
 
 
 #: Lo que una prueba comprueba en su ``expected_state``, y las herramientas que lo
-#: hacen: la agenda de Auphere o el calendario de un conector (``booking_skills``).
+#: hacen: la agenda de Auphere o, sin Reservas, Calendly (``booking_skills``).
 _STATE_TOOLS = {"booking": frozenset({"reservas.create", *_BOOKS})}
 
 #: Por qué no se puede apagar: una tarea la nombra, una prueba espera lo que solo ella
@@ -427,7 +432,9 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
         )
     outside = [t for t in listed if t not in tools and t != key and needs_connector(t)]
     doc = dump(spec)
-    ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
+    ctx = await load_context(
+        scope.session, partner_id=scope.principal.partner.id, agent_id=scope.agent_id
+    )
     # Si lo de fuera no cabe en el documento, manda el documento, como en cualquier
     # otra escritura: el cambio que se pidió no se rechaza por algo que no se pidió.
     for names in ([*wanted, *outside], wanted) if outside else (wanted,):

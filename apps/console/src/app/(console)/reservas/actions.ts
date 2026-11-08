@@ -10,7 +10,6 @@ import {
   type BlockCreated,
   type Booking,
   type BookingDetail,
-  type CalendarAccount,
   type CancelledBooking,
   type CancelPreview,
   type CapacitySlots,
@@ -18,6 +17,7 @@ import {
   type ReservasSettings,
   type ServicesSlots,
   type SlotOffer,
+  type StaffCalendarOption,
   type StaffMember,
   type WaitlistEntry,
 } from "@/lib/backend/reservas";
@@ -367,12 +367,29 @@ export async function archiveStaffAction(raw: unknown): Promise<ActionResult<nul
   return run(() => backendFor(principal).reservasArchiveStaff(p.id));
 }
 
-// ── calendars (§8, P3) ───────────────────────────────────────────────────
+// ── each professional's calendar (§8, R12) ───────────────────────────────
 
-export async function calendarAccountAction(): Promise<ActionResult<CalendarAccount>> {
+const connectCalendarSchema = z.object({ id, share: z.boolean() });
+/** `share`: the link is to send to the professional, who won't come back to this console. */
+export async function connectStaffCalendarAction(raw: unknown): Promise<ActionResult<{ redirect_url: string }>> {
+  const p = connectCalendarSchema.parse(raw);
   const principal = await reservasPrincipal();
   if (!principal) return forbidden;
-  return run(() => backendFor(principal).reservasCalendar());
+  return run(() => backendFor(principal).reservasConnectStaffCalendar(p.id, p.share));
+}
+
+export async function refreshStaffCalendarAction(raw: unknown): Promise<ActionResult<StaffMember>> {
+  const p = idSchema.parse(raw);
+  const principal = await reservasPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).reservasRefreshStaffCalendar(p.id));
+}
+
+export async function staffCalendarsAction(raw: unknown): Promise<ActionResult<{ calendars: StaffCalendarOption[] }>> {
+  const p = idSchema.parse(raw);
+  const principal = await reservasPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).reservasStaffCalendars(p.id));
 }
 
 /** `calendar_id: null` lets the calendar go. */

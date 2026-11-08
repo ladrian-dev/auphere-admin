@@ -240,12 +240,20 @@ Una sola oferta `running` por hueco: índice único parcial
 
 ## P3: `reservation_staff_calendars` y `reservation_busy`
 
-`reservation_staff_calendars (tenant_id, staff_id PK, calendar_id varchar(255),
-last_sync_at, last_error varchar(200))` — qué calendario de la cuenta de Google
-del cliente es de cada persona. `reservation_busy (id, tenant_id, staff_id,
-starts_at, ends_at, source 'google', synced_at)` — solo intervalos, sin título.
+`reservation_staff_calendars (tenant_id, staff_id PK, calendar_id varchar(255) NULL,
+calendar_name, last_sync_at, last_error varchar(200), connection_id, connection_user_id,
+connection_status, status_since, account_label, previous_connection_id, previous_user_id)` — la
+conexión de cada persona con el
+proveedor y qué calendario de su cuenta usa (`0228_staff_calendar_connections`, enmienda del
+2026-11-04). `connection_status`: `pending`, `connected`, `needs_reauth`, `disconnecting`. Un
+calendario, un profesional: índice único parcial `(tenant_id, calendar_id)`. `connection_id` y
+`connection_user_id` no salen por la API. `previous_*`: la conexión que funcionaba mientras se
+autoriza otra; se suelta cuando la nueva ya está. `reservation_busy (id, tenant_id, staff_id,
+starts_at, ends_at, source 'google'|'business', synced_at)` — solo intervalos, sin título;
+`business` es lo leído del Google del negocio (R12.13).
 `reservations.external_event_id varchar(255) NULL` — el evento «Ocupado» que se
-escribió.
+escribió: `<profesional> <calendario> <evento>`, con `moved ` delante si está pendiente de
+borrar.
 
 ## Columnas en tablas que ya existen
 

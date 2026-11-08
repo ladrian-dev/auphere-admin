@@ -17,6 +17,7 @@ const WORDED: Readonly<Record<string, MessageKey>> = {
   gate_blocked: "common.error.gate_blocked",
   spec_invalid: "common.error.spec_invalid",
   tool_in_use: "common.error.tool_in_use",
+  connect_from_reservas: "common.error.connect_from_reservas",
 };
 
 /**

@@ -61,6 +61,10 @@ export const amendment1030Messages = {
     es: "Este cambio dejaría al agente sin poder funcionar, así que no se ha guardado.",
     en: "This change would leave the agent unable to work, so it was not saved.",
   },
+  "common.error.connect_from_reservas": {
+    es: "Google Calendar no se conecta aquí: cada profesional conecta el suyo en Reservas, en la consola del negocio.",
+    en: "Google Calendar isn't connected here: each professional connects their own in Reservas, in the business's console.",
+  },
   "common.error.tool_in_use": {
     es: "No se puede apagar: una tarea o una prueba de este agente la usa. Cámbialas primero.",
     en: "It can’t be switched off: one of this agent’s tasks or tests uses it. Change them first.",

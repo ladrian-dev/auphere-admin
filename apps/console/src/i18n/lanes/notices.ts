@@ -34,6 +34,25 @@ export const noticesMessages = {
     en: "{client}: an agent reached its monthly cap and is paused.",
   },
 
+  // ── el paso a Reservas (spec 043, R11.4) ──
+  "notif.kind.reservas.pass_not_ready": {
+    es: "{client}: su agente sigue reservando en Google. Para pasar a Reservas falta: {missing}.",
+    en: "{client}: its agent still books in Google. To move to Reservas it needs: {missing}.",
+  },
+  "notif.kind.reservas.pass_not_ready.failed": {
+    es: "{client}: no se pudo pasar su agente a Reservas y sigue reservando en Google. Se reintenta en el siguiente despliegue.",
+    en: "{client}: its agent could not move to Reservas and still books in Google. The next deploy tries again.",
+  },
+  "notif.reservas.reason.reservas_off": { es: "encender Reservas", en: "Reservas switched on" },
+  "notif.reservas.reason.hours_missing": { es: "el horario del negocio", en: "the business hours" },
+  "notif.reservas.reason.no_staff": { es: "alguien en el equipo", en: "someone on the team" },
+  "notif.reservas.reason.no_services": { es: "algún servicio", en: "a service" },
+  "notif.reservas.reason.no_bookable_service": {
+    es: "un servicio con alguien que lo haga",
+    en: "a service with someone to do it",
+  },
+  "notif.reservas.reason.no_capacity": { es: "el aforo y sus turnos", en: "the capacity and its shifts" },
+
   // ── pausas y canales (27, 29, 31) ──
   "notif.kind.agent.paused": { es: "{client}: pausaron un agente.", en: "{client}: an agent was paused." },
   "notif.kind.agent.paused.agent": { es: "{by} pausó {agent} ({client}).", en: "{by} paused {agent} ({client})." },

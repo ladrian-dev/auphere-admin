@@ -146,18 +146,27 @@ describe("reservas actions", () => {
     await expect(actions.createStaffAction({ name: "Nora", email: `${"a".repeat(250)}@x.co`, hours: null, idempotencyKey: KEY })).rejects.toThrow();
   });
 
-  it("the calendars: read the account, link one, and let it go with null", async () => {
+  it("each professional's calendar: connect, look again, list, choose and let go", async () => {
     h.setClient(["reservas"]);
-    await actions.calendarAccountAction();
-    expect(h.backend.reservasCalendar).toHaveBeenCalled();
+    await actions.connectStaffCalendarAction({ id: STAFF, share: false });
+    expect(h.backend.reservasConnectStaffCalendar).toHaveBeenCalledWith(STAFF, false);
+    await actions.connectStaffCalendarAction({ id: STAFF, share: true });
+    expect(h.backend.reservasConnectStaffCalendar).toHaveBeenCalledWith(STAFF, true);
+    await actions.refreshStaffCalendarAction({ id: STAFF });
+    expect(h.backend.reservasRefreshStaffCalendar).toHaveBeenCalledWith(STAFF);
+    await actions.staffCalendarsAction({ id: STAFF });
+    expect(h.backend.reservasStaffCalendars).toHaveBeenCalledWith(STAFF);
     await actions.staffCalendarAction({ id: STAFF, calendar_id: "lucia@agenda" });
     expect(h.backend.reservasSetStaffCalendar).toHaveBeenCalledWith(STAFF, "lucia@agenda");
     await actions.staffCalendarAction({ id: STAFF, calendar_id: null });
     expect(h.backend.reservasSetStaffCalendar).toHaveBeenCalledWith(STAFF, null);
     await expect(actions.staffCalendarAction({ id: "nope", calendar_id: null })).rejects.toThrow();
+    await expect(actions.connectStaffCalendarAction({ id: "nope", share: false })).rejects.toThrow();
 
     h.setClient(["panel"]);
-    await expect(actions.calendarAccountAction()).resolves.toEqual(forbidden);
+    await expect(actions.connectStaffCalendarAction({ id: STAFF, share: false })).resolves.toEqual(forbidden);
+    await expect(actions.refreshStaffCalendarAction({ id: STAFF })).resolves.toEqual(forbidden);
+    await expect(actions.staffCalendarsAction({ id: STAFF })).resolves.toEqual(forbidden);
     await expect(actions.staffCalendarAction({ id: STAFF, calendar_id: null })).resolves.toEqual(forbidden);
   });
 

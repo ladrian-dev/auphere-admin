@@ -15,7 +15,7 @@ Se declaran en `SCHEDULER_TASK_NAMES` y en `scheduler_tasks()` de
 | `reservations-cron` | 60 s | (1) encola confirmación/recordatorio a su hora; (2) Aforo: libera las no confirmadas 1 h antes; (3) pasa a `done` lo terminado; (4) caduca entradas de la lista; (5) abre ofertas de Aforo cuando hay sitio y gente que cabe |
 | `reservation-outbox-cron` | 10 s | Envía `reservation_outbox`: texto dentro de la ventana de 24 h, plantilla aprobada fuera; sin plantilla o sin teléfono, `skipped` y evento `notify_failed` |
 | `reservation-offers-cron` | 15 s | Avanza candidatos al vencer su plazo; cierra ofertas vacías |
-| `reservation-calendar-cron` (P3) | 120 s | Lee el ocupado de Google Calendar y escribe los «Ocupado» |
+| `reservation-calendar-cron` (P3) | 120 s | Hasta 300 s por cliente. Por cada profesional y con su conexión: termina la autorización, lee el ocupado, escribe los «Ocupado» y los corrige si alguien los tocó en Google, y termina de desconectar a quien lo pidió Lee también el Google del negocio para quien aún no sincroniza (R12.13). |
 
 Idempotencia: cada envío tiene `dedupe_key` único (`reminder:{reservation_id}`,
 `ask:{reservation_id}:{n}`, `moved:{reservation_id}:{version}`…); cada
@@ -75,3 +75,10 @@ Textos (`services/push_texts.py`), sin nombre del cliente final:
 | `reservas.agent_change` | «Reserva nueva» / «Reserva cambiada» | «El agente reservó para el jueves 23 a las 20:30 · 4 personas» |
 | `reservas.cancelled_today` | «Cancelación de hoy» | «Se liberó la reserva de las 20:30 · 4 personas» |
 | `reservas.waitlist_accepted` | «Lista de espera» | «Alguien aceptó el hueco de las 10:00» |
+
+## Avisos del paso a Reservas (revisión del 2026-11-05)
+
+`reservas.pass_not_ready` (partner, `warning`, campana y correo, una vez por cada conjunto de razones),
+con `{external_client_ref, reasons}`. `reasons`: `reservas_off`, `hours_missing`, `no_staff`,
+`no_services`, `no_bookable_service`, `no_capacity`, o `pass_failed` si el paso se deshizo. Se emite en
+el paso automático de cada despliegue: el agente sigue como estaba (R11.4).

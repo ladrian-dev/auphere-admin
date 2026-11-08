@@ -505,7 +505,9 @@ async def apply_proposal(
             raise _error(
                 "invalid_proposal", status.HTTP_422_UNPROCESSABLE_CONTENT, pointer=exc.pointer
             ) from exc
-        ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
+        ctx = await load_context(
+            scope.session, partner_id=scope.principal.partner.id, agent_id=scope.agent_id
+        )
         checked, problems = validate_spec(doc, ctx, author=proposal.author)  # type: ignore[arg-type]
         if checked is None or problems:
             raise _error(

@@ -178,7 +178,9 @@ async def evaluate_gate(
     )
     problems: list[Any] = []
     if spec is not None:
-        ctx = await load_context(session, partner_id=partner_id, legacy_chars=legacy_chars)
+        ctx = await load_context(
+            session, partner_id=partner_id, legacy_chars=legacy_chars, agent_id=agent.id
+        )
         # Spec 047, enmienda del 2026-10-30 (D72): la misma lectura que la consola.
         # Una habilidad o una petición de conexión con algo que no tenemos (de un
         # borrador de antes de la enmienda) no hace nada en el turno y la consola

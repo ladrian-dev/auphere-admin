@@ -9,6 +9,7 @@ traduce entre HTTP y el dominio.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, NoReturn
@@ -20,7 +21,9 @@ from redis.asyncio import Redis
 from nexus_api.api.console.business import hours_view
 from nexus_api.api.console.schemas_business_sections import HoursOut
 from nexus_api.api.deps import get_redis
+from nexus_api.config import get_settings
 from nexus_api.db.models import (
+    AuditLog,
     Reservation,
     ReservationBlock,
     ReservationOffer,
@@ -59,7 +62,9 @@ from nexus_api.services.reservations.core import (
     get_booking,
     load_ctx,
     move_booking,
+    service_warnings,
     services_free,
+    staff_warnings,
     transition,
 )
 from nexus_api.services.reservations.engine import capacity_fit, current_slot, first_fit
@@ -75,7 +80,8 @@ from .reservas_schemas import (
     BookingListOut,
     BookingOut,
     BusinessHoursPatchIn,
-    CalendarOut,
+    CalendarConnectIn,
+    CalendarLinkOut,
     CancelIn,
     CancelledBookingOut,
     CancelPreviewOut,
@@ -93,6 +99,7 @@ from .reservas_schemas import (
     SlotOut,
     SlotsOut,
     StaffCalendarIn,
+    StaffCalendarsOut,
     StaffIn,
     StaffListOut,
     StaffOut,
@@ -108,6 +115,9 @@ router = APIRouter(prefix="/reservas")
 SCOPE = lite_scope("reservas")
 MAX_RANGE_DAYS = 62
 OCCUPANCY_RANGE_DAYS = 31
+REFRESH_EVERY_SECONDS = 5
+#: Una petición no se queda colgada de un proveedor que no contesta.
+REFRESH_TIMEOUT_SECONDS: float = 25.0
 
 
 def _now() -> datetime:
@@ -339,6 +349,7 @@ def _staff_out(
             "position": m.position,
             "archived": m.archived_at is not None,
             "calendar": calendars.get(m.id, {"status": "none"}),
+            "warnings": staff_warnings(m),
         }
     )
 
@@ -432,56 +443,124 @@ async def patch_staff(
     return _staff_out(ctx, m, await _calendars(scope))
 
 
-@router.get("/calendar", response_model=CalendarOut)
-async def read_calendar(scope: LiteScope = Depends(SCOPE)) -> CalendarOut:
-    """P3: la cuenta de Google Calendar del cliente y sus calendarios."""
-    await _ctx(scope)
-    conn = await calendar_sync.connection_of(scope.session, scope.principal.tenant_id)
-    if conn is None:
-        return CalendarOut(
-            provider="google",
-            connected=False,
-            connection=await calendar_sync.connection_state(scope.session),
-            calendars=[],
+# ── el calendario de cada profesional (requisito 12) ────────────────────────
+
+
+def _calendar_audit(scope: LiteScope, member: ReservationStaff, *, action: str) -> None:
+    """Una persona del negocio puede tocar el calendario de otra: queda escrito quién y de
+    quién. La cuenta de Google de esa persona no entra en el rastro."""
+    scope.session.add(
+        AuditLog(
+            tenant_id=scope.principal.tenant_id,
+            actor=scope.principal.actor,
+            action=action,
+            target=f"reservation_staff:{member.id}",
+            after_json={"staff": member.name},
         )
-    unavailable = False
-    try:
-        cals = await calendar_sync.default_gateway().list_calendars(conn)
-    except Exception:  # el proveedor caído no rompe la pantalla, y la pantalla lo dice
-        cals = []
-        unavailable = True
-    return CalendarOut.model_validate(
-        {
-            "provider": "google",
-            "connected": True,
-            "connection": "connected",
-            "unavailable": unavailable,
-            "calendars": cals,
-        }
     )
+
+
+def _calendar_error(exc: calendar_sync.CalendarError) -> HTTPException:
+    return HTTPException(status_code=exc.status, detail={"code": exc.code, **exc.info})
+
+
+def _return_url(staff_id: uuid.UUID, *, share: bool) -> str:
+    """A dónde vuelve Google. Quien recibe el enlace no tiene por qué entrar en la consola:
+    aterriza en la página de «ya puedes cerrar esto». ``staff_id`` no es ningún secreto: la
+    vuelta solo hace que el panel mire cómo quedó."""
+    settings = get_settings()
+    if share:
+        return f"{settings.public_api_base_url.rstrip('/')}/connectors/oauth-callback"
+    return (
+        f"{settings.console_base_url.rstrip('/')}/reservas?tab=settings&calendar_return={staff_id}"
+    )
+
+
+@router.post("/staff/{staff_id}/calendar/connect", response_model=CalendarLinkOut)
+async def connect_staff_calendar(
+    staff_id: uuid.UUID, body: CalendarConnectIn, scope: LiteScope = Depends(SCOPE)
+) -> CalendarLinkOut:
+    """El enlace para que ese profesional autorice **su** cuenta. Se devuelve una vez, a
+    quien lo pidió."""
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    member = await _staff(scope, staff_id)
+    try:
+        redirect_url = await calendar_sync.start_connection(
+            scope.session,
+            ctx,
+            calendar_sync.default_gateway(),
+            member.id,
+            callback_url=_return_url(member.id, share=body.share),
+            now=_now(),
+        )
+    except calendar_sync.CalendarError as exc:
+        raise _calendar_error(exc) from None
+    _calendar_audit(scope, member, action="reservations.calendar_connect_started")
+    return CalendarLinkOut(redirect_url=redirect_url)
+
+
+@router.post("/staff/{staff_id}/calendar/refresh", response_model=StaffOut)
+async def refresh_staff_calendar(
+    staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE), redis: Redis = Depends(get_redis)
+) -> StaffOut:
+    """Mira ya cómo quedó ese profesional: al volver de Google y al reintentar, sin esperar
+    a la pasada. Pulsarlo muchas veces no llama a Google más de una vez cada poco."""
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    member = await _staff(scope, staff_id)
+    key = f"lite:calendar:refresh:{ctx.tenant_id}:{member.id}"
+    if await redis.set(key, "1", nx=True, ex=REFRESH_EVERY_SECONDS):
+        try:
+            await asyncio.wait_for(
+                calendar_sync.sync_tenant(
+                    scope.session, ctx, calendar_sync.default_gateway(), now=_now(), only=member.id
+                ),
+                timeout=REFRESH_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            raise _calendar_error(
+                calendar_sync.CalendarError(409, "calendar_unavailable")
+            ) from None
+    return _staff_out(ctx, member, await _calendars(scope))
+
+
+@router.get("/staff/{staff_id}/calendars", response_model=StaffCalendarsOut)
+async def list_staff_calendars(
+    staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)
+) -> StaffCalendarsOut:
+    """Los calendarios de la cuenta de **ese** profesional en los que se puede escribir."""
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    member = await _staff(scope, staff_id)
+    try:
+        items = await calendar_sync.calendars_of(
+            scope.session, calendar_sync.default_gateway(), member.id
+        )
+    except calendar_sync.CalendarError as exc:
+        raise _calendar_error(exc) from None
+    return StaffCalendarsOut.model_validate({"calendars": items})
 
 
 @router.put("/staff/{staff_id}/calendar", response_model=StaffOut)
 async def put_staff_calendar(
     staff_id: uuid.UUID, body: StaffCalendarIn, scope: LiteScope = Depends(SCOPE)
 ) -> StaffOut:
+    """Elige un calendario de su cuenta, o ``null`` para desconectarlo."""
     ctx = await _ctx(scope)
+    _need(ctx, "services")
     member = await _staff(scope, staff_id)
-    name: str | None = None
-    if body.calendar_id is not None:
-        conn = await calendar_sync.connection_of(scope.session, ctx.tenant_id)
-        if conn is None:
-            raise HTTPException(status_code=409, detail={"code": "calendar_not_connected"})
-        # Solo un calendario de la cuenta que el cliente conectó (/cso, apéndice).
-        try:
-            cals = await calendar_sync.default_gateway().list_calendars(conn)
-        except Exception:
-            raise HTTPException(status_code=409, detail={"code": "calendar_unavailable"}) from None
-        chosen = next((c for c in cals if c.get("id") == body.calendar_id), None)
-        if chosen is None:
-            raise HTTPException(status_code=422, detail={"code": "unknown_calendar"})
-        name = chosen.get("name") or body.calendar_id
-    await calendar_sync.set_staff_calendar(scope.session, ctx, member.id, body.calendar_id, name)
+    try:
+        if body.calendar_id is None:
+            await calendar_sync.disconnect(scope.session, member.id, now=_now())
+            _calendar_audit(scope, member, action="reservations.calendar_disconnected")
+        else:
+            await calendar_sync.choose_calendar(
+                scope.session, calendar_sync.default_gateway(), member.id, body.calendar_id
+            )
+            _calendar_audit(scope, member, action="reservations.calendar_changed")
+    except calendar_sync.CalendarError as exc:
+        raise _calendar_error(exc) from None
     return _staff_out(ctx, member, await _calendars(scope))
 
 
@@ -502,6 +581,13 @@ async def archive_staff(staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) 
             status_code=409, detail={"code": "live_reservations", "count": int(live)}
         )
     m.archived_at = _now()
+    await scope.session.execute(
+        sa.delete(ReservationServiceStaff).where(ReservationServiceStaff.staff_id == m.id)
+    )
+    # Quien ya no está en el equipo no se sigue sincronizando (la pasada revoca la conexión).
+    if await calendar_sync.staff_calendar(scope.session, m.id) is not None:
+        _calendar_audit(scope, m, action="reservations.calendar_disconnected")
+    await calendar_sync.disconnect(scope.session, m.id, now=_now())
     return Response(status_code=204)
 
 
@@ -514,9 +600,19 @@ async def archive_staff(staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) 
 
 
 async def _service_staff(scope: LiteScope, service_id: uuid.UUID) -> list[uuid.UUID]:
+    """Quién lo ofrece hoy: una persona archivada no vuelve a la lista al guardarla."""
     rows = await scope.session.execute(
-        sa.select(ReservationServiceStaff.staff_id).where(
-            ReservationServiceStaff.service_id == service_id
+        sa.select(ReservationServiceStaff.staff_id)
+        .join(
+            ReservationStaff,
+            sa.and_(
+                ReservationStaff.tenant_id == ReservationServiceStaff.tenant_id,
+                ReservationStaff.id == ReservationServiceStaff.staff_id,
+            ),
+        )
+        .where(
+            ReservationServiceStaff.service_id == service_id,
+            ReservationStaff.archived_at.is_(None),
         )
     )
     return list(rows.scalars())
@@ -534,7 +630,11 @@ def _service_refusal(exc: Exception) -> HTTPException:
     raise exc
 
 
-async def _service_out(scope: LiteScope, s: ReservationService) -> ServiceOut:
+async def _service_out(scope: LiteScope, ctx: Ctx, s: ReservationService) -> ServiceOut:
+    archived = s.archived_at is not None
+    warnings = (
+        [] if archived else await service_warnings(scope.session, ctx, s, today=ctx.today(_now()))
+    )
     return ServiceOut.model_validate(
         {
             "id": s.id,
@@ -546,7 +646,8 @@ async def _service_out(scope: LiteScope, s: ReservationService) -> ServiceOut:
             "staff": "all" if s.all_staff else "some",
             "staff_ids": [] if s.all_staff else await _service_staff(scope, s.id),
             "position": s.position,
-            "archived": s.archived_at is not None,
+            "archived": archived,
+            "warnings": warnings,
         }
     )
 
@@ -567,7 +668,9 @@ async def list_services(
     if not archived:
         stmt = stmt.where(ReservationService.archived_at.is_(None))
     return ServiceListOut(
-        items=[await _service_out(scope, s) for s in (await scope.session.execute(stmt)).scalars()]
+        items=[
+            await _service_out(scope, ctx, s) for s in (await scope.session.execute(stmt)).scalars()
+        ]
     )
 
 
@@ -584,7 +687,7 @@ async def create_service(
     if prior is not None:
         found = await scope.session.get(ReservationService, prior)
         if found is not None:
-            return await _service_out(scope, found)
+            return await _service_out(scope, ctx, found)
     data = services_catalog.ServiceData(
         name=body.name,
         bookable=True,
@@ -603,7 +706,7 @@ async def create_service(
         raise _service_refusal(exc) from None
     svc = await _svc(scope, service_id)
     await _remember(redis, scope, "service", idempotency_key, svc.id)
-    return await _service_out(scope, svc)
+    return await _service_out(scope, ctx, svc)
 
 
 async def _svc(scope: LiteScope, service_id: uuid.UUID) -> ReservationService:
@@ -622,6 +725,7 @@ async def patch_service(
     service_id: uuid.UUID, body: ServicePatchIn, scope: LiteScope = Depends(SCOPE)
 ) -> ServiceOut:
     """Solo cambia lo que llega (5.3): «Gratis» sigue gratis si no se toca el precio."""
+    ctx = await _ctx(scope)
     svc = await _svc(scope, service_id)
     data = body.model_dump(exclude_unset=True)
     if data.get("name") is not None and not _same_name(data["name"], svc.name):
@@ -649,7 +753,7 @@ async def patch_service(
     if data.get("position") is not None:
         svc.position = int(data["position"])
     await scope.session.flush()
-    return await _service_out(scope, svc)
+    return await _service_out(scope, ctx, svc)
 
 
 @router.post("/services/{service_id}/archive", status_code=204)

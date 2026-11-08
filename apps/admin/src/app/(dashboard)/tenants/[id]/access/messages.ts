@@ -1,4 +1,4 @@
-import type { CapacityKind, ClientModule, ReservasMode } from "@/lib/backend";
+import type { CapacityKind, ClientModule, ReservasMode, ReservasNotReadyReason } from "@/lib/backend";
 
 /**
  * Spec 030: what each closed-vocabulary refusal of the client-access API
@@ -126,6 +126,20 @@ export const PHONE_REASONS: Record<string, string> = {
 
 export const PHONE_GONE = "Ese teléfono ya no está en la lista. Vuelve a abrirla.";
 
-/** An agent that books through a connector does not get a second calendar. */
+/** Spec 043, R11.4: it still books in Google and the deploy did not pass it. */
+export const PENDING_PASS_NOT_READY =
+  "Estos agentes siguen reservando en Google. No pasan a Reservas hasta que el cliente pueda tomar citas: mientras tanto se quedan como están. Falta:";
+export const PENDING_PASS_READY =
+  "Estos agentes todavía nombran Google. El cliente ya puede reservar: pasan solos a Reservas en el siguiente despliegue.";
+export const PENDING_PASS_REASONS: Record<ReservasNotReadyReason, string> = {
+  reservas_off: "encender Reservas (arriba, con su modo)",
+  hours_missing: "el horario del negocio",
+  no_staff: "alguien en el equipo",
+  no_services: "algún servicio",
+  no_bookable_service: "un servicio con alguien que lo haga en su horario",
+  no_capacity: "el aforo y sus turnos",
+};
+
+/** Spec 043, R11.5: what an agent answers with still books outside; its draft no longer does. */
 export const AGENT_OTHER_CALENDAR =
-  "Estos agentes ya reservan con un conector, así que no se les añadió Reservas: reservarían en dos sitios. Para pasarlos a Reservas, apaga primero esa habilidad.";
+  "Estos agentes todavía reservan fuera de Reservas: esas citas no se ven en la agenda. Su borrador ya reserva en Reservas; publícalo para que dejen de hacerlo.";

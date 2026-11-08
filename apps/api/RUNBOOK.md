@@ -476,7 +476,8 @@ despliegue: no hay nada que hacer a mano (abajo, «Paso automático a Reservas»
 Corre en **cada despliegue**, en la tarea de migración, después de `alembic
 upgrade head` y del sembrado de conectores (`scripts/release.sh` →
 `scripts/pass_booking_to_reservas.py`). Pasa a Reservas a cada cliente con algún
-agente activo cuya versión activa o borrador nombre `booking.*`: le activa
+agente activo cuya versión activa o borrador nombre `booking.*` o una herramienta de
+Google Calendar o, si ya tiene Reservas, reserve con un conector (spec 043, R11): le activa
 Reservas si no lo tenía (Aforo de restaurante si es un restaurante, citas por
 persona si no; sin abrir el acceso de sus personas), publica la versión activa
 con `reservas.*` sin la puerta (firmada por `platform:reservas-pass`), reescribe
@@ -506,6 +507,13 @@ fields @timestamp, event, tenant_id, error, passed, failed, failed_tenants,
   ningún partner y no se le puede encender el módulo; asígnale uno y repite.
 - `reservations.auto_pass_crashed` — el guion no llegó a recorrer los clientes
   (base inalcanzable, por ejemplo).
+- `reservations.auto_pass_not_ready` — el agente reserva en Google y el cliente aún no
+  puede tomar una cita, con `tenant_id` y `reasons` (`reservas_off`, `hours_missing`,
+  `no_staff`, `no_services`, `no_bookable_service`, `no_capacity`). Ese agente no se ha
+  tocado, y otro del mismo cliente con `booking.*` pasa igual: el partner tiene un aviso, y el panel de operador lo enseña en Acceso. Pasa solo en el
+  siguiente despliegue cuando esté listo. `not_ready` en `auto_pass_done` los cuenta.
+- `reservations.pass_failed` en la auditoría del cliente — el paso falló y se deshizo; el
+  agente sigue como estaba. **No hay alarma de `auto_pass_failed`**: mirarlo tras cada despliegue.
 
 En la auditoría de cada cliente pasado queda `reservations.passed` (con
 `automatic: true`), con las versiones publicadas, los borradores reescritos y
