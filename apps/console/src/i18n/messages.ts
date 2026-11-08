@@ -41,6 +41,7 @@ import { partnerViewsMessages } from "./lanes/partner-views";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
 import { reservasMessages } from "./lanes/reservas";
+import { reservasTemplatesMessages } from "./lanes/reservas-templates";
 import { shellMessages } from "./lanes/shell";
 import { summaryMessages } from "./lanes/summary";
 import { workstationMessages } from "./lanes/workstation";
@@ -587,6 +588,8 @@ const messages = {
   ...liteMessages,
   ...inboxMessages,
   ...reservasMessages,
+  // Spec 043, requisito 15: las plantillas de WhatsApp de Reservas (Ajustes).
+  ...reservasTemplatesMessages,
   ...shellMessages,
   ...businessMessages,
   ...builderMessages,

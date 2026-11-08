@@ -104,6 +104,7 @@ from nexus_worker.streams.reminder_cron import run_reminder_cron
 from nexus_worker.streams.reservation_calendar_cron import run_reservation_calendar_cron
 from nexus_worker.streams.reservation_offers_cron import run_reservation_offers_cron
 from nexus_worker.streams.reservation_outbox_cron import run_reservation_outbox_cron
+from nexus_worker.streams.reservation_templates_cron import run_reservation_templates_cron
 from nexus_worker.streams.reservations_cron import run_reservations_cron
 from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
@@ -208,6 +209,10 @@ SCHEDULER_TASK_NAMES = frozenset(
         "reservation-offers-cron",
         "reservation-outbox-cron",
         "reservation-calendar-cron",
+        # Spec 043, requisito 15 — las seis plantillas de WhatsApp de Reservas,
+        # pedidas solas a la WABA de cada cliente (15 min). También en
+        # ``_spawn`` y en ``ALL_EXPECTED``.
+        "reservation-templates-cron",
         # Spec 047 (T037): lo entregado por Meta frente a lo guardado, por canal
         # y día. Sin persona y una vez al día: del planificador.
         "meta-reconciliation-cron",
@@ -582,6 +587,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("reservation-offers-cron", run_reservation_offers_cron(stop=ctx.stop)),
         _spawn("reservation-outbox-cron", run_reservation_outbox_cron(stop=ctx.stop)),
         _spawn("reservation-calendar-cron", run_reservation_calendar_cron(stop=ctx.stop)),
+        _spawn("reservation-templates-cron", run_reservation_templates_cron(stop=ctx.stop)),
         _spawn("meta-reconciliation-cron", run_meta_reconciliation_cron(stop=ctx.stop)),
         _spawn("model-lifecycle-cron", run_model_lifecycle_cron(stop=ctx.stop, redis=ctx.redis)),
         _spawn("fx-rates-cron", run_fx_rates_cron(stop=ctx.stop)),

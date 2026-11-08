@@ -45,6 +45,7 @@ import { useIdempotencyKey } from "../model/idempotency";
 import { failureMessage } from "../model/vocab";
 import { Initials } from "../shared";
 import { HoursEditor } from "./hours-editor";
+import { ReservasTemplatesSection } from "./reservas-templates";
 import { BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
 import { StaffCalendarsSection } from "./staff-calendars";
 
@@ -76,6 +77,7 @@ export function ServicesSettings() {
       <div className="flex min-w-0 flex-col gap-6">
         <WaitlistSettings />
         <Reminders />
+        <ReservasTemplatesSection />
         <BusinessHoursSection />
       </div>
       <div className="flex min-w-0 flex-col gap-6">

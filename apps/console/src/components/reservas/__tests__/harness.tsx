@@ -3,6 +3,7 @@ import type * as React from "react";
 import { vi } from "vitest";
 
 import { LocaleProvider } from "@/i18n/client";
+import { RESERVAS_TEMPLATE_NAMES } from "@/lib/backend/reservas-templates";
 
 import { toasts } from "./toasts";
 
@@ -17,6 +18,7 @@ import type { ReservasInitial } from "../reservas-view";
  * mocks the three modules with these before importing the view:
  *
  *   vi.mock("@/app/(console)/reservas/actions", async () => (await import("./harness")).a);
+ *   vi.mock("@/app/(console)/reservas/templates-actions", async () => (await import("./harness")).a);
  *   vi.mock("next/navigation", async () => (await import("./harness")).navigation);
  *   vi.mock("sonner", async () => (await import("./toasts")).sonner);
  */
@@ -48,6 +50,9 @@ export const a = {
   refreshStaffCalendarAction: vi.fn(),
   staffCalendarsAction: vi.fn(),
   staffCalendarAction: vi.fn(),
+  // Spec 043, requisito 15: `templates-actions.ts`, mocked with this same object
+  // (`vi.mock("@/app/(console)/reservas/templates-actions", …)`).
+  reservasTemplatesAction: vi.fn(),
 };
 
 export const router = { push: vi.fn(), refresh: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() };
@@ -65,6 +70,14 @@ export function resetMocks() {
   toasts.success.mockReset();
   toasts.error.mockReset();
   a.cancelPreviewAction.mockResolvedValue({ ok: true, data: { can_offer: false, candidates: 0, why_not: "waitlist_off" } });
+  a.reservasTemplatesAction.mockResolvedValue({
+    ok: true,
+    data: {
+      whatsapp: false,
+      approved: 0,
+      items: RESERVAS_TEMPLATE_NAMES.map((name) => ({ name, state: "not_created", rejection: null, why_not_created: "no_whatsapp", since: null })),
+    },
+  });
 }
 
 export const ViewRef: { current: React.ComponentType<{ initial: ReservasInitial }> | null } = { current: null };

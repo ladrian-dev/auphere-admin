@@ -539,6 +539,7 @@ import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
 import { reservasApi } from "./backend/reservas";
+import { reservasTemplatesApi } from "./backend/reservas-templates";
 import { teammatesApi } from "./backend/teammates";
 export type { ExecMode, LocalExecCeiling, LocalExecPolicy, LocalExecPref } from "./backend/teammates";
 import { workstationApi, workstationPartnerApi } from "./backend/workstation";
@@ -605,6 +606,8 @@ export function backendFor(principal: Principal) {
     ...inboxCorrectionsApi(call),
     // Spec 043: Reservas (`/console/lite/reservas/*`).
     ...reservasApi(call),
+    // Spec 043, requisito 15: how its WhatsApp templates stand (Ajustes).
+    ...reservasTemplatesApi(call),
     // Spec 056 (requisito 3): la pestaña «Acceso» de un cliente (owner y admin).
     ...clientAccessApi(call),
     ...modelsApi(call),

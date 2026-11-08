@@ -1,6 +1,6 @@
 # Especificación: Reservas — el agente reserva y el negocio lo ve, en dos modos
 
-**Rama**: `043-reservas` · **Creada**: 2026-10-22 · **Estado**: Aclarada (decisiones del 2026-10-22 en §Clarifications) · **Enmendada el 2026-11-04**: Reservas manda y cada profesional conecta su calendario (requisitos 11 a 14)
+**Rama**: `043-reservas` · **Creada**: 2026-10-22 · **Estado**: Aclarada (decisiones del 2026-10-22 en §Clarifications) · **Enmendada el 2026-11-04**: Reservas manda y cada profesional conecta su calendario (requisitos 11 a 14) · **y el 2026-11-08**: las plantillas de Reservas se dan de alta solas (requisito 15)
 
 **Entrada**: diseño de Claude Design (proyecto `e443cbee-f802-4f49-8ec6-422e1d8d97e6`,
 descargado el 2026-10-22): «Consola Customers.dc.html» (Reservas en modo
@@ -132,7 +132,7 @@ con su razón, y se revisan al final. Las 16 dudas de
   hay plantilla aprobada y la ventana está cerrada, no sale, y la reserva lo dice
   en su historial («No se pudo avisar por WhatsApp») — nunca se da por avisado a
   quien no lo fue. Las plantillas que usa el módulo están en
-  `contracts/plantillas.md`.
+  `contracts/worker-y-avisos.md` §Plantillas.
 - Q: ¿Quién contesta «Sí, voy»? → A: el agente, que recibe la respuesta en la
   conversación y llama a `reservas.confirm_attendance`.
 - Q: ¿Avisos al negocio? → A: tres tipos de push nuevos, **no urgentes**:
@@ -303,6 +303,31 @@ primeras son de la sesión que coordina y se le deben decir a Luis.**
   `by` es la persona que la apuntó, por su nombre.
 - Mesas (dirección 1c): descartadas por el diseño.
 - Datos de ejemplo: del piloto chileno (CLP, +56).
+
+### Session 2026-11-08 (enmienda: las plantillas de Reservas se dan de alta solas)
+
+Decisión de Luis tras el QA de Jemma's Hair: «que las plantillas obligatorias se configuren
+por defecto si el agente necesita reservar, así el agente que necesita reservar tiene todo
+desde el inicio y solo mandamos a revisión en Meta por API». Entra en el paso a producción del
+2026-11-08. Sustituye al supuesto «las da de alta el partner (o Auphere)» de
+`contracts/worker-y-avisos.md` §Plantillas.
+
+- Q: ¿Cuándo se crean? → A: en cuanto el cliente tiene **Reservas encendido y un número de
+  WhatsApp de Meta conectado**, en el orden que sea. Lo comprueba un cron del worker; no hace
+  falta tocar nada al encender el módulo ni al conectar el número.
+- Q: ¿Y si ya existen? → A: una plantilla con ese nombre en esa WABA, en un idioma `es*` y en
+  cualquier estado, no se vuelve a crear. Un «ya existe» de Meta cuenta como hecho.
+- Q: ¿Y si Meta la rechaza? → A: **no se reintenta sola**: el mismo texto tendría el mismo
+  veredicto. El partner recibe el aviso que ya existe (webhook de estado de plantilla) y Ajustes
+  de Reservas lo enseña con el motivo.
+- Q: ¿Qué pasa mientras Meta revisa? → A: lo de hoy: dentro de la ventana de 24 h sale el
+  texto; fuera, `no_template`.
+- Q: `reserva_hueco_libre` declara `nombre` y su texto no lo usa. → A: el texto pasa a empezar
+  por «Hola, {{nombre}}.», como las demás. Con variables con nombre, mandar una que la plantilla
+  no tiene hace que Meta rechace el envío.
+- Q: ¿Y dos variables seguidas? → A: `reserva_pide_confirmacion` y `reserva_recordatorio` decían
+  «en {{negocio}} {{cuando}}», y Meta suele rechazar dos variables sin texto entre medias. Pasan a
+  «{{cuando}} en {{negocio}}». Decidido en la implementación, sin Luis: queda para que lo revise.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -831,6 +856,42 @@ compuesta `(tenant_id, x_id)`.
 - **Calendario de la persona** (P3): su conexión con el proveedor, qué calendario
   de esa cuenta es suyo y su sincronización.
 
+### Requisito 15 — Las plantillas de Reservas se dan de alta solas (enmienda del 2026-11-08)
+
+**Historia de usuario:** Como negocio que reserva por WhatsApp, quiero que las plantillas que
+Reservas necesita fuera de la ventana de 24 h se creen y se manden a revisión de Meta sin
+pasos a mano, para tener recordatorios y avisos desde el primer día.
+
+#### Criterios de aceptación
+
+1. WHEN un cliente tiene Reservas encendido (`ClientAccess.reservas_on`) y un número de
+   WhatsApp de Meta con credenciales THEN el sistema DEBE crear en su WABA, por la API de Meta,
+   cada plantilla de `contracts/worker-y-avisos.md` §Plantillas que le falte: idioma `es`,
+   categoría `UTILITY`, variables con nombre (`NAMED`) y un ejemplo por variable.
+2. IF esa WABA ya tiene una plantilla con ese nombre en un idioma que empieza por `es`, en
+   cualquier estado THEN el sistema NO DEBE crear otra. IF Meta responde que ya existe THEN
+   DEBE contar como creada.
+3. IF Meta rechaza o pausa una plantilla THEN el sistema NO DEBE volver a crearla ni
+   borrarla por su cuenta.
+4. Lo DEBE comprobar un cron del worker (`reservation-templates-cron`, cada 15 min) para los
+   clientes activos con Reservas encendido y credenciales de Meta, saltándose sin llamar a Meta
+   a quien ya tiene las seis en el espejo `whatsapp_template_status`. El cron DEBE estar
+   declarado en `bootstrap.py` y en el contrato de nombres de crons.
+5. Una pasada NO DEBE reintentar dentro de sí misma una llamada fallida a Meta: la siguiente
+   pasada lo vuelve a intentar. Un fallo de un cliente NO DEBE parar a los demás.
+6. Cada plantilla pedida DEBE dejar una línea de auditoría (`reservations.template_requested`,
+   con nombre, idioma y el id y estado que devolvió Meta) y su fila `PENDING` en
+   `whatsapp_template_status`. El texto de error del proveedor NO DEBE ir a los registros ni a
+   la API.
+7. Ajustes de Reservas DEBE enseñar las seis plantillas con su estado: aprobada, en revisión,
+   rechazada (con el motivo que dio Meta) o sin crear (con por qué: sin número de WhatsApp), con
+   los cinco estados de interfaz (carga, vacío, error, parcial, completo).
+8. Las variables que el outbox manda de cada plantilla DEBEN ser exactamente las de su texto
+   (prueba sobre el catálogo). `reserva_hueco_libre` DEBE empezar por «Hola, {{nombre}}.».
+9. El cron DEBE trabajar bajo la RLS de cada cliente y con sus credenciales: un cliente NUNCA
+   DEBE crear ni leer plantillas en la WABA de otro (garantía 1; prueba en `tests/isolation/`).
+10. Mientras una plantilla no esté aprobada, el outbox DEBE seguir como hasta ahora.
+
 ## Criterios de éxito *(obligatorio)*
 
 - **CE-001**: ninguna prueba de concurrencia consigue dos reservas vivas que se
@@ -859,8 +920,8 @@ compuesta `(tenant_id, x_id)`.
 
 ## Supuestos
 
-- Las plantillas de `contracts/plantillas.md` las aprueba Meta en el número de
-  cada cliente (las crea el partner o Auphere); sin ellas, solo sale lo que cabe
-  en la ventana de 24 h.
+- Las plantillas de `contracts/worker-y-avisos.md` §Plantillas las aprueba Meta en el
+  número de cada cliente. Desde el 2026-11-08 se crean solas (requisito 15); hasta que
+  Meta las aprueba, solo sale lo que cabe en la ventana de 24 h.
 - El negocio tiene un solo horario semanal; las excepciones de un día se hacen
   con bloqueos (Aforo) o archivando huecos a mano (Servicios).

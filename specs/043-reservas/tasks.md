@@ -179,3 +179,27 @@ La suite de consola y una revisión sobre las dos ramas juntas. Prueba primero: 
 - [x] T097 Un borrador de Calendly descartado no vuelve. El paso decide agente por agente.
   _Requisitos: 11.4, 11.5_
 
+
+## Fase 14 — Enmienda del 2026-11-08: las plantillas se dan de alta solas
+
+Requisito 15. Prueba primero: cada una, vista en rojo antes de implementar. Sin migración: la
+acción de auditoría es texto libre y el CHECK del espejo ya admite `PENDING`.
+
+- [x] T098 Catálogo de las seis en `services/reservations/templates.py` (`UTILITY`, `es`, variables con nombre y una muestra por variable). `TEMPLATE_VARIABLES` del outbox sale de él. Ningún texto con dos variables seguidas; `reserva_hueco_libre` empieza por «Hola, {{nombre}}.». Prueba unitaria sobre el catálogo.
+  _Requisitos: 15.1, 15.8_
+- [x] T099 `MetaClient.list_templates(after=)` pagina la WABA entera. `ensure_templates` crea las que faltan con Meta simulado: salta las que existen en cualquier estado, «ya existe» cuenta como hecha, una rechazada no se rehace, deja auditoría y la fila `PENDING`, y no reintenta dentro de la pasada.
+  _Requisitos: 15.1, 15.2, 15.3, 15.5, 15.6_
+- [x] T100 `reservation-templates-cron` cada 15 min, en `SCHEDULER_TASK_NAMES`, en `_spawn` y en el contrato de nombres (`test_bootstrap_split.py`). Un cliente que falla no para a los demás.
+  _Requisitos: 15.4, 15.5_
+- [x] T101 `tests/isolation/test_reservas_templates_scope.py`: un cliente nunca crea ni lee plantillas en la WABA de otro.
+  _Requisitos: 15.9_
+- [x] T102 `GET /console/lite/reservas/templates` (lee el espejo) y los barridos de la consola lite y de `/console/*`.
+  _Requisitos: 15.7_
+- [x] T103 La sección «Plantillas de Reservas» en Ajustes, en Servicios y en Aforo, con los cinco estados y axe en vitest.
+  _Requisitos: 15.7_
+- [x] T104 El outbox no cambia de comportamiento: texto dentro de la ventana, `no_template` fuera.
+  _Requisitos: 15.10_
+- [x] T105 `docs/reservas.md`, `apps/api/RUNBOOK.md` y el contrato §Plantillas.
+  _Requisitos: 15_
+- [ ] T106 En staging, tras desplegar: las seis aparecen `PENDING` o aprobadas en la WABA de un cliente de prueba con Reservas, y una reserva fuera de la ventana sale con su plantilla aprobada. A mano.
+  _Requisitos: 15.1, 15.10_

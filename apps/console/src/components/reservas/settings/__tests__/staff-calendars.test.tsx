@@ -9,6 +9,7 @@ import type { ReservasData } from "../../context";
 import { LUCIA, MARCOS, service, servicesSettings, staff } from "../../model/__tests__/fixtures";
 
 vi.mock("@/app/(console)/reservas/actions", async () => (await import("../../__tests__/harness")).a);
+vi.mock("@/app/(console)/reservas/templates-actions", async () => (await import("../../__tests__/harness")).a);
 vi.mock("next/navigation", async () => (await import("../../__tests__/harness")).navigation);
 vi.mock("sonner", async () => (await import("../../__tests__/toasts")).sonner);
 ViewRef.current = (await import("../../reservas-view")).ReservasView;

@@ -23,6 +23,7 @@ from . import (
     notifications,
     phones,
     reservas,
+    reservas_templates,
     usage,
 )
 
@@ -39,6 +40,8 @@ router.include_router(notifications.router)
 router.include_router(phones.router)
 # Spec 043: la agenda del negocio (módulo ``reservas``).
 router.include_router(reservas.router)
+# Spec 043, requisito 15: cómo van sus plantillas de WhatsApp (Ajustes).
+router.include_router(reservas_templates.router)
 # Spec 047: sus agentes y su ficha (módulos ``agents`` y ``business``), y
 # «Corregir esta respuesta» desde la Bandeja (módulo ``inbox``).
 router.include_router(agents.router)

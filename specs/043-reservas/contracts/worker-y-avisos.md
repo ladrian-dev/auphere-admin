@@ -38,18 +38,26 @@ respuesta: no se encola `confirmation`.
 
 ## Plantillas
 
-Las aprueba Meta en el número de cada cliente; las da de alta el partner (o
-Auphere) como cualquier plantilla de utilidad. Idioma `es`. Variables con
-nombre:
+Las aprueba Meta en el número de cada cliente. **Se dan de alta solas** (requisito 15,
+enmienda del 2026-11-08): `reservation-templates-cron` crea, en la WABA de cada cliente con
+Reservas encendido y WhatsApp conectado, las que le falten, y las manda a revisión. Idioma
+`es`, categoría `UTILITY`, variables con nombre. No recrea una que exista en cualquier estado
+ni una rechazada: el partner recibe el aviso de Meta y Ajustes de Reservas la enseña con su
+motivo. Variables con nombre:
 
 | Nombre | Variables (BODY) | Texto de partida |
 |---|---|---|
 | `reserva_confirmada` | `nombre`, `negocio`, `cuando`, `detalle` | «Hola, {{nombre}}. Tu reserva en {{negocio}} quedó para {{cuando}} ({{detalle}}). Si necesitas cambiarla, escríbenos por aquí.» |
-| `reserva_pide_confirmacion` | `nombre`, `negocio`, `cuando`, `detalle` | «Hola, {{nombre}}. Te esperamos en {{negocio}} {{cuando}} ({{detalle}}). ¿Nos confirmas que vienes? Responde SÍ o NO.» |
-| `reserva_recordatorio` | `nombre`, `negocio`, `cuando`, `detalle` | «Hola, {{nombre}}. Te recordamos tu reserva en {{negocio}} {{cuando}} ({{detalle}}).» |
+| `reserva_pide_confirmacion` | `nombre`, `cuando`, `negocio`, `detalle` | «Hola, {{nombre}}. Te esperamos {{cuando}} en {{negocio}} ({{detalle}}). ¿Nos confirmas que vienes? Responde SÍ o NO.» |
+| `reserva_recordatorio` | `nombre`, `cuando`, `negocio`, `detalle` | «Hola, {{nombre}}. Te recordamos tu reserva {{cuando}} en {{negocio}} ({{detalle}}).» |
 | `reserva_cambiada` | `nombre`, `negocio`, `cuando`, `detalle` | «Hola, {{nombre}}. Tu reserva en {{negocio}} cambió: ahora es {{cuando}} ({{detalle}}).» |
 | `reserva_cancelada` | `nombre`, `negocio`, `cuando` | «Hola, {{nombre}}. Tu reserva en {{negocio}} para {{cuando}} quedó cancelada. Si quieres otra hora, escríbenos por aquí.» |
-| `reserva_hueco_libre` | `nombre`, `negocio`, `cuando`, `detalle`, `minutos` | «Mensaje automático de {{negocio}}: se liberó un hueco {{cuando}} ({{detalle}}). ¿Lo quieres? Responde SÍ en los próximos {{minutos}} minutos y te lo reservamos.» |
+| `reserva_hueco_libre` | `nombre`, `negocio`, `cuando`, `detalle`, `minutos` | «Hola, {{nombre}}. Mensaje automático de {{negocio}}: se liberó un hueco {{cuando}} ({{detalle}}). ¿Lo quieres? Responde SÍ en los próximos {{minutos}} minutos y te lo reservamos.» |
+
+Ningún texto lleva dos variables seguidas (`{{negocio}} {{cuando}}`): Meta suele rechazarlo por
+formato, y una rechazada no se rehace sola (revisión del 2026-11-08). El catálogo que se manda
+a Meta es `services/reservations/templates.py`, y una prueba comprueba que sus variables son
+las del outbox.
 
 `detalle`: Servicios «Corte con Lucía»; Aforo «4 personas» (con la palabra del
 tipo). `cuando`: «el jueves 23 a las 20:30».

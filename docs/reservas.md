@@ -333,6 +333,7 @@ Contrato: [`worker-y-avisos.md`](../specs/043-reservas/contracts/worker-y-avisos
 | `reservation-offers-cron` | 15 s | Vence plazos y escribe al siguiente candidato |
 | `reservation-outbox-cron` | 10 s | Envía `reservation_outbox`: texto dentro de la ventana de 24 h, plantilla aprobada fuera; sin plantilla, teléfono, canal o con la baja pedida, `skipped` y evento `notify_failed`; lo que ya no aplica (ya confirmó, ya se canceló), `stale` sin evento. Escribe el `Message` pendiente: lo entrega y lo mide el despachador de salida, como cualquier saliente |
 | `reservation-calendar-cron` | 120 s | P3: termina las autorizaciones en curso, quita los eventos que sobran, escribe los que faltan y lee el ocupado, cada parte y cada profesional con su propio fallo. Sin conexión sana deja de bloquear (ver [Google Calendar](#google-calendar-p3)). Sin `composio_api_key` no hace nada (el cliente simulado del proveedor borraría el ocupado real) |
+| `reservation-templates-cron` | 15 min | Pide a la WABA de cada cliente activo con Reservas y número de Meta las plantillas del módulo que le faltan (requisito 15). No llama a Meta si el espejo `whatsapp_template_status` ya tiene las seis |
 
 Los cuatro recorren los clientes **activos con `reservation_settings`**, tengan
 o no el módulo encendido: al apagarlo, las reservas futuras siguen recibiendo
@@ -347,6 +348,19 @@ el número de cada cliente): `reserva_confirmada`, `reserva_pide_confirmacion`,
 `reserva_recordatorio`, `reserva_cambiada`, `reserva_cancelada`,
 `reserva_hueco_libre`. Textos de partida y variables, en el contrato. Sin ellas,
 lo que no cabe en la ventana no sale, y el historial de la reserva lo dice.
+
+**Se crean solas** (requisito 15, enmienda del 2026-11-08). `reservation-templates-cron`, bajo
+la RLS de cada cliente y con su token, lista su WABA entera (con paginación) y pide las que no
+tiene con ese nombre en un idioma `es*`, en cualquier estado: idioma `es`, categoría `UTILITY`,
+variables con nombre y una muestra por variable. «Ya existe» cuenta como creada. Lo que Meta
+rechaza o pausa no se recrea ni se borra: el partner recibe el aviso del webhook de estado y la
+corrige desde Plantillas. Cada petición deja `reservations.template_requested` en la auditoría y
+su fila `PENDING` en el espejo. No reintenta dentro de la pasada, y del error de Meta solo se
+registran el tipo y los códigos. Se salta a los clientes con la conexión de WhatsApp pendiente de
+reautorizar. El negocio ve el estado de las seis en Ajustes, en Servicios y en Aforo
+(`GET /console/lite/reservas/templates`, que lee el espejo). Catálogo y textos:
+`services/reservations/templates.py`; `TEMPLATE_VARIABLES` del outbox sale de ahí, así que
+lo que se manda es exactamente lo que dice cada texto.
 
 ## Google Calendar (P3)
 

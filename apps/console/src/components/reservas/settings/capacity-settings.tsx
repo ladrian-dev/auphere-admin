@@ -15,6 +15,7 @@ import { scheduleValid, timeOptions } from "../model/hours";
 import { seatsStep } from "../model/occupancy";
 import { kindOf, stayOptions, stayTitleKey } from "../model/vocab";
 import { Segmented, Stepper, useWrite } from "../shared";
+import { ReservasTemplatesSection } from "./reservas-templates";
 import { BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
 
 const STEPS = [15, 30, 60, 90, 120] as const;
@@ -40,6 +41,7 @@ export function CapacitySettings() {
         </div>
         <div className="flex min-w-0 flex-col gap-6">
           <ConfirmationSection />
+          <ReservasTemplatesSection />
           <WaitlistSettings />
           <BusinessHoursSection />
           <BlocksSection />

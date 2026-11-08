@@ -27,6 +27,7 @@ la próxima pasada.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from typing import Any
@@ -55,6 +56,7 @@ from nexus_api.services.reservations.core import (
     cancel_booking,
     phone_digits,
 )
+from nexus_api.services.reservations.templates import VARIABLES as TEMPLATE_CATALOG_VARIABLES
 
 #: Servicios (y Aforo con ``confirm_when = 24h``): 24 h antes.
 DAY_BEFORE = timedelta(hours=24)
@@ -393,35 +395,32 @@ TEMPLATES: dict[str, str | None] = {
     "offer_won": "reserva_confirmada",
     "offer_lost": None,
 }
-#: Las variables (BODY, con nombre) de cada plantilla, en el orden del contrato.
-TEMPLATE_VARIABLES: dict[str, tuple[str, ...]] = {
-    "reserva_confirmada": ("nombre", "negocio", "cuando", "detalle"),
-    "reserva_pide_confirmacion": ("nombre", "negocio", "cuando", "detalle"),
-    "reserva_recordatorio": ("nombre", "negocio", "cuando", "detalle"),
-    "reserva_cambiada": ("nombre", "negocio", "cuando", "detalle"),
-    "reserva_cancelada": ("nombre", "negocio", "cuando"),
-    "reserva_hueco_libre": ("nombre", "negocio", "cuando", "detalle", "minutos"),
-}
+#: Las variables (BODY, con nombre) de cada plantilla: las de su texto, en su
+#: orden. Salen del catálogo (``templates.py``, requisito 15.8): lo que se manda
+#: con una plantilla es lo que se le pidió a Meta, ni una más ni una menos.
+TEMPLATE_VARIABLES: Mapping[str, tuple[str, ...]] = TEMPLATE_CATALOG_VARIABLES
 #: El mismo mensaje como texto, para dentro de la ventana: el texto de partida
-#: de cada plantilla (``contracts/worker-y-avisos.md``).
+#: de cada plantilla (``contracts/worker-y-avisos.md``; lo comprueba
+#: ``tests/unit/test_reservations_templates_catalog.py``).
 TEXTS: dict[str, str] = {
     "confirmation": (
         "Hola, {nombre}. Tu reserva en {negocio} quedó para {cuando} ({detalle}). "
         "Si necesitas cambiarla, escríbenos por aquí."
     ),
     "ask_confirmation": (
-        "Hola, {nombre}. Te esperamos en {negocio} {cuando} ({detalle}). "
+        "Hola, {nombre}. Te esperamos {cuando} en {negocio} ({detalle}). "
         "¿Nos confirmas que vienes? Responde SÍ o NO."
     ),
-    "reminder": "Hola, {nombre}. Te recordamos tu reserva en {negocio} {cuando} ({detalle}).",
+    "reminder": "Hola, {nombre}. Te recordamos tu reserva {cuando} en {negocio} ({detalle}).",
     "moved": "Hola, {nombre}. Tu reserva en {negocio} cambió: ahora es {cuando} ({detalle}).",
     "cancelled": (
         "Hola, {nombre}. Tu reserva en {negocio} para {cuando} quedó cancelada. "
         "Si quieres otra hora, escríbenos por aquí."
     ),
     "offer": (
-        "Mensaje automático de {negocio}: se liberó un hueco {cuando} ({detalle}). "
-        "¿Lo quieres? Responde SÍ en los próximos {minutos} minutos y te lo reservamos."
+        "Hola, {nombre}. Mensaje automático de {negocio}: se liberó un hueco {cuando} "
+        "({detalle}). ¿Lo quieres? Responde SÍ en los próximos {minutos} minutos y te "
+        "lo reservamos."
     ),
     "offer_won": (
         "Hola, {nombre}. Tu reserva en {negocio} quedó para {cuando} ({detalle}). "

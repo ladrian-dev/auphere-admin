@@ -419,7 +419,13 @@ Antes de tocar el panel, asegurate de tener:
    `alert_escalation_v1`, `alert_needs_reauth_v1`, `alert_cost_threshold_v1`,
    `alert_isolation_v1`, `alert_whatsapp_burst_v1` (las `alert_*` y las
    del backchannel `auphere_owner_consult` / `auphere_owner_action_request`
-   van en la WABA de Auphere, no en la del tenant).
+   van en la WABA de Auphere, no en la del tenant). Las seis de Reservas
+   (`reserva_*`) **no se crean a mano**: `reservation-templates-cron` las
+   pide a la WABA del cliente cada 15 min en cuanto tiene Reservas y número
+   de Meta (spec 043, requisito 15). Una rechazada o pausada no se rehace
+   sola: se corrige desde **Plantillas**. El estado lo ve el negocio en
+   Reservas → Ajustes; el log es `reservation_templates.*`.
+
    Un aviso `alert_*` sale del número del tenant solo si su WABA tiene esa
    plantilla aprobada, y en el idioma aprobado; si no, del número de avisos
    predeterminado de Auphere (panel → **Números de Auphere**,

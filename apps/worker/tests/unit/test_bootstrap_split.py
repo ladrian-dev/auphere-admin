@@ -89,6 +89,10 @@ ALL_EXPECTED = {
     "reservation-offers-cron",
     "reservation-outbox-cron",
     "reservation-calendar-cron",
+    # Spec 043, requisito 15: las seis plantillas de WhatsApp de Reservas, que
+    # se piden solas a Meta cada 15 min. En ``SCHEDULER_TASK_NAMES``, ``_spawn``
+    # y aquí.
+    "reservation-templates-cron",
     # Spec 047 (T037): la conciliación diaria con Meta.
     "meta-reconciliation-cron",
     # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.

@@ -594,11 +594,18 @@ class MetaClient:
         waba_id: str,
         access_token: str,
         limit: int = 100,
+        after: str | None = None,
     ) -> dict[str, Any]:
+        """One page. ``after`` is the ``paging.cursors.after`` of the previous
+        one; a caller that must see every template (spec 043: never ask twice
+        for one Meta already has) follows it while ``paging.next`` exists."""
+        params: dict[str, Any] = {"limit": limit}
+        if after:
+            params["after"] = after
         return await self._get(
             f"/{waba_id}/message_templates",
             access_token=access_token,
-            params={"limit": limit},
+            params=params,
         )
 
     async def create_template(

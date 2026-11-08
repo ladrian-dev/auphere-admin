@@ -19,6 +19,7 @@ import {
 import { ViewRef, a, renderView, resetMocks, router, toasts } from "./harness";
 
 vi.mock("@/app/(console)/reservas/actions", async () => (await import("./harness")).a);
+vi.mock("@/app/(console)/reservas/templates-actions", async () => (await import("./harness")).a);
 vi.mock("next/navigation", async () => (await import("./harness")).navigation);
 vi.mock("sonner", async () => (await import("./toasts")).sonner);
 ViewRef.current = (await import("../reservas-view")).ReservasView;

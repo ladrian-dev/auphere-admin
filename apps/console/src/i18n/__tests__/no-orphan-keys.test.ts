@@ -9,6 +9,7 @@ import { inboxMessages } from "../lanes/inbox";
 import { inboxCorrectMessages } from "../lanes/inbox-correct";
 import { liteMessages } from "../lanes/lite";
 import { reservasMessages } from "../lanes/reservas";
+import { reservasTemplatesMessages } from "../lanes/reservas-templates";
 import { workstationMessages } from "../lanes/workstation";
 
 /**
@@ -109,6 +110,8 @@ describe("claves de la consola lite sin dueño", () => {
     ["agents", agentsMessages],
     // Spec 043: Reservas nace vigilada, como la Bandeja.
     ["reservas", reservasMessages],
+    // Spec 043, requisito 15: las plantillas de WhatsApp de Reservas.
+    ["reservas-templates", reservasTemplatesMessages],
     // Spec 056: «Corregir esta respuesta», que salió del carril de Agentes del cliente.
     ["inbox-correct", inboxCorrectMessages],
     // Spec 056: la pestaña «Acceso» de un cliente nace vigilada.

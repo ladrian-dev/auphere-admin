@@ -149,7 +149,7 @@ async def test_inside_the_window_it_goes_as_text(salon, templates) -> None:
     assert msg.status == MessageStatus.PENDING
     assert msg.actor_kind == "system"
     assert msg.content == (
-        f"Hola, Ana. Te esperamos en {BUSINESS} {when(start)} (Corte con Marcos). "
+        f"Hola, Ana. Te esperamos {when(start)} en {BUSINESS} (Corte con Marcos). "
         "¿Nos confirmas que vienes? Responde SÍ o NO."
     )
     row = await _row(tid, f"ask:{rid}:auto")
@@ -448,7 +448,8 @@ async def test_a_waitlist_offer_says_the_slot_and_the_minutes(salon, templates) 
         "minutos": "5",
     }
     assert msg.content == (
-        f"[template:reserva_hueco_libre] Mensaje automático de {BUSINESS}: se liberó un hueco "
+        f"[template:reserva_hueco_libre] Hola, Ana. Mensaje automático de {BUSINESS}: "
+        "se liberó un hueco "
         f"{when(local(day, '12:00'))} (Corte con Marcos). ¿Lo quieres? Responde SÍ en los "
         "próximos 5 minutos y te lo reservamos."
     )
