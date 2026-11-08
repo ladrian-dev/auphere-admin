@@ -38,9 +38,11 @@ from typing import Any
 import sqlalchemy as sa
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import ToolCatalog
+from nexus_api.services.business.hours import intervals_on
 from nexus_mcp import MCPRegistry, ToolError, build_default_registry
 from nexus_mcp.base import OutputModel, make_envelope
 from nexus_mcp.servers.composio_proxy.proxy import ComposioProxyTool
+from nexus_mcp.servers.reservas.names import AMBIGUOUS_SERVICE, UNKNOWN_SERVICE, matches
 from nexus_mcp.servers.reservas.schemas import (
     HHMM,
     AnswerOfferOutput,
@@ -48,12 +50,16 @@ from nexus_mcp.servers.reservas.schemas import (
     CancelOutput,
     ConfirmAttendanceOutput,
     CreateOutput,
+    FindSlotsOutput,
+    JoinWaitlistOutput,
     ListMineOutput,
     RescheduleOutput,
+    ServiceRef,
+    SlotOut,
 )
 from nexus_mcp.servers.reservas.tools import NOT_ACTIVE
 
-from nexus_worker.simulation.world import SimBooking, World
+from nexus_worker.simulation.world import SimBooking, SimService, World
 
 #: Lo que el negocio leería de cada herramienta con efecto (20.3).
 PHRASES: dict[str, str] = {
@@ -234,6 +240,7 @@ def _services(world: World, _args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _find(world: World, args: dict[str, Any]) -> dict[str, Any]:
+    """``booking.check_availability`` (retirada), con su forma de siempre."""
     day = _date(args.get("date") or args.get("on_date"), world)
     if day is None:
         return {"ok": False, "error": "invalid_date"}
@@ -241,6 +248,78 @@ def _find(world: World, args: dict[str, Any]) -> dict[str, Any]:
     duration = args.get("duration_min") or (svc.duration_min if svc else None)
     slots = world.slots(day, duration)
     return _ok({"date": day.isoformat(), "slots": slots, "closed": not slots})
+
+
+# ── el servicio por id o por nombre ──────────────────────────────────────────
+#
+# Fallo ``la-reserva-del-turno-siguiente-pierde-los-ids``: en el turno siguiente el
+# modelo no tiene los ids y reserva con el nombre. Se elige como en la de verdad
+# (``reservas.names.matches``, el mismo orden) entre los servicios del mundo, que
+# son los del agente (``seed_world``). Sin servicio, la cita genérica de siempre: la
+# simulación no sabe si el negocio es de Servicios o de Aforo. Tampoco tiene
+# equipo, así que ``staff_id`` y ``staff_name`` no se comprueban; y un servicio del
+# hermano, que no está en el mundo, es ``unknown_service`` y no ``not_offered``.
+
+
+def _ref(svc: SimService) -> ServiceRef | None:
+    try:
+        return ServiceRef(id=uuid.UUID(svc.id), name=svc.name)
+    except ValueError:
+        return None
+
+
+def _refs(services: Iterable[SimService]) -> list[ServiceRef]:
+    return [r for r in (_ref(s) for s in services) if r is not None]
+
+
+def _pick(
+    world: World, args: dict[str, Any]
+) -> tuple[SimService | None, str | None, list[ServiceRef]]:
+    """``(servicio, None, [])``, ``(None, None, [])`` sin servicio, o ``(None,
+    rechazo, opciones)`` como ``reservas.tools._pick_service``."""
+    wanted_id = str(args.get("service_id") or "")
+    wanted_name = str(args.get("service_name") or "").strip()
+    if not wanted_id and not wanted_name:
+        return None, None, []
+    if wanted_id:
+        svc = next((s for s in world.services if s.id == wanted_id), None)
+        if svc is not None:
+            return svc, None, []
+    found = matches(wanted_name, world.services, lambda s: s.name) if wanted_name else []
+    if len(found) == 1:
+        return found[0], None, []
+    if found:
+        return None, AMBIGUOUS_SERVICE, _refs(found)
+    return None, UNKNOWN_SERVICE, _refs(s for s in world.services if s.bookable)
+
+
+def _find_slots(world: World, args: dict[str, Any]) -> dict[str, Any]:
+    """``reservas.find_slots`` con su forma de verdad (``FindSlotsOutput``) y en su
+    orden: el horario, el día y después el servicio."""
+    day = _date(args.get("date"), world)
+    if day is None:
+        raise ToolError("invalid_date")
+    if world.week is None and not world.specials:
+        return _real(FindSlotsOutput(date=day, closed=True, why_closed="hours_missing"))
+    if not intervals_on(world.hours(), day):
+        return _real(FindSlotsOutput(date=day, closed=True, why_closed="closed"))
+    svc, refused, options = _pick(world, args)
+    if refused is not None:
+        return _real(FindSlotsOutput(date=day, closed=False, refused=refused, services=options))
+    if svc is not None and not svc.bookable:
+        return _real(FindSlotsOutput(date=day, closed=True, why_closed="not_bookable"))
+    slots = world.slots(day, svc.duration_min if svc else None)
+    return _real(FindSlotsOutput(date=day, closed=False, slots=[SlotOut(time=t) for t in slots]))
+
+
+def _join_waitlist(world: World, args: dict[str, Any]) -> dict[str, Any]:
+    """``reservas.join_waitlist``: queda anotado, con la forma de verdad. La agenda
+    simulada no tiene lista de espera que ofrezca nada."""
+    _svc, refused, options = _pick(world, args)
+    if refused is not None:
+        return _real(JoinWaitlistOutput(refused=refused, services=options))
+    world.did("reservas.join_waitlist", "Apuntar en la lista de espera", args)
+    return _real(JoinWaitlistOutput(entry_id=uuid.uuid4(), status="waiting"))
 
 
 # Lo que contesta la agenda tiene la forma de la herramienta de verdad, hecha con
@@ -313,14 +392,21 @@ def _own(world: World, args: dict[str, Any]) -> SimBooking:
     return booking
 
 
-def _create(world: World, args: dict[str, Any]) -> dict[str, Any]:
+def _create(world: World, args: dict[str, Any], *, by_name: bool = True) -> dict[str, Any]:
+    """``reservas.create``. ``by_name=False``: las ``booking.*`` retiradas, que
+    aceptaban un servicio de texto libre y lo reservan como siempre."""
     day, hhmm = _requested(world, args)
     key = str(args.get("idempotency_key") or "") or None
     prior = next((b for b in world.bookings if key and b.key == key), None)
     if prior is not None:
         # La misma clave devuelve la misma reserva, como en la de verdad.
         return _real(CreateOutput(booking=_brief(world, prior), idempotent_replay=True))
-    svc = world.service(service_id=args.get("service_id"), name=args.get("service_name"))
+    if by_name:
+        svc, refused, options = _pick(world, args)
+        if refused is not None:
+            return _real(CreateOutput(refused=refused, services=options))
+    else:
+        svc = world.service(service_id=args.get("service_id"), name=args.get("service_name"))
     booking = world.book(day=day, at=hhmm, service=svc, duration_min=args.get("duration_min"))
     if booking is None:
         length = args.get("duration_min") or (svc.duration_min if svc else None)
@@ -424,26 +510,22 @@ def _retired(handler: Handler) -> Handler:
     return run
 
 
-def _noted(tool: str, phrase: str) -> Handler:
-    def handler(world: World, args: dict[str, Any]) -> dict[str, Any]:
-        world.did(tool, phrase, args)
-        return _ok({})
-
-    return handler
+def _legacy_create(world: World, args: dict[str, Any]) -> dict[str, Any]:
+    return _create(world, args, by_name=False)
 
 
 _HANDLERS: dict[str, Handler] = {
     "reservas.services": _services,
-    "reservas.find_slots": _find,
+    "reservas.find_slots": _find_slots,
     "reservas.create": _create,
     "reservas.cancel": _cancel,
     "reservas.reschedule": _reschedule,
     "reservas.list_mine": _mine,
     "reservas.confirm_attendance": _confirm_attendance,
-    "reservas.join_waitlist": _noted("reservas.join_waitlist", "Apuntar en la lista de espera"),
+    "reservas.join_waitlist": _join_waitlist,
     "reservas.answer_offer": _answer_offer,
     "booking.check_availability": _find,
-    "booking.create_appointment": _retired(_create),
+    "booking.create_appointment": _retired(_legacy_create),
     "booking.cancel_appointment": _cancel,
     "booking.modify_appointment": _retired(_reschedule),
     "booking.get_appointments": _mine,

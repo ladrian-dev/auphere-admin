@@ -205,3 +205,10 @@ acción de auditoría es texto libre y el CHECK del espejo ya admite `PENDING`.
   _Requisitos: 15.1, 15.10_
 - [x] T107 Hallazgo de T106 en staging (2026-11-08): Meta rechazó `reserva_recordatorio` y `reserva_cambiada` (code 100, subcode 2388293: demasiadas variables para su largo). Llevan más texto fijo, igual en `TEXTS`, y una prueba exige 16 caracteres fijos por variable. Las cuatro que Meta aceptó no cambian.
   _Requisitos: 15.1, 15.8_
+
+## Fase 15 — Fallo del 2026-11-08: la reserva del turno siguiente pierde los ids
+
+Visto en staging con una conversación real de WhatsApp (`.specify/bugs/la-reserva-del-turno-siguiente-pierde-los-ids/`). Prueba primero: cada una, vista en rojo antes de implementar.
+
+- [x] T108 `service_name` y `staff_name` opcionales en `reservas.find_slots`, `create` y `join_waitlist`, y `staff_name` en `reschedule`, resueltos en el servidor (`servers/reservas/names.py`) contra los servicios del agente del turno y el equipo activo que hace el servicio; el id sigue mandando. Lo que no se resuelve es `refused` `unknown_service`/`unknown_staff`/`ambiguous_service`/`ambiguous_staff` con las opciones, sin excepción; un servicio del hermano, `not_offered`; una persona que no hace el servicio, `not_offered` con quienes sí. Descripciones de las herramientas, agenda simulada con los mismos códigos, `test_reserva_por_nombre.py` (incluido el segundo turno de verdad sin los ids), `test_44` y `test_reservas_client_vs_client.py` por nombre, freno con `unknown_service`, contrato y `docs/reservas.md`.
+  _Requisitos: 6.2, 14.4_

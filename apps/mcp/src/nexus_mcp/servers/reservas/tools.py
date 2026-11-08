@@ -13,14 +13,25 @@ Y un tercero desde la spec 047 (requisito 11.4, garantía 9): **los servicios so
 los del agente del turno** —el que contesta en la conversación (``_turn``): el del
 número o, si Recepción la derivó, el de destino; nunca un argumento del modelo—. ``services`` solo lista los suyos, y buscar huecos,
 reservar o apuntarse a la espera con un servicio de su hermano responde
-``not_offered``, igual que uno que no existe.
+``not_offered``.
+
+El servicio y la persona van por id o por nombre (fallo
+``la-reserva-del-turno-siguiente-pierde-los-ids``): entre turnos el agente solo
+conserva el texto, y el id de un turno no llega al siguiente. ``_pick_service`` y
+``_pick_staff`` los resuelven contra el catálogo vivo del cliente (la RLS) y el
+equipo activo; lo que no se resuelve —un id inventado, un nombre que no está o que
+empata— es ``unknown_*`` / ``ambiguous_*`` con las opciones de **este** agente para
+reintentar, nunca un error ni un «ocupado». Un servicio de la vecina, por id o por
+nombre, es uno que no existe.
 """
 
 from __future__ import annotations
 
 import hashlib
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
+from typing import Any
 
 import sqlalchemy as sa
 from nexus_api.core.tenant_context import get_current_customer, require_current_tenant
@@ -42,6 +53,7 @@ from nexus_api.services.reservations.core import (
     Ctx,
     NewBooking,
     ReservationError,
+    active_staff,
     add_event,
     cancel_booking,
     capacity_day,
@@ -58,6 +70,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_mcp._customer import current_customer_or_refuse
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
+from nexus_mcp.servers.reservas.names import (
+    AMBIGUOUS_SERVICE,
+    AMBIGUOUS_STAFF,
+    UNKNOWN_SERVICE,
+    UNKNOWN_STAFF,
+    fold,
+    matches,
+)
 from nexus_mcp.servers.reservas.schemas import (
     AnswerOfferInput,
     AnswerOfferOutput,
@@ -78,6 +98,7 @@ from nexus_mcp.servers.reservas.schemas import (
     RescheduleInput,
     RescheduleOutput,
     ServiceItem,
+    ServiceRef,
     ServicesInput,
     ServicesOutput,
     SlotOut,
@@ -192,13 +213,110 @@ async def _turn_agent(session: AsyncSession) -> uuid.UUID | None:
     return agent_id
 
 
-async def _offered_service(
-    session: AsyncSession, agent_id: uuid.UUID | None, service_id: uuid.UUID
-) -> ReservationService | None:
-    """El servicio, si es uno que el agente del turno ofrece (garantía 9)."""
-    if not await services_catalog.offers(session, agent_id, service_id):
-        return None
-    return await session.get(ReservationService, service_id)
+@dataclass
+class _Pick:
+    """El servicio y la persona que nombró el modelo, resueltos; o por qué no, con
+    las opciones para reintentar en el mismo turno."""
+
+    service: ReservationService | None = None
+    staff_id: uuid.UUID | None = None
+    refused: str | None = None
+    services: list[ServiceRef] = field(default_factory=list)
+    staff: list[StaffRef] = field(default_factory=list)
+
+
+def _one(found: list[Any], wanted: str, allowed: set[uuid.UUID]) -> tuple[Any, list[Any]]:
+    """De lo que nombra ``wanted`` (``matches``), lo que se puede usar: ``(el elegido,
+    [])`` o ``(None, los empatados)``. Uno solo que se puede usar es ese si es el único
+    que nombra o si se llama exactamente así: un «Corte» del hermano no empata con el
+    «Corte» propio, que es el que este agente reserva."""
+    usable = [x for x in found if x.id in allowed]
+    if len(usable) == 1 and (len(found) == 1 or fold(usable[0].name) == fold(wanted)):
+        return usable[0], []
+    return None, usable
+
+
+async def _pick_service(
+    session: AsyncSession,
+    agent_id: uuid.UUID | None,
+    service_id: uuid.UUID | None,
+    service_name: str | None,
+) -> _Pick:
+    """El servicio, si es uno que el agente del turno ofrece (garantía 9). El id
+    manda; sin él, o con uno que no existe, el nombre. Uno del hermano es
+    ``not_offered``; uno que no está en el catálogo del cliente —inventado, archivado
+    o de la vecina, que la RLS no deja ver—, ``unknown_service``."""
+    offered = await services_catalog.services_for_agent(session, agent_id)
+    mine = {s.id for s in offered}
+    options = [ServiceRef(id=s.id, name=s.name) for s in offered if s.bookable]
+    catalog = await services_catalog.list_services(session)
+    if service_id is not None:
+        svc = next((s for s in offered if s.id == service_id), None)
+        if svc is not None:
+            return _Pick(service=svc)
+        if any(s.id == service_id for s in catalog):
+            return _Pick(refused="not_offered")
+    if not service_name or not fold(service_name):
+        return _Pick(refused=UNKNOWN_SERVICE, services=options)
+    found = matches(service_name, catalog, lambda s: s.name)
+    if not found:
+        return _Pick(refused=UNKNOWN_SERVICE, services=options)
+    chosen, tied = _one(found, service_name, mine)
+    if chosen is not None:
+        return _Pick(service=chosen)
+    if not tied:
+        return _Pick(refused="not_offered")
+    return _Pick(
+        refused=AMBIGUOUS_SERVICE, services=[ServiceRef(id=s.id, name=s.name) for s in tied]
+    )
+
+
+async def _pick_staff(
+    session: AsyncSession,
+    service: ReservationService,
+    staff_id: uuid.UUID | None,
+    staff_name: str | None,
+) -> _Pick:
+    """La persona, entre el equipo activo (no archivado), para ``service``. Sin id ni
+    nombre, cualquiera. Una que existe y no hace el servicio es ``not_offered``
+    (R14.4) con quienes sí; una que no existe, ``unknown_staff``."""
+    if staff_id is None and not (staff_name and fold(staff_name)):
+        return _Pick(service=service)
+    able = await staff_for_service(session, service)
+    can = {s.id for s in able}
+    options = [StaffRef(id=s.id, name=s.name) for s in able]
+    team = await active_staff(session)
+    if staff_id is not None:
+        if staff_id in can:
+            return _Pick(service=service, staff_id=staff_id)
+        if any(s.id == staff_id for s in team):
+            return _Pick(refused="not_offered", staff=options)
+    if not staff_name or not fold(staff_name):
+        return _Pick(refused=UNKNOWN_STAFF, staff=options)
+    found = matches(staff_name, team, lambda s: s.name)
+    if not found:
+        return _Pick(refused=UNKNOWN_STAFF, staff=options)
+    chosen, tied = _one(found, staff_name, can)
+    if chosen is not None:
+        return _Pick(service=service, staff_id=chosen.id)
+    if not tied:
+        return _Pick(refused="not_offered", staff=options)
+    return _Pick(refused=AMBIGUOUS_STAFF, staff=[StaffRef(id=s.id, name=s.name) for s in tied])
+
+
+async def _pick(
+    session: AsyncSession,
+    agent_id: uuid.UUID | None,
+    *,
+    service_id: uuid.UUID | None,
+    service_name: str | None,
+    staff_id: uuid.UUID | None,
+    staff_name: str | None,
+) -> _Pick:
+    picked = await _pick_service(session, agent_id, service_id, service_name)
+    if picked.service is None:
+        return picked
+    return await _pick_staff(session, picked.service, staff_id, staff_name)
 
 
 # ── lectura ─────────────────────────────────────────────────────────────────
@@ -208,7 +326,8 @@ class Services(ToolBase):
     name = "reservas.services"
     description = (
         "What can be booked: in services mode, the services YOU handle, with duration, price "
-        "and who does each one (use their ids in find_slots/create); a service that is not "
+        "and who does each one (use their ids in find_slots/create, or their names in a "
+        "later turn, when the ids are no longer there); a service that is not "
         "bookable has no times — explain how it is ordered. In capacity mode, the largest "
         "group the agent may book."
     )
@@ -249,9 +368,13 @@ class FindSlots(ToolBase):
     name = "reservas.find_slots"
     description = (
         "Free times on a day, only within the business's opening hours and its rules. "
-        "Services mode: pass service_id (and staff_id, or omit for anyone). Capacity mode: "
-        "pass party_size. Offer only the returned times; if closed or empty, say so and "
-        "suggest first_fit or another day."
+        "Services mode: pass the service (service_id, or service_name as the customer said "
+        "it) and the team member (staff_id or staff_name, or omit both for anyone). Capacity "
+        "mode: pass party_size. Offer only the returned times; if closed or empty, say so "
+        "and suggest first_fit or another day. If refused is unknown_service, unknown_staff, "
+        "ambiguous_service or ambiguous_staff, the service or person was not recognised and "
+        "nothing was searched: call again with one of the returned services/staff, or ask "
+        "the customer; it says nothing about free times."
     )
     input_model = FindSlotsInput
     output_model = FindSlotsOutput
@@ -268,15 +391,30 @@ class FindSlots(ToolBase):
                 return FindSlotsOutput(date=payload.date, closed=True, why_closed="closed")
             not_before = now + _notice(ctx)
             if ctx.mode == "services":
-                if payload.service_id is None:
-                    raise ToolError(
-                        "service_id is required in services mode (see reservas.services)"
-                    )
-                svc = await _offered_service(
-                    session, await _turn_agent(session), payload.service_id
+                picked = await _pick(
+                    session,
+                    await _turn_agent(session),
+                    service_id=payload.service_id,
+                    service_name=payload.service_name,
+                    staff_id=payload.staff_id,
+                    staff_name=payload.staff_name,
                 )
-                if svc is None:
-                    return FindSlotsOutput(date=payload.date, closed=True, why_closed="not_offered")
+                if picked.refused == "not_offered":
+                    return FindSlotsOutput(
+                        date=payload.date,
+                        closed=True,
+                        why_closed="not_offered",
+                        staff=picked.staff,
+                    )
+                if picked.refused is not None or picked.service is None:
+                    return FindSlotsOutput(
+                        date=payload.date,
+                        closed=False,
+                        refused=picked.refused,
+                        services=picked.services,
+                        staff=picked.staff,
+                    )
+                svc = picked.service
                 if not svc.bookable:
                     return FindSlotsOutput(
                         date=payload.date, closed=True, why_closed="not_bookable"
@@ -288,7 +426,7 @@ class FindSlots(ToolBase):
                     ctx,
                     day=payload.date,
                     service=svc,
-                    staff_ids=[payload.staff_id] if payload.staff_id else None,
+                    staff_ids=[picked.staff_id] if picked.staff_id else None,
                     not_before=not_before,
                 )
                 names = {s.id: s.name for s in await staff_for_service(session, svc)}
@@ -366,9 +504,15 @@ class Create(ToolBase):
     name = "reservas.create"
     description = (
         "Book for the person you are talking to, at a time find_slots returned. You cannot "
-        "book for anyone else. Idempotent by idempotency_key. If refused is 'too_large', the "
-        "group is above what you may book: escalate to a person. Confirm the booking to the "
-        "customer only when booking is returned."
+        "book for anyone else. Pass the service and the team member by id, or by name "
+        "(service_name, staff_name) when the ids are not in this turn — e.g. the customer "
+        "picked the time in a later message. Idempotent by idempotency_key. If refused is "
+        "'too_large', the group is above what you may book: escalate to a person. If refused "
+        "is unknown_service, unknown_staff, ambiguous_service or ambiguous_staff, the time "
+        "was NOT checked: call again in this turn with one of the returned services/staff, "
+        "or ask the customer which one; never tell them the time is taken. Only 'slot_taken' "
+        "means the time is taken. Confirm the booking to the customer only when booking is "
+        "returned."
     )
     input_model = CreateInput
     output_model = CreateOutput
@@ -382,12 +526,21 @@ class Create(ToolBase):
             ctx = await _ctx(session)
             name, phone = await _contact(session, customer_id)
             conversation_id, agent_id = await _turn(session, customer_id, payload.conversation_id)
-            if (
-                ctx.mode == "services"
-                and payload.service_id is not None
-                and await _offered_service(session, agent_id, payload.service_id) is None
-            ):
-                return CreateOutput(refused="not_offered")
+            service_id, staff_id = payload.service_id, payload.staff_id
+            if ctx.mode == "services":
+                picked = await _pick(
+                    session,
+                    agent_id,
+                    service_id=payload.service_id,
+                    service_name=payload.service_name,
+                    staff_id=payload.staff_id,
+                    staff_name=payload.staff_name,
+                )
+                if picked.refused is not None or picked.service is None:
+                    return CreateOutput(
+                        refused=picked.refused, services=picked.services, staff=picked.staff
+                    )
+                service_id, staff_id = picked.service.id, picked.staff_id
             agent_name = (
                 await session.scalar(sa.select(Agent.name).where(Agent.id == agent_id))
                 if agent_id
@@ -405,8 +558,8 @@ class Create(ToolBase):
                         contact_name=name,
                         contact_phone=phone,
                         party_size=payload.party_size,
-                        staff_id=payload.staff_id,
-                        service_id=payload.service_id,
+                        staff_id=staff_id,
+                        service_id=service_id,
                         any_staff=payload.any_staff,
                         note=payload.note,
                         join_waitlist=payload.join_waitlist,
@@ -426,7 +579,9 @@ class Create(ToolBase):
                         refused=exc.code, first_fit=ff.get("time") if isinstance(ff, dict) else None
                     )
                 # Esa persona no hace este servicio (R14.4): no es un fallo, es un no.
-                if exc.code == "not_found" and payload.staff_id is not None:
+                # ``_pick_staff`` ya lo dice antes; esto queda por si el equipo cambia
+                # entre la resolución y el candado.
+                if exc.code == "not_found" and staff_id is not None:
                     return CreateOutput(refused="not_offered")
                 raise ToolError(exc.code) from None
             return CreateOutput(booking=await _brief(session, ctx, res), idempotent_replay=replay)
@@ -435,8 +590,12 @@ class Create(ToolBase):
 class Reschedule(ToolBase):
     name = "reservas.reschedule"
     description = (
-        "Move a booking of the person you are talking to, to a time find_slots returned. "
-        "A booking that is not theirs reads as not found."
+        "Move a booking of the person you are talking to, to a time find_slots returned, "
+        "optionally with another team member (staff_id, or staff_name when the id is not "
+        "in this turn). A booking that is not theirs reads as not found. If refused is "
+        "unknown_staff or ambiguous_staff, the person was not recognised and nothing was "
+        "moved: retry with one of the returned staff or ask the customer; never say the "
+        "time is taken."
     )
     input_model = RescheduleInput
     output_model = RescheduleOutput
@@ -449,6 +608,14 @@ class Reschedule(ToolBase):
         async with tool_session() as session:
             ctx = await _ctx(session)
             res = await _mine(session, payload.booking_id, customer_id)
+            staff_id = payload.staff_id
+            if res.service_id is not None and (payload.staff_id or payload.staff_name):
+                svc = await session.get(ReservationService, res.service_id)
+                if svc is not None:
+                    picked = await _pick_staff(session, svc, payload.staff_id, payload.staff_name)
+                    if picked.refused is not None:
+                        return RescheduleOutput(refused=picked.refused, staff=picked.staff)
+                    staff_id = picked.staff_id
             try:
                 await move_booking(
                     session,
@@ -456,7 +623,7 @@ class Reschedule(ToolBase):
                     res,
                     day=payload.date,
                     at=_hm(payload.time),
-                    staff_id=payload.staff_id,
+                    staff_id=staff_id,
                     party_size=None,
                     notify=False,
                     actor=Actor("agent"),
@@ -562,9 +729,11 @@ class JoinWaitlist(ToolBase):
     name = "reservas.join_waitlist"
     description = (
         "Put the person you are talking to on the waitlist. Capacity mode: date, time and "
-        "party_size of the full hour they wanted. Services mode: service_id (staff_id or "
-        "anyone) and either a day, an 'until' day, or booking_id if they want to bring an "
-        "existing booking forward."
+        "party_size of the full hour they wanted. Services mode: the service (service_id or "
+        "service_name; with booking_id, the booking's) and the team member (staff_id or "
+        "staff_name, or anyone), and either a day, an 'until' day, or booking_id if they "
+        "want to bring an existing booking forward. If refused is unknown_* or ambiguous_*, "
+        "nobody was put on the list: retry with one of the returned services/staff."
     )
     input_model = JoinWaitlistInput
     output_model = JoinWaitlistOutput
@@ -575,16 +744,32 @@ class JoinWaitlist(ToolBase):
         customer_id = current_customer_or_refuse("apuntar en la lista de espera")
         async with tool_session() as session:
             ctx = await _ctx(session)
-            if (
-                payload.service_id is not None
-                and await _offered_service(session, await _turn_agent(session), payload.service_id)
-                is None
-            ):
-                raise ToolError("not_offered")
-            name, phone = await _contact(session, customer_id)
             reservation_id = None
+            booked_service: uuid.UUID | None = None
             if payload.booking_id is not None:
-                reservation_id = (await _mine(session, payload.booking_id, customer_id)).id
+                booking = await _mine(session, payload.booking_id, customer_id)
+                reservation_id, booked_service = booking.id, booking.service_id
+            service_id, staff_id = payload.service_id, payload.staff_id
+            if ctx.mode == "services":
+                named = payload.service_id is not None or bool(payload.service_name)
+                picked = await _pick(
+                    session,
+                    await _turn_agent(session),
+                    service_id=payload.service_id if named else booked_service,
+                    service_name=payload.service_name,
+                    staff_id=payload.staff_id,
+                    staff_name=payload.staff_name,
+                )
+                if picked.refused is not None or picked.service is None:
+                    return JoinWaitlistOutput(
+                        refused=picked.refused, services=picked.services, staff=picked.staff
+                    )
+                service_id, staff_id = picked.service.id, picked.staff_id
+            elif service_id is not None and not await services_catalog.offers(
+                session, await _turn_agent(session), service_id
+            ):
+                return JoinWaitlistOutput(refused="not_offered")
+            name, phone = await _contact(session, customer_id)
             try:
                 entry = await waitlist.join(
                     session,
@@ -598,8 +783,8 @@ class JoinWaitlist(ToolBase):
                         desired_day=payload.date,
                         desired_time=_hm(payload.time) if payload.time else None,
                         desired_until=payload.until,
-                        service_id=payload.service_id,
-                        staff_id=payload.staff_id,
+                        service_id=service_id,
+                        staff_id=staff_id,
                         reservation_id=reservation_id,
                     ),
                 )

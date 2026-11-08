@@ -121,6 +121,26 @@ DOES_NOT_BACK: list[tuple[str, dict[str, Any]]] = [
     ),
     ("reservas.create, reserva y rechazo", _env("reservas.create", booking=BRIEF, refused="x")),
     ("reservas.reschedule rechazada", _env("reservas.reschedule", booking=None, refused="closed")),
+    # Fallo ``la-reserva-del-turno-siguiente-pierde-los-ids``: un servicio o una persona
+    # que no se resuelve es un rechazo con opciones, nunca una reserva.
+    (
+        "reservas.create con un servicio desconocido",
+        _env(
+            "reservas.create",
+            booking=None,
+            refused="unknown_service",
+            services=[{"id": "s1", "name": "Corte"}],
+        ),
+    ),
+    (
+        "reservas.reschedule con una persona ambigua",
+        _env(
+            "reservas.reschedule",
+            booking=None,
+            refused="ambiguous_staff",
+            staff=[{"id": "p1", "name": "Lucía"}, {"id": "p2", "name": "Lucas"}],
+        ),
+    ),
     ("answer_offer late_taken", _env("reservas.answer_offer", result="late_taken", booking=None)),
     ("answer_offer declined", _env("reservas.answer_offer", result="declined", booking=None)),
     ("booking.create_appointment error", _env("booking.create_appointment", "error")),
@@ -172,6 +192,26 @@ def test_a_booking_attempt_that_failed_is_told_apart_from_no_attempt() -> None:
     assert not booking_brake.attempted([refused, _env("reservas.create", booking=BRIEF)]), (
         "si el segundo intento reservó, ya no es un intento fallido"
     )
+
+
+def test_an_unknown_service_is_a_failed_attempt_and_never_backs() -> None:
+    """Con la salida de verdad de ``reservas.create``: ``unknown_service`` trae las
+    opciones para reintentar, no respalda «te reservé» y cuenta como intento
+    fallido, así que una reserva de antes no lo cubre."""
+    import uuid
+
+    from nexus_mcp.servers.reservas.schemas import CreateOutput, ServiceRef
+
+    out = CreateOutput(
+        refused="unknown_service", services=[ServiceRef(id=uuid.uuid4(), name="Corte")]
+    )
+    envelope = {"tool": "reservas.create", "status": "ok", "result": out.model_dump(mode="json")}
+    assert envelope["result"]["booking"] is None
+    assert not booking_brake.backs(envelope)
+    assert booking_brake.attempted([envelope])
+    retried = _env("reservas.create", booking=BRIEF, refused=None)
+    assert not booking_brake.attempted([envelope, retried]), "el reintento con la opción reservó"
+    assert booking_brake.is_backed([envelope, retried])
 
 
 def test_the_booking_tools_come_from_the_actions_of_capability_names() -> None:

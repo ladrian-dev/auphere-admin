@@ -922,6 +922,30 @@ async def test_an_agent_never_offers_nor_books_its_siblings_services(
             },
         )
         assert booked["result"]["refused"] == "not_offered", booked
+        # Fallo ``la-reserva-del-turno-siguiente-pierde-los-ids``: por nombre, igual.
+        # El nombre del hermano no se resuelve a su servicio, y lo que se ofrece para
+        # reintentar es solo lo de este agente.
+        sibling_name = {"service_name": names[sibling].upper()}
+        by_name = await tool(me, "reservas.find_slots", {"date": day, **sibling_name})
+        assert by_name["result"]["why_closed"] == "not_offered", by_name
+        assert by_name["result"]["slots"] == []
+        booked_by_name = await tool(
+            me,
+            "reservas.create",
+            {"date": day, "time": "10:00", "idempotency_key": f"g9n-{me}", **sibling_name},
+        )
+        assert booked_by_name["result"]["refused"] == "not_offered", booked_by_name
+        assert booked_by_name["result"]["booking"] is None
+        waiting = await tool(me, "reservas.join_waitlist", {"date": day, **sibling_name})
+        assert waiting["result"]["refused"] == "not_offered", waiting
+        unknown = await tool(
+            me,
+            "reservas.create",
+            {"date": day, "time": "10:00", "service_name": "Masaje", "idempotency_key": "g9u"},
+        )
+        assert unknown["result"]["refused"] == "unknown_service", unknown
+        assert [o["name"] for o in unknown["result"]["services"]] == [names[me]]
+        assert str(services[sibling]) not in str(unknown["result"])
         legacy = await tool(
             me,
             "booking.check_availability",

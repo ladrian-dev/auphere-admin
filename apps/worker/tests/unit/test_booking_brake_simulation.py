@@ -37,6 +37,8 @@ NOW = "2026-11-09T08:00:00+00:00"
 OPEN = [[[600, 1200]] for _ in range(7)]
 TUESDAY = "2026-11-10"
 AGENDA = (
+    "reservas.find_slots",
+    "reservas.join_waitlist",
     "reservas.create",
     "reservas.reschedule",
     "reservas.cancel",
@@ -60,8 +62,10 @@ def tenant() -> Iterator[uuid.UUID]:
 LONG = SimService(id=str(uuid.uuid4()), name="Color", duration_min=60, bookable=True)
 
 
-def _registry(*, week: list[list[list[int]]] | None = OPEN) -> SimulatedRegistry:
-    world = World(timezone="Europe/Madrid", now=NOW, week=week, services=[LONG])
+def _registry(
+    *, week: list[list[list[int]]] | None = OPEN, services: list[SimService] | None = None
+) -> SimulatedRegistry:
+    world = World(timezone="Europe/Madrid", now=NOW, week=week, services=services or [LONG])
     return SimulatedRegistry(world, base=MCPRegistry())
 
 
@@ -275,3 +279,99 @@ async def test_a_booking_of_an_earlier_turn_backs_the_next_reply() -> None:
         simulated_agenda=registry.simulated_booking_stands(),
     )
     assert claimed is False
+
+
+# ── fallo ``la-reserva-del-turno-siguiente-pierde-los-ids`` ──────────────────
+#
+# En el turno siguiente el modelo no tiene los ids: reserva con el nombre que dijo el
+# cliente. La agenda simulada acepta los mismos campos que la de verdad y contesta
+# con sus mismos códigos y su misma forma, también al buscar huecos y al apuntarse a
+# la espera, para que el Playground enseñe lo que pasaría en el canal.
+
+#: Para empatar con «cor»: «Corte» y «Corte niño».
+CUT = SimService(id=str(uuid.uuid4()), name="Corte", duration_min=30, bookable=True)
+KID = SimService(id=str(uuid.uuid4()), name="Corte niño", duration_min=30, bookable=True)
+
+
+async def test_a_simulated_booking_by_name_books_that_service() -> None:
+    registry = _registry()
+    envelope = await _call(
+        registry,
+        "reservas.create",
+        date=TUESDAY,
+        time="10:00",
+        service_name="  COLOR ",
+        staff_name="Lucía",  # la agenda simulada no tiene equipo: no lo comprueba
+        idempotency_key="k",
+    )
+    _is_the_real_shape(envelope)
+    booking = envelope["result"]["booking"]
+    assert (booking["service_name"], booking["end"]) == ("Color", "11:00")
+    assert booking_brake.backs(envelope)
+
+
+async def test_an_unknown_simulated_service_is_refused_with_the_options() -> None:
+    registry = _registry()
+    for args in ({"service_name": "Masaje"}, {"service_id": str(uuid.uuid4())}):
+        made = await _call(
+            registry, "reservas.create", date=TUESDAY, time="10:00", idempotency_key="k", **args
+        )
+        assert made["status"] == "ok", "como la de verdad: un rechazo, no un error"
+        _is_the_real_shape(made)
+        assert made["result"]["refused"] == "unknown_service"
+        assert made["result"]["services"] == [{"id": LONG.id, "name": "Color"}]
+        assert not booking_brake.backs(made) and booking_brake.attempted([made])
+
+        found = await _call(registry, "reservas.find_slots", date=TUESDAY, **args)
+        _is_the_real_shape(found)
+        assert found["result"]["refused"] == "unknown_service"
+        assert found["result"]["slots"] == []
+
+        waiting = await _call(registry, "reservas.join_waitlist", date=TUESDAY, **args)
+        _is_the_real_shape(waiting)
+        assert waiting["result"]["refused"] == "unknown_service"
+        assert waiting["result"]["entry_id"] is None
+    assert registry.world.bookings == [] and registry.world.actions == []
+
+
+async def test_a_simulated_name_that_fits_several_is_ambiguous() -> None:
+    registry = _registry(services=[CUT, KID])
+    made = await _call(
+        registry,
+        "reservas.create",
+        date=TUESDAY,
+        time="10:00",
+        service_name="cor",
+        idempotency_key="k",
+    )
+    _is_the_real_shape(made)
+    assert made["result"]["refused"] == "ambiguous_service"
+    assert {o["name"] for o in made["result"]["services"]} == {"Corte", "Corte niño"}
+    exact = await _call(
+        registry,
+        "reservas.create",
+        date=TUESDAY,
+        time="10:00",
+        service_name="corte",
+        idempotency_key="k2",
+    )
+    assert exact["result"]["booking"]["service_name"] == "Corte"
+
+
+async def test_simulated_slots_and_waitlist_have_the_real_shape() -> None:
+    registry = _registry()
+    found = await _call(registry, "reservas.find_slots", date=TUESDAY, service_name="color")
+    assert found["status"] == "ok"
+    _is_the_real_shape(found)
+    assert found["result"]["refused"] is None and found["result"]["closed"] is False
+    times = [s["time"] for s in found["result"]["slots"]]
+    assert times[0] == "10:00" and "19:30" not in times, "una hora de Color no cabe a las 19:30"
+
+    closed = await _call(_registry(week=None), "reservas.find_slots", date=TUESDAY)
+    _is_the_real_shape(closed)
+    assert closed["result"]["closed"] is True and closed["result"]["slots"] == []
+
+    waiting = await _call(registry, "reservas.join_waitlist", date=TUESDAY, service_name="Color")
+    _is_the_real_shape(waiting)
+    assert waiting["result"]["status"] == "waiting" and waiting["result"]["entry_id"]
+    assert [a.tool for a in registry.world.actions] == ["reservas.join_waitlist"]

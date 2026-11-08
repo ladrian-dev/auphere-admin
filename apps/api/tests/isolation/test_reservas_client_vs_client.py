@@ -340,3 +340,75 @@ async def test_the_google_of_the_business_only_blocks_its_own_client(
     assert await one_pass(a["tenant_id"]) > 0
     assert await one_pass(b["tenant_id"]) == 0
     assert set(used) == {"ca_a"}
+
+
+async def test_the_agent_reads_a_neighbours_service_or_person_as_one_that_does_not_exist(
+    db_session, console_world
+) -> None:
+    """Fallo ``la-reserva-del-turno-siguiente-pierde-los-ids``: las herramientas del
+    agente aceptan nombres y, si no resuelven, devuelven opciones. Un servicio o una
+    persona de la vecina, por id o por nombre, se lee **igual** que uno que no existe
+    (``unknown_*`` con las opciones del propio cliente), y nada suyo sale en la
+    respuesta: ni sus nombres ni sus ids."""
+    from nexus_mcp import build_default_registry
+    from nexus_mcp.registry import reset_default_registry
+
+    from nexus_api.core.tenant_context import customer_context, tenant_context
+    from nexus_api.db.models import Customer, ReservationService, ReservationStaff
+
+    world = await _world(db_session, console_world, "services")
+    me = world["me"]
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, world["neighbour"]):
+        masaje = ReservationService(
+            tenant_id=world["neighbour"],
+            name=f"Masaje de {NEIGHBOUR}",
+            duration_minutes=30,
+            currency="CLP",
+        )
+        pedro = ReservationStaff(tenant_id=world["neighbour"], name=f"Pedro de {NEIGHBOUR}")
+        session.add_all([masaje, pedro])
+        await session.commit()
+        theirs = {masaje.id, pedro.id}
+    ana = Customer(tenant_id=me["tenant_id"], identifier="56922223333", name="Ana", preferences={})
+    db_session.add(ana)
+    await db_session.commit()
+    reset_default_registry()
+    registry = build_default_registry()
+    day = world["day"].isoformat()
+
+    async def result(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        with tenant_context(me["tenant_id"]), customer_context(ana.id):
+            env = await registry.dispatch(name, args, whitelist=[name])
+        assert env["status"] == "ok", env
+        return dict(env["result"])
+
+    mine = {"service_id": str(me["corte"])}
+    probes = (
+        (
+            "services",
+            {"service_id": str(uuid.uuid4())},
+            {"service_id": str(world["service"])},
+            {"service_name": f"Masaje de {NEIGHBOUR}"},
+        ),
+        (
+            "staff",
+            {**mine, "staff_id": str(uuid.uuid4())},
+            {**mine, "staff_id": str(world["staff"])},
+            {**mine, "staff_name": f"Pedro de {NEIGHBOUR}"},
+        ),
+    )
+    for tool, base in (
+        ("reservas.find_slots", {"date": day}),
+        ("reservas.create", {"date": day, "time": "10:00", "idempotency_key": "vecina"}),
+    ):
+        for field, ghost, foreign, by_name in probes:
+            answers = [await result(tool, {**base, **a}) for a in (ghost, foreign, by_name)]
+            assert answers[0] == answers[1] == answers[2], (tool, field, answers)
+            out = answers[0]
+            refused = "unknown_service" if field == "services" else "unknown_staff"
+            assert out["refused"] == refused, (tool, field, out)
+            assert out[field], "las opciones del propio cliente"
+            text = str(out)
+            _clean(text, world)
+            assert not any(str(i) in text for i in theirs)

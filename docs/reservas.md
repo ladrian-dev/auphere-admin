@@ -323,6 +323,37 @@ la conversación, nunca un argumento del modelo— y `find_slots`, `create` y
 servicio del catálogo que el agente no ofrece. Lo prueba
 `tests/isolation/test_44_agent_within_client.py`.
 
+**El servicio y la persona, también por nombre** (fallo
+`la-reserva-del-turno-siguiente-pierde-los-ids`, 2026-11-08). Por WhatsApp se reserva
+en varios mensajes, y entre turnos el agente solo conserva el texto: la nota
+`_tools_already_used` del pipeline dice qué herramientas usó, nunca con qué argumentos
+ni qué devolvieron. Los ids de `services`/`find_slots` de un turno no llegan al
+siguiente, donde el cliente elige la hora; en staging, `create` con lo que tenía el
+modelo acabó en «Ese horario ya no está disponible» con la hora libre. Por eso
+`find_slots`, `create` y `join_waitlist` aceptan `service_name` y `staff_name`, y
+`reschedule`, `staff_name`:
+
+- el id manda; el nombre se compara sin mayúsculas, acentos ni espacios de más
+  (igual, luego un único prefijo, luego un único «contiene»;
+  `servers/reservas/names.py`, que comparte la agenda simulada);
+- el servicio se busca en el catálogo vivo del cliente (la RLS): si es del agente del
+  turno, ese; si es de su hermano, `not_offered`. La persona, en el equipo activo: si
+  no hace el servicio, `not_offered` con quienes sí (R14.4);
+- lo que no se resuelve no levanta: `refused` es `unknown_service`, `unknown_staff`,
+  `ambiguous_service` o `ambiguous_staff`, con las opciones (`services`, `staff`) para
+  reintentar en el mismo turno. Un id inventado o de la vecina se lee igual que uno que
+  no existe, y las opciones son solo las de este agente
+  (`tests/isolation/test_reservas_client_vs_client.py`). `slot_taken` solo significa
+  «ocupada».
+
+El modelo solo lee la descripción y la entrada de cada herramienta: ahí está escrito
+que puede pasar los nombres y que un `unknown_*`/`ambiguous_*` se arregla con una
+opción, nunca diciéndole al cliente que la hora está tomada. La agenda simulada
+(Playground y pruebas del agente) acepta los mismos nombres y da los mismos códigos,
+con la forma de verdad también en `find_slots` y `join_waitlist`; como no tiene
+equipo ni los servicios del hermano, no comprueba la persona y un servicio del hermano
+es `unknown_service`. Sin servicio, la simulación sigue dando su cita genérica.
+
 ## Lo automático (worker)
 
 Contrato: [`worker-y-avisos.md`](../specs/043-reservas/contracts/worker-y-avisos.md).

@@ -2,6 +2,11 @@
 
 **Ninguno tiene un campo de cliente** (spec 014): la persona es la del turno.
 Las fechas y horas son las del negocio (``date`` + ``HH:MM``).
+
+El servicio y la persona del equipo van por id o por nombre (``service_name``,
+``staff_name``): entre turnos el agente solo conserva el texto, y los ids de un
+turno no llegan al siguiente (fallo ``la-reserva-del-turno-siguiente-pierde-los-ids``).
+Lo que no se resuelve es un ``refused`` con las opciones, nunca un error.
 """
 
 from __future__ import annotations
@@ -25,6 +30,36 @@ class Money(OutputModel):
 class StaffRef(OutputModel):
     id: uuid.UUID
     name: str
+
+
+class ServiceRef(OutputModel):
+    id: uuid.UUID
+    name: str
+
+
+#: Lo que el modelo lee de un servicio o una persona que no se resolvió. El modelo
+#: solo ve la descripción de la herramienta, no esta: cada herramienta lo repite.
+UNRESOLVED_HELP = (
+    "unknown_service | unknown_staff: the service or team member you named (by id or "
+    "name) is not one you can book; ambiguous_service | ambiguous_staff: the name fits "
+    "several. Call again in this same turn with one of `services` / `staff` (id or "
+    "name), call reservas.services / reservas.find_slots, or ask the customer which one. "
+    "Nothing was checked about the time: never tell the customer it is taken or "
+    "unavailable because of this."
+)
+SERVICE_NAME_HELP = (
+    "Services mode: the service by name, as the customer said it (e.g. 'corte'), when its "
+    "service_id is not in this turn. Ignored when service_id is a service you offer."
+)
+STAFF_NAME_HELP = (
+    "Services mode: the team member by name (e.g. 'Lucía'), when their staff_id is not in "
+    "this turn. Omit both for anyone."
+)
+#: Las opciones para reintentar, con ``unknown_*`` o ``ambiguous_*``.
+SERVICES_OPTIONS = "With unknown_service/ambiguous_service: the services to retry with."
+STAFF_OPTIONS = (
+    "With unknown_staff/ambiguous_staff/not_offered: who does this service, to retry with."
+)
 
 
 class ServiceItem(OutputModel):
@@ -57,9 +92,11 @@ class ServicesOutput(OutputModel):
 class FindSlotsInput(InputModel):
     date: Date = Field(description="Business-local day to search.")
     service_id: uuid.UUID | None = Field(default=None, description="Services mode: the service.")
+    service_name: str | None = Field(default=None, max_length=120, description=SERVICE_NAME_HELP)
     staff_id: uuid.UUID | None = Field(
         default=None, description="Services mode: a team member, or omit for anyone."
     )
+    staff_name: str | None = Field(default=None, max_length=120, description=STAFF_NAME_HELP)
     party_size: int | None = Field(default=None, ge=1, le=500, description="Capacity mode.")
 
 
@@ -75,6 +112,9 @@ class FindSlotsOutput(OutputModel):
     why_closed: str | None = None
     slots: list[SlotOut] = Field(default_factory=list)
     first_fit: str | None = None
+    refused: str | None = Field(default=None, description=UNRESOLVED_HELP)
+    services: list[ServiceRef] = Field(default_factory=list, description=SERVICES_OPTIONS)
+    staff: list[StaffRef] = Field(default_factory=list, description=STAFF_OPTIONS)
 
 
 class BookingBrief(OutputModel):
@@ -94,7 +134,9 @@ class CreateInput(InputModel):
     date: Date
     time: str = Field(pattern=HHMM)
     service_id: uuid.UUID | None = None
+    service_name: str | None = Field(default=None, max_length=120, description=SERVICE_NAME_HELP)
     staff_id: uuid.UUID | None = None
+    staff_name: str | None = Field(default=None, max_length=120, description=STAFF_NAME_HELP)
     any_staff: bool = False
     party_size: int = Field(default=1, ge=1, le=500)
     note: str | None = Field(default=None, max_length=500)
@@ -116,12 +158,17 @@ class CreateOutput(OutputModel):
         default=None,
         description=(
             "slot_taken | too_large | too_soon | too_far | closed | hours_missing | "
-            "not_bookable | not_offered. too_large: escalate to a person with "
+            "not_bookable | not_offered | no_staff | unknown_service | unknown_staff | "
+            "ambiguous_service | ambiguous_staff. slot_taken is the only one that means "
+            "the time is taken. too_large: escalate to a person with "
             "escalate.escalate_to_human. not_offered: you do not handle that service; "
-            "say so and hand the conversation to the team."
+            "say so and hand the conversation to the team; with `staff`, that team member "
+            "does not do it: offer one of them. " + UNRESOLVED_HELP
         ),
     )
     first_fit: str | None = None
+    services: list[ServiceRef] = Field(default_factory=list, description=SERVICES_OPTIONS)
+    staff: list[StaffRef] = Field(default_factory=list, description=STAFF_OPTIONS)
 
 
 class ListMineInput(InputModel):
@@ -137,12 +184,27 @@ class RescheduleInput(InputModel):
     date: Date
     time: str = Field(pattern=HHMM)
     staff_id: uuid.UUID | None = None
+    staff_name: str | None = Field(
+        default=None,
+        max_length=120,
+        description=(
+            "Services mode: another team member by name (e.g. 'Lucía'), when their staff_id "
+            "is not in this turn. Omit both to keep the same person."
+        ),
+    )
 
 
 class RescheduleOutput(OutputModel):
     booking: BookingBrief | None = None
-    refused: str | None = None
+    refused: str | None = Field(
+        default=None,
+        description=(
+            "slot_taken | too_large | too_soon | too_far | closed | hours_missing | "
+            "not_offered | unknown_staff | ambiguous_staff. " + UNRESOLVED_HELP
+        ),
+    )
     first_fit: str | None = None
+    staff: list[StaffRef] = Field(default_factory=list, description=STAFF_OPTIONS)
 
 
 class CancelInput(InputModel):
@@ -168,14 +230,20 @@ class JoinWaitlistInput(InputModel):
     time: str | None = Field(default=None, pattern=HHMM)
     party_size: int = Field(default=1, ge=1, le=500)
     service_id: uuid.UUID | None = None
+    service_name: str | None = Field(default=None, max_length=120, description=SERVICE_NAME_HELP)
     staff_id: uuid.UUID | None = None
+    staff_name: str | None = Field(default=None, max_length=120, description=STAFF_NAME_HELP)
     until: Date | None = None
     booking_id: uuid.UUID | None = None
 
 
 class JoinWaitlistOutput(OutputModel):
-    entry_id: uuid.UUID
-    status: str
+    #: ``None`` only with ``refused``: nobody was put on the list.
+    entry_id: uuid.UUID | None = None
+    status: str | None = None
+    refused: str | None = Field(default=None, description="not_offered | " + UNRESOLVED_HELP)
+    services: list[ServiceRef] = Field(default_factory=list, description=SERVICES_OPTIONS)
+    staff: list[StaffRef] = Field(default_factory=list, description=STAFF_OPTIONS)
 
 
 class AnswerOfferInput(InputModel):

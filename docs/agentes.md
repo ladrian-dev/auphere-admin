@@ -473,7 +473,11 @@ repite herramientas (`tool_once`).
    retiradas fallan siempre con error, como las de verdad. Una prueba unitaria
    (`apps/worker/tests/unit/test_booking_brake_simulation.py`) pasa al freno los
    sobres que produce el propio registro simulado, para que las dos formas no
-   vuelvan a separarse.
+   vuelvan a separarse. Desde el fallo
+   `la-reserva-del-turno-siguiente-pierde-los-ids` (2026-11-08) también
+   `find_slots` y `join_waitlist` tienen la forma de verdad, y el servicio va por
+   id o por nombre con los mismos rechazos (`unknown_service`, `ambiguous_service`)
+   y las mismas opciones; `docs/reservas.md`, «El agente».
 3. **Turnos anteriores de esa conversación**, solo si el filtro acertó: una
    reserva viva de Reservas con su `conversation_id`, o el éxito de un calendario
    conectado o de `booking.*` en sus salidas desde `attended_at`. De Reservas
