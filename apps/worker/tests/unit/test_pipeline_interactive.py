@@ -55,7 +55,10 @@ class _ScriptedProvider:
         role: str,
         model: str,
         messages: list[dict[str, str]],
+        extra: dict[str, Any] | None = None,
     ) -> str:
+        # ``extra`` as in ``LLMProvider``: the classifier forces its label through it
+        # on anthropic/ and openai/ models, and a double without it fails every call.
         return self.text_to_return
 
     async def acomplete_with_tools(

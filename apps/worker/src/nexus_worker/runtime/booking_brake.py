@@ -60,6 +60,7 @@ from nexus_api.db.models import Conversation, Message, MessageDirection, Reserva
 from nexus_api.db.models.reservation import LIVE_STATUSES
 from nexus_api.repositories.audit import AuditRepository
 
+from nexus_worker.runtime.llm import label_in
 from nexus_worker.runtime.model_resolver import chain_for
 from nexus_worker.runtime.turns import current_turn
 
@@ -341,6 +342,11 @@ def _failed_closed(turn: BrakeTurn) -> bool:
     return True
 
 
+#: The only answers of the brake's call, forced where the wire takes it
+#: (``llm.label_format``): a free-text reply cannot slip through as a verdict.
+_VERDICTS: Final = ("YES", "NO")
+
+
 async def claims_booking(
     llm: LLMRouter,
     bundle: AgentBundle | None,
@@ -350,8 +356,8 @@ async def claims_booking(
     only_new: bool = False,
 ) -> bool:
     """Does ``text`` take a booking for granted? One classify call, on the
-    agent's classify chain. Fails closed: an error or an answer that is neither
-    YES nor NO is a claim."""
+    agent's classify chain, held to YES or NO. Fails closed: an error or an
+    answer that is neither YES nor NO is a claim."""
     question = ONLY_NEW_PROMPT if only_new else _ANY_BOOKING
     messages = [
         {"role": "system", "content": CLASSIFY_PROMPT + question},
@@ -367,13 +373,14 @@ async def claims_booking(
                 default_model=llm.classify_model,
                 global_fallback=llm.classify_fallback,
             ),
+            labels=_VERDICTS,
         )
     except Exception:
         return _failed_closed(turn)
-    words = re.findall(r"[a-z]+", (raw or "").lower())
-    if words and words[0] == "yes":
+    verdict = label_in(raw)
+    if verdict == "yes":
         return True
-    if words and words[0] == "no":
+    if verdict == "no":
         return False
     return _failed_closed(turn)
 

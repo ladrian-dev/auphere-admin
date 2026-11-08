@@ -281,6 +281,24 @@ cliente). Contra la base, `T/integration/models/test_router_in_the_graph.py`.
 enmienda del 2026-11-05 (requisito 69), sin razonamiento (`CLASSIFY_ON_ANTHROPIC`), con
 la de responder como reserva. Está en el catálogo con sus precios y sus pesos (0221).
 
+**La petición de clasificar** (`pipeline.classification_messages`, la de los dos
+clasificadores): la instrucción como `system`, con qué significa cada etiqueta, y la
+conversación **como dato en un solo mensaje `user`**: una línea por mensaje entre
+etiquetas `<conversation>`, el último del cliente marcado, sin las notas de la
+plataforma. Nunca como turnos de chat: así Haiku 5.5 tomaba el turno siguiente y
+contestaba al cliente (80 de 84 llamadas en staging el 2026-11-07, bug
+`el-clasificador-contesta-en-vez-de-clasificar`). La salida de la etiqueta suelta va
+**forzada** a una de `VALID_INTENTS`: `llm.classify(..., labels=…)` pide
+`response_format` con un JSON Schema de un solo campo `label` con su `enum`
+(`llm.label_format`). OpenAI lo toma tal cual; para Anthropic LiteLLM lo convierte en
+una herramienta forzada (`json_tool_call` con `tool_choice`) y devuelve sus argumentos
+como texto, por eso el razonamiento sigue apagado. Solo en `anthropic/` y `openai/`,
+los dos proveedores con el cable comprobado
+(`wk/tests/unit/test_classifier_reaches_the_provider.py`); otro recibe la petición de
+siempre. `llm.label_in` lee la etiqueta del JSON o de la palabra suelta, y lo que no es
+una etiqueta sigue siendo un turno `fallback`. La tarea y el medidor no cambian:
+`classify` por el rol.
+
 **El clasificador tipado** (40.5) devuelve `ClassifyResult` —intención, si
 necesita herramientas, riesgo, complejidad, idioma y **cuántas peticiones trae**
 (`intents`)— y lo deja en `AgentState.classification`. Uno inválido es un turno
@@ -294,8 +312,9 @@ más, «¿da por hecha una cita? YES/NO», con el borrador como mensaje `user`. 
 llamadas en un turno normal, 1 si el freno actúa y 2 si reintenta y vuelve a
 actuar. Va por el mismo camino que el clasificador de hoy: `llm.classify` con
 `chain_for(bindings, "classify", …)` (la asignación `classify` del cliente, si la
-tiene, y `llm_classify_model` con su reserva), `CLASSIFY_ON_ANTHROPIC` de 32 tokens
-y la tarea `classify` por el rol. No hay rol ni tarea nuevos: el medidor la toma
+tiene, y `llm_classify_model` con su reserva), `CLASSIFY_ON_ANTHROPIC` de 32 tokens,
+la respuesta forzada a `YES` o `NO` como la etiqueta de arriba, y la tarea `classify`
+por el rol. No hay rol ni tarea nuevos: el medidor la toma
 dentro del `usage_turn` del turno y se cobra con él, como `classify` y `respond`.
 Si falla o no dice YES ni NO, el freno cuenta la respuesta como afirmación.
 **Pendiente**: un agente con perfil también la hace por este camino y no por el

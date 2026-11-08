@@ -478,10 +478,63 @@ CLASSIFY_ON_ANTHROPIC: Final[dict[str, Any]] = {
     "thinking": {"type": "disabled"},
     "allowed_openai_params": ["thinking"],
 }
+#: A forced label comes back as a tool call, whose JSON and wrapper cost more output
+#: than a bare word: with 32 a cut-off call would fall to ``fallback`` again.
+FORCED_LABEL_MAX_TOKENS: Final = 64
 
 
 class EmptyClassification(RuntimeError):
     """El modelo no dio etiqueta (un rechazo llega así): que clasifique el siguiente."""
+
+
+#: Where the label can be forced, verified on the wire
+#: (``tests/unit/test_classifier_reaches_the_provider.py``): OpenAI takes the JSON schema
+#: as it is; LiteLLM turns it into a forced tool for Anthropic (``json_tool_call`` with
+#: ``tool_choice``) and gives its arguments back as the text. Any other provider gets the
+#: request of always and its text is read as a bare word: an unverified parameter there
+#: would be a call that fails every time.
+_FORCED_LABEL_PREFIXES: Final = ("anthropic/", "openai/")
+
+
+def label_format(labels: Sequence[str]) -> dict[str, Any]:
+    """The ``response_format`` that holds a reply to one of ``labels``: ``{"label": …}``.
+
+    Without it Claude Haiku 5.5 answered the customer instead of labelling the message
+    (bug ``el-clasificador-contesta-en-vez-de-clasificar``, staging 2026-11-07)."""
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "label",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"label": {"type": "string", "enum": list(labels)}},
+                "required": ["label"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def label_in(raw: str | None) -> str:
+    """The label of a classifier's reply, lowercase: the ``label`` of the forced JSON
+    (``intent`` or ``answer`` too), or else the first word of a bare one. «book.» or
+    «Book» are still ``book``: changing models cannot send turns to ``fallback`` over a
+    full stop. ``""`` when there is none."""
+    text = (raw or "").strip()
+    if text.startswith(("{", "```")):
+        try:
+            data = json.loads(_strip_fence(text))
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            for key in ("label", "intent", "answer"):
+                value = data.get(key)
+                if isinstance(value, str):
+                    return value.strip().lower()
+            return ""
+    words = re.findall(r"[a-z_]+", text.lower())
+    return words[0] if words else ""
 
 
 def task_for_call(role: str, *, has_tools: bool) -> str | None:
@@ -1782,14 +1835,28 @@ class LLMRouter:
         tenant_id: uuid.UUID,
         messages: list[dict[str, str]],
         models: Sequence[str] = (),
+        labels: Sequence[str] = (),
     ) -> str:
         """``models`` is the tenant's resolved chain (WP-19). Empty = the
-        global classify model."""
+        global classify model.
+
+        ``labels`` are the only answers that count. Where the wire is known to take it
+        (``_FORCED_LABEL_PREFIXES``) the reply is forced to one of them, and a reply that
+        carries one comes back as that bare label, spelt as in ``labels``. Anything else
+        comes back as the model wrote it, for the caller to fall back on: the chain is not
+        walked again for it (an empty reply still is, :class:`EmptyClassification`)."""
 
         async def invoke(model: str) -> str:
+            extra: dict[str, Any] = {}
             # Requisito 69: una palabra. Solo aquí, en la etiqueta suelta: el tipado y el
             # sector usan el mismo rol y necesitan más salida.
-            options = {"extra": CLASSIFY_ON_ANTHROPIC} if model.startswith("anthropic/") else {}
+            if model.startswith("anthropic/"):
+                extra.update(CLASSIFY_ON_ANTHROPIC)
+            if labels and model.startswith(_FORCED_LABEL_PREFIXES):
+                extra["response_format"] = label_format(labels)
+                if "max_tokens" in extra:
+                    extra["max_tokens"] = FORCED_LABEL_MAX_TOKENS
+            options: dict[str, Any] = {"extra": extra} if extra else {}
             text = await self.provider.acomplete(
                 tenant_id=tenant_id,
                 role="classify",
@@ -1799,7 +1866,8 @@ class LLMRouter:
             )
             if not text.strip():
                 raise EmptyClassification(model)
-            return text
+            label = label_in(text)
+            return next((known for known in labels if known.lower() == label), text)
 
         chain = [self.classify_model, self.classify_fallback]
         return await self._call_with_resilience(
@@ -2183,6 +2251,8 @@ __all__ = [
     "build_default_router",
     "current_hop",
     "default_context_management_from_env",
+    "label_format",
+    "label_in",
     "litellm_kwargs_contract",
     "routed",
     "task_for_call",
