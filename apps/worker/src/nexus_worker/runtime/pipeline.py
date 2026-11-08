@@ -686,6 +686,21 @@ _CATALOG_NOTE = (
 )
 
 
+#: The agent said «te paso con alguien del equipo» without calling the tool, so nobody was
+#: told and the customer waited for no one (QA de staging, 2026-11-08, H-02).
+_HAND_OFF_TOOL = "escalate.escalate_to_human"
+_HAND_OFF_NOTE = (
+    "PASAR A UNA PERSONA: pasar la conversación al equipo es llamar a "
+    f"{_HAND_OFF_TOOL} en este mismo turno, con el motivo. Decirlo no la pasa: nadie se "
+    "entera y el cliente se queda esperando. Nunca digas que la pasas, que alguien del equipo "
+    "le escribirá o que le atenderá una persona sin haber llamado antes a esa herramienta."
+)
+
+
+def _hand_off_note_applies(available_names: Iterable[str]) -> bool:
+    return _HAND_OFF_TOOL in set(available_names)
+
+
 def _catalog_note_applies(channel_type: str | None, available_names: Iterable[str]) -> bool:
     """Product cards exist on WhatsApp only, and both tools have to be on offer."""
     names = set(available_names)
@@ -1819,6 +1834,8 @@ def make_handler_node(
                 messages.insert(1, {"role": "system", "content": _READONLY_ADMIN_NOTE})
             if _catalog_note_applies(state.get("channel_type"), available_names):
                 messages.insert(1, {"role": "system", "content": _CATALOG_NOTE})
+            if _hand_off_note_applies(available_names):
+                messages.insert(1, {"role": "system", "content": _HAND_OFF_NOTE})
             if bundle.reception_targets and _HANDOFF_TOOL_NAME in available_names:
                 # Spec 047 (53.1): Recepción's list, right after its own prompt.
                 messages.insert(1, {"role": "system", "content": _reception_note(bundle)})
