@@ -168,3 +168,16 @@ describe("las medidas del marco nuevo son tokens (R47.1)", () => {
     expect(theme.get("--breakpoint-shell")).toBe("56.3125rem");
   });
 });
+
+describe("native select lists", () => {
+  // QA de staging del 2026-11-08: en el tema oscuro un `<select>` transparente pasa a sus
+  // opciones el texto claro, y Chrome en macOS pinta la lista sobre fondo claro: texto casi
+  // blanco sobre blanco. Las opciones llevan el fondo y el texto de un menú, en los dos temas.
+  it("paints every option with the popover background and text", () => {
+    const base = TOKENS.slice(TOKENS.indexOf("@layer base"));
+    const rule = /select option,\s*select optgroup\s*\{([^}]*)\}/.exec(base);
+    expect(rule, "a base rule for select options").not.toBeNull();
+    expect(rule?.[1]).toContain("background-color: var(--popover)");
+    expect(rule?.[1]).toContain("color: var(--popover-foreground)");
+  });
+});

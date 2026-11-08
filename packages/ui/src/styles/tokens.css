@@ -567,6 +567,16 @@
     border-color: var(--border);
   }
 
+  /* A native list opens in the browser's own popup. A transparent `<select>`
+     hands its light text to the options in the dark theme, and Chrome on macOS
+     draws that list on a light background: near-white on white (QA de staging,
+     2026-11-08). The options carry a menu's own background and text. */
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
   html {
     /* The body never scrolls horizontally: wide content scrolls inside
        its own overflow-x:auto container (DataTable, code, diagrams).
