@@ -750,6 +750,18 @@ export const reservasMessages = {
     en: "Check {day}: each range closes after it opens, and the second starts after the first.",
   },
   "reservas.hours.saved": { es: "Horario guardado.", en: "Hours saved." },
+  // Spec 056 (5.1): el horario propio de una sede se enseña, no se edita.
+  "reservas.hours.location.own": { es: "{name} · Horario propio: {label}", en: "{name} · Own hours: {label}" },
+  "reservas.hours.location.business": { es: "{name} · Usa el horario del negocio", en: "{name} · Uses the business hours" },
+  "reservas.hours.locations.hint": {
+    es: "El horario propio de una sede lo cambia quien gestiona tus agentes.",
+    en: "Whoever manages your agents changes a location's own hours.",
+  },
+  // Spec 056 (12.3): cerrar un diálogo con datos escritos pregunta antes.
+  "reservas.discard.title": { es: "¿Descartar lo que escribiste?", en: "Discard what you wrote?" },
+  "reservas.discard.body": { es: "Si cierras ahora, se pierde lo que no has guardado.", en: "If you close now, what you have not saved is lost." },
+  "reservas.discard.confirm": { es: "Descartar", en: "Discard" },
+  "reservas.discard.keep": { es: "Seguir editando", en: "Keep editing" },
   "reservas.team.title": { es: "Equipo y horarios", en: "Team and hours" },
   "reservas.team.add": { es: "Añadir persona", en: "Add person" },
   "reservas.team.edit": { es: "Editar persona", en: "Edit person" },
@@ -850,7 +862,6 @@ export const reservasMessages = {
   "reservas.svc.add": { es: "Añadir servicio", en: "Add service" },
   "reservas.svc.edit": { es: "Editar servicio", en: "Edit service" },
   "reservas.svc.empty": { es: "Todavía no hay servicios.", en: "No services yet." },
-  "reservas.svc.noCost": { es: "Sin coste", en: "No cost" },
   "reservas.svc.edit.aria": { es: "Editar {name}", en: "Edit {name}" },
   "reservas.svc.archive.aria": { es: "Archivar {name}", en: "Archive {name}" },
   "reservas.svc.archive.title": { es: "¿Archivar {name}?", en: "Archive {name}?" },
@@ -863,9 +874,10 @@ export const reservasMessages = {
   "reservas.svc.name.placeholder": { es: "Corte y barba", en: "Haircut and beard" },
   "reservas.svc.duration": { es: "Duración", en: "Length" },
   "reservas.svc.price": { es: "Precio", en: "Price" },
-  "reservas.svc.price.hint": { es: "En {currency}. Déjalo vacío si no tiene coste.", en: "In {currency}. Leave it empty if it has no cost." },
   "reservas.svc.price.invalid": { es: "Escribe el precio solo con números, como 15000.", en: "Write the price with numbers only, like 15000." },
   "reservas.svc.price.invalid.decimals": { es: "Escribe el precio solo con números, como 15,50.", en: "Write the price with numbers only, like 15.50." },
+  // Spec 056 (5.2): sin precio, gratis o un importe, como en la ficha.
+  "reservas.svc.price.amount.hint": { es: "En {currency}.", en: "In {currency}." },
   "reservas.svc.currency": { es: "Moneda de los precios", en: "Price currency" },
   "reservas.svc.category": { es: "Categoría", en: "Category" },
   "reservas.svc.category.hint": { es: "Agrupa servicios parecidos, como «Corte». Elige una o escribe otra.", en: "Groups similar services, like «Haircut». Pick one or type another." },

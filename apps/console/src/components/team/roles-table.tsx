@@ -18,6 +18,7 @@ export const ROLE_CAPABILITIES: readonly { key: MessageKey; permission: Permissi
   { key: "team.roles.cap.clientsRead", permission: "clients:read" },
   { key: "team.roles.cap.clientsWrite", permission: "agents:write" },
   { key: "team.roles.cap.clientsDelete", permission: "clients:delete" },
+  { key: "team.roles.cap.clientAccess", permission: "client_access:manage" },
   { key: "team.roles.cap.playground", permission: "playground:run" },
   { key: "team.roles.cap.usageRead", permission: "usage:read" },
   { key: "team.roles.cap.usageWrite", permission: "usage:write" },

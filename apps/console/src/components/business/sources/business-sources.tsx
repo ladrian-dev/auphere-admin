@@ -206,7 +206,8 @@ export function BusinessSources({
               {busy ? t("business.sources.uploading") : t("business.sources.upload")}
             </Button>
           </div>
-          <form onSubmit={addUrl} className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
+          {/* Spec 056 (11.5): los avisos salen en el idioma de la consola, nunca del navegador. */}
+          <form onSubmit={addUrl} className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end" noValidate>
             <Field label={t("business.sources.url")} htmlFor={ids.url} className="min-w-0 flex-1">
               {(a11y) => (
                 <Input {...a11y} type="url" inputMode="url" value={url} maxLength={2048} placeholder={t("business.sources.url.placeholder")} onChange={(e) => setUrl(e.target.value)} />

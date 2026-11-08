@@ -260,6 +260,8 @@ async def set_access(
         raise ClientAccessError("no_partner", 409)
     if tenant.status == TenantStatus.ARCHIVED:
         raise ClientAccessError("archived", 409)
+    # Spec 056 (requisito 2.3): ``agents`` y ``business`` ya no están en
+    # ``CLIENT_MODULES``; un retirado es tan desconocido como uno inventado.
     unknown = set(modules) - set(CLIENT_MODULES)
     if unknown:
         raise ClientAccessError("unknown_module", 422)
@@ -299,9 +301,13 @@ async def set_access(
         await _end_sessions(session, list(active), phone_reason="access_disabled")
 
     # Sin Bandeja nadie atendería las conversaciones que un escalado dejó con
-    # el agente callado: vuelven al agente (R11.5).
+    # el agente callado: vuelven al agente (R11.5). Sus avisos «espera a una
+    # persona» pasan a atendidos en esta misma transacción (spec 056, 8.1).
     if had_inbox and (not enabled or not wants_inbox):
-        await inbox_lifecycle.release_escalated_for_tenant(session, tenant_id, actor=actor)
+        released = await inbox_lifecycle.release_escalated_for_tenant(
+            session, tenant_id, actor=actor
+        )
+        await inbox_lifecycle.mark_waiting_handled(tenant_id, released, session=session)
 
     if wants_reservas or had_reservas or reservas is not None:
         try:

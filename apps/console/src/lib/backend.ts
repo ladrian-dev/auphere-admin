@@ -96,6 +96,18 @@ async function forwardedClientIp(): Promise<Record<string, string>> {
   }
 }
 
+/** Spec 056 (10.2): the session lookup's time limit and its tries (one retry). */
+const SESSION_TIMEOUT_MS = 5_000;
+const SESSION_ATTEMPTS = 2;
+
+/** A failure that may pass on its own: no answer (network, timeout) or the API's 5xx. */
+function passing(err: unknown): boolean {
+  if (err instanceof BackendError) return err.status >= 500;
+  // `AbortSignal.timeout` rejects with a DOMException, which is not an `Error` everywhere.
+  const name = typeof err === "object" && err !== null ? (err as { name?: unknown }).name : undefined;
+  return err instanceof TypeError || name === "TimeoutError" || name === "AbortError";
+}
+
 async function request<T>(token: string, path: string, opts: Opts = {}): Promise<T | null> {
   const url = `${env().NEXUS_BACKEND_URL}${path}`;
   const res = await fetch(url, {
@@ -516,12 +528,12 @@ import { builderApi } from "./backend/builder";
 import { capabilitiesApi } from "./backend/capabilities";
 import { channelConfigApi } from "./backend/channel-config";
 import { channelsApi } from "./backend/channels";
+import { clientAccessApi } from "./backend/client-access";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
 import { inboxApi } from "./backend/inbox";
 import { inboxCorrectionsApi } from "./backend/inbox-corrections";
 import { liteApi } from "./backend/lite";
-import { liteAgentsApi } from "./backend/lite-agents";
 import { modelQualityApi } from "./backend/model-quality";
 import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
@@ -588,11 +600,13 @@ export function backendFor(principal: Principal) {
     // Spec 030: the client console (`/console/lite/*`).
     ...liteApi(call),
     ...inboxApi(call),
-    // Spec 047 (historias 29 y 32): «Agentes», «Negocio» y «Corregir esta respuesta».
-    ...liteAgentsApi(call),
+    // Spec 047 (historia 32): «Corregir esta respuesta». «Agentes» y «Negocio» del
+    // cliente salieron con la spec 056 (requisito 2.1).
     ...inboxCorrectionsApi(call),
     // Spec 043: Reservas (`/console/lite/reservas/*`).
     ...reservasApi(call),
+    // Spec 056 (requisito 3): la pestaña «Acceso» de un cliente (owner y admin).
+    ...clientAccessApi(call),
     ...modelsApi(call),
     ...onboardingApi(call),
     ...workstationApi(call),
@@ -805,18 +819,29 @@ export const consoleService = {
       { method: "POST", body },
     )) as { session_token: string; expires_at: string };
   },
-  /** `null` when the token is unknown or expired — never an exception. */
-  async session(token: string): Promise<ApiPrincipal | null> {
+  /**
+   * `null` when the token is unknown or expired — never an exception.
+   *
+   * Spec 056 (10.2): it runs on every console request, so it has a time limit
+   * and ONE retry for what may be passing — a network failure, a timeout or a
+   * 5xx. A 4xx is an answer and is not retried. Spec 056 (15.1): it also says
+   * when the session ends (`session_expires_at`), which never moves.
+   */
+  async session(token: string): Promise<(ApiPrincipal & { session_expires_at?: string | null }) | null> {
     const t = await mintServiceToken();
-    try {
-      const res = await request<{ principal: ApiPrincipal }>(t, "/console/auth/session", {
-        method: "POST",
-        body: { token },
-      });
-      return res?.principal ?? null;
-    } catch (err) {
-      if (err instanceof BackendError && err.status === 401) return null;
-      throw err;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const res = await request<{ principal: ApiPrincipal; expires_at?: string | null }>(t, "/console/auth/session", {
+          method: "POST",
+          body: { token },
+          signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
+        });
+        return res?.principal ? { ...res.principal, session_expires_at: res.expires_at ?? null } : null;
+      } catch (err) {
+        if (err instanceof BackendError && err.status === 401) return null;
+        if (attempt < SESSION_ATTEMPTS && passing(err)) continue;
+        throw err;
+      }
     }
   },
   /**

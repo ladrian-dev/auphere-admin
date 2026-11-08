@@ -146,6 +146,11 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     # una decisión de seguridad y la toman owner y admin.
     "teammates:use": frozenset({_O, _A, _B}),
     "teammates:policy": frozenset({_O, _A}),
+    # Spec 056 (requisito 3, D4): encender la consola del cliente, elegir sus
+    # módulos e invitar a sus personas. Solo owner y admin: da a alguien de
+    # fuera del partner la Bandeja del cliente (el riesgo aceptado en D3). No
+    # es ``clients:write``, que tiene el builder.
+    "client_access:manage": frozenset({_O, _A}),
 }
 
 

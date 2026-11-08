@@ -1,4 +1,4 @@
-import { Inbox, Search } from "lucide-react";
+import { CheckCircle2, Inbox, Search } from "lucide-react";
 
 import { Alert, AlertDescription, Button, NativeSelect, Skeleton, cn } from "@nexus/ui";
 
@@ -21,6 +21,10 @@ const FILTERS: InboxFilter[] = ["all", "unread", "waiting", "resolved"];
  * Five states, each its own: loading (rows the size of real ones), an inbox
  * that never had a conversation, filters that match nothing, a failed read,
  * and the list. «Más» loads the next page by cursor.
+ *
+ * Spec 056 (6.2, D6): «Abiertas» (`all`) empty while the client has resolved
+ * ones is not «no results»: it says how many are resolved and opens them. Only
+ * the default list — no search, agent or channel — counts them.
  */
 export function ConversationList({
   page,
@@ -72,6 +76,7 @@ export function ConversationList({
 }) {
   const t = useT();
   const kinds = channelKinds.filter(hasBrandLogo);
+  const resolved = filter === "all" && !query.trim() && agent === null && channel === null ? (page?.resolved ?? 0) : 0;
   const channelName = (kind: string) =>
     kind === "instagram" ? t("inbox.channel.instagram") : kind === "messenger" ? t("inbox.channel.messenger") : kind === "whatsapp" ? t("inbox.channel.whatsapp") : kind;
   const label = (f: InboxFilter) =>
@@ -169,7 +174,20 @@ export function ConversationList({
         ) : loading && !page ? (
           <ListSkeleton label={t("inbox.list.loading")} />
         ) : page && page.items.length === 0 ? (
-          page.has_any ? (
+          resolved > 0 ? (
+            <div role="status" className="flex flex-col items-center gap-3 px-5 py-12 text-center">
+              <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
+                <CheckCircle2 className="size-5" aria-hidden="true" />
+              </span>
+              <p className="text-sm font-medium text-balance">{t("inbox.empty.open.title")}</p>
+              <p className="text-sm text-muted-foreground tabular-nums">
+                {resolved === 1 ? t("inbox.empty.open.resolved.one") : t("inbox.empty.open.resolved", { count: resolved })}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => onFilter("resolved")}>
+                {t("inbox.empty.open.action")}
+              </Button>
+            </div>
+          ) : page.has_any ? (
             <div role="status" className="flex flex-col items-center gap-3 px-5 py-10 text-center">
               <p className="text-sm text-muted-foreground text-pretty">{t("inbox.empty.filtered")}</p>
               <Button type="button" variant="outline" size="sm" onClick={onClear}>

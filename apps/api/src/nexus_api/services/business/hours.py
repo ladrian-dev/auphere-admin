@@ -55,7 +55,7 @@ from nexus_api.db.models.business import (
     BusinessSpecialDate,
     BusinessSpecialShift,
 )
-from nexus_api.services.business import section_write, writes
+from nexus_api.services.business import rules, section_write, writes
 from nexus_api.services.business.profile import business_language
 from nexus_api.services.business.section_write import LEGACY_NICHE, SYSTEM, ensure_profile
 from nexus_api.services.business.sections import Actor
@@ -236,6 +236,44 @@ def blocks_loss(week: Week) -> list[str]:
 def to_blocks(week: Week) -> Week:
     """«Por bloques»: de lunes a viernes, los turnos del lunes."""
     return Week(layout="blocks", days=(week.days[0],) * 5 + week.days[5:])
+
+
+# ── escribir solo lo tocado (spec 056, requisito 5) ─────────────────────────
+
+
+def _changed(before: Week | None, after: Week) -> list[int]:
+    """Los días (0 = lunes) que ``after`` cambia respecto a ``before``."""
+    old = before.days if before is not None else ((),) * 7
+    return [i for i in range(7) if after.days[i] != old[i]]
+
+
+def check_changed_steps(before: Week | None, after: Week | None) -> None:
+    """Spec 056 (5.1, 5.5): un día que cambia va en pasos de 5 minutos, como en
+    Reservas. Lo guardado de antes de la regla (la API aceptaba cualquier minuto)
+    se enseña marcado «Revísalo» y se guarda tal cual mientras no se toque su día."""
+    if after is None:
+        return
+    for i in _changed(before, after):
+        for s in after.days[i]:
+            if not (rules.on_step(s.open_min) and rules.on_step(s.close_min)):
+                raise HoursError("bad_step", "times go in steps of 5 minutes", day=DAY_KEYS[i])
+
+
+def replace_days(week: Week | None, days: Mapping[str, Sequence[tuple[object, object]]]) -> Week:
+    """Los Ajustes de Reservas (spec 056, 5.3): la semana con **solo** ``days``
+    sustituidos (``(apertura, cierre)`` en ``HH:MM``); los demás, como estaban.
+    Las reglas estrictas (``rules.check_day``: de 0 a 6 turnos, pasos de 5
+    minutos, sin solapes) solo en los tocados; :class:`Week` comprueba además
+    que ningún nocturno pise el día siguiente. «Por bloques» sigue por bloques
+    si de lunes a viernes siguen iguales; si no, pasa a día por día."""
+    out = list(week.days if week is not None else ((),) * 7)
+    for key, shifts in days.items():
+        if key not in DAY_KEYS:
+            raise rules.RuleError("invalid_day", "days", day=key)
+        checked = rules.check_day(list(shifts), day=key)
+        out[DAY_KEYS.index(key)] = tuple(Shift(o, c) for o, c in checked)
+    blocks = (week is None or week.layout == "blocks") and all(d == out[0] for d in out[1:5])
+    return Week(layout="blocks" if blocks else "daily", days=tuple(out))
 
 
 # ── fechas especiales ───────────────────────────────────────────────────────
@@ -959,6 +997,7 @@ __all__ = [
     "Week",
     "blocks_loss",
     "business_locale",
+    "check_changed_steps",
     "day_ranges",
     "dump_hours",
     "ensure_profile",
@@ -972,6 +1011,7 @@ __all__ = [
     "open_state",
     "parse_shift",
     "phrase",
+    "replace_days",
     "runtime_snapshot",
     "save_week",
     "shifts_on",

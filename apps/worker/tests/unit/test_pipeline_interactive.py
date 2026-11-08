@@ -180,7 +180,10 @@ class TestCapture:
                         ),
                     ),
                 ),
-            ]
+            ],
+            # «tu cita» pasa el filtro del freno de citas (spec 056): su
+            # clasificador lee una pregunta, no una cita hecha.
+            text_to_return="NO",
         )
         bundle = _bundle(tools=frozenset({_INTERACTIVE_TOOL_NAME}))
         # Register the tool so ``get_openai_tools`` returns a non-empty

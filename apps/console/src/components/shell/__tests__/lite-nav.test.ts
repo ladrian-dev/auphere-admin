@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { firstModulePath, toResolution } from "@/lib/principal-access";
+import { CLIENT_MODULES, firstModulePath, toResolution } from "@/lib/principal-access";
 
 import { liteNav } from "../lite-nav";
 
@@ -33,14 +33,13 @@ describe("liteNav", () => {
     expect(items[2]?.labelKey).toBe("nav.reservas");
   });
 
-  // Spec 047 (T168): Agentes y Negocio go between the Inbox and Reservas, as the API orders them.
-  it("paints Agentes and Negocio with their own labels and paths", () => {
-    const items = liteNav(["panel", "inbox", "agents", "business", "reservas", "usage"]).flatMap((g) => g.items);
-    expect(items.map((i) => i.href)).toEqual(["/", "/inbox", "/agentes", "/negocio", "/reservas", "/usage"]);
-    expect(items[2]?.labelKey).toBe("nav.agents");
-    expect(items[3]?.labelKey).toBe("nav.business");
-    expect(firstModulePath(["agents", "usage"])).toBe("/agentes");
-    expect(firstModulePath(["business"])).toBe("/negocio");
+  // Spec 056 (requisito 2.1): Agentes y Negocio left the client's bar. A module
+  // name the console does not know never reaches it (`toResolution` drops it).
+  it("has no Agentes nor Negocio", () => {
+    const hrefs = liteNav(["panel", "inbox", "reservas", "usage"]).flatMap((g) => g.items.map((i) => i.href));
+    expect(hrefs).not.toContain("/agentes");
+    expect(hrefs).not.toContain("/negocio");
+    expect(CLIENT_MODULES).toEqual(["panel", "inbox", "reservas", "usage"]);
   });
 });
 
@@ -60,10 +59,11 @@ describe("toResolution keeps the API order", () => {
       console_enabled: true,
       role: "client",
       client_name: "Mi negocio",
-      modules: ["inbox", "agenda", "panel", "inbox"],
+      modules: ["inbox", "agenda", "agents", "panel", "business", "inbox"],
     } as Parameters<typeof toResolution>[0]);
     expect(res.kind).toBe("ok");
     if (res.kind === "ok" && res.principal.kind === "client") {
+      // Spec 056: `agents` y `business` son tan desconocidos como `agenda`.
       expect(res.principal.modules).toEqual(["inbox", "panel"]);
     }
   });

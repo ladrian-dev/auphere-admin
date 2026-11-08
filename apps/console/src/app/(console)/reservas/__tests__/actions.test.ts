@@ -13,8 +13,6 @@ const SERVICE = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 const KEY = "0f8b2c3e-6a1d-4b7e-9c2f-1a2b3c4d5e6f";
 const forbidden = { ok: false, status: 403, message: "forbidden" };
 
-const closedWeek = { monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [] };
-
 /** Spec 043 (T021): Reservas's actions are for a client person with the module, nobody else. */
 describe("reservas actions", () => {
   it("create a booking with the submit's Idempotency-Key, never in the body", async () => {
@@ -86,19 +84,66 @@ describe("reservas actions", () => {
     await expect(actions.patchSettingsAction({ version: 4, patch: { capacity: { stay_minutes: 100 } } })).rejects.toThrow();
   });
 
-  it("hours: up to two ranges a day, in order", async () => {
+  it("hours (spec 056): only the touched days, with the revision read", async () => {
     h.setClient(["reservas"]);
-    const hours = { ...closedWeek, monday: [{ from: "09:00", to: "14:00" }, { from: "15:00", to: "19:00" }] };
-    await actions.putBusinessHoursAction({ hours });
-    expect(h.backend.reservasPutBusinessHours).toHaveBeenCalledWith(hours);
-    await expect(
-      actions.putBusinessHoursAction({ hours: { ...closedWeek, monday: [{ from: "14:00", to: "09:00" }] } }),
-    ).rejects.toThrow();
-    await expect(
-      actions.putBusinessHoursAction({
-        hours: { ...closedWeek, monday: [{ from: "09:00", to: "14:00" }, { from: "13:00", to: "19:00" }] },
-      }),
-    ).rejects.toThrow();
+    const days = { tue: [{ open: "10:00", close: "18:00" }], sun: [] };
+    await actions.patchBusinessHoursAction({ revision: 3, days });
+    expect(h.backend.reservasPatchBusinessHours).toHaveBeenCalledWith({ revision: 3, days });
+    // Up to six shifts, night ones too (they close the next day), and 24:00 closes.
+    const six = Array.from({ length: 6 }, (_, i) => ({ open: `${String(8 + 2 * i).padStart(2, "0")}:00`, close: `${String(9 + 2 * i).padStart(2, "0")}:00` }));
+    await actions.patchBusinessHoursAction({ revision: 3, days: { mon: six, fri: [{ open: "22:00", close: "02:00" }], sat: [{ open: "00:00", close: "24:00" }] } });
+    expect(h.backend.reservasPatchBusinessHours).toHaveBeenCalledTimes(2);
+  });
+
+  it("hours (spec 056): a rule that fails is a 422 with its code and day, without asking the API", async () => {
+    h.setClient(["reservas"]);
+    h.backend.reservasPatchBusinessHours.mockClear();
+    const seven = Array.from({ length: 7 }, (_, i) => ({ open: `0${i}:00`, close: `0${i}:30` }));
+    for (const [days, code, day] of [
+      [{ wed: seven }, "too_many_shifts", "wed"],
+      [{ wed: [{ open: "10:07", close: "12:00" }] }, "bad_step", "wed"],
+      [{ thu: [{ open: "09:00", close: "13:00" }, { open: "12:00", close: "15:00" }] }, "overlap", "thu"],
+    ] as const) {
+      expect(await actions.patchBusinessHoursAction({ revision: 3, days })).toEqual({
+        ok: false,
+        status: 422,
+        message: "invalid",
+        code,
+        info: expect.objectContaining({ day }),
+      });
+    }
+    expect(h.backend.reservasPatchBusinessHours).not.toHaveBeenCalled();
+    await expect(actions.patchBusinessHoursAction({ days: {} })).rejects.toThrow();
+  });
+
+  it("services (spec 056): the ficha's rules, said as a 422 with the field", async () => {
+    h.setClient(["reservas"]);
+    h.backend.reservasCreateService.mockClear();
+    const base = { name: "Masaje", duration_minutes: 50, price: { kind: "free" }, staff_ids: null, idempotencyKey: KEY };
+    await actions.createServiceAction(base);
+    expect(h.backend.reservasCreateService).toHaveBeenCalledWith({ name: "Masaje", duration_minutes: 50, price: { kind: "free" }, staff_ids: null }, KEY);
+    for (const [patch, code, field] of [
+      [{ duration_minutes: 7 }, "bad_duration", "duration_min"],
+      [{ duration_minutes: 485 }, "bad_duration", "duration_min"],
+      [{ price: { kind: "amount", amount_minor: 10 ** 12 + 1 } }, "amount_too_large", "price"],
+      [{ price: { kind: "amount" } }, "price_amount_required", "price"],
+      [{ category: "x".repeat(41) }, "category_too_long", "category"],
+    ] as const) {
+      const failed = { ok: false, status: 422, message: "invalid", code, info: { field } };
+      expect(await actions.createServiceAction({ ...base, ...patch })).toEqual(failed);
+      expect(await actions.updateServiceAction({ id: SERVICE, ...patch })).toEqual(failed);
+    }
+    expect(h.backend.reservasCreateService).toHaveBeenCalledTimes(1);
+    // Only what changed travels; the name is never sent on an edit.
+    await actions.updateServiceAction({ id: SERVICE, price: { kind: "amount", amount_minor: 20000 } });
+    expect(h.backend.reservasUpdateService).toHaveBeenLastCalledWith(SERVICE, { price: { kind: "amount", amount_minor: 20000 } });
+    await expect(actions.updateServiceAction({ id: SERVICE, name: "Otro" })).rejects.toThrow();
+  });
+
+  it("staff (spec 056, 11.3): an email of 254 characters at most", async () => {
+    h.setClient(["reservas"]);
+    await actions.createStaffAction({ name: "Nora", email: "nora@cultor.cl", hours: null, idempotencyKey: KEY });
+    await expect(actions.createStaffAction({ name: "Nora", email: `${"a".repeat(250)}@x.co`, hours: null, idempotencyKey: KEY })).rejects.toThrow();
   });
 
   it("the calendars: read the account, link one, and let it go with null", async () => {
@@ -120,9 +165,9 @@ describe("reservas actions", () => {
     h.setClient(["reservas"]);
     await actions.createStaffAction({ name: "Lucía", email: null, hours: null, idempotencyKey: KEY });
     expect(h.backend.reservasCreateStaff).toHaveBeenCalledWith({ name: "Lucía", email: null, hours: null }, KEY);
-    await actions.createServiceAction({ name: "Corte", duration_minutes: 45, price_minor: 15000, staff_ids: null, idempotencyKey: KEY });
+    await actions.createServiceAction({ name: "Corte", duration_minutes: 45, price: { kind: "amount", amount_minor: 15000 }, staff_ids: null, idempotencyKey: KEY });
     expect(h.backend.reservasCreateService).toHaveBeenCalledWith(
-      { name: "Corte", duration_minutes: 45, price_minor: 15000, staff_ids: null },
+      { name: "Corte", duration_minutes: 45, price: { kind: "amount", amount_minor: 15000 }, staff_ids: null },
       KEY,
     );
     await actions.archiveStaffAction({ id: STAFF });

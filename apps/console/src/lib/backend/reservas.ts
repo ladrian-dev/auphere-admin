@@ -1,4 +1,5 @@
 import type { Call } from "../backend";
+import type { Day, Hours, Price, ShiftIn } from "./business-sections";
 
 /**
  * Lane `reservas` (spec 043): the client's Reservas, all under
@@ -45,8 +46,13 @@ export type ReservasSettings = {
   currency: string;
   /** Spec 055: si `currency` se sabe de verdad; si no, el modal pide elegirla. */
   currency_set?: boolean;
+  /** The old projection (`monday: [{from, to}]`): closed days of the agenda and a person's «same as the business». */
   business_hours: WeekHours;
   business_hours_label: string | null;
+  /** Spec 056 (5.1): the business's week in the ficha's shape — the one that is edited. */
+  hours: Hours;
+  /** Each location and whether it has its own hours: shown, never edited from here. */
+  location_hours: LocationHours[];
   hours_missing: boolean;
   slot_step_minutes: number;
   waitlist: { enabled: boolean; lead_minutes: number };
@@ -69,7 +75,13 @@ export type ReservasSettingsPatch = {
   capacity?: Partial<CapacitySettings>;
 };
 
-export type BusinessHoursOut = { business_hours: WeekHours; business_hours_label: string | null };
+export type LocationHours = { location: { id: string; name: string }; has_own_hours: boolean; label: string | null };
+/**
+ * `PATCH …/business-hours` (spec 056, 5.3): only the days that changed, with the
+ * revision that was read. A 409 `revision_conflict` means someone saved meanwhile;
+ * a 422 `{code, field, day}` says which day breaks which rule.
+ */
+export type BusinessHoursPatch = { revision: number; days: Partial<Record<Day, ShiftIn[]>> };
 
 // ── §3 team and services (Servicios) ─────────────────────────────────────
 
@@ -113,16 +125,21 @@ export type ReservasService = {
   /** Spec 055: lo que lo agrupa; `null` es sin categoría. */
   category?: string | null;
   duration_minutes: number;
-  /** `null` = no cost. */
-  price: Money | null;
+  /** Spec 056 (5.2): the ficha's price — none, free or an amount (`amount_minor`, minor units of `currency`). */
+  price: Price;
+  currency: string;
   staff: "all" | "some";
   staff_ids: string[];
   position: number;
   archived: boolean;
 };
 /** `staff_ids: null` = the whole team. */
-export type ServiceInput = { name: string; duration_minutes: number; price_minor: number | null; staff_ids: string[] | null; price_currency?: string; category?: string | null };
-export type ServicePatch = Partial<ServiceInput & { position: number }>;
+export type ServiceInput = { name: string; duration_minutes: number; price: Price; staff_ids: string[] | null; price_currency?: string; category?: string | null };
+/**
+ * Only what changed (spec 056, 5.3). `name` is accepted only if it is the one it
+ * already has: Reservas does not rename (`422 rename_not_allowed`).
+ */
+export type ServicePatch = Partial<Omit<ServiceInput, "name"> & { position: number }>;
 
 // ── §4 bookings ──────────────────────────────────────────────────────────
 
@@ -344,8 +361,7 @@ export function reservasApi(call: Call) {
     reservasSettings: () => call<ReservasSettings>(`${R}/settings`),
     reservasPatchSettings: (body: ReservasSettingsPatch, version: number) =>
       call<ReservasSettings>(`${R}/settings`, { method: "PATCH", body, headers: ifMatch(version) }),
-    reservasPutBusinessHours: (hours: WeekHours) =>
-      call<BusinessHoursOut>(`${R}/business-hours`, { method: "PUT", body: { hours } }),
+    reservasPatchBusinessHours: (body: BusinessHoursPatch) => call<Hours>(`${R}/business-hours`, { method: "PATCH", body }),
 
     // §3 team and services
     reservasStaff: (archived = false) => call<{ items: StaffMember[] }>(`${R}/staff${reservasQuery({ archived })}`),

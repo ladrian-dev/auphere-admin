@@ -87,12 +87,6 @@ export const icons = {
   block: { ios: "nosign", android: "block" },
   phone: { ios: "phone", android: "call" },
   google: { ios: "calendar.badge.checkmark", android: "event_available" },
-  // Spec 047 (agents, Negocio, corrections)
-  pause: { ios: "pause.circle", android: "pause_circle" },
-  resume: { ios: "play.circle", android: "play_circle" },
-  business: { ios: "storefront", android: "storefront" },
+  // Spec 047 (corrections); the agents' and Negocio's left with them (spec 056, 2.6)
   edit: { ios: "pencil", android: "edit" },
-  location: { ios: "mappin.and.ellipse", android: "location_on" },
-  remove: { ios: "minus.circle", android: "remove_circle" },
-  archive: { ios: "archivebox", android: "archive" },
 } satisfies Record<string, IconName>;

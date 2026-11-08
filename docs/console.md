@@ -599,6 +599,77 @@ simulada: `pnpm exec playwright test -c e2e/fabrica.config.ts` (proyectos `lite`
 teclado, «Reducir transparencia y movimiento», sus estados y textos largos en
 alemán (`e2e/fabrica-audit.ts`).
 
+## Acceso del cliente
+
+Spec [056](../specs/056-correcciones-levantamiento-qa/spec.md), requisitos 3 y 4
+(D3, D4); `contracts/api.md` y research R3. La ficha de un cliente con la consola
+nueva tiene una cuarta pestaña, **Acceso** (`/clients/{ref}/access`), detrás de
+Panel, Negocio y Agentes. Desde ella el owner o el admin del partner enciende la
+consola de su cliente, elige qué verá e invita o revoca a sus personas, **lo mismo
+que la pestaña Acceso del panel de Auphere** y con sus mismas reglas
+([consola-lite.md](consola-lite.md#acceso-desde-el-panel-o-desde-la-consola-de-partners)).
+
+- **Quién la ve.** El permiso `client_access:manage` (owner y admin; no es
+  `clients:write`, que tiene el builder). Sin él la pestaña no existe en la barra
+  (`ClientHeaderV2 canManageAccess`, que le pasa el layout de `clients/[ref]`) ni
+  por la dirección: la página responde `notFound()`, el mismo que un cliente
+  ajeno. Las acciones de `app/(console)/clients/[ref]/access/actions.ts` lo
+  comprueban antes de llamar a nadie, con `backendFor(principal)`, y validan con
+  Zod estricto (ni `partner_id` ni `tenant_id`, y `agents` o `business` no son
+  módulos). Fila «Abrir la consola a un cliente e invitar a sus personas» en la tabla de papeles de
+  Equipo.
+- **La API** (`api/console/client_access.py`, montada junto a `client_bags`):
+  `GET` y `PUT /console/clients/{ref}/client-access`, `POST …/client-members` y
+  `POST …/client-members/{member_id}/resend|revoke`. Cada ruta resuelve el `ref`
+  con `resolve_mapping` y comprueba que el acceso es del partner del principal
+  (si no, el mismo 404 opaco). No usa `client_scope`: ese ámbito baja a
+  `nexus_app`, que no tiene permiso sobre `console_auth.*`, y invitar o cerrar
+  sesiones lo toca. Se hace como el panel, `declare_tenant` dentro de la
+  transacción. Firma `principal.actor` (`console:<correo>`) y el correo de la
+  invitación sale tras confirmar. Invitar y reenviar tienen un límite por partner
+  (`console_client_invites_per_minute`, 5 por minuto, `429 rate_limited`).
+- **La respuesta** es la del panel sin `partner`
+  (`api/schemas_client_access.py`, `ClientAccessPartnerOut`) y **no trae nada de
+  la Bandeja**: ni conversaciones, ni contactos, ni el texto de los avisos
+  (requisito 4). El barrido de `tests/isolation/test_console_scope.py` cubre las
+  cinco rutas sin excepción nueva (solo sus cuerpos mínimos en `_minimal_body`), y
+  `tests/isolation/test_console_client_access_scope.py` fija el 404 de un
+  cliente o una persona de otro partner, el 403 de builder, analyst y billing y la
+  ausencia de la Bandeja en cada respuesta.
+- **Dos tarjetas** (`components/clients/access/`), sobre una sola lectura:
+  - **Consola del cliente** (`client-console-card.tsx`): el interruptor y los
+    módulos Panel, Bandeja de entrada, Reservas (con su modo y, en Aforo, el tipo
+    de negocio) y Consumo. Encendida exige al menos uno; la Bandeja sin un
+    WhatsApp conectado no se puede elegir (si ya la tenía, no se le quita sola);
+    Reservas exige su modo la primera vez; cambiar el modo con reservas futuras
+    pregunta antes («Cancelarlas y cambiar» o «No cambiar»), también si la API
+    responde `409 live_reservations` porque alguien reservó mientras tanto. Un
+    cliente archivado se lee y no se cambia.
+  - **Personas** (`client-people-card.tsx`): la lista con su estado (Invitada,
+    Activa, Caducada, Revocada) y una sola acción a la vista por fila, la
+    principal para su estado (Reenviar a una invitada o caducada). El resto va en
+    «⋯», con «Revocar» al final, en rojo y con `ConfirmDialog` (que devuelve el
+    foco al formulario de invitar, porque la fila se queda sin acciones)
+    (`access-model.ts`, `personRowLayout`, como `connector-model.rowLayout`).
+    Revocar a una persona cierra sus sesiones y sus teléfonos en la misma
+    transacción. El enlace de una invitación (`accept_url`) se enseña **una
+    sola vez**, con su resultado (si el correo no salió, es una alerta), y vive en
+    la memoria de la página.
+  - Los cinco estados de cada una: cargando (`access/loading.tsx`, con sus
+    medidas), vacío (nunca se encendió, o nadie todavía), error (Reintentar),
+    parcial (archivado, o la consola apagada: se ve la lista y no se invita) e
+    ideal.
+- **Textos**: carril `i18n/lanes/client-access.ts` (vigilado por
+  `no-orphan-keys`) y `clients.v2.tab.access` en `business.ts`. Cada no de la API
+  se dice con su frase (`accessErrorKey`), nunca el texto técnico.
+- **El riesgo que el owner aceptó (D3)**: con esta pestaña, un partner puede
+  invitar a una persona suya y, con la Bandeja encendida, leer las conversaciones
+  del cliente. Está dicho tal cual en
+  [consola-lite.md](consola-lite.md#acceso-desde-el-panel-o-desde-la-consola-de-partners).
+- **Pruebas**: `tests/integration/console/test_client_access_partner.py`, las dos
+  de aislamiento de arriba, `clients/[ref]/access/__tests__/{actions,page}.test.ts(x)`,
+  `components/clients/access/__tests__/*` y `client-header-v2.test.tsx`.
+
 ## Reglas que no se negocian
 
 - **Ningún cuerpo lleva `partner_id` ni `tenant_id`**: salen del principal y del

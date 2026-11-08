@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, Input, NativeSelect } from "@nexus/ui";
 
 import { createBlockAction } from "@/app/(console)/reservas/actions";
+import { useDiscardGuard } from "@/components/use-discard-guard";
 import type { MessageKey } from "@/i18n/messages";
 
 import { useReservas, useWords } from "../context";
@@ -39,6 +40,10 @@ export function BlockDialog({ prefill, onClose }: { prefill: { date?: string; fr
   const [error, setError] = React.useState<string | null>(null);
   const dayOpen = isOpen(date) && times.length > 0;
   const ready = dayOpen && !!label.trim() && from <= until;
+  // Spec 056 (12.3): something written or chosen is not lost on a stray close.
+  const [initial] = React.useState({ date, from, until, label });
+  const dirty = date !== initial.date || from !== initial.from || until !== initial.until || label !== initial.label;
+  const guard = useDiscardGuard(dirty, onClose);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,117 +75,120 @@ export function BlockDialog({ prefill, onClose }: { prefill: { date?: string; fr
   }
 
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
-        <form onSubmit={submit} className="grid gap-4" noValidate>
-          <DialogHeader>
-            <DialogTitle>{t("reservas.block.title")}</DialogTitle>
-            <DialogDescription>{t("reservas.block.body")}</DialogDescription>
-          </DialogHeader>
-          <fieldset className="grid gap-2">
-            <legend className="mb-2 text-sm font-medium">{t("reservas.form.day")}</legend>
-            <ChipGroup label={t("reservas.form.day")}>
-              {days.map((d) => (
-                <Chip key={d} pressed={d === date} onClick={() => setDate(d)}>
-                  {words.dayTitle(d)}
-                </Chip>
-              ))}
-            </ChipGroup>
-          </fieldset>
-          {dayOpen ? (
-            <>
-              <fieldset className="grid gap-2">
-                <legend className="mb-2 text-sm font-medium">{t("reservas.block.quick")}</legend>
-                <ChipGroup label={t("reservas.block.quick")}>
-                  {shifts.map((s) => {
-                    const own = slots.filter((x) => x.shift === s.name).map((x) => x.time);
-                    const first = own[0] ?? s.from;
-                    const last = own[own.length - 1] ?? s.to;
-                    return (
-                      <Chip
-                        key={s.name}
-                        pressed={from === first && until === last}
-                        onClick={() => {
-                          setFrom(first);
-                          setUntil(last);
-                        }}
-                      >
-                        {t("reservas.block.shift", { name: s.name.toLocaleLowerCase() })}
-                      </Chip>
-                    );
-                  })}
-                  <Chip
-                    pressed={from === times[0] && until === times[times.length - 1]}
-                    onClick={() => {
-                      setFrom(times[0]!);
-                      setUntil(times[times.length - 1]!);
-                    }}
-                  >
-                    {t("reservas.block.allDay")}
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+          <form onSubmit={submit} className="grid gap-4" noValidate>
+            <DialogHeader>
+              <DialogTitle>{t("reservas.block.title")}</DialogTitle>
+              <DialogDescription>{t("reservas.block.body")}</DialogDescription>
+            </DialogHeader>
+            <fieldset className="grid gap-2">
+              <legend className="mb-2 text-sm font-medium">{t("reservas.form.day")}</legend>
+              <ChipGroup label={t("reservas.form.day")}>
+                {days.map((d) => (
+                  <Chip key={d} pressed={d === date} onClick={() => setDate(d)}>
+                    {words.dayTitle(d)}
                   </Chip>
-                </ChipGroup>
-              </fieldset>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={t("reservas.block.from")}>
-                  {(a11y) => (
-                    <NativeSelect
-                      {...a11y}
-                      value={from}
-                      onChange={(e) => {
-                        setFrom(e.target.value);
-                        if (until < e.target.value) setUntil(e.target.value);
+                ))}
+              </ChipGroup>
+            </fieldset>
+            {dayOpen ? (
+              <>
+                <fieldset className="grid gap-2">
+                  <legend className="mb-2 text-sm font-medium">{t("reservas.block.quick")}</legend>
+                  <ChipGroup label={t("reservas.block.quick")}>
+                    {shifts.map((s) => {
+                      const own = slots.filter((x) => x.shift === s.name).map((x) => x.time);
+                      const first = own[0] ?? s.from;
+                      const last = own[own.length - 1] ?? s.to;
+                      return (
+                        <Chip
+                          key={s.name}
+                          pressed={from === first && until === last}
+                          onClick={() => {
+                            setFrom(first);
+                            setUntil(last);
+                          }}
+                        >
+                          {t("reservas.block.shift", { name: s.name.toLocaleLowerCase() })}
+                        </Chip>
+                      );
+                    })}
+                    <Chip
+                      pressed={from === times[0] && until === times[times.length - 1]}
+                      onClick={() => {
+                        setFrom(times[0]!);
+                        setUntil(times[times.length - 1]!);
                       }}
-                      wrapperClassName="w-full"
                     >
-                      {times.map((x) => (
-                        <option key={x} value={x}>
-                          {x}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  )}
-                </Field>
-                <Field label={t("reservas.block.until")}>
-                  {(a11y) => (
-                    <NativeSelect {...a11y} value={until} onChange={(e) => setUntil(e.target.value)} wrapperClassName="w-full">
-                      {times
-                        .filter((x) => x >= from)
-                        .map((x) => (
+                      {t("reservas.block.allDay")}
+                    </Chip>
+                  </ChipGroup>
+                </fieldset>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label={t("reservas.block.from")}>
+                    {(a11y) => (
+                      <NativeSelect
+                        {...a11y}
+                        value={from}
+                        onChange={(e) => {
+                          setFrom(e.target.value);
+                          if (until < e.target.value) setUntil(e.target.value);
+                        }}
+                        wrapperClassName="w-full"
+                      >
+                        {times.map((x) => (
                           <option key={x} value={x}>
                             {x}
                           </option>
                         ))}
-                    </NativeSelect>
-                  )}
+                      </NativeSelect>
+                    )}
+                  </Field>
+                  <Field label={t("reservas.block.until")}>
+                    {(a11y) => (
+                      <NativeSelect {...a11y} value={until} onChange={(e) => setUntil(e.target.value)} wrapperClassName="w-full">
+                        {times
+                          .filter((x) => x >= from)
+                          .map((x) => (
+                            <option key={x} value={x}>
+                              {x}
+                            </option>
+                          ))}
+                      </NativeSelect>
+                    )}
+                  </Field>
+                </div>
+                <Field
+                  label={t("reservas.block.label")}
+                  required
+                  requiredLabel={t("reservas.required")}
+                  error={touched && !label.trim() ? t("reservas.block.labelRequired") : null}
+                >
+                  {(a11y) => <Input {...a11y} value={label} onChange={(e) => setLabel(e.target.value)} maxLength={120} />}
                 </Field>
-              </div>
-              <Field
-                label={t("reservas.block.label")}
-                required
-                requiredLabel={t("reservas.required")}
-                error={touched && !label.trim() ? t("reservas.block.labelRequired") : null}
-              >
-                {(a11y) => <Input {...a11y} value={label} onChange={(e) => setLabel(e.target.value)} maxLength={120} />}
-              </Field>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("reservas.block.noTimes")}</p>
-          )}
-          {error ? (
-            <p role="alert" className="text-sm text-destructive text-pretty">
-              {error}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t("common.cancel")}
-            </Button>
-            <Button type="submit" loading={busy} disabled={!ready}>
-              {t("reservas.block.save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("reservas.block.noTimes")}</p>
+            )}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive text-pretty">
+                {error}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={guard.close}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" loading={busy} disabled={!ready}>
+                {t("reservas.block.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }

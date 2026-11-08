@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   Button,
+  ConfirmDialog,
   Sheet,
   SheetContent,
   SheetDescription,
@@ -60,6 +61,8 @@ export function SectionHistory({
   const [open, setOpen] = React.useState(false);
   const [items, setItems] = React.useState<Change[] | null>(null);
   const [failed, setFailed] = React.useState(false);
+  // Spec 056 (12.2): deshacer pide confirmación, diciendo qué cambio, quién y cuándo.
+  const [asking, setAsking] = React.useState<Change | null>(null);
   const [pending, startTransition] = React.useTransition();
   const sectionName = t(`business.history.section.${section}` as MessageKey);
 
@@ -140,7 +143,7 @@ export function SectionHistory({
                     {c.undone_at ? (
                       <span className="shrink-0 text-xs text-muted-foreground">{t("business.history.undone")}</span>
                     ) : c.undoable && canUndo ? (
-                      <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => undo(c)} className="shrink-0">
+                      <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => setAsking(c)} className="shrink-0">
                         <Undo2 aria-hidden="true" />
                         {t("business.history.undo")}
                       </Button>
@@ -152,6 +155,19 @@ export function SectionHistory({
           </div>
         </SheetContent>
       </Sheet>
+      <ConfirmDialog
+        open={asking !== null}
+        onOpenChange={(next) => (next ? undefined : setAsking(null))}
+        title={asking ? t("business.history.undo.title", { kind: t(`business.history.kind.${asking.kind}` as MessageKey) }) : ""}
+        description={asking ? t("business.history.undo.body", { who: who(asking), when: formatRelative(asking.at, locale) }) : undefined}
+        confirmLabel={t("business.history.undo")}
+        cancelLabel={t("business.section.cancel")}
+        onConfirm={() => {
+          const target = asking;
+          setAsking(null);
+          if (target) undo(target);
+        }}
+      />
     </>
   );
 }

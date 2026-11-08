@@ -64,6 +64,9 @@ class MediaKind(str, enum.Enum):
 #: Spec 047 (migración 0176, ``contracts/events.md`` §2): por qué una
 #: conversación espera a una persona. Lista cerrada; salvo ``out_of_audience``,
 #: la conversación va a la Bandeja «Espera a una persona».
+#: Spec 056 (0223): ``booking_unbacked``, el freno de citas la pasó a una persona.
+#: No es de puerta (``inbox_lifecycle.GATE_REASONS``): no lo libera la siguiente
+#: respuesta del agente.
 WAITING_REASONS: tuple[str, ...] = (
     "no_balance",
     "agent_cap",
@@ -80,6 +83,7 @@ WAITING_REASONS: tuple[str, ...] = (
     "escalated",
     "human_takeover",
     "reception_loop",
+    "booking_unbacked",
 )
 #: Spec 047 (0176): quién escribió un mensaje.
 MESSAGE_ORIGINS: tuple[str, ...] = (

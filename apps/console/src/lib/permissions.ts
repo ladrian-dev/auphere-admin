@@ -48,6 +48,9 @@ export const PERMISSIONS = {
   // política de ejecución local lo ponen owner y admin.
   "teammates:use": ["owner", "admin", "builder"],
   "teammates:policy": ["owner", "admin"],
+  // Spec 056 (requisito 3, D4): abrir la consola al cliente e invitar a sus
+  // personas. Solo owner y admin, no quien edita clientes (`clients:write`).
+  "client_access:manage": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -478,9 +478,14 @@ async def fill_profile(event: InboundEvent, *, customer_id: uuid.UUID) -> None:
 
 #: Spec 047 (T140): the waiting reasons a routed turn may end with
 #: (``contracts/events.md`` §2). Any other reason is a provider failure.
+#: Spec 056 (requisito 1.2): ``booking_unbacked``, el freno de citas pasó la
+#: conversación a una persona. Vale para cualquier agente, enrutado o no.
 _ROUTER_REASONS: frozenset[str] = frozenset(
-    {"provider_failure", "no_model", "turn_limit", "escalated"}
+    {"provider_failure", "no_model", "turn_limit", "escalated", "booking_unbacked"}
 )
+#: Spec 056: con Bandeja, el agente se calla en la conversación, como al pedir
+#: una persona (``inbox_lifecycle.mark_waiting``) o en un bucle de Recepción.
+_SILENCES_THE_AGENT: frozenset[str] = frozenset({"booking_unbacked"})
 
 
 @dataclass(frozen=True)
@@ -825,6 +830,15 @@ async def _apply_gate(
             mark = await inbox_lifecycle.mark_waiting_reason(
                 session, conversation, reason=gate.reason, inbox=inbox
             )
+        if gate.reason in _SILENCES_THE_AGENT and inbox and conversation.agent_active:
+            # Como ``reception._to_a_person``: una persona la lleva desde aquí.
+            conversation_control.pause(
+                conversation,
+                reason=gate.reason,
+                notes=None,
+                operator_label=inbox_lifecycle.AGENT,
+            )
+            conversation.assigned_user_id = None
         if mark is not None and not inbox:
             # Requisito 2.5: sin Bandeja, los destinatarios de escalado del canal.
             await inbox_lifecycle.tell_escalation_recipients(
@@ -926,7 +940,10 @@ async def _open_turn(turn: _Turn) -> None:
             .all()
         )
         _mark_attended(conversation, rows)
-        await inbox_lifecycle.release_reason(session, conversation)
+        released = await inbox_lifecycle.release_reason(session, conversation)
+    if released:
+        # Spec 056 (8.1): ya no espera; su aviso pasa a atendido, tras el commit.
+        await inbox_lifecycle.mark_waiting_handled(ref.tenant_id, [ref.conversation_id])
     for msg_row in turn.messages:
         log.info(
             "inbound.persisted",

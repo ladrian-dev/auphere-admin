@@ -169,6 +169,11 @@ sección aplicando su `before` por el adaptador de la sección (`kind = undo`,
 `409 already_undone`; un cambio sin `before` (lo primero que leyó la web) no se
 puede deshacer, salvo las redes que la lectura añadió, que se quitan.
 
+En la consola, «Deshacer» pide confirmación diciendo qué cambio se deshace,
+quién lo hizo y cuándo (spec 056, requisito 12.2; `business/history/section-history.tsx`).
+Archivar un servicio o una sede y quitar una fecha especial también la piden
+(12.1), con `ConfirmDialog` de `@nexus/ui`.
+
 ## Documentos y webs
 
 `services/business/sources.py`, rutas en `api/console/business_records.py`.
@@ -403,3 +408,38 @@ El horario, las sedes, las fechas especiales y los servicios (con quién los
 ofrece) se cuentan en [`docs/reservas.md`](reservas.md): un solo horario con
 turnos nocturnos y fechas especiales, la frase «Así lo dirá el agente» y los
 servicios de Reservas con su precio y sus agentes.
+
+**Las mismas reglas que Reservas (spec 056, requisito 5).** La ficha y los
+Ajustes de Reservas del cliente aceptan y rechazan los mismos valores; viven en
+`services/business/rules.py` y en su espejo de la consola,
+`apps/console/src/lib/business-rules.ts`, con las mismas pruebas
+(`tests/unit/test_business_rules.py`, `lib/__tests__/business-rules.test.ts`) y
+una de paridad de los esquemas (`tests/unit/test_reservas_rules_parity.py`):
+
+| Dato | Regla | Código |
+|---|---|---|
+| Turnos por día | de 0 a 6 | `too_many_shifts` |
+| Horas | `HH:MM` en pasos de 5 minutos; 24:00 solo como cierre | `invalid_time`, `bad_step` |
+| Nocturnos | sin solapes, tampoco con el primer turno del día siguiente | `overlap`, `overlap_next_day` |
+| Duración | de 5 a 480 minutos, en pasos de 5 | `bad_duration` |
+| Precio | `none`, `free` o `amount` | `price_invalid`, `price_amount_required` |
+| Importe | entero en unidades menores, de 0 a 10¹² | `amount_too_large` |
+| Categoría | 40 caracteres como mucho | `category_too_long` |
+| Nombre | de 1 a 120 | `name_required`, `name_too_long` |
+
+- Los esquemas (`schemas_business_sections.py`, `lite/reservas_schemas.py`) no
+  cortan la categoría, la duración ni el importe con un 422 genérico: los
+  publican en el OpenAPI con los valores de `rules` y los comprueba
+  `services_catalog.validate`, que responde `422 {code, field}`.
+- `PUT /hours` aplica el paso de 5 minutos **solo a los días que cambian**
+  (`hours.check_changed_steps`): un turno guardado de antes de la regla se enseña
+  marcado «Revísalo» (`hours-model.reviewDays`) y se guarda tal cual mientras
+  nadie toque su día. El editor de turnos es un componente puro,
+  `business/sections/week-editor.tsx`, que comparten la ficha y Reservas.
+- Una fecha especial cuyo «Hasta» ya pasó, en la zona del negocio, se rechaza
+  con `422 date_past` (11.4, D10); un cierre que empezó ayer y acaba mañana sí
+  vale. Solo lo que escribe una persona: deshacer y aplicar lo leído reponen lo
+  que había.
+- Los formularios llevan `noValidate`: los avisos salen en el idioma de la
+  consola, nunca del navegador (11.5). El dinero se enseña con `lib/amount.ts`,
+  en el idioma de la persona (requisito 13).

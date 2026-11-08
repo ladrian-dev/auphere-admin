@@ -9,10 +9,8 @@ import { Segmented } from "@/ui/bits";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Field } from "@/ui/field";
-import { icons } from "@/ui/icon";
+import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
-
-import { Notice } from "../business/parts";
 
 /**
  * «Corregir esta respuesta» (spec 047, T176; requirement 52). Three steps on
@@ -44,6 +42,12 @@ export function piiItems(c: Pick<Correction, "pii" | "lesson" | "paraphrase">, e
     const stale = edited[p.field];
     return { field: p.field, kind: p.kind, text: stale ? "" : source.slice(p.start, p.end) };
   });
+}
+
+/** Whom to talk to: the partner's name from `/me.balance_contact`, or Auphere. */
+export function partnerOf(contact: { kind: string; name: string } | null | undefined): string {
+  if (!contact) return "Auphere";
+  return contact.kind === "auphere" ? "Auphere" : contact.name;
 }
 
 /** A refusal of a correction, in words. `pii_present` is not here: it is shown as the list of what to remove. */
@@ -275,9 +279,30 @@ function ReviewStep({
   );
 }
 
+/** One sentence that says a state, as an alert for the screen reader. Never colour alone: an icon and words. */
+function Notice({ tone, icon, text }: { tone: "warning" | "danger"; icon: (typeof icons)[keyof typeof icons]; text: string }) {
+  const { colors, radius } = useTheme();
+  const fg = tone === "warning" ? "warningText" : "dangerText";
+  return (
+    <View
+      accessible
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+      style={[styles.notice, { backgroundColor: tone === "warning" ? colors.warningBg : colors.dangerBg, borderRadius: radius.md }]}
+    >
+      <Icon name={icon} size={18} tone={fg} />
+      <Text variant="subhead" tone={fg} style={styles.flex}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   stack: { gap: 16 },
   group: { gap: 8 },
   quote: { borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, gap: 4 },
   area: { minHeight: 96 },
+  notice: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12 },
+  flex: { flex: 1, minWidth: 0, gap: 2 },
 });

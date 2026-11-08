@@ -166,7 +166,14 @@ export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId
         return data.hours.ok ? (
           <HoursSection refId={refId} hours={data.hours.data} locations={locations} canWrite={canWrite} confirmable onStateChange={reportState("hours")}>
             {data.specialDates.ok ? (
-              <SpecialDatesSection refId={refId} specialDates={data.specialDates.data} locations={locations} canWrite={canWrite} nested />
+              <SpecialDatesSection
+                refId={refId}
+                specialDates={data.specialDates.data}
+                locations={locations}
+                canWrite={canWrite}
+                nested
+                timezone={data.basics.ok ? data.basics.data.timezone : null}
+              />
             ) : null}
           </HoursSection>
         ) : (

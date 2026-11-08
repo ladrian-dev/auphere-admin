@@ -14,10 +14,11 @@ misma persona y con la misma cuenta. Cuatro módulos —Inicio (el Panel),
 Bandeja, Reservas (spec [044](../specs/044-la-app-con-reservas/spec.md)) y
 Consumo—, las pestañas que el cliente tenga y en el orden de la web, y avisos
 normales de lo que necesita a una persona. Desde la 1.2.0 (spec
-[047](../specs/047-la-fabrica-de-agentes/spec.md), requisito 50), además:
-**Agentes** (el estado de cada uno, sus números, pausar y reanudar),
-**Negocio** (horario y fechas especiales, servicios, sedes) y «Corregir esta
-respuesta» en la conversación; ver [más abajo](#agentes-negocio-y-correcciones-spec-047). Convive con la consola web, que no
+[047](../specs/047-la-fabrica-de-agentes/spec.md), requisito 50), además
+«Corregir esta respuesta» en la conversación. La 1.2.0 trajo también
+**Agentes** y **Negocio**, que la spec
+[056](../specs/056-correcciones-levantamiento-qa/spec.md) (requisito 2) quitó:
+son solo del partner; ver [más abajo](#agentes-negocio-y-correcciones-spec-047). Convive con la consola web, que no
 cambia: la app no tiene ninguna regla de negocio propia, lee las mismas rutas
 `/console/lite/*`.
 
@@ -495,6 +496,30 @@ Contrato: [`specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md`](../specs
 (rutas `/console/lite/{agents,channels,business,corrections}/*`, ya en
 `openapi.json`) y [`events.md`](../specs/047-la-fabrica-de-agentes/contracts/events.md)
 (estados, motivos y avisos). Tareas T169, T170, T171 y la parte de la app de T176.
+
+> **Enmendado por la spec 056 (requisitos 2.6 y 2.7, T026).** Agentes y Negocio
+> salieron de la app, como de la consola del cliente
+> ([consola-lite.md](consola-lite.md#lo-que-la-spec-047-cambió-aquí-ola-8-agentes-y-negocio-ola-9-corregir-respuestas)):
+>
+> - **Se borraron** `src/app/agente/[id].tsx`, `src/app/negocio/*`,
+>   `src/features/agents/*`, `src/features/business/*`, `src/lib/agents-model.ts`
+>   y `src/lib/business-model.ts`, sus pantallas en la pila de `_layout.tsx`, el
+>   grupo de Agentes de Inicio, la fila de Negocio de Ajustes y
+>   `__tests__/{agentes,negocio}.test.tsx`. `partnerOf` vive ahora en
+>   `features/inbox/correction.tsx`, y corregir ya no invalida `keys.business`.
+> - **Los enlaces de antes abren Inicio**: `+native-intent.tsx` manda
+>   `agents/*`, con la forma que traiga, y `home` a `"/"`.
+> - **El aviso `agents.state` sigue saliendo** (2.7) para todos los clientes, con
+>   `auphere-customers://home` (`push_payloads.home_url`), que `routeFor` abre en
+>   Inicio. Uno entregado antes, con `auphere-customers://agents/<id>`, también
+>   abre Inicio. Su interruptor en Ajustes ya no pide un módulo (`needs: null` en
+>   `features/notices.ts`), porque Agentes ya no lo es.
+> - **Las pestañas** ya solo conocían Panel, Bandeja, Reservas y Consumo, e
+>   Inicio y Ajustes filtran por módulo: la versión publicada deja de enseñarlos
+>   sola en cuanto la API deja de mandar `agents` y `business`. Lo borrado sale en
+>   la próxima versión por las tiendas.
+>
+> Lo de abajo es lo que hizo la 1.2.0 y ya no está en el código.
 
 - **Agentes** (módulo `agents` en `/me.nav`): un grupo en Inicio, una fila por
   agente con su estado en palabras y tono de la consola (`visible_state`, que la

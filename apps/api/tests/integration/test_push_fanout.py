@@ -497,5 +497,7 @@ async def test_the_bag_and_the_agent_reach_the_phone_with_their_screen(
     wallet, agents = by_kind["client.balance"], by_kind["agents.state"]
     assert wallet.url == "auphere-customers://usage"
     assert wallet.title == "Te quedaste sin saldo"
-    assert agents.url == f"auphere-customers://agents/{agent['agent_id']}"
+    # Spec 056 (requisitos 2.6 y 2.7): sigue saliendo, pero abre Inicio, no la
+    # pantalla de Agentes, que la app ya no tiene.
+    assert agents.url == "auphere-customers://home"
     assert agents.title == "Agente en pausa" and "Ventas" in agents.body

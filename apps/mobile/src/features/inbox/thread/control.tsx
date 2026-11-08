@@ -7,7 +7,7 @@ import { Button } from "@/ui/button";
 import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
-import { agoText, waitingReasonText, type ComposerMode } from "../model";
+import { agoText, reasonText, waitingReasonText, type ComposerMode } from "../model";
 
 /** How many lines of the agent's reason the foot shows before «Leer más» (R2.3). */
 const REASON_LINES = 2;
@@ -59,7 +59,9 @@ export function ControlCard({
     // Spec 047 (50.7): why it waits, by its code («Agente en pausa»); the agent's own words under it. With a
     // code and no words, the code says it — never «El agente no dijo por qué» for a pause.
     const why = waitingReasonText(mode.code, t);
-    const reason = mode.reason ?? (why ? null : t("inbox.composer.waiting.noReason"));
+    // Spec 056 (7.1): the words under it go through the table too, and are not said twice.
+    const said = mode.reason ? reasonText(mode.reason, t) : null;
+    const reason = said ? (said === why ? null : said) : why ? null : t("inbox.composer.waiting.noReason");
     return (
       <View style={styles.stack} testID="waiting-card">
         <View style={styles.head}>

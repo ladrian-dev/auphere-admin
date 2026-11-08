@@ -407,6 +407,13 @@ async def put_hours(
     expected = required_revision(if_match)
     await _location_or_404(scope, location_id)
     chosen = week_of(body, location_id)
+    # Spec 056 (5.1, 5.5): los días que cambian, en pasos de 5 minutos, como en
+    # Reservas; lo de antes de la regla se guarda tal cual mientras no se toque.
+    shown = (await hours.load_hours(scope.session, location_id=location_id)).week
+    try:
+        hours.check_changed_steps(shown, chosen)
+    except hours.HoursError as exc:
+        raise _invalid(exc.code, day=exc.day, message=str(exc)) from None
     _, out = await _run(
         scope,
         response,

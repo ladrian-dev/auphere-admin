@@ -192,7 +192,7 @@ el cron acaba de liberar (y cuyo sitio ya ofreció). Los crons cogen filas con
   esa columna es solo una **proyección** que el servicio de horario escribe en la
   misma transacción (los días en la forma canónica, los nocturnos partidos a
   medianoche, y la frase «Así lo dirá el agente» como `label`). El negocio lo
-  edita en Ajustes de Reservas (`PUT /business-hours`, que escribe en la ficha) o
+  edita en Ajustes de Reservas (`PATCH /business-hours`, que escribe en la ficha) o
   en Negocio de la consola de partners (`PUT /console/clients/{ref}/business/hours`).
 - **Servicios no reservables** (spec 047, T058): un producto, un menú o una
   consulta no llevan duración (`bookable = false`, `duration_minutes` nulo). No
@@ -200,6 +200,55 @@ el cron acaba de liberar (y cuyo sitio ya ofreció). Los crons cogen filas con
   reservable dura de 5 a 480 min, en pasos de 5. El precio tiene tipo: sin precio,
   gratis o un importe (`price_kind`). Un servicio cambiado aquí es un cambio de la
   ficha: los agentes lo usan desde el siguiente mensaje.
+
+### Las reglas de la ficha (spec 056, requisito 5)
+
+Ajustes de Reservas y la ficha del partner aceptan y rechazan **los mismos**
+valores. Viven en `services/business/rules.py` (y su espejo
+`apps/console/src/lib/business-rules.ts`): de 0 a 6 turnos por día, horas en
+pasos de 5 minutos con 24:00 como cierre, nocturnos sin pisar el día siguiente,
+duración de 5 a 480 en pasos de 5, precio `none`/`free`/`amount`, importe de 0 a
+10¹² unidades menores, categoría de 40 y nombre de 1 a 120.
+
+- **Horario, solo lo tocado.** `GET /settings` trae `hours` con la forma de la
+  ficha (`hours_view`: revisión, layout y días con `overnight`) y
+  `location_hours` (cada sede y si tiene horario propio, con su frase). La consola
+  edita con el mismo componente que la ficha (`business/sections/week-editor.tsx`),
+  día a día, y manda `PATCH /business-hours {revision, days}` **solo con los días
+  que cambiaron** (`changedDays`). El servidor sustituye esos días
+  (`hours.replace_days`), sigue «por bloques» si de lunes a viernes siguen
+  iguales (si no, pasa a día por día) y llama a `save_week(expected_revision=…)`:
+  si alguien guardó antes, `409 revision_conflict`. Las reglas estrictas solo
+  miran los días tocados: `422 {code, field, day}` con `too_many_shifts`,
+  `bad_step`, `overlap`, `overlap_next_day` o `invalid_day`. El horario propio de
+  una sede se enseña y no se toca desde aquí.
+- **«Revísalo».** Un turno guardado con minutos fuera del paso de 5 (la API los
+  aceptaba) se enseña tal cual, marcado, y se guarda igual mientras nadie toque
+  su día. Se calcula al leer (`reviewDays`), sin columna.
+- **Servicios por el catálogo.** Crear, editar y archivar pasan por
+  `services_catalog.create_service`/`update_service`/`archive_service`: un solo
+  validador y el historial de la ficha. `ServiceOut.price` es el de la ficha
+  (`{kind, amount_minor?}`, con `currency` al lado); `POST`/`PATCH` reciben
+  `price: PriceIn` («Gratis» es `free`, no un importe nulo). El `PATCH` solo
+  cambia lo que llega. Desde Reservas un servicio se crea con su nombre y no se
+  renombra: un nombre distinto del guardado da `422 rename_not_allowed`. Los
+  demás «no» llevan su código y su campo (`bad_duration`, `amount_too_large`,
+  `category_too_long`, `price_amount_required`…); la consola los comprueba antes
+  con las mismas reglas (`safeParse` → `{status: 422, code, field}`) y los dice
+  con `business.services.error.*`, nunca con «No se pudo hablar con el servidor».
+- **Equipo.** El correo de una persona tiene formato de correo y 254 caracteres
+  como mucho (`EmailStr`).
+
+### Lo que no se deshace y lo que se escribe (spec 056, requisitos 11 a 13)
+
+- Los diálogos de Reservas (nueva reserva y moverla, de los dos modos, cancelar,
+  apuntar en la lista de espera, llegada sin reserva, bloqueo, horario, persona y
+  servicio) preguntan antes de cerrarse con datos escritos
+  (`components/use-discard-guard.tsx`).
+- «Apuntar en la lista de espera» valida como «Nueva reserva»: el aviso al salir
+  del campo y el botón desactivado hasta tener nombre, servicio y un teléfono válido.
+- El dinero se escribe y se lee con `lib/amount.ts`, en el idioma de la persona
+  («10,00 US$»), y los campos de importe aceptan coma o punto.
 - Aforo: un grupo cabe a la hora `t` si en cada franja de `[t, t + estancia)`
   queda `aforo − guardadas − presencia ≥ n`; la llegada sin reserva usa el aforo
   entero. Un bloqueo no toca lo ya reservado.

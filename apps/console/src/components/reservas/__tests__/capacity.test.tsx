@@ -316,3 +316,51 @@ describe("Aforo · new booking and blocks", () => {
     );
   });
 });
+
+/**
+ * Spec 056 (12.3): the dialogs of Aforo ask before discarding what was written
+ * or chosen; with nothing changed they close at once.
+ */
+describe("Aforo · nothing written is lost", () => {
+  async function discard(dialogName: string) {
+    await userEvent.keyboard("{Escape}");
+    const ask = await screen.findByRole("dialog", { name: "¿Descartar lo que escribiste?" });
+    await userEvent.click(within(ask).getByRole("button", { name: "Seguir editando" }));
+    expect(screen.getByRole("dialog", { name: dialogName })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: dialogName })).toBeNull());
+  }
+
+  it("«Nueva reserva» with a name written", async () => {
+    a.capacitySlotsAction.mockResolvedValue({ ok: true, data: { date: TODAY, closed: false, slots: [], first_fit: null } });
+    renderView(data());
+    await userEvent.click(screen.getByRole("button", { name: "Nueva reserva" }));
+    const dialog = await screen.findByRole("dialog", { name: "Nueva reserva" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Nombre/ }), "Soto");
+    await discard("Nueva reserva");
+  });
+
+  it("«Llega alguien sin reserva» with a name written, and closes at once untouched", async () => {
+    a.capacitySlotsAction.mockResolvedValue({ ok: true, data: { date: TODAY, closed: false, slots: [], first_fit: null } });
+    renderView(data());
+    await userEvent.click(screen.getByRole("button", { name: "Llegada sin reserva" }));
+    await screen.findByRole("dialog", { name: "Llega alguien sin reserva" });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Llega alguien sin reserva" })).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: "Llegada sin reserva" }));
+    const dialog = await screen.findByRole("dialog", { name: "Llega alguien sin reserva" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Nombre/ }), "Ana");
+    await discard("Llega alguien sin reserva");
+  });
+
+  it("«Bloquear horas» with its reason changed", async () => {
+    a.capacitySlotsAction.mockResolvedValue({ ok: true, data: { date: TODAY, closed: false, slots: [], first_fit: null } });
+    renderView(data(), { url: { view: "list" } });
+    await userEvent.click(screen.getByRole("button", { name: "Bloquear horas" }));
+    const dialog = await screen.findByRole("dialog", { name: "Bloquear horas" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), " de empresa");
+    await discard("Bloquear horas");
+  });
+});
+

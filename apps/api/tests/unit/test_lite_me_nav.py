@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from nexus_api.db.models import CLIENT_MODULES, ClientAccess
+from nexus_api.db.models import CLIENT_MODULES, RETIRED_CLIENT_MODULES, ClientAccess
 
 
 @pytest.mark.parametrize(
@@ -33,7 +33,19 @@ def test_nav_is_the_bar_order_whatever_the_stored_order(stored: list[str]) -> No
     assert list(nav) == [m for m in CLIENT_MODULES if m in stored]
 
 
-def test_the_bar_order_is_panel_inbox_agents_business_reservas_usage() -> None:
+def test_the_bar_order_is_panel_inbox_reservas_usage() -> None:
     # Spec 043: Reservas va entre la Bandeja y Consumo, como en el diseño.
-    # Spec 047 (50.1): Agentes y Negocio, detrás de la Bandeja.
-    assert CLIENT_MODULES == ("panel", "inbox", "agents", "business", "reservas", "usage")
+    # Spec 056 (requisito 2.1): Agentes y Negocio salen de la barra del cliente.
+    assert CLIENT_MODULES == ("panel", "inbox", "reservas", "usage")
+
+
+def test_a_retired_module_never_reaches_the_bar() -> None:
+    """Spec 056 (requisito 2.1): lo guardado antes de la 0224 no sale en ``nav``."""
+    access = ClientAccess(
+        tenant_id=uuid.uuid4(),
+        partner_id=uuid.uuid4(),
+        modules=["business", "panel", "agents", "usage"],
+    )
+
+    assert access.ordered_modules() == ("panel", "usage")
+    assert set(RETIRED_CLIENT_MODULES).isdisjoint(CLIENT_MODULES)

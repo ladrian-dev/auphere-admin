@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   Button,
+  ConfirmDialog,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -33,15 +34,16 @@ import {
   updateServiceAction,
 } from "@/app/(console)/clients/[ref]/business/actions";
 import { currencyOptions, displayName } from "@/components/clients/client-modal-model";
-import { minorDigits } from "@/components/reservas/model/money";
 import { RowActions, type RowAction } from "@/components/row-actions";
 import { foldsIntoMenu } from "@/components/row-actions-rule";
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
+import { amountInput, parseAmount } from "@/lib/amount";
 import type { Price, SectionState, Service, ServiceBody, Services } from "@/lib/backend/business-sections";
+import { CATEGORY_MAX, NAME_MAX } from "@/lib/business-rules";
 
 import { ConflictNotice, SectionFrame, problemOf, useReportState, type Result } from "./section-frame";
-import { DURATIONS, amountText, byCategory, categoriesOf, formatAmount, parseAmount } from "./services-model";
+import { DURATIONS, byCategory, categoriesOf, priceText } from "./services-model";
 
 type Act<B> = (body: B) => Promise<Result<Services>>;
 export type ServicesActions = {
@@ -63,7 +65,11 @@ const SERVER_ACTIONS: ServicesActions = {
 
 const FORM_ERRORS = new Set([
   "duration_required",
-  "duration_invalid",
+  // Spec 056 (5.2, 5.4): los códigos de las reglas compartidas con Reservas.
+  "bad_duration",
+  "amount_too_large",
+  "name_too_long",
+  "rename_not_allowed",
   "price_amount_required",
   "price_invalid",
   "name_required",
@@ -108,6 +114,8 @@ export function ServicesSection({
   const [services, setServices] = React.useState(initial);
   const [editing, setEditing] = React.useState<Service | "new" | null>(null);
   const [choosing, setChoosing] = React.useState<Service | null>(null);
+  // Spec 056 (12.1): archivar pide confirmación, como en Reservas.
+  const [archiving, setArchiving] = React.useState<Service | null>(null);
   const [conflict, setConflict] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   useReportState(services.state, onStateChange);
@@ -119,12 +127,9 @@ export function ServicesSection({
   const grouped = groups.some((g) => g.category !== null);
   const columns = canWrite ? 5 : 4;
 
-  function price(s: Service): string {
-    const p = s.price;
-    if (p.kind === "free") return t("business.services.price.free");
-    if (p.kind === "none" || p.amount_minor == null) return t("business.services.price.none");
-    return formatAmount(p.amount_minor, s.currency, s.exponent ?? services.exponent, locale);
-  }
+  // Spec 056 (13.1): el dinero con el formato del idioma de la persona (`lib/amount.ts`).
+  const price = (s: Service) =>
+    priceText(s.price, s.currency, locale, { free: t("business.services.price.free"), none: t("business.services.price.none") });
 
   async function apply(res: Result<Services>, okMessage: MessageKey): Promise<string | null> {
     if (res.ok) {
@@ -149,7 +154,7 @@ export function ServicesSection({
     });
   }
 
-  const archive = (s: Service) => run(() => actions.archive({ ref: refId, revision: services.revision, id: s.id }), "business.services.archived");
+  const archive = (s: Service) => setArchiving(s);
   const duplicate = actions.duplicate;
   // La regla de los tres puntos: el partner tiene cuatro acciones por fila
   // (editar, quién lo ofrece, duplicar y archivar) y van tras «⋯»; la lite, dos.
@@ -258,7 +263,6 @@ export function ServicesSection({
         <ServiceDialog
           service={editing === "new" ? null : editing}
           currency={services.currency_set === false ? null : services.currency}
-          exponent={services.exponent}
           categories={categorizable ? categoriesOf(services.items, locale) : null}
           renameable={renameable || editing === "new"}
           onClose={() => setEditing(null)}
@@ -273,6 +277,21 @@ export function ServicesSection({
           }}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={archiving !== null}
+        onOpenChange={(open) => (open ? undefined : setArchiving(null))}
+        title={archiving ? t("business.services.archive.title", { name: archiving.name }) : ""}
+        description={t("business.services.archive.body")}
+        confirmLabel={t("business.services.menu.archive")}
+        cancelLabel={t("business.section.cancel")}
+        destructive
+        onConfirm={() => {
+          const target = archiving;
+          setArchiving(null);
+          if (target) run(() => actions.archive({ ref: refId, revision: services.revision, id: target.id }), "business.services.archived");
+        }}
+      />
 
       {choosing && actions.setAgents ? (
         <AgentsDialog
@@ -295,7 +314,6 @@ export function ServicesSection({
 function ServiceDialog({
   service,
   currency,
-  exponent,
   categories = null,
   renameable = true,
   onClose,
@@ -303,7 +321,6 @@ function ServiceDialog({
 }: {
   service: Service | null;
   currency: string | null;
-  exponent: number;
   /** Las que ya usa el negocio; `null`, sin campo (la consola lite). */
   categories?: readonly string[] | null;
   renameable?: boolean;
@@ -319,7 +336,7 @@ function ServiceDialog({
   const [duration, setDuration] = React.useState(service?.duration_min ?? 30);
   const [kind, setKind] = React.useState<Price["kind"]>(service?.price.kind ?? "none");
   const [amount, setAmount] = React.useState(
-    service?.price.kind === "amount" && service.price.amount_minor != null ? amountText(service.price.amount_minor, service.exponent ?? exponent, locale) : "",
+    service?.price.kind === "amount" && service.price.amount_minor != null ? amountInput(service.price.amount_minor, service.currency, locale) : "",
   );
   // Spec 055 (D2): sin moneda en el negocio, se elige aquí y queda para todos sus precios.
   const [chosen, setChosen] = React.useState("");
@@ -334,9 +351,10 @@ function ServiceDialog({
     let price: Price = { kind };
     if (kind === "amount") {
       if (!currency && !chosen) return setError("price_currency_required");
-      const minor = parseAmount(amount, currency ? exponent : minorDigits(chosen));
-      if (minor === null) return setError(amount.trim() ? "price_invalid" : "price_amount_required");
-      price = { kind, amount_minor: minor };
+      // Spec 056 (13.2): coma o punto, con el tope de las reglas (`amount_too_large`).
+      const parsed = parseAmount(amount, currency ?? chosen);
+      if (parsed.kind !== "ok") return setError(parsed.kind === "invalid" ? parsed.code : "price_amount_required");
+      price = { kind, amount_minor: parsed.minor };
     }
     const body: ServiceBody = {
       name: name.trim(),
@@ -367,7 +385,7 @@ function ServiceDialog({
             hint={renameable ? undefined : t("business.services.name.fixed")}
             error={error === "name_required" ? t("business.services.error.name_required") : undefined}
           >
-            {(a11y) => <Input {...a11y} value={name} maxLength={120} readOnly={!renameable} onChange={(e) => setName(e.target.value)} />}
+            {(a11y) => <Input {...a11y} value={name} maxLength={NAME_MAX} readOnly={!renameable} onChange={(e) => setName(e.target.value)} />}
           </Field>
           {categories ? (
             <Field
@@ -377,7 +395,7 @@ function ServiceDialog({
             >
               {(a11y) => (
                 <>
-                  <Input {...a11y} value={category} maxLength={40} list={`${base}-categories`} autoComplete="off" onChange={(e) => setCategory(e.target.value)} />
+                  <Input {...a11y} value={category} maxLength={CATEGORY_MAX} list={`${base}-categories`} autoComplete="off" onChange={(e) => setCategory(e.target.value)} />
                   <datalist id={`${base}-categories`}>
                     {categories.map((c) => (
                       <option key={c} value={c} />
@@ -441,7 +459,7 @@ function ServiceDialog({
               <Field
                 label={currency || chosen ? t("business.services.price.amount_in", { currency: currency ?? chosen }) : t("business.services.price.amount")}
                 error={
-                  error === "price_amount_required" || error === "price_invalid"
+                  error === "price_amount_required" || error === "price_invalid" || error === "amount_too_large"
                     ? t(`business.services.error.${error}` as MessageKey)
                     : undefined
                 }
@@ -450,7 +468,7 @@ function ServiceDialog({
               </Field>
             ) : null}
           </fieldset>
-          {error && !["name_required", "price_amount_required", "price_invalid", "price_currency_required", "category_too_long"].includes(error) ? (
+          {error && !["name_required", "price_amount_required", "price_invalid", "amount_too_large", "price_currency_required", "category_too_long"].includes(error) ? (
             <p role="alert" className="text-sm text-destructive">
               {FORM_ERRORS.has(error) ? t(`business.services.error.${error}` as MessageKey) : t("business.section.error.generic")}
             </p>
@@ -504,7 +522,7 @@ function AgentsDialog({
           <DialogTitle>{t("business.services.who.title")}</DialogTitle>
           <DialogDescription>{service.name}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid min-w-0 gap-4">
+        <form onSubmit={submit} className="grid min-w-0 gap-4" noValidate>
           <fieldset className="grid min-w-0 gap-2">
             <legend className="sr-only">{t("business.services.who.title")}</legend>
             <label className="flex min-h-6 items-start gap-2 text-sm">

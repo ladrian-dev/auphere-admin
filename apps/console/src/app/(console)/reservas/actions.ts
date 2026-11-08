@@ -4,12 +4,12 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
+import type { Hours } from "@/lib/backend/business-sections";
 import {
   WEEKDAYS,
   type BlockCreated,
   type Booking,
   type BookingDetail,
-  type BusinessHoursOut,
   type CalendarAccount,
   type CancelledBooking,
   type CancelPreview,
@@ -21,6 +21,7 @@ import {
   type StaffMember,
   type WaitlistEntry,
 } from "@/lib/backend/reservas";
+import { checkCategory, checkDay, checkDuration, checkPrice, type Checked, type RuleProblem } from "@/lib/business-rules";
 import { resolvePrincipal } from "@/lib/principal";
 
 /**
@@ -304,14 +305,39 @@ export async function patchSettingsAction(raw: unknown): Promise<ActionResult<Re
   return run(() => backendFor(principal).reservasPatchSettings(p.patch, p.version));
 }
 
-export async function putBusinessHoursAction(raw: unknown): Promise<ActionResult<BusinessHoursOut>> {
-  const p = z.object({ hours: weekHours }).parse(raw);
-  const principal = await reservasPrincipal();
-  if (!principal) return forbidden;
-  return run(() => backendFor(principal).reservasPutBusinessHours(p.hours));
+/**
+ * Spec 056 (5.6): a value that breaks a rule of `lib/business-rules.ts` (the
+ * API's, the ficha's) answers as the API would, `422 {code, field, day?}`, so the
+ * screen says which value fails and why. A shape that is not the screen's (a
+ * programming error) still throws.
+ */
+function refused(problem: RuleProblem): ActionResult<never> {
+  return { ok: false, status: 422, message: "invalid", code: problem.code, info: { field: problem.field, ...(problem.day ? { day: problem.day } : {}) } };
 }
 
-const email = z.string().trim().email().max(200).nullable();
+const firstProblem = (...checks: (Checked<unknown> | null)[]): RuleProblem | null => {
+  for (const c of checks) if (c && !c.ok) return c.problem;
+  return null;
+};
+
+const shiftIn = z.object({ open: z.string(), close: z.string() }).strict();
+const hoursPatchSchema = z
+  .object({
+    revision: version,
+    days: z.record(z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]), z.array(shiftIn).max(50)),
+  })
+  .strict();
+/** Spec 056 (5.1, 5.3): the ficha's week, only the touched days, with the revision read. */
+export async function patchBusinessHoursAction(raw: unknown): Promise<ActionResult<Hours>> {
+  const p = hoursPatchSchema.parse(raw);
+  const principal = await reservasPrincipal();
+  if (!principal) return forbidden;
+  const problem = firstProblem(...Object.entries(p.days).map(([day, shifts]) => checkDay(shifts ?? [], day)));
+  if (problem) return refused(problem);
+  return run(() => backendFor(principal).reservasPatchBusinessHours(p));
+}
+
+const email = z.string().trim().email().max(254).nullable();
 const staffSchema = z.object({ name, email, hours: weekHours.nullable(), idempotencyKey: key });
 export async function createStaffAction(raw: unknown): Promise<ActionResult<StaffMember>> {
   const { idempotencyKey, ...body } = staffSchema.parse(raw);
@@ -358,42 +384,54 @@ export async function staffCalendarAction(raw: unknown): Promise<ActionResult<St
   return run(() => backendFor(principal).reservasSetStaffCalendar(p.id, p.calendar_id));
 }
 
-const duration = z
-  .number()
-  .int()
-  .min(15)
-  .max(480)
-  .refine((m) => m % 15 === 0);
+const price = z
+  .object({ kind: z.enum(["none", "free", "amount"]), amount_minor: z.number().int().optional() })
+  .strict();
 const serviceSchema = z.object({
   name,
-  duration_minutes: duration,
-  price_minor: z.number().int().min(0).max(1_000_000_000).nullable(),
+  duration_minutes: z.number().int(),
+  price,
   price_currency: z.string().regex(/^[A-Z]{3}$/).optional(),
-  category: z.string().max(80).nullable().optional(),
+  category: z.string().nullable().optional(),
   staff_ids: z.array(id).max(200).nullable(),
   idempotencyKey: key,
 });
+/** Spec 056 (5.2): the ficha's rules — 5 to 480 minutes in steps of 5, an amount up to 10¹², a category of 40. */
+function serviceProblem(body: { duration_minutes?: number; price?: z.infer<typeof price>; category?: string | null }): RuleProblem | null {
+  return firstProblem(
+    body.duration_minutes === undefined ? null : checkDuration(body.duration_minutes),
+    body.price === undefined ? null : checkPrice(body.price.kind, body.price.amount_minor),
+    body.category == null ? null : checkCategory(body.category),
+  );
+}
+
 export async function createServiceAction(raw: unknown): Promise<ActionResult<ReservasService>> {
   const { idempotencyKey, ...body } = serviceSchema.parse(raw);
   const principal = await reservasPrincipal();
   if (!principal) return forbidden;
+  const problem = serviceProblem(body);
+  if (problem) return refused(problem);
   return run(() => backendFor(principal).reservasCreateService(body, idempotencyKey));
 }
 
-const servicePatchSchema = z.object({
-  id,
-  name: name.optional(),
-  duration_minutes: duration.optional(),
-  price_minor: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
-  price_currency: z.string().regex(/^[A-Z]{3}$/).optional(),
-  category: z.string().max(80).nullable().optional(),
-  staff_ids: z.array(id).max(200).nullable().optional(),
-  position: z.number().int().min(0).optional(),
-});
+/** Only what changed (5.3); never the name: Reservas does not rename (5.4). */
+const servicePatchSchema = z
+  .object({
+    id,
+    duration_minutes: z.number().int().optional(),
+    price: price.optional(),
+    price_currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+    category: z.string().nullable().optional(),
+    staff_ids: z.array(id).max(200).nullable().optional(),
+    position: z.number().int().min(0).optional(),
+  })
+  .strict();
 export async function updateServiceAction(raw: unknown): Promise<ActionResult<ReservasService>> {
   const { id: serviceId, ...body } = servicePatchSchema.parse(raw);
   const principal = await reservasPrincipal();
   if (!principal) return forbidden;
+  const problem = serviceProblem(body);
+  if (problem) return refused(problem);
   return run(() => backendFor(principal).reservasUpdateService(serviceId, body));
 }
 

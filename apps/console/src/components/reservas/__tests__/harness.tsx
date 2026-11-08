@@ -37,7 +37,7 @@ export const a = {
   offerWaitlistAction: vi.fn(),
   stopOfferAction: vi.fn(),
   patchSettingsAction: vi.fn(),
-  putBusinessHoursAction: vi.fn(),
+  patchBusinessHoursAction: vi.fn(),
   createStaffAction: vi.fn(),
   updateStaffAction: vi.fn(),
   archiveStaffAction: vi.fn(),

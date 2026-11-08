@@ -8,6 +8,7 @@ import type { InboxConversation, InboxWaiting } from "@/lib/backend/inbox";
 
 import { ChannelBadge } from "./channel-badge";
 import { ContactAvatar } from "./contact-avatar";
+import { waitingText } from "./event-text";
 import { listTime, waitingFor, type WaitingFor } from "./inbox-model";
 
 /**
@@ -75,7 +76,7 @@ export function ConversationRow({
             </span>
           ) : null}
         </span>
-        {c.state === "waiting" && c.waiting ? <WaitingLines waiting={c.waiting} now={now} /> : null}
+        {c.state === "waiting" && c.waiting ? <WaitingLines waiting={c.waiting} code={c.waiting_reason ?? null} now={now} /> : null}
         <StateBadges conversation={c} />
       </span>
     </button>
@@ -89,20 +90,25 @@ const WAITED: Record<WaitingFor["unit"], MessageKey> = {
   d: "inbox.row.waiting.d",
 };
 
-/** The agent's reason, cut at two lines (the whole of it in `title` and in the row's name), and the wait. */
-function WaitingLines({ waiting, now }: { waiting: InboxWaiting; now: Date }) {
+/**
+ * Why it waits, cut at two lines (the whole of it in `title` and in the row's
+ * name), and the wait. Spec 056 (7.1, 7.2): the column's code first, through
+ * the builder's table — never a code on screen.
+ */
+function WaitingLines({ waiting, code, now }: { waiting: InboxWaiting; code: string | null; now: Date }) {
   const t = useT();
   const locale = useLocale();
   const wait = waitingFor(waiting.since, now);
   const waited = wait ? (wait.unit === "d" && wait.n === 1 ? t("inbox.row.waiting.d.one") : t(WAITED[wait.unit], { n: formatNumber(wait.n, locale) })) : null;
-  if (!waiting.reason && !waited) return null;
+  const reason = waiting.reason || code ? waitingText(code, waiting.reason, t) : null;
+  if (!reason && !waited) return null;
   return (
     <span className="mt-1 flex min-w-0 flex-col gap-1 border-l-2 border-status-warning-border pl-2">
-      {waiting.reason ? (
+      {reason ? (
         <>
           <span className="sr-only">{t("inbox.row.reason")}</span>
-          <span className="line-clamp-2 min-w-0 text-xs break-words text-pretty text-foreground" title={waiting.reason}>
-            {waiting.reason}
+          <span className="line-clamp-2 min-w-0 text-xs break-words text-pretty text-foreground" title={reason}>
+            {reason}
           </span>
         </>
       ) : null}

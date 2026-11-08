@@ -32,3 +32,10 @@ def test_reservas_go_through_the_channel_the_app_creates() -> None:
     for kind in ("reservas.agent_change", "reservas.cancelled_today", "reservas.waitlist_accepted"):
         assert KIND_CONFIG[kind]["channel"] == "reservations_v1"
         assert KIND_CONFIG[kind]["category"] == "reservations"
+
+
+def test_the_agents_notice_opens_home() -> None:
+    """Spec 056 (requisitos 2.6 y 2.7): la app ya no tiene la pantalla de Agentes.
+    El aviso de pausa sigue saliendo y abre Inicio, que la app sabe abrir."""
+    assert push_payloads.home_url() == "auphere-customers://home"
+    assert not hasattr(push_payloads, "agents_url")

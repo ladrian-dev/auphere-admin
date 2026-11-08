@@ -140,6 +140,12 @@ class ConsoleNotification(Base):
             postgresql_where=text("dedupe_key IS NOT NULL"),
         ),
         Index("ix_console_notifications_partner_created", "partner_id", "created_at"),
+        # Spec 056 (0227): los avisos «Espera a una persona» pendientes de una conversación.
+        Index(
+            "ix_console_notifications_waiting_pending",
+            text("(payload->>'conversation_id')"),
+            postgresql_where=text("kind = 'inbox.waiting' AND handled_at IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -169,6 +175,10 @@ class ConsoleNotification(Base):
         default=NotificationAudience.PARTNER.value,
         server_default="partner",
     )
+    #: Spec 056 (migración 0227, requisito 8.1): un ``inbox.waiting`` atendido
+    #: (tomada, devuelta, resuelta o liberada su conversación). Deja de contar
+    #: en la campana y sigue en la lista. ``NULL``: pendiente.
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ConsoleNotificationRead(Base):

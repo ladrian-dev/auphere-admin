@@ -90,6 +90,7 @@ from nexus_worker.memory import (
 )
 from nexus_worker.metering.pricing import cheapest_model
 from nexus_worker.persistence.messages import persist_outbound_message
+from nexus_worker.runtime import booking_brake
 from nexus_worker.runtime.agent_loader import AgentBundle, AgentLoader
 from nexus_worker.runtime.console_context import (
     forced_escalation,
@@ -1917,248 +1918,305 @@ def make_handler_node(
                     iterations = 0
                     final_text = _handoff_line(state)
                     turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
-            iteration = -1
-            for iteration in range(iterations):
-                # The last iteration is tool-free: the model MUST answer.
-                last = iteration == MAX_TOOL_ITERATIONS - 1
-                tools_arg: list[dict[str, Any]] = list(available_defs)
-                if memory_tool is not None:
-                    # ``to_dict()`` is the Anthropic TypedDict
-                    # ``BetaMemoryTool20250818Param`` ({"type":
-                    # "memory_20250818", "name": "memory"}); LiteLLM
-                    # only cares about the dict shape so we widen.
-                    tools_arg.append(dict(memory_tool.to_dict()))
-                call_extra = None if last else mcp_extra
-                if last:
-                    # Spec 047 (requisito 1.4, bug B3 of the 2026-09-19
-                    # audit): the closing call still DECLARES the catalogue —
-                    # without ``tools`` a thread carrying ``tool_calls`` is a
-                    # 400 from Anthropic via LiteLLM — and forbids it with
-                    # ``tool_choice: "none"``, like the Companion's close. The
-                    # note asks for the answer with what the turn has. No
-                    # ``code_execution`` here: with the skills container gone
-                    # Anthropic rejects it.
-                    if tools_arg:
-                        call_extra = {"tool_choice": "none"}
-                    messages.append({"role": "system", "content": FINAL_ANSWER_NOTE})
-                else:
-                    if applicable_skills:
-                        # code_execution is the container the Skills run
-                        # inside. Anthropic requires it to be in tools[]
-                        # whenever ``container.skills`` is set. Gated on
-                        # the channel-filtered list — when every skill
-                        # is excluded for the current channel, we must
-                        # NOT add code_execution either (Anthropic
-                        # rejects code_execution + empty container).
-                        tools_arg.append(dict(_CODE_EXECUTION_TOOL))
-
-                try:
-                    # The closing iteration drops ``code_execution`` from
-                    # ``tools`` — so it must ALSO drop the skills
-                    # ``container`` from ``extra``, or Anthropic rejects the
-                    # call ("container: skills can only be used when a code
-                    # execution tool is enabled"). No tools this turn means
-                    # skills/MCP aren't usable anyway.
-                    if route is None:
-                        response = await llm.respond_with_tools(
-                            tenant_id=tenant_id,
-                            role=intent,
-                            messages=messages,
-                            tools=tools_arg,
-                            extra=call_extra,
-                            model_override=respond_model_override,
-                            fallback_override=respond_fallbacks,
-                        )
+            # Spec 056 (requisito 1, D1): the booking brake. A reply that takes a
+            # booking for granted with nothing behind it is not sent: the loop runs
+            # once more, with its tools, after the brake's ``system`` note (not
+            # the draft: the thread keeps ending in the customer's message); a
+            # second such reply hands the conversation to a person. Inside the
+            # handler and not as an edge of the graph: from here the retry keeps
+            # this turn's envelopes and never repeats a tool (``tool_once``).
+            brake = booking_brake.BrakeTurn(
+                tenant_id=tenant_id,
+                agent_id=bundle.agent_id or _agent_uuid(state),
+                conversation_id=state.get("conversation_id"),
+                turn_id=state.get("inbound_message_id"),
+            )
+            brake_outcome: str | None = None
+            draft = ""
+            for attempt in range(booking_brake.ATTEMPTS):
+                if attempt:
+                    # The first attempt's closing note does not hold for the
+                    # second one: it may book now.
+                    messages[:] = [
+                        m
+                        for m in messages
+                        if not (m.get("role") == "system" and m.get("content") == FINAL_ANSWER_NOTE)
+                    ]
+                    messages.extend(booking_brake.retry_messages())
+                    final_text = ""
+                    interactive_payload = None
+                    brake_outcome = "retried"
+                iteration = -1
+                for iteration in range(iterations):
+                    # The last iteration is tool-free: the model MUST answer.
+                    last = iteration == MAX_TOOL_ITERATIONS - 1
+                    tools_arg: list[dict[str, Any]] = list(available_defs)
+                    if memory_tool is not None:
+                        # ``to_dict()`` is the Anthropic TypedDict
+                        # ``BetaMemoryTool20250818Param`` ({"type":
+                        # "memory_20250818", "name": "memory"}); LiteLLM
+                        # only cares about the dict shape so we widen.
+                        tools_arg.append(dict(memory_tool.to_dict()))
+                    call_extra = None if last else mcp_extra
+                    if last:
+                        # Spec 047 (requisito 1.4, bug B3 of the 2026-09-19
+                        # audit): the closing call still DECLARES the catalogue —
+                        # without ``tools`` a thread carrying ``tool_calls`` is a
+                        # 400 from Anthropic via LiteLLM — and forbids it with
+                        # ``tool_choice: "none"``, like the Companion's close. The
+                        # note asks for the answer with what the turn has. No
+                        # ``code_execution`` here: with the skills container gone
+                        # Anthropic rejects it.
+                        if tools_arg:
+                            call_extra = {"tool_choice": "none"}
+                        messages.append({"role": "system", "content": FINAL_ANSWER_NOTE})
                     else:
-                        assert route.decision is not None
-                        with turn_budget(route.budget):
-                            routed_call = await llm.respond_routed(
-                                decision=route.decision,
+                        if applicable_skills:
+                            # code_execution is the container the Skills run
+                            # inside. Anthropic requires it to be in tools[]
+                            # whenever ``container.skills`` is set. Gated on
+                            # the channel-filtered list — when every skill
+                            # is excluded for the current channel, we must
+                            # NOT add code_execution either (Anthropic
+                            # rejects code_execution + empty container).
+                            tools_arg.append(dict(_CODE_EXECUTION_TOOL))
+
+                    try:
+                        # The closing iteration drops ``code_execution`` from
+                        # ``tools`` — so it must ALSO drop the skills
+                        # ``container`` from ``extra``, or Anthropic rejects the
+                        # call ("container: skills can only be used when a code
+                        # execution tool is enabled"). No tools this turn means
+                        # skills/MCP aren't usable anyway.
+                        if route is None:
+                            response = await llm.respond_with_tools(
                                 tenant_id=tenant_id,
                                 role=intent,
                                 messages=messages,
                                 tools=tools_arg,
                                 extra=call_extra,
+                                model_override=respond_model_override,
+                                fallback_override=respond_fallbacks,
                             )
-                        route.budget.add_cost(routed_call.cost_micros)
-                        route.served = routed_call.served
-                        response = routed_call.value
-                except Exception as exc:
-                    # The router exhausted retries + fallback. Rather than
-                    # let the exception kill the turn (the customer would
-                    # get nothing and the message would stick), answer with
-                    # a neutral message and stop the loop.
-                    log.error(
-                        "handler.llm_failed",
-                        tenant_id=str(tenant_id),
-                        intent=intent,
-                        iteration=iteration,
-                        error=str(exc),
-                    )
-                    final_text = _apology(state)
-                    turn_failure = {"kind": "llm_failed", "detail": str(exc)}
-                    if route is not None:
-                        # Spec 047: the Inbox reason of the router (``no_model``,
-                        # ``provider_failure``, ``turn_limit``).
-                        turn_failure["reason"] = _router_reason(exc)
-                        if turn_failure["reason"] == "turn_limit":
-                            final_text = _handoff_line(state)
-                    break
+                        else:
+                            assert route.decision is not None
+                            with turn_budget(route.budget):
+                                routed_call = await llm.respond_routed(
+                                    decision=route.decision,
+                                    tenant_id=tenant_id,
+                                    role=intent,
+                                    messages=messages,
+                                    tools=tools_arg,
+                                    extra=call_extra,
+                                )
+                            route.budget.add_cost(routed_call.cost_micros)
+                            route.served = routed_call.served
+                            response = routed_call.value
+                    except Exception as exc:
+                        # The router exhausted retries + fallback. Rather than
+                        # let the exception kill the turn (the customer would
+                        # get nothing and the message would stick), answer with
+                        # a neutral message and stop the loop.
+                        log.error(
+                            "handler.llm_failed",
+                            tenant_id=str(tenant_id),
+                            intent=intent,
+                            iteration=iteration,
+                            error=str(exc),
+                        )
+                        final_text = _apology(state)
+                        turn_failure = {"kind": "llm_failed", "detail": str(exc)}
+                        if route is not None:
+                            # Spec 047: the Inbox reason of the router (``no_model``,
+                            # ``provider_failure``, ``turn_limit``).
+                            turn_failure["reason"] = _router_reason(exc)
+                            if turn_failure["reason"] == "turn_limit":
+                                final_text = _handoff_line(state)
+                        break
 
-                cleaned_text = _clean_model_text(response.text)
-                if cleaned_text:
-                    final_text = cleaned_text
+                    cleaned_text = _clean_model_text(response.text)
+                    if cleaned_text:
+                        final_text = cleaned_text
 
-                # Anthropic resolves server-side tools (code_execution, the
-                # skills text_editor, web_search) inside its own container
-                # before returning — they're already done. Partition them
-                # out so we never dispatch them nor record an orphan
-                # tool_result for a ``srvtoolu_`` id (incident 2026-05-28).
-                client_calls = [c for c in response.tool_calls if not _is_server_side_tool_call(c)]
+                    # Anthropic resolves server-side tools (code_execution, the
+                    # skills text_editor, web_search) inside its own container
+                    # before returning — they're already done. Partition them
+                    # out so we never dispatch them nor record an orphan
+                    # tool_result for a ``srvtoolu_`` id (incident 2026-05-28).
+                    client_calls = [
+                        c for c in response.tool_calls if not _is_server_side_tool_call(c)
+                    ]
 
-                # No tools offered, the closing call, or the model only made
-                # server-side calls (already resolved by Anthropic) → this
-                # text is the final answer. A tool call on the closing call
-                # (``tool_choice: "none"`` should prevent it) is not run.
-                if last or not tools_arg or not client_calls:
-                    break
+                    # No tools offered, the closing call, or the model only made
+                    # server-side calls (already resolved by Anthropic) → this
+                    # text is the final answer. A tool call on the closing call
+                    # (``tool_choice: "none"`` should prevent it) is not run.
+                    if last or not tools_arg or not client_calls:
+                        break
 
-                # Record the model's tool request, then dispatch each call
-                # and feed the REAL result back into the thread.
-                messages.append(_assistant_tool_message(response, client_calls))
-                batch_start = len(envelopes)
-                for call in client_calls:
-                    if call.name == _MEMORY_TOOL_NAME and memory_tool is not None:
-                        # Built-in dispatch: the memory tool result is a
-                        # string by Anthropic contract; we wrap it in an
-                        # MCP-shaped envelope for traces but feed the LLM
-                        # the raw string.
-                        envelope, tool_msg = await _dispatch_memory_tool(memory_tool, call, intent)
+                    # Record the model's tool request, then dispatch each call
+                    # and feed the REAL result back into the thread.
+                    messages.append(_assistant_tool_message(response, client_calls))
+                    batch_start = len(envelopes)
+                    for call in client_calls:
+                        if call.name == _MEMORY_TOOL_NAME and memory_tool is not None:
+                            # Built-in dispatch: the memory tool result is a
+                            # string by Anthropic contract; we wrap it in an
+                            # MCP-shaped envelope for traces but feed the LLM
+                            # the raw string.
+                            envelope, tool_msg = await _dispatch_memory_tool(
+                                memory_tool, call, intent
+                            )
+                            envelopes.append(envelope)
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": call.id or call.name,
+                                    "content": tool_msg,
+                                }
+                            )
+                            continue
+
+                        async def _run(call: ToolCall = call) -> dict[str, Any]:
+                            if call.name in tool_policy.needs_approval:
+                                if scoped_registry.dry_run:
+                                    # The playground and the tests (20.1): nobody
+                                    # is asked. The turn says it would have asked
+                                    # and goes on as if the owner said yes, so the
+                                    # rest can be checked; the dispatch below is
+                                    # the dry run's, which never writes.
+                                    scoped_registry.note_simulated_approval(
+                                        call.name, dict(call.arguments or {})
+                                    )
+                                else:
+                                    asked = await _approval_envelope(state, call, intent)
+                                    if asked is not None:
+                                        return asked
+                            return await _dispatch_tool(
+                                scoped_registry,
+                                call,
+                                available_names,
+                                intent,
+                                conversation_id=state.get("conversation_id"),
+                            )
+
+                        if (
+                            scoped_registry.is_side_effecting(call.name)
+                            and not scoped_registry.dry_run
+                        ):
+                            # Spec 047 (T035, requisito 1.3): reserve, charge,
+                            # send a link… at most once per turn. A retried turn
+                            # gets the first attempt's answer back.
+                            envelope = await tool_once(tool=call.name, run=_run)
+                        else:
+                            envelope = await _run()
                         envelopes.append(envelope)
                         messages.append(
                             {
                                 "role": "tool",
                                 "tool_call_id": call.id or call.name,
-                                "content": tool_msg,
+                                "content": _tool_result_content(envelope),
                             }
                         )
-                        continue
+                        # ``response.send_interactive`` is terminal — capture
+                        # its validated args so the ucm_formatter + checkpoint
+                        # nodes can render the WhatsApp interactive component.
+                        # The 24h-window check + whitelist enforcement already
+                        # ran inside the regular dispatch above (the tool
+                        # behaves like any other notification.* tool); we just
+                        # additionally stash the payload here. A non-``ok``
+                        # status means the dispatcher rejected the call
+                        # (window expired, payload malformed, not in
+                        # whitelist) — in that case we leave the payload
+                        # unset so the agent falls back to plain text in the
+                        # next iteration. ``skipped:dry_run`` is NOT a rejection:
+                        # the QA Playground intercepts the real send but must still
+                        # render the interactive component in the preview, so we
+                        # capture the payload in that case too.
+                        if call.name == _INTERACTIVE_TOOL_NAME and envelope.get("status") in (
+                            "ok",
+                            "skipped:dry_run",
+                        ):
+                            raw_args = dict(call.arguments or {})
+                            # Drop the routing fields the formatter doesn't
+                            # need. ``context_message_id`` IS still useful
+                            # downstream (quoted reply on the outbound), so
+                            # keep it.
+                            raw_args.pop("conversation_id", None)
+                            interactive_payload = raw_args
 
-                    async def _run(call: ToolCall = call) -> dict[str, Any]:
-                        if call.name in tool_policy.needs_approval:
-                            if scoped_registry.dry_run:
-                                # The playground and the tests (20.1): nobody
-                                # is asked. The turn says it would have asked
-                                # and goes on as if the owner said yes, so the
-                                # rest can be checked; the dispatch below is
-                                # the dry run's, which never writes.
-                                scoped_registry.note_simulated_approval(
-                                    call.name, dict(call.arguments or {})
-                                )
-                            else:
-                                asked = await _approval_envelope(state, call, intent)
-                                if asked is not None:
-                                    return asked
-                        return await _dispatch_tool(
-                            scoped_registry,
-                            call,
-                            available_names,
-                            intent,
-                            conversation_id=state.get("conversation_id"),
-                        )
-
-                    if scoped_registry.is_side_effecting(call.name) and not scoped_registry.dry_run:
-                        # Spec 047 (T035, requisito 1.3): reserve, charge,
-                        # send a link… at most once per turn. A retried turn
-                        # gets the first attempt's answer back.
-                        envelope = await tool_once(tool=call.name, run=_run)
-                    else:
-                        envelope = await _run()
-                    envelopes.append(envelope)
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": call.id or call.name,
-                            "content": _tool_result_content(envelope),
-                        }
-                    )
-                    # ``response.send_interactive`` is terminal — capture
-                    # its validated args so the ucm_formatter + checkpoint
-                    # nodes can render the WhatsApp interactive component.
-                    # The 24h-window check + whitelist enforcement already
-                    # ran inside the regular dispatch above (the tool
-                    # behaves like any other notification.* tool); we just
-                    # additionally stash the payload here. A non-``ok``
-                    # status means the dispatcher rejected the call
-                    # (window expired, payload malformed, not in
-                    # whitelist) — in that case we leave the payload
-                    # unset so the agent falls back to plain text in the
-                    # next iteration. ``skipped:dry_run`` is NOT a rejection:
-                    # the QA Playground intercepts the real send but must still
-                    # render the interactive component in the preview, so we
-                    # capture the payload in that case too.
-                    if call.name == _INTERACTIVE_TOOL_NAME and envelope.get("status") in (
-                        "ok",
-                        "skipped:dry_run",
-                    ):
-                        raw_args = dict(call.arguments or {})
-                        # Drop the routing fields the formatter doesn't
-                        # need. ``context_message_id`` IS still useful
-                        # downstream (quoted reply on the outbound), so
-                        # keep it.
-                        raw_args.pop("conversation_id", None)
-                        interactive_payload = raw_args
-
-                # Terminal-tool early exit: when ``response.send_interactive``
-                # landed cleanly there is no value in another LLM round
-                # — the response is already complete (text in
-                # ``final_text``, structured payload in
-                # ``interactive_payload``).
-                if interactive_payload is not None:
-                    break
-                # Spec 047 (requisito 53): the conversation is the target's now.
-                # No further round: the dispatcher runs the target in this turn.
-                reception_handoff = _handed_off(envelopes[batch_start:])
-                if reception_handoff:
-                    break
-
-                # Spec 047 (40.4): the graph's signals of difficulty — a tool
-                # that refused its arguments, a long tool loop, several
-                # requests in one message — ask for an isolated subcall to a
-                # higher tier. The loop keeps its model; «Económico» and the
-                # hourly ceiling hand the conversation to a person instead.
-                if route is not None:
-                    handoff = await _escalate_if_signalled(
-                        route,
-                        TurnSignals(
-                            tool_args_rejected=any(
-                                e.get("error_kind") == "invalid_arguments"
-                                for e in envelopes[batch_start:]
-                            ),
-                            intents=_intents(state),
-                            tool_iterations=iteration + 1,
-                        ),
-                        llm=llm,
-                        state=state,
-                        intent=intent,
-                        messages=messages,
-                        envelopes=envelopes,
-                        draft=final_text,
-                    )
-                    if handoff is not None:
-                        final_text = _handoff_line(state)
-                        turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
+                    # Terminal-tool early exit: when ``response.send_interactive``
+                    # landed cleanly there is no value in another LLM round
+                    # — the response is already complete (text in
+                    # ``final_text``, structured payload in
+                    # ``interactive_payload``).
+                    if interactive_payload is not None:
+                        break
+                    # Spec 047 (requisito 53): the conversation is the target's now.
+                    # No further round: the dispatcher runs the target in this turn.
+                    reception_handoff = _handed_off(envelopes[batch_start:])
+                    if reception_handoff:
                         break
 
-            if not final_text.strip() and interactive_payload is None and not reception_handoff:
-                log.warning(
-                    "handler.empty_response",
-                    tenant_id=str(tenant_id),
-                    intent=intent,
-                    iterations=iteration + 1,
-                )
-                final_text = _apology(state)
-                turn_failure = turn_failure or {"kind": "empty_response", "detail": None}
+                    # Spec 047 (40.4): the graph's signals of difficulty — a tool
+                    # that refused its arguments, a long tool loop, several
+                    # requests in one message — ask for an isolated subcall to a
+                    # higher tier. The loop keeps its model; «Económico» and the
+                    # hourly ceiling hand the conversation to a person instead.
+                    if route is not None:
+                        handoff = await _escalate_if_signalled(
+                            route,
+                            TurnSignals(
+                                tool_args_rejected=any(
+                                    e.get("error_kind") == "invalid_arguments"
+                                    for e in envelopes[batch_start:]
+                                ),
+                                intents=_intents(state),
+                                tool_iterations=iteration + 1,
+                            ),
+                            llm=llm,
+                            state=state,
+                            intent=intent,
+                            messages=messages,
+                            envelopes=envelopes,
+                            draft=final_text,
+                        )
+                        if handoff is not None:
+                            final_text = _handoff_line(state)
+                            turn_failure = {"kind": "handoff", "reason": handoff, "detail": None}
+                            break
+
+                if not final_text.strip() and interactive_payload is None and not reception_handoff:
+                    log.warning(
+                        "handler.empty_response",
+                        tenant_id=str(tenant_id),
+                        intent=intent,
+                        iterations=iteration + 1,
+                    )
+                    final_text = _apology(state)
+                    turn_failure = turn_failure or {"kind": "empty_response", "detail": None}
+
+                # Skipped when the turn already failed or handed over, and
+                # without text (``might_claim``). The text and the interactive
+                # component, both: the claim may be in a button.
+                if turn_failure is not None or reception_handoff:
+                    break
+                draft = booking_brake.draft_text(final_text, interactive_payload)
+                if not await booking_brake.unbacked_claim(
+                    llm, bundle, brake, text=draft, envelopes=envelopes
+                ):
+                    break
+                if attempt == booking_brake.ATTEMPTS - 1:
+                    final_text = _handoff_line(state)
+                    interactive_payload = None
+                    turn_failure = {
+                        "kind": "handoff",
+                        "reason": booking_brake.REASON,
+                        "detail": None,
+                    }
+                    brake_outcome = "handed_off"
+            if brake_outcome is not None:
+                await booking_brake.record_brake(**brake.fields(), outcome=brake_outcome)
 
             # Per-turn latency summary. ``iterations`` x per-call latency (see
             # ``llm.call_complete``) is the whole story of a slow turn: a turn
@@ -2480,6 +2538,7 @@ def make_grade_outcome_node(
     *,
     grader: OutcomeGrader | None,
     llm_router: LLMRouter,
+    agent_loader: AgentLoader | None = None,
 ) -> NodeFn:
     """Build the outcome-grader node.
 
@@ -2507,6 +2566,12 @@ def make_grade_outcome_node(
     (tests, dev with ``NEXUS_LLM_USE_INMEMORY=1``); in that case the
     node passes through with ``outcome_overall='skipped'`` so the
     pipeline still composes correctly.
+
+    Spec 056 (T017): the rewrite has no tools, so it may take for granted a
+    booking the handler never made. A rewritten draft that passes goes through
+    the booking brake again (with the agent's classify chain, from
+    ``agent_loader``); if it claims a booking with nothing behind it, the
+    customer gets :data:`GRADER_FALLBACK_RESPONSE` instead.
     """
 
     async def grade_outcome(state: AgentState) -> dict[str, Any]:
@@ -2637,6 +2702,16 @@ def make_grade_outcome_node(
             last_feedback = verdict.feedback
 
         if verdict.overall == "pass":
+            if retries and await _rewrite_claims_a_booking(
+                state, draft, llm=llm_router, loader=agent_loader
+            ):
+                return {
+                    "response": GRADER_FALLBACK_RESPONSE,
+                    "interactive_payload": {},
+                    "outcome_overall": "fail",
+                    "outcome_retries": retries,
+                    "outcome_feedback": booking_brake.REASON,
+                }
             return {
                 "response": draft,
                 "outcome_overall": "pass",
@@ -2665,6 +2740,44 @@ def make_grade_outcome_node(
         }
 
     return grade_outcome
+
+
+async def _rewrite_claims_a_booking(
+    state: AgentState,
+    draft: str,
+    *,
+    llm: LLMRouter,
+    loader: AgentLoader | None,
+) -> bool:
+    """Spec 056 (T017): the booking brake on the grader's rewrite, with the
+    handler's envelopes (``tool_calls``) and its interactive component."""
+    tenant_id = _tenant_uuid(state)
+    bundle: AgentBundle | None = None
+    if loader is not None:
+        try:
+            with tenant_context(tenant_id):
+                bundle = await loader.load(tenant_id, _agent_uuid(state))
+        except Exception as exc:
+            # Without the bundle the brake still runs, on the global classify chain.
+            log.warning(
+                "booking_brake.bundle_unavailable", tenant_id=str(tenant_id), error=str(exc)
+            )
+    brake = booking_brake.BrakeTurn(
+        tenant_id=tenant_id,
+        agent_id=(bundle.agent_id if bundle is not None else None) or _agent_uuid(state),
+        conversation_id=state.get("conversation_id"),
+        turn_id=state.get("inbound_message_id"),
+    )
+    claimed = await booking_brake.unbacked_claim(
+        llm,
+        bundle,
+        brake,
+        text=booking_brake.draft_text(draft, state.get("interactive_payload")),
+        envelopes=state.get("tool_calls") or [],
+    )
+    if claimed:
+        await booking_brake.record_brake(**brake.fields(), outcome="grader_fallback")
+    return claimed
 
 
 async def _judge_sampling(routed_turn: dict[str, Any]) -> str | float | None:
@@ -3097,7 +3210,9 @@ def build_pipeline(
         "grade_outcome",
         _traced(
             "grade_outcome",
-            make_grade_outcome_node(grader=outcome_grader, llm_router=llm_router),
+            make_grade_outcome_node(
+                grader=outcome_grader, llm_router=llm_router, agent_loader=agent_loader
+            ),
         ),
     )
     g.add_node(

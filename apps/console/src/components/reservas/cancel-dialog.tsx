@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Label, Skeleton, cn } from "@nexus/ui";
 
 import { cancelBookingAction, cancelPreviewAction } from "@/app/(console)/reservas/actions";
+import { useDiscardGuard } from "@/components/use-discard-guard";
 import type { MessageKey } from "@/i18n/messages";
 import type { Booking, CancelPreview } from "@/lib/backend/reservas";
 
@@ -83,64 +84,70 @@ export function CancelDialog({ booking: b, onClose }: { booking: Booking; onClos
         })
       : t("reservas.cancel.subtitle.capacity", { name, people: words.people(b.party_size), when: words.at(b.local.date, b.local.start) });
 
+  // Spec 056 (12.3): what was chosen here is not lost on a stray close.
+  const guard = useDiscardGuard(!notify || offer !== "yes", onClose);
+
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="sm:max-w-md" aria-busy={busy || undefined}>
-        <DialogHeader>
-          <DialogTitle>{t("reservas.cancel.title")}</DialogTitle>
-          <DialogDescription>{subtitle}</DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="sm:max-w-md" aria-busy={busy || undefined}>
+          <DialogHeader>
+            <DialogTitle>{t("reservas.cancel.title")}</DialogTitle>
+            <DialogDescription>{subtitle}</DialogDescription>
+          </DialogHeader>
 
-        {b.contact.phone ? (
-          <div className="flex items-center gap-3">
-            <Checkbox id="reservas-cancel-notify" checked={notify} onCheckedChange={(v) => setNotify(v === true)} />
-            <Label htmlFor="reservas-cancel-notify">{t("reservas.cancel.notify", { name: firstName(name) })}</Label>
-          </div>
-        ) : null}
+          {b.contact.phone ? (
+            <div className="flex items-center gap-3">
+              <Checkbox id="reservas-cancel-notify" checked={notify} onCheckedChange={(v) => setNotify(v === true)} />
+              <Label htmlFor="reservas-cancel-notify">{t("reservas.cancel.notify", { name: firstName(name) })}</Label>
+            </div>
+          ) : null}
 
-        {preview.kind === "loading" ? (
-          <div role="status" aria-label={t("reservas.cancel.preview.loading")} className="grid gap-2">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : canOffer && preview.kind === "ok" ? (
-          <fieldset className="grid gap-2">
-            <legend className="mb-2 text-sm font-medium">{t("reservas.cancel.offer.question")}</legend>
-            <OfferOption
-              checked={offer === "yes"}
-              onSelect={() => setOffer("yes")}
-              label={t("reservas.cancel.offer.yes")}
-              hint={
-                preview.data.candidates === 1
-                  ? t("reservas.cancel.offer.yesHint.one")
-                  : t("reservas.cancel.offer.yesHint.other", { count: preview.data.candidates })
-              }
-            />
-            <OfferOption checked={offer === "no"} onSelect={() => setOffer("no")} label={t("reservas.cancel.offer.no")} />
-          </fieldset>
-        ) : why && why !== "not_services" ? (
-          <p role="note" className="rounded-md bg-muted px-3 py-2 text-sm text-pretty text-muted-foreground">
-            {t(`reservas.cancel.why.${why}` as MessageKey, { lead: formatMinutes(settings.waitlist.lead_minutes) })}
-          </p>
-        ) : null}
+          {preview.kind === "loading" ? (
+            <div role="status" aria-label={t("reservas.cancel.preview.loading")} className="grid gap-2">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : canOffer && preview.kind === "ok" ? (
+            <fieldset className="grid gap-2">
+              <legend className="mb-2 text-sm font-medium">{t("reservas.cancel.offer.question")}</legend>
+              <OfferOption
+                checked={offer === "yes"}
+                onSelect={() => setOffer("yes")}
+                label={t("reservas.cancel.offer.yes")}
+                hint={
+                  preview.data.candidates === 1
+                    ? t("reservas.cancel.offer.yesHint.one")
+                    : t("reservas.cancel.offer.yesHint.other", { count: preview.data.candidates })
+                }
+              />
+              <OfferOption checked={offer === "no"} onSelect={() => setOffer("no")} label={t("reservas.cancel.offer.no")} />
+            </fieldset>
+          ) : why && why !== "not_services" ? (
+            <p role="note" className="rounded-md bg-muted px-3 py-2 text-sm text-pretty text-muted-foreground">
+              {t(`reservas.cancel.why.${why}` as MessageKey, { lead: formatMinutes(settings.waitlist.lead_minutes) })}
+            </p>
+          ) : null}
 
-        {error ? (
-          <p role="alert" className="text-sm text-destructive text-pretty">
-            {error}
-          </p>
-        ) : null}
+          {error ? (
+            <p role="alert" className="text-sm text-destructive text-pretty">
+              {error}
+            </p>
+          ) : null}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy} autoFocus>
-            {t("reservas.cancel.back")}
-          </Button>
-          <Button variant="destructive" onClick={() => void confirm()} loading={busy} disabled={preview.kind === "loading"}>
-            {t("reservas.cancel.confirm")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={guard.close} disabled={busy} autoFocus>
+              {t("reservas.cancel.back")}
+            </Button>
+            <Button variant="destructive" onClick={() => void confirm()} loading={busy} disabled={preview.kind === "loading"}>
+              {t("reservas.cancel.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }
 

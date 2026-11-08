@@ -45,6 +45,8 @@ export type InboxPage = {
   /** Whether the client has any conversation at all — tells an empty inbox from an empty filter. */
   has_any: boolean;
   channel_kinds: string[];
+  /** Spec 056 (6.2): how many are resolved when «Abiertas» (`all`, no search, agent or channel) comes back empty; else 0. */
+  resolved?: number;
 };
 
 export type InboxActivity = { kind: string; at: string; actor: InboxAuthor; detail: string | null };
@@ -60,7 +62,10 @@ export type InboxDetail = {
   channel: { kind: string; connected: boolean };
   contact: { name: string; handle: string; first_message_at: string | null; conversations: number; has_avatar?: boolean };
   summary: string | null;
+  /** The reason of the last escalation: a code of `events.md` §2 or the agent's own words. */
   waiting_reason: string | null;
+  /** Spec 047 (50.7): why it waits, always the column's code (`waiting_reason` keeps the agent's words). */
+  waiting_code?: string | null;
   /** Spec 045 (R3.2): when the agent asked for a person; `null` unless `state = "waiting"`. */
   waiting_since: string | null;
   /** Spec 047 (50.7, 53.2): who answers it now — the agent Recepción handed it to, if any. */

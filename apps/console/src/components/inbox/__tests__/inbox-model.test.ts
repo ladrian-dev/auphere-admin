@@ -10,6 +10,11 @@ describe("composerMode", () => {
     expect(composerMode(detail({ state: "waiting", waiting_reason: "Pide un reembolso" }))).toEqual({
       kind: "waiting",
       reason: "Pide un reembolso",
+      code: null,
+    });
+    // Spec 056 (7.1): the column's code travels with it, so the composer reads the table first.
+    expect(composerMode(detail({ state: "waiting", waiting_reason: "agent_unpublished", waiting_code: "agent_unpublished" }))).toMatchObject({
+      code: "agent_unpublished",
     });
     expect(composerMode(detail({ state: "agent" }))).toEqual({ kind: "agent" });
     expect(composerMode(detail({ state: "person", assignee: { kind: "member", name: "Luis", is_me: false } }))).toEqual({

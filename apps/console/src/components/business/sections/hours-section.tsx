@@ -10,14 +10,14 @@ import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { Day, Hours, HoursBody, Layout, Location, SectionState } from "@/lib/backend/business-sections";
 
-import { blockRows, blocksLoss, bodyFromDraft, draftFromHours, readRows, setRow, shiftsText, toBlocks, validateDraft, type HoursDraft, type Row } from "./hours-model";
+import { blockRows, blocksLoss, bodyFromDraft, draftFromHours, readRows, reviewDays, shiftsText, toBlocks, validateDraft, type HoursDraft } from "./hours-model";
 import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useReportState, useSectionEdit, type Result } from "./section-frame";
-import { ShiftEditor } from "./shift-editor";
+import { WeekEditor } from "./week-editor";
 
 type Save = (body: { ref: string; revision: number; locationId: string | null; body: HoursBody }) => Promise<Result<Hours>>;
 type Load = (body: { ref: string; locationId: string | null }) => Promise<Result<Hours>>;
 
-const ERRORS = new Set(["too_many_shifts", "overlap", "overlap_next_day", "invalid_time"]);
+const ERRORS = new Set(["too_many_shifts", "overlap", "overlap_next_day", "invalid_time", "bad_step", "invalid_day"]);
 
 /**
  * «Horario» de Negocio (spec 047, T060; requisito 10, historia 5): el del
@@ -66,7 +66,8 @@ export function HoursSection({
   const editable = editing && !inherit;
   const live = locations.filter((l) => !l.archived);
   const dayName = (d: Day) => t(`business.hours.day.${d}` as MessageKey);
-  const rowName = (row: Row) => (row.key === "weekdays" ? t("business.hours.row.weekdays") : dayName(row.key));
+  // Spec 056 (5.5): lo guardado fuera del paso de 5 minutos, marcado «Revísalo».
+  const review = reviewDays(hours);
 
   function reset(next: Hours) {
     setHours(next);
@@ -98,7 +99,7 @@ export function HoursSection({
   }
 
   function submit(confirmLoss = false) {
-    const problems = validateDraft(draft);
+    const problems = validateDraft(draft, hours);
     if (!inherit && problems.length) {
       const first = problems[0];
       if (first) setProblem(t(`business.hours.error.${first.code}` as MessageKey, { day: dayName(first.day) }));
@@ -219,19 +220,7 @@ export function HoursSection({
           </fieldset>
         ) : null}
 
-        {editing ? (
-        <div className="grid min-w-0 gap-3">
-          {blockRows(shown.layout).map((row) => (
-            <ShiftEditor
-              key={row.key}
-              legend={rowName(row)}
-              shifts={shown.days[row.days[0] as Day]}
-              canWrite={editable}
-              onChange={(next) => change(setRow(draft, row, next))}
-            />
-          ))}
-        </div>
-        ) : null}
+        {editing ? <WeekEditor draft={shown} rows={blockRows(shown.layout)} editable={editable} review={review} onChange={change} /> : null}
 
         {problem === "conflict" ? <ConflictNotice onReload={() => switchLocation(hours.location_id ?? "")} /> : null}
         {problem && problem !== "conflict" ? (

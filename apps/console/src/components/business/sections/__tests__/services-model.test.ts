@@ -1,45 +1,42 @@
 import { describe, expect, it } from "vitest";
 
-import { DURATIONS, amountText, formatAmount, parseAmount } from "../services-model";
+import { DURATION_MAX, DURATION_MIN, durationOk } from "@/lib/business-rules";
+
+import { DURATIONS, priceText, samePrice } from "../services-model";
 
 /**
- * Spec 047 (T060, requisito 11.7) — los precios con el formato y los decimales
- * de su moneda: los pesos chilenos sin decimales, los euros con dos.
+ * Spec 047 (T060, requisito 11.7) y spec 056 (requisitos 5.2 y 13): los precios
+ * con el formato del idioma de la persona (`lib/amount.ts`) y los decimales de
+ * su moneda; las duraciones, las de las reglas compartidas.
  */
+const WORDS = { free: "Gratis", none: "Sin precio" };
 
-describe("formatAmount", () => {
-  it("uses the decimals of the currency", () => {
-    expect(formatAmount(15000, "CLP", 0, "es")).toBe("15.000 CLP");
-    expect(formatAmount(1550, "EUR", 2, "es")).toBe("15,50 EUR");
-    expect(formatAmount(1550, "EUR", 2, "en")).toBe("15.50 EUR");
-    expect(formatAmount(1234567, "EUR", 2, "es")).toBe("12.345,67 EUR");
+describe("priceText", () => {
+  it("says free, no price or the amount in the person's language", () => {
+    expect(priceText({ kind: "free" }, "CLP", "es", WORDS)).toBe("Gratis");
+    expect(priceText({ kind: "none" }, "CLP", "es", WORDS)).toBe("Sin precio");
+    expect(priceText({ kind: "amount" }, "CLP", "es", WORDS)).toBe("Sin precio");
+    expect(priceText({ kind: "amount", amount_minor: 15000 }, "CLP", "es", WORDS).replace(/\s/g, " ")).toBe("15.000 CLP");
+    expect(priceText({ kind: "amount", amount_minor: 1550 }, "EUR", "es", WORDS).replace(/\s/g, " ")).toBe("15,50 €");
+    expect(priceText({ kind: "amount", amount_minor: 1000 }, "USD", "es", WORDS).replace(/\s/g, " ")).toBe("10,00 US$");
+    expect(priceText({ kind: "amount", amount_minor: 1550 }, "EUR", "en", WORDS)).toBe("€15.50");
   });
 });
 
-describe("parseAmount", () => {
-  it("reads what a person types into minor units", () => {
-    expect(parseAmount("15,50", 2)).toBe(1550);
-    expect(parseAmount("15.5", 2)).toBe(1550);
-    expect(parseAmount("15", 2)).toBe(1500);
-    expect(parseAmount("15.000", 0)).toBe(15000);
-    expect(parseAmount("1.234,56", 2)).toBe(123456);
-  });
-  it("refuses what is not an amount", () => {
-    expect(parseAmount("", 2)).toBeNull();
-    expect(parseAmount("gratis", 2)).toBeNull();
-    expect(parseAmount("-3", 2)).toBeNull();
-    expect(parseAmount("15,555", 2)).toBeNull();
-  });
-  it("round-trips with amountText", () => {
-    expect(parseAmount(amountText(1550, 2, "es"), 2)).toBe(1550);
-    expect(parseAmount(amountText(15000, 0, "es"), 0)).toBe(15000);
+describe("samePrice", () => {
+  it("compares the kind and, for an amount, the amount", () => {
+    expect(samePrice({ kind: "free" }, { kind: "free" })).toBe(true);
+    expect(samePrice({ kind: "free" }, { kind: "none" })).toBe(false);
+    expect(samePrice({ kind: "amount", amount_minor: 10 }, { kind: "amount", amount_minor: 10 })).toBe(true);
+    expect(samePrice({ kind: "amount", amount_minor: 10 }, { kind: "amount", amount_minor: 11 })).toBe(false);
   });
 });
 
 describe("durations", () => {
-  it("go from 5 to 480 minutes in steps of 5", () => {
-    expect(DURATIONS[0]).toBe(5);
-    expect(DURATIONS.at(-1)).toBe(480);
-    expect(DURATIONS.every((d) => d % 5 === 0)).toBe(true);
+  it("go from 5 to 480 minutes in steps of 5, the rules' ones", () => {
+    expect(DURATIONS[0]).toBe(DURATION_MIN);
+    expect(DURATIONS.at(-1)).toBe(DURATION_MAX);
+    expect(DURATIONS).toHaveLength(96);
+    expect(DURATIONS.every(durationOk)).toBe(true);
   });
 });

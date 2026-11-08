@@ -29,25 +29,42 @@ import {
   updateServiceAction,
   updateStaffAction,
 } from "@/app/(console)/reservas/actions";
+import { DURATIONS, byCategory, categoriesOf, priceText, samePrice } from "@/components/business/sections/services-model";
+import { currencyOptions, displayName } from "@/components/clients/client-modal-model";
+import { useDiscardGuard } from "@/components/use-discard-guard";
 import type { MessageKey } from "@/i18n/messages";
-import type { ReservasService, StaffMember, WeekHours } from "@/lib/backend/reservas";
+import { amountInput, minorDigits, parseAmount } from "@/lib/amount";
+import type { Price, PriceKind } from "@/lib/backend/business-sections";
+import type { ReservasService, ServicePatch, StaffMember, WeekHours } from "@/lib/backend/reservas";
+import { CATEGORY_MAX, NAME_MAX } from "@/lib/business-rules";
 
 import { useReservas } from "../context";
 import { formatMinutes } from "../model/dates";
 import { sameWeek, weekInvalidDays } from "../model/hours";
 import { useIdempotencyKey } from "../model/idempotency";
-import { byCategory, categoriesOf } from "@/components/business/sections/services-model";
-import { currencyOptions, displayName } from "@/components/clients/client-modal-model";
-import { formatPrice, minorDigits, parsePrice, priceInput } from "../model/money";
 import { failureMessage } from "../model/vocab";
 import { Initials } from "../shared";
 import { HoursEditor } from "./hours-editor";
 import { BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
 import { StaffCalendarsSection } from "./staff-calendars";
 
-/** The lengths a service can have in the design: 30 min to 3 h. */
-export const DURATIONS = [30, 45, 60, 90, 120, 180] as const;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** RFC 5321, as the API (`reservas_schemas.EMAIL_MAX`, spec 056 11.3). */
+const EMAIL_MAX = 254;
+const PRICE_KINDS: readonly PriceKind[] = ["none", "free", "amount"];
+/** The codes of the shared rules a service save can answer with (`business.services.error.*`). */
+const SERVICE_ERRORS = new Set([
+  "bad_duration",
+  "duration_required",
+  "price_invalid",
+  "price_amount_required",
+  "amount_too_large",
+  "price_currency_required",
+  "category_too_long",
+  "name_required",
+  "name_too_long",
+  "rename_not_allowed",
+]);
 
 /**
  * Ajustes of Servicios (spec 043, T025): the waitlist, reminders, the
@@ -202,6 +219,10 @@ function StaffDialog({ member, onClose }: { member: StaffMember | null; onClose:
   const [error, setError] = React.useState<string | null>(null);
   const emailOk = !email.trim() || EMAIL_RE.test(email.trim());
   const ready = name.trim() !== "" && emailOk && (!ownHours || weekInvalidDays(week).length === 0);
+  const initialWeek = member?.hours ?? member?.effective_hours ?? settings.business_hours;
+  const dirty =
+    name !== (member?.name ?? "") || email !== (member?.email ?? "") || ownHours !== (member?.hours != null) || (ownHours && !sameWeek(week, initialWeek));
+  const guard = useDiscardGuard(dirty, onClose);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -231,47 +252,50 @@ function StaffDialog({ member, onClose }: { member: StaffMember | null; onClose:
   }
 
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
-        <form onSubmit={save} className="grid gap-4" noValidate>
-          <DialogHeader>
-            <DialogTitle>{member ? t("reservas.team.edit") : t("reservas.team.add")}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t("reservas.team.name")} required requiredLabel={t("reservas.required")} error={touched && !name.trim() ? t("reservas.form.nameRequired") : null}>
-              {(a11y) => <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoComplete="off" />}
-            </Field>
-            <Field
-              label={t("reservas.team.email")}
-              optionalLabel={t("reservas.optional")}
-              error={touched && !emailOk ? t("reservas.team.email.invalid") : null}
-            >
-              {(a11y) => <Input {...a11y} type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={200} autoComplete="off" />}
-            </Field>
-          </div>
-          <div className="flex items-center gap-3">
-            <Switch id="reservas-staff-business" checked={!ownHours} onCheckedChange={(on) => setOwnHours(!on)} aria-labelledby="reservas-staff-business-label" />
-            <Label id="reservas-staff-business-label" htmlFor="reservas-staff-business">
-              {t("reservas.team.useBusiness")}
-            </Label>
-          </div>
-          {ownHours ? <HoursEditor value={week} onChange={setWeek} /> : null}
-          {error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t("common.cancel")}
-            </Button>
-            <Button type="submit" loading={busy} disabled={!ready && touched}>
-              {t("reservas.settings.save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
+          <form onSubmit={save} className="grid gap-4" noValidate>
+            <DialogHeader>
+              <DialogTitle>{member ? t("reservas.team.edit") : t("reservas.team.add")}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("reservas.team.name")} required requiredLabel={t("reservas.required")} error={touched && !name.trim() ? t("reservas.form.nameRequired") : null}>
+                {(a11y) => <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoComplete="off" />}
+              </Field>
+              <Field
+                label={t("reservas.team.email")}
+                optionalLabel={t("reservas.optional")}
+                error={touched && !emailOk ? t("reservas.team.email.invalid") : null}
+              >
+                {(a11y) => <Input {...a11y} type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={EMAIL_MAX} autoComplete="off" />}
+              </Field>
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch id="reservas-staff-business" checked={!ownHours} onCheckedChange={(on) => setOwnHours(!on)} aria-labelledby="reservas-staff-business-label" />
+              <Label id="reservas-staff-business-label" htmlFor="reservas-staff-business">
+                {t("reservas.team.useBusiness")}
+              </Label>
+            </div>
+            {ownHours ? <HoursEditor value={week} onChange={setWeek} /> : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={guard.close}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" loading={busy} disabled={!ready && touched}>
+                {t("reservas.settings.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }
 
@@ -312,7 +336,7 @@ function ServicesSection() {
                   {s.name}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {formatMinutes(s.duration_minutes)} · {formatPrice(s.price, locale) ?? t("reservas.svc.noCost")} ·{" "}
+                  {formatMinutes(s.duration_minutes)} · {priceText(s.price, s.currency, locale, { free: t("business.services.price.free"), none: t("business.services.price.none") })} ·{" "}
                   {s.staff === "all" ? t("reservas.svc.who.all") : s.staff_ids.map(staffName).filter(Boolean).join(", ")}
                 </span>
               </span>
@@ -354,6 +378,13 @@ function ServicesSection() {
   );
 }
 
+/**
+ * A service of Reservas (spec 056, requisito 5): the ficha's rules — 5 to 480
+ * minutes, no price, free or an amount up to 10¹², a category of 40. A new one
+ * takes its name; an existing one keeps it (5.4): the name is read, not edited.
+ * Editing sends only what changed (5.3), so «Gratis» stays free. A 422 is said
+ * on its field, in words (5.6). Closing with changes asks first (12.3).
+ */
 function ServiceDialog({ service, onClose }: { service: ReservasService | null; onClose: () => void }) {
   const { t, locale, data, settings, refresh } = useReservas();
   const key = useIdempotencyKey();
@@ -361,47 +392,86 @@ function ServiceDialog({ service, onClose }: { service: ReservasService | null; 
   // ninguna, se elige aquí y queda para todos sus precios.
   const unset = settings.currency_set === false;
   const [chosen, setChosen] = React.useState("");
-  const currency = unset ? chosen || "USD" : settings.currency;
+  const currency = unset ? chosen || "USD" : (service?.currency ?? settings.currency);
   const team = data.staff ?? [];
   const [name, setName] = React.useState(service?.name ?? "");
   const [category, setCategory] = React.useState(service?.category ?? "");
   const categories = categoriesOf(data.services ?? [], locale);
   const [duration, setDuration] = React.useState<number>(service?.duration_minutes ?? 30);
-  const [price, setPrice] = React.useState(priceInput(service?.price?.amount_minor, service?.price?.currency ?? currency));
+  const [kind, setKind] = React.useState<PriceKind>(service?.price.kind ?? "none");
+  const [amount, setAmount] = React.useState(service?.price.kind === "amount" ? amountInput(service.price.amount_minor, currency, locale) : "");
   const [who, setWho] = React.useState<"all" | "some">(service?.staff ?? "all");
   const [some, setSome] = React.useState<string[]>(service?.staff_ids ?? []);
   const [touched, setTouched] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [refusal, setRefusal] = React.useState<{ code: string; field: string } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const parsed = parsePrice(price, currency);
-  const durations = DURATIONS.includes(duration as (typeof DURATIONS)[number]) ? [...DURATIONS] : [...DURATIONS, duration].sort((a, b) => a - b);
-  const needsCurrency = unset && parsed.kind === "ok" && !chosen;
+  const parsed = parseAmount(amount, currency);
   const decimals = minorDigits(currency) > 0;
-  const ready = name.trim() !== "" && parsed.kind !== "invalid" && !needsCurrency && (who === "all" || some.length > 0);
+  const price: Price | null = kind !== "amount" ? { kind } : parsed.kind === "ok" ? { kind, amount_minor: parsed.minor } : null;
+  const needsCurrency = unset && kind === "amount" && !chosen;
+  const ready = name.trim() !== "" && price !== null && !needsCurrency && (who === "all" || some.length > 0);
+  const base = React.useId();
+
+  // Only what changed (5.3); a new service sends everything.
+  const changes: ServicePatch = {};
+  if (service) {
+    if (duration !== service.duration_minutes) changes.duration_minutes = duration;
+    if (price && !samePrice(price, service.price)) changes.price = price;
+    if ((category.trim() || null) !== (service.category ?? null)) changes.category = category.trim() || null;
+    const staffNow = who === "all" ? null : some;
+    const staffWas = service.staff === "all" ? null : service.staff_ids;
+    if (JSON.stringify(staffNow) !== JSON.stringify(staffWas)) changes.staff_ids = staffNow;
+  }
+  const dirty = service ? Object.keys(changes).length > 0 || (kind === "amount" && price === null) : name.trim() !== "" || category.trim() !== "" || amount.trim() !== "" || kind !== "none";
+  const guard = useDiscardGuard(dirty, onClose);
+
+  const fieldError = (field: string) =>
+    refusal?.field === field && SERVICE_ERRORS.has(refusal.code) ? t(`business.services.error.${refusal.code}` as MessageKey) : null;
+  const amountError =
+    kind !== "amount"
+      ? null
+      : parsed.kind === "invalid"
+        ? parsed.code === "amount_too_large"
+          ? t("business.services.error.amount_too_large")
+          : t(decimals ? "reservas.svc.price.invalid.decimals" : "reservas.svc.price.invalid")
+        : touched && parsed.kind === "empty"
+          ? t("business.services.error.price_amount_required")
+          : fieldError("price");
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
     setError(null);
-    if (!ready) return;
+    setRefusal(null);
+    if (!ready || !price) return;
+    if (service && Object.keys(changes).length === 0) return onClose();
     setBusy(true);
-    const body = {
-      name: name.trim(),
-      duration_minutes: duration,
-      price_minor: parsed.kind === "ok" ? parsed.minor : null,
-      staff_ids: who === "all" ? null : some,
-      category: category.trim() || null,
-      ...(unset && parsed.kind === "ok" ? { price_currency: chosen } : {}),
-    };
+    const currencyChoice = unset && kind === "amount" ? { price_currency: chosen } : {};
     try {
       const res = service
-        ? await updateServiceAction({ id: service.id, ...body })
-        : await createServiceAction({ ...body, idempotencyKey: key.take(body) });
+        ? await updateServiceAction({ id: service.id, ...changes, ...(changes.price ? currencyChoice : {}) })
+        : await (() => {
+            const body = {
+              name: name.trim(),
+              duration_minutes: duration,
+              price,
+              staff_ids: who === "all" ? null : some,
+              category: category.trim() || null,
+              ...currencyChoice,
+            };
+            return createServiceAction({ ...body, idempotencyKey: key.take(body) });
+          })();
       if (res.ok) {
         key.done();
         toast.success(t("reservas.settings.saved"));
         refresh();
         onClose();
+        return;
+      }
+      const field = typeof res.info?.field === "string" ? res.info.field : "";
+      if (res.status === 422 && res.code && SERVICE_ERRORS.has(res.code) && ["price", "duration_min", "category", "name"].includes(field)) {
+        setRefusal({ code: res.code, field });
         return;
       }
       const f = failureMessage(res);
@@ -414,32 +484,47 @@ function ServiceDialog({ service, onClose }: { service: ReservasService | null; 
   }
 
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
-        <form onSubmit={save} className="grid gap-4" noValidate>
-          <DialogHeader>
-            <DialogTitle>{service ? t("reservas.svc.edit") : t("reservas.svc.add")}</DialogTitle>
-          </DialogHeader>
-          <Field label={t("reservas.svc.name")} required requiredLabel={t("reservas.required")} error={touched && !name.trim() ? t("reservas.form.nameRequired") : null}>
-            {(a11y) => <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("reservas.svc.name.placeholder")} maxLength={120} />}
-          </Field>
-          <Field label={t("reservas.svc.category")} optionalLabel={t("reservas.optional")} hint={t("reservas.svc.category.hint")}>
-            {(a11y) => (
-              <>
-                <Input {...a11y} value={category} maxLength={40} list="reservas-svc-categories" autoComplete="off" onChange={(e) => setCategory(e.target.value)} />
-                <datalist id="reservas-svc-categories">
-                  {categories.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
-              </>
-            )}
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t("reservas.svc.duration")}>
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+          <form onSubmit={save} className="grid gap-4" noValidate>
+            <DialogHeader>
+              <DialogTitle>{service ? t("reservas.svc.edit") : t("reservas.svc.add")}</DialogTitle>
+            </DialogHeader>
+            <Field
+              label={t("reservas.svc.name")}
+              required={!service}
+              requiredLabel={t("reservas.required")}
+              hint={service ? t("business.services.name.fixed") : undefined}
+              error={touched && !name.trim() ? t("reservas.form.nameRequired") : fieldError("name")}
+            >
               {(a11y) => (
-                <NativeSelect {...a11y} value={duration} onChange={(e) => setDuration(Number(e.target.value))} wrapperClassName="w-full">
-                  {durations.map((m) => (
+                <Input
+                  {...a11y}
+                  value={name}
+                  readOnly={!!service}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={service ? undefined : t("reservas.svc.name.placeholder")}
+                  maxLength={NAME_MAX}
+                />
+              )}
+            </Field>
+            <Field label={t("reservas.svc.category")} optionalLabel={t("reservas.optional")} hint={t("reservas.svc.category.hint")} error={fieldError("category")}>
+              {(a11y) => (
+                <>
+                  <Input {...a11y} value={category} maxLength={CATEGORY_MAX} list={`${base}-categories`} autoComplete="off" onChange={(e) => (setCategory(e.target.value), setRefusal(null))} />
+                  <datalist id={`${base}-categories`}>
+                    {categories.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </>
+              )}
+            </Field>
+            <Field label={t("reservas.svc.duration")} error={fieldError("duration_min")}>
+              {(a11y) => (
+                <NativeSelect {...a11y} value={duration} onChange={(e) => (setDuration(Number(e.target.value)), setRefusal(null))} wrapperClassName="w-full sm:w-48">
+                  {DURATIONS.map((m) => (
                     <option key={m} value={m}>
                       {formatMinutes(m)}
                     </option>
@@ -447,80 +532,104 @@ function ServiceDialog({ service, onClose }: { service: ReservasService | null; 
                 </NativeSelect>
               )}
             </Field>
-            <Field
-              label={t("reservas.svc.price")}
-              optionalLabel={t("reservas.optional")}
-              hint={unset && !chosen ? undefined : t("reservas.svc.price.hint", { currency })}
-              error={parsed.kind === "invalid" ? t(decimals ? "reservas.svc.price.invalid.decimals" : "reservas.svc.price.invalid") : null}
-            >
-              {(a11y) => <Input {...a11y} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={decimals ? (locale === "en" ? "15.50" : "15,50") : "15000"} maxLength={16} />}
-            </Field>
-          </div>
-          {unset && parsed.kind === "ok" ? (
-            <Field
-              label={t("reservas.svc.currency")}
-              required
-              requiredLabel={t("reservas.required")}
-              hint={t("reservas.svc.currency.hint")}
-              error={touched && !chosen ? t("reservas.svc.currency.required") : null}
-            >
-              {(a11y) => (
-                <NativeSelect {...a11y} value={chosen} onChange={(e) => setChosen(e.target.value)} wrapperClassName="w-full">
-                  <option value="">{t("reservas.svc.currency.choose")}</option>
-                  {currencyOptions(null).map((c) => (
-                    <option key={c} value={c}>
-                      {`${c} · ${displayName(locale, "currency", c)}`}
-                    </option>
-                  ))}
-                </NativeSelect>
-              )}
-            </Field>
-          ) : null}
-          <fieldset className="grid gap-2">
-            <legend className="mb-2 text-sm font-medium">{t("reservas.svc.who")}</legend>
-            <label className="flex items-center gap-3 text-sm">
-              <input type="radio" name="reservas-svc-who" checked={who === "all"} onChange={() => setWho("all")} className="size-4 accent-primary" />
-              {t("reservas.svc.who.all")}
-            </label>
-            <label className="flex items-center gap-3 text-sm">
-              <input type="radio" name="reservas-svc-who" checked={who === "some"} onChange={() => setWho("some")} className="size-4 accent-primary" />
-              {t("reservas.svc.who.some")}
-            </label>
-            {who === "some" ? (
-              <ul className="grid gap-2 pl-7">
-                {team.map((p) => (
-                  <li key={p.id} className="flex items-center gap-3">
-                    <Checkbox
-                      id={`reservas-svc-${p.id}`}
-                      checked={some.includes(p.id)}
-                      onCheckedChange={(on) => setSome((cur) => (on ? [...cur, p.id] : cur.filter((x) => x !== p.id)))}
-                    />
-                    <Label htmlFor={`reservas-svc-${p.id}`}>{p.name}</Label>
-                  </li>
+            <fieldset className="grid min-w-0 gap-2">
+              <legend className="mb-2 text-sm font-medium">{t("reservas.svc.price")}</legend>
+              <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-2">
+                {PRICE_KINDS.map((k) => (
+                  <label key={k} className="flex min-h-6 items-center gap-2 text-sm">
+                    <input type="radio" name={`${base}-price`} checked={kind === k} onChange={() => (setKind(k), setRefusal(null))} className="size-4 accent-primary" />
+                    {t(`business.services.price.${k}` as MessageKey)}
+                  </label>
                 ))}
-              </ul>
+              </div>
+              {kind === "none" ? <p className="text-xs text-pretty text-muted-foreground">{t("business.services.price.none.hint")}</p> : null}
+              {kind === "amount" ? (
+                <Field
+                  label={t("business.services.price.amount")}
+                  hint={unset && !chosen ? undefined : t("reservas.svc.price.amount.hint", { currency })}
+                  error={amountError}
+                >
+                  {(a11y) => (
+                    <Input
+                      {...a11y}
+                      inputMode="decimal"
+                      value={amount}
+                      onChange={(e) => (setAmount(e.target.value), setRefusal(null))}
+                      placeholder={decimals ? (locale === "en" ? "15.50" : "15,50") : "15000"}
+                      maxLength={20}
+                      className="max-w-48"
+                    />
+                  )}
+                </Field>
+              ) : null}
+            </fieldset>
+            {unset && kind === "amount" ? (
+              <Field
+                label={t("reservas.svc.currency")}
+                required
+                requiredLabel={t("reservas.required")}
+                hint={t("reservas.svc.currency.hint")}
+                error={touched && !chosen ? t("reservas.svc.currency.required") : null}
+              >
+                {(a11y) => (
+                  <NativeSelect {...a11y} value={chosen} onChange={(e) => setChosen(e.target.value)} wrapperClassName="w-full">
+                    <option value="">{t("reservas.svc.currency.choose")}</option>
+                    {currencyOptions(null).map((c) => (
+                      <option key={c} value={c}>
+                        {`${c} · ${displayName(locale, "currency", c)}`}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                )}
+              </Field>
             ) : null}
-            {who === "some" && touched && some.length === 0 ? (
-              <p role="alert" className="text-xs text-destructive">
-                {t("reservas.svc.who.none")}
+            <fieldset className="grid gap-2">
+              <legend className="mb-2 text-sm font-medium">{t("reservas.svc.who")}</legend>
+              <label className="flex items-center gap-3 text-sm">
+                <input type="radio" name={`${base}-who`} checked={who === "all"} onChange={() => setWho("all")} className="size-4 accent-primary" />
+                {t("reservas.svc.who.all")}
+              </label>
+              <label className="flex items-center gap-3 text-sm">
+                <input type="radio" name={`${base}-who`} checked={who === "some"} onChange={() => setWho("some")} className="size-4 accent-primary" />
+                {t("reservas.svc.who.some")}
+              </label>
+              {who === "some" ? (
+                <ul className="grid gap-2 pl-7">
+                  {team.map((p) => (
+                    <li key={p.id} className="flex items-center gap-3">
+                      <Checkbox
+                        id={`reservas-svc-${p.id}`}
+                        checked={some.includes(p.id)}
+                        onCheckedChange={(on) => setSome((cur) => (on ? [...cur, p.id] : cur.filter((x) => x !== p.id)))}
+                      />
+                      <Label htmlFor={`reservas-svc-${p.id}`}>{p.name}</Label>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {who === "some" && touched && some.length === 0 ? (
+                <p role="alert" className="text-xs text-destructive">
+                  {t("reservas.svc.who.none")}
+                </p>
+              ) : null}
+            </fieldset>
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
               </p>
             ) : null}
-          </fieldset>
-          {error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t("common.cancel")}
-            </Button>
-            <Button type="submit" loading={busy} disabled={!ready && touched}>
-              {t("reservas.settings.save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={guard.close}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" loading={busy} disabled={!ready && touched}>
+                {t("reservas.settings.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }

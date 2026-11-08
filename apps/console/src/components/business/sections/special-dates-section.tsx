@@ -4,7 +4,7 @@ import { Plus, X } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, EmptyState, Field, Input, NativeSelect } from "@nexus/ui";
+import { Button, ConfirmDialog, EmptyState, Field, Input, NativeSelect } from "@nexus/ui";
 
 import { archiveSpecialDateAction, createSpecialDateAction } from "@/app/(console)/clients/[ref]/business/actions";
 import { useLocale, useT } from "@/i18n/client";
@@ -33,10 +33,22 @@ function formatDate(iso: string, locale: string): string {
   );
 }
 
+/** Hoy (`AAAA-MM-DD`) en la zona del negocio; sin zona, la del navegador. */
+export function todayIn(timezone?: string | null): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone || undefined, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  }
+}
+
 /**
  * «Fechas especiales» de Negocio (spec 047, T060; requisito 10.3): cerrado o
  * con turnos propios, de un día o de un rango, con nombre, del negocio o de una
  * sede. La usan el agente, «¿abierto ahora?» y los huecos de Reservas.
+ *
+ * Spec 056: una fecha cuyo «Hasta» ya pasó no se guarda (11.4, D10), con el
+ * «hoy» de la zona del negocio, como la API; y quitar una pide confirmación (12.1).
  */
 export function SpecialDatesSection({
   refId,
@@ -45,6 +57,8 @@ export function SpecialDatesSection({
   canWrite,
   actions = SERVER_ACTIONS,
   nested = false,
+  timezone,
+  today: todayProp,
 }: {
   refId: string;
   specialDates: SpecialDates;
@@ -53,13 +67,19 @@ export function SpecialDatesSection({
   actions?: SpecialDatesActions;
   /** Dentro de la tarjeta de Horarios: el prototipo no tiene sección propia. */
   nested?: boolean;
+  /** La zona del negocio, para saber qué día es hoy allí. */
+  timezone?: string | null;
+  /** Hoy (`AAAA-MM-DD`), para las pruebas; si no, el de `timezone`. */
+  today?: string;
 }) {
   const t = useT();
   const locale = useLocale();
   const [dates, setDates] = React.useState(initial);
   const [adding, setAdding] = React.useState(false);
   const [conflict, setConflict] = React.useState(false);
+  const [removing, setRemoving] = React.useState<SpecialDate | null>(null);
   const [pending, startTransition] = React.useTransition();
+  const today = todayProp ?? todayIn(timezone);
   const where = (id: string | null) => locations.find((l) => l.id === id)?.name ?? t("business.special.location.all");
   const when = (d: SpecialDate) => (d.from === d.to ? formatDate(d.from, locale) : `${formatDate(d.from, locale)} – ${formatDate(d.to, locale)}`);
 
@@ -109,7 +129,7 @@ export function SpecialDatesSection({
                     size="icon"
                     disabled={pending}
                     aria-label={t("business.special.remove", { name: d.name || when(d) })}
-                    onClick={() => startTransition(async () => void (await apply(await actions.archive({ ref: refId, revision: dates.revision, id: d.id }))))}
+                    onClick={() => setRemoving(d)}
                   >
                     <X aria-hidden="true" />
                   </Button>
@@ -128,6 +148,7 @@ export function SpecialDatesSection({
         ) : null}
         {adding ? (
           <SpecialDateForm
+            today={today}
             locations={locations.filter((l) => !l.archived)}
             onCancel={() => setAdding(false)}
             onSave={async (body) => {
@@ -138,15 +159,31 @@ export function SpecialDatesSection({
           />
         ) : null}
       </div>
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => (open ? undefined : setRemoving(null))}
+        title={removing ? t("business.special.remove.title", { name: removing.name || when(removing) }) : ""}
+        description={t("business.special.remove.body")}
+        confirmLabel={t("business.special.remove.confirm")}
+        cancelLabel={t("business.section.cancel")}
+        destructive
+        onConfirm={() => {
+          const target = removing;
+          setRemoving(null);
+          if (target) startTransition(async () => void (await apply(await actions.archive({ ref: refId, revision: dates.revision, id: target.id }))));
+        }}
+      />
     </SectionFrame>
   );
 }
 
 function SpecialDateForm({
+  today,
   locations,
   onCancel,
   onSave,
 }: {
+  today: string;
   locations: readonly Location[];
   onCancel: () => void;
   onSave: (body: SpecialDateBody) => Promise<string | null>;
@@ -167,6 +204,7 @@ function SpecialDateForm({
     const end = to || from;
     if (!from) return setError("no_from");
     if (end < from) return setError("date_range");
+    if (end < today) return setError("date_past");
     if (!closed && shifts.length === 0) return setError("no_shifts");
     startTransition(async () => {
       const problem = await onSave({
@@ -177,7 +215,7 @@ function SpecialDateForm({
         closed,
         shifts: closed ? [] : shifts.map((s) => ({ open: s.open, close: s.close })),
       });
-      if (problem && problem !== "conflict") setError(problem === "date_range" || problem === "no_shifts" ? problem : "generic");
+      if (problem && problem !== "conflict") setError(["date_range", "no_shifts", "date_past"].includes(problem) ? problem : "generic");
     });
   }
 

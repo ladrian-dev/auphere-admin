@@ -221,3 +221,49 @@ async def test_the_note_belongs_to_the_contact_and_is_never_audited(
     ).scalars()
     assert row.after_json == {"length": len(text)}
     assert "látex" not in str(row.after_json)
+
+
+async def test_the_contact_handle_carries_the_plus_on_whatsapp_only(
+    client, db_session, console_world
+) -> None:
+    """Spec 056 (13.3): «+» y prefijo en WhatsApp. En Instagram el identificador
+    no es un teléfono y no se toca."""
+    from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Customer
+    from nexus_api.services.inbox_view import display_handle
+
+    assert display_handle("34600111222", "whatsapp") == "+34600111222"
+    assert display_handle("+34600111222", "whatsapp") == "+34600111222"
+    assert display_handle(" 34600111222 ", "whatsapp") == "+34600111222"
+    assert display_handle("17841400000000000", "instagram") == "17841400000000000"
+    assert display_handle("cultor.barber", "whatsapp") == "cultor.barber", "solo un número"
+    assert display_handle("", "whatsapp") == ""
+
+    w = console_world["a"]
+    inbox = await make_inbox(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    c0, c1 = inbox["conversations"]
+    cu0, cu1 = inbox["customers"]
+    ig = Channel(
+        tenant_id=w["tenant_id"],
+        type=ChannelType.INSTAGRAM,
+        provider="meta_instagram",
+        provider_identifier=f"ig-{uuid.uuid4().hex[:8]}",
+        status=ChannelStatus.ACTIVE,
+        config={},
+    )
+    db_session.add(ig)
+    await db_session.flush()
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == cu0).values(identifier="34600111222", name=None)
+    )
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == cu1).values(identifier="17841400000000000")
+    )
+    await db_session.execute(
+        sa.update(Conversation).where(Conversation.id == c1).values(channel_id=ig.id)
+    )
+    await db_session.commit()
+
+    whatsapp = (await _detail(client, inbox, c0))["contact"]
+    assert whatsapp["handle"] == "+34600111222"
+    assert whatsapp["name"] == "+34600111222", "sin nombre, su número con «+»"
+    assert (await _detail(client, inbox, c1))["contact"]["handle"] == "17841400000000000"

@@ -58,8 +58,36 @@ describe("ConversationList", () => {
     const props = view(page([], { has_any: true }), { filter: "unread" });
     expect(screen.getByText("No hay conversaciones con estos filtros.")).toBeInTheDocument();
     expect(screen.queryByText("Aún no hay conversaciones")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Ver todas las conversaciones" }));
+    await userEvent.click(screen.getByRole("button", { name: "Quitar los filtros" }));
     expect(props.onClear).toHaveBeenCalled();
+  });
+
+  /** Spec 056 (6.2, 6.3, D6): «Abiertas» empty with resolved ones leads to them, not back to itself. */
+  it("open and empty with resolved ones says how many and opens Resueltas", async () => {
+    const props = view(page([], { has_any: true, resolved: 2 }));
+    expect(screen.getByText("No tienes conversaciones abiertas")).toBeInTheDocument();
+    expect(screen.getByText("2 resueltas")).toBeInTheDocument();
+    expect(screen.queryByText("No hay conversaciones con estos filtros.")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Ver las resueltas" }));
+    expect(props.onFilter).toHaveBeenCalledWith("resolved");
+    expect(props.onClear).not.toHaveBeenCalled();
+  });
+
+  it("one resolved reads in the singular", () => {
+    view(page([], { has_any: true, resolved: 1 }));
+    expect(screen.getByText("1 resuelta")).toBeInTheDocument();
+  });
+
+  it("with no conversation at all it is today's empty state, without a button", () => {
+    view(page([], { has_any: false, resolved: 0 }));
+    expect(screen.getByText("Aún no hay conversaciones")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ver las resueltas" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quitar los filtros" })).toBeNull();
+  });
+
+  it("a search that finds nothing is a filter, even with resolved ones", () => {
+    view(page([], { has_any: true, resolved: 0 }), { query: "nadie" });
+    expect(screen.getByText("No hay conversaciones con estos filtros.")).toBeInTheDocument();
   });
 
   it("a failed read is an error, not an empty inbox — and not a dead end", async () => {
@@ -119,7 +147,7 @@ describe("ConversationList", () => {
     const props = view(page([conversation()]));
     await userEvent.click(screen.getByRole("button", { name: "Sin leer" }));
     expect(props.onFilter).toHaveBeenCalledWith("unread");
-    expect(screen.getByRole("button", { name: "Todas" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Abiertas" })).toHaveAttribute("aria-pressed", "true");
     await userEvent.type(screen.getByRole("searchbox", { name: "Buscar por nombre, teléfono o mensaje" }), "a");
     expect(props.onQuery).toHaveBeenCalledWith("a");
   });

@@ -305,6 +305,8 @@ export const businessMessages = {
   "clients.v2.tab.panel": { es: "Panel", en: "Dashboard" },
   "clients.v2.tab.business": { es: "Negocio", en: "Business" },
   "clients.v2.tab.agents": { es: "Agentes", en: "Agents" },
+  // Spec 056 (requisito 3.1): la pestaña del acceso del cliente a su consola.
+  "clients.v2.tab.access": { es: "Acceso", en: "Access" },
 
   // ── C2 · El Panel del cliente (T067, requisito 14) ─────────────────────────
   "panel.bag.title": { es: "Saldo", en: "Balance" },
@@ -377,6 +379,12 @@ export const businessMessages = {
   "business.history.kind.undo": { es: "Deshecho", en: "Undone" },
   "business.history.by": { es: "{who} · {when}", en: "{who} · {when}" },
   "business.history.undo": { es: "Deshacer", en: "Undo" },
+  // Spec 056 (12.2): deshacer pide confirmación diciendo qué cambio se deshace.
+  "business.history.undo.title": { es: "¿Deshacer «{kind}»?", en: "Undo «{kind}»?" },
+  "business.history.undo.body": {
+    es: "Lo hizo {who} {when}. La sección vuelve a como estaba antes de ese cambio.",
+    en: "{who} did it {when}. The section goes back to how it was before that change.",
+  },
   "business.history.undone": { es: "Deshecho", en: "Undone" },
   "business.history.undoneToast": { es: "Cambio deshecho. Los agentes ya usan lo anterior.", en: "Change undone. The agents already use what was there before." },
   "business.history.conflict": {
@@ -512,6 +520,13 @@ export const businessMessages = {
   "business.locations.own_hours": { es: "Horario propio", en: "Own hours" },
   "business.locations.inherits": { es: "Horario del negocio", en: "Business hours" },
   "business.locations.archive": { es: "Archivar {name}", en: "Archive {name}" },
+  // Spec 056 (12.1): archivar una sede pide confirmación.
+  "business.locations.archive.title": { es: "¿Archivar «{name}»?", en: "Archive «{name}»?" },
+  "business.locations.archive.body": {
+    es: "Los agentes dejan de dar su dirección y su horario. Puedes restaurarla después.",
+    en: "Agents stop giving its address and hours. You can restore it later.",
+  },
+  "business.locations.archive.confirm": { es: "Archivar", en: "Archive" },
   "business.locations.restore": { es: "Restaurar {name}", en: "Restore {name}" },
   "business.locations.archived": { es: "Archivada", en: "Archived" },
   "business.locations.show_archived": { es: "Ver las archivadas", en: "Show archived" },
@@ -565,6 +580,14 @@ export const businessMessages = {
     en: "A night shift runs into the next day's first shift ({day}).",
   },
   "business.hours.error.invalid_time": { es: "Escribe las horas como HH:MM ({day}).", en: "Write times as HH:MM ({day})." },
+  // Spec 056 (5.1, 5.5): las reglas de Reservas, y lo guardado fuera de ellas.
+  "business.hours.error.bad_step": { es: "Las horas van en pasos de 5 minutos ({day}).", en: "Times go in steps of 5 minutes ({day})." },
+  "business.hours.error.invalid_day": { es: "Ese día no es de la semana ({day}).", en: "That is not a day of the week ({day})." },
+  "business.hours.review": { es: "Revísalo", en: "Check it" },
+  "business.hours.review.hint": {
+    es: "Tiene una hora que no va en pasos de 5 minutos. Se queda así mientras no cambies este día.",
+    en: "It has a time that is not in steps of 5 minutes. It stays like this until you change this day.",
+  },
 
   "business.special.title": { es: "Fechas especiales", en: "Special dates" },
   "business.special.intro": {
@@ -584,6 +607,15 @@ export const businessMessages = {
   "business.special.error.no_from": { es: "Elige el día en que empieza.", en: "Choose the day it starts." },
   "business.special.error.date_range": { es: "La fecha final no puede ser anterior a la inicial.", en: "The end date cannot be before the start date." },
   "business.special.error.no_shifts": { es: "Añade al menos un turno o márcala cerrada.", en: "Add at least one shift or mark it closed." },
+  // Spec 056 (11.4, D10): una fecha cuyo «Hasta» ya pasó no sirve.
+  "business.special.error.date_past": { es: "Esa fecha ya pasó: el «Hasta» es anterior a hoy.", en: "That date has passed: «To» is before today." },
+  // Spec 056 (12.1): quitar una fecha especial pide confirmación.
+  "business.special.remove.title": { es: "¿Quitar «{name}»?", en: "Remove «{name}»?" },
+  "business.special.remove.body": {
+    es: "Ese día vuelve al horario de siempre, para el agente y para Reservas.",
+    en: "That day goes back to the usual hours, for the agent and for Bookings.",
+  },
+  "business.special.remove.confirm": { es: "Quitar", en: "Remove" },
 
   "business.services.title": { es: "Servicios", en: "Services" },
   "business.services.intro": {
@@ -643,9 +675,22 @@ export const businessMessages = {
   "business.services.who.no_agents": { es: "Este cliente no tiene agentes todavía.", en: "This client has no agents yet." },
   "business.services.save": { es: "Guardar servicio", en: "Save service" },
   "business.services.error.duration_required": { es: "Un servicio que se reserva necesita su duración.", en: "A bookable service needs its duration." },
-  "business.services.error.duration_invalid": { es: "La duración va de 5 a 480 minutos, en pasos de 5.", en: "The duration goes from 5 to 480 minutes, in steps of 5." },
   "business.services.error.price_amount_required": { es: "Escribe el importe.", en: "Type the amount." },
   "business.services.error.price_invalid": { es: "Escribe un importe válido para esta moneda.", en: "Type a valid amount for this currency." },
   "business.services.error.name_required": { es: "Escribe el nombre del servicio.", en: "Type the service's name." },
   "business.services.error.agents_required": { es: "Elige al menos un agente.", en: "Pick at least one agent." },
+  // Spec 056 (5.2, 5.4, 11.2): los códigos de las reglas compartidas con Reservas.
+  "business.services.error.bad_duration": { es: "La duración va de 5 a 480 minutos, en pasos de 5.", en: "The duration goes from 5 to 480 minutes, in steps of 5." },
+  "business.services.error.amount_too_large": { es: "El importe pasa del máximo permitido.", en: "The amount is above the maximum allowed." },
+  "business.services.error.name_too_long": { es: "El nombre admite hasta 120 caracteres.", en: "The name takes up to 120 characters." },
+  "business.services.error.rename_not_allowed": {
+    es: "El nombre lo cambia quien gestiona tus agentes.",
+    en: "Whoever manages your agents changes the name.",
+  },
+  // Spec 056 (12.1): archivar un servicio pide confirmación, como en Reservas.
+  "business.services.archive.title": { es: "¿Archivar «{name}»?", en: "Archive «{name}»?" },
+  "business.services.archive.body": {
+    es: "Los agentes dejan de ofrecerlo y Reservas ya no lo enseña. Las reservas pasadas conservan su nombre.",
+    en: "Agents stop offering it and Bookings no longer shows it. Past bookings keep its name.",
+  },
 };

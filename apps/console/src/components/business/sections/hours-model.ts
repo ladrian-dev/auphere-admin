@@ -1,4 +1,5 @@
 import { DAYS, type Day, type Hours, type HoursBody, type Layout, type ShiftOut } from "@/lib/backend/business-sections";
+import { MAX_SHIFTS_PER_DAY, MINUTES_PER_DAY, checkDay, onStep, type RuleCode } from "@/lib/business-rules";
 
 /**
  * El modelo del editor del horario — spec 047 (T060, requisito 10). Puro: lo
@@ -13,13 +14,14 @@ import { DAYS, type Day, type Hours, type HoursBody, type Layout, type ShiftOut 
  *   {@link blocksLoss} dice qué días se perderían, para pedir confirmación (10.6).
  */
 
-export const MAX_SHIFTS = 6;
+/** Spec 056: el de `lib/business-rules.ts`, el mismo que la API. */
+export const MAX_SHIFTS = MAX_SHIFTS_PER_DAY;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const CLOSE = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/;
 
 export type DraftShift = { key: string; open: string; close: string };
 export type HoursDraft = { layout: Layout; days: Record<Day, DraftShift[]> };
-export type DraftProblem = { day: Day; code: "too_many_shifts" | "invalid_time" };
+export type DraftProblem = { day: Day; code: Extract<RuleCode, "too_many_shifts" | "invalid_time" | "bad_step" | "overlap" | "overlap_next_day"> };
 
 const toMin = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -119,13 +121,42 @@ export function setRow(draft: HoursDraft, row: Row, shifts: DraftShift[]): Hours
   return { ...draft, days };
 }
 
-export function validateDraft(draft: HoursDraft): DraftProblem[] {
+const sameDay = (a: readonly Pick<ShiftOut, "open" | "close">[], b: readonly DraftShift[]) =>
+  a.length === b.length && a.every((s, i) => s.open === b[i]?.open && s.close === b[i]?.close);
+
+/** Un turno en minutos desde la medianoche del día que abre (la regla de la API). */
+function span(s: DraftShift): [number, number] {
+  const o = toMin(s.open);
+  if (s.close === "24:00") return [o, MINUTES_PER_DAY];
+  const c = toMin(s.close);
+  return [o, c <= o ? c + MINUTES_PER_DAY : c];
+}
+
+/**
+ * Lo que el borrador no puede guardar, día a día. Spec 056 (5.1, 5.5): las
+ * reglas de `lib/business-rules.ts` (las de la API y las de Reservas), pero las
+ * estrictas —pasos de 5 minutos, sin solapes— solo en los días que cambian
+ * respecto a `original`: lo guardado de antes se queda como está («Revísalo»)
+ * mientras nadie toque su día. Sin `original`, todos cuentan como cambiados.
+ */
+export function validateDraft(draft: HoursDraft, original?: Pick<Hours, "days">): DraftProblem[] {
   const out: DraftProblem[] = [];
   for (const d of DAYS) {
     const shifts = draft.days[d];
     if (shifts.length > MAX_SHIFTS) out.push({ day: d, code: "too_many_shifts" });
     else if (shifts.some((s) => !HHMM.test(s.open) || !CLOSE.test(s.close))) out.push({ day: d, code: "invalid_time" });
+    else if (!original || !sameDay(original.days[d] ?? [], shifts)) {
+      const checked = checkDay(shifts, d);
+      if (!checked.ok) out.push({ day: d, code: checked.problem.code as DraftProblem["code"] });
+    }
   }
+  if (out.length) return out;
+  // Un nocturno no pisa el primer turno del día siguiente; el domingo sigue en el lunes.
+  DAYS.forEach((d, i) => {
+    const spill = Math.max(0, ...draft.days[d].map(span).map(([, c]) => c - MINUTES_PER_DAY));
+    const next = draft.days[DAYS[(i + 1) % DAYS.length] as Day].map(span).sort((a, b) => a[0] - b[0]);
+    if (spill > 0 && next[0] && next[0][0] < spill) out.push({ day: d, code: "overlap_next_day" });
+  });
   return out;
 }
 
@@ -133,4 +164,14 @@ export function bodyFromDraft(draft: HoursDraft, opts: { confirmLoss?: boolean }
   const days = {} as Record<Day, { open: string; close: string }[]>;
   for (const d of DAYS) days[d] = draft.days[d].map((s) => ({ open: s.open, close: s.close }));
   return { layout: draft.layout, days, ...(opts.confirmLoss ? { confirm_loss: true } : {}) };
+}
+
+/**
+ * «Revísalo» (spec 056, 5.5): los días con una hora fuera del paso de 5 minutos.
+ * La API aceptaba cualquier minuto; lo guardado se enseña tal cual y se queda así
+ * hasta que alguien cambie ese día. 24:00 cierra el día y está en el paso.
+ */
+export function reviewDays(hours: Pick<Hours, "days">): Day[] {
+  const off = (hhmm: string) => !onStep(Math.min(toMin(hhmm), MINUTES_PER_DAY));
+  return DAYS.filter((d) => (hours.days[d] ?? []).some((s) => off(s.open) || off(s.close)));
 }

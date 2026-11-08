@@ -8,6 +8,7 @@ import { backendFor } from "@/lib/backend";
 import type {
   AgentConversationPage,
   AgentPerformance,
+  CorrectionBatchDecided,
   ImprovementAccepted,
   ImprovementDiscarded,
   Improvements,
@@ -67,4 +68,27 @@ export async function discardImprovementAction(raw: unknown): Promise<ActionResu
   const principal = await partner("agents:write");
   if (!principal) return forbidden;
   return run(() => backendFor(principal).discardImprovement(p.ref, p.agent, p.id, p.reason));
+}
+
+/**
+ * Spec 056 (9.2): el lote de «Todo el negocio» —una corrección por agente activo
+ * del cliente— se acepta o se descarta en todos a la vez. Pide `agents:write`,
+ * como decidir una sola.
+ */
+const batchSchema = z.object({ ref, batch: uuid });
+
+export async function acceptCorrectionBatchAction(raw: unknown): Promise<ActionResult<CorrectionBatchDecided>> {
+  const p = batchSchema.parse(raw);
+  const principal = await partner("agents:write");
+  if (!principal) return forbidden;
+  const res = await run(() => backendFor(principal).acceptCorrectionBatch(p.ref, p.batch));
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(p.ref)}`, "layout");
+  return res;
+}
+
+export async function discardCorrectionBatchAction(raw: unknown): Promise<ActionResult<CorrectionBatchDecided>> {
+  const p = batchSchema.extend({ reason: z.string().trim().min(3).max(300) }).parse(raw);
+  const principal = await partner("agents:write");
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).discardCorrectionBatch(p.ref, p.batch, p.reason));
 }

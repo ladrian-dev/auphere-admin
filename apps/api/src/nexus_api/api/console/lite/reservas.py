@@ -17,6 +17,8 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from redis.asyncio import Redis
 
+from nexus_api.api.console.business import hours_view
+from nexus_api.api.console.schemas_business_sections import HoursOut
 from nexus_api.api.deps import get_redis
 from nexus_api.db.models import (
     Reservation,
@@ -28,9 +30,11 @@ from nexus_api.db.models import (
     ReservationStaff,
     ReservationWaitlist,
 )
+from nexus_api.db.models.business import BusinessLocation
 from nexus_api.services.business import hours as ficha_hours
-from nexus_api.services.business import services_catalog
+from nexus_api.services.business import rules, services_catalog
 from nexus_api.services.business.sections import Actor as FichaActor
+from nexus_api.services.business.writes import SectionRevisionConflict
 from nexus_api.services.business_hours import (
     BusinessHoursError,
     canonical_business_hours,
@@ -70,8 +74,7 @@ from .reservas_schemas import (
     BookingDetailOut,
     BookingListOut,
     BookingOut,
-    BusinessHoursIn,
-    BusinessHoursOut,
+    BusinessHoursPatchIn,
     CalendarOut,
     CancelIn,
     CancelledBookingOut,
@@ -182,6 +185,34 @@ async def _remember(
 # ── ajustes y horario ───────────────────────────────────────────────────────
 
 
+async def _hours_out(scope: LiteScope) -> HoursOut:
+    """El horario del negocio con la forma de la ficha (spec 056, 5.1)."""
+    return await hours_view(scope.session, scope.principal.tenant_id, None, allowed=["edit"])
+
+
+async def _location_hours(scope: LiteScope) -> list[dict[str, Any]]:
+    """Las sedes vivas y su horario propio: se enseña, no se edita (5.1)."""
+    locale = await ficha_hours.business_locale(scope.session)
+    rows = (
+        await scope.session.scalars(
+            sa.select(BusinessLocation)
+            .where(BusinessLocation.archived_at.is_(None))
+            .order_by(BusinessLocation.position, BusinessLocation.name)
+        )
+    ).all()
+    out: list[dict[str, Any]] = []
+    for loc in rows:
+        own = await ficha_hours.load_week(scope.session, location_id=loc.id)
+        out.append(
+            {
+                "location": {"id": loc.id, "name": loc.name},
+                "has_own_hours": own is not None,
+                "label": ficha_hours.phrase(own, locale=locale) if own is not None else None,
+            }
+        )
+    return out
+
+
 async def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
     s = ctx.settings
     week = ctx.hours.week if ctx.hours is not None else None
@@ -195,6 +226,8 @@ async def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
             "currency_set": await services_catalog.known_currency(scope.session) is not None,
             "business_hours": week_canonical(week),
             "business_hours_label": week_label(week, lang),
+            "hours": await _hours_out(scope),
+            "location_hours": await _location_hours(scope),
             "hours_missing": week is None,
             "slot_step_minutes": s.slot_step_minutes,
             "waitlist": {"enabled": s.waitlist_enabled, "lead_minutes": s.waitlist_lead_minutes},
@@ -248,27 +281,44 @@ async def patch_settings(
     return await _settings_out(scope, ctx)
 
 
-@router.put("/business-hours", response_model=BusinessHoursOut)
-async def put_business_hours(
-    body: BusinessHoursIn, scope: LiteScope = Depends(SCOPE)
-) -> BusinessHoursOut:
+@router.patch(
+    "/business-hours",
+    response_model=HoursOut,
+    responses={
+        409: {"description": "revision_conflict: the hours changed since they were read"},
+        422: {"description": "{code, field, day}: too_many_shifts, bad_step, overlap, …"},
+    },
+)
+async def patch_business_hours(
+    body: BusinessHoursPatchIn, scope: LiteScope = Depends(SCOPE)
+) -> HoursOut:
+    """Spec 056 (5.1, 5.3): el horario de la ficha, día a día. Solo cambian los
+    días que llegan; los demás, el horario propio de cada sede y lo guardado que
+    no cumple las reglas nuevas se quedan como estaban. Con la revisión que se
+    leyó: si alguien guardó mientras tanto, ``409 revision_conflict``."""
+    stored = (await ficha_hours.load_hours(scope.session)).week
     try:
-        hours = week_of(canonical_business_hours(body.hours))
-    except BusinessHoursError as exc:
+        week = ficha_hours.replace_days(
+            stored, {d: [(s.open, s.close) for s in v] for d, v in body.days.items()}
+        )
+    except rules.RuleError as exc:
         raise HTTPException(
-            status_code=422, detail={"code": "invalid", "message": str(exc)}
+            status_code=422, detail={"code": exc.code, "field": exc.field, "day": exc.day}
         ) from None
-    if any(len(r) > 2 for r in hours.values()):
-        raise HTTPException(status_code=422, detail={"code": "invalid", "message": "max 2 ranges"})
-    # Spec 047: el horario es el de la ficha (el que dicen el agente y Reservas);
-    # ``tenants.business_hours`` queda como su proyección, en esta transacción.
-    week = ficha_hours.week_from_legacy(hours)
-    await ficha_hours.save_week(scope.session, week, actor=_ficha_actor(scope))
+    except ficha_hours.HoursError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": exc.code, "field": "shifts", "day": exc.day}
+        ) from None
+    try:
+        await ficha_hours.save_week(
+            scope.session, week, actor=_ficha_actor(scope), expected_revision=body.revision
+        )
+    except SectionRevisionConflict as exc:
+        raise HTTPException(
+            status_code=409, detail={"code": "revision_conflict", "revision": exc.current}
+        ) from None
     await scope.session.flush()
-    return BusinessHoursOut(
-        business_hours=week_canonical(week) or hours,
-        business_hours_label=week_label(week, "es"),
-    )
+    return await _hours_out(scope)
 
 
 # ── equipo ──────────────────────────────────────────────────────────────────
@@ -456,6 +506,11 @@ async def archive_staff(staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) 
 
 
 # ── servicios ───────────────────────────────────────────────────────────────
+#
+# Spec 056 (5.2 a 5.4): los servicios de Reservas son los de la ficha y se
+# escriben por su catálogo (``services_catalog``): un solo validador, las mismas
+# reglas (``rules``) y el historial de la ficha. Desde aquí se crean con su
+# nombre, pero no se renombran.
 
 
 async def _service_staff(scope: LiteScope, service_id: uuid.UUID) -> list[uuid.UUID]:
@@ -467,31 +522,16 @@ async def _service_staff(scope: LiteScope, service_id: uuid.UUID) -> list[uuid.U
     return list(rows.scalars())
 
 
-async def _amount_currency(scope: LiteScope, chosen: str | None) -> str:
-    """Spec 055 (requisitos 3.1 y 3.2): la moneda de un importe que se escribe."""
-    try:
-        currency = await services_catalog.currency_for_amount(
-            scope.session, chosen, actor=_ficha_actor(scope), ctx=None
-        )
-    except services_catalog.ServiceError as exc:
-        raise HTTPException(
-            status_code=422, detail={"code": exc.code, "field": exc.field}
-        ) from None
-    assert currency is not None  # una persona, o la elige o se rechaza arriba
-    return currency
-
-
-async def _category(
-    scope: LiteScope, value: str | None, *, exclude: uuid.UUID | None = None
-) -> str | None:
-    """Spec 055 (requisitos 7.1 y 7.3): la misma regla que en la ficha."""
-    try:
-        clean = services_catalog.clean_category(value)
-    except services_catalog.ServiceError as exc:
-        raise HTTPException(
-            status_code=422, detail={"code": exc.code, "field": exc.field}
-        ) from None
-    return await services_catalog.same_category(scope.session, clean, exclude=exclude)
+def _service_refusal(exc: Exception) -> HTTPException:
+    """Los «no» del catálogo: ``422 {code, field}``. Una persona del equipo o un
+    servicio que no es del negocio es el 404 de siempre."""
+    if isinstance(exc, LookupError) or (
+        isinstance(exc, services_catalog.ServiceError) and exc.code == "unknown_staff"
+    ):
+        return HTTPException(status_code=404, detail="Not found")
+    if isinstance(exc, services_catalog.ServiceError):
+        return HTTPException(status_code=422, detail={"code": exc.code, "field": exc.field})
+    raise exc
 
 
 async def _service_out(scope: LiteScope, s: ReservationService) -> ServiceOut:
@@ -501,31 +541,14 @@ async def _service_out(scope: LiteScope, s: ReservationService) -> ServiceOut:
             "name": s.name,
             "category": s.category,
             "duration_minutes": s.duration_minutes,
-            "price": {"amount_minor": s.price_minor, "currency": s.currency}
-            if s.price_minor is not None
-            else None,
+            "price": services_catalog.price_view(s),
+            "currency": s.currency,
             "staff": "all" if s.all_staff else "some",
             "staff_ids": [] if s.all_staff else await _service_staff(scope, s.id),
             "position": s.position,
             "archived": s.archived_at is not None,
         }
     )
-
-
-async def _set_service_staff(
-    scope: LiteScope, ctx: Ctx, svc: ReservationService, staff_ids: list[uuid.UUID] | None
-) -> None:
-    await scope.session.execute(
-        sa.delete(ReservationServiceStaff).where(ReservationServiceStaff.service_id == svc.id)
-    )
-    svc.all_staff = staff_ids is None
-    for sid in staff_ids or []:
-        member = await scope.session.get(ReservationStaff, sid)
-        if member is None:
-            raise HTTPException(status_code=404, detail="Not found")
-        scope.session.add(
-            ReservationServiceStaff(tenant_id=ctx.tenant_id, service_id=svc.id, staff_id=sid)
-        )
 
 
 @router.get("/services", response_model=ServiceListOut)
@@ -548,14 +571,6 @@ async def list_services(
     )
 
 
-async def _noted(scope: LiteScope, before: dict[str, Any]) -> None:
-    """Un servicio cambiado en Reservas es un cambio de la ficha: los agentes
-    lo usan desde el siguiente mensaje (spec 047, requisito 8.4)."""
-    await services_catalog.note_reservas_write(
-        scope.session, actor=_ficha_actor(scope), before=before
-    )
-
-
 @router.post("/services", response_model=ServiceOut, status_code=201)
 async def create_service(
     body: ServiceIn,
@@ -570,29 +585,23 @@ async def create_service(
         found = await scope.session.get(ReservationService, prior)
         if found is not None:
             return await _service_out(scope, found)
-    before = await services_catalog.section_view(scope.session)
-    count = await scope.session.scalar(sa.select(sa.func.count()).select_from(ReservationService))
-    currency = (
-        await _amount_currency(scope, body.price_currency)
-        if body.price_minor is not None
-        else (await services_catalog.known_currency(scope.session) or services_catalog.NO_CURRENCY)
+    data = services_catalog.ServiceData(
+        name=body.name,
+        bookable=True,
+        duration_min=body.duration_minutes,
+        price_kind=body.price.kind,
+        amount_minor=body.price.amount_minor,
+        staff_ids=tuple(body.staff_ids) if body.staff_ids is not None else None,
+        price_currency=body.price_currency,
+        category=body.category,
     )
-    svc = ReservationService(
-        tenant_id=ctx.tenant_id,
-        name=body.name.strip(),
-        category=await _category(scope, body.category),
-        duration_minutes=body.duration_minutes,
-        price_minor=body.price_minor,
-        price_kind="amount" if body.price_minor is not None else "none",
-        currency=currency,
-        all_staff=True,
-        position=int(count or 0) + 1,
-    )
-    scope.session.add(svc)
-    await scope.session.flush()
-    await _set_service_staff(scope, ctx, svc, body.staff_ids)
-    await scope.session.flush()
-    await _noted(scope, before)
+    try:
+        service_id, _ = await services_catalog.create_service(
+            scope.session, data, actor=_ficha_actor(scope)
+        )
+    except (services_catalog.ServiceError, LookupError) as exc:
+        raise _service_refusal(exc) from None
+    svc = await _svc(scope, service_id)
     await _remember(redis, scope, "service", idempotency_key, svc.id)
     return await _service_out(scope, svc)
 
@@ -604,46 +613,50 @@ async def _svc(scope: LiteScope, service_id: uuid.UUID) -> ReservationService:
     return s
 
 
+def _same_name(a: str, b: str) -> bool:
+    return " ".join(a.split()) == " ".join(b.split())
+
+
 @router.patch("/services/{service_id}", response_model=ServiceOut)
 async def patch_service(
     service_id: uuid.UUID, body: ServicePatchIn, scope: LiteScope = Depends(SCOPE)
 ) -> ServiceOut:
-    ctx = await _ctx(scope)
+    """Solo cambia lo que llega (5.3): «Gratis» sigue gratis si no se toca el precio."""
     svc = await _svc(scope, service_id)
-    before = await services_catalog.section_view(scope.session)
     data = body.model_dump(exclude_unset=True)
-    if data.get("name"):
-        svc.name = data["name"].strip()
+    if data.get("name") is not None and not _same_name(data["name"], svc.name):
+        raise HTTPException(status_code=422, detail={"code": "rename_not_allowed", "field": "name"})
+    changes: dict[str, Any] = {}
     if "category" in data:
-        svc.category = await _category(scope, data["category"], exclude=svc.id)
-    if data.get("duration_minutes"):
-        svc.duration_minutes = int(data["duration_minutes"])
-    if data.get("clear_price"):
-        svc.price_minor = None
-        svc.price_kind = "none"
-    elif "price_minor" in data:
-        if data["price_minor"] is not None:
-            svc.currency = await _amount_currency(scope, data.get("price_currency"))
-        svc.price_minor = data["price_minor"]
-        svc.price_kind = "amount" if svc.price_minor is not None else "none"
-    if "staff_ids" in data or data.get("all_staff"):
-        await _set_service_staff(
-            scope, ctx, svc, None if data.get("all_staff") else data.get("staff_ids")
-        )
+        changes["category"] = data["category"]
+    if data.get("duration_minutes") is not None:
+        changes["duration_min"] = int(data["duration_minutes"])
+    if body.price is not None:
+        changes["price"] = {"kind": body.price.kind, "amount_minor": body.price.amount_minor}
+    if data.get("price_currency"):
+        changes["price_currency"] = data["price_currency"]
+    if data.get("all_staff") or ("staff_ids" in data and data["staff_ids"] is None):
+        changes["staff"] = "all"
+    elif data.get("staff_ids") is not None:
+        changes["staff"] = [str(sid) for sid in data["staff_ids"]]
+    try:
+        if changes:
+            await services_catalog.update_service(
+                scope.session, svc.id, changes, actor=_ficha_actor(scope)
+            )
+    except (services_catalog.ServiceError, LookupError) as exc:
+        raise _service_refusal(exc) from None
     if data.get("position") is not None:
         svc.position = int(data["position"])
     await scope.session.flush()
-    await _noted(scope, before)
     return await _service_out(scope, svc)
 
 
 @router.post("/services/{service_id}/archive", status_code=204)
 async def archive_service(service_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> Response:
     svc = await _svc(scope, service_id)
-    before = await services_catalog.section_view(scope.session)
-    svc.archived_at = _now()
+    await services_catalog.archive_service(scope.session, svc.id, actor=_ficha_actor(scope))
     await scope.session.flush()
-    await _noted(scope, before)
     return Response(status_code=204)
 
 

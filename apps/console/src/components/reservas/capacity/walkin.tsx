@@ -5,6 +5,7 @@ import * as React from "react";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Field, Input, Skeleton } from "@nexus/ui";
 
 import { addWaitlistAction, capacitySlotsAction, walkinAction } from "@/app/(console)/reservas/actions";
+import { useDiscardGuard } from "@/components/use-discard-guard";
 import type { CapacitySlots } from "@/lib/backend/reservas";
 
 import { useReservas, useWords } from "../context";
@@ -42,7 +43,7 @@ export function walkinVerdict(slots: CapacitySlots, people: number, nowMinutes: 
  * it fits, «Apuntar en lista de espera» for the first slot that does if not,
  * or when the next service starts.
  */
-export function WalkinBox({ onDone, bare = false }: { onDone?: () => void; bare?: boolean }) {
+export function WalkinBox({ onDone, onDirty, bare = false }: { onDone?: () => void; onDirty?: (dirty: boolean) => void; bare?: boolean }) {
   const { t, today, nowMinutes, settings } = useReservas();
   const words = useWords();
   const write = useWrite();
@@ -102,14 +103,34 @@ export function WalkinBox({ onDone, bare = false }: { onDone?: () => void; bare?
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm">{t("reservas.walkin.people")}</span>
-        <Stepper label={t("reservas.walkin.people")} value={people} onChange={setPeople} min={1} max={cap?.seats} />
+        <Stepper
+          label={t("reservas.walkin.people")}
+          value={people}
+          onChange={(n) => {
+            setPeople(n);
+            onDirty?.(n !== 2 || name.trim() !== "");
+          }}
+          min={1}
+          max={cap?.seats}
+        />
       </div>
       <Field
         label={t("reservas.walkin.name")}
         optionalLabel={t("reservas.optional")}
         error={nameError && !name.trim() ? t("reservas.form.nameRequired") : null}
       >
-        {(a11y) => <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoComplete="off" />}
+        {(a11y) => (
+          <Input
+            {...a11y}
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              onDirty?.(people !== 2 || e.target.value.trim() !== "");
+            }}
+            maxLength={120}
+            autoComplete="off"
+          />
+        )}
       </Field>
       <div aria-live="polite" className="min-h-10 text-sm text-pretty">
         {check.kind === "loading" ? (
@@ -163,14 +184,20 @@ export function WalkinBox({ onDone, bare = false }: { onDone?: () => void; bare?
 /** The same box from the header's «Llegada sin reserva». */
 export function WalkinDialog({ onClose }: { onClose: () => void }) {
   const { t } = useReservas();
+  // Spec 056 (12.3): the people or the name written are not lost on a stray close.
+  const [dirty, setDirty] = React.useState(false);
+  const guard = useDiscardGuard(dirty, onClose);
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{t("reservas.walkin.title")}</DialogTitle>
-        </DialogHeader>
-        <WalkinBox bare onDone={onClose} />
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("reservas.walkin.title")}</DialogTitle>
+          </DialogHeader>
+          <WalkinBox bare onDone={onClose} onDirty={setDirty} />
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }

@@ -30,9 +30,12 @@ describe("la campana de la lite", () => {
   });
 
   it("lleva al enlace de la API si la persona tiene el módulo", () => {
-    const all = ["panel", "inbox", "agents", "business", "usage"] as const;
-    expect(hrefFor(notice("agent.paused", { href: "/agentes" }), all)).toBe("/agentes");
-    expect(hrefFor(notice("agent.paused", { href: "/agentes" }), ["panel", "inbox"])).toBeNull();
+    const all = ["panel", "inbox", "reservas", "usage"] as const;
+    // Spec 056 (requisitos 2.4 y 2.7): el aviso de pausa llega sin enlace, y uno
+    // viejo con `/agentes` no lleva a una pantalla que ya no existe.
+    expect(hrefFor(notice("agent.paused"), all)).toBeNull();
+    expect(hrefFor(notice("agent.paused", { href: "/agentes" }), all)).toBeNull();
+    expect(hrefFor(notice("channel.paused", { href: "/agentes" }), all)).toBeNull();
     expect(hrefFor(notice("client.wallet.empty", { href: "/usage" }), ["panel"])).toBe("/");
     expect(hrefFor(notice("inbox.waiting", { href: "/inbox?c=k1" }), all)).toBe("/inbox?c=k1");
   });

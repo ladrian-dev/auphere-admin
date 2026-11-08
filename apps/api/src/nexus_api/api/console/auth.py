@@ -268,11 +268,11 @@ async def read_session(
     """Quién está detrás de una cookie. La consola la llama una vez por
     petición (memoizada con ``React.cache``)."""
     async with session.begin():
-        account = await console_identity.resolve_session(session, body.token)
-        if account is None:
+        resolved = await console_identity.resolve_session(session, body.token)
+        if resolved is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
-        view = await console_identity.load_principal_view(session, account)
-        out = SessionOut(principal=principal_out(view))
+        view = await console_identity.load_principal_view(session, resolved.account)
+        out = SessionOut(principal=principal_out(view), expires_at=resolved.expires_at)
     return out
 
 
@@ -284,7 +284,8 @@ async def logout(
 ) -> Response:
     """Idempotente: cerrar una sesión que ya no existe devuelve 204."""
     async with session.begin():
-        account = await console_identity.resolve_session(session, body.token)
+        resolved = await console_identity.resolve_session(session, body.token)
+        account = resolved.account if resolved is not None else None
         if account is not None:
             view = await console_identity.load_principal_view(session, account)
             target = _audit_target(view)

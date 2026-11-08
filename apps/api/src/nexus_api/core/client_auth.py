@@ -56,6 +56,7 @@ from nexus_api.core.console_auth import (
 )
 from nexus_api.db.models import (
     CLIENT_MODULES,
+    RETIRED_CLIENT_MODULES,
     ClientAccess,
     ClientMembership,
     ClientMemberStatus,
@@ -66,7 +67,6 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
-from nexus_api.db.models.client_access import CONSOLE_V2_MODULES
 from nexus_api.desktop_version import MinimumVersion, is_blocked
 
 log = structlog.get_logger(__name__)
@@ -193,13 +193,10 @@ async def open_client(
     access = await session.get(ClientAccess, tenant_id)
     if access is None or not access.enabled or access.partner_id != partner_id:
         return None
-    if not access.ordered_modules():
+    # Spec 056 (requisito 2.1): Agentes y Negocio ya no vienen por defecto.
+    modules = access.ordered_modules()
+    if not modules:
         return None
-    # Spec 047 (``data-model.md`` §10): con la consola nueva, Agentes y Negocio
-    # vienen por defecto.
-    modules = access.ordered_modules(
-        also=CONSOLE_V2_MODULES if partner.console_v2_enabled_at is not None else ()
-    )
     return OpenClient(
         partner=partner, tenant=tenant, mapping=mapping, access=access, modules=modules
     )
@@ -342,8 +339,14 @@ def require_client_principal(
     basta con tener acceso (las rutas de identidad y de avisos).
     """
     for module in modules:
-        if module not in CLIENT_MODULES:  # error de programación, salta al importar
+        # Error de programación, salta al importar. Un módulo retirado (spec 056)
+        # sigue siendo un nombre válido, para que sus rutas sigan montadas.
+        if module not in CLIENT_MODULES and module not in RETIRED_CLIENT_MODULES:
             raise ValueError(f"unknown client module: {module!r}")
+    # Spec 056 (requisito 2.5, research R2): la ruta de un módulo retirado responde
+    # **siempre** el 403 de un módulo que no se tiene, también a quien lo trajera
+    # guardado. La regla está aquí y no en lo que diga la base.
+    retired = any(m in RETIRED_CLIENT_MODULES for m in modules)
 
     async def _dependency(
         authorization: str | None = Header(default=None, alias="Authorization"),
@@ -357,7 +360,7 @@ def require_client_principal(
             from_phone = await _resolve_phone(
                 token, session=session, platform=app_platform, app_version=app_version
             )
-            if any(not from_phone.has(m) for m in modules):
+            if retired or any(not from_phone.has(m) for m in modules):
                 raise _forbidden()
             structlog.contextvars.bind_contextvars(
                 partner=from_phone.partner.slug,
@@ -379,7 +382,7 @@ def require_client_principal(
         )
         if principal is None:
             raise await _refusal(session, partner_id=partner_id, user_id=payload["sub"])
-        if any(not principal.has(m) for m in modules):
+        if retired or any(not principal.has(m) for m in modules):
             raise _forbidden()
 
         structlog.contextvars.bind_contextvars(

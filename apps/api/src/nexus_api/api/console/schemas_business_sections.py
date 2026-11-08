@@ -21,6 +21,8 @@ from pydantic import (
     model_serializer,
 )
 
+from nexus_api.services.business import rules
+
 Action = Literal["edit"]
 Day = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 HHMM = Annotated[str, StringConstraints(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
@@ -206,11 +208,25 @@ class SpecialDatesOut(_Section):
 
 
 CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
+ServiceName = Annotated[
+    str, StringConstraints(min_length=rules.NAME_MIN, max_length=rules.NAME_MAX)
+]
+#: Spec 056 (5.2): la categoría, la duración y el importe los comprueba ``rules``
+#: con su código (``category_too_long``, ``bad_duration``, ``amount_too_large``),
+#: igual que en Reservas; aquí solo se publican, con sus valores, en el OpenAPI.
+CATEGORY_RULE: dict[str, Any] = {"maxLength": rules.CATEGORY_MAX}
+DURATION_RULE: dict[str, Any] = {
+    "minimum": rules.DURATION_MIN,
+    "maximum": rules.DURATION_MAX,
+    "multipleOf": rules.DURATION_STEP,
+}
 
 
 class PriceIn(_In):
     kind: Literal["none", "free", "amount"]
-    amount_minor: int | None = Field(default=None, ge=0, le=10**12)
+    amount_minor: int | None = Field(
+        default=None, ge=0, json_schema_extra={"maximum": rules.AMOUNT_MAX_MINOR}
+    )
 
 
 class PriceOut(_Out):
@@ -228,27 +244,27 @@ class PriceOut(_Out):
 
 
 class ServiceIn(_In):
-    name: Annotated[str, StringConstraints(min_length=1, max_length=120)]
+    name: ServiceName
     description: Annotated[str, StringConstraints(max_length=1000)] | None = None
     bookable: bool = True
-    duration_min: int | None = None
+    duration_min: int | None = Field(default=None, json_schema_extra=DURATION_RULE)
     price: PriceIn = Field(default_factory=lambda: PriceIn(kind="none"))
     #: Quién lo hace en Reservas: ``"all"`` o la lista de personas.
     staff: Literal["all"] | list[uuid.UUID] = "all"
     #: Spec 055: solo se usa si el negocio aún no tiene moneda de precios.
     price_currency: CurrencyCode | None = None
-    category: Annotated[str, StringConstraints(max_length=80)] | None = None
+    category: str | None = Field(default=None, json_schema_extra=CATEGORY_RULE)
 
 
 class ServicePatchIn(_In):
-    name: Annotated[str, StringConstraints(min_length=1, max_length=120)] | None = None
+    name: ServiceName | None = None
     description: Annotated[str, StringConstraints(max_length=1000)] | None = None
     bookable: bool | None = None
-    duration_min: int | None = None
+    duration_min: int | None = Field(default=None, json_schema_extra=DURATION_RULE)
     price: PriceIn | None = None
     staff: Literal["all"] | list[uuid.UUID] | None = None
     price_currency: CurrencyCode | None = None
-    category: Annotated[str, StringConstraints(max_length=80)] | None = None
+    category: str | None = Field(default=None, json_schema_extra=CATEGORY_RULE)
 
 
 class ServiceAgentsIn(_In):

@@ -74,8 +74,9 @@ async def test_a_bookable_service_has_a_duration_and_one_that_is_not_has_none(
     for body, code in (
         ({"name": "Corte", "bookable": True}, "duration_required"),
         ({"name": "Cera", "bookable": False, "duration_min": 30}, "duration_not_allowed"),
-        ({"name": "Corte", "bookable": True, "duration_min": 7}, "duration_invalid"),
-        ({"name": "Corte", "bookable": True, "duration_min": 485}, "duration_invalid"),
+        # Spec 056 (5.2): el código de las reglas compartidas con Reservas.
+        ({"name": "Corte", "bookable": True, "duration_min": 7}, "bad_duration"),
+        ({"name": "Corte", "bookable": True, "duration_min": 485}, "bad_duration"),
     ):
         refused = await write(client, biz, "POST", "/services", body, revision=0, expect=422)
         assert refused["detail"]["code"] == code, body
@@ -139,6 +140,14 @@ async def test_no_price_free_or_an_amount_in_the_currency_of_the_business(
         expect=422,
     )
     assert refused["detail"]["code"] == "price_amount_required"
+    # Spec 056 (5.2, 11.2): el tope de Reservas, con el código que lo dice.
+    too_large = {"kind": "amount", "amount_minor": 10**12 + 1}
+    for body, code, field in (
+        ({"name": "Mal", "bookable": False, "price": too_large}, "amount_too_large", "price"),
+        ({"name": "Mal", "bookable": False, "category": "x" * 41}, "category_too_long", "category"),
+    ):
+        too_much = await write(client, chile, "POST", "/services", body, revision=rev, expect=422)
+        assert too_much["detail"] == {"code": code, "field": field}
 
     prompt = await active_prompt(db_session, chile.tenant_id, cfg)
     assert "Ramo grande" in prompt and "15.000 CLP" in prompt

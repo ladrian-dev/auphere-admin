@@ -57,15 +57,35 @@ def test_the_client_goes_to_its_own_console() -> None:
     """events.md §3.1: lo que ve la persona del cliente enlaza a la lite, nunca
     a ``/clients/…`` (que es del partner)."""
     assert link_for("client.wallet.empty", "cultor", {}, audience="client") == "/usage"
-    assert link_for("agent.paused", "cultor", {"agent_id": "a1"}, audience="client") == "/agentes"
-    assert link_for("channel.problem", "cultor", {"channel_id": "c1"}, audience="client") == (
-        "/agentes"
-    )
     assert link_for("inbox.waiting", None, {"conversation_id": "k1"}, audience="client") == (
         "/inbox?c=k1"
     )
     assert link_for("client.business_changed", "cultor", {}, audience="client") is None
     assert all(not path.startswith("/clients") for path in LITE_LINKS.values())
+
+
+def test_the_agent_notices_of_the_client_link_nowhere() -> None:
+    """Spec 056 (requisitos 2.4 y 2.7): Agentes salió de la consola del cliente. Los
+    avisos de pausa siguen llegando a su campana, pero no enlazan a una pantalla
+    que ya no tiene."""
+    for kind in (
+        "agent.paused",
+        "agent.resumed",
+        "agent.cap.warning",
+        "agent.cap.reached",
+        "channel.paused",
+        "channel.resumed",
+        "channel.problem",
+    ):
+        data = {"agent_id": "a1", "channel_id": "c1"}
+        assert link_for(kind, "cultor", data, audience="client") is None, kind
+        assert link_for(kind, "cultor", data) is not None, f"{kind}: el partner sí enlaza"
+    assert not any(k.startswith(("agent.", "channel.")) for k in LITE_LINKS)
+    assert not any(path.startswith(("/agentes", "/negocio")) for path in LITE_LINKS.values())
+
+
+def test_the_old_client_links_still_hold() -> None:
+    assert link_for("client.wallet.low", "cultor", {}, audience="client") == "/usage"
 
 
 def test_a_connector_to_authorize_again_opens_its_own_page() -> None:

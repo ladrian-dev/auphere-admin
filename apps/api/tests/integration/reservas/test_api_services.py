@@ -46,6 +46,10 @@ async def test_settings_say_the_mode_and_the_hours(client, shop) -> None:
     assert body["hours_missing"] is False
     assert body["waitlist"] == {"enabled": True, "lead_minutes": 120}
     assert body["business_hours"]["monday"] == [{"from": "09:00", "to": "21:00"}]
+    # Spec 056 (5.1): el horario con la forma de la ficha, el que se edita.
+    assert body["hours"]["days"]["mon"] == [{"open": "09:00", "close": "21:00", "overnight": False}]
+    assert body["hours"]["revision"] == 0 and body["hours"]["location_id"] is None
+    assert body["location_hours"] == []
 
 
 async def test_the_business_cannot_change_the_mode(client, shop) -> None:
@@ -284,11 +288,13 @@ async def test_team_and_services_crud(client, shop) -> None:
     )
     assert svc.status_code == 201, svc.text
     assert svc.json()["staff"] == "some"
-    assert svc.json()["price"] is None
+    assert svc.json()["price"] == {"kind": "none"}
+    # Spec 056 (5.2): las duraciones de la ficha, de 5 a 480 en pasos de 5.
     bad = await client.post(
-        f"{BASE}/services", headers=h(), json={"name": "X", "duration_minutes": 50}
+        f"{BASE}/services", headers=h(), json={"name": "X", "duration_minutes": 47}
     )
     assert bad.status_code == 422
+    assert bad.json()["detail"] == {"code": "bad_duration", "field": "duration_min"}
 
 
 async def test_without_hours_nothing_is_bookable(client, db_session, console_world) -> None:
@@ -327,67 +333,6 @@ async def test_summary_for_the_panel(client, shop) -> None:
     assert body["waitlist"] == {"waiting": 0}
 
 
-async def test_business_hours_edit_canonical(client, shop) -> None:
-    h = shop["headers"]
-    r = await client.put(
-        f"{BASE}/business-hours",
-        headers=h(),
-        json={
-            "hours": {
-                "monday": [{"from": "13:00", "to": "16:00"}, {"from": "20:00", "to": "23:00"}],
-                "sunday": [],
-            }
-        },
-    )
-    assert r.status_code == 200, r.text
-    assert r.json()["business_hours"]["monday"][1] == {"from": "20:00", "to": "23:00"}
-    assert r.json()["business_hours"]["tuesday"] == []
-    three = await client.put(
-        f"{BASE}/business-hours",
-        headers=h(),
-        json={
-            "hours": {
-                "monday": [
-                    {"from": "08:00", "to": "09:00"},
-                    {"from": "10:00", "to": "11:00"},
-                    {"from": "12:00", "to": "13:00"},
-                ]
-            }
-        },
-    )
-    assert three.status_code == 422
-
-
-async def test_editing_the_hours_derives_the_prompt_label(client, db_session, shop) -> None:
-    """Spec 047 (T056, research D15) sustituye la regla de la 043: el horario es
-    uno solo, el de la ficha, y la etiqueta del prompt (``business_hours.label``,
-    la lee ``agent_configs``) deja de ser una copia escrita a mano: es la frase
-    «Así lo dirá el agente» del horario que el negocio acaba de guardar."""
-    import sqlalchemy as sa
-
-    from nexus_api.db.models import Tenant
-
-    await db_session.execute(
-        sa.update(Tenant)
-        .where(Tenant.id == shop["tenant_id"])
-        .values(business_hours={"monday": [{"from": "09:00", "to": "18:00"}], "label": "L 9-18"})
-    )
-    await db_session.commit()
-    r = await client.put(
-        f"{BASE}/business-hours",
-        headers=shop["headers"](),
-        json={"hours": {"monday": [{"from": "10:00", "to": "19:00"}]}},
-    )
-    assert r.status_code == 200, r.text
-    assert "label" not in r.json()["business_hours"]
-    db_session.expire_all()
-    stored = await db_session.scalar(
-        sa.select(Tenant.business_hours).where(Tenant.id == shop["tenant_id"])
-    )
-    assert stored["label"] == "Abrimos lunes de 10:00 a 19:00. Cerramos martes a domingo."
-    assert stored["monday"] == [{"from": "10:00", "to": "19:00"}]
-
-
 async def test_a_waitlist_entry_with_an_unknown_service_or_person_is_a_404(client, shop) -> None:
     """/cso (apéndice): un ``service_id`` o ``staff_id`` que no es del negocio
     (de la vecina o inventado) es el 404 de siempre, no un 500 de la base."""
@@ -398,3 +343,305 @@ async def test_a_waitlist_entry_with_an_unknown_service_or_person_is_a_404(clien
     ):
         r = await client.post(f"{BASE}/waitlist", headers=h(), json=body)
         assert r.status_code == 404, (body, r.status_code, r.text)
+
+
+# ── spec 056, historia 4: horario y servicios con las reglas de la ficha ────
+#
+# Los Ajustes de Reservas editan lo mismo que la ficha del partner y con las mismas
+# reglas (requisito 5): el horario va por días (solo los tocados) y con la
+# revisión de la sección, y los servicios pasan por el catálogo de la ficha.
+
+
+async def _ficha_week(db_session, tenant_id, days, *, location_id=None) -> None:
+    """Un horario guardado como lo guarda la ficha del partner."""
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.services.business import hours
+    from nexus_api.services.business.sections import Actor
+
+    partner = Actor(kind="partner_member", id=str(uuid.uuid4()), origin="console")
+    async with tenant_scoped_session(db_session, tenant_id):
+        week = hours.week_from_days("daily", days)
+        await hours.save_week(db_session, week, actor=partner, location_id=location_id)
+    await db_session.commit()
+
+
+async def _settings(client, shop) -> dict[str, Any]:
+    r = await client.get(f"{BASE}/settings", headers=shop["headers"]())
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+MONDAY = [
+    {"open": "08:00", "close": "11:00"},
+    {"open": "12:00", "close": "15:00"},
+    {"open": "16:00", "close": "19:00"},
+    {"open": "22:00", "close": "02:00"},
+]
+
+
+async def test_patching_tuesday_keeps_monday_with_its_shifts_and_its_night_one(
+    client, db_session, shop
+) -> None:
+    """Historia 4, escenario 1 (5.1, 5.3): tres turnos y un nocturno, guardados en
+    la ficha, sobreviven a guardar el martes desde Reservas."""
+    await _ficha_week(db_session, shop["tenant_id"], {"mon": MONDAY, "sat": MONDAY[:1]})
+    before = (await _settings(client, shop))["hours"]
+    assert [s["overnight"] for s in before["days"]["mon"]] == [False, False, False, True]
+
+    r = await client.patch(
+        f"{BASE}/business-hours",
+        headers=shop["headers"](),
+        json={
+            "revision": before["revision"],
+            "days": {"tue": [{"open": "10:00", "close": "18:00"}]},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["days"]["tue"] == [{"open": "10:00", "close": "18:00", "overnight": False}]
+    after = (await _settings(client, shop))["hours"]
+    assert after["days"]["mon"] == before["days"]["mon"]
+    assert after["days"]["sat"] == before["days"]["sat"]
+    assert after["days"]["tue"] == [{"open": "10:00", "close": "18:00", "overnight": False}]
+    assert after["revision"] == before["revision"] + 1
+    assert after["layout"] == "daily"
+
+
+async def test_a_location_with_its_own_hours_is_shown_and_left_alone(
+    client, db_session, shop
+) -> None:
+    """5.1: Reservas edita la semana del negocio; la de una sede se enseña y no cambia."""
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models.business import BusinessLocation
+    from nexus_api.services.business import hours
+
+    async with tenant_scoped_session(db_session, shop["tenant_id"]):
+        norte = BusinessLocation(tenant_id=shop["tenant_id"], name="Cultor Norte")
+        sur = BusinessLocation(tenant_id=shop["tenant_id"], name="Cultor Sur")
+        db_session.add_all([norte, sur])
+        await db_session.flush()
+        norte_id, sur_id = norte.id, sur.id
+    await db_session.commit()
+    own = {"mon": [{"open": "11:00", "close": "13:00"}]}
+    await _ficha_week(db_session, shop["tenant_id"], own, location_id=norte_id)
+
+    settings = await _settings(client, shop)
+    by_name = {loc["location"]["name"]: loc for loc in settings["location_hours"]}
+    assert by_name["Cultor Norte"]["has_own_hours"] is True
+    assert by_name["Cultor Norte"]["label"]
+    assert by_name["Cultor Sur"] == {
+        "location": {"id": str(sur_id), "name": "Cultor Sur"},
+        "has_own_hours": False,
+        "label": None,
+    }
+
+    r = await client.patch(
+        f"{BASE}/business-hours",
+        headers=shop["headers"](),
+        json={"revision": settings["hours"]["revision"], "days": {"mon": []}},
+    )
+    assert r.status_code == 200, r.text
+    async with tenant_scoped_session(db_session, shop["tenant_id"]):
+        kept = await hours.load_week(db_session, location_id=norte_id)
+    assert kept is not None
+    assert hours.week_to_days(kept)["mon"] == [
+        {"open": "11:00", "close": "13:00", "overnight": False}
+    ]
+
+
+async def test_the_rules_apply_to_the_touched_days_only(client, db_session, shop) -> None:
+    """5.1 y 5.5: lo que se toca cumple las reglas de la ficha (6 turnos, pasos de
+    5 minutos, sin solapes); lo guardado que no las cumple se queda como está."""
+    import sqlalchemy as sa
+
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models.business import BusinessShift
+
+    await _ficha_week(db_session, shop["tenant_id"], {"mon": [{"open": "09:00", "close": "14:00"}]})
+    # Un turno de antes de la regla de los 5 minutos (la API aceptaba cualquiera).
+    async with tenant_scoped_session(db_session, shop["tenant_id"]):
+        await db_session.execute(
+            sa.update(BusinessShift)
+            .where(BusinessShift.tenant_id == shop["tenant_id"], BusinessShift.weekday == 0)
+            .values(open_min=9 * 60 + 7)
+        )
+    await db_session.commit()
+    h = shop["headers"]
+    revision = (await _settings(client, shop))["hours"]["revision"]
+
+    seven = [{"open": f"{8 + i:02d}:00", "close": f"{8 + i:02d}:30"} for i in range(7)]
+    for days, code, day in (
+        ({"wed": seven}, "too_many_shifts", "wed"),
+        ({"wed": [{"open": "10:07", "close": "12:00"}]}, "bad_step", "wed"),
+        (
+            {"thu": [{"open": "09:00", "close": "13:00"}, {"open": "12:00", "close": "15:00"}]},
+            "overlap",
+            "thu",
+        ),
+        ({"sun": [{"open": "22:00", "close": "10:00"}]}, "overlap_next_day", "sun"),
+        ({"funday": []}, "invalid_day", "funday"),
+    ):
+        r = await client.patch(
+            f"{BASE}/business-hours", headers=h(), json={"revision": revision, "days": days}
+        )
+        assert r.status_code == 422, (days, r.text)
+        assert r.json()["detail"]["code"] == code, days
+        assert r.json()["detail"]["day"] == day, days
+
+    ok = await client.patch(
+        f"{BASE}/business-hours",
+        headers=h(),
+        json={"revision": revision, "days": {"tue": [{"open": "09:00", "close": "14:00"}]}},
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["days"]["mon"] == [{"open": "09:07", "close": "14:00", "overnight": False}]
+
+
+async def test_a_stale_revision_is_a_conflict(client, shop) -> None:
+    """5.3: dos personas a la vez no se pisan; la segunda recibe un 409."""
+    h = shop["headers"]
+    revision = (await _settings(client, shop))["hours"]["revision"]
+    first = await client.patch(
+        f"{BASE}/business-hours",
+        headers=h(),
+        json={"revision": revision, "days": {"mon": [{"open": "10:00", "close": "14:00"}]}},
+    )
+    assert first.status_code == 200, first.text
+    second = await client.patch(
+        f"{BASE}/business-hours",
+        headers=h(),
+        json={"revision": revision, "days": {"tue": [{"open": "10:00", "close": "14:00"}]}},
+    )
+    assert second.status_code == 409, second.text
+    assert second.json()["detail"] == {"code": "revision_conflict", "revision": revision + 1}
+
+
+async def test_the_hours_project_the_prompt_label(client, db_session, shop) -> None:
+    """Spec 047 (T056, research D15): la etiqueta del prompt (``business_hours.label``)
+    es la frase «Así lo dirá el agente» del horario que el negocio acaba de guardar."""
+    import sqlalchemy as sa
+
+    from nexus_api.db.models import Tenant
+
+    closed = {d: [] for d in ("tue", "wed", "thu", "fri", "sat", "sun")}
+    r = await client.patch(
+        f"{BASE}/business-hours",
+        headers=shop["headers"](),
+        json={"revision": 0, "days": {"mon": [{"open": "10:00", "close": "19:00"}], **closed}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["label"] == "Abrimos lunes de 10:00 a 19:00. Cerramos martes a domingo."
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        sa.select(Tenant.business_hours).where(Tenant.id == shop["tenant_id"])
+    )
+    assert stored["label"] == "Abrimos lunes de 10:00 a 19:00. Cerramos martes a domingo."
+    assert stored["monday"] == [{"from": "10:00", "to": "19:00"}]
+
+
+async def test_a_fifty_minute_service_changes_its_price_and_free_stays_free(
+    client, db_session, shop
+) -> None:
+    """Historia 4, escenarios 2 y 3 (5.2, 5.3): «Gratis» se conserva, un servicio de
+    50 minutos cambia de precio, y lo que no llega no cambia. Queda en el historial
+    de la ficha, porque se escribe por su catálogo."""
+    import sqlalchemy as sa
+
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models import BusinessChange
+
+    h = shop["headers"]
+    made = await client.post(
+        f"{BASE}/services",
+        headers=h(),
+        json={"name": "Masaje", "duration_minutes": 50, "price": {"kind": "free"}},
+    )
+    assert made.status_code == 201, made.text
+    svc = made.json()
+    assert (svc["duration_minutes"], svc["price"], svc["currency"]) == (50, {"kind": "free"}, "CLP")
+    url = f"{BASE}/services/{svc['id']}"
+
+    kept = await client.patch(url, headers=h(), json={"category": "Cuerpo"})
+    assert kept.status_code == 200, kept.text
+    assert (kept.json()["price"], kept.json()["category"]) == ({"kind": "free"}, "Cuerpo")
+
+    paid = await client.patch(
+        url, headers=h(), json={"price": {"kind": "amount", "amount_minor": 20000}}
+    )
+    assert paid.status_code == 200, paid.text
+    assert paid.json()["price"] == {"kind": "amount", "amount_minor": 20000}
+    assert paid.json()["duration_minutes"] == 50
+
+    free = await client.patch(url, headers=h(), json={"price": {"kind": "free"}})
+    assert free.json()["price"] == {"kind": "free"}
+    listed = (await client.get(f"{BASE}/services", headers=h())).json()["items"]
+    assert next(s for s in listed if s["id"] == svc["id"])["price"] == {"kind": "free"}
+    corte = next(s for s in listed if s["id"] == str(shop["corte"]))
+    assert corte["price"] == {"kind": "amount", "amount_minor": 15000}
+
+    async with tenant_scoped_session(db_session, shop["tenant_id"]):
+        changes = await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(BusinessChange)
+            .where(BusinessChange.section == "services")
+        )
+    assert changes == 4
+
+
+async def test_a_service_is_not_renamed_from_reservas(client, shop) -> None:
+    """5.4: se crea con su nombre, pero no se renombra."""
+    h = shop["headers"]
+    url = f"{BASE}/services/{shop['corte']}"
+    refused = await client.patch(url, headers=h(), json={"name": "Corte nuevo"})
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["detail"] == {"code": "rename_not_allowed", "field": "name"}
+    same = await client.patch(url, headers=h(), json={"name": " Corte ", "duration_minutes": 35})
+    assert same.status_code == 200, same.text
+    assert (same.json()["name"], same.json()["duration_minutes"]) == ("Corte", 35)
+
+
+async def test_the_limits_of_a_service_are_the_ficha_ones(client, shop) -> None:
+    """5.2 y 11.2: el importe hasta 10¹², la categoría hasta 40 y la duración de 5
+    a 480 en pasos de 5, con el código que dice qué falla."""
+    h = shop["headers"]
+    url = f"{BASE}/services/{shop['corte']}"
+    for body, code, field in (
+        ({"price": {"kind": "amount", "amount_minor": 10**12 + 1}}, "amount_too_large", "price"),
+        ({"price": {"kind": "amount"}}, "price_amount_required", "price"),
+        ({"category": "x" * 41}, "category_too_long", "category"),
+        ({"duration_minutes": 485}, "bad_duration", "duration_min"),
+        ({"duration_minutes": 0}, "bad_duration", "duration_min"),
+    ):
+        r = await client.patch(url, headers=h(), json=body)
+        assert r.status_code == 422, (body, r.text)
+        assert r.json()["detail"] == {"code": code, "field": field}, body
+    top = await client.patch(
+        url,
+        headers=h(),
+        json={"price": {"kind": "amount", "amount_minor": 10**12}, "category": "c" * 40},
+    )
+    assert top.status_code == 200, top.text
+    assert top.json()["price"] == {"kind": "amount", "amount_minor": 10**12}
+    made = await client.post(
+        f"{BASE}/services",
+        headers=h(),
+        json={"name": "Peinado", "duration_minutes": 5, "category": "y" * 41},
+    )
+    assert made.status_code == 422
+    assert made.json()["detail"] == {"code": "category_too_long", "field": "category"}
+
+
+async def test_a_staff_email_must_be_an_email(client, shop) -> None:
+    """11.3: el correo de una persona del equipo tiene formato y 254 como mucho."""
+    h = shop["headers"]
+    for email in ("no-es-un-correo", "a" * 250 + "@x.co"):
+        r = await client.post(f"{BASE}/staff", headers=h(), json={"name": "Nora", "email": email})
+        assert r.status_code == 422, (email, r.text)
+        patched = await client.patch(
+            f"{BASE}/staff/{shop['marcos']}", headers=h(), json={"email": email}
+        )
+        assert patched.status_code == 422, (email, patched.text)
+    ok = await client.post(
+        f"{BASE}/staff", headers=h(), json={"name": "Nora", "email": "nora@cultor.cl"}
+    )
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["email"] == "nora@cultor.cl"

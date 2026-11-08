@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, Input, Label, Skeleton } from "@nexus/ui";
 
 import { createBookingAction, moveBookingAction, serviceSlotsAction } from "@/app/(console)/reservas/actions";
+import { useDiscardGuard } from "@/components/use-discard-guard";
 import type { MessageKey } from "@/i18n/messages";
 import type { Booking } from "@/lib/backend/reservas";
 
@@ -74,6 +75,16 @@ export function ServicesBookingDialog({
   const phoneError = !moving && touched && phone.trim() && !PHONE_RE.test(phone.trim()) ? t("reservas.form.phoneInvalid") : null;
   const ready = !!chosen && !!service && !!staffFor && (moving || (name.trim() !== "" && (!phone.trim() || PHONE_RE.test(phone.trim()))));
   const contactName = booking?.contact.name ?? "";
+  // Spec 056 (12.3): something written or chosen is not lost on a stray close.
+  const [initial] = React.useState({ serviceId, staffId, date, time });
+  const dirty =
+    name.trim() !== "" ||
+    phone.trim() !== "" ||
+    serviceId !== initial.serviceId ||
+    staffId !== initial.staffId ||
+    date !== initial.date ||
+    time !== initial.time;
+  const guard = useDiscardGuard(dirty, onClose);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -128,146 +139,149 @@ export function ServicesBookingDialog({
   const end = chosen && service ? fromMinutes(toMinutes(time) + service.duration_minutes) : "";
 
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
-        <form onSubmit={submit} className="grid gap-4" noValidate>
-          <DialogHeader>
-            <DialogTitle>{moving ? t("reservas.form.move.title") : t("reservas.new")}</DialogTitle>
-            <DialogDescription>
-              {booking
-                ? t("reservas.form.move.subtitle", {
-                    name: contactName,
-                    service: booking.service?.name ?? "",
-                    when: words.at(booking.local.date, booking.local.start),
-                  })
-                : t("reservas.form.new.subtitle")}
-            </DialogDescription>
-          </DialogHeader>
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+          <form onSubmit={submit} className="grid gap-4" noValidate>
+            <DialogHeader>
+              <DialogTitle>{moving ? t("reservas.form.move.title") : t("reservas.new")}</DialogTitle>
+              <DialogDescription>
+                {booking
+                  ? t("reservas.form.move.subtitle", {
+                      name: contactName,
+                      service: booking.service?.name ?? "",
+                      when: words.at(booking.local.date, booking.local.start),
+                    })
+                  : t("reservas.form.new.subtitle")}
+              </DialogDescription>
+            </DialogHeader>
 
-          {!moving ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t("reservas.form.client")} required requiredLabel={t("reservas.required")} error={nameError}>
-                {(a11y) => (
-                  <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.client.placeholder")} autoComplete="off" maxLength={120} />
-                )}
-              </Field>
-              <Field label={t("reservas.form.phone")} optionalLabel={t("reservas.optional")} hint={t("reservas.form.phone.hint")} error={phoneError}>
-                {(a11y) => (
-                  <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.phone.placeholder")} autoComplete="off" maxLength={32} />
-                )}
-              </Field>
-            </div>
-          ) : null}
+            {!moving ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={t("reservas.form.client")} required requiredLabel={t("reservas.required")} error={nameError}>
+                  {(a11y) => (
+                    <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.client.placeholder")} autoComplete="off" maxLength={120} />
+                  )}
+                </Field>
+                <Field label={t("reservas.form.phone")} optionalLabel={t("reservas.optional")} hint={t("reservas.form.phone.hint")} error={phoneError}>
+                  {(a11y) => (
+                    <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.phone.placeholder")} autoComplete="off" maxLength={32} />
+                  )}
+                </Field>
+              </div>
+            ) : null}
 
-          {!moving ? (
+            {!moving ? (
+              <fieldset className="grid gap-2">
+                <legend className="mb-2 text-sm font-medium">{t("reservas.form.service")}</legend>
+                <ChipGroup label={t("reservas.form.service")}>
+                  {shownServices.map((s) => (
+                    <Chip key={s.id} pressed={s.id === serviceId} onClick={() => setServiceId(s.id)}>
+                      <span className="truncate">{t("reservas.form.serviceChip", { name: s.name, duration: formatMinutes(s.duration_minutes) })}</span>
+                    </Chip>
+                  ))}
+                </ChipGroup>
+              </fieldset>
+            ) : null}
+
+            {doers.length > 1 ? (
+              <fieldset className="grid gap-2">
+                <legend className="mb-2 text-sm font-medium">{t("reservas.form.staff")}</legend>
+                <ChipGroup label={t("reservas.form.staff")}>
+                  {!moving ? (
+                    <Chip pressed={staffId === ""} onClick={() => setStaffId("")}>
+                      {t("reservas.form.staff.any")}
+                    </Chip>
+                  ) : null}
+                  {doers.map((p) => (
+                    <Chip key={p.id} pressed={p.id === staffId} onClick={() => setStaffId(p.id)}>
+                      <span className="truncate">{p.name}</span>
+                    </Chip>
+                  ))}
+                </ChipGroup>
+              </fieldset>
+            ) : null}
+
             <fieldset className="grid gap-2">
-              <legend className="mb-2 text-sm font-medium">{t("reservas.form.service")}</legend>
-              <ChipGroup label={t("reservas.form.service")}>
-                {shownServices.map((s) => (
-                  <Chip key={s.id} pressed={s.id === serviceId} onClick={() => setServiceId(s.id)}>
-                    <span className="truncate">{t("reservas.form.serviceChip", { name: s.name, duration: formatMinutes(s.duration_minutes) })}</span>
+              <legend className="mb-2 text-sm font-medium">{t("reservas.form.day")}</legend>
+              <ChipGroup label={t("reservas.form.day")}>
+                {days.map((d) => (
+                  <Chip key={d} pressed={d === date} onClick={() => setDate(d)}>
+                    {words.dayTitle(d)}
                   </Chip>
                 ))}
               </ChipGroup>
             </fieldset>
-          ) : null}
 
-          {doers.length > 1 ? (
-            <fieldset className="grid gap-2">
-              <legend className="mb-2 text-sm font-medium">{t("reservas.form.staff")}</legend>
-              <ChipGroup label={t("reservas.form.staff")}>
-                {!moving ? (
-                  <Chip pressed={staffId === ""} onClick={() => setStaffId("")}>
-                    {t("reservas.form.staff.any")}
-                  </Chip>
-                ) : null}
-                {doers.map((p) => (
-                  <Chip key={p.id} pressed={p.id === staffId} onClick={() => setStaffId(p.id)}>
-                    <span className="truncate">{p.name}</span>
-                  </Chip>
-                ))}
-              </ChipGroup>
+            <fieldset className="grid gap-2" aria-busy={slots.kind === "loading" || undefined}>
+              <legend className="mb-2 text-sm font-medium">{t("reservas.form.time")}</legend>
+              {slots.kind === "idle" ? (
+                <p className="text-sm text-muted-foreground">{t("reservas.form.slots.pickService")}</p>
+              ) : slots.kind === "loading" ? (
+                <div role="status" aria-label={t("reservas.form.slots.loading")} className="flex flex-wrap gap-2">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <Skeleton key={i} className="h-8 w-16 rounded-full" />
+                  ))}
+                </div>
+              ) : slots.kind === "error" ? (
+                <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-destructive">{t("reservas.form.slots.error")}</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}>
+                    {t("common.retry")}
+                  </Button>
+                </div>
+              ) : slots.data.closed ? (
+                <p className="text-sm text-muted-foreground">{t("reservas.form.slots.closed")}</p>
+              ) : times.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("reservas.form.slots.none")}</p>
+              ) : (
+                <ChipGroup label={t("reservas.form.time")}>
+                  {times.map((s) => (
+                    <Chip key={s.time} pressed={s.time === time} onClick={() => setTime(s.time)} className="tabular-nums">
+                      {s.time}
+                    </Chip>
+                  ))}
+                </ChipGroup>
+              )}
             </fieldset>
-          ) : null}
 
-          <fieldset className="grid gap-2">
-            <legend className="mb-2 text-sm font-medium">{t("reservas.form.day")}</legend>
-            <ChipGroup label={t("reservas.form.day")}>
-              {days.map((d) => (
-                <Chip key={d} pressed={d === date} onClick={() => setDate(d)}>
-                  {words.dayTitle(d)}
-                </Chip>
-              ))}
-            </ChipGroup>
-          </fieldset>
-
-          <fieldset className="grid gap-2" aria-busy={slots.kind === "loading" || undefined}>
-            <legend className="mb-2 text-sm font-medium">{t("reservas.form.time")}</legend>
-            {slots.kind === "idle" ? (
-              <p className="text-sm text-muted-foreground">{t("reservas.form.slots.pickService")}</p>
-            ) : slots.kind === "loading" ? (
-              <div role="status" aria-label={t("reservas.form.slots.loading")} className="flex flex-wrap gap-2">
-                {Array.from({ length: 8 }, (_, i) => (
-                  <Skeleton key={i} className="h-8 w-16 rounded-full" />
-                ))}
+            {!moving && settings.waitlist.enabled ? (
+              <div className="flex items-start gap-3">
+                <Checkbox id="reservas-join-waitlist" checked={joinWaitlist} onCheckedChange={(v) => setJoinWaitlist(v === true)} className="mt-1" />
+                <div className="grid gap-1">
+                  <Label htmlFor="reservas-join-waitlist">{t("reservas.form.waitlist")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("reservas.form.waitlist.hint")}</p>
+                </div>
               </div>
-            ) : slots.kind === "error" ? (
-              <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-destructive">{t("reservas.form.slots.error")}</span>
-                <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}>
-                  {t("common.retry")}
-                </Button>
+            ) : null}
+
+            {booking?.contact.phone ? (
+              <div className="flex items-center gap-3">
+                <Checkbox id="reservas-notify-move" checked={notify} onCheckedChange={(v) => setNotify(v === true)} />
+                <Label htmlFor="reservas-notify-move">{t("reservas.form.notifyMove", { name: firstName(contactName) })}</Label>
               </div>
-            ) : slots.data.closed ? (
-              <p className="text-sm text-muted-foreground">{t("reservas.form.slots.closed")}</p>
-            ) : times.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("reservas.form.slots.none")}</p>
-            ) : (
-              <ChipGroup label={t("reservas.form.time")}>
-                {times.map((s) => (
-                  <Chip key={s.time} pressed={s.time === time} onClick={() => setTime(s.time)} className="tabular-nums">
-                    {s.time}
-                  </Chip>
-                ))}
-              </ChipGroup>
-            )}
-          </fieldset>
+            ) : null}
 
-          {!moving && settings.waitlist.enabled ? (
-            <div className="flex items-start gap-3">
-              <Checkbox id="reservas-join-waitlist" checked={joinWaitlist} onCheckedChange={(v) => setJoinWaitlist(v === true)} className="mt-1" />
-              <div className="grid gap-1">
-                <Label htmlFor="reservas-join-waitlist">{t("reservas.form.waitlist")}</Label>
-                <p className="text-xs text-muted-foreground">{t("reservas.form.waitlist.hint")}</p>
-              </div>
-            </div>
-          ) : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive text-pretty">
+                {error}
+              </p>
+            ) : null}
 
-          {booking?.contact.phone ? (
-            <div className="flex items-center gap-3">
-              <Checkbox id="reservas-notify-move" checked={notify} onCheckedChange={(v) => setNotify(v === true)} />
-              <Label htmlFor="reservas-notify-move">{t("reservas.form.notifyMove", { name: firstName(contactName) })}</Label>
-            </div>
-          ) : null}
-
-          {error ? (
-            <p role="alert" className="text-sm text-destructive text-pretty">
-              {error}
-            </p>
-          ) : null}
-
-          <DialogFooter className="items-center sm:justify-between">
-            <p className="min-w-0 text-sm text-muted-foreground" aria-live="polite">
-              {chosen
-                ? t("reservas.form.summary.services", { day: words.dayTitle(date), from: time, to: end, name: staffName })
-                : t("reservas.form.summary.pick")}
-            </p>
-            <Button type="submit" loading={busy} disabled={!ready}>
-              {moving ? t("reservas.form.move.save") : t("reservas.form.save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <DialogFooter className="items-center sm:justify-between">
+              <p className="min-w-0 text-sm text-muted-foreground" aria-live="polite">
+                {chosen
+                  ? t("reservas.form.summary.services", { day: words.dayTitle(date), from: time, to: end, name: staffName })
+                  : t("reservas.form.summary.pick")}
+              </p>
+              <Button type="submit" loading={busy} disabled={!ready}>
+                {moving ? t("reservas.form.move.save") : t("reservas.form.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }

@@ -77,6 +77,7 @@ from nexus_api.db.models.channel_signup_link import (
 from nexus_api.db.models.client_access import (
     CLIENT_INVITATION_TTL,
     CLIENT_MODULES,
+    RETIRED_CLIENT_MODULES,
     ClientAccess,
     ClientInvitation,
     ClientInvitationStatus,
@@ -351,6 +352,7 @@ __all__ = [
     "PLATFORMS",
     "PRINCIPAL_AGENT_NAME",
     "REASON_MIN_LEN",
+    "RETIRED_CLIENT_MODULES",
     "REVOKED_REASONS",
     "RUN_CANCELLED",
     "RUN_COMPLETED",

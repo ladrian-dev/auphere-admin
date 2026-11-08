@@ -35,6 +35,8 @@ describe("crumbsFor", () => {
     expect(crumbsFor("/clients/flor", NAMES)).toEqual(expected);
     expect(crumbsFor("/clients/flor/business", NAMES)).toEqual(expected);
     expect(crumbsFor("/clients/flor/agents", NAMES)).toEqual(expected);
+    // Spec 056: la pestaña Acceso también.
+    expect(crumbsFor("/clients/flor/access", NAMES)).toEqual(expected);
   });
 
   it("un agente: Clientes › {cliente} › {agente}, y el cliente lleva a su pestaña Agentes", () => {

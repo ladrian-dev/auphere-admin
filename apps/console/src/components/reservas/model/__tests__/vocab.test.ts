@@ -5,7 +5,7 @@ import type { BookingAction, BookingEvent, BookingEventKind, BookingStatus } fro
 
 import { eventLine, originLine } from "../events";
 import { keyFor } from "../idempotency";
-import { formatPrice, parsePrice, priceInput } from "../money";
+import { amountInput, formatAmount, parseAmount } from "@/lib/amount";
 import {
   CAPACITY_KINDS,
   actionButtons,
@@ -173,15 +173,15 @@ describe("a booking's history, in words", () => {
 
 describe("prices, keys and offers", () => {
   it("CLP has no decimals; an empty price is «no cost», not zero", () => {
-    expect(formatPrice({ amount_minor: 15000, currency: "CLP" }, "es")).toMatch(/15\.000/);
-    expect(formatPrice(null, "es")).toBeNull();
-    expect(parsePrice("15.000", "CLP")).toEqual({ kind: "ok", minor: 15000 });
-    expect(parsePrice("15000", "CLP")).toEqual({ kind: "ok", minor: 15000 });
-    expect(parsePrice("", "CLP")).toEqual({ kind: "empty" });
-    expect(parsePrice("15,5", "CLP")).toEqual({ kind: "invalid" });
-    expect(parsePrice("12,50", "EUR")).toEqual({ kind: "ok", minor: 1250 });
-    expect(priceInput(15000, "CLP")).toBe("15000");
-    expect(priceInput(null, "CLP")).toBe("");
+    // Spec 056 (13): Reservas formats and reads money with `lib/amount.ts`.
+    expect(formatAmount({ amount_minor: 15000, currency: "CLP" }, "es")).toMatch(/15\.000/);
+    expect(parseAmount("15.000", "CLP")).toEqual({ kind: "ok", minor: 15000 });
+    expect(parseAmount("15000", "CLP")).toEqual({ kind: "ok", minor: 15000 });
+    expect(parseAmount("", "CLP")).toEqual({ kind: "empty" });
+    expect(parseAmount("15,5", "CLP")).toMatchObject({ kind: "invalid" });
+    expect(parseAmount("12,50", "EUR")).toEqual({ kind: "ok", minor: 1250 });
+    expect(amountInput(15000, "CLP", "es")).toBe("15000");
+    expect(amountInput(null, "CLP", "es")).toBe("");
   });
 
   it("the same submit keeps its Idempotency-Key, a different one gets a new key", () => {

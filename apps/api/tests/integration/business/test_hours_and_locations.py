@@ -390,6 +390,90 @@ async def test_a_closed_special_date_closes_the_day_everywhere(
     assert patched["items"][0]["to"] == "2026-12-26"
 
 
+async def test_a_special_date_that_already_ended_is_refused(client: Any, biz: Biz) -> None:
+    """Spec 056 (11.4, D10): es «pasada» cuando su «Hasta» ya pasó, en la zona del
+    negocio. Un cierre que empezó ayer y acaba mañana sí se guarda."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+    day = timedelta(days=1)
+    refused = await write(
+        client,
+        biz,
+        "POST",
+        "/special-dates",
+        {"from": (today - 3 * day).isoformat(), "to": (today - day).isoformat(), "closed": True},
+        revision=0,
+        expect=422,
+    )
+    assert refused["detail"]["code"] == "date_past"
+    running = await write(
+        client,
+        biz,
+        "POST",
+        "/special-dates",
+        {"from": (today - day).isoformat(), "to": (today + day).isoformat(), "closed": True},
+        revision=0,
+        expect=201,
+    )
+    (item,) = running["items"]
+    moved = await write(
+        client,
+        biz,
+        "PATCH",
+        f"/special-dates/{item['id']}",
+        {"to": (today - day).isoformat()},
+        revision=running["revision"],
+        expect=422,
+    )
+    assert moved["detail"]["code"] == "date_past"
+
+
+async def test_the_ficha_checks_the_five_minute_step_on_the_days_it_changes(
+    client: Any, db_session: AsyncSession, biz: Biz
+) -> None:
+    """Spec 056 (5.1, 5.5): las mismas reglas que Reservas. Un turno guardado de
+    antes de la regla (09:07) se enseña y se guarda tal cual mientras no se toque
+    su día; un día que cambia va en pasos de 5 minutos."""
+    from nexus_api.db.models.business import BusinessShift
+
+    saved = await write(
+        client, biz, "PUT", "/hours", {"layout": "daily", "days": SPLIT_WEEK}, revision=0
+    )
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        await db_session.execute(
+            sa.update(BusinessShift)
+            .where(
+                BusinessShift.tenant_id == biz.tenant_id,
+                BusinessShift.weekday == 0,
+                BusinessShift.open_min == 9 * 60,
+            )
+            .values(open_min=9 * 60 + 7)
+        )
+    await db_session.commit()
+    week = {**SPLIT_WEEK, "mon": shifts(("09:07", "14:00"), ("16:00", "20:00"))}
+    bad = await write(
+        client,
+        biz,
+        "PUT",
+        "/hours",
+        {"layout": "daily", "days": {**week, "tue": shifts(("09:03", "14:00"))}},
+        revision=saved["revision"],
+        expect=422,
+    )
+    assert (bad["detail"]["code"], bad["detail"]["day"]) == ("bad_step", "tue")
+    ok = await write(
+        client,
+        biz,
+        "PUT",
+        "/hours",
+        {"layout": "daily", "days": {**week, "tue": shifts(("10:00", "14:00"))}},
+        revision=saved["revision"],
+    )
+    assert ok["days"]["mon"][0] == {"open": "09:07", "close": "14:00", "overnight": False}
+
+
 async def test_another_client_never_reaches_these_sections(
     client: Any, db_session: AsyncSession, biz: Biz, console_world: dict[str, Any]
 ) -> None:

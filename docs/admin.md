@@ -121,7 +121,17 @@ En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar u
     Reservas se activa con su modo (Servicios o Aforo con su tipo de negocio);
     cambiar de modo con reservas futuras pide «Cancelarlas y cambiar», y las
     versiones del agente que la activación prepara se promueven en Agente
-    ([reservas.md](reservas.md#activarlo-panel-de-operador)).
+    ([reservas.md](reservas.md#activarlo-panel-de-operador)). Spec 056
+    (requisitos 2.3 y 3.9): los módulos son Panel, Bandeja de entrada, Reservas y
+    Consumo. Agentes y Negocio ya no son del cliente, así que el formulario no los
+    ofrece ni los conserva al guardar (adiós a la lógica `kept`) y la API los
+    rechaza con `422 unknown_module`. Las reglas son las del servicio compartido
+    (`services/client_access.py`), las mismas que usa la pestaña Acceso de la
+    consola de partners, que owner y admin del partner tienen desde la 056 con
+    los mismos poderes, Bandeja incluida: el riesgo que eso abre (D3) está en
+    [consola-lite.md](consola-lite.md#acceso-desde-el-panel-o-desde-la-consola-de-partners).
+    En la Auditoría, lo que hace el operador sale como «Auphere» y lo que hace el
+    partner con el correo de su persona.
   - Conectar: Canales, Conectores, Canal del dueño.
 
   Canales lleva un punto si ningún canal atiende o alguno tiene problemas. La ficha del partner usa el mismo componente con Observar, Configurar y Cuenta.

@@ -552,3 +552,134 @@ async def test_personal_data_blocks_saving_until_it_is_removed(
     assert fixed.status_code == 200 and fixed.json()["pii"] == []
     sent = await _send(client, inbox, fixed.json())
     assert sent["status"] == "applied"
+
+
+# ── spec 056: «Todo el negocio» llega a cada agente activo (requisito 9) ───
+
+
+async def _lifecycle(
+    db_session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID, lifecycle: str
+) -> None:
+    from nexus_api.db.models import Agent
+
+    async with tenant_scoped_session(db_session, tenant_id):
+        agent = await db_session.get(Agent, agent_id)
+        assert agent is not None
+        agent.lifecycle = lifecycle
+        agent.pause_reason = "manual" if lifecycle == "paused" else None
+
+
+async def _team(db_session: AsyncSession, inbox: Inbox) -> dict[str, uuid.UUID]:
+    """Recepción (la que respondió) y Ventas publicadas, Noches en pausa y un
+    borrador. «Activo» es publicado o en pausa, sin mirar el papel (D7)."""
+    tid = inbox.biz.tenant_id
+    await _lifecycle(db_session, tid, inbox.agent_id, "published")
+    team = {"Recepción": inbox.agent_id}
+    for name, lifecycle in (("Ventas", "published"), ("Noches", "paused"), ("Borrador", "draft")):
+        agent_id, _cfg = await seed_agent(db_session, tid, name=name, prompt=f"Eres {name}.")
+        await _lifecycle(db_session, tid, agent_id, lifecycle)
+        team[name] = agent_id
+    return team
+
+
+async def test_a_rule_for_the_whole_business_reaches_every_active_agent(
+    client: Any, db_session: AsyncSession, inbox: Inbox
+) -> None:
+    """9.1 y escenario 4 de la historia 5: una propuesta por agente activo, en un
+    lote; el borrador no entra. Un solo aviso al partner."""
+    team = await _team(db_session, inbox)
+    draft = await _draft(client, inbox, "No des citas los festivos.", scope="business")
+    assert draft["kind"] == "behavior"
+    sent = await _send(client, inbox, draft)
+    assert sent["status"] == "proposed"
+
+    tid = inbox.biz.tenant_id
+    rows = await _rows(db_session, tid, sa.select(InboxCorrection))
+    assert {r.agent_id for r in rows} == {team["Recepción"], team["Ventas"], team["Noches"]}
+    assert {r.batch_id for r in rows} == {uuid.UUID(draft["id"])}, "la cabeza es el lote"
+    assert all(r.status == "proposed" and r.proposal_id for r in rows)
+    assert all(r.lesson == "No des citas los festivos." for r in rows)
+    proposals = await _rows(
+        db_session, tid, sa.select(Proposal).where(Proposal.author == "correction")
+    )
+    assert {p.agent_id for p in proposals} == {r.agent_id for r in rows}
+
+    (audit,) = await _rows(
+        db_session, tid, sa.select(AuditLog).where(AuditLog.action == "correction.proposed")
+    )
+    assert audit.after_json is not None
+    assert audit.after_json["batch_id"] == draft["id"]
+    assert sorted(audit.after_json["agents"]) == sorted(str(r.agent_id) for r in rows)
+    assert audit.after_json["skipped"] == []
+
+    async with db_session.begin():
+        notices = (
+            await db_session.scalars(
+                sa.select(ConsoleNotification).where(
+                    ConsoleNotification.partner_id == inbox.biz.partner_id,
+                    ConsoleNotification.kind == "agent.correction.proposed",
+                )
+            )
+        ).all()
+    assert len(notices) == 1, "un aviso por lote, no uno por agente"
+    assert notices[0].payload["agents_count"] == 3
+
+
+async def test_a_rule_for_this_agent_only_stays_with_it(
+    client: Any, db_session: AsyncSession, inbox: Inbox
+) -> None:
+    """9.3: «Solo este agente» sigue proponiendo solo al que respondió, sin lote."""
+    await _team(db_session, inbox)
+    await _send(
+        client, inbox, await _draft(client, inbox, "No des citas los festivos.", scope="agent")
+    )
+    (row,) = await _rows(db_session, inbox.biz.tenant_id, sa.select(InboxCorrection))
+    assert row.agent_id == inbox.agent_id and row.batch_id is None
+
+
+async def test_an_agent_whose_proposal_does_not_validate_is_skipped_and_said(
+    client: Any, db_session: AsyncSession, inbox: Inbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """9.1: el agente en el que la regla no valida se salta, y la auditoría lo dice."""
+    from nexus_api.services.improvement import suggestions
+
+    team = await _team(db_session, inbox)
+    real = suggestions.target_spec
+
+    async def _no_version_for_ventas(session: AsyncSession, agent: Any) -> Any:
+        return None if agent.id == team["Ventas"] else await real(session, agent)
+
+    monkeypatch.setattr(suggestions, "target_spec", _no_version_for_ventas)
+    sent = await _send(
+        client, inbox, await _draft(client, inbox, "No des citas los festivos.", scope="business")
+    )
+    assert sent["status"] == "proposed"
+    tid = inbox.biz.tenant_id
+    rows = await _rows(db_session, tid, sa.select(InboxCorrection))
+    assert {r.agent_id for r in rows} == {team["Recepción"], team["Noches"]}
+    (audit,) = await _rows(
+        db_session, tid, sa.select(AuditLog).where(AuditLog.action == "correction.proposed")
+    )
+    assert audit.after_json is not None
+    assert audit.after_json["skipped"] == [{"agent_id": str(team["Ventas"]), "code": "no_version"}]
+
+
+async def test_a_fact_for_the_whole_business_still_lands_in_the_record(
+    client: Any, db_session: AsyncSession, inbox: Inbox
+) -> None:
+    """2.8: sin el módulo Negocio (la 056 lo retira del cliente), un dato de «Todo
+    el negocio» se sigue guardando en la ficha como pregunta frecuente."""
+    from nexus_api.db.models import ClientAccess
+
+    async with db_session.begin():
+        access = await db_session.get(ClientAccess, inbox.biz.tenant_id)
+        assert access is not None
+        assert "business" not in (access.modules or [])
+    sent = await _send(
+        client, inbox, await _draft(client, inbox, "El aparcamiento está en la calle de atrás.")
+    )
+    assert sent["status"] == "applied"
+    (faq,) = await _rows(db_session, inbox.biz.tenant_id, sa.select(BusinessFaq))
+    assert faq.a == "El aparcamiento está en la calle de atrás."
+    rows = await _rows(db_session, inbox.biz.tenant_id, sa.select(InboxCorrection))
+    assert [r.batch_id for r in rows] == [None], "un dato no va en lote"

@@ -33,7 +33,8 @@ const CONSOLE_URL = (process.env.NEXUS_CONSOLE_URL ?? "http://localhost:3110").r
 );
 
 // ── Spec 030: acceso del cliente a su consola lite ────────────────────────
-export type ClientModule = "panel" | "inbox" | "reservas" | "usage" | "agents" | "business";
+/** Spec 056 (requisito 2.1): Agentes y Negocio salieron; la API los rechaza con `unknown_module`. */
+export type ClientModule = "panel" | "inbox" | "reservas" | "usage";
 /** Spec 043: how the business books — with a person of the team, or by headcount. */
 export type ReservasMode = "services" | "capacity";
 /** Spec 043: the kind of an Aforo business. It brings the words and the starting values. */

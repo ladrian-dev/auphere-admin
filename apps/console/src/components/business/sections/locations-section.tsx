@@ -4,7 +4,7 @@ import { Archive, ArchiveRestore, MapPin, Pencil, Plus } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Field, Input, StatusBadge } from "@nexus/ui";
+import { Button, ConfirmDialog, Field, Input, StatusBadge } from "@nexus/ui";
 
 import { archiveLocationAction, createLocationAction, updateLocationAction } from "@/app/(console)/clients/[ref]/business/actions";
 import { useT } from "@/i18n/client";
@@ -50,6 +50,8 @@ export function LocationsSection({
   const [locations, setLocations] = React.useState(initial);
   const [editing, setEditing] = React.useState<Location | "new" | null>(null);
   const [showArchived, setShowArchived] = React.useState(false);
+  // Spec 056 (12.1): archivar pide confirmación; restaurar no, porque se deshace solo.
+  const [archiving, setArchiving] = React.useState<Location | null>(null);
   const [conflict, setConflict] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const live = locations.items.filter((l) => !l.archived);
@@ -122,9 +124,11 @@ export function LocationsSection({
                       disabled={pending}
                       aria-label={t(l.archived ? "business.locations.restore" : "business.locations.archive", { name: l.name })}
                       onClick={() =>
-                        startTransition(async () => {
-                          await apply(await actions.archive({ ref: refId, revision: locations.revision, id: l.id, restore: l.archived }));
-                        })
+                        l.archived
+                          ? startTransition(async () => {
+                              await apply(await actions.archive({ ref: refId, revision: locations.revision, id: l.id, restore: true }));
+                            })
+                          : setArchiving(l)
                       }
                     >
                       {l.archived ? <ArchiveRestore aria-hidden="true" /> : <Archive aria-hidden="true" />}
@@ -157,6 +161,23 @@ export function LocationsSection({
           />
         ) : null}
       </div>
+      <ConfirmDialog
+        open={archiving !== null}
+        onOpenChange={(open) => (open ? undefined : setArchiving(null))}
+        title={archiving ? t("business.locations.archive.title", { name: archiving.name }) : ""}
+        description={t("business.locations.archive.body")}
+        confirmLabel={t("business.locations.archive.confirm")}
+        cancelLabel={t("business.section.cancel")}
+        destructive
+        onConfirm={() => {
+          const target = archiving;
+          setArchiving(null);
+          if (target)
+            startTransition(async () => {
+              await apply(await actions.archive({ ref: refId, revision: locations.revision, id: target.id, restore: false }));
+            });
+        }}
+      />
     </SectionFrame>
   );
 }

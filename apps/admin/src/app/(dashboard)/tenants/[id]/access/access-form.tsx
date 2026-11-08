@@ -61,11 +61,9 @@ export function AccessForm({ tenantId, access }: { tenantId: string; access: Cli
     );
   }
 
-  const shown = ORDER.filter((m) => modules.has(m));
-  // What this form does not show (spec 047: Agentes, Negocio) stays as it was: saving
-  // the rest must not take it away from the client.
-  const kept = access.modules.filter((m) => !ORDER.includes(m));
-  const ordered = [...shown, ...kept];
+  // Spec 056 (requisitos 2.3 y 3.9): only what the form shows is sent. Agentes
+  // and Negocio are no longer a client's modules, and the API rejects them.
+  const ordered = ORDER.filter((m) => modules.has(m));
   const withReservas = modules.has("reservas");
   const chosenKind = mode === "capacity" ? kind : null;
   // The settings go only when Reservas is switched on, or its mode or kind change.
@@ -78,7 +76,7 @@ export function AccessForm({ tenantId, access }: { tenantId: string; access: Cli
   const missingMode = withReservas && mode === null;
   const missingKind = withReservas && mode === "capacity" && kind === null;
   const stored_shown = ORDER.filter((m) => access.modules.includes(m));
-  const dirty = enabled !== access.enabled || shown.join(",") !== stored_shown.join(",") || reservasDirty;
+  const dirty = enabled !== access.enabled || ordered.join(",") !== stored_shown.join(",") || reservasDirty;
   const missingModules = enabled && ordered.length === 0;
   const inboxLocked = !access.whatsapp_connected && !access.modules.includes("inbox");
   const pendingAgents = stored?.agents_pending_promotion ?? [];

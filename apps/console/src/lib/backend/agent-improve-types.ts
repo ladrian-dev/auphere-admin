@@ -79,9 +79,13 @@ export type Improvement = {
   diff: { ops?: ProposalOp[] };
   test: SuggestedTest | null;
   created_at: string;
+  /** Spec 056 (9.2): only on a correction of «Todo el negocio» that reached several agents. */
+  batch?: { id: string; agents_count: number } | null;
 };
 
 export type Improvements = { items: Improvement[]; allowed: ImprovementAction[] };
+/** Spec 056 (9.2): the batch decided at once. `skipped`: the agents where it did not apply, with the API's code. */
+export type CorrectionBatchDecided = { batch_id: string; applied: number; skipped: { agent_id: string; code: string }[] };
 export type ImprovementAccepted = { id: string; status: "accepted"; draft_revision: number; test_id: string };
 export type ImprovementDiscarded = { id: string; status: "discarded"; suppress_until: string | null };
 

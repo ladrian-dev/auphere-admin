@@ -32,11 +32,14 @@ export function ShiftEditor({
   shifts,
   onChange,
   canWrite,
+  note,
 }: {
   legend: string;
   shifts: DraftShift[];
   onChange: (next: DraftShift[]) => void;
   canWrite: boolean;
+  /** Spec 056 (5.5): «Revísalo» junto al nombre del día. */
+  note?: React.ReactNode;
 }) {
   const t = useT();
   const base = React.useId();
@@ -48,7 +51,10 @@ export function ShiftEditor({
 
   return (
     <fieldset className="grid min-w-0 gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-      <legend className="float-left mb-1 text-sm font-medium">{legend}</legend>
+      <legend className="float-left mb-1 flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium">
+        <span>{legend}</span>
+        {note}
+      </legend>
       <div className="clear-left grid min-w-0 gap-2">
         {shifts.length === 0 ? <p className="text-sm text-muted-foreground">{t("business.hours.closed")}</p> : null}
         {canWrite

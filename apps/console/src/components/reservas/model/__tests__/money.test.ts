@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { PRICE_CURRENCIES } from "@/components/clients/client-modal-model";
 
-import { minorDigits, parsePrice } from "../money";
+import { parseAmount } from "@/lib/amount";
+
+import { minorDigits } from "../money";
 
 describe("minorDigits (spec 055)", () => {
   it("agrees with the API's table (`services_catalog.ZERO_DECIMALS`) for every currency offered", () => {
@@ -12,7 +14,8 @@ describe("minorDigits (spec 055)", () => {
   });
 
   it("takes decimals only in a currency that has them", () => {
-    expect(parsePrice("15,50", "USD")).toEqual({ kind: "ok", minor: 1550 });
-    expect(parsePrice("15,50", "CLP")).toEqual({ kind: "invalid" });
+    // Spec 056 (13.2): the one parser of the console, `lib/amount.ts`.
+    expect(parseAmount("15,50", "USD")).toEqual({ kind: "ok", minor: 1550 });
+    expect(parseAmount("15,50", "CLP")).toMatchObject({ kind: "invalid" });
   });
 });

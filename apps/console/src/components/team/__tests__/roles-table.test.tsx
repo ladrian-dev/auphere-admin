@@ -35,6 +35,10 @@ describe("«Qué puede hacer cada rol»", () => {
     // El analista solo lee; facturación no toca nada operativo.
     const write = rows[ROLE_CAPABILITIES.findIndex((c) => c.key === "team.roles.cap.clientsWrite")]!;
     expect(within(write).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Sí", "Sí", "Sí", "No", "No"]);
+    // Spec 056 (3.2): abrir la consola al cliente es de owner y admin, no del constructor.
+    const access = rows[ROLE_CAPABILITIES.findIndex((c) => c.key === "team.roles.cap.clientAccess")]!;
+    expect(within(access).getByRole("rowheader").textContent).toBe("Abrir la consola a un cliente e invitar a sus personas");
+    expect(within(access).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Sí", "Sí", "No", "No", "No"]);
     expect(screen.getByText("Todo salvo facturación.")).toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
   });

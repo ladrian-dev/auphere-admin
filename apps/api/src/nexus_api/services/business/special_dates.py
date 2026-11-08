@@ -21,8 +21,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import require_current_tenant
+from nexus_api.db.models import Tenant
 from nexus_api.db.models.business import (
     BusinessLocation,
+    BusinessProfile,
     BusinessSpecialDate,
     BusinessSpecialShift,
 )
@@ -58,6 +60,26 @@ async def _location(session: AsyncSession, location_id: uuid.UUID | None) -> Non
     loc = await session.get(BusinessLocation, location_id)
     if loc is None or loc.tenant_id != require_current_tenant():
         raise hours.HoursError("unknown_location", "the location is not one of this client's")
+
+
+async def _today(session: AsyncSession) -> date:
+    """Hoy en la zona del negocio (la que lee ``hours.load_hours``)."""
+    tid = require_current_tenant()
+    tenant = await session.get(Tenant, tid)
+    profile = await session.get(BusinessProfile, tid)
+    tz = (tenant.timezone if tenant else None) or (profile.timezone if profile else None)
+    return datetime.now(hours.zone(tz)).date()
+
+
+async def _not_past(
+    session: AsyncSession, special: hours.SpecialDay, ctx: writes.WriteContext | None
+) -> None:
+    """Spec 056 (11.4, D10): una fecha es «pasada» cuando su «Hasta» ya pasó; un
+    cierre que empezó ayer y acaba mañana sí vale. Solo lo que escribe una persona
+    (``ctx`` vacío): deshacer y aplicar lo leído reponen lo que había, sea de cuando
+    sea, y por eso no va en ``hours.SpecialDay``."""
+    if ctx is None and special.date_to < await _today(session):
+        raise hours.HoursError("date_past", "the special date already ended")
 
 
 def build(
@@ -113,6 +135,7 @@ async def create_special_date(
     special_id: uuid.UUID | None = None,
 ) -> tuple[uuid.UUID, writes.SectionWritten | None]:
     await _location(session, special.location_id)
+    await _not_past(session, special, ctx)
     live = await list_special_dates(session)
     if len(live) >= MAX_SPECIAL_DATES:
         raise hours.HoursError("too_many_special_dates", "200 special dates at most")
@@ -178,6 +201,7 @@ async def update_special_date(
         location_id=_as_uuid(changes.get("location_id", row.location_id)),
     )
     await _location(session, special.location_id)
+    await _not_past(session, special, ctx)
 
     async def change() -> None:
         row.name, row.date_from, row.date_to = special.name, special.date_from, special.date_to

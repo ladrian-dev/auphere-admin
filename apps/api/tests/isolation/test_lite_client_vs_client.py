@@ -14,6 +14,11 @@ Barrido sobre todas las rutas ``GET`` de ``/console/lite/*``:
 
 Cada parámetro de ruta lite tiene que saber qué objeto del vecino probar
 (``_FOREIGN``); uno nuevo sin entrada pone el barrido en rojo a propósito.
+
+Spec 056 (requisito 2.5): Agentes y Negocio ya no son módulos del cliente. Sus
+rutas siguen montadas y responden **siempre** el 403 de un módulo que no se
+tiene, el mismo byte a byte con un objeto de la vecina, con uno inventado y que
+el de cualquier otro módulo ausente (``test_retired_routes_answer_the_absent_module``).
 """
 
 from __future__ import annotations
@@ -66,8 +71,9 @@ async def _neighbourhood(db_session, console_world) -> dict[str, Any]:
         )
     )
     await db_session.commit()
-    # Spec 047: con Agentes y Negocio, para que sus rutas entren en el barrido.
-    modules = ("panel", "inbox", "usage", "agents", "business")
+    # Spec 056: sin Agentes ni Negocio, que ya no se pueden guardar (0224). Sus
+    # rutas se barren aparte y responden el 403 de un módulo ausente.
+    modules = ("panel", "inbox", "usage")
     for tenant_id in (a["tenant_id"], neighbour):
         await make_client_access(
             db_session, partner_id=a["partner_id"], tenant_id=tenant_id, modules=modules
@@ -218,6 +224,27 @@ PHONE_ONLY = {"/console/lite/phones/current/notices"}
 #: ``test_reservas_client_vs_client.py``.
 RESERVAS_PREFIX = "/console/lite/reservas"
 
+#: Spec 056 (requisito 2.5): los routers de los módulos retirados. Una ruta suya,
+#: la de hoy o una que se monte mañana, entra sola en el barrido del 403.
+RETIRED_ROUTERS = frozenset(
+    {"nexus_api.api.console.lite.agents", "nexus_api.api.console.lite.business"}
+)
+
+
+def is_retired(route: Any) -> bool:
+    return getattr(route.endpoint, "__module__", "") in RETIRED_ROUTERS
+
+
+def retired_routes() -> list[tuple[str, str]]:
+    """Cada ``(método, ruta)`` de Agentes y Negocio de la consola lite."""
+    return sorted(
+        (method, r.path)
+        for r in _console_routes()
+        if r.path.startswith("/console/lite") and is_retired(r)
+        for method in r.methods
+        if method != "HEAD"
+    )
+
 
 def _lite_gets() -> list[str]:
     return [
@@ -228,6 +255,7 @@ def _lite_gets() -> list[str]:
         and r.path not in _STREAMS
         and r.path not in PHONE_ONLY
         and not r.path.startswith(RESERVAS_PREFIX)
+        and not is_retired(r)
     ]
 
 
@@ -293,22 +321,11 @@ _INBOX_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
     ),
 ]
 
-#: Spec 047 (T167, T176): las escrituras nuevas con id fuera de la Bandeja, con un
-#: cuerpo válido. Todas llevan ``If-Match`` (las de la ficha y las correcciones lo
-#: exigen; las demás lo ignoran).
+#: Spec 047 (T176): las escrituras nuevas con id fuera de la Bandeja, con un
+#: cuerpo válido. Todas llevan ``If-Match`` (las correcciones lo exigen; las demás
+#: lo ignoran). Las de Agentes y Negocio (T167) salieron con la spec 056: las barre
+#: ``test_retired_routes_answer_the_absent_module``.
 _LITE_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
-    ("POST", "/console/lite/agents/{agent_id}/pause", {"confirm": True}),
-    ("POST", "/console/lite/agents/{agent_id}/resume", None),
-    ("POST", "/console/lite/channels/{channel_id}/pause", None),
-    ("POST", "/console/lite/channels/{channel_id}/resume", None),
-    ("PATCH", "/console/lite/business/special-dates/{special_id}", {"closed": True}),
-    ("POST", "/console/lite/business/special-dates/{special_id}/archive", None),
-    ("PATCH", "/console/lite/business/services/{service_id}", {"duration_min": 30}),
-    ("POST", "/console/lite/business/services/{service_id}/archive", None),
-    ("PATCH", "/console/lite/business/locations/{location_id}", {"address": "Calle Mayor 1"}),
-    ("POST", "/console/lite/business/locations/{location_id}/archive", None),
-    ("POST", "/console/lite/business/locations/{location_id}/restore", None),
-    ("POST", "/console/lite/business/history/{change_id}/undo", None),
     ("PATCH", "/console/lite/corrections/{correction_id}", {"paraphrase": "Un cliente pregunta."}),
     ("POST", "/console/lite/corrections/{correction_id}/send", None),
     ("POST", "/console/lite/corrections/{correction_id}/undo", None),
@@ -367,10 +384,65 @@ async def test_inbox_writes_on_a_neighbour_object_are_the_same_404(
 async def test_lite_writes_on_a_neighbour_object_are_the_same_404(
     method: str, path: str, body: dict[str, Any] | None, client, db_session, console_world
 ) -> None:
-    """Spec 047: pausar el agente o el número de la vecina, tocar su ficha o su
-    corrección, igual que tocar algo que no existe."""
+    """Spec 047: tocar la corrección de la vecina, igual que tocar algo que no
+    existe."""
     world = await _neighbourhood(db_session, console_world)
     await probe_write(client, world, world["member"]["headers"], method, path, body)
+
+
+#: Un módulo que la persona no tiene (Reservas): la respuesta con la que se comparan
+#: las de los módulos retirados.
+ABSENT_MODULE_PROBE = "/console/lite/reservas/settings"
+
+
+async def probe_retired(
+    client,
+    world: dict[str, Any],
+    headers: Callable[[], dict[str, str]],
+    method: str,
+    path: str,
+) -> None:
+    """Spec 056 (requisito 2.5): la ruta de un módulo retirado responde el 403 de
+    un módulo ausente, **igual, byte a byte,** con el objeto de la vecina, con uno
+    inventado y que la de Reservas para quien no la tiene."""
+    params = [seg[1:-1] for seg in path.split("/") if seg.startswith("{")]
+    missing = [p for p in params if p not in _FOREIGN]
+    assert not missing, f"{path}: no foreign object to probe for {missing}"
+    foreign_path, ghost_path = path, path
+    for p in params:
+        foreign_path = foreign_path.replace("{" + p + "}", _FOREIGN[p](world))
+        ghost_path = ghost_path.replace("{" + p + "}", str(uuid.uuid4()))
+    body = None if method in ("GET", "DELETE") else {}
+    absent = await client.get(ABSENT_MODULE_PROBE, headers=headers())
+    foreign = await client.request(
+        method, foreign_path, headers={**headers(), **_IF_MATCH}, json=body
+    )
+    ghost = await client.request(method, ghost_path, headers={**headers(), **_IF_MATCH}, json=body)
+    assert absent.status_code == 403, absent.text[:200]
+    assert foreign.status_code == ghost.status_code == 403, (
+        method,
+        path,
+        foreign.status_code,
+        foreign.text[:200],
+    )
+    assert foreign.content == ghost.content == absent.content, path
+    assert NEIGHBOUR_NAME not in foreign.text
+
+
+async def test_the_retired_modules_still_have_routes() -> None:
+    """Si alguien borra las rutas, responderían 404 y no el 403 de un módulo
+    ausente (research R2): este barrido se quedaría vacío sin avisar."""
+    paths = {p for _, p in retired_routes()}
+    assert "/console/lite/agents" in paths
+    assert "/console/lite/business" in paths
+
+
+@pytest.mark.parametrize(("method", "path"), retired_routes())
+async def test_retired_routes_answer_the_absent_module(
+    method: str, path: str, client, db_session, console_world
+) -> None:
+    world = await _neighbourhood(db_session, console_world)
+    await probe_retired(client, world, world["member"]["headers"], method, path)
 
 
 async def test_an_attachment_to_a_neighbour_conversation_is_the_same_404(

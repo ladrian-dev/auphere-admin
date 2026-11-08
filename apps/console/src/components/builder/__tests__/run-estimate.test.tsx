@@ -80,7 +80,7 @@ describe("el coste antes de una pasada (61.8, 66.5 y 68)", () => {
   });
 
   it("un doble clic no estima dos veces", async () => {
-    let answer = (_: ReturnType<typeof data>) => {};
+    let answer: (value: ReturnType<typeof data>) => void = () => {};
     const estimate = vi.fn(() => new Promise<ReturnType<typeof data>>((resolve) => (answer = resolve)));
     view(estimate);
     await userEvent.dblClick(screen.getByRole("button", { name: "Ejecutar todas" }));

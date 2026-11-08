@@ -1,7 +1,12 @@
+import { formatAmount } from "@/lib/amount";
+
 /**
  * Spec 027: the partner reads and writes money. The API sends and receives
  * integer cents of USD; the console never sees credits and never knows the
  * rate. These two functions are the only place money is formatted or parsed.
+ *
+ * Spec 056 (requisito 13): formatting goes through `lib/amount.ts`, the one
+ * money format of the console; US$ cents are its minor unit.
  */
 
 export type Locale = "es" | "en";
@@ -9,7 +14,7 @@ export type Locale = "es" | "en";
 /** Cents as the partner reads them: «12,35 US$» (es) · «$12.35» (en). */
 export function formatMoney(cents: number | null | undefined, locale: Locale = "es"): string {
   if (cents == null || !Number.isFinite(cents)) return "—";
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).format(cents / 100);
+  return formatAmount({ amount_minor: cents, currency: "USD" }, locale);
 }
 
 /** Compact for tight cards: «1,2 mil US$». Below 1 000 US$ it is the full amount. */

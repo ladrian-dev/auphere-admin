@@ -13,7 +13,13 @@
 - ``POST …/improvements/{id}/accept`` [``agents:write``]: el cambio al borrador y
   la prueba a la suite; publicar pasa la puerta (51.4);
 - ``POST …/improvements/{id}/discard`` [``agents:write``] ``{reason}``: con su
-  motivo; no vuelve en 30 días (51.4).
+  motivo; no vuelve en 30 días (51.4);
+- spec 056 (requisito 9): ``POST /clients/{ref}/corrections/{batch_id}/accept``
+  y ``…/discard`` [``agents:write``]: el lote de «Todo el negocio» —una
+  corrección por agente activo del cliente— se decide de una vez, en una
+  transacción, con su auditoría (``correction.batch_accepted`` y
+  ``correction.batch_discarded``). Cada corrección del lote dice en las mejoras
+  de su agente de qué lote viene y a cuántos agentes llegó (``batch``).
 
 Ninguna respuesta lleva cuerpos de mensaje, datos del cliente final ni costes
 (C1, C8 y C9): el dinero va a precio, en ``{amount_micros, currency}``, y una
@@ -25,6 +31,7 @@ leen y se deciden.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 
@@ -32,7 +39,7 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from nexus_api.db.models import Agent, AuditLog, InboxCorrection
+from nexus_api.db.models import Agent, AgentStatus, AuditLog, InboxCorrection
 from nexus_api.db.models.agent_spec import Proposal
 from nexus_api.services.agent_spec.patch import PatchError, apply_ops
 from nexus_api.services.agent_spec.schema import dump
@@ -42,9 +49,11 @@ from nexus_api.services.improvement import suggestions as svc
 
 from .agent_draft_routes import agent_in_path
 from .agent_spec_drafts import current_spec, write_spec
-from .deps import ClientScope
+from .deps import ClientScope, client_scope
 
-router = APIRouter(prefix="/clients/{ref}/agents/{agent_id}")
+_agent = APIRouter(prefix="/clients/{ref}/agents/{agent_id}")
+#: Spec 056: el lote de «Todo el negocio» es del cliente, no de un agente.
+_batches = APIRouter(prefix="/clients/{ref}/corrections")
 
 
 class Money(BaseModel):
@@ -81,7 +90,7 @@ class PerformanceOut(BaseModel):
     series: list[PerformanceDayOut]
 
 
-@router.get("/performance", response_model=PerformanceOut)
+@_agent.get("/performance", response_model=PerformanceOut)
 async def get_performance(
     days: int = Query(default=perf.DEFAULT_DAYS, ge=1, le=perf.MAX_DAYS),
     scope: ClientScope = Depends(agent_in_path("agents:read")),
@@ -136,7 +145,7 @@ class AgentConversationPageOut(BaseModel):
     next_cursor: str | None = None
 
 
-@router.get("/conversations", response_model=AgentConversationPageOut)
+@_agent.get("/conversations", response_model=AgentConversationPageOut)
 async def list_agent_conversations(
     cursor: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=100),
@@ -183,6 +192,14 @@ class SuggestedTestOut(BaseModel):
     critical: bool
 
 
+class BatchRefOut(BaseModel):
+    """Spec 056 (9.2): la corrección es parte de un lote de «Todo el negocio»."""
+
+    id: uuid.UUID
+    #: A cuántos agentes llegó la misma corrección.
+    agents_count: int
+
+
 class ImprovementOut(BaseModel):
     id: uuid.UUID
     #: Las sugerencias semanales y las correcciones de comportamiento que manda
@@ -204,6 +221,8 @@ class ImprovementOut(BaseModel):
     diff: dict[str, Any]
     test: SuggestedTestOut | None = None
     created_at: datetime
+    #: Solo en una corrección de «Todo el negocio» que llegó a varios agentes.
+    batch: BatchRefOut | None = None
 
 
 class ImprovementsOut(BaseModel):
@@ -211,7 +230,7 @@ class ImprovementsOut(BaseModel):
     allowed: list[Literal["accept", "discard"]] = Field(default_factory=list)
 
 
-@router.get("/improvements", response_model=ImprovementsOut)
+@_agent.get("/improvements", response_model=ImprovementsOut)
 async def list_improvements(
     scope: ClientScope = Depends(agent_in_path("agents:read")),
 ) -> ImprovementsOut:
@@ -245,8 +264,15 @@ async def list_improvements(
                 created_at=row.created_at,
             )
         )
-    for correction, proposal in await _open_corrections(scope):
+    open_corrections = await _open_corrections(scope)
+    sizes = await _batch_sizes(scope, [c.batch_id for c, _p in open_corrections if c.batch_id])
+    for correction, proposal in open_corrections:
         ops, test = svc.change_of(proposal)
+        batch = (
+            BatchRefOut(id=correction.batch_id, agents_count=sizes.get(correction.batch_id, 1))
+            if correction.batch_id
+            else None
+        )
         items.append(
             ImprovementOut(
                 id=correction.id,
@@ -261,6 +287,7 @@ async def list_improvements(
                 diff={"ops": ops},
                 test=_test_out(test),
                 created_at=correction.sent_at or correction.created_at,
+                batch=batch,
             )
         )
     writes = "agents:write" in scope.principal.permissions
@@ -305,6 +332,18 @@ async def _open_corrections(scope: ClientScope) -> list[tuple[InboxCorrection, P
         else {}
     )
     return [(r, proposals.get(r.proposal_id) if r.proposal_id else None) for r in rows]
+
+
+async def _batch_sizes(scope: ClientScope, batch_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Cuántas correcciones —una por agente— tiene cada lote."""
+    if not batch_ids:
+        return {}
+    rows = await scope.session.execute(
+        sa.select(InboxCorrection.batch_id, sa.func.count())
+        .where(InboxCorrection.batch_id.in_(set(batch_ids)))
+        .group_by(InboxCorrection.batch_id)
+    )
+    return {bid: int(n) for bid, n in rows.all() if bid is not None}
 
 
 async def _correction_for_decision(
@@ -378,10 +417,13 @@ async def _apply_change(
 
 
 def _decide_correction(
-    row: InboxCorrection, proposal: Proposal, *, accepted: bool, actor: str
+    row: InboxCorrection, proposal: Proposal | None, *, accepted: bool, actor: str
 ) -> None:
     now = datetime.now(UTC)
     row.status = "accepted" if accepted else "rejected"
+    row.updated_at = now
+    if proposal is None:
+        return
     proposal.status = "applied" if accepted else "rejected"
     proposal.decided_by = actor
     proposal.decided_at = now
@@ -420,7 +462,7 @@ def _error(exc: svc.SuggestionError) -> HTTPException:
     return HTTPException(status_code=exc.status, detail={"code": exc.code, **exc.extra})
 
 
-@router.post(
+@_agent.post(
     "/improvements/{improvement_id}/accept",
     response_model=AcceptedOut,
     responses={
@@ -489,7 +531,7 @@ async def accept_improvement(
     return AcceptedOut(id=row.id, status="accepted", draft_revision=revision, test_id=test_id)
 
 
-@router.post(
+@_agent.post(
     "/improvements/{improvement_id}/discard",
     response_model=DiscardedOut,
     responses={404: {"description": "unknown_improvement"}, 409: {"description": "closed"}},
@@ -543,5 +585,183 @@ async def discard_improvement(
     await scope.session.flush()
     return DiscardedOut(id=row.id, status="discarded", suppress_until=row.suppress_until)
 
+
+# ── spec 056: el lote de «Todo el negocio» ──────────────────────────────────
+
+
+class BatchSkippedOut(BaseModel):
+    """Un agente del lote en el que no se decidió: su código y nada más."""
+
+    agent_id: uuid.UUID
+    code: str
+
+
+class BatchDecidedOut(BaseModel):
+    batch_id: uuid.UUID
+    #: Cuántas se aplicaron al borrador de su agente (0 al descartar).
+    applied: int
+    skipped: list[BatchSkippedOut] = Field(default_factory=list)
+
+
+def _unknown_batch() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "unknown_batch"})
+
+
+async def _batch_for_decision(
+    scope: ClientScope, batch_id: uuid.UUID
+) -> tuple[list[InboxCorrection], dict[uuid.UUID, Proposal]]:
+    """Las correcciones del lote, bloqueadas, con sus propuestas. Un lote de otro
+    cliente no existe (la RLS), igual que uno inventado o una corrección suelta;
+    uno sin nada por decidir está cerrado."""
+    rows = list(
+        (
+            await scope.session.scalars(
+                sa.select(InboxCorrection)
+                .where(
+                    InboxCorrection.batch_id == batch_id,
+                    InboxCorrection.tenant_id == scope.tenant.id,
+                    InboxCorrection.kind == "behavior",
+                )
+                .order_by(InboxCorrection.created_at, InboxCorrection.id)
+                .with_for_update()
+            )
+        ).all()
+    )
+    if not rows:
+        raise _unknown_batch()
+    if not any(r.status == "proposed" for r in rows):
+        raise _error(svc.SuggestionError("improvement_closed", status.HTTP_409_CONFLICT))
+    ids = [r.proposal_id for r in rows if r.proposal_id is not None]
+    proposals = (
+        {
+            p.id: p
+            for p in (
+                await scope.session.scalars(
+                    sa.select(Proposal).where(Proposal.id.in_(ids)).with_for_update()
+                )
+            ).all()
+        }
+        if ids
+        else {}
+    )
+    return rows, proposals
+
+
+def _still_open(row: InboxCorrection, proposals: dict[uuid.UUID, Proposal]) -> bool:
+    if row.status != "proposed":
+        return False
+    proposal = proposals.get(row.proposal_id) if row.proposal_id else None
+    return proposal is None or proposal.status not in {"applied", "rejected"}
+
+
+async def _decidable(scope: ClientScope, row: InboxCorrection) -> bool:
+    agent = await scope.session.get(Agent, row.agent_id)
+    return (
+        agent is not None
+        and agent.status == AgentStatus.ACTIVE.value
+        and agent.lifecycle != "archived"
+    )
+
+
+def _batch_audit(
+    scope: ClientScope, action: str, batch_id: uuid.UUID, after: dict[str, Any]
+) -> None:
+    scope.session.add(
+        AuditLog(
+            tenant_id=scope.tenant.id,
+            actor=scope.principal.actor,
+            action=action,
+            target=f"correction_batch:{batch_id}",
+            after_json=after,
+        )
+    )
+
+
+@_batches.post(
+    "/{batch_id}/accept",
+    response_model=BatchDecidedOut,
+    responses={
+        404: {"description": "unknown_batch"},
+        409: {"description": "improvement_closed: nothing left to decide in the batch"},
+    },
+)
+async def accept_batch(
+    batch_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("agents:write")),
+) -> BatchDecidedOut:
+    """«Aceptar todas» (9.2): cada corrección del lote, en el borrador de su
+    agente, validada otra vez, con su prueba en la suite, en una transacción.
+    Nada se publica. El agente en el que ya no aplica se salta y se dice."""
+    rows, proposals = await _batch_for_decision(scope, batch_id)
+    applied: list[str] = []
+    skipped: list[BatchSkippedOut] = []
+    for row in rows:
+        proposal = proposals.get(row.proposal_id) if row.proposal_id else None
+        if not _still_open(row, proposals) or proposal is None:
+            skipped.append(BatchSkippedOut(agent_id=row.agent_id, code="improvement_closed"))
+            continue
+        if not await _decidable(scope, row):
+            skipped.append(BatchSkippedOut(agent_id=row.agent_id, code="agent_archived"))
+            continue
+        try:
+            async with scope.session.begin_nested():
+                await _apply_change(
+                    replace(scope, agent_id=row.agent_id), proposal, author="correction"
+                )
+        except HTTPException as exc:
+            code = exc.detail.get("code") if isinstance(exc.detail, dict) else None
+            skipped.append(BatchSkippedOut(agent_id=row.agent_id, code=str(code or "invalid")))
+            continue
+        _decide_correction(row, proposal, accepted=True, actor=scope.principal.actor)
+        applied.append(str(row.agent_id))
+    _batch_audit(
+        scope,
+        "correction.batch_accepted",
+        batch_id,
+        {"agents": applied, "skipped": [s.model_dump(mode="json") for s in skipped]},
+    )
+    await scope.session.flush()
+    return BatchDecidedOut(batch_id=batch_id, applied=len(applied), skipped=skipped)
+
+
+@_batches.post(
+    "/{batch_id}/discard",
+    response_model=BatchDecidedOut,
+    responses={404: {"description": "unknown_batch"}, 409: {"description": "improvement_closed"}},
+)
+async def discard_batch(
+    batch_id: uuid.UUID,
+    body: DiscardIn,
+    scope: ClientScope = Depends(client_scope("agents:write")),
+) -> BatchDecidedOut:
+    """«Descartar todas» (9.2): cada corrección abierta del lote queda
+    «rechazada», con el mismo motivo."""
+    rows, proposals = await _batch_for_decision(scope, batch_id)
+    rejected: list[str] = []
+    skipped: list[BatchSkippedOut] = []
+    for row in rows:
+        if not _still_open(row, proposals):
+            skipped.append(BatchSkippedOut(agent_id=row.agent_id, code="improvement_closed"))
+            continue
+        proposal = proposals.get(row.proposal_id) if row.proposal_id else None
+        _decide_correction(row, proposal, accepted=False, actor=scope.principal.actor)
+        rejected.append(str(row.agent_id))
+    _batch_audit(
+        scope,
+        "correction.batch_discarded",
+        batch_id,
+        {
+            "agents": rejected,
+            "skipped": [s.model_dump(mode="json") for s in skipped],
+            "discard_reason": body.reason,
+        },
+    )
+    await scope.session.flush()
+    return BatchDecidedOut(batch_id=batch_id, applied=0, skipped=skipped)
+
+
+router = APIRouter()
+router.include_router(_agent)
+router.include_router(_batches)
 
 __all__ = ["router"]

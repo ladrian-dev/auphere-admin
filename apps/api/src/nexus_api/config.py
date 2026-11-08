@@ -498,6 +498,10 @@ class Settings(BaseSettings):
     # ticket es un acto deliberado y con confirmación humana delante, así
     # que una ráfaga solo puede ser un bucle.
     console_support_tickets_per_minute: int = 6
+    # Spec 056 (research R3): invitaciones de personas de cliente por partner y
+    # minuto, desde la pestaña Acceso. Cada una manda un correo por Resend, que
+    # comparten staging y prod (100 al día): una ráfaga solo puede ser un bucle.
+    console_client_invites_per_minute: int = 5
 
     # ── Block N: WhatsApp media + multimodal ────────────────────────────────
     # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All

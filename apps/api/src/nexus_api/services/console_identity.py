@@ -69,7 +69,6 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
-from nexus_api.db.models.client_access import CONSOLE_V2_MODULES
 
 log = structlog.get_logger(__name__)
 
@@ -328,14 +327,9 @@ async def _load_client_view(session: AsyncSession, account: ConsoleAccount) -> P
         or not modules
     ):
         return view(ACCESS_DISABLED)
-    # Spec 047 (``data-model.md`` §10): con la consola nueva, Agentes y Negocio vienen
-    # por defecto. El menú dice lo mismo que ``core.client_auth``, que ya los permite.
-    return view(
-        ACCESS_OK,
-        access.ordered_modules(
-            also=CONSOLE_V2_MODULES if partner.console_v2_enabled_at is not None else ()
-        ),
-    )
+    # Spec 056 (requisito 2.1): Agentes y Negocio ya no vienen por defecto. El menú
+    # dice lo mismo que ``core.client_auth``.
+    return view(ACCESS_OK, modules)
 
 
 # ── cuentas ───────────────────────────────────────────────────────────
@@ -462,9 +456,19 @@ async def start_session(
     return plaintext, expires_at
 
 
-async def resolve_session(session: AsyncSession, token: str) -> ConsoleAccount | None:
-    """Cuenta detrás de un token de sesión, o ``None`` si no existe o
-    caducó. Refresca ``last_used_at`` como mucho una vez cada 5 minutos."""
+@dataclass(frozen=True)
+class ResolvedSession:
+    """Quién está detrás de un token y hasta cuándo vale (spec 056, 15.1)."""
+
+    account: ConsoleAccount
+    #: El de la fila, tal cual: leer la sesión no lo mueve (15.2, sin renovar).
+    expires_at: datetime
+
+
+async def resolve_session(session: AsyncSession, token: str) -> ResolvedSession | None:
+    """Cuenta detrás de un token de sesión y cuándo caduca, o ``None`` si no
+    existe o caducó. Refresca ``last_used_at`` como mucho una vez cada 5
+    minutos; ``expires_at`` nunca: la sesión caduca a los 7 días del login."""
     if not token:
         return None
     row = (
@@ -480,14 +484,15 @@ async def resolve_session(session: AsyncSession, token: str) -> ConsoleAccount |
     console_session: ConsoleSession = row[0]
     account: ConsoleAccount = row[1]
     now = _now()
-    if _aware(console_session.expires_at) <= now:
+    expires_at = _aware(console_session.expires_at)
+    if expires_at <= now:
         await session.delete(console_session)
         await session.flush()
         return None
     if now - _aware(console_session.last_used_at) >= SESSION_TOUCH_INTERVAL:
         console_session.last_used_at = now
         await session.flush()
-    return account
+    return ResolvedSession(account=account, expires_at=expires_at)
 
 
 async def end_session(session: AsyncSession, token: str) -> None:
@@ -534,6 +539,7 @@ __all__ = [
     "SESSION_TTL",
     "PasswordPolicyError",
     "PrincipalView",
+    "ResolvedSession",
     "authenticate",
     "create_account",
     "end_all_sessions",

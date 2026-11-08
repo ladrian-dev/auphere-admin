@@ -263,3 +263,55 @@ describe("Inicio with Reservas (spec 044, R9)", () => {
     expect(onInbox).toHaveBeenCalled();
   });
 });
+
+/**
+ * Spec 056 (requisito 2.6): «Agentes» and «Negocio» are no longer modules of
+ * a client. Inicio draws neither, even when an older `/me` still names them.
+ */
+const mockNav = ["panel", "inbox", "agents", "business", "usage"];
+const mockHome: { current: Home | undefined } = { current: undefined };
+jest.mock("@/api/hooks", () => ({
+  useMe: () => ({
+    data: {
+      user: { name: "Valeria Ríos" },
+      client: { name: "Flor y Encanto", modules: mockNav },
+      nav: mockNav,
+      balance_contact: { kind: "partner", name: "Amacrux" },
+      business: { timezone: "America/Santiago", hours: null, hours_label: "De lunes a viernes de 9:00 a 14:00" },
+    },
+  }),
+  useHome: () => ({ data: mockHome.current, isError: false, dataUpdatedAt: 0, refetch: jest.fn(async () => undefined) }),
+}));
+jest.mock("@/api/reservas-hooks", () => ({
+  useHasReservas: () => false,
+  useReservasConfig: () => ({ data: undefined, isError: false, refetch: jest.fn() }),
+  useBizToday: () => "2026-10-08",
+  useReservasRange: () => ({ data: undefined, isError: false, refetch: jest.fn() }),
+  useWaitlist: () => ({ data: undefined }),
+  useBizNow: () => null,
+}));
+jest.mock("@/ui/online", () => ({ useOnline: () => true }));
+jest.mock("expo-router", () => {
+  // The settings bar button (spec 042, SettingsToolbar) renders nothing here.
+  function Toolbar() {
+    return null;
+  }
+  Toolbar.Button = function ToolbarButton() {
+    return null;
+  };
+  return { router: { push: jest.fn(), navigate: jest.fn() }, Stack: { Screen: () => null, Toolbar } };
+});
+
+describe("no Agentes nor Negocio in Inicio (spec 056, 2.6)", () => {
+  it("not even with `agents` and `business` in `/me.nav`", async () => {
+    mockHome.current = home();
+    const Inicio = require("@/app/(app)/inicio/index").default as () => React.JSX.Element;
+    await render(<Inicio />);
+    expect(screen.getByTestId("inicio")).toBeTruthy();
+    expect(screen.getByText("75")).toBeTruthy();
+    expect(screen.queryByText("Agentes")).toBeNull();
+    expect(screen.queryByText("Recepción")).toBeNull();
+    expect(screen.queryByTestId("home-business")).toBeNull();
+    expect(screen.queryByText("Horario, servicios y sedes")).toBeNull();
+  });
+});

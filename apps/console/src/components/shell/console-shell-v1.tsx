@@ -1,6 +1,7 @@
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
 
 import { CompanionLauncher } from "@/components/companion/companion-launcher";
+import { ViewerKindProvider } from "@/components/error-boundary";
 import { AppSidebar } from "@/components/shell/app-sidebar";
 import { ConsoleCommandPalette } from "@/components/shell/console-command-palette";
 import { LiteNotificationsBell } from "@/components/shell/lite-notifications-bell";
@@ -72,7 +73,8 @@ export function ConsoleShellV1({ principal, skipLabel, children }: { principal: 
             tabIndex={-1}
             className="mx-auto flex w-full max-w-[1400px] min-w-0 flex-col gap-6 px-4 py-6 outline-none md:px-8 md:py-8"
           >
-            {children}
+            {/* Spec 056 (10.1): a screen that fails knows who looks, and never shows a client the error's text. */}
+            <ViewerKindProvider kind={who.kind}>{children}</ViewerKindProvider>
           </main>
         </div>
         {/* The Companion (CO-03): present across the console, never under

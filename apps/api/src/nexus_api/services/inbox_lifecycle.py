@@ -35,12 +35,22 @@ puerta ya lo calla—; cuando la puerta se abre y el agente vuelve a contestar,
 ``release_reason`` la devuelve sola. Fuera de la audiencia guarda el motivo sin
 ir a la Bandeja, y «la lleva una persona» lo guarda sin pisar una espera.
 
+**Spec 056 — el aviso se cierra solo (requisito 8, D8).** Cuando la
+conversación deja de esperar —alguien la toma, la devuelve al agente, la resuelve
+o la elimina, la puerta se abre (``release_reason``) o el cliente se queda sin
+Bandeja (``release_escalated_for_tenant``)—, su aviso ``inbox.waiting`` pasa a
+atendido con ``mark_waiting_handled``: ``handled_at`` (migración 0227). Deja de
+contar en la campana y sigue en la lista. Se llama tras el commit, en su propia
+sesión de plataforma como ``_notify_waiting``, o dentro de la transacción de quien
+ya tiene una de plataforma (``client_access.set_access``).
+
 Ninguna función hace commit en la sesión que recibe.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -52,8 +62,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
+    Channel,
     ClientAccess,
     ClientModule,
+    ConsoleNotification,
     Conversation,
     ConversationEvent,
     ConversationEventKind,
@@ -67,6 +79,7 @@ from nexus_api.db.models import (
 from nexus_api.db.models.conversation import WAITING_REASONS
 from nexus_api.services import conversation_control
 from nexus_api.services.inbox_stream import publish_inbox_event
+from nexus_api.services.inbox_view import display_handle
 
 log = structlog.get_logger(__name__)
 
@@ -130,10 +143,16 @@ async def record_event(
 
 
 async def _contact_name(session: AsyncSession, conversation: Conversation) -> str | None:
+    """Sin nombre, el contacto se llama por su número como en la Bandeja: en
+    WhatsApp, con «+» (spec 056, 13.3)."""
     customer = await session.get(Customer, conversation.customer_id)
     if customer is None:
         return None
-    return customer.name or customer.identifier
+    if customer.name:
+        return customer.name
+    channel = await session.get(Channel, conversation.channel_id)
+    kind = channel.type.value if channel is not None else None
+    return display_handle(customer.identifier, kind) or None
 
 
 @dataclass(frozen=True)
@@ -324,6 +343,64 @@ async def _notify_waiting(mark: WaitingMark) -> None:
         log.warning("inbox_lifecycle.notify_failed", error=str(exc))
 
 
+async def mark_waiting_handled(
+    tenant_id: uuid.UUID,
+    conversation_ids: Iterable[uuid.UUID],
+    *,
+    session: AsyncSession | None = None,
+) -> int:
+    """Spec 056 (8.1): los avisos «espera a una persona» pendientes de esas
+    conversaciones pasan a atendidos. Devuelve cuántos.
+
+    ``console_notifications`` es del partner, no del cliente: el ``UPDATE``
+    filtra por el partner y por el cliente (``external_client_ref``), así que el
+    aviso de otro cliente del mismo partner no se toca aunque nombre el mismo id.
+
+    Sin ``session`` abre la suya de plataforma y confirma: es lo que se llama tras
+    el commit de una ruta lite (``scope.after_commit``) o del despachador, y nunca
+    lanza, porque cerrar el aviso no puede tumbar lo que ya pasó. Con ``session``
+    (una de plataforma, como la de ``client_access.set_access``) va en esa
+    transacción."""
+    ids = sorted({str(c) for c in conversation_ids})
+    if not ids:
+        return 0
+    if session is not None:
+        return await _handle_waiting(session, tenant_id, ids)
+    try:
+        async with get_sessionmaker()() as own, own.begin():
+            return await _handle_waiting(own, tenant_id, ids)
+    except Exception as exc:  # pragma: no cover - el aviso no puede tumbar la transición
+        log.warning("inbox_lifecycle.handle_failed", error=str(exc))
+        return 0
+
+
+async def _handle_waiting(session: AsyncSession, tenant_id: uuid.UUID, ids: list[str]) -> int:
+    access = await session.get(ClientAccess, tenant_id)
+    if access is None:
+        return 0
+    ref = await session.scalar(
+        sa.select(PartnerTenant.external_client_ref).where(
+            PartnerTenant.partner_id == access.partner_id,
+            PartnerTenant.tenant_id == tenant_id,
+        )
+    )
+    if ref is None:
+        return 0
+    result = await session.execute(
+        sa.update(ConsoleNotification)
+        .where(
+            ConsoleNotification.partner_id == access.partner_id,
+            ConsoleNotification.external_client_ref == ref,
+            ConsoleNotification.kind == NotificationKind.INBOX_WAITING.value,
+            ConsoleNotification.handled_at.is_(None),
+            ConsoleNotification.payload["conversation_id"].astext.in_(ids),
+        )
+        .values(handled_at=_now())
+        .execution_options(synchronize_session=False)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 async def resolve(session: AsyncSession, conversation: Conversation, *, actor: str) -> bool:
     """Resuelta: sale de la lista por defecto. Si el contacto vuelve a escribir
     responde el agente, así que el agente queda listo (idempotente)."""
@@ -384,10 +461,11 @@ async def reopen(session: AsyncSession, conversation: Conversation, *, actor: st
 
 async def release_escalated_for_tenant(
     session: AsyncSession, tenant_id: uuid.UUID, *, actor: str
-) -> int:
+) -> list[uuid.UUID]:
     """Sin Bandeja, las conversaciones calladas por un escalado vuelven al
     agente. Las que una persona tomó a mano se respetan: esa persona sigue
-    con su WhatsApp y el admin puede devolverlas."""
+    con su WhatsApp y el admin puede devolverlas. Devuelve las que volvieron,
+    para cerrar sus avisos (``mark_waiting_handled``, spec 056)."""
     rows = (
         (
             await session.execute(
@@ -414,7 +492,7 @@ async def release_escalated_for_tenant(
         )
     if rows:
         await session.flush()
-    return len(rows)
+    return [conversation.id for conversation in rows]
 
 
 async def tell_escalation_recipients(
@@ -444,6 +522,7 @@ __all__ = [
     "WaitingMark",
     "announce_waiting",
     "mark_waiting",
+    "mark_waiting_handled",
     "mark_waiting_reason",
     "record_event",
     "release_escalated_for_tenant",

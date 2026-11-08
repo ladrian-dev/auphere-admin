@@ -200,8 +200,9 @@ async def test_la_semilla_deja_el_mundo_del_prototipo(
         u=person.user_id,
     )
     assert crossed == []
-    # T167: la persona del cliente ve Agentes y Negocio en la consola lite.
-    assert {"agents", "business"} <= set(person.modules)
+    # Spec 056 (requisito 2.1): Agentes y Negocio ya no son módulos del cliente.
+    assert set(person.modules).isdisjoint({"agents", "business"})
+    assert list(person.modules) == ["panel", "inbox", "usage"]
 
     # T155 y T157: la cuenta de Ladrian en EUR, las bolsas del prototipo y el tope.
     from nexus_api.core.partner_context import apply_partner_to_session

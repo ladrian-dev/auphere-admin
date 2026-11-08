@@ -421,3 +421,99 @@ escribiendo antes la audiencia de sus números sin configurar con la regla de la
 partner nuevo nace con ella (`born_on_new_console`). El dinero no se mueve solo:
 las bolsas siguen esperando a que el partner confirme el reparto. Los informes
 de ensayo que ya había quedan en `migration_reports`.
+
+## 9. El freno de citas (spec 056, requisito 1)
+
+Ninguna respuesta da por hecha una cita sin una reserva real detrás. Vale para
+todos los agentes, legados y estructurados, y no depende de lo que diga su
+prompt. Vive en `apps/worker/src/nexus_worker/runtime/booking_brake.py` y lo
+llama el manejador (`pipeline.make_handler_node`) justo después del bucle ReAct,
+dentro del propio manejador: así el reintento conserva los sobres del turno y no
+repite herramientas (`tool_once`).
+
+**Cómo decide**, de lo más barato a lo más caro:
+
+1. **Un filtro de palabras** sin tildes, en es, en y pt («confirmad», «reservad»,
+   «tu cita», «te esperamos», *booked*, *confirmed*, «seu horário»…), sobre el
+   texto y sobre el componente interactivo (cuerpo, botones, filas). Sin acierto,
+   la respuesta sale sin ninguna llamada.
+2. **Lo que la respalda en este turno**, herramienta a herramienta. La lista sale
+   de `capability_names.TOOL_ACTIONS` (reservar o cambiar una cita, sin las
+   cancelaciones):
+   - `reservas.create` y `reservas.reschedule`: solo con `booking` y sin
+     `refused`. Contestan `status: ok` también al rechazar;
+   - `reservas.answer_offer`: solo con `result: booked`;
+   - `booking.create_appointment` / `modify_appointment`, Google Calendar
+     (`CREATE_EVENT`, `QUICK_ADD`, `UPDATE_EVENT`) y `CALENDLY_POST_INVITEE`:
+     `status: ok`;
+   - una cita que sigue en pie: `reservas.list_mine` con reservas y
+     `reservas.confirm_attendance`;
+   - el Playground (`skipped:dry_run`) y el reintento de un turno (`replayed`);
+   - **no** respaldan un error, un `approval_*` ni el enlace de un solo uso de
+     Calendly (con él reserva el cliente).
+
+   Con una reserva hecha en el turno, la respuesta sale sin cambios y sin
+   llamadas.
+3. **Turnos anteriores de esa conversación**, solo si el filtro acertó: una
+   reserva viva de Reservas con su `conversation_id`, o el éxito de un calendario
+   conectado o de `booking.*` en sus salidas desde `attended_at`. De Reservas
+   manda la agenda: un `ok` viejo pudo cancelarse. Si en este turno se intentó una
+   reserva y no salió, lo de antes no la cubre: la respuesta puede estar dando
+   por hecha la nueva, y el clasificador recibe la pregunta estrecha (solo cuenta
+   una cita hecha, confirmada o cambiada ahora).
+4. **Una llamada `classify`**, solo con acierto y sin respaldo: «¿afirma o da a
+   entender que hay una cita hecha, confirmada, cambiada o en pie? YES/NO». El
+   borrador va como mensaje `user`, como dato (§III). Si la llamada falla, vuelve
+   vacía o no dice YES ni NO, cuenta como afirmación: falla cerrado.
+
+**Qué hace** con una afirmación sin respaldo (D1):
+
+- **Un reintento.** El bucle vuelve a correr una vez, con sus herramientas y
+  `MAX_TOOL_ITERATIONS` de nuevo, tras la nota `BOOKING_BRAKE_NOTE` como `system`
+  (§III): no se envió, resérvala con tu herramienta o di la verdad. **Sin el
+  borrador**: como `assistant`, el hilo acabaría en él (LiteLLM sube todo `system`
+  a la cabecera de Anthropic) y el modelo lo continuaría. Así el último mensaje
+  sigue siendo el del cliente, como con la nota de memoria de herramientas. En un
+  turno enrutado sigue dentro de su `turn_budget`; si se agota, es el
+  `turn_limit` de siempre.
+- **Si vuelve a afirmarla**, la conversación pasa a una persona:
+  - el contacto recibe la frase de traspaso, sin componente interactivo;
+  - `turn_failure = {"kind": "handoff", "reason": "booking_unbacked"}`;
+  - el despachador la marca con `booking_unbacked` («El agente dio por hecha una
+    cita que no existe»). No es de puerta: no la libera la siguiente respuesta;
+  - con Bandeja, el agente se calla en esa conversación, como en un bucle de
+    Recepción. Sin Bandeja, avisa a los destinatarios de escalado del canal.
+- **El revisor de resultados** reescribe sin herramientas: si su borrador nuevo
+  afirma una cita sin respaldo, sale `GRADER_FALLBACK_RESPONSE`.
+
+**Constancia, sin texto**: el evento de log `booking.brake` (`retried`,
+`handed_off`, `classifier_failed_closed`, `grader_fallback`) y, en un turno de
+canal, la fila de auditoría `agent.booking_brake` con el agente, el turno y el
+resultado (`specs/047-la-fabrica-de-agentes/contracts/events.md` §2, §4 y §5). La
+llamada `classify` se cobra dentro del turno, como la del clasificador del grafo
+(`docs/modelos-y-router.md`).
+
+**Pruebas**: `apps/worker/tests/unit/test_booking_brake.py` (el filtro y la tabla
+de respaldo), `test_pipeline_booking_brake.py` (el reintento y el traspaso, en un
+agente legado y en uno estructurado), `apps/api/tests/integration/test_booking_brake_turn.py`
+(el turno de verdad: motivo, auditoría, cobro y pausa con Bandeja),
+`apps/api/tests/isolation/test_056_booking_brake_same_conversation.py` (garantía
+8: solo cuenta la conversación del turno) y la de punta a punta contra staging,
+`apps/api/tests/release/test_booking_brake_staging.py` (`manual_only`, no corre en
+CI).
+
+## 10. Una corrección para todos los agentes (spec 056, requisito 9)
+
+Cuando la persona del cliente corrige una **regla** con «Todo el negocio», la
+propuesta no va solo al agente que respondió: va a cada agente activo del
+cliente (`published` o `paused`, sin mirar el papel), con su propuesta y su
+prueba, unidas en un lote por `inbox_corrections.batch_id` (migración 0226). El
+agente en el que la regla no valida se salta (`after_json.skipped`). El partner
+ve el lote en las mejoras de cada agente (`batch {id, agents_count}`) y lo
+acepta o lo descarta de una vez
+(`POST /console/clients/{ref}/corrections/{batch_id}/accept|discard`). Con «Solo
+este agente», una propuesta y sin lote, como antes. El detalle está en
+[consola-lite.md](consola-lite.md#la-bandeja-dice-la-verdad-spec-056-requisitos-6-a-9-y-133).
+
+**Pruebas**: `apps/api/tests/integration/improvement/test_corrections.py` y
+`test_correction_batch_accept.py`.

@@ -94,10 +94,11 @@ def usage_url() -> str:
     return f"{APP_SCHEME}://usage"
 
 
-def agents_url(agent_id: object, channel_id: object | None = None) -> str:
-    """Spec 047: el agente (y, si lo hay, su número) en la app."""
-    base = f"{APP_SCHEME}://agents/{agent_id}"
-    return f"{base}/channels/{channel_id}" if channel_id else base
+def home_url() -> str:
+    """Spec 056 (requisitos 2.6 y 2.7): Inicio. El aviso de un agente lleva aquí:
+    la app ya no tiene la pantalla de Agentes, y un enlace que no conoce (el de
+    las versiones de antes también) acaba en Inicio."""
+    return f"{APP_SCHEME}://home"
 
 
 def reservas_url(booking_id: object) -> str:
@@ -161,9 +162,9 @@ __all__ = [
     "KIND_CONFIG",
     "TTL_SECONDS",
     "Notice",
-    "agents_url",
     "apns",
     "fcm",
+    "home_url",
     "inbox_url",
     "usage_url",
 ]

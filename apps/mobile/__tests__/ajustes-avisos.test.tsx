@@ -35,10 +35,6 @@ jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ setQueryDat
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: jest.fn() }));
 let mockGlass = false;
 jest.mock("expo-glass-effect", () => ({ isLiquidGlassAvailable: () => mockGlass }));
-// Spec 047 (T169): Ajustes leads to Negocio.
-const mockPush = jest.fn();
-const mockReplace = jest.fn();
-jest.mock("expo-router", () => ({ router: { push: (...a: unknown[]) => mockPush(...a), replace: (...a: unknown[]) => mockReplace(...a) } }));
 
 const Ajustes = require("@/app/ajustes").default;
 
@@ -72,7 +68,8 @@ it("who you are here: name, email, business and role", async () => {
 it("with permission, one switch per kind this person can get", async () => {
   mockPermission = "granted";
   await render(<Ajustes />);
-  expect(screen.getAllByRole("switch")).toHaveLength(3);
+  // The Bandeja's two, «Agentes y números» (every client, spec 056, 2.7) and the balance.
+  expect(screen.getAllByRole("switch")).toHaveLength(4);
   expect(screen.getByRole("switch", { name: "Mensaje nuevo donde respondes tú" }).props.value).toBe(false);
 });
 
@@ -169,7 +166,7 @@ describe("notices by module (spec 044, R14.1, R14.2)", () => {
     mockNotices = { kinds: ["inbox.waiting", "client.balance", "reservas.agent_change", "reservas.cancelled_today"] };
     await render(<Ajustes />);
     for (const g of ["Bandeja", "Reservas", "Saldo"]) expect(screen.getByRole("header", { name: g })).toBeTruthy();
-    expect(screen.getAllByRole("switch")).toHaveLength(6);
+    expect(screen.getAllByRole("switch")).toHaveLength(7);
     expect(screen.getByRole("switch", { name: "Reserva nueva o cambiada por el agente" }).props.value).toBe(true);
     expect(screen.getByRole("switch", { name: "Cancelaciones de hoy" }).props.value).toBe(true);
     expect(screen.getByRole("switch", { name: "Alguien de la lista de espera aceptó" }).props.value).toBe(false);
@@ -190,7 +187,7 @@ describe("notices by module (spec 044, R14.1, R14.2)", () => {
   });
 });
 
-describe("«Agentes y números» (spec 047, T170)", () => {
+describe("«Agentes y números» (spec 047, T170; spec 056, 2.7)", () => {
   beforeEach(() => {
     mockPermission = "granted";
     mockSetNotices.mockClear();
@@ -200,10 +197,7 @@ describe("«Agentes y números» (spec 047, T170)", () => {
     mockNotices = { kinds: ["inbox.waiting", "client.balance"] };
   });
 
-  it("only with Agentes, in its own group; switching it off sends the rest of the set", async () => {
-    await render(<Ajustes />);
-    expect(screen.queryByRole("switch", { name: "Agentes y números" })).toBeNull();
-    mockNav = ["panel", "inbox", "agents"];
+  it("for every client, with no module of its own, in its own group; switching it off sends the rest of the set", async () => {
     mockNotices = { kinds: ["inbox.waiting", "agents.state", "client.balance"] };
     await render(<Ajustes />);
     expect(screen.getByRole("header", { name: "Agentes" })).toBeTruthy();
@@ -239,32 +233,21 @@ describe("quiet hours (spec 044, R14.3)", () => {
   });
 });
 
-describe("Negocio from Ajustes (spec 047, T169, 50.1)", () => {
+describe("no Negocio in Ajustes (spec 056, 2.6)", () => {
   afterEach(() => {
     mockNav = ["panel", "inbox"];
-    mockPush.mockReset();
-    mockReplace.mockReset();
   });
 
-  it("only with the module, and on iOS the sheet gives way to it (a screen pushed under a sheet would open behind it)", async () => {
+  it("not even if `/me.nav` still names `business` or `agents`, on either platform", async () => {
     const { Platform } = require("react-native");
-    await render(<Ajustes />);
-    expect(screen.queryByRole("button", { name: /^Horario, servicios y sedes/ })).toBeNull();
-    mockNav = ["panel", "inbox", "business"];
-    Platform.OS = "ios";
-    await render(<Ajustes />);
-    await fireEvent.press(screen.getByRole("button", { name: /^Horario, servicios y sedes/ }));
-    expect(mockReplace).toHaveBeenCalledWith("/negocio");
-    expect(mockPush).not.toHaveBeenCalled();
-  });
-
-  it("on Android Ajustes is a screen: Negocio goes on top of it", async () => {
-    const { Platform } = require("react-native");
-    mockNav = ["panel", "inbox", "business"];
-    Platform.OS = "android";
-    await render(<Ajustes />);
-    await fireEvent.press(screen.getByRole("button", { name: /^Horario, servicios y sedes/ }));
-    expect(mockPush).toHaveBeenCalledWith("/negocio");
+    mockNav = ["panel", "inbox", "agents", "business"];
+    for (const os of ["ios", "android"]) {
+      Platform.OS = os;
+      await render(<Ajustes />);
+      expect(screen.queryByTestId("settings-business")).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Horario, servicios y sedes/ })).toBeNull();
+      expect(screen.queryByText("Horario, servicios y sedes")).toBeNull();
+    }
     Platform.OS = "ios";
   });
 });

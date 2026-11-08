@@ -1,35 +1,38 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { render, screen } from "@testing-library/react-native";
 
-import type { Conversation, Home, Me, UsageSummary } from "@/api/endpoints";
+import type { Conversation, UsageSummary } from "@/api/endpoints";
 import { redirectSystemPath } from "@/app/+native-intent";
 import { ConversationRow } from "@/features/inbox/list/conversation-row";
 import { attendsLine, composerMode, waitingReasonText } from "@/features/inbox/model";
 import { ControlCard } from "@/features/inbox/thread/control";
 import { groupsFor, permissionLines } from "@/features/notices";
-import { HomeView } from "@/features/home/home-view";
 import { UsageView } from "@/features/usage/usage-view";
 import { t as translate, type T } from "@/i18n/t";
 import { formatMoney } from "@/lib/format";
 import { conversationOf, routeFor } from "@/push/routing";
 
-import { agent, AGENT, CHANNEL, CONVERSATION } from "../test/fabrica-fixtures";
+import { AGENT, CHANNEL, CONVERSATION } from "../test/fabrica-fixtures";
 
 /**
  * Spec 047, T170 (50.6, 50.7, `events.md` §3.1) and the money of T169's
- * Inicio and Consumo: each new notice opens its screen; the Bandeja says who
- * takes a conversation and why it waits; Consumo says the bag's state and
- * whom to ask, in the bag's currency.
+ * Consumo: each new notice opens its screen; the Bandeja says who takes a
+ * conversation and why it waits; Consumo says the bag's state and whom to
+ * ask, in the bag's currency. Spec 056 (2.6, 2.7): Agentes and Negocio left
+ * the app, so `agents.state` opens Inicio and reaches every phone.
  */
 const t: T = (k, v) => translate("es", k, v);
 // Whole screens with a real query cache: a loaded machine running the suite in parallel needs more than 5 s.
 jest.setTimeout(15_000);
 
 describe("the new notices open their screen (50.6)", () => {
-  it("`agents.state` opens its agent (a number's, on its agent); the bag's go as `client.balance` to Consumo", () => {
-    expect(routeFor({ url: `auphere-customers://agents/${AGENT}`, kind: "agents.state" })).toBe(`/agente/${AGENT}`);
-    expect(routeFor({ url: `auphere-customers://agents/${AGENT}/channels/${CHANNEL}`, kind: "agents.state" })).toBe(`/agente/${AGENT}`);
+  it("`agents.state` opens Inicio (spec 056, 2.7), and so does an agent's link sent before; the bag's go as `client.balance` to Consumo", () => {
+    expect(routeFor({ url: "auphere-customers://home", kind: "agents.state" })).toBe("/");
+    // Notices delivered before the API changed: there is no agent screen any more (2.6).
+    expect(routeFor({ url: `auphere-customers://agents/${AGENT}`, kind: "agents.state" })).toBe("/");
+    expect(routeFor({ url: `auphere-customers://agents/${AGENT}/channels/${CHANNEL}`, kind: "agents.state" })).toBe("/");
     expect(routeFor({ url: "auphere-customers://usage", kind: "client.balance" })).toBe("/consumo");
     expect(routeFor({ url: `auphere-customers://inbox/${CONVERSATION}`, kind: "inbox.waiting" })).toBe(`/conversacion/${CONVERSATION}`);
+    expect(conversationOf({ url: "auphere-customers://home" })).toBeNull();
     expect(conversationOf({ url: `auphere-customers://agents/${AGENT}` })).toBeNull();
   });
 
@@ -37,19 +40,22 @@ describe("the new notices open their screen (50.6)", () => {
     expect(routeFor({ kind: "agents.state", agent_id: AGENT })).toBeNull();
     expect(routeFor({ url: "auphere-customers://agents/../../ajustes", kind: "agents.state" })).toBeNull();
     expect(routeFor({ url: `auphere-customers://agents/${AGENT}/ajustes` })).toBeNull();
+    expect(routeFor({ url: "auphere-customers://home/ajustes" })).toBeNull();
   });
 
-  it("a link to an agent opened with the app closed lands on it", () => {
-    expect(redirectSystemPath({ path: `auphere-customers://agents/${AGENT}`, initial: true })).toBe(`/agente/${AGENT}`);
+  it("a link to an agent opened with the app closed goes home, whatever its shape (spec 056, 2.6)", () => {
+    expect(redirectSystemPath({ path: `auphere-customers://agents/${AGENT}`, initial: true })).toBe("/");
+    expect(redirectSystemPath({ path: `auphere-customers://agents/${AGENT}/channels/${CHANNEL}`, initial: true })).toBe("/");
     expect(redirectSystemPath({ path: "auphere-customers://agents/nada", initial: true })).toBe("/");
+    expect(redirectSystemPath({ path: "auphere-customers://home", initial: true })).toBe("/");
   });
 
-  it("«Agentes y números» is a kind of this phone's notices, only with the module, in its own group", () => {
-    expect(groupsFor(["panel", "inbox"]).map((g) => g.group)).toEqual(["inbox", "balance"]);
-    const agents = groupsFor(["panel", "inbox", "agents"]).find((g) => g.group === "agents");
+  it("«Agentes y números» is a kind of every phone's notices, without any module, in its own group (spec 056, 2.7)", () => {
+    expect(groupsFor(["panel", "inbox"]).map((g) => g.group)).toEqual(["inbox", "agents", "balance"]);
+    const agents = groupsFor([]).find((g) => g.group === "agents");
     expect(agents?.kinds.map((k) => k.kind)).toEqual(["agents.state"]);
     expect(t(agents!.label)).toBe("Agentes");
-    expect(permissionLines(["agents"]).map((l) => l.key)).toContain("agents.state");
+    expect(permissionLines([]).map((l) => l.key)).toContain("agents.state");
   });
 });
 
@@ -84,11 +90,12 @@ describe("the Bandeja says who takes it and why it waits (50.7)", () => {
     expect(screen.queryByText("La atiende Recepción")).toBeNull();
   });
 
-  it("every code of `events.md` §2 in words; an unknown one says nothing", () => {
+  it("every code of `events.md` §2 in words; an unknown one, the generic sentence (spec 056, 7.2)", () => {
     expect(waitingReasonText("no_balance", t)).toBe("Sin saldo");
     expect(waitingReasonText("escalated", t)).toBe("Pidió una persona");
     expect(waitingReasonText("reception_loop", t)).toBe("Derivaciones en bucle");
-    expect(waitingReasonText("nuevo", t)).toBeNull();
+    expect(waitingReasonText("nuevo", t)).toBe("El agente pidió ayuda");
+    expect(waitingReasonText(null, t)).toBeNull();
     expect(attendsLine({ state: "agent", assignee: null, agent: null, handled_by_agent: { name: "Ventas" } }, t)).toBe(t("app.inbox.attends.agent", { agent: "Ventas" }));
   });
 });
@@ -112,41 +119,6 @@ describe("the conversation says why it waits, by its code (50.7, `waiting_code`)
     await render(<ControlCard mode={{ kind: "waiting", reason: "Pide hablar con alguien", code: "escalated" }} busy={false} online t={t} onTakeOver={jest.fn()} onGiveBack={jest.fn()} onReopen={jest.fn()} />);
     expect(screen.getByTestId("waiting-code").props.children).toBe("Pidió una persona");
     expect(screen.getByTestId("waiting-reason").props.children).toBe("Pide hablar con alguien");
-  });
-});
-
-describe("Inicio: «Agentes» and the way into Negocio (50.1)", () => {
-  const me = { client: { name: "Flor y Encanto", modules: [] }, nav: ["panel", "inbox", "agents", "business"], balance_contact: { kind: "partner", name: "Amacrux" } } as unknown as Me;
-  const home = { spend_month: null, conversations: null, waiting: null, balance: null, attention: [], errors: [] } as unknown as Home;
-
-  it("the agents after what needs a person, and Negocio with what the agent will say of the hours", async () => {
-    const onAgent = jest.fn();
-    const onBusiness = jest.fn();
-    await render(
-      <HomeView
-        me={me}
-        home={home}
-        t={t}
-        locale="es"
-        onRetry={jest.fn()}
-        onAttend={jest.fn()}
-        onUsage={jest.fn()}
-        agents={{ state: "ready", items: [agent()] }}
-        onAgent={onAgent}
-        onBusiness={onBusiness}
-        businessHint="De lunes a viernes de 9:00 a 14:00"
-      />,
-    );
-    await fireEvent.press(screen.getByRole("button", { name: "Recepción. Atendiendo" }));
-    expect(onAgent).toHaveBeenCalledWith(AGENT);
-    await fireEvent.press(screen.getByRole("button", { name: "Horario, servicios y sedes. De lunes a viernes de 9:00 a 14:00" }));
-    expect(onBusiness).toHaveBeenCalled();
-  });
-
-  it("without the modules, neither", async () => {
-    await render(<HomeView me={me} home={home} t={t} locale="es" onRetry={jest.fn()} onAttend={jest.fn()} onUsage={jest.fn()} />);
-    expect(screen.queryByText("Agentes")).toBeNull();
-    expect(screen.queryByText("Horario, servicios y sedes")).toBeNull();
   });
 });
 

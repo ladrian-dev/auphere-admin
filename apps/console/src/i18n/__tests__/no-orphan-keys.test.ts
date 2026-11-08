@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { agentsMessages } from "../lanes/agents";
+import { clientAccessMessages } from "../lanes/client-access";
 import { inboxMessages } from "../lanes/inbox";
+import { inboxCorrectMessages } from "../lanes/inbox-correct";
 import { liteMessages } from "../lanes/lite";
 import { reservasMessages } from "../lanes/reservas";
 import { workstationMessages } from "../lanes/workstation";
@@ -107,6 +109,10 @@ describe("claves de la consola lite sin dueño", () => {
     ["agents", agentsMessages],
     // Spec 043: Reservas nace vigilada, como la Bandeja.
     ["reservas", reservasMessages],
+    // Spec 056: «Corregir esta respuesta», que salió del carril de Agentes del cliente.
+    ["inbox-correct", inboxCorrectMessages],
+    // Spec 056: la pestaña «Acceso» de un cliente nace vigilada.
+    ["client-access", clientAccessMessages],
   ] as const)("carril %s: ninguna clave se queda sin quien la pida", (_lane, lane) => {
     const orphans = Object.keys(lane).filter(
       (key) => !literal.has(key) && !appLiteral.has(key) && !prefixes.some((p) => key.startsWith(p)),

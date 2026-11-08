@@ -61,7 +61,7 @@ from nexus_api.services.business import hours as business_hours
 from nexus_api.services.business_hours import load_business_hours
 from nexus_api.services.push_payloads import (
     Notice,
-    agents_url,
+    home_url,
     inbox_url,
     reservas_url,
     usage_url,
@@ -370,7 +370,8 @@ async def _agents_notice(
         kind=event.kind,
         title=text.title,
         body=text.body,
-        url=agents_url(agent.id, payload.get("channel_id")),
+        # Spec 056: Agentes salió de la app; el aviso sigue y abre Inicio.
+        url=home_url(),
         thread=f"agent:{agent.id}",
         badge=badge,
     )

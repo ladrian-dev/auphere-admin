@@ -4,14 +4,18 @@ import { Plus, X } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, Switch } from "@nexus/ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, NativeSelect, StatusBadge, Switch } from "@nexus/ui";
 
-import { putBusinessHoursAction } from "@/app/(console)/reservas/actions";
+import { patchBusinessHoursAction } from "@/app/(console)/reservas/actions";
+import { blockRows, draftFromHours, shiftsText, validateDraft, type HoursDraft } from "@/components/business/sections/hours-model";
+import { WeekEditor } from "@/components/business/sections/week-editor";
+import { useDiscardGuard } from "@/components/use-discard-guard";
 import type { MessageKey } from "@/i18n/messages";
-import { WEEKDAYS, type TimeRange, type WeekHours, type Weekday } from "@/lib/backend/reservas";
+import { DAYS, type Day } from "@/lib/backend/business-sections";
+import { WEEKDAYS, type LocationHours, type TimeRange, type WeekHours, type Weekday } from "@/lib/backend/reservas";
 
 import { useReservas } from "../context";
-import { dayValid, rangesLabel, timeOptions, weekInvalidDays } from "../model/hours";
+import { changedDays, dayValid, hoursPatch, reviewDays, timeOptions } from "../model/hours";
 import { failureMessage } from "../model/vocab";
 
 const OPTIONS = timeOptions();
@@ -95,42 +99,113 @@ export function HoursEditor({ value, onChange }: { value: WeekHours; onChange: (
   );
 }
 
-/** The week as a table to read: «Lunes · 09:00 – 14:00 · 15:00 – 19:00» or «Cerrado». */
-export function HoursTable({ value }: { value: WeekHours }) {
-  const { t } = useReservas();
+/** Reservas names the days by their full name (`reservas.weekday.*`); the ficha's keys are short. */
+const WEEKDAY_OF: Record<Day, Weekday> = {
+  mon: "monday",
+  tue: "tuesday",
+  wed: "wednesday",
+  thu: "thursday",
+  fri: "friday",
+  sat: "saturday",
+  sun: "sunday",
+};
+
+/**
+ * The business's week to read (spec 056, 5.1), from the ficha's shape: night
+ * shifts say «(día siguiente)», 24:00 closes, and a stored time off the 5-minute
+ * step says «Revísalo» (5.5).
+ */
+export function HoursTable() {
+  const { t, settings } = useReservas();
+  const review = reviewDays(settings.hours);
   return (
     <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-      {WEEKDAYS.map((day) => (
-        <React.Fragment key={day}>
-          <dt className="text-muted-foreground">{t(`reservas.weekday.${day}` as MessageKey)}</dt>
-          <dd className="tabular-nums">{rangesLabel(value[day]) ?? t("reservas.settings.hours.closed")}</dd>
-        </React.Fragment>
-      ))}
+      {DAYS.map((day) => {
+        const shifts = settings.hours.days[day] ?? [];
+        return (
+          <React.Fragment key={day}>
+            <dt className="text-muted-foreground">{t(`reservas.weekday.${WEEKDAY_OF[day]}` as MessageKey)}</dt>
+            <dd className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="tabular-nums">{shifts.length ? shiftsText(shifts, t("business.hours.read.next_day")) : t("reservas.settings.hours.closed")}</span>
+              {review.includes(day) ? (
+                <StatusBadge tone="warning" title={t("business.hours.review.hint")}>
+                  {t("business.hours.review")}
+                </StatusBadge>
+              ) : null}
+            </dd>
+          </React.Fragment>
+        );
+      })}
     </dl>
   );
 }
 
-/** «Horario del negocio» edit dialog: saved in the business profile (PUT business-hours). */
+/** Each location's hours, to read (5.1): its own ones are changed in the ficha, not here. */
+export function LocationHoursNote({ locations }: { locations: readonly LocationHours[] }) {
+  const { t } = useReservas();
+  if (!locations.length) return null;
+  return (
+    <div className="grid min-w-0 gap-1 text-sm">
+      <ul className="grid min-w-0 gap-1">
+        {locations.map((l) => (
+          <li key={l.location.id} className="text-pretty break-words">
+            {l.has_own_hours
+              ? t("reservas.hours.location.own", { name: l.location.name, label: l.label ?? "" })
+              : t("reservas.hours.location.business", { name: l.location.name })}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-pretty text-muted-foreground">{t("reservas.hours.locations.hint")}</p>
+    </div>
+  );
+}
+
+const HOURS_ERRORS = new Set(["too_many_shifts", "overlap", "overlap_next_day", "invalid_time", "bad_step", "invalid_day"]);
+
+/**
+ * «Horario del negocio» (spec 056, requisito 5): the ficha's editor, day by day,
+ * with its rules. Only the days that changed travel, with the revision that was
+ * read (`PATCH business-hours`); what is stored and was not touched — a night
+ * shift, a sixth shift, a time off the step — stays as it is. Closing with
+ * changes asks first (12.3).
+ */
 export function BusinessHoursDialog({ onClose }: { onClose: () => void }) {
   const { t, settings, refresh } = useReservas();
-  const [week, setWeek] = React.useState<WeekHours>(settings.business_hours);
+  const original = settings.hours;
+  const [draft, setDraft] = React.useState<HoursDraft>(() => ({ ...draftFromHours(original), layout: "daily" }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const invalid = weekInvalidDays(week).length > 0;
+  const changed = changedDays(original, draft);
+  const problems = validateDraft(draft, original);
+  const guard = useDiscardGuard(changed.length > 0, onClose);
+  const dayName = (d: string) => (DAYS.includes(d as Day) ? t(`business.hours.day.${d}` as MessageKey) : d);
+  const problemText = (code: string, day: string) => t(`business.hours.error.${code}` as MessageKey, { day: dayName(day) });
+
+  function change(next: HoursDraft) {
+    setDraft(next);
+    setError(null);
+  }
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      const res = await putBusinessHoursAction({ hours: week });
+      const res = await patchBusinessHoursAction(hoursPatch(original, draft));
       if (res.ok) {
         toast.success(t("reservas.hours.saved"));
         refresh();
         onClose();
         return;
       }
-      const f = failureMessage(res);
-      setError(t(f.key as MessageKey, f.vars));
+      if (res.status === 409) {
+        setError(t("reservas.error.stale"));
+        refresh();
+      } else if (res.status === 422 && res.code && HOURS_ERRORS.has(res.code)) {
+        setError(problemText(res.code, String(res.info?.day ?? "")));
+      } else {
+        const f = failureMessage(res);
+        setError(t(f.key as MessageKey, f.vars));
+      }
     } catch {
       setError(t("common.error.backend"));
     } finally {
@@ -138,28 +213,38 @@ export function BusinessHoursDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const first = problems[0];
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{t("reservas.settings.hours.title")}</DialogTitle>
-          <DialogDescription>{t("reservas.hours.dialog.body")}</DialogDescription>
-        </DialogHeader>
-        <HoursEditor value={week} onChange={setWeek} />
-        {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={() => void save()} loading={busy} disabled={invalid}>
-            {t("reservas.settings.save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t("reservas.settings.hours.title")}</DialogTitle>
+            <DialogDescription>{t("reservas.hours.dialog.body")}</DialogDescription>
+          </DialogHeader>
+          <WeekEditor draft={draft} rows={blockRows("daily")} editable review={reviewDays(original)} onChange={change} />
+          <LocationHoursNote locations={settings.location_hours} />
+          {first && !error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {problemText(first.code, first.day)}
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={guard.close}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => void save()} loading={busy} disabled={changed.length === 0 || problems.length > 0}>
+              {t("reservas.settings.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }

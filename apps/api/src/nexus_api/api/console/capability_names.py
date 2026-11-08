@@ -769,6 +769,20 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Adds the appointment as an event in the business's calendar.",
         "appointments",
     ),
+    ("tool", "GOOGLECALENDAR_QUICK_ADD"): _t(
+        "Apuntar una cita en Google Calendar",
+        "Note an appointment in Google Calendar",
+        "Añade la cita al calendario del negocio a partir de una frase con el día y la hora.",
+        "Adds the appointment to the business's calendar from a sentence with the day and time.",
+        "appointments",
+    ),
+    ("tool", "GOOGLECALENDAR_UPDATE_EVENT"): _t(
+        "Cambiar una cita en Google Calendar",
+        "Change an appointment in Google Calendar",
+        "Mueve o corrige una cita que ya está en el calendario del negocio.",
+        "Moves or corrects an appointment already in the business's calendar.",
+        "appointments",
+    ),
     ("tool", "HUBSPOT_SEARCH_CONTACTS"): _t(
         "Buscar un contacto",
         "Find a contact",
@@ -976,7 +990,11 @@ TOOL_ACTIONS: Final[dict[str, frozenset[Action]]] = {
     "CALENDLY_POST_INVITEE": frozenset({"book"}),
     "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK": frozenset({"book"}),
     "GOOGLECALENDAR_CREATE_EVENT": frozenset({"book"}),
+    # Spec 056 (requisito 1.3): the booking brake reads this list too, and a
+    # calendar booked with the quick add or moved with an edit keeps the promise.
+    "GOOGLECALENDAR_QUICK_ADD": frozenset({"book"}),
     "reservas.reschedule": frozenset({"modify_booking"}),
+    "GOOGLECALENDAR_UPDATE_EVENT": frozenset({"modify_booking"}),
     "reservas.cancel": frozenset({"modify_booking"}),
     "booking.modify_appointment": frozenset({"modify_booking"}),
     "booking.cancel_appointment": frozenset({"modify_booking"}),

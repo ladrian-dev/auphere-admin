@@ -11,7 +11,7 @@ import type { ReservasSettingsPatch } from "@/lib/backend/reservas";
 
 import { useReservas } from "../context";
 import { failureMessage } from "../model/vocab";
-import { BusinessHoursDialog, HoursTable } from "./hours-editor";
+import { BusinessHoursDialog, HoursTable, LocationHoursNote } from "./hours-editor";
 
 /**
  * Settings saves (spec 043, T025): every PATCH carries the version it read
@@ -141,7 +141,8 @@ export function BusinessHoursSection() {
         </Button>
       }
     >
-      {settings.hours_missing ? <Callout tone="warning">{t("reservas.settings.hours.missing")}</Callout> : <HoursTable value={settings.business_hours} />}
+      {settings.hours_missing ? <Callout tone="warning">{t("reservas.settings.hours.missing")}</Callout> : <HoursTable />}
+      <LocationHoursNote locations={settings.location_hours} />
       {editing ? <BusinessHoursDialog onClose={() => setEditing(false)} /> : null}
     </Section>
   );

@@ -4,14 +4,16 @@ import Link from "next/link";
 import { Button, cn } from "@nexus/ui";
 
 import type { Locale, MessageKey } from "@/i18n/messages";
+import { amountParts, formatAmount } from "@/lib/amount";
 import type { LiteHome } from "@/lib/backend/lite";
 
 type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 const SLICE = ["bg-primary", "bg-primary-deep", "bg-accent-mid", "bg-muted-foreground/40", "bg-status-info"] as const;
 
+/** Spec 056 (13.1): the one money format of the console (`lib/amount.ts`); the spend is US$ cents. */
 function money(cents: number, locale: Locale): string {
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).format(cents / 100);
+  return formatAmount({ amount_minor: cents, currency: "USD" }, locale);
 }
 
 /** The spend splits by agent only with more than one: a single slice says nothing. */
@@ -89,7 +91,7 @@ export function LiteSpendCard({
  * mes» and the balance of Consumo (spec 045).
  */
 export function MoneyFigure({ cents, locale }: { cents: number; locale: Locale }) {
-  const parts = new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).formatToParts(cents / 100);
+  const parts = amountParts({ amount_minor: cents, currency: "USD" }, locale);
   return (
     <p className="text-4xl font-semibold tracking-tight tabular-nums">
       <span className="sr-only">{money(cents, locale)}</span>

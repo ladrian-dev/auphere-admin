@@ -213,3 +213,64 @@ async def test_the_agent_forgets_what_the_inbox_stopped_showing(
     )
     await db_session.commit()
     assert await _load_recent_history(w["tenant_id"], str(archived)) == []
+
+
+async def test_after_delete_the_contact_writes_into_an_open_chat_with_only_the_new_message(
+    client, db_session, console_world
+) -> None:
+    """Spec 056 (16.3 y 16.4, retroactiva del commit ``87b7c4cc``). «Eliminar»
+    resuelve sin borrar; cuando el contacto vuelve a escribir, el despachador
+    (``upsert_conversation_for_customer`` y ``_mark_attended``) la trae de vuelta
+    a «Abiertas» con solo el mensaje nuevo. Las dos acciones quedan en la
+    auditoría con quién las hizo, ``client:<correo>``."""
+    from nexus_worker.persistence.messages import (
+        persist_inbound_message,
+        upsert_conversation_for_customer,
+    )
+    from nexus_worker.runtime.dispatcher import _mark_attended
+
+    from nexus_api.db.models import ClientMembership
+
+    w = console_world["a"]
+    inbox = await make_inbox(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    deleted, emptied = inbox["conversations"]
+    me = inbox["headers"]
+    assert (await client.post(f"{BASE}/{deleted}/archive", headers=me())).status_code == 204
+    assert (await client.post(f"{BASE}/{emptied}/clear", headers=me())).status_code == 200
+
+    async with tenant_scoped_session(db_session, w["tenant_id"]):
+        old = await db_session.get(Conversation, deleted)
+        assert old is not None
+        conv = await upsert_conversation_for_customer(
+            db_session, channel_id=old.channel_id, customer_id=old.customer_id
+        )
+        msg = await persist_inbound_message(
+            db_session, conversation_id=conv.id, content="Hola otra vez"
+        )
+        _mark_attended(conv, [msg])
+        conv.last_message_at = msg.created_at
+    await db_session.commit()
+
+    listed = (await client.get(BASE, headers=me())).json()["items"]
+    row = next(i for i in listed if i["id"] == str(conv.id))
+    assert row["state"] == "agent", "en «Abiertas», con el agente"
+    thread = (await client.get(f"{BASE}/{conv.id}/messages", headers=me())).json()["items"]
+    assert [i["text"] for i in thread if i["type"] == "message"] == ["Hola otra vez"]
+
+    async with tenant_scoped_session(db_session, w["tenant_id"]):
+        email = await db_session.scalar(
+            sa.select(ClientMembership.email).where(
+                ClientMembership.id == inbox["member"]["membership_id"]
+            )
+        )
+        actors = dict(
+            (
+                await db_session.execute(
+                    sa.select(AuditLog.action, AuditLog.actor).where(
+                        AuditLog.action.in_(["inbox.archived", "inbox.cleared"])
+                    )
+                )
+            ).all()
+        )
+    await db_session.commit()
+    assert actors == {"inbox.archived": f"client:{email}", "inbox.cleared": f"client:{email}"}

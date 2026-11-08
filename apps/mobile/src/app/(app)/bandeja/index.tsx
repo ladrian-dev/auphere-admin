@@ -52,6 +52,8 @@ export default function Bandeja() {
   const items = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const first = list.data?.pages[0];
   const filtered = filter !== "all" || query !== "" || agent !== null;
+  // Spec 056 (6.2): «Abiertas» empty with resolved ones. Old APIs do not send it: 0.
+  const resolved = filtered ? 0 : ((first as { resolved?: number } | undefined)?.resolved ?? 0);
   // Spec 044, R10.1: with «Todas» and no search, the ones waiting for a person go first, apart.
   const isWaiting = (c: (typeof items)[number]) => c.state === "waiting" && !c.assignee;
   const pinned = filtered ? [] : items.filter(isWaiting);
@@ -113,6 +115,13 @@ export default function Bandeja() {
     </View>
   ) : list.isError && !list.data ? (
     <ErrorState body={t("inbox.error")} onRetry={() => void list.refetch()} />
+  ) : resolved > 0 ? (
+    <EmptyState
+      icon={icons.inbox}
+      title={t("bandeja.open.empty.title")}
+      body={resolved === 1 ? t("bandeja.open.empty.resolved.one") : t("bandeja.open.empty.resolved", { count: resolved })}
+      action={{ label: t("bandeja.open.empty.action"), onPress: () => setFilter("resolved") }}
+    />
   ) : filtered || first?.has_any ? (
     <EmptyState
       icon={icons.inbox}

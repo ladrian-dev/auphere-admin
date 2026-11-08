@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 
 import { ThemeProvider, Toaster, UiCopyProvider } from "@nexus/ui";
 
+import { SessionExpiryNotice } from "@/components/shell/session-expiry-notice";
 import { LocaleProvider } from "@/i18n/client";
 import { t } from "@/i18n/messages";
 import { getLocale } from "@/i18n/server";
@@ -83,6 +84,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             {children}
             {/* Como el prototipo: el aviso sube abajo, en el centro, en vidrio; el tono lo dice su icono. */}
             <Toaster position="bottom-center" closeButton />
+            {/* Spec 056 (15.1): el último día de la sesión se avisa una vez. */}
+            {resolution?.kind === "ok" ? <SessionExpiryNotice expiresAt={resolution.principal.sessionExpiresAt ?? null} /> : null}
           </LocaleProvider>
           </UiCopyProvider>
         </ThemeProvider>

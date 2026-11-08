@@ -24,6 +24,9 @@ responder o la regla, y elige el alcance (todo el negocio o solo este agente):
      ``author = correction``) con el parche (una regla) y su prueba juntos,
      como una sugerencia, para que las mejoras del agente lo decidan igual. Se
      audita (``correction.proposed``) y se avisa (``agent.correction.proposed``).
+     Con **todo el negocio** (spec 056, requisito 9), una propuesta por cada
+     agente activo del cliente, en un lote (``batch_id``) que el partner decide
+     de una vez.
 4. **Deshacer** un dato (:func:`undo`): el cambio de la ficha por el historial, o
    la fuente del agente, que se quita (10 minutos para restaurarla).
 
@@ -54,6 +57,7 @@ from nexus_api.db.models import (
     MessageDirection,
     NotificationKind,
 )
+from nexus_api.db.models.agent_spec import Proposal
 from nexus_api.db.models.inbox_correction import LESSON_MAX, InboxCorrection
 from nexus_api.metering.wallet import partner_id_for_tenant
 from nexus_api.services import inbox_view, proposal_state
@@ -65,6 +69,8 @@ RULE_MAX: Final = 300
 #: Los mensajes del cliente que se leen para parafrasear lo que preguntó.
 CUSTOMER_MESSAGES: Final = 5
 PROPOSED_ACTION: Final = "correction.proposed"
+#: Spec 056 (D7): los agentes «activos» que reciben una regla de «Todo el negocio».
+ACTIVE_LIFECYCLES: Final = ("published", "paused")
 
 #: Una regla para el agente, no un dato del negocio: empieza por una orden o un
 #: «no», o dice lo que debe o no debe hacer.
@@ -354,43 +360,43 @@ async def _apply_fact(session: AsyncSession, row: InboxCorrection, author: Autho
 async def _propose_rule(
     session: AsyncSession, row: InboxCorrection, author: Author, after_commit: AfterCommit
 ) -> None:
-    from nexus_api.core.canonical import canonical_hash
-    from nexus_api.services.agent_spec.patch import PatchError, apply_ops
-    from nexus_api.services.agent_spec.schema import dump
-    from nexus_api.services.agent_spec.validator import load_context, problems_out, validate_spec
-    from nexus_api.services.builder.copilot import _rule_test
-    from nexus_api.services.improvement.suggestions import legacy_chars_of, target_spec
+    """La regla, como propuesta al agente que respondió y, con «Todo el negocio»,
+    a cada otro agente activo del cliente (spec 056, requisito 9 y D7).
 
+    «Activo» es ``published`` o ``paused``, sin mirar el papel del agente: un
+    borrador no entra. Cada hermana es otra fila con su propuesta y el
+    ``batch_id`` de la cabeza (la que envió la persona, con ``batch_id = id``). Si
+    en un agente la regla no valida, se salta y lo dice la auditoría
+    (``skipped``); en el que respondió, el envío falla como siempre. Un aviso por
+    lote, no uno por agente."""
     rule = row.lesson.strip()
     if len(rule) > RULE_MAX:
         raise CorrectionError("rule_too_long", 422, max=RULE_MAX)
     agent = await session.get(Agent, row.agent_id)
     if agent is None or agent.lifecycle == "archived":
         raise CorrectionError("agent_archived", 409)
-    spec = await target_spec(session, agent)
-    if spec is None:
-        raise CorrectionError("no_version", 409)
-    ops = [{"op": "add", "path": "/rules/-", "value": rule}]
-    try:
-        patched = apply_ops(dump(spec), ops)
-    except PatchError:
-        raise CorrectionError("invalid_proposal", 422) from None
-    partner_id = await _partner_of(session, row.tenant_id)
-    ctx = await load_context(session, partner_id=partner_id, legacy_chars=legacy_chars_of(spec))
-    checked, problems = validate_spec(patched, ctx, author="correction")
-    if checked is None or problems:
-        raise CorrectionError("invalid_proposal", 422, problems=problems_out(problems))
-    proposal = await proposal_state.propose(
-        session,
-        agent_id=agent.id,
-        kind="agent_spec_patch",
-        author="correction",
-        diff={"ops": ops, "test": _rule_test(rule)},
-        state_hash=canonical_hash(dump(spec)),
-        summary=f"Añadir la regla «{rule}»",
-        created_by=author.actor,
-    )
+    proposal = await _proposal_for(session, row.tenant_id, agent, rule, author)
     row.proposal_id = proposal.id
+    agents = [agent.id]
+    skipped: list[dict[str, str]] = []
+    if row.scope == "business":
+        sisters: list[tuple[Agent, uuid.UUID]] = []
+        for other in await _active_agents(session, besides=agent.id):
+            try:
+                async with session.begin_nested():
+                    found = await _proposal_for(session, row.tenant_id, other, rule, author)
+            except CorrectionError as exc:
+                skipped.append({"agent_id": str(other.id), "code": exc.code})
+                continue
+            sisters.append((other, found.id))
+        if sisters:
+            row.batch_id = row.id
+            # La cabeza primero: la FK compuesta de las hermanas apunta a ella.
+            await session.flush()
+            now = datetime.now(UTC)
+            for other, proposal_id in sisters:
+                session.add(_sister(row, agent_id=other.id, proposal_id=proposal_id, now=now))
+                agents.append(other.id)
     session.add(
         AuditLog(
             tenant_id=row.tenant_id,
@@ -402,6 +408,10 @@ async def _propose_rule(
                 "proposal_id": str(proposal.id),
                 "scope": row.scope,
                 "origin": author.origin,
+                # Spec 056: a quiénes llegó la regla y en quiénes no validó.
+                "batch_id": str(row.batch_id) if row.batch_id else None,
+                "agents": [str(a) for a in agents],
+                "skipped": skipped,
             },
         )
     )
@@ -412,6 +422,8 @@ async def _propose_rule(
             "correction_id": str(row.id),
             "by": author.name,
             "origin": author.origin,
+            "agents_count": len(agents),
+            **({"batch_id": str(row.batch_id)} if row.batch_id else {}),
         },
     )
 
@@ -423,6 +435,81 @@ async def _propose_rule(
         )
 
     after_commit(_notify)
+
+
+async def _proposal_for(
+    session: AsyncSession, tenant_id: uuid.UUID, agent: Agent, rule: str, author: Author
+) -> Proposal:
+    """La propuesta de añadir ``rule`` a ``agent``, validada sobre su versión de
+    ahora, con su prueba. Un «no» es un :class:`CorrectionError`."""
+    from nexus_api.core.canonical import canonical_hash
+    from nexus_api.services.agent_spec.patch import PatchError, apply_ops
+    from nexus_api.services.agent_spec.schema import dump
+    from nexus_api.services.agent_spec.validator import load_context, problems_out, validate_spec
+    from nexus_api.services.builder.copilot import _rule_test
+    from nexus_api.services.improvement.suggestions import legacy_chars_of, target_spec
+
+    spec = await target_spec(session, agent)
+    if spec is None:
+        raise CorrectionError("no_version", 409)
+    ops = [{"op": "add", "path": "/rules/-", "value": rule}]
+    try:
+        patched = apply_ops(dump(spec), ops)
+    except PatchError:
+        raise CorrectionError("invalid_proposal", 422) from None
+    partner_id = await _partner_of(session, tenant_id)
+    ctx = await load_context(session, partner_id=partner_id, legacy_chars=legacy_chars_of(spec))
+    checked, problems = validate_spec(patched, ctx, author="correction")
+    if checked is None or problems:
+        raise CorrectionError("invalid_proposal", 422, problems=problems_out(problems))
+    return await proposal_state.propose(
+        session,
+        agent_id=agent.id,
+        kind="agent_spec_patch",
+        author="correction",
+        diff={"ops": ops, "test": _rule_test(rule)},
+        state_hash=canonical_hash(dump(spec)),
+        summary=f"Añadir la regla «{rule}»",
+        created_by=author.actor,
+    )
+
+
+async def _active_agents(session: AsyncSession, *, besides: uuid.UUID) -> list[Agent]:
+    """Los otros agentes activos del cliente (la RLS: el de la sesión), publicados
+    o en pausa, como los destinos de mover un número (``channel_config.py``)."""
+    rows = await session.scalars(
+        sa.select(Agent)
+        .where(Agent.lifecycle.in_(ACTIVE_LIFECYCLES), Agent.id != besides)
+        .order_by(Agent.is_default.desc(), Agent.created_at, Agent.id)
+    )
+    return list(rows.all())
+
+
+def _sister(
+    head: InboxCorrection, *, agent_id: uuid.UUID, proposal_id: uuid.UUID, now: datetime
+) -> InboxCorrection:
+    """La misma corrección para otro agente del lote: la lección, la paráfrasis y
+    de dónde vino, con su propia propuesta."""
+    return InboxCorrection(
+        id=uuid.uuid4(),
+        tenant_id=head.tenant_id,
+        conversation_id=head.conversation_id,
+        message_id=head.message_id,
+        agent_id=agent_id,
+        author_client_user_id=head.author_client_user_id,
+        origin=head.origin,
+        scope=head.scope,
+        kind=head.kind,
+        lesson=head.lesson,
+        paraphrase=head.paraphrase,
+        pii=list(head.pii or []),
+        status="proposed",
+        revision=head.revision,
+        proposal_id=proposal_id,
+        batch_id=head.id,
+        sent_at=now,
+        updated_at=now,
+    )
 
 
 async def _partner_of(session: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID | None:

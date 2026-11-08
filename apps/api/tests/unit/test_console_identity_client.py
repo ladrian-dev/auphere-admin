@@ -71,11 +71,11 @@ async def test_client_account_resolves_as_client(db_session, console_world, test
     assert out.permissions == []
 
 
-async def test_the_new_console_shows_agents_and_business_by_default(
+async def test_the_new_console_no_longer_adds_agents_and_business(
     db_session, console_world, test_engine
 ) -> None:
-    """El menú dice lo mismo que ``core.client_auth``: la API ya permitía estos
-    módulos y la consola no los enseñaba si no estaban guardados."""
+    """Spec 056 (requisito 2.1): con la consola nueva tampoco vienen Agentes ni
+    Negocio. El menú dice lo mismo que ``core.client_auth``."""
     w = console_world["a"]
     await make_client_access(
         db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"], modules=("panel", "usage")
@@ -89,7 +89,7 @@ async def test_the_new_console_shows_agents_and_business_by_default(
     out = await _view(test_engine, account)
 
     assert out.access == "ok"
-    assert out.modules == ["panel", "agents", "business", "usage"]
+    assert out.modules == ["panel", "usage"]
 
 
 async def test_the_defaults_do_not_open_a_client_without_modules(

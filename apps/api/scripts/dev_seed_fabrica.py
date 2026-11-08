@@ -84,10 +84,10 @@ from nexus_api.services.console_v2 import born_on_new_console
 ACTOR = "operator:dev-seed@auphere.local"
 DEFAULT_PASSWORD = "demo-demo-1234"
 DEFAULT_CONSOLE_ORIGIN = "http://localhost:3111"
-#: La persona del cliente entra a Panel, Bandeja, Agentes, Negocio y Consumo (la
-#: Bandeja pide un WhatsApp conectado, y Flor y Encanto lo tiene; Agentes y
-#: Negocio llegan con la T167).
-CLIENT_MODULES = ["panel", "inbox", "agents", "business", "usage"]
+#: La persona del cliente entra a Panel, Bandeja y Consumo (la Bandeja pide un
+#: WhatsApp conectado, y Flor y Encanto lo tiene). Spec 056 (requisito 2.1):
+#: Agentes y Negocio ya no son módulos del cliente.
+CLIENT_MODULES = ["panel", "inbox", "usage"]
 #: Cien milésimas por unidad de moneda (las de las bolsas).
 UNIT = 100_000
 #: Un cambio de desarrollo para que las bolsas en EUR funcionen sin el cron del
@@ -247,8 +247,8 @@ FLOR = ClientSpec(
 # Stripe en Cobranza. Con la T132 (ola 5, el conocimiento): las fuentes, la web (14 páginas)
 # y «catalogo-bodas-2026.pdf».
 # T155 y T157 (ola 7): la bolsa en USD, 60 asignados; tope de 15 USD en Ventas
-# mayoristas (``BAGS``, ``AGENT_CAPS``). T167 (ola 8): Marta tiene los módulos
-# ``agents`` y ``business`` de la consola lite (``CLIENT_MODULES``).
+# mayoristas (``BAGS``, ``AGENT_CAPS``). Spec 056: Marta ya no tiene los módulos
+# ``agents`` ni ``business`` de la consola lite (``CLIENT_MODULES``).
 
 ADSL = ClientSpec(
     ref="adsl-system",

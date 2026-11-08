@@ -1,3 +1,4 @@
+import type { Hours } from "@/lib/backend/business-sections";
 import type {
   Booking,
   BookingDetail,
@@ -43,6 +44,26 @@ export function weekHours(o: Partial<WeekHours> = {}): WeekHours {
   };
 }
 
+/**
+ * Spec 056 (5.1): the same week in the ficha's shape — what Reservas edits. Monday
+ * to Friday 09:00–14:00 and 15:00–19:00, Saturday 10:00–14:00, Sunday closed.
+ */
+export function fichaHours(o: Partial<Hours> = {}): Hours {
+  const shift = (open: string, close: string) => ({ open, close, overnight: false });
+  const weekday = [shift("09:00", "14:00"), shift("15:00", "19:00")];
+  return {
+    revision: 3,
+    state: "complete",
+    allowed: ["edit"],
+    location_id: null,
+    inherits: false,
+    layout: "blocks",
+    days: { mon: weekday, tue: weekday, wed: weekday, thu: weekday, fri: weekday, sat: [shift("10:00", "14:00")], sun: [] },
+    label: "Abrimos lunes a viernes de 09:00 a 14:00 y de 15:00 a 19:00.",
+    ...o,
+  };
+}
+
 export const LUCIA = "00000000-0000-4000-8000-0000000000a1";
 export const MARCOS = "00000000-0000-4000-8000-0000000000a2";
 export const CORTE = "00000000-0000-4000-8000-0000000000b1";
@@ -56,6 +77,8 @@ export function servicesSettings(o: Partial<ReservasSettings> = {}): ReservasSet
     currency: "CLP",
     business_hours: weekHours(),
     business_hours_label: "Lunes a viernes 9:00–19:00",
+    hours: fichaHours(),
+    location_hours: [],
     hours_missing: false,
     slot_step_minutes: 30,
     waitlist: { enabled: true, lead_minutes: 120 },
@@ -122,7 +145,8 @@ export function service(o: Partial<ReservasService> = {}): ReservasService {
     id: CORTE,
     name: "Corte y barba",
     duration_minutes: 45,
-    price: { amount_minor: 15000, currency: "CLP" },
+    price: { kind: "amount", amount_minor: 15000 },
+    currency: "CLP",
     staff: "all",
     staff_ids: [],
     position: 1,

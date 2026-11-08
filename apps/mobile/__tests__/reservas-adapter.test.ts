@@ -139,14 +139,21 @@ describe("the contract into the model", () => {
   });
 
   it("reads Servicios' team and services, with prices in CLP", () => {
+    // Spec 056: a service's price is `{kind, amount_minor?}` and its currency sits beside it.
     const c = toConfig(
       { ...settings, mode: "services", capacity_kind: null, capacity: null },
       [{ id: "s1", name: "Lucía", calendar: { status: "connected" } }],
-      [{ id: "sv1", name: "Corte y barba", duration_minutes: 45, price: { amount_minor: 15000, currency: "CLP" }, staff: "some", staff_ids: ["s1"] }],
+      [
+        { id: "sv1", name: "Corte y barba", duration_minutes: 45, price: { kind: "amount", amount_minor: 15000 }, currency: "CLP", staff: "some", staff_ids: ["s1"] },
+        { id: "sv2", name: "Lavado", duration_minutes: 15, price: { kind: "none" }, currency: "CLP", staff: "all", staff_ids: [] },
+      ],
       null,
     );
     expect(c.services?.team).toEqual([{ id: "s1", name: "Lucía", calendar: "google" }]);
-    expect(c.services?.catalog).toEqual([{ id: "sv1", name: "Corte y barba", durationMin: 45, price: 15000, proIds: ["s1"] }]);
+    expect(c.services?.catalog).toEqual([
+      { id: "sv1", name: "Corte y barba", durationMin: 45, price: 15000, proIds: ["s1"] },
+      { id: "sv2", name: "Lavado", durationMin: 15, price: null, proIds: null },
+    ]);
   });
 });
 

@@ -5,9 +5,11 @@ import { icons, type IconName } from "@/ui/icon";
 /**
  * The kinds of notice (031 R8.1; spec 044, R14.1, R14.2; spec 047, T170),
  * grouped by the module they come from, and which ones a person can get: the
- * inbox ones only with the Bandeja (031 R9.3), Reservas' only with Reservas,
- * the agents' only with Agentes. Same words in the
- * permission screen and in Ajustes.
+ * inbox ones only with the Bandeja (031 R9.3), Reservas' only with Reservas.
+ * The agents' and the balance's need no module: Agentes is no longer one
+ * (spec 056, 2.6), yet the API still tells every client when its agents or
+ * numbers pause (2.7), so anyone can see it and switch it off. Same words in
+ * the permission screen and in Ajustes.
  */
 export type NoticeGroup = "inbox" | "reservas" | "agents" | "balance";
 
@@ -50,12 +52,13 @@ export const NOTICE_KINDS: NoticeKindInfo[] = [
   },
   {
     // Spec 047 (T170, events.md §3.1): on from the start, and switched on in the phones that existed (API migration).
+    // Spec 056 (2.7): for every client, since there is no Agentes module to ask for.
     kind: "agents.state",
     group: "agents",
     label: "avisos.kind.agents.state",
     hint: "avisos.kind.agents.state.hint",
     icon: icons.bot,
-    needs: "agents",
+    needs: null,
   },
   { kind: "client.balance", group: "balance", label: "app.notices.kind.client.balance", hint: "app.notices.kind.client.balance.hint", icon: icons.wallet, needs: null },
 ];

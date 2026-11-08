@@ -213,12 +213,22 @@ const correction = suggestion({
   contacts_count: 1,
 });
 
+const BATCH = "00000000-0000-4000-8000-0000000000b1";
+const batched = suggestion({
+  ...correction,
+  id: BATCH,
+  topic: "¿Atendéis los festivos?",
+  batch: { id: BATCH, agents_count: 3 },
+});
+
 describe("Sugerencias de esta semana (T174; H9, 63.2)", { timeout: 30_000 }, () => {
   function view(data: Improvements | null, over: Partial<ImpActions> = {}) {
     const actions: ImpActions = {
       reload: vi.fn(async () => ok({ items: [suggestion()], allowed: ["accept", "discard"] as ("accept" | "discard")[] })),
       accept: vi.fn(async () => ok({ id: "x", status: "accepted" as const, draft_revision: 9, test_id: "t9" })),
       discard: vi.fn(async () => ok({ id: "x", status: "discarded" as const, suppress_until: "2026-11-27T00:00:00Z" })),
+      acceptBatch: vi.fn(async () => ok({ batch_id: BATCH, applied: 3, skipped: [] })),
+      discardBatch: vi.fn(async () => ok({ batch_id: BATCH, applied: 0, skipped: [] })),
       ...over,
     };
     const onAccepted = vi.fn();
@@ -279,6 +289,42 @@ describe("Sugerencias de esta semana (T174; H9, 63.2)", { timeout: 30_000 }, () 
     await waitFor(() => expect(actions.discard).toHaveBeenCalledWith({ ref: REF, agent: AGENT, id: suggestion().id, reason: "no aplica: no tenemos parking" }));
     expect(toast.success).toHaveBeenCalledWith("Descartada. No volverá en 30 días.");
     expect(screen.getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+  });
+
+  /** Spec 056 (9.2): una corrección de «Todo el negocio» llegó a varios agentes y se decide en todos a la vez. */
+  it("el lote dice a cuántos agentes llegó y se acepta en todos de una vez", async () => {
+    const user = userEvent.setup();
+    const { actions, onAccepted } = view(
+      { items: [batched], allowed: ["accept", "discard"] },
+      { acceptBatch: vi.fn(async () => ok({ batch_id: BATCH, applied: 2, skipped: [{ agent_id: VENTAS, code: "improvement_outdated" }] })) },
+    );
+    expect(screen.getByText("Corrección del negocio · Desde la app · En 3 agentes")).toBeInTheDocument();
+    await user.click(ver(batched.topic));
+    const dialog = await screen.findByRole("dialog", { name: batched.topic });
+    expect(within(dialog).getByText("La misma corrección llegó a 3 agentes. Se decide en todos a la vez.")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Aceptar" })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Aceptar en los 3 agentes" }));
+    await waitFor(() => expect(actions.acceptBatch).toHaveBeenCalledWith({ ref: REF, batch: BATCH }));
+    expect(actions.accept).not.toHaveBeenCalled();
+    expect(await screen.findByText("Aceptada en 2 agentes")).toBeInTheDocument();
+    expect(screen.getByText(/En 1 agente no se pudo aplicar/)).toBeInTheDocument();
+    expect(onAccepted).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+  });
+
+  it("descartar el lote pide el motivo y lo descarta en todos", async () => {
+    const user = userEvent.setup();
+    const { actions } = view({ items: [batched], allowed: ["accept", "discard"] });
+    await user.click(ver(batched.topic));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar" }));
+    const dialog = await screen.findByRole("dialog", { name: "¿Por qué la descartas?" });
+    expect(within(dialog).getByText("Se descarta en los 3 agentes a los que llegó.")).toBeInTheDocument();
+    await user.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "No aplica aquí");
+    await user.click(within(dialog).getByRole("button", { name: "Descartar en los 3 agentes" }));
+    await waitFor(() => expect(actions.discardBatch).toHaveBeenCalledWith({ ref: REF, batch: BATCH, reason: "No aplica aquí" }));
+    expect(actions.discard).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("Descartada en los 3 agentes.");
   });
 
   it("los «no» de la API en palabras; quien solo lee no tiene botones; vacío y error", async () => {

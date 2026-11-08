@@ -9,14 +9,34 @@ from __future__ import annotations
 import uuid
 from datetime import date as Date  # noqa: N812 - hay campos que se llaman «date»
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
+
+from nexus_api.api.console.schemas_business_sections import (
+    HoursOut,
+    PriceIn,
+    PriceOut,
+    ShiftIn,
+)
+from nexus_api.services.business import rules
 
 Mode = Literal["services", "capacity"]
 Status = Literal["pending", "confirmed", "arrived", "done", "noshow", "cancelled"]
 Action = Literal["confirm", "move", "cancel", "request_confirmation", "arrive", "noshow", "undo"]
 HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+#: RFC 5321: una dirección cabe en 254 caracteres (spec 056, 11.3).
+EMAIL_MAX = 254
+Email = Annotated[EmailStr, StringConstraints(max_length=EMAIL_MAX)]
+
+#: Spec 056 (5.2): lo que tiene código propio lo comprueba ``rules`` (``422
+#: {code, field}``); el esquema solo lo publica en el OpenAPI, con sus valores.
+CATEGORY_RULE: dict[str, Any] = {"maxLength": rules.CATEGORY_MAX}
+DURATION_RULE: dict[str, Any] = {
+    "minimum": rules.DURATION_MIN,
+    "maximum": rules.DURATION_MAX,
+    "multipleOf": rules.DURATION_STEP,
+}
 
 
 class _In(BaseModel):
@@ -56,6 +76,18 @@ class CapacitySettings(BaseModel):
     schedule: dict[str, Any]
 
 
+class LocationRef(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class LocationHoursOut(BaseModel):
+    location: LocationRef
+    has_own_hours: bool
+    #: «Así lo dirá el agente» de su horario propio; ``None`` si usa el del negocio.
+    label: str | None
+
+
 class SettingsOut(BaseModel):
     mode: Mode
     capacity_kind: str | None
@@ -63,8 +95,15 @@ class SettingsOut(BaseModel):
     currency: str
     #: Spec 055: si ``currency`` se sabe de verdad; si no, el modal pide elegirla.
     currency_set: bool = True
+    #: La proyección de antes (``{"monday": [{"from", "to"}]}``): la leen la app y
+    #: los días cerrados de la agenda.
     business_hours: dict[str, list[dict[str, str]]] | None
     business_hours_label: str | None
+    #: Spec 056 (5.1): el horario de la ficha, el que se edita (revisión, layout y
+    #: días con ``overnight``).
+    hours: HoursOut
+    #: Las sedes y si tienen horario propio: se enseña, no se edita desde aquí.
+    location_hours: list[LocationHoursOut]
     hours_missing: bool
     slot_step_minutes: int
     waitlist: WaitlistSettings
@@ -86,13 +125,12 @@ class SettingsPatchIn(_In):
     capacity: dict[str, Any] | None = None
 
 
-class BusinessHoursIn(_In):
-    hours: dict[str, list[dict[str, str]]]
+class BusinessHoursPatchIn(_In):
+    """Spec 056 (5.3): solo los días tocados, con la revisión de la sección que se
+    leyó. Los que no llegan se quedan como estaban."""
 
-
-class BusinessHoursOut(BaseModel):
-    business_hours: dict[str, list[dict[str, str]]] | None
-    business_hours_label: str | None
+    revision: int = Field(ge=0)
+    days: dict[str, list[ShiftIn]] = Field(max_length=7)
 
 
 # ── equipo y servicios ──────────────────────────────────────────────────────
@@ -125,13 +163,13 @@ class StaffListOut(BaseModel):
 
 class StaffIn(_In):
     name: str = Field(min_length=1, max_length=120)
-    email: str | None = Field(default=None, max_length=254)
+    email: Email | None = None
     hours: dict[str, Any] | None = None
 
 
 class StaffPatchIn(_In):
     name: str | None = Field(default=None, min_length=1, max_length=120)
-    email: str | None = Field(default=None, max_length=254)
+    email: Email | None = None
     hours: dict[str, Any] | None = None
     position: int | None = Field(default=None, ge=0, le=1000)
 
@@ -147,7 +185,11 @@ class ServiceOut(BaseModel):
     #: Spec 055: lo que lo agrupa; ``None`` es sin categoría.
     category: str | None = None
     duration_minutes: int
-    price: MoneyOut | None
+    #: Spec 056 (5.2): el de la ficha, ``{kind}`` o ``{kind: "amount", amount_minor}``.
+    #: «Gratis» es ``free``, no un importe nulo.
+    price: PriceOut
+    #: La moneda del importe (ISO 4217, unidades menores).
+    currency: str
     staff: Literal["all", "some"]
     staff_ids: list[uuid.UUID]
     position: int
@@ -159,25 +201,27 @@ class ServiceListOut(BaseModel):
 
 
 class ServiceIn(_In):
-    name: str = Field(min_length=1, max_length=120)
-    duration_minutes: int = Field(ge=15, le=480, multiple_of=15)
-    price_minor: int | None = Field(default=None, ge=0)
+    name: str = Field(min_length=rules.NAME_MIN, max_length=rules.NAME_MAX)
+    duration_minutes: int = Field(json_schema_extra=DURATION_RULE)
+    price: PriceIn = Field(default_factory=lambda: PriceIn(kind="none"))
     staff_ids: list[uuid.UUID] | None = None
     #: Spec 055: solo se usa si el negocio aún no tiene moneda de precios.
     price_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
-    category: str | None = Field(default=None, max_length=80)
+    category: str | None = Field(default=None, json_schema_extra=CATEGORY_RULE)
 
 
 class ServicePatchIn(_In):
-    name: str | None = Field(default=None, min_length=1, max_length=120)
-    duration_minutes: int | None = Field(default=None, ge=15, le=480, multiple_of=15)
-    price_minor: int | None = Field(default=None, ge=0)
-    clear_price: bool = False
+    """Lo que no llega no cambia. ``name`` solo se acepta si es el que ya tiene:
+    desde Reservas no se renombra (``422 rename_not_allowed``, spec 056 D5)."""
+
+    name: str | None = Field(default=None, min_length=rules.NAME_MIN, max_length=rules.NAME_MAX)
+    duration_minutes: int | None = Field(default=None, json_schema_extra=DURATION_RULE)
+    price: PriceIn | None = None
     staff_ids: list[uuid.UUID] | None = None
     all_staff: bool | None = None
     position: int | None = Field(default=None, ge=0, le=1000)
     price_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
-    category: str | None = Field(default=None, max_length=80)
+    category: str | None = Field(default=None, json_schema_extra=CATEGORY_RULE)
 
 
 # ── reservas ────────────────────────────────────────────────────────────────

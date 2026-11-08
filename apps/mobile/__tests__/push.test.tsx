@@ -81,6 +81,13 @@ describe("in front and on tap", () => {
     expect(routeFor({ url: "auphere-customers://inbox/../../ajustes" })).toBeNull();
   });
 
+  it("an agents' notice opens Inicio, and one sent before for an agent too (spec 056, 2.6, 2.7)", () => {
+    expect(routeFor({ url: "auphere-customers://home", kind: "agents.state" })).toBe("/");
+    expect(routeFor({ url: `auphere-customers://agents/${ID}`, kind: "agents.state" })).toBe("/");
+    expect(routeFor({ url: `auphere-customers://agents/${ID}/channels/${ID}`, kind: "agents.state" })).toBe("/");
+    expect(routeFor({ url: "auphere-customers://agents/nada" })).toBeNull();
+  });
+
   it("a Reservas notice opens that reservation on its day (spec 044, R14.5), and is not a conversation", () => {
     // 043 §1: the push carries `auphere-customers://reservas/{booking_id}`; the sheet reads the booking by id.
     const url = "auphere-customers://reservas/r-2026-10-23-17";
@@ -103,6 +110,9 @@ describe("in front and on tap", () => {
     expect(redirectSystemPath({ path: "auphere-customers://usage", initial: true })).toBe("/consumo");
     expect(redirectSystemPath({ path: "auphere-customers://auth/callback?code=x", initial: false })).toBe("/sign-in");
     expect(redirectSystemPath({ path: "auphere-customers://nada", initial: true })).toBe("/");
+    // Spec 056 (2.6): there is no agent screen any more; Inicio, explicitly.
+    expect(redirectSystemPath({ path: "auphere-customers://home", initial: true })).toBe("/");
+    expect(redirectSystemPath({ path: `auphere-customers://agents/${ID}`, initial: true })).toBe("/");
   });
 });
 
@@ -141,6 +151,13 @@ describe("the permission screen (R10.1)", () => {
     const Screen = require("@/app/notices-permission").default;
     await render(<Screen />);
     expect(screen.queryByText("Cambios en las reservas de hoy")).toBeNull();
+  });
+
+  it("«Agentes y números» without any module: the API sends it to every client (spec 056, 2.7)", async () => {
+    mockNav = ["panel", "inbox"];
+    const Screen = require("@/app/notices-permission").default;
+    await render(<Screen />);
+    expect(screen.getByText("Agentes y números")).toBeTruthy();
   });
 
   it("«Ahora no» is pinned under what scrolls, never below the fold (closes 042 H15)", async () => {

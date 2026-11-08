@@ -24,7 +24,6 @@ const mockEndpoints = {
   me: jest.fn(),
   conversation: jest.fn(),
   thread: jest.fn(),
-  business: jest.fn(),
   draftCorrection: jest.fn(),
   editCorrection: jest.fn(),
   sendCorrection: jest.fn(),
@@ -66,7 +65,6 @@ beforeEach(() => {
   mockEndpoints.me.mockResolvedValue(me);
   mockEndpoints.conversation.mockResolvedValue({ id: CONVERSATION, handled_by_agent: { id: "a", name: "Recepción" }, agent: null });
   mockEndpoints.thread.mockResolvedValue({ items: [answer], next_before: null });
-  mockEndpoints.business.mockResolvedValue({});
 });
 
 describe("under each answer of the agent (52.1)", () => {

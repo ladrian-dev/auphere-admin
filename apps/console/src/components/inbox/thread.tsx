@@ -6,7 +6,7 @@ import { Button, Skeleton } from "@nexus/ui";
 import { useLocale, useT } from "@/i18n/client";
 import type { InboxThreadItem } from "@/lib/backend/inbox";
 
-import { eventText } from "./event-text";
+import { escalatedText, eventText } from "./event-text";
 import { clock, dayLabel, withDaySeparators } from "./inbox-model";
 import type { LoadCommentPost } from "./comment-post";
 import { MessageBubble } from "./message-bubble";
@@ -109,7 +109,7 @@ function EventLine({ item, time }: { item: InboxThreadItem; time: string }) {
       >
         <AlertTriangle className="mt-px size-4 shrink-0" aria-hidden="true" />
         <span className="text-pretty">
-          {item.detail ? t("inbox.event.escalated.reason", { reason: item.detail }) : t("inbox.event.escalated")} · {time}
+          {escalatedText(item.detail, t)} · {time}
         </span>
       </p>
     );

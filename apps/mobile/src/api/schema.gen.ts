@@ -1391,13 +1391,19 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Put Business Hours */
-        put: operations["put_business_hours_console_lite_reservas_business_hours_put"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Business Hours
+         * @description Spec 056 (5.1, 5.3): el horario de la ficha, día a día. Solo cambian los
+         *     días que llegan; los demás, el horario propio de cada sede y lo guardado que
+         *     no cumple las reglas nuevas se quedan como estaban. Con la revisión que se
+         *     leyó: si alguien guardó mientras tanto, ``409 revision_conflict``.
+         */
+        patch: operations["patch_business_hours_console_lite_reservas_business_hours_patch"];
         trace?: never;
     };
     "/console/lite/reservas/calendar": {
@@ -1502,7 +1508,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch Service */
+        /**
+         * Patch Service
+         * @description Solo cambia lo que llega (5.3): «Gratis» sigue gratis si no se toca el precio.
+         */
         patch: operations["patch_service_console_lite_reservas_services__service_id__patch"];
         trace?: never;
     };
@@ -2135,25 +2144,18 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** BusinessHoursIn */
-        BusinessHoursIn: {
-            /** Hours */
-            hours: {
-                [key: string]: {
-                    [key: string]: string;
-                }[];
+        /**
+         * BusinessHoursPatchIn
+         * @description Spec 056 (5.3): solo los días tocados, con la revisión de la sección que se
+         *     leyó. Los que no llegan se quedan como estaban.
+         */
+        BusinessHoursPatchIn: {
+            /** Days */
+            days: {
+                [key: string]: components["schemas"]["ShiftIn"][];
             };
-        };
-        /** BusinessHoursOut */
-        BusinessHoursOut: {
-            /** Business Hours */
-            business_hours: {
-                [key: string]: {
-                    [key: string]: string;
-                }[];
-            } | null;
-            /** Business Hours Label */
-            business_hours_label: string | null;
+            /** Revision */
+            revision: number;
         };
         /** CalendarItemOut */
         CalendarItemOut: {
@@ -3105,6 +3107,14 @@ export interface components {
             /** Start */
             start: string;
         };
+        /** LocationHoursOut */
+        LocationHoursOut: {
+            /** Has Own Hours */
+            has_own_hours: boolean;
+            /** Label */
+            label: string | null;
+            location: components["schemas"]["LocationRef"];
+        };
         /** LocationIn */
         LocationIn: {
             /** Address */
@@ -3142,6 +3152,16 @@ export interface components {
             name?: string | null;
             /** Phone E164 */
             phone_e164?: string | null;
+        };
+        /** LocationRef */
+        LocationRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** LocationsOut */
         LocationsOut: {
@@ -3248,6 +3268,11 @@ export interface components {
             items: components["schemas"]["ConversationItemOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /**
+             * Resolved
+             * @default 0
+             */
+            resolved: number;
         };
         /** SendIn */
         nexus_api__api__console__lite__inbox__SendIn: {
@@ -3319,10 +3344,9 @@ export interface components {
             duration_minutes: number;
             /** Name */
             name: string;
+            price?: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceIn"];
             /** Price Currency */
             price_currency?: string | null;
-            /** Price Minor */
-            price_minor?: number | null;
             /** Staff Ids */
             staff_ids?: string[] | null;
         };
@@ -3332,6 +3356,8 @@ export interface components {
             archived: boolean;
             /** Category */
             category?: string | null;
+            /** Currency */
+            currency: string;
             /** Duration Minutes */
             duration_minutes: number;
             /**
@@ -3343,7 +3369,7 @@ export interface components {
             name: string;
             /** Position */
             position: number;
-            price: components["schemas"]["nexus_api__api__console__lite__reservas_schemas__MoneyOut"] | null;
+            price: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceOut"];
             /**
              * Staff
              * @enum {string}
@@ -3352,27 +3378,25 @@ export interface components {
             /** Staff Ids */
             staff_ids: string[];
         };
-        /** ServicePatchIn */
+        /**
+         * ServicePatchIn
+         * @description Lo que no llega no cambia. ``name`` solo se acepta si es el que ya tiene:
+         *     desde Reservas no se renombra (``422 rename_not_allowed``, spec 056 D5).
+         */
         nexus_api__api__console__lite__reservas_schemas__ServicePatchIn: {
             /** All Staff */
             all_staff?: boolean | null;
             /** Category */
             category?: string | null;
-            /**
-             * Clear Price
-             * @default false
-             */
-            clear_price: boolean;
             /** Duration Minutes */
             duration_minutes?: number | null;
             /** Name */
             name?: string | null;
             /** Position */
             position?: number | null;
+            price?: components["schemas"]["nexus_api__api__console__schemas_business_sections__PriceIn"] | null;
             /** Price Currency */
             price_currency?: string | null;
-            /** Price Minor */
-            price_minor?: number | null;
             /** Staff Ids */
             staff_ids?: string[] | null;
         };
@@ -3458,6 +3482,11 @@ export interface components {
             };
             /** External Client Ref */
             external_client_ref?: string | null;
+            /**
+             * Handled
+             * @default false
+             */
+            handled: boolean;
             /** Href */
             href?: string | null;
             /**
@@ -3790,8 +3819,11 @@ export interface components {
              * @default true
              */
             currency_set: boolean;
+            hours: components["schemas"]["HoursOut"];
             /** Hours Missing */
             hours_missing: boolean;
+            /** Location Hours */
+            location_hours: components["schemas"]["LocationHoursOut"][];
             /**
              * Mode
              * @enum {string}
@@ -7529,7 +7561,7 @@ export interface operations {
             };
         };
     };
-    put_business_hours_console_lite_reservas_business_hours_put: {
+    patch_business_hours_console_lite_reservas_business_hours_patch: {
         parameters: {
             query?: never;
             header?: {
@@ -7542,7 +7574,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BusinessHoursIn"];
+                "application/json": components["schemas"]["BusinessHoursPatchIn"];
             };
         };
         responses: {
@@ -7552,17 +7584,22 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BusinessHoursOut"];
+                    "application/json": components["schemas"]["HoursOut"];
                 };
             };
-            /** @description Validation Error */
+            /** @description revision_conflict: the hours changed since they were read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description {code, field, day}: too_many_shifts, bad_step, overlap, … */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };

@@ -51,34 +51,16 @@ export function durationText(t: T, seconds: number | null): string {
   return m ? t("improve.duration.hoursMinutes", { h, m }) : t("improve.duration.hours", { h });
 }
 
-const REASONS = new Set([
-  "no_balance",
-  "agent_cap",
-  "paused_agent",
-  "paused_channel",
-  "paused_client",
-  "archived_client",
-  "channel_problem",
-  "agent_unpublished",
-  "no_model",
-  "provider_failure",
-  "turn_limit",
-  "escalated",
-  "human_takeover",
-  "reception_loop",
-  "taken_by_person",
-]);
-
-/** El motivo del traspaso, en palabras (`events.md` §2); un código nuevo, «Otro motivo». */
-export function reasonKey(code: string | null): MessageKey | null {
-  if (!code) return null;
-  return (REASONS.has(code) ? `waiting.reason.${code}` : "waiting.reason.other") as MessageKey;
-}
+/**
+ * El motivo del traspaso, en palabras. La tabla vive en `lib/waiting-reasons.ts`
+ * desde la spec 056 (requisito 7): la misma para el constructor y la Bandeja.
+ */
+export { reasonKey } from "@/lib/waiting-reasons";
 
 /** «WhatsApp», o el tipo tal cual si es otro. */
 export function channelLabel(t: T, type: string | null): string {
   if (!type) return "—";
-  return type === "whatsapp" ? t("lite.agents.channel.whatsapp") : type;
+  return type === "whatsapp" ? t("builder.channels.whatsapp") : type;
 }
 
 /** «12 conversaciones de 9 clientes» de una sugerencia; una corrección viene de una sola. */

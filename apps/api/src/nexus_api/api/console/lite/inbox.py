@@ -129,8 +129,12 @@ class ConversationPageOut(BaseModel):
     items: list[ConversationItemOut]
     next_cursor: str | None
     counts: CountsOut
+    #: Lo leen las apps de antes de la spec 056: no se quita.
     has_any: bool
     channel_kinds: list[str]
+    #: Spec 056 (6.2): cuántas resueltas hay cuando «Abiertas» (``filter=all``,
+    #: sin búsqueda, agente ni canal) sale vacía, para llevar a Resueltas. Si no, 0.
+    resolved: int = 0
 
 
 class WindowOut(BaseModel):
@@ -420,6 +424,18 @@ def _publish(
     scope.after_commit(_announce)
 
 
+def _wait_ended(scope: LiteScope, conv_id: uuid.UUID) -> None:
+    """Spec 056 (8.1, D8): la conversación ya no espera a una persona. Su aviso
+    «espera a una persona» pasa a atendido **cuando se confirme** la transacción
+    (como ``_publish``): si hace rollback, el aviso sigue pendiente."""
+    tenant_id = scope.principal.tenant_id
+
+    async def _handle() -> None:
+        await inbox_lifecycle.mark_waiting_handled(tenant_id, [conv_id])
+
+    scope.after_commit(_handle)
+
+
 # ── reads ──────────────────────────────────────────────────────────────
 
 
@@ -493,6 +509,7 @@ async def list_conversations(
         counts=CountsOut(unread=page.unread, waiting=page.waiting),
         has_any=page.has_any,
         channel_kinds=page.channel_kinds,
+        resolved=page.resolved,
     )
 
 
@@ -673,6 +690,7 @@ async def take_over(
     _audit(scope, "inbox.takeover", conv.id, {"control_version": conv.agent_active_version})
     await scope.session.flush()
     _publish(redis, scope, conv.id)
+    _wait_ended(scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -709,6 +727,7 @@ async def give_back(
     _audit(scope, "inbox.released", conv.id, {"control_version": conv.agent_active_version})
     await scope.session.flush()
     _publish(redis, scope, conv.id)
+    _wait_ended(scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -841,6 +860,7 @@ async def resolve(
         _audit(scope, "inbox.resolved", conv.id, {})
         await scope.session.flush()
         _publish(redis, scope, conv.id)
+        _wait_ended(scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -871,6 +891,7 @@ async def archive(
     _audit(scope, "inbox.archived", conv.id, {})
     await scope.session.flush()
     _publish(redis, scope, conv.id)
+    _wait_ended(scope, conv.id)
 
 
 @router.post("/conversations/{conversation_id}/reopen", response_model=ConversationDetailOut)

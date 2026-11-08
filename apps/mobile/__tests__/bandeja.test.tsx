@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 
 import type { Conversation } from "@/api/endpoints";
-import { badgeOf, previewOf } from "@/features/inbox/model";
+import { badgeOf, eventText, previewOf, reasonText, waitingReasonText } from "@/features/inbox/model";
 import { t as translate, type MessageKey } from "@/i18n/t";
 
 /**
@@ -55,8 +55,8 @@ jest.mock("expo-router", () => {
   };
 });
 
-function page(items: Conversation[], has_any = items.length > 0) {
-  return { pages: [{ items, next_cursor: null, counts: { unread: 1, waiting: 2 }, has_any, channel_kinds: ["whatsapp"] }] };
+function page(items: Conversation[], has_any = items.length > 0, resolved = 0) {
+  return { pages: [{ items, next_cursor: null, counts: { unread: 1, waiting: 2 }, has_any, channel_kinds: ["whatsapp"], resolved }] };
 }
 function list(o: Record<string, unknown>) {
   mockList.current = { isPending: false, isError: false, isRefetching: false, isFetchingNextPage: false, hasNextPage: false, refetch: jest.fn(), fetchNextPage: jest.fn(), dataUpdatedAt: 0, ...o };
@@ -79,8 +79,9 @@ describe("the list", () => {
   it("filters: all, unread, waiting (with its count) and resolved — one chosen", async () => {
     list({ data: page([conv()]) });
     await render(<Bandeja />);
-    for (const name of ["Todas", "Sin leer", "Necesita humano · 2", "Resueltas"]) expect(screen.getByRole("radio", { name })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Todas" }).props.accessibilityState).toEqual({ checked: true });
+    // The words come from the console (`lite.gen.ts`): spec 056 calls «Todas» «Abiertas».
+    for (const name of [t("inbox.filter.all"), "Sin leer", "Necesita humano · 2", "Resueltas"]) expect(screen.getByRole("radio", { name })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: t("inbox.filter.all") }).props.accessibilityState).toEqual({ checked: true });
     await fireEvent.press(screen.getByRole("radio", { name: "Resueltas" }));
     expect(mockConversations).toHaveBeenLastCalledWith("resolved", "", null);
   });
@@ -136,7 +137,57 @@ describe("the list", () => {
     list({ data: page([], true) });
     await render(<Bandeja />);
     expect(screen.getByText("No hay conversaciones con estos filtros.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ver todas las conversaciones" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: t("inbox.empty.clear") })).toBeTruthy();
+  });
+
+  /** Spec 056 (6.2, 6.3): «Abiertas» empty with resolved ones leads to them, not back to itself. */
+  it("open and empty with resolved ones says how many and opens Resueltas", async () => {
+    list({ data: page([], true, 2) });
+    await render(<Bandeja />);
+    expect(screen.getByText("No tienes conversaciones abiertas")).toBeTruthy();
+    expect(screen.getByText("Tienes 2 resueltas.")).toBeTruthy();
+    expect(screen.queryByText("No hay conversaciones con estos filtros.")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Ver las resueltas" }));
+    expect(mockConversations).toHaveBeenLastCalledWith("resolved", "", null);
+  });
+
+  it("one resolved reads in the singular; none at all is today's empty inbox, without a button", async () => {
+    list({ data: page([], true, 1) });
+    await render(<Bandeja />);
+    expect(screen.getByText("Tienes 1 resuelta.")).toBeTruthy();
+    list({ data: page([], false, 0) });
+    await render(<Bandeja />);
+    expect(screen.getByText("Aún no hay conversaciones")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ver las resueltas" })).toBeNull();
+  });
+});
+
+/** Spec 056 (7.1, 7.2): every reason through the table; a code never reaches the screen. */
+describe("reasons in words", () => {
+  it("a code of the table, its words; one it does not know, the generic sentence; the agent's own words as they are", () => {
+    expect(reasonText("agent_unpublished", t)).toBe("Agente sin publicar");
+    expect(reasonText("booking_unbacked", t)).toBe("El agente dio por hecha una cita que no existe");
+    expect(reasonText("out_of_audience", t)).toBe("Fuera de su audiencia");
+    expect(reasonText("brand_new_code", t)).toBe("El agente pidió ayuda");
+    expect(reasonText("escalated", t)).toBe("El agente pidió ayuda");
+    expect(reasonText("Pide que le devuelvan la seña", t)).toBe("Pide que le devuelvan la seña");
+    expect(waitingReasonText("brand_new_code", t)).toBe("El agente pidió ayuda");
+    expect(waitingReasonText(null, t)).toBeNull();
+  });
+
+  it("the thread and the activity: a code in words, the agent's words after the sentence", () => {
+    const agent = { kind: "agent" as const, name: null, is_me: false };
+    expect(eventText("escalated", agent, "agent_unpublished", t)).toBe("Agente sin publicar");
+    expect(eventText("escalated", agent, "otro_codigo", t)).toBe("El agente pidió ayuda");
+    expect(eventText("escalated", agent, "Pide un reembolso", t)).toBe("El agente pidió ayuda: Pide un reembolso");
+  });
+
+  it("a pinned row reads the code, once", async () => {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    list({ data: page([conv({ id: "g1", waiting: { reason: "agent_unpublished", since }, waiting_reason: "agent_unpublished" })]) });
+    await render(<Bandeja />);
+    expect(screen.getAllByText("Agente sin publicar")).toHaveLength(1);
+    expect(screen.queryByText("agent_unpublished")).toBeNull();
   });
 });
 

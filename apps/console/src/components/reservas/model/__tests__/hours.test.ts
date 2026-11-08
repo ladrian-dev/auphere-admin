@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { dayValid, emptyWeek, rangesLabel, sameWeek, scheduleValid, timeOptions, weekInvalidDays } from "../hours";
-import { weekHours } from "./fixtures";
+import { draftFromHours } from "@/components/business/sections/hours-model";
+
+import { changedDays, dayValid, emptyWeek, hoursPatch, rangesLabel, reviewDays, sameWeek, scheduleValid, timeOptions, weekInvalidDays } from "../hours";
+import { fichaHours, weekHours } from "./fixtures";
 
 /** Spec 043 (T025): the hours editors validate as the API does, before saving. */
 describe("hours", () => {
@@ -37,5 +39,40 @@ describe("hours", () => {
     expect(scheduleValid({ ...ok, shifts: [{ name: " ", from: "13:00", to: "15:00" }] })).toBe(false);
     expect(scheduleValid({ model: "slots", step_minutes: 60, from: "12:00", to: "23:00" })).toBe(true);
     expect(scheduleValid({ model: "slots", step_minutes: 120, from: "12:00", to: "23:00" })).toBe(false);
+  });
+});
+
+/**
+ * Spec 056 (5.1, 5.3, 5.5): Reservas edits the ficha's week. Only the days that
+ * changed travel, and a stored time off the 5-minute step is shown as it is,
+ * marked «Revísalo».
+ */
+describe("the ficha's week from Reservas", () => {
+  const shift = (open: string, close: string) => ({ open, close, overnight: false });
+
+  it("changedDays: the days whose shifts differ, by opening and closing", () => {
+    const original = fichaHours();
+    const draft = draftFromHours(original);
+    expect(changedDays(original, draft)).toEqual([]);
+    draft.days.tue = [{ key: "x", open: "10:00", close: "18:00" }];
+    draft.days.sun = [{ key: "y", open: "10:00", close: "14:00" }];
+    expect(changedDays(original, draft)).toEqual(["tue", "sun"]);
+    // The same shifts written again (new keys) are not a change.
+    draft.days.tue = original.days.tue.map((s, i) => ({ key: `k${i}`, open: s.open, close: s.close }));
+    expect(changedDays(original, draft)).toEqual(["sun"]);
+  });
+
+  it("hoursPatch: only the changed days, with the revision that was read", () => {
+    const original = fichaHours({ revision: 7 });
+    const draft = draftFromHours(original);
+    draft.days.wed = [];
+    expect(hoursPatch(original, draft)).toEqual({ revision: 7, days: { wed: [] } });
+  });
+
+  it("«Revísalo»: a day with a time that is not on the 5-minute step", () => {
+    const days = { ...fichaHours().days, mon: [shift("09:07", "14:00")], thu: [shift("22:00", "02:03")] };
+    expect(reviewDays({ days })).toEqual(["mon", "thu"]);
+    expect(reviewDays(fichaHours())).toEqual([]);
+    expect(reviewDays({ days: { ...fichaHours().days, fri: [shift("00:00", "24:00")] } })).toEqual([]);
   });
 });

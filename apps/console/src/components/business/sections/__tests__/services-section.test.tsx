@@ -107,7 +107,23 @@ describe("ServicesSection", () => {
     expect(actions.duplicate).toHaveBeenCalledWith(expect.objectContaining({ ref: "flor", id: SERVICES.items[0]?.id, revision: 2 }));
     await user.click(within(ramo()).getByRole("button", { name: "Acciones de Ramo grande" }));
     await user.click(await screen.findByRole("menuitem", { name: "Archivar" }));
+    // Spec 056 (12.1): archiving asks first, like Reservas.
+    const ask = await screen.findByRole("dialog", { name: "¿Archivar «Ramo grande»?" });
+    expect(within(ask).getByText(/Las reservas pasadas conservan su nombre/)).toBeVisible();
+    expect(actions.archive).not.toHaveBeenCalled();
+    await user.click(within(ask).getByRole("button", { name: "Archivar" }));
     expect(actions.archive).toHaveBeenCalledWith(expect.objectContaining({ id: SERVICES.items[0]?.id }));
+  });
+
+  it("spec 056 (12.1): archiving from its button asks too, and cancelling keeps it", async () => {
+    const user = userEvent.setup();
+    const ok = async (): Promise<R> => ({ ok: true, data: SERVICES });
+    const archive = vi.fn(ok);
+    section({ actions: { create: vi.fn(ok), update: vi.fn(ok), archive } });
+    await user.click(within(screen.getByRole("row", { name: /Ramo grande/ })).getByRole("button", { name: "Archivar Ramo grande" }));
+    const ask = await screen.findByRole("dialog", { name: "¿Archivar «Ramo grande»?" });
+    await user.click(within(ask).getByRole("button", { name: "Cancelar" }));
+    expect(archive).not.toHaveBeenCalled();
   });
 
   it("folds four actions into «⋯», editing first (regla de los tres puntos)", async () => {

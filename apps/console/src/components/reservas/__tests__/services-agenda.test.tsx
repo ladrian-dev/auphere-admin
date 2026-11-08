@@ -28,7 +28,7 @@ function data(o: Partial<ReservasData> = {}): ReservasData {
   return {
     settings: servicesSettings(),
     staff: [staff(), staff({ id: MARCOS, name: "Marcos Ibáñez", position: 2, effective_hours: weekHours({ thursday: [] }) })],
-    services: [service(), service({ id: BARBA, name: "Barba", duration_minutes: 30, price: null })],
+    services: [service(), service({ id: BARBA, name: "Barba", duration_minutes: 30, price: { kind: "none" } })],
     bookings: {
       items: [
         booking({ local: { date: TODAY, start: "10:00", end: "10:45" }, contact: { name: "Ana Pérez", phone: "+56911112222", conversation_id: null } }),
@@ -317,6 +317,21 @@ describe("Servicios · new booking", () => {
     expect(within(dialog).getByText("Elige una hora")).toBeInTheDocument();
   });
 
+  it("closing with a name written asks before discarding it (spec 056, historia 6)", async () => {
+    a.serviceSlotsAction.mockResolvedValue({ ok: true, data: { date: TODAY, closed: false, slots: [] } });
+    renderView(data());
+    await userEvent.click(screen.getByRole("button", { name: "Nueva reserva" }));
+    const dialog = await screen.findByRole("dialog", { name: "Nueva reserva" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Rosa");
+    await userEvent.keyboard("{Escape}");
+    const ask = await screen.findByRole("dialog", { name: "¿Descartar lo que escribiste?" });
+    await userEvent.click(within(ask).getByRole("button", { name: "Seguir editando" }));
+    expect(within(screen.getByRole("dialog", { name: "Nueva reserva" })).getByRole("textbox", { name: /Cliente/ })).toHaveValue("Rosa");
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Nueva reserva" })).toBeNull());
+  });
+
   it("no openings that day is said, never an empty row of chips", async () => {
     a.serviceSlotsAction.mockResolvedValue({ ok: true, data: { date: TODAY, closed: false, slots: [] } });
     renderView(data());
@@ -350,6 +365,15 @@ describe("Servicios · cancel", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancelar reserva" }));
     await waitFor(() => expect(a.cancelBookingAction).toHaveBeenCalledWith({ id: b.id, version: b.version, notify: true, offer_slot: true }));
     expect(toasts.success).toHaveBeenCalledWith("Reserva cancelada. El agente ofrece el hueco a 3 personas.");
+  });
+
+  it("what was chosen is not lost on a stray close (spec 056, 12.3)", async () => {
+    a.cancelPreviewAction.mockResolvedValue({ ok: true, data: { can_offer: true, candidates: 3, why_not: null } });
+    const { dialog } = await openCancel();
+    await userEvent.click(await within(dialog).findByRole("checkbox", { name: "Avisar a Ana por WhatsApp" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Volver" }));
+    expect(await screen.findByRole("dialog", { name: "¿Descartar lo que escribiste?" })).toBeInTheDocument();
+    expect(a.cancelBookingAction).not.toHaveBeenCalled();
   });
 
   it("says why not: too soon for the configured lead", async () => {

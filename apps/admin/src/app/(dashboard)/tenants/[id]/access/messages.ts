@@ -35,8 +35,6 @@ export const MODULE_LABELS: Record<ClientModule, { label: string; description: s
     label: "Reservas",
     description: "Su agenda: lo que reserva el agente por WhatsApp y lo que apunta su equipo.",
   },
-  agents: { label: "Agentes", description: "Sus agentes: ver cómo trabajan y qué hacen." },
-  business: { label: "Negocio", description: "La ficha de su negocio." },
   usage: { label: "Consumo", description: "Su saldo, su gasto por día y el detalle técnico. Solo lectura." },
 };
 

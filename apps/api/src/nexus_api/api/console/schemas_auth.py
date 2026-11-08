@@ -94,6 +94,9 @@ class SessionIn(BaseModel):
 
 class SessionOut(BaseModel):
     principal: PrincipalOut
+    #: Spec 056 (15.1): cuándo caduca, para avisar el último día. El de la
+    #: sesión, sin renovarla (15.2): sigue caducando a los 7 días del login.
+    expires_at: datetime
 
 
 class InvitationAcceptWithPasswordIn(BaseModel):

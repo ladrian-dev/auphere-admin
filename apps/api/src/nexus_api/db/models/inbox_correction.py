@@ -13,6 +13,8 @@ posiciones), nunca los datos.
 - ``draft`` → ``proposed``: un comportamiento, como propuesta al partner con su
   prueba (``proposal_id``: el parche y la prueba juntos, como una sugerencia); el
   partner la acepta o la rechaza (``accepted`` o ``rejected``).
+- Spec 056 (0226): con «Todo el negocio», un comportamiento se propone a cada
+  agente activo del cliente y las filas van en lote (``batch_id``).
 
 El partner lee ``lesson`` y ``paraphrase``, nunca ``message_id`` ni el mensaje
 (C1). Ningún agente lee estas filas: las escribe y las lee la persona del cliente
@@ -85,6 +87,9 @@ class InboxCorrection(Base):
         _fk("applied_change_id", "business_changes", ondelete="SET NULL"),
         _fk("knowledge_document_id", "knowledge_documents", ondelete="SET NULL"),
         _fk("proposal_id", "proposals", ondelete="SET NULL"),
+        # Spec 056 (0226): en la base, ``ON DELETE SET NULL (batch_id)``: si se
+        # borra la cabeza, las hermanas se quedan sin lote.
+        _fk("batch_id", "inbox_corrections", ondelete="SET NULL"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -114,6 +119,10 @@ class InboxCorrection(Base):
         UUID(as_uuid=True), nullable=True
     )
     proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: Spec 056 (0226, requisito 9.1): el lote de «Todo el negocio». La cabeza,
+    #: la que envió la persona, lleva su propio ``id``; sus hermanas, una por
+    #: cada otro agente activo, el de la cabeza. ``NULL``: una corrección suelta.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

@@ -8,13 +8,13 @@ import { Button, ErrorState, Sheet, SheetContent, SheetDescription, SheetHeader,
 
 import { bookingDetailAction, bookingTransitionAction } from "@/app/(console)/reservas/actions";
 import type { MessageKey } from "@/i18n/messages";
+import { formatAmount } from "@/lib/amount";
 import type { Booking, BookingAction, BookingDetail, BookingTransition } from "@/lib/backend/reservas";
 
 import { useReservas, useWords } from "./context";
 import { formatMinutes } from "./model/dates";
 import { bookingSpan } from "./model/day-grid";
 import { eventLine, originLine } from "./model/events";
-import { formatPrice } from "./model/money";
 import { useActionLoad } from "./model/use-load";
 import { actionButtons, channelKey } from "./model/vocab";
 import { BookingStatus, Initials, useWrite } from "./shared";
@@ -110,7 +110,8 @@ function DetailBody({ detail: b, onChanged }: { detail: BookingDetail; onChanged
   const transition = useTransitionAction();
   const name = b.contact.name ?? t("reservas.detail.walkinName");
   const span = bookingSpan(b);
-  const price = formatPrice(b.price, locale);
+  // Spec 056 (13.1): the one money format of the console, in the person's language.
+  const price = b.price ? formatAmount(b.price, locale) : null;
   const sub =
     mode === "services"
       ? [b.service?.name, b.service ? formatMinutes(b.service.duration_minutes) : null, price].filter(Boolean).join(" · ")

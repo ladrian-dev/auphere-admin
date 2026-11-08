@@ -126,6 +126,11 @@ describe("el historial", () => {
     expect(screen.getAllByRole("button", { name: "Deshacer" })).toHaveLength(1);
     expect(await axeViolations()).toEqual([]);
     await user.click(screen.getByRole("button", { name: "Deshacer" }));
+    // Spec 056 (12.2): it asks first, saying which change, who and when.
+    const ask = await screen.findByRole("dialog", { name: "¿Deshacer «Cambio»?" });
+    expect(within(ask).getByText(/Lo hizo Marta hace 2 horas/)).toBeTruthy();
+    expect(undo).not.toHaveBeenCalled();
+    await user.click(within(ask).getByRole("button", { name: "Deshacer" }));
     await waitFor(() => expect(undo).toHaveBeenCalledWith({ ref: "cultor", change_id: "c1" }));
     expect(toast.success).toHaveBeenCalledWith("Cambio deshecho. Los agentes ya usan lo anterior.");
   });
@@ -137,6 +142,7 @@ describe("el historial", () => {
     wrap(<SectionHistory refId="cultor" section="links" meId="ana" canUndo actions={{ load, undo }} />);
     await user.click(screen.getByRole("button", { name: "Ver el historial de Redes" }));
     await user.click(await screen.findByRole("button", { name: "Deshacer" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "¿Deshacer «Cambio»?" })).getByRole("button", { name: "Deshacer" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Alguien cambió esta sección después: no se deshizo para no pisarlo."));
   });
 
@@ -193,6 +199,18 @@ describe("documentos y webs", () => {
     expect(within(items[1]!).getByText("Leyendo…")).toBeTruthy();
     expect(within(items[2]!).getByText("No se pudo leer: pasa de 10 MB")).toBeTruthy();
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("spec 056 (11.5): una dirección mal escrita la dice la consola, no el navegador", async () => {
+    const user = userEvent.setup();
+    const addUrl = vi.fn();
+    wrap(<BusinessSources refId="cultor" canWrite initial={sources({ items: [] })} actions={{ addUrl }} />);
+    const field = screen.getByRole("textbox", { name: /web/i });
+    expect(field.closest("form")?.noValidate).toBe(true);
+    await user.type(field, "cultor.cl");
+    await user.click(screen.getByRole("button", { name: /Añadir/ }));
+    expect(toast.error).toHaveBeenCalledWith("Escribe una dirección que empiece por https://");
+    expect(addUrl).not.toHaveBeenCalled();
   });
 
   it("vacío, cargando y con error", async () => {

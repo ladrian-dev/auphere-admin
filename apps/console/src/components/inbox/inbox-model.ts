@@ -12,8 +12,8 @@ import type { InboxAuthor, InboxDetail, InboxThreadItem } from "@/lib/backend/in
 export type ComposerMode =
   /** Resolved: the box says so and offers to reopen. */
   | { kind: "resolved" }
-  /** The agent asked for help and nobody took it yet. */
-  | { kind: "waiting"; reason: string | null }
+  /** The agent asked for help and nobody took it yet. `code`: the column's (spec 056, 7.1). */
+  | { kind: "waiting"; reason: string | null; code?: string | null }
   /** The agent answers; the person may take over. `windowClosed`: it no longer can (m-24h). */
   | { kind: "agent"; windowClosed?: true }
   /** Another person of the business answers. */
@@ -21,9 +21,11 @@ export type ComposerMode =
   /** This person answers; `blocked` says why WhatsApp would refuse a send. */
   | { kind: "mine"; blocked: "window_closed" | "channel_disconnected" | null };
 
-export function composerMode(detail: Pick<InboxDetail, "state" | "assignee" | "waiting_reason" | "window" | "channel">): ComposerMode {
+export function composerMode(
+  detail: Pick<InboxDetail, "state" | "assignee" | "waiting_reason" | "waiting_code" | "window" | "channel">,
+): ComposerMode {
   if (detail.state === "resolved") return { kind: "resolved" };
-  if (detail.state === "waiting" && !detail.assignee) return { kind: "waiting", reason: detail.waiting_reason };
+  if (detail.state === "waiting" && !detail.assignee) return { kind: "waiting", reason: detail.waiting_reason, code: detail.waiting_code ?? null };
   if (detail.state === "agent") return detail.window.open ? { kind: "agent" } : { kind: "agent", windowClosed: true };
   if (detail.assignee && !detail.assignee.is_me) return { kind: "other", name: detail.assignee.name };
   if (!detail.channel.connected) return { kind: "mine", blocked: "channel_disconnected" };

@@ -3,6 +3,7 @@ import { q } from "../backend";
 import type {
   AgentConversationPage,
   AgentPerformance,
+  CorrectionBatchDecided,
   ImprovementAccepted,
   ImprovementDiscarded,
   Improvements,
@@ -28,5 +29,10 @@ export function agentImproveApi(call: Call) {
       call<ImprovementAccepted>(`${base(ref, agent)}/improvements/${enc(id)}/accept`, { method: "POST" }),
     discardImprovement: (ref: string, agent: string, id: string, reason: string) =>
       call<ImprovementDiscarded>(`${base(ref, agent)}/improvements/${enc(id)}/discard`, { method: "POST", body: { reason } }),
+    // Spec 056 (9.2): the batch of «Todo el negocio», decided on every agent at once.
+    acceptCorrectionBatch: (ref: string, batch: string) =>
+      call<CorrectionBatchDecided>(`/console/clients/${enc(ref)}/corrections/${enc(batch)}/accept`, { method: "POST" }),
+    discardCorrectionBatch: (ref: string, batch: string, reason: string) =>
+      call<CorrectionBatchDecided>(`/console/clients/${enc(ref)}/corrections/${enc(batch)}/discard`, { method: "POST", body: { reason } }),
   };
 }

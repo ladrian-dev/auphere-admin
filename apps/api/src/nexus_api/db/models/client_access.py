@@ -34,26 +34,36 @@ from nexus_api.db.models._mixins import TimestampMixin, UUIDPrimaryKey
 
 
 class ClientModule(str, enum.Enum):
-    """Los módulos que Auphere elige para un cliente, en el orden en que la
-    barra lateral los enseña."""
+    """Los nombres de módulo que ha tenido la consola de un cliente. Los que
+    Auphere elige hoy son :data:`CLIENT_MODULES`; los demás, retirados."""
 
     PANEL = "panel"
     INBOX = "inbox"
-    #: Spec 047 (requisito 50.1): el estado de sus agentes, con pausar y reanudar.
+    #: Spec 047 (requisito 50.1); retirado en la spec 056 (requisito 2.1, 0224).
     AGENTS = "agents"
-    #: Spec 047 (requisito 50.1): horario, fechas especiales, servicios y sedes.
+    #: Spec 047 (requisito 50.1); retirado en la spec 056 (requisito 2.1, 0224).
     BUSINESS = "business"
     #: Spec 043: el modo (Servicios o Aforo) vive en ``reservation_settings``.
     RESERVAS = "reservas"
     USAGE = "usage"
 
 
-#: Orden canónico: el de la barra lateral (Panel, Bandeja de entrada, Agentes,
-#: Negocio, Reservas, Consumo).
-CLIENT_MODULES: tuple[str, ...] = tuple(m.value for m in ClientModule)
-#: Spec 047 (``data-model.md`` §10): los que tiene por defecto el cliente de un
-#: partner con la consola nueva, aunque Auphere no los haya elegido.
-CONSOLE_V2_MODULES: tuple[str, ...] = (ClientModule.AGENTS.value, ClientModule.BUSINESS.value)
+#: Los módulos que Auphere elige para un cliente, en el orden canónico de la
+#: barra lateral (Panel, Bandeja de entrada, Reservas, Consumo). El CHECK
+#: ``ck_client_access_modules`` (0224) admite estos y ninguno más.
+CLIENT_MODULES: tuple[str, ...] = (
+    ClientModule.PANEL.value,
+    ClientModule.INBOX.value,
+    ClientModule.RESERVAS.value,
+    ClientModule.USAGE.value,
+)
+#: Spec 056 (requisito 2.1, research R2): Agentes y Negocio son del partner. Sus
+#: nombres siguen siendo legibles (las rutas que los piden responden el 403 de un
+#: módulo que no se tiene), pero ningún cliente los tiene ni se le pueden dar.
+RETIRED_CLIENT_MODULES: tuple[str, ...] = (
+    ClientModule.AGENTS.value,
+    ClientModule.BUSINESS.value,
+)
 
 
 class ClientMemberStatus(str, enum.Enum):
@@ -76,7 +86,7 @@ class ClientAccess(TimestampMixin, Base):
     __tablename__ = "client_access"
     __table_args__ = (
         CheckConstraint(
-            "modules <@ ARRAY['panel','inbox','usage','reservas','agents','business']::varchar[]",
+            "modules <@ ARRAY['panel','inbox','usage','reservas']::varchar[]",
             name="ck_client_access_modules",
         ),
     )
@@ -97,7 +107,8 @@ class ClientAccess(TimestampMixin, Base):
 
     def ordered_modules(self, *, also: tuple[str, ...] = ()) -> tuple[str, ...]:
         """Los módulos del cliente en el orden de la barra, sin repetidos.
-        ``also``: los que tiene por defecto aunque no estén guardados."""
+        ``also``: los que tiene por defecto aunque no estén guardados. Un nombre
+        retirado (:data:`RETIRED_CLIENT_MODULES`) no sale nunca."""
         have = set(self.modules or []) | set(also)
         return tuple(m for m in CLIENT_MODULES if m in have)
 

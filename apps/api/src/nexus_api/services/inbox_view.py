@@ -51,6 +51,20 @@ PREVIEW_CHARS = 140
 
 Filter = str  # all | unread | waiting | resolved
 
+#: Un número de WhatsApp tal como lo guarda Meta: solo cifras, sin «+».
+_DIGITS = re.compile(r"^\+?\d{6,15}$")
+
+
+def display_handle(identifier: str | None, channel: str | None) -> str:
+    """Spec 056 (13.3): cómo se lee el contacto. En WhatsApp es un teléfono y va
+    con «+» y su prefijo (Meta lo da sin el «+»); agruparlo pediría
+    libphonenumber y queda fuera. En Instagram y Messenger el identificador no es
+    un teléfono y sale tal cual."""
+    raw = (identifier or "").strip()
+    if channel == ChannelType.WHATSAPP.value and _DIGITS.match(raw):
+        return raw if raw.startswith("+") else f"+{raw}"
+    return raw
+
 
 def state_of(conversation: Conversation) -> str:
     """D12: ``resolved`` · ``waiting`` · ``person`` · ``agent``."""
@@ -166,6 +180,9 @@ class ListPage:
     waiting: int = 0
     has_any: bool = False
     channel_kinds: list[str] = field(default_factory=list)
+    #: Spec 056 (6.2, D6): cuántas resueltas hay cuando «Abiertas» —la lista por
+    #: defecto, sin búsqueda, agente ni canal— sale vacía. Si no, 0.
+    resolved: int = 0
 
 
 @dataclass(frozen=True)
@@ -403,11 +420,13 @@ async def list_conversations(
             else None
         )
         assignee = names.author(conv.assigned_user_id, me=me) if conv.assigned_user_id else None
+        handle = display_handle(str(identifier), str(getattr(channel_type, "value", channel_type)))
         page.items.append(
             ListItem(
                 id=conv.id,
-                contact_name=str(name or identifier),
-                contact_handle=str(identifier),
+                # Sin nombre, el contacto se llama por su número, también con «+» (13.3).
+                contact_name=str(name or handle),
+                contact_handle=handle,
                 contact_avatar_key=avatar_key,
                 channel_kind=str(getattr(channel_type, "value", channel_type)),
                 state=state_of(conv),
@@ -447,6 +466,21 @@ async def list_conversations(
         or 0
     )
     page.has_any = bool(await session.scalar(counts_base))
+    if (
+        flt == "all"
+        and not q
+        and agent is None
+        and channel is None
+        and not cursor
+        and not page.items
+        and page.has_any
+    ):
+        page.resolved = int(
+            await session.scalar(
+                counts_base.where(Conversation.status == ConversationStatus.CLOSED)
+            )
+            or 0
+        )
     kinds = await session.execute(
         sa.select(sa.distinct(Channel.type)).where(
             _not_playground(), Channel.config["role"].astext.is_distinct_from("notifications")
@@ -680,6 +714,11 @@ async def detail(
     )
     closes = conversation.last_inbound_at + window if conversation.last_inbound_at else None
     payload: dict[str, Any] = last_escalation.payload if last_escalation is not None else {}
+    # Sin nombre, el contacto se llama por su número, también con «+» (13.3).
+    handle = display_handle(
+        customer.identifier if customer else "",
+        str(getattr(channel.type, "value", channel.type)) if channel else None,
+    )
     return Detail(
         conversation=conversation,
         state=state_of(conversation),
@@ -692,8 +731,8 @@ async def detail(
         window_closes_at=closes,
         channel_kind=str(getattr(channel.type, "value", channel.type)) if channel else "whatsapp",
         channel_connected=bool(channel and channel.status == ChannelStatus.ACTIVE),
-        contact_name=str((customer.name or customer.identifier) if customer else "—"),
-        contact_handle=str(customer.identifier if customer else ""),
+        contact_name=str((customer.name or handle) if customer else "—"),
+        contact_handle=handle,
         contact_avatar_key=customer.avatar_s3_key if customer else None,
         first_message_at=first,
         conversations=rows_for_customer + reopened,
@@ -832,6 +871,7 @@ __all__ = [
     "ThreadItem",
     "counts",
     "detail",
+    "display_handle",
     "first_waiting",
     "get_conversation",
     "list_conversations",

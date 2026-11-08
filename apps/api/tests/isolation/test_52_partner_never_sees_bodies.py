@@ -213,3 +213,62 @@ def test_every_partner_read_is_swept() -> None:
         if "GET" in r.methods and not r.path.startswith("/console/lite")
     }
     assert set(_partner_reads()) == {p for p in gets if not p.endswith("/stream")}
+
+
+async def test_a_correction_batch_says_no_word_of_the_conversation(
+    client, db_session, console_world
+) -> None:
+    """Spec 056 (9.2, C8): el lote de «Todo el negocio» llega al partner con la
+    lección y la paráfrasis, como una corrección suelta. Ni en las mejoras de
+    cada agente ni al decidirlo sale un cuerpo, un teléfono, el mensaje que se
+    corrigió o su conversación."""
+    import uuid
+
+    from nexus_api.db.models import Agent, InboxCorrection
+
+    world = await partner_world(db_session, console_world)
+    tenant = console_world["a"]["tenant_id"]
+    head_agent = uuid.UUID(world["ids"]["agent_id"])
+    other = Agent(id=uuid.uuid4(), tenant_id=tenant, name="Ventas", lifecycle="published")
+    db_session.add(other)
+    head = uuid.uuid4()
+    common = {
+        "tenant_id": tenant,
+        "conversation_id": uuid.UUID(world["ids"]["conversation_id"]),
+        "message_id": uuid.UUID(world["ids"]["message_id"]),
+        "author_client_user_id": "client_lote",
+        "origin": "lite_web",
+        "scope": "business",
+        "kind": "behavior",
+        "lesson": "No des citas los festivos.",
+        "paraphrase": "Un cliente pregunta si hay citas en festivo.",
+        "status": "proposed",
+        "batch_id": head,
+    }
+    db_session.add(InboxCorrection(id=head, agent_id=head_agent, **common))
+    await db_session.flush()
+    db_session.add(InboxCorrection(id=uuid.uuid4(), agent_id=other.id, **common))
+    await db_session.commit()
+
+    base = f"/console/clients/{world['ref']}"
+    listed = await client.get(
+        f"{base}/agents/{head_agent}/improvements", headers=world["headers"]()
+    )
+    assert listed.status_code == 200, listed.text
+    (item,) = [i for i in listed.json()["items"] if i["kind"] == "correction"]
+    assert item["batch"] == {"id": str(head), "agents_count": 2}
+    decided = await client.post(
+        f"{base}/corrections/{head}/discard",
+        json={"reason": "No aplica"},
+        headers=world["headers"](),
+    )
+    assert decided.status_code == 200, decided.text
+    for text in (listed.text, decided.text):
+        leaked = [
+            label
+            for label, canary in world["canaries"].words_and_phones().items()
+            if canary in text
+        ]
+        assert not leaked, leaked
+        for internal in (world["ids"]["message_id"], world["ids"]["conversation_id"]):
+            assert internal not in text

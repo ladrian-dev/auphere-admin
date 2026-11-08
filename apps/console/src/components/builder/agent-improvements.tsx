@@ -21,9 +21,21 @@ import {
   formatDate,
 } from "@nexus/ui";
 
-import { acceptImprovementAction, discardImprovementAction, improvementsAction } from "@/app/(console)/clients/[ref]/agents/improve-actions";
+import {
+  acceptCorrectionBatchAction,
+  acceptImprovementAction,
+  discardCorrectionBatchAction,
+  discardImprovementAction,
+  improvementsAction,
+} from "@/app/(console)/clients/[ref]/agents/improve-actions";
 import { useLocale, useT } from "@/i18n/client";
-import type { Improvement, ImprovementAccepted, ImprovementDiscarded, Improvements } from "@/lib/backend/agent-improve-types";
+import type {
+  CorrectionBatchDecided,
+  Improvement,
+  ImprovementAccepted,
+  ImprovementDiscarded,
+  Improvements,
+} from "@/lib/backend/agent-improve-types";
 
 import type { Result } from "./builder-model";
 import { improvementReach, originKey } from "./improve-model";
@@ -33,13 +45,21 @@ export type ImprovementsActions = {
   reload: (body: { ref: string; agent: string }) => Promise<Result<Improvements>>;
   accept: (body: { ref: string; agent: string; id: string }) => Promise<Result<ImprovementAccepted>>;
   discard: (body: { ref: string; agent: string; id: string; reason: string }) => Promise<Result<ImprovementDiscarded>>;
+  /** Spec 056 (9.2): the batch of «Todo el negocio», on every agent it reached. */
+  acceptBatch: (body: { ref: string; batch: string }) => Promise<Result<CorrectionBatchDecided>>;
+  discardBatch: (body: { ref: string; batch: string; reason: string }) => Promise<Result<CorrectionBatchDecided>>;
 };
 
 const SERVER_ACTIONS: ImprovementsActions = {
   reload: (b) => improvementsAction(b),
   accept: (b) => acceptImprovementAction(b),
   discard: (b) => discardImprovementAction(b),
+  acceptBatch: (b) => acceptCorrectionBatchAction(b),
+  discardBatch: (b) => discardCorrectionBatchAction(b),
 };
+
+/** What «Aceptar» left in the draft: one agent's revision, or a batch on several agents. */
+type Accepted = { kind: "one"; result: ImprovementAccepted } | { kind: "batch"; result: CorrectionBatchDecided };
 
 type Failure = Extract<Result<unknown>, { ok: false }>;
 const REASON_MIN = 3;
@@ -62,6 +82,10 @@ const REASON_MAX = 300;
  * publica hasta «Guardar», que pasa la puerta. «Descartar» pide el motivo, y una
  * sugerencia descartada no vuelve en 30 días. Quien solo lee lo ve todo, sin
  * botones (§V).
+ *
+ * Spec 056 (9.2): una corrección de «Todo el negocio» llegó a cada agente activo
+ * del cliente. Su fila y «Ver» dicen a cuántos, y aceptarla o descartarla lo hace
+ * en todos a la vez; los agentes en los que no se pudo aplicar se dicen.
  */
 export function AgentImprovementsPanel({
   refId,
@@ -73,14 +97,14 @@ export function AgentImprovementsPanel({
   refId: string;
   agentId: string;
   improvements: Improvements | null;
-  /** El borrador cambió: la pantalla lo vuelve a leer. */
-  onAccepted?: (result: ImprovementAccepted) => void;
+  /** El borrador cambió: la pantalla lo vuelve a leer. `null`: un lote, en varios agentes. */
+  onAccepted?: (result: ImprovementAccepted | null) => void;
   actions?: ImprovementsActions;
 }) {
   const t = useT();
   const [data, setData] = React.useState(initial);
   const [busy, setBusy] = React.useState(false);
-  const [accepted, setAccepted] = React.useState<ImprovementAccepted | null>(null);
+  const [accepted, setAccepted] = React.useState<Accepted | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [viewing, setViewing] = React.useState<Improvement | null>(null);
   const [discarding, setDiscarding] = React.useState<Improvement | null>(null);
@@ -126,12 +150,26 @@ export function AgentImprovementsPanel({
   async function accept(item: Improvement) {
     setBusy(true);
     setProblem(null);
+    if (item.batch) {
+      const res = await actions.acceptBatch({ ref: refId, batch: item.batch.id });
+      setBusy(false);
+      if (res.ok) {
+        drop(item.id);
+        setViewing(null);
+        setAccepted({ kind: "batch", result: res.data });
+        onAccepted?.(null);
+        return;
+      }
+      setProblem(failure(res));
+      if (res.code === "improvement_closed") drop(item.id);
+      return;
+    }
     const res = await actions.accept({ ref: refId, agent: agentId, id: item.id });
     setBusy(false);
     if (res.ok) {
       drop(item.id);
       setViewing(null);
-      setAccepted(res.data);
+      setAccepted({ kind: "one", result: res.data });
       onAccepted?.(res.data);
       return;
     }
@@ -140,6 +178,14 @@ export function AgentImprovementsPanel({
   }
 
   async function discard(item: Improvement, reason: string): Promise<string | null> {
+    if (item.batch) {
+      const res = await actions.discardBatch({ ref: refId, batch: item.batch.id, reason });
+      if (!res.ok) return failure(res);
+      drop(item.id);
+      setDiscarding(null);
+      toast.success(t("improve.batch.discarded", { n: item.batch.agents_count }));
+      return null;
+    }
     const res = await actions.discard({ ref: refId, agent: agentId, id: item.id, reason });
     if (!res.ok) return failure(res);
     drop(item.id);
@@ -163,10 +209,12 @@ export function AgentImprovementsPanel({
         <ErrorState className="py-4" title={t("improve.error.load")} description={t("improve.error.load.hint")} onRetry={retry} retryLabel={t("improve.retry")} />
       ) : (
         <>
-          {accepted ? (
+          {accepted?.kind === "one" ? (
             <Callout tone="positive" title={t("improve.accepted.title")} dismissible dismissLabel={t("improve.accepted.dismiss")} onDismiss={() => setAccepted(null)}>
-              {t("improve.accepted.body", { n: accepted.draft_revision })}
+              {t("improve.accepted.body", { n: accepted.result.draft_revision })}
             </Callout>
+          ) : accepted?.kind === "batch" ? (
+            <BatchAccepted result={accepted.result} onDismiss={() => setAccepted(null)} />
           ) : null}
           {items.length === 0 ? (
             <EmptyState icon={Lightbulb} title={t("improve.empty")} description={t("improve.empty.hint")} readonly />
@@ -209,9 +257,31 @@ export function AgentImprovementsPanel({
   );
 }
 
-/** La línea de debajo del título: a cuántos afecta una sugerencia, de dónde viene una corrección. */
+/** La línea de debajo del título: a cuántos afecta una sugerencia, de dónde viene una corrección y, si es un lote, a cuántos agentes llegó. */
 function subtitle(t: ReturnType<typeof useT>, item: Improvement): string {
-  return item.kind === "suggestion" ? improvementReach(t, item) : `${t("improve.kind.correction")} · ${t(originKey(item.origin))}`;
+  if (item.kind === "suggestion") return improvementReach(t, item);
+  const from = `${t("improve.kind.correction")} · ${t(originKey(item.origin))}`;
+  return item.batch ? `${from} · ${t("improve.batch.reach", { n: item.batch.agents_count })}` : from;
+}
+
+/** Spec 056 (9.2): en cuántos agentes quedó y en cuántos no se pudo. */
+function BatchAccepted({ result, onDismiss }: { result: CorrectionBatchDecided; onDismiss: () => void }) {
+  const t = useT();
+  const skipped = result.skipped.length;
+  return (
+    <Callout
+      tone={skipped ? "warning" : "positive"}
+      title={result.applied === 1 ? t("improve.batch.accepted.title.one") : t("improve.batch.accepted.title", { n: result.applied })}
+      dismissible
+      dismissLabel={t("improve.accepted.dismiss")}
+      onDismiss={onDismiss}
+    >
+      <span className="grid gap-1">
+        <span>{t("improve.batch.accepted.body")}</span>
+        {skipped ? <span>{skipped === 1 ? t("improve.batch.skipped.one") : t("improve.batch.skipped", { n: skipped })}</span> : null}
+      </span>
+    </Callout>
+  );
 }
 
 /** «Ver»: la mejora entera —lo que pasó, la propuesta y su prueba— con «Aceptar» y «Descartar» si se puede. */
@@ -251,6 +321,7 @@ function ImprovementDialog({
               {item.kind === "suggestion" && item.week ? t("improve.week", { date: formatDate(item.week, locale) }) : t(originKey(item.origin))}
             </span>
           </div>
+          {item.batch ? <p className="text-sm text-pretty">{t("improve.batch.note", { n: item.batch.agents_count })}</p> : null}
           {item.kind === "correction" && item.lesson ? (
             <p className="text-sm text-pretty break-words">
               <span className="font-medium">{t("improve.lesson")} </span>
@@ -296,7 +367,7 @@ function ImprovementDialog({
           ) : null}
           {allowed.includes("accept") ? (
             <Button type="button" onClick={onAccept} loading={busy}>
-              {t("improve.accept")}
+              {item.batch ? t("improve.batch.accept", { n: item.batch.agents_count }) : t("improve.accept")}
             </Button>
           ) : null}
         </DialogFooter>
@@ -326,7 +397,13 @@ function DiscardDialog({ item, onClose, onDiscard }: { item: Improvement; onClos
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("improve.discard.title")}</DialogTitle>
-          <DialogDescription>{item.kind === "suggestion" ? t("improve.discard.body.suggestion") : t("improve.discard.body.correction")}</DialogDescription>
+          <DialogDescription>
+            {item.batch
+              ? t("improve.batch.discard.body", { n: item.batch.agents_count })
+              : item.kind === "suggestion"
+                ? t("improve.discard.body.suggestion")
+                : t("improve.discard.body.correction")}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4" noValidate>
           <p className="text-sm font-medium text-pretty break-words">{item.topic}</p>
@@ -338,7 +415,7 @@ function DiscardDialog({ item, onClose, onDiscard }: { item: Improvement; onClos
               {t("improve.cancel")}
             </Button>
             <Button type="submit" variant="destructive" loading={pending}>
-              {t("improve.discard.confirm")}
+              {item.batch ? t("improve.batch.discard.confirm", { n: item.batch.agents_count }) : t("improve.discard.confirm")}
             </Button>
           </DialogFooter>
         </form>

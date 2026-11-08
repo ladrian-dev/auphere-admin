@@ -64,12 +64,25 @@ describe("AccessForm", () => {
     expect(save).toHaveProperty("disabled", false);
   });
 
-  it("keeps the modules it does not show when saving", async () => {
-    h.set.mockResolvedValue({ ok: true, data: access({ enabled: true, modules: ["panel", "agents", "business"] }) });
-    render(<AccessForm tenantId="t1" access={access({ enabled: true, modules: ["panel", "inbox", "agents", "business", "usage"], whatsapp_connected: true })} />);
+  // Spec 056 (requisitos 2.3 y 3.9): Agentes y Negocio ya no son módulos del
+  // cliente. El formulario no los ofrece ni los conserva: la API los rechazaría.
+  it("sends only the modules it shows, never Agentes nor Negocio", async () => {
+    h.set.mockResolvedValue({ ok: true, data: access({ enabled: true, modules: ["panel", "inbox"] }) });
+    render(<AccessForm tenantId="t1" access={access({ enabled: true, modules: ["panel", "inbox", "usage"], whatsapp_connected: true })} />);
+    expect(screen.queryByRole("checkbox", { name: /Agentes/ })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Negocio/ })).toBeNull();
     await userEvent.click(screen.getByRole("checkbox", { name: /Consumo/ }));
     await userEvent.click(saveButton());
-    expect(h.set).toHaveBeenCalledWith("t1", { enabled: true, modules: ["panel", "inbox", "agents", "business"] });
+    expect(h.set).toHaveBeenCalledWith("t1", { enabled: true, modules: ["panel", "inbox"] });
+  });
+
+  it("does not send back a retired module an old answer still carries", async () => {
+    h.set.mockResolvedValue({ ok: true, data: access({ enabled: true, modules: ["panel"] }) });
+    const old = ["panel", "agents", "business", "usage"] as unknown as ClientAccessOut["modules"];
+    render(<AccessForm tenantId="t1" access={access({ enabled: true, modules: old })} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: /Consumo/ }));
+    await userEvent.click(saveButton());
+    expect(h.set).toHaveBeenCalledWith("t1", { enabled: true, modules: ["panel"] });
   });
 
   it("says which agents did not get Reservas because they book elsewhere", () => {

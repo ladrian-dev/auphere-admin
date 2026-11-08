@@ -141,8 +141,12 @@ export function eventText(kind: string | null | undefined, a: Author | null | un
   const me = isMe(a);
   const who = whoOf(a, t);
   switch (kind) {
-    case "escalated":
-      return detail ? t("inbox.event.escalated.reason", { reason: detail }) : t("inbox.event.escalated");
+    case "escalated": {
+      // Spec 056 (7.1): a code is the table's words, the agent's own words go after the sentence.
+      const raw = (detail ?? "").trim();
+      const said = reasonText(raw, t);
+      return raw && said === raw ? t("inbox.event.escalated.reason", { reason: raw }) : said;
+    }
     case "takeover":
       return me ? t("inbox.event.takeover.you") : t("inbox.event.takeover", { who });
     case "released":
@@ -170,7 +174,10 @@ export function attendsLine(d: Pick<Detail, "state" | "assignee" | "agent"> & { 
   return agent ? t("app.inbox.attends.agent", { agent: agent.name }) : t("app.inbox.attends.agent.noName");
 }
 
-/** Spec 047 (50.7, `events.md` §2): why a conversation waits, from its code; a code this version does not know says nothing. */
+/**
+ * Spec 047 (50.7, `events.md` §2) and spec 056 (requisito 7): why a conversation
+ * waits, in words. The same list as the console's (`lib/waiting-reasons.ts`).
+ */
 const WAITING_REASONS = [
   "no_balance",
   "agent_cap",
@@ -186,10 +193,29 @@ const WAITING_REASONS = [
   "escalated",
   "human_takeover",
   "reception_loop",
+  "out_of_audience",
+  "booking_unbacked",
 ] as const;
 
+/** What has the shape of a code (`snake_case`), not of a sentence of the agent. */
+const CODE = /^[a-z][a-z0-9_]*$/;
+
+/** The badge of a waiting row, from the column's code: its words, or the generic sentence for one this version does not know (7.2). */
 export function waitingReasonText(code: string | null | undefined, t: T): string | null {
-  return code && (WAITING_REASONS as readonly string[]).includes(code) ? t(`bandeja.reason.${code}` as MessageKey) : null;
+  if (!code) return null;
+  return (WAITING_REASONS as readonly string[]).includes(code) ? t(`bandeja.reason.${code}` as MessageKey) : t("inbox.event.escalated");
+}
+
+/**
+ * A reason as the Bandeja reads it (spec 056, 7.1, 7.2): a code of the table is
+ * its words, `escalated` or a code it does not know is «El agente pidió ayuda»,
+ * and what the agent wrote when it asked for help goes as it is. Never a code.
+ */
+export function reasonText(raw: string | null | undefined, t: T): string {
+  const text = (raw ?? "").trim();
+  if (text && text !== "escalated" && (WAITING_REASONS as readonly string[]).includes(text)) return t(`bandeja.reason.${text}` as MessageKey);
+  if (!text || CODE.test(text)) return t("inbox.event.escalated");
+  return text;
 }
 
 /** A list row's preview: who wrote it, and the text or «Archivo». */

@@ -26,7 +26,8 @@ export const inboxMessages = {
   "inbox.search": { es: "Buscar", en: "Search" },
   "inbox.search.label": { es: "Buscar por nombre, teléfono o mensaje", en: "Search by name, phone or message" },
   "inbox.filters": { es: "Filtros", en: "Filters" },
-  "inbox.filter.all": { es: "Todas", en: "All" },
+  // Spec 056 (6.1, D6): el valor sigue siendo `all`; enseña las que no están resueltas.
+  "inbox.filter.all": { es: "Abiertas", en: "Open" },
   "inbox.filter.unread": { es: "Sin leer", en: "Unread" },
   "inbox.filter.waiting": { es: "Necesita humano", en: "Needs a human" },
   "inbox.filter.waiting.count": { es: "Necesita humano · {count}", en: "Needs a human · {count}" },
@@ -45,7 +46,12 @@ export const inboxMessages = {
     en: "When someone messages you, the conversation will show up here.",
   },
   "inbox.empty.filtered": { es: "No hay conversaciones con estos filtros.", en: "No conversations match these filters." },
-  "inbox.empty.clear": { es: "Ver todas las conversaciones", en: "See all conversations" },
+  "inbox.empty.clear": { es: "Quitar los filtros", en: "Clear filters" },
+  // Spec 056 (6.2): «Abiertas» vacía, con conversaciones resueltas.
+  "inbox.empty.open.title": { es: "No tienes conversaciones abiertas", en: "You have no open conversations" },
+  "inbox.empty.open.resolved": { es: "{count} resueltas", en: "{count} resolved" },
+  "inbox.empty.open.resolved.one": { es: "1 resuelta", en: "1 resolved" },
+  "inbox.empty.open.action": { es: "Ver las resueltas", en: "See resolved" },
   "inbox.row.unread": { es: "Sin leer", en: "Unread" },
   // Spec 045 (R3.1): why and since when a conversation waits for a person.
   "inbox.row.reason": { es: "Motivo del agente:", en: "Agent's reason:" },

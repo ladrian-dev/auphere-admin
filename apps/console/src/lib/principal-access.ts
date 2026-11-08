@@ -18,12 +18,12 @@ import type { Role } from "./permissions";
  */
 
 /**
- * The client console's modules, in sidebar order (Panel, Bandeja, Agentes,
- * Negocio, Reservas, Consumo — `ClientModule` in `db/models/client_access.py`).
- * Spec 047 (R50.1) adds Agentes and Negocio, on by default for the clients of a
- * partner on the new console.
+ * The client console's modules, in sidebar order (Panel, Bandeja, Reservas,
+ * Consumo — `CLIENT_MODULES` in `db/models/client_access.py`). Spec 056
+ * (requisito 2.1) retired Agentes and Negocio: they are the partner's now, and a
+ * name the API might still send is dropped like any unknown one.
  */
-export const CLIENT_MODULES = ["panel", "inbox", "agents", "business", "reservas", "usage"] as const;
+export const CLIENT_MODULES = ["panel", "inbox", "reservas", "usage"] as const;
 export type ClientModule = (typeof CLIENT_MODULES)[number];
 
 type PrincipalBase = {
@@ -36,7 +36,16 @@ type PrincipalBase = {
   partnerSlug: string;
   partnerName: string;
   consoleEnabled: boolean;
+  /**
+   * Spec 056 (15.1): when the session ends (`expires_at` of
+   * `POST /console/auth/session`), so the console can warn on its last day.
+   * It never moves: the session lasts 7 days from sign-in (15.2).
+   */
+  sessionExpiresAt?: string | null;
 };
+
+/** The session's answer: the principal plus, from spec 056, when the session ends. */
+export type SessionPrincipal = ApiPrincipal & { session_expires_at?: string | null };
 
 /**
  * Spec 032: the partner console's modules, in sidebar order, then the
@@ -115,7 +124,7 @@ function partnerModules(raw: string[]): PartnerModule[] {
   return PARTNER_MODULES.filter((m) => raw.includes(m));
 }
 
-export function toResolution(p: ApiPrincipal): PrincipalResolution {
+export function toResolution(p: SessionPrincipal): PrincipalResolution {
   const email = p.email;
   const isClient = p.kind === "client";
   const clientName = isClient ? { clientName: p.client_name ?? "" } : {};
@@ -143,6 +152,7 @@ export function toResolution(p: ApiPrincipal): PrincipalResolution {
     partnerSlug: p.partner_slug ?? "",
     partnerName: p.partner_name ?? "",
     consoleEnabled: p.console_enabled,
+    sessionExpiresAt: p.session_expires_at ?? null,
   };
   if (isClient) {
     const modules = clientModules(p.modules ?? []);
@@ -168,12 +178,10 @@ export function firstPartnerModulePath(modules: readonly PartnerModule[]): strin
   return PARTNER_MODULE_PATH[first as Exclude<PartnerModule, "companion">];
 }
 
-/** Where each client module lives (spec 043 adds Reservas; spec 047, Agentes and Negocio). */
+/** Where each client module lives (spec 043 adds Reservas). */
 const CLIENT_MODULE_PATH: Record<ClientModule, string> = {
   panel: "/",
   inbox: "/inbox",
-  agents: "/agentes",
-  business: "/negocio",
   reservas: "/reservas",
   usage: "/usage",
 };
@@ -193,8 +201,6 @@ export function firstModulePath(modules: readonly ClientModule[]): string {
 export function clientModuleOfPath(pathname: string): ClientModule | null {
   if (pathname === "/") return "panel";
   if (pathname === "/inbox") return "inbox";
-  if (pathname === "/agentes") return "agents";
-  if (pathname === "/negocio") return "business";
   if (pathname === "/reservas") return "reservas";
   if (pathname === "/usage") return "usage";
   return null;

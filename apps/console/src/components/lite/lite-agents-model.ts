@@ -1,35 +1,11 @@
 import type { MessageKey } from "@/i18n/messages";
-import type { LiteAgent } from "@/lib/backend/lite-agents";
 import type { CorrectionPii } from "@/lib/backend/inbox-corrections";
 
 /**
- * Spec 047 (T168, T176) — las cuentas puras de la consola lite: quién pausó un
- * agente y por qué (la frase bajo su estado) y dónde están los datos de un
- * cliente final en una corrección. Sin React: se prueban solas.
+ * Spec 047 (T176) — las cuentas puras de «Corregir esta respuesta»: dónde están
+ * los datos de un cliente final en una corrección. Sin React: se prueban solas.
+ * La frase de quién pausó un agente se fue con Agentes del cliente (spec 056).
  */
-
-export type PauseLine = { key: MessageKey; name: string | null };
-
-/**
- * La frase bajo el estado de un agente en pausa: quién (por su nombre, 27.6) y
- * desde dónde, o cuándo se quita sola una pausa del sistema. `null` si atiende.
- */
-export function pauseLine(
-  agent: Pick<LiteAgent, "visible_state" | "pause_reason" | "paused_by_kind" | "paused_origin" | "paused_by_name">,
-): PauseLine | null {
-  if (agent.visible_state.code !== "paused") return null;
-  const reason = agent.pause_reason ?? agent.visible_state.reason ?? "manual";
-  const system = (key: MessageKey): PauseLine => ({ key, name: null });
-  if (reason === "no_balance") return system("lite.agents.system.no_balance");
-  if (reason === "agent_cap") return system("lite.agents.system.agent_cap");
-  if (reason === "client_paused" || reason === "client_archived") return system("lite.agents.system.client_paused");
-  if (agent.paused_by_kind === "client_user") {
-    const name = agent.paused_by_name?.trim() || null;
-    const where = agent.paused_origin === "app" ? "app" : "web";
-    return { key: `lite.agents.pausedBy.${where}${name ? "Named" : ""}` as MessageKey, name };
-  }
-  return system("lite.agents.pausedBy.partner");
-}
 
 export type PiiSpan = { field: "lesson" | "paraphrase"; kind: string; text: string };
 

@@ -278,3 +278,56 @@ async def test_a_stored_profile_picture_is_served_through_the_api(
         f"{LIST}/{inbox['conversations'][0]}/avatar", headers=theirs["headers"]()
     )
     assert foreign.status_code == 404
+
+
+async def test_open_and_empty_with_resolved_ones_says_how_many(
+    client, db_session, console_world
+) -> None:
+    """Spec 056 (6.2, D6): «Abiertas» —el valor ``all`` de siempre— vacía y con
+    conversaciones resueltas dice cuántas hay, para que la consola lleve a
+    Resueltas. Solo se cuenta con la lista por defecto y la página vacía: con
+    una búsqueda, otro filtro o algo que enseñar, ``resolved`` es 0."""
+    w = console_world["a"]
+    inbox = await make_inbox(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    c0, c1 = inbox["conversations"]
+    await _set(db_session, c0, status=ConversationStatus.CLOSED)
+    await _set(db_session, c1, status=ConversationStatus.CLOSED)
+    me = inbox["headers"]
+
+    body = (await client.get(LIST, headers=me())).json()
+    assert body["items"] == []
+    assert body["resolved"] == 2
+    assert body["has_any"] is True, "las apps viejas siguen leyendo has_any"
+
+    for params in ({"filter": "resolved"}, {"filter": "unread"}, {"q": "nadie"}):
+        assert (await client.get(LIST, headers=me(), params=params)).json()["resolved"] == 0
+
+    await _set(db_session, c1, status=ConversationStatus.OPEN)
+    body = (await client.get(LIST, headers=me())).json()
+    assert [i["id"] for i in body["items"]] == [str(c1)]
+    assert body["resolved"] == 0
+
+
+async def test_a_whatsapp_handle_reads_with_its_plus(client, db_session, console_world) -> None:
+    """Spec 056 (13.3): Meta guarda el número de WhatsApp sin «+»; la Bandeja lo
+    enseña con él. Lo que no es un número (Instagram, Messenger) sale tal cual."""
+    from nexus_api.db.models import Customer
+
+    w = console_world["a"]
+    inbox = await make_inbox(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    c0, c1 = inbox["customers"]
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == c0).values(identifier="5491155550000", name=None)
+    )
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == c1).values(identifier="+34600111222")
+    )
+    await db_session.commit()
+
+    items = (await client.get(LIST, headers=inbox["headers"]())).json()["items"]
+    handles = {i["id"]: i["contact"]["handle"] for i in items}
+    names = {i["id"]: i["contact"]["name"] for i in items}
+    assert handles[str(inbox["conversations"][0])] == "+5491155550000"
+    assert handles[str(inbox["conversations"][1])] == "+34600111222", "sin dos «+»"
+    # Sin nombre, el contacto se llama por su número, y también con «+».
+    assert names[str(inbox["conversations"][0])] == "+5491155550000"

@@ -77,12 +77,19 @@ describe("guardas de página", () => {
     expect(isClientAccountPath("/account")).toBe(false);
   });
 
+  it("Agentes y Negocio de la persona del cliente no tienen página (spec 056)", () => {
+    const routes = all.map(routeOf);
+    expect(routes).not.toContain("/agentes");
+    expect(routes).not.toContain("/negocio");
+  });
+
   it("only a module's own path counts, not a longer one that starts the same", () => {
     expect(clientModuleOfPath("/")).toBe("panel");
     expect(clientModuleOfPath("/inbox")).toBe("inbox");
-    // Spec 047 (T168): Agentes y Negocio de la persona del cliente.
-    expect(clientModuleOfPath("/agentes")).toBe("agents");
-    expect(clientModuleOfPath("/negocio")).toBe("business");
+    // Spec 056 (requisito 2.4): Agentes y Negocio ya no son de la persona del
+    // cliente. Sus direcciones son de nadie, y el layout la manda a su primer módulo.
+    expect(clientModuleOfPath("/agentes")).toBeNull();
+    expect(clientModuleOfPath("/negocio")).toBeNull();
     expect(clientModuleOfPath("/agentes/x")).toBeNull();
     expect(clientModuleOfPath("/clients/x/business")).toBeNull();
     expect(clientModuleOfPath("/reservas")).toBe("reservas");

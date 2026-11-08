@@ -52,8 +52,10 @@ export const TITLE: Record<string, MessageKey> = {
   "channel.problem": "lite.notif.channel.problem",
 };
 
-/** El módulo que abre cada página de la lite: sin él, el aviso no enlaza. */
-const MODULE_OF: Record<string, ClientModule> = { "/inbox": "inbox", "/usage": "usage", "/agentes": "agents" };
+/** El módulo que abre cada página de la lite: sin él, el aviso no enlaza. Spec
+ * 056: los avisos de agentes y números llegan sin enlace (Agentes ya no es una
+ * pantalla del cliente), y uno viejo con `/agentes` tampoco lleva a ningún sitio. */
+const MODULE_OF: Record<string, ClientModule> = { "/inbox": "inbox", "/usage": "usage" };
 
 /** Adónde lleva un aviso: el enlace de la API (ya de la lite) si la persona tiene ese módulo. */
 export function hrefFor(n: Notification, modules: readonly ClientModule[]): string | null {

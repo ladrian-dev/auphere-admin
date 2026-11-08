@@ -7,7 +7,7 @@ import { useTheme } from "@/theme/theme";
 import { Avatar, Badge } from "@/ui/bits";
 import { Text } from "@/ui/text";
 
-import { agoText, badgeOf, initialsOf, listTime, previewOf, waitingReasonText } from "../model";
+import { agoText, badgeOf, initialsOf, listTime, previewOf, reasonText, waitingReasonText } from "../model";
 
 /**
  * One conversation in the list (R5.2): who, when, the last line and its state
@@ -36,12 +36,15 @@ export const ConversationRow = memo(function ConversationRow({
 }) {
   const { colors } = useTheme();
   const time = c.last_message ? listTime(c.last_message.at, now, locale, t) : "";
-  const preview = pinned && c.waiting?.reason ? c.waiting.reason : previewOf(c, t);
+  // Spec 056 (7.1): the agent's reason in words — a code never reaches the screen.
+  const preview = pinned && c.waiting?.reason ? reasonText(c.waiting.reason, t) : previewOf(c, t);
   const base = badgeOf(c, t);
   // Without the time from the API there is no time: the plain badge, never an invented wait (R10.2).
   const badge = pinned && base && c.waiting?.since ? { ...base, label: t("app.inbox.waitingFor", { time: agoText(c.waiting.since, now.getTime(), t) }) } : base;
   // Spec 047 (50.7): why it waits, from its code, and which agent takes it — while an agent does (not a person).
-  const reason = c.state === "waiting" ? waitingReasonText(c.waiting_reason, t) : null;
+  const said = c.state === "waiting" ? waitingReasonText(c.waiting_reason, t) : null;
+  // Pinned, the reason is already the preview: once is enough.
+  const reason = said && said !== preview ? said : null;
   const handler = c.handled_by_agent && (c.state === "agent" || c.state === "waiting") ? t("bandeja.handledBy", { agent: c.handled_by_agent.name }) : agentName;
   const spoken = [c.contact.name, c.unread ? t("inbox.row.unread") : null, badge?.label, reason, handler, preview, time]
     .filter(Boolean)

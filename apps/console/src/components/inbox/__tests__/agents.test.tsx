@@ -66,7 +66,7 @@ describe("Inbox with several agents", () => {
   it("«see all» from an empty filtered list also drops the agent", async () => {
     a.listConversationsAction.mockResolvedValue({ ok: true, data: page([], { has_any: true }) });
     renderInbox({ agents: AGENTS, agent: SALES, page: page([], { has_any: true }) });
-    await userEvent.click(screen.getByRole("button", { name: "Ver todas las conversaciones" }));
+    await userEvent.click(screen.getByRole("button", { name: "Quitar los filtros" }));
     await waitFor(() =>
       expect(a.listConversationsAction).toHaveBeenLastCalledWith({ filter: "all", q: undefined, agent: undefined }),
     );

@@ -287,6 +287,21 @@ necesita herramientas, riesgo, complejidad, idioma y **cuántas peticiones trae*
 `fallback`, como hoy. Un agente con perfil sin catálogo o sin modelo en su
 residencia no clasifica: nada sale de la residencia.
 
+**La llamada `classify` del freno de citas** (spec 056, requisito 1.6;
+`wk/runtime/booking_brake.py`, `docs/agentes.md` §9): una respuesta que pasa el
+filtro de palabras del freno y que no respalda ninguna reserva hace una llamada
+más, «¿da por hecha una cita? YES/NO», con el borrador como mensaje `user`. Son 0
+llamadas en un turno normal, 1 si el freno actúa y 2 si reintenta y vuelve a
+actuar. Va por el mismo camino que el clasificador de hoy: `llm.classify` con
+`chain_for(bindings, "classify", …)` (la asignación `classify` del cliente, si la
+tiene, y `llm_classify_model` con su reserva), `CLASSIFY_ON_ANTHROPIC` de 32 tokens
+y la tarea `classify` por el rol. No hay rol ni tarea nuevos: el medidor la toma
+dentro del `usage_turn` del turno y se cobra con él, como `classify` y `respond`.
+Si falla o no dice YES ni NO, el freno cuenta la respuesta como afirmación.
+**Pendiente**: un agente con perfil también la hace por este camino y no por el
+router, así que su residencia no la filtra; pasará al router con la tarea
+`classify` del perfil cuando se cablee.
+
 **La respuesta** (`_conversation_route`): con `no_model` no hay llamada, el
 contacto recibe el texto neutro y el turno termina con
 `turn_failure = {"kind": "llm_failed", "reason": "no_model"}`; un fallo de toda la

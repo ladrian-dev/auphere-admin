@@ -1,3 +1,6 @@
+import type { HoursDraft } from "@/components/business/sections/hours-model";
+import { DAYS, type Day, type Hours, type ShiftIn } from "@/lib/backend/business-sections";
+import type { BusinessHoursPatch } from "@/lib/backend/reservas";
 import { WEEKDAYS, type CapacitySchedule, type TimeRange, type WeekHours } from "@/lib/backend/reservas";
 
 import { fromMinutes, toMinutes } from "./dates";
@@ -55,3 +58,23 @@ export function scheduleValid(s: CapacitySchedule): boolean {
     (sh, i) => sh.name.trim() !== "" && sh.from < sh.to && divides(sh.from, sh.to) && (i === 0 || sorted[i - 1]!.to < sh.from),
   );
 }
+
+// ── the ficha's week, edited from Reservas (spec 056, requisito 5) ──────────
+
+const sameShifts = (a: readonly ShiftIn[], b: readonly ShiftIn[]) =>
+  a.length === b.length && a.every((s, i) => s.open === b[i]?.open && s.close === b[i]?.close);
+
+/** The days whose shifts the draft changed (5.3): only these travel. */
+export function changedDays(original: Pick<Hours, "days">, draft: HoursDraft): Day[] {
+  return DAYS.filter((d) => !sameShifts(original.days[d] ?? [], draft.days[d]));
+}
+
+/** `PATCH …/business-hours`: the changed days, with the revision that was read. */
+export function hoursPatch(original: Pick<Hours, "days" | "revision">, draft: HoursDraft): BusinessHoursPatch {
+  const days: BusinessHoursPatch["days"] = {};
+  for (const d of changedDays(original, draft)) days[d] = draft.days[d].map((s) => ({ open: s.open, close: s.close }));
+  return { revision: original.revision, days };
+}
+
+/** «Revísalo» (5.5): lives with the ficha's hours model, the one both screens use. */
+export { reviewDays } from "@/components/business/sections/hours-model";

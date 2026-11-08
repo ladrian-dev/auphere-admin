@@ -479,6 +479,9 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/bag/refill"): {"up_to": None},
         ("PUT", "/console/clients/{ref}/bag/currency"): {"currency": "USD"},
         ("POST", "/console/clients/{ref}/bag/request"): {},
+        # Spec 056 (T028): el acceso del cliente desde la consola de partners.
+        ("PUT", "/console/clients/{ref}/client-access"): {"enabled": False, "modules": []},
+        ("POST", "/console/clients/{ref}/client-members"): {"email": "x@example.com"},
     }
     return bodies.get((sorted(route.methods)[0], route.path))
 

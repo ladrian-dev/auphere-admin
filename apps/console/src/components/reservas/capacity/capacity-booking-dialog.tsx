@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, Input, Skeleton, Textarea, cn } from "@nexus/ui";
 
 import { capacitySlotsAction, createBookingAction, moveBookingAction } from "@/app/(console)/reservas/actions";
+import { useDiscardGuard } from "@/components/use-discard-guard";
 import type { MessageKey } from "@/i18n/messages";
 import type { Booking, CapacitySlot } from "@/lib/backend/reservas";
 
@@ -54,6 +55,11 @@ export function CapacityBookingDialog({ booking, prefill, onClose }: { booking: 
   const [error, setError] = React.useState<string | null>(null);
   const [reload, setReload] = React.useState(0);
   const days = openDays(today, 10, (d) => settings.business_hours[weekdayOf(d)].length > 0, date);
+  // Spec 056 (12.3): something written or chosen is not lost on a stray close.
+  const [initial] = React.useState({ people, date, time, note });
+  const dirty =
+    name.trim() !== "" || phone.trim() !== "" || people !== initial.people || date !== initial.date || time !== initial.time || note !== initial.note;
+  const guard = useDiscardGuard(dirty, onClose);
 
   // −/+ moves fast: the read waits a beat so each click does not ask again.
   const slots = useActionLoad(
@@ -124,134 +130,137 @@ export function CapacityBookingDialog({ booking, prefill, onClose }: { booking: 
   const slotState = (s: CapacitySlot) => (s.fits ? t("reservas.aform.left", { count: s.left }) : t(`reservas.slot.why.${s.why ?? "full"}` as MessageKey));
 
   return (
-    <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
-        <form onSubmit={submit} className="grid gap-4" noValidate>
-          <DialogHeader>
-            <DialogTitle>{moving ? t("reservas.aform.move.title") : t("reservas.new")}</DialogTitle>
-            <DialogDescription>
-              {moving
-                ? booking?.contact.phone
-                  ? t("reservas.aform.move.subtitle")
-                  : t("reservas.aform.move.subtitleNoPhone")
-                : t("reservas.aform.new.subtitle")}
-            </DialogDescription>
-          </DialogHeader>
+    <>
+      <Dialog open onOpenChange={guard.onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+          <form onSubmit={submit} className="grid gap-4" noValidate>
+            <DialogHeader>
+              <DialogTitle>{moving ? t("reservas.aform.move.title") : t("reservas.new")}</DialogTitle>
+              <DialogDescription>
+                {moving
+                  ? booking?.contact.phone
+                    ? t("reservas.aform.move.subtitle")
+                    : t("reservas.aform.move.subtitleNoPhone")
+                  : t("reservas.aform.new.subtitle")}
+              </DialogDescription>
+            </DialogHeader>
 
-          {!moving ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field
-                label={t("reservas.aform.name")}
-                required
-                requiredLabel={t("reservas.required")}
-                error={touched && !nameOk ? t("reservas.form.nameRequired") : null}
-              >
-                {(a11y) => <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} maxLength={120} autoComplete="off" />}
-              </Field>
-              <Field
-                label={t("reservas.form.phone")}
-                optionalLabel={t("reservas.optional")}
-                error={touched && !phoneOk ? t("reservas.form.phoneInvalid") : null}
-              >
-                {(a11y) => (
-                  <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.phone.placeholder")} maxLength={32} autoComplete="off" />
-                )}
-              </Field>
-            </div>
-          ) : null}
-
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-medium">{unitTitle}</span>
-              <Stepper label={unitTitle} value={people} onChange={setPeople} min={1} max={settings.capacity?.seats} />
-            </div>
-            {maxParty > 0 && people > maxParty ? (
-              <p className="text-xs text-warning text-pretty">{t("reservas.aform.overMax", { max: maxParty })}</p>
+            {!moving ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label={t("reservas.aform.name")}
+                  required
+                  requiredLabel={t("reservas.required")}
+                  error={touched && !nameOk ? t("reservas.form.nameRequired") : null}
+                >
+                  {(a11y) => <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} maxLength={120} autoComplete="off" />}
+                </Field>
+                <Field
+                  label={t("reservas.form.phone")}
+                  optionalLabel={t("reservas.optional")}
+                  error={touched && !phoneOk ? t("reservas.form.phoneInvalid") : null}
+                >
+                  {(a11y) => (
+                    <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.phone.placeholder")} maxLength={32} autoComplete="off" />
+                  )}
+                </Field>
+              </div>
             ) : null}
-          </div>
 
-          <fieldset className="grid gap-2">
-            <legend className="mb-2 text-sm font-medium">{t("reservas.form.day")}</legend>
-            <ChipGroup label={t("reservas.form.day")}>
-              {days.map((d) => (
-                <Chip key={d} pressed={d === date} onClick={() => setDate(d)}>
-                  {words.dayTitle(d)}
-                </Chip>
-              ))}
-            </ChipGroup>
-          </fieldset>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{unitTitle}</span>
+                <Stepper label={unitTitle} value={people} onChange={setPeople} min={1} max={settings.capacity?.seats} />
+              </div>
+              {maxParty > 0 && people > maxParty ? (
+                <p className="text-xs text-warning text-pretty">{t("reservas.aform.overMax", { max: maxParty })}</p>
+              ) : null}
+            </div>
 
-          <fieldset className="grid gap-3" aria-busy={slots.kind === "loading" || undefined}>
-            <legend className="mb-2 text-sm font-medium">{t("reservas.form.time")}</legend>
-            {slots.kind === "loading" || slots.kind === "idle" ? (
-              <div role="status" aria-label={t("reservas.form.slots.loading")} className="flex flex-wrap gap-2">
-                {Array.from({ length: 8 }, (_, i) => (
-                  <Skeleton key={i} className="h-12 w-20" />
+            <fieldset className="grid gap-2">
+              <legend className="mb-2 text-sm font-medium">{t("reservas.form.day")}</legend>
+              <ChipGroup label={t("reservas.form.day")}>
+                {days.map((d) => (
+                  <Chip key={d} pressed={d === date} onClick={() => setDate(d)}>
+                    {words.dayTitle(d)}
+                  </Chip>
                 ))}
-              </div>
-            ) : slots.kind === "error" ? (
-              <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-destructive">{t("reservas.form.slots.error")}</span>
-                <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}>
-                  {t("common.retry")}
-                </Button>
-              </div>
-            ) : slots.data.closed || all.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("reservas.form.slots.closed")}</p>
-            ) : !all.some((s) => s.fits) ? (
-              <p className="text-sm text-muted-foreground">{t("reservas.aform.noTimes", { count: people, unit: words.unitFor(people) })}</p>
-            ) : (
-              slotsByShift(all).map((g) => (
-                <div key={g.shift ?? "slots"} className="grid gap-2">
-                  <span className="text-xs font-medium text-muted-foreground">{g.shift ?? t("reservas.aform.slots")}</span>
-                  <ChipGroup label={g.shift ?? t("reservas.aform.slots")}>
-                    {g.slots.map((s) => (
-                      <button
-                        key={s.time}
-                        type="button"
-                        aria-pressed={s.time === time}
-                        disabled={!s.fits}
-                        aria-label={t("reservas.slot.aria", { time: s.time, state: slotState(s) })}
-                        onClick={() => setTime(s.time)}
-                        className={cn(
-                          "flex h-12 min-w-20 flex-col items-center justify-center rounded-md border px-2 text-sm tabular-nums",
-                          "transition-colors duration-(--duration-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                          "disabled:cursor-not-allowed disabled:opacity-50",
-                          s.time === time ? "border-transparent bg-accent font-medium text-accent-foreground" : "border-border bg-background hover:bg-muted",
-                        )}
-                      >
-                        <span>{s.time}</span>
-                        <span className="text-xs text-muted-foreground">{slotState(s)}</span>
-                      </button>
-                    ))}
-                  </ChipGroup>
+              </ChipGroup>
+            </fieldset>
+
+            <fieldset className="grid gap-3" aria-busy={slots.kind === "loading" || undefined}>
+              <legend className="mb-2 text-sm font-medium">{t("reservas.form.time")}</legend>
+              {slots.kind === "loading" || slots.kind === "idle" ? (
+                <div role="status" aria-label={t("reservas.form.slots.loading")} className="flex flex-wrap gap-2">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <Skeleton key={i} className="h-12 w-20" />
+                  ))}
                 </div>
-              ))
-            )}
-          </fieldset>
+              ) : slots.kind === "error" ? (
+                <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-destructive">{t("reservas.form.slots.error")}</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}>
+                    {t("common.retry")}
+                  </Button>
+                </div>
+              ) : slots.data.closed || all.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("reservas.form.slots.closed")}</p>
+              ) : !all.some((s) => s.fits) ? (
+                <p className="text-sm text-muted-foreground">{t("reservas.aform.noTimes", { count: people, unit: words.unitFor(people) })}</p>
+              ) : (
+                slotsByShift(all).map((g) => (
+                  <div key={g.shift ?? "slots"} className="grid gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">{g.shift ?? t("reservas.aform.slots")}</span>
+                    <ChipGroup label={g.shift ?? t("reservas.aform.slots")}>
+                      {g.slots.map((s) => (
+                        <button
+                          key={s.time}
+                          type="button"
+                          aria-pressed={s.time === time}
+                          disabled={!s.fits}
+                          aria-label={t("reservas.slot.aria", { time: s.time, state: slotState(s) })}
+                          onClick={() => setTime(s.time)}
+                          className={cn(
+                            "flex h-12 min-w-20 flex-col items-center justify-center rounded-md border px-2 text-sm tabular-nums",
+                            "transition-colors duration-(--duration-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                            "disabled:cursor-not-allowed disabled:opacity-50",
+                            s.time === time ? "border-transparent bg-accent font-medium text-accent-foreground" : "border-border bg-background hover:bg-muted",
+                          )}
+                        >
+                          <span>{s.time}</span>
+                          <span className="text-xs text-muted-foreground">{slotState(s)}</span>
+                        </button>
+                      ))}
+                    </ChipGroup>
+                  </div>
+                ))
+              )}
+            </fieldset>
 
-          <Field label={t("reservas.aform.note")} optionalLabel={t("reservas.optional")}>
-            {(a11y) => (
-              <Textarea {...a11y} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("reservas.aform.note.placeholder")} maxLength={500} rows={2} />
-            )}
-          </Field>
+            <Field label={t("reservas.aform.note")} optionalLabel={t("reservas.optional")}>
+              {(a11y) => (
+                <Textarea {...a11y} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("reservas.aform.note.placeholder")} maxLength={500} rows={2} />
+              )}
+            </Field>
 
-          {error ? (
-            <p role="alert" className="text-sm text-destructive text-pretty">
-              {error}
-            </p>
-          ) : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive text-pretty">
+                {error}
+              </p>
+            ) : null}
 
-          <DialogFooter className="items-center sm:justify-between">
-            <p className="min-w-0 text-sm text-muted-foreground" aria-live="polite">
-              {chosen ? t("reservas.aform.summary", { people: words.people(people), when: words.at(date, time) }) : t("reservas.form.summary.pick")}
-            </p>
-            <Button type="submit" loading={busy} disabled={!ready}>
-              {moving ? t("reservas.aform.saveChanges") : t("reservas.form.save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <DialogFooter className="items-center sm:justify-between">
+              <p className="min-w-0 text-sm text-muted-foreground" aria-live="polite">
+                {chosen ? t("reservas.aform.summary", { people: words.people(people), when: words.at(date, time) }) : t("reservas.form.summary.pick")}
+              </p>
+              <Button type="submit" loading={busy} disabled={!ready}>
+                {moving ? t("reservas.aform.saveChanges") : t("reservas.form.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {guard.dialog}
+    </>
   );
 }

@@ -13,20 +13,51 @@
 
 La misma consola de partners, abierta a un segundo tipo de persona: el
 **usuario de cliente**, atado a un solo cliente (tenant) de un partner. Ve los
-módulos que Auphere eligió para su cliente —Panel, Bandeja de entrada,
-Agentes, Negocio, Reservas, Consumo— y nada más.
+módulos que se eligieron para su cliente —Panel, Bandeja de entrada, Reservas,
+Consumo— y nada más. Agentes y Negocio fueron suyos con la spec 047 y salieron
+con la [056](../specs/056-correcciones-levantamiento-qa/spec.md) (requisito 2):
+ahora son solo del partner ([más abajo](#lo-que-la-spec-047-cambió-aquí-ola-8-agentes-y-negocio-ola-9-corregir-respuestas)).
 
-## Acceso desde el admin
+## Acceso, desde el panel o desde la consola de partners
 
-Pestaña **Acceso** en la ficha del tenant del admin
-(`apps/admin/src/app/(dashboard)/tenants/[id]/access/`), sobre
-`/admin/tenants/{tenant_id}/client-access` y `…/client-members`
-(`api/admin/client_access.py` → `services/client_access.py`).
+Dos puertas con las **mismas reglas**, porque llaman a los mismos servicios
+(`services/client_access.py`) y hablan la misma forma
+(`api/schemas_client_access.py`):
+
+- **El panel de Auphere**: pestaña **Acceso** en la ficha del tenant
+  (`apps/admin/src/app/(dashboard)/tenants/[id]/access/`), sobre
+  `/admin/tenants/{tenant_id}/client-access` y `…/client-members`
+  (`api/admin/client_access.py`).
+- **La consola de partners** (spec 056, requisito 3; D3, D4): pestaña
+  **Acceso** en la ficha del cliente, solo para owner y admin, sobre
+  `/console/clients/{ref}/client-access` y `…/client-members`
+  (`api/console/client_access.py`). Se describe en
+  [console.md](console.md#acceso-del-cliente). Su respuesta es la del panel sin
+  `partner`.
+
+> **Riesgo aceptado por el owner (D3, 2026-11-07), dicho tal cual.** La pestaña
+> del partner hace exactamente lo mismo que la del panel, Bandeja incluida, sin
+> solicitudes ni aprobación de Auphere. Así que **un partner puede invitar a una
+> persona suya a la consola de su cliente y, con la Bandeja encendida, leer las
+> conversaciones del cliente**, que es lo que la garantía C8 de ADR-041 prohíbe.
+> Lo que lo acota, y nada más: las rutas del partner siguen sin cuerpos (ni
+> conversaciones, ni contactos, ni el texto de los avisos; requisito 4 y
+> `tests/isolation/test_console_client_access_scope.py`), `invite` rechaza un
+> correo con cuenta de partner o de otro cliente (409
+> `account_is_partner_member`, `account_is_other_client`), así que haría falta
+> otro correo, y cada invitación queda en la auditoría con el correo de quien la
+> hizo. Se buscará una solución estable más adelante. Está escrito también en la
+> enmienda de ADR-041 en la KB.
+
+Lo común a las dos:
 
 - **Elegible**: el tenant está en `partner_tenants` y no está archivado. Los
   directos de Auphere cuelgan de Auphere Internal Partner.
-- **Módulos por cliente**: `panel`, `inbox`, `agents`, `business`, `reservas`, `usage`, guardados en
-  `client_access.modules` en el orden de la barra. Encendido exige al menos
+- **Módulos por cliente**: `panel`, `inbox`, `reservas`, `usage`, guardados en
+  `client_access.modules` en el orden de la barra (`CLIENT_MODULES`). `agents` y
+  `business` están retirados (`RETIRED_CLIENT_MODULES`, spec 056): las dos
+  puertas los rechazan con `422 unknown_module` y la migración 0224 los quitó de
+  todos los clientes (y apagó el acceso del que solo tenía esos). Encendido exige al menos
   uno; la Bandeja exige un WhatsApp conectado **al elegirla**; Reservas exige
   el modo (Servicios o Aforo, y en Aforo el tipo de negocio) la primera vez, y
   cambiarlo con reservas vivas pide decidir qué pasa con ellas
@@ -48,9 +79,17 @@ Pestaña **Acceso** en la ficha del tenant del admin
   así que recargar pierde el aviso: de ahí en adelante, Reenviar. Ni el panel ni
   la API guardan si el correo salió; esa fecha solo existe para la invitación de
   propietario (spec 052).
-- **Operador identificado**: cada llamada lleva `X-Operator-Id` (ADR-034); sin
-  él, 400. La auditoría escribe `operator:<correo>` con el tenant del cliente,
-  y la Auditoría del partner lo enseña como «Auphere».
+- **Quién firma**: en el panel, cada llamada lleva `X-Operator-Id` (ADR-034);
+  sin él, 400, y la auditoría escribe `operator:<correo>`. Desde la consola de
+  partners firma `principal.actor` (`console:<correo>`). Las dos con el tenant
+  del cliente. Las frases dicen «{actor} cambió el acceso de {client} a su
+  consola» (y las de invitar, reenviar y retirar), reescritas por la migración
+  0225: la Auditoría del partner enseña el correo de su persona o «Auphere» si
+  fue un operador (`_human_actor`).
+- **Un límite al invitar desde el partner**: `console_client_invites_per_minute`
+  (5 por defecto) invitaciones y reenvíos por partner y minuto, y `429
+  rate_limited` por encima. Cada una manda un correo, y Resend lo comparten
+  staging y prod. El panel no tiene límite.
 - **Declara su cliente** (`declare_tenant`, `core/tenant_context.py`): las
   rutas usan la sesión de plataforma —leen `partner_tenants`, que la RLS
   escondería al rol `nexus_app`— y tocan tablas de cliente (`channels`,
@@ -254,6 +293,72 @@ número de no leídas junto a «Bandeja de entrada» y la búsqueda ⌘K de la b
 superior (`components/shell/{use-inbox-unread.ts,lite-search.tsx}`) solo
 existen con el módulo.
 
+### La Bandeja dice la verdad (spec 056, requisitos 6 a 9 y 13.3)
+
+- **«Abiertas»** (D6). El filtro por defecto se llama así y enseña lo mismo
+  que antes «Todas»: lo que no está resuelto (la regla de la spec 030). El
+  valor sigue siendo `all` en la URL, en la API y en el tipo. Si «Abiertas»
+  sale vacía —sin búsqueda, agente ni canal— y hay resueltas, la API da
+  `resolved: int` en `GET /console/lite/inbox/conversations` y la consola dice
+  «No tienes conversaciones abiertas · N resueltas» con un botón a Resueltas
+  (`components/inbox/conversation-list.tsx`). Sin ninguna conversación sale el
+  estado vacío de siempre, sin botón. Con otro filtro o una búsqueda que no
+  encuentra nada, «Quitar los filtros». `has_any` se queda: lo leen las apps
+  publicadas.
+- **Motivos legibles** (requisito 7). La fila, el hilo, la caja de respuesta y
+  la actividad pasan el motivo por la misma tabla que el constructor
+  (`lib/waiting-reasons.ts`, `inboxReasonText`), con el código de la columna
+  primero (`waiting_reason` de la lista, `waiting_code` del detalle). Un código
+  que la tabla no conoce, o `escalated` sin más, se lee «El agente pidió ayuda»:
+  la Bandeja nunca enseña un código. El texto libre con el que el agente pide
+  ayuda (`escalate_to_human`, hasta 500 caracteres) sale tal cual, *decisión de
+  la spec 056*. `agent_unpublished` dice «Agente sin publicar» y
+  `booking_unbacked`, «El agente dio por hecha una cita que no existe». La app
+  usa la misma lista (`features/inbox/model.ts`).
+- **El aviso «espera a una persona» se cierra solo** (D8). Migración 0227:
+  `console_notifications.handled_at`. Tomar el control, devolverla al agente,
+  resolverla o eliminarla (rutas lite, tras el commit con
+  `scope.after_commit`), que la puerta del turno se abra
+  (`inbox_lifecycle.release_reason`, desde el despachador) o que el cliente se
+  quede sin Bandeja (`release_escalated_for_tenant`, dentro de la transacción de
+  `client_access.set_access`) llaman a `inbox_lifecycle.mark_waiting_handled`.
+  El `UPDATE` filtra por partner y por cliente (`external_client_ref`): el aviso
+  de otro cliente del mismo partner no se toca. Un aviso atendido sigue en la
+  lista con `handled: true` y deja de contar como pendiente en la campana: no se
+  usa `read_at`, que mezclaría leído con atendido. Un escalado nuevo abre un
+  aviso nuevo, pendiente. Lo fija
+  `tests/integration/lite/test_lite_waiting_notice_handled.py`.
+- **Corregir con «Todo el negocio»** (D7). Un **dato** se sigue guardando como
+  pregunta frecuente de la ficha, aunque el cliente ya no tenga Negocio. Una
+  **regla** se propone al agente que respondió y a cada otro agente activo del
+  cliente —`published` o `paused`, sin mirar el papel—, cada una con su
+  propuesta y su prueba, unidas por `inbox_corrections.batch_id` (migración
+  0226, FK compuesta `(tenant_id, batch_id)`). La cabeza es la que envió la
+  persona (`batch_id = id`). El agente en el que la regla no valida se salta y
+  queda en `after_json.skipped` de `correction.proposed`. Un solo aviso
+  `agent.correction.proposed` por lote, con `agents_count`. El partner ve en las
+  mejoras de cada agente `batch {id, agents_count}` y decide todo el lote de una
+  vez: `POST /console/clients/{ref}/corrections/{batch_id}/accept|discard`
+  (`agents:write`), en una transacción, con `correction.batch_accepted` o
+  `correction.batch_discarded` (objetivo `correction_batch:{id}`). Con «Solo
+  este agente», como siempre: una propuesta, sin lote. Los dos textos del
+  diálogo dicen lo que pasa con un dato y con una regla.
+- **«Vaciar chat» y «Eliminar chat»** (requisito 16, spec retroactiva del
+  commit `87b7c4cc`). Las dos piden confirmación con su texto. Vaciar mueve
+  `attended_at` a ahora: la Bandeja y el agente dejan de ver lo anterior, que no
+  se borra (constitución §IV). Eliminar la resuelve y deja `attended_at = NULL`:
+  sale de la Bandeja y su id da 404. Si el contacto vuelve a escribir, el
+  despachador la reabre con el agente (`upsert_conversation_for_customer` y
+  `_mark_attended`) y aparece en «Abiertas» con solo el mensaje nuevo. Las dos
+  quedan en la auditoría (`inbox.cleared`, `inbox.archived`) con
+  `client:<correo>` y sin contenido (`tests/unit/test_lite_inbox_clear_archive.py`).
+- **El teléfono con «+»** (13.3). `inbox_view.display_handle` pone «+» al número
+  de WhatsApp, que Meta guarda sin él, en la lista y en el detalle; un contacto
+  sin nombre se llama por ese mismo número con «+», también en el aviso «espera
+  a una persona» y en su correo (`inbox_lifecycle._contact_name`). En Instagram
+  y Messenger el identificador no es un teléfono y sale tal cual. Agruparlo
+  pediría libphonenumber: queda fuera.
+
 ## Varios agentes por cliente
 
 Spec 030, iteración 3 (R14). Un cliente puede tener varios agentes; cada número
@@ -436,6 +541,42 @@ Spec [`047-la-fabrica-de-agentes`](../specs/047-la-fabrica-de-agentes/spec.md),
 requisitos 50 y 52; contrato [`lite-app-api.md`](../specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md).
 La app (`apps/mobile`) usa las mismas rutas y se describe en [app-movil.md](app-movil.md).
 
+> **Enmendado por la spec 056 (requisito 2, D2; research R2).** Agentes y
+> Negocio **ya no son de la persona del cliente**, para ningún cliente,
+> tampoco los que ya los tenían. Pausar agentes y números y editar la ficha son
+> solo del partner, desde su consola. Lo que queda de esta ola para el cliente:
+> «La Bandeja dice quién la lleva» y «Corregir esta respuesta». Lo que cambió:
+>
+> - **Módulos retirados, no borrados.** `CLIENT_MODULES` es `panel`, `inbox`,
+>   `reservas`, `usage`, y `RETIRED_CLIENT_MODULES` guarda `agents` y
+>   `business`. `CONSOLE_V2_MODULES` y los dos `also=` desaparecieron
+>   (`core/client_auth.py`, `services/console_identity.py`): la consola nueva ya
+>   no los da por defecto. La migración 0224 los quitó de lo guardado.
+> - **Las rutas siguen montadas** (`/console/lite/agents*`, `/channels*` y
+>   `/business*`) y responden **siempre** el 403 de un módulo que no se tiene,
+>   también a quien los trajera guardados: `require_client_principal` acepta un
+>   nombre retirado y lo niega (`tests/integration/lite/test_lite_agents_business.py`,
+>   `tests/unit/test_client_auth_retired_modules.py` y los barridos de
+>   `tests/isolation/test_lite_client_vs_client.py` y `test_phone_route_scope.py`).
+>   Borrarlas daría 404 y obligaría a regenerar el contrato de la app: queda para
+>   una limpieza posterior.
+> - **En la consola** se borraron `app/(console)/agentes/*`, `negocio/*`,
+>   `components/lite/lite-agents.tsx`, `lite-business.tsx`, sus pruebas y
+>   `lib/backend/lite-agents.ts`. `/agentes` y `/negocio` no son de ningún
+>   módulo (`clientModuleOfPath` da `null`), así que el layout lleva a la persona
+>   a su primer módulo (2.4). Las claves de «Corregir esta respuesta» se
+>   movieron, sin cambiar de nombre, del carril `lite-agents` (borrado) al
+>   carril `inbox-correct`.
+> - **Los avisos de agentes y números siguen llegando** a la campana (2.7), pero
+>   **sin enlace**: `LITE_LINKS` perdió `agent.*` y `channel.*`, y la campana ya
+>   no reconoce `/agentes` (`lite-notifications-bell.tsx`). En el teléfono,
+>   `agents.state` sigue saliendo y abre Inicio (`auphere-customers://home`).
+> - **Una corrección de dato con «Todo el negocio»** se sigue guardando en la
+>   ficha aunque el cliente ya no la vea (2.8).
+>
+> Lo de abajo describe lo que la 047 hizo y ya no ve el cliente. Se deja como
+> historia de las rutas, que siguen en el código.
+
 - **Dos módulos nuevos**, `agents` y `business` (`ClientModule`), entre la
   Bandeja y Reservas. Los clientes de un partner con la consola nueva los tienen
   por defecto aunque Auphere no los haya elegido. En la consola:
@@ -495,12 +636,13 @@ La app (`apps/mobile`) usa las mismas rutas y se describe en [app-movil.md](app-
 - **La campana** dice cada aviso que la API manda al cliente (la bolsa, los
   topes de los agentes, las pausas y los números, `events.md` §3.1) y lleva a su
   consola: la API manda un `href` de la lite (`notifications.LITE_LINKS`:
-  `/usage`, `/agentes`, `/inbox?c=…`), nunca uno de `/clients/…`, y la campana
-  solo enlaza si la persona tiene ese módulo (sin Consumo, al Panel).
+  `/usage`, `/inbox?c=…`; `/agentes` hasta la spec 056, que dejó sin enlace los
+  avisos de agentes y números), nunca uno de `/clients/…`, y la campana solo
+  enlaza si la persona tiene ese módulo (sin Consumo, al Panel).
 - **Sin «Pedir saldo»** ni papeles: toda persona del cliente puede hacer todo
   lo de arriba.
-- **Pruebas**: vitest (`components/lite/__tests__/lite-agents.test.tsx`,
-  `lite-business.test.tsx`, `components/inbox/__tests__/correction-dialog.test.tsx`)
+- **Pruebas**: vitest (`components/inbox/__tests__/correction-dialog.test.tsx`;
+  `lite-agents.test.tsx` y `lite-business.test.tsx` se borraron con la 056)
   y Playwright contra la API simulada (`e2e/fabrica.config.ts`, proyecto
   `lite`): axe, 390 px, 200 %, teclado, «Reducir transparencia y movimiento»,
   los estados de cada pantalla, «Reconectando…» en la Bandeja y textos largos en

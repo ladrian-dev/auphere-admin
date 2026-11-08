@@ -85,7 +85,7 @@ describe("the Inbox's head", () => {
   it("keeps the single filter of the 030: no channel tabs, no combinable chips", () => {
     renderInbox({ agents: AGENTS });
     const filters = screen.getByRole("group", { name: "Filtros" });
-    expect(within(filters).getAllByRole("button").map((b) => b.textContent)).toEqual(["Todas", "Sin leer", "Necesita humano", "Resueltas"]);
+    expect(within(filters).getAllByRole("button").map((b) => b.textContent)).toEqual(["Abiertas", "Sin leer", "Necesita humano", "Resueltas"]);
     expect(screen.queryByRole("tab")).toBeNull();
   });
 });

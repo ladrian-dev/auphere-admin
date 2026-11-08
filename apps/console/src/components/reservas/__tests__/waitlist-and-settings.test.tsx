@@ -9,6 +9,7 @@ import {
   LUCIA,
   MARCOS,
   capacitySettings,
+  fichaHours,
   offer,
   service,
   servicesSettings,
@@ -26,7 +27,7 @@ function servicesData(o: Partial<ReservasData> = {}): ReservasData {
   return {
     settings: servicesSettings(),
     staff: [staff(), staff({ id: MARCOS, name: "Marcos Ibáñez", hours: { ...staff().effective_hours, saturday: [] } })],
-    services: [service(), service({ id: BARBA, name: "Barba", duration_minutes: 30, price: null, staff: "some", staff_ids: [MARCOS] })],
+    services: [service(), service({ id: BARBA, name: "Barba", duration_minutes: 30, price: { kind: "none" }, staff: "some", staff_ids: [MARCOS] })],
     bookings: null,
     occupancy: null,
     blocks: null,
@@ -114,8 +115,11 @@ describe("Lista de espera", () => {
     await userEvent.click(within(people).getByRole("button", { name: "Apuntar a alguien" }));
     const dialog = await screen.findByRole("dialog", { name: "Apuntar en la lista de espera" });
     const save = within(dialog).getByRole("button", { name: "Apuntar" });
-    // Nothing leaves without a name and a service.
-    await userEvent.click(save);
+    // Spec 056 (11.1): like «Nueva reserva», nothing leaves without a name and a
+    // service, and the field says so when one leaves it.
+    expect(save).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("textbox", { name: /Cliente/ }));
+    await userEvent.tab();
     expect(within(dialog).getByText("Escribe el nombre del cliente.")).toBeInTheDocument();
     expect(a.addWaitlistAction).not.toHaveBeenCalled();
 
@@ -169,8 +173,8 @@ describe("Lista de espera", () => {
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Inés Rubio");
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Teléfono/ }), "abc");
     await userEvent.click(within(dialog).getByRole("button", { name: "Corte y barba · 45 min" }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Apuntar" }));
     expect(within(dialog).getByText("Escribe el teléfono con su código, como +56 9 1234 5678.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Apuntar" })).toBeDisabled();
     expect(a.addWaitlistAction).not.toHaveBeenCalled();
     await userEvent.clear(within(dialog).getByRole("textbox", { name: /Teléfono/ }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Apuntar" }));
@@ -180,6 +184,20 @@ describe("Lista de espera", () => {
     await waitFor(() => expect(a.addWaitlistAction).toHaveBeenCalledTimes(2));
     const [first, second] = a.addWaitlistAction.mock.calls.map((c) => (c[0] as { idempotencyKey: string }).idempotencyKey);
     expect(second).toBe(first);
+  });
+
+  it("closing with something written asks before discarding it (spec 056, 12.3)", async () => {
+    renderView(servicesData(), { url: { tab: "waitlist" } });
+    await userEvent.click(screen.getByRole("button", { name: "Apuntar a alguien" }));
+    const dialog = await screen.findByRole("dialog", { name: "Apuntar en la lista de espera" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Inés");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    const ask = await screen.findByRole("dialog", { name: "¿Descartar lo que escribiste?" });
+    await userEvent.click(within(ask).getByRole("button", { name: "Seguir editando" }));
+    expect(within(dialog).getByRole("textbox", { name: /Cliente/ })).toHaveValue("Inés");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Apuntar en la lista de espera" })).toBeNull());
   });
 
   it("off: says what it would do and turns on with its rules in view, with the version read", async () => {
@@ -236,19 +254,79 @@ describe("Ajustes · Servicios", () => {
     await waitFor(() => expect(a.patchSettingsAction).toHaveBeenLastCalledWith({ version: 4, patch: { waitlist: { lead_minutes: 240 } } }));
   });
 
-  it("business hours: the week to read, and a dialog that saves it", async () => {
-    a.putBusinessHoursAction.mockResolvedValue({ ok: true, data: { business_hours: {}, business_hours_label: null } });
+  it("business hours (spec 056): the ficha's week, only the touched days, and a 422 said on its day", async () => {
+    a.patchBusinessHoursAction.mockResolvedValueOnce({ ok: false, status: 422, message: "", code: "bad_step", info: { field: "open", day: "sun" } });
     renderView(servicesData(), { url: { tab: "settings" } });
     const section = screen.getByRole("region", { name: "Horario del negocio" });
     expect(within(section).getAllByText("09:00 – 14:00 · 15:00 – 19:00")).toHaveLength(5);
     expect(within(section).getByText("10:00 – 14:00")).toBeInTheDocument();
     await userEvent.click(within(section).getByRole("button", { name: "Editar el horario del negocio" }));
     const dialog = await screen.findByRole("dialog", { name: "Horario del negocio" });
-    await userEvent.click(within(dialog).getByRole("switch", { name: "Abierto el Domingo" }));
+    const save = within(dialog).getByRole("button", { name: "Guardar" });
+    // Day by day, with up to six shifts: nothing changed, nothing to save.
+    expect(within(dialog).getAllByRole("group")).toHaveLength(7);
+    expect(save).toBeDisabled();
+    await userEvent.click(within(within(dialog).getByRole("group", { name: "Domingo" })).getByRole("button", { name: "Añadir turno" }));
+    await userEvent.click(save);
+    await waitFor(() => expect(a.patchBusinessHoursAction).toHaveBeenCalledWith({ revision: 3, days: { sun: [{ open: "09:00", close: "14:00" }] } }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Las horas van en pasos de 5 minutos (Domingo).");
+    expect(within(dialog).queryByText("No se pudo hablar con el servidor.")).toBeNull();
+    a.patchBusinessHoursAction.mockResolvedValueOnce({ ok: true, data: fichaHours() });
+    await userEvent.click(save);
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Horario guardado."));
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it("business hours (spec 056): someone saved meanwhile, said and reloaded", async () => {
+    a.patchBusinessHoursAction.mockResolvedValueOnce({ ok: false, status: 409, message: "", code: "revision_conflict", info: { revision: 4 } });
+    renderView(servicesData(), { url: { tab: "settings" } });
+    await userEvent.click(screen.getByRole("button", { name: "Editar el horario del negocio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Horario del negocio" });
+    await userEvent.click(within(within(dialog).getByRole("group", { name: "Domingo" })).getByRole("button", { name: "Añadir turno" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
-    await waitFor(() => expect(a.putBusinessHoursAction).toHaveBeenCalled());
-    const sent = a.putBusinessHoursAction.mock.calls[0]![0] as { hours: Record<string, unknown> };
-    expect(sent.hours.sunday).toEqual([{ from: "09:00", to: "19:00" }]);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Alguien cambió esto mientras tanto. Te enseñamos lo último.");
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it("business hours (spec 056): a stored time off the step says «Revísalo», and a location's own hours are only read", async () => {
+    const days = { ...fichaHours().days, mon: [{ open: "09:07", close: "14:00", overnight: false }] };
+    const settings = servicesSettings({
+      hours: fichaHours({ layout: "daily", days }),
+      location_hours: [
+        { location: { id: "00000000-0000-4000-8000-0000000000d1", name: "Cultor Norte" }, has_own_hours: true, label: "Abrimos lunes de 11:00 a 13:00." },
+        { location: { id: "00000000-0000-4000-8000-0000000000d2", name: "Cultor Sur" }, has_own_hours: false, label: null },
+      ],
+    });
+    renderView(servicesData({ settings }), { url: { tab: "settings" } });
+    const section = screen.getByRole("region", { name: "Horario del negocio" });
+    expect(within(section).getByText("09:07 – 14:00")).toBeInTheDocument();
+    expect(within(section).getByText("Revísalo")).toBeInTheDocument();
+    expect(within(section).getByText("Cultor Norte · Horario propio: Abrimos lunes de 11:00 a 13:00.")).toBeInTheDocument();
+    expect(within(section).getByText("Cultor Sur · Usa el horario del negocio")).toBeInTheDocument();
+    await userEvent.click(within(section).getByRole("button", { name: "Editar el horario del negocio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Horario del negocio" });
+    expect(within(within(dialog).getByRole("group", { name: /Lunes/ })).getByText("Revísalo")).toBeInTheDocument();
+    expect(within(dialog).getByText(/El horario propio de una sede lo cambia quien gestiona tus agentes/)).toBeInTheDocument();
+    // Changing another day keeps Monday as it is: only Tuesday travels.
+    await userEvent.click(within(within(dialog).getByRole("group", { name: "Martes" })).getByRole("button", { name: "Quitar el turno 2" }));
+    a.patchBusinessHoursAction.mockResolvedValueOnce({ ok: true, data: fichaHours() });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(a.patchBusinessHoursAction).toHaveBeenCalledWith({ revision: 3, days: { tue: [{ open: "09:00", close: "14:00" }] } }));
+  });
+
+  it("business hours (spec 056, 12.3): closing with changes asks before discarding them", async () => {
+    renderView(servicesData(), { url: { tab: "settings" } });
+    await userEvent.click(screen.getByRole("button", { name: "Editar el horario del negocio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Horario del negocio" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Horario del negocio" })).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: "Editar el horario del negocio" }));
+    const again = await screen.findByRole("dialog", { name: "Horario del negocio" });
+    await userEvent.click(within(within(again).getByRole("group", { name: "Domingo" })).getByRole("button", { name: "Añadir turno" }));
+    await userEvent.click(within(again).getByRole("button", { name: "Cancelar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Horario del negocio" })).toBeNull());
+    expect(a.patchBusinessHoursAction).not.toHaveBeenCalled();
   });
 
   it("team: add with an Idempotency-Key; archiving with live bookings says how many", async () => {
@@ -277,23 +355,92 @@ describe("Ajustes · Servicios", () => {
     const section = screen.getByRole("region", { name: "Servicios" });
     // Intl writes CLP with no decimals («15.000 CLP» in es, «CLP 15,000» in en).
     expect(within(section).getByText(/45 min · .*15\.000.* · Todo el equipo/)).toBeInTheDocument();
-    expect(within(section).getByText(/30 min · Sin coste · Marcos Ibáñez/)).toBeInTheDocument();
+    expect(within(section).getByText(/30 min · Sin precio · Marcos Ibáñez/)).toBeInTheDocument();
     await userEvent.click(within(section).getByRole("button", { name: "Añadir servicio" }));
     const dialog = await screen.findByRole("dialog", { name: "Añadir servicio" });
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Nombre/ }), "Color");
     await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Duración" }), "90");
-    await userEvent.type(within(dialog).getByRole("textbox", { name: /Precio/ }), "abc");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Importe" }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Importe/ }), "abc");
     expect(within(dialog).getByText("Escribe el precio solo con números, como 15000.")).toBeInTheDocument();
-    await userEvent.clear(within(dialog).getByRole("textbox", { name: /Precio/ }));
-    await userEvent.type(within(dialog).getByRole("textbox", { name: /Precio/ }), "55.000");
+    await userEvent.clear(within(dialog).getByRole("textbox", { name: /Importe/ }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Importe/ }), "55.000");
     await userEvent.click(within(dialog).getByRole("radio", { name: "Solo algunas personas" }));
     await userEvent.click(within(dialog).getByRole("checkbox", { name: "Lucía" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() =>
       expect(a.createServiceAction).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Color", duration_minutes: 90, price_minor: 55000, staff_ids: [LUCIA] }),
+        expect.objectContaining({ name: "Color", duration_minutes: 90, price: { kind: "amount", amount_minor: 55000 }, staff_ids: [LUCIA] }),
       ),
     );
+  });
+
+  it("services (spec 056): none, free or an amount, 5 to 480 minutes, the name fixed, only what changed, a 422 on its field", async () => {
+    a.updateServiceAction.mockResolvedValueOnce({ ok: false, status: 422, message: "invalid", code: "amount_too_large", info: { field: "price" } });
+    renderView(servicesData(), { url: { tab: "settings" } });
+    const section = screen.getByRole("region", { name: "Servicios" });
+    await userEvent.click(within(section).getByRole("button", { name: "Editar Corte y barba" }));
+    const dialog = await screen.findByRole("dialog", { name: "Editar servicio" });
+    expect(within(dialog).getByRole("textbox", { name: /Nombre/ })).toHaveAttribute("readonly");
+    expect(within(dialog).getByText("El nombre lo cambia quien gestiona tus agentes.")).toBeInTheDocument();
+    const lengths = within(within(dialog).getByRole("combobox", { name: "Duración" }))
+      .getAllByRole("option")
+      .map((o) => Number((o as HTMLOptionElement).value));
+    expect([lengths[0], lengths.at(-1), lengths.length]).toEqual([5, 480, 96]);
+    for (const kind of ["Sin precio", "Gratis", "Importe"]) expect(within(dialog).getByRole("radio", { name: kind })).toBeInTheDocument();
+    expect(within(dialog).getByRole("radio", { name: "Importe" })).toBeChecked();
+    const amount = within(dialog).getByRole("textbox", { name: /Importe/ });
+    expect(amount).toHaveValue("15000");
+    await userEvent.clear(amount);
+    await userEvent.type(amount, "20000");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(a.updateServiceAction).toHaveBeenCalledWith({ id: CORTE, price: { kind: "amount", amount_minor: 20000 } }));
+    expect(await within(dialog).findByText("El importe pasa del máximo permitido.")).toBeInTheDocument();
+    expect(within(dialog).queryByText("No se pudo hablar con el servidor.")).toBeNull();
+
+    a.updateServiceAction.mockResolvedValueOnce({ ok: true, data: service({ price: { kind: "free" } }) });
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Gratis" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(a.updateServiceAction).toHaveBeenLastCalledWith({ id: CORTE, price: { kind: "free" } }));
+  });
+
+  it("services (spec 056): an amount above the cap is said before asking", async () => {
+    renderView(servicesData(), { url: { tab: "settings" } });
+    await userEvent.click(screen.getByRole("button", { name: "Añadir servicio" }));
+    const dialog = await screen.findByRole("dialog", { name: "Añadir servicio" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Nombre/ }), "Boda");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Importe" }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Importe/ }), "1000000000001");
+    expect(within(dialog).getByText("El importe pasa del máximo permitido.")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+    expect(a.createServiceAction).not.toHaveBeenCalled();
+  });
+
+  it("services and team (spec 056, 12.3): closing with changes asks; untouched, it closes at once", async () => {
+    renderView(servicesData(), { url: { tab: "settings" } });
+    await userEvent.click(screen.getByRole("button", { name: "Editar Corte y barba" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Editar servicio" })).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Editar servicio" })).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: "Editar Corte y barba" }));
+    const svc = await screen.findByRole("dialog", { name: "Editar servicio" });
+    await userEvent.click(within(svc).getByRole("radio", { name: "Gratis" }));
+    await userEvent.click(within(svc).getByRole("button", { name: "Cancelar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Editar servicio" })).toBeNull());
+    expect(a.updateServiceAction).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Añadir persona" }));
+    const person = await screen.findByRole("dialog", { name: "Añadir persona" });
+    await userEvent.type(within(person).getByRole("textbox", { name: /Nombre/ }), "Camila");
+    await userEvent.click(within(person).getByRole("button", { name: "Cancelar" }));
+    expect(await screen.findByRole("dialog", { name: "¿Descartar lo que escribiste?" })).toBeInTheDocument();
+  });
+
+  it("team (spec 056, 11.3): the e-mail takes up to 254 characters", async () => {
+    renderView(servicesData(), { url: { tab: "settings" } });
+    await userEvent.click(screen.getByRole("button", { name: "Añadir persona" }));
+    const dialog = await screen.findByRole("dialog", { name: "Añadir persona" });
+    expect(within(dialog).getByRole("textbox", { name: /Correo/ })).toHaveAttribute("maxlength", "254");
   });
 });
 

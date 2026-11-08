@@ -77,7 +77,10 @@ def _visible(viewer: Viewer) -> sa.ColumnElement[bool]:
 
 
 def _read_expr(user_id: str) -> sa.ColumnElement[bool]:
-    """``read`` = personal row marked, or a per-user read row exists."""
+    """``read`` = personal row marked, or a per-user read row exists — or, spec
+    056 (8.2), the notice is handled: an ``inbox.waiting`` whose conversation no
+    longer waits is not pending for anyone. It stays in the list, never in the
+    count."""
     exists = (
         sa.select(sa.literal(1))
         .select_from(ConsoleNotificationRead)
@@ -87,7 +90,11 @@ def _read_expr(user_id: str) -> sa.ColumnElement[bool]:
         )
         .exists()
     )
-    return sa.or_(ConsoleNotification.read_at.is_not(None), exists)
+    return sa.or_(
+        ConsoleNotification.read_at.is_not(None),
+        ConsoleNotification.handled_at.is_not(None),
+        exists,
+    )
 
 
 def _encode_cursor(created_at: datetime, id_: uuid.UUID) -> str:
@@ -140,6 +147,8 @@ LINKS: dict[str, str] = {
 
 #: Los avisos que también ve la persona del cliente (``audience = client``,
 #: events.md §3.1) enlazan a SU consola, la lite: allí no hay ``/clients/…``.
+#: Spec 056 (requisitos 2.4 y 2.7): los de agentes y números siguen llegando a su
+#: campana, pero sin enlace, porque Agentes ya no es una pantalla del cliente.
 LITE_LINKS: dict[str, str] = {
     "inbox.waiting": "/inbox",
     "client.balance_low": "/usage",
@@ -147,13 +156,6 @@ LITE_LINKS: dict[str, str] = {
     "client.wallet.low": "/usage",
     "client.wallet.not_enough": "/usage",
     "client.wallet.empty": "/usage",
-    "agent.cap.warning": "/agentes",
-    "agent.cap.reached": "/agentes",
-    "agent.paused": "/agentes",
-    "agent.resumed": "/agentes",
-    "channel.paused": "/agentes",
-    "channel.resumed": "/agentes",
-    "channel.problem": "/agentes",
 }
 
 
@@ -195,6 +197,7 @@ def _out(n: ConsoleNotification, *, read: bool) -> NotificationOut:
         data=data,
         external_client_ref=n.external_client_ref,
         read=read,
+        handled=n.handled_at is not None,
         created_at=n.created_at,
         href=link_for(n.kind, n.external_client_ref, data, audience=n.audience),
     )

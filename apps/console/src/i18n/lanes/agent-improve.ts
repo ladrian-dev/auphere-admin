@@ -55,6 +55,9 @@ export const agentImproveMessages = {
   "waiting.reason.human_takeover": { es: "La lleva una persona", en: "A person has it" },
   "waiting.reason.reception_loop": { es: "Derivaciones en bucle", en: "Handoff loop" },
   "waiting.reason.taken_by_person": { es: "La tomó una persona", en: "A person took it" },
+  // Spec 056 (requisito 7): los dos que faltaban en la tabla.
+  "waiting.reason.out_of_audience": { es: "Fuera de su audiencia", en: "Outside its audience" },
+  "waiting.reason.booking_unbacked": { es: "El agente dio por hecha una cita que no existe", en: "The agent confirmed a booking that does not exist" },
   "waiting.reason.other": { es: "Otro motivo", en: "Another reason" },
 
   // ── Mejoras (51.3, 51.4, 52.2, 52.3) ──
@@ -104,6 +107,30 @@ export const agentImproveMessages = {
   "improve.discard.confirm": { es: "Descartar", en: "Discard" },
   "improve.discarded.suggestion": { es: "Descartada. No volverá en 30 días.", en: "Discarded. It will not come back for 30 days." },
   "improve.discarded.correction": { es: "Corrección descartada.", en: "Correction discarded." },
+  // Spec 056 (9.2): la corrección de «Todo el negocio» llegó a varios agentes y se decide en todos.
+  "improve.batch.reach": { es: "En {n} agentes", en: "On {n} agents" },
+  "improve.batch.note": {
+    es: "La misma corrección llegó a {n} agentes. Se decide en todos a la vez.",
+    en: "The same correction reached {n} agents. It is decided on all of them at once.",
+  },
+  "improve.batch.accept": { es: "Aceptar en los {n} agentes", en: "Accept on the {n} agents" },
+  "improve.batch.accepted.title": { es: "Aceptada en {n} agentes", en: "Accepted on {n} agents" },
+  "improve.batch.accepted.title.one": { es: "Aceptada en 1 agente", en: "Accepted on 1 agent" },
+  "improve.batch.accepted.body": {
+    es: "Cada cambio y su prueba están en el borrador de su agente. Guarda cada uno para publicarlo, después de las pruebas.",
+    en: "Each change and its test are in its agent’s draft. Save each one to publish it, after the tests.",
+  },
+  "improve.batch.skipped": {
+    es: "En {n} agentes no se pudo aplicar: su borrador cambió o ya no está.",
+    en: "It could not be applied on {n} agents: their draft changed or they are gone.",
+  },
+  "improve.batch.skipped.one": {
+    es: "En 1 agente no se pudo aplicar: su borrador cambió o ya no está.",
+    en: "It could not be applied on 1 agent: its draft changed or it is gone.",
+  },
+  "improve.batch.discard.body": { es: "Se descarta en los {n} agentes a los que llegó.", en: "It is discarded on the {n} agents it reached." },
+  "improve.batch.discard.confirm": { es: "Descartar en los {n} agentes", en: "Discard on the {n} agents" },
+  "improve.batch.discarded": { es: "Descartada en los {n} agentes.", en: "Discarded on the {n} agents." },
   "improve.error.closed": { es: "Otra persona ya la decidió.", en: "Someone else already decided it." },
   "improve.error.outdated": { es: "El borrador cambió y la propuesta ya no encaja.", en: "The draft changed and the proposal no longer fits." },
   "improve.error.invalid": { es: "La propuesta no pasa la revisión del borrador.", en: "The proposal does not pass the draft’s review." },
@@ -165,6 +192,8 @@ export const agentImproveMessages = {
   "team.roles.cap.clientsRead": { es: "Ver clientes, agentes y el resumen de las conversaciones", en: "See clients, agents and the summary of conversations" },
   "team.roles.cap.clientsWrite": { es: "Crear y editar clientes, agentes y canales", en: "Create and edit clients, agents and channels" },
   "team.roles.cap.clientsDelete": { es: "Archivar y borrar clientes", en: "Archive and delete clients" },
+  // Spec 056 (3.2): la pestaña «Acceso» de la ficha del cliente.
+  "team.roles.cap.clientAccess": { es: "Abrir la consola a un cliente e invitar a sus personas", en: "Open the console to a client and invite its people" },
   "team.roles.cap.playground": { es: "Probar agentes en el probador", en: "Try agents in the playground" },
   "team.roles.cap.usageRead": { es: "Ver el consumo", en: "See usage" },
   "team.roles.cap.usageWrite": { es: "Asignar saldo y poner topes", en: "Assign balance and set caps" },

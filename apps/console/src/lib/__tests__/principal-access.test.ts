@@ -46,6 +46,13 @@ describe("toResolution", () => {
     });
   });
 
+  it("carries when the session ends, and nothing when an older API does not say (spec 056, 15.1)", () => {
+    const res = toResolution({ ...base, session_expires_at: "2026-11-14T10:00:00Z" });
+    expect(res.kind === "ok" && res.principal.sessionExpiresAt).toBe("2026-11-14T10:00:00Z");
+    const old = toResolution(base);
+    expect(old.kind === "ok" && old.principal.sessionExpiresAt).toBeNull();
+  });
+
   it("keeps the partner name on `disabled` — the copy needs it", () => {
     const res = toResolution({ ...base, access: "disabled", console_enabled: false });
     expect(res).toEqual({ kind: "disabled", email: base.email, partnerName: "Demo Partner" });

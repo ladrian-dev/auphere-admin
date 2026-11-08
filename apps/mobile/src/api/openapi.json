@@ -959,68 +959,32 @@
         "title": "BookingServiceOut",
         "type": "object"
       },
-      "BusinessHoursIn": {
+      "BusinessHoursPatchIn": {
         "additionalProperties": false,
+        "description": "Spec 056 (5.3): solo los días tocados, con la revisión de la sección que se\nleyó. Los que no llegan se quedan como estaban.",
         "properties": {
-          "hours": {
+          "days": {
             "additionalProperties": {
               "items": {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/ShiftIn"
               },
               "type": "array"
             },
-            "title": "Hours",
+            "maxProperties": 7,
+            "title": "Days",
             "type": "object"
-          }
-        },
-        "required": [
-          "hours"
-        ],
-        "title": "BusinessHoursIn",
-        "type": "object"
-      },
-      "BusinessHoursOut": {
-        "properties": {
-          "business_hours": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "items": {
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Business Hours"
           },
-          "business_hours_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Business Hours Label"
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
           }
         },
         "required": [
-          "business_hours",
-          "business_hours_label"
+          "revision",
+          "days"
         ],
-        "title": "BusinessHoursOut",
+        "title": "BusinessHoursPatchIn",
         "type": "object"
       },
       "CalendarItemOut": {
@@ -3938,6 +3902,35 @@
         "title": "LocalSpan",
         "type": "object"
       },
+      "LocationHoursOut": {
+        "properties": {
+          "has_own_hours": {
+            "title": "Has Own Hours",
+            "type": "boolean"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          }
+        },
+        "required": [
+          "location",
+          "has_own_hours",
+          "label"
+        ],
+        "title": "LocationHoursOut",
+        "type": "object"
+      },
       "LocationIn": {
         "additionalProperties": false,
         "properties": {
@@ -4086,6 +4079,25 @@
           }
         },
         "title": "LocationPatchIn",
+        "type": "object"
+      },
+      "LocationRef": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "LocationRef",
         "type": "object"
       },
       "LocationsOut": {
@@ -4409,6 +4421,11 @@
               }
             ],
             "title": "External Client Ref"
+          },
+          "handled": {
+            "default": false,
+            "title": "Handled",
+            "type": "boolean"
           },
           "href": {
             "anyOf": [
@@ -5296,9 +5313,19 @@
             "title": "Currency Set",
             "type": "boolean"
           },
+          "hours": {
+            "$ref": "#/components/schemas/HoursOut"
+          },
           "hours_missing": {
             "title": "Hours Missing",
             "type": "boolean"
+          },
+          "location_hours": {
+            "items": {
+              "$ref": "#/components/schemas/LocationHoursOut"
+            },
+            "title": "Location Hours",
+            "type": "array"
           },
           "mode": {
             "enum": [
@@ -5339,6 +5366,8 @@
           "currency",
           "business_hours",
           "business_hours_label",
+          "hours",
+          "location_hours",
           "hours_missing",
           "slot_step_minutes",
           "waitlist",
@@ -5900,6 +5929,7 @@
           "email": {
             "anyOf": [
               {
+                "format": "email",
                 "maxLength": 254,
                 "type": "string"
               },
@@ -6043,6 +6073,7 @@
           "email": {
             "anyOf": [
               {
+                "format": "email",
                 "maxLength": 254,
                 "type": "string"
               },
@@ -7036,6 +7067,11 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "resolved": {
+            "default": 0,
+            "title": "Resolved",
+            "type": "integer"
           }
         },
         "required": [
@@ -7262,19 +7298,19 @@
           "category": {
             "anyOf": [
               {
-                "maxLength": 80,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
+            "maxLength": 40,
             "title": "Category"
           },
           "duration_minutes": {
             "maximum": 480.0,
-            "minimum": 15.0,
-            "multipleOf": 15.0,
+            "minimum": 5.0,
+            "multipleOf": 5.0,
             "title": "Duration Minutes",
             "type": "integer"
           },
@@ -7283,6 +7319,9 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__PriceIn"
           },
           "price_currency": {
             "anyOf": [
@@ -7295,18 +7334,6 @@
               }
             ],
             "title": "Price Currency"
-          },
-          "price_minor": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Price Minor"
           },
           "staff_ids": {
             "anyOf": [
@@ -7348,6 +7375,10 @@
             ],
             "title": "Category"
           },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
           "duration_minutes": {
             "title": "Duration Minutes",
             "type": "integer"
@@ -7366,14 +7397,7 @@
             "type": "integer"
           },
           "price": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/nexus_api__api__console__lite__reservas_schemas__MoneyOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__PriceOut"
           },
           "staff": {
             "enum": [
@@ -7397,6 +7421,7 @@
           "name",
           "duration_minutes",
           "price",
+          "currency",
           "staff",
           "staff_ids",
           "position",
@@ -7407,6 +7432,7 @@
       },
       "nexus_api__api__console__lite__reservas_schemas__ServicePatchIn": {
         "additionalProperties": false,
+        "description": "Lo que no llega no cambia. ``name`` solo se acepta si es el que ya tiene:\ndesde Reservas no se renombra (``422 rename_not_allowed``, spec 056 D5).",
         "properties": {
           "all_staff": {
             "anyOf": [
@@ -7422,32 +7448,27 @@
           "category": {
             "anyOf": [
               {
-                "maxLength": 80,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
+            "maxLength": 40,
             "title": "Category"
-          },
-          "clear_price": {
-            "default": false,
-            "title": "Clear Price",
-            "type": "boolean"
           },
           "duration_minutes": {
             "anyOf": [
               {
-                "maximum": 480.0,
-                "minimum": 15.0,
-                "multipleOf": 15.0,
                 "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
+            "maximum": 480.0,
+            "minimum": 5.0,
+            "multipleOf": 5.0,
             "title": "Duration Minutes"
           },
           "name": {
@@ -7476,6 +7497,16 @@
             ],
             "title": "Position"
           },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/nexus_api__api__console__schemas_business_sections__PriceIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "price_currency": {
             "anyOf": [
               {
@@ -7487,18 +7518,6 @@
               }
             ],
             "title": "Price Currency"
-          },
-          "price_minor": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Price Minor"
           },
           "staff_ids": {
             "anyOf": [
@@ -7525,7 +7544,6 @@
           "amount_minor": {
             "anyOf": [
               {
-                "maximum": 1000000000000.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -7533,6 +7551,7 @@
                 "type": "null"
               }
             ],
+            "maximum": 1000000000000.0,
             "title": "Amount Minor"
           },
           "kind": {
@@ -15827,8 +15846,9 @@
       }
     },
     "/console/lite/reservas/business-hours": {
-      "put": {
-        "operationId": "put_business_hours_console_lite_reservas_business_hours_put",
+      "patch": {
+        "description": "Spec 056 (5.1, 5.3): el horario de la ficha, día a día. Solo cambian los\ndías que llegan; los demás, el horario propio de cada sede y lo guardado que\nno cumple las reglas nuevas se quedan como estaban. Con la revisión que se\nleyó: si alguien guardó mientras tanto, ``409 revision_conflict``.",
+        "operationId": "patch_business_hours_console_lite_reservas_business_hours_patch",
         "parameters": [
           {
             "in": "header",
@@ -15883,7 +15903,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BusinessHoursIn"
+                "$ref": "#/components/schemas/BusinessHoursPatchIn"
               }
             }
           },
@@ -15894,24 +15914,20 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BusinessHoursOut"
+                  "$ref": "#/components/schemas/HoursOut"
                 }
               }
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "revision_conflict: the hours changed since they were read"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "{code, field, day}: too_many_shifts, bad_step, overlap, …"
           }
         },
-        "summary": "Put Business Hours",
+        "summary": "Patch Business Hours",
         "tags": [
           "console",
           "console-lite"
@@ -16488,6 +16504,7 @@
     },
     "/console/lite/reservas/services/{service_id}": {
       "patch": {
+        "description": "Solo cambia lo que llega (5.3): «Gratis» sigue gratis si no se toca el precio.",
         "operationId": "patch_service_console_lite_reservas_services__service_id__patch",
         "parameters": [
           {

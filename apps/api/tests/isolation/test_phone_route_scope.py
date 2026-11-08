@@ -8,7 +8,8 @@ barrido lo vería en cada ruta lite, no en una muestra:
 - las ``GET`` sin identificador no devuelven ningún nombre ni ref de la vecina;
 - las que llevan el id de un objeto de la vecina responden **byte a byte** igual
   que a un id que no existe;
-- lo mismo las escrituras de la Bandeja y el cierre de un teléfono ajeno.
+- lo mismo las escrituras de la Bandeja y el cierre de un teléfono ajeno;
+- spec 056: las de Agentes y Negocio, retiradas, el 403 de un módulo ausente.
 
 Una ruta lite nueva entra en el barrido el día que se monta.
 """
@@ -31,7 +32,10 @@ from tests.isolation.test_lite_client_vs_client import (
     NEIGHBOUR_REF,
     RESERVAS_PREFIX,
     _neighbourhood,
+    is_retired,
+    probe_retired,
     probe_write,
+    retired_routes,
 )
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.isolation]
@@ -60,6 +64,8 @@ def _lite_gets() -> list[str]:
         and r.path not in _STREAMS
         # Spec 043: con la credencial del teléfono también, en su propio barrido.
         and not r.path.startswith(RESERVAS_PREFIX)
+        # Spec 056: Agentes y Negocio, en el barrido de los módulos retirados.
+        and not is_retired(r)
     ]
 
 
@@ -108,6 +114,7 @@ async def test_every_write_with_an_id_is_probed() -> None:
         and not r.path.endswith("/attachments")
         and not r.path.startswith("/console/lite/notifications/")
         and not r.path.startswith(RESERVAS_PREFIX)
+        and not is_retired(r)
     }
     assert mounted == {(m, p) for m, p, _ in _PHONE_WRITES}
 
@@ -137,3 +144,12 @@ async def test_phone_writes_on_a_neighbour_object_are_the_same_404(
 ) -> None:
     world = await _with_phones(db_session, console_world)
     await probe_write(client, world, world["phone"]["headers"], method, path, body)
+
+
+@pytest.mark.parametrize(("method", "path"), retired_routes())
+async def test_phone_retired_routes_answer_the_absent_module(
+    method: str, path: str, client, db_session, console_world
+) -> None:
+    """Spec 056 (requisito 2.5): con la credencial del teléfono, la misma respuesta."""
+    world = await _with_phones(db_session, console_world)
+    await probe_retired(client, world, world["phone"]["headers"], method, path)

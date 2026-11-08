@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import * as Crypto from "expo-crypto";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useRef, useState } from "react";
@@ -8,10 +7,8 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { endpoints, type Correction, type CorrectionScope } from "@/api/endpoints";
 import { ApiError } from "@/api/errors";
 import { useConversation, useMe, useThread } from "@/api/hooks";
-import { keys } from "@/api/query";
-import { correctionErrorText, CorrectionForm, type Step } from "@/features/inbox/correction";
+import { correctionErrorText, CorrectionForm, partnerOf, type Step } from "@/features/inbox/correction";
 import { useT } from "@/i18n/t";
-import { partnerOf } from "@/lib/agents-model";
 import { useDraft } from "@/lib/drafts";
 import { haptics } from "@/motion/haptics";
 import { glassAvailable } from "@/theme/glass";
@@ -33,7 +30,6 @@ export default function CorregirRoute() {
   const t = useT();
   const online = useOnline();
   const { colors } = useTheme();
-  const qc = useQueryClient();
   const me = useMe();
   const detail = useConversation(id);
   const thread = useThread(id);
@@ -107,8 +103,6 @@ export default function CorregirRoute() {
       setTyped(null);
       setStep("sent");
       haptics.success();
-      // A fact lands in the business's profile or knowledge at once: Negocio reads it again.
-      if (sent.kind === "data") void qc.invalidateQueries({ queryKey: keys.business });
     } catch (e) {
       haptics.warning();
       if (e instanceof ApiError && e.code === "pii_present" && Array.isArray(e.info.pii)) {
@@ -130,7 +124,6 @@ export default function CorregirRoute() {
       setCorrection(await endpoints.undoCorrection(correction.id, Crypto.randomUUID()));
       setStep("undone");
       haptics.success();
-      void qc.invalidateQueries({ queryKey: keys.business });
     } catch (e) {
       haptics.warning();
       setError(e instanceof ApiError && e.offline ? t("corregir.offline") : t("corregir.error.undo"));

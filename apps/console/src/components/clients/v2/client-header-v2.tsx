@@ -23,20 +23,31 @@ export function activeTab(pathname: string, ref: string): ClientTab | null {
   if (pathname === base) return "panel";
   if (pathname.startsWith(`${base}/business`)) return "business";
   if (pathname.startsWith(`${base}/agents`)) return "agents";
+  if (pathname === `${base}/access` || pathname.startsWith(`${base}/access/`)) return "access";
   return null;
 }
 
 /**
  * La cabecera de un cliente con la consola nueva, como el prototipo aprobado
  * («Consola de partners v2»): el nombre grande, el nicho y desde cuándo atiende,
- * y debajo la barra de pestañas en vidrio (Panel · Negocio · Agentes, sin número) con
- * «Nuevo agente» a la derecha. Las pestañas son enlaces (`aria-current`), no un
+ * y debajo la barra de pestañas en vidrio (Panel · Negocio · Agentes, sin número, y
+ * Acceso para owner y admin: spec 056) con «Nuevo agente» a la derecha. Las pestañas son enlaces (`aria-current`), no un
  * `tablist`: cada una es una página con su propia URL. Activo, no lleva
  * insignia ni «⋯» (archivar y borrar están en la lista); en pausa o archivado
  * lo dice y deja sus acciones.
  */
-export function ClientHeaderV2({ client, servingSince = null }: { client: ClientDetailV2; servingSince?: string | null }) {
+export function ClientHeaderV2({
+  client,
+  servingSince = null,
+  canManageAccess = false,
+}: {
+  client: ClientDetailV2;
+  servingSince?: string | null;
+  /** Spec 056 (requisito 3.2, D4): owner y admin (`client_access:manage`). Sin él, la pestaña Acceso no existe. */
+  canManageAccess?: boolean;
+}) {
   const t = useT();
+  const tabs: readonly ClientTab[] = canManageAccess ? [...TABS, "access"] : TABS;
   const locale = useLocale();
   const pathname = usePathname() ?? "";
   const ref = client.external_client_ref;
@@ -74,7 +85,7 @@ export function ClientHeaderV2({ client, servingSince = null }: { client: Client
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <nav aria-label={t("clients.v2.tabs")} className="min-w-0">
           <ul className={tabsListVariants({ floating: true })}>
-            {TABS.map((tab) => (
+            {tabs.map((tab) => (
               <li key={tab} className="shrink-0">
                 <Link
                   href={clientHref(ref, tab)}

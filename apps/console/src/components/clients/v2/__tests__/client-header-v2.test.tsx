@@ -22,7 +22,7 @@ vi.mock("@/app/(console)/clients/new-client-actions", () => ({
   nicheSuggestionsAction: vi.fn(),
 }));
 
-const { ClientHeaderV2 } = await import("../client-header-v2");
+const { ClientHeaderV2, activeTab } = await import("../client-header-v2");
 const { useCrumbNames } = await import("@/components/shell/crumb-names");
 
 /**
@@ -104,6 +104,41 @@ describe("ClientHeaderV2", () => {
     } finally {
       nav.pathname = "/clients/barberia-cultor/business";
     }
+  });
+
+  // Spec 056 (requisitos 3.1 y 3.2; D4): la pestaña «Acceso», después de Agentes,
+  // solo para owner y admin. Para los demás roles no existe.
+  it("con permiso, la pestaña Acceso va detrás de Agentes y tiene su dirección", () => {
+    nav.pathname = "/clients/barberia-cultor/access";
+    try {
+      render(
+        <LocaleProvider locale="es">
+          <ClientHeaderV2 client={DETAIL} canManageAccess />
+        </LocaleProvider>,
+      );
+      const tabs = screen.getByRole("navigation", { name: "Secciones del cliente" });
+      const links = Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent);
+      expect(links).toEqual(["Panel", "Negocio", "Agentes", "Acceso"]);
+      const access = screen.getByRole("link", { name: "Acceso" });
+      expect(access).toHaveAttribute("href", "/clients/barberia-cultor/access");
+      expect(access).toHaveAttribute("aria-current", "page");
+    } finally {
+      nav.pathname = "/clients/barberia-cultor/business";
+    }
+  });
+
+  it("sin permiso, la pestaña Acceso no existe", () => {
+    render(
+      <LocaleProvider locale="es">
+        <ClientHeaderV2 client={DETAIL} />
+      </LocaleProvider>,
+    );
+    expect(screen.queryByRole("link", { name: "Acceso" })).toBeNull();
+  });
+
+  it("la ruta /access es la pestaña Acceso", () => {
+    expect(activeTab("/clients/barberia-cultor/access", "barberia-cultor")).toBe("access");
+    expect(activeTab("/clients/barberia-cultor/accesses", "barberia-cultor")).toBeNull();
   });
 
   it("archivado lo dice y deja sus acciones; sin permiso no hay «Nuevo agente»", () => {

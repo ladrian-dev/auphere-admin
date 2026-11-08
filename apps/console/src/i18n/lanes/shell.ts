@@ -5,6 +5,19 @@
  *  claves estables; su texto vive aquí (`shell.search.screen.<key>` y
  *  `shell.search.action.<key>`). */
 export const shellMessages = {
+  // ── Spec 056 (10.1, 14): una pantalla que falla y una ruta que no existe ──
+  "shell.error.load.title": { es: "No se pudo cargar esta pantalla", en: "This screen could not load" },
+  "shell.error.load.body": { es: "Vuelve a intentarlo en un momento.", en: "Try again in a moment." },
+  "shell.notFound.title": { es: "Esta página no está", en: "This page is not here" },
+  "shell.notFound.body": { es: "No existe o no es tuya.", en: "It does not exist or it is not yours." },
+  "shell.notFound.home": { es: "Ir al inicio", en: "Go to the start" },
+  "shell.notFound.signIn": { es: "Entrar", en: "Sign in" },
+  // ── Spec 056 (15): la sesión caduca a los 7 días, sin renovarse ──
+  "shell.session.expiring": {
+    es: "Tu sesión caduca en menos de un día. Vuelve a entrar para seguir sin cortes.",
+    en: "Your session expires in less than a day. Sign in again to keep going without interruptions.",
+  },
+  "shell.session.signInAgain": { es: "Volver a entrar", en: "Sign in again" },
   // ── El menú lateral (R47.1) ──────────────────────────────────────
   "shell.nav.label": { es: "Menú principal", en: "Main menu" },
   "shell.nav.collapse": { es: "Plegar menú", en: "Collapse menu" },

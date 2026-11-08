@@ -1,8 +1,7 @@
 import { router, Stack } from "expo-router";
 
-import { useAgents, useHasModule, useHome, useMe } from "@/api/hooks";
+import { useHome, useMe } from "@/api/hooks";
 import { useBizNow, useBizToday, useHasReservas, useReservasConfig, useReservasRange, useWaitlist } from "@/api/reservas-hooks";
-import type { AgentsRead } from "@/features/agents/agents-group";
 import type { TodayReservas } from "@/features/home/today-reservas";
 import { HomeView } from "@/features/home/home-view";
 import { SettingsToolbar } from "@/features/tab-stack";
@@ -17,7 +16,8 @@ import { Text } from "@/ui/text";
 /**
  * Inicio (R4.1): the Panel of the client, with its five states. With
  * Reservas (spec 044, R9), today's reservations from the same read as the
- * Reservas tab (research D4).
+ * Reservas tab (research D4). No agents and no way into Negocio: neither is a
+ * client's module any more (spec 056, 2.6).
  */
 export default function Inicio() {
   const t = useT();
@@ -27,9 +27,7 @@ export default function Inicio() {
   const home = useHome();
   const first = (me.data?.user.name ?? "").split(" ")[0] || me.data?.user.name || "";
   const reservas = useTodayReservas();
-  const agents = useHomeAgents();
-  const hasBusiness = useHasModule("business");
-  const pull = usePullRefresh(() => Promise.all([home.refetch(), agents.refetch()]));
+  const pull = usePullRefresh(() => home.refetch());
 
   return (
     <>
@@ -54,10 +52,6 @@ export default function Inicio() {
             onInbox={() => router.navigate("/bandeja")}
             reservas={reservas.today}
             onReservas={() => router.navigate({ pathname: "/reservas", params: reservas.date ? { date: reservas.date } : {} })}
-            agents={agents.read}
-            onAgent={(id) => router.push(`/agente/${id}`)}
-            onBusiness={hasBusiness ? () => router.push("/negocio") : undefined}
-            businessHint={me.data?.business?.hours_label ?? null}
           />
         ) : (
           <Skeleton rows={4} />
@@ -65,17 +59,6 @@ export default function Inicio() {
       </ScrollScreen>
     </>
   );
-}
-
-/** Spec 047 (50.1): the agents for Inicio, or `null` without the module. */
-function useHomeAgents(): { read: AgentsRead | null; refetch: () => Promise<unknown> } {
-  const has = useHasModule("agents");
-  const q = useAgents(has);
-  const refetch = () => (has ? q.refetch() : Promise.resolve());
-  if (!has) return { read: null, refetch };
-  if (q.data) return { read: { state: "ready", items: q.data.items }, refetch };
-  if (q.isError) return { read: { state: "error", retry: () => void q.refetch() }, refetch };
-  return { read: { state: "loading" }, refetch };
 }
 
 /** Today in Reservas for Inicio, or `null` without the module (R1.2). */

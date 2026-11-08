@@ -44,14 +44,19 @@ from nexus_api.db.models import (
     Tenant,
 )
 from nexus_api.db.models.business import BusinessProfile
-from nexus_api.db.models.reservation import PRICE_KINDS
-from nexus_api.services.business import client_spec, section_write, writes
+from nexus_api.services.business import client_spec, rules, section_write, writes
+from nexus_api.services.business.rules import (
+    CATEGORY_MAX,
+    DURATION_MAX,
+    DURATION_MIN,
+    DURATION_STEP,
+    NAME_MAX,
+)
 from nexus_api.services.business.sections import Actor
 
-NAME_MAX: Final = 120
-CATEGORY_MAX: Final = 40
+# Spec 056 (T008): los límites del nombre, la categoría y la duración son los de
+# ``rules`` (los mismos para la ficha y Reservas); aquí se reexportan.
 DESCRIPTION_MAX: Final = 1000
-DURATION_MIN, DURATION_MAX, DURATION_STEP = 5, 480, 5
 MAX_SERVICES: Final = 500
 #: ISO 4217: «sin moneda». La de una fila sin importe en un negocio sin moneda; no se pinta.
 NO_CURRENCY: Final = "XXX"
@@ -261,43 +266,37 @@ class ServiceData:
     category: str | None = None
 
 
+def _ruled(error: rules.RuleError) -> ServiceError:
+    return ServiceError(error.code, error.field)
+
+
 def clean_category(value: str | None) -> str | None:
     """Recortada, con los espacios de dentro colapsados; vacía es ninguna."""
-    category = " ".join((value or "").split()) or None
-    if category and len(category) > CATEGORY_MAX:
-        raise ServiceError("category_too_long", "category")
-    return category
+    try:
+        return rules.check_category(value)
+    except rules.RuleError as exc:
+        raise _ruled(exc) from None
 
 
 def validate(data: ServiceData) -> ServiceData:
-    name = " ".join((data.name or "").split())
-    if not name:
-        raise ServiceError("name_required", "name")
-    if len(name) > NAME_MAX:
-        raise ServiceError("name_too_long", "name")
+    """Spec 056 (5.2): las reglas de ``rules`` (las mismas en la ficha y en
+    Reservas), con su código: ``bad_duration``, ``amount_too_large``,
+    ``category_too_long``…"""
     description = (data.description or "").strip() or None
-    if description and len(description) > DESCRIPTION_MAX:
-        raise ServiceError("description_too_long", "description")
-    if data.bookable:
-        if data.duration_min is None:
-            raise ServiceError("duration_required", "duration_min")
-        if (
-            not DURATION_MIN <= data.duration_min <= DURATION_MAX
-            or data.duration_min % DURATION_STEP
-        ):
-            raise ServiceError("duration_invalid", "duration_min")
-    elif data.duration_min is not None:
-        raise ServiceError("duration_not_allowed", "duration_min")
-    category = clean_category(data.category)
-    if data.price_kind not in PRICE_KINDS:
-        raise ServiceError("price_invalid", "price")
-    amount: int | None = None
-    if data.price_kind == "amount":
-        if data.amount_minor is None:
-            raise ServiceError("price_amount_required", "price")
-        if data.amount_minor < 0:
-            raise ServiceError("price_invalid", "price")
-        amount = int(data.amount_minor)
+    try:
+        name = rules.check_name(data.name)
+        if description and len(description) > DESCRIPTION_MAX:
+            raise ServiceError("description_too_long", "description")
+        if data.bookable:
+            if data.duration_min is None:
+                raise ServiceError("duration_required", "duration_min")
+            rules.check_duration(data.duration_min)
+        elif data.duration_min is not None:
+            raise ServiceError("duration_not_allowed", "duration_min")
+        category = rules.check_category(data.category)
+        amount = rules.check_price(data.price_kind, data.amount_minor)
+    except rules.RuleError as exc:
+        raise _ruled(exc) from None
     return ServiceData(
         name=name,
         bookable=data.bookable,
@@ -960,6 +959,9 @@ writes.register_section_adapter("services", restore=_restore_section, apply=_app
 __all__ = [
     "CATEGORY_MAX",
     "CURRENCY_BY_MARKET",
+    "DURATION_MAX",
+    "DURATION_MIN",
+    "DURATION_STEP",
     "SYSTEM_ACTOR",
     "ServiceData",
     "ServiceError",

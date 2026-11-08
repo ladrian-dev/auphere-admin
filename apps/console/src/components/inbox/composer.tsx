@@ -6,6 +6,7 @@ import { Button } from "@nexus/ui";
 import { useT } from "@/i18n/client";
 import type { SavedReply } from "@/lib/backend/inbox";
 
+import { waitingText } from "./event-text";
 import { ATTACH_ACCEPT, checkAttachment, type ComposerMode, type SendError } from "./inbox-model";
 import { SavedReplies, type RepliesApi } from "./saved-replies";
 
@@ -71,7 +72,9 @@ export function Composer({
         <div className="flex flex-wrap items-center gap-3 rounded-md bg-status-warning-bg p-3 ring-1 ring-status-warning-border ring-inset">
           <div className="flex min-w-48 flex-1 flex-col">
             <p className="text-sm font-semibold text-balance">{t("inbox.composer.waiting.title")}</p>
-            <p className="text-sm text-muted-foreground text-pretty">{mode.reason ?? t("inbox.composer.waiting.noReason")}</p>
+            <p className="text-sm text-muted-foreground text-pretty">
+              {mode.reason || mode.code ? waitingText(mode.code, mode.reason, t) : t("inbox.composer.waiting.noReason")}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" disabled={busy} onClick={onGiveBack}>

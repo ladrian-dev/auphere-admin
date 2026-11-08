@@ -25,13 +25,14 @@ import { businessProtoMessages } from "./lanes/business-proto";
 import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
 import { channelsProtoMessages } from "./lanes/channels-proto";
+import { clientAccessMessages } from "./lanes/client-access";
 import { clientsProtoMessages } from "./lanes/clients-proto";
 import { companionMessages } from "./lanes/companion";
 import { connectorToolsMessages } from "./lanes/connector-tools";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { inboxMessages } from "./lanes/inbox";
+import { inboxCorrectMessages } from "./lanes/inbox-correct";
 import { liteMessages } from "./lanes/lite";
-import { liteAgentsMessages } from "./lanes/lite-agents";
 import { membershipMessages } from "./lanes/membership";
 import { moneyMessages } from "./lanes/money";
 import { noticesMessages } from "./lanes/notices";
@@ -596,7 +597,9 @@ const messages = {
   ...moneyMessages,
   ...noticesMessages,
   ...partnerViewsMessages,
-  ...liteAgentsMessages,
+  ...inboxCorrectMessages,
+  // Spec 056 (requisito 3): la pestaña «Acceso» de un cliente.
+  ...clientAccessMessages,
   ...agentImproveMessages,
   ...builderConnectorsMessages,
   ...connectorToolsMessages,

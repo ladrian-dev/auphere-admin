@@ -112,10 +112,30 @@ describe("blocks", () => {
 
 describe("validation", () => {
   it("allows up to six shifts a day", () => {
-    const draft = draftFromHours(HOURS);
+    // Saturday opens when Friday's night shift closes: the API refuses an earlier opening.
+    const draft = draftFromHours({ ...HOURS, days: { ...HOURS.days, sat: [shift("02:00", "24:00")] } });
     const seven = Array.from({ length: MAX_SHIFTS + 1 }, (_, i) => ({ key: `k${i}`, open: `0${i + 1}:00`, close: `0${i + 1}:30` }));
     expect(validateDraft({ ...draft, days: { ...draft.days, mon: seven } })).toEqual([{ day: "mon", code: "too_many_shifts" }]);
     expect(validateDraft(draft)).toEqual([]);
+  });
+  it("spec 056: a night shift cannot run into the next day's first one, as the API says", () => {
+    expect(validateDraft(draftFromHours(HOURS))).toEqual([{ day: "fri", code: "overlap_next_day" }]);
+  });
+  it("spec 056: the shared rules on the days that change — 5-minute steps and no overlaps", () => {
+    const original = { ...HOURS, days: { ...HOURS.days, sat: [shift("02:00", "24:00")], mon: [shift("09:07", "14:00")] } };
+    const draft = draftFromHours(original);
+    // Monday keeps its 09:07 while nobody touches it («Revísalo»).
+    expect(validateDraft(draft, original)).toEqual([]);
+    expect(validateDraft({ ...draft, days: { ...draft.days, tue: [{ key: "a", open: "10:03", close: "14:00" }] } }, original)).toEqual([
+      { day: "tue", code: "bad_step" },
+    ]);
+    const overlapping = [
+      { key: "a", open: "09:00", close: "13:00" },
+      { key: "b", open: "12:00", close: "15:00" },
+    ];
+    expect(validateDraft({ ...draft, days: { ...draft.days, wed: overlapping } }, original)).toEqual([{ day: "wed", code: "overlap" }]);
+    // Without what was stored, every day counts as changed.
+    expect(validateDraft(draft)).toEqual([{ day: "mon", code: "bad_step" }]);
   });
   it("refuses a time that is not HH:MM", () => {
     const draft = draftFromHours(HOURS);

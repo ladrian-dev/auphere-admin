@@ -46,6 +46,7 @@ from nexus_api.api.console import (
     channel_config,
     channel_signup,
     channels,
+    client_access,
     client_bags,
     client_builder,
     companion,
@@ -166,6 +167,9 @@ router.include_router(agent_improvement.router)
 # Spec 047 (T158): las bolsas de los clientes, el tope del agente y la partida
 # «Construcción y pruebas».
 router.include_router(client_bags.router)
+# Spec 056 (requisito 3, D3): la pestaña «Acceso» del cliente, owner y admin del
+# partner, con los mismos servicios que el panel.
+router.include_router(client_access.router)
 router.include_router(playbook.router)
 router.include_router(seed_templates.router)
 router.include_router(notifications.router)

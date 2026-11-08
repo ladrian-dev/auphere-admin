@@ -54,6 +54,9 @@ class NotificationOut(BaseModel):
     data: dict[str, Any]
     external_client_ref: str | None = None
     read: bool
+    #: Spec 056 (8.1): un «espera a una persona» cuya conversación ya no espera.
+    #: Sigue en la lista y no cuenta como pendiente (``read`` también es cierto).
+    handled: bool = False
     created_at: datetime
     #: Spec 047 (49.5): el enlace a su arreglo.
     href: str | None = None
