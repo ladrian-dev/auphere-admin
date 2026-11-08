@@ -258,6 +258,14 @@ class Settings(BaseSettings):
     # is Lee. Templates for the tenant owner override this when present.
     operator_fallback_phone: str | None = None
 
+    # The language the ``alert_*`` templates are approved in on Auphere's WABA.
+    # Alerts sent from Auphere's notification number (the default row of
+    # ``auphere_owner_channels``) go out in it; alerts sent from a client's
+    # number go out in the language that client's WABA approved
+    # (``whatsapp_template_status``). Bug el-aviso-de-escalada-no-llega:
+    # a language the WABA does not have is Meta's error 132001.
+    auphere_alert_template_language: str = "es_CL"
+
     # WP-07: worker services expected to report a heartbeat, comma-separated.
     # Single-service deploys keep the default; after cutting over to the
     # split deployment set

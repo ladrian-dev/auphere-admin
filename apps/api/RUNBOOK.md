@@ -420,6 +420,13 @@ Antes de tocar el panel, asegurate de tener:
    `alert_isolation_v1`, `alert_whatsapp_burst_v1` (las `alert_*` y las
    del backchannel `auphere_owner_consult` / `auphere_owner_action_request`
    van en la WABA de Auphere, no en la del tenant).
+   Un aviso `alert_*` sale del número del tenant solo si su WABA tiene esa
+   plantilla aprobada, y en el idioma aprobado; si no, del número de avisos
+   predeterminado de Auphere (panel → **Números de Auphere**,
+   `/auphere/channels`) en `NEXUS_AUPHERE_ALERT_TEMPLATE_LANGUAGE` (`es_CL`
+   por defecto). Sin ese número registrado, los tenants sin la plantilla no
+   reciben avisos por WhatsApp (`operator_alerter.whatsapp_unavailable` en
+   el log del scheduler). Ver `docs/canales.md` §2.
 3. **WABA del cliente**: el owner necesita acceso a su Facebook Business
    y un número (nuevo o existente) para el Embedded Signup. El flujo
    registra el número bajo la App de Auphere (Tech Provider).

@@ -24,7 +24,9 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import AuditLog
 
-pytestmark = pytest.mark.asyncio
+# Los clientes tienen las plantillas de aviso aprobadas en su WABA: el aviso sale
+# de su número. Sin ellas sale del de Auphere (test_operator_alert_sender.py).
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("alert_templates_approved")]
 
 
 async def _seed_audit(

@@ -144,7 +144,13 @@ Todas bajo `/console/clients/{ref}`.
 ```
 
 `notify_from` es solo lectura: lo decide si el número tiene la plantilla de
-aviso aprobada (requisito 33.3).
+aviso aprobada (requisito 33.3). El aviso sale en el idioma en que esa plantilla
+está aprobada en el WABA del número; desde el de Auphere, en el idioma
+configurado (`NEXUS_AUPHERE_ALERT_TEMPLATE_LANGUAGE`). Si hay destinatarios por
+WhatsApp y el aviso no tiene por dónde salir (ni la plantilla en el número ni
+número de avisos de Auphere), las comprobaciones traen
+`{"code": "escalation_template_missing", "ok": false, "level": "warn", "fix": null}`
+(bug `el-aviso-de-escalada-no-llega`).
 
 ## 6. Integraciones
 

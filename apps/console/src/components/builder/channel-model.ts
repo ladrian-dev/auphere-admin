@@ -260,6 +260,7 @@ export function checkText(t: T, check: ChannelCheck): string {
     case "agent_not_published":
     case "bag_empty":
     case "audience_admin_only_template":
+    case "escalation_template_missing":
       return t(`builder.channel.check.${check.code}` as MessageKey);
     default:
       return t("builder.channel.check.unknown", { code: check.code });

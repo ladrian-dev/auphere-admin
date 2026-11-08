@@ -34,8 +34,10 @@ from nexus_api.db.models import (
     Agent,
     AgentConfig,
     AgentConfigStatus,
+    AuphereOwnerChannel,
     Channel,
     ChannelConfigChange,
+    WhatsAppTemplateStatus,
 )
 from nexus_api.services import channel_config
 
@@ -349,6 +351,64 @@ async def test_the_tests_and_escalation_checks_warn_without_blocking(
         1,
     )
     assert {c["code"]: c["ok"] for c in with_recipient["checks"]}["escalation_recipient"] is True
+
+
+async def test_the_page_warns_when_the_whatsapp_notice_cannot_leave(
+    client: Any, db_session: AsyncSession, biz: Biz, bag: dict[str, bool]
+) -> None:
+    """Bug el-aviso-de-escalada-no-llega: con destinatarios por WhatsApp, si el
+    número no tiene la plantilla de aviso aprobada y Auphere no tiene número de
+    avisos, el aviso no puede salir y la página lo dice."""
+    agent_id = await _published(db_session, biz)
+    channel_id = await _channel(db_session, biz, agent_id, "34911000012")
+    marta = {"name": "Marta", "via": "whatsapp", "phone_e164": "+34600555010"}
+    nobody = await _put(
+        client, biz, channel_id, _config("team_only", tests=[TEAM], recipients=[]), 0
+    )
+    assert "escalation_template_missing" not in {c["code"] for c in nobody["checks"]}
+    saved = await _put(
+        client, biz, channel_id, _config("team_only", tests=[TEAM], recipients=[marta]), 1
+    )
+    checks = {c["code"]: c for c in saved["checks"]}
+    assert checks["escalation_template_missing"] == {
+        "code": "escalation_template_missing",
+        "ok": False,
+        "level": "warn",
+        "fix": None,
+    }, "avisa sin bloquear"
+
+    # Con el número de avisos de Auphere registrado, el aviso sale de ahí.
+    auphere = AuphereOwnerChannel(
+        phone_e164="+34600999000",
+        display_name="Auphere ES",
+        provider="meta",
+        provider_phone_id="PN-AUPHERE",
+        access_token_encrypted=b"token",
+        active=True,
+        is_default=True,
+    )
+    db_session.add(auphere)
+    await db_session.commit()
+    page = await _page(client, biz, channel_id)
+    assert "escalation_template_missing" not in {c["code"] for c in page["checks"]}
+    assert page["config"]["notify_from"] == "auphere"
+
+    # Sin Auphere pero con la plantilla aprobada en el WABA del canal, sale del canal.
+    auphere.active = False
+    auphere.is_default = False
+    db_session.add(
+        WhatsAppTemplateStatus(
+            waba_id="WABA0012",
+            template_name=channel_config.ESCALATION_TEMPLATE,
+            language="es",
+            status="APPROVED",
+            last_event_payload={},
+        )
+    )
+    await db_session.commit()
+    page = await _page(client, biz, channel_id)
+    assert "escalation_template_missing" not in {c["code"] for c in page["checks"]}
+    assert page["config"]["notify_from"] == "channel"
 
 
 # ── número recién conectado ────────────────────────────────────────────────

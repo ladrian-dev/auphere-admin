@@ -146,6 +146,48 @@ async def two_tenants_with_channels(db_session) -> dict[str, dict[str, Any]]:
     }
 
 
+async def give_alert_templates(
+    db_session: Any,
+    channel_id: uuid.UUID,
+    *,
+    waba_id: str,
+    language: str = "es_CL",
+    templates: tuple[str, ...] | None = None,
+    status: str = "APPROVED",
+) -> None:
+    """El WABA del canal con las plantillas de aviso en ``status``: así el aviso
+    sale del número del cliente (bug el-aviso-de-escalada-no-llega). Sin esto,
+    sale del número de Auphere."""
+    from nexus_worker.streams.operator_alerts import _ACTION_TO_TEMPLATE
+
+    from nexus_api.db.models import WhatsAppTemplateStatus
+
+    channel = await db_session.get(Channel, channel_id)
+    assert channel is not None
+    channel.config = {**(channel.config or {}), "waba_id": waba_id}
+    for name in templates or tuple(sorted(set(_ACTION_TO_TEMPLATE.values()))):
+        db_session.add(
+            WhatsAppTemplateStatus(
+                waba_id=waba_id,
+                template_name=name,
+                language=language,
+                status=status,
+                last_event_payload={},
+            )
+        )
+    await db_session.commit()
+
+
+@pytest_asyncio.fixture
+async def alert_templates_approved(
+    db_session: Any, two_tenants_with_channels: dict[str, dict[str, Any]]
+) -> None:
+    """Los dos clientes tienen las plantillas de aviso aprobadas en su WABA, en
+    ``es_CL``: los avisos de siempre siguen saliendo de su número."""
+    for key, info in two_tenants_with_channels.items():
+        await give_alert_templates(db_session, info["channel_id"], waba_id=f"WABA-ALERTS-{key}")
+
+
 # ── spec 047: la página del canal (T104 a T106) ────────────────────────────
 
 from nexus_api.services import channel_config  # noqa: E402

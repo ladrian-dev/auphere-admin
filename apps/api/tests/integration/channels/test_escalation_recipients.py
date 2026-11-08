@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 import sqlalchemy as sa
+import structlog
 from nexus_worker.streams import operator_alerts
 from nexus_worker.streams.operator_alerts import _process_pending
 
@@ -52,8 +53,8 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
     Resend."""
     out: dict[str, list[Any]] = {"auphere": [], "email": []}
 
-    async def _auphere(phone: str, template: str, params: list[str]) -> None:
-        out["auphere"].append((phone, template, params))
+    async def _auphere(phone: str, template: str, params: list[str], language: str) -> None:
+        out["auphere"].append((phone, template, params, language))
 
     async def _email(kind: EmailKind, **kw: Any) -> bool:
         out["email"].append({"kind": kind, **kw})
@@ -110,14 +111,14 @@ async def _escalate(info: dict[str, Any], reason: str = "Quiere hablar con el du
         return audit.id
 
 
-async def _approve_template() -> None:
+async def _approve_template(language: str = "es_CL") -> None:
     sm = get_sessionmaker()
     async with sm() as s:
         s.add(
             WhatsAppTemplateStatus(
                 waba_id=WABA,
                 template_name=channel_config.ESCALATION_TEMPLATE,
-                language="es_CL",
+                language=language,
                 status="approved",
                 last_event_payload={},
             )
@@ -182,6 +183,7 @@ async def test_each_recipient_hears_by_its_way_from_the_channel_number(
     call = fake_adapter.template_calls[0]
     assert call["from_phone"] == info["business_phone"]
     assert call["recipient"] == "+34600555001"
+    assert call["language"] == "es_CL", "el idioma en que está aprobada"
     assert call["params"] == {"body": ["Lucía", "Quiere hablar con el dueño"]}
     # El correo, con el mismo resumen mínimo (spec 051, catálogo §17).
     [mail] = sent["email"]
@@ -215,8 +217,84 @@ async def test_without_the_approved_template_whatsapp_comes_from_auphere(
     await _process_pending(get_sessionmaker(), {"meta": fake_adapter})
     assert fake_adapter.template_calls == []
     assert sent["auphere"] == [
-        ("+34600555002", "alert_escalation_v1", ["Lucía", "Quiere hablar con el dueño"])
-    ]
+        ("+34600555002", "alert_escalation_v1", ["Lucía", "Quiere hablar con el dueño"], "es_CL")
+    ], "en el idioma configurado para el número de Auphere"
+
+
+@pytest.mark.parametrize("language", ["es", "es_CL"])
+async def test_whatsapp_goes_in_the_language_the_template_is_approved_in(
+    two_tenants_with_channels: dict[str, Any],
+    fake_adapter: Any,
+    sent: dict[str, list[Any]],
+    language: str,
+) -> None:
+    """La consola crea las plantillas en ``es`` por defecto: un aviso en
+    ``es_CL`` a un WABA que la tiene en ``es`` lo rechaza Meta (#132001)."""
+    info = two_tenants_with_channels["a"]
+    await _approve_template(language)
+    await _configure(info, [Recipient(name="Marta", via="whatsapp", phone_e164="+34600555004")])
+    assert await _notify_from(info) == "channel"
+    await _escalate(info)
+    await _process_pending(get_sessionmaker(), {"meta": fake_adapter})
+    [call] = fake_adapter.template_calls
+    assert call["template_name"] == "alert_escalation_v1"
+    assert call["language"] == language
+    assert sent["auphere"] == []
+
+
+async def test_without_template_or_auphere_number_whatsapp_fails_clearly(
+    two_tenants_with_channels: dict[str, Any],
+    fake_adapter: Any,
+    sent: dict[str, list[Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Jemma's Hair en staging: destinatarios por WhatsApp, su WABA sin la
+    plantilla y ningún número de avisos de Auphere registrado. El aviso no sale,
+    no se da por enviado y el log lo dice una vez por cliente. El correo y la
+    Bandeja siguen como estaban."""
+    monkeypatch.setattr(operator_alerts, "send_from_auphere", operator_alerts._auphere_send)
+    operator_alerts._unavailable_logged.clear()
+    info = two_tenants_with_channels["a"]
+    await _configure(info, [Recipient(name="Marta", via="whatsapp", phone_e164="+34600555005")])
+    sm = get_sessionmaker()
+    with structlog.testing.capture_logs() as logs:
+        only_whatsapp = await _escalate(info)
+        await _process_pending(sm, {"meta": fake_adapter})
+        await _configure(
+            info,
+            [
+                Recipient(name="Marta", via="whatsapp", phone_e164="+34600555005"),
+                Recipient(name="Recepción", via="email", email="recepcion@cultor.es"),
+            ],
+        )
+        with_email = await _escalate(info, "Otra queja")
+        await _process_pending(sm, {"meta": fake_adapter})
+
+    assert fake_adapter.template_calls == []
+    async with sm() as s, tenant_scoped_session(s, info["tenant_id"]):
+        rows = {
+            n.audit_log_id: n
+            for n in await s.scalars(
+                sa.select(OperatorNotification).where(
+                    OperatorNotification.audit_log_id.in_([only_whatsapp, with_email])
+                )
+            )
+        }
+    failed = rows[only_whatsapp]
+    assert failed.status.value == "failed", "solo WhatsApp y no sale: no se da por enviado"
+    assert failed.sent_at is None
+    assert failed.last_error == "whatsapp: escalation_whatsapp_unavailable"
+    # El correo sale igual y el motivo queda en el aviso.
+    [mail] = sent["email"]
+    assert mail["to"] == ["recepcion@cultor.es"]
+    assert rows[with_email].status.value == "sent"
+    assert rows[with_email].last_error == "whatsapp: escalation_whatsapp_unavailable"
+    unavailable = [e for e in logs if e["event"] == "operator_alerter.whatsapp_unavailable"]
+    assert len(unavailable) == 1, "un evento por cliente, no uno por aviso"
+    assert unavailable[0]["reason"] == "escalation_whatsapp_unavailable"
+    assert unavailable[0]["tenant_id"] == str(info["tenant_id"])
+    assert unavailable[0]["channel_id"] == str(info["channel_id"])
+    assert not [e for e in logs if e["event"] == "operator_alerter.channel_recipient_failed"]
 
 
 async def test_the_summary_is_optional_and_never_reaches_a_partner_person(

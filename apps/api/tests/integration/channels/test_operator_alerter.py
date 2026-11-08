@@ -18,7 +18,9 @@ from nexus_api.db.models import (
     OperatorNotificationStatus,
 )
 
-pytestmark = pytest.mark.asyncio
+# Los clientes tienen las plantillas de aviso aprobadas en su WABA: el aviso sale
+# de su número. Sin ellas sale del de Auphere (test_operator_alert_sender.py).
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("alert_templates_approved")]
 
 
 async def _seed_audit(
@@ -81,6 +83,8 @@ async def test_alerter_sends_escalation_template_once(
     call = fake_adapter.template_calls[0]
     assert call["template_name"] == "alert_escalation_v1"
     assert call["from_phone"] == info["business_phone"]
+    # The language the template is approved in on the tenant's WABA.
+    assert call["language"] == "es_CL"
     # owner_phone of tenant A — see two_tenants_with_channels fixture.
     assert call["recipient"] == "+56999990001"
     # Body params: [customer_label, reason]. Customer has identifier as fallback.

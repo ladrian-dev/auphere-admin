@@ -158,6 +158,7 @@ describe("las comprobaciones y el historial", () => {
   it("cada comprobación con su frase", () => {
     expect(checkText(t, { code: "tests_up_to_date", ok: false, level: "warn", fix: "run_tests" })).toBe("Hay pruebas sin pasar o que fallan.");
     expect(checkText(t, { code: "bag_empty", ok: false, level: "block", fix: "assign_balance" })).toMatch(/no tiene saldo/);
+    expect(checkText(t, { code: "escalation_template_missing", ok: false, level: "warn", fix: null })).toMatch(/^Los avisos por WhatsApp no pueden salir\./);
     expect(checkText(t, { code: "x", ok: false, level: "warn", fix: null })).toBe("Comprobación: x");
   });
 

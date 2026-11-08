@@ -31,11 +31,24 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
 - **Escalada**: cuándo se pasa a una persona (pide hablar con alguien, intentos
   fallidos, una queja o un motivo propio), a quién se avisa (campana, correo o
   WhatsApp) y el mensaje de espera. El aviso por WhatsApp sale del propio número
-  si tiene la plantilla `alert_escalation_v1` aprobada, o del número de Auphere.
+  si su WABA tiene la plantilla `alert_escalation_v1` aprobada, en el idioma en
+  que está aprobada (el español primero si hay varios); si no, del número de
+  avisos de Auphere (el predeterminado de `auphere_owner_channels`, en el admin
+  «Números de Auphere») en el idioma `NEXUS_AUPHERE_ALERT_TEMPLATE_LANGUAGE`
+  (`es_CL` por defecto). Si no hay ninguno de los dos, el aviso por WhatsApp no
+  sale ni se da por enviado (`escalation_whatsapp_unavailable` en
+  `operator_notifications.last_error` y un evento
+  `operator_alerter.whatsapp_unavailable` al día por cliente), el correo y la
+  Bandeja siguen igual y la página lo enseña con la comprobación
+  `escalation_template_missing`. Lo mismo vale para los avisos de siempre al
+  dueño (canal sin destinatarios propios): del número del cliente solo con la
+  plantilla aprobada en su WABA, si no del de Auphere.
 - Cada cambio lleva `If-Match` (`412` con lo que cambió), queda en el historial
   y se puede **deshacer**. **Mover** el número a otro agente, **pausar** y
   **reanudar** avisan al partner y quedan en la auditoría.
-- Los checks de la página dicen qué falta para «A todos» y qué bloquea.
+- Los checks de la página dicen qué falta para «A todos» y qué bloquea, y
+  avisan (sin bloquear) si las pruebas no están al día, si nadie recibe el
+  escalado o si el aviso por WhatsApp no puede salir.
 
 ## 3. Coexistencia
 

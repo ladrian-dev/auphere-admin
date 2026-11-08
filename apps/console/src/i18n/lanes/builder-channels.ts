@@ -366,6 +366,10 @@ export const builderChannelsMessages = {
     es: "Pide a quien gestiona el saldo que asigne saldo a este cliente.",
     en: "Ask whoever manages the balance to assign balance to this client.",
   },
+  "builder.channel.check.escalation_template_missing": {
+    es: "Los avisos por WhatsApp no pueden salir. Este número no tiene aprobada la plantilla de aviso y Auphere aún no tiene número de avisos. Avisa a Auphere. El correo y la Bandeja siguen avisando.",
+    en: "WhatsApp notices cannot go out. This number does not have the notice template approved and Auphere has no notices number yet. Let Auphere know. Email and the Inbox still notify.",
+  },
   "builder.channel.check.audience_admin_only_template": {
     es: "El agente viene de una plantilla solo para administradores.",
     en: "The agent comes from an admins-only template.",

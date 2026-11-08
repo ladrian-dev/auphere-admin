@@ -32,6 +32,8 @@ from nexus_api.db.models import (
     TenantStatus,
 )
 
+from .conftest import give_alert_templates
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -70,6 +72,8 @@ async def meta_tenant_with_customer(db_session) -> dict[str, Any]:
     db_session.add(channel)
     await db_session.commit()
     await db_session.refresh(channel)
+    # Con la plantilla aprobada en su WABA, el aviso sale de su número.
+    await give_alert_templates(db_session, channel.id, waba_id="WABA-META-ALERT")
     customer = Customer(tenant_id=tid, identifier="+56911119999", preferences={})
     db_session.add(customer)
     await db_session.commit()

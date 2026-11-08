@@ -351,11 +351,16 @@ describe("la página de un canal", () => {
         checks: [
           { code: "tests_up_to_date", ok: false, level: "warn", fix: "run_tests" },
           { code: "escalation_recipient", ok: false, level: "warn", fix: "add_recipient" },
+          { code: "escalation_template_missing", ok: false, level: "warn", fix: null },
           { code: "agent_not_published", ok: false, level: "block", fix: "publish_agent" },
         ],
       }),
     );
     const checks = screen.getByRole("list", { name: "Comprobaciones" });
+    // El aviso por WhatsApp sin salida lo arregla Auphere: avisa sin enlace.
+    const missing = within(checks).getByText(/Los avisos por WhatsApp no pueden salir/);
+    expect(missing).toBeVisible();
+    expect(within(missing.closest("li")!).queryByRole("link")).toBeNull();
     expect(within(checks).getByRole("link", { name: "Ir a las pruebas" })).toHaveAttribute("href", `/clients/${REF}/agents/${RECEPCION}#agente-pruebas`);
     expect(within(checks).getByRole("link", { name: "Añadir a alguien" })).toHaveAttribute("href", "#canal-escalado");
     expect(within(checks).getByText(/El agente no está guardado/)).toBeVisible();

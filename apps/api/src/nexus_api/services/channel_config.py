@@ -12,13 +12,15 @@ agente: dos números del mismo agente pueden responder a gente distinta (32.6).
   E.164 y sin duplicados (32.4). La puerta del turno la aplica
   ``core.admin_gate.audience_suppresses``.
 - **Escalado** (``channel_escalation_recipients``): hasta 10 destinatarios, cada
-  uno con su vía (33.1). ``notify_from`` dice de qué número saldrá el aviso por
-  WhatsApp: del canal si tiene la plantilla aprobada, si no del de Auphere (33.3).
+  uno con su vía (33.1). ``notify_from`` dice de qué número y en qué idioma
+  saldrá el aviso por WhatsApp: del canal, en el idioma en que su WABA tiene la
+  plantilla aprobada; si no, del de Auphere, en el idioma configurado (33.3).
 - **Guardar** sube ``config_revision`` (``If-Match``), deja el antes y el después
   en ``channel_config_changes`` y se puede deshacer durante 10 minutos (32.7).
   Se aplica desde el siguiente mensaje: la puerta lo lee en cada turno.
 - **Comprobaciones**: las pruebas al día y el escalado con destinatario avisan
-  sin bloquear (32.8).
+  sin bloquear (32.8). ``escalation_template_missing`` avisa cuando hay
+  destinatarios por WhatsApp y el aviso no tiene por dónde salir.
 
 Los permisos de las personas del equipo (``full`` y ``readonly``) se quedan en el
 agente (32.10): aquí no se tocan.
@@ -188,22 +190,70 @@ async def recipients_of(session: AsyncSession, channel_id: uuid.UUID) -> list[Re
     ]
 
 
-async def notify_from(session: AsyncSession, channel: Channel) -> NotifyFrom:
-    """De qué número sale el aviso por WhatsApp (33.3): el del canal si su WABA
-    tiene la plantilla de aviso aprobada; si no, el de Auphere."""
-    waba_id = (channel.config or {}).get("waba_id")
+@dataclass(frozen=True)
+class NotifyRoute:
+    """Por dónde sale un aviso por WhatsApp (33.3): ``source`` es el número del
+    canal o el de avisos de Auphere, y ``language`` el idioma en que va la
+    plantilla. Meta rechaza un idioma que el WABA no tiene aprobado (#132001)."""
+
+    source: NotifyFrom
+    language: str
+
+
+async def approved_language(
+    session: AsyncSession, waba_id: str | None, template: str
+) -> str | None:
+    """El idioma en que ``template`` está aprobada en ``waba_id``, o ``None`` si
+    no lo está en ninguno. Con varios, el español primero y, entre ellos, por
+    orden alfabético (``es`` antes que ``es_CL``)."""
     if not waba_id:
-        return "auphere"
-    approved = await session.scalar(
-        sa.select(WhatsAppTemplateStatus.id)
-        .where(
-            WhatsAppTemplateStatus.waba_id == str(waba_id),
-            WhatsAppTemplateStatus.template_name == ESCALATION_TEMPLATE,
-            sa.func.upper(WhatsAppTemplateStatus.status) == "APPROVED",
+        return None
+    languages = (
+        await session.scalars(
+            sa.select(WhatsAppTemplateStatus.language).where(
+                WhatsAppTemplateStatus.waba_id == str(waba_id),
+                WhatsAppTemplateStatus.template_name == template,
+                sa.func.upper(WhatsAppTemplateStatus.status) == "APPROVED",
+            )
         )
-        .limit(1)
-    )
-    return "channel" if approved is not None else "auphere"
+    ).all()
+    if not languages:
+        return None
+    return min(languages, key=lambda lang: (not lang.lower().startswith("es"), lang))
+
+
+async def notify_from(
+    session: AsyncSession, channel: Channel, template: str = ESCALATION_TEMPLATE
+) -> NotifyRoute:
+    """De qué número y en qué idioma sale un aviso por WhatsApp (33.3): del
+    canal, en el idioma en que su WABA tiene la plantilla aprobada; si no la
+    tiene, del de Auphere, en el idioma configurado
+    (``auphere_alert_template_language``)."""
+    from nexus_api.config import get_settings
+
+    language = await approved_language(session, (channel.config or {}).get("waba_id"), template)
+    if language is not None:
+        return NotifyRoute(source="channel", language=language)
+    return NotifyRoute(source="auphere", language=get_settings().auphere_alert_template_language)
+
+
+async def auphere_can_notify() -> bool:
+    """Auphere tiene un número de avisos por defecto que puede enviar (con su
+    identificador de Meta y su token). Sesión propia: el registro es global y no
+    se lee con el rol del cliente."""
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.repositories.auphere_channels import AuphereChannelRepository, _to_resolved
+
+    async with get_sessionmaker()() as session:
+        row = await AuphereChannelRepository(session).get_default(provider="meta")
+        return row is not None and _to_resolved(row).can_send
+
+
+async def whatsapp_notice_can_leave(session: AsyncSession, channel: Channel) -> bool:
+    """El aviso de escalado por WhatsApp tiene por dónde salir: el canal tiene la
+    plantilla aprobada o Auphere tiene número de avisos."""
+    route = await notify_from(session, channel)
+    return route.source == "channel" or await auphere_can_notify()
 
 
 async def read_config(session: AsyncSession, channel: Channel) -> dict[str, Any]:
@@ -221,7 +271,7 @@ async def read_config(session: AsyncSession, channel: Channel) -> dict[str, Any]
             "summary": bool(cfg.get("escalation_summary", True)),
         },
         "wait_message": cfg.get("wait_message"),
-        "notify_from": await notify_from(session, channel),
+        "notify_from": (await notify_from(session, channel)).source,
     }
 
 
@@ -376,7 +426,8 @@ async def checks(session: AsyncSession, channel: Channel) -> list[dict[str, Any]
             "fix": None if tests_ok else "run_tests",
         }
     )
-    has_recipient = bool(await recipients_of(session, channel.id))
+    recipients = await recipients_of(session, channel.id)
+    has_recipient = bool(recipients)
     out.append(
         {
             "code": "escalation_recipient",
@@ -385,6 +436,15 @@ async def checks(session: AsyncSession, channel: Channel) -> list[dict[str, Any]
             "fix": None if has_recipient else "add_recipient",
         }
     )
+    # Hay a quien avisar por WhatsApp pero el aviso no tiene por dónde salir: ni
+    # la plantilla en el WABA del canal ni número de avisos de Auphere (bug
+    # el-aviso-de-escalada-no-llega). Lo arregla Auphere, no el partner.
+    if any(r.via == "whatsapp" for r in recipients) and not await whatsapp_notice_can_leave(
+        session, channel
+    ):
+        out.append(
+            {"code": "escalation_template_missing", "ok": False, "level": "warn", "fix": None}
+        )
     if channel.audience_mode == "everyone" or channel.audience_mode == "unset":
         for blocker in await everyone_blockers(session, channel):
             out.append({**blocker, "ok": False, "level": "block"})
@@ -896,8 +956,11 @@ __all__ = [
     "UNDO_WINDOW",
     "ChannelConfigError",
     "ConfigIn",
+    "NotifyRoute",
     "Recipient",
     "announce",
+    "approved_language",
+    "auphere_can_notify",
     "checks",
     "escalation_failed_attempts",
     "escalation_triggers",
@@ -915,5 +978,6 @@ __all__ = [
     "start_in_test_mode",
     "undo",
     "validate",
+    "whatsapp_notice_can_leave",
     "write_config",
 ]
