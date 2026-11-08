@@ -839,6 +839,9 @@ def parse_extraction(raw: str, *, price_currency: str | None) -> Extraction:
                     "kind": "amount",
                     "amount_minor": _minor(svc.price_amount, currency),
                 }
+                # Aparte del precio, que es la forma de la ficha: el catálogo la necesita
+                # para guardar el importe de un negocio que aún no tiene moneda (055, 3.1).
+                service["price_currency"] = currency
         out.services.append(service)
 
     policies = data.get("policies")
@@ -1072,6 +1075,7 @@ async def _apply_sections(
             description=item.get("description"),
             price_kind=str(price.get("kind") or "none"),
             amount_minor=price.get("amount_minor"),
+            price_currency=item.get("price_currency"),
         )
         svc = offered.get(_key(service.name))
         try:
@@ -1095,8 +1099,11 @@ async def _apply_sections(
                 continue
             pointer = f"/services/{svc.id}"
             if await _read_owned(session, pointer):
+                changes = dict(read)
+                if item.get("price_currency"):
+                    changes["price_currency"] = item["price_currency"]
                 await services_catalog.update_service(
-                    session, svc.id, read, actor=ctx.actor, ctx=ctx
+                    session, svc.id, changes, actor=ctx.actor, ctx=ctx
                 )
                 applied("services")
             else:

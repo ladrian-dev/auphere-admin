@@ -93,6 +93,7 @@ def test_json_ld_gives_the_business_data_without_a_model() -> None:
             "name": "Corte de pelo",
             "bookable": False,
             "price": {"kind": "amount", "amount_minor": 1500},
+            "price_currency": "EUR",
         }
     ]
     assert out.faqs == [{"q": "¿Hay que pedir cita?", "a": "Sí, por WhatsApp."}]
@@ -208,3 +209,22 @@ def test_the_sitemap_gives_its_locations_without_xml_entities() -> None:
         "</sitemapindex>"
     )
     assert sitemap_locations(index) == ([], ["https://cultorbarber.com/sitemap-pages.xml"])
+
+
+def test_a_price_read_from_the_web_carries_the_currency_it_was_read_in() -> None:
+    """Un negocio sin moneda guardada y una web que dice «15 €»: el precio leído lleva
+    su moneda, para que el catálogo lo guarde (spec 055, 3.1) en vez de quitarlo."""
+    out = parse_extraction(
+        json.dumps({"services": [{"name": "Corte", "price_amount": 15, "currency": "eur"}]}),
+        price_currency=None,
+    )
+    assert out.services[0]["price"] == {"kind": "amount", "amount_minor": 1500}
+    assert out.services[0]["price_currency"] == "EUR"
+
+
+def test_a_price_without_any_currency_is_still_not_invented() -> None:
+    out = parse_extraction(
+        json.dumps({"services": [{"name": "Corte", "price_amount": 15}]}), price_currency=None
+    )
+    assert "price" not in out.services[0]
+    assert "price_currency" not in out.services[0]
