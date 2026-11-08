@@ -737,10 +737,19 @@ def _tenant_uuid(state: AgentState) -> uuid.UUID:
     return uuid.UUID(state["tenant_id"])
 
 
+#: Native tools offered on every intent when the agent has them. Handing the
+#: conversation to a person can be decided in the middle of a booking or a question
+#: (an agent rule, a request it cannot do): offered only on ``escalate``, the agent
+#: said «te paso con alguien del equipo» and nobody was told (QA de staging, H-02).
+_EVERY_INTENT_NATIVE: tuple[str, ...] = ("escalate.escalate_to_human",)
+
+
 def _filter_tools_for_intent(bundle: AgentBundle, intent: str) -> tuple[str, ...]:
     category = _INTENT_CATEGORIES.get(intent, ())
     wl = bundle.tools
-    return tuple(t for t in category if t in wl)
+    tools = [t for t in category if t in wl]
+    tools.extend(t for t in _EVERY_INTENT_NATIVE if t in wl and t not in tools)
+    return tuple(tools)
 
 
 def _filter_tools_for_intent_with_composio(bundle: AgentBundle, intent: str) -> tuple[str, ...]:
