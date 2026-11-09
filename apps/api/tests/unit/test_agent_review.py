@@ -98,8 +98,11 @@ def test_services_without_price_or_bookable_without_duration() -> None:
     ]
 
 
-def test_no_hours_blocks_an_agent_that_books_and_warns_one_that_informs() -> None:
-    assert _codes(_input(has_hours=False)) == {"no_hours": "block"}
+def test_no_hours_warns_whether_the_agent_books_or_informs() -> None:
+    """Spec 057, 4.1 (decisión de Luis del 2026-11-09): un agente que reserva sin
+    horario se publica con aviso; mientras, pasa las citas a una persona. Antes
+    bloqueaba."""
+    assert _codes(_input(has_hours=False)) == {"no_hours": "warn"}
     informer = {"tools": [], "procedures": []}
     assert _codes(_input(has_hours=False, doc=informer)) == {"no_hours": "warn"}
 
@@ -142,7 +145,8 @@ def test_the_ai_disclosure_undecided_blocks_and_on_ask_warns_in_the_eu() -> None
 
 def test_blocking_findings_are_what_the_gate_reads() -> None:
     result = review(_input(has_hours=False, doc={"ai_disclosure": {"decided": False}}))
-    assert {f.code for f in result.blocking} == {"no_hours", "ai_disclosure_undecided"}
+    # Spec 057 (4.1): sin horario avisa; no es de lo que lee la puerta.
+    assert {f.code for f in result.blocking} == {"ai_disclosure_undecided"}
 
 
 def test_the_booking_promise_is_kept_by_reservas_and_booking_and_not_by_agendapro() -> None:
@@ -173,3 +177,47 @@ def test_the_booking_promise_is_kept_by_reservas_and_booking_and_not_by_agendapr
     assert promises_unkept("agendapro.create_appointment")
     assert not promises_unkept("booking.create_appointment")
     assert not promises_unkept("reservas.create")
+
+
+# ── Spec 057: la agenda (3.8, 4.1 y 4.5) ───────────────────────────────────
+
+
+def test_a_text_that_forbids_the_agenda_warns_with_its_pointer_and_asks_for_the_proposal() -> None:
+    from tests.unit.test_agent_spec_compiler import AGENDA, SPA_JEMMA_POINTERS, _spa_jemma
+
+    ctx = Context(tools={name: ToolInfo(name) for name in AGENDA})
+    data = _input(ctx=ctx)
+    data = ReviewInput(**{**data.__dict__, "spec": _spa_jemma()})
+    found = [f for f in review(data).findings if f.code == "forbids_agenda"]
+    assert {f.pointer for f in found} == SPA_JEMMA_POINTERS
+    assert {f.severity for f in found} == {"warn"}
+    assert all(f.fix == {"kind": "agenda_proposal"} for f in found)
+    assert "forbids_agenda" not in {f.code for f in review(data).blocking}
+    # Sin la agenda, el mismo texto no dice nada de ella.
+    data = ReviewInput(**{**data.__dict__, "spec": _spa_jemma(["reservas.services"])})
+    assert "forbids_agenda" not in {f.code for f in review(data).findings}
+
+
+def test_an_agenda_that_is_not_ready_warns_with_its_reasons_and_the_link() -> None:
+    result = review(_input(agenda_reasons=("no_staff", "no_services")))
+    found = [f for f in result.findings if f.code == "agenda_not_ready"]
+    assert len(found) == 1
+    finding = found[0]
+    assert finding.severity == "warn"
+    assert finding.reasons == ("no_staff", "no_services")
+    assert finding.fix == {"kind": "link", "target": "reservas"}
+    out = finding.to_json()
+    assert out["reasons"] == ["no_staff", "no_services"]
+    assert result.blocking == []
+    # Con la agenda lista, nada; y sin agenda, los motivos no son suyos.
+    assert "agenda_not_ready" not in _codes(_input(agenda_reasons=()))
+    informer = {"tools": [], "procedures": []}
+    assert "agenda_not_ready" not in _codes(_input(agenda_reasons=("no_staff",), doc=informer))
+
+
+def test_a_bookable_service_without_duration_still_blocks_an_agent_with_the_agenda() -> None:
+    """Spec 057, 4.5: es un servicio mal dado de alta (043, requisito 14), no Reservas
+    sin terminar."""
+    services = (ServiceFact("s1", "Corte", True, None, True),)
+    result = review(_input(services=services, has_hours=False, agenda_reasons=("no_staff",)))
+    assert {f.code for f in result.blocking} == {"bookable_without_duration"}

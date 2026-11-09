@@ -110,12 +110,14 @@ async def run_jobs(
     judge: Any | None = None,
     router: Any | None = None,
     customer: Any | None = None,
+    agenda_builder: Any | None = None,
 ) -> int:
     """Corre los trabajos en cola con los manejadores de verdad. ``builder=None``
     es el generador sin modelo (local); ``judge``, ``router`` y ``customer`` (el
     cliente simulado; sin él, una pasada es un turno) son los del trabajo
     ``tests`` (sin ``router``, el que haya puesto la prueba)."""
     from nexus_worker.jobs import DbJobStore, JobRegistry, drain_once
+    from nexus_worker.jobs.handlers.agenda_text import make_agenda_text_handler
     from nexus_worker.jobs.handlers.agent_draft import make_agent_draft_handler
     from nexus_worker.jobs.handlers.agent_publish import make_publish_handler
     from nexus_worker.jobs.handlers.agent_tests import make_agent_tests_handler
@@ -125,6 +127,12 @@ async def run_jobs(
     registry.register(
         "agent_draft",
         make_agent_draft_handler(complete_factory=lambda _tenant: builder),
+        timeout_s=60,
+    )
+    # Spec 057: la propuesta de texto de la agenda (sin ``agenda_builder``, el respaldo).
+    registry.register(
+        "agenda_text",
+        make_agenda_text_handler(complete_factory=lambda _tenant: agenda_builder),
         timeout_s=60,
     )
     registry.register(

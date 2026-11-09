@@ -46,6 +46,8 @@ JOB_KINDS: tuple[str, ...] = (
     "suggestions",
     # Spec 047, enmienda del 2026-10-29 (T200, migración 0206): identificar el sector.
     "sector_identify",
+    # Spec 057 (requisito 3.6, migración 0229): proponer el texto de la agenda.
+    "agenda_text",
 )
 JOB_STATUSES: tuple[str, ...] = ("queued", "running", "done", "failed")
 #: Los estados en los que un trabajo sigue vivo y puede caducar.

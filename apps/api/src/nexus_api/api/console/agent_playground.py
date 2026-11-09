@@ -272,6 +272,8 @@ async def send_message(
     from nexus_worker.simulation.runner import SimConversation, run_turn
     from nexus_worker.simulation.world import World
 
+    from nexus_api.services.reservations.passing import agenda_ready
+
     assert scope.agent_id is not None
     lock = f"{_key(scope.tenant.id, scope.agent_id, session_id)}:turn"
     if not await redis.set(lock, "1", nx=True, ex=180):
@@ -286,6 +288,9 @@ async def send_message(
             identifier=data["conv"]["identifier"],
         )
         turn_no = len(data.get("transcript") or []) // 2 + 1
+        # Spec 057 (requisito 4): «así lo verá su cliente». The client's real
+        # agenda, read on every message: it books as soon as Reservas is finished.
+        ready = await agenda_ready(scope.session, scope.tenant.id)
         try:
             async with usage_turn(
                 tenant_id=scope.tenant.id,
@@ -299,6 +304,7 @@ async def send_message(
                     world=world,
                     conv=conv,
                     text=body.text,
+                    agenda_ready=ready,
                 )
         except LookupError as exc:
             raise _error("unknown_version", status.HTTP_404_NOT_FOUND) from exc

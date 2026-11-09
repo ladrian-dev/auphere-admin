@@ -25,7 +25,7 @@ Lo que este módulo decide, y por qué:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from typing import Any, Literal
 
@@ -405,6 +405,22 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
     What connecting turned on can be on the draft's list and not in the document
     (``auto_enable_connector_tools``): for the screen it is on, so one switch neither
     misses it nor takes the others with it."""
+    return key in await _set_spec_tools(scope, [key], enabled=enabled)
+
+
+async def _set_spec_tools(
+    scope: ClientScope,
+    keys: Sequence[str],
+    *,
+    enabled: bool,
+    check_in_use: bool = True,
+) -> set[str]:
+    """:func:`_set_spec_tool` for several at once: one validation and one write. Spec
+    057 (2.2 y 2.5): the agenda goes in and out whole. Switching off also takes the
+    names out of ``procedures[].tools`` so the AgentSpec still validates; the words of
+    those procedures change with the builder's proposal (requirement 3), not here.
+    ``check_in_use=False`` (the agenda): what a task uses goes too. Returns the keys
+    that were on before."""
     from nexus_api.services.agent_spec import missing
     from nexus_api.services.agent_spec.schema import dump
     from nexus_api.services.agent_spec.validator import (
@@ -419,19 +435,32 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
     assert spec is not None
     tools = list(spec.tools or [])
     listed = list(_target.tools or []) if _target is not None else []
-    was = key in tools or key in listed
-    if enabled == was:
+    was = {k for k in keys if k in tools or k in listed}
+    changing = [k for k in dict.fromkeys(keys) if (k in was) != enabled]
+    if not changing:
         return was
-    if not enabled:
-        await _refuse_if_in_use(scope, spec, _target, key)
-    wanted = [*tools, key] if enabled else [t for t in tools if t != key]
+    if not enabled and check_in_use:
+        for key in changing:
+            await _refuse_if_in_use(scope, spec, _target, key)
+    gone = set(changing)
+    wanted = (
+        list(dict.fromkeys([*tools, *changing])) if enabled else [t for t in tools if t not in gone]
+    )
     if len(wanted) > _MAX_SPEC_TOOLS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"code": "too_many_tools", "max": _MAX_SPEC_TOOLS},
         )
-    outside = [t for t in listed if t not in tools and t != key and needs_connector(t)]
+    outside = [t for t in listed if t not in tools and t not in keys and needs_connector(t)]
     doc = dump(spec)
+    if not enabled:
+        for proc in doc.get("procedures") or []:
+            if proc.get("tools"):
+                kept = [t for t in proc["tools"] if t not in gone]
+                if kept:
+                    proc["tools"] = kept
+                else:
+                    proc.pop("tools", None)
     ctx = await load_context(
         scope.session, partner_id=scope.principal.partner.id, agent_id=scope.agent_id
     )
@@ -449,6 +478,35 @@ async def _set_spec_tool(scope: ClientScope, key: str, *, enabled: bool) -> bool
             detail={"code": "spec_invalid", "problems": problems_out(problems)},
         )
     await write_spec(scope, checked, expected_revision=None, lacking=lacking)
+    return was
+
+
+async def set_agent_tools(scope: ClientScope, keys: Sequence[str], *, enabled: bool) -> set[str]:
+    """Spec 057 (2.2, 2.5 y 2.7): several tools on or off in the agent's draft at once,
+    whatever its mode. A structured AgentSpec goes through :func:`_set_spec_tools`; an
+    «instructions» agent changes its version's list, as the switches of Capacidades
+    do. Returns the keys that were on before."""
+    from nexus_api.services.testing.suites import mark_stale
+
+    draft, _created = await ensure_draft(scope)
+    if draft.spec and draft.spec.get("mode") == "structured":
+        return await _set_spec_tools(scope, keys, enabled=enabled, check_in_use=False)
+    names = list(draft.tools or [])
+    was = {k for k in keys if k in names}
+    if enabled:
+        after = list(dict.fromkeys([*names, *keys]))
+    else:
+        gone = set(keys)
+        after = [n for n in names if n not in gone]
+    if after != names:
+        if len(after) > _MAX_SPEC_TOOLS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "too_many_tools", "max": _MAX_SPEC_TOOLS},
+            )
+        draft.tools = after
+        await mark_stale(scope.session, draft.agent_id)
+        await draft_written(scope, draft)
     return was
 
 

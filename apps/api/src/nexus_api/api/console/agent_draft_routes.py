@@ -188,7 +188,12 @@ async def _spec_and_missing(
     AgentSpec without what we do not have, and what is missing: what this read
     took out (an agent drafted before the amendment), what the builder left out
     (``policies["builder"]``) and what the AgentSpec promises with no tool —
-    worked out on every read, so an edit that removes a promise clears it."""
+    worked out on every read, so an edit that removes a promise clears it.
+
+    Spec 057, requirement 6 (R6): what the builder left out is checked against
+    what the version has now (``missing.still_missing``): a note it no longer
+    needs — the agenda it gained later, Reservas switched on — is not shown, on
+    the draft nor on the published version, with no migration (6.4)."""
     from nexus_api.services.agent_spec.validator import load_context
 
     from .agent_spec_drafts import builder_missing, spec_of
@@ -202,10 +207,13 @@ async def _spec_and_missing(
     if spec.mode != "structured":
         return dump(spec), []
     taken: list[missing.MissingCapability] = []
-    if spec.skills or spec.connection_requests:
+    noted = builder_missing(target)
+    if spec.skills or spec.connection_requests or noted:
         ctx = await load_context(scope.session, partner_id=scope.principal.partner.id)
-        spec, taken = missing.strip_spec(spec, ctx)
-    found = missing.merge(missing.from_promises(spec), taken, builder_missing(target))
+        if spec.skills or spec.connection_requests:
+            spec, taken = missing.strip_spec(spec, ctx)
+        noted = missing.still_missing(noted, spec, ctx)
+    found = missing.merge(missing.from_promises(spec), taken, noted)
     return dump(spec), [MissingCapabilityOut(**m.to_json()) for m in found]
 
 

@@ -179,6 +179,9 @@ _NEVER_BACKS: Final = frozenset({"CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK"})
 #: An appointment that is kept: the customer's own bookings, their «yes».
 _KEEPS: Final = frozenset({"reservas.list_mine", "reservas.confirm_attendance"})
 _RESERVAS_BOOKS: Final = frozenset({"reservas.create", "reservas.reschedule"})
+#: Passing the conversation to a person: backs a reply only while the agenda is
+#: not finished (:func:`backs`, ``agenda_pending``).
+_HAND_OFF: Final = "escalate.escalate_to_human"
 #: Google Calendar is no longer where an agent books (spec 043, R11.9), so it is not
 #: in ``TOOL_ACTIONS``. An agent that has not passed to Reservas yet still runs these
 #: (R11.2), and the event it wrote is the appointment it promised: it backs the reply.
@@ -208,12 +211,18 @@ _BOOKS: Final = booking_tools()
 _TRIES: Final = _BOOKS | _NEVER_BACKS
 
 
-def backs(envelope: Any) -> bool:
-    """Does this tool envelope back a reply that takes a booking for granted?"""
+def backs(envelope: Any, *, agenda_pending: bool = False) -> bool:
+    """Does this tool envelope back a reply that takes a booking for granted?
+
+    ``agenda_pending`` (spec 057, requisito 4.2): the client's agenda is not
+    finished, so the agent takes the service, the day and the time and passes the
+    conversation to a person, who confirms it. That hand-over backs the reply: «te
+    escribirán para confirmar tu cita» is the truth, not an invented booking."""
     if not isinstance(envelope, Mapping):
         return False
     tool = envelope.get("tool")
-    if tool not in _BOOKS and tool not in _KEEPS:
+    hands_over = agenda_pending and tool == _HAND_OFF
+    if tool not in _BOOKS and tool not in _KEEPS and not hands_over:
         return False
     status = envelope.get("status")
     if status == "skipped:dry_run":
@@ -224,6 +233,8 @@ def backs(envelope: Any) -> bool:
         return bool(envelope.get("replayed"))
     if status != "ok":
         return False
+    if hands_over:
+        return True
     raw = envelope.get("result")
     result: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
     if tool in _RESERVAS_BOOKS:
@@ -236,8 +247,8 @@ def backs(envelope: Any) -> bool:
     return True
 
 
-def is_backed(envelopes: Iterable[Any]) -> bool:
-    return any(backs(e) for e in envelopes)
+def is_backed(envelopes: Iterable[Any], *, agenda_pending: bool = False) -> bool:
+    return any(backs(e, agenda_pending=agenda_pending) for e in envelopes)
 
 
 def attempted(envelopes: Iterable[Any]) -> bool:
@@ -393,14 +404,17 @@ async def unbacked_claim(
     text: str,
     envelopes: Iterable[Any],
     simulated_agenda: bool = False,
+    agenda_pending: bool = False,
 ) -> bool:
     """The brake's whole question: is this a claim with nothing behind it?
     ``simulated_agenda``: a booking stands in the simulated world of the
-    Playground or of a test pass, which the database does not know."""
+    Playground or of a test pass, which the database does not know.
+    ``agenda_pending``: the client's agenda is not finished (spec 057), and a
+    hand-over to a person backs the reply (:func:`backs`)."""
     if not might_claim(text):
         return False
     seen = list(envelopes)
-    if is_backed(seen):
+    if is_backed(seen, agenda_pending=agenda_pending):
         return False
     tried = attempted(seen)
     earlier = simulated_agenda or await conversation_backed(turn.tenant_id, turn.conversation_id)

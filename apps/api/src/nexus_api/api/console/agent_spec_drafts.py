@@ -151,6 +151,8 @@ async def write_spec(
     )
     previous = dict(draft.spec or {})
     noted = list(lacking or [])
+    stored = builder_missing(draft)
+    kept = stored
     if spec.mode == "structured":
         ctx = await load_context(session, partner_id=scope.principal.partner.id)
         if previous.get("mode") == "structured":
@@ -161,6 +163,9 @@ async def write_spec(
             noted.extend(dropped)
         spec, dropped = missing.strip_spec(spec, ctx)
         noted.extend(dropped)
+        # Spec 057 (6.1, R6): what the draft carried and the version no longer
+        # lacks — the agenda it has now, a module switched on — stops travelling.
+        kept = missing.still_missing(stored, spec, ctx)
     doc = dump(spec)
     if "test_suite" not in doc and previous.get("test_suite"):
         doc["test_suite"] = previous["test_suite"]
@@ -181,9 +186,12 @@ async def write_spec(
         policies.pop("model_policy", None)
     else:
         policies["model_policy"] = runtime
-    if noted:
-        merged = missing.merge(builder_missing(draft), noted)
-        policies[BUILDER_POLICY] = {"missing_capabilities": [m.to_json() for m in merged]}
+    if noted or kept != stored:
+        merged = missing.merge(kept, noted)
+        if merged:
+            policies[BUILDER_POLICY] = {"missing_capabilities": [m.to_json() for m in merged]}
+        else:
+            policies.pop(BUILDER_POLICY, None)
     draft.policies = _sync_disclosure(policies, spec, actor=scope.principal.actor)
     if _changes_behaviour(previous, doc):
         await mark_stale(session, agent.id)

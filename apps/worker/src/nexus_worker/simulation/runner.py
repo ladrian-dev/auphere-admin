@@ -184,11 +184,18 @@ async def run_turn(
     llm_router: Any | None = None,
     timeout_s: float = TURN_TIMEOUT_S,
     model_policy: dict[str, Any] | None = None,
+    agenda_ready: bool | None = None,
 ) -> TurnOutcome:
     """Un mensaje del cliente simulado y lo que el agente hace con él. El mundo
     cambia en el sitio (agenda, hora, lo que habría hecho). ``model_policy``: la
     política de modelo con la que corre en lugar de la de la versión (la
-    comprobación de calidad, 39.9)."""
+    comprobación de calidad, 39.9).
+
+    ``agenda_ready`` (spec 057, requisito 4): si la agenda del cliente está lista,
+    dicho por quien llama; el manejador lo usa en vez de leerlo. El playground pasa
+    la de verdad («así lo verá su cliente»); la suite del agente, ``True``: mide el
+    texto del agente, no lo que le falta al cliente. ``None``: se lee, como en el
+    canal."""
     from langgraph.checkpoint.memory import MemorySaver
     from nexus_api.core.llm_proxy import (
         llm_proxy_partner_scope,
@@ -197,7 +204,7 @@ async def run_turn(
     from nexus_api.services.reservations.passing import reservas_enabled
 
     from nexus_worker.runtime.agent_loader import AgentLoader, bundle_of
-    from nexus_worker.runtime.pipeline import build_pipeline
+    from nexus_worker.runtime.pipeline import agenda_readiness, build_pipeline
     from nexus_worker.runtime.turn_clock import simulated_clock
 
     sm = get_sessionmaker()
@@ -262,7 +269,12 @@ async def run_turn(
     scope = (
         llm_proxy_partner_scope(partner_id) if partner_id is not None else contextlib.nullcontext()
     )
-    with tenant_context(tenant_id), simulated_clock(world.now_at), scope:
+    with (
+        tenant_context(tenant_id),
+        simulated_clock(world.now_at),
+        agenda_readiness(agenda_ready),
+        scope,
+    ):
         final = await asyncio.wait_for(pipeline.ainvoke(state, config=config), timeout=timeout_s)
     final = final or {}
     failure = failure_of_turn(final)

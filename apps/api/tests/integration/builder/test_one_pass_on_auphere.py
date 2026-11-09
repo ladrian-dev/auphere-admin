@@ -526,10 +526,22 @@ async def test_a_draft_no_test_can_fix_does_not_spend_the_pass(
 async def test_a_review_blocker_stops_first_unless_someone_decides_to_skip_it(
     client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
 ) -> None:
-    """Reserva y no tiene horario: se dice antes de pagar nada. Quien lo salta con un motivo
-    sigue, y entonces sí hacen falta las pruebas."""
+    """Cita una herramienta que no existe: se dice antes de pagar nada. Quien lo salta con un
+    motivo sigue, y entonces sí hacen falta las pruebas.
+
+    Spec 057 (4.1): hasta el 2026-11-09 el bloqueante de esta prueba era reservar sin
+    horario, que ahora avisa sin bloquear."""
     agent_id = await _agent(client, biz, fake_redis, db_session)
     await _decide_the_disclosure(client, biz, agent_id)
+    read = (await client.get(f"{_url(biz, agent_id)}/draft", headers=biz.headers())).json()
+    spec = copy.deepcopy(read["spec"])
+    spec["rules"] = [*(spec.get("rules") or []), "Si piden cambiar, usa reservas.mover_cita."]
+    patch = await client.patch(
+        f"{_url(biz, agent_id)}/draft",
+        json={"spec": spec},
+        headers={**biz.headers(), "If-Match": f'"{read["revision"]}"'},
+    )
+    assert patch.status_code == 200, patch.text
 
     stopped = await client.post(f"{_url(biz, agent_id)}/publish", json={}, headers=biz.headers())
     assert stopped.status_code == 202, stopped.text
@@ -539,7 +551,8 @@ async def test_a_review_blocker_stops_first_unless_someone_decides_to_skip_it(
     ).json()
     assert job["error_code"] == "gate_blocked"
     gate = next(b for b in job["progress"]["blocks"] if b.get("key") == "gate")
-    assert "no_hours" in {i["code"] for i in gate["overridable"]}
+    assert "unknown_tool" in {i["code"] for i in gate["overridable"]}
+    assert "no_hours" not in {i["code"] for i in gate["overridable"]}
     assert await _runs(db_session, biz, agent_id) == []
 
     skipped = await client.post(

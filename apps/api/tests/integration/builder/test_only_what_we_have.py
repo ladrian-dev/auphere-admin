@@ -682,3 +682,121 @@ async def test_an_old_draft_with_what_we_lack_is_cleaned_not_refused(
         )
     assert stored is not None and "quickbooks" not in json.dumps(stored.spec)
     assert "quickbooks" in json.dumps(stored.policies["builder"])
+
+
+# ── Spec 057, T018: el aviso se recalcula al leer (requisito 6) ────────────
+
+#: Lo que guardó el constructor de «Recepción de Spa Jemma» con Reservas apagado
+#: (staging, 2026-11-08). La versión que se publicó después llevaba las 9.
+SPA_JEMMA_NOTE: list[dict[str, Any]] = [
+    {
+        "kind": "action",
+        "key": "modify_booking",
+        "label": "cambiar o cancelar citas",
+        "reason": "no_tool",
+        "source": "text",
+        "pointer": None,
+    },
+    {
+        "kind": "action",
+        "key": "book",
+        "label": "reservar citas",
+        "reason": "no_tool",
+        "source": "text",
+        "pointer": None,
+    },
+    {
+        "kind": "module",
+        "key": "reservas",
+        "label": "la agenda (Reservas no está activo para este cliente)",
+        "reason": "module_off",
+        "source": "tool",
+        "pointer": None,
+    },
+    {
+        "kind": "tool",
+        "key": "calendar.unknown",
+        "label": "calendar.unknown",
+        "reason": "tool_unknown",
+        "source": "tool",
+        "pointer": None,
+    },
+]
+
+
+async def _agent_with_the_agenda_and_a_stale_note(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> str:
+    """Un agente con las 9 de Reservas y, en su borrador, la nota que dejó el
+    constructor cuando aún no las tenía."""
+    from nexus_api.services.reservations.passing import RESERVAS_TOOLS
+
+    await turn_reservas_on(db_session, biz)
+    reply = copy.deepcopy(RECEPTION)
+    reply["tools"] = [*RESERVAS_TOOLS, "escalate.escalate_to_human"]
+    body = await _job(client, biz, fake_redis, FakeBuilder(reply=reply), name="Recepción")
+    agent_id = str(body["result"]["agent_id"])
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        cfg = await db_session.scalar(
+            sa.select(AgentConfig).where(
+                AgentConfig.agent_id == uuid.UUID(agent_id),
+                AgentConfig.status == AgentConfigStatus.STAGED,
+            )
+        )
+        assert cfg is not None
+        assert {"reservas.create", "reservas.reschedule", "reservas.cancel"} <= set(cfg.tools)
+        cfg.policies = {**(cfg.policies or {}), "builder": {"missing_capabilities": SPA_JEMMA_NOTE}}
+    return agent_id
+
+
+async def test_a_stale_note_is_not_shown_on_the_draft_nor_on_the_published_version(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    agent_id = await _agent_with_the_agenda_and_a_stale_note(client, db_session, biz, fake_redis)
+
+    draft = await _draft(client, biz, agent_id)
+    assert draft["exists"] is True
+    assert _keys(draft["missing_capabilities"]) == {("tool", "calendar.unknown", "tool_unknown")}
+
+    # Publicada, sin borrador: la versión activa se lee igual (6.1).
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        cfg = await db_session.scalar(
+            sa.select(AgentConfig).where(
+                AgentConfig.agent_id == uuid.UUID(agent_id),
+                AgentConfig.status == AgentConfigStatus.STAGED,
+            )
+        )
+        assert cfg is not None
+        cfg.status = AgentConfigStatus.ACTIVE
+    published = await _draft(client, biz, agent_id)
+    assert published["exists"] is False and published["active_number"] is not None
+    assert _keys(published["missing_capabilities"]) == {
+        ("tool", "calendar.unknown", "tool_unknown")
+    }
+
+
+async def test_writing_the_spec_does_not_carry_a_stale_note(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    agent_id = await _agent_with_the_agenda_and_a_stale_note(client, db_session, biz, fake_redis)
+    read = await _draft(client, biz, agent_id)
+    edited = copy.deepcopy(read["spec"])
+    edited["voice"]["greeting"] = "¡Buenas!"
+    patch = await client.patch(
+        f"{_agents_url(biz)}/agents/{agent_id}/draft",
+        json={"spec": edited},
+        headers={**biz.headers(), "If-Match": f'"{read["revision"]}"'},
+    )
+    assert patch.status_code == 200, patch.text
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        stored = await db_session.scalar(
+            sa.select(AgentConfig)
+            .where(
+                AgentConfig.agent_id == uuid.UUID(agent_id),
+                AgentConfig.status == AgentConfigStatus.STAGED,
+            )
+            .execution_options(populate_existing=True)
+        )
+    assert stored is not None
+    kept = stored.policies["builder"]["missing_capabilities"]
+    assert [(m["kind"], m["key"]) for m in kept] == [("tool", "calendar.unknown")]

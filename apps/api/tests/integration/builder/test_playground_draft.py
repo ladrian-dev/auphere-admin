@@ -26,7 +26,7 @@ from nexus_worker.simulation.runner import set_simulation_router
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.tenant_context import tenant_scoped_session
-from nexus_api.db.models import Conversation, Reservation, ScheduledJob
+from nexus_api.db.models import Conversation, Reservation, ReservationStaff, ScheduledJob
 from tests.conftest import add_console_member
 
 from ..business._business_world import Biz, new_business, write
@@ -58,6 +58,10 @@ async def biz(client: Any, db_session: AsyncSession, console_world: dict[str, An
         revision=0,
         expect=201,
     )
+    # Spec 057 (requisito 4): alguien del equipo, o la agenda no está lista y el
+    # playground, que lee la de verdad, pasaría la cita a una persona.
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        db_session.add(ReservationStaff(tenant_id=biz.tenant_id, name="Lucía", position=1))
     return biz
 
 
@@ -217,6 +221,57 @@ async def test_a_booking_of_an_earlier_turn_backs_the_reply_of_the_next_one(
     sent = await client.post(url, json={"text": "Gracias"}, headers=biz.headers())
     assert sent.status_code == 200, sent.text
     assert sent.json()["turn"]["bubbles"] == ["Perfecto, te esperamos el lunes a las 10:00."]
+
+
+async def test_a_client_without_staff_hands_the_appointment_to_a_person(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any, scripted: InMemoryProvider
+) -> None:
+    """Spec 057 (requisitos 4.2 y 4.3): el playground lee la agenda de verdad, «así
+    lo verá su cliente». Sin nadie en el equipo, el agente no ve con qué buscar ni
+    reservar, pasa la cita a una persona y no reserva nada; con alguien, en el
+    mensaje siguiente reserva, sin publicar de nuevo."""
+    tools = ["reservas.find_slots", "reservas.create", "escalate.escalate_to_human"]
+    agent_id = await _agent(client, biz, fake_redis, tools=tools)
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        await db_session.execute(sa.update(ReservationStaff).values(archived_at=sa.func.now()))
+    session = (await client.post(_url(biz, agent_id), json={}, headers=biz.headers())).json()
+    url = f"{_url(biz, agent_id)}/{session['session_id']}/messages"
+    monday = _next_monday()
+    booking = ToolCall(
+        id="c1",
+        name="reservas.create",
+        arguments={"date": monday.isoformat(), "time": "10:00", "idempotency_key": "k1"},
+    )
+    hand_off = ToolCall(
+        id="e1",
+        name="escalate.escalate_to_human",
+        arguments={"reason": "Corte de pelo, el lunes a las 10:00"},
+    )
+    _script(scripted, [booking, hand_off], "Se lo paso al equipo, que te escribirá.", intent="book")
+
+    sent = await client.post(url, json={"text": "Corte el lunes a las 10"}, headers=biz.headers())
+
+    assert sent.status_code == 200, sent.text
+    out = sent.json()
+    phrases = [a["phrase"] for a in out["turn"]["actions"]]
+    assert phrases == ["Pasar la conversación al equipo: Corte de pelo, el lunes a las 10:00"]
+    assert out["agenda"] == [], "la reserva inventada la rechazó la lista blanca"
+    answering = [c for c in scripted.calls if c.role == "book"]
+    offered = {t["function"]["name"] for c in answering for t in c.tools}
+    assert "reservas.create" not in offered and "reservas.find_slots" not in offered
+    notes = [str(m.get("content")) for m in answering[0].messages if m.get("role") == "system"]
+    assert any(n.startswith("AGENDA SIN TERMINAR") for n in notes)
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        await db_session.execute(sa.update(ReservationStaff).values(archived_at=None))
+    scripted.calls.clear()
+    _script(scripted, [booking], "Listo, te reservé el lunes a las 10:00.", intent="book")
+    again = await client.post(url, json={"text": "¿Y ahora?"}, headers=biz.headers())
+
+    assert again.status_code == 200, again.text
+    assert len(again.json()["agenda"]) == 1, "con alguien en el equipo, reserva"
+    offered = {t["function"]["name"] for c in scripted.calls if c.role == "book" for t in c.tools}
+    assert "reservas.create" in offered
 
 
 async def test_no_side_effect_leaves_the_simulation(

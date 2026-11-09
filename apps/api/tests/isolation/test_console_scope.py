@@ -482,6 +482,11 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         # Spec 056 (T028): el acceso del cliente desde la consola de partners.
         ("PUT", "/console/clients/{ref}/client-access"): {"enabled": False, "modules": []},
         ("POST", "/console/clients/{ref}/client-members"): {"email": "x@example.com"},
+        # Spec 057 (T005): «Agenda (Reservas)» de un agente.
+        ("PUT", "/console/clients/{ref}/agents/{agent_id}/agenda"): {
+            "enabled": True,
+            "reservas": {"mode": "services"},
+        },
     }
     return bodies.get((sorted(route.methods)[0], route.path))
 

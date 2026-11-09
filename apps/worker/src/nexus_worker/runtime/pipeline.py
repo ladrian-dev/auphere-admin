@@ -53,7 +53,9 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
@@ -699,6 +701,112 @@ _HAND_OFF_NOTE = (
 
 def _hand_off_note_applies(available_names: Iterable[str]) -> bool:
     return _HAND_OFF_TOOL in set(available_names)
+
+
+# ── Spec 057 (requisito 4): la agenda aún no está lista ──────────────────────
+#
+# El partner publica un agente con agenda antes de que el cliente termine
+# Reservas (sin profesionales, sin horario…). Mientras falte algo, en cada turno
+# (``research.md`` R4): fuera lo que pide una agenda terminada, una nota que manda
+# la cita a una persona y, sin herramienta para pasarla, el runtime la pasa. Se lee
+# en cada turno y no en el bundle cacheado: ninguna escritura de Reservas publica
+# la invalidación del bundle, y el agente tiene que reservar «desde el mensaje
+# siguiente» (4.3).
+
+_AGENDA_PREFIX: Final = "reservas."
+#: Lo que pide una agenda terminada. ``services``, ``list_mine``, ``cancel`` y
+#: ``confirm_attendance`` sirven con lo que ya hay y se quedan.
+_NEEDS_A_READY_AGENDA: Final = frozenset(
+    {
+        "reservas.find_slots",
+        "reservas.create",
+        "reservas.reschedule",
+        "reservas.join_waitlist",
+        "reservas.answer_offer",
+    }
+)
+#: El motivo de la Bandeja cuando el runtime pasa la cita a una persona
+#: (``specs/057-agenda-desde-el-agente/contracts/events.md``).
+AGENDA_NOT_READY: Final = "agenda_not_ready"
+#: Sin «tu cita» ni «su cita»: el filtro del freno de citas saltaría si el modelo
+#: la copia (``booking_brake.might_claim``).
+_AGENDA_NOT_READY_NOTE: Final = (
+    "AGENDA SIN TERMINAR: el negocio aún no ha terminado de preparar su agenda, así que no "
+    "puedes buscar horas libres, reservar, mover una cita ni apuntar a nadie en la lista de "
+    "espera. Si el cliente pide una cita, averigua qué servicio quiere y qué día y a qué hora "
+    "le viene mejor (pregunta solo lo que falte). Con eso, llama a "
+    f"{_HAND_OFF_TOOL} en este mismo turno, con el servicio, el día y la hora en el motivo, y "
+    "dile que el equipo le escribirá para confirmar la hora. Nunca digas que no hay horas "
+    "libres ni huecos, y nunca des una cita por hecha."
+)
+#: El agente no puede pasar la conversación: una petición de cita la pasa el runtime
+#: (``intent == "book"``); en lo demás, que no prometa lo que no puede hacer.
+_AGENDA_NOT_READY_NOTE_NO_HAND_OFF: Final = (
+    "AGENDA SIN TERMINAR: el negocio aún no ha terminado de preparar su agenda, así que no "
+    "puedes buscar horas libres, reservar, mover una cita ni apuntar a nadie en la lista de "
+    "espera. Si el cliente pide una cita, dile que ahora mismo no puedes darla por aquí. "
+    "Nunca digas que no hay horas libres ni huecos, y nunca des una cita por hecha."
+)
+
+#: El playground y las pruebas del agente dicen si la agenda está lista
+#: (:func:`agenda_readiness`); el canal no dice nada y el manejador la lee.
+_AGENDA_READY_GIVEN: ContextVar[bool | None] = ContextVar("nexus_agenda_ready_given", default=None)
+
+
+@contextmanager
+def agenda_readiness(ready: bool | None) -> Iterator[None]:
+    """Todo turno que corre dentro toma ``ready`` como «la agenda está lista» en
+    vez de leerla (``simulation.runner.run_turn``). ``None``: se lee."""
+    token = _AGENDA_READY_GIVEN.set(ready)
+    try:
+        yield
+    finally:
+        _AGENDA_READY_GIVEN.reset(token)
+
+
+def given_agenda_ready() -> bool | None:
+    """Lo que dijo :func:`agenda_readiness`, si dijo algo."""
+    return _AGENDA_READY_GIVEN.get()
+
+
+def _has_agenda(agent_tools: Iterable[str]) -> bool:
+    return any(name.startswith(_AGENDA_PREFIX) for name in agent_tools)
+
+
+def without_unready_agenda(names: Iterable[str]) -> tuple[str, ...]:
+    """``names`` sin lo que pide una agenda terminada, en su orden."""
+    return tuple(n for n in names if n not in _NEEDS_A_READY_AGENDA)
+
+
+def _agenda_not_ready_note_applies(agent_tools: Iterable[str], *, ready: bool | None) -> bool:
+    """La condición es tener la agenda, no la intención: una petición de cita
+    clasificada ``info`` también tiene que pasar. ``ready is None`` (sin leer, o
+    la lectura falló): nada, falla abierta."""
+    return ready is False and _has_agenda(agent_tools)
+
+
+def _agenda_not_ready_note(available_names: Iterable[str]) -> str:
+    if _HAND_OFF_TOOL in set(available_names):
+        return _AGENDA_NOT_READY_NOTE
+    return _AGENDA_NOT_READY_NOTE_NO_HAND_OFF
+
+
+def _handed_over(envelopes: Iterable[Mapping[str, Any]]) -> bool:
+    """El turno llamó a :data:`_HAND_OFF_TOOL` y salió (o la simuló el playground)."""
+    return any(
+        e.get("tool") == _HAND_OFF_TOOL and e.get("status") in ("ok", "skipped:dry_run")
+        for e in envelopes
+    )
+
+
+async def _agenda_ready_this_turn(tenant_id: uuid.UUID, agent_tools: Iterable[str]) -> bool | None:
+    """``None`` si el agente no tiene agenda (no se lee) o si no se pudo leer."""
+    if not _has_agenda(agent_tools):
+        return None
+    given = _AGENDA_READY_GIVEN.get()
+    if given is not None:
+        return given
+    return await _load_agenda_ready(tenant_id)
 
 
 def _catalog_note_applies(channel_type: str | None, available_names: Iterable[str]) -> bool:
@@ -1814,6 +1922,18 @@ def make_handler_node(
             # read is closed — no connector tool at all, only the house's.
             tool_policy = await _load_tool_policy(tenant_id, _agent_uuid(state))
             available_names = allowed_names(available_names, tool_policy)
+            # Spec 057 (requisito 4): with the agenda not finished, what needs a
+            # finished one leaves the whitelist — the model never sees it and
+            # ``registry.dispatch`` refuses it if invented. Read once per turn under
+            # the client's RLS; ``None`` = no agenda, or unreadable (fails open).
+            agenda_ready = await _agenda_ready_this_turn(tenant_id, bundle.tools)
+            if agenda_ready is False:
+                available_names = without_unready_agenda(available_names)
+            # Nobody to pass the appointment to: the runtime passes it (4.2), only
+            # when the customer asks for one; otherwise the agent answers.
+            agenda_hand_over = (
+                agenda_ready is False and intent == "book" and _HAND_OFF_TOOL not in available_names
+            )
             admin_role = sender_role(bundle.policies, state.get("user_id"))
             if admin_role == ROLE_READONLY:
                 available_names = tuple(
@@ -1834,6 +1954,10 @@ def make_handler_node(
                 messages.insert(1, {"role": "system", "content": _READONLY_ADMIN_NOTE})
             if _catalog_note_applies(state.get("channel_type"), available_names):
                 messages.insert(1, {"role": "system", "content": _CATALOG_NOTE})
+            if _agenda_not_ready_note_applies(bundle.tools, ready=agenda_ready):
+                messages.insert(
+                    1, {"role": "system", "content": _agenda_not_ready_note(available_names)}
+                )
             if _hand_off_note_applies(available_names):
                 messages.insert(1, {"role": "system", "content": _HAND_OFF_NOTE})
             if bundle.reception_targets and _HANDOFF_TOOL_NAME in available_names:
@@ -1990,7 +2114,15 @@ def make_handler_node(
                 or bool(applicable_skills),
             )
             iterations = MAX_TOOL_ITERATIONS
-            if route is not None and route.no_model:
+            if agenda_hand_over:
+                # Spec 057 (4.2): the agenda is not finished and the agent cannot
+                # pass the conversation. Nothing the model says changes that: no
+                # call, the hand-off line, the Inbox with ``agenda_not_ready`` —
+                # the booking brake's path, before the loop instead of after it.
+                iterations = 0
+                final_text = _handoff_line(state)
+                turn_failure = {"kind": "handoff", "reason": AGENDA_NOT_READY, "detail": None}
+            elif route is not None and route.no_model:
                 # Without a chain inside the client's residency the turn does
                 # not leave it (40.7): no call, the neutral reply, the Inbox.
                 iterations = 0
@@ -2303,6 +2435,9 @@ def make_handler_node(
                     envelopes=envelopes,
                     # The Playground and the tests: their agenda is the simulated one.
                     simulated_agenda=scoped_registry.simulated_booking_stands(),
+                    # Spec 057 (4.2): with the agenda not finished, passing the
+                    # conversation to a person is what backs the reply.
+                    agenda_pending=agenda_ready is False,
                 ):
                     break
                 if attempt == booking_brake.ATTEMPTS - 1:
@@ -2316,6 +2451,16 @@ def make_handler_node(
                     brake_outcome = "handed_off"
             if brake_outcome is not None:
                 await booking_brake.record_brake(**brake.fields(), outcome=brake_outcome)
+            if agenda_ready is False:
+                # ``contracts/events.md`` (spec 057): ids and the outcome, never text.
+                agent = brake.agent_id
+                log.info(
+                    "agenda.not_ready_turn",
+                    tenant_id=str(tenant_id),
+                    agent_id=None if agent is None else str(agent),
+                    intent=intent,
+                    escalated=agenda_hand_over or _handed_over(envelopes),
+                )
 
             # Per-turn latency summary. ``iterations`` x per-call latency (see
             # ``llm.call_complete``) is the whole story of a slow turn: a turn
@@ -2388,6 +2533,22 @@ async def _load_tool_policy(tenant_id: uuid.UUID, agent_id: uuid.UUID | None) ->
     except Exception as exc:
         log.warning("tool_policy.load_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
         return ToolPolicy(closed=True)
+
+
+async def _load_agenda_ready(tenant_id: uuid.UUID) -> bool | None:
+    """Spec 057 (requisito 4): ¿puede el cliente tomar una cita ya? Con la RLS del
+    cliente, como :func:`_load_tool_policy`, en su propia sesión. Falla **abierta**
+    (``None``): el turno sigue con todas sus herramientas, porque el servidor de
+    Reservas ya rechaza lo imposible; del error, solo su tipo."""
+    from nexus_api.services.reservations.passing import agenda_ready
+
+    try:
+        sm = get_sessionmaker()
+        async with sm() as session, tenant_scoped_session(session, tenant_id):
+            return bool(await agenda_ready(session, tenant_id))
+    except Exception as exc:
+        log.warning("agenda.ready_read_failed", tenant_id=str(tenant_id), error=type(exc).__name__)
+        return None
 
 
 async def _approval_envelope(
@@ -2867,12 +3028,16 @@ async def _rewrite_claims_a_booking(
         conversation_id=state.get("conversation_id"),
         turn_id=state.get("inbound_message_id"),
     )
+    # Spec 057 (4.2): con la agenda sin terminar, pasar la cita a una persona respalda la
+    # respuesta, como en el freno del manejador.
+    ready = await _agenda_ready_this_turn(tenant_id, bundle.tools if bundle is not None else [])
     claimed = await booking_brake.unbacked_claim(
         llm,
         bundle,
         brake,
         text=booking_brake.draft_text(draft, state.get("interactive_payload")),
         envelopes=state.get("tool_calls") or [],
+        agenda_pending=ready is False,
     )
     if claimed:
         await booking_brake.record_brake(**brake.fields(), outcome="grader_fallback")

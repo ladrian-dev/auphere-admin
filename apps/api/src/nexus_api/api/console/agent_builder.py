@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 import sqlalchemy as sa
 import structlog
@@ -40,6 +40,7 @@ from nexus_api.services.agent_spec.patch import PatchError, apply_ops
 from nexus_api.services.agent_spec.schema import AgentSpec, dump
 from nexus_api.services.agent_spec.validator import load_context, problems_out, validate_spec
 from nexus_api.services.builder.agent_draft import (
+    AGENDA_PREFIX,
     AGENT_TARGETS,
     BUSINESS_TARGETS,
     DraftInputInvalid,
@@ -54,6 +55,7 @@ from .agent_spec_drafts import current_spec, spec_state_hash, write_spec
 from .deps import ClientScope, client_scope, require_build_room, resolve_mapping
 from .jobs import _owned_tenant, unknown_job
 from .schemas_agent_builder import (
+    AgendaOptionOut,
     AnswerAppliedOut,
     AnswersIn,
     AnswersOut,
@@ -97,10 +99,13 @@ async def draft_options(
 ) -> DraftOptionsOut:
     partner = await scope.session.get(Partner, scope.principal.partner.id)
     default = partner.default_seed_template if partner is not None else None
+    from nexus_api.services.builder.guides.catalog import template_tools
+
     templates: list[TemplateOptionOut] = []
     for name in list_seed_templates():
         try:
             tpl = load_seed_template(name)
+            books = any(t.startswith(AGENDA_PREFIX) for t in template_tools((name,)))
         except Exception:  # una plantilla rota no tumba la pantalla
             continue
         group = TEMPLATE_SECTOR.get(name, OTHER)
@@ -110,6 +115,7 @@ async def draft_options(
                 name=tpl.display_name or name,
                 group=sector_name(group),
                 is_default=name == default,
+                books=books,
             )
         )
     # 17.9: la del partner, la primera (y nunca aplicada sola).
@@ -118,10 +124,84 @@ async def draft_options(
         examples=list(EXAMPLES),
         templates=templates,
         default_template=default if any(t.id == default for t in templates) else None,
+        agenda=await _agenda_option(scope),
     )
 
 
-def _blank_spec(name: str, description: str) -> AgentSpec:
+async def _agenda_option(scope: ClientScope) -> AgendaOptionOut:
+    """Spec 057 (1.1 y 1.3): si se ofrece Reservas, si ya está encendido y, si no, el
+    modo que corresponde al cliente."""
+    from nexus_api.db.models import ReservationSettings
+    from nexus_api.services.reservations.passing import reservas_enabled
+    from nexus_api.services.reservations.turn_on import suggested_choice
+
+    tenant_id = scope.tenant.id
+    on = await reservas_enabled(scope.session, tenant_id)
+    settings = await scope.session.get(ReservationSettings, tenant_id) if on else None
+    suggested = await suggested_choice(scope.session)
+    return AgendaOptionOut(
+        offered=agenda_offered(scope),
+        module_on=on,
+        mode=cast(Any, settings.mode) if settings else None,
+        capacity_kind=cast(Any, settings.capacity_kind) if settings else None,
+        suggested_mode=cast(Any, suggested.mode),
+        suggested_kind=cast(Any, suggested.capacity_kind),
+    )
+
+
+def agenda_offered(scope: ClientScope) -> bool:
+    """Spec 057: Reservas se ofrece a todo cliente con partner y sin archivar (no hay
+    activación por partner). Si algún día la hay, se decide aquí y en ningún otro sitio."""
+    from nexus_api.db.models import TenantStatus
+
+    return scope.mapping.partner_id is not None and scope.tenant.status != TenantStatus.ARCHIVED
+
+
+async def _turn_on_for_new_agent(
+    session: AsyncSession, mapping: PartnerTenant, principal: ConsolePrincipal, body: DraftJobIn
+) -> None:
+    """Spec 057 (1.4 y 1.5): con «Gestiona citas» y Reservas apagado, Reservas se
+    enciende en la misma transacción y antes de escribir el borrador, para que el
+    constructor vea la agenda. Si no se puede, nada se crea."""
+    from datetime import UTC, datetime
+
+    from nexus_api.services.reservations.admin import Choice, ReservasChoiceError
+    from nexus_api.services.reservations.turn_on import TurnOnRefused, turn_on_from_agent
+
+    if body.agenda is not True:
+        return
+    choice = (
+        Choice(mode=body.reservas.mode, capacity_kind=body.reservas.capacity_kind)
+        if body.reservas is not None
+        else None
+    )
+    try:
+        await turn_on_from_agent(
+            session,
+            tenant_id=mapping.tenant_id,
+            partner_id=mapping.partner_id,
+            choice=choice,
+            actor=principal.actor,
+            origin_agent_id=None,
+            now=datetime.now(UTC),
+        )
+    except ReservasChoiceError as exc:
+        raise _error(exc.code, exc.status) from None
+    except TurnOnRefused as exc:
+        raise _error(exc.code, exc.status) from None
+
+
+def _blank_spec(name: str, description: str, *, agenda: bool = False) -> AgentSpec:
+    """«En blanco». Con «Gestiona citas» (spec 057, 1.1 y 1.6), la agenda entera y sus
+    procedimientos fijos; Reservas ya está encendido (lo hace la ruta antes)."""
+    from nexus_api.services.builder.agent_draft import AGENDA_PROCEDURES
+    from nexus_api.services.reservations.passing import RESERVAS_TOOLS
+
+    extra: dict[str, Any] = (
+        {"tools": list(RESERVAS_TOOLS), "procedures": [dict(p) for p in AGENDA_PROCEDURES]}
+        if agenda
+        else {"tools": []}
+    )
     return AgentSpec.model_validate(
         {
             "schema_version": "1",
@@ -130,7 +210,7 @@ def _blank_spec(name: str, description: str) -> AgentSpec:
             "voice": {"languages": ["es"]},
             "instructions": {"sections": [{"title": "Qué haces", "body": description}]},
             "services": {"mode": "all"},
-            "tools": [],
+            **extra,
             "escalation": {"triggers": ["asks_for_human"], "failed_attempts": 2},
             "ai_disclosure": {"decided": False},
             "model_policy": {"kind": "pinned", "deployment": "nexus/current-binding"},
@@ -170,6 +250,7 @@ async def start_draft(
             # por algo que la pantalla puede decir al momento.
             if await _name_taken(session, request.name):
                 raise _error("name_taken", status.HTTP_409_CONFLICT)
+            await _turn_on_for_new_agent(session, mapping, principal, body)
             job = await jobs_service.create_job(
                 session, kind="agent_draft", created_by=principal.user_id
             )
@@ -180,6 +261,12 @@ async def start_draft(
                     "name": request.name,
                     "description": request.description,
                     "actor": principal.actor,
+                    # Spec 057: el trabajo lo lee como texto (``_input`` solo guarda textos).
+                    **(
+                        {"agenda": "true" if body.agenda else "false"}
+                        if body.agenda is not None
+                        else {}
+                    ),
                 },
             }
             await session.flush()
@@ -197,6 +284,7 @@ async def start_draft(
         tenant = await session.get(Tenant, mapping.tenant_id)
         assert tenant is not None
         scope = ClientScope(principal=principal, mapping=mapping, tenant=tenant, session=session)
+        await _turn_on_for_new_agent(session, mapping, principal, body)
         if body.start == "template":
             # 58.6: como el constructor — un AgentSpec estructurado con las pruebas
             # del caso y del sector, no un agente en modo «instrucciones».
@@ -214,6 +302,7 @@ async def start_draft(
                     name=body.name,
                     description=body.description,
                     actor=principal.actor,
+                    agenda=body.agenda,
                 )
             except SeedTemplateNotFound:
                 raise _error("unknown_template", status.HTTP_404_NOT_FOUND) from None
@@ -238,7 +327,9 @@ async def start_draft(
             if len(description) < 20:
                 description = _BLANK_DESCRIPTION
             await write_spec(
-                scoped, _blank_spec(agent.name, description[:1024]), expected_revision=None
+                scoped,
+                _blank_spec(agent.name, description[:1024], agenda=body.agenda is True),
+                expected_revision=None,
             )
         job = await jobs_service.create_job(
             session, kind="agent_draft", agent_id=agent.id, created_by=principal.user_id
@@ -424,13 +515,15 @@ async def _draft_revision(session: AsyncSession, agent_id: uuid.UUID) -> int:
 # ── propuestas ──────────────────────────────────────────────────────────────
 
 
-def _proposal_out(p: Proposal, problems: list[dict[str, str]] | None = None) -> ProposalOut:
+def _proposal_out(
+    p: Proposal, problems: list[dict[str, str]] | None = None, *, before_of: Any = None
+) -> ProposalOut:
     return ProposalOut(
         id=p.id,
         kind=p.kind,
         author=p.author,
         summary=p.summary,
-        diff=p.diff,
+        diff=_with_before(p.diff, before_of) if before_of is not None else p.diff,
         status=p.status,
         created_at=p.created_at,
         expires_at=p.expires_at,
@@ -454,7 +547,40 @@ async def list_proposals(
             .order_by(Proposal.created_at.desc())
         )
     ).all()
-    return [_proposal_out(p) for p in rows]
+    spec, _cfg = await current_spec(scope)
+    doc = dump(spec) if spec is not None else {}
+    return [_proposal_out(p, before_of=doc) for p in rows]
+
+
+def _at(doc: Any, pointer: str) -> Any:
+    """El valor en ``pointer`` (JSON Pointer) o ``None`` si no existe."""
+    node = doc
+    for raw in pointer.split("/")[1:]:
+        part = raw.replace("~1", "/").replace("~0", "~")
+        if isinstance(node, dict):
+            node = node.get(part)
+        elif isinstance(node, list) and part.isdigit() and int(part) < len(node):
+            node = node[int(part)]
+        else:
+            return None
+        if node is None:
+            return None
+    return node
+
+
+def _with_before(diff: dict[str, Any], doc: Any) -> dict[str, Any]:
+    """Spec 057 (3.3): cada operación lleva lo que hay ahora en su puntero del borrador,
+    calculado al leer: lo de antes y lo de después, por bloque."""
+    ops = diff.get("ops")
+    if not isinstance(ops, list):
+        return diff
+    return {
+        **diff,
+        "ops": [
+            {**op, "before": _at(doc, str(op.get("path", "")))} if isinstance(op, dict) else op
+            for op in ops
+        ],
+    }
 
 
 def _proposal_error(exc: proposal_state.ProposalError) -> HTTPException:

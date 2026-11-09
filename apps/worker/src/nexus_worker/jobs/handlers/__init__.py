@@ -11,11 +11,13 @@ Importar este paquete los registra en ``default_registry``, que es el que usa
 - ``client_builder``: «Completar con el constructor», la ficha propuesta (T098);
   desde la enmienda del 2026-10-29 lo lanza el sistema (T205).
 - ``sector_identify``: identificar el sector del negocio (T200).
+- ``agenda_text``: la propuesta de texto al cambiar la agenda de un agente (spec 057, T027).
 """
 
 from __future__ import annotations
 
 from nexus_worker.jobs.handlers import (
+    agenda_text,
     agent_draft,
     agent_publish,
     agent_tests,
@@ -25,6 +27,7 @@ from nexus_worker.jobs.handlers import (
 )
 
 __all__ = [
+    "agenda_text",
     "agent_draft",
     "agent_publish",
     "agent_tests",

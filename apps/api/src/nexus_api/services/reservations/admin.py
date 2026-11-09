@@ -84,7 +84,8 @@ async def live_future(session: AsyncSession, now: datetime) -> int:
     )
 
 
-def _validate(choice: Choice) -> None:
+def validate_choice(choice: Choice) -> None:
+    """El modo y el tipo de aforo, bien dados (spec 043; la 057 lo usa al encender desde un agente)."""
     if choice.mode not in ("services", "capacity"):
         raise ReservasChoiceError("reservas_mode_required", 422)
     if choice.mode == "capacity" and not choice.capacity_kind:
@@ -110,7 +111,7 @@ async def apply_choice(
     agents (spec 048, the automatic pass publishes their versions itself)."""
     settings = await session.get(ReservationSettings, tenant_id)
     if choice is not None:
-        _validate(choice)
+        validate_choice(choice)
     if wants_module and settings is None and choice is None:
         raise ReservasChoiceError("reservas_mode_required", 422)
 
@@ -178,10 +179,9 @@ async def apply_choice(
 
     if prepare_agents and had_module != wants_module:
         if wants_module:
-            # Spec 048: activar es pasar el cliente a Reservas.
-            await passing.pass_to_reservas(
-                session, tenant_id, actor=actor, now=now, every_agent=True
-            )
+            # Spec 048: activar es pasar el cliente a Reservas. Spec 057 (5.1): solo los
+            # agentes que dan citas ganan la agenda; los demás no cambian.
+            await passing.pass_to_reservas(session, tenant_id, actor=actor, now=now, scope="givers")
         else:
             # Apagar llega al agente al momento: una herramienta que ya no
             # responde no debe seguir ofreciéndose. El borrador, si lo hay, igual.
@@ -211,16 +211,30 @@ async def admin_view(
                 AgentConfig.agent_id == agent_id, AgentConfig.status == AgentConfigStatus.ACTIVE
             )
         )
-        staged = await session.scalar(
-            sa.select(sa.func.max(AgentConfig.version)).where(
+        # Spec 057 (5.3): pendiente es el borrador que tiene la agenda y la versión activa
+        # no, lo haya preparado quien lo haya preparado (antes solo contaba el operador, y lo
+        # encendido desde la consola no salía).
+        draft = await session.scalar(
+            sa.select(AgentConfig)
+            .where(
                 AgentConfig.agent_id == agent_id,
                 AgentConfig.status == AgentConfigStatus.STAGED,
                 AgentConfig.version > (active or 0),
-                AgentConfig.created_by.like("operator:%"),
+            )
+            .order_by(AgentConfig.version.desc())
+            .limit(1)
+        )
+        live_cfg = await session.scalar(
+            sa.select(AgentConfig).where(
+                AgentConfig.agent_id == agent_id, AgentConfig.status == AgentConfigStatus.ACTIVE
             )
         )
-        if staged is not None:
-            pending.append({"agent_id": agent_id, "name": str(name), "version": int(staged)})
+        if (
+            draft is not None
+            and "reservas.create" in (draft.tools or [])
+            and "reservas.create" not in ((live_cfg.tools if live_cfg else None) or [])
+        ):
+            pending.append({"agent_id": agent_id, "name": str(name), "version": int(draft.version)})
         # Lo que atiende ahora: su borrador ya reserva en Reservas, y hasta publicarlo
         # esas citas no se ven en la agenda (spec 043, R11.5).
         live = await session.scalar(

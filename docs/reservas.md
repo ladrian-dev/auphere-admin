@@ -64,9 +64,22 @@ on_live}` (contrato: [`admin-api.md`](../specs/043-reservas/contracts/admin-api.
   (`cancel_cause = mode_change`), cada cliente con teléfono recibe el aviso y el
   modo cambia, todo en una transacción. Nunca conviven dos modos.
 - Cambiar solo el tipo de Aforo cambia las palabras, no los números.
-- Activar o desactivar **prepara el borrador** de cada agente activo (el único
-  que tiene, spec 047): con `reservas.*` y sin `booking.*` ni lo que reserva en un
-  conector, o sin `reservas.*`. **No lo promueve**: se publica por la puerta; la pestaña
+- Activar o desactivar **prepara el borrador** de los agentes activos (el único
+  que tiene cada uno, spec 047): con `reservas.*` y sin `booking.*` ni lo que reserva en
+  un conector, o sin `reservas.*`. **Al activar, solo los que dan citas** (spec 057,
+  5.1; enmienda de la 043, 11.5): los que reservan en un conector o nombran `booking.*`,
+  y los que prometen reservar, mover o cancelar citas en su texto
+  (`passing.gives_appointments`). Un agente de cobros no cambia. La lista de agentes lo
+  dice (`AgentOut.agenda = "prepared"`) y la pestaña Acceso cuenta como pendiente todo
+  borrador con la agenda que su versión activa no tiene, lo preparara quien lo
+  preparara (antes, solo lo del operador). Un borrador descartado no vuelve mientras
+  siga la misma versión activa, tampoco al volver a encender el módulo.
+- **También se enciende desde un agente** (spec 057): «Gestiona citas» en el alta o
+  «Agenda (Reservas)» en Conectores, con el permiso de editar agentes
+  (`services/reservations/turn_on.py`, ver `docs/agentes.md` §2). Añade `reservas` a
+  los módulos sin tocar `enabled` ni los demás, y crea los ajustes con el modo elegido
+  la primera vez; si el cliente ya tuvo Reservas, vuelve con su modo. Apagar sigue
+  siendo solo de Acceso. **No lo promueve**: se publica por la puerta; la pestaña
   enlaza a la pestaña Agente (`agents_pending_promotion`) y dice quién **sigue reservando
   fuera** hasta publicar su borrador (`agents_with_other_calendar`). Activar es además
   **pasar el cliente a Reservas** (abajo): el AgentSpec y el texto también, y las citas
@@ -312,6 +325,12 @@ con nombre de negocio en Capacidades (grupo Citas) y en la intención `book`
 (y `info` las de lectura). **Ninguna acepta cliente**: la persona sale del turno
 (spec 014); una reserva ajena se lee como inexistente; `answer_offer` resuelve
 la oferta abierta de esa persona sin que el modelo la nombre.
+
+**Con Reservas sin terminar** (spec 057, requisito 4): si al cliente le falta horario,
+equipo, servicios reservables o capacidad, el turno de un agente con la agenda no le da
+las herramientas que buscan o reservan y le pide pasar la cita a una persona; en cuanto
+se completa, reserva desde el mensaje siguiente. Detalle en `docs/agentes.md` §11. La
+revisión de publicar lo avisa (`agenda_not_ready`) sin bloquear.
 
 **Cada agente, sus servicios** (spec 047, T058; requisito 11.4, garantía 9). Un
 agente «Atiende todos los servicios» o tiene su lista (`agent_services`); un

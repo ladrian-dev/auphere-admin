@@ -10,6 +10,18 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 DraftStart = Literal["describe", "template", "blank"]
+ReservasMode = Literal["services", "capacity"]
+CapacityKind = Literal["restaurant", "bar", "classes", "tours", "rooms", "spa"]
+
+
+class ReservasChoiceIn(BaseModel):
+    """Cómo se reserva, si «Gestiona citas» enciende Reservas (spec 057, 1.3). Como el
+    de Acceso (``ClientReservasIn``) sin ``on_live``: desde un agente el modo no cambia."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: ReservasMode
+    capacity_kind: CapacityKind | None = None
 
 
 class DraftJobIn(BaseModel):
@@ -20,6 +32,10 @@ class DraftJobIn(BaseModel):
     description: str | None = Field(default=None, max_length=1024)
     start: DraftStart = "describe"
     template_id: str | None = Field(default=None, max_length=80)
+    #: Spec 057 (requisito 1): «Gestiona citas». ``None``, como hasta hoy.
+    agenda: bool | None = None
+    #: Obligatorio si ``agenda`` y Reservas está apagado para el cliente.
+    reservas: ReservasChoiceIn | None = None
 
 
 class DraftJobOut(BaseModel):
@@ -33,6 +49,19 @@ class TemplateOptionOut(BaseModel):
     name: str
     group: str
     is_default: bool = False
+    #: Spec 057 (1.2): la plantilla lleva la agenda, y «Gestiona citas» sale encendido.
+    books: bool = False
+
+
+class AgendaOptionOut(BaseModel):
+    """Lo que «Nuevo agente» necesita para «Gestiona citas» (spec 057, 1.1 y 1.3)."""
+
+    offered: bool
+    module_on: bool
+    mode: ReservasMode | None = None
+    capacity_kind: CapacityKind | None = None
+    suggested_mode: ReservasMode = "services"
+    suggested_kind: CapacityKind | None = None
 
 
 class DraftOptionsOut(BaseModel):
@@ -42,6 +71,7 @@ class DraftOptionsOut(BaseModel):
     examples: list[str]
     templates: list[TemplateOptionOut]
     default_template: str | None = None
+    agenda: AgendaOptionOut | None = None
     name_max: int = 40
     description_min: int = 20
     description_max: int = 1024

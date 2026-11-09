@@ -183,6 +183,10 @@ async def _attempt(
             text=text,
             llm_router=router,
             model_policy=run.model_policy if run.reason == "certification" else None,
+            # Spec 057 (requisito 4, decisión 1): las pruebas miden el texto del
+            # agente con la agenda simulada lista. Con la del cliente, uno sin
+            # profesionales suspendería las de reservar y bloquearía publicar.
+            agenda_ready=True,
         )
 
     talk = Conversation(

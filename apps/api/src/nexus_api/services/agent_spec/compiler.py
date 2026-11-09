@@ -214,7 +214,7 @@ def compile_spec(
 
 @dataclass(frozen=True)
 class Incoherence:
-    code: Literal["promises_without_tool", "contradicts_business", "unknown_tool"]
+    code: Literal["promises_without_tool", "contradicts_business", "unknown_tool", "forbids_agenda"]
     pointer: str
     detail: str
     #: For ``promises_without_tool``: the promised action (``capability_names``).
@@ -389,6 +389,232 @@ def uncovered_promises(text: str, tools: Iterable[str]) -> list[Promise]:
     return [p for p in promises_in(text) if not (p.needs & doable)]
 
 
+# ── el texto que prohíbe la agenda (spec 057, requisito 3.8) ─────────────────
+#
+# El caso inverso de «promete sin herramienta»: el agente tiene la agenda y su
+# texto se la prohíbe. Con Spa Jemma (staging, 2026-11-09) bastó un procedimiento
+# («No ofrezcas huecos ni confirmes la reserva»), un disparador («porque la agenda
+# no está activa»), dos reglas y dos alternativas de habilidad para que un agente
+# con las 9 herramientas no reservara nunca. Cinco formas de decirlo, cada una con
+# el mismo cuidado que ``PROMISES`` (negación, condición, propósito): no da citas
+# ni huecos; la cita no está confirmada; el equipo la confirma o revisa la
+# disponibilidad; la agenda no está activa; pasa la cita al equipo o a una persona.
+# Avisa, no bloquea: «si la clienta lo pide, pásala a una persona» es legítima y el
+# patrón puede acertar de más.
+
+#: Lo que se da, se ofrece o se confirma al reservar.
+_SLOT_WORDS: Final = (
+    r"(citas?|reservas?|turnos?|huecos?|horas?|horarios? (libres|disponibles)|"
+    r"disponibilidad|franjas?)"
+)
+#: Dar, ofrecer, buscar, reservar o confirmar una cita, un hueco o una hora.
+_GIVES_SLOT: Final = re.compile(
+    r"\b((ofrec|ofrez|propon|propong|busc|busqu|reserv|agend|confirm|cierr|cerr|asign|bloque|"
+    r"apart|tom|cre|fij|gestion|program|cambi|cancel|anul|mov|muev|reprogram)\w*|"
+    r"dar|das|da|des|den|damos)\s+"
+    rf"(\w+\s+){{0,2}}?{_DET}{_SLOT_WORDS}\b"
+    r"|\b(reserv|agend)(ar|es|e|en|emos)\b",
+    re.I,
+)
+_AGENDA_NEGATION: Final = re.compile(r"\b(no|nunca|jam[aá]s|sin|ni)\b(?!-)[^.\n]{0,25}$", re.I)
+#: «Repetir los datos no es confirmar la reserva»: a definition, not a refusal.
+_DEFINITION: Final = re.compile(r"\bno\s+(es|son|significa|implica|equivale a)\s+$", re.I)
+#: «Si no hay huecos…», «cuando la agenda no…»: the negation is the condition.
+_IF_NOT: Final = re.compile(
+    r"\b(si|cuando|mientras|en caso de que)\s+(\w+\s+){0,3}?(no|nunca)\b", re.I
+)
+#: After the refusal the clause ends (or goes on with another one): an absolute
+#: «no ofrezcas huecos», not a «no ofrezcas huecos fuera del horario».
+_ABSOLUTE_END: Final = re.compile(
+    r"^\s*((t[uú] mism[oa]|directamente|por tu cuenta|por (whatsapp|aqu[ií]|este canal|el chat|"
+    r"chat|mensaje)|todav[ií]a|a[uú]n|nunca|tampoco)\s*)*"
+    r"($|[,(\u2013\u2014-]|\b(ni|y|e|o|u|porque|pues|ya que)\b)",
+    re.I,
+)
+#: «Una solicitud de cita no es una reserva confirmada».
+_NOT_CONFIRMED: Final = re.compile(
+    r"\bno\s+(es|son|est[aá]n?|queda(n|r[aá]n?)?|implica|significa|equivale a)\s+"
+    r"(\w+\s+){0,2}?(citas?|reservas?|turnos?)\s+(confirmad|cerrad|garantizad|hech)\w*"
+    r"|\b(citas?|reservas?|turnos?|solicitud\w*)\b[^.\n;:]{0,30}\bpendientes?\s+de\s+"
+    r"(confirmaci[oó]n|confirmar|revisi[oó]n|aprobaci[oó]n)",
+    re.I,
+)
+_TEAM: Final = r"(equipo|personal|recepci[oó]n|staff|encargad[oa]s?|responsables?|compañer[oa]s?)"
+#: The team confirms, reviews or validates (third person, never «cuando confirmes»).
+_TEAM_CHECKS: Final = re.compile(
+    rf"\b{_TEAM}\b(\s+(?!(y|e|o|u|cuando|si|mientras)\b)\w+){{0,5}}?\s+"
+    r"((confirm|revis|valid|gestion|asign|aprob)(a|an|e|en|ar|ar[aá]|ar[aá]n|ar[ií]a)|"
+    r"aprueb(a|an|e|en)|verific(a|an|ar|ar[aá]|ar[aá]n)|verifiqu(e|en))\b"
+    r"|\b(l[oa]s?|se l[oa]s?|te l[oa]s?)\s+(confirm|revis|valid|aprueb|verific|gestion)\w*\s+"
+    rf"(el|la|nuestro|nuestra|tu|su)\s+{_TEAM}\b"
+    r"|\b(confirmad|revisad|validad|aprobad|verificad|gestionad)[oa]s?\s+por\s+"
+    rf"(el |la |nuestro |nuestra |tu |su )?{_TEAM}\b"
+    r"|\b(confirmaci[oó]n|revisi[oó]n|validaci[oó]n|aprobaci[oó]n)\s+(por|de|del)\s+"
+    rf"(el |la |nuestro |nuestra |tu |su )?{_TEAM}\b",
+    re.I,
+)
+#: «La agenda no está activa», «no tienes acceso a la agenda», «sin agenda».
+_AGENDA_OFF: Final = re.compile(
+    r"\b(agenda|sistema de (citas|reservas)|reservas)\b(\s+\w+){0,3}?\s+no\s+"
+    r"(est[aá]|se encuentra|queda)\s+(a[uú]n\s+|todav[ií]a\s+)?"
+    r"(activ|disponib|conectad|habilitad|operativ|list|encendid|configurad)\w*"
+    r"|\bno\s+(tienes|tiene|tengo|tenemos|hay|dispones de|cuentas con)\s+(acceso a\s+)?"
+    r"(la\s+|una\s+|tu\s+|nuestra\s+)?(agenda|sistema de (citas|reservas))\b"
+    r"|\b(agenda|reservas)\s+(est[aá]\s+)?(desactivad|inactiv|apagad|deshabilitad)\w*"
+    r"|\bsin\s+(la\s+|una\s+)?agenda\b",
+    re.I,
+)
+#: Handing the conversation (or the appointment) to the team or a person.
+_HAND_OFF: Final = re.compile(
+    r"\b(p[aá]s|deriv|transfi[ae]r|traslad|remit|escal|deleg)\w*\s+(\w+\s+){0,3}?(a|al|con)\s+"
+    r"(un[ao]?\s+|el\s+|la\s+|nuestro\s+|nuestra\s+|tu\s+|su\s+)?"
+    r"(equipo|persona|humano|recepci[oó]n|personal|staff|encargad[oa]|responsable|"
+    r"compañer[oa]|asesor[ae]?)\b",
+    re.I,
+)
+#: The sentence is about appointments.
+_ABOUT_APPOINTMENTS: Final = re.compile(
+    r"\b(citas?|reserv\w*|agend\w*|turnos?|huecos?|disponibilidad|horas?|franjas?|fechas?)\b",
+    re.I,
+)
+_CONDITIONAL: Final = re.compile(r"\b(si|cuando|en caso de que)\b", re.I)
+#: The condition is a plain request for an appointment («si pide una cita,»), not
+#: a narrower one («si pide cambiar una cita del mismo día»).
+_BARE_REQUEST: Final = re.compile(
+    r"\b(pide|piden|pida|pidan|quiere|quieren|quiera|quieran|solicita|solicitan|solicite|"
+    r"soliciten|desea|desean)\b([\s,]+\w+){0,6}?[\s,]+(citas?|reservas?|turnos?|reservar|agendar)"
+    r"\s*($|,|\b(porque|ya que|o|y)\b)",
+    re.I,
+)
+#: Handing over when something fails («si no hay huecos», «si no puedes») is the
+#: limits section, not a refusal of the agenda.
+_FAILURE: Final = re.compile(
+    r"\b(si|cuando)\s+(\w+\s+){0,3}?(no|nunca)\b|\bno\s+(puedes|puede|consigues|logras|sabes|"
+    r"encuentras)\b|\b(falla\w*|errore?s?)\b",
+    re.I,
+)
+#: Another reason to hand over: the customer asks for a person, a complaint, a payment…
+_OTHER_MATTER: Final = re.compile(
+    r"\b(hablar|hable|habla)\s+con\b|\b(quejas?|reclamaci\w*|problemas?|urgencias?|"
+    r"emergencias?|pagos?|cobros?|grupos?|eventos?)\b",
+    re.I,
+)
+_SENTENCE: Final = re.compile(r"[.!?\n]+")
+
+
+def _refused(text: str, match: re.Match[str]) -> bool:
+    """The act of ``match`` is refused: denied right before («no ofrezcas huecos»,
+    «sin confirmar una cita»), and not as a condition («si no hay huecos, no
+    confirmes»), a purpose, a definition («no es confirmar la reserva») or a
+    precondition («no reserves sin confirmar el servicio»)."""
+    clause = re.split(r"[.\n;:]", text[: match.start()])[-1]
+    before = clause[-40:]
+    if (
+        not _AGENDA_NEGATION.search(before)
+        or _IF_NOT.search(clause)
+        or _PURPOSE.search(before)
+        or _DEFINITION.search(before)
+    ):
+        return False
+    rest = re.split(r"[.\n;:]", text[match.end() :])[0]
+    return _ABSOLUTE_END.match(rest) is not None
+
+
+def _refuses_slots(text: str) -> bool:
+    """«No ofrezcas huecos», «sin confirmar una cita», «no puedes reservar»."""
+    return any(_refused(text, match) for match in _GIVES_SLOT.finditer(text))
+
+
+def _offers_slots(sentence: str) -> bool:
+    """«Ofrece cita o pasa la petición al equipo»: it books, and the hand-off is the
+    alternative, not the order."""
+    return any(
+        not _AGENDA_NEGATION.search(re.split(r"[;:]", sentence[: m.start()])[-1][-40:])
+        for m in _GIVES_SLOT.finditer(sentence)
+    )
+
+
+def _agenda_off(text: str) -> bool:
+    for match in _AGENDA_OFF.finditer(text):
+        clause = re.split(r"[.\n;:]", text[: match.start()])[-1]
+        if not _IF_NOT.search(clause + match.group(0)):
+            return True
+    return False
+
+
+def _hands_appointments(sentence: str, *, condition: bool = False) -> bool:
+    """The sentence hands appointment requests to a person: a direct order about
+    appointments, or a condition that is a plain request for one. ``condition``:
+    the sentence is itself the condition of a hand-off (an escalation trigger)."""
+    if _FAILURE.search(sentence) or _OTHER_MATTER.search(sentence):
+        return False
+    if condition or _CONDITIONAL.search(sentence):
+        return _BARE_REQUEST.search(sentence) is not None
+    return _ABOUT_APPOINTMENTS.search(sentence) is not None and not _offers_slots(sentence)
+
+
+def forbids_agenda(text: str, *, hands_off: bool = False) -> bool:
+    """Spec 057, 3.8: ``text`` says the agent does not book, that its bookings are
+    not confirmed, that the team confirms them or reviews the availability, that the
+    agenda is not active, or that it hands the appointment to the team or a person.
+
+    ``hands_off``: ``text`` is the condition of a hand-off (a custom escalation
+    trigger), so «cuando piden una cita» alone already hands appointments over."""
+    if not text or not text.strip():
+        return False
+    # «reservas.create» is a tool, not «reservas» and a full stop.
+    text = _TOOL_MENTION.sub("la herramienta", text)
+    if _agenda_off(text) or _refuses_slots(text):
+        return True
+    for sentence in _SENTENCE.split(text):
+        if _NOT_CONFIRMED.search(sentence):
+            return True
+        if (
+            _TEAM_CHECKS.search(sentence)
+            and _ABOUT_APPOINTMENTS.search(sentence)
+            and not _OTHER_MATTER.search(sentence)
+        ):
+            return True
+        if _HAND_OFF.search(sentence) and _hands_appointments(sentence):
+            return True
+    return hands_off and _hands_appointments(text, condition=True)
+
+
+_PROCEDURE_STEPS: Final = re.compile(r"^/procedures/(\d+)/steps$")
+
+
+def agenda_forbidding_texts(spec: AgentSpec) -> list[tuple[str, str]]:
+    """Spec 057, 3.8: every text of ``spec`` that forbids the agenda, as ``(pointer,
+    text)`` with the value stored at that pointer: what the partner writes
+    (``_texts``), the custom escalation triggers and the alternative of each enabled
+    skill (which the console does not edit, and which handed Spa Jemma's
+    appointments to the team). Pure; it does not look at the tools."""
+    found: list[tuple[str, str]] = []
+    for pointer, text in _texts(spec):
+        if not forbids_agenda(text):
+            continue
+        step = _PROCEDURE_STEPS.match(pointer)
+        if step is not None and spec.procedures is not None:
+            # ``_texts`` reads «cuándo. pasos»; the pointer holds the steps.
+            text = spec.procedures[int(step.group(1))].steps
+        found.append((pointer, text))
+    if spec.escalation is not None:
+        for i, trigger in enumerate(spec.escalation.triggers or []):
+            if isinstance(trigger, CustomTrigger) and forbids_agenda(
+                trigger.custom, hands_off=True
+            ):
+                found.append((f"/escalation/triggers/{i}/custom", trigger.custom))
+    for i, skill in enumerate(spec.skills or []):
+        if skill.enabled and skill.fallback and forbids_agenda(skill.fallback):
+            found.append((f"/skills/{i}/fallback", skill.fallback))
+    return found
+
+
+def _quote(text: str, limit: int = 90) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+
+
 def _numbers(text: str) -> set[int]:
     return {int(n) for n in re.findall(r"\d{1,2}", text)}
 
@@ -414,6 +640,11 @@ def incoherences(
             found.append(
                 Incoherence("promises_without_tool", pointer, promise.label, action=promise.key)
             )
+
+    # Spec 057, 3.8: it has the agenda and a text forbids it.
+    if "reservas.create" in tools:
+        for pointer, text in agenda_forbidding_texts(spec):
+            found.append(Incoherence("forbids_agenda", pointer, _quote(text)))
 
     if facts is not None:
         hours_numbers = _numbers(facts.hours or "")
@@ -471,8 +702,10 @@ __all__ = [
     "Family",
     "Incoherence",
     "Promise",
+    "agenda_forbidding_texts",
     "compile_spec",
     "family_of",
+    "forbids_agenda",
     "incoherences",
     "promises_in",
     "uncovered_promises",

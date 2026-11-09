@@ -20,6 +20,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from nexus_api.api.console import (
+    agenda,
     agent_builder,
     agent_copilot,
     agent_draft_routes,
@@ -160,6 +161,8 @@ router.include_router(knowledge.router)
 router.include_router(agent_knowledge.router)
 # Spec 047 (T128): autorizar una vez por cliente, activar por agente.
 router.include_router(agent_integrations.router)
+# Spec 057 (T028): «Agenda (Reservas)» de un agente: encenderla, su estado y su propuesta.
+router.include_router(agenda.router)
 # Spec 047 (T147): la pantalla Calidad (perfiles, modelo fijado y su comprobación).
 router.include_router(agent_quality.router)
 # Spec 047 (T174): rendimiento, conversaciones solo con metadatos y las sugerencias.

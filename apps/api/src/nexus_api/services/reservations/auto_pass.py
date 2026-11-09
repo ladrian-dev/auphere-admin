@@ -58,7 +58,6 @@ from nexus_api.db.models import (
     AgentStatus,
     AuditLog,
     ClientAccess,
-    ClientModule,
     ReservationSettings,
     Tenant,
 )
@@ -173,28 +172,21 @@ async def turn_on_reservas(
     access = await session.get(ClientAccess, tenant_id)
     if settings is not None and access is not None and access.reservas_on:
         return None
-    if access is None:
-        if partner_id is None:
-            # ``client_access`` hangs from the client's partner.
-            raise AutoPassRefused("no_partner")
-        access = ClientAccess(tenant_id=tenant_id, partner_id=partner_id, enabled=False, modules=[])
-        session.add(access)
-    if not access.reservas_on:
-        access.modules = list(access.ordered_modules(also=(ClientModule.RESERVAS.value,)))
-        access.updated_by = ACTOR
-        session.add(
-            AuditLog(
-                tenant_id=tenant_id,
-                actor=ACTOR,
-                action="client_access.updated",
-                target=f"tenant:{tenant_id}",
-                after_json={
-                    "enabled": access.enabled,
-                    "modules": list(access.modules),
-                    "automatic": True,
-                },
-            )
+    from nexus_api.services.reservations.turn_on import TurnOnRefused, add_reservas_module
+
+    try:
+        # La misma pieza que encender desde un agente (spec 057, requisito 7).
+        add_reservas_module(
+            session,
+            access,
+            tenant_id=tenant_id,
+            partner_id=partner_id,
+            actor=ACTOR,
+            extra={"automatic": True},
         )
+    except TurnOnRefused as exc:
+        # ``client_access`` hangs from the client's partner.
+        raise AutoPassRefused(exc.code) from exc
     await session.flush()
     if settings is not None:
         return {"mode": settings.mode, "capacity_kind": settings.capacity_kind, "from": "existing"}

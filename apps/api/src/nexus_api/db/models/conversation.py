@@ -84,6 +84,9 @@ WAITING_REASONS: tuple[str, ...] = (
     "human_takeover",
     "reception_loop",
     "booking_unbacked",
+    # Spec 057 (0229, requisito 4.2): la agenda sin terminar y un agente sin
+    # herramienta de derivar: el runtime pasó la cita a una persona.
+    "agenda_not_ready",
 )
 #: Spec 047 (0176): quién escribió un mensaje.
 MESSAGE_ORIGINS: tuple[str, ...] = (

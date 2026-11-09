@@ -9,11 +9,15 @@ comprobaciones dice cuáles corrieron y con qué resultado.
 Lo que comprueba (22.1):
 - habilidades sin su integración conectada, con o sin alternativa;
 - servicios sin precio, o reservables sin duración;
-- horario ausente;
+- horario ausente (avisa: spec 057, 4.1);
+- la agenda sin terminar (spec 057, 4.1): al cliente le falta algo para poder tomar
+  una cita (``passing.not_ready``); se publica con aviso y, mientras, el agente pasa
+  las citas a una persona;
 - contradicciones entre las instrucciones y la ficha;
 - instrucciones que prometen acciones sin herramienta (comparadas con lo que hace
   cada herramienta según ``capability_names``; bloquea en un agente estructurado,
-  requisito 65.5);
+  requisito 65.5), y el caso inverso: tiene la agenda y un texto se la prohíbe
+  (spec 057, 3.8; avisa);
 - referencias a herramientas que no existen;
 - canales sin destinatarios de escalado;
 - aviso de IA sin decidir (y «solo si preguntan» en un cliente de la UE, AI Act art. 50).
@@ -27,6 +31,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Final, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,9 +44,22 @@ from nexus_api.services.business.compilation import Facts
 
 Severity = Literal["block", "warn"]
 
-#: Las familias de herramientas que reservan: sin horario, un agente así no
-#: puede trabajar (bloquea); uno que solo informa, avisa.
+#: Las familias de herramientas que reservan. Sin horario, un agente así no puede
+#: ofrecer citas; desde la spec 057 (4.1) avisa igual que uno que solo informa: se
+#: publica y, mientras, pasa las citas a una persona.
 BOOKING_PREFIXES: Final = ("reservas.", "booking.")
+#: La agenda de Reservas: con ella, lo que le falta a Reservas avisa (spec 057, 4.1).
+AGENDA_PREFIX: Final = "reservas."
+
+#: Cómo dice la revisión cada motivo de ``passing.NOT_READY_REASONS``.
+NOT_READY_WORDS: Final[dict[str, str]] = {
+    "reservas_off": "encender Reservas",
+    "hours_missing": "el horario del negocio",
+    "no_staff": "alguien en el equipo",
+    "no_services": "algún servicio",
+    "no_bookable_service": "un servicio con alguien que lo haga",
+    "no_capacity": "el aforo y sus turnos",
+}
 
 CHECKS: Final = (
     "skills_integrations",
@@ -80,6 +98,9 @@ class ReviewInput:
     channels: tuple[ChannelFact, ...] = ()
     has_hours: bool = True
     eu_client: bool = False
+    #: Spec 057 (4.1): lo que le falta al cliente para poder tomar una cita
+    #: (``passing.not_ready``); vacío si está lista o si el agente no tiene la agenda.
+    agenda_reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,6 +110,8 @@ class Finding:
     message: str
     pointer: str | None = None
     fix: dict[str, Any] | None = None
+    #: Spec 057 (``agenda_not_ready``): los códigos de ``passing.NOT_READY_REASONS``.
+    reasons: tuple[str, ...] = ()
 
     def to_json(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -100,6 +123,8 @@ class Finding:
             out["pointer"] = self.pointer
         if self.fix:
             out["fix"] = self.fix
+        if self.reasons:
+            out["reasons"] = list(self.reasons)
         return out
 
 
@@ -179,16 +204,33 @@ def review(data: ReviewInput) -> Review:
                 )
             )
 
-    # Horario.
+    # La agenda sin terminar (spec 057, 4.1): se publica con aviso; mientras, el
+    # agente toma el servicio, el día y la hora y pasa la conversación a una persona.
+    # Un servicio reservable sin duración sigue bloqueando arriba (4.5).
+    if data.agenda_reasons and any(t.startswith(AGENDA_PREFIX) for t in tools):
+        what = ", ".join(NOT_READY_WORDS.get(r, r) for r in data.agenda_reasons)
+        found["services"].append(
+            Finding(
+                "agenda_not_ready",
+                "warn",
+                f"La agenda aún no está lista: falta {what}. Mientras, el agente pide el "
+                "servicio, el día y la hora y pasa la conversación a una persona.",
+                fix=_link("reservas"),
+                reasons=tuple(data.agenda_reasons),
+            )
+        )
+
+    # Horario. Spec 057 (4.1, decisión de Luis del 2026-11-09): avisa también con un
+    # agente que reserva; bloquear dejaba al cliente sin agente para todo lo demás.
     if not data.has_hours:
         books = any(t.startswith(BOOKING_PREFIXES) for t in tools)
         found["hours"].append(
             Finding(
                 "no_hours",
-                "block" if books else "warn",
+                "warn",
                 "El negocio no tiene horario"
                 + (
-                    ": el agente no puede ofrecer citas."
+                    ": el agente no puede ofrecer citas hasta que lo tenga."
                     if books
                     else ": el agente dirá que no lo sabe."
                 ),
@@ -223,6 +265,20 @@ def review(data: ReviewInput) -> Review:
                     "ninguna herramienta que lo haga.",
                     pointer=inc.pointer,
                     fix={"kind": "edit", "pointer": inc.pointer},
+                )
+            )
+        elif inc.code == "forbids_agenda":
+            # Spec 057 (3.8): tiene la agenda y este texto se la prohíbe. Avisa, no
+            # bloquea («si la clienta lo pide, pásala a una persona» es legítima); el
+            # arreglo es pedir la propuesta de texto (requisito 3), nunca un cambio solo.
+            found["promises"].append(
+                Finding(
+                    "forbids_agenda",
+                    "warn",
+                    f"El agente tiene la agenda, pero este texto dice que no reserva, que "
+                    f"el equipo confirma las citas o que las pasa a una persona: «{inc.detail}».",
+                    pointer=inc.pointer,
+                    fix={"kind": "agenda_proposal"},
                 )
             )
         else:
@@ -284,9 +340,14 @@ async def load_input(
     agent_id: uuid.UUID,
     spec: AgentSpec,
     partner_id: uuid.UUID | None,
+    now: datetime | None = None,
 ) -> ReviewInput:
     """Lo que la revisión necesita del cliente del contexto: la ficha del agente,
-    sus servicios, sus canales y el catálogo con lo conectado."""
+    sus servicios, sus canales, el catálogo con lo conectado y, si el agente lleva
+    la agenda, lo que le falta a Reservas (spec 057, 4.1). Todo bajo la RLS del
+    cliente del contexto."""
+    from datetime import UTC
+
     import sqlalchemy as sa
 
     from nexus_api.core.tenant_context import require_current_tenant
@@ -334,6 +395,11 @@ async def load_input(
     ]
     profile = await session.get(BusinessProfile, tenant_id)
     eu = bool(profile.eu_only) if profile is not None else False
+    agenda_reasons: tuple[str, ...] = ()
+    if any(t.startswith(AGENDA_PREFIX) for t in spec.tools or []):
+        from nexus_api.services.reservations.passing import not_ready
+
+        agenda_reasons = tuple(await not_ready(session, tenant_id, now=now or datetime.now(UTC)))
     return ReviewInput(
         spec=spec,
         facts=facts,
@@ -342,6 +408,7 @@ async def load_input(
         channels=tuple(channels),
         has_hours=business.week is not None,
         eu_client=eu,
+        agenda_reasons=agenda_reasons,
     )
 
 
@@ -350,7 +417,9 @@ def findings_json(items: Sequence[Finding]) -> list[dict[str, Any]]:
 
 
 __all__ = [
+    "AGENDA_PREFIX",
     "CHECKS",
+    "NOT_READY_WORDS",
     "ChannelFact",
     "Finding",
     "Review",

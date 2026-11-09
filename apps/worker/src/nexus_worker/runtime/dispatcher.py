@@ -480,12 +480,22 @@ async def fill_profile(event: InboundEvent, *, customer_id: uuid.UUID) -> None:
 #: (``contracts/events.md`` §2). Any other reason is a provider failure.
 #: Spec 056 (requisito 1.2): ``booking_unbacked``, el freno de citas pasó la
 #: conversación a una persona. Vale para cualquier agente, enrutado o no.
+#: Spec 057 (requisito 4.2): ``agenda_not_ready``, la agenda del cliente no está
+#: terminada y el agente, sin herramienta para pasarla, no puede tomar la cita.
 _ROUTER_REASONS: frozenset[str] = frozenset(
-    {"provider_failure", "no_model", "turn_limit", "escalated", "booking_unbacked"}
+    {
+        "provider_failure",
+        "no_model",
+        "turn_limit",
+        "escalated",
+        "booking_unbacked",
+        "agenda_not_ready",
+    }
 )
 #: Spec 056: con Bandeja, el agente se calla en la conversación, como al pedir
 #: una persona (``inbox_lifecycle.mark_waiting``) o en un bucle de Recepción.
-_SILENCES_THE_AGENT: frozenset[str] = frozenset({"booking_unbacked"})
+#: Spec 057: igual con ``agenda_not_ready``: una persona confirma la hora.
+_SILENCES_THE_AGENT: frozenset[str] = frozenset({"booking_unbacked", "agenda_not_ready"})
 
 
 @dataclass(frozen=True)

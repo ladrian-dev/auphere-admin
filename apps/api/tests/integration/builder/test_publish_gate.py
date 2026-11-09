@@ -348,3 +348,57 @@ async def test_the_same_gate_in_the_old_console_and_the_operator_panel(
         headers=admin_headers,
     )
     assert forced.status_code == 200, forced.text
+
+
+# ── Spec 057, T035: Reservas aún no está listo (4.1, 4.5) ──────────────────
+
+
+async def test_an_agent_with_the_agenda_publishes_for_a_client_without_staff(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """4.1 (decisión de Luis del 2026-11-09): la barbería tiene horario y Reservas,
+    pero ni profesionales ni servicios. La revisión lo dice, con el enlace a
+    Reservas, y el agente se publica: mientras, pasa las citas a una persona."""
+    agent_id = await _agent(client, db_session, biz, fake_redis, tests=[BOOKING_TEST])
+    got = await client.get(f"{_url(biz, agent_id)}/review", headers=biz.headers())
+    assert got.status_code == 200, got.text
+    review = got.json()
+    found = [f for f in review["findings"] if f["code"] == "agenda_not_ready"]
+    assert len(found) == 1, review["findings"]
+    assert found[0]["severity"] == "warn"
+    assert found[0]["reasons"] == ["no_staff", "no_services"]
+    assert found[0]["fix"] == {"kind": "link", "target": "reservas"}
+    assert review["blocking"] == 0, review["findings"]
+
+    job = await _save(client, biz, agent_id, fake_redis, Booker({1, 2, 3}).router)
+    assert job["status"] == "done", job
+    assert {c["condition"]: c["ok"] for c in job["result"]["gate"]["conditions"]}["review"]
+
+
+async def test_a_bookable_service_without_duration_still_blocks_an_agent_with_the_agenda(
+    client: Any,
+    db_session: AsyncSession,
+    biz: Biz,
+    fake_redis: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """4.5: es un servicio mal dado de alta (043, requisito 14), no Reservas sin
+    terminar. La base ya no admite uno así (``ck_reservation_services_duration``):
+    se lo añade a lo que lee la revisión, que es lo que mira la puerta."""
+    import dataclasses
+
+    from nexus_api.services.agent_spec import review as review_module
+
+    real = review_module.load_input
+
+    async def with_a_service_without_duration(*args: Any, **kwargs: Any) -> Any:
+        data = await real(*args, **kwargs)
+        bad = review_module.ServiceFact("s-sin-duracion", "Corte", True, None, True)
+        return dataclasses.replace(data, services=(*data.services, bad))
+
+    monkeypatch.setattr(review_module, "load_input", with_a_service_without_duration)
+    agent_id = await _agent(client, db_session, biz, fake_redis, tests=[BOOKING_TEST])
+    job = await _save(client, biz, agent_id, fake_redis, Booker({1, 2, 3}).router)
+    assert job["status"] == "failed" and job["error_code"] == "gate_blocked", job
+    codes = [i["code"] for i in _gate(job)["overridable"]]
+    assert codes == ["bookable_without_duration"], _gate(job)

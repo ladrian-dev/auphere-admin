@@ -157,6 +157,57 @@ def strip_spec(spec: AgentSpec, ctx: Context) -> tuple[AgentSpec, list[MissingCa
     return AgentSpec.model_validate(cleaned), lacking
 
 
+def _kept_by(item: MissingCapability) -> frozenset[str] | None:
+    """The actions any one of which keeps the promise of an ``action`` note: by its
+    key (``compiler.PROMISES``) or, for a note that only kept the label, by how the
+    console says it. ``None``: a promise this code does not know."""
+    from nexus_api.services.agent_spec.compiler import PROMISES
+
+    for promise, _pattern in PROMISES:
+        if promise.key == item.key:
+            return promise.needs
+    for promise, _pattern in PROMISES:
+        if promise.label == item.label:
+            return promise.needs
+    return None
+
+
+def _has(ctx: Context, slug: str) -> bool:
+    """The client has ``slug`` now: a connected integration, the Meta catalog
+    linked, or the module on (``validator.load_context`` marks them connected)."""
+    return any(info.integration == slug and info.connected for info in ctx.tools.values())
+
+
+def still_missing(
+    items: Iterable[MissingCapability], spec: AgentSpec, ctx: Context
+) -> list[MissingCapability]:
+    """Spec 057, requirement 6 (research R6): of what was noted as missing
+    (``policies.builder``, copied to every version and never recomputed), what is
+    still missing for ``spec`` and the client of ``ctx``:
+
+    - ``action``: out when one of the version's tools does it — the same test as
+      ``compiler.uncovered_promises``;
+    - ``module``: out when the module is on (Reservas);
+    - ``integration``: out when it is connected now (or the catalog is linked);
+    - ``tool`` (``tool_unknown``): stays.
+
+    Worked out on every read, never written back as a migration: an agent with a
+    stale note looks right as it is (6.4)."""
+    from nexus_api.api.console.capability_names import actions_of
+
+    doable = actions_of(spec.tools or [])
+    out: list[MissingCapability] = []
+    for item in items:
+        if item.kind == "action":
+            needs = _kept_by(item)
+            if needs is not None and needs & doable:
+                continue
+        elif item.kind in ("module", "integration") and _has(ctx, item.key):
+            continue
+        out.append(item)
+    return merge(out)
+
+
 def merge(*groups: Iterable[MissingCapability]) -> list[MissingCapability]:
     """All of them, in order, once each: the console says each missing capability
     once (by kind and key), with the first place it was found."""
@@ -203,6 +254,7 @@ __all__ = [
     "integration",
     "merge",
     "not_offered",
+    "still_missing",
     "strip_doc",
     "strip_spec",
     "tool",

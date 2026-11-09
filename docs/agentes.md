@@ -83,6 +83,39 @@ Todo lo largo es un **trabajo** (`jobs`, `services/jobs.py`) que corre el worker
   conectar y sin activación: el constructor las ve «SIN ACTIVAR», `sanitize` las
   quita (`tool_not_connected`) y la puerta las rechaza; el playground y las pruebas
   responden «Reservas no está activo», como el turno.
+- **La agenda desde el agente** (spec 057, requisitos 1 a 3 y 7; reabre D67). El módulo
+  sigue mandando, pero el agente puede encenderlo:
+  - **En el alta**, «Gestiona citas» (`DraftJobIn.agenda`, y `reservas` con el modo si
+    el módulo está apagado). Con el interruptor encendido, la ruta enciende Reservas en
+    la misma transacción y **antes** de encolar o de escribir el borrador
+    (`services/reservations/turn_on.py: turn_on_from_agent`), así que el constructor ve
+    la agenda. El constructor lo obedece (`DraftRequest.agenda`): el bloque `<agenda>`
+    del mensaje y, en `sanitize`, las nueve `reservas.*` disponibles, los
+    procedimientos fijos de reservar y de cambiar (`AGENDA_PROCEDURES`) si el modelo no
+    los escribió, y fuera todo texto que prohíba la agenda (`compiler.forbids_agenda`).
+    Apagado, ninguna `reservas.*`. Sin interruptor (`null`), como antes. Plantilla y en
+    blanco igual. `draft-options` dice si se ofrece, el modo del cliente y el sugerido
+    por su sector (`turn_on.suggested_choice`: restaurante → aforo).
+  - **En Conectores**, la fila «Agenda (Reservas)» (`api/console/agenda.py`, `GET`/`PUT
+    …/agents/{id}/agenda` y `…/agenda/tools`). Activar enciende el módulo si hace falta
+    (con el modo, tras confirmar en la consola) y pone las nueve de una vez en el
+    borrador (`capabilities_client.set_agent_tools`); desactivar las quita (también de
+    `procedures[].tools`) y nunca apaga el módulo ni toca reservas. Una a una, como
+    cualquier herramienta (`PUT …/capabilities`).
+  - **Encender desde un agente** corre bajo la RLS del cliente (`nexus_app`), sin
+    `as_tenant` ni `set_access`: añade `reservas` a los módulos sin tocar `enabled`,
+    crea los ajustes con su modo, prepara la agenda a los **otros** agentes que dan
+    citas (`passing.gives_appointments`) y lo audita con la persona y el agente. Lo
+    puede quien edita agentes (`agents:write`); apagar sigue en Acceso.
+  - **La propuesta de texto** (requisito 3): cada cambio de la agenda en un agente
+    estructurado encola el trabajo `agenda_text` (0229), que escribe una propuesta del
+    constructor (`services/builder/agenda_text.py`) sobre procedimientos, reglas,
+    escalado, habilidades, instrucciones y `services.faqs`, nunca `/tools`. Con modelo
+    (`role="build"`, medido como construcción) o, si su salida no pasa las
+    comprobaciones o el proveedor falla, el respaldo sin modelo. Vive 7 días; la
+    siguiente de la agenda deja `stale` la anterior. Lo de la ficha que dice que el
+    equipo confirma las citas se señala en `diff.ficha_links` y no se toca. `GET
+    …/proposals` añade a cada operación su `before`.
 - **«Desde una plantilla»** (58.6, `agent_draft.draft_from_template`): como el
   constructor, sin modelo: un AgentSpec estructurado salido de la guía del sector de
   la plantilla y de sus herramientas (las que el cliente tiene), con las pruebas del
@@ -150,6 +183,11 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   El borrador las lista en `missing_capabilities`: el resultado del trabajo y
   `GET …/draft`. Lo que el constructor dejó fuera se guarda en
   `policies["builder"]`; las promesas del AgentSpec se calculan en cada lectura.
+  **Lo guardado también se contrasta al leer** (spec 057, requisito 6:
+  `missing.still_missing`): una promesa que ya cubre una herramienta del agente, un
+  módulo ya encendido o una integración ya conectada dejan de salir, en el borrador y
+  en lo publicado. Es lo que pasó con Spa Jemma: la v1 se escribió sin agenda y el
+  aviso «No tenemos herramienta para: reservar citas» siguió con las nueve publicadas.
   Un borrador de antes de la enmienda con una integración así se lee y se edita sin
   ella, y nada se rechaza por eso: la consola no edita habilidades (D72).
 - **Las promesas, por lo que hace cada herramienta** (65.5,
@@ -325,6 +363,19 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
 5. la revisión no tiene bloqueantes;
 6. si la versión cambia de modelo o de calidad, ese cambio está comprobado
    (`model_policy_unchecked`, sección 6).
+
+**La agenda en la revisión** (spec 057, requisitos 3.8, 4.1 y 4.5):
+
+- `no_hours` con un agente que reserva es un **aviso**, no un bloqueo;
+- `agenda_not_ready` avisa, con los motivos de `passing.not_ready` y el enlace a
+  Reservas, de que al cliente le falta algo para tomar una cita. Se publica igual: el
+  turno pasa esas citas a una persona (sección 11);
+- `forbids_agenda` avisa cuando el agente tiene `reservas.create` y un texto suyo
+  dice que no reserva, que el equipo confirma la cita, que la agenda no está activa o
+  que pasa la cita a una persona (`compiler.agenda_forbidding_texts`, con el puntero
+  de cada texto, también los disparadores de escalado y la alternativa de las
+  habilidades). Es el caso inverso de «promete sin herramienta»;
+- `bookable_without_duration` sigue bloqueando: es un servicio mal dado de alta.
 
 El aviso de IA lo decide una persona en la pantalla del agente, en su bloque
 «Aviso de IA» (en el primer mensaje de cada conversación o solo si le preguntan,
@@ -544,3 +595,36 @@ este agente», una propuesta y sin lote, como antes. El detalle está en
 
 **Pruebas**: `apps/api/tests/integration/improvement/test_corrections.py` y
 `test_correction_batch_accept.py`.
+
+## 11. La agenda sin terminar en el turno (spec 057, requisito 4)
+
+Un agente con la agenda puede publicarse aunque al cliente le falten horario,
+profesionales, servicios reservables o capacidad (decisión de Luis del 2026-11-09).
+Mientras falte algo, el turno no dice «no hay huecos»: pasa la cita a una persona.
+
+- **Dónde**: `pipeline.make_handler_node`, después de `allowed_names` y antes de
+  `get_openai_tools`. Si el agente tiene alguna `reservas.*`, se lee
+  `passing.agenda_ready` una vez por turno con la RLS del cliente (encendido y con modo,
+  horario y, en Servicios, alguien en activo y algún servicio reservable; en Aforo,
+  plazas y franjas). No va en el bundle cacheado: ninguna escritura de Reservas lo
+  invalida, y el agente tiene que reservar desde el mensaje siguiente a completar
+  Reservas, sin publicar.
+- **Qué**: salen `find_slots`, `create`, `reschedule`, `join_waitlist` y
+  `answer_offer` (de lo que ve el modelo y de la lista blanca de `dispatch`); quedan
+  `services`, `list_mine`, `cancel` y `confirm_attendance`. Una nota de sistema, en
+  cualquier intención, pide el servicio, el día y la hora, llamar a
+  `escalate.escalate_to_human` y decir que el equipo escribirá para confirmar la hora,
+  sin «tu cita» (lo leería el freno). Registro: `agenda.not_ready_turn`.
+- **Sin herramienta de pasar** y con intención `book`: traspasa el runtime antes del
+  bucle, sin llamar al modelo, con `waiting_reason = agenda_not_ready` (0229), que
+  silencia al agente en esa conversación como `booking_unbacked`. Con otra intención,
+  una nota dice que ahora no puede dar citas por aquí.
+- **Si la lectura falla**, el turno sigue con todas las herramientas
+  (`agenda.ready_read_failed`): el servidor de Reservas ya rechaza lo imposible.
+- **El freno de citas** (sección 9) no salta en un turno que pasó la cita a una
+  persona con la agenda sin terminar, ni en el manejador ni en la reescritura del
+  revisor (`booking_brake.backs(agenda_pending=…)`).
+- **Simulación**: el playground usa la agenda real del cliente (así lo verá); la suite
+  del agente la da por lista (`run_turn(agenda_ready=True)`), porque mide su texto y no
+  la configuración del cliente.
+

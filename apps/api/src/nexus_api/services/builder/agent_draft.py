@@ -130,16 +130,21 @@ class DraftInputInvalid(ValueError):
 class DraftRequest:
     name: str
     description: str
+    #: Spec 057 (requisito 1): «Gestiona citas». ``True``, la agenda entera; ``False``,
+    #: ninguna ``reservas.*``; ``None`` (clientes antiguos de la API), lo que proponga
+    #: el constructor, como hasta hoy. Reservas ya está encendido si es ``True``: lo
+    #: enciende la ruta antes de encolar (``reservations.turn_on``).
+    agenda: bool | None = None
 
     @classmethod
-    def clean(cls, name: str, description: str) -> DraftRequest:
+    def clean(cls, name: str, description: str, *, agenda: bool | None = None) -> DraftRequest:
         name = " ".join((name or "").split())
         description = (description or "").strip()
         if not 1 <= len(name) <= NAME_MAX:
             raise DraftInputInvalid("name_length")
         if not DESCRIPTION_MIN <= len(description) <= DESCRIPTION_MAX:
             raise DraftInputInvalid("description_length")
-        return cls(name=name, description=description)
+        return cls(name=name, description=description, agenda=agenda)
 
 
 @dataclass
@@ -243,6 +248,59 @@ def _guide_block(guide: ResolvedGuide | None) -> str:
     return fence(render_guide(guide.guide), tag="guia_del_sector", title=title)
 
 
+#: Spec 057 (1.6 y 1.7): lo que se le dice al constructor del interruptor.
+AGENDA_ON: Final = (
+    "<agenda>\nEste agente GESTIONA CITAS en la agenda de Reservas, que está encendida. "
+    "Usa las herramientas reservas.* disponibles y escribe procedimientos para buscar huecos, "
+    "reservar, mover, cancelar y consultar citas con ellas. No escribas que el equipo "
+    "confirma las citas, que la agenda no está activa ni que una cita se pasa a una persona: "
+    "el agente la reserva él mismo.\n</agenda>"
+)
+AGENDA_OFF: Final = (
+    "<agenda>\nEste agente NO gestiona citas: no uses ninguna herramienta reservas.*. Si "
+    "piden una cita, toma lo que necesita y pasa la conversación a una persona, sin "
+    "prometer ninguna hora.\n</agenda>"
+)
+
+
+def _agenda_block(agenda: bool | None) -> str:
+    if agenda is None:
+        return ""
+    return AGENDA_ON if agenda else AGENDA_OFF
+
+
+#: Spec 057 (1.6): los procedimientos fijos de la agenda, si el modelo no los escribió.
+AGENDA_PROCEDURES: Final[tuple[dict[str, Any], ...]] = (
+    {
+        "id": "reservar_cita",
+        "title": "Reservar una cita",
+        "when": "Cuando alguien pide una cita o pregunta por huecos",
+        "steps": (
+            "Pregunta el servicio, con quién la prefiere si tiene preferencia y el día. Busca "
+            "huecos en la agenda y ofrece dos. Resume servicio, profesional, día, hora y precio "
+            "y espera el sí. Reserva en la agenda y confirma solo con la reserva creada."
+        ),
+        "tools": ["reservas.services", "reservas.find_slots", "reservas.create"],
+    },
+    {
+        "id": "cambiar_cita",
+        "title": "Cambiar, cancelar o consultar una cita",
+        "when": "Cuando alguien quiere mover, cancelar o saber qué citas tiene",
+        "steps": (
+            "Busca sus reservas en la agenda. Si hay más de una, pregunta cuál. Para moverla, "
+            "busca un hueco nuevo y mueve la misma reserva. Para cancelarla, confirma cuál y "
+            "cancélala. Responde siempre con lo que devuelve la agenda, nunca de memoria."
+        ),
+        "tools": [
+            "reservas.list_mine",
+            "reservas.find_slots",
+            "reservas.reschedule",
+            "reservas.cancel",
+        ],
+    },
+)
+
+
 def build_messages(
     request: DraftRequest,
     facts: Facts,
@@ -267,6 +325,7 @@ def build_messages(
             _guide_block(guide),
             "<patrones_del_papel>\n" + patterns_text(chosen) + "\n</patrones_del_papel>",
             "<herramientas>\n" + "\n".join(_catalog_lines(ctx)) + "\n</herramientas>",
+            _agenda_block(request.agenda),
         )
         if part
     )
@@ -399,6 +458,24 @@ def sanitize(
         else:
             keep.append(name)
     tools = keep[:60]
+    # Spec 057 (1.6 y 1.7): el interruptor manda sobre lo que diga el modelo.
+    if request.agenda is True:
+        from nexus_api.services.reservations.passing import RESERVAS_TOOLS
+
+        available = set(ctx.available_tools())
+        tools = list(dict.fromkeys([*tools, *(n for n in RESERVAS_TOOLS if n in available)]))[:60]
+    elif request.agenda is False:
+        tools = [t for t in tools if not t.startswith(AGENDA_PREFIX)]
+
+    def forbids(text: str, *, hands_off: bool = False) -> bool:
+        """Con la agenda, lo que la prohíbe (pasar la cita al equipo, «la agenda no está
+        activa») no entra: es lo que dejó a Spa Jemma sin reservar con las herramientas.
+        ``hands_off``: el texto es el disparador de un paso a persona."""
+        if request.agenda is not True:
+            return False
+        from nexus_api.services.agent_spec.compiler import forbids_agenda
+
+        return forbids_agenda(text, hands_off=hands_off)
 
     def promises(text: str) -> bool:
         """65.4: lo que promete algo que ninguna de sus herramientas hace se queda
@@ -420,12 +497,21 @@ def sanitize(
         if not (pid and steps and title and when):
             continue
         cited = [t for t in dict.fromkeys(str(x) for x in proc.get("tools") or []) if t in tools]
-        if promises(f"{when}. {steps}"):
+        if promises(f"{when}. {steps}") or forbids(f"{when}. {steps}"):
             continue
         item: dict[str, Any] = {"id": pid[:40], "title": title, "when": when, "steps": steps}
         if cited:
             item["tools"] = cited[:10]
         procedures.append(item)
+
+    if request.agenda is True and not any(
+        "reservas.create" in (p.get("tools") or []) for p in procedures
+    ):
+        have = {p["id"] for p in procedures}
+        for fixed in AGENDA_PROCEDURES:
+            cited = [t for t in fixed["tools"] if t in tools]
+            if fixed["id"] not in have and cited:
+                procedures.append({**fixed, "tools": cited})
 
     sections = []
     budget = 8000
@@ -465,6 +551,8 @@ def sanitize(
         if integ is not None and integ not in skill_ok:
             lack(integ, "skill", key)
             continue
+        if forbids(_str(skill.get("fallback"), 300)):
+            continue
         item = {"key": key[:60], "enabled": bool(skill.get("enabled", True)), "integration": integ}
         if skill.get("fallback"):
             item["fallback"] = _str(skill.get("fallback"), 300)
@@ -494,6 +582,8 @@ def sanitize(
         elif isinstance(trig, Mapping) and trig.get("custom"):
             trigger = {"custom": _str(trig["custom"], 300)}
         else:
+            continue
+        if isinstance(trigger, dict) and forbids(trigger["custom"], hands_off=True):
             continue
         if trigger not in triggers:
             triggers.append(trigger)
@@ -532,7 +622,7 @@ def sanitize(
         for rule in (
             _str(r, 300) for r in raw.get("rules") or [] if isinstance(r, str) and r.strip()
         )
-        if not promises(rule)
+        if not promises(rule) and not forbids(rule)
     ][:30]
 
     doc: dict[str, Any] = {
@@ -701,7 +791,7 @@ def _tests(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 # ── sin modelo (desarrollo local con ``llm_use_inmemory``) ──────────────────
 
-_BOOKING = re.compile(r"\b(cita|citas|reserv\w*|agend\w*|turno)\b", re.I)
+_BOOKING = re.compile(r"\b(cita|citas|reserv\w*|agend\w*|turnos?)\b", re.I)
 _PAYING = re.compile(r"\b(cobr\w*|pago|pagos|deuda\w*)\b", re.I)
 _USTED = re.compile(r"\busted\b", re.I)
 
@@ -730,9 +820,14 @@ def offline_output(
     if tools_hint is not None:
         tools = [n for n in dict.fromkeys(tools_hint) if n in available]
     agenda = [n for n in available if n.startswith(AGENDA_PREFIX)]
-    books = booking and any(n in agenda for n in ("reservas.create", "reservas.answer_offer"))
+    if request.agenda is False:
+        agenda = []
+        tools = [t for t in tools if not t.startswith(AGENDA_PREFIX)]
+    wants = booking if request.agenda is None else request.agenda
+    books = wants and any(n in agenda for n in ("reservas.create", "reservas.answer_offer"))
     if books:
-        tools += agenda[:6]
+        # Con «Gestiona citas» (spec 057), las nueve; sin él, como hasta hoy.
+        tools += agenda if request.agenda else agenda[:6]
         procedures.append(
             {
                 "id": "reservar",
@@ -1208,6 +1303,7 @@ async def draft_from_template(
     name: str,
     description: str | None,
     actor: str,
+    agenda: bool | None = None,
 ) -> uuid.UUID:
     """«Empezar desde una plantilla» como el constructor (58.6): un AgentSpec
     estructurado salido de la guía del sector de la plantilla y de sus herramientas
@@ -1234,7 +1330,7 @@ async def draft_from_template(
     text = (description or "").strip()
     if len(text) < DESCRIPTION_MIN:
         text = _template_description(template.display_name or template_id, hint)
-    request = DraftRequest.clean(name, text[:DESCRIPTION_MAX])
+    request = DraftRequest.clean(name, text[:DESCRIPTION_MAX], agenda=agenda)
     model_policy = await default_model_policy(session)
     found = auphere_guide(TEMPLATE_SECTOR.get(template_id, OTHER)) or generic_guide()
     template_guide = ResolvedGuide(

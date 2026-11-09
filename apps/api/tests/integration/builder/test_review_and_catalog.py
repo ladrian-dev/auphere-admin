@@ -77,11 +77,16 @@ async def test_the_review_says_what_blocks_and_fixes_in_one_click(
     assert got.status_code == 200, got.text
     out = got.json()
     codes = {f["code"]: f["severity"] for f in out["findings"]}
-    # Sin horario y con herramientas de reservas: bloquea. El aviso de IA, sin decidir.
-    assert codes["no_hours"] == "block"
+    # Sin horario y con herramientas de reservas: desde la spec 057 (4.1) avisa, y la
+    # agenda sin terminar también, con lo que falta. El aviso de IA, sin decidir.
+    assert codes["no_hours"] == "warn"
+    assert codes["agenda_not_ready"] == "warn"
+    not_ready = next(f for f in out["findings"] if f["code"] == "agenda_not_ready")
+    assert not_ready["reasons"] == ["hours_missing", "no_staff", "no_services"]
+    assert not_ready["fix"] == {"kind": "link", "target": "reservas"}
     assert codes["ai_disclosure_undecided"] == "block"
     assert codes["unknown_tool"] == "block"
-    assert out["blocking"] >= 3
+    assert out["blocking"] == 2
     checks = {c["check"]: c["ok"] for c in out["checks"]}
     assert checks["hours"] is False and checks["skills_integrations"] is True
     unknown = next(f for f in out["findings"] if f["code"] == "unknown_tool")
@@ -99,6 +104,66 @@ async def test_the_review_says_what_blocks_and_fixes_in_one_click(
     analyst = await add_console_member(db_session, partner_id=biz.partner_id, role="analyst")
     explained = (await client.get(f"{url}/review", headers=analyst["headers"]())).json()
     assert all((f.get("fix") or {}).get("kind") != "proposal" for f in explained["findings"])
+
+
+async def test_the_review_warns_when_a_text_forbids_the_agenda_the_agent_has(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """Spec 057, 3.8: con la agenda publicada, los textos de Spa Jemma (staging,
+    2026-11-09) le prohibían reservar. La revisión señala cada uno con su puntero y la
+    acción de pedir la propuesta; no bloquea, y no toca una frase legítima."""
+    from nexus_api.services.reservations.passing import RESERVAS_TOOLS
+    from tests.unit.test_agent_spec_compiler import (
+        LEGITIMATE,
+        SPA_JEMMA_FALLBACKS,
+        SPA_JEMMA_RULES,
+        SPA_JEMMA_STEPS,
+        SPA_JEMMA_TRIGGER,
+    )
+
+    agent_id = await _agent(client, biz, fake_redis, RECEPTION)
+    url = f"/console/clients/{biz.ref}/agents/{agent_id}"
+    read = (await client.get(f"{url}/draft", headers=biz.headers())).json()
+    spec = copy.deepcopy(read["spec"])
+    spec["tools"] = [*RESERVAS_TOOLS, "escalate.escalate_to_human"]
+    spec["procedures"] = [
+        *spec["procedures"],
+        {
+            "id": "recoger_solicitud",
+            "title": "Recoger una solicitud de cita",
+            "when": "Cuando alguien pide una cita",
+            "steps": SPA_JEMMA_STEPS,
+        },
+    ]
+    spec["escalation"] = {
+        "triggers": ["asks_for_human", {"custom": SPA_JEMMA_TRIGGER}],
+        "failed_attempts": 2,
+    }
+    spec["rules"] = [*SPA_JEMMA_RULES, LEGITIMATE]
+    spec["skills"] = [
+        {"key": key, "enabled": True, "fallback": text} for key, text in SPA_JEMMA_FALLBACKS.items()
+    ]
+    patch = await client.patch(
+        f"{url}/draft",
+        json={"spec": spec},
+        headers={**biz.headers(), "If-Match": f'"{read["revision"]}"'},
+    )
+    assert patch.status_code == 200, patch.text
+    procedure = len(spec["procedures"]) - 1
+
+    out = (await client.get(f"{url}/review", headers=biz.headers())).json()
+    found = [f for f in out["findings"] if f["code"] == "forbids_agenda"]
+    assert {f["pointer"] for f in found} == {
+        f"/procedures/{procedure}/steps",
+        "/escalation/triggers/1/custom",
+        "/rules/0",
+        "/rules/1",
+        "/skills/0/fallback",
+        "/skills/1/fallback",
+    }
+    assert {f["severity"] for f in found} == {"warn"}
+    assert all(f["fix"] == {"kind": "agenda_proposal"} for f in found)
+    assert "forbids_agenda" not in {f["code"] for f in out["findings"] if f["severity"] == "block"}
 
 
 async def test_the_sector_catalog_has_twelve_per_sector_and_new_versions(

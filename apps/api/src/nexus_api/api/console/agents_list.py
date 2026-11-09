@@ -56,6 +56,9 @@ class AgentOut(BaseModel):
     opens: Literal["builder", "channels", "overview"] | None = None
     #: Recepción (requisito 35): lo que dice la versión publicada del agente.
     is_reception: bool = False
+    #: Spec 057 (5.3): la agenda de Reservas. ``prepared``: está en el borrador y no en lo
+    #: publicado, así que el agente aún no reserva (la tarjeta lo dice a la vista).
+    agenda: Literal["none", "prepared", "on"] = "none"
 
 
 def _opens(code: str | None) -> Literal["builder", "channels", "overview"]:
@@ -117,7 +120,43 @@ async def _states(scope: ClientScope) -> dict[uuid.UUID, Any]:
     return out
 
 
-def _card(view: Any, states: dict[uuid.UUID, Any]) -> AgentOut:
+async def _agendas(scope: ClientScope) -> dict[uuid.UUID, Literal["none", "prepared", "on"]]:
+    """Spec 057 (5.3): la agenda de cada agente, de sus versiones activa y en borrador, en
+    una consulta. Se calcula de las versiones, no de quién preparó el borrador."""
+    from nexus_api.db.models import AgentConfig, AgentConfigStatus
+
+    rows = (
+        await scope.session.execute(
+            sa.select(AgentConfig.agent_id, AgentConfig.status, AgentConfig.tools).where(
+                AgentConfig.tenant_id == scope.tenant.id,
+                AgentConfig.status.in_((AgentConfigStatus.ACTIVE, AgentConfigStatus.STAGED)),
+            )
+        )
+    ).all()
+    active: dict[uuid.UUID, bool] = {}
+    draft: dict[uuid.UUID, bool] = {}
+    for agent_id, status_, tools in rows:
+        has = "reservas.create" in (tools or [])
+        if status_ == AgentConfigStatus.ACTIVE:
+            active[agent_id] = has
+        else:
+            draft[agent_id] = has
+    out: dict[uuid.UUID, Literal["none", "prepared", "on"]] = {}
+    for agent_id in {*active, *draft}:
+        if active.get(agent_id) and draft.get(agent_id, True):
+            out[agent_id] = "on"
+        elif draft.get(agent_id) and not active.get(agent_id):
+            out[agent_id] = "prepared"
+        else:
+            out[agent_id] = "none"
+    return out
+
+
+def _card(
+    view: Any,
+    states: dict[uuid.UUID, Any],
+    agendas: dict[uuid.UUID, Literal["none", "prepared", "on"]] | None = None,
+) -> AgentOut:
     visible, row = states.get(view.id, (None, None))
     return AgentOut(
         id=view.id,
@@ -137,13 +176,14 @@ def _card(view: Any, states: dict[uuid.UUID, Any]) -> AgentOut:
         ),
         opens=_opens(visible.code if visible is not None else None),
         is_reception=bool(row[4]) if row else False,
+        agenda=(agendas or {}).get(view.id, "none"),
     )
 
 
 async def _out(scope: ClientScope, agent_id: uuid.UUID) -> AgentOut:
     views = await agent_service.list_agents(scope.session, include_archived=True)
     view = next(v for v in views if v.id == agent_id)
-    return _card(view, await _states(scope))
+    return _card(view, await _states(scope), await _agendas(scope))
 
 
 @router.get("/agents", response_model=list[AgentOut])
@@ -155,7 +195,8 @@ async def list_agents(
     the tab can show them («Archivado») and restore them."""
     views = await agent_service.list_agents(scope.session, include_archived=include_archived)
     states = await _states(scope)
-    return [_card(v, states) for v in views]
+    agendas = await _agendas(scope)
+    return [_card(v, states, agendas) for v in views]
 
 
 @router.post(

@@ -131,6 +131,19 @@ def _saw_tool(call: Any) -> bool:
     return any(m.get("role") == "tool" for m in call.messages)
 
 
+@pytest.fixture(autouse=True)
+def _agenda_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Spec 057 (requisito 4): con ``reservas.create`` y Reservas sin terminar, el turno
+    pasa la cita a una persona sin llamar a la herramienta. Aquí lo que se mide es la
+    idempotencia de una reserva, así que la agenda del mundo está lista."""
+    from nexus_worker.runtime import pipeline
+
+    async def _ready(_tenant_id: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(pipeline, "_load_agenda_ready", _ready)
+
+
 async def _world(db_session: Any) -> Any:
     from nexus_api.core.tenant_context import tenant_scoped_session
     from nexus_api.db.base import get_sessionmaker

@@ -325,8 +325,9 @@ existen con el módulo.
   la Bandeja nunca enseña un código. El texto libre con el que el agente pide
   ayuda (`escalate_to_human`, hasta 500 caracteres) sale tal cual, *decisión de
   la spec 056*. `agent_unpublished` dice «Agente sin publicar» y
-  `booking_unbacked`, «El agente dio por hecha una cita que no existe». La app
-  usa la misma lista (`features/inbox/model.ts`).
+  `booking_unbacked`, «El agente dio por hecha una cita que no existe», y
+  `agenda_not_ready` (spec 057), «Pidió una cita y la agenda aún no está lista». La
+  app usa la misma lista (`features/inbox/model.ts`).
 - **El aviso «espera a una persona» se cierra solo** (D8). Migración 0227:
   `console_notifications.handled_at`. Tomar el control, devolverla al agente,
   resolverla o eliminarla (rutas lite, tras el commit con

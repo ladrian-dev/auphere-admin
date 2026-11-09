@@ -86,6 +86,7 @@ conversación pasa a «Espera a una persona» en la Bandeja.
 | `human_takeover` | «La lleva una persona» | Una persona tomó el control, o un eco de coexistencia (requisito 30.11) |
 | `reception_loop` | «Derivaciones en bucle» | Requisito 53.5 |
 | `booking_unbacked` | «El agente dio por hecha una cita que no existe» (en: «The agent confirmed a booking that does not exist») | Spec 056, requisito 1.2: el freno de citas, tras un reintento. No lo libera la siguiente respuesta del agente (no es de `GATE_REASONS`); con Bandeja, el agente se calla en la conversación |
+| `agenda_not_ready` | «Pidió una cita y la agenda aún no está lista» (en: «Asked for an appointment and the agenda is not ready yet») | Spec 057, requisito 4.2 (0229): la agenda del cliente sin terminar y un agente sin herramienta de pasar; el runtime pasa la cita a una persona sin llamar al modelo. Como `booking_unbacked`: no lo libera la siguiente respuesta y, con Bandeja, el agente se calla. Registros del turno: `agenda.not_ready_turn` y `agenda.ready_read_failed` (`specs/057-agenda-desde-el-agente/contracts/events.md`) |
 
 ## 3. Avisos
 

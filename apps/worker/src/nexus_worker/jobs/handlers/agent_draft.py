@@ -102,7 +102,12 @@ def make_agent_draft_handler(*, complete_factory: CompleteFactory | None = None)
     async def handle(ctx: JobContext) -> JobOutcome:
         data = await _input(ctx)
         try:
-            request = DraftRequest.clean(data.get("name", ""), data.get("description", ""))
+            request = DraftRequest.clean(
+                data.get("name", ""),
+                data.get("description", ""),
+                # Spec 057 (requisito 1): «Gestiona citas», como texto en el progreso.
+                agenda={"true": True, "false": False}.get(data.get("agenda", "")),
+            )
         except DraftInputInvalid as exc:
             raise JobFailed(exc.code) from exc
         try:

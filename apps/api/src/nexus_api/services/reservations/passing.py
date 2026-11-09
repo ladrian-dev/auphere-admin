@@ -37,11 +37,11 @@ from __future__ import annotations
 import re
 import unicodedata
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,6 +59,7 @@ from nexus_api.db.models import (
     Reservation,
     ReservationService,
     ReservationSettings,
+    ReservationStaff,
 )
 from nexus_api.db.models.reservation import LIVE_STATUSES
 from nexus_api.services.agent_spec.retired import (
@@ -170,6 +171,52 @@ def version_books_outside(cfg: AgentConfig | None) -> bool:
     if cfg is None:
         return False
     return version_names_booking(cfg) or books_elsewhere(cfg.tools)
+
+
+#: Spec 057 (5.1): las promesas que hacen de un agente uno que da citas.
+_GIVES_KEYS: Final = frozenset({"book", "modify_booking"})
+
+
+def gives_appointments(cfg: AgentConfig | None) -> bool:
+    """¿Da citas esta versión? Spec 057, requisito 5.1: reserva en un conector, nombra
+    ``booking.*`` o su texto promete reservar, mover o cancelar citas, con las mismas
+    palabras que el aviso de promesas (``compiler.promises_in``). Es lo que decide quién
+    gana la agenda al encender Reservas: un agente de cobros no."""
+    from nexus_api.services.agent_spec.compiler import promises_in
+
+    if cfg is None:
+        return False
+    if version_books_outside(cfg):
+        return True
+    # Con AgentSpec, solo lo que escribe el partner: el texto compilado lleva la ficha
+    # («· se reserva») y daría por bueno a cualquier agente.
+    texts = _partner_texts(cfg.spec) if cfg.spec else [cfg.system_prompt_rendered or ""]
+    return any(p.key in _GIVES_KEYS for text in texts for p in promises_in(text))
+
+
+def _partner_texts(doc: Mapping[str, Any]) -> list[str]:
+    """Lo que escribe el partner en un AgentSpec guardado (los mismos sitios que
+    ``compiler._texts``), leído del documento sin validarlo: uno a medias no deja a un
+    agente fuera."""
+
+    def _str(value: Any) -> str:
+        return value if isinstance(value, str) else ""
+
+    def _items(value: Any) -> list[Any]:
+        return value if isinstance(value, list) else []
+
+    def _map(value: Any) -> Mapping[str, Any]:
+        return value if isinstance(value, Mapping) else {}
+
+    out = [_str(_map(doc.get("identity")).get("description"))]
+    instructions = _map(doc.get("instructions"))
+    out.append(_str(instructions.get("legacy_text")))
+    out.extend(_str(_map(sec).get("body")) for sec in _items(instructions.get("sections")))
+    for proc in _items(doc.get("procedures")):
+        proc = _map(proc)
+        out.append(f"{_str(proc.get('when'))}. {_str(proc.get('steps'))}")
+    out.extend(_str(rule) for rule in _items(doc.get("rules")))
+    return [text for text in out if text.strip()]
 
 
 @dataclass(frozen=True)
@@ -341,6 +388,8 @@ async def prepare_agent_versions(
     only_booking: bool = False,
     drafts_only: bool = False,
     keep_google: bool = False,
+    only: Callable[[AgentConfig], bool] | None = None,
+    exclude: frozenset[uuid.UUID] = frozenset(),
 ) -> list[PreparedAgent]:
     """El borrador de cada agente activo, con Reservas (``enable``) o sin ella,
     sin promover. ``only_booking``: solo los que nombran ``booking.*`` (el paso
@@ -351,7 +400,11 @@ async def prepare_agent_versions(
     one gets none (the automatic pass publishes its active version instead).
 
     ``keep_google``: an agent that names Google Calendar stays as it is, because its client
-    cannot book yet (spec 043, R11.4)."""
+    cannot book yet (spec 043, R11.4).
+
+    ``only`` (spec 057, 5.1): only the agents whose base passes it — the ones that give
+    appointments. ``exclude``: agents left alone, such as the one that turned the module on
+    from its own screen (5.2)."""
     from nexus_api.services.agent_config_service import AgentConfigService
     from nexus_api.services.connectors.booking_skills import books_elsewhere
     from nexus_api.services.testing.billing import return_the_pass
@@ -367,9 +420,13 @@ async def prepare_agent_versions(
     ).all()
     out: list[PreparedAgent] = []
     for agent_id, name in agents:
+        if agent_id in exclude:
+            continue
         draft = await svc.configs.get_draft(agent_id=agent_id)
         base = draft if draft is not None else await svc.configs.draft_base(agent_id=agent_id)
         if base is None:
+            continue
+        if only is not None and not only(base):
             continue
         # Lo que reserva en un conector no se publica sin la puerta (R11.5): su cambio va en un
         # borrador, aunque no lo tuviera.
@@ -380,8 +437,13 @@ async def prepare_agent_versions(
         # Quien espera a que su cliente pueda reservar se queda como está (R11.4).
         if keep_google and version_names_google(base):
             continue
-        # Lo que alguien descartó no vuelve en cada despliegue, con sus pruebas desactualizadas.
-        if only_booking and draft is None and await _offer_was_turned_down(session, agent_id, base):
+        # Lo que alguien descartó no vuelve en cada despliegue, con sus pruebas desactualizadas,
+        # ni al volver a encender Reservas (spec 057, 5.4; 043, 11.5).
+        if (
+            (only_booking or only is not None)
+            and draft is None
+            and await _offer_was_turned_down(session, agent_id, base)
+        ):
             continue
         fields = _rewritten(base, enable=enable, everything=not only_booking)
         if _same(base, fields):
@@ -799,20 +861,22 @@ async def pass_to_reservas(
     *,
     actor: str,
     now: datetime,
-    every_agent: bool = False,
+    scope: Literal["booking", "every", "givers"] = "booking",
+    exclude: frozenset[uuid.UUID] = frozenset(),
     automatic: Automatic | None = None,
 ) -> PassReport:
     """Los borradores, la importación y el informe en la auditoría. Corre bajo
     la RLS del cliente (``admin.as_tenant``) en la transacción del llamante.
 
-    ``every_agent``: al activar el módulo, cada agente activo gana Reservas; si
-    no, solo los que nombran ``booking.*``.
+    ``scope``: ``booking``, solo los que nombran ``booking.*`` (o reservan en un
+    conector); ``every``, cada agente activo; ``givers`` (spec 057, 5.1), los que dan
+    citas (:func:`gives_appointments`). ``exclude``: los que no se tocan (5.2).
 
     ``automatic`` (the deploy-time pass, plan decisions 11 and 12): only the
     agents that name ``booking.*``; the active version is published from
     itself, an existing draft is rewritten and not published, and no draft is
     created. The audit row says it was automatic, why, and the activation."""
-    if automatic is not None and every_agent:
+    if automatic is not None and scope != "booking":
         raise ValueError("the automatic pass only touches the agents that name booking.*")
     published: list[PublishedAgent] = []
     if automatic is not None:
@@ -827,7 +891,9 @@ async def pass_to_reservas(
         session,
         enable=True,
         actor=actor,
-        only_booking=not every_agent,
+        only_booking=scope == "booking",
+        only=gives_appointments if scope == "givers" else None,
+        exclude=exclude,
         drafts_only=automatic is not None,
         keep_google=automatic.keep_google if automatic is not None else False,
     )
@@ -962,6 +1028,37 @@ async def reservas_enabled(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
     return bool(access and access.reservas_on)
 
 
+async def agenda_ready(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """¿Puede tomar una cita ya? Spec 057, requisito 4: lo mismo que :func:`not_ready`
+    vacío, sin recorrer días ni servicios, porque se pregunta en cada turno. Encendido
+    y con modo, con horario, y en Servicios alguien en activo y algún servicio reservable;
+    en Aforo, plazas y franjas. Bajo la RLS del cliente."""
+    from nexus_api.services.business import hours as business_hours
+
+    if not await reservas_enabled(session, tenant_id):
+        return False
+    settings = await session.get(ReservationSettings, tenant_id)
+    if settings is None:  # pragma: no cover - reservas_enabled ya lo miró
+        return False
+    hours = await business_hours.load_hours(session, tenant_id=tenant_id)
+    if not hours.known:
+        return False
+    if settings.mode != "services":
+        return bool(settings.seats and settings.schedule)
+    someone = await session.scalar(
+        sa.select(sa.exists().where(ReservationStaff.archived_at.is_(None)))
+    )
+    bookable = await session.scalar(
+        sa.select(
+            sa.exists().where(
+                ReservationService.archived_at.is_(None),
+                ReservationService.bookable.is_(True),
+            )
+        )
+    )
+    return bool(someone and bookable)
+
+
 async def legacy_client(
     session: AsyncSession, tenant_id: uuid.UUID, *, now: datetime
 ) -> LegacyClient | None:
@@ -1022,6 +1119,8 @@ __all__ = [
     "PassReport",
     "PreparedAgent",
     "PublishedAgent",
+    "agenda_ready",
+    "gives_appointments",
     "import_appointments",
     "imported_key",
     "legacy_client",

@@ -93,8 +93,11 @@ async def propose(
     job_id: uuid.UUID | None = None,
     created_by: str | None = None,
     now: datetime | None = None,
+    ttl: timedelta | None = None,
 ) -> Proposal:
-    """Escribe la propuesta (o devuelve la que ya había, igual). Nunca aplica nada."""
+    """Escribe la propuesta (o devuelve la que ya había, igual). Nunca aplica nada.
+    ``ttl``: cuánto espera; por defecto 15 minutos. La de la agenda (spec 057, 3.3)
+    espera 7 días, porque la lee el partner cuando vuelve a su agente."""
     tenant_id = require_current_tenant()
     now = now or datetime.now(UTC)
     pid = proposal_id(
@@ -114,7 +117,7 @@ async def propose(
             status="open",
             job_id=job_id,
             created_by=created_by,
-            expires_at=now + PROPOSAL_TTL,
+            expires_at=now + (ttl or PROPOSAL_TTL),
         )
         .on_conflict_do_nothing(index_elements=[Proposal.id])
     )
