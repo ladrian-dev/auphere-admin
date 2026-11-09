@@ -1154,6 +1154,8 @@ Con uno vivo no se encola otro, salvo el de después de una lectura. El modelo e
 
 **Fuera de este paso** (lo prepara la enmienda siguiente): decir con honestidad lo que falta, `PUT /tools` sin validador, la política de herramientas que falla abierta, las pruebas del sector impuestas a cualquier agente y el mínimo de pruebas de la puerta. `/console/clients` con `seed_template` y `…/agent/from-seed` (de la consola de antes) siguen montando la plantilla en modo «instrucciones».
 
+**Reabierta el 2026-11-09 por la spec 057** (Luis, tras Spa Jemma en staging): el módulo sigue mandando —sin Reservas encendido no hay `reservas.*`—, pero «la agenda no se conecta desde el agente» deja de valer. «Gestiona citas», en el alta y en Conectores, enciende Reservas para el cliente si hace falta, antes de que el constructor escriba. Ver `specs/057-agenda-desde-el-agente/` y ADR-049 §Enmiendas.
+
 ---
 
 ### D68 · La guía generada y «Desde una plantilla» (API, 2026-10-30)

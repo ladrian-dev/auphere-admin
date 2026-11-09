@@ -1363,6 +1363,8 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
 **Historia de usuario:** Como partner, quiero crear un agente contando qué tiene que hacer y verlo probado en minutos, para no escribir prompts.
 
+> Enmendado el 2026-11-09 por la spec 057 (requisito 1): «Nuevo agente» pregunta además «Gestiona citas», que enciende Reservas si hace falta.
+
 #### Criterios de aceptación
 
 1. WHEN se pulsa «Nuevo agente» THEN el sistema DEBE abrir una sola pantalla:
@@ -2509,7 +2511,7 @@ Enmienda los requisitos 21.1 (8 + 12 pruebas) y 61.8. El punto 5 lo enmienda el 
 3. SI una herramienta la usa una tarea del agente, ENTONCES el sistema NO DEBE dejar apagarla y DEBE decir por qué.
 4. SI una herramienta que cambia algo está encendida con el permiso «Solo lectura», ENTONCES el sistema DEBE decir que hace falta otro permiso.
 5. CUANDO alguien guarde los ajustes de un conector o lo vuelva a autorizar, ENTONCES el sistema NO DEBE volver a encender lo que una persona apagó.
-6. El sistema NO DEBE ofrecer encender todas de golpe.
+6. El sistema NO DEBE ofrecer encender todas de golpe. *(Excepción del 2026-11-09, spec 057, requisito 2: la agenda de Reservas se activa entera y luego se apaga una a una.)*
 7. Cada fila DEBE tener una acción principal a la vista, y el resto en su menú, con lo destructivo al final, como en las guías de Apple. SI solo queda una acción secundaria, DEBE ir a la vista.
 
 ### Requisito 68 — Auphere paga una pasada completa por agente (enmienda del 2026-11-05)

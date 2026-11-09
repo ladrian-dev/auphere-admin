@@ -712,6 +712,9 @@ en Reservas, para verla, que lleve sus recordatorios y que nadie ocupe esa hora.
    versión activa siga reservando en un conector, la pestaña Acceso DEBE decirlo. El paso automático
    DEBE dejar en un borrador, sin publicarlo, lo que reserva en un conector. IF alguien descartó ese
    borrador THEN NO DEBE volver, ni repetirse el paso, mientras siga la misma versión activa.
+   *(Enmendado el 2026-11-09 por la spec 057, requisito 5: solo ganan `reservas.*` los agentes
+   que dan citas —los que reservan en un conector y los que prometen citas en su texto—; los
+   demás no cambian.)*
 6. WHERE Reservas está encendido, conectar o activar un conector que reserva NO DEBE
    añadir sus herramientas de reservar.
 7. WHERE Reservas está apagado, conectar Calendly DEBE seguir como hasta ahora.
