@@ -115,6 +115,12 @@ describe("the reason a conversation waits, in words", () => {
     expect(screen.getByText("El agente dio por hecha una cita que no existe")).toBeInTheDocument();
   });
 
+  it("the composer: an appointment while the agenda is not ready (spec 057, 4.2)", () => {
+    composer("agenda_not_ready", "agenda_not_ready");
+    expect(screen.getByText("Pidió una cita y la agenda aún no está lista")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("agenda_not_ready");
+  });
+
   it("the thread", () => {
     thread("agent_unpublished");
     expect(screen.getByRole("note")).toHaveTextContent("Agente sin publicar");

@@ -163,6 +163,8 @@ export type ReviewFinding = {
   message: string;
   pointer?: string;
   fix?: ReviewFix;
+  /** Spec 057 (4.1): `agenda_not_ready`, los motivos de `passing.NOT_READY_REASONS`. */
+  reasons?: string[];
 };
 
 /** Una comprobación que corrió de verdad (22.3): sin «✓» fijos. */

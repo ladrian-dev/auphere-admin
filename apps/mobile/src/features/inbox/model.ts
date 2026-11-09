@@ -195,6 +195,7 @@ const WAITING_REASONS = [
   "reception_loop",
   "out_of_audience",
   "booking_unbacked",
+  "agenda_not_ready",
 ] as const;
 
 /** What has the shape of a code (`snake_case`), not of a sentence of the agent. */

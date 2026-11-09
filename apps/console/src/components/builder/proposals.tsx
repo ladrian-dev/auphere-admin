@@ -1,16 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Callout, StatusBadge, formatDateTime } from "@nexus/ui";
+import { Button, Callout, StatusBadge, buttonVariants, formatDateTime } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { Proposal, ProposalDecision, ProposalOp, SpecProblem } from "@/lib/backend/builder-types";
+import type { FichaLink, Proposal, ProposalDecision, ProposalOp, SpecProblem } from "@/lib/backend/builder-types";
 
-import { blockTitleKey } from "./block-view";
-import { blockOfPointer, previewValue, type Result } from "./builder-model";
+import { fichaLink } from "./agenda-model";
+import { SpecValueAt, blockTitleKey } from "./block-view";
+import { blockOfPointer, blocksOfOps, previewValue, type Result } from "./builder-model";
 
 export type DecideProposal = (body: {
   ref: string;
@@ -30,6 +32,14 @@ type Problem = { kind: "stale" | "closed" | "expired" | "failed" } | { kind: "in
  * operación a operación. Nada se aplica sin que una persona con permiso pulse
  * «Aplicar». Si el borrador cambió después, se rechaza como caducada; a los 15
  * minutos caduca sola. Quien solo lee las ve, sin botones (§V).
+ *
+ * Spec 057 (3.3 y 3.7): lo que cambia va por bloque y, si la API manda lo que hay
+ * ahora en cada puntero (`before`), con lo de antes y lo de después. «Editar»
+ * (con `onEdit`) aplica la propuesta y abre el primer bloque cambiado, para
+ * ajustarlo antes de publicar. Si la ficha dice que el equipo confirma las citas
+ * (`diff.ficha_links`), se señala con un enlace a Negocio: la ficha es de todos
+ * los agentes del cliente y la propuesta no la toca. La propuesta de la agenda
+ * vive 7 días: cada una dice cuándo caduca.
  */
 export function ProposalList({
   refId,
@@ -39,6 +49,7 @@ export function ProposalList({
   decide,
   onApplied,
   onRetry,
+  onEdit,
   bare = false,
 }: {
   refId: string;
@@ -52,6 +63,8 @@ export function ProposalList({
   /** Una propuesta aplicada cambió el borrador: hay que leerlo otra vez. */
   onApplied: () => void;
   onRetry: () => void;
+  /** «Editar»: tras aplicarla, abrir el bloque (spec 057, 3.3). Sin él, no hay «Editar». */
+  onEdit?: (block: string) => void;
 }) {
   const t = useT();
   const headingId = React.useId();
@@ -61,14 +74,15 @@ export function ProposalList({
   const open = (proposals ?? []).filter((p) => !gone.has(p.id));
   const Heading = bare ? "h3" : "h2";
 
-  async function run(p: Proposal, decision: "apply" | "reject") {
-    setBusy(`${p.id}:${decision}`);
+  async function run(p: Proposal, decision: "apply" | "reject", edit: string | null = null) {
+    setBusy(`${p.id}:${edit ? "edit" : decision}`);
     const res = await decide({ ref: refId, agent: agentId, proposal: p.id, decision });
     setBusy(null);
     if (res.ok) {
       setGone((prev) => new Set(prev).add(p.id));
       toast.success(decision === "apply" ? t("builder.proposals.applied") : t("builder.proposals.rejected"));
       if (decision === "apply") onApplied();
+      if (edit) onEdit?.(edit);
       return;
     }
     const problem: Problem =
@@ -87,7 +101,7 @@ export function ProposalList({
   return (
     <section aria-labelledby={headingId} className="grid min-w-0 gap-3" data-slot="builder-proposals">
       <div className={bare ? "sr-only" : "grid min-w-0 gap-1"}>
-        <Heading id={headingId} className="text-base font-semibold">
+        <Heading id={headingId} className="text-base font-semibold text-balance">
           {t("builder.proposals.title")}
         </Heading>
         {!bare ? <p className="text-sm text-pretty text-muted-foreground">{t("builder.proposals.intro")}</p> : null}
@@ -106,12 +120,15 @@ export function ProposalList({
           {open.map((p) => (
             <ProposalCard
               key={p.id}
+              refId={refId}
               proposal={p}
               canWrite={canWrite}
               busy={busy}
               problem={problems[p.id] ?? null}
               onApply={() => void run(p, "apply")}
               onReject={() => void run(p, "reject")}
+              onEdit={onEdit ? (block) => void run(p, "apply", block) : undefined}
+              blockHeading={bare ? "h4" : "h3"}
             />
           ))}
         </ul>
@@ -121,19 +138,25 @@ export function ProposalList({
 }
 
 function ProposalCard({
+  refId,
   proposal: p,
   canWrite,
   busy,
   problem,
   onApply,
   onReject,
+  onEdit,
+  blockHeading: BlockHeading,
 }: {
+  refId: string;
+  blockHeading: "h3" | "h4";
   proposal: Proposal;
   canWrite: boolean;
   busy: string | null;
   problem: Problem | null;
   onApply: () => void;
   onReject: () => void;
+  onEdit?: (block: string) => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -146,6 +169,10 @@ function ProposalCard({
       : t("builder.proposals.author.other", { who: p.author });
   // Caducada, cerrada o fuera de fecha: ya no se puede decidir.
   const decided = problem?.kind === "stale" || problem?.kind === "closed" || problem?.kind === "expired";
+  // Spec 057 (3.3): por bloque; con `before`, lo de antes y lo de después.
+  const groups = blocksOfOps(ops);
+  const firstBlock = groups.find((g) => g.block)?.block ?? null;
+  const ficha = fichaLinks(p.diff?.ficha_links);
 
   return (
     <li aria-labelledby={titleId} className="grid min-w-0 gap-3 rounded-md border border-border p-3" data-slot="builder-proposal">
@@ -161,21 +188,48 @@ function ProposalCard({
         <StatusBadge tone="info">{kind}</StatusBadge>
       </div>
       {ops.length ? (
-        <div className="grid min-w-0 gap-1">
+        <div className="grid min-w-0 gap-2">
           <p className="text-xs font-medium text-muted-foreground">{t("builder.proposals.changes")}</p>
-          <ul className="grid min-w-0 gap-1 text-sm">
-            {ops.map((op, i) => (
-              <OpLine key={i} op={op} />
-            ))}
-          </ul>
+          {groups.map((g, gi) => (
+            <div
+              key={g.block ?? `loose-${gi}`}
+              role="group"
+              aria-labelledby={`${titleId}-b${gi}`}
+              className="grid min-w-0 gap-1"
+              data-slot="proposal-block"
+              data-block={g.block ?? undefined}
+            >
+              <BlockHeading id={`${titleId}-b${gi}`} className="text-sm font-medium text-balance">
+                {g.block ? t(blockTitleKey(g.block)) : t("builder.proposals.kind.other")}
+              </BlockHeading>
+              <ul className="grid min-w-0 gap-2 text-sm">
+                {g.ops.map((op, i) => (op.before !== undefined ? <BeforeAfter key={i} op={op} /> : <OpLine key={i} op={op} />))}
+              </ul>
+            </div>
+          ))}
         </div>
       ) : null}
+      {ficha.map((link) => (
+        <FichaNote key={link.section} refId={refId} section={link.section} />
+      ))}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {canWrite && !decided ? (
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={onApply} loading={busy === `${p.id}:apply`} disabled={busy !== null && busy !== `${p.id}:apply`}>
             {t("builder.proposals.apply")}
           </Button>
+          {onEdit && firstBlock ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onEdit(firstBlock)}
+              loading={busy === `${p.id}:edit`}
+              disabled={busy !== null && busy !== `${p.id}:edit`}
+              aria-label={t("agenda.diff.edit.label", { block: t(blockTitleKey(firstBlock)) })}
+            >
+              {t("agenda.diff.edit")}
+            </Button>
+          ) : null}
           <Button size="sm" variant="outline" onClick={onReject} loading={busy === `${p.id}:reject`} disabled={busy !== null && busy !== `${p.id}:reject`}>
             {t("builder.proposals.reject")}
           </Button>
@@ -197,6 +251,66 @@ export function OpLine({ op }: { op: ProposalOp }) {
       <span className="text-pretty">{t(verb, { where })}</span>
       {value ? <code className="block min-w-0 rounded-sm bg-muted px-2 py-1 text-xs break-words whitespace-pre-wrap">{value}</code> : null}
     </li>
+  );
+}
+
+/**
+ * Spec 057 (3.3): una operación con lo que hay ahora (`before`) y lo que propone,
+ * cada lado leído como su bloque (`SpecValueAt`) y entero. Lado a lado si caben.
+ */
+function BeforeAfter({ op }: { op: ProposalOp }) {
+  const t = useT();
+  const hasBefore = op.before !== null && op.before !== undefined;
+  const hasAfter = op.op !== "remove" && op.value !== undefined && op.value !== null;
+  return (
+    <li className="@container min-w-0" data-slot="proposal-op" data-op={op.op}>
+      <div className="grid min-w-0 gap-2 @md:grid-cols-2">
+        <div className="grid min-w-0 content-start gap-1 rounded-md border border-border px-3 py-2" data-side="before">
+          <span className="text-xs font-medium text-muted-foreground">{t("agenda.diff.before")}</span>
+          {hasBefore ? <SpecValueAt path={op.path} value={op.before} /> : <span className="text-xs text-muted-foreground">{t("agenda.diff.none")}</span>}
+        </div>
+        <div className="grid min-w-0 content-start gap-1 rounded-md border border-border bg-muted px-3 py-2" data-side="after">
+          <span className="text-xs font-medium text-muted-foreground">{t("agenda.diff.after")}</span>
+          {hasAfter ? (
+            <SpecValueAt path={op.path} value={op.value} />
+          ) : (
+            <span className="text-xs text-muted-foreground">{op.op === "remove" ? t("agenda.diff.removed") : t("agenda.diff.none")}</span>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** Las secciones de la ficha que la propuesta señala, una vez cada una. */
+function fichaLinks(raw: unknown): FichaLink[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  return (raw as unknown[]).flatMap((item) => {
+    const section = item && typeof item === "object" ? (item as { section?: unknown }).section : null;
+    if (typeof section !== "string" || !section || seen.has(section)) return [];
+    seen.add(section);
+    return [{ section }];
+  });
+}
+
+/** Spec 057 (3.7): la ficha dice que el equipo confirma las citas. Se cambia en Negocio, no aquí. */
+function FichaNote({ refId, section }: { refId: string; section: string }) {
+  const t = useT();
+  const link = fichaLink(refId, section);
+  return (
+    <div className="min-w-0" data-slot="proposal-ficha">
+      <Callout
+        tone="info"
+        action={
+          <Link href={link.href} className={buttonVariants({ size: "sm", variant: "outline" })}>
+            {t("agenda.ficha.go")}
+          </Link>
+        }
+      >
+        {t("agenda.ficha.note", { section: link.label ? t(link.label) : section })}
+      </Callout>
+    </div>
   );
 }
 

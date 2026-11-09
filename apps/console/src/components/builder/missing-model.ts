@@ -59,6 +59,15 @@ export function missingFrom(fromDraft: unknown, fromJob: unknown): MissingCapabi
   return missingCapabilities(fromDraft === undefined || fromDraft === null ? fromJob : fromDraft);
 }
 
+/**
+ * Spec 057 (6.3): lo que «Gestionar citas» arregla. Reservar, o mover y cancelar
+ * citas, son las promesas que la agenda de Reservas cumple.
+ */
+const AGENDA_KEYS: ReadonlySet<string> = new Set(["book", "modify_booking"]);
+export function managesAgenda(m: Pick<MissingCapability, "key">): boolean {
+  return AGENDA_KEYS.has(m.key);
+}
+
 /** Las claves que la API dice que no ofrecemos como conector o que son un módulo apagado. */
 export function notOfferedKeys(missing: readonly MissingCapability[]): Set<string> {
   return new Set(missing.filter((m) => (m.kind === "integration" || m.kind === "module") && m.key).map((m) => m.key));

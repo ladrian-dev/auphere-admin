@@ -14,6 +14,7 @@ import type {
   ConnectRequest,
   EscalationTrigger,
   Register,
+  SpecFaq,
   SpecProcedure,
   SpecSection,
   SpecSkill,
@@ -269,6 +270,172 @@ function EscalationValue({ value }: { value: AgentSpec["escalation"] | undefined
     <div className="grid min-w-0 gap-2 text-sm">
       {triggers.length ? <TextList items={triggers.map((tr) => triggerText(tr, attempts, t))} empty="" /> : null}
       {value?.message ? <p className="text-pretty break-words text-muted-foreground">{t("builder.block.escalation.message", { message: value.message })}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Spec 057 (3.3): lo que hay en un puntero del AgentSpec, entero, como lo lee una
+ * persona. Lo usa la propuesta para enseñar lo de antes y lo de después de cada
+ * operación, que en la propuesta de la agenda suele ser un bloque entero
+ * (`/procedures`, `/rules`, `/escalation`, `/skills`, `/instructions`,
+ * `/services`). A diferencia de la vista de lectura, aquí nada se recorta: es lo
+ * que la persona decide aceptar. Un elemento suelto (`/rules/2`, `/procedures/-`,
+ * `/escalation/triggers/1`, `/services/faqs/0`) se lee como ese elemento; un texto,
+ * entero; lo que la consola no sabe leer, plegado en «Ver todo».
+ */
+export function SpecValueAt({ path, value }: { path: string; value: unknown }) {
+  const t = useT();
+  const [block, ...rest] = path
+    .split("/")
+    .slice(1)
+    .map((p) => p.replace(/~1/g, "/").replace(/~0/g, "~"));
+  const depth = rest.length;
+  // El bloque entero (una lista) o uno de sus elementos.
+  const items = <T,>(v: unknown, at = 0): T[] => (depth === at ? asArray<T>(v) : [v as T]);
+  const none = t("agenda.diff.none");
+  switch (block) {
+    case "procedures":
+      if (depth <= 1) return <ProceduresFull value={items<SpecProcedure>(value).filter(isRecord)} />;
+      break;
+    case "rules":
+      if (depth <= 1) return <TextList items={items<string>(value).filter((r) => typeof r === "string")} empty={none} />;
+      break;
+    case "escalation":
+      if (depth === 0) return <EscalationValue value={isRecord(value) ? (value as AgentSpec["escalation"]) : undefined} />;
+      if (rest[0] === "triggers" && depth <= 2) {
+        const triggers = items<EscalationTrigger>(value, 1).filter((tr) => typeof tr === "string" || isRecord(tr));
+        return <TextList items={triggers.map((tr) => triggerText(tr, 2, t))} empty={none} />;
+      }
+      break;
+    case "skills":
+      if (depth <= 1) return <SkillsFull skills={items<SpecSkill>(value).filter(isRecord)} />;
+      break;
+    case "instructions":
+      if (depth === 0) return <InstructionsFull value={isRecord(value) ? (value as AgentSpec["instructions"]) : undefined} />;
+      if (rest[0] === "sections" && depth <= 2) return <SectionsFull sections={items<SpecSection>(value, 1).filter(isRecord)} />;
+      break;
+    case "services":
+      if (depth === 0) return <ServicesFull value={isRecord(value) ? (value as AgentSpec["services"]) : undefined} />;
+      if (rest[0] === "faqs" && depth <= 2) return <FaqList faqs={items<SpecFaq>(value, 1).filter(isRecord)} />;
+      break;
+    case "identity":
+      if (depth === 0 && isRecord(value)) return <IdentityValue value={value as AgentSpec["identity"]} />;
+      break;
+    case "voice":
+      if (depth === 0 && isRecord(value)) return <VoiceValue value={value as AgentSpec["voice"]} />;
+      break;
+    case "ai_disclosure":
+      if (depth === 0 && isRecord(value)) return <AiDisclosureValue value={value as AgentSpec["ai_disclosure"]} />;
+      break;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return <FullText text={String(value)} />;
+  return <RawValue value={value} />;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function FullText({ text }: { text: string }) {
+  return <p className="min-w-0 text-sm text-pretty break-words whitespace-pre-line">{text}</p>;
+}
+
+/** Lo que la consola no sabe leer: plegado, y entero si se abre. */
+function RawValue({ value }: { value: unknown }) {
+  const t = useT();
+  return (
+    <details className="min-w-0 text-sm">
+      <summary className="min-h-6 cursor-pointer rounded-sm text-primary-text underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+        {t("agenda.diff.all")}
+      </summary>
+      <pre className="mt-1 min-w-0 overflow-x-auto rounded-sm bg-muted px-2 py-1 text-xs break-words whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+    </details>
+  );
+}
+
+/** Los procedimientos con sus pasos, enteros. */
+function ProceduresFull({ value }: { value: SpecProcedure[] }) {
+  const t = useT();
+  if (!value.length) return <Muted>{t("agenda.diff.none")}</Muted>;
+  return (
+    <ul className="grid min-w-0 gap-3 text-sm">
+      {value.map((p, i) => (
+        <li key={p.id ?? i} className="grid min-w-0 gap-1">
+          {p.title ? <span className="font-medium text-pretty break-words">{p.title}</span> : null}
+          {p.when ? <span className="text-pretty break-words text-muted-foreground">{p.when}</span> : null}
+          {p.steps ? <span className="text-pretty break-words whitespace-pre-line">{p.steps}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Las habilidades con su alternativa, siempre: es lo que hace cuando no puede. */
+function SkillsFull({ skills }: { skills: SpecSkill[] }) {
+  const t = useT();
+  if (!skills.length) return <Muted>{t("agenda.diff.none")}</Muted>;
+  return (
+    <ul className="grid min-w-0 gap-2 text-sm">
+      {skills.map((s, i) => (
+        <li key={s.key ?? i} className="grid min-w-0 gap-1">
+          <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
+            <span className="font-medium break-words">{skillName(s.key ?? "")}</span>
+            {s.enabled === false ? <StatusBadge tone="muted">{t("builder.block.skills.off")}</StatusBadge> : null}
+          </span>
+          {s.fallback ? <span className="text-xs text-pretty break-words text-muted-foreground">{t("builder.block.skills.fallback", { text: s.fallback })}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SectionsFull({ sections }: { sections: SpecSection[] }) {
+  const t = useT();
+  if (!sections.length) return <Muted>{t("agenda.diff.none")}</Muted>;
+  return (
+    <ol className="grid min-w-0 gap-2 text-sm">
+      {sections.map((s, i) => (
+        <li key={i} className="grid min-w-0 gap-1">
+          {s.title ? <span className="font-medium text-pretty break-words">{s.title}</span> : null}
+          {s.body ? <span className="text-pretty break-words whitespace-pre-line">{s.body}</span> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function InstructionsFull({ value }: { value: AgentSpec["instructions"] | undefined }) {
+  const sections = asArray<SpecSection>(value?.sections).filter(isRecord);
+  if (value?.legacy_text !== undefined && !sections.length) return <FullText text={value.legacy_text} />;
+  return <SectionsFull sections={sections} />;
+}
+
+function FaqList({ faqs }: { faqs: SpecFaq[] }) {
+  const t = useT();
+  if (!faqs.length) return <Muted>{t("agenda.diff.none")}</Muted>;
+  return (
+    <dl className="grid min-w-0 gap-2 text-sm">
+      {faqs.map((f, i) => (
+        <div key={i} className="grid min-w-0 gap-1">
+          <dt className="font-medium text-pretty break-words">{f.q}</dt>
+          <dd className="text-pretty break-words whitespace-pre-line text-muted-foreground">{f.a}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ServicesFull({ value }: { value: AgentSpec["services"] | undefined }) {
+  const t = useT();
+  if (!value) return <Muted>{t("agenda.diff.none")}</Muted>;
+  const faqs = asArray<SpecFaq>(value.faqs).filter(isRecord);
+  return (
+    <div className="grid min-w-0 gap-2 text-sm">
+      <p className="text-pretty">
+        {value.mode === "list" ? t("builder.block.services.list", { n: value.service_ids?.length ?? 0 }) : t("builder.block.services.all")}
+      </p>
+      {faqs.length ? <FaqList faqs={faqs} /> : null}
     </div>
   );
 }

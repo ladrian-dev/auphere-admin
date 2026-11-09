@@ -317,6 +317,11 @@ export type ClientAgent = {
   opens?: "builder" | "channels" | "overview" | null;
   /** Spec 047 (35): Recepción según la versión publicada. */
   is_reception?: boolean;
+  /**
+   * Spec 057 (5.3): `prepared` si el borrador lleva la agenda y la versión activa
+   * no; `on` si la activa la lleva. Ausente en respuestas de antes.
+   */
+  agenda?: "none" | "prepared" | "on";
 };
 
 /** Spec 017 R3.2: qué cambia el borrador respecto a la versión que atiende
@@ -517,6 +522,7 @@ export type { Opts };
  * are spread into ``backendFor`` below. Keeps this file from being the
  * merge hotspot of every package.
  */
+import { agendaApi } from "./backend/agenda";
 import { agentConnectorsApi } from "./backend/agent-connectors";
 import { agentDraftApi } from "./backend/agent-draft";
 import { agentImproveApi } from "./backend/agent-improve";
@@ -590,6 +596,8 @@ export function backendFor(principal: Principal) {
     ...agentImproveApi(call),
     // Spec 047 (historia 21): los conectores de cada agente y la página de cada conexión.
     ...agentConnectorsApi(call),
+    // Spec 057: la agenda de cada agente («Agenda (Reservas)» en Conectores).
+    ...agendaApi(call),
     // Spec 047 (historia 23): Agente › Avanzado › Calidad.
     ...modelQualityApi(call),
     // Spec 017 (R5): herramientas y habilidades, en una sola lectura.

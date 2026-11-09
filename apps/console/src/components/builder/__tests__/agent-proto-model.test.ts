@@ -112,6 +112,10 @@ describe("la revisión en la tarjeta de pruebas", () => {
     expect(checkOfFinding("unknown_tool")).toBe("tools_exist");
     expect(checkOfFinding("ai_disclosure_undecided")).toBe("ai_disclosure");
     expect(checkOfFinding("algo_nuevo")).toBeNull();
+    // Spec 057: como la API (review.py): el texto que prohíbe la agenda va con las promesas;
+    // la agenda sin terminar, con los servicios.
+    expect(checkOfFinding("forbids_agenda")).toBe("promises");
+    expect(checkOfFinding("agenda_not_ready")).toBe("services");
     const by = findingsByCheck(REVIEW);
     expect(by.get("skills_integrations")?.map((f) => f.code)).toEqual(["skill_without_integration"]);
     expect(by.get("services")?.map((f) => f.code)).toEqual(["service_without_price"]);

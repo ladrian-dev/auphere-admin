@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { AgentSpec, BuilderBlock, DraftJob } from "@/lib/backend/builder-types";
 
 import {
+  BOOKING_WORDS,
   POLL_FIRST_MS,
+  agendaSuggested,
+  blocksOfOps,
+  sectionForTab,
   POLL_MAX_MS,
   arrivedBlocks,
   blockOfPointer,
@@ -221,5 +225,50 @@ describe("withExample (spec 055)", () => {
   it("never cuts: without room it says so", () => {
     expect(withExample("x".repeat(95), "Ejemplo.", 100)).toEqual({ kind: "no_room" });
     expect(withExample("", "y".repeat(101), 100)).toEqual({ kind: "no_room" });
+  });
+});
+
+/**
+ * Spec 057 (requisito 1.2) — «Gestiona citas» se enciende solo, mientras nadie lo
+ * toque, si la descripción pide citas, reservas o turnos (la misma expresión que
+ * `agent_draft._BOOKING` de la API) o la plantilla elegida da citas.
+ */
+describe("agendaSuggested (spec 057)", () => {
+  it("las palabras de la API, sin mayúsculas que valgan, y solo palabras enteras", () => {
+    for (const text of ["Da citas por WhatsApp", "Gestiona la CITA de cada cliente", "Reserva mesas", "Toma reservaciones", "Agenda las visitas", "Para agendar", "Da un turno", "Da turnos de noche"]) {
+      expect(BOOKING_WORDS.test(text), text).toBe(true);
+    }
+    for (const text of ["Cobra las facturas pendientes", "Recitas poemas", "Nocturnos y diurnos", "Responde dudas de envíos"]) {
+      expect(BOOKING_WORDS.test(text), text).toBe(false);
+    }
+  });
+
+  it("por la descripción o por la plantilla, y dice por qué", () => {
+    expect(agendaSuggested("Atiende las citas del salón", null)).toBe("description");
+    expect(agendaSuggested("Cobra las facturas pendientes", { books: true })).toBe("template");
+    expect(agendaSuggested("Cobra las facturas pendientes", { books: false })).toBeNull();
+    expect(agendaSuggested("Cobra las facturas pendientes", null)).toBeNull();
+  });
+});
+
+describe("la fila de la agenda en Conectores (spec 057)", () => {
+  it("`#agenda` y `?tab=agenda` llevan a la pestaña Conectores", () => {
+    expect(tabOfSection("agenda")).toBe("connectors");
+    expect(sectionForTab("agenda")).toBe("agenda");
+  });
+});
+
+/** Spec 057 (3.3): la propuesta por bloque, con lo de antes y lo de después. */
+describe("blocksOfOps (spec 057)", () => {
+  it("agrupa por bloque en el orden en que llegan; un puntero sin bloque va aparte", () => {
+    const groups = blocksOfOps([
+      { op: "replace", path: "/procedures/0/steps", value: "Busca hueco", before: "Pasa al equipo" },
+      { op: "remove", path: "/rules/1", before: "El equipo confirma" },
+      { op: "add", path: "/procedures/-", value: { id: "mover" }, before: null },
+      { op: "replace", path: "/policies/x", value: "y" },
+    ]);
+    expect(groups.map((g) => g.block)).toEqual(["procedures", "rules", null]);
+    expect(groups[0]!.ops).toHaveLength(2);
+    expect(groups[2]!.ops[0]!.path).toBe("/policies/x");
   });
 });

@@ -108,10 +108,12 @@ export function testsState(summary: TestSummary): TestsState {
  */
 export function checkOfFinding(code: string): string | null {
   if (code.startsWith("skill_without")) return "skills_integrations";
-  if (code === "service_without_price" || code === "bookable_without_duration") return "services";
+  // Spec 057 (4.1): la agenda sin terminar va con los servicios, como en la API.
+  if (code === "service_without_price" || code === "bookable_without_duration" || code === "agenda_not_ready") return "services";
   if (code === "no_hours") return "hours";
   if (code.startsWith("contradicts_")) return "contradictions";
-  if (code.startsWith("promises_")) return "promises";
+  // Spec 057 (3.8): un texto que prohíbe la agenda va con las promesas, como en la API.
+  if (code.startsWith("promises_") || code === "forbids_agenda") return "promises";
   if (code === "unknown_tool") return "tools_exist";
   if (code === "channel_without_recipients") return "escalation_recipients";
   if (code.startsWith("ai_disclosure")) return "ai_disclosure";

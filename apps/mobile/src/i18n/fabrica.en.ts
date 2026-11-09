@@ -63,6 +63,7 @@ export const fabricaEn: Record<keyof typeof fabricaEs, string> = {
   // Spec 056 (requirements 6.2 and 7): the ones missing from the table, and «Open» empty with resolved ones.
   "bandeja.reason.out_of_audience": "Outside its audience",
   "bandeja.reason.booking_unbacked": "The agent confirmed a booking that does not exist",
+  "bandeja.reason.agenda_not_ready": "Asked for an appointment and the agenda is not ready yet",
   "bandeja.open.empty.title": "You have no open conversations",
   "bandeja.open.empty.resolved": "You have {count} resolved.",
   "bandeja.open.empty.resolved.one": "You have 1 resolved.",

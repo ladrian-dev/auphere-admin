@@ -9,12 +9,14 @@ import type { AgentConnector } from "@/lib/backend/agent-connectors-types";
 import type { ConnectorOut } from "@/lib/backend/agent-tools-types";
 import type { AgentSpec } from "@/lib/backend/builder-types";
 
+import { AGENDA, AGENDA_TOOLS, ON } from "./agenda-fixtures";
 import { AGENT, CONN_COBRO, CONN_GCAL, CONN_WOO, REF, catalog, connector, fail, ok } from "./connector-fixtures";
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/app/(console)/clients/[ref]/agents/connector-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/integrations/actions", () => ({}));
+vi.mock("@/app/(console)/clients/[ref]/agents/agenda-actions", () => ({}));
 
 const { AgentConnectorsPanel } = await import("../agent-connectors");
 type Actions = NonNullable<React.ComponentProps<typeof AgentConnectorsPanel>["actions"]>;
@@ -361,4 +363,110 @@ it("el catálogo de este agente también existe con conexión de otro estado: pe
   expect(screen.getByText("Pendiente de consentimiento")).toBeVisible();
   expect(screen.getByRole("button", { name: "Conectar Google Calendar" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Ver su página de Google Calendar" })).toBeVisible();
+});
+
+/**
+ * Spec 057 (T029; requisitos 2.1, 2.3 y 2.4) — «Agenda (Reservas)» es la primera
+ * fila de la tarjeta, sin ser un conector: no cuenta en los filtros, se esconde
+ * al filtrar por categoría y, con Reservas apagado, activarla pide confirmación
+ * con el modo. Su «Qué puede hacer» lee las herramientas de la agenda, no las de
+ * un conector. Sin datos de la agenda (`undefined`), la tarjeta es la de siempre.
+ */
+describe("la sección Conectores · la agenda (spec 057)", () => {
+  function withAgenda(agenda: typeof AGENDA | null, over: Partial<Actions> = {}) {
+    const agendaActions = {
+      load: vi.fn(async () => ok(AGENDA)),
+      set: vi.fn(async () => ok({ ...AGENDA, draft: { on: true, tools_on: 9 }, state: "prepared" as const })),
+      tools: vi.fn(async () => ok(AGENDA_TOOLS)),
+      setTool: vi.fn(),
+    };
+    const onAgenda = vi.fn();
+    const actions: Actions = { load: vi.fn(async () => ok(catalog())), tools: vi.fn(), ...over, agenda: agendaActions };
+    const view = render(
+      <LocaleProvider locale="es">
+        <AgentConnectorsPanel refId={REF} agentId={AGENT} connectors={catalog()} canWrite spec={SPEC} agenda={agenda} onAgenda={onAgenda} clientName="Barbería Cultor" actions={actions} />
+      </LocaleProvider>,
+    );
+    return { ...view, actions, agendaActions, onAgenda };
+  }
+
+  it("va primera en la misma tarjeta, y los filtros siguen contando solo los conectores; pasa axe", async () => {
+    const user = userEvent.setup();
+    const { container } = withAgenda(AGENDA);
+    expect(names()).toEqual(["Agenda (Reservas)", "WooCommerce", "Google Calendar", "Amigable Cobro", "HubSpot"]);
+    expect(container.querySelectorAll("[data-slot=agent-connector-list]")).toHaveLength(1);
+    expect(within(screen.getByRole("group", { name: "Categoría" })).getByRole("button", { name: "Todos 4" })).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Conectados 1" }));
+    expect(names()).toEqual(["WooCommerce"]);
+  });
+
+  it("buscarla por su nombre la deja; buscar otra cosa la quita", async () => {
+    const user = userEvent.setup();
+    withAgenda(AGENDA);
+    const search = screen.getByRole("searchbox", { name: "Buscar conector" });
+    await user.type(search, "agenda");
+    expect(names()).toEqual(["Agenda (Reservas)"]);
+    expect(screen.queryByText(/Ningún conector coincide/)).toBeNull();
+    await user.clear(search);
+    await user.type(search, "cal");
+    expect(names()).toEqual(["Google Calendar"]);
+  });
+
+  it("con Reservas apagado, activarla pide confirmación con el modo", async () => {
+    const user = userEvent.setup();
+    const { agendaActions } = withAgenda({ ...AGENDA, module: { on: false, mode: null, capacity_kind: null }, ready: false, missing: ["reservas_off"] });
+    await user.click(screen.getByRole("button", { name: "Activar la agenda en este agente" }));
+    const dialog = await screen.findByRole("dialog", { name: "¿Encender Reservas para Barbería Cultor?" });
+    expect(within(dialog).getByRole("radio", { name: /Servicios/ })).toBeChecked();
+    await user.click(within(dialog).getByRole("button", { name: "Encender y activar" }));
+    expect(agendaActions.set).toHaveBeenCalledWith({ ref: REF, agent: AGENT, enabled: true, reservas: { mode: "services", capacity_kind: null } });
+  });
+
+  it("su «Qué puede hacer» lee las herramientas de la agenda, no las de un conector", async () => {
+    const user = userEvent.setup();
+    const { actions, agendaActions } = withAgenda(ON);
+    await user.click(screen.getByRole("button", { name: "Más acciones de la agenda" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Qué puede hacer" }));
+    expect(await screen.findByRole("dialog", { name: "Herramientas de Agenda (Reservas)" })).toBeVisible();
+    expect(agendaActions.tools).toHaveBeenCalledWith({ ref: REF, agent: AGENT, lang: "es" });
+    expect(actions.tools).not.toHaveBeenCalled();
+  });
+
+  it("si no se pudo leer, la fila lo dice; y sin datos de la agenda no hay fila", () => {
+    const { unmount } = withAgenda(null);
+    expect(screen.getByText("No se pudo leer la agenda de este agente. Lo que ya hace sigue funcionando.")).toBeVisible();
+    unmount();
+    panel();
+    expect(names()).toEqual(["WooCommerce", "Google Calendar", "Amigable Cobro", "HubSpot"]);
+  });
+
+  it("si Reservas no se ofrece, no queda ni una tarjeta vacía: con el catálogo vacío o sin poder leerlo", () => {
+    const off = { ...AGENDA, offered: false };
+    const { container, unmount } = render(
+      <LocaleProvider locale="es">
+        <AgentConnectorsPanel refId={REF} agentId={AGENT} connectors={[]} canWrite agenda={off} actions={{ agenda: {} }} />
+      </LocaleProvider>,
+    );
+    expect(container.querySelector("[data-slot=agent-connector-list]")).toBeNull();
+    expect(screen.queryByRole("list")).toBeNull();
+    unmount();
+    const failed = render(
+      <LocaleProvider locale="es">
+        <AgentConnectorsPanel refId={REF} agentId={AGENT} connectors={null} canWrite agenda={off} actions={{ agenda: {}, load: vi.fn(async () => fail(503)) }} />
+      </LocaleProvider>,
+    );
+    expect(failed.container.querySelector("[data-slot=agent-connector-list]")).toBeNull();
+    expect(screen.getByText("No se pudieron cargar los conectores de este agente. Lo que ya usa sigue funcionando.")).toBeVisible();
+  });
+
+  it("con un catálogo vacío, la agenda sigue ahí", () => {
+    render(
+      <LocaleProvider locale="es">
+        <AgentConnectorsPanel refId={REF} agentId={AGENT} connectors={[]} canWrite agenda={AGENDA} actions={{ agenda: {} }} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("heading", { level: 3, name: "Agenda (Reservas)" })).toBeVisible();
+    expect(screen.getByText("Todavía no hay conectores disponibles para este cliente.")).toBeVisible();
+  });
 });

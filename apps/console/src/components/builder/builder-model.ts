@@ -6,6 +6,7 @@ import type {
   DraftJob,
   EditableBlock,
   EscalationTrigger,
+  ProposalOp,
   SpecProblem,
 } from "@/lib/backend/builder-types";
 import { BUILDER_BLOCKS } from "@/lib/backend/builder-types";
@@ -239,6 +240,26 @@ export function blockOfPointer(pointer: string): BuilderBlockKey | "ai_disclosur
   return (BUILDER_BLOCKS as readonly string[]).includes(first) ? (first as BuilderBlockKey) : null;
 }
 
+/**
+ * Spec 057 (3.3): las operaciones de una propuesta por bloque, en el orden en que
+ * llega el primero de cada uno. Lo que no cae en ningún bloque va en `null`, al final.
+ */
+export function blocksOfOps(ops: readonly ProposalOp[]): { block: ReturnType<typeof blockOfPointer>; ops: ProposalOp[] }[] {
+  const out: { block: ReturnType<typeof blockOfPointer>; ops: ProposalOp[] }[] = [];
+  const loose: ProposalOp[] = [];
+  for (const op of ops) {
+    const block = blockOfPointer(op.path);
+    if (!block) {
+      loose.push(op);
+      continue;
+    }
+    const found = out.find((g) => g.block === block);
+    if (found) found.ops.push(op);
+    else out.push({ block, ops: [op] });
+  }
+  return loose.length ? [...out, { block: null, ops: loose }] : out;
+}
+
 /** Un valor corto y legible de una operación de propuesta. */
 export function previewValue(value: unknown, max = 200): string {
   if (value === undefined || value === null) return "";
@@ -288,6 +309,8 @@ export function groupTemplates<T extends { group: string }>(templates: readonly 
  * `integrations` (y `connectors`) llevan a los Conectores del agente (T129).
  */
 const TAB_SECTION: Record<string, string> = {
+  // Spec 057: la fila «Agenda (Reservas)», la primera de Conectores.
+  agenda: "agenda",
   advanced: "agente-avanzado",
   quality: "agente-calidad",
   integrations: "agente-conectores",
@@ -316,10 +339,31 @@ const SECTION_TAB: Record<string, AgentTab> = {
   "agente-mejoras": "perf",
   "agente-canales": "channels",
   "agente-conectores": "connectors",
+  agenda: "connectors",
 };
 
 /** La pestaña que tiene una sección (`agente-…`, `bloque-…`); `null` si no es de la pantalla. */
 export function tabOfSection(id: string | null | undefined): AgentTab | null {
   if (!id) return null;
   return SECTION_TAB[id] ?? (id.startsWith("agente-") || id.startsWith("bloque-") ? "build" : null);
+}
+
+/**
+ * Spec 057 (requisito 1.2): las palabras que encienden «Gestiona citas» solas. Es
+ * la misma expresión que la API (`services/builder/agent_draft.py`, `_BOOKING`:
+ * `\b(cita|citas|reserv\w*|agend\w*|turnos?)\b`, con `re.I`; el plural de
+ * «turno» entró en la revisión de la 057, a la vez en los dos lados). En Python `\w` y
+ * `\b` cuentan las letras con tilde, así que aquí se dicen con `\p{L}`: «recitas»
+ * no es «citas» en ninguno de los dos lados.
+ */
+export const BOOKING_WORDS = /(?<![\p{L}\p{N}_])(cita|citas|reserv[\p{L}\p{N}_]*|agend[\p{L}\p{N}_]*|turnos?)(?![\p{L}\p{N}_])/iu;
+
+/**
+ * Por qué se enciende solo «Gestiona citas» (1.2): la descripción pide citas o la
+ * plantilla elegida lleva herramientas de Reservas. `null`: nada lo pide.
+ */
+export function agendaSuggested(description: string, template: { books?: boolean } | null | undefined): "description" | "template" | null {
+  if (BOOKING_WORDS.test(description)) return "description";
+  if (template?.books) return "template";
+  return null;
 }

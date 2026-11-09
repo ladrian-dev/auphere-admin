@@ -39,7 +39,8 @@ export function ConnectorToolsDialog({
   onChanged,
   onOpenSettings,
 }: {
-  connector: AgentConnector;
+  /** Solo su nombre: la agenda de Reservas (spec 057) no es un conector y usa el mismo diálogo. */
+  connector: Pick<AgentConnector, "name">;
   canWrite: boolean;
   load: (lang: "es" | "en") => Promise<Result<ConnectorTools>>;
   save: (key: string, enabled: boolean) => Promise<Result<CapabilityUpdated>>;

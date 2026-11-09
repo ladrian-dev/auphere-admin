@@ -67,6 +67,10 @@ export async function generateMetadata() {
  * configuración de ese número dentro del agente (su página, su historial y
  * cómo se asigna o se pide saldo desde sus comprobaciones). Si el número es de
  * otro agente, se va al suyo; si no se puede leer, se ve la lista.
+ *
+ * Spec 057: la agenda del agente (si Reservas se ofrece, si está lista, si el
+ * borrador la lleva y su propuesta) para la cabecera y la primera fila de
+ * Conectores. Si no llega, la fila lo dice y la cabecera calla.
  */
 export default async function AgentScreenPage({
   params,
@@ -104,7 +108,7 @@ export default async function AgentScreenPage({
   const biz = businessSectionsApi(callFor(principal));
   // Spec 047 (63.1): el canal que se configura dentro del agente.
   const canal = readsChannels && typeof query.canal === "string" && UUID_RE.test(query.canal) ? query.canal : null;
-  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements, client, bizServices, bizLocations, bizHours, canalPage, canalHistory] = await Promise.all([
+  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements, client, bizServices, bizLocations, bizHours, canalPage, canalHistory, agenda] = await Promise.all([
     run(() => api.getBuilderDraft(ref, agentId)),
     run(() => api.listProposals(ref, agentId)),
     run(() => api.getAgentTests(ref, agentId)),
@@ -124,6 +128,7 @@ export default async function AgentScreenPage({
     run(() => biz.getHours(ref)),
     canal ? run(() => api.getChannelPage(ref, canal)) : null,
     canal ? run(() => api.getChannelHistory(ref, canal)) : null,
+    run(() => api.getAgentAgenda(ref, agentId)),
   ]);
   // Pasó a otro agente: su configuración se abre en el suyo.
   if (canal && canalPage?.ok && canalPage.data.agent && canalPage.data.agent.id !== agentId) redirect(channelHref(ref, canalPage.data.agent.id, canal));
@@ -217,6 +222,7 @@ export default async function AgentScreenPage({
       questions={questions}
       clientName={client?.name ?? null}
       business={business}
+      agenda={ok(agenda)}
     />
   );
 }

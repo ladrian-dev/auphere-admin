@@ -466,6 +466,8 @@ function FindingFix({
       </button>
     );
   }
+  // Un arreglo que la consola no sabe aplicar (sin propuesta que aplicar) no se ofrece.
+  if (fix.kind !== "proposal" || typeof fix.proposal_id !== "string") return null;
   return (
     <button
       type="button"

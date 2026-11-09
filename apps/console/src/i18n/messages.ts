@@ -7,6 +7,7 @@
 export type Locale = "es" | "en";
 
 import { accountProtoMessages } from "./lanes/account-proto";
+import { agendaMessages } from "./lanes/agenda";
 import { agentImproveMessages } from "./lanes/agent-improve";
 import { amendmentMessages } from "./lanes/amendment";
 import { amendment1030Messages } from "./lanes/amendment-1030";
@@ -614,6 +615,8 @@ const messages = {
   ...channelsProtoMessages,
   ...amendmentMessages,
   ...amendment1030Messages,
+  // Spec 057: la agenda desde el agente.
+  ...agendaMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

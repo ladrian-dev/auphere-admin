@@ -4,9 +4,10 @@ import { CircleAlert, CircleCheck, CircleDashed, CirclePlay, FlaskConical, Loade
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
-import { Button, Callout, Field, Input, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, cn, formatNumber } from "@nexus/ui";
+import { Button, Callout, Field, Input, Label, StatusBadge, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, cn, formatNumber } from "@nexus/ui";
 
 import { answerDraftJobAction, draftJobAction, startDraftJobAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
+import { ReservasFields } from "@/components/clients/access/reservas-fields";
 import { agentHref } from "@/components/shell/routes-v2";
 import { ShellBackButton } from "@/components/shell/shell-back-button";
 import { useLocale, useT } from "@/i18n/client";
@@ -20,10 +21,12 @@ import type {
   DraftOptions,
   TemplateOption,
 } from "@/lib/backend/builder-types";
+import type { CapacityKind, ReservasMode } from "@/lib/backend/client-access";
 
 import {
   LIMITS,
   POLL_FIRST_MS,
+  agendaSuggested,
   arrivedBlocks,
   caseTests,
   cleanName,
@@ -52,7 +55,11 @@ const SERVER_ACTIONS: BuilderActions = {
 type Phase = "idle" | "starting" | "building" | "done" | "failed";
 /** `facts`: la ficha del negocio no se pudo leer (65.12); sin ella no hay borrador ni plantilla. */
 type Failure = "unavailable" | "facts" | "other";
-type Errors = { name?: string; description?: string; template?: string; form?: string };
+/** `agenda`: lo que dijo la API al encender Reservas (spec 057, 1.5), junto a «Gestiona citas». */
+type Errors = { name?: string; description?: string; template?: string; form?: string; agenda?: string };
+
+/** Spec 057 (1.5; `console-api.md` §2): lo que puede fallar al encender Reservas desde el alta. */
+const AGENDA_ERRORS: ReadonlySet<string> = new Set(["reservas_mode_required", "reservas_kind_required", "reservas_kind_forbidden", "archived", "no_partner"]);
 
 /** Los cuatro ejemplos del prototipo (§3.1), con textos generales: ni negocios ni personas concretas. */
 const EXAMPLES = ["reception", "sales", "support", "billing"] as const;
@@ -93,6 +100,14 @@ const LINK = "cursor-pointer font-medium text-primary-text underline underline-o
  * —que repite lo que se intentó, sin doble envío— y sin ofrecer «Desde una
  * plantilla», que también la lee. Si al borrador le falta algo que no tenemos,
  * la pantalla del agente se abre con su trabajo (`?job=`).
+ *
+ * Spec 057 (requisitos 1.1–1.3): «Gestiona citas» bajo «¿Qué tiene que hacer?»,
+ * para las tres formas de empezar, solo si Reservas se ofrece al cliente (§V).
+ * Mientras nadie lo toque, sigue a la descripción (`BOOKING_WORDS`) y a la
+ * plantilla elegida (`books`), y dice por qué se encendió. Con Reservas apagado,
+ * dice que generar lo encenderá y pide cómo reserva el negocio, con el modo de su
+ * sector ya elegido. Lo que dice la API al encenderlo sale junto al interruptor,
+ * sin navegar y sin perder lo escrito.
  */
 export function BuilderNew({
   refId,
@@ -133,9 +148,23 @@ export function BuilderNew({
   const [alt, setAlt] = React.useState<"template" | "blank" | null>(null);
   // Lo último que se intentó, para que «Reintentar» lo repita (65.12).
   const [lastStart, setLastStart] = React.useState<"describe" | "template">("describe");
+  // Spec 057: «Gestiona citas». `null` mientras nadie lo toque: entonces sigue a
+  // la descripción y a la plantilla.
+  const agendaOptions = options?.agenda?.offered ? options.agenda : null;
+  const agendaRef = React.useRef<HTMLDivElement>(null);
+  const [agendaTouched, setAgendaTouched] = React.useState<boolean | null>(null);
+  const [reservasMode, setReservasMode] = React.useState<ReservasMode | null>(() => agendaOptions?.suggested_mode ?? null);
+  const [reservasKind, setReservasKind] = React.useState<CapacityKind | null>(() =>
+    agendaOptions?.suggested_mode === "capacity" ? (agendaOptions.suggested_kind ?? null) : null,
+  );
 
   const preparing = phase === "starting" || phase === "building" || phase === "done";
   const locked = preparing || alt !== null;
+  const chosenTemplate = showTemplates && templateId ? (options?.templates ?? []).find((tpl) => tpl.id === templateId) : null;
+  const agendaWhy = agendaOptions ? agendaSuggested(description, chosenTemplate) : null;
+  const agendaOn = agendaOptions ? (agendaTouched ?? agendaWhy !== null) : false;
+  // Generar encenderá Reservas: hay que decir cómo reserva el negocio (1.3).
+  const turnsOn = agendaOn && agendaOptions !== null && !agendaOptions.module_on;
   const nameMax = limits.name_max;
   const problems = describeProblems(name, description, limits);
   const ready = !problems.name && !problems.description;
@@ -244,6 +273,34 @@ export function BuilderNew({
     return !next.name && !next.description;
   }
 
+  /**
+   * Lo que el alta dice de la agenda (`console-api.md` §2): nada si no se ofrece,
+   * `agenda` si se ofrece y, si generar enciende Reservas, cómo se reserva. Sin
+   * el modo o, en Aforo, sin el tipo, no se manda nada y el foco va al campo.
+   */
+  function agendaFields(): Pick<DraftJobBody, "agenda" | "reservas"> | null {
+    if (!agendaOptions) return {};
+    if (!agendaOn) return { agenda: false };
+    if (!turnsOn) return { agenda: true };
+    if (reservasMode === null) {
+      agendaRef.current?.querySelector<HTMLInputElement>("input[type=radio]")?.focus();
+      return null;
+    }
+    if (reservasMode === "capacity" && reservasKind === null) {
+      agendaRef.current?.querySelector<HTMLSelectElement>("select")?.focus();
+      return null;
+    }
+    return { agenda: true, reservas: { mode: reservasMode, capacity_kind: reservasMode === "capacity" ? reservasKind : null } };
+  }
+
+  /** Spec 057 (1.5): encender Reservas falló. Se dice junto al interruptor y no se crea nada. */
+  function agendaFailed(res: Extract<Result<unknown>, { ok: false }>): boolean {
+    if (!agendaOn || !res.code || !AGENDA_ERRORS.has(res.code)) return false;
+    setErrors({ agenda: t(`agenda.error.${res.code}` as MessageKey) });
+    agendaRef.current?.scrollIntoView?.({ block: "nearest" });
+    return true;
+  }
+
   async function generate(event: React.FormEvent) {
     event.preventDefault();
     await describe();
@@ -252,20 +309,22 @@ export function BuilderNew({
   /** «Generar borrador»: el trabajo que escribe el borrador a partir de lo que se describió. */
   async function describe() {
     if (locked || !validate(true)) return;
+    const agenda = agendaFields();
+    if (!agenda) return;
     setLastStart("describe");
     setPhase("starting");
     setFailure(null);
     setShowTemplates(false);
     setJob(null);
     setJobId(null);
-    const res = await actions.start({ ref: refId, name: cleanName(name), description: description.trim(), start: "describe" });
+    const res = await actions.start({ ref: refId, name: cleanName(name), description: description.trim(), start: "describe", ...agenda });
     if (!res.ok) {
       if (res.code === "facts_unavailable") {
         setFailure("facts");
         setPhase("failed");
         return;
       }
-      startFailed(res);
+      if (!agendaFailed(res)) startFailed(res);
       setPhase("idle");
       return;
     }
@@ -285,6 +344,8 @@ export function BuilderNew({
       templatesRef.current?.querySelector<HTMLInputElement>("input[type=radio]")?.focus();
       return;
     }
+    const agenda = agendaFields();
+    if (!agenda) return;
     if (start === "template") setLastStart("template");
     setAlt(start);
     const text = description.trim();
@@ -294,6 +355,7 @@ export function BuilderNew({
       start,
       ...(text.length >= limits.description_min && text.length <= limits.description_max ? { description: text } : {}),
       ...(start === "template" && templateId ? { template_id: templateId } : {}),
+      ...agenda,
     });
     if (!res.ok) {
       setAlt(null);
@@ -304,7 +366,7 @@ export function BuilderNew({
         setPhase("failed");
         return;
       }
-      startFailed(res);
+      if (!agendaFailed(res)) startFailed(res);
       return;
     }
     if (res.data.agent_id) {
@@ -460,6 +522,33 @@ export function BuilderNew({
                       </div>
                     </div>
 
+                    {agendaOptions ? (
+                      <AgendaSwitch
+                        ref={agendaRef}
+                        on={agendaOn}
+                        why={agendaTouched === null ? agendaWhy : null}
+                        turnsOn={turnsOn}
+                        clientName={clientName}
+                        mode={reservasMode}
+                        kind={reservasKind}
+                        disabled={locked}
+                        error={errors.agenda}
+                        onToggle={(on) => {
+                          setAgendaTouched(on);
+                          setErrors((prev) => ({ ...prev, agenda: undefined }));
+                        }}
+                        onMode={(m) => {
+                          setReservasMode(m);
+                          if (m === "capacity" && reservasKind === null) setReservasKind(agendaOptions.suggested_kind ?? null);
+                          setErrors((prev) => ({ ...prev, agenda: undefined }));
+                        }}
+                        onKind={(k) => {
+                          setReservasKind(k);
+                          setErrors((prev) => ({ ...prev, agenda: undefined }));
+                        }}
+                      />
+                    ) : null}
+
                     {/* Decisión D4 de `agente.md`: plantilla y en blanco, discretos bajo los ejemplos. */}
                     <div className="grid min-w-0 gap-3 border-t border-border pt-4" data-slot="builder-alternatives">
                       <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
@@ -502,10 +591,16 @@ export function BuilderNew({
                                   setErrors((prev) => ({ ...prev, template: undefined }));
                                 }}
                               />
-                              <div>
+                              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
                                 <Button type="button" size="sm" onClick={() => void startFrom("template")} loading={alt === "template"} disabled={alt === "blank"}>
                                   {t("builder.alt.templates.create")}
                                 </Button>
+                                {/* Spec 057: lo que la plantilla cambió más arriba, dicho junto a su botón y anunciado. */}
+                                <p role="status" className="min-w-0 flex-1 basis-56 text-sm text-pretty text-muted-foreground" data-slot="builder-template-agenda">
+                                  {agendaOn && chosenTemplate?.books
+                                    ? [t("agenda.template.on"), turnsOn ? t("agenda.template.turnsOn") : null].filter(Boolean).join(" ")
+                                    : ""}
+                                </p>
                               </div>
                             </>
                           )}
@@ -560,6 +655,69 @@ export function BuilderNew({
     </div>
   );
 }
+
+/**
+ * «Gestiona citas» (spec 057, 1.1–1.3): el interruptor con su línea, por qué se
+ * encendió solo y, si generar enciende Reservas, el aviso y cómo se reserva. Lo
+ * que dijo la API al encenderlo, debajo.
+ */
+const AgendaSwitch = React.forwardRef<
+  HTMLDivElement,
+  {
+    on: boolean;
+    why: "description" | "template" | null;
+    turnsOn: boolean;
+    clientName: string | null;
+    mode: ReservasMode | null;
+    kind: CapacityKind | null;
+    disabled: boolean;
+    error?: string;
+    onToggle: (on: boolean) => void;
+    onMode: (m: ReservasMode) => void;
+    onKind: (k: CapacityKind | null) => void;
+  }
+>(function AgendaSwitch({ on, why, turnsOn, clientName, mode, kind, disabled, error, onToggle, onMode, onKind }, ref) {
+  const t = useT();
+  const id = React.useId();
+  return (
+    <div ref={ref} className="grid min-w-0 gap-3 rounded-md border border-border px-3 py-3" data-slot="builder-agenda" data-on={on}>
+      <div className="flex min-w-0 items-start gap-3">
+        <Switch
+          id={`${id}-switch`}
+          checked={on}
+          disabled={disabled}
+          onCheckedChange={(v) => onToggle(v === true)}
+          aria-describedby={why ? `${id}-hint ${id}-why` : `${id}-hint`}
+          className="mt-1"
+        />
+        <div className="grid min-w-0 flex-1 gap-1">
+          <Label htmlFor={`${id}-switch`} className="text-sm font-medium">
+            {t("agenda.switch")}
+          </Label>
+          <p id={`${id}-hint`} className="text-sm text-pretty text-muted-foreground">
+            {t("agenda.switch.hint")}
+          </p>
+          {why ? (
+            <p id={`${id}-why`} className="text-xs text-pretty text-muted-foreground" data-slot="agenda-why">
+              {t(`agenda.switch.why.${why}`)}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {turnsOn ? (
+        <div className="grid min-w-0 gap-3 border-l border-border pl-4">
+          <p className="text-sm text-pretty">{clientName ? t("agenda.turnOn.notice.named", { client: clientName }) : t("agenda.turnOn.notice")}</p>
+          <ReservasFields mode={mode} kind={kind} disabled={disabled} onMode={onMode} onKind={onKind} />
+        </div>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-sm text-pretty text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+});
 
 /**
  * «Preparando el borrador» (§3.2): los cuatro pasos con su icono —hecho, en

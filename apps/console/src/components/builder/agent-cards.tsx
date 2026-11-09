@@ -1,13 +1,14 @@
 "use client";
 
-import { Bot, ChevronRight, Sparkles } from "lucide-react";
+import { Bot, CalendarCheck, ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Callout, EmptyState, StatusBadge, buttonVariants } from "@nexus/ui";
+import { Button, Callout, EmptyState, StatusBadge, buttonVariants, cn } from "@nexus/ui";
 
 import { dismissSuggestedAgentAction } from "@/app/(console)/clients/[ref]/agents/suggested-actions";
+import { agentHref } from "@/components/shell/routes-v2";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { ClientAgent } from "@/lib/backend";
@@ -36,6 +37,11 @@ const DISMISS: Dismiss = (body) => dismissSuggestedAgentAction(body);
  * «Descartar». `suggested` es `null` si no se pudieron leer: entonces no salen.
  * Enmienda del 2026-10-30 (T228, 65.7): el papel de una sugerencia es
  * opcional y no decide nada; sin él, la tarjeta sale entera y sin papel.
+ *
+ * Spec 057 (5.3): un agente con la agenda preparada en un borrador sin publicar
+ * (`agenda: "prepared"`) lo dice bajo su tarjeta, con «Revisar y publicar», que
+ * abre el agente en sus propuestas (`#agente-propuestas`), donde está la de su texto. Va fuera del enlace de la
+ * tarjeta: un enlace dentro de otro no se puede usar con el teclado.
  */
 export function AgentCards({
   refId,
@@ -68,11 +74,15 @@ export function AgentCards({
         />
       ) : (
         <ul aria-label={t("builder.agents.list")} className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {listed.map((agent) => (
-            <li key={agent.id} className="min-w-0">
-              <AgentCard refId={refId} agent={agent} />
-            </li>
-          ))}
+          {listed.map((agent) => {
+            const prepared = agent.agenda === "prepared" && agent.status !== "archived";
+            return (
+              <li key={agent.id} className={cn("min-w-0", prepared && "grid content-start")}>
+                <AgentCard refId={refId} agent={agent} attached={prepared} />
+                {prepared ? <AgendaPrepared refId={refId} agent={agent} /> : null}
+              </li>
+            );
+          })}
         </ul>
       )}
       {suggested?.length ? <SuggestedAgents refId={refId} initial={suggested} canWrite={canWrite} dismiss={dismiss} /> : null}
@@ -181,7 +191,35 @@ function SuggestedCard({
   );
 }
 
-function AgentCard({ refId, agent }: { refId: string; agent: ClientAgent }) {
+/** Spec 057 (5.3): «Agenda preparada · Publica para que reserve», con la acción de revisar. */
+function AgendaPrepared({ refId, agent }: { refId: string; agent: ClientAgent }) {
+  const t = useT();
+  return (
+    <div
+      className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-b-md border border-t-0 border-border bg-card px-4 py-3"
+      data-slot="agent-agenda-prepared"
+    >
+      <span className="flex min-w-0 flex-1 basis-40 flex-wrap items-center gap-2 text-sm">
+        <StatusBadge tone="info">
+          <span className="inline-flex items-center gap-1">
+            <CalendarCheck aria-hidden="true" className="size-3" />
+            {t("agenda.prepared.badge")}
+          </span>
+        </StatusBadge>
+        <span className="min-w-0 text-pretty text-muted-foreground">{t("agenda.prepared.card")}</span>
+      </span>
+      <Link
+        href={`${agentHref(refId, agent.id)}#agente-propuestas`}
+        className={buttonVariants({ size: "sm", variant: "outline", className: "shrink-0" })}
+        aria-label={t("agenda.prepared.card.label", { name: agent.name })}
+      >
+        {t("agenda.prepared.publish")}
+      </Link>
+    </div>
+  );
+}
+
+function AgentCard({ refId, agent, attached = false }: { refId: string; agent: ClientAgent; attached?: boolean }) {
   const t = useT();
   const channels = agent.channels.length;
   const archived = agent.status === "archived";
@@ -189,7 +227,10 @@ function AgentCard({ refId, agent }: { refId: string; agent: ClientAgent }) {
   return (
     <Link
       href={cardHref(refId, agent)}
-      className="group flex h-full min-w-0 items-start gap-3 rounded-md border border-border bg-card p-4 outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(
+        "group flex h-full min-w-0 items-start gap-3 rounded-md border border-border bg-card p-4 outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring",
+        attached && "h-auto rounded-b-none",
+      )}
       data-slot="agent-card"
       data-opens={agent.opens ?? undefined}
     >

@@ -32,6 +32,7 @@ describe("waiting-reasons (spec 056)", () => {
       "human_takeover",
       "reception_loop",
       "booking_unbacked",
+      "agenda_not_ready",
       "taken_by_person",
     ]) {
       expect(REASONS.has(code)).toBe(true);
@@ -51,6 +52,12 @@ describe("waiting-reasons (spec 056)", () => {
     expect(es("waiting.reason.booking_unbacked")).toBe("El agente dio por hecha una cita que no existe");
     expect(en("waiting.reason.booking_unbacked")).toBe("The agent confirmed a booking that does not exist");
     expect(es("waiting.reason.out_of_audience")).toBe("Fuera de su audiencia");
+  });
+
+  it("spec 057 (requisito 4.2): la agenda sin terminar pasó la cita a una persona", () => {
+    expect(reasonKey("agenda_not_ready")).toBe("waiting.reason.agenda_not_ready");
+    expect(inboxReasonText("agenda_not_ready", es)).toBe("Pidió una cita y la agenda aún no está lista");
+    expect(inboxReasonText("agenda_not_ready", en)).toBe("Asked for an appointment and the agenda is not ready yet");
   });
 
   it("agent_unpublished dice «Agente sin publicar» (7.3, contrato de eventos de la 047)", () => {

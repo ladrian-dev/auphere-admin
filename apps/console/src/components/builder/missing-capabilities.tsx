@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import { CalendarCheck, Pencil } from "lucide-react";
 import * as React from "react";
 
 import { Button, Callout, Skeleton } from "@nexus/ui";
@@ -8,7 +8,7 @@ import { Button, Callout, Skeleton } from "@nexus/ui";
 import { useT } from "@/i18n/client";
 import type { MissingCapability } from "@/lib/backend/builder-types";
 
-import { missingCapabilities } from "./missing-model";
+import { managesAgenda, missingCapabilities } from "./missing-model";
 
 /** Cargando, leído o que no se pudo volver a leer. */
 export type MissingState = "loading" | "ready" | "failed";
@@ -31,6 +31,10 @@ export type MissingState = "loading" | "ready" | "failed";
  *   «Reintentar», que no se pulsa dos veces mientras vuelve a leer;
  * - **parcial**: uno sin `label` se nombra por su clave;
  * - **ideal**: una frase con una, o una lista con varias.
+ *
+ * Spec 057 (6.3): una promesa de reservar, o de mover y cancelar citas, con
+ * Reservas ofrecido al cliente (`onManageAgenda`), lleva además «Gestionar citas»,
+ * que abre la fila de la agenda en Conectores.
  */
 export function MissingCapabilities({
   items,
@@ -38,6 +42,7 @@ export function MissingCapabilities({
   canEdit = false,
   onEdit,
   onRetry,
+  onManageAgenda,
 }: {
   items: readonly MissingCapability[] | null | undefined;
   state?: MissingState;
@@ -47,6 +52,8 @@ export function MissingCapabilities({
   onEdit?: (pointer: string) => void;
   /** «Reintentar» tras un error: volver a leer. */
   onRetry?: () => Promise<void> | void;
+  /** Spec 057 (6.3): «Gestionar citas», solo si Reservas se ofrece al cliente. */
+  onManageAgenda?: () => void;
 }) {
   const t = useT();
   const titleId = React.useId();
@@ -105,7 +112,7 @@ export function MissingCapabilities({
 
   const promises = list.some((m) => m.kind === "action");
   const one = list.length === 1 ? list[0]! : null;
-  const remove = (m: MissingCapability) =>
+  const removeButton = (m: MissingCapability) =>
     canEdit && onEdit && m.kind === "action" && m.pointer ? (
       <Button
         size="sm"
@@ -118,6 +125,25 @@ export function MissingCapabilities({
         {t("builder.missing.remove")}
       </Button>
     ) : null;
+  const manageButton = (m: MissingCapability) =>
+    canEdit && onManageAgenda && managesAgenda(m) ? (
+      <Button size="sm" variant="outline" className="shrink-0" onClick={onManageAgenda} aria-label={t("agenda.manage.label", { label: m.label })}>
+        <CalendarCheck aria-hidden="true" />
+        {t("agenda.manage")}
+      </Button>
+    ) : null;
+  // Lo que se puede hacer con cada una: gestionar la agenda y quitar la promesa.
+  const remove = (m: MissingCapability) => {
+    const manage = manageButton(m);
+    const drop = removeButton(m);
+    if (!manage && !drop) return null;
+    return (
+      <span className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
+        {manage}
+        {drop}
+      </span>
+    );
+  };
 
   return (
     <div data-slot="missing-capabilities" data-state="ready" className="min-w-0">

@@ -100,3 +100,75 @@ describe("las acciones del constructor", () => {
     expect(h.backend.applyProposal).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Spec 057 (T016; requisitos 1.1 y 1.3; `contracts/console-api.md` §2) —
+ * «Gestiona citas» viaja con el alta: `agenda` y, si generar enciende Reservas,
+ * cómo reserva el negocio. El cliente sale del `ref`: un cuerpo con `tenant_id`
+ * no pasa de la acción.
+ */
+describe("«Nuevo agente» con la agenda (spec 057)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.setRole("builder");
+  });
+
+  it("permitido: `agenda` y `reservas` llegan a la API en las tres formas de empezar", async () => {
+    h.backend.startDraftJob.mockResolvedValue({ job_id: JOB, status: "queued", agent_id: null });
+    await startDraftJobAction({
+      ref: "demo",
+      name: "Recepción",
+      description: DESCRIPTION,
+      start: "describe",
+      agenda: true,
+      reservas: { mode: "capacity", capacity_kind: "restaurant" },
+    });
+    expect(h.backend.startDraftJob).toHaveBeenLastCalledWith("demo", {
+      name: "Recepción",
+      start: "describe",
+      description: DESCRIPTION,
+      agenda: true,
+      reservas: { mode: "capacity", capacity_kind: "restaurant" },
+    });
+    await startDraftJobAction({ ref: "demo", name: "Ventas", start: "template", template_id: "barber_v1", agenda: false });
+    expect(h.backend.startDraftJob).toHaveBeenLastCalledWith("demo", { name: "Ventas", start: "template", template_id: "barber_v1", agenda: false });
+    await startDraftJobAction({ ref: "demo", name: "Ventas", start: "blank", agenda: true, reservas: { mode: "services", capacity_kind: null } });
+    expect(h.backend.startDraftJob).toHaveBeenLastCalledWith("demo", {
+      name: "Ventas",
+      start: "blank",
+      agenda: true,
+      reservas: { mode: "services", capacity_kind: null },
+    });
+  });
+
+  it("el error de encender Reservas vuelve con su código, sin agente", async () => {
+    h.fail("startDraftJob", 422, "", "reservas_mode_required");
+    expect(await startDraftJobAction({ ref: "demo", name: "Recepción", description: DESCRIPTION, start: "describe", agenda: true })).toMatchObject({
+      ok: false,
+      status: 422,
+      code: "reservas_mode_required",
+    });
+  });
+
+  it("denegado: un `tenant_id` o un modo que no existe no pasan, y el analista no genera", async () => {
+    await expect(
+      startDraftJobAction({ ref: "demo", name: "Recepción", description: DESCRIPTION, start: "describe", agenda: true, tenant_id: "otro" }),
+    ).rejects.toThrow();
+    await expect(
+      startDraftJobAction({ ref: "demo", name: "Recepción", description: DESCRIPTION, start: "describe", agenda: true, reservas: { mode: "otro" } }),
+    ).rejects.toThrow();
+    await expect(
+      startDraftJobAction({
+        ref: "demo",
+        name: "Recepción",
+        description: DESCRIPTION,
+        start: "describe",
+        agenda: true,
+        reservas: { mode: "services", capacity_kind: null, partner_id: "p-2" },
+      }),
+    ).rejects.toThrow();
+    h.setRole("analyst");
+    expect(await startDraftJobAction({ ref: "demo", name: "Recepción", description: DESCRIPTION, start: "describe", agenda: true })).toEqual(h.denied());
+    expect(h.backend.startDraftJob).not.toHaveBeenCalled();
+  });
+});

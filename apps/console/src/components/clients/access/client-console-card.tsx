@@ -4,22 +4,16 @@ import Link from "next/link";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Callout, Checkbox, ConfirmDialog, ErrorState, Label, NativeSelect, Section, Switch } from "@nexus/ui";
+import { Button, Callout, Checkbox, ConfirmDialog, ErrorState, Label, Section, Switch } from "@nexus/ui";
 
 import { setClientAccessAction } from "@/app/(console)/clients/[ref]/access/actions";
 import { agentHref } from "@/components/shell/routes-v2";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import {
-  ACCESS_MODULES,
-  CAPACITY_KINDS,
-  type AccessModule,
-  type CapacityKind,
-  type ClientAccess,
-  type ReservasMode,
-} from "@/lib/backend/client-access";
+import { ACCESS_MODULES, type AccessModule, type CapacityKind, type ClientAccess, type ReservasMode } from "@/lib/backend/client-access";
 
 import { accessBody, accessErrorKey, accessIsDirty, orderedModules, type AccessDraft } from "./access-model";
+import { ReservasFields } from "./reservas-fields";
 
 type Props = {
   refId: string;
@@ -190,7 +184,7 @@ function ConsoleForm({ refId, access, onSaved }: { refId: string; access: Client
                 </div>
               </div>
               {m === "reservas" && withReservas ? (
-                <ReservasFields mode={mode} kind={kind} stored={stored} disabled={pending} onMode={setMode} onKind={setKind} />
+                <ReservasFields mode={mode} kind={kind} stored={stored} disabled={pending} onMode={setMode} onKind={setKind} className="pl-7" />
               ) : null}
             </div>
           );
@@ -258,93 +252,4 @@ function moduleNames(t: ReturnType<typeof useT>, modules: readonly string[]): st
   return ACCESS_MODULES.filter((m) => modules.includes(m))
     .map((m) => t(`clientAccess.module.${m}` as MessageKey))
     .join(", ");
-}
-
-/**
- * El modo de Reservas y, en Aforo, el tipo de negocio. La primera vez se elige;
- * después, cambiarlo con reservas futuras pregunta antes (el diálogo de arriba).
- */
-function ReservasFields({
-  mode,
-  kind,
-  stored,
-  disabled,
-  onMode,
-  onKind,
-}: {
-  mode: ReservasMode | null;
-  kind: CapacityKind | null;
-  stored: ClientAccess["reservas"] | null;
-  disabled: boolean;
-  onMode: (m: ReservasMode) => void;
-  onKind: (k: CapacityKind | null) => void;
-}) {
-  const t = useT();
-  const modeMissing = mode === null;
-  const kindMissing = mode === "capacity" && kind === null;
-  const renames = stored?.mode === "capacity" && kind !== null && kind !== stored.capacity_kind;
-  return (
-    <div className="grid min-w-0 gap-4 pl-7">
-      <fieldset className="grid min-w-0 gap-2" disabled={disabled} aria-describedby={modeMissing ? "client-reservas-mode-error" : undefined}>
-        <legend className="mb-1 text-sm font-medium">{t("clientAccess.reservas.mode")}</legend>
-        {(["services", "capacity"] as const).map((m) => (
-          <label key={m} className="flex min-h-6 min-w-0 items-start gap-3 text-sm">
-            <input
-              type="radio"
-              name="client-reservas-mode"
-              value={m}
-              checked={mode === m}
-              onChange={() => onMode(m)}
-              className="mt-1 size-4 shrink-0 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            />
-            <span className="min-w-0 text-pretty">
-              <span className="font-medium">{t(`clientAccess.reservas.mode.${m}` as MessageKey)}</span>{" "}
-              <span className="text-muted-foreground">{t(`clientAccess.reservas.mode.${m}.hint` as MessageKey)}</span>
-            </span>
-          </label>
-        ))}
-        {modeMissing ? (
-          <p id="client-reservas-mode-error" className="text-xs text-destructive">
-            {t("clientAccess.error.reservas_mode_required")}
-          </p>
-        ) : null}
-      </fieldset>
-      {mode === "capacity" ? (
-        <div className="grid min-w-0 gap-2">
-          <Label htmlFor="client-reservas-kind" className="text-sm font-medium">
-            {t("clientAccess.reservas.kind")}
-          </Label>
-          <NativeSelect
-            id="client-reservas-kind"
-            value={kind ?? ""}
-            onChange={(e) => onKind(e.target.value === "" ? null : (e.target.value as CapacityKind))}
-            disabled={disabled}
-            required
-            aria-invalid={kindMissing || undefined}
-            aria-describedby={kindMissing ? "client-reservas-kind-error" : renames ? "client-reservas-kind-note" : undefined}
-            wrapperClassName="w-full sm:max-w-xs"
-          >
-            <option value="" disabled>
-              {t("clientAccess.reservas.kind.pick")}
-            </option>
-            {CAPACITY_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {t(`clientAccess.reservas.kind.${k}` as MessageKey)}
-              </option>
-            ))}
-          </NativeSelect>
-          {kindMissing ? (
-            <p id="client-reservas-kind-error" className="text-xs text-destructive">
-              {t("clientAccess.error.reservas_kind_required")}
-            </p>
-          ) : null}
-          {renames ? (
-            <p id="client-reservas-kind-note" className="text-xs text-pretty text-muted-foreground">
-              {t("clientAccess.reservas.kind.renames")}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
 }

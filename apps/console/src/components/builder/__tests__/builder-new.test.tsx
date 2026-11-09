@@ -492,3 +492,191 @@ describe("«Nuevo agente» · sin la ficha no hay borrador (65.12)", () => {
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}?job=${JOB}`));
   });
 });
+
+/**
+ * Spec 057 (T016; requisitos 1.1–1.3; `contracts/console-api.md` §1 y §2) —
+ * «Gestiona citas» bajo «¿Qué tiene que hacer?», para las tres formas de
+ * empezar, solo si Reservas se ofrece al cliente (§V: lo que no se ofrece no se
+ * enseña). Se enciende solo, y dice por qué, mientras nadie lo toque; con Reservas
+ * apagado avisa de que generar lo encenderá y pide cómo reserva el negocio, con el
+ * modo de su sector ya elegido. Los errores se dicen en su sitio, sin navegar.
+ */
+describe("«Nuevo agente» · Gestiona citas (spec 057)", () => {
+  const AGENDA_OFF = {
+    offered: true,
+    module_on: false,
+    mode: null,
+    capacity_kind: null,
+    suggested_mode: "services" as const,
+    suggested_kind: null,
+  };
+  const WITH_AGENDA: DraftOptions = {
+    ...OPTIONS,
+    templates: [
+      { id: "barber_v1", name: "Barbería", group: "Belleza", is_default: true, books: true },
+      { id: "billing_v1", name: "Cobros", group: "Otro", is_default: false, books: false },
+    ],
+    agenda: AGENDA_OFF,
+  };
+  const FACTURAS = "Recuerda a los clientes las facturas pendientes por WhatsApp.";
+  const CITAS = "Da y mueve las citas del salón por WhatsApp.";
+  const agendaSwitch = () => screen.getByRole("switch", { name: "Gestiona citas" });
+  const agendaBlock = () => document.querySelector("[data-slot=builder-agenda]") as HTMLElement;
+
+  it("sale si Reservas se ofrece, con su línea, y no sale si no; pasa axe", async () => {
+    const { container, unmount } = screenWith({}, WITH_AGENDA);
+    expect(agendaSwitch()).not.toBeChecked();
+    expect(screen.getByText("Da, mueve y cancela citas en la agenda de Reservas.")).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+    unmount();
+    screenWith({}, { ...WITH_AGENDA, agenda: { ...AGENDA_OFF, offered: false } });
+    expect(screen.queryByRole("switch", { name: "Gestiona citas" })).toBeNull();
+  });
+
+  it("se enciende solo con citas en la descripción, dice por qué, y deja de seguirla en cuanto alguien lo toca", async () => {
+    const user = userEvent.setup();
+    screenWith({}, WITH_AGENDA);
+    await user.type(descriptionBox(), FACTURAS);
+    expect(agendaSwitch()).not.toBeChecked();
+    await user.clear(descriptionBox());
+    await user.type(descriptionBox(), CITAS);
+    expect(agendaSwitch()).toBeChecked();
+    expect(within(agendaBlock()).getByText("Encendido porque la descripción habla de citas.")).toBeVisible();
+    await user.click(agendaSwitch());
+    expect(agendaSwitch()).not.toBeChecked();
+    expect(within(agendaBlock()).queryByText("Encendido porque la descripción habla de citas.")).toBeNull();
+    await user.type(descriptionBox(), " También reservas y turnos.");
+    expect(agendaSwitch()).not.toBeChecked();
+  });
+
+  it("con Reservas apagado avisa de que lo encenderá y pide el modo, con el sugerido elegido y el tipo solo en Aforo; pasa axe", async () => {
+    const user = userEvent.setup();
+    const { container } = screenWith({}, { ...WITH_AGENDA, agenda: { ...AGENDA_OFF, suggested_mode: "capacity", suggested_kind: "restaurant" } });
+    expect(within(agendaBlock()).queryByRole("radio")).toBeNull();
+    await user.click(agendaSwitch());
+    expect(within(agendaBlock()).getByText("Generarlo encenderá Reservas para Barbería Cultor. Elige cómo reserva el negocio.")).toBeVisible();
+    expect(within(agendaBlock()).getByRole("radio", { name: /Aforo/ })).toBeChecked();
+    expect(within(agendaBlock()).getByRole("combobox", { name: "Tipo de negocio" })).toHaveValue("restaurant");
+    await user.click(within(agendaBlock()).getByRole("radio", { name: /Servicios/ }));
+    expect(within(agendaBlock()).queryByRole("combobox", { name: "Tipo de negocio" })).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("describir: el cuerpo lleva `agenda` y cómo reserva; apagado, `agenda: false` y nada más", async () => {
+    const user = userEvent.setup();
+    const start = vi.fn<Actions["start"]>(async () => ({ ok: true, data: { job_id: JOB, status: "queued", agent_id: null } }));
+    const { unmount } = screenWith({ start }, WITH_AGENDA);
+    await user.type(nameBox(), NAME);
+    await user.type(descriptionBox(), CITAS);
+    await user.click(generate());
+    expect(start).toHaveBeenLastCalledWith({
+      ref: REF,
+      name: NAME,
+      description: CITAS,
+      start: "describe",
+      agenda: true,
+      reservas: { mode: "services", capacity_kind: null },
+    });
+    unmount();
+    screenWith({ start }, WITH_AGENDA);
+    await user.type(nameBox(), NAME);
+    await user.type(descriptionBox(), FACTURAS);
+    await user.click(generate());
+    expect(start).toHaveBeenLastCalledWith({ ref: REF, name: NAME, description: FACTURAS, start: "describe", agenda: false });
+  });
+
+  it("con Reservas ya encendido no pregunta cómo se reserva: el cuerpo solo lleva `agenda`", async () => {
+    const user = userEvent.setup();
+    const start = vi.fn<Actions["start"]>(async () => ({ ok: true, data: { job_id: JOB, status: "queued", agent_id: null } }));
+    screenWith({ start }, { ...WITH_AGENDA, agenda: { ...AGENDA_OFF, module_on: true, mode: "services" } });
+    await user.type(nameBox(), NAME);
+    await user.type(descriptionBox(), CITAS);
+    expect(within(agendaBlock()).queryByRole("radio")).toBeNull();
+    expect(within(agendaBlock()).queryByText(/encenderá Reservas/)).toBeNull();
+    await user.click(generate());
+    expect(start).toHaveBeenLastCalledWith({ ref: REF, name: NAME, description: CITAS, start: "describe", agenda: true });
+  });
+
+  it("en Aforo sin tipo no se manda nada, y los errores de la API se dicen en su sitio sin navegar", async () => {
+    const user = userEvent.setup();
+    const start = vi
+      .fn<Actions["start"]>()
+      .mockResolvedValueOnce({ ok: false, status: 422, message: "", code: "reservas_kind_forbidden" })
+      .mockResolvedValueOnce({ ok: false, status: 409, message: "", code: "archived" });
+    screenWith({ start }, WITH_AGENDA);
+    await user.type(nameBox(), NAME);
+    await user.type(descriptionBox(), CITAS);
+    await user.click(within(agendaBlock()).getByRole("radio", { name: /Aforo/ }));
+    await user.click(generate());
+    expect(start).not.toHaveBeenCalled();
+    // Lo dice el campo que falta, y el foco va a él.
+    expect(within(agendaBlock()).getByText("Con Aforo, elige el tipo de negocio.")).toBeVisible();
+    expect(within(agendaBlock()).getByRole("combobox", { name: "Tipo de negocio" })).toHaveFocus();
+    await user.selectOptions(within(agendaBlock()).getByRole("combobox", { name: "Tipo de negocio" }), "bar");
+    await user.click(generate());
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ agenda: true, reservas: { mode: "capacity", capacity_kind: "bar" } }));
+    expect(await within(agendaBlock()).findByRole("alert")).toHaveTextContent("El tipo de negocio solo va con Aforo.");
+    await user.click(generate());
+    expect(await within(agendaBlock()).findByText("El cliente está archivado, así que no se le puede encender Reservas.")).toBeVisible();
+    expect(nav.push).not.toHaveBeenCalled();
+    expect(nameBox()).toHaveValue(NAME);
+  });
+
+  it("una plantilla que da citas lo enciende, y «Desde una plantilla» y «En blanco» llevan `agenda`", async () => {
+    const user = userEvent.setup();
+    const start = vi.fn<Actions["start"]>(async () => ({ ok: true, data: { job_id: JOB, status: "done", agent_id: AGENT } }));
+    const { unmount } = screenWith({ start }, WITH_AGENDA);
+    await user.type(nameBox(), NAME);
+    await user.click(screen.getByRole("button", { name: "Empezar desde una plantilla" }));
+    await user.click(screen.getByRole("radio", { name: "Cobros" }));
+    expect(agendaSwitch()).not.toBeChecked();
+    await user.click(screen.getByRole("radio", { name: /Barbería/ }));
+    expect(agendaSwitch()).toBeChecked();
+    expect(within(agendaBlock()).getByText("Encendido porque la plantilla da citas.")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Crear desde esta plantilla" }));
+    expect(start).toHaveBeenLastCalledWith({
+      ref: REF,
+      name: NAME,
+      start: "template",
+      template_id: "barber_v1",
+      agenda: true,
+      reservas: { mode: "services", capacity_kind: null },
+    });
+    unmount();
+    screenWith({ start }, WITH_AGENDA);
+    await user.type(nameBox(), "Ventas");
+    await user.click(screen.getByRole("button", { name: "En blanco" }));
+    expect(start).toHaveBeenLastCalledWith({ ref: REF, name: "Ventas", start: "blank", agenda: false });
+  });
+});
+
+/**
+ * Revisión de las puertas de UI (spec 057, 1.2 y 1.3): al elegir una plantilla
+ * que da citas, el interruptor y el modo cambian más arriba, lejos del radio
+ * pulsado. Junto a «Crear desde esta plantilla» se dice, en una región que se
+ * anuncia, que «Gestiona citas» se encendió y, si crear enciende Reservas, que el
+ * modo se elige arriba.
+ */
+describe("«Nuevo agente» · la plantilla que da citas lo dice junto a su botón (revisión de UI)", () => {
+  const WITH_AGENDA: DraftOptions = {
+    ...OPTIONS,
+    templates: [
+      { id: "barber_v1", name: "Barbería", group: "Belleza", is_default: true, books: true },
+      { id: "billing_v1", name: "Cobros", group: "Otro", is_default: false, books: false },
+    ],
+    agenda: { offered: true, module_on: false, mode: null, capacity_kind: null, suggested_mode: "services", suggested_kind: null },
+  };
+
+  it("lo dice al elegirla, y calla con una que no da citas", async () => {
+    const user = userEvent.setup();
+    screenWith({}, WITH_AGENDA);
+    await user.click(screen.getByRole("button", { name: "Empezar desde una plantilla" }));
+    const note = document.querySelector("[data-slot=builder-template-agenda]") as HTMLElement;
+    expect(note).toHaveAttribute("role", "status");
+    expect(note).toBeEmptyDOMElement();
+    await user.click(screen.getByRole("radio", { name: /Barbería/ }));
+    expect(note).toHaveTextContent("Esta plantilla da citas, así que «Gestiona citas» está encendido. Crear el agente encenderá Reservas para este cliente: elige arriba cómo reserva el negocio.");
+    await user.click(screen.getByRole("radio", { name: "Cobros" }));
+    expect(note).toBeEmptyDOMElement();
+  });
+});

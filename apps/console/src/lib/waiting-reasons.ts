@@ -31,6 +31,9 @@ export const REASONS: ReadonlySet<string> = new Set([
   "reception_loop",
   // Spec 056 (requisito 1): el freno de citas pasó la conversación a una persona.
   "booking_unbacked",
+  // Spec 057 (requisito 4.2): la agenda del cliente aún no está lista y el agente no
+  // tiene la herramienta de derivar, así que el runtime pasó la cita a una persona.
+  "agenda_not_ready",
   "taken_by_person",
 ]);
 

@@ -13,7 +13,9 @@ import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { AgentReview, ReviewCheck, ReviewFinding } from "@/lib/backend/agent-quality-types";
 
-import type { Result } from "./builder-model";
+import { NotReadyList } from "./agenda-row";
+import { blockTitleKey } from "./block-view";
+import { blockOfPointer, type Result } from "./builder-model";
 import type { DecideProposal } from "./proposals";
 import { reviewFixLink } from "./quality-model";
 
@@ -123,6 +125,12 @@ export function useAgentReview({
  * Se lee al abrir la pantalla y cada vez que cambia el borrador; con `source`,
  * la lee quien la monta (la pantalla del agente la comparte con la tarjeta de
  * pruebas). Quien solo lee ve los hallazgos y sus enlaces, pero no aplica nada.
+ *
+ * Spec 057 (3.8 y 4.1): `forbids_agenda` —el agente lleva la agenda y un texto la
+ * prohíbe— sale una vez por texto, con el bloque donde está, su arreglo y «Pedir
+ * la propuesta» (`onAgenda`: la fila de la agenda en Conectores, donde se pide).
+ * `agenda_not_ready` dice qué le falta a Reservas y dónde se completa. Los dos,
+ * y `no_hours` con un agente que reserva, avisan sin bloquear.
  */
 export function ReviewPanel({
   source,
@@ -136,6 +144,8 @@ export function ReviewPanel({
   onEdit?: (pointer: string | null) => void;
   /** Una propuesta aplicada cambió el borrador. */
   onApplied?: () => void;
+  /** Spec 057 (3.8): «Pedir la propuesta» de un texto que prohíbe la agenda. */
+  onAgenda?: () => void;
   actions?: ReviewActions;
   /** La revisión ya leída por quien monta el panel. */
   source?: ReviewSource;
@@ -143,7 +153,16 @@ export function ReviewPanel({
   return source ? <ReviewView {...props} source={source} /> : <OwnReview {...props} />;
 }
 
-function OwnReview(props: { refId: string; agentId: string; canWrite: boolean; refreshKey?: number; onEdit?: (pointer: string | null) => void; onApplied?: () => void; actions?: ReviewActions }) {
+function OwnReview(props: {
+  refId: string;
+  agentId: string;
+  canWrite: boolean;
+  refreshKey?: number;
+  onEdit?: (pointer: string | null) => void;
+  onApplied?: () => void;
+  onAgenda?: () => void;
+  actions?: ReviewActions;
+}) {
   const source = useAgentReview(props);
   return <ReviewView {...props} source={source} />;
 }
@@ -152,11 +171,13 @@ function ReviewView({
   refId,
   canWrite,
   onEdit,
+  onAgenda,
   source,
 }: {
   refId: string;
   canWrite: boolean;
   onEdit?: (pointer: string | null) => void;
+  onAgenda?: () => void;
   source: ReviewSource;
 }) {
   const t = useT();
@@ -204,6 +225,7 @@ function ReviewView({
                     canWrite={canWrite}
                     applying={applying}
                     onEdit={onEdit}
+                    onAgenda={onAgenda}
                     onApply={(id) => void apply(id)}
                   />
                 ))}
@@ -245,6 +267,7 @@ function FindingRow({
   canWrite,
   applying,
   onEdit,
+  onAgenda,
   onApply,
 }: {
   refId: string;
@@ -252,11 +275,23 @@ function FindingRow({
   canWrite: boolean;
   applying: string | null;
   onEdit?: (pointer: string | null) => void;
+  onAgenda?: () => void;
   onApply: (proposalId: string) => void;
 }) {
   const t = useT();
   const fix = finding.fix;
   const link = fix?.kind === "link" ? reviewFixLink(refId, fix) : null;
+  // Spec 057 (3.8): dónde está el texto que prohíbe la agenda.
+  const block = finding.code === "forbids_agenda" && finding.pointer ? blockOfPointer(finding.pointer) : null;
+  // Spec 057 (4.1): qué le falta a Reservas; la API lo manda en el hallazgo (o en su arreglo).
+  const reasons =
+    finding.code === "agenda_not_ready"
+      ? Array.isArray(finding.reasons)
+        ? finding.reasons
+        : fix?.kind === "link" && Array.isArray(fix.reasons)
+          ? (fix.reasons as string[])
+          : []
+      : [];
   return (
     <li className="grid min-w-0 gap-2 rounded-md border border-border p-3" data-slot="review-finding" data-severity={finding.severity}>
       <div className="flex min-w-0 flex-wrap items-start gap-2">
@@ -265,6 +300,8 @@ function FindingRow({
         </StatusBadge>
         <p className="min-w-0 flex-1 basis-48 text-sm text-pretty break-words">{finding.message}</p>
       </div>
+      {block ? <p className="text-xs text-muted-foreground">{t("agenda.review.where", { block: t(blockTitleKey(block)) })}</p> : null}
+      {reasons.length ? <NotReadyList refId={refId} missing={reasons} /> : null}
       {link ? (
         <div>
           <Link href={link.href} className={buttonVariants({ size: "sm", variant: "outline" })}>
@@ -279,7 +316,14 @@ function FindingRow({
           </Button>
         </div>
       ) : null}
-      {fix?.kind === "proposal" && canWrite ? (
+      {finding.code === "forbids_agenda" && canWrite && onAgenda ? (
+        <div>
+          <Button size="sm" variant="outline" onClick={onAgenda}>
+            {t("agenda.review.propose")}
+          </Button>
+        </div>
+      ) : null}
+      {fix?.kind === "proposal" && typeof fix.proposal_id === "string" && canWrite ? (
         <div>
           <Button size="sm" onClick={() => onApply(fix.proposal_id)} loading={applying === fix.proposal_id} disabled={applying !== null && applying !== fix.proposal_id}>
             {t("builder.review.fix.apply")}

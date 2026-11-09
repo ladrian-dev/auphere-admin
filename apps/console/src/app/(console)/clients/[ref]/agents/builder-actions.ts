@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
+import { CAPACITY_KINDS } from "@/lib/backend/client-access";
 import type {
   AgentSpec,
   AnswersResult,
@@ -45,6 +46,16 @@ function refresh(r: string) {
 
 // ── «Nuevo agente» ──────────────────────────────────────────────────────────
 
+/**
+ * Spec 057 (1.3): cómo reserva el negocio si generar enciende Reservas. Lo que
+ * casa con qué (`reservas_kind_required`, `reservas_kind_forbidden`) lo decide la
+ * API y vuelve en `code`. Estricto: aquí no viaja ningún campo más.
+ */
+const reservasSchema = z
+  .object({ mode: z.enum(["services", "capacity"]), capacity_kind: z.enum(CAPACITY_KINDS).nullable().optional() })
+  .strict();
+
+// Estricto (spec 057, garantía 1): el cliente sale del `ref`, nunca del cuerpo.
 const startSchema = z
   .object({
     ref,
@@ -52,7 +63,10 @@ const startSchema = z
     description: z.string().trim().max(1024).optional(),
     start: z.enum(["describe", "template", "blank"]),
     template_id: z.string().min(1).max(80).optional(),
+    agenda: z.boolean().optional(),
+    reservas: reservasSchema.optional(),
   })
+  .strict()
   .refine((b) => b.start !== "describe" || (b.description !== undefined && b.description.length >= 20), {
     message: "description_length",
     path: ["description"],
@@ -74,6 +88,9 @@ export async function startDraftJobAction(raw: unknown): Promise<ActionResult<Dr
       start: body.start,
       ...(description ? { description } : {}),
       ...(body.start === "template" && body.template_id ? { template_id: body.template_id } : {}),
+      // Spec 057: «Gestiona citas» y, si enciende Reservas, con qué modo.
+      ...(body.agenda !== undefined ? { agenda: body.agenda } : {}),
+      ...(body.agenda && body.reservas ? { reservas: { mode: body.reservas.mode, capacity_kind: body.reservas.capacity_kind ?? null } } : {}),
     }),
   );
   if (res.ok && res.data.agent_id) refresh(body.ref);

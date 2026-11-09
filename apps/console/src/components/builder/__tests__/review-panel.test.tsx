@@ -132,3 +132,74 @@ describe("la revisión · promesas sin herramienta (65.5)", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 });
+
+/**
+ * Spec 057 (T022; requisitos 3.8 y 4.1; `contracts/console-api.md` §9) — dos
+ * hallazgos nuevos, los dos «Avisa»: `forbids_agenda` (el agente lleva la agenda
+ * y un texto la prohíbe: una fila por texto, con el bloque donde está y «Pedir la
+ * propuesta», que lleva a la fila de la agenda) y `agenda_not_ready` (qué le
+ * falta a Reservas y dónde se completa). `no_hours` llega como «Avisa» con un
+ * agente que reserva, y se pinta igual.
+ */
+describe("la revisión · la agenda (spec 057)", () => {
+  const AGENDA_REVIEW = {
+    ...REVIEW,
+    findings: [
+      {
+        code: "forbids_agenda",
+        severity: "warn" as const,
+        message: "Tiene la agenda y este texto dice que el equipo confirma la cita.",
+        pointer: "/procedures/0/steps",
+        fix: { kind: "edit" as const, pointer: "/procedures/0/steps" },
+      },
+      {
+        code: "forbids_agenda",
+        severity: "warn" as const,
+        message: "Tiene la agenda y este disparador dice que la agenda no está activa.",
+        pointer: "/escalation/triggers/2",
+      },
+      {
+        code: "agenda_not_ready",
+        severity: "warn" as const,
+        message: "A Reservas le falta algo para tomar citas.",
+        reasons: ["no_staff", "hours_missing"],
+        fix: { kind: "link" as const, target: "reservas" },
+      },
+      { code: "no_hours", severity: "warn" as const, message: "El negocio no tiene horario.", fix: { kind: "link" as const, target: "business/hours" } },
+    ],
+  };
+
+  it("`forbids_agenda`: una fila por texto, con su bloque y «Pedir la propuesta»; pasa axe", async () => {
+    const user = userEvent.setup();
+    const onAgenda = vi.fn();
+    const { container, onEdit } = screenWith({ onAgenda }, { load: vi.fn(async () => ok(AGENDA_REVIEW)) });
+    await screen.findByRole("list", { name: "Hallazgos" });
+    const step = finding("Tiene la agenda y este texto dice que el equipo confirma la cita.");
+    expect(within(step).getByText("Avisa")).toBeVisible();
+    expect(within(step).getByText("En Procedimientos")).toBeVisible();
+    await user.click(within(step).getByRole("button", { name: "Arreglar en el borrador" }));
+    expect(onEdit).toHaveBeenCalledWith("/procedures/0/steps");
+    const trigger = finding("Tiene la agenda y este disparador dice que la agenda no está activa.");
+    expect(within(trigger).getByText("En Cuándo pasa a una persona")).toBeVisible();
+    await user.click(within(trigger).getByRole("button", { name: "Pedir la propuesta" }));
+    expect(onAgenda).toHaveBeenCalledTimes(1);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("`agenda_not_ready`: qué falta, dónde se completa, y avisa sin bloquear", async () => {
+    screenWith({}, { load: vi.fn(async () => ok(AGENDA_REVIEW)) });
+    await screen.findByRole("list", { name: "Hallazgos" });
+    const row = finding("A Reservas le falta algo para tomar citas.");
+    expect(within(row).getByText("Avisa")).toBeVisible();
+    expect(within(row).getByText("Nadie del equipo está dado de alta en Reservas.")).toBeVisible();
+    expect(within(row).getByText("Lo completa el cliente en Reservas, en Ajustes.")).toBeVisible();
+    expect(within(row).getByRole("link", { name: "Ir a Horario" })).toHaveAttribute("href", `/clients/${REF}/business#business-hours`);
+    expect(within(finding("El negocio no tiene horario.")).getByText("Avisa")).toBeVisible();
+  });
+
+  it("quien solo lee no pide la propuesta", async () => {
+    screenWith({ canWrite: false, onAgenda: vi.fn() }, { load: vi.fn(async () => ok(AGENDA_REVIEW)) });
+    await screen.findByRole("list", { name: "Hallazgos" });
+    expect(screen.queryByRole("button", { name: "Pedir la propuesta" })).toBeNull();
+  });
+});

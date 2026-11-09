@@ -7,6 +7,7 @@ import { axeViolations } from "@nexus/ui/test/axe";
 import { LocaleProvider } from "@/i18n/client";
 import type { AgentSpec, AnswersResult, BuilderAnswer, BuilderDraft, Proposal } from "@/lib/backend/builder-types";
 
+import { AGENDA, ON } from "./agenda-fixtures";
 import { HISTORY as CHANNEL_HISTORY, page as channelPage } from "./channel-fixtures";
 import { HISTORY, REVIEW, job, noWait, ok as okData, preview, session, suite, test } from "./quality-fixtures";
 
@@ -16,6 +17,7 @@ const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => router }));
 vi.mock("@/app/(console)/clients/[ref]/agents/quality-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/life-actions", () => ({}));
+vi.mock("@/app/(console)/clients/[ref]/agents/agenda-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/builder-actions", () => ({
   answerDraftJobAction: vi.fn(),
   builderDraftAction: vi.fn(),
@@ -1237,5 +1239,199 @@ describe("la pantalla del agente · «Más ajustes» no es una página entera (6
     expect(advanced.querySelector("details")?.open).toBe(true);
     const others = ["agente-pruebas", "agente-revision", "agente-historial"].map((id) => document.getElementById(id));
     for (const section of others) expect(section?.querySelector("details")?.open ?? false).toBe(false);
+  });
+});
+
+/**
+ * Spec 057 (T037; requisitos 4.4, 5.3 y 6.3) — la ficha del agente dice, a la
+ * vista y leído de su agenda, «La agenda aún no está lista» (con qué falta y
+ * dónde) si el agente la lleva o la va a llevar, y «Tiene la agenda preparada:
+ * publica para que reserve» si el borrador la lleva y lo publicado no, con la
+ * acción que lleva a la propuesta (o a publicar si no hay). «Gestionar citas»
+ * del aviso de lo que falta lleva a la fila de la agenda, en Conectores. Sin la
+ * agenda (`undefined`), la ficha es la de siempre.
+ */
+describe("la pantalla del agente · la agenda (spec 057)", () => {
+  const sections = {
+    connectors: { data: [], canWrite: true },
+    qualityActions: { connectors: { load: vi.fn(), agenda: { load: vi.fn() } } },
+  } as unknown as Partial<React.ComponentProps<typeof AgentBuilder>>;
+  const header = () => screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
+
+  it("sin terminar, con la agenda en el borrador o en lo publicado, lo dice en la cabecera con qué falta; pasa axe", async () => {
+    const { container, unmount } = screenWith({}, { ...sections, agenda: { ...ON, ready: false, missing: ["no_staff"] } });
+    expect(within(header()).getByText("La agenda aún no está lista")).toBeVisible();
+    expect(within(header()).getByText("Nadie del equipo está dado de alta en Reservas.")).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+    unmount();
+    // Un agente que no la lleva no tiene nada que decir de ella.
+    screenWith({}, { ...sections, agenda: { ...AGENDA, ready: false, missing: ["no_staff"] } });
+    expect(within(header()).queryByText("La agenda aún no está lista")).toBeNull();
+  });
+
+  it("preparada, lo dice y «Revisar la propuesta» abre las propuestas", async () => {
+    const user = userEvent.setup();
+    screenWith(
+      {},
+      {
+        ...sections,
+        agenda: { ...AGENDA, draft: { on: true, tools_on: 9 }, state: "prepared", proposal: { id: PROPOSAL, status: "open" } },
+      },
+    );
+    expect(within(header()).getByText("Tiene la agenda preparada: publica para que reserve")).toBeVisible();
+    await user.click(within(header()).getByRole("button", { name: "Revisar la propuesta" }));
+    expect(screen.getByRole("button", { name: /Más ajustes/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("heading", { level: 2, name: "Propuestas" })).toBeVisible();
+  });
+
+  it("preparada sin propuesta, la acción es revisar y publicar; publicada, no dice nada", () => {
+    const { unmount } = screenWith({}, { ...sections, agenda: { ...AGENDA, draft: { on: true, tools_on: 9 }, state: "prepared" } });
+    expect(within(header()).getByRole("button", { name: "Revisar y publicar" })).toBeVisible();
+    unmount();
+    screenWith({}, { ...sections, agenda: ON });
+    expect(within(header()).queryByText(/agenda preparada/)).toBeNull();
+    expect(within(header()).queryByText("La agenda aún no está lista")).toBeNull();
+  });
+
+  it("«Gestionar citas» del aviso de lo que falta lleva a la fila de la agenda, en Conectores", async () => {
+    const user = userEvent.setup();
+    const missing = [{ kind: "action" as const, key: "book", label: "reservar citas", reason: "no_tool" as const, source: "text" as const, pointer: "/procedures/0/steps" }];
+    screenWith({}, { ...sections, agenda: AGENDA, draft: draftWith({ missing_capabilities: missing }) });
+    await user.click(screen.getByRole("button", { name: "Gestionar citas: reservar citas" }));
+    expect(screen.getByRole("tab", { name: "Conectores" })).toHaveAttribute("aria-selected", "true");
+    expect(document.getElementById("agenda")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Conectores" })).getByRole("heading", { level: 3, name: "Agenda (Reservas)" })).toBeVisible();
+  });
+
+  it("sin la agenda, ni avisos ni «Gestionar citas»", () => {
+    const missing = [{ kind: "action" as const, key: "book", label: "reservar citas", reason: "no_tool" as const, source: "text" as const, pointer: "/procedures/0/steps" }];
+    screenWith({}, { ...sections, draft: draftWith({ missing_capabilities: missing }) });
+    expect(screen.queryByRole("button", { name: /Gestionar citas/ })).toBeNull();
+    expect(screen.queryByText(/La agenda aún no está lista|agenda preparada/)).toBeNull();
+  });
+
+  it("«Editar» una propuesta la aplica y abre el bloque cuando el borrador ya la lleva", async () => {
+    const user = userEvent.setup();
+    const proposal: Proposal = {
+      ...PROPOSALS[0]!,
+      diff: { ops: [{ op: "replace", path: "/rules/0", value: "Reserva con la agenda", before: "No ofrezcas descuentos" }] },
+    };
+    const applied = { ...SPEC, rules: ["Reserva con la agenda"] };
+    const reload = vi.fn(async () => ({ ok: true as const, data: { draft: draftWith({ revision: 6, spec: applied }), proposals: [] } }));
+    screenWith({ reload }, { proposals: [proposal] });
+    await openMore(user);
+    await user.click(screen.getByRole("button", { name: "Aplicar y editar «Reglas»" }));
+    const form = await screen.findByRole("form", { name: "Editar «Reglas»" });
+    expect(reload).toHaveBeenCalled();
+    expect(within(form).getByDisplayValue("Reserva con la agenda")).toBeVisible();
+  });
+});
+
+/**
+ * Revisión de las puertas de UI (spec 057; WCAG 2.4.3): ir a la agenda, a la
+ * propuesta o a publicar lleva también el foco, no solo la vista. «Pedir la
+ * propuesta» de la revisión no sale en un agente de instrucciones libres: no hay
+ * propuesta que pedir. Si recargar el borrador falla, «Editar» no deja un editor
+ * pendiente que se abra en la recarga siguiente.
+ */
+describe("la pantalla del agente · la agenda, el foco y la revisión (revisión de UI)", () => {
+  const sections = {
+    connectors: { data: [], canWrite: true },
+    qualityActions: { connectors: { load: vi.fn(), agenda: { load: vi.fn() } } },
+  } as unknown as Partial<React.ComponentProps<typeof AgentBuilder>>;
+  const BOOK = [{ kind: "action" as const, key: "book", label: "reservar citas", reason: "no_tool" as const, source: "text" as const, pointer: "/procedures/0/steps" }];
+
+  it("«Gestionar citas» deja el foco en la fila de la agenda", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { ...sections, agenda: AGENDA, draft: draftWith({ missing_capabilities: BOOK }) });
+    await user.click(screen.getByRole("button", { name: "Gestionar citas: reservar citas" }));
+    await waitFor(() => expect(document.getElementById("agenda")).toHaveFocus());
+  });
+
+  it("«Revisar la propuesta» deja el foco en las propuestas", async () => {
+    const user = userEvent.setup();
+    screenWith({}, { ...sections, agenda: { ...AGENDA, draft: { on: true, tools_on: 9 }, state: "prepared", proposal: { id: PROPOSAL, status: "open" } } });
+    await user.click(screen.getByRole("button", { name: "Revisar la propuesta" }));
+    await waitFor(() => expect(document.getElementById("agente-propuestas")).toHaveFocus());
+  });
+
+  it("«Revisar y publicar» deja el foco en el botón principal de la barra", async () => {
+    const user = userEvent.setup();
+    render(
+      <LocaleProvider locale="es">
+        <AgentBuilder
+          refId={REF}
+          draft={draftWith()}
+          proposals={[]}
+          canWrite
+          agenda={{ ...AGENDA, draft: { on: true, tools_on: 9 }, state: "prepared" }}
+          quality={{ tests: suite(), preview: preview(), history: HISTORY, sessions: [session()] }}
+          actions={{ save: vi.fn(), reload: vi.fn(), decide: vi.fn() }}
+          qualityActions={{
+            playground: { open: vi.fn(), send: vi.fn(), setTime: vi.fn(), close: vi.fn() },
+            tests: { load: vi.fn(async () => okData(suite())), run: vi.fn(), poll: vi.fn(), notApplicable: vi.fn(), add: vi.fn() },
+            review: { load: vi.fn(async () => okData(REVIEW)), decide: vi.fn() },
+            publish: { preview: vi.fn(async () => okData(preview())), publish: vi.fn(), poll: vi.fn(), undo: vi.fn() },
+            history: { load: vi.fn(async () => okData(HISTORY)), restore: vi.fn() },
+            wait: noWait,
+          }}
+        />
+      </LocaleProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Revisar y publicar" }));
+    const bar = screen.getByRole("region", { name: "Acciones del agente" });
+    await waitFor(() => expect(bar.contains(document.activeElement)).toBe(true));
+    expect(document.activeElement?.tagName).toBe("BUTTON");
+  });
+
+  it("«Pedir la propuesta» de la revisión no sale en un agente de instrucciones libres", async () => {
+    const forbids = {
+      ...REVIEW,
+      findings: [{ code: "forbids_agenda", severity: "warn" as const, message: "Este texto dice que el equipo confirma la cita.", pointer: "/rules/0" }],
+    };
+    const user = userEvent.setup();
+    const props = (structured: boolean) =>
+      ({
+        ...sections,
+        agenda: { ...ON, structured },
+        quality: { tests: suite(), preview: preview(), history: HISTORY, sessions: [session()] },
+        qualityActions: {
+          ...(sections.qualityActions as object),
+          playground: { open: vi.fn(), send: vi.fn(), setTime: vi.fn(), close: vi.fn() },
+          tests: { load: vi.fn(async () => okData(suite())), run: vi.fn(), poll: vi.fn(), notApplicable: vi.fn(), add: vi.fn() },
+          review: { load: vi.fn(async () => okData(forbids)), decide: vi.fn() },
+          publish: { preview: vi.fn(async () => okData(preview())), publish: vi.fn(), poll: vi.fn(), undo: vi.fn() },
+          history: { load: vi.fn(async () => okData(HISTORY)), restore: vi.fn() },
+          wait: noWait,
+        },
+      }) as unknown as Partial<React.ComponentProps<typeof AgentBuilder>>;
+    const { unmount } = screenWith({}, props(true));
+    await openMore(user);
+    const review = within(document.getElementById("agente-revision") as HTMLElement);
+    expect(await review.findByRole("button", { name: "Pedir la propuesta", hidden: true })).toBeInTheDocument();
+    unmount();
+    screenWith({}, props(false));
+    await openMore(user);
+    await within(document.getElementById("agente-revision") as HTMLElement).findByText("Este texto dice que el equipo confirma la cita.");
+    expect(within(document.getElementById("agente-revision") as HTMLElement).queryByRole("button", { name: "Pedir la propuesta", hidden: true })).toBeNull();
+  });
+
+  it("si recargar el borrador falla, «Editar» no queda pendiente para la recarga siguiente", async () => {
+    const user = userEvent.setup();
+    const proposal: Proposal = {
+      ...PROPOSALS[0]!,
+      diff: { ops: [{ op: "replace", path: "/rules/0", value: "Reserva con la agenda", before: "No ofrezcas descuentos" }] },
+    };
+    const reload = vi
+      .fn<Actions["reload"]>()
+      .mockResolvedValueOnce({ ok: false, status: 500, message: "" })
+      .mockResolvedValue({ ok: true, data: { draft: draftWith({ revision: 7 }), proposals: [] } });
+    screenWith({ reload }, { proposals: [proposal], draft: draftWith({ missing_capabilities: BOOK }) });
+    await openMore(user);
+    await user.click(screen.getByRole("button", { name: "Aplicar y editar «Reglas»" }));
+    expect(await screen.findByText("No pudimos comprobar qué herramientas le faltan a este agente.")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("form", { name: "Editar «Reglas»" })).toBeNull();
   });
 });

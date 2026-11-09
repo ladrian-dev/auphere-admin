@@ -52,9 +52,11 @@ import type {
   ConnectorTools,
 } from "@/lib/backend/agent-connectors-types";
 import type { ConnectorOut } from "@/lib/backend/agent-tools-types";
+import type { AgentAgenda } from "@/lib/backend/agenda-types";
 import type { AgentSpec } from "@/lib/backend/builder-types";
 import type { CapabilityUpdated } from "@/lib/backend/capabilities";
 
+import { AgendaRow, type AgendaActions } from "./agenda-row";
 import { skillName, type Result } from "./builder-model";
 import { ConnectorLogo, CredentialsForm, PermissionRadios, SettingsDialog } from "./connector-parts";
 import { ConnectorToolsDialog } from "./connector-tools-dialog";
@@ -88,6 +90,8 @@ export type AgentConnectorsActions = {
   setTool?: (body: Ids & { key: string; enabled: boolean }) => Promise<Result<CapabilityUpdated>>;
   /** Abrir la autorización del proveedor (los tests no abren ventanas). */
   open?: (url: string) => void;
+  /** Spec 057: la fila «Agenda (Reservas)»; lo que no se pase, el de servidor. */
+  agenda?: Partial<AgendaActions>;
 };
 
 const SERVER_ACTIONS: Required<AgentConnectorsActions> = {
@@ -100,6 +104,7 @@ const SERVER_ACTIONS: Required<AgentConnectorsActions> = {
   tools: (body) => connectorToolsAction(body),
   setTool: (body) => setConnectorToolAction(body),
   open: (url) => void window.open(url, "_blank", "noopener,noreferrer"),
+  agenda: {},
 };
 
 const NO_ACTIONS: AgentConnectorsActions = {};
@@ -142,6 +147,11 @@ export type AgentConnectorsHandle = { connect: (slug: string) => boolean };
  *
  * `connectors` en `undefined` se lee al montar (la lectura llama al catálogo
  * del proveedor y no frena el resto de la pantalla); en `null`, no se pudo leer.
+ *
+ * Spec 057 (historia 3; requisito 2.1): con `agenda`, la primera fila es «Agenda
+ * (Reservas)» (`agenda-row.tsx`), que no es un conector: no cuenta en los filtros,
+ * se va al filtrar por categoría y se queda si lo que se busca es su nombre. Sin
+ * `agenda` (`undefined`), quien monta la sección no sabe de ella y no hay fila.
  */
 export function AgentConnectorsPanel({
   ref,
@@ -152,6 +162,10 @@ export function AgentConnectorsPanel({
   spec = null,
   onList,
   onConnected,
+  agenda,
+  onAgenda,
+  onAgendaText,
+  clientName = null,
   actions: given = NO_ACTIONS,
 }: {
   ref?: React.Ref<AgentConnectorsHandle>;
@@ -165,6 +179,14 @@ export function AgentConnectorsPanel({
   onList?: (list: AgentConnector[]) => void;
   /** Un conector se conectó o se activó: las pruebas que lo usan quedan desactualizadas (62.3). */
   onConnected?: () => void;
+  /** Spec 057: la agenda del agente (`null`, no se pudo leer); su fila va primera. */
+  agenda?: AgentAgenda | null;
+  /** Cada lectura o escritura de la agenda, para que la ficha diga lo mismo. */
+  onAgenda?: (agenda: AgentAgenda) => void;
+  /** «Ver la propuesta» de la fila de la agenda. */
+  onAgendaText?: () => void;
+  /** El cliente: «¿Encender Reservas para Flor y Encanto?». */
+  clientName?: string | null;
   actions?: AgentConnectorsActions;
 }) {
   const t = useT();
@@ -325,8 +347,32 @@ export function AgentConnectorsPanel({
     );
   }
 
+  // Spec 057: la fila de la agenda, primera de la tarjeta (no depende del catálogo).
+  // Sin ofrecerse no hay fila (§V), ni tarjeta vacía que la contenga.
+  const agendaOffered = agenda !== undefined && (agenda === null || agenda.offered);
+  const agendaItem = agendaOffered ? (
+    <AgendaRow
+      refId={refId}
+      agentId={agentId}
+      canWrite={canWrite}
+      agenda={agenda}
+      clientName={clientName}
+      onAgenda={onAgenda}
+      onChanged={onConnected}
+      onProposal={onAgendaText}
+      actions={actions.agenda}
+    />
+  ) : null;
+  const agendaCard = (
+    <div className="min-w-0 rounded-lg border border-border bg-card">
+      <ul aria-label={t("agentConn.list")} className="grid min-w-0 divide-y divide-border" data-slot="agent-connector-list">
+        {agendaItem}
+      </ul>
+    </div>
+  );
+
   if (list === null) {
-    return (
+    const failed = (
       <Callout
         tone="danger"
         action={
@@ -338,12 +384,23 @@ export function AgentConnectorsPanel({
         {t("agentConn.error")}
       </Callout>
     );
+    return agendaOffered ? (
+      <div className="grid min-w-0 gap-4">
+        {agendaCard}
+        {failed}
+      </div>
+    ) : (
+      failed
+    );
   }
 
   const ordered = orderConnectors(list);
   const categories = categoriesOf(ordered);
   const counts = filterCounts(ordered);
   const visible = filterConnectors(ordered, { q: query, category });
+  // La agenda no es una categoría: sale con «Todos», y al buscar, si es su nombre.
+  const typed = query.trim().toLocaleLowerCase();
+  const agendaVisible = agendaOffered && category === null && (!typed || t("agenda.row.name").toLocaleLowerCase().includes(typed));
   const filters: { key: string | null; label: string; count: number }[] = [
     { key: null, label: t("agentConn.filter.all"), count: counts.all },
     { key: CONNECTED_FILTER, label: t("agentConn.filter.connected"), count: counts.connected },
@@ -401,10 +458,13 @@ export function AgentConnectorsPanel({
       ))}
 
       {!list.length ? (
-        <p className="text-sm text-muted-foreground" data-slot="agent-connectors-empty">
-          {t("agentConn.empty")}
-        </p>
-      ) : !visible.length ? (
+        <>
+          {agendaOffered ? agendaCard : null}
+          <p className="text-sm text-muted-foreground" data-slot="agent-connectors-empty">
+            {t("agentConn.empty")}
+          </p>
+        </>
+      ) : !visible.length && !agendaVisible ? (
         <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 text-sm">
           <p role="status" className="min-w-0 text-pretty text-muted-foreground">
             {query.trim() ? t("agentConn.noMatch", { q: query.trim() }) : t("agentConn.noResults")}
@@ -424,6 +484,7 @@ export function AgentConnectorsPanel({
         // Una sola tarjeta con filas divididas (prototipo §9; 63.3).
         <div className="min-w-0 rounded-lg border border-border bg-card">
           <ul aria-label={t("agentConn.list")} className="grid min-w-0 divide-y divide-border" data-slot="agent-connector-list">
+            {agendaVisible ? agendaItem : null}
             {visible.map((c) => (
               <ConnectorRow
                 key={c.slug}

@@ -68,6 +68,7 @@ export const fabricaEs = {
   // Spec 056 (requisitos 6.2 y 7): las que faltaban en la tabla, y «Abiertas» vacía con resueltas.
   "bandeja.reason.out_of_audience": "Fuera de su audiencia",
   "bandeja.reason.booking_unbacked": "El agente dio por hecha una cita que no existe",
+  "bandeja.reason.agenda_not_ready": "Pidió una cita y la agenda aún no está lista",
   "bandeja.open.empty.title": "No tienes conversaciones abiertas",
   "bandeja.open.empty.resolved": "Tienes {count} resueltas.",
   "bandeja.open.empty.resolved.one": "Tienes 1 resuelta.",

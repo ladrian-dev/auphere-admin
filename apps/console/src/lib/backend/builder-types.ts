@@ -6,6 +6,7 @@
  * de la API es `./builder.ts`.
  */
 import type { AgentDraft, MissingCapability } from "./agent-draft-types";
+import type { CapacityKind, ReservasMode } from "./client-access";
 
 export type { MissingCapability } from "./agent-draft-types";
 
@@ -13,7 +14,31 @@ export type { MissingCapability } from "./agent-draft-types";
 
 /** Una plantilla de «Empezar desde una plantilla». `group` es el nombre del
  *  grupo de negocio (los 6 de la spec 046 más «Otro»). */
-export type TemplateOption = { id: string; name: string; group: string; is_default: boolean };
+export type TemplateOption = {
+  id: string;
+  name: string;
+  group: string;
+  is_default: boolean;
+  /** Spec 057 (1.2): la plantilla lleva herramientas de Reservas. Ausente en respuestas de antes. */
+  books?: boolean;
+};
+
+/**
+ * Spec 057 (`contracts/console-api.md` §1): Reservas para este cliente, para el
+ * interruptor «Gestiona citas». `offered` falso o ausente: no se enseña (§V).
+ */
+export type DraftAgenda = {
+  offered: boolean;
+  module_on: boolean;
+  mode: ReservasMode | null;
+  capacity_kind: CapacityKind | null;
+  /** El modo que corresponde al sector del cliente (restaurante → aforo). */
+  suggested_mode: ReservasMode | null;
+  suggested_kind: CapacityKind | null;
+};
+
+/** Cómo reserva el negocio, si generar enciende Reservas (requisito 1.3). */
+export type ReservasChoice = { mode: ReservasMode; capacity_kind: CapacityKind | null };
 
 /** Lo que ofrece «Nuevo agente»: los ejemplos y las plantillas, con la del
  *  partner primero y nunca aplicada sola (requisito 17.9). */
@@ -24,10 +49,21 @@ export type DraftOptions = {
   name_max: number;
   description_min: number;
   description_max: number;
+  /** Spec 057: ausente en respuestas de antes, que es como no ofrecerlo. */
+  agenda?: DraftAgenda | null;
 };
 
 export type DraftStart = "describe" | "template" | "blank";
-export type DraftJobBody = { name: string; description?: string; start: DraftStart; template_id?: string };
+export type DraftJobBody = {
+  name: string;
+  description?: string;
+  start: DraftStart;
+  template_id?: string;
+  /** Spec 057 (1.1): «Gestiona citas». Sin él, como hasta hoy (nunca enciende Reservas). */
+  agenda?: boolean;
+  /** Spec 057 (1.3): obligatorio con `agenda` y Reservas apagado. */
+  reservas?: ReservasChoice;
+};
 
 /** El `202`. Con «Generar borrador» el agente aún no existe (`agent_id` nulo):
  *  nace cuando termina el trabajo (17.2). Con plantilla o en blanco el trabajo
@@ -176,13 +212,22 @@ export type SpecProblem = { pointer: string; code: string; message: string };
 
 // ── propuestas (15.2, 15.3) ─────────────────────────────────────────────────
 
-export type ProposalOp = { op: "add" | "remove" | "replace" | "move" | "copy" | "test"; path: string; value?: unknown; from?: string };
+export type ProposalOp = {
+  op: "add" | "remove" | "replace" | "move" | "copy" | "test";
+  path: string;
+  value?: unknown;
+  from?: string;
+  /** Spec 057 (3.3; `console-api.md` §8): lo que hay ahora en ese puntero, o `null` si no existía. */
+  before?: unknown;
+};
+/** Spec 057 (3.7): una sección de la ficha que dice que el equipo confirma las citas. */
+export type FichaLink = { section: string };
 export type Proposal = {
   id: string;
   kind: string;
   author: string;
   summary: string | null;
-  diff: { ops?: ProposalOp[] } & Record<string, unknown>;
+  diff: { ops?: ProposalOp[]; ficha_links?: FichaLink[] } & Record<string, unknown>;
   status: string;
   created_at: string;
   expires_at: string;

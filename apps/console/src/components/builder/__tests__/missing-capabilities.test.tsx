@@ -139,3 +139,51 @@ describe("«No tenemos herramienta para: …» (65.3, 65.4)", () => {
     for (const li of within(container).getAllByRole("listitem")) expect(li.className).toMatch(/min-w-0/);
   });
 });
+
+/**
+ * Spec 057 (T022; requisito 6.3) — una promesa de reservar o de mover y cancelar
+ * citas, con Reservas ofrecido al cliente, ofrece además de «Quitar la promesa»
+ * «Gestionar citas», que lleva a la fila de la agenda en Conectores. Ninguna otra
+ * clave lo lleva, y sin Reservas ofrecido (sin `onManageAgenda`) tampoco.
+ */
+describe("«No tenemos herramienta para: …» · Gestionar citas (spec 057)", () => {
+  const BOOK: MissingCapability = { kind: "action", key: "book", label: "reservar citas", reason: "no_tool", source: "text", pointer: "/procedures/0/steps" };
+  const MODIFY: MissingCapability = {
+    kind: "action",
+    key: "modify_booking",
+    label: "cambiar o cancelar citas",
+    reason: "no_tool",
+    source: "text",
+    pointer: "/rules/1",
+  };
+
+  it("en `book` y `modify_booking` lleva a la agenda; en otras claves no; pasa axe", async () => {
+    const user = userEvent.setup();
+    const onManageAgenda = vi.fn();
+    const { container } = notice({ items: [BOOK, MODIFY, FACTURAS], canEdit: true, onEdit: vi.fn(), onManageAgenda });
+    const [book, modify, facturas] = within(screen.getByRole("list", { name: "No tenemos herramienta para:" })).getAllByRole("listitem");
+    expect(within(book!).getByRole("button", { name: "Quitar la promesa: reservar citas" })).toBeVisible();
+    await user.click(within(book!).getByRole("button", { name: "Gestionar citas: reservar citas" }));
+    expect(onManageAgenda).toHaveBeenCalledTimes(1);
+    expect(within(modify!).getByRole("button", { name: "Gestionar citas: cambiar o cancelar citas" })).toBeVisible();
+    expect(within(facturas!).queryByRole("button", { name: /Gestionar citas/ })).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("con una sola, va junto a «Quitar la promesa»", async () => {
+    const user = userEvent.setup();
+    const onManageAgenda = vi.fn();
+    notice({ items: [BOOK], canEdit: true, onEdit: vi.fn(), onManageAgenda });
+    expect(screen.getByText("No tenemos herramienta para: reservar citas")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Gestionar citas: reservar citas" }));
+    expect(onManageAgenda).toHaveBeenCalled();
+  });
+
+  it("sin Reservas ofrecido, o para quien solo lee, no aparece", () => {
+    const { unmount } = notice({ items: [BOOK], canEdit: true, onEdit: vi.fn() });
+    expect(screen.queryByRole("button", { name: /Gestionar citas/ })).toBeNull();
+    unmount();
+    notice({ items: [BOOK], canEdit: false, onManageAgenda: vi.fn() });
+    expect(screen.queryByRole("button", { name: /Gestionar citas/ })).toBeNull();
+  });
+});

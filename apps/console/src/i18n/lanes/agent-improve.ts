@@ -58,6 +58,7 @@ export const agentImproveMessages = {
   // Spec 056 (requisito 7): los dos que faltaban en la tabla.
   "waiting.reason.out_of_audience": { es: "Fuera de su audiencia", en: "Outside its audience" },
   "waiting.reason.booking_unbacked": { es: "El agente dio por hecha una cita que no existe", en: "The agent confirmed a booking that does not exist" },
+  "waiting.reason.agenda_not_ready": { es: "Pidió una cita y la agenda aún no está lista", en: "Asked for an appointment and the agenda is not ready yet" },
   "waiting.reason.other": { es: "Otro motivo", en: "Another reason" },
 
   // ── Mejoras (51.3, 51.4, 52.2, 52.3) ──

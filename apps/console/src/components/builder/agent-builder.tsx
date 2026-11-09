@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Callout, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@nexus/ui";
+import { Button, Callout, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@nexus/ui";
 
+import { agentAgendaAction } from "@/app/(console)/clients/[ref]/agents/agenda-actions";
 import { builderDraftAction, decideProposalAction, saveAgentSpecAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
 import { agentHeaderAction } from "@/app/(console)/clients/[ref]/agents/life-actions";
 import { DraftConflictNotice } from "@/components/agent-draft/conflict-notice";
@@ -22,11 +23,14 @@ import type { AgentHeader } from "@/lib/backend/agent-life-types";
 import type { HistoryEntry, PlaygroundSession, PublishPreview, TestSuite } from "@/lib/backend/agent-quality-types";
 import type { AgentSpec, BuilderDraft, EditableBlock, Proposal, SpecProblem } from "@/lib/backend/builder-types";
 import type { AgentConnector } from "@/lib/backend/agent-connectors-types";
+import type { AgentAgenda } from "@/lib/backend/agenda-types";
 import type { AgentChannels, ChannelChange, ChannelPage } from "@/lib/backend/channel-config-types";
 import type { Currency, Money } from "@/lib/backend/money-types";
 import { agentHref } from "@/components/shell/routes-v2";
 import { ShellBackButton } from "@/components/shell/shell-back-button";
 
+import { headerNotices } from "./agenda-model";
+import { AgendaNotReady } from "./agenda-row";
 import { AgentChannelsPanel, type AgentChannelsActions } from "./agent-channels";
 import { AgentConnectorsPanel, type AgentConnectorsActions, type AgentConnectorsHandle } from "./agent-connectors";
 import { AgentHistory, type HistoryActions } from "./agent-history";
@@ -127,6 +131,8 @@ export type AgentBuilderActions = {
   header?: (body: { ref: string; agent: string }) => Promise<Result<AgentHeader>>;
   /** Responder una pregunta que dejó el borrador de «Nuevo agente». */
   answer?: AnswerQuestion;
+  /** Spec 057: la agenda del agente, que cambia al guardar y al publicar. */
+  agenda?: (body: { ref: string; agent: string }) => Promise<Result<AgentAgenda>>;
 };
 
 const SERVER_ACTIONS: AgentBuilderActions = {
@@ -135,6 +141,7 @@ const SERVER_ACTIONS: AgentBuilderActions = {
   decide: (body) => decideProposalAction(body),
   header: (body) => agentHeaderAction(body),
   answer: answerQuestion,
+  agenda: (body) => agentAgendaAction(body),
 };
 
 /** Lo que la API registra al escribir el AgentSpec: compila el prompt del borrador. */
@@ -177,6 +184,13 @@ type Conflict = { current: BuilderDraft; changes: DraftChange[]; block: Editable
  * puede, lo dice); una promesa sin herramienta lleva a su bloque. Nada de eso
  * lleva «Conectar {X}», ni en «Qué puede hacer» ni en los arreglos de la
  * revisión. La puerta sin pruebas que le apliquen abre «Añadir una prueba».
+ *
+ * Spec 057 (4.4, 5.3 y 6.3): con `agenda`, la cabecera dice «La agenda aún no está
+ * lista» (y qué falta) si el agente la lleva o la va a llevar, y «Tiene la agenda
+ * preparada: publica para que reserve», con la acción que lleva a la propuesta o,
+ * sin ella, a publicar. «Agenda (Reservas)» es la primera fila de Conectores, y
+ * «Gestionar citas» y «Pedir la propuesta» llevan a ella (`#agenda`). La agenda
+ * se vuelve a leer con el borrador.
  */
 export function AgentBuilder({
   refId,
@@ -198,6 +212,7 @@ export function AgentBuilder({
   clientName = null,
   business = null,
   questions = null,
+  agenda: initialAgenda,
   actions = SERVER_ACTIONS,
   qualityActions = {},
 }: {
@@ -237,6 +252,8 @@ export function AgentBuilder({
    * tabla mientras falten (prototipo §3.3). Sin ellas, no se pintan.
    */
   questions?: PendingQuestionsView | null;
+  /** Spec 057: la agenda del agente (`null`, no se pudo leer). Sin ella, la pantalla no sabe de la agenda. */
+  agenda?: AgentAgenda | null;
   actions?: AgentBuilderActions;
   qualityActions?: AgentQualityActions;
 }) {
@@ -265,6 +282,16 @@ export function AgentBuilder({
   const [header, setHeader] = React.useState(initialHeader ?? null);
   // Las preguntas sin responder, para la barra flotante.
   const [pendingQuestions, setPendingQuestions] = React.useState(questions?.questions.length ?? 0);
+  // Spec 057: la agenda, la de la página o la última que leyó su fila.
+  const [agenda, setAgenda] = React.useState(initialAgenda);
+  const [seenAgenda, setSeenAgenda] = React.useState(initialAgenda);
+  if (seenAgenda !== initialAgenda) {
+    setSeenAgenda(initialAgenda);
+    setAgenda(initialAgenda);
+  }
+  const agendaNotices = headerNotices(agenda);
+  // «Editar» una propuesta (3.3): el bloque se abre cuando el borrador ya la lleva.
+  const editAfterReload = React.useRef<string | null>(null);
   const writable = canWrite && draft.allowed.includes("edit");
   const spec = draft.spec;
   const missing = React.useMemo(() => missingCapabilities(draft.missing_capabilities), [draft.missing_capabilities]);
@@ -320,8 +347,12 @@ export function AgentBuilder({
   const followed = React.useRef("");
   // Pintar otra vez para que el efecto lleve la vista a `id` (aunque nada más cambie).
   const [tick, nudge] = React.useReducer((n: number) => n + 1, 0);
-  function go(id: string) {
+  // Spec 057 (WCAG 2.4.3): lo que lleva a la agenda, a la propuesta o a publicar lleva
+  // también el foco, no solo la vista.
+  const focusOnArrive = React.useRef<string | null>(null);
+  function go(id: string, focus = false) {
     scrollTo.current = id;
+    focusOnArrive.current = focus ? id : null;
     nudge();
   }
   React.useEffect(() => {
@@ -344,6 +375,13 @@ export function AgentBuilder({
     const folded = el?.querySelector(":scope > details") ?? el?.closest("details");
     if (folded instanceof HTMLDetailsElement) folded.open = true;
     if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+    if (el && focusOnArrive.current === id) {
+      focusOnArrive.current = null;
+      // En la barra de «Guardar», su botón principal (el último que se puede pulsar).
+      const buttons = id === "agente-guardar" ? el.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") : null;
+      const target = buttons?.length ? buttons[buttons.length - 1]! : el;
+      target.focus({ preventScroll: true });
+    }
   }, [hash, moreOpen, openRow, writable, tick, tab]);
   const copilot = React.useRef<CopilotHandle>(null);
 
@@ -430,12 +468,17 @@ export function AgentBuilder({
     const res = await actions.reload({ ref: refId, agent: draft.agent_id });
     if (!res.ok) {
       setMissingState("failed");
+      // «Editar» no se queda pendiente: el bloque se abriría en la recarga siguiente, sin venir a cuento.
+      editAfterReload.current = null;
       return;
     }
     setDraft(res.data.draft);
     setProposals(res.data.proposals);
     setProposalsVersion((v) => v + 1);
     setMissingState("ready");
+    const block = editAfterReload.current;
+    editAfterReload.current = null;
+    if (block) openAt(block);
   }
 
   /** El borrador cambió fuera de los bloques: se lee otra vez, y todo lo demás. */
@@ -445,6 +488,11 @@ export function AgentBuilder({
     if (header && actions.header) {
       const next = await actions.header({ ref: refId, agent: draft.agent_id });
       if (next.ok) setHeader(next.data);
+    }
+    // Spec 057: publicar pasa la agenda de «preparada» a «activa».
+    if (agenda !== undefined && actions.agenda) {
+      const next = await actions.agenda({ ref: refId, agent: draft.agent_id });
+      if (next.ok) setAgenda(next.data);
     }
     bump();
   }
@@ -478,6 +526,27 @@ export function AgentBuilder({
         go("agente-conectores");
       }
     : undefined;
+  // Spec 057 (6.3, 3.8): «Gestionar citas» y «Pedir la propuesta» llevan a la fila
+  // de la agenda, en Conectores. Solo si Reservas se ofrece y la pestaña existe.
+  const toAgenda =
+    connectors && agenda?.offered
+      ? () => {
+          setTab("connectors");
+          go("agenda", true);
+        }
+      : undefined;
+  /** La propuesta de la agenda, en «Más ajustes». */
+  function toProposals() {
+    setTab("build");
+    setMoreOpen(true);
+    go("agente-propuestas", true);
+  }
+  /** «Revisar y publicar» sin propuesta: la barra de «Guardar», abajo de «Configuración». */
+  function toPublish() {
+    setTab("build");
+    go("agente-guardar", true);
+  }
+
   /** «Conectar un canal»: la pestaña Canales. Sin ella, la barra lleva a la página de canales del cliente. */
   const channelsTab = channels
     ? () => {
@@ -658,6 +727,32 @@ export function AgentBuilder({
           <TestsLine tests={draft.tests} />
         </div>
         {header?.visible_state.code === "paused" ? <Callout tone="warning">{t("builder.life.paused")}</Callout> : null}
+        {/* Spec 057 (4.4): lleva o va a llevar la agenda y a Reservas le falta algo. */}
+        {agenda && agendaNotices.notReady ? <AgendaNotReady refId={refId} missing={agenda.missing} /> : null}
+        {/* Spec 057 (5.3): el borrador la lleva y lo publicado no. */}
+        {agenda && agendaNotices.prepared ? (
+          <div className="min-w-0" data-slot="agenda-prepared">
+            <Callout
+              tone="info"
+              title={t("agenda.prepared.title")}
+              action={
+                writable ? (
+                  agenda.proposal?.status === "open" ? (
+                    <Button size="sm" variant="outline" onClick={toProposals}>
+                      {t("agenda.prepared.review")}
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={toPublish}>
+                      {t("agenda.prepared.publish")}
+                    </Button>
+                  )
+                ) : undefined
+              }
+            >
+              {t("agenda.prepared.body")}
+            </Callout>
+          </div>
+        ) : null}
       </header>
 
       <Tabs value={shown} onValueChange={(value) => setTab(value as AgentTab)} className="min-w-0 flex-col gap-6">
@@ -714,6 +809,7 @@ export function AgentBuilder({
                   canEdit={writable}
                   onEdit={(pointer) => openAt(blockOfPointer(pointer))}
                   onRetry={reload}
+                  onManageAgenda={toAgenda}
                 />
               </div>
               <div id="agente-borrador" className="min-w-0 scroll-mt-24">
@@ -759,6 +855,8 @@ export function AgentBuilder({
                         refreshKey={refreshKey}
                         onEdit={(pointer) => openAt(pointer ? blockOfPointer(pointer) : null)}
                         onApplied={() => void refreshAll()}
+                        // Un agente de instrucciones libres no tiene propuesta que pedir (2.7).
+                        onAgenda={agenda?.structured ? toAgenda : undefined}
                         source={review}
                       />
                     </ScreenSection>
@@ -810,7 +908,7 @@ export function AgentBuilder({
                   </div>
                 ) : null}
                 {spec ? (
-                  <div id="agente-propuestas" className="min-w-0 scroll-mt-24 rounded-lg border border-border bg-card p-4 sm:p-6">
+                  <div id="agente-propuestas" tabIndex={-1} className="min-w-0 scroll-mt-24 rounded-lg border border-border bg-card p-4 outline-none sm:p-6">
                     <ProposalList
                       key={proposalsVersion}
                       refId={refId}
@@ -820,6 +918,13 @@ export function AgentBuilder({
                       decide={actions.decide}
                       onApplied={() => void refreshAll()}
                       onRetry={() => void reload()}
+                      onEdit={
+                        writable
+                          ? (block) => {
+                              editAfterReload.current = block;
+                            }
+                          : undefined
+                      }
                     />
                   </div>
                 ) : null}
@@ -875,6 +980,7 @@ export function AgentBuilder({
           {quality ? (
             // La barra flotante de vidrio (§4.5): el estado a la izquierda, los botones píldora a la derecha.
             <div
+              id="agente-guardar"
               data-slot="agent-actionbar"
               className="glass sticky bottom-4 z-(--z-sticky) min-w-0 rounded-xl p-3 ring-1 ring-foreground/10 min-[560px]:rounded-full min-[560px]:py-2 min-[560px]:pr-2 min-[560px]:pl-4"
             >
@@ -955,6 +1061,10 @@ export function AgentBuilder({
                 spec={spec}
                 onList={(list) => setInUse(new Set(list.filter((c) => rowState(c) === "on").map((c) => c.slug)))}
                 onConnected={() => void refreshAll()}
+                agenda={agenda}
+                onAgenda={setAgenda}
+                onAgendaText={toProposals}
+                clientName={clientName}
                 actions={qualityActions.connectors}
               />
             </section>

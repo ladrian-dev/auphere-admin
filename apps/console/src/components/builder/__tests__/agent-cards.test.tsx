@@ -231,3 +231,37 @@ describe("la pestaña Agentes · los sugeridos sin papel obligatorio (65.7)", ()
     expect(await axeViolations(container)).toEqual([]);
   });
 });
+
+/**
+ * Spec 057 (T040; requisito 5.3) — un agente con la agenda preparada en un
+ * borrador sin publicar lo dice en su tarjeta, a la vista, con la acción de
+ * revisar y publicar, que abre el agente. Con la agenda activa o sin ella, nada.
+ */
+describe("la pestaña Agentes · la agenda preparada (spec 057)", () => {
+  it("con `prepared`, el aviso y la acción de revisar; con `on` o `none`, nada; pasa axe", async () => {
+    const { container } = cards([
+      agent({ agenda: "prepared", draft_version: 4 }),
+      agent({ id: "22222222-2222-4222-8222-222222222222", name: "Cobros", is_principal: false, agenda: "none" }),
+      agent({ id: "33333333-3333-4333-8333-333333333333", name: "Soporte", is_principal: false, agenda: "on" }),
+    ]);
+    const list = screen.getByRole("list", { name: "Agentes del cliente" });
+    const [recepcion, cobros, soporte] = within(list).getAllByRole("listitem");
+    expect(within(recepcion!).getByText("Agenda preparada")).toBeVisible();
+    expect(within(recepcion!).getByText("Publica para que reserve.")).toBeVisible();
+    // Lleva a la propuesta de su texto de citas, dentro de la ficha del agente.
+    expect(within(recepcion!).getByRole("link", { name: "Revisar y publicar Recepción" })).toHaveAttribute(
+      "href",
+      `/clients/${REF}/agents/11111111-1111-4111-8111-111111111111#agente-propuestas`,
+    );
+    for (const li of [cobros!, soporte!]) {
+      expect(within(li).queryByText("Agenda preparada")).toBeNull();
+      expect(within(li).getAllByRole("link")).toHaveLength(1);
+    }
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("una respuesta de antes, sin el campo, no dice nada", () => {
+    cards([agent({})]);
+    expect(screen.queryByText("Agenda preparada")).toBeNull();
+  });
+});

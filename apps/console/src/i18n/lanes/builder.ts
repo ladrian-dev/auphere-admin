@@ -278,8 +278,8 @@ export const builderMessages = {
   // ── Las propuestas (15.2, 15.3) ─────────────────────────────────────────
   "builder.proposals.title": { es: "Propuestas", en: "Proposals" },
   "builder.proposals.intro": {
-    es: "Cambios propuestos para este agente. Nada cambia hasta que alguien los aplica, y caducan a los 15 minutos.",
-    en: "Changes proposed for this agent. Nothing changes until someone applies them, and they expire after 15 minutes.",
+    es: "Cambios propuestos para este agente. Nada cambia hasta que alguien los aplica, y cada uno dice cuándo caduca.",
+    en: "Changes proposed for this agent. Nothing changes until someone applies them, and each one says when it expires.",
   },
   "builder.proposals.empty": { es: "Ninguna propuesta abierta.", en: "No open proposals." },
   "builder.proposals.error": { es: "No se pudieron cargar las propuestas.", en: "The proposals could not be loaded." },
@@ -306,7 +306,7 @@ export const builderMessages = {
     en: "It no longer applies: the draft changed after it was proposed. Ask for another one.",
   },
   "builder.proposals.closed": { es: "Ya la decidió otra persona.", en: "Someone else already decided it." },
-  "builder.proposals.expired": { es: "Caducó: pasaron 15 minutos. Pide otra.", en: "It expired: 15 minutes went by. Ask for another one." },
+  "builder.proposals.expired": { es: "Caducó. Pide otra.", en: "It expired. Ask for another one." },
   "builder.proposals.invalid": { es: "No pasa el validador:", en: "It does not pass the validator:" },
   "builder.proposals.failed": { es: "No se pudo decidir. Inténtalo de nuevo.", en: "It could not be decided. Try again." },
 };
