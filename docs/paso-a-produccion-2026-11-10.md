@@ -5,7 +5,7 @@ producción. `main` no se despliega desde el 22 de octubre (`daf0ca15`). Entra t
 lo de `develop` desde entonces, de la spec 043 a la 057, más la rama
 `chore/paso-a-produccion-2026-11-10`.
 
-- **Migraciones**: de la `0165` a la `0229`, 65 en **una sola transacción**
+- **Migraciones**: de la `0165` a la `0230`, 66 en **una sola transacción**
   (`alembic/env.py`). Si una falla, no se aplica ninguna y producción sigue como
   estaba. La base pesa 209 MB, con unos 60.000 mensajes: se espera que tarde
   minutos, no más. `deploy-prod` espera ahora hasta 45 minutos (antes se rendía a
@@ -126,7 +126,7 @@ terraform apply prod.tfplan
 
 - [ ] Fusionar el PR `develop` → `main` y aprobar `deploy-prod`.
 - [ ] En `/nexus/prod/migrate`: `alembic upgrade head` hasta
-  `0229_agenda_from_agent`, el sembrado de conectores y `release: done`. **Ninguna**
+  `0230_audit_words_agenda`, el sembrado de conectores y `release: done`. **Ninguna**
   línea `reservations.auto_pass`.
 - [ ] Servicios estables (`roll services` en verde) y salud contra el ALB con el
   certificado verificado. La IP del ALB cambia (el 2026-11-10 era `89.60.74.158`),

@@ -9,6 +9,7 @@ tienen su propio barrido (``no-agendapro.test.ts``).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,9 @@ _FILES = (
     _ROOT / "infra" / "terraform" / "20-services" / "variables.tf",
 )
 _WORDS = ("agendapro", "browserbase", "stagehand")
+#: «AgendaProposalOut» (spec 057, la propuesta de texto de la agenda) empieza por
+#: «agendapro» en minúsculas y no es AgendaPro.
+_NOT_THE_WORD = re.compile(r"agendaproposal")
 
 
 def _texts() -> list[Path]:
@@ -45,7 +49,7 @@ def test_nothing_deployed_names_agendapro() -> None:
     found = []
     for path in _texts():
         try:
-            text = path.read_text(encoding="utf-8").lower()
+            text = _NOT_THE_WORD.sub("", path.read_text(encoding="utf-8").lower())
         except UnicodeDecodeError:
             continue
         found.extend(f"{path.relative_to(_ROOT)}: {w}" for w in _WORDS if w in text)
