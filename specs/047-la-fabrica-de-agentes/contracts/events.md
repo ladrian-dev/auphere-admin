@@ -111,7 +111,7 @@ Columnas: tipo · gravedad · a quién · por dónde · deduplicación · enlace
 | `client.business_changed` | Info | Partner | Campana | Agrupa por cliente y hora | Negocio › sección |
 | `client.read.done` / `client.read.failed` | Info / Aviso | Quien lanzó la lectura | Campana | Ninguna | Negocio |
 | `agent.tests.failing` | Aviso | Partner | Campana | 1 por agente y día | Pruebas del agente |
-| `agent.suggestions.ready` | Info | Partner | Campana | 1 por agente y semana | Rendimiento |
+| `agent.suggestions.ready` | Info | Partner | Campana | **No se emite desde el 2026-11-10** (criterio 51.7): la pasada semanal no arranca. El tipo se queda para leer los avisos ya enviados | Rendimiento |
 | `agent.correction.proposed` | Info | Partner | Campana | Ninguna; spec 056: uno por lote de «Todo el negocio», con `agents_count` y `batch_id` | Mejoras del agente |
 | `build.budget.warning` | Aviso | Owners, admins y builders | Campana, correo | 1 al mes | Consumo |
 | `build.budget.exhausted` | Crítico | Owners, admins y builders | Campana, correo | 1 al mes | Consumo |

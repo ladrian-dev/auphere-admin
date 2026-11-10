@@ -48,7 +48,7 @@ const SUMMARY_DAYS = 30;
  * - Arriba, en dos columnas (una por debajo de 980 px): «Últimos 30 días» con
  *   tres cifras —conversaciones, resueltas sin persona y lo consumido de la
  *   bolsa, con el tope del agente si lo tiene— y, a la derecha,
- *   `suggestions` («Sugerencias de esta semana», que pinta la pantalla).
+ *   `suggestions` («Correcciones del negocio», que pinta la pantalla).
  * - Debajo, a todo el ancho (decisión D5): la gráfica de bloques con su
  *   periodo (7, 30 o 90 días) y la lista de conversaciones **solo con
  *   metadatos**: fecha, canal, duración, mensajes, resultado, motivo del
@@ -73,7 +73,7 @@ export function AgentPerformancePanel({
   conversations?: AgentConversationPage | null;
   /** El tope mensual del agente, en la moneda de la bolsa; `null` sin tope o si no se sabe. */
   cap?: Money | null;
-  /** La columna derecha: «Sugerencias de esta semana». */
+  /** La columna derecha: «Correcciones del negocio» (spec 047, 51.7). */
   suggestions?: React.ReactNode;
   actions?: PerformanceActions;
 }) {

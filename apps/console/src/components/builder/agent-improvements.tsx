@@ -74,7 +74,8 @@ const REASON_MAX = 300;
  * cambio y la prueba nueva.
  *
  * Como el prototipo (`agente.md` §6, hueco H9; requisito 63.2): la tarjeta
- * «Sugerencias de esta semana», a la derecha de los 30 días, con una fila por
+ * «Correcciones del negocio» (antes «Sugerencias de esta semana», retiradas el
+ * 2026-11-10 por el criterio 51.7), a la derecha de los 30 días, con una fila por
  * mejora —su bombilla, lo que pasó, a cuántos afecta o de dónde viene— y «Ver».
  * «Ver» abre la propuesta entera con «Aceptar» y «Descartar».
  *
@@ -203,7 +204,7 @@ export function AgentImprovementsPanel({
       data-slot="agent-improvements"
     >
       <h2 id={titleId} className="text-base font-semibold text-balance">
-        {t("improve.suggestions.title")}
+        {t("improve.title")}
       </h2>
       {data === null ? (
         <ErrorState className="py-4" title={t("improve.error.load")} description={t("improve.error.load.hint")} onRetry={retry} retryLabel={t("improve.retry")} />

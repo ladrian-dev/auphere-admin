@@ -1,6 +1,6 @@
 # Especificación: la fábrica de agentes — un cliente es un negocio y un agente es quien lo atiende
 
-**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos. **Enmendada el 2026-10-29** (lista para staging, rama `047-lista-para-staging`): §Clarifications, sesión 2026-10-29, y requisitos 57 a 64.
+**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos. **Enmendada el 2026-10-29** (lista para staging, rama `047-lista-para-staging`): §Clarifications, sesión 2026-10-29, y requisitos 57 a 64. **Enmendada el 2026-11-10** (owner): las sugerencias semanales (51.3 a 51.6) se retiran por ahora; §Clarifications, sesión 2026-11-10, y criterio 51.7.
 
 > **Número.** Iba a ser la 046, pero ese número ya lo usa la spec de Andrés «un alta que termina en un agente que responde» (2026-10-24, rama `046-alta-que-responde`). Esta spec reutiliza su iteración 1a. Por decisión del owner del 2026-10-26, sustituye sus iteraciones 2 y 3, y «activar» pasa a ser por canal: ver §Clarifications y §Dependencias y enmiendas.
 
@@ -177,6 +177,25 @@ Detalle en `plan.md` §«Enmienda del 2026-10-30».
 - Q: ¿Se publica un agente estructurado sin ninguna prueba aplicable? → A: **No.** Requisito 65.9.
 - Q: ¿Se pueden usar las herramientas de Composio en agentes estructurados? → A: **Fuera de esta enmienda.** El AgentSpec no admite sus nombres. El constructor deja de ofrecerlas hasta que una spec decida el formato.
 - Q: ¿Se toca el enrutado del turno por intenciones de vertical, que esconde herramientas a un turno clasificado como `fallback`? → A: **Fuera de esta enmienda.** Queda como seguimiento.
+
+### Session 2026-11-10 (enmienda: sin sugerencias semanales)
+
+El 2026-11-10, tras el paso a producción, la primera pasada de las sugerencias semanales falló para Mouna y para flor-y-encanto: la llamada no cabía en el plazo de 30 s del proveedor. Al explicárselo, el owner decidió retirarlas.
+
+**Decisiones del owner:**
+
+- Q: ¿Se arregla el plazo y se siguen generando? → A: **No: se retiran por ahora** (owner: «no tiene sentido que le enviemos esas sugerencias al partner; el sistema debe auto entrenarse y mejorarse, no notificar al partner nada más; además en una semana siempre traerá algún cambio que quizás no sea necesario»). Los criterios 51.3 a 51.6 quedan en suspenso y entra el 51.7. Una spec nueva definirá cómo se mejora solo el agente.
+
+**Decididas en esta enmienda** (se pueden reabrir):
+
+- Q: ¿Qué se retira? → A: **Lo que se genera y lo que se avisa.**
+  - El worker deja de arrancar `weekly-suggestions-cron`. Sin pasada, no hay sugerencias ni aviso `agent.suggestions.ready`.
+  - La consola deja de prometerlas en «Mejoras».
+- Q: ¿Qué se queda? → A: **Lo demás, sin tocar.**
+  - Rendimiento (51.1 y 51.2) y las correcciones de la Bandeja (requisito 52), que comparten las rutas de mejoras.
+  - La tabla `agent_suggestions` y sus datos.
+  - La librería `services/improvement/suggestions.py`, el módulo del cron y sus pruebas, para que la spec nueva decida qué aprovecha.
+- Q: ¿Qué pasa con las sugerencias que ya existían? → A: **Nada.** En producción no hay ninguna: las dos pasadas fallaron. En staging, las que queden abiertas se pueden aceptar o descartar como hasta ahora, y su propuesta caduca sola.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -950,6 +969,8 @@ En el panel de operador, Auphere:
 ---
 
 ### Historia 31 — Rendimiento y sugerencias de mejora (Prioridad: P3)
+
+> **Enmienda del 2026-11-10:** las sugerencias de la semana están retiradas por ahora (criterio 51.7). De esta historia sigue vigente Rendimiento: los 30 días y la lista de conversaciones con solo metadatos. Los escenarios 1 y 2 quedan en suspenso.
 
 La pestaña «Rendimiento» del agente tiene:
 - los últimos 30 días: conversaciones, resueltas sin persona, pasadas a una persona y consumo;
@@ -2152,6 +2173,9 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 4. «Aceptar» DEBE llevar al borrador del agente el cambio y su prueba, que pasan por la puerta como cualquier cambio. «Descartar» DEBE pedir el motivo, y lo descartado no DEBE volver a proponerse en 30 días.
 5. Las sugerencias DEBEN generarse en el worker, dentro del contexto del cliente (garantía 1). Solo su resultado agregado DEBE salir hacia la API de la consola.
 6. Generarlas DEBE medirse en «Construcción y pruebas».
+7. *(Enmienda del 2026-11-10; deja en suspenso 51.3 a 51.6.)* El sistema NO DEBE generar sugerencias semanales ni avisar de ellas al partner:
+   - WHEN arranca el worker THEN el sistema NO DEBE poner en marcha la pasada semanal (`weekly-suggestions-cron`) en ningún servicio.
+   - WHEN un partner abre «Mejoras» de un agente THEN la consola NO DEBE prometer sugerencias semanales: lo que llega ahí son las correcciones del negocio (requisito 52).
 
 ### Requisito 52 — Corregir una respuesta desde la Bandeja
 
@@ -2379,7 +2403,7 @@ Enmienda los requisitos 21.2, 21.3 y 21.8 en lo que decían de un solo turno.
    Enmienda el requisito 32.1 en dónde se pinta la página.
 2. **Rendimiento (H9).** La pestaña DEBE:
    - existir solo cuando el agente tiene una versión guardada;
-   - enseñar arriba, en dos columnas, «Últimos 30 días» (conversaciones, resueltas sin persona y consumido de la bolsa, con el tope si lo hay) y «Sugerencias de esta semana» con «Ver» en cada una;
+   - enseñar arriba, en dos columnas, «Últimos 30 días» (conversaciones, resueltas sin persona y consumido de la bolsa, con el tope si lo hay) y «Sugerencias de esta semana» con «Ver» en cada una (desde el 2026-11-10, «Correcciones del negocio»: criterio 51.7);
    - dejar la gráfica y la tabla de conversaciones debajo.
    Un agente «Listo · sin canal» DEBE abrir en Canales, no en Rendimiento. Enmienda el requisito 51.1 en la composición.
 3. **Conectores (H10).** La pestaña DEBE enseñar una sola tarjeta con filas, un buscador sin etiqueta visible y un filtro segmentado con recuentos («Todos», «Conectados» y cada categoría). Cada fila lleva el logo, el nombre con su categoría, una nota («lo necesita una habilidad de este agente» cuando aplica, y cómo se autoriza) y «Conectar» o «Conectado» con «Quitar». El permiso DEBE ajustarse dentro de «Ajustes», no a la vista.
@@ -2606,6 +2630,7 @@ Decisión de Luis del 2026-11-05: «los paga auphere pero solo debe ejecutarse u
   - **Se enmienda** (owner, 2026-10-26): su requisito 4 decía que activar un cliente exige agente publicado, canal que conversa y saldo. Ahora no se activa el cliente, que siempre está activo (requisito 4.7): se activa cada canal, y «A todos» exige agente publicado y saldo (requisito 32.8). Su tarea T011 no se construye. La enmienda está escrita también en la spec 046.
 - **KB**: `architecture/agent-isolation.md` gana la garantía 9, y se escribe `decisions/ADR-049-la-fabrica-de-agentes.md`.
 - **Spec 048, retirar AgendaPro** (2026-10-29): sale el conector AgendaPro y las herramientas `booking.*`; la agenda de todos los agentes es Reservas (`reservas.*`). Las guías del sector (requisito 58) salen de las plantillas ya pasadas a Reservas, así que la 048 va antes que las tareas de la guía (fase 27).
+- **Enmienda del 2026-11-10** (criterio 51.7): el owner retira por ahora las sugerencias semanales. Una spec nueva definirá cómo se mejora solo el agente.
 - **Enmienda del 2026-11-04** (requisitos 66 y 67): el estudio de staging de ese día y la petición de Luis. Pendiente de su revisión; enmienda 21.1 y 61.8.
 - **Enmienda del 2026-10-29** (requisitos 57 a 64): la sustenta `research/2026-10-29-auditoria-del-constructor/_index.md` y la recoge ADR-049 §Enmiendas.
 - **Spec 016 H4**: el modelo del agente pasa a la versión.
