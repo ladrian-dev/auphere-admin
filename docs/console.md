@@ -425,18 +425,19 @@ en `clients/[ref]/agents/improve-actions.ts`), como el prototipo (63.2, hueco H9
 arriba, en dos columnas (1,35fr / 1fr; una por debajo de 980 px), «Últimos 30 días»
 de `GET …/agents/{id}/performance` con tres cifras —conversaciones, resueltas sin
 persona (porcentaje, o «—» sin conversaciones) y consumido de la bolsa, con el tope
-mensual del agente si lo tiene— y «Sugerencias de esta semana»: una fila por mejora
+mensual del agente si lo tiene— y «Correcciones del negocio»: una fila por mejora
 con su bombilla, lo que pasó y «Ver», que abre la propuesta con «Aceptar» y
 «Descartar». Debajo, a todo el ancho, la gráfica de bloques (7, 30 y 90 días en su
 píldora, con las flechas; el resumen de arriba sigue en 30) y, con
 `conversations:read`, la lista de
 `GET …/conversations` **solo con metadatos** (fecha, canal, duración, mensajes,
 resultado, motivo del traspaso de `events.md` §2 y gasto), con «Ver más» por
-cursor. Las sugerencias son las de la semana (a cuántas conversaciones y
-clientes afectan, nunca cuáles) y las correcciones de comportamiento del negocio
-(la lección y la paráfrasis, nunca el mensaje), cada una con su propuesta (el
-diff y la prueba nueva). «Aceptar» dice en qué revisión queda el borrador y la
-pantalla lo vuelve a leer; publicar sigue pasando por «Guardar». «Descartar» pide
+cursor. Las mejoras son las correcciones de comportamiento del negocio (la
+lección y la paráfrasis, nunca el mensaje), cada una con su propuesta (el diff y
+la prueba nueva). Las sugerencias de la semana se retiraron el 2026-11-10 (spec
+047, criterio 51.7): el worker ya no las genera ni avisa de ellas. Las que
+quedaron abiertas en staging aún se ven y se deciden igual. «Aceptar» dice en qué
+revisión queda el borrador y la pantalla lo vuelve a leer; publicar sigue pasando por «Guardar». «Descartar» pide
 el motivo (3–300). Sin `agents:write` no hay botones; cada parte falla sola.
 
 **Recepción** (spec 047, historia 33; `components/builder/reception-section.tsx`):

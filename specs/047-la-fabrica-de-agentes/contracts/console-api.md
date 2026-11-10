@@ -107,7 +107,7 @@ Todas bajo `/console/clients/{ref}`.
 | `POST /agents/{agent_id}/archive` | `{channels: [{channel_id, to_agent_id \| "pause"}]}` | 28 |
 | `POST /agents/{agent_id}/restore` | Vuelve en pausa | 28.2 |
 | `GET /agents/{agent_id}/performance?days=30` · `GET /agents/{agent_id}/conversations?cursor=` | Rendimiento y lista **solo con metadatos** | 51.1, 51.2 |
-| `GET /agents/{agent_id}/improvements` · `POST /…/improvements/{id}/accept` · `/discard` | Sugerencias semanales y correcciones de comportamiento | 51, 52.2 |
+| `GET /agents/{agent_id}/improvements` · `POST /…/improvements/{id}/accept` · `/discard` | Correcciones de comportamiento; las sugerencias semanales ya no se generan desde el 2026-11-10, y las que quedaron abiertas se deciden igual | 51, 51.7, 52.2 |
 
 ## 5. Canales
 

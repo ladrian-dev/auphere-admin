@@ -195,8 +195,9 @@ sale (`LLMProxyUnavailable`, fail-closed):
 - **un partner** (`llm_proxy_partner_scope`): la abre quien conoce al cliente. El
   despachador y el reparto al dueño, por turno; `jobs-consumer`, por trabajo, con
   el partner que lee al empezarlo (así los manejadores de `jobs/handlers/` no
-  tienen que acordarse); el grader diferido y las sugerencias semanales, con el
-  partner de cada cliente; el copiloto, con el de quien pregunta; la paráfrasis
+  tienen que acordarse); el grader diferido y las sugerencias semanales (que no
+  arrancan desde el 2026-11-10, spec 047 criterio 51.7), con el partner de cada
+  cliente; el copiloto, con el de quien pregunta; la paráfrasis
   de una corrección, con el del cliente;
 - **Auphere** (`llm_proxy_platform_scope`): lo que no es de ningún cliente y paga
   Auphere —la evaluación del constructor y la calibración del juez del panel de

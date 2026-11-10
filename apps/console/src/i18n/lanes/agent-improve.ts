@@ -64,14 +64,15 @@ export const agentImproveMessages = {
   // ── Mejoras (51.3, 51.4, 52.2, 52.3) ──
   "improve.list": { es: "Mejoras por decidir", en: "Improvements to decide" },
   // H9 (63.2): la tarjeta de la derecha, con una fila por mejora y «Ver».
-  "improve.suggestions.title": { es: "Sugerencias de esta semana", en: "This week’s suggestions" },
+  // Spec 047, 51.7 (2026-11-10): sin sugerencias semanales, aquí llegan las correcciones del negocio.
+  "improve.title": { es: "Correcciones del negocio", en: "Corrections from the business" },
   "improve.view": { es: "Ver", en: "View" },
   "improve.view.aria": { es: "Ver «{topic}»", en: "View “{topic}”" },
   "improve.close": { es: "Cerrar", en: "Close" },
   "improve.empty": { es: "Nada que mejorar por ahora", en: "Nothing to improve for now" },
   "improve.empty.hint": {
-    es: "Las sugerencias salen cuando al menos 5 clientes distintos preguntan algo que el agente no supo.",
-    en: "Suggestions appear when at least 5 different customers ask something the agent did not know.",
+    es: "Aquí llegan las respuestas que el negocio corrige desde la Bandeja.",
+    en: "Answers the business corrects from the Inbox land here.",
   },
   "improve.error.load": { es: "No pudimos leer las mejoras", en: "We could not read the improvements" },
   "improve.error.load.hint": { es: "Lo demás del agente está al día.", en: "The rest of the agent is up to date." },

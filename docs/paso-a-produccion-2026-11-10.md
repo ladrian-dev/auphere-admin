@@ -5,7 +5,12 @@ producción. `main` no se despliega desde el 22 de octubre (`daf0ca15`). Entra t
 lo de `develop` desde entonces, de la spec 043 a la 057, más la rama
 `chore/paso-a-produccion-2026-11-10`.
 
-- **Migraciones**: de la `0165` a la `0230`, 66 en **una sola transacción**
+> **Desplegado el 2026-11-10** (`ec5c74e5`, PR 18). `deploy-prod` en verde a las
+> 18:21 UTC: la migración llegó a `0230_audit_words_agenda` en 1 min 23 s y los
+> cinco servicios rodaron con `prod-ec5c74e5…`. Lo que queda abierto está en
+> [Pendiente tras el despliegue](#pendiente-tras-el-despliegue).
+
+- **Migraciones**: de la `0165` a la `0230`, 69 (cuatro números se repiten) en **una sola transacción**
   (`alembic/env.py`). Si una falla, no se aplica ninguna y producción sigue como
   estaba. La base pesa 209 MB, con unos 60.000 mensajes: se espera que tarde
   minutos, no más. `deploy-prod` espera ahora hasta 45 minutos (antes se rendía a
@@ -67,20 +72,21 @@ lo de `develop` desde entonces, de la spec 043 a la 057, más la rama
 
 ## 0 · Antes de fusionar
 
-- [ ] La rama `chore/paso-a-produccion-2026-11-10` fusionada en `develop`, con
+- [x] La rama `chore/paso-a-produccion-2026-11-10` fusionada en `develop`, con
   `deploy-staging` en verde. En `/nexus/staging/migrate` sale `release: done` y
   ninguna línea `reservations.auto_pass`.
-- [ ] `gh workflow run ci --ref develop` en verde sobre el `develop` final.
+- [x] `ci` en verde sobre el `develop` final (`ea927945`) y sobre `main`
+  (`ec5c74e5`).
 - [ ] **GitHub → Settings → Environments → `production` → Required reviewers.**
   Hoy no tiene ninguna regla: fusionar en `main` despliega sin pedir permiso en
-  cuanto `ci` termina.
-- [ ] **New Air como solo envío**: panel → New Air → números de WhatsApp → agente
+  cuanto `ci` termina. *No se puso: decisión de Luis del 2026-11-10.*
+- [x] **New Air como solo envío**: panel → New Air → números de WhatsApp → agente
   apagado (`agent_enabled=false`), igual que la línea de avisos de Mouna.
   - Hoy no cambia nada, porque no tiene agente.
   - Sin esto, con el código nuevo, cada conversación que le escriba quedaría
     esperando a una persona y mandaría un aviso de escalado por WhatsApp
     (`no_agent` → `agent_unpublished`).
-- [ ] **Pausar** flor-y-encanto (`c6e4c7c7`) y demo-lorenzo (`a2bfc92d`) desde el
+- [x] **Pausar** flor-y-encanto (`c6e4c7c7`) y demo-lorenzo (`a2bfc92d`) desde el
   panel.
   - Un cliente en pausa no contesta y sus crons paran (el de WooCommerce de
     flor-y-encanto incluido).
@@ -88,12 +94,12 @@ lo de `develop` desde entonces, de la spec 043 a la 057, más la rama
   - Los 5 clientes en alta de Amacrux y Acme (`provisioning`) pasan a `active` con
     la 0181, pero no tienen ni canal ni versión publicada, así que no corre nada
     para ellos.
-- [ ] **Ventana**: fuera de 12:45–14:15 UTC. A las 13:01 llegan los envíos de New
-  Air y a las 13:08 barre el cron de cobranza de Mouna. Se recomienda a primera
-  hora de la mañana de Europa.
-- [ ] **Snapshot manual** de `nexus-prod-aurora` con nombre
-  `pre-develop-<fecha>`.
-- [ ] **Terraform `20-services` en prod**, justo antes de fusionar. El plan tiene
+- [x] **Ventana**: fuera de 12:45–14:15 UTC. A las 13:01 llegan los envíos de New
+  Air y a las 13:08 barre el cron de cobranza de Mouna. *Se desplegó a las
+  18:16 UTC.*
+- [x] **Snapshot manual** de `nexus-prod-aurora` con nombre
+  `pre-develop-2026-11-10` (17:03 UTC).
+- [x] **Terraform `20-services` en prod**, justo antes de fusionar. El plan tiene
   que ser el de arriba: 6 task definitions reemplazadas y 5 servicios
   actualizados.
   - Rueda los servicios con la imagen de `main`, mismo código.
@@ -106,7 +112,7 @@ terraform plan -var-file=prod.tfvars -var state_bucket=nexus-terraform-state-793
 terraform apply prod.tfplan
 ```
 
-- [ ] **Terraform `30-observability` en prod**: las alarmas que sustituyen al correo
+- [x] **Terraform `30-observability` en prod**: las alarmas que sustituyen al correo
   de `platform_watcher` (spec 051). El plan tiene que dar 9 importaciones, 10
   altas, 2 cambios y 0 bajas.
 
@@ -120,15 +126,16 @@ terraform apply prod.tfplan
 
 - [ ] **Pausar la consola**: Vercel → `auphere-console` → Settings → Git →
   desactivar los despliegues automáticos. La consola nueva habla con rutas que la
-  API vieja no tiene.
+  API vieja no tiene. *No se hizo: Luis asumió el riesgo. La consola nueva
+  convivió unos 70 min con la API vieja, hasta que rodaron los servicios.*
 
 ## 1 · Fusionar y desplegar
 
-- [ ] Fusionar el PR `develop` → `main` y aprobar `deploy-prod`.
-- [ ] En `/nexus/prod/migrate`: `alembic upgrade head` hasta
+- [x] Fusionar el PR `develop` → `main` y aprobar `deploy-prod`.
+- [x] En `/nexus/prod/migrate`: `alembic upgrade head` hasta
   `0230_audit_words_agenda`, el sembrado de conectores y `release: done`. **Ninguna**
   línea `reservations.auto_pass`.
-- [ ] Servicios estables (`roll services` en verde) y salud contra el ALB con el
+- [x] Servicios estables (`roll services` en verde) y salud contra el ALB con el
   certificado verificado. La IP del ALB cambia (el 2026-11-10 era `89.60.74.158`),
   así que se resuelve en el momento:
 
@@ -138,15 +145,19 @@ curl --resolve "api.auphere.com:443:$(dig +short nexus-prod-317439020.eu-south-2
 
 ## 2 · Soltar las consolas
 
-- [ ] Reactivar los despliegues de `auphere-console` y redesplegar el último
-  commit de `main`. Desplegar el Admin (`auphere-admin`) desde `main`.
+- [x] Reactivar los despliegues de `auphere-console` y redesplegar el último
+  commit de `main`. Desplegar el Admin (`auphere-admin`) desde `main`. *Vercel
+  los desplegó solo con `ec5c74e5`, en verde, y los dos responden.*
 - [ ] Los partners de Mouna (Amacrux) y New Air (Facelad) entran en la consola
   nueva: la 0204 la enciende para todos.
 
 ## 3 · Comprobar en producción
 
 - [ ] **Mouna, agente**: el siguiente mensaje de un admin da `handler.turn_complete`
-  en `/nexus/prod/runner`.
+  en `/nexus/prod/runner`. *A las 18:35 UTC aún no había escrito ningún admin.
+  Una tarea suelta con la definición del runner pasó el nodo de clasificar real
+  por `anthropic/claude-haiku-5-5`: etiqueta en 1 s, sin reserva y sin tocar la
+  base.*
   - Hay `llm.call_complete` con `role=classify` y `model=anthropic/claude-haiku-5-5`.
   - `classify.unknown_label_using_fallback` queda cerca de cero.
   - No hay `tool.error` de `billing.*`.
@@ -157,15 +168,26 @@ curl --resolve "api.auphere.com:443:$(dig +short nexus-prod-317439020.eu-south-2
 - [ ] **New Air**:
   - El siguiente `POST /v1/messages/template` responde `pending` y egress da
     `outbound.dispatcher.sent`.
-  - Sus entrantes dan `pipeline.skipped.send_only_channel`.
-  - No hay `operator_alerter.sent` de New Air.
-- [ ] **Reservas**: ningún cliente lo tiene encendido (panel → Acceso).
-- [ ] **DLQ de entrada**: `./scripts/ops/dlq.sh prod list`. La herramienta solo
+  - Sus entrantes dan `pipeline.skipped.send_only_channel`. *Visto: 2 tras el
+    despliegue.*
+  - No hay `operator_alerter.sent` de New Air. *Visto: ninguno.*
+- [x] **Reservas**: ningún cliente lo tiene encendido. *Comprobado en la base:
+  ninguna fila en `reservation_settings` y ningún `client_access` con
+  `reservas`.*
+- [x] **DLQ de entrada**: `./scripts/ops/dlq.sh prod list`. La herramienta solo
   existe con el código nuevo. Quedan 25 entradas del incidente de Aurora de
   agosto; decidir y vaciar (`docs/dlq.md`). La alarma nueva solo avisa de
-  entradas nuevas.
-- [ ] **Alarmas**: confirmar que llega el correo de SNS y que ninguna salta sin
-  motivo en la primera hora.
+  entradas nuevas. *Eran 19 de New Air y 6 de Mouna, de hace 75 días, todas
+  por `password authentication failed`. Descartadas a las 18:46 UTC con el
+  permiso de Luis; la DLQ queda vacía.*
+  - **Ojo**: listar o descartar escribe esa causa en `/nexus/prod/scheduler`, y
+    el filtro de `nexus-prod-db-auth-failures` busca ese texto. Cada pasada
+    dispara un correo falso de «fallos de autenticación en la base», más el de
+    vuelta a OK (18:33 y 18:47 UTC). El filtro está hecho a mano, fuera de Terraform.
+- [x] **Alarmas**: confirmar que llega el correo de SNS y que ninguna salta sin
+  motivo en la primera hora. *Solo saltó `nexus-prod-platform-alert-dlq-entries`,
+  a las 18:01 UTC: el vigilante viejo contaba las 25 de agosto. Vuelve a OK
+  cuando su ventana de 36 puntos quede sin datos.*
 - [ ] **Avisar a Andrés**: la agenda nativa revierte sus commits del 3 y 4 de
   noviembre.
 
@@ -181,6 +203,39 @@ curl --resolve "api.auphere.com:443:$(dig +short nexus-prod-317439020.eu-south-2
   `set_cobranza_admins.py` y `admin_access` ya no deciden a quién se responde.
 - **Sugerencias semanales**: una llamada al modelo por agente con 5 conversaciones
   y 5 contactos la semana anterior. Solo deja un aviso en la campana del partner.
+  *Retiradas por Luis el mismo 2026-11-10 (spec 047, criterio 51.7): ver
+  pendientes.*
+
+## Pendiente tras el despliegue
+
+- **Las sugerencias semanales no salen en producción.** La primera pasada
+  (18:19 UTC) falló para Mouna y para flor-y-encanto con `LLMProxyUnavailable`,
+  y sus trabajos quedaron `failed` (`suggestions_unavailable`).
+  - Cada una tardó unos 91 s: tres cortes de 30 s. `default_complete` de
+    `weekly_suggestions_cron.py` usa el plazo por defecto del proveedor (30 s,
+    con dos reintentos del SDK). El constructor ya se arregló así (120 s, sin
+    reintentos).
+  - En staging las dos pasadas que salieron llevaban unos 1.700 tokens y
+    tardaron de 3 a 5 s. Una semana real de Mouna no cabe en 30 s.
+  - `map_proxy_failure` traduce el corte a «proxy unreachable», aunque producción
+    no usa proxy.
+  - El cron lo reintenta hasta 3 veces por agente y semana, una por hora, y
+    luego para. No toca conversaciones ni factura al cliente.
+  - Además corre para clientes en pausa (flor-y-encanto): `_tenants` solo
+    descarta los archivados.
+  - **Decisión de Luis (2026-11-10): retirarlas por ahora.** El agente debe
+    mejorarse solo, no avisar al partner. Spec 047, criterio 51.7 y fase 30
+    (T247–T250): el worker deja de arrancar el cron y «Mejoras» deja de
+    prometerlas. Hasta que llegue a `main`, producción lo sigue intentando: hasta
+    3 veces por agente y semana, sin cobrar a nadie.
+- **Filtro de `db-auth-failures`**: que no cuente las líneas `ops.dlq.*`. Por
+  ejemplo, el patrón `"password authentication failed" -"ops.dlq"` en los cinco
+  filtros de prod.
+- **Mouna**: comprobar el primer turno real y la cobranza del 2026-11-11 hacia
+  las 13:08 UTC.
+- **New Air**: comprobar el envío de plantillas del 2026-11-11 hacia las 13:01
+  UTC.
+- **Avisar a Andrés.**
 
 ## Si algo va mal
 

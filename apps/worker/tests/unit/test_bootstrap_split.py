@@ -102,10 +102,12 @@ ALL_EXPECTED = {
     "bag-refill-cron",
     "bag-alerts-cron",
     "ledger-reconciliation-cron",
-    # Spec 047 (T174): las sugerencias semanales. En los tres sitios:
-    # ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
-    "weekly-suggestions-cron",
+    # Spec 047, 51.7 (enmienda del 2026-11-10): las sugerencias semanales ya no
+    # arrancan. Ver ``test_the_weekly_suggestions_do_not_start``.
 }
+
+#: La pasada semanal de sugerencias (spec 047, T174), retirada por el owner el 2026-11-10.
+RETIRED = "weekly-suggestions-cron"
 
 
 def test_families_are_disjoint_and_complete() -> None:
@@ -151,6 +153,25 @@ async def test_factories_produce_the_contract() -> None:
     )
     assert await _names_of(bootstrap.scheduler_tasks(ctx)) == set(bootstrap.SCHEDULER_TASK_NAMES)
     assert await _names_of(bootstrap.egress_tasks(ctx)) == set(bootstrap.EGRESS_TASK_NAMES)
+
+
+async def test_the_weekly_suggestions_do_not_start() -> None:
+    """Spec 047, 51.7: ningún servicio arranca la pasada semanal ni la declara.
+
+    El owner las retiró el 2026-11-10: el agente debe mejorarse solo, no avisar
+    al partner. El módulo se queda para la spec que lo rehaga; arrancarlo, no.
+    """
+    declared = (
+        bootstrap.RUNNER_TASK_NAMES | bootstrap.SCHEDULER_TASK_NAMES | bootstrap.EGRESS_TASK_NAMES
+    )
+    assert RETIRED not in declared
+    ctx = _dummy_ctx()
+    started = await _names_of(
+        bootstrap.runner_tasks(ctx, pipeline=None)
+        + bootstrap.scheduler_tasks(ctx, heartbeat=False)
+        + bootstrap.egress_tasks(ctx, heartbeat=False)
+    )
+    assert RETIRED not in started
 
 
 async def test_combined_families_have_one_heartbeat() -> None:

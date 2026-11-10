@@ -221,7 +221,7 @@ const batched = suggestion({
   batch: { id: BATCH, agents_count: 3 },
 });
 
-describe("Sugerencias de esta semana (T174; H9, 63.2)", { timeout: 30_000 }, () => {
+describe("Mejoras: las correcciones del negocio (T174, T249; H9, 63.2, 51.7)", { timeout: 30_000 }, () => {
   function view(data: Improvements | null, over: Partial<ImpActions> = {}) {
     const actions: ImpActions = {
       reload: vi.fn(async () => ok({ items: [suggestion()], allowed: ["accept", "discard"] as ("accept" | "discard")[] })),
@@ -243,7 +243,7 @@ describe("Sugerencias de esta semana (T174; H9, 63.2)", { timeout: 30_000 }, () 
 
   it("una fila por mejora con su bombilla, a cuántos afecta o de dónde viene, y «Ver»; nunca el mensaje; pasa axe", async () => {
     const { container } = view({ items: [suggestion(), correction], allowed: ["accept", "discard"] });
-    const card = screen.getByRole("region", { name: "Sugerencias de esta semana" });
+    const card = screen.getByRole("region", { name: "Correcciones del negocio" });
     const list = within(card).getByRole("list", { name: "Mejoras por decidir" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
     expect(within(list).getByText("12 clientes preguntaron por el aparcamiento y el agente no supo")).toBeInTheDocument();
@@ -341,7 +341,11 @@ describe("Sugerencias de esta semana (T174; H9, 63.2)", { timeout: 30_000 }, () 
     reader.unmount();
 
     const empty = view({ items: [], allowed: ["accept", "discard"] });
-    expect(within(screen.getByRole("region", { name: "Sugerencias de esta semana" })).getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+    const quiet = screen.getByRole("region", { name: "Correcciones del negocio" });
+    expect(within(quiet).getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+    // 51.7: las sugerencias semanales están retiradas; el vacío no las promete.
+    expect(within(quiet).getByText("Aquí llegan las respuestas que el negocio corrige desde la Bandeja.")).toBeInTheDocument();
+    expect(within(quiet).queryByText(/sugerencia|semana/i)).toBeNull();
     empty.unmount();
 
     const broken = view(null);
