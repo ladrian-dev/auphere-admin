@@ -23,6 +23,7 @@ Las puertas, en este orden (la primera que cierra gana):
 ====================  ======================  =================================
 puerta                ``skipped`` (de hoy)    motivo (``waiting_reason``)
 ====================  ======================  =================================
+fuera de la audiencia ``not_admin``           ``out_of_audience``
 cliente en pausa      ``tenant_inactive``     ``paused_client``
 cliente archivado     ``tenant_inactive``     ``archived_client``
 cliente en alta       ``tenant_inactive``     ``agent_unpublished``
@@ -31,12 +32,21 @@ canal desvinculado    ``channel_problem``     ``channel_problem``
 número solo de envío  ``send_only_channel``   — (no lo atiende nadie)
 cliente sin agente    ``no_agent``            ``agent_unpublished``
 agente sin publicar   ``agent_unpublished``   ``agent_unpublished``
-fuera de la audiencia ``not_admin``           ``out_of_audience``
+agente en pausa       ``agent_paused``        el motivo de su pausa
 lo lleva una persona  ``human_takeover``      ``human_takeover``
 bolsa vacía           ``wallet_empty``        ``no_balance``
 sin proxy de modelos  ``llm_proxy_unavailable`` ``no_model``
 presupuesto duro      ``budget_hard_limit``   ``turn_limit``
 ====================  ======================  =================================
+
+Spec 058: la audiencia va **primera**, salvo en un número solo de envío, que
+sigue como antes. Un contacto al que el número no responde ni con todo activo no
+espera a nadie, aunque el cliente, el canal o el agente estén en pausa. Antes la
+pausa iba delante: el contacto abría «Espera a una persona» y avisaba a la gente
+del cliente (Flor y Encanto, producción, 2026-11-10). Si una conversación
+esperaba por una puerta y su contacto escribe ya fuera de la audiencia, sale de
+la espera (``inbox_lifecycle.leave_gate_wait``). El contrato está en
+``specs/058-pausa-respeta-audiencia/contracts/turn-gates.md``.
 
 El canal **con problemas de calidad** (``degraded``) sigue contestando
 (Historia 1, escenario 3). El tope y la pausa del agente llegan con sus
@@ -534,6 +544,13 @@ _AGENT_PAUSE_WAITING: dict[str, str] = {
 def gate_for(facts: TurnFacts) -> Gate | None:
     """Las puertas que salen de la base, en orden. ``None``: puede contestar
     (falta la bolsa, el modelo y el presupuesto, que se miran después)."""
+    if facts.out_of_audience and not facts.send_only_channel:
+        # Spec 058 (requisitos 1.1 y 1.2): antes que cualquier pausa. Spec 024:
+        # an admin-only agent ignores everyone else (cobranza); 047 (32): the
+        # channel decides who it answers. Before the takeover: a silenced
+        # message never notifies the person in control either (045, R2.3). A
+        # send-only number keeps its own gate below (058, 1.7).
+        return Gate("not_admin", "out_of_audience")
     if facts.tenant_status in _INACTIVE_STATUSES:
         return Gate("tenant_inactive", _INACTIVE_STATUSES[facts.tenant_status])
     if facts.channel_status == ChannelStatus.PAUSED:
@@ -559,11 +576,6 @@ def gate_for(facts: TurnFacts) -> Gate | None:
         return Gate(
             "agent_paused", _AGENT_PAUSE_WAITING.get(facts.agent_pause_reason, "paused_agent")
         )
-    if facts.out_of_audience:
-        # Spec 024: an admin-only agent ignores everyone else (cobranza).
-        # Before the takeover: a silenced message never notifies the person
-        # in control either (spec 045, R2.3).
-        return Gate("not_admin", "out_of_audience")
     if not facts.agent_active:
         # M.3 — a person has taken control of this thread.
         return Gate("human_takeover", "human_takeover")
@@ -808,6 +820,7 @@ async def _apply_gate(
     attended = fresh and gate.reason is not None and gate.reason != "out_of_audience"
     mark: inbox_lifecycle.WaitingMark | None = None
     wait_sent = False
+    left_wait = False
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, ref.tenant_id):
         conversation = await session.get(Conversation, ref.conversation_id)
@@ -829,6 +842,8 @@ async def _apply_gate(
             # Spec 024: Conversaciones dice «sin responder · número no permitido».
             for msg in rows:
                 msg.skipped_reason = "not_admin"
+            # Spec 058 (requisito 2.1): si esperaba por una puerta, ya no espera.
+            left_wait = await inbox_lifecycle.leave_gate_wait(session, conversation)
         if attended:
             _mark_attended(conversation, rows)
         if gate.reason == "human_takeover":
@@ -901,6 +916,16 @@ async def _apply_gate(
     )
     if mark is not None:
         await inbox_lifecycle.announce_waiting(mark)
+    if left_wait:
+        # Spec 058 (requisitos 2.1 y 2.3): su aviso pasa a atendido y la Bandeja
+        # la quita en vivo. Sin avisos nuevos; nada de esto tumba el turno.
+        await inbox_lifecycle.mark_waiting_handled(ref.tenant_id, [ref.conversation_id])
+        await publish_inbox_event(
+            None,
+            tenant_id=ref.tenant_id,
+            event="conversation.updated",
+            conversation_id=ref.conversation_id,
+        )
     if attended:
         # Spec 030: the Inbox shows the new inbound live, without a body.
         for msg_row in turn.messages:

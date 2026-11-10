@@ -68,6 +68,12 @@ la interfaz dice «Aún no hay datos para estimarlo» (requisito 14.2).
 Se guardan en la conversación (requisito 2.3). Salvo `out_of_audience`, la
 conversación pasa a «Espera a una persona» en la Bandeja.
 
+**Spec 058:** si se cumplen a la vez `out_of_audience` y un motivo de puerta
+(una pausa, archivado, en alta, sin publicar, canal desconectado o en pausa), gana
+`out_of_audience`, salvo en un número solo de envío. Además, una espera de puerta
+sin asignar se libera cuando su contacto escribe ya fuera de la audiencia
+(`specs/058-pausa-respeta-audiencia/contracts/turn-gates.md`).
+
 | Código | Texto en la Bandeja | Origen |
 |---|---|---|
 | `no_balance` | «Sin saldo» | Bolsa vacía |

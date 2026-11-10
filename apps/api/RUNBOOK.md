@@ -546,6 +546,50 @@ aws ecs run-task --cluster <cluster> --task-definition <migrate_task_def> \
 
 En local: `uv run --directory apps/api python scripts/pass_booking_to_reservas.py`.
 
+### Limpiar esperas de contactos fuera de la audiencia (spec 058)
+
+Hasta la spec 058, un contacto fuera de la audiencia de un número que escribía a
+un cliente en pausa (o con el canal o el agente en pausa) abría «Espera a una
+persona» y avisaba a la gente del cliente. El turno ya no lo hace. Este guion
+cierra las esperas que quedaron: las de puerta (`GATE_REASONS`), sin asignar,
+cuyo contacto está fuera de la audiencia **actual** de su número. Solo actúa en
+los números con audiencia propia (WhatsApp, Instagram o Messenger de un partner
+con la consola nueva). Los demás los cierra el turno la próxima vez que escriba
+el contacto. No envía avisos ni mensajes, y cierra los avisos de lo que libera.
+
+**Ningún despliegue lo lanza.** Va en seco si no se pasa `--apply`: primero en
+seco, y de verdad solo si lo que cuenta es lo esperado. Repetirlo es seguro: una
+segunda pasada no cambia nada.
+
+```bash
+# En la tarea de migración (mismos parámetros de red que deploy-<entorno>.yml):
+aws ecs run-task --cluster <cluster> --task-definition <migrate_task_def> \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[<subnets>],securityGroups=[<migrate_sg>],assignPublicIp=DISABLED}" \
+  --overrides '{"containerOverrides":[{"name":"migrate","command":["python","/app/apps/api/scripts/release_out_of_audience_waits.py"]}]}'
+# Para escribir, la misma orden con "--apply" al final del command.
+```
+
+En staging también vale `ecs exec` en `nexus-staging-api`. En producción, solo
+después de pasar la 058 a `main`, y con permiso de Luis.
+
+En local: `uv run --directory apps/api python scripts/release_out_of_audience_waits.py [--apply]`.
+
+**Qué mirar** en `/nexus/<entorno>/migrate`:
+
+```
+fields @timestamp, event, tenant_id, apply, released, would_release, skipped_not_strict, failed, error
+| filter event like /inbox.audience_cleanup/
+| sort @timestamp desc
+```
+
+- `inbox.audience_cleanup.done`: una por ejecución, con los totales
+  (`would_release` en seco, `released` de verdad).
+- `inbox.audience_cleanup.tenant`: una por cliente con algo que contar.
+- `inbox.audience_cleanup.tenant_failed`: el cliente se deshizo solo, con el tipo
+  de error y sin datos de nadie. Repetir.
+- `inbox.audience_cleanup.crashed`: no llegó a recorrer los clientes.
+
 ### Paso 4 — Agent config v1 desde el seed
 
 `/tenants/[id]/agent` → botón **Aplicar plantilla inicial**:
