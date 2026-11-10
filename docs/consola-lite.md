@@ -548,6 +548,39 @@ requisitos 1 y 2.
   conserva el `turn_id`, y la reserva, el enlace de pago y la respuesta pasan
   por `turn_effects`: no se repiten (`runtime/turn_effects.py`).
 
+## Lo que la spec 058 cambió aquí (la pausa respeta la audiencia)
+
+- **La audiencia se decide antes que cualquier pausa.** Un contacto al que su
+  número no responde (fuera de «Solo mi equipo», una excepción de «A todos», un
+  número «Sin configurar», o no admin de un agente solo para administradores)
+  sigue igual aunque el cliente, el canal o el agente estén en pausa, archivados,
+  en alta o sin publicar:
+  - su mensaje se guarda con `out_of_audience` y sale en Conversaciones como
+    «sin responder · número no permitido»;
+  - no va a la Bandeja;
+  - no avisa a nadie: ni campana, ni correo, ni push, ni destinatarios de
+    escalado, ni mensaje de espera.
+
+  Antes de la 058, la pausa iba delante. En producción (Flor y Encanto,
+  2026-11-10), cada cliente final de un cliente en pausa mandaba un correo «está
+  esperando una respuesta». El número solo de envío sigue como antes.
+  `gate_for` en `runtime/dispatcher.py` y
+  `specs/058-pausa-respeta-audiencia/contracts/turn-gates.md`.
+- **Una espera que ya no es cierta sale sola.** Si una conversación esperaba por
+  una puerta (pausa, saldo, tope, canal, agente sin publicar…), nadie se la había
+  asignado y su contacto escribe ya fuera de la audiencia,
+  `inbox_lifecycle.leave_gate_wait` hace esto:
+  - la pasa a `open` con `out_of_audience`;
+  - deja el evento `released` (`{"why": "out_of_audience", "reason": …}`);
+  - cierra su aviso con `mark_waiting_handled`.
+
+  Lo que pidió una persona, o lo que una persona tomó, se queda como está, con
+  su motivo.
+- **Limpieza de operador** de las esperas que ya existían:
+  `scripts/release_out_of_audience_waits.py`. Va en seco si no se pasa
+  `--apply`, solo actúa en los números con audiencia propia y ningún despliegue
+  la lanza. Cómo se lanza, en `apps/api/RUNBOOK.md`.
+
 ## Lo que la spec 047 cambió aquí (ola 8: Agentes y Negocio; ola 9: corregir respuestas)
 
 Spec [`047-la-fabrica-de-agentes`](../specs/047-la-fabrica-de-agentes/spec.md),

@@ -44,6 +44,13 @@ contar en la campana y sigue en la lista. Se llama tras el commit, en su propia
 sesión de plataforma como ``_notify_waiting``, o dentro de la transacción de quien
 ya tiene una de plataforma (``client_access.set_access``).
 
+**Spec 058 — la audiencia antes que la pausa.** Un contacto fuera de la
+audiencia de su número no espera a nadie, aunque haya una pausa. Si su
+conversación esperaba por una puerta y nadie se la asignó, ``leave_gate_wait``
+la saca de «Espera a una persona» con el motivo ``out_of_audience``. Quien llama cierra su
+aviso con ``mark_waiting_handled``. La espera que pidió una persona, o la que
+una persona tomó, conserva su motivo (la guarda de ``mark_waiting_reason``).
+
 Ninguna función hace commit en la sesión que recibe.
 """
 
@@ -238,6 +245,11 @@ async def mark_waiting_reason(
         # Ya espera a una persona (un escalado, una puerta): que la lleve una
         # persona lo dirá quien la tome, no el siguiente mensaje del contacto.
         return None
+    if reason == "out_of_audience" and conversation.status == ConversationStatus.ESCALATED:
+        # Spec 058 (requisito 2.2): sigue esperando —la pidió una persona, o
+        # una persona se la asignó— y su motivo es el que la Bandeja pinta. Una
+        # espera de puerta sin asignar ya la sacó ``leave_gate_wait``.
+        return None
     conversation.waiting_reason = reason
     if reason in NOT_WAITING:
         await session.flush()
@@ -269,6 +281,37 @@ async def mark_waiting_reason(
         contact=await _contact_name(session, conversation) if has_inbox else None,
         reason=reason,
     )
+
+
+async def leave_gate_wait(session: AsyncSession, conversation: Conversation) -> bool:
+    """Spec 058 (requisito 2.1): el contacto escribe ya fuera de la audiencia
+    de su número. Una espera que abrió una puerta (una pausa, el saldo…) deja
+    de ser cierta: su número no le respondería ni con todo activo, así que no
+    espera a nadie. Deja de esperar, con el motivo ``out_of_audience``.
+
+    Solo si la espera es de puerta y nadie se la asignó: lo que pidió una
+    persona, o lo que una persona tomó a mano, se respeta (requisito 2.2; la
+    misma regla que ``release_escalated_for_tenant``). No avisa ni escribe al
+    contacto (2.3); su aviso pendiente lo cierra quien llama, tras el commit,
+    con ``mark_waiting_handled``. Devuelve si la sacó."""
+    previous = conversation.waiting_reason
+    if (
+        conversation.status != ConversationStatus.ESCALATED
+        or previous not in GATE_REASONS
+        or conversation.assigned_user_id is not None
+    ):
+        return False
+    conversation.status = ConversationStatus.OPEN
+    conversation.waiting_reason = "out_of_audience"
+    await record_event(
+        session,
+        conversation,
+        ConversationEventKind.RELEASED,
+        SYSTEM,
+        {"why": "out_of_audience", "reason": previous},
+    )
+    await session.flush()
+    return True
 
 
 async def release_reason(session: AsyncSession, conversation: Conversation) -> bool:
@@ -521,6 +564,7 @@ __all__ = [
     "SYSTEM",
     "WaitingMark",
     "announce_waiting",
+    "leave_gate_wait",
     "mark_waiting",
     "mark_waiting_handled",
     "mark_waiting_reason",
