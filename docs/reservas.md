@@ -18,11 +18,11 @@ sistema confirma, recuerda, libera y ofrece los huecos a la lista de espera.
 hora. Google Calendar es un espejo: cada profesional conecta el suyo desde Ajustes, su
 ocupado bloquea huecos y sus reservas salen allí como «Ocupado». Sus herramientas no son
 de ningún agente nuevo: todas las `GOOGLECALENDAR_*` están retiradas, con su sustituta si la
-tienen (`agent_spec.retired`), y el paso automático las cambia. El turno se las quita a quien ya
+tienen (`agent_spec.retired`), y el paso a Reservas las cambia cuando un operador lo lanza. El turno se las quita a quien ya
 pasó (`activations.tool_policy`) y deja como estaba al agente de un cliente que todavía no puede
 reservar: quitárselas sin darle Reservas lo dejaría sin agenda. Ese agente se puede seguir editando
 y publicando con lo que ya nombra (`Context.held_tools`), y no añadir nada nuevo. **Calendly**: donde Reservas está
-encendido tampoco reserva (conectarlo no da herramientas, y encender Reservas o el paso automático
+encendido tampoco reserva (conectarlo no da herramientas, y encender Reservas o el paso a Reservas
 dejan un borrador sin él, que no se publica solo); sin Reservas sigue como estaba.
 
 **Reservas es la única agenda de los agentes** (spec
@@ -98,13 +98,15 @@ transacción del admin** (`services/reservations/admin.py: as_tenant`: cambia al
 rol `nexus_app` y vuelve con `RESET ROLE`): la sesión del admin trabaja sin RLS y
 las consultas del dominio no filtran por tenant a mano.
 
-## El paso automático a Reservas (spec 048)
+## El paso a Reservas, a mano (spec 048)
 
-Para los clientes que todavía reservan con `booking.*`. **Nadie hace nada a
-mano**: corre en cada despliegue, en la tarea de migración, después de `alembic
-upgrade head` y del sembrado de conectores (`scripts/release.sh` →
-`scripts/pass_booking_to_reservas.py` → `services/reservations/auto_pass.py`).
-No hay pantalla ni rutas para hacerlo a mano (requisito 3.8).
+Para los clientes que todavía reservan con `booking.*`. **Ningún despliegue lo
+lanza** (requisito 3.1, enmendado el 2026-11-10: «las reservas se deben activar
+manualmente»). Hasta esa fecha corría en la tarea de migración y activaba
+Reservas solo. Ahora es una orden del operador, que se lanza a propósito
+(`scripts/pass_booking_to_reservas.py` → `services/reservations/auto_pass.py`;
+cómo, en `RUNBOOK.md`). No hay pantalla ni rutas en el panel (requisito 3.8).
+Quien no pase sigue reservando con `booking.*` (requisito 5.3).
 
 - **Quién.** Cada cliente con algún agente activo cuya versión activa o cuyo
   borrador nombra `booking.*` o una herramienta de Google Calendar (herramientas,
@@ -113,7 +115,7 @@ No hay pantalla ni rutas para hacerlo a mano (requisito 3.8).
   reservar** (`passing.not_ready`: módulo, horario, equipo y servicios, o aforo). Si no, no se
   enciende ni se publica nada: el agente sigue como está, se registra
   `reservations.auto_pass_not_ready` con las razones, se avisa al partner
-  (`reservas.pass_not_ready`) y el panel de operador lo enseña en Acceso. El siguiente despliegue
+  (`reservas.pass_not_ready`) y el panel de operador lo enseña en Acceso. La siguiente ejecución
   vuelve a mirar. Se decide agente por agente: otro con `booking.*` pasa igual, y solo entonces se
   enciende el módulo. Un borrador de Calendly que alguien descartó no vuelve mientras siga la misma
   versión activa. La lista de
@@ -173,8 +175,7 @@ No hay pantalla ni rutas para hacerlo a mano (requisito 3.8).
   de nadie); los demás siguen. Al final, una línea
   `reservations.auto_pass_done` con `passed`, `failed`, `failed_tenants`,
   `activated`, `published`, `drafts`, `imported`, `already_imported` y
-  `not_imported`. El guion sale con 0 aunque falle un cliente, y `release.sh`
-  sigue aunque el guion entero reviente: **el despliegue no se para aquí**. El
+  `not_imported`. El guion sale con 0 aunque falle un cliente. El
   runtime sigue ejecutando `booking.*` para quien la tenga (requisito 5.3), y el
   borrado final (T030) se niega en voz alta mientras alguien la nombre.
 - **El historial y las comisiones** (`client.get_history`, `commission.*`)
@@ -186,8 +187,7 @@ Activar Reservas desde la pestaña **Acceso** sigue haciendo el paso a su manera
 publica (va por la puerta) y las citas futuras se importan con su informe
 (`reservations.passed`, `automatic: false`, firmado por el operador).
 
-Qué mirar en el registro del despliegue y cómo repetir el paso: `RUNBOOK.md`,
-«Paso automático a Reservas».
+Cómo lanzarlo y qué mirar en su registro: `RUNBOOK.md`, «Paso a Reservas, a mano».
 
 ## El dominio (`apps/api/src/nexus_api/services/reservations/`)
 
@@ -200,7 +200,7 @@ Qué mirar en el registro del despliegue y cómo repetir el paso: `RUNBOOK.md`,
 | `settings.py` | Valores de partida por modo y tipo; validación de lo que el negocio cambia |
 | `admin.py` | La activación desde el admin |
 | `passing.py` | Pasar a Reservas (spec 048): reescritura `booking.*` → `reservas.*` de borradores y versiones, publicación sin puerta desde la activa, importación de citas, informe y quién sigue con `booking.*` |
-| `auto_pass.py` | El paso automático de cada despliegue (spec 048): activar Reservas por sector o plantilla, un cliente por transacción bajo su RLS, y sus registros `reservations.auto_pass_*` |
+| `auto_pass.py` | El paso a Reservas que lanza el operador (spec 048; ningún despliegue lo lanza desde el 2026-11-10): activar Reservas por sector o plantilla, un cliente por transacción bajo su RLS, y sus registros `reservations.auto_pass_*` |
 | `calendar.py`, `calendar_sync.py` | P3: choques con Google Calendar, la conexión de cada profesional y la sincronización |
 
 **Sin doble reserva.** No hay `EXCLUDE` en la base (el aforo es una suma, y

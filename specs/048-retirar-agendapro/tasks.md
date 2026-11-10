@@ -177,9 +177,13 @@
 
   Hecho (2026-10-30): `docs/reservas.md` («El paso automático a Reservas», Reservas sin depender del acceso, el dominio y el caso de aislamiento nuevo), `apps/api/RUNBOOK.md` (paso 3 y «Paso automático a Reservas»: consulta de Logs Insights, los cuatro eventos y cómo repetirlo), la cabecera de `release.sh` y `docs/consola-lite.md` (los módulos no dependen del acceso para Reservas).
 
+## Fase 3c — Reservas se activa a mano (enmienda del 2026-11-10)
+
+- [X] T031 `release.sh` deja de lanzar `pass_booking_to_reservas.py` (requisito 3.1, enmendado). `T/unit/test_release_uses_direct_db.py::test_a_deploy_never_switches_reservas_on` exige que no lo lance. El guion y `auto_pass.py` dicen que solo se lanzan a mano; `apps/api/RUNBOOK.md` y `docs/reservas.md` al día. _Requisitos: 3.1_
+
 ## Fase 4 — Borrado final de `booking.*` (otra entrega)
 
-- [ ] T030 En un despliegue posterior, cuando `reservations.auto_pass_done` de producción diga que no quedó nadie: migración que borra el servidor
+- [ ] T030 En un despliegue posterior, cuando ninguna versión activa ni borrador de producción nombre `booking.*` (desde la enmienda del 2026-11-10 el paso ya no corre al desplegar: se comprueba con una consulta o lanzando el guion): migración que borra el servidor
   `booking`, sus filas y `appointments`, con la guarda del requisito 5.2; sacar `appointments`
   del inventario de `test_43`. **No entra en esta rama**: la migración pararía el despliegue si
   alguien aún la nombra.

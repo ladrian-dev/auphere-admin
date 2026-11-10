@@ -1,9 +1,9 @@
-"""Spec 048, T026 — the automatic pass to Reservas at deploy time (requirement 3,
-amended on 2026-10-29; story 3, scenarios 1 to 6).
+"""Spec 048, T026 — the pass to Reservas (requirement 3, amended on 2026-10-29;
+story 3, scenarios 1 to 6).
 
-``release.sh`` runs it after ``alembic upgrade head``. Nobody has to do
-anything: for every client with an active agent whose active version or draft
-names ``booking.*``
+Since the amendment of 2026-11-10 no deploy runs it: an operator launches it on
+purpose (``scripts/pass_booking_to_reservas.py``). Once launched, for every
+client with an active agent whose active version or draft names ``booking.*``
 
 - if the client has no Reservas, it is turned on — capacity (restaurant) when
   the business is a restaurant (saved sector, or else the agent's template),
@@ -605,7 +605,7 @@ async def test_a_failing_client_is_rolled_back_alone_and_logged(
 async def test_the_release_script_runs_the_pass_and_exits_zero(
     db_session, console_world, monkeypatch
 ) -> None:
-    """``scripts/pass_booking_to_reservas.py``, as ``release.sh`` calls it: it
+    """``scripts/pass_booking_to_reservas.py``, as an operator launches it: it
     passes who it can and exits 0 even if a client fails."""
     import importlib.util
     from pathlib import Path

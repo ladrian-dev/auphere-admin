@@ -1,20 +1,21 @@
-"""Spec 048 (requirement 3; T028) — the automatic pass to Reservas.
+"""Spec 048 (requirement 3; T028) — the pass to Reservas, by hand only.
 
-Called by ``apps/api/scripts/release.sh`` in the migration task, after
-``alembic upgrade head`` and the connectors seed. Every client with an active
-agent whose active version or draft names ``booking.*`` passes to Reservas,
-each one in its own transaction under its RLS
+**No deploy runs it** (requirement 3, amended on 2026-11-10: Reservas is
+switched on by hand). Until then ``release.sh`` called it in the migration
+task. Run it only on purpose: every client with an active agent whose active
+version or draft names ``booking.*`` passes to Reservas — the module is switched
+on and the agent's active version is published with ``reservas.*`` without the
+test gate — each one in its own transaction under its RLS
 (``services/reservations/auto_pass.py``).
 
 It goes to the DIRECT database, like Alembic: the pooler's name does not
-resolve in that task (``get_direct_engine``).
+resolve in a one-off task (``get_direct_engine``).
 
 It exits 0 even when a client fails: that client is rolled back alone and
 logged (``reservations.auto_pass_failed``), and the summary is
-``reservations.auto_pass_done``. Only a crash outside a client exits 1, and
-``release.sh`` goes on anyway: the deploy never stops here.
+``reservations.auto_pass_done``. Only a crash outside a client exits 1.
 
-Manual usage (it can be repeated: a client that already passed is skipped)::
+Usage (it can be repeated: a client that already passed is skipped)::
 
     uv run --directory apps/api python scripts/pass_booking_to_reservas.py
 """

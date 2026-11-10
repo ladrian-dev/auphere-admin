@@ -4,8 +4,10 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Spec 048 (requirement 3.8; T027): the pass to Reservas is automatic — it runs
- * in every deploy (`scripts/pass_booking_to_reservas.py`). The panel has no
+ * Spec 048 (requirement 3.8; T027): the panel never passes a client to
+ * Reservas. Since the amendment of 2026-11-10 no deploy does either: Reservas is
+ * switched on by hand from Acceso, and `scripts/pass_booking_to_reservas.py` is
+ * an operator tool launched on purpose. The panel has no
  * screen, button, breadcrumb or call to pass a client by hand: no
  * `/tenants/legacy-booking`, no `GET /admin/reservas/legacy-booking`, no
  * `POST /admin/tenants/{id}/reservas/pass`.
