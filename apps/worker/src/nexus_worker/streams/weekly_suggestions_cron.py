@@ -1,6 +1,14 @@
 """Las sugerencias semanales de cada agente, en el planificador — spec 047, T174
 (requisitos 51.3, 51.5 y 51.6; research D34).
 
+**Retirado del arranque el 2026-11-10** (spec 047, criterio 51.7). El owner
+decidió que el agente se mejore solo en vez de avisar al partner, así que ningún
+servicio arranca este cron (``bootstrap.py``). El módulo y sus pruebas se quedan
+para que la spec que lo rehaga decida qué aprovecha. Si lo vuelves a arrancar,
+mira antes el plazo: ``default_complete`` usa los 30 s por defecto del
+proveedor. En producción, una semana real no cabía y la llamada se cortaba
+tres veces.
+
 Cada hora, una pasada por los agentes publicados de los clientes de partners con
 la consola nueva: a cada uno al que aún no se le leyó la semana pasada (de lunes a
 lunes, UTC) se le leen sus conversaciones **dentro de su cliente** y se le

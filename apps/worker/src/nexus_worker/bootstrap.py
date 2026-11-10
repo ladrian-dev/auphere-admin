@@ -116,7 +116,6 @@ from nexus_worker.streams.wallet_crons import (
     run_ledger_reconciliation_cron,
 )
 from nexus_worker.streams.wallet_renewal_cron import run_wallet_renewal_cron
-from nexus_worker.streams.weekly_suggestions_cron import run_weekly_suggestions_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 from nexus_worker.streams.workflow_pack_cron import run_workflow_pack_cron
 
@@ -223,9 +222,8 @@ SCHEDULER_TASK_NAMES = frozenset(
         "bag-refill-cron",
         "bag-alerts-cron",
         "ledger-reconciliation-cron",
-        # Spec 047 (T174): las sugerencias semanales de cada agente, dentro de su
-        # cliente. Sin persona y con modelo: del planificador, no del runner.
-        "weekly-suggestions-cron",
+        # Spec 047, 51.7 (enmienda del 2026-11-10): las sugerencias semanales
+        # (``weekly-suggestions-cron``) ya no arrancan. El módulo se queda.
     }
 )
 
@@ -594,7 +592,6 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("bag-refill-cron", run_bag_refill_cron(stop=ctx.stop)),
         _spawn("bag-alerts-cron", run_bag_alerts_cron(stop=ctx.stop)),
         _spawn("ledger-reconciliation-cron", run_ledger_reconciliation_cron(stop=ctx.stop)),
-        _spawn("weekly-suggestions-cron", run_weekly_suggestions_cron(stop=ctx.stop)),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.

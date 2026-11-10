@@ -765,7 +765,7 @@ describe("la pantalla del agente · como el prototipo", () => {
     );
     const top = container.querySelector("[data-slot=performance-top]") as HTMLElement;
     expect(within(top).getByRole("region", { name: "Últimos 30 días" })).toBeVisible();
-    expect(within(top).getByRole("region", { name: "Sugerencias de esta semana" })).toBeVisible();
+    expect(within(top).getByRole("region", { name: "Correcciones del negocio" })).toBeVisible();
     expect(within(top).getByText(/tope 15,00/)).toBeVisible();
     expect(container.querySelector("[data-slot=performance-chart]")).not.toBeNull();
   });

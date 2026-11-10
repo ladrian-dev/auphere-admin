@@ -2434,6 +2434,20 @@ mensajes no lo recuerda cada día.
 - [x] T245 `publish`: lo que ninguna prueba arregla para el trabajo antes de pasarlas (`stopped_before_testing`). _Requisitos: 68.13_
 - [x] T246 Un cambio de Auphere devuelve la pasada: `agents.tests_pass_returned_at` en la migración `0220` y `billing.return_the_pass` en `passing.py`. _Requisitos: 68.14_
 
+## Fase 30 — Enmienda del 2026-11-10: sin sugerencias semanales (criterio 51.7)
+
+La primera pasada en producción falló por el plazo del proveedor y el owner decidió retirarlas por ahora: el agente debe mejorarse solo, no avisar al partner. Se retira lo que se genera y lo que se avisa. Rendimiento, las correcciones de la Bandeja, la tabla, la librería, el módulo del cron y sus pruebas se quedan (spec, sesión 2026-11-10).
+
+- [x] T247 Pruebas primero, en rojo:
+  - `wk/tests/unit/test_bootstrap_split.py`: `weekly-suggestions-cron` no está en ninguna familia ni en lo que arrancan las fábricas.
+  - `apps/console/src/components/builder/__tests__/agent-improvements.test.tsx`: «Mejoras» sin sugerencias no promete ninguna.
+  _Requisitos: 51.7_
+- [x] T248 Worker: `weekly-suggestions-cron` sale de `SCHEDULER_TASK_NAMES` y de `scheduler_tasks`. El módulo se queda con una nota de que no arranca. _Requisitos: 51.7_
+- [x] T249 Consola: el título y el estado vacío de «Mejoras» hablan de las correcciones del negocio, no de sugerencias de la semana. _Requisitos: 51.7_
+- [x] T250 Contratos y documentos: `contracts/console-api.md` (mejoras), `contracts/events.md` (`agent.suggestions.ready` ya no se emite) `docs/modelos-y-router.md` y `docs/console.md`. _Requisitos: 51.7_
+
+  Entregado el 2026-11-10, sin commit. Verde: `test_bootstrap_split.py` (6), `agent-improve.test.tsx` y `agent-builder.test.tsx` con las de i18n (149), `verify.sh lint`, `tsc` y eslint de lo tocado.
+
 ---
 
 ## Dependencias y orden
