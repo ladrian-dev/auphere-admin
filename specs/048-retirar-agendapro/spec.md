@@ -1,6 +1,6 @@
 # Especificación: retirar AgendaPro y dejar Reservas como la única agenda de los agentes
 
-**Rama**: `047-lista-para-staging` (va junto con la enmienda del 2026-10-29 de la spec 047, y se fusiona antes que sus tareas de guías del sector) · **Creada**: 2026-10-29 · **Estado**: Borrador. Decidido por el owner el 2026-10-29; sin marcas abiertas. **Enmendada el 2026-10-29 (tarde)**: el paso a Reservas es automático (requisito 3).
+**Rama**: `047-lista-para-staging` (va junto con la enmienda del 2026-10-29 de la spec 047, y se fusiona antes que sus tareas de guías del sector) · **Creada**: 2026-10-29 · **Estado**: Borrador. Decidido por el owner el 2026-10-29; sin marcas abiertas. **Enmendada el 2026-10-29 (tarde)**: el paso a Reservas es automático (requisito 3). **Enmendada el 2026-11-10**: ningún despliegue activa Reservas ni publica agentes; Reservas se activa a mano (requisito 3).
 
 **Entrada**: decisión del owner del 2026-10-29, en la conversación de la auditoría del constructor: «Elimina AgendaPro del todo porque no lo estamos usando y no es requerido por ahora; cualquier cliente que necesite agenda utilizará el módulo de agenda que construimos de forma nativa. Así el agente podrá usar los endpoints internos de la agenda cuando se requiera algo.»
 
@@ -33,6 +33,10 @@ Además hay **dos agendas propias**:
 - Q: ¿El paso a Reservas lo hace el operador desde una pantalla del panel? → A: **No, es automático** (owner, 2026-10-29: «No, hazlo automáticamente. Nadie está usando AgendaPro»). Corre en cada despliegue, después de las migraciones, y publica solo la versión con `reservas.*`. La pantalla y sus rutas se quitan.
 - Q: ¿Qué hace el paso con un cliente que tiene agentes con `booking.*` y no tiene Reservas? → A: **Le activa Reservas** (owner, 2026-10-29): en aforo si el negocio es un restaurante y en citas por persona en cualquier otro caso. Reservas empieza vacía: hasta que se carguen servicios y personas, el agente no encuentra huecos y pasa la petición al equipo.
 
+### Session 2026-11-10
+
+- Q: Al preparar el paso de `develop` a producción, ¿debe el despliegue seguir activando Reservas a quien nombra `booking.*`? → A: **No** (owner, 2026-11-10: «las reservas se deben activar manualmente, no automáticamente»; ningún cliente de producción usa hoy Reservas y ninguno debe tenerlo activado). `release.sh` deja de ejecutar el paso. Reservas se activa a mano, cliente a cliente (Acceso, o «Gestiona citas» en un agente, spec 057). El guion `pass_booking_to_reservas.py` queda como herramienta del operador, que solo se lanza a propósito. Quien siga nombrando `booking.*` sigue ejecutándolo (requisito 5.3), y el borrado final espera a que nadie la nombre (requisito 5.2).
+
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
 ### Historia 1 — AgendaPro deja de existir (Prioridad: P1)
@@ -61,6 +65,8 @@ El constructor, las plantillas y «Empezar desde una plantilla» dan a un agente
 2. **Dado** un borrador que añade `booking.create_appointment`, **cuando** se valida, **entonces** se rechaza con el código `tool_retired` y la herramienta de Reservas que la sustituye.
 
 ### Historia 3 — Los agentes con `booking.*` pasan solos a Reservas al desplegar (Prioridad: P1)
+
+*(Enmendada el 2026-11-10: ya no corre al desplegar. Lo que sigue describe el guion `pass_booking_to_reservas.py` cuando un operador lo lanza a propósito; ver el requisito 3.1.)*
 
 *(Enmendada el 2026-10-29: era una acción del operador; ahora es automática.)* Nadie tiene que hacer nada. En cada despliegue, después de las migraciones, el sistema busca los agentes que aún nombran `booking.*`. Si su cliente no tiene Reservas, se lo activa. Después publica para cada agente una versión igual a la activa, con `reservas.*` en lugar de `booking.*`, e importa las citas futuras. Si el partner tenía un borrador, también se reescribe, pero no se publica.
 
@@ -126,13 +132,15 @@ Cuando ninguna versión de ningún agente nombra `booking.*`, una migración bor
 
 ### Requisito 3 — Pasar solos a Reservas a quien usa `booking.*`
 
+*(Enmendado el 2026-11-10 por decisión del owner: ningún despliegue activa Reservas ni publica agentes. Cambia el criterio 1; los demás describen el paso cuando un operador lanza el guion a propósito.)*
+
 *(Enmendado el 2026-10-29 por decisión del owner: el paso es automático. Sustituye a la versión con pantalla del operador.)*
 
 **Historia de usuario:** Como Auphere, quiero que los agentes que reservan con `booking.*` pasen solos a Reservas al desplegar, sin trabajo manual y sin perder citas, para retirar la agenda vieja.
 
 #### Criterios de aceptación
 
-1. WHEN termina `alembic upgrade head` en un despliegue THEN `release.sh` DEBE ejecutar el paso automático sobre cada cliente con algún agente activo cuya versión activa o cuyo borrador nombre `booking.*`.
+1. WHEN termina `alembic upgrade head` en un despliegue THEN `release.sh` NO DEBE ejecutar el paso ni activar Reservas ni publicar ninguna versión de ningún agente. *(Enmendado el 2026-11-10. Decía: «`release.sh` DEBE ejecutar el paso automático sobre cada cliente con algún agente activo cuya versión activa o cuyo borrador nombre `booking.*`».)* WHEN un operador lanza `scripts/pass_booking_to_reservas.py` THEN el paso DEBE correr sobre cada cliente con algún agente activo cuya versión activa o cuyo borrador nombre `booking.*`, con los criterios 2 a 7.
 2. IF el cliente no tiene Reservas activado THEN el paso DEBE activarlo primero, con los valores de partida del modo. El modo es aforo, de tipo restaurante, si el negocio es un restaurante; se mira el sector guardado (spec 047, requisito 57) o, si no lo hay, la plantilla de la que viene su agente. En cualquier otro caso, citas por persona.
    - El agente DEBE poder reservar con `reservas.*`. Una vista de la agenda para el partner en su consola no existe y queda fuera de esta spec (`plan.md`, decisión 24): la agenda la ve el negocio, en la consola lite y en la app, cuando se le abra el acceso.
    - El paso NO DEBE abrir el acceso de las personas del cliente ni mandar invitaciones si no estaban.

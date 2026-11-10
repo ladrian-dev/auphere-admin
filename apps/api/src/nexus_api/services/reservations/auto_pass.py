@@ -1,9 +1,7 @@
-"""The automatic pass to Reservas at deploy time — spec 048, requirement 3
-(amended on 2026-10-29; plan, decisions 11 to 16).
-
-``release.sh`` runs ``scripts/pass_booking_to_reservas.py`` in the migration
-task, after ``alembic upgrade head`` and the connectors seed. Nobody does
-anything by hand:
+"""The pass to Reservas — spec 048, requirement 3 (amended on 2026-10-29;
+plan, decisions 11 to 16; and on 2026-11-10: **no deploy runs it**, Reservas is
+switched on by hand). It runs only when an operator launches
+``scripts/pass_booking_to_reservas.py`` on purpose. Once launched:
 
 1. The clients are listed with the migrations role — only their ids. Then each
    one passes in **its own transaction, under its RLS** (``admin.as_tenant``):
@@ -11,11 +9,11 @@ anything by hand:
 2. A client passes when some active agent's active version or draft names
    ``booking.*`` or a Google Calendar tool or, where Reservas is on, books through a
    connector (``passing.legacy_client``; spec 043, requirement 11); otherwise it is
-   skipped, so the next deploy finds nobody.
+   skipped, so the next run finds nobody.
 3. **What books in Google only passes if the client can already book** (spec 043, R11.4). If it
    cannot, that agent goes on as it was, the log says why
    (``reservations.auto_pass_not_ready``), the partner is told and the operator panel shows it.
-   The next deploy looks again. Publishing would leave a business that books with Google
+   The next run looks again. Publishing would leave a business that books with Google
    answering that there is no agenda. It is decided agent by agent: another one with
    ``booking.*`` passes all the same, and only then is the module switched on.
    Without Reservas, for ``booking.*``, it is turned on first (:func:`turn_on_reservas`): capacity
@@ -33,12 +31,12 @@ anything by hand:
    (``reservations.auto_pass_failed``, with ``tenant_id`` and the error type —
    no personal data); the others go on. The end is one line,
    ``reservations.auto_pass_done``, with the counts: the signal the final
-   deletion of ``booking.*`` (T030) waits for. The deploy never stops here: the
+   deletion of ``booking.*`` (T030) waits for. A failure never stops the run: the
    runtime still runs ``booking.*`` for whoever keeps it (requirement 5.3), and
    that deletion refuses loudly while someone still names it (5.2).
 
 The sector is only **read** here (``sector_key``): no identification is queued
-and no model is called during a deploy.
+and no model is called during the run.
 """
 
 from __future__ import annotations

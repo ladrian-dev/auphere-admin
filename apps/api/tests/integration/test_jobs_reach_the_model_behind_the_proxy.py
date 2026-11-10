@@ -178,9 +178,23 @@ async def _publish(s: Sweep) -> None:
     assert resp.status_code == 202, resp.text
 
 
+async def _agenda_text(s: Sweep) -> None:
+    """Spec 057 (T027): encender la agenda de un agente estructurado desde la consola
+    enciende Reservas y encola la propuesta de su texto de citas."""
+    agent_id = await _agent(s)
+    resp = await s.client.put(
+        f"/console/clients/{s.biz.ref}/agents/{agent_id}/agenda",
+        json={"enabled": True, "reservas": {"mode": "services"}},
+        headers=s.biz.headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["proposal_reason"] is None, resp.json()
+
+
 #: Lo mínimo para que cada tipo llegue a su modelo. Un tipo registrado sin mundo
 #: aquí es un trabajo que nadie ha visto salir por el proxy.
 WORLDS: dict[str, Callable[[Sweep], Awaitable[None]]] = {
+    "agenda_text": _agenda_text,
     "agent_draft": _agent_draft,
     "client_builder": _client_builder,
     "client_read": _client_read,

@@ -54,11 +54,11 @@ echo "release: seeding connectors catalog"
 # igual que Alembic: aquí el nombre del pooler no resuelve.
 python /app/apps/api/scripts/seed_connectors.py
 
-echo "release: passing booking.* agents to Reservas"
-# Spec 048 (requirement 3.7): a failure here is logged and the deploy goes on.
-# DIRECT database too.
-if ! python /app/apps/api/scripts/pass_booking_to_reservas.py; then
-  echo "release: WARNING the pass to Reservas crashed; the deploy goes on (see reservations.auto_pass_* in this log)"
-fi
+# Spec 048, requirement 3 (amended 2026-11-10): a deploy never switches
+# Reservas on nor publishes an agent. Here ran ``pass_booking_to_reservas.py``,
+# which turned Reservas on for every client whose agents named ``booking.*``
+# and published their versions without the test gate. Reservas is switched on
+# by hand, client by client (Acceso, or «Gestiona citas» on an agent); the
+# script stays as an operator tool that is only run on purpose.
 
 echo "release: done"

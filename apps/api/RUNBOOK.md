@@ -481,27 +481,27 @@ Aforo). Activarlo prepara el borrador de cada agente con `reservas.*`; se
 publica por la puerta. No hay agenda de terceros que conectar.
 
 Un cliente que todavía reserva con `booking.*` (la agenda de antes, en
-`appointments`, que el negocio no ve) **pasa solo** a Reservas en el siguiente
-despliegue: no hay nada que hacer a mano (abajo, «Paso automático a Reservas»).
+`appointments`, que el negocio no ve) **sigue reservando con ella**: ningún
+despliegue lo pasa a Reservas (spec 048, requisito 3, enmendado el 2026-11-10).
+Reservas se activa a mano, cliente a cliente. Si se quiere pasar de golpe a
+todos los que la nombran, existe el guion de abajo, que solo se lanza a propósito.
 
-### Paso automático a Reservas (spec 048)
+### Paso a Reservas, a mano (spec 048)
 
-Corre en **cada despliegue**, en la tarea de migración, después de `alembic
-upgrade head` y del sembrado de conectores (`scripts/release.sh` →
-`scripts/pass_booking_to_reservas.py`). Pasa a Reservas a cada cliente con algún
+**Ningún despliegue lo lanza** desde el 2026-11-10: hasta entonces corría en la
+tarea de migración y activaba Reservas solo. Ahora es una orden del operador
+(`scripts/pass_booking_to_reservas.py`, abajo cómo). Pasa a Reservas a cada cliente con algún
 agente activo cuya versión activa o borrador nombre `booking.*` o una herramienta de
 Google Calendar o, si ya tiene Reservas, reserve con un conector (spec 043, R11): le activa
 Reservas si no lo tenía (Aforo de restaurante si es un restaurante, citas por
 persona si no; sin abrir el acceso de sus personas), publica la versión activa
 con `reservas.*` sin la puerta (firmada por `platform:reservas-pass`), reescribe
 sin publicar el borrador que la nombre e importa las citas futuras. Detalle y
-contrato del informe en `docs/reservas.md`, «El paso automático a Reservas».
+contrato del informe en `docs/reservas.md`, «El paso a Reservas, a mano».
 
-**Nunca para el despliegue.** Un cliente que falla se deshace solo y los demás
-siguen; el guion sale con 0. Si el guion entero revienta, `release.sh` escribe
-`release: WARNING the pass to Reservas crashed…` y sigue.
+Un cliente que falla se deshace solo y los demás siguen; el guion sale con 0.
 
-**Qué mirar** en el registro de la tarea de migración (CloudWatch
+**Qué mirar** en el registro de la tarea que lo lanzó (CloudWatch
 `/nexus/<entorno>/migrate`, en JSON; con Logs Insights se filtra por `event`):
 
 ```
@@ -511,7 +511,7 @@ fields @timestamp, event, tenant_id, error, passed, failed, failed_tenants,
 | sort @timestamp desc
 ```
 
-- `reservations.auto_pass_done` — una por despliegue, con los recuentos. Con
+- `reservations.auto_pass_done` — una por ejecución, con los recuentos. Con
   `passed = 0` y `failed = 0` no quedaba nadie con `booking.*`: es la señal que
   espera el borrado final (T030 de la spec 048).
 - `reservations.auto_passed` — una por cliente pasado, con su `tenant_id`.
@@ -523,18 +523,19 @@ fields @timestamp, event, tenant_id, error, passed, failed, failed_tenants,
 - `reservations.auto_pass_not_ready` — el agente reserva en Google y el cliente aún no
   puede tomar una cita, con `tenant_id` y `reasons` (`reservas_off`, `hours_missing`,
   `no_staff`, `no_services`, `no_bookable_service`, `no_capacity`). Ese agente no se ha
-  tocado, y otro del mismo cliente con `booking.*` pasa igual: el partner tiene un aviso, y el panel de operador lo enseña en Acceso. Pasa solo en el
-  siguiente despliegue cuando esté listo. `not_ready` en `auto_pass_done` los cuenta.
+  tocado, y otro del mismo cliente con `booking.*` pasa igual: el partner tiene un aviso, y el panel de operador lo enseña en Acceso. Pasa en la
+  siguiente ejecución cuando esté listo. `not_ready` en `auto_pass_done` los cuenta.
 - `reservations.pass_failed` en la auditoría del cliente — el paso falló y se deshizo; el
-  agente sigue como estaba. **No hay alarma de `auto_pass_failed`**: mirarlo tras cada despliegue.
+  agente sigue como estaba. **No hay alarma de `auto_pass_failed`**: mirarlo tras cada ejecución.
 
 En la auditoría de cada cliente pasado queda `reservations.passed` (con
 `automatic: true`), con las versiones publicadas, los borradores reescritos y
 las citas que no se importaron y por qué. Esas citas siguen en `appointments`.
 
-**Repetirlo** es seguro: un cliente que ya pasó se salta, y nada se duplica. Lo
-hace el siguiente despliegue o, sin esperar, la misma tarea de migración con el
-guion como orden (mismos parámetros de red que `deploy-staging.yml`):
+**Cómo se lanza**, y repetirlo es seguro (un cliente que ya pasó se salta y nada
+se duplica): la tarea de migración con el guion como orden (mismos parámetros de
+red que `deploy-staging.yml`). En producción, ningún cliente debe tener Reservas
+sin que se haya decidido para él: no se lanza sin esa decisión.
 
 ```bash
 aws ecs run-task --cluster <cluster> --task-definition <migrate_task_def> \

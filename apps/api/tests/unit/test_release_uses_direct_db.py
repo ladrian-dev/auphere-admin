@@ -93,14 +93,14 @@ def test_the_seeder_asks_for_the_direct_engine():
     assert "get_engine()" not in source, "el sembrador del release no debe ir por el pooler"
 
 
-# ── Spec 048 (T028): the automatic pass to Reservas, in the same task ──────
+# ── Spec 048 (T028, amended 2026-11-10): the pass to Reservas, by hand only ─
 
 AUTO_PASS = SCRIPTS / "pass_booking_to_reservas.py"
 RELEASE = SCRIPTS / "release.sh"
 
 
 def test_the_auto_pass_asks_for_the_direct_engine():
-    """It runs in the release task, like the seeder: it goes to the direct database."""
+    """It runs as a one-off task, like the seeder: it goes to the direct database."""
     spec = importlib.util.spec_from_file_location("pass_booking_to_reservas_wiring", AUTO_PASS)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -112,10 +112,11 @@ def test_the_auto_pass_asks_for_the_direct_engine():
     assert "get_sessionmaker()" not in source
 
 
-def test_release_runs_the_pass_after_the_migrations_and_never_aborts_on_it():
-    """After ``alembic upgrade head`` and the seeding (requirement 3.1), and a
-    failure of the pass never stops the deploy (3.7): the script exits 0 even if
-    a client fails, and ``release.sh`` goes on even if the whole script crashes."""
+def test_a_deploy_never_switches_reservas_on():
+    """Requirement 3.1 as amended on 2026-11-10: Reservas is switched on by
+    hand. ``release.sh`` migrates and seeds the connectors, and never runs the
+    pass to Reservas, which turned the module on and published agents without
+    the test gate."""
     lines = [line.strip() for line in RELEASE.read_text().splitlines()]
     code = [line for line in lines if line and not line.startswith(("#", "echo "))]
 
@@ -124,9 +125,6 @@ def test_release_runs_the_pass_after_the_migrations_and_never_aborts_on_it():
         assert len(found) == 1, (fragment, found)
         return found[0]
 
-    alembic = at("alembic upgrade head")
-    seed = at("scripts/seed_connectors.py")
-    auto = at("scripts/pass_booking_to_reservas.py")
-    assert alembic < seed < auto
-    call = code[auto]
-    assert call.startswith("if ! ") or "||" in call, call
+    assert at("alembic upgrade head") < at("scripts/seed_connectors.py")
+    assert not [line for line in code if "pass_booking_to_reservas" in line]
+    assert not [line for line in code if "reservations" in line or "auto_pass" in line]
