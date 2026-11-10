@@ -18,7 +18,17 @@ from datetime import UTC, datetime
 from urllib.parse import quote
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Path,
+    UploadFile,
+    status,
+)
 from fastapi.responses import Response
 from redis.asyncio import Redis
 
@@ -27,15 +37,17 @@ from nexus_api.db.models import (
     AuditLog,
     Channel,
     Conversation,
+    Customer,
     Message,
     MessageDirection,
     MessageStatus,
 )
-from nexus_api.services.inbox_view import PLAYGROUND_PROVIDER
+from nexus_api.services import lite_send_idempotency as idempotency
+from nexus_api.services.inbox_view import _in_inbox, _shown_message
 from nexus_api.services.media_storage.storage import MediaStorageError, get_media_storage
 
 from .deps import LiteScope, lite_scope
-from .inbox import SentOut, _can_send, _conversation, _publish
+from .inbox import SentOut, _answer_prior, _can_send, _conversation, _insert_once, _publish, _sent
 
 router = APIRouter(prefix="/inbox")
 
@@ -91,7 +103,9 @@ async def read_media(
             sa.select(Message)
             .join(Conversation, Conversation.id == Message.conversation_id)
             .join(Channel, Channel.id == Conversation.channel_id)
-            .where(Message.id == message_id, Channel.provider != PLAYGROUND_PROVIDER)
+            # Spec 045: solo lo que la Bandeja enseña. El id llega por el
+            # stream y la ruta no pasa por la conversación (/cso CSO-002).
+            .where(Message.id == message_id, _in_inbox(), _shown_message())
         )
     ).scalar_one_or_none()
     if msg is None or not msg.media_s3_key:
@@ -116,6 +130,43 @@ async def read_media(
     )
 
 
+@router.get("/conversations/{conversation_id}/avatar")
+async def read_avatar(
+    conversation_id: uuid.UUID = Path(...),
+    scope: LiteScope = Depends(lite_scope("inbox")),
+) -> Response:
+    """The profile picture of the person in this conversation (Instagram /
+    Messenger; owner, 2026-10-30), streamed like a message's media: RLS
+    decides whose it is and no storage link reaches the browser."""
+    key = (
+        await scope.session.execute(
+            sa.select(Customer.avatar_s3_key)
+            .join(Conversation, Conversation.customer_id == Customer.id)
+            .join(Channel, Channel.id == Conversation.channel_id)
+            .where(Conversation.id == conversation_id, _in_inbox())
+        )
+    ).scalar_one_or_none()
+    if not key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar")
+    try:
+        body, content_type = await get_media_storage().get_object(key)
+    except MediaStorageError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar") from None
+    declared = (content_type or "").split(";")[0].strip().lower()
+    if not declared.startswith("image/") or declared not in INLINE_TYPES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar")
+    return Response(
+        content=body,
+        media_type=declared,
+        headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+        },
+    )
+
+
 @router.post(
     "/conversations/{conversation_id}/attachments",
     response_model=SentOut,
@@ -123,12 +174,17 @@ async def read_media(
     responses={413: {"description": "Too large"}, 415: {"description": "Type not allowed"}},
 )
 async def send_attachment(
+    response: Response,
     conversation_id: uuid.UUID = Path(...),
     file: UploadFile = File(...),
     caption: str | None = Form(default=None, max_length=1024),
     scope: LiteScope = Depends(lite_scope("inbox")),
     redis: Redis = Depends(get_redis),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> SentOut:
+    """Envía un archivo. Con ``Idempotency-Key`` (spec 031, R6.4) un reintento
+    no lo sube ni lo manda otra vez: el replay va antes de leer el archivo."""
+    key = idempotency.parse_key(idempotency_key)
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     rule = ALLOWED.get(content_type)
     if rule is None:
@@ -137,13 +193,17 @@ async def send_attachment(
             detail={"code": "type_not_allowed", "allowed": sorted(ALLOWED)},
         )
     kind, limit = rule
+    conv = await _conversation(scope, conversation_id)
+    if key is not None:
+        prior = await idempotency.prior_send(scope.session, key=key, conversation_id=conv.id)
+        if prior is not None:
+            return await _answer_prior(scope, redis, conv, prior, response)
     data = await file.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail={"code": "too_large", "limit_bytes": limit},
         )
-    conv = await _conversation(scope, conversation_id)
     await _can_send(scope, conv)
     stored = await get_media_storage().put_outbound(
         tenant_slug=scope.tenant.slug,
@@ -166,8 +226,12 @@ async def send_attachment(
         media_mime=content_type,
         media_size_bytes=len(data),
         media_filename=file.filename,
+        idempotency_key=key,
     )
-    scope.session.add(msg)
+    raced = await _insert_once(scope, msg, key=key, conversation_id=conv.id)
+    if raced is not None:
+        response.status_code = status.HTTP_200_OK
+        return _sent(raced)
     conv.last_message_at = now
     scope.session.add(
         AuditLog(

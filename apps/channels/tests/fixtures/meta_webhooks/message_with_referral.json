@@ -1,0 +1,51 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "34600000001",
+              "phone_number_id": "106540352242922"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Ana"
+                },
+                "wa_id": "34611000001",
+                "user_id": "ES.100000000000000001"
+              }
+            ],
+            "messages": [
+              {
+                "id": "wamid.BATCH10",
+                "timestamp": "1761760000",
+                "type": "text",
+                "text": {
+                  "body": "Vi su anuncio"
+                },
+                "from": "34611000001",
+                "from_user_id": "ES.100000000000000001",
+                "referral": {
+                  "source_url": "https://fb.me/ad",
+                  "source_id": "120200000000000",
+                  "source_type": "ad",
+                  "headline": "Corte + barba",
+                  "body": "20% esta semana",
+                  "media_type": "image",
+                  "image_url": "https://scontent.example/img.jpg",
+                  "ctwa_clid": "ARAkLkA8rmlFeiCktEJ"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

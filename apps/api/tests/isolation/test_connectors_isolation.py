@@ -176,15 +176,15 @@ async def test_tenant_connector_rls_blocks_cross_tenant_select(
     """Raw SQL check: with set_config(tenant_id=A), selecting tenant_connectors
     must not return tenant B's rows. (Defense-in-depth on top of the API.)
 
-    Uses ``agendapro`` because it's a custom seed (already in DB after
-    ``apply_seeds``). OAuth toolkits like ``googlecalendar`` only land in
+    Uses ``woocommerce`` because it's a custom seed (already in DB after
+    ``apply_seeds``; spec 048 retired the one this used before). OAuth toolkits like ``googlecalendar`` only land in
     the ``connectors`` table after a lazy upsert at initiate-consent time;
     this test exercises RLS directly without going through the endpoint.
     """
     # Insert one row for each tenant directly with row_security off.
     from nexus_api.db.models import Connector
 
-    conn = await db_session.scalar(select(Connector).where(Connector.slug == "agendapro"))
+    conn = await db_session.scalar(select(Connector).where(Connector.slug == "woocommerce"))
     assert conn is not None
 
     await db_session.execute(text("SET LOCAL row_security = off"))

@@ -45,6 +45,21 @@ from nexus_api.db.models import Tenant as TenantModel
 
 pytestmark = pytest.mark.asyncio
 
+
+async def _operator_headers(db_session, admin_headers: dict[str, str]) -> dict[str, str]:
+    """Spec 052: creating a partner needs a person behind it."""
+    from nexus_api.services import operator_identity
+
+    account = await operator_identity.create_account(
+        db_session,
+        email=f"op-{uuid.uuid4().hex[:8]}@auphere.test",
+        password="operator-password-1",
+        role="admin",
+    )
+    await db_session.commit()
+    return {**admin_headers, "X-Operator-Id": str(account.id)}
+
+
 SEED = "cobranza_v1"
 CONNECTOR = "amigable_cobro"
 
@@ -615,6 +630,8 @@ async def test_partner_signup_config_exposes_ids(client, db_session) -> None:
     assert cfg["app_id"]
     assert cfg["coexistence_config_id"]
     assert cfg["cloud_api_config_id"]
+    # Spec 050: the partner learns which Embedded Signup to open.
+    assert cfg["embedded_signup_version"] == "v4"
 
 
 async def test_partner_sets_and_reads_admins(client, db_session) -> None:
@@ -733,19 +750,26 @@ def _assert_platform_audit(row: AuditLog, *, action: str, token: str) -> None:
 async def test_admin_partner_bodies_reject_extra_or_partner_id(
     client, db_session, admin_headers
 ) -> None:
+    op_headers = await _operator_headers(db_session, admin_headers)
     created = await client.post(
         "/admin/partners",
-        headers=admin_headers,
-        json={"name": "Agencia Extra", "slug": "agencia-extra", "ghost_field": "nope"},
+        headers=op_headers,
+        json={
+            "name": "Agencia Extra",
+            "slug": "agencia-extra",
+            "owner_email": "duena@agencia.test",
+            "ghost_field": "nope",
+        },
     )
     assert created.status_code == 422
 
     created_pid = await client.post(
         "/admin/partners",
-        headers=admin_headers,
+        headers=op_headers,
         json={
             "name": "Agencia Extra",
             "slug": "agencia-extra",
+            "owner_email": "duena@agencia.test",
             "partner_id": str(uuid.uuid4()),
         },
     )
@@ -791,8 +815,8 @@ async def test_admin_partner_create_update_and_keys_write_audit_log(
     token = get_settings().admin_token
     created = await client.post(
         "/admin/partners",
-        headers=admin_headers,
-        json={"name": "Audit Agency", "slug": "audit-agency"},
+        headers=await _operator_headers(db_session, admin_headers),
+        json={"name": "Audit Agency", "slug": "audit-agency", "owner_email": "duena@agencia.test"},
     )
     assert created.status_code == 201, created.text
     partner_id = created.json()["id"]
@@ -805,7 +829,10 @@ async def test_admin_partner_create_update_and_keys_write_audit_log(
             )
         )
     ).scalar_one()
-    _assert_platform_audit(create_audit, action="partner.create", token=token)
+    # Spec 052 (R6.1): the person, not a prefix of the panel's token.
+    assert create_audit.tenant_id is None
+    assert create_audit.actor.startswith("operator:op-")
+    assert token not in create_audit.actor
     assert create_audit.after_json is not None
     assert create_audit.after_json["slug"] == "audit-agency"
 

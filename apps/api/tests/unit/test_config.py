@@ -15,6 +15,8 @@ def _set_prod_secrets(monkeypatch):
     # despliegue de producción sin esto no arranca, y esta lista **es** la
     # especificación de lo que un despliegue necesita.
     monkeypatch.setenv("NEXUS_DEVICE_TOKEN_SECRET", "real-device-secret-at-least-32-chars!!")
+    # Spec 031: firma las sesiones de la app Auphere Customers.
+    monkeypatch.setenv("NEXUS_CUSTOMERS_APP_TOKEN_SECRET", "real-customers-app-secret-32-chars!!!")
     monkeypatch.setenv("NEXUS_COMPOSIO_API_KEY", "real-composio-key")
     monkeypatch.setenv("NEXUS_COMPOSIO_WEBHOOK_SECRET", "real-composio-webhook-secret")
     monkeypatch.setenv("NEXUS_PUBLIC_API_BASE_URL", "https://api.auphere.com")
@@ -164,6 +166,18 @@ def test_prod_rejects_the_placeholder_admin_token(monkeypatch):
     with pytest.raises(ValueError) as exc:
         Settings()
     assert "NEXUS_ADMIN_TOKEN" in str(exc.value)
+
+
+def test_prod_rejects_the_placeholder_customers_app_secret(monkeypatch):
+    """Spec 031: el secreto firma la sesión del teléfono de una persona de
+    cliente. Con el valor de fábrica —público en este repositorio— cualquiera
+    podría acuñarla, así que producción no arranca sin uno propio."""
+    monkeypatch.setenv("NEXUS_ENVIRONMENT", "production")
+    _set_prod_secrets(monkeypatch)
+    monkeypatch.delenv("NEXUS_CUSTOMERS_APP_TOKEN_SECRET", raising=False)
+    with pytest.raises(ValueError) as exc:
+        Settings()
+    assert "NEXUS_CUSTOMERS_APP_TOKEN_SECRET" in str(exc.value)
 
 
 def test_prod_rejects_a_password_change_notice_with_nobody_to_write_to(monkeypatch):

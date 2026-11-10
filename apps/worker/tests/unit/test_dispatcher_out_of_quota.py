@@ -1,9 +1,12 @@
-"""Spec 016 (R2.2, R2.6): el turno saltado por falta de cupo avisa al partner.
+"""Spec 016 (R2.2, R2.6) y 047 (requisitos 2.1 y 2.4): sin cupo, la puerta cierra.
 
-El silencio del 31-ago era esto: ``allow_channel_turn`` cerraba la puerta y
-nadie se enteraba. Ahora el despachador llama al aviso por cliente con el
-``tenant_id`` y sigue devolviendo exactamente lo que devolvía; el cliente
-final no recibe nada distinto, y un aviso roto nunca tumba el turno.
+El silencio del 31-ago era ``allow_channel_turn`` cerrando la puerta sin que
+nadie se enterase; y hasta la 047, además, sin guardar el mensaje. Ahora la
+puerta de la bolsa va **después** de guardar (``accept_inbound``), dentro del
+turno, y su motivo es ``no_balance``: la conversación espera a una persona y el
+partner y el cliente reciben el aviso (eso lo prueban, contra la base,
+``apps/api/tests/integration/test_dispatcher_persist_first.py`` y
+``test_dispatcher_reason_notices.py``). Aquí, la puerta sola, sin base.
 """
 
 from __future__ import annotations
@@ -13,64 +16,47 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from nexus_worker.runtime.dispatcher import InboundEvent, _process_inbound
+from nexus_worker.runtime import dispatcher
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
 
-def _event() -> InboundEvent:
-    return InboundEvent(
-        tenant_id=uuid.uuid4(),
-        channel_id=uuid.uuid4(),
-        user_id="+34600000000",
-        content="hola",
-        mark_read=False,
-    )
-
-
-async def test_skipped_turn_notifies_the_partner_and_answers_nothing(monkeypatch) -> None:
+async def test_an_empty_bag_closes_with_its_reason(monkeypatch) -> None:
     from nexus_api.metering import wallet
-    from nexus_api.services import wallet_alerts
 
     monkeypatch.setattr(wallet, "allow_channel_turn", AsyncMock(return_value=False))
-    notify = AsyncMock(return_value=None)
-    monkeypatch.setattr(wallet_alerts, "notify_client_out_of_quota_detached", notify)
-    pipeline = AsyncMock()
+    proxy = AsyncMock(side_effect=AssertionError("the proxy is not even asked"))
+    monkeypatch.setattr("nexus_api.core.llm_proxy.partner_id_for_tenant_standalone", proxy)
 
-    event = _event()
-    out = await _process_inbound(event, pipeline=pipeline)
+    gate, partner = await dispatcher.money_and_model_gate(uuid.uuid4())
 
-    assert out == {"skipped": "wallet_empty"}
-    notify.assert_awaited_once_with(event.tenant_id)
-    pipeline.assert_not_called()
+    assert gate == dispatcher.Gate("wallet_empty", "no_balance")
+    assert partner is None
 
 
-async def test_a_broken_notice_never_costs_the_turns_answer(monkeypatch) -> None:
+async def test_a_bag_with_quota_goes_on_to_the_model(monkeypatch) -> None:
     from nexus_api.metering import wallet
-    from nexus_api.services import wallet_alerts
-
-    monkeypatch.setattr(wallet, "allow_channel_turn", AsyncMock(return_value=False))
-    monkeypatch.setattr(
-        wallet_alerts,
-        "notify_client_out_of_quota_detached",
-        AsyncMock(side_effect=RuntimeError("bd caída")),
-    )
-    assert await _process_inbound(_event(), pipeline=AsyncMock()) == {"skipped": "wallet_empty"}
-
-
-async def test_a_turn_with_quota_does_not_notify(monkeypatch) -> None:
-    from nexus_api.metering import wallet
-    from nexus_api.services import wallet_alerts
 
     monkeypatch.setattr(wallet, "allow_channel_turn", AsyncMock(return_value=True))
-    notify = AsyncMock()
-    monkeypatch.setattr(wallet_alerts, "notify_client_out_of_quota_detached", notify)
-    # Lo primero tras la puerta es el proxy del partner: se corta ahí a
-    # propósito, con un fallo que el test reconoce.
     monkeypatch.setattr(
-        "nexus_api.core.llm_proxy.partner_id_for_tenant_standalone",
-        AsyncMock(side_effect=RuntimeError("stop here")),
+        "nexus_api.core.llm_proxy.partner_id_for_tenant_standalone", AsyncMock(return_value=None)
     )
-    with pytest.raises(RuntimeError, match="stop here"):
-        await _process_inbound(_event(), pipeline=AsyncMock())
-    notify.assert_not_called()
+
+    gate, partner = await dispatcher.money_and_model_gate(uuid.uuid4())
+
+    assert gate is None and partner is None
+
+
+def test_the_bag_is_checked_only_after_the_base_gates() -> None:
+    """Un cliente en pausa sin saldo espera por la pausa, no por el saldo: las
+    puertas de la base deciden antes y la bolsa no llega a mirarse."""
+    paused = dispatcher.TurnFacts(
+        tenant_status=dispatcher.TenantStatus.PAUSED,
+        channel_status=None,
+        send_only_channel=False,
+        has_active_agent=True,
+        ever_had_agent=True,
+        agent_active=True,
+        out_of_audience=False,
+    )
+    assert dispatcher.gate_for(paused) == dispatcher.Gate("tenant_inactive", "paused_client")

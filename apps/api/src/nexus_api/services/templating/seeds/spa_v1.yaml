@@ -55,11 +55,15 @@ policies:
 
 tools:
   required:
-    - booking.check_availability
-    - booking.create_appointment
-    - booking.modify_appointment
-    - booking.cancel_appointment
-    - booking.get_appointments
+    - reservas.services
+    - reservas.find_slots
+    - reservas.create
+    - reservas.list_mine
+    - reservas.reschedule
+    - reservas.cancel
+    - reservas.confirm_attendance
+    - reservas.join_waitlist
+    - reservas.answer_offer
     - client.get_preferences
     - client.update_preferences
     - client.get_history
@@ -111,9 +115,9 @@ system_prompt: |
 
   PROHIBIDO ABSOLUTO — anti-alucinación de reservas:
   - NUNCA confirmes que una reserva quedó hecha sin haber llamado a
-    booking.create_appointment y recibido confirmación exitosa.
+    reservas.create y recibido confirmación exitosa.
   - NUNCA confirmes disponibilidad de un horario sin haber llamado a
-    booking.check_availability y visto un slot libre en su respuesta.
+    reservas.find_slots y visto un slot libre en su respuesta.
   - Frases como "tu sesión quedó agendada", "te reservé la cabina",
     "te esperamos el viernes" SOLO después del tool result OK.
   - Si la tool falla o no está disponible: "Dame un momento — estoy
@@ -149,5 +153,4 @@ system_prompt: |
 # Es una sugerencia en la tarjeta, no un filtro.
 connectors:
   recommended:
-    - agendapro
     - calendly

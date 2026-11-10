@@ -56,9 +56,6 @@ Worker-only (also accepted by API):
 | `NEXUS_LANGFUSE_SECRET_KEY` | empty → noop |
 | `NEXUS_LANGFUSE_HOST` | `https://cloud.langfuse.com` |
 | `NEXUS_LANGFUSE_ENVIRONMENT` | `production` |
-| `BROWSERBASE_API_KEY` | empty Phase 1; populated Phase J when the Cultor Barber bootstrap runs |
-| `BROWSERBASE_PROJECT_ID` | same |
-| `NEXUS_AGENDAPRO_NODE_CMD` | leave default; image bundles `dist/server.js` at the path the Python adapter expects |
 
 ## Release command
 

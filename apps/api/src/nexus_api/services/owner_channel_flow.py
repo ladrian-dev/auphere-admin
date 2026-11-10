@@ -142,6 +142,7 @@ async def _send_owner_reply(
     client = MetaClient(
         app_secret=settings.meta_app_secret,
         require_appsecret_proof=settings.meta_require_appsecret_proof,
+        version=settings.meta_graph_api_version,
     )
     try:
         assert channel.provider_phone_id is not None  # can_send guarantees

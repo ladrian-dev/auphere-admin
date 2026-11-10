@@ -22,6 +22,7 @@ off after N turns" the classifier's verdict is overridden to
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any, cast
 
 import structlog
@@ -29,10 +30,13 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.services.agent_console_policy import (
     ConsolePolicy,
+    SchedulePolicy,
     read_console_policy,
     render_operating_policy,
     turn_cap_reached,
 )
+
+from nexus_worker.runtime.turn_clock import current_now
 
 log = structlog.get_logger(__name__)
 
@@ -51,9 +55,108 @@ def console_policy_of(policies: dict[str, Any] | None) -> ConsolePolicy | None:
         return None
 
 
-def render_operating_policy_block(policies: dict[str, Any] | None) -> str:
+def _clock(at: datetime) -> str:
+    return at.strftime("%A %H:%M")
+
+
+def _ficha_hours_lines(
+    raw: dict[str, Any], *, closed_message: str, now: datetime | None
+) -> list[str] | None:
+    """The business hours of the ficha (spec 047, research D15), computed for
+    this turn: the phrase, «open now?» with night shifts and special dates, and
+    the locations with their own hours. ``None`` when the ficha has no hours —
+    then nothing is claimed here (the compiled block says it, and an older
+    console schedule, if any, still applies)."""
+    from nexus_api.services.business import hours as business_hours
+
+    try:
+        hours = business_hours.load_dumped(raw)
+    except Exception as exc:  # pragma: no cover - the loader built it
+        log.warning("console_context.hours_invalid", error=type(exc).__name__)
+        return None
+    if not hours.known:
+        return None
+    at = now or current_now()
+    locale = str(raw.get("locale") or "es")
+
+    def state_text(h: business_hours.Hours) -> list[str]:
+        state = business_hours.open_state(h, at)
+        local = at.astimezone(h.tz)
+        if state.open and state.until is not None:
+            now_line = (
+                f"  Right now it is {_clock(local)} local time — the business is OPEN "
+                f"until {_clock(state.until)}."
+            )
+        else:
+            nxt = f" It opens next on {_clock(state.next_open)}." if state.next_open else ""
+            now_line = (
+                f"  Right now it is {_clock(local)} local time — the business is CLOSED.{nxt}"
+            )
+        out = [now_line]
+        sp = business_hours.special_on(h, local.date())
+        if sp is not None:
+            what = (
+                "closed all day"
+                if sp.closed
+                else "special hours: " + business_hours.shifts_text(sp.shifts, locale=locale)
+            )
+            name = f" ({sp.name})" if sp.name else ""
+            out.append(f"  Today is a special date{name}: {what}.")
+        return out
+
+    lines = [
+        f"- Business hours (from the business profile, {hours.timezone}): "
+        f"{business_hours.phrase(hours.week, locale=locale)}",
+        *state_text(hours),
+    ]
+    if closed_message:
+        lines.append(f'  When closed, say: "{closed_message}"')
+    else:
+        lines.append(
+            "  When closed, say so, give the next opening time and offer to take a message."
+        )
+    for loc in raw.get("locations") or ():
+        try:
+            own = business_hours.load_dumped(loc["hours"])
+        except Exception:  # pragma: no cover - the loader built it
+            continue
+        if not own.known:
+            continue
+        lines.append(
+            f"- Location «{loc.get('name')}» has its own hours: "
+            f"{business_hours.phrase(own.week, locale=locale)}"
+        )
+        lines.extend(state_text(own))
+    return lines
+
+
+def render_operating_policy_block(
+    policies: dict[str, Any] | None, *, now: datetime | None = None
+) -> str:
+    """The operating block of the turn. Spec 047: the hours come from the
+    business profile (the agent loader puts them in the bundle under
+    ``business.hours.RUNTIME_KEY``), not from ``policies.console.schedule``,
+    which was one of the three copies that did not talk to each other."""
+    from nexus_api.services.business.hours import RUNTIME_KEY
+
     policy = console_policy_of(policies)
-    return render_operating_policy(policy) if policy is not None else ""
+    raw = (policies or {}).get(RUNTIME_KEY)
+    closed_message = policy.schedule.closed_message if policy is not None else ""
+    ficha = (
+        _ficha_hours_lines(raw, closed_message=closed_message, now=now)
+        if isinstance(raw, dict)
+        else None
+    )
+    if ficha is None:
+        return render_operating_policy(policy, now=now) if policy is not None else ""
+    if policy is None:
+        head = "Operating policy (set by the business — follow it):"
+    else:
+        without = policy.model_copy(
+            update={"schedule": SchedulePolicy(timezone=policy.schedule.timezone)}
+        )
+        head = render_operating_policy(without, now=now)
+    return "\n".join([head, *ficha])
 
 
 def _strip_tags(text: str) -> str:
@@ -111,7 +214,8 @@ def render_knowledge_block(docs: list[tuple[str, str]], *, cap: int = KNOWLEDGE_
 
 
 async def load_knowledge_block(tenant_id: uuid.UUID, *, cap: int = KNOWLEDGE_CHAR_CAP) -> str:
-    """Read the tenant's indexed documents (RLS) and render the block."""
+    """Read the tenant's indexed documents of the **business layer** (RLS) and
+    render the block. An agent's own layer never enters here (spec 047, D14)."""
     from nexus_api.db.models import KnowledgeDocument, KnowledgeDocumentStatus
     from sqlalchemy import select
 
@@ -120,11 +224,34 @@ async def load_knowledge_block(tenant_id: uuid.UUID, *, cap: int = KNOWLEDGE_CHA
         rows = (
             await session.execute(
                 select(KnowledgeDocument.title, KnowledgeDocument.content_text)
-                .where(KnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value)
+                .where(
+                    KnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value,
+                    KnowledgeDocument.agent_id.is_(None),
+                    KnowledgeDocument.removed_at.is_(None),
+                )
                 .order_by(KnowledgeDocument.created_at.asc())
             )
         ).all()
     return render_knowledge_block([(t, c or "") for t, c in rows], cap=cap)
+
+
+async def load_knowledge_for_turn(
+    tenant_id: uuid.UUID, agent_id: uuid.UUID | None, query: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """Spec 047 (D14): the knowledge of this agent's turn — the business layer
+    plus its own, never a sibling's — whole if it fits its budget, else the
+    hybrid search; rendered as the same fenced block, with its sources."""
+    from nexus_api.services.knowledge.retrieval import pick
+
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        chosen = await pick(session, tenant_id, agent_id, query)
+    if not chosen.docs:
+        return "", []
+    # ``pick`` already kept to the budget; the margin is for each source's fence.
+    text_chars = sum(len(text) for _, text in chosen.docs)
+    block = render_knowledge_block(chosen.docs, cap=text_chars + 200 * len(chosen.docs) + 1_000)
+    return block, chosen.sources
 
 
 async def load_gated_tool_names(tenant_id: uuid.UUID) -> frozenset[str]:

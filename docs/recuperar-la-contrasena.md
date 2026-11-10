@@ -164,18 +164,26 @@ susto sin la salida: el mismo fallo que la evaluación nombró en `login.forgot`
 
 ## 6 · Recorrerlo en local
 
-`send_email` habla con Resend por HTTP. Para poder recorrer el circuito entero
-en local (CE-006) tiene un **repliegue SMTP** que se enciende **sólo cuando no
-hay clave de Resend y sí hay `NEXUS_SMTP_URL`**. En producción hay clave y no
-hay `SMTP_URL`, así que ese camino no cambia ni un byte.
-
-Se descartó la alternativa fácil —escribir el enlace en los registros en
-desarrollo— porque es cómo un secreto acaba en producción.
+Desde la spec 051 (`docs/correos.md`), en local **no sale ningún correo**: cada
+uno queda en el registro como `email.suppressed`, y el enlace de restablecer va
+en `links.RESET_URL`. Con él se recorre el circuito entero (CE-006). En staging
+los dos correos de la contraseña **sí** salen: son correos de acceso.
 
 ```bash
-docker compose up -d          # mailhog incluido, ya cableado
-# la bandeja: http://localhost:8025
+docker compose up -d
+docker compose logs api | grep email.suppressed
 ```
+
+El repliegue SMTP hacia Mailhog (D-4) se retiró: enviaba el HTML escrito en el
+código, y ese HTML ya no existe. El cuerpo de los dos correos vive en Resend
+(`auphere-password-reset-*` y `auphere-password-changed-*`).
+
+**Lo que la spec 011 descartó, y por qué ahora sí.** Aquí se había rechazado
+escribir el enlace en los registros «porque es cómo un secreto acaba en
+producción». Sigue siendo verdad, y por eso la guardia es la otra mitad de la
+decisión: **producción no arranca en modo registro** (`NEXUS_EMAIL_DELIVERY=log`
+la tumba). El enlace solo llega a los registros de entornos donde la cuenta es
+de prueba y el enlace caduca en una hora.
 
 ---
 

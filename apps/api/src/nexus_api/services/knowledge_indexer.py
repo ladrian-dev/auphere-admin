@@ -25,6 +25,7 @@ from typing import Final
 import httpx
 import structlog
 
+from nexus_api.core.public_http import public_client
 from nexus_api.db.models import KnowledgeErrorCode
 
 log = structlog.get_logger(__name__)
@@ -36,14 +37,28 @@ MAX_REDIRECTS = 5
 
 async def assert_public_url(url: str) -> None:
     """Refuse URLs whose host resolves to a non-public address (loopback,
-    RFC1918, link-local incl. the cloud metadata endpoint, ULA…). Called on
-    the original URL and on every redirect hop."""
+    RFC1918, link-local incl. the cloud metadata endpoint, ULA, NAT64,
+    multicast…) or whose port is not 80 or 443. Called on the original URL and
+    on every redirect hop.
+
+    It is the EARLY check, and it resolves on its own: what actually protects
+    the connection is the transport of :func:`public_client`
+    (``core/public_http.py``), which resolves once, validates every address with
+    the same table (``core/public_addresses.py``) and connects to the one it
+    validated — a DNS that answers differently the second time (rebinding)
+    never reaches a private address (spec 047, T217)."""
     import asyncio
     import ipaddress
     import socket
 
-    parsed = httpx.URL(url)
-    if parsed.scheme not in ("http", "https") or not parsed.host:
+    from nexus_api.core.public_addresses import ALLOWED_PORTS, is_public_address
+
+    try:
+        parsed = httpx.URL(url)
+        port = parsed.port or {"http": 80, "https": 443}.get(parsed.scheme)
+    except (httpx.InvalidURL, ValueError) as exc:
+        raise IndexingError(KnowledgeErrorCode.FETCH_FAILED) from exc
+    if parsed.scheme not in ("http", "https") or not parsed.host or port not in ALLOWED_PORTS:
         raise IndexingError(KnowledgeErrorCode.FETCH_FAILED)
     host = parsed.host.strip("[]")
     try:
@@ -53,8 +68,11 @@ async def assert_public_url(url: str) -> None:
     if not infos:
         raise IndexingError(KnowledgeErrorCode.FETCH_FAILED)
     for info in infos:
-        addr = ipaddress.ip_address(str(info[4][0]).split("%", 1)[0])
-        if not addr.is_global:
+        try:
+            addr = ipaddress.ip_address(str(info[4][0]).split("%", 1)[0])
+        except ValueError as exc:
+            raise IndexingError(KnowledgeErrorCode.FETCH_FAILED) from exc
+        if not is_public_address(addr):
             raise IndexingError(KnowledgeErrorCode.FETCH_FAILED)
 
 
@@ -257,9 +275,10 @@ async def fetch_url(
     own = client is None
     # Redirects are followed BY HAND so every hop is re-validated against
     # the private-network block list (SSRF); the body is streamed and cut at
-    # ``max_bytes`` instead of buffered whole.
-    http = client or httpx.AsyncClient(
-        follow_redirects=False,
+    # ``max_bytes`` instead of buffered whole. The client's transport resolves
+    # once and connects to the address it validated (spec 047, T217): a caller
+    # that passes its own client passes one of these (``public_client``).
+    http = client or public_client(
         timeout=FETCH_TIMEOUT_S,
         headers={"User-Agent": "NexusKnowledge/1.0"},
     )

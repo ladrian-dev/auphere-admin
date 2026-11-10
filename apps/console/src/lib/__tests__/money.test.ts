@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { formatAmount } from "../amount";
 import { formatMoney as fm, formatMoneyCompact as fmc, parseMoney } from "../money";
 
 /** Intl puts a no-break space before the currency; the tests read plain text. */
@@ -13,6 +14,16 @@ describe("money (spec 027)", () => {
     expect(formatMoney(1235, "en")).toBe("$12.35");
     expect(formatMoney(0, "es")).toBe("0,00 US$");
     expect(formatMoney(null)).toBe("—");
+  });
+
+  it("is the one money format of spec 056: US$ cents through `formatAmount`, outputs unchanged", () => {
+    for (const locale of ["es", "en"] as const) {
+      for (const cents of [0, 1, 1235, 150_000, 123_456_789, -500]) {
+        expect(fm(cents, locale)).toBe(formatAmount({ amount_minor: cents, currency: "USD" }, locale));
+      }
+    }
+    expect(formatMoney(150_000, "es")).toBe("1500,00 US$");
+    expect(formatMoney(150_000, "en")).toBe("$1,500.00");
   });
 
   it("compacts only large amounts", () => {

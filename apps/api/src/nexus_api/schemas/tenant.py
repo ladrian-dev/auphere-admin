@@ -9,6 +9,31 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from nexus_api.services.business_hours import BusinessHoursError, maybe_canonical
+
+
+def _business_hours_in(v: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Una sola forma guardada (bug horario-del-negocio-en-tres-formas): se
+    acepta cualquiera de las que existen y se guarda la canónica.
+
+    Spec 047 (T056): también la de la ficha (``{layout, days: {mon: [{open,
+    close}]}}``), la única que admite turnos nocturnos (un cierre igual o
+    anterior a la apertura es del día siguiente). Se valida con el motor del
+    horario y pasa tal cual: el escritor la guarda en la ficha."""
+    if isinstance(v, dict) and "days" in v:
+        from nexus_api.services.business import hours
+
+        try:
+            week = hours.week_of_view(v)
+        except hours.HoursError as exc:
+            raise ValueError(f"{exc.code}: {exc}") from exc
+        return hours.week_view(week)
+    try:
+        return maybe_canonical(v)
+    except BusinessHoursError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 # Slug: lowercase alphanumeric with single hyphens between segments. Mirrors
 # the DNS-safe convention we use across the platform (Cloudflare DNS, Vercel
 # preview deploys). The DB column is UNIQUE so duplicates 409.
@@ -36,7 +61,6 @@ class TenantOut(BaseModel):
     owner_phone: str | None
     owner_email: str | None
     cost_alert_threshold_usd_per_day: Decimal
-    agendapro_public_url: str | None = None
     # Billing (migrations 0054/0057). ``partner_id`` NULL = direct Auphere
     # client. ``billing_plan_id`` gives the subscription; ``price_override_cents``
     # wins over the plan's price; ``billing_effective_from`` is the first month
@@ -65,6 +89,11 @@ class TenantCreateIn(BaseModel):
     owner_phone: str | None = Field(default=None, max_length=32)
     business_hours: dict[str, Any] | None = Field(default=None)
     cost_alert_threshold_usd_per_day: Decimal = Field(default=Decimal("40.00"))
+
+    @field_validator("business_hours")
+    @classmethod
+    def _business_hours_canonical(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _business_hours_in(v)
 
     @field_validator("slug")
     @classmethod
@@ -135,6 +164,11 @@ class TenantUpdateIn(BaseModel):
     owner_phone: str | None = Field(default=None, max_length=32)
     business_hours: dict[str, Any] | None = Field(default=None)
     cost_alert_threshold_usd_per_day: Decimal | None = Field(default=None)
+
+    @field_validator("business_hours")
+    @classmethod
+    def _business_hours_canonical(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _business_hours_in(v)
 
     @field_validator("plan")
     @classmethod

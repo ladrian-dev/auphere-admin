@@ -6,7 +6,7 @@ import { auditView } from "./audit";
  * Spec 030 (T105): the client console, as a person of a client, over the
  * REAL app — same rules as CP-30 (`a11y.spec.ts`) plus the frontier.
  *
- * Needs a client person with Panel, Inbox and Consumo, invited from the
+ * Needs a client person with Panel, Inbox, Reservas and Consumo, invited from the
  * admin's «Acceso» tab (or `apps/api/scripts/dev_seed_client_access.py`).
  * It runs as its own project, signed in once by `client.setup.ts`:
  *
@@ -16,7 +16,23 @@ import { auditView } from "./audit";
  * would write to a real person. It opens, reads and checks what is offered.
  */
 
-const LITE_VIEWS = ["/", "/inbox", "/usage"] as const;
+// Spec 031 (T053): «Tus teléfonos» goes through the same matrix as the modules.
+// Spec 043 (T020, T060): Reservas too, in the mode the seeded client has, with
+// each of its tabs and the list view (the default view alone left them unaudited).
+// Spec 047 (T162, T168): Agentes y Negocio. Un cliente sin esos módulos vuelve a
+// su primer módulo, que también se audita; con la consola nueva los tiene.
+const LITE_VIEWS = [
+  "/",
+  "/inbox",
+  "/agentes",
+  "/negocio",
+  "/reservas",
+  "/reservas?view=list",
+  "/reservas?tab=waitlist",
+  "/reservas?tab=settings",
+  "/usage",
+  "/account/phones",
+] as const;
 /** The console speaks these two; the cookie is the explicit choice and wins. */
 const LOCALES = ["es", "en"] as const;
 /** The theme follows the system by default (`ThemeProvider`, `defaultTheme="system"`). */
@@ -31,14 +47,28 @@ async function inLocaleAndScheme(page: Page, baseURL: string | undefined, locale
 }
 
 test.describe("spec 030 — la consola del cliente", () => {
-  test("the sidebar is the client's: lite, its modules, nothing of the partner", async ({ page }) => {
+  test("the sidebar is the client's: Beta, its modules, nothing of the partner", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation").or(page.locator('[aria-label="Primary"]')).first();
-    await expect(page.getByText("lite", { exact: true })).toBeVisible();
+    // Spec 045 (R7): the same «Beta» as the partner's console; «lite» was internal jargon.
+    await expect(page.getByText("Beta", { exact: true })).toBeVisible();
+    await expect(page.getByText("lite", { exact: true })).toHaveCount(0);
     for (const label of [/Panel/, /Bandeja de entrada/, /Consumo/]) {
       await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
     await expect(nav.getByRole("link", { name: /Clientes/ })).toHaveCount(0);
+  });
+
+  test("spec 031: «Tus teléfonos» is in the person's menu and opens its page", async ({ page }) => {
+    await page.goto("/");
+    // The menu's trigger is named by the person's email (`user-menu.tsx`).
+    await page.getByRole("button", { name: process.env.E2E_CLIENT_EMAIL ?? "" }).click();
+    await page.getByRole("menuitem", { name: /Tus teléfonos/ }).click();
+    await page.waitForURL("**/account/phones");
+    await expect(page.getByRole("heading", { name: "Tus teléfonos" })).toBeVisible();
+    // Either the list or the empty state — never an error for a person who
+    // simply has no phone yet.
+    await expect(page.getByRole("list", { name: "Teléfonos con la sesión abierta" }).or(page.getByRole("status"))).toBeVisible();
   });
 
   for (const path of PARTNER_ONLY) {
@@ -51,7 +81,7 @@ test.describe("spec 030 — la consola del cliente", () => {
       page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(path);
       await page.waitForURL((url) => url.pathname !== path, { timeout: 30_000 });
-      expect(["/", "/inbox", "/usage"]).toContain(new URL(page.url()).pathname);
+      expect(["/", "/inbox", "/reservas", "/usage"]).toContain(new URL(page.url()).pathname);
       await expect(page.locator("main#main")).toBeVisible();
       expect(errors, `${path}: errors while moving the client to its module`).toEqual([]);
     });

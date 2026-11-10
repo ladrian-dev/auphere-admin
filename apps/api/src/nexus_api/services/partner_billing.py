@@ -544,28 +544,53 @@ async def _record_action_required(
             await _freeze_line(s, partner_id)
         partner = await s.get(Partner, partner_id)
         to = (partner.billing_email or partner.contact_email) if partner else None
+        partner_name = partner.name if partner else ""
     if to and url:
-        await _send_action_email(to=to, url=str(url), amount_cents=amount_cents, kind=kind)
+        await _send_action_email(
+            to=to,
+            url=str(url),
+            amount_cents=amount_cents,
+            kind=kind,
+            partner_id=partner_id,
+            partner_name=partner_name,
+        )
     log.info("billing.charge_action_required", partner_id=str(partner_id))
 
 
-async def _send_action_email(*, to: str, url: str, amount_cents: int, kind: str) -> None:
-    from html import escape
+async def _send_action_email(
+    *,
+    to: str,
+    url: str,
+    amount_cents: int,
+    kind: str,
+    partner_id: uuid.UUID,
+    partner_name: str,
+) -> None:
+    """Spec 051: ``charge_confirm``, in the language of the billing account.
 
-    from nexus_api.services.email import send_email
+    ``url`` is Stripe's hosted invoice page, where the cardholder confirms.
+    """
+    from nexus_api.services.email import send_localized
+    from nexus_api.services.email_catalog import EmailKind, format_usd
 
-    what = "el consumo del mes" if kind == CHARGE_POSTPAID else "la recarga automática de saldo"
-    amount = f"US${amount_cents / 100:,.2f}"
-    await send_email(
-        to=to,
-        subject="Confirma el cobro de tu tarjeta",
-        html=(
-            f"<p>Tu banco pide confirmar el cobro de <strong>{escape(amount)}</strong> por "
-            f"{escape(what)} en Auphere.</p>"
-            f'<p><a href="{escape(url)}">Confirmar el pago</a></p>'
-            "<p>Hasta que lo confirmes, el cobro queda pendiente.</p>"
-        ),
-    )
+    amount = format_usd(amount_cents)
+    postpaid = kind == CHARGE_POSTPAID
+
+    def compose(locale: str) -> tuple[str, dict[str, str]]:
+        if locale == "en":
+            subject = f"Confirm your payment of {amount}"
+            concept = "this month's usage" if postpaid else "your automatic balance top-up"
+        else:
+            subject = f"Confirma el pago de {amount} con tu banco"
+            concept = "el consumo del mes" if postpaid else "la recarga automática de saldo"
+        return subject, {
+            "PARTNER_NAME": partner_name,
+            "AMOUNT": amount,
+            "CONCEPT": concept,
+            "CONFIRM_URL": url,
+        }
+
+    await send_localized(EmailKind.CHARGE_CONFIRM, to=to, compose=compose, partner_id=partner_id)
 
 
 async def _record_failure(

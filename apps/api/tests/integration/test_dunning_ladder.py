@@ -52,7 +52,10 @@ async def _world(state: str = STATE_CURRENT, *, teammates: int = 2) -> uuid.UUID
     slug = f"dun-{pid.hex[:10]}"
     async with get_sessionmaker()() as s:
         await s.execute(
-            sa.text("INSERT INTO partners (id, name, slug, status) VALUES (:i, :n, :s, 'active')"),
+            sa.text(
+                "INSERT INTO partners (id, name, slug, status, weekly_pool_tokens) "
+                "VALUES (:i, :n, :s, 'active', 115000)"
+            ),
             {"i": str(pid), "n": slug, "s": slug},
         )
         await s.execute(

@@ -7,7 +7,9 @@ export const channelsMessages = {
   "ch.connect": { es: "Conectar WhatsApp", en: "Connect WhatsApp" },
   // ── spec 040: a link the owner opens on their own device ──────────
   "ch.link.open": { es: "Enviar enlace al cliente", en: "Send a link to the client" },
-  "ch.link.title": { es: "Que lo conecte el cliente desde su teléfono", en: "Let the client connect it from their phone" },
+  // Spec 047 (31.3): «desde su teléfono» solo con la bandera, hasta probarlo en iOS y en Android.
+  "ch.link.title": { es: "Que lo conecte el cliente", en: "Let the client connect it" },
+  "ch.link.title.phone": { es: "Que lo conecte el cliente desde su teléfono", en: "Let the client connect it from their phone" },
   "ch.link.body": {
     es: "El dueño del negocio abre el enlace en su teléfono o su computadora, donde ya tiene abierta su cuenta de Meta, y hace él mismo los pasos de WhatsApp. Sus datos de Meta no pasan por tu equipo. El enlace sirve una vez y caduca en 7 días.",
     en: "The business owner opens the link on their phone or computer, where they are already logged in to Meta, and does the WhatsApp steps themselves. Their Meta details never go through your device. The link works once and expires in 7 days.",
@@ -36,6 +38,10 @@ export const channelsMessages = {
   "ch.link.email": { es: "Enviar por correo", en: "Send by e-mail" },
   "ch.link.expires": { es: "Caduca el {date}.", en: "Expires on {date}." },
   "ch.link.message": {
+    es: "Hola. Para conectar el WhatsApp de tu negocio con tu agente, abre este enlace y sigue los pasos de Meta: {url}",
+    en: "Hi. To connect your business WhatsApp to your agent, open this link and follow Meta's steps: {url}",
+  },
+  "ch.link.message.phone": {
     es: "Hola. Para conectar el WhatsApp de tu negocio con tu agente, abre este enlace desde tu teléfono y sigue los pasos de Meta: {url}",
     en: "Hi. To connect your business WhatsApp to your agent, open this link on your phone and follow Meta's steps: {url}",
   },
@@ -51,6 +57,12 @@ export const channelsMessages = {
     en: "You are about to open Meta's window. Pick your business and the number your agent will answer on, and accept the permissions.",
   },
   "connect.start": { es: "Conectar mi WhatsApp", en: "Connect my WhatsApp" },
+  // Spec 047 (31.5): el enlace en la beta «WhatsApp login», que la API solo crea donde Auphere la activó.
+  "connect.body.whatsapp_login": {
+    es: "Vas a conectar tu número con WhatsApp, sin cuenta de Meta. Sigue los pasos que te pida WhatsApp. La verificación del negocio llega después: Meta te escribirá cuando toque.",
+    en: "You are about to connect your number with WhatsApp, with no Meta account. Follow the steps WhatsApp asks for. Business verification comes later: Meta will write to you when it is due.",
+  },
+  "connect.start.whatsapp_login": { es: "Conectar con WhatsApp, sin cuenta de Meta", en: "Connect with WhatsApp, no Meta account" },
   "connect.working": { es: "Conectando…", en: "Connecting…" },
   "connect.done.title": { es: "¡Listo! Tu WhatsApp está conectado", en: "Done! Your WhatsApp is connected" },
   "connect.done.body": { es: "El número {phone} ya está con tu agente. Puedes cerrar esta página.", en: "Number {phone} is now with your agent. You can close this page." },
@@ -65,6 +77,8 @@ export const channelsMessages = {
   "ch.connect.mode": { es: "Modo de conexión", en: "Connection mode" },
   "ch.connect.mode.cloud_api": { es: "Cloud API (número nuevo o migrado)", en: "Cloud API (new or migrated number)" },
   "ch.connect.mode.coexistence": { es: "Coexistencia (mantener la app WhatsApp Business)", en: "Coexistence (keep the WhatsApp Business app)" },
+  // Spec 047 (31.5): un enlace por agente puede ir en la beta «WhatsApp login». Sin prometer «sin Facebook».
+  "ch.connect.mode.whatsapp_login": { es: "WhatsApp login (beta)", en: "WhatsApp login (beta)" },
   "ch.connect.help": { es: "Se abre la ventana de Meta. Elige la empresa, el número y acepta los permisos. Al terminar, el número aparece aquí.", en: "Meta's window opens. Pick the business and the number and accept the permissions. When done, the number shows up here." },
   "ch.connect.start": { es: "Abrir Meta", en: "Open Meta" },
   "ch.connect.working": { es: "Conectando…", en: "Connecting…" },
@@ -76,8 +90,8 @@ export const channelsMessages = {
   },
   "ch.connect.veil.title": { es: "Estamos en la ventana de Meta", en: "We are in Meta's window" },
   "ch.connect.veil.body": {
-    es: "Termina ahí los pasos de WhatsApp. Cuando acabes, esta pantalla se actualiza sola.",
-    en: "Finish the WhatsApp steps there. When you are done, this screen updates on its own.",
+    es: "Termina ahí los pasos. Cuando acabes, esta pantalla se actualiza sola.",
+    en: "Finish the steps there. When you are done, this screen updates on its own.",
   },
   "ch.connect.numberInUse": { es: "Ese número ya está conectado en otro cliente. Nada ha cambiado.", en: "That number is already connected on another client. Nothing changed." },
   "ch.connect.byAuphere.title": { es: "El número lo conecta Auphere", en: "Auphere connects the number" },
@@ -87,6 +101,14 @@ export const channelsMessages = {
   "ch.connect.cancelled": { es: "La conexión se canceló antes de terminar.", en: "The connection was cancelled before finishing." },
   "ch.connect.timeout": { es: "Meta no respondió a tiempo. Vuelve a intentarlo.", en: "Meta did not answer in time. Try again." },
   "ch.connect.noCode": { es: "Meta no devolvió el código de autorización.", en: "Meta did not return the authorization code." },
+  "ch.connect.noNumber": {
+    es: "La cuenta de WhatsApp quedó creada, pero sin número. Vuelve a abrir Meta y añade el número que quieres conectar.",
+    en: "The WhatsApp account was created, but without a number. Open Meta again and add the number you want to connect.",
+  },
+  "ch.connect.grantOnly": {
+    es: "Meta dio acceso a la cuenta, pero no compartió ningún número. Vuelve a abrir Meta y elige el número.",
+    en: "Meta gave access to the account, but shared no number. Open Meta again and pick the number.",
+  },
   "ch.empty.title": { es: "Este cliente aún no tiene ningún canal", en: "This client has no channels yet" },
   "ch.empty.description": { es: "Conecta el número de WhatsApp del cliente con la cuenta de Meta del propio cliente. Auphere no ve la contraseña de nadie.", en: "Connect the client's WhatsApp number with the client's own Meta account. Auphere never sees anyone's password." },
   "ch.card.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
@@ -141,8 +163,8 @@ export const channelsMessages = {
   "ch.catalog.clear": { es: "Desconectar", en: "Disconnect" },
   "ch.catalog.clear.title": { es: "Desconectar el catálogo {name}", en: "Disconnect the catalogue {name}" },
   "ch.catalog.clear.body": {
-    es: "El agente deja de enseñar productos como tarjetas. El catálogo sigue en Commerce Manager y puedes volver a conectarlo cuando quieras.",
-    en: "The agent stops showing products as cards. The catalogue stays in Commerce Manager and you can connect it again whenever you want.",
+    es: "El agente deja de enseñar productos como tarjetas. El catálogo sigue en Commerce Manager y enlazado a la cuenta de WhatsApp en Meta (eso se quita desde el Administrador de WhatsApp). Puedes volver a conectarlo cuando quieras.",
+    en: "The agent stops showing products as cards. The catalogue stays in Commerce Manager and linked to the WhatsApp account at Meta (you remove that from WhatsApp Manager). You can connect it again whenever you want.",
   },
   "ch.catalog.permission": {
     es: "La conexión de WhatsApp no incluyó el permiso de catálogo. Vuelve a conectar el número para concederlo.",
@@ -187,7 +209,15 @@ export const channelsMessages = {
     en: "The agent will show products from {to} from the next message on. {from} stays in Commerce Manager.",
   },
   "ch.catalog.replace.confirm": { es: "Sustituir", en: "Replace" },
+  "ch.catalog.offer.linked": {
+    es: "Ya está conectado. Sus habilidades se añaden al borrador del agente: publícalo para que enseñe productos con foto y precio.",
+    en: "It is already connected. Its skills are added to the agent's draft: publish it so the agent can show products with photo and price.",
+  },
   "ch.catalog.done": { es: "Catálogo {name} conectado.", en: "Catalogue {name} connected." },
+  "ch.catalog.done.skills": {
+    es: "Catálogo {name} conectado. Sus habilidades ya están en el borrador del agente: publícalo para que enseñe productos.",
+    en: "Catalogue {name} connected. Its skills are in the agent's draft: publish it so the agent can show products.",
+  },
   "ch.catalog.cleared": { es: "Catálogo desconectado.", en: "Catalogue disconnected." },
   "ch.catalog.err.catalog_not_owned": { es: "Ese catálogo no es de tu negocio.", en: "That catalogue does not belong to your business." },
   "ch.catalog.err.meta_unavailable": { es: "Meta no responde ahora mismo. Inténtalo en unos minutos.", en: "Meta is not answering right now. Try again in a few minutes." },
@@ -217,7 +247,12 @@ export const channelsMessages = {
 
   // ── templates ────────────────────────────────────────────────────
   "tpl.title": { es: "Plantillas de mensaje", en: "Message templates" },
-  "tpl.description": { es: "Las plantillas (HSM) las revisa Meta. Aquí ves el estado real y, si una fue rechazada, el motivo literal de Meta y qué hacer.", en: "Templates (HSM) are reviewed by Meta. Here you see the real state and, when one is rejected, Meta's literal reason and what to do." },
+  "tpl.description": {
+    es: "Los mensajes que el negocio puede enviar primero, fuera de las 24 horas. Meta revisa cada plantilla: aquí ves su estado y, si la rechaza, el motivo y qué hacer.",
+    en: "The messages the business can send first, outside the 24 hours. Meta reviews each template: here you see its state and, if it is rejected, the reason and what to do.",
+  },
+  "tpl.duplicate": { es: "Duplicar y corregir", en: "Duplicate and fix" },
+  "tpl.loading": { es: "Pidiendo las plantillas a Meta…", en: "Asking Meta for the templates…" },
   "tpl.notConnected": { es: "Conecta WhatsApp para gestionar plantillas.", en: "Connect WhatsApp to manage templates." },
   "tpl.empty": { es: "Este número aún no tiene plantillas.", en: "This number has no templates yet." },
   "tpl.new": { es: "Nueva plantilla", en: "New template" },
@@ -237,8 +272,14 @@ export const channelsMessages = {
   "tpl.status.DISABLED": { es: "Desactivada", en: "Disabled" },
   "tpl.status.FLAGGED": { es: "Marcada", en: "Flagged" },
   "tpl.status.unknown": { es: "Desconocido", en: "Unknown" },
-  "tpl.action.fix_format": { es: "Corrige el formato: variables {{1}} numeradas, sin texto solo de variables, sin saltos de línea al final.", en: "Fix the format: numbered {{1}} variables, no variable-only lines, no trailing line breaks." },
-  "tpl.action.change_category": { es: "El contenido no encaja con la categoría. Reenvíala como MARKETING (promociones) o UTILITY (transaccional).", en: "The content does not match the category. Resubmit as MARKETING (promotions) or UTILITY (transactional)." },
+  "tpl.action.fix_format": {
+    es: "Corrige el formato: cada variable con su ejemplo, ningún texto que sea solo una variable, y sin saltos de línea al final.",
+    en: "Fix the format: every variable with its example, no text that is only a variable, and no trailing line breaks.",
+  },
+  "tpl.action.change_category": {
+    es: "El contenido no encaja con la categoría. Créala de nuevo como Marketing (promociones) o Utilidad (avisos de una compra, cita o pago).",
+    en: "The content does not match the category. Create it again as Marketing (promotions) or Utility (updates on a purchase, booking or payment).",
+  },
   "tpl.action.rewrite_content": { es: "Meta considera el contenido abusivo o engañoso. Reescribe el mensaje sin urgencia artificial ni promesas.", en: "Meta considers the content abusive or misleading. Rewrite without artificial urgency or promises." },
   "tpl.action.remove_promotional": { es: "Quita el lenguaje promocional o cambia la categoría a MARKETING.", en: "Remove promotional language or change the category to MARKETING." },
   "tpl.action.add_variables_samples": { es: "Añade ejemplos de valor para cada variable y evita variables al inicio o al final.", en: "Add sample values for every variable and avoid variables at the start or end." },
@@ -301,7 +342,7 @@ export const channelsMessages = {
   "tpl.compose.button.remove": { es: "Quitar el botón {n}", en: "Remove button {n}" },
   "tpl.compose.preview": { es: "Así lo verá el cliente", en: "What the customer will see" },
   "tpl.compose.preview.empty": { es: "Escribe el mensaje para verlo aquí.", en: "Write the message to see it here." },
-  "tpl.compose.error": { es: "Meta no aceptó la plantilla", en: "Meta did not accept the template" },
+  "tpl.compose.error": { es: "No se pudo crear la plantilla", en: "The template could not be created" },
   "tpl.compose.ready": { es: "Lista para enviar a Meta.", en: "Ready to send to Meta." },
   "tpl.compose.missing": { es: "Falta {list}.", en: "Missing {list}." },
   "tpl.missing.name": { es: "el nombre", en: "the name" },
@@ -342,6 +383,7 @@ export const channelsMessages = {
   "tpl.category.MARKETING": { es: "Marketing", en: "Marketing" },
   "tpl.category.UTILITY": { es: "Utilidad", en: "Utility" },
   "tpl.category.AUTHENTICATION": { es: "Autenticación", en: "Authentication" },
+  "tpl.category.pending": { es: "Meta la pasa a {category} en un día", en: "Meta moves it to {category} within a day" },
   "tpl.category.UTILITY.help": {
     es: "Avisos de algo que el cliente ya pidió o pagó, como pedidos, pagos o citas. Meta la aprueba antes y cuesta menos.",
     en: "Notices about something the customer already ordered or paid, like orders, payments or appointments. Meta approves it sooner and it costs less.",
@@ -401,4 +443,75 @@ export const channelsMessages = {
   "diag.test.sent": { es: "Enviado (id {wamid}).", en: "Sent (id {wamid})." },
   "diag.test.invalid": { es: "Introduce un número con prefijo, p. ej. +34600000000.", en: "Enter a number with country code, e.g. +34600000000." },
 
+  // ── spec 049: Instagram y Messenger ───────────────────────────────
+  "ch.social.connect.instagram": { es: "Conectar Instagram", en: "Connect Instagram" },
+  "ch.social.connect.messenger": { es: "Conectar Messenger", en: "Connect Messenger" },
+  // Meta's review asks the app to tell the admin to grant access to the business's assets (business_management).
+  "ch.social.veil.access": {
+    es: "Quien administra la cuenta o la Página tiene que dar a Auphere acceso explícito a los activos del negocio en esa ventana.",
+    en: "Whoever manages the account or Page must give Auphere explicit access to the business's assets in that window.",
+  },
+  "ch.social.choose.instagram": { es: "¿Qué cuenta de Instagram conectas?", en: "Which Instagram account do you connect?" },
+  "ch.social.choose.messenger": { es: "¿Qué Página de Facebook conectas?", en: "Which Facebook Page do you connect?" },
+  "ch.social.choose.body": {
+    es: "El negocio compartió más de una. El agente atenderá solo la que elijas. Si quieres otra, conéctala aparte.",
+    en: "The business shared more than one. The agent will only answer the one you pick. To add another, connect it separately.",
+  },
+  "ch.social.done": {
+    es: "{name} conectado. Configura a quién responde para que el agente empiece.",
+    en: "{name} connected. Choose who it answers so the agent starts.",
+  },
+  "ch.social.choose.cancelled": { es: "No se conectó nada.", en: "Nothing was connected." },
+  "ch.social.card.instagram": { es: "Instagram", en: "Instagram" },
+  "ch.social.card.messenger": { es: "Messenger", en: "Messenger" },
+  "ch.social.card.comments": { es: "Comentarios", en: "Comments" },
+  "ch.social.card.comments.on": { es: "El agente responde por mensaje privado", en: "The agent answers in a private message" },
+  "ch.social.card.comments.off": { es: "El agente no los atiende", en: "The agent does not answer them" },
+  "ch.social.disconnect": { es: "Desconectar", en: "Disconnect" },
+  "ch.social.disconnect.title": { es: "Desconectar {name}", en: "Disconnect {name}" },
+  "ch.social.disconnect.body": {
+    es: "El agente deja de recibir y de responder sus mensajes desde ya, y borramos el acceso de Auphere. Los mensajes recibidos por este canal se borran en 30 días. Para volver a usarlo, conéctalo otra vez.",
+    en: "The agent stops receiving and answering its messages right away, and Auphere's access is deleted. The messages received through this channel are erased in 30 days. To use it again, connect it again.",
+  },
+  "ch.social.disconnect.confirm": { es: "Desconectar", en: "Disconnect" },
+  "ch.social.disconnect.done": { es: "{name} desconectado.", en: "{name} disconnected." },
+  "ch.social.attention.title": { es: "Necesita atención", en: "Needs attention" },
+  "ch.social.attention.token_revoked": {
+    es: "Meta retiró el acceso de Auphere (se quitó la app del negocio o se movió la cuenta). Vuelve a conectarlo.",
+    en: "Meta withdrew Auphere's access (the app was removed from the business or the account moved). Connect it again.",
+  },
+  "ch.social.attention.permission_lost": {
+    es: "Falta un permiso que el agente necesita. Vuelve a conectarlo y acepta todos los pasos.",
+    en: "A permission the agent needs is missing. Connect it again and accept every step.",
+  },
+  "ch.social.attention.messages_disabled": {
+    es: "La cuenta tiene apagado «Permitir acceso a los mensajes». En Instagram: Configuración → Mensajes y respuestas a historias → Herramientas conectadas.",
+    en: "The account has «Allow access to messages» off. In Instagram: Settings → Messages and story replies → Connected tools.",
+  },
+  "ch.social.attention.subscribe_failed": {
+    es: "Meta no nos deja recibir sus mensajes. Lo reintentamos solos, y si sigue así, vuelve a conectarlo.",
+    en: "Meta does not let us receive its messages. We retry on our own, and if it persists, connect it again.",
+  },
+  "ch.social.reason.code_exchange_failed": { es: "Meta no aceptó el inicio de sesión. Vuelve a intentarlo.", en: "Meta did not accept the login. Try again." },
+  "ch.social.reason.no_business_portfolio": {
+    es: "La cuenta tiene que pertenecer a un portfolio de negocio de Meta. Créalo en business.facebook.com y vuelve a conectar.",
+    en: "The account has to belong to a Meta business portfolio. Create one at business.facebook.com and connect again.",
+  },
+  "ch.social.reason.no_instagram_account": {
+    es: "No se compartió ninguna cuenta profesional de Instagram. Vuelve a conectar y marca la cuenta.",
+    en: "No professional Instagram account was shared. Connect again and select the account.",
+  },
+  "ch.social.reason.no_page": { es: "No se compartió ninguna Página. Vuelve a conectar y marca la Página.", en: "No Page was shared. Connect again and select the Page." },
+  "ch.social.reason.messages_disabled": {
+    es: "Activa en Instagram: Configuración → Mensajes y respuestas a historias → Herramientas conectadas → Permitir acceso a los mensajes, y vuelve a conectar.",
+    en: "Turn on in Instagram: Settings → Messages and story replies → Connected tools → Allow access to messages, and connect again.",
+  },
+  "ch.social.reason.missing_permission": { es: "No se concedió un permiso. Vuelve a conectar y acepta todos los pasos.", en: "A permission was not granted. Connect again and accept every step." },
+  "ch.social.reason.page_messaging_task_missing": {
+    es: "Quien inició sesión no puede gestionar los mensajes de esa Página. Pide a un administrador de la Página que la conecte.",
+    en: "The person who logged in cannot manage that Page's messages. Ask a Page admin to connect it.",
+  },
+  "ch.social.reason.already_connected_elsewhere": { es: "Esa cuenta ya está conectada a otro cliente.", en: "That account is already connected to another client." },
+  "ch.social.reason.subscribe_failed": { es: "Meta no nos dejó recibir sus mensajes. Inténtalo en un minuto.", en: "Meta did not let us receive its messages. Try again in a minute." },
+  "ch.social.reason.pending_expired": { es: "La elección caducó. Vuelve a conectar.", en: "The selection expired. Connect again." },
 } as const;

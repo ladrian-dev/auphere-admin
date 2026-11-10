@@ -15,8 +15,10 @@ import contextlib
 import uuid
 
 import structlog
+from nexus_api.services.router_catalog import CATALOG_CHANGED
 from redis.asyncio import Redis
 
+from nexus_worker.runtime import model_resolver
 from nexus_worker.runtime.agent_loader import AgentLoader
 
 log = structlog.get_logger(__name__)
@@ -58,6 +60,11 @@ async def run_promote_subscriber(
                 data = data.decode("utf-8")
             if not isinstance(data, str):
                 log.warning("promote_subscriber.unexpected_payload", payload=str(data))
+                continue
+            if data.strip() == CATALOG_CHANGED:
+                # Spec 047 (41.9, 40.13): the operator changed the model catalog
+                # or a router profile — the next turn reads it, not in 5 minutes.
+                model_resolver.invalidate_catalog()
                 continue
             # ``<tenant_id>`` (every agent of the tenant — what every publisher
             # sends today) or ``<tenant_id>:<agent_id>`` (spec 030: just that

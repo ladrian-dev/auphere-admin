@@ -1,9 +1,9 @@
 "use client";
 
-import { WifiOff } from "lucide-react";
+import { Bot, WifiOff } from "lucide-react";
 import * as React from "react";
 
-import { Alert, AlertDescription, Button, Sheet, SheetContent, SheetTitle, cn } from "@nexus/ui";
+import { Alert, AlertDescription, Button, ConfirmDialog, Sheet, SheetContent, SheetTitle, cn } from "@nexus/ui";
 
 import {
   archiveReplyAction,
@@ -17,6 +17,9 @@ import {
   openConversationAction,
   reopenAction,
   repliesAction,
+  archiveChatAction,
+  clearChatAction,
+  commentPostAction,
   resolveAction,
   sendMessageAction,
   setNoteAction,
@@ -39,7 +42,8 @@ import { inboxAttachmentUrl } from "@/lib/inbox-urls";
 
 import { Composer } from "./composer";
 import { ContactPanel } from "./contact-panel";
-import { ConversationList } from "./conversation-list";
+import { CorrectionDialog } from "./correction-dialog";
+import { ConversationList, INBOX_AGENT_FILTER_ID } from "./conversation-list";
 import { composerMode, initialsOf, sendErrorOf, type SendError } from "./inbox-model";
 import { reloadPage } from "./reload";
 import type { RepliesApi } from "./saved-replies";
@@ -52,6 +56,8 @@ export type InboxInitial = {
   query: string;
   /** Spec 030: one agent's numbers only; `agents` is empty with one agent. */
   agent: string | null;
+  /** Only this kind of channel (owner, 2026-11-01). */
+  channel: string | null;
   agents: { id: string; name: string }[];
   page: InboxPage | null;
   selectedId: string | null;
@@ -128,12 +134,13 @@ function useWide(ref: React.RefObject<HTMLElement | null>): boolean {
   return wide;
 }
 
-function syncUrl(selectedId: string | null, filter: InboxFilter, query: string, agent: string | null): void {
+function syncUrl(selectedId: string | null, filter: InboxFilter, query: string, agent: string | null, channel: string | null): void {
   const params = new URLSearchParams();
   if (selectedId) params.set("c", selectedId);
   if (filter !== "all") params.set("filter", filter);
   if (query.trim()) params.set("q", query.trim());
   if (agent) params.set("agent", agent);
+  if (channel) params.set("channel", channel);
   const qs = params.toString();
   window.history.replaceState(null, "", qs ? `/inbox?${qs}` : "/inbox");
 }
@@ -162,6 +169,11 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
   const [filter, setFilter] = React.useState<InboxFilter>(initial.filter);
   const [query, setQuery] = React.useState(initial.query);
   const [agent, setAgent] = React.useState<string | null>(initial.agent);
+  const [channel, setChannel] = React.useState<string | null>(initial.channel);
+  // What the client has: kept while a list loads, so the filter does not jump.
+  const [channelKinds, setChannelKinds] = React.useState<string[]>(initial.page?.channel_kinds ?? []);
+  const [confirming, setConfirming] = React.useState<"clear" | "delete" | null>(null);
+  const [confirmError, setConfirmError] = React.useState<string | null>(null);
   const [page, setPage] = React.useState<InboxPage | null>(initial.page);
   const [listLoading, setListLoading] = React.useState(false);
   const [listFailed, setListFailed] = React.useState(initial.page === null);
@@ -170,6 +182,8 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
 
   const [selectedId, setSelectedId] = React.useState<string | null>(initial.selectedId);
   const [detail, setDetail] = React.useState<InboxDetail | null>(initial.open?.detail ?? null);
+  // Spec 047 (52.1): la respuesta del agente que se está corrigiendo.
+  const [correcting, setCorrecting] = React.useState<InboxThreadItem | null>(null);
   const [items, setItems] = React.useState<InboxThreadItem[]>(initial.open?.thread.items ?? []);
   const [nextBefore, setNextBefore] = React.useState<string | null>(initial.open?.thread.next_before ?? null);
   const [threadLoading, setThreadLoading] = React.useState(false);
@@ -184,6 +198,10 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
   const [suggested, setSuggested] = React.useState<string[]>(initial.suggested);
   const panelPref = React.useSyncExternalStore(subscribePanel, panelSnapshot, panelServerSnapshot);
   const frame = React.useRef<HTMLDivElement>(null);
+  // Spec 031 (R6.4): la clave de idempotencia del mensaje que se está
+  // intentando enviar. Si el envío falla y la persona lo reintenta sin cambiar
+  // el texto, se reutiliza: un reintento nunca manda dos WhatsApp.
+  const lastAttempt = React.useRef<{ id: string; text: string; key: string } | null>(null);
   const wide = useWide(frame);
   // Below 1280 px the sheet is opened on purpose each time; it is not remembered.
   const [sheetOpen, setSheetOpen] = React.useState(false);
@@ -194,6 +212,32 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     item,
   ]);
   const [, startTransition] = React.useTransition();
+  const openId = detail?.id;
+  const loadCommentPost = React.useCallback(
+    async (messageId: string) => {
+      if (!openId) return { ok: true as const, data: null };
+      return commentPostAction({ id: openId, messageId });
+    },
+    [openId],
+  );
+  // The real message can arrive while the send still waits for its answer:
+  // from then on the provisional copy is the same message twice (INC-60).
+  const shown = React.useMemo(
+    () =>
+      optimistic.filter(
+        (item) =>
+          !(
+            item.id.startsWith("pending-") &&
+            items.some(
+              (real) =>
+                real.direction === "outbound" &&
+                real.text === item.text &&
+                Math.abs(Date.parse(real.at) - Date.parse(item.at)) < 60_000,
+            )
+          ),
+      ),
+    [optimistic, items],
+  );
 
   // ── housekeeping ────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -208,20 +252,21 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
   }, [notice]);
 
   // ── reads ───────────────────────────────────────────────────────────
-  const latest = React.useRef({ filter, query, agent, selectedId });
-  latest.current = { filter, query, agent, selectedId };
+  const latest = React.useRef({ filter, query, agent, channel, selectedId });
+  latest.current = { filter, query, agent, channel, selectedId };
 
   /** `reset`: the filter or the search changed — the old rows are not an answer
    *  any more, so the list shows its loading (or its error). A background
    *  refresh that fails keeps what is on screen. */
   const refreshList = React.useCallback(async (reset = false) => {
-    const { filter: f, query: q, agent: a } = latest.current;
+    const { filter: f, query: q, agent: a, channel: c } = latest.current;
     if (reset) setPage(null);
     setListLoading(true);
-    const r = guard(await listConversationsAction({ filter: f, q: q.trim() || undefined, agent: a ?? undefined }));
+    const r = guard(await listConversationsAction({ filter: f, q: q.trim() || undefined, agent: a ?? undefined, channel: c ?? undefined }));
     setListLoading(false);
     if (r.ok) {
       setPage(r.data);
+      setChannelKinds(r.data.channel_kinds);
       setCounts(r.data.counts);
       setListFailed(false);
     } else if (reset) {
@@ -250,7 +295,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       setThreadLoading(true);
       setDetail(null);
       setItems([]);
-      syncUrl(id, latest.current.filter, latest.current.query, latest.current.agent);
+      syncUrl(id, latest.current.filter, latest.current.query, latest.current.agent, latest.current.channel);
       await refreshOpen(id, true);
       setThreadLoading(false);
       setPage((p) => (p ? { ...p, items: p.items.map((c) => (c.id === id ? { ...c, unread: false } : c)) } : p));
@@ -271,11 +316,11 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       firstRun.current = false;
       return;
     }
-    syncUrl(latest.current.selectedId, filter, query, agent);
+    syncUrl(latest.current.selectedId, filter, query, agent, channel);
     const id = window.setTimeout(() => void refreshList(true), query ? 250 : 0);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshList reads the latest filter/query itself
-  }, [filter, query, agent]);
+  }, [filter, query, agent, channel]);
 
   // ── live ────────────────────────────────────────────────────────────
   const pendingList = React.useRef<number | null>(null);
@@ -355,17 +400,45 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     back();
     void refreshList();
   }
+  async function clearChat() {
+    if (!detail) return;
+    setConfirmError(null);
+    const r = guard(await clearChatAction({ id: detail.id }));
+    if (!r.ok) {
+      setConfirmError(t("inbox.error.action"));
+      return;
+    }
+    setConfirming(null);
+    setNotice(t("inbox.toast.cleared"));
+    await control(r);
+  }
+  async function deleteChat() {
+    if (!detail) return;
+    setConfirmError(null);
+    const r = guard(await archiveChatAction({ id: detail.id }));
+    if (!r.ok) {
+      setConfirmError(t("inbox.error.action"));
+      return;
+    }
+    setConfirming(null);
+    setNotice(t("inbox.toast.deleted"));
+    back();
+    void refreshList();
+  }
   function back() {
     setSelectedId(null);
     latest.current.selectedId = null;
     setDetail(null);
     setItems([]);
-    syncUrl(null, latest.current.filter, latest.current.query, latest.current.agent);
+    syncUrl(null, latest.current.filter, latest.current.query, latest.current.agent, latest.current.channel);
   }
 
   function send(text: string): Promise<boolean> {
     const id = detail?.id;
     if (!id) return Promise.resolve(false);
+    const prev = lastAttempt.current;
+    const idempotencyKey = prev && prev.id === id && prev.text === text ? prev.key : crypto.randomUUID();
+    lastAttempt.current = { id, text, key: idempotencyKey };
     return new Promise((done) => {
       startTransition(async () => {
         addOptimistic({
@@ -381,8 +454,9 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
           kind: null,
           detail: null,
         });
-        const r = guard(await sendMessageAction({ id, text }));
+        const r = guard(await sendMessageAction({ id, text, idempotencyKey }));
         if (r.ok) {
+          lastAttempt.current = null;
           setSendError(null);
           await refreshOpen(id, false);
           done(true);
@@ -462,6 +536,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       filter,
       q: query.trim() || undefined,
       agent: agent ?? undefined,
+      channel: channel ?? undefined,
       cursor: page.next_cursor,
     });
     setLoadingMore(false);
@@ -484,6 +559,28 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     else setSheetOpen((v) => !v);
   }
 
+  /** Spec 045 (R6.2): the «N agentes activos» pill takes you to the agent filter.
+   *  On a phone with a conversation open the list is hidden: back to it first. */
+  function focusAgentFilter() {
+    const open = (el: HTMLElement | null) => {
+      if (!(el instanceof HTMLSelectElement)) return;
+      el.focus();
+      try {
+        el.showPicker();
+      } catch {
+        /* no picker API (older browsers, tests): the focus is enough */
+      }
+    };
+    const el = document.getElementById(INBOX_AGENT_FILTER_ID);
+    if (el && el.getClientRects().length > 0) {
+      open(el);
+      return;
+    }
+    if (selectedId) back();
+    // After the list is painted again.
+    window.requestAnimationFrame(() => open(document.getElementById(INBOX_AGENT_FILTER_ID)));
+  }
+
   // ── render ──────────────────────────────────────────────────────────
   const initials = detail ? initialsOf(detail.contact.name) : "·";
   return (
@@ -491,9 +588,27 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
       ref={frame}
       className="flex h-[calc(100svh-8rem)] min-h-[32rem] flex-col overflow-hidden rounded-md border border-border bg-card"
     >
-      <div className="flex items-center gap-3 border-b border-border px-4 py-2">
-        <h1 className="text-base font-semibold">{t("inbox.title")}</h1>
-        <span className="flex-1" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-base font-semibold text-balance">{t("inbox.title")}</h1>
+            {initial.agents.length > 1 ? (
+              <button
+                type="button"
+                onClick={focusAgentFilter}
+                aria-controls={INBOX_AGENT_FILTER_ID}
+                title={initial.agents.map((a) => a.name).join(" · ")}
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 text-xs font-medium text-accent-foreground transition-colors duration-(--duration-fast) hover:bg-primary/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+              >
+                <Bot className="size-3" aria-hidden="true" />
+                {t("inbox.agents.active", { count: initial.agents.length })}
+              </button>
+            ) : null}
+          </div>
+          <p className="min-w-0 text-xs text-pretty text-muted-foreground">
+            {initial.agents.length > 1 ? t("inbox.intro.many") : t("inbox.intro.one")}
+          </p>
+        </div>
         <span role="status" className="text-xs text-muted-foreground">
           {notice}
         </span>
@@ -522,6 +637,9 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
             onFilter={setFilter}
             onQuery={setQuery}
             onAgent={setAgent}
+            channel={channel}
+            channelKinds={channelKinds}
+            onChannel={setChannel}
             onOpen={(id) => void open(id)}
             onMore={() => void more()}
             onRetry={() => void refreshList(true)}
@@ -529,6 +647,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
               setFilter("all");
               setQuery("");
               setAgent(null);
+              setChannel(null);
             }}
           />
         </div>
@@ -562,14 +681,35 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
                 onResolve={() => void resolve()}
                 onReopen={() => void reopen()}
                 onTogglePanel={togglePanel}
+                onClearChat={() => {
+                  setConfirmError(null);
+                  setConfirming("clear");
+                }}
+                onDeleteChat={() => {
+                  setConfirmError(null);
+                  setConfirming("delete");
+                }}
+              />
+              <ConfirmDialog
+                open={confirming !== null}
+                onOpenChange={(o) => !o && setConfirming(null)}
+                destructive
+                title={confirming === "clear" ? t("inbox.clear.title") : t("inbox.delete.title")}
+                description={confirming === "clear" ? t("inbox.clear.body") : t("inbox.delete.body")}
+                confirmLabel={confirming === "clear" ? t("inbox.action.clear") : t("inbox.action.delete")}
+                cancelLabel={t("common.cancel")}
+                error={confirmError}
+                onConfirm={confirming === "clear" ? clearChat : deleteChat}
               />
               <Thread
-                items={optimistic}
+                items={shown}
                 hasOlder={Boolean(nextBefore)}
                 loadingOlder={loadingOlder}
                 contactInitials={initials}
                 now={now}
                 onOlder={() => void older()}
+                onCorrect={setCorrecting}
+                loadCommentPost={loadCommentPost}
               />
               <Composer
                 key={detail.id}
@@ -601,6 +741,9 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
               onNote={setNote}
             />
           </div>
+        ) : null}
+        {detail && correcting ? (
+          <CorrectionDialog key={correcting.id} conversationId={detail.id} message={correcting} onClose={() => setCorrecting(null)} />
         ) : null}
         {detail && !wide ? (
           <Sheet open={sheetOpen && !threadLoading} onOpenChange={(open) => setSheetOpen(open)}>

@@ -9,6 +9,10 @@ Two jobs, both platform-level (no tenant scope, no RLS):
    dict the console renders in the viewer's language; **never** customer
    message content (C8) and **never** internal tenant ids — a client is
    referenced by ``external_client_ref``, the id the partner already knows.
+   Spec 051: the e-mail is a template of the catalogue (``partner_notice``
+   for the partner; ``inbox_waiting``, ``client_balance_*`` or
+   ``client_notice`` for the client's people), in each recipient's account
+   language. The words of each notice live in ``services/email_notices.py``.
 
 2. :func:`record_client_activation` — the first time a partner has an
    ACTIVE client with a published agent, stamp ``partners.activated_at``
@@ -23,8 +27,8 @@ session.
 
 from __future__ import annotations
 
-import html
 import uuid
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -33,7 +37,6 @@ import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nexus_api.config import get_settings
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     ClientMembership,
@@ -48,7 +51,8 @@ from nexus_api.db.models import (
     PartnerRole,
     PartnerTenant,
 )
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import EmailKind, console_link, email_locale
+from nexus_api.services.email_notices import client_notice_email, partner_notice_email
 
 log = structlog.get_logger(__name__)
 
@@ -115,20 +119,65 @@ async def emit_detached(**kwargs: Any) -> ConsoleNotification | None:
         return await emit(session, **kwargs)
 
 
-#: Spec 030: lo que dice el correo de un aviso a la persona de un cliente. Sin
-#: datos del contacto más allá de su nombre, y nunca el texto de un mensaje.
-_CLIENT_SUBJECTS: dict[str, str] = {
-    NotificationKind.INBOX_WAITING.value: "Una conversación espera a una persona",
-    NotificationKind.CLIENT_BALANCE_LOW.value: "Tu saldo no llega a fin de mes",
-    NotificationKind.CLIENT_BALANCE_OUT.value: "Tu saldo se agotó: el agente no responde",
+#: Spec 051 (catálogo §14-16): los avisos del cliente con plantilla propia. El
+#: asunto lo pone el código en el idioma del envío. Sin datos del contacto más
+#: allá de su nombre, y nunca el texto de un mensaje (spec 030).
+_INBOX_WAITING_SUBJECT = {
+    "es": "{contact} está esperando una respuesta",
+    "en": "{contact} is waiting for a reply",
 }
+#: ``CONTACT`` abre siempre la frase: sin nombre, esto.
+_SOMEONE = {"es": "Un cliente", "en": "A customer"}
+_BALANCE_LOW_SUBJECT = {
+    "es": "Tu saldo no llegará a fin de mes",
+    "en": "Your balance won't last until the end of the month",
+}
+_BALANCE_OUT_SUBJECT = {
+    "es": "Tu saldo se ha agotado y tu agente ha dejado de responder",
+    "en": "Your balance has run out and your agent has stopped replying",
+}
+
+Compose = Callable[[str], tuple[str, Mapping[str, str]]]
+
+
+def _inbox_waiting(row: ConsoleNotification) -> Compose:
+    contact = str(row.payload.get("contact") or "").strip()
+    conversation = row.payload.get("conversation_id")
+    url = console_link(f"/inbox?c={conversation}") if conversation else console_link("/")
+
+    def _compose(locale: str) -> tuple[str, Mapping[str, str]]:
+        lang = email_locale(locale)
+        who = contact or _SOMEONE[lang]
+        return _INBOX_WAITING_SUBJECT[lang].format(contact=who), {
+            "CONTACT": who,
+            "CONVERSATION_URL": url,
+        }
+
+    return _compose
+
+
+def _balance(subjects: Mapping[str, str], client_name: str) -> Compose:
+    def _compose(locale: str) -> tuple[str, Mapping[str, str]]:
+        return subjects[email_locale(locale)], {
+            "CLIENT_NAME": client_name,
+            "CONSOLE_URL": console_link("/"),
+        }
+
+    return _compose
 
 
 async def _email_client_best_effort(session: AsyncSession, row: ConsoleNotification) -> None:
-    """Correo a las personas activas del cliente del aviso. Nunca lanza."""
+    """Correo a las personas activas del cliente del aviso. Nunca lanza.
+
+    Cada envío nombra su tipo del catálogo y el negocio (garantía 6: el
+    partner, el cliente y su referencia), que es lo que barre
+    ``tests/isolation/test_55_email_owner_tagging.py``.
+    """
+    from nexus_api.services.email import send_localized
+
     try:
         stmt = (
-            sa.select(ClientMembership.email)
+            sa.select(ClientMembership.email, PartnerTenant.tenant_id, PartnerTenant.client_name)
             .join(PartnerTenant, PartnerTenant.tenant_id == ClientMembership.tenant_id)
             .where(
                 PartnerTenant.partner_id == row.partner_id,
@@ -139,29 +188,75 @@ async def _email_client_best_effort(session: AsyncSession, row: ConsoleNotificat
         )
         if row.recipient_user_id:
             stmt = stmt.where(ClientMembership.user_id == row.recipient_user_id)
-        recipients = sorted({str(e) for e in (await session.scalars(stmt)).all()})
+        found = (await session.execute(stmt)).all()
+        recipients = sorted({str(r.email) for r in found})
         if not recipients:
             return
-        subject = _CLIENT_SUBJECTS.get(row.kind, "Tienes un aviso en tu consola")
-        base = get_settings().console_base_url.rstrip("/")
-        conversation = row.payload.get("conversation_id")
-        link = f"{base}/inbox?c={conversation}" if conversation else f"{base}/"
-        who = row.payload.get("contact")
-        lead = (
-            f"<p><strong>{html.escape(str(who))}</strong> espera a una persona en tu bandeja.</p>"
-            if row.kind == NotificationKind.INBOX_WAITING.value and who
-            else f"<p>{html.escape(subject)}.</p>"
-        )
-        body = f'{lead}<p><a href="{html.escape(link)}">Abrir la consola</a></p>'
-        await send_email(to=recipients, subject=subject, html=body)
+        tenant_id, ref = found[0].tenant_id, row.external_client_ref
+        name = (found[0].client_name or "").strip() or str(ref)
+        if row.kind == NotificationKind.INBOX_WAITING.value:
+            await send_localized(
+                EmailKind.INBOX_WAITING,
+                to=recipients,
+                compose=_inbox_waiting(row),
+                partner_id=row.partner_id,
+                tenant_id=tenant_id,
+                client_ref=ref,
+            )
+        elif row.kind == NotificationKind.CLIENT_BALANCE_LOW.value:
+            await send_localized(
+                EmailKind.CLIENT_BALANCE_LOW,
+                to=recipients,
+                compose=_balance(_BALANCE_LOW_SUBJECT, name),
+                partner_id=row.partner_id,
+                tenant_id=tenant_id,
+                client_ref=ref,
+            )
+        elif row.kind == NotificationKind.CLIENT_BALANCE_OUT.value:
+            await send_localized(
+                EmailKind.CLIENT_BALANCE_OUT,
+                to=recipients,
+                compose=_balance(_BALANCE_OUT_SUBJECT, name),
+                partner_id=row.partner_id,
+                tenant_id=tenant_id,
+                client_ref=ref,
+            )
+        else:
+            # Los de ``announce(..., to_client=True)``: texto en ``email_notices``.
+            def _notice(locale: str) -> tuple[str, Mapping[str, str]]:
+                return client_notice_email(row, locale, name)
+
+            await send_localized(
+                EmailKind.CLIENT_NOTICE,
+                to=recipients,
+                compose=_notice,
+                partner_id=row.partner_id,
+                tenant_id=tenant_id,
+                client_ref=ref,
+            )
     except Exception as exc:  # pragma: no cover - never let e-mail break the request
         log.warning("console_notifications.client_email_failed", error=str(exc))
+
+
+async def _client_name(session: AsyncSession, row: ConsoleNotification) -> str | None:
+    """El nombre del cliente del aviso, para ``{client}``; sin él, su referencia."""
+    if not row.external_client_ref:
+        return None
+    name = await session.scalar(
+        sa.select(PartnerTenant.client_name).where(
+            PartnerTenant.partner_id == row.partner_id,
+            PartnerTenant.external_client_ref == row.external_client_ref,
+        )
+    )
+    return str(name) if name else None
 
 
 async def _email_best_effort(session: AsyncSession, row: ConsoleNotification) -> None:
     if row.audience == NotificationAudience.CLIENT.value:
         await _email_client_best_effort(session, row)
         return
+    from nexus_api.services.email import send_localized
+
     try:
         if row.recipient_user_id:
             stmt = sa.select(PartnerMembership.email).where(
@@ -178,17 +273,21 @@ async def _email_best_effort(session: AsyncSession, row: ConsoleNotification) ->
         recipients = [str(e) for e in (await session.scalars(stmt)).all()]
         if not recipients:
             return
-        subject = f"[Auphere] {row.kind} ({row.severity})"
-        pairs = "".join(
-            f"<li><code>{html.escape(str(k))}</code>: {html.escape(str(v))}</li>"
-            for k, v in sorted(row.payload.items())
+        client_name = await _client_name(session, row)
+
+        # El texto de cada tipo vive en ``email_notices`` (catálogo §18): ya no
+        # se vuelcan las claves del aviso. ``client.out_of_quota`` también sale
+        # por aquí cuando el partner no tiene lista de alertas de consumo.
+        def _compose(locale: str) -> tuple[str, Mapping[str, str]]:
+            return partner_notice_email(row, locale, client_name)
+
+        await send_localized(
+            EmailKind.PARTNER_NOTICE,
+            to=recipients,
+            compose=_compose,
+            partner_id=row.partner_id,
+            client_ref=row.external_client_ref,
         )
-        body = (
-            f"<p>Nueva notificación en tu consola de partner: <b>{html.escape(row.kind)}</b>.</p>"
-            f"<ul>{pairs}</ul>"
-            "<p>Ábrela en la consola → Notificaciones.</p>"
-        )
-        await send_email(to=recipients, subject=subject, html=body)
     except Exception as exc:  # pragma: no cover - never let e-mail break the request
         log.warning("console_notifications.email_failed", error=str(exc))
 

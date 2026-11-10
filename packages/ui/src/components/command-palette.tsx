@@ -176,6 +176,9 @@ function CommandPalette({
                         key={it.id}
                         id={`${listId}-${it.id}`}
                         role="option"
+                        // Spec 047: «Recepción, Flor y Encanto» al oído, no
+                        // «RecepciónFlor y Encanto»: dos spans en línea se leen pegados.
+                        aria-label={it.hint ? `${it.label}, ${it.hint}` : undefined}
                         aria-selected={isActive}
                         data-active={isActive || undefined}
                         onMouseEnter={() => setActive(idx)}

@@ -39,11 +39,11 @@ def _signup_on(monkeypatch: pytest.MonkeyPatch) -> Any:
 def _mail_sink(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     sent: list[dict[str, Any]] = []
 
-    async def _fake(**kwargs: Any) -> bool:
-        sent.append(kwargs)
+    async def _fake(kind: Any, **kwargs: Any) -> bool:
+        sent.append({"kind": kind, **kwargs})
         return True
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
     return sent
 
 

@@ -1,0 +1,14 @@
+diff --git a/build/SymbolView.js b/build/SymbolView.js
+index b0d4a93cb93514ca1dee77175d96182f0da86193..8ca8aa7df532236e68d42c8c76560eedf6d28ab6 100644
+--- a/build/SymbolView.js
++++ b/build/SymbolView.js
+@@ -46,6 +46,9 @@ export function SymbolView({ name: nameProp, fallback, type, scale, weight, colo
+         style: style,
+         children: /*#__PURE__*/ _jsx(Text, {
+             "aria-hidden": true,
++            // The glyph is an icon in a size×size box, not text: the system's text
++            // size must not grow it past the box (it was clipped at 200 %).
++            allowFontScaling: false,
+             style: {
+                 fontFamily: font.name,
+                 color: tintColor ?? DEFAULT_SYMBOL_COLOR,

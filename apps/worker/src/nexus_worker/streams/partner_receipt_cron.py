@@ -31,9 +31,9 @@ import sqlalchemy as sa
 import structlog
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Partner, PartnerStatus, PartnerTenant
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import EmailKind
 from nexus_api.services.partner_receipt import ReceiptResult, generate_partner_receipt
-from nexus_api.services.partner_receipt_email import receipt_subject, render_receipt_html
+from nexus_api.services.partner_receipt_email import receipt_email
 
 log = structlog.get_logger(__name__)
 
@@ -115,9 +115,13 @@ async def _emit_one(
 
 
 async def _mail_receipt(receipt: ReceiptResult) -> None:
+    """Spec 051: the ``receipt`` template, in the language of the billing account."""
+    from nexus_api.services.email import send_localized
+
     assert receipt.billing_email is not None
-    await send_email(
+    await send_localized(
+        EmailKind.RECEIPT,
         to=receipt.billing_email,
-        subject=receipt_subject(receipt),
-        html=render_receipt_html(receipt),
+        compose=lambda locale: receipt_email(receipt, locale),
+        partner_id=receipt.partner_id,
     )

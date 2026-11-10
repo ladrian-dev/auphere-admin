@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session, get_redis, scoped_session_from_path
 from nexus_api.config import get_settings
-from nexus_api.core.errors import AgentConfigConflict, UnknownAgent
+from nexus_api.core.errors import AgentConfigConflict, RollbackTargetNeverPublished, UnknownAgent
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import (
     AgentConfig,
@@ -35,6 +35,7 @@ from nexus_api.schemas.agent_config import (
 )
 from nexus_api.schemas.evals import PromoteOverrideIn
 from nexus_api.services import AgentConfigService
+from nexus_api.services.agent_config_service import DraftWrite, draft_fields
 from nexus_api.services.evals import has_passing_recent_run
 from nexus_api.services.prompt_improver import (
     SUPPORTED_MODES,
@@ -47,6 +48,7 @@ from nexus_api.services.prompt_improver import (
     PromptTooLongError,
     improve_prompt,
 )
+from nexus_api.services.reservations.passing import reservas_enabled
 from nexus_api.services.templating import (
     SeedTemplateNotFound,
     SeedTemplatePlaceholderMissing,
@@ -150,6 +152,13 @@ async def promote_agent_config(
 ) -> AgentConfigOut:
     """Promote a staged ``agent_config`` version to ACTIVE.
 
+    Spec 047 (requisito 23): the operator's promote is an **audited jump** of
+    the gate, like the console's: ``reason`` is required (422
+    ``reason_required`` without it) and skips what an owner or an admin may
+    skip — tests not run, a critical test, the regression, a blocker — writing
+    the reason into the version and the audit. The validator and the
+    AI-disclosure decision are never skipped.
+
     Block P (eval gate): when ``Tenant.eval_required=true``, the
     promote is blocked unless one of these is true:
 
@@ -158,6 +167,15 @@ async def promote_agent_config(
     - The body sets ``override=true`` with a non-empty ``reason``;
       an audit row records the override.
     """
+    reason = " ".join(((body.reason if body else None) or "").split())
+    if not reason:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "reason_required",
+                "message": "Promoting from the operator panel skips the gate: say why.",
+            },
+        )
     tenant = (
         await session.execute(sa.select(Tenant).where(Tenant.id == tenant_id))
     ).scalar_one_or_none()
@@ -166,7 +184,6 @@ async def promote_agent_config(
 
     if tenant.eval_required:
         override = bool(body and body.override)
-        reason = (body.reason if body else None) or ""
         if not override:
             passing = await has_passing_recent_run(
                 session,
@@ -183,11 +200,6 @@ async def promote_agent_config(
                     ),
                 )
         else:
-            if not reason.strip():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="override=true requires a non-empty reason",
-                )
             session.add(
                 AuditLog(
                     tenant_id=tenant_id,
@@ -199,11 +211,45 @@ async def promote_agent_config(
                 )
             )
 
+    # Spec 047 (T093, 23.7): the same gate as the console. The operator of
+    # Auphere skips what an owner may skip, always with the audited reason.
+    from nexus_api.services import publishing
+
     svc = AgentConfigService(session)
+    target = await svc.configs.get_by_version(version)
+    if target is None:
+        # The contract of today: an unknown version is a conflict, not a 404.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=f"version {version} not found"
+        )
+    override = bool(body and body.override)
+    # The operator who promotes takes today's AI-disclosure decision (CP-31:
+    # «yes» by default, attributed to it) when the version carries none.
+    from nexus_api.services.agent_console_policy import with_disclosure_default
+
+    target.policies = with_disclosure_default(
+        dict(target.policies or {}), actor=f"admin:{actor[:8]}"
+    )
     try:
-        config = await svc.promote(version, actor=f"admin:{actor[:8]}")
+        published = await publishing.publish(
+            session,
+            agent_id=target.agent_id,
+            version=target,
+            actor=f"admin:{actor[:8]}",
+            role="operator",
+            partner_id=tenant.partner_id,
+            accept_normal_failures=override,
+            override_reason=reason,
+            origin="admin",
+        )
+    except publishing.GateBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "gate_blocked", "gate": exc.gate.to_json()},
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    config = published.version
     out = AgentConfigOut.model_validate(config)
     # Notify any running worker so its AgentLoader cache picks up the new
     # active version on the next turn. Best-effort; see _publish_promote.
@@ -225,6 +271,17 @@ async def rollback_agent_config(
     svc = AgentConfigService(session)
     try:
         config = await svc.rollback(version, actor=f"admin:{actor[:8]}")
+    except RollbackTargetNeverPublished as exc:
+        # Spec 047 (requisito 23): a draft goes live through the gate — the
+        # promote, with its audited reason — never through a rollback.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "publish": f"/admin/tenants/{tenant_id}/agent-config/{version}/promote",
+            },
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     out = AgentConfigOut.model_validate(config)
@@ -281,6 +338,11 @@ async def update_runtime_capabilities(
             ),
         )
 
+    # Spec 047 (R3.3): the draft is everyone's; this write moves its revision
+    # like any other, so a console tab that read the old one is told.
+    svc = AgentConfigService(session)
+    await svc.lock_draft(config.agent_id, expected=None)
+    write = DraftWrite(draft=config, created=False, before=draft_fields(config))
     before = {
         "runtime_memory_tool": config.runtime_memory_tool,
         "runtime_outcome_grader": config.runtime_outcome_grader,
@@ -314,6 +376,7 @@ async def update_runtime_capabilities(
             },
         )
     )
+    await svc.finish_draft(write, actor=f"admin:{actor[:8]}")
     # Build the response payload from the body + the row's stable
     # identity fields. We avoid ``model_validate(config)`` because
     # SQLAlchemy may attempt lazy attribute loads on the not-yet-
@@ -444,6 +507,19 @@ async def stage_agent_config_from_seed(
     # (seed first, then connect) — keeping both orderings symmetric.
     connector_tools = await _safe_connector_tools_for_tenant(session, tenant_id)
     merged_tools = sorted(set(rendered.tools) | connector_tools)
+
+    # Spec 048: un agente solo tiene Reservas si el cliente la tiene. Quitarle
+    # las herramientas no basta: el texto de la plantilla las usa.
+    if any(t.startswith("reservas.") for t in merged_tools) and not (
+        await reservas_enabled(session, tenant_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Esta plantilla usa Reservas y este cliente no lo tiene activo. "
+                "Actívalo en la pestaña Acceso y vuelve a aplicarla."
+            ),
+        )
 
     svc = AgentConfigService(session)
     try:

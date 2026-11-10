@@ -357,6 +357,14 @@ describe("the composer under a pause (v2 §6.5)", () => {
     expect(screen.getByText(/con saldo en la cuenta el trabajo continúa/)).toBeInTheDocument();
   });
 
+  it("without a pool or a balance it says that topping up opens it, not waiting", () => {
+    renderComposer({ paused: { ...pause, used: 0, cap: 0 } });
+    expect(screen.getByLabelText("Mensaje al Companion")).toBeDisabled();
+    expect(screen.getByText(/La cuenta no tiene saldo/)).toBeInTheDocument();
+    expect(screen.getByText(/en cuanto recargues saldo/)).toBeInTheDocument();
+    expect(screen.queryByText(/Vuelve solo/)).not.toBeInTheDocument();
+  });
+
   it("does NOT show raw token figures (spec 004, R7.1)", () => {
     renderComposer({ paused: pause });
     // El partner ve que se agotó y cuándo vuelve, no cuántos tokens eran. Que

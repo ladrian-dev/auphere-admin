@@ -1,14 +1,18 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  BadgeCheck,
   ChartColumn,
+  Cpu,
   FlaskConical,
+  Hammer,
   Handshake,
   MessagesSquare,
   Inbox,
   LayoutDashboard,
   Phone,
   Plug,
+  Route,
   Store,
   UserPlus,
 } from "lucide-react";
@@ -49,6 +53,15 @@ export const NAV: NavGroup[] = [
       { href: "/connectors", label: "Conectores", icon: Plug },
       { href: "/auphere/channels", label: "Números de Auphere", icon: Phone },
       { href: "/qa", label: "Playground QA", icon: FlaskConical },
+      // Spec 047 (T150, historia 30): the model catalog, the router's policy
+      // and the certifications, without touching the database.
+      { href: "/models", label: "Modelos", icon: Cpu },
+      { href: "/router", label: "Router", icon: Route },
+      { href: "/certifications", label: "Certificaciones", icon: BadgeCheck },
+      // Spec 047 (T087, T090, T100, T201): the quality of the agent builder —
+      // the sector tests, the judge's calibration, the builder's evaluation
+      // and the sectors without an Auphere guide.
+      { href: "/builder", label: "Constructor", icon: Hammer },
     ],
   },
   {

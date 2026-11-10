@@ -4,14 +4,25 @@ import Link from "next/link";
 import { Button, cn } from "@nexus/ui";
 
 import type { Locale, MessageKey } from "@/i18n/messages";
+import { amountParts, formatAmount } from "@/lib/amount";
 import type { LiteHome } from "@/lib/backend/lite";
 
 type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 const SLICE = ["bg-primary", "bg-primary-deep", "bg-accent-mid", "bg-muted-foreground/40", "bg-status-info"] as const;
 
-function money(cents: number, locale: Locale): string {
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).format(cents / 100);
+/**
+ * Spec 056 (13.1): the one money format of the console (`lib/amount.ts`). The
+ * amounts are cents of `currency`: the bag's with bags (spec 047, EUR or USD),
+ * US$ without them.
+ */
+function money(cents: number, currency: string, locale: Locale): string {
+  return formatAmount({ amount_minor: cents, currency }, locale);
+}
+
+/** The spend splits by agent only with more than one: a single slice says nothing. */
+export function spendSplits(spend: NonNullable<LiteHome["spend_month"]>): boolean {
+  return Boolean(spend.by_agent && spend.by_agent.length > 1);
 }
 
 /**
@@ -31,9 +42,9 @@ export function LiteSpendCard({
   t: T;
   locale: Locale;
 }) {
-  const parts = new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).formatToParts(spend.total_cents / 100);
-  const byAgent = spend.by_agent && spend.by_agent.length > 1 ? spend.by_agent : null;
+  const byAgent = spendSplits(spend) ? spend.by_agent : null;
   const total = byAgent ? byAgent.reduce((s, a) => s + a.cents, 0) : 0;
+  const currency = spend.currency ?? "USD";
   return (
     <section aria-labelledby="lite-spend-h" className="flex h-full flex-col gap-4 rounded-md bg-card p-4 ring-1 ring-foreground/10" data-slot="lite-spend">
       {/* Wraps: the link does not shrink, and a longer translation must move it
@@ -53,16 +64,7 @@ export function LiteSpendCard({
           </Button>
         ) : null}
       </div>
-      {/* A <p> cannot carry an accessible name: the amount is read from the
-          visually hidden text, and the split, styled parts are hidden. */}
-      <p className="text-4xl font-semibold tracking-tight tabular-nums">
-        <span className="sr-only">{money(spend.total_cents, locale)}</span>
-        {parts.map((p, i) => (
-          <span key={i} aria-hidden="true" className={cn((p.type === "decimal" || p.type === "fraction" || p.type === "currency") && "text-2xl text-muted-foreground")}>
-            {p.value}
-          </span>
-        ))}
-      </p>
+      <MoneyFigure cents={spend.total_cents} currency={currency} locale={locale} />
       {byAgent ? (
         <>
           <div className="flex h-3 gap-1" aria-hidden="true">
@@ -77,12 +79,32 @@ export function LiteSpendCard({
                 <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-sm", SLICE[i % SLICE.length])} />
                 <span className="min-w-0 flex-1 truncate">{a.name}</span>
                 <span className="text-muted-foreground tabular-nums">{total > 0 ? Math.round((a.cents / total) * 100) : 0} %</span>
-                <span className="w-24 text-right font-medium tabular-nums">{money(a.cents, locale)}</span>
+                <span className="w-24 text-right font-medium tabular-nums">{money(a.cents, currency, locale)}</span>
               </li>
             ))}
           </ul>
         </>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * A big amount, its decimals and currency quieter (the design's «16,26 US$»).
+ * A <p> cannot carry an accessible name: the amount is read from the visually
+ * hidden text, and the split, styled parts are hidden. Shared by «Gasto del
+ * mes» and the balance of Consumo (spec 045), both in the bag's currency.
+ */
+export function MoneyFigure({ cents, currency = "USD", locale }: { cents: number; currency?: string; locale: Locale }) {
+  const parts = amountParts({ amount_minor: cents, currency }, locale);
+  return (
+    <p className="text-4xl font-semibold tracking-tight tabular-nums">
+      <span className="sr-only">{money(cents, currency, locale)}</span>
+      {parts.map((p, i) => (
+        <span key={i} aria-hidden="true" className={cn((p.type === "decimal" || p.type === "fraction" || p.type === "currency") && "text-2xl text-muted-foreground")}>
+          {p.value}
+        </span>
+      ))}
+    </p>
   );
 }

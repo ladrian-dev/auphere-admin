@@ -7,15 +7,18 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     FetchedValue,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -57,6 +60,42 @@ class Agent(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=AgentStatus.ACTIVE.value
     )
+    # Spec 047 (migración 0178): the revision of the agent's one draft, for
+    # ``If-Match``. A stale write answers 412 with what the other person changed.
+    draft_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Spec 047 (migración 0183): the services this agent offers. ``True`` =
+    # every service «Para todos los agentes»; ``False`` = only its
+    # ``agent_services`` rows (requisito 11.2, garantía 9).
+    serves_all_services: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    # Spec 047 (migración 0190): the agent's life — ``draft``, ``published``,
+    # ``paused`` (with its reason) or ``archived`` — and what resuming returns.
+    lifecycle: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default="draft"
+    )
+    pause_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused_by_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    paused_by_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    paused_origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    before_pause: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: Exactly one per client among the non-archived (requisito 26.2).
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    is_reception: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: The monthly cap, in the currency of the client's bag (requisito 44.1).
+    monthly_cap_micros: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: The last change Auphere made to this agent on its own. A full test pass from before it
+    #: no longer spends the one Auphere pays for (spec 047, 68.14).
+    tests_pass_returned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
@@ -89,6 +128,14 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         index=True,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Spec 047 (migración 0178): «v{n} de {agente}», numbered per agent. The
+    # database fills it on INSERT (trigger); ``version`` stays per client.
+    agent_version_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=FetchedValue()
+    )
+    #: The version this draft started from (composite FK, same client).
+    base_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[AgentConfigStatus] = mapped_column(
         pg_enum(AgentConfigStatus, name="agent_config_status"),
         nullable=False,
@@ -152,4 +199,69 @@ class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # to actually call MCP — defence in depth.
     runtime_mcp_connector: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+    # Spec 047 (migración 0187): the version's AgentSpec v1 (requisito 16.1),
+    # the gate's verdict, the owner/admin reason to skip it, and the undo window.
+    spec: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    gate: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    undo_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentService(Base):
+    """Spec 047 (0183): which services an agent offers when it does not serve
+    them all (``Agent.serves_all_services``; requisito 11.4, garantía 9)."""
+
+    __tablename__ = "agent_services"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_id"],
+            ["agents.tenant_id", "agents.id"],
+            name="fk_agent_services_agent",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "service_id"],
+            ["reservation_services.tenant_id", "reservation_services.id"],
+            name="fk_agent_services_service",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    service_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+
+
+class AgentVersionCompilation(UUIDPrimaryKey, Base):
+    """Spec 047 (0183, research D4): the history of compilations — which prompt
+    answered each turn, by its ``sha256``. The runtime does not read it: it reads
+    ``AgentConfig.system_prompt_rendered``, which each new compilation of the
+    active version rewrites in the same transaction."""
+
+    __tablename__ = "agent_version_compilations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_agent_version_compilations_tenant_id"),
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_config_id"],
+            ["agent_configs.tenant_id", "agent_configs.id"],
+            name="fk_agent_version_compilations_version",
+            ondelete="CASCADE",
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    agent_config_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    business_rev: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    knowledge_rev: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    tools_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    family_variant: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

@@ -1,8 +1,14 @@
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
 pytestmark = pytest.mark.asyncio
+
+
+#: Spec 047 (requisito 23): the operator's promote is an audited jump of the
+#: gate and always says why.
+REASON = {"reason": "Prueba del panel de operador"}
 
 
 async def test_get_returns_empty_bundle_when_no_versions(client, admin_headers, seed_tenants):
@@ -71,7 +77,9 @@ async def test_promote_workflow(client, admin_headers, seed_tenants):
     )
     assert r1.status_code == 201
     # promote v1
-    r2 = await client.post(f"/admin/tenants/{tid}/agent-config/1/promote", headers=admin_headers)
+    r2 = await client.post(
+        f"/admin/tenants/{tid}/agent-config/1/promote", headers=admin_headers, json=REASON
+    )
     assert r2.status_code == 200
     assert r2.json()["status"] == "active"
 
@@ -82,14 +90,20 @@ async def test_promote_workflow(client, admin_headers, seed_tenants):
 
 async def test_rollback_workflow(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
-    for prompt in ("v1", "v2"):
-        await client.put(
+    # Spec 047 (R3.1): one draft per agent — stage, publish, stage the next.
+    for version, prompt in ((1, "v1"), (2, "v2")):
+        staged = await client.put(
             f"/admin/tenants/{tid}/agent-config",
             json={"system_prompt_rendered": prompt, "tools": []},
             headers=admin_headers,
         )
-    await client.post(f"/admin/tenants/{tid}/agent-config/1/promote", headers=admin_headers)
-    await client.post(f"/admin/tenants/{tid}/agent-config/2/promote", headers=admin_headers)
+        assert staged.status_code == 201 and staged.json()["version"] == version
+        promoted = await client.post(
+            f"/admin/tenants/{tid}/agent-config/{version}/promote",
+            headers=admin_headers,
+            json=REASON,
+        )
+        assert promoted.status_code == 200, promoted.text
     # Rollback to v1
     r = await client.post(f"/admin/tenants/{tid}/agent-config/1/rollback", headers=admin_headers)
     assert r.status_code == 200
@@ -99,7 +113,9 @@ async def test_rollback_workflow(client, admin_headers, seed_tenants):
 
 async def test_promote_unknown_version_returns_409(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
-    r = await client.post(f"/admin/tenants/{tid}/agent-config/999/promote", headers=admin_headers)
+    r = await client.post(
+        f"/admin/tenants/{tid}/agent-config/999/promote", headers=admin_headers, json=REASON
+    )
     assert r.status_code == 409
 
 
@@ -119,14 +135,43 @@ async def test_endpoints_require_auth(client, seed_tenants):
 async def test_versions_listed_in_descending_order(client, admin_headers, seed_tenants):
     tid = seed_tenants["a"]
     for prompt in ("v1", "v2", "v3"):
-        await client.put(
+        staged = await client.put(
             f"/admin/tenants/{tid}/agent-config",
             json={"system_prompt_rendered": prompt, "tools": []},
             headers=admin_headers,
         )
+        assert staged.status_code == 201, staged.text
+        if prompt != "v3":
+            await client.post(
+                f"/admin/tenants/{tid}/agent-config/{staged.json()['version']}/promote",
+                headers=admin_headers,
+                json=REASON,
+            )
     r = await client.get(f"/admin/tenants/{tid}/agent-config", headers=admin_headers)
     versions = [v["version"] for v in r.json()["versions"]]
     assert versions == [3, 2, 1]
+    assert [v["status"] for v in r.json()["versions"]] == ["staged", "active", "archived"]
+
+
+async def test_staging_twice_writes_into_the_one_draft(client, admin_headers, seed_tenants):
+    """Spec 047 (R3.1): a second PUT before publishing does not stage another
+    version — it writes into the agent's draft."""
+    tid = seed_tenants["a"]
+    first = await client.put(
+        f"/admin/tenants/{tid}/agent-config",
+        json={"system_prompt_rendered": "uno", "tools": []},
+        headers=admin_headers,
+    )
+    second = await client.put(
+        f"/admin/tenants/{tid}/agent-config",
+        json={"system_prompt_rendered": "dos", "tools": []},
+        headers=admin_headers,
+    )
+    assert first.json()["version"] == second.json()["version"] == 1
+    r = await client.get(f"/admin/tenants/{tid}/agent-config", headers=admin_headers)
+    assert [(v["version"], v["system_prompt_rendered"]) for v in r.json()["versions"]] == [
+        (1, "dos")
+    ]
 
 
 # ── Block J: seed-template bootstrap ───────────────────────────────────────
@@ -140,10 +185,14 @@ async def test_list_seed_templates_includes_barbershop(client, admin_headers):
     assert "barbershop_v1" in names
     bs = next(t for t in payload if t["name"] == "barbershop_v1")
     assert bs["version"] == "1.0.0"
-    assert "booking.check_availability" in bs["tools_required"]
+    assert "reservas.find_slots" in bs["tools_required"]  # spec 048
 
 
-async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenants):
+async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenants, monkeypatch):
+    # Esta plantilla usa Reservas: aquí se prueba el render, no el módulo.
+    monkeypatch.setattr(
+        "nexus_api.api.admin.agent_configs.reservas_enabled", AsyncMock(return_value=True)
+    )
     tid = seed_tenants["a"]
     body = {
         "seed_template_ref": "barbershop_v1",
@@ -166,7 +215,7 @@ async def test_from_seed_renders_and_stages_v1(client, admin_headers, seed_tenan
     assert config["seed_template_ref"] == "barbershop_v1"
     assert "Cultor Barber" in config["system_prompt_rendered"]
     assert "Av. Apoquindo 1234" in config["system_prompt_rendered"]
-    assert "booking.create_appointment" in config["tools"]
+    assert "reservas.create" in config["tools"]  # spec 048
     assert config["policies"]["cancellation"]["free_hours_before"] == 24
 
 
@@ -242,6 +291,7 @@ async def test_patch_runtime_refuses_active(client, admin_headers, seed_tenants)
     promote = await client.post(
         f"/admin/tenants/{tid}/agent-config/{version}/promote",
         headers=admin_headers,
+        json=REASON,
     )
     assert promote.status_code == 200
     body = {

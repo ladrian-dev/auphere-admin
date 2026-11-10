@@ -41,3 +41,5 @@ class ChannelSignupLink(UUIDPrimaryKey, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: The channel the owner connected with it.
     channel_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: Spec 047 (0191): the agent the owner connects the number to.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)

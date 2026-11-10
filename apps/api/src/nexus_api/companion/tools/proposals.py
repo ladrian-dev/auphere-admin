@@ -42,6 +42,7 @@ from typing import Any, Literal
 import httpx
 
 from nexus_api.companion.tools.errors import ToolError, translate_status
+from nexus_api.core.canonical import canonical_hash  # spec 047
 
 # ── el mapa cerrado de escritura ───────────────────────────────────────
 #
@@ -176,17 +177,6 @@ class Proposal:
 
 
 # ── helpers deterministas ──────────────────────────────────────────────
-
-
-def canonical_hash(payload: Any) -> str:
-    """SHA-256 hexadecimal de un JSON canónico.
-
-    ``sort_keys`` y separadores compactos para que el mismo estado dé
-    siempre el mismo hash: dos serializaciones distintas del mismo objeto
-    serían un 412 inventado.
-    """
-    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def short_digest(text: str) -> str:

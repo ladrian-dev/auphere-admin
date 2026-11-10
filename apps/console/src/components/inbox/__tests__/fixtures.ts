@@ -10,6 +10,7 @@ export function conversation(o: Partial<InboxConversation> = {}): InboxConversat
     channel: { kind: "whatsapp" },
     agent: null,
     state: "agent",
+    waiting: null,
     assignee: null,
     last_message: {
       at: "2026-10-08T11:30:00Z",
@@ -46,6 +47,7 @@ export function detail(o: Partial<InboxDetail> = {}): InboxDetail {
     contact: { name: "Ana Torres", handle: "+5491100000001", first_message_at: "2026-09-01T10:00:00Z", conversations: 2 },
     summary: null,
     waiting_reason: null,
+    waiting_since: null,
     tags: [],
     note: { body: "", updated_at: null },
     activity: [],

@@ -30,7 +30,6 @@ import {
 import {
   connectApiKeyAction,
   connectorStatusAction,
-  setAgendaProUrlAction,
   startConsentAction,
   syncConnectorAction,
 } from "@/app/(console)/clients/[ref]/integrations/actions";
@@ -144,14 +143,42 @@ export function ConnectorCard({
     });
   }
 
-  if (connector.auth_kind === "public_url") {
-    // Spec 016 (R6): AgendaPro se enlaza con la página pública de su agenda.
-    // Ni credenciales, ni consentimiento, ni sincronizar: una URL y «desenlazar».
-    return <PublicLinkCard refId={refId} connector={connector} canWrite={canWrite} />;
-  }
-
   const broken = status === "error" || status === "revoked" || status === "expired";
-  const actions = !canWrite ? null : !installed ? (
+  // Spec 043, R11.8: uno nuevo se conecta por profesional, en un panel que el partner no tiene. Aquí
+  // solo se renueva el de antes, si se cayó, o se quita. Un agente que aún reserva en Google lo
+  // necesita, y lo que hay en ese calendario bloquea horas.
+  const managed = connector.managed_elsewhere === true;
+  const actions = !canWrite ? null : managed && connected ? (
+    <Button size="xs" variant="outline" onClick={() => setDisconnecting(true)} disabled={pending}>
+      {t("connectors.remove")}
+    </Button>
+  ) : managed ? (
+    <span className="flex shrink-0 items-center gap-2">
+      {status === "paused" ? (
+        <Button size="xs" onClick={() => changeStatus("resume")} disabled={pending}>
+          {t("connectors.resume")}
+        </Button>
+      ) : (
+        <Button size="xs" onClick={connect} disabled={pending}>
+          {t("connectors.reconnect")}
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button size="icon-sm" variant="ghost" disabled={pending} aria-label={t("connectors.more", { name })}>
+              <MoreHorizontal aria-hidden="true" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem variant="destructive" onClick={() => setDisconnecting(true)}>
+            {t("connectors.remove")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  ) : !installed ? (
     // Sin conectar: el `+` de cualquier directorio. Lleva su nombre
     // accesible porque un icono solo no dice a qué conector pertenece.
     <Button size="icon-sm" onClick={connect} disabled={pending} aria-label={t("connectors.connect.aria", { name })}>
@@ -194,6 +221,7 @@ export function ConnectorCard({
 
   return (
     <CardShell name={name} refId={refId} connector={connector} pending={pending} actions={actions}>
+      {managed ? <p className="text-xs text-pretty text-muted-foreground">{t("connectors.managedElsewhere")}</p> : null}
       {syncKey ? (
         <p className="flex flex-wrap items-center gap-2 text-xs" role="status">
           <span
@@ -234,9 +262,9 @@ export function ConnectorCard({
       <ConfirmDialog
         open={disconnecting}
         onOpenChange={setDisconnecting}
-        title={t("connectors.disconnect.title", { name })}
-        description={t("connectors.disconnect.body")}
-        confirmLabel={t("connectors.disconnect")}
+        title={t(managed ? "connectors.remove.title" : "connectors.disconnect.title", { name })}
+        description={t(managed ? "connectors.remove.body" : "connectors.disconnect.body")}
+        confirmLabel={t(managed ? "connectors.remove" : "connectors.disconnect")}
         cancelLabel={t("common.cancel")}
         destructive
         onConfirm={() => changeStatus("disconnect")}
@@ -274,7 +302,8 @@ function CardShell({
 }) {
   const t = useT();
   const locale = useLocale();
-  const unlocks = connector.tools_total;
+  // Lo que ya no es de ningún agente no desbloquea nada.
+  const unlocks = connector.managed_elsewhere ? 0 : connector.tools_total;
   const status = connector.status;
   const connected = status === "connected";
   const broken = status === "error" || status === "revoked" || status === "expired";
@@ -333,7 +362,7 @@ function CardShell({
             {unlocks === 1 ? t("int.unlocksOne") : t("int.unlocks", { n: unlocks })}
           </Link>
         ) : null}
-        {connector.tools_enabled > 0 ? (
+        {connector.tools_enabled > 0 && !connector.managed_elsewhere ? (
           <span className="tabular-nums">
             {t("connectors.tools", { on: connector.tools_enabled, total: connector.tools_total })}
           </span>
@@ -401,155 +430,6 @@ function ConnectorIcon({ connector, refId }: { connector: ConnectorOut; refId: s
         />
       ) : null}
     </span>
-  );
-}
-
-/**
- * Spec 016 (R6): AgendaPro — «Enlazar la agenda». Lo que el runtime necesita
- * es la página pública de reservas; nada secreto se pide, nunca.
- */
-function PublicLinkCard({
-  refId,
-  connector,
-  canWrite,
-}: {
-  refId: string;
-  connector: ConnectorOut;
-  canWrite: boolean;
-}) {
-  const t = useT();
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [open, setOpen] = React.useState(false);
-  const [unlinking, setUnlinking] = React.useState(false);
-  const [value, setValue] = React.useState(connector.public_url ?? "");
-  const [error, setError] = React.useState<string | null>(null);
-  const linked = Boolean(connector.public_url);
-  const name = connector.display_name;
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const url = value.trim();
-    if (!/^https:\/\/([a-z0-9-]+\.)*agendapro\.com(\/|$)/i.test(url))
-      return void setError(t("connectors.agendapro.invalid"));
-    setError(null);
-    startTransition(async () => {
-      const res = await setAgendaProUrlAction({ ref: refId, public_url: url });
-      if (!res.ok)
-        return void setError(
-          res.code === "invalid_url" ? t("connectors.agendapro.invalid") : actionErrorText(res, t),
-        );
-      toast.success(t("connectors.agendapro.linked"));
-      setOpen(false);
-      router.refresh();
-    });
-  }
-  function unlink() {
-    startTransition(async () => {
-      const res = await setAgendaProUrlAction({ ref: refId, public_url: null });
-      if (!res.ok) return void toast.error(actionErrorText(res, t));
-      toast.success(t("connectors.agendapro.unlinked"));
-      setUnlinking(false);
-      setValue("");
-      router.refresh();
-    });
-  }
-
-  const fieldId = `agendapro-url-${refId}`;
-  // La misma gramática que el resto: sin enlazar, un `+`; enlazado, «Más».
-  // Su acción es distinta —una URL pública, no credenciales— pero eso no es
-  // razón para que la tarjeta se lea distinta.
-  const actions = !canWrite ? null : !linked ? (
-    <Button
-      size="icon-sm"
-      onClick={() => setOpen(true)}
-      disabled={pending}
-      aria-label={t("connectors.agendapro.link")}
-    >
-      <Plus aria-hidden="true" />
-    </Button>
-  ) : (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button size="icon-sm" variant="ghost" disabled={pending} aria-label={t("connectors.more", { name })}>
-            <MoreHorizontal aria-hidden="true" />
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setOpen(true)}>{t("connectors.agendapro.relink")}</DropdownMenuItem>
-        <DropdownMenuItem variant="destructive" onClick={() => setUnlinking(true)}>
-          {t("connectors.agendapro.unlink")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-
-  return (
-    <CardShell name={name} refId={refId} connector={connector} pending={pending} actions={actions}>
-      {linked ? (
-        <a
-          href={connector.public_url ?? undefined}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-w-0 items-center gap-1 text-xs text-muted-foreground underline underline-offset-4"
-        >
-          <span className="truncate">{connector.public_url}</span>
-          <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
-        </a>
-      ) : null}
-
-      <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("connectors.agendapro.title")}</DialogTitle>
-            <DialogDescription>{t("connectors.agendapro.help")}</DialogDescription>
-          </DialogHeader>
-          <form className="grid gap-3" onSubmit={submit} noValidate aria-busy={pending}>
-            <div className="grid gap-1">
-              <Label htmlFor={fieldId}>{t("connectors.agendapro.field")}</Label>
-              <Input
-                id={fieldId}
-                type="url"
-                inputMode="url"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={t("connectors.agendapro.placeholder")}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                aria-invalid={error ? true : undefined}
-                aria-describedby={error ? `${fieldId}-err` : undefined}
-                required
-              />
-              {error ? (
-                <p id={`${fieldId}-err`} className="text-xs text-destructive" aria-live="polite">
-                  {error}
-                </p>
-              ) : null}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-                {t("common.cancel")}
-              </Button>
-              <Button type="submit" disabled={pending}>
-                {t("connectors.agendapro.link")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <ConfirmDialog
-        open={unlinking}
-        onOpenChange={setUnlinking}
-        title={t("connectors.agendapro.unlink.title", { name })}
-        description={t("connectors.agendapro.unlink.body")}
-        confirmLabel={t("connectors.agendapro.unlink")}
-        cancelLabel={t("common.cancel")}
-        destructive
-        onConfirm={unlink}
-      />
-    </CardShell>
   );
 }
 

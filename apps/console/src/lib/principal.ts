@@ -100,4 +100,14 @@ export async function requireClientPrincipal(module: ClientModule, from?: string
   return principal;
 }
 
+/**
+ * Spec 031 (R7.3): the gate of a client person's own account page («Tus
+ * teléfonos»). Any client person has it; a partner member goes home.
+ */
+export async function requireClientAccount(from?: string): Promise<ClientPrincipal> {
+  const principal = await requirePrincipal(from);
+  if (principal.kind !== "client") redirect("/");
+  return principal;
+}
+
 export { PERMISSIONS, can, type Permission, type Role } from "./permissions";

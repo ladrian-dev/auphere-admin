@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from anthropic.lib.tools import BetaAsyncAbstractMemoryTool
@@ -125,10 +125,19 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
         *,
         tenant_id: uuid.UUID,
         customer_id: uuid.UUID | None,
+        agent_id: uuid.UUID | None = None,
     ) -> None:
         super().__init__()
         self._tenant_id = tenant_id
         self._customer_id = customer_id
+        # Spec 047 (0193): con agente, la «memoria propia» de ese agente; sin él,
+        # la compartida. Un agente nunca lee ni escribe la de un hermano.
+        self._agent_id = agent_id
+
+    def _layer(self) -> Any:
+        if self._agent_id is None:
+            return AgentMemory.agent_id.is_(None)
+        return AgentMemory.agent_id == self._agent_id
 
     # ── helpers ──────────────────────────────────────────────────────
 
@@ -164,7 +173,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
 
         assert isinstance(session, AsyncSession)  # narrow type for mypy
         customer_id = self._customer_id_for(resolved_path)
-        stmt = select(AgentMemory).where(AgentMemory.path == resolved_path)
+        stmt = select(AgentMemory).where(AgentMemory.path == resolved_path, self._layer())
         if customer_id is None:
             stmt = stmt.where(AgentMemory.customer_id.is_(None))
         else:
@@ -185,7 +194,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
         if self._customer_id is None:
             return 0
         stmt = select(func.coalesce(func.sum(AgentMemory.size_bytes), 0)).where(
-            AgentMemory.customer_id == self._customer_id
+            AgentMemory.customer_id == self._customer_id, self._layer()
         )
         return int((await session.execute(stmt)).scalar_one())
 
@@ -264,7 +273,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
                 prefix = resolved.rstrip("/")
                 like = f"{prefix}/%"
                 stmt = select(AgentMemory.path, AgentMemory.size_bytes).where(
-                    or_(AgentMemory.path == prefix, AgentMemory.path.like(like))
+                    or_(AgentMemory.path == prefix, AgentMemory.path.like(like)), self._layer()
                 )
                 # Constrain the directory listing by customer scope so
                 # tenant-wide listings don't show customer files.
@@ -311,6 +320,7 @@ class NexusPostgresMemoryTool(BetaAsyncAbstractMemoryTool):
                     AgentMemory(
                         tenant_id=self._tenant_id,
                         customer_id=customer_id,
+                        agent_id=self._agent_id,
                         path=resolved,
                         content=command.file_text,
                     )

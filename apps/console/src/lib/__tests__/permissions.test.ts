@@ -38,6 +38,7 @@ const API_MAP: Record<string, string[]> = {
   "companion:use": ["owner", "admin", "builder"],
   "teammates:use": ["owner", "admin", "builder"],
   "teammates:policy": ["owner", "admin"],
+  "client_access:manage": ["owner", "admin"],
 };
 
 describe("permission map", () => {
@@ -55,5 +56,12 @@ describe("permission map", () => {
     expect(can("builder", "workstation:pair")).toBe(true);
     expect(can("analyst", "workstation:pair")).toBe(false);
     expect(can("builder", "workstation:write")).toBe(false);
+  });
+  it("opening the client's console is for owners and admins, not for whoever edits clients (spec 056, 3.2)", () => {
+    expect(can("owner", "client_access:manage")).toBe(true);
+    expect(can("admin", "client_access:manage")).toBe(true);
+    expect(can("builder", "client_access:manage")).toBe(false);
+    expect(can("builder", "clients:write")).toBe(true);
+    expect(can("client", "client_access:manage")).toBe(false);
   });
 });

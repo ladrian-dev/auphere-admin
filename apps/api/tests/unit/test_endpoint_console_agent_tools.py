@@ -197,10 +197,14 @@ async def test_publish_requires_disclosure_decision(client, console_world, db_se
     row = await db_session.scalar(sa.select(AgentConfig).where(AgentConfig.id == cfg.id))
     assert row is not None and row.status is AgentConfigStatus.STAGED
 
-    # Staged from the console → default decision (enabled=true) → publishes.
+    # Written from the console → default decision (enabled=true) → publishes.
     v = await client.post(
         f"/console/clients/{a['ref']}/agent/versions", headers=h(), json={"system_prompt": "p"}
     )
+    # Spec 047 (R3.1): the console writes into the agent's one draft — the
+    # version the backoffice staged — instead of stacking another one.
+    assert v.status_code == 201, v.text
+    assert v.json()["version"] == version
     policies = await db_session.scalar(
         sa.select(AgentConfig.policies).where(
             AgentConfig.tenant_id == a["tenant_id"], AgentConfig.version == v.json()["version"]
@@ -208,9 +212,9 @@ async def test_publish_requires_disclosure_decision(client, console_world, db_se
     )
     assert policies["console"]["ai_disclosure"]["enabled"] is True
     assert policies["console"]["ai_disclosure"]["decided_by"] == "console:owner-a@example.com"
-    # Policies come from the ACTIVE version (none yet) — the seeded staged
-    # one is not copied; the console default is the only console key.
-    assert set(policies) == {"console"}
+    # What the backoffice put in the draft is still there: nothing is lost.
+    assert set(policies) == {"console", "llm"}
+    assert policies["llm"] == {"respond_model": "x"}
     ok = await client.post(
         f"/console/clients/{a['ref']}/agent/versions/{v.json()['version']}/publish", headers=h()
     )
@@ -235,21 +239,21 @@ async def test_publish_requires_disclosure_decision(client, console_world, db_se
 async def fake_composio():
     c = FakeComposioClient()
     c.register_tools(
-        "googlecalendar",
+        "notion",
         [
             ComposioTool(
-                slug="GOOGLECALENDAR_LIST_EVENTS",
+                slug="NOTION_SEARCH",
                 description="List",
                 input_schema={"type": "object"},
             )
         ],
     )
     c.register_auth_config(
-        "googlecalendar",
-        "ac_test_gc",
-        display_name="Google Calendar",
-        vendor="Google",
-        category="Calendar",
+        "notion",
+        "ac_test_nt",
+        display_name="Notion",
+        vendor="Notion",
+        category="Docs",
     )
     admin_connectors.set_composio_client_for_tests(c)
     connector_catalog._TOOLKIT_METADATA_CACHE.clear()
@@ -275,10 +279,9 @@ async def test_tools_enable_and_publish(
     cat = await client.get(f"{base}/tools", headers=h())
     assert cat.status_code == 200, cat.text
     names = {t["name"]: t for t in cat.json()["tools"]}
-    assert (
-        "booking.check_availability" in names and not names["booking.check_availability"]["enabled"]
-    )
-    assert "agendapro.get_today_appointments" not in names  # internal
+    assert "reservas.find_slots" in names and not names["reservas.find_slots"]["enabled"]
+    # Spec 048: ``booking.*`` is retired and not offered.
+    assert not [n for n in names if n.startswith("booking.")]
     assert all(t["connector_slug"] != "tiktok_bm" for t in names.values())
     bound = [t for t in names.values() if t["connector_required"]]
     for t in bound:  # not installed → never usable, even if whitelisted
@@ -287,28 +290,34 @@ async def test_tools_enable_and_publish(
     saved = await client.put(
         f"{base}/tools",
         headers=h(),
-        json={"tools": ["booking.check_availability", "escalate.escalate_to_human"]},
+        json={"tools": ["reservas.find_slots", "escalate.escalate_to_human"]},
     )
     assert saved.status_code == 200, saved.text
     assert saved.json()["draft_created"] is True
     by = {t["name"]: t for t in saved.json()["tools"]}
-    assert (
-        by["booking.check_availability"]["enabled"] and by["booking.check_availability"]["usable"]
-    )
-    assert not by["booking.check_availability"]["enabled_in_active"]
+    assert by["reservas.find_slots"]["enabled"] and by["reservas.find_slots"]["usable"]
+    assert not by["reservas.find_slots"]["enabled_in_active"]
 
     unknown = await client.put(f"{base}/tools", headers=h(), json={"tools": ["nope.tool"]})
     assert unknown.status_code == 422
-    internal = await client.put(
-        f"{base}/tools", headers=h(), json={"tools": ["agendapro.scrape_no_shows"]}
+    # Spec 048 (requisito 2.3): adding a retired tool is refused, with the
+    # Reservas one that replaces it.
+    retired = await client.put(
+        f"{base}/tools",
+        headers=h(),
+        json={"tools": ["reservas.find_slots", "booking.create_appointment"]},
     )
-    assert internal.status_code == 422
+    assert retired.status_code == 422, retired.text
+    assert retired.json()["detail"] == {
+        "code": "tool_retired",
+        "replacements": {"booking.create_appointment": "reservas.create"},
+    }
 
     v = saved.json()["version"]
     pub = await client.post(f"{base}/agent/versions/{v}/publish", headers=h())
     assert pub.status_code == 200, pub.text
     active = await _active(db_session, a["tenant_id"])
-    assert sorted(active.tools) == ["booking.check_availability", "escalate.escalate_to_human"]
+    assert sorted(active.tools) == ["escalate.escalate_to_human", "reservas.find_slots"]
     bundle = (await client.get(f"{base}/agent", headers=h())).json()
     assert bundle["active_version"] == v
 
@@ -316,7 +325,7 @@ async def test_tools_enable_and_publish(
     # bloqueo y engañaba a quien lo elegía, así que pedirlo ya no se guarda:
     # se contesta por qué.
     refused = await client.put(
-        f"{base}/tools/booking.check_availability/mode",
+        f"{base}/tools/reservas.find_slots/mode",
         headers=h(),
         json={"mode": "needs_approval"},
     )
@@ -324,7 +333,7 @@ async def test_tools_enable_and_publish(
 
     # Gating override: immediate, not versioned.
     mode = await client.put(
-        f"{base}/tools/booking.check_availability/mode",
+        f"{base}/tools/reservas.find_slots/mode",
         headers=h(),
         json={"mode": "blocked"},
     )
@@ -332,13 +341,13 @@ async def test_tools_enable_and_publish(
     t = next(
         x
         for x in (await client.get(f"{base}/tools", headers=h())).json()["tools"]
-        if x["name"] == "booking.check_availability"
+        if x["name"] == "reservas.find_slots"
     )
     assert t["effective_mode"] == "blocked" and t["override_mode"] == "blocked"
-    gone = await client.delete(f"{base}/tools/booking.check_availability/mode", headers=h())
+    gone = await client.delete(f"{base}/tools/reservas.find_slots/mode", headers=h())
     assert gone.status_code == 204
     assert (
-        await client.delete(f"{base}/tools/booking.check_availability/mode", headers=h())
+        await client.delete(f"{base}/tools/reservas.find_slots/mode", headers=h())
     ).status_code == 404
 
 
@@ -354,7 +363,7 @@ async def test_a_second_consent_after_the_owner_already_authorised_settles_it(
     h = a["headers"]
     base = f"/console/clients/{a['ref']}/connectors"
 
-    first = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    first = await client.post(f"{base}/notion/consent", headers=h())
     assert first.status_code == 201, first.text
     tc = await db_session.scalar(
         sa.select(TenantConnector).where(TenantConnector.tenant_id == a["tenant_id"])
@@ -364,12 +373,12 @@ async def test_a_second_consent_after_the_owner_already_authorised_settles_it(
     # webhook no llega nunca.
     fake_composio._connections[tc.credentials_ref["composio_connection_id"]].status = "ACTIVE"
 
-    again = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    again = await client.post(f"{base}/notion/consent", headers=h())
     assert again.status_code == 409, again.text
     assert "ya" in again.json()["detail"].lower()
     await db_session.refresh(tc)
     assert tc.status == "connected"
-    tools = {c["slug"]: c for c in (await client.get(base, headers=h())).json()}["googlecalendar"]
+    tools = {c["slug"]: c for c in (await client.get(base, headers=h())).json()}["notion"]
     assert tools["status"] == "connected" and tools["tools_total"] >= 1
 
 
@@ -384,13 +393,13 @@ async def test_connectors_never_leak_secrets_and_consent_once(
     assert lst.status_code == 200, lst.text
     slugs = {c["slug"]: c for c in lst.json()}
     assert "tiktok_bm" not in slugs and "whatsapp_meta" not in slugs  # channel_only
-    assert "googlecalendar" in slugs and slugs["googlecalendar"]["installed"] is False
+    assert "notion" in slugs and slugs["notion"]["installed"] is False
     assert "woocommerce" in slugs and slugs["woocommerce"]["auth_kind"] == "api_key"
     assert [f["field"] for f in slugs["woocommerce"]["credentials_form"]][:1] == ["store_url"]
     for c in lst.json():
         assert "credentials_ref" not in c and "consent_token" not in c
 
-    consent = await client.post(f"{base}/googlecalendar/consent", headers=h())
+    consent = await client.post(f"{base}/notion/consent", headers=h())
     assert consent.status_code == 201, consent.text
     assert "consent_token=" in consent.json()["signed_consent_url"]
     tc = await db_session.scalar(
@@ -399,8 +408,8 @@ async def test_connectors_never_leak_secrets_and_consent_once(
     assert tc is not None and tc.status == "pending"
 
     lst2 = {c["slug"]: c for c in (await client.get(base, headers=h())).json()}
-    assert lst2["googlecalendar"]["installed"] and lst2["googlecalendar"]["status"] == "pending"
-    assert "signed_consent_url" not in lst2["googlecalendar"]
+    assert lst2["notion"]["installed"] and lst2["notion"]["status"] == "pending"
+    assert "signed_consent_url" not in lst2["notion"]
 
     # API-key bootstrap: secrets in, never out.
     key = await client.post(
@@ -431,7 +440,7 @@ async def test_connectors_never_leak_secrets_and_consent_once(
             await client.get(f"/console/clients/{b['ref']}/connectors", headers=b["headers"]())
         ).json()
     }
-    assert lb["googlecalendar"]["installed"] is False
+    assert lb["notion"]["installed"] is False
 
 
 # ── CP-14 · skills ─────────────────────────────────────────────────────
@@ -619,82 +628,27 @@ async def test_knowledge_upload_too_large_is_413(client, console_world) -> None:
     assert r.status_code == 413
 
 
-# ── spec 016 · AgendaPro enlazada por su agenda pública (R6) ─────────────────
+# ── spec 048 · AgendaPro ya no está ──────────────────────────────────────────
 
 
-async def test_agendapro_is_linked_by_public_url_never_by_credentials(
+async def test_agendapro_is_gone_from_the_console(
     client, console_world, db_session, seeded_connectors, fake_composio
 ) -> None:
-    from tests.conftest import add_console_member
-
+    """Spec 048 (requisitos 1.1 y 1.2): ni tarjeta en Conectores, ni campo de
+    agenda pública, ni la ruta que la enlazaba."""
     a = console_world["a"]
     h = a["headers"]
     base = f"/console/clients/{a['ref']}"
-    url_path = f"{base}/integrations/agendapro/public-url"
-
-    before = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
-    assert before["agendapro"]["auth_kind"] == "public_url"
-    assert before["agendapro"]["public_url"] is None
-    assert before["agendapro"]["status"] is None
-    assert before["agendapro"]["credentials_form"] == []
-
-    good = "https://cultorbarber.site.agendapro.com/cl/sucursal"
-    linked = await client.put(url_path, headers=h(), json={"public_url": good})
-    assert linked.status_code == 200, linked.text
-    assert linked.json()["public_url"] == good
-    assert linked.json()["integration"] == "agendapro"
-    after = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
-    assert after["agendapro"]["status"] == "connected"
-    assert after["agendapro"]["public_url"] == good
-    assert after["agendapro"]["installed"] is True
-    assert "credentials_ref" not in after["agendapro"]
-    # The booking tools are native: they need no connector row to be usable.
-    booking = [
-        t
-        for t in (await client.get(f"{base}/tools", headers=h())).json()["tools"]
-        if t["name"].startswith("booking.")
-    ]
-    assert booking and all(t["connector_required"] is False for t in booking)
-
-    for bad, reason in (
-        ("http://cultorbarber.site.agendapro.com/cl", "scheme"),
-        ("https://evil.example.com/agendapro.com", "host"),
-        ("https://agendapro.com.evil.example", "host"),
-        ("not a url", "scheme"),
-    ):
-        resp = await client.put(url_path, headers=h(), json={"public_url": bad})
-        assert resp.status_code == 422, (bad, resp.text)
-        assert resp.json()["detail"] == {"code": "invalid_url", "reason": reason}
-    extra = await client.put(url_path, headers=h(), json={"public_url": good, "login": "x"})
-    assert extra.status_code == 422, extra.text
-    still = (await client.get(f"{base}/connectors", headers=h())).json()
-    assert next(c for c in still if c["slug"] == "agendapro")["public_url"] == good
-
-    cleared = await client.put(url_path, headers=h(), json={"public_url": ""})
-    assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["public_url"] is None
-    gone = {c["slug"]: c for c in (await client.get(f"{base}/connectors", headers=h())).json()}
-    assert gone["agendapro"]["status"] is None and gone["agendapro"]["public_url"] is None
-
-    analyst = await add_console_member(db_session, partner_id=a["partner_id"], role="analyst")
-    denied = await client.put(url_path, headers=analyst["headers"](), json={"public_url": good})
-    assert denied.status_code == 403, denied.text
-
-    rows = (
-        await db_session.execute(
-            sa.select(AuditLog.after_json, AuditLog.actor)
-            .where(
-                AuditLog.action == "console.integration.agendapro_url",
-                AuditLog.tenant_id == a["tenant_id"],
-            )
-            .order_by(AuditLog.created_at)
-        )
-    ).all()
-    assert [r.after_json for r in rows] == [
-        {"set": True, "public_url": good},
-        {"set": False, "public_url": None},
-    ]
-    assert all(r.actor.startswith("console:") for r in rows)
+    cards = (await client.get(f"{base}/connectors", headers=h())).json()
+    assert cards, "the catalogue is empty"
+    assert not [c for c in cards if "agendapro" in c["slug"]]
+    assert all("public_url" not in c for c in cards)
+    gone = await client.put(
+        f"{base}/integrations/agendapro/public-url",
+        headers=h(),
+        json={"public_url": "https://cultorbarber.site.agendapro.com/cl/sucursal"},
+    )
+    assert gone.status_code == 404, gone.text
 
 
 # ── spec 016 · la clave se guarda y sincroniza de una vez (R7) ───────────────
@@ -812,14 +766,8 @@ async def test_connecting_enables_tools_only_for_that_tenant(
         },
     )
     assert key.status_code == 201, key.text
-    url = await client.put(
-        f"/console/clients/{a['ref']}/integrations/agendapro/public-url",
-        headers=a["headers"](),
-        json={"public_url": "https://a.site.agendapro.com/cl/x"},
-    )
-    assert url.status_code == 200, url.text
 
-    # B: same agent tools as before, no WooCommerce install, no AgendaPro page.
+    # B: same agent tools as before, no WooCommerce install.
     db_session.expire_all()
     assert (await _active(db_session, b["tenant_id"])).tools == tools_b_before
     b_conn = {
@@ -829,7 +777,6 @@ async def test_connecting_enables_tools_only_for_that_tenant(
         ).json()
     }
     assert b_conn["woocommerce"]["installed"] is False
-    assert b_conn["agendapro"]["public_url"] is None and b_conn["agendapro"]["status"] is None
     b_versions = (
         await client.get(f"/console/clients/{b['ref']}/agent", headers=b["headers"]())
     ).json()["versions"]

@@ -64,10 +64,11 @@ export async function stageAgentConfigAction(
 export async function promoteAgentConfigAction(
   tenantId: string,
   version: number,
+  reason: string,
 ): Promise<Result<AgentConfig>> {
   await requireOperator();
   try {
-    const result = await backend.promoteAgentConfig(tenantId, version);
+    const result = await backend.promoteAgentConfig(tenantId, version, reason.trim());
     revalidatePath(`/tenants/${tenantId}/agent`);
     revalidatePath(`/tenants/${tenantId}`);
     return { ok: true, data: result! };

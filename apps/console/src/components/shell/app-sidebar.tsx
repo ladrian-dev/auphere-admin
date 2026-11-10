@@ -65,29 +65,19 @@ export function AppSidebar({ who, partnerName, partnerSlug, user, badges }: Prop
               collapsed && "opacity-0",
             )}
           />
-          {lite ? (
-            // Spec 030: the client console says it is the lite one.
-            <span
-              className={cn(
-                "shrink-0 rounded-full bg-primary/15 px-2 text-xs leading-5 font-semibold text-accent-foreground transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
-                collapsed && "opacity-0",
-              )}
-            >
-              lite
-            </span>
-          ) : (
-            // Owner, 2026-10-19: the partner console is in beta, and says so
-            // next to the name — where it is read first and costs no space.
-            <span
-              title={t("shell.beta.hint")}
-              className={cn(
-                "shrink-0 rounded-full bg-status-warning-bg px-2 text-xs leading-5 font-semibold text-status-warning-text ring-1 ring-status-warning-border transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
-                collapsed && "opacity-0",
-              )}
-            >
-              {t("shell.beta")}
-            </span>
-          )}
+          {/* Owner, 2026-10-19: the console is in beta, and says so next to
+              the name — where it is read first and costs no space. Spec 045
+              (R7): the client's console says it the same way, with a hint of
+              its own; «lite» was an internal word and is gone. */}
+          <span
+            title={t(lite ? "shell.beta.client.hint" : "shell.beta.hint")}
+            className={cn(
+              "shrink-0 rounded-full bg-status-warning-bg px-2 text-xs leading-5 font-semibold text-status-warning-text ring-1 ring-status-warning-border transition-opacity duration-300 ease-(--ease-in-out) motion-reduce:transition-none",
+              collapsed && "opacity-0",
+            )}
+          >
+            {t("shell.beta")}
+          </span>
         </div>
       </SidebarHeader>
       <SidebarContent>

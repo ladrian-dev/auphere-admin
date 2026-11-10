@@ -12,8 +12,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 import pytest_asyncio
 from nexus_channels.base import SendResult, SendStatus
 
@@ -24,6 +26,7 @@ from nexus_api.db.models import (
     Conversation,
     ConversationStatus,
     Customer,
+    Partner,
     Tenant,
     TenantPlan,
     TenantStatus,
@@ -141,3 +144,77 @@ async def two_tenants_with_channels(db_session) -> dict[str, dict[str, Any]]:
         "a": await _seed(a_id, "+56933334441", "+56911112221"),
         "b": await _seed(b_id, "+56933334442", "+56911112222"),
     }
+
+
+async def give_alert_templates(
+    db_session: Any,
+    channel_id: uuid.UUID,
+    *,
+    waba_id: str,
+    language: str = "es_CL",
+    templates: tuple[str, ...] | None = None,
+    status: str = "APPROVED",
+) -> None:
+    """El WABA del canal con las plantillas de aviso en ``status``: así el aviso
+    sale del número del cliente (bug el-aviso-de-escalada-no-llega). Sin esto,
+    sale del número de Auphere."""
+    from nexus_worker.streams.operator_alerts import _ACTION_TO_TEMPLATE
+
+    from nexus_api.db.models import WhatsAppTemplateStatus
+
+    channel = await db_session.get(Channel, channel_id)
+    assert channel is not None
+    channel.config = {**(channel.config or {}), "waba_id": waba_id}
+    for name in templates or tuple(sorted(set(_ACTION_TO_TEMPLATE.values()))):
+        db_session.add(
+            WhatsAppTemplateStatus(
+                waba_id=waba_id,
+                template_name=name,
+                language=language,
+                status=status,
+                last_event_payload={},
+            )
+        )
+    await db_session.commit()
+
+
+@pytest_asyncio.fixture
+async def alert_templates_approved(
+    db_session: Any, two_tenants_with_channels: dict[str, dict[str, Any]]
+) -> None:
+    """Los dos clientes tienen las plantillas de aviso aprobadas en su WABA, en
+    ``es_CL``: los avisos de siempre siguen saliendo de su número."""
+    for key, info in two_tenants_with_channels.items():
+        await give_alert_templates(db_session, info["channel_id"], waba_id=f"WABA-ALERTS-{key}")
+
+
+# ── spec 047: la página del canal (T104 a T106) ────────────────────────────
+
+from nexus_api.services import channel_config  # noqa: E402
+
+from ..business._business_world import new_business  # noqa: E402
+
+
+@pytest.fixture
+async def biz(client: Any, db_session: Any, console_world: dict[str, Any]) -> Any:
+    """Un cliente de un partner con la consola nueva, que no se queda sin saldo."""
+    biz = await new_business(client, db_session, console_world, name="Barbería Cultor")
+    partner = await db_session.get(Partner, biz.partner_id)
+    tenant = await db_session.get(Tenant, biz.tenant_id)
+    assert partner is not None and tenant is not None
+    partner.console_v2_enabled_at = datetime.now(UTC)
+    tenant.unlimited_consumption = True
+    await db_session.commit()
+    return biz
+
+
+@pytest.fixture
+def bag(monkeypatch: pytest.MonkeyPatch) -> dict[str, bool]:
+    """La bolsa del cliente, sin pasar por el libro del partner."""
+    state = {"has_balance": True}
+
+    async def _has(_tenant_id: uuid.UUID) -> bool:
+        return state["has_balance"]
+
+    monkeypatch.setattr(channel_config, "_bag_has_balance", _has)
+    return state

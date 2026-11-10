@@ -92,7 +92,14 @@ from nexus_api.db.models.qa import (
 )
 from nexus_api.services.agents import principal_agent_id
 
-from .deps import ClientRef, ClientScope, agent_scope, client_scope, resolve_mapping
+from .deps import (
+    ClientRef,
+    ClientScope,
+    agent_scope,
+    client_scope,
+    require_build_room,
+    resolve_mapping,
+)
 from .schemas_playground import (
     PlaygroundBudgetOut,
     PlaygroundRunStartIn,
@@ -474,7 +481,13 @@ async def start_run(
             detail=HUMAN_TURN_ERROR,
         )
 
-    if used_before >= cap:
+    # Spec 047 (46.5, T161): con la consola nueva manda la partida en dinero
+    # «Construcción y pruebas» (402 al agotarse, sus avisos ``build.budget.*``);
+    # el tope de tokens y su ``qa.cap_reached`` quedan para la consola de hoy.
+    v2 = partner.console_v2_enabled_at is not None
+    if v2:
+        await require_build_room(partner.id)
+    elif used_before >= cap:
         await notify_cap_reached(partner.id, window)
         retry = retry_after_seconds(window)
         raise HTTPException(
@@ -620,7 +633,7 @@ async def start_run(
             input_tokens=handle.total_input_tokens,
             output_tokens=handle.total_output_tokens,
         )
-        if used_before + handle.total_input_tokens + handle.total_output_tokens >= cap:
+        if not v2 and used_before + handle.total_input_tokens + handle.total_output_tokens >= cap:
             await notify_cap_reached(partner_id, window)
 
     await qa_streaming.start_run(

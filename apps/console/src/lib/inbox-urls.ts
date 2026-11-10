@@ -4,6 +4,7 @@
  * use them and `lib/backend` is server-only.
  */
 export const inboxMediaUrl = (messageId: string) => `/api/lite/inbox/media/${encodeURIComponent(messageId)}`;
+export const inboxAvatarUrl = (conversationId: string) => `/api/lite/inbox/avatar/${encodeURIComponent(conversationId)}`;
 export const inboxStreamUrl = "/api/lite/inbox/stream";
 export const inboxAttachmentUrl = (conversationId: string) =>
   `/api/lite/inbox/attachments/${encodeURIComponent(conversationId)}`;

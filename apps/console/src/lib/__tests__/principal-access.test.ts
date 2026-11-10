@@ -46,6 +46,13 @@ describe("toResolution", () => {
     });
   });
 
+  it("carries when the session ends, and nothing when an older API does not say (spec 056, 15.1)", () => {
+    const res = toResolution({ ...base, session_expires_at: "2026-11-14T10:00:00Z" });
+    expect(res.kind === "ok" && res.principal.sessionExpiresAt).toBe("2026-11-14T10:00:00Z");
+    const old = toResolution(base);
+    expect(old.kind === "ok" && old.principal.sessionExpiresAt).toBeNull();
+  });
+
   it("keeps the partner name on `disabled` — the copy needs it", () => {
     const res = toResolution({ ...base, access: "disabled", console_enabled: false });
     expect(res).toEqual({ kind: "disabled", email: base.email, partnerName: "Demo Partner" });
@@ -96,8 +103,9 @@ describe("toResolution — persona de un cliente", () => {
     modules: ["panel", "inbox", "usage"],
   };
 
-  it("maps to a client principal with its modules in sidebar order", () => {
-    const res = toResolution({ ...client, modules: ["usage", "panel"] });
+  // Spec 031 (R3.2): the API sends the sidebar order; the console keeps it.
+  it("maps to a client principal with its modules in the API's order", () => {
+    const res = toResolution({ ...client, modules: ["panel", "usage"] });
     expect(res.kind).toBe("ok");
     if (res.kind !== "ok") throw new Error("unreachable");
     expect(res.principal).toMatchObject({
@@ -112,6 +120,17 @@ describe("toResolution — persona de un cliente", () => {
   it("drops modules the console does not know", () => {
     const res = toResolution({ ...client, modules: ["panel", "billing"] });
     expect(res.kind === "ok" && res.principal.kind === "client" && res.principal.modules).toEqual(["panel"]);
+  });
+
+  // Spec 043 (T020): Reservas is a client module, kept where the API puts it.
+  it("keeps Reservas in the API's order", () => {
+    const res = toResolution({ ...client, modules: ["panel", "inbox", "reservas", "usage"] });
+    expect(res.kind === "ok" && res.principal.kind === "client" && res.principal.modules).toEqual([
+      "panel",
+      "inbox",
+      "reservas",
+      "usage",
+    ]);
   });
 
   it("degrades to no-membership without modules", () => {

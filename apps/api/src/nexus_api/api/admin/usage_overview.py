@@ -169,7 +169,7 @@ async def _client_reading(tenant_id: uuid.UUID, since: datetime) -> _ClientReadi
     msg_day = sa.cast(sa.func.timezone("UTC", Message.created_at), sa.Date)
     use_day = sa.cast(sa.func.timezone("UTC", UsageRecord.occurred_at), sa.Date)
     real = Channel.provider != QA_PLAYGROUND_PROVIDER
-    charged = UsageRecord.source.in_(("channel", "companion"))
+    charged = UsageRecord.source.in_(("channel", "companion", "tests_client"))
     cost = sa.cast(UsageRecord.cost_usd, sa.Numeric(20, 8))
     inbound: dict[date, int] = defaultdict(int)
     outbound: dict[date, int] = defaultdict(int)
@@ -276,7 +276,7 @@ async def usage_overview(
                 log.warning("admin.usage.partner_unreadable", partner_id=str(p.id), error=str(exc))
                 burn = None
             try:
-                available: int | None = (await _wallet_out(p.id)).available_cents
+                available: int | None = (await _wallet_out(p.id)).purchased_cents
             except Exception:  # pragma: no cover - a balance that cannot be read is not zero
                 available = None
             return p, burn, available

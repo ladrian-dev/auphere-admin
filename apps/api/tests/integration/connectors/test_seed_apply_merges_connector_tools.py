@@ -12,6 +12,7 @@ these tests pin both orderings to behave the same.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -128,6 +129,14 @@ async def _seed_tenant_with_connector(
     return connector.id, always_tool.id, blocked_tool.id
 
 
+@pytest.fixture(autouse=True)
+def _reservas_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La plantilla usa Reservas: aquí se prueban los conectores, no el módulo."""
+    monkeypatch.setattr(
+        "nexus_api.api.admin.agent_configs.reservas_enabled", AsyncMock(return_value=True)
+    )
+
+
 async def test_seed_apply_includes_always_mode_connector_tools(client, db_session):
     """Happy path: connect first, then apply seed → the connector's
     ``always``-mode tool lands in the staged config alongside the seed's
@@ -147,7 +156,7 @@ async def test_seed_apply_includes_always_mode_connector_tools(client, db_sessio
     config = r.json()
     tools = set(config["tools"])
     # Seed's own required tools survive the merge.
-    assert "booking.create_appointment" in tools
+    assert "reservas.create" in tools
     # Connector's "always"-mode tool is auto-picked.
     assert "seedmerge.read_only_thing" in tools
     # Connector's "blocked"-mode tool is NOT auto-picked.
@@ -171,7 +180,7 @@ async def test_seed_apply_skips_connector_with_auto_enable_off(client, db_sessio
     )
     assert r.status_code == 201, r.text
     tools = set(r.json()["tools"])
-    assert "booking.create_appointment" in tools
+    assert "reservas.create" in tools
     assert "seedmerge.read_only_thing" not in tools
     assert "seedmerge.destructive_thing" not in tools
 
@@ -215,7 +224,7 @@ async def test_seed_apply_skips_disconnected_connector(client, db_session):
     )
     assert r.status_code == 201, r.text
     tools = set(r.json()["tools"])
-    assert "booking.create_appointment" in tools
+    assert "reservas.create" in tools
     assert "seedmerge.read_only_thing" not in tools
 
 
@@ -246,6 +255,6 @@ async def test_seed_apply_no_connectors_back_compat(client, db_session):
     assert r.status_code == 201, r.text
     config = r.json()
     # Seed's required tools all present.
-    assert "booking.create_appointment" in config["tools"]
+    assert "reservas.create" in config["tools"]
     # No connector contribution.
     assert not any(t.startswith("seedmerge.") for t in config["tools"])

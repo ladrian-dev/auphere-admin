@@ -6,18 +6,44 @@
  */
 export type Locale = "es" | "en";
 
+import { accountProtoMessages } from "./lanes/account-proto";
+import { agendaMessages } from "./lanes/agenda";
+import { agentImproveMessages } from "./lanes/agent-improve";
+import { amendmentMessages } from "./lanes/amendment";
+import { amendment1030Messages } from "./lanes/amendment-1030";
+import { agentProtoMessages } from "./lanes/agent-proto";
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { agentsMessages } from "./lanes/agents";
+import { builderMessages } from "./lanes/builder";
+import { builderChannelsMessages } from "./lanes/builder-channels";
+import { builderConnectorsMessages } from "./lanes/builder-connectors";
+import { builderKnowledgeMessages } from "./lanes/builder-knowledge";
+import { builderLifeMessages } from "./lanes/builder-life";
+import { builderModelQualityMessages } from "./lanes/builder-model-quality";
+import { builderQualityMessages } from "./lanes/builder-quality";
+import { businessMessages } from "./lanes/business";
+import { businessProtoMessages } from "./lanes/business-proto";
 import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
+import { channelsProtoMessages } from "./lanes/channels-proto";
+import { clientAccessMessages } from "./lanes/client-access";
+import { clientsProtoMessages } from "./lanes/clients-proto";
 import { companionMessages } from "./lanes/companion";
+import { connectorToolsMessages } from "./lanes/connector-tools";
 import { homeUsageMessages } from "./lanes/home-usage";
 import { inboxMessages } from "./lanes/inbox";
+import { inboxCorrectMessages } from "./lanes/inbox-correct";
 import { liteMessages } from "./lanes/lite";
 import { membershipMessages } from "./lanes/membership";
+import { moneyMessages } from "./lanes/money";
+import { noticesMessages } from "./lanes/notices";
 import { onboardingMessages } from "./lanes/onboarding";
+import { partnerViewsMessages } from "./lanes/partner-views";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
+import { reservasMessages } from "./lanes/reservas";
+import { reservasTemplatesMessages } from "./lanes/reservas-templates";
+import { shellMessages } from "./lanes/shell";
 import { summaryMessages } from "./lanes/summary";
 import { workstationMessages } from "./lanes/workstation";
 
@@ -39,6 +65,7 @@ const core = {
   "nav.workstation": { es: "Teammate", en: "Teammate" },
   "nav.usage": { es: "Consumo", en: "Usage" },
   "nav.inbox": { es: "Bandeja de entrada", en: "Inbox" },
+  "nav.reservas": { es: "Reservas", en: "Bookings" },
   "nav.audit": { es: "Auditoría", en: "Audit" },
   "nav.knowledge": { es: "Guía del partner", en: "Playbook" },
   "nav.team": { es: "Equipo", en: "Team" },
@@ -56,6 +83,8 @@ const core = {
   "shell.theme.light": { es: "Claro", en: "Light" },
   "shell.theme.dark": { es: "Oscuro", en: "Dark" },
   "shell.theme.system": { es: "Sistema", en: "System" },
+  "shell.theme.switch": { es: "Modo oscuro", en: "Dark mode" },
+  "shell.back": { es: "Volver a {name}", en: "Back to {name}" },
   "shell.language": { es: "Idioma", en: "Language" },
   "shell.skip": { es: "Saltar al contenido", en: "Skip to content" },
   "shell.partner": { es: "Partner", en: "Partner" },
@@ -478,7 +507,7 @@ const core = {
   "team.invite.alreadyMember": { es: "Ese correo ya es miembro de este partner.", en: "That e-mail is already a member of this partner." },
   "team.members": { es: "Miembros", en: "Members" },
   "team.invitations": { es: "Invitaciones pendientes", en: "Pending invitations" },
-  "team.invitations.empty": { es: "No hay invitaciones pendientes", en: "No pending invitations" },
+  "team.invitations.empty": { es: "No hay invitaciones pendientes.", en: "No pending invitations." },
   "team.you": { es: "tú", en: "you" },
   "team.changeRole": { es: "Cambiar rol", en: "Change role" },
   "team.suspend": { es: "Suspender", en: "Suspend" },
@@ -501,7 +530,6 @@ const core = {
   "keys.empty.body": { es: "Crea una clave para aprovisionar clientes o enviar difusiones desde tu sistema.", en: "Create a key to provision clients or send broadcasts from your system." },
   "keys.type": { es: "Tipo", en: "Type" },
   "keys.scopes": { es: "Permisos", en: "Scopes" },
-  "keys.lastUsed": { es: "Último uso", en: "Last used" },
   "keys.never": { es: "Nunca", en: "Never" },
   "keys.rotate": { es: "Rotar", en: "Rotate" },
   "keys.revoke": { es: "Revocar", en: "Revoke" },
@@ -510,7 +538,7 @@ const core = {
   "keys.created.title": { es: "Guarda esta clave ahora", en: "Save this key now" },
   "keys.created.body": { es: "No volverá a mostrarse. Si la pierdes, rota la clave.", en: "It will not be shown again. If you lose it, rotate the key." },
   "keys.create.title": { es: "Nueva clave de API", en: "New API key" },
-  "keys.create.body": { es: "Elige tipo y permisos. Las claves ligadas a un solo cliente (envío de mensajes) se crean desde la ficha del cliente.", en: "Pick type and scopes. Keys bound to a single client (message sending) are created from the client page." },
+  "keys.create.body": { es: "Elige tipo y permisos.", en: "Choose type and permissions." },
   "keys.rotate.title": { es: "Rotar la clave {prefix}", en: "Rotate key {prefix}" },
   "keys.rotate.body": { es: "Se crea una clave nueva y la actual sigue funcionando 24 h para que despliegues sin corte.", en: "A new key is created, and the current one keeps working for 24 h so you can deploy without downtime." },
   "keys.revoke.title": { es: "Revocar la clave {prefix}", en: "Revoke key {prefix}" },
@@ -560,6 +588,35 @@ const messages = {
   ...capabilitiesMessages,
   ...liteMessages,
   ...inboxMessages,
+  ...reservasMessages,
+  // Spec 043, requisito 15: las plantillas de WhatsApp de Reservas (Ajustes).
+  ...reservasTemplatesMessages,
+  ...shellMessages,
+  ...businessMessages,
+  ...builderMessages,
+  ...builderQualityMessages,
+  ...builderLifeMessages,
+  ...builderKnowledgeMessages,
+  ...builderChannelsMessages,
+  ...moneyMessages,
+  ...noticesMessages,
+  ...partnerViewsMessages,
+  ...inboxCorrectMessages,
+  // Spec 056 (requisito 3): la pestaña «Acceso» de un cliente.
+  ...clientAccessMessages,
+  ...agentImproveMessages,
+  ...builderConnectorsMessages,
+  ...connectorToolsMessages,
+  ...builderModelQualityMessages,
+  ...clientsProtoMessages,
+  ...agentProtoMessages,
+  ...accountProtoMessages,
+  ...businessProtoMessages,
+  ...channelsProtoMessages,
+  ...amendmentMessages,
+  ...amendment1030Messages,
+  // Spec 057: la agenda desde el agente.
+  ...agendaMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

@@ -35,9 +35,15 @@ describe("Composer", () => {
   it("while the agent answers, only «Tomar el control»", async () => {
     const props = view({ kind: "agent" });
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getByText(/El agente está respondiendo en WhatsApp/)).toBeInTheDocument();
+    expect(screen.getByText(/El agente está respondiendo\./)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Tomar el control" }));
     expect(props.onTakeOver).toHaveBeenCalled();
+  });
+
+  it("says the agent can no longer answer when the window closed", () => {
+    view({ kind: "agent", windowClosed: true });
+    expect(screen.getByText(/El agente ya no puede responder/)).toBeInTheDocument();
+    expect(screen.queryByText(/El agente está respondiendo\./)).toBeNull();
   });
 
   it("another person answering is said with their name", () => {
@@ -71,8 +77,8 @@ describe("Composer", () => {
   });
 
   it.each([
-    ["window_closed", /Pasaron más de 24 horas/],
-    ["channel_disconnected", /número de WhatsApp está desconectado/],
+    ["window_closed", /Pasó el plazo para escribir/],
+    ["channel_disconnected", /Este canal está desconectado/],
   ] as const)("a closed %s blocks with its sentence", (blocked, sentence) => {
     view({ kind: "mine", blocked });
     expect(screen.getByRole("status")).toHaveTextContent(sentence);

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -49,6 +49,7 @@ class GetHistoryInput(InputModel):
 
 
 class HistoryAppointment(OutputModel):
+    #: The booking's id — a Reservas booking, or an appointment from before.
     appointment_id: uuid.UUID
     starts_at: datetime
     service_name: str
@@ -56,6 +57,11 @@ class HistoryAppointment(OutputModel):
     status: str
     price_cents: int
     currency: str
+    #: Spec 048: where it lives. ``reservas`` is the agenda the business sees;
+    #: ``appointments`` holds the ones from before that were not passed over.
+    source: Literal["reservas", "appointments"] = "appointments"
+    #: Who does it, by name (Reservas only).
+    staff_name: str | None = None
 
 
 class GetHistoryOutput(OutputModel):

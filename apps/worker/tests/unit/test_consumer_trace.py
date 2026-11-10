@@ -96,6 +96,9 @@ async def _consume_all(redis, monkeypatch, *, expected: int = 1) -> list:
             block_ms=10,
             stop=stop,
             on_processed=on_processed,
+            # Spec 047: the inline turn — with a window the entry only saves
+            # and schedules, and the span under test is the same either way.
+            coalesce_window_ms=0,
         ),
         timeout=10.0,
     )

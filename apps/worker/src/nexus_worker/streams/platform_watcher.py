@@ -1,16 +1,19 @@
-"""Platform watcher (WP-06, plataforma v2 Fase 0) — alerts with a recipient.
+"""Platform watcher (WP-06, plataforma v2 Fase 0) — platform-level alerts.
 
 Evaluates the platform-level alert conditions that no existing cron covers
-and delivers each one to a human: email to ``NEXUS_OPERATOR_ALERT_EMAIL``
-(plus ERROR log always), and — for the tenant-scoped burst — an audit_log
-row that the operator alerter turns into the approved WhatsApp template.
+and records each one as an ERROR ``platform_alert`` log, which the monitoring
+picks up; for the tenant-scoped burst it also writes an audit_log row that the
+operator alerter turns into the approved WhatsApp template. Since spec 051
+(requirement 9.1) none of them is emailed.
 
 The eight Fase-0 alerts and where they live:
 
 1. queue oldest pending > 300 s               → HERE (``queue_backlog``)
-2. entries in ``nexus:inbound:dlq``           → HERE (``dlq_entries``)
+2. new entries in ``nexus:inbound:dlq``       → HERE (``dlq_entries``)
 3. turn errors per tenant > 5 in 10 min       → HERE (``turn_error_burst``,
-   also writes ``platform.turn_error_burst`` audit row → WhatsApp template)
+   also writes ``platform.turn_error_burst`` audit row → WhatsApp template).
+   The playground and the tests have their own (``simulated_model_failure_burst``,
+   no audit row): see ``simulation/failures.py`` for why they do not count here.
 4. new ``isolation_events`` row               → isolation_watcher (existing)
 5. worker heartbeat missing > 3 min           → HERE (``worker_dead``)
 6. llm cache read ratio < 0.3 sustained       → HERE (``cache_ratio_low``)
@@ -21,6 +24,14 @@ Counters are fed by the hot paths (consumer, outbound dispatcher, LLM
 provider) as windowed Redis keys — the watcher only reads. Every alert is
 deduplicated in Redis (``SET NX EX``) so a persisting condition notifies
 once per window, not once per tick.
+
+The DLQ is the exception: it alerts on what is **new**, not on what is there.
+An alarm on a state that nobody can clear turns on once and never again, so a
+message dying today produced no transition with August's entries still inside
+(bug ``dlq-sin-salida``). The mark is the id of the last entry it alerted about:
+a stream id does not go back when entries are deleted, and if the watcher was
+down it still alerts when it returns. Losing the mark alerts once more, never
+less. How to empty the queue: ``nexus_worker.ops.dlq`` and docs/dlq.md.
 """
 
 from __future__ import annotations
@@ -30,9 +41,13 @@ import contextlib
 import time
 import uuid
 from dataclasses import dataclass
+from typing import Any, cast
 
 import structlog
+from nexus_api.core.streams import INBOUND_DLQ_STREAM
 from redis.asyncio import Redis
+
+from nexus_worker.simulation.failures import COUNTER_PREFIX as SIMULATED_FAILURES_PREFIX
 
 log = structlog.get_logger(__name__)
 
@@ -40,7 +55,12 @@ DEFAULT_TICK_SECONDS = 60.0
 
 INBOUND_STREAM = "nexus:inbound"
 INBOUND_GROUP = "nexus-worker"
-DLQ_STREAM = "nexus:inbound:dlq"
+DLQ_STREAM = INBOUND_DLQ_STREAM
+#: The id of the last DLQ entry an alert went out for. No TTL: it has to outlive
+#: the entries it speaks of.
+DLQ_MARK_KEY = "nexus:alert:dlq:last_alerted_id"
+#: How many new entries an alert counts; beyond this it says ``1000+``.
+DLQ_COUNT_LIMIT = 1000
 
 
 def _watched_streams() -> tuple[str, ...]:
@@ -75,6 +95,9 @@ def _expected_services() -> tuple[str, ...]:
 
 # One notification per condition per this window (seconds).
 DEDUP_TTL_S = 3_600
+#: Spec 051: every internal alert says ``[Auphere]``, like the others; the
+#: old ``[Nexus]`` prefix is gone.
+SUBJECT_PREFIX = "[Auphere] "
 
 
 @dataclass
@@ -85,6 +108,64 @@ class Alert:
     detail: str
     tenant_id: uuid.UUID | None = None
     count: int = 0
+    #: ``(key, value)`` to store once the alert went out, and only then.
+    remember: tuple[str, str] | None = None
+
+
+def _text(value: bytes | str) -> str:
+    return value.decode() if isinstance(value, bytes) else value
+
+
+def _entry_order(entry_id: str) -> tuple[int, int]:
+    """Stream ids compare as numbers, not as strings."""
+    ms, _, seq = entry_id.partition("-")
+    return int(ms), int(seq or 0)
+
+
+def _dlq_command(environment: str) -> str:
+    name = {"production": "prod", "staging": "staging"}.get(environment, "<entorno>")
+    return f"./scripts/ops/dlq.sh {name} list"
+
+
+async def _dlq_alert(redis: Redis) -> Alert | None:
+    """An alert if the DLQ holds an entry newer than the last one alerted about.
+
+    Pure read: the mark moves in ``process_tick``, after the alert went out.
+    """
+    from nexus_api.config import get_settings
+
+    # The redis stubs type stream reads as a wide union; the real shape is
+    # list[(id, fields)], in bytes or str depending on ``decode_responses``.
+    newest = cast("list[tuple[Any, Any]]", await redis.xrevrange(DLQ_STREAM, count=1))
+    if not newest:
+        return None
+    newest_id = _text(newest[0][0])
+    raw_mark = await redis.get(DLQ_MARK_KEY)
+    mark = _text(raw_mark) if raw_mark is not None else None
+    if mark is not None and _entry_order(newest_id) <= _entry_order(mark):
+        return None
+
+    fresh = cast(
+        "list[tuple[Any, Any]]",
+        await redis.xrange(DLQ_STREAM, min=f"({mark}" if mark else "-", count=DLQ_COUNT_LIMIT),
+    )
+    count = len(fresh)
+    shown = f"{count}+" if count >= DLQ_COUNT_LIMIT else str(count)
+    noun = f"{shown} entrada nueva" if count == 1 else f"{shown} entradas nuevas"
+    total = int(await redis.xlen(DLQ_STREAM))
+    return Alert(
+        kind="dlq_entries",
+        dedup_key=f"nexus:alert:sent:dlq:{newest_id}",
+        subject="[Auphere] Mensajes nuevos en la DLQ",
+        detail=(
+            f"{noun} en {DLQ_STREAM} ({total} en total). Cada una es un mensaje de cliente "
+            "que agotó sus reintentos, y nadie va a contestarlo hasta que se reinyecte. Míralas "
+            f"con {_dlq_command(get_settings().environment)} y reinyéctalas o descártalas: "
+            "docs/dlq.md. De estas no se vuelve a avisar."
+        ),
+        count=count,
+        remember=(DLQ_MARK_KEY, newest_id),
+    )
 
 
 async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Alert]:
@@ -109,7 +190,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                         Alert(
                             kind="queue_backlog",
                             dedup_key=f"nexus:alert:sent:queue_backlog:{watched}:{hour_window}",
-                            subject="[Nexus] Cola inbound atascada",
+                            subject="[Auphere] Cola inbound atascada",
                             detail=(
                                 f"La entrada más vieja de {watched} lleva "
                                 f"{oldest_s:.0f}s pendiente ({pending} entradas en el PEL)."
@@ -118,22 +199,11 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                         )
                     )
 
-    # 2 · DLQ entries
+    # 2 · new DLQ entries
     with contextlib.suppress(Exception):
-        dlq_len = int(await redis.xlen(DLQ_STREAM))
-        if dlq_len > 0:
-            alerts.append(
-                Alert(
-                    kind="dlq_entries",
-                    dedup_key=f"nexus:alert:sent:dlq:{hour_window}",
-                    subject="[Nexus] Mensajes en la DLQ",
-                    detail=(
-                        f"{dlq_len} entradas en {DLQ_STREAM}. Cada una es un mensaje "
-                        "de cliente que agotó sus reintentos — revisar y reinyectar."
-                    ),
-                    count=dlq_len,
-                )
-            )
+        dlq_alert = await _dlq_alert(redis)
+        if dlq_alert is not None:
+            alerts.append(dlq_alert)
 
     # 3 · per-tenant turn error burst (current 10-min window)
     with contextlib.suppress(Exception):
@@ -148,7 +218,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                         Alert(
                             kind="turn_error_burst",
                             dedup_key=f"nexus:alert:sent:turn_errors:{tenant_str}:{window}",
-                            subject="[Nexus] Ráfaga de errores de turno",
+                            subject="[Auphere] Ráfaga de errores de turno",
                             detail=(
                                 f"El tenant {tenant_str} lleva {count} turnos fallidos "
                                 "en la ventana de 10 minutos."
@@ -157,6 +227,32 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                             count=count,
                         )
                     )
+
+    # 3b · a model that does not answer in the playground or the tests. No
+    # ``tenant_id`` on purpose: with one, ``_notify`` writes the audit row that
+    # WhatsApps the owner of the business, who has nothing to do with this.
+    with contextlib.suppress(Exception):
+        pattern = f"{SIMULATED_FAILURES_PREFIX}:*:{window}"
+        async for key in redis.scan_iter(match=pattern, count=100):
+            key_str = key.decode() if isinstance(key, bytes) else key
+            count = int(await redis.get(key_str) or 0)
+            if count > TURN_ERROR_THRESHOLD:
+                tenant_str = key_str.split(":")[3]
+                alerts.append(
+                    Alert(
+                        kind="simulated_model_failure_burst",
+                        dedup_key=f"nexus:alert:sent:simulated_model_failures:{tenant_str}:{window}",
+                        subject="[Auphere] El modelo no responde en las pruebas",
+                        detail=(
+                            f"El cliente {tenant_str} lleva {count} turnos o pasadas sin "
+                            "respuesta del modelo en el chat de prueba o en las pruebas, en "
+                            "la ventana de 10 minutos. Mirar simulation.model_failed en los "
+                            "grupos runner y api; si dice «missing partner virtual key», a su "
+                            "partner le falta la clave del proxy."
+                        ),
+                        count=count,
+                    )
+                )
 
     # 5 · dead workers (heartbeat tracking via last-seen ledger)
     with contextlib.suppress(Exception):
@@ -180,7 +276,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                     Alert(
                         kind="worker_dead",
                         dedup_key=f"nexus:alert:sent:worker_dead:{service}:{hour_window}",
-                        subject=f"[Nexus] Servicio sin latido: {service}",
+                        subject=f"[Auphere] Servicio sin latido: {service}",
                         detail=(
                             f"{service} no reporta heartbeat desde hace "
                             f"{silent_for:.0f}s (umbral {HEARTBEAT_DEAD_AFTER_S:.0f}s)."
@@ -201,7 +297,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                     Alert(
                         kind="cache_ratio_low",
                         dedup_key=f"nexus:alert:sent:cache_ratio:{hour_window}",
-                        subject="[Nexus] Prompt cache degradado",
+                        subject="[Auphere] Prompt cache degradado",
                         detail=(
                             f"Cache read ratio {ratio:.2f} (< {CACHE_RATIO_THRESHOLD}) "
                             f"con {total} tokens en la hora. Hay un invalidador "
@@ -223,7 +319,7 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
                     Alert(
                         kind="meta_failure_burst",
                         dedup_key=f"nexus:alert:sent:metafail:{code}:{window}",
-                        subject=f"[Nexus] Fallos de envío Meta (código {code})",
+                        subject=f"[Auphere] Fallos de envío Meta (código {code})",
                         detail=(
                             f"{count} envíos fallidos con el código {code} en la "
                             "ventana de 10 minutos."
@@ -272,18 +368,9 @@ async def _notify(alert: Alert) -> None:
     if alert.tenant_id is not None:
         with contextlib.suppress(Exception):
             await _write_tenant_audit_row(alert)
-    from nexus_api.config import get_settings
-
-    settings = get_settings()
-    if settings.operator_alert_email:
-        from nexus_api.services.email import send_email
-
-        with contextlib.suppress(Exception):
-            await send_email(
-                to=settings.operator_alert_email,
-                subject=alert.subject,
-                html=f"<p>{alert.detail}</p><p>kind: <code>{alert.kind}</code></p>",
-            )
+    # Spec 051 (requisito 9.1): sin correo. La salud de la plataforma la vigila
+    # la monitorización sobre este ``platform_alert`` de nivel error; un correo
+    # por hora con la misma DLQ enterraba lo que sí había que leer.
 
 
 async def process_tick(redis: Redis, *, now: float | None = None) -> list[Alert]:
@@ -299,6 +386,13 @@ async def process_tick(redis: Redis, *, now: float | None = None) -> list[Alert]
             continue
         await _notify(alert)
         delivered.append(alert)
+        if alert.remember is not None:
+            key, value = alert.remember
+            try:
+                await redis.set(key, value)
+            except Exception as exc:
+                # The entry stays new: it alerts again once the dedupe expires.
+                log.warning("platform_watcher.mark_failed", key=key, error=str(exc))
     return delivered
 
 

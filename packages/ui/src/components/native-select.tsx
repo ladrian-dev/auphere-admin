@@ -21,7 +21,7 @@ function NativeSelect({ className, wrapperClassName, size = "md", children, ...p
       <select
         className={cn(
           "w-full min-w-0 cursor-pointer appearance-none rounded-md border border-input bg-transparent pr-8 pl-3 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30",
-          size === "sm" ? "h-7" : "h-8",
+          size === "sm" ? "h-8" : "h-9",
           className,
         )}
         {...props}

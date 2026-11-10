@@ -24,12 +24,14 @@ const body = () => screen.getByLabelText("Texto del mensaje") as HTMLTextAreaEle
 const send = () => screen.getByRole("button", { name: "Enviar a Meta para revisión" });
 
 describe("Nueva plantilla de WhatsApp", () => {
-  it("explica para qué sirve cada categoría y empieza en Utilidad", () => {
+  it("explica para qué sirve cada categoría, empieza en Utilidad y no ofrece Autenticación", () => {
     mount();
     const utility = screen.getByRole("radio", { name: /Utilidad/ });
-    expect(utility).toHaveAttribute("aria-checked", "true");
-    expect(utility).toHaveTextContent("Meta la aprueba antes y cuesta menos.");
-    expect(screen.getByRole("radio", { name: /Marketing/ })).toHaveAttribute("aria-checked", "false");
+    expect(utility).toBeChecked();
+    expect(utility.closest("label")).toHaveTextContent("Meta la aprueba antes y cuesta menos.");
+    expect(screen.getByRole("radio", { name: /Marketing/ })).not.toBeChecked();
+    // Meta only takes authentication with its fixed one-time code format.
+    expect(screen.queryByRole("radio", { name: /Autenticaci/ })).toBeNull();
   });
 
   it("convierte el nombre al formato de Meta mientras se escribe", () => {
@@ -39,10 +41,15 @@ describe("Nueva plantilla de WhatsApp", () => {
     expect(name).toHaveValue("aviso_de_pago");
   });
 
-  it("dice qué falta en lugar de solo deshabilitar el botón", () => {
+  it("dice qué falta y, al enviar incompleta, marca y enfoca el primer campo", async () => {
     mount();
-    expect(send()).toBeDisabled();
+    expect(send()).toBeEnabled();
     expect(screen.getByText("Falta el nombre, el texto del mensaje.")).toBeInTheDocument();
+    fireEvent.click(send());
+    const name = screen.getByLabelText("Nombre");
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(name).toHaveFocus();
   });
 
   it("inserta una variable, pide su ejemplo y lo pinta en la vista previa", () => {
@@ -93,7 +100,7 @@ describe("Nueva plantilla de WhatsApp", () => {
     fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "aviso" } });
     fireEvent.change(body(), { target: { value: "Gracias por tu compra." } });
     fireEvent.click(send());
-    expect(await screen.findByText("Meta no aceptó la plantilla")).toBeInTheDocument();
+    expect(await screen.findByText("No se pudo crear la plantilla")).toBeInTheDocument();
     expect(screen.getByText("Meta rechazó la creación: nombre en uso.")).toBeInTheDocument();
   });
 });

@@ -113,35 +113,36 @@ locals {
     { name = "NEXUS_SIGNUP_ENABLED", value = "true" },
   ]
 
-  # LiteLLM OSS solo en staging. Prod NO lleva esta variable: el Builder
-  # falla cerrado si falta. El hostname es el Cloud Map de litellm.tf,
+  # Solo con ``llm_via_proxy``: staging y prod van directos al proveedor
+  # (enmienda de ADR-036, 2026-11-03). Hay que quitar las dos variables a la
+  # vez: sin la bandera pero con la URL, un partner con clave saldría por el
+  # proxy y otro sin clave, directo. El hostname es el Cloud Map de litellm.tf,
   # no un ALB.
   #
   # ``NEXUS_LLM_PROXY_REQUIRED`` (ADR-036) va aquí y NO en el secreto de
   # aplicación a propósito: no es una credencial, y ``app_secret_keys`` es
   # una lista compartida por los dos workspaces — añadirla ahí obligaría a
   # crearla también en ``nexus/prod/app`` o ECS abortaría el arranque de
-  # producción por un ``valueFrom`` que no resuelve. Como env por workspace,
-  # staging la lleva a ``true`` y prod simplemente no la lleva: el defecto
-  # del código es ``False``, que es ir al vendor directo.
+  # producción por un ``valueFrom`` que no resuelve. El defecto del código es
+  # ``False``, que es ir al vendor directo.
   common_env = concat(
     local.common_env_base,
-    terraform.workspace == "staging" ? [
+    local.llm_via_proxy ? [
       { name = "LITELLM_PROXY_API_BASE", value = "http://litellm.nexus-staging.internal:4000" },
       { name = "NEXUS_LLM_PROXY_REQUIRED", value = "true" },
     ] : [],
   )
 
   secrets = [
-    for key in var.app_secret_keys : {
+    for key in concat(var.app_secret_keys, var.push_secret_keys) : {
       name      = key
       valueFrom = "${local.data.app_secret_arn}:${key}::"
     }
   ]
 
-  # Mapping VK: solo api/runner en staging. El JSON entero del secreto
-  # (no una clave dentro). Prod y el resto de servicios no lo ven.
-  partner_keys_secret = terraform.workspace == "staging" ? [
+  # Mapping VK: solo api/runner y solo con ``llm_via_proxy``. El JSON entero del
+  # secreto (no una clave dentro). Prod y el resto de servicios no lo ven.
+  partner_keys_secret = local.llm_via_proxy ? [
     {
       name      = "LITELLM_PROXY_VIRTUAL_KEYS"
       valueFrom = aws_secretsmanager_secret.litellm_partner_keys[0].arn
@@ -296,10 +297,10 @@ locals {
     api = [
       merge(local.app_base["api"], {
         # ARN only (not the master). API GetSecretValue via task role.
-        # Staging only; runner / Next / app secret never get this.
+        # Only with ``llm_via_proxy``; runner / Next / app secret never get this.
         environment = concat(
           local.common_env,
-          terraform.workspace == "staging" ? [
+          local.llm_via_proxy ? [
             {
               name  = "LITELLM_ADMIN_SECRET_ARN"
               value = aws_secretsmanager_secret.litellm_admin[0].arn
@@ -318,7 +319,13 @@ locals {
       local.adot_sidecar["api"],
     ]
     runner = [
-      merge(local.app_base["runner"], { command = ["nexus-runner"] }),
+      merge(local.app_base["runner"], {
+        command = ["nexus-runner"]
+        # Spec 047 (T203): el navegador de respaldo. Listas vacías salvo con
+        # ``renderer_enabled`` (renderer.tf), así que apagado no cambia nada.
+        environment = concat(local.app_base["runner"].environment, local.renderer_runner_environment)
+        secrets     = concat(local.app_base["runner"].secrets, local.renderer_runner_secrets)
+      }),
       local.adot_sidecar["runner"],
     ]
     scheduler = [

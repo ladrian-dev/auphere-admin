@@ -1,5 +1,6 @@
 import type { MessageKey } from "@/i18n/messages";
 import type { InboxAuthor } from "@/lib/backend/inbox";
+import { REASONS, inboxReasonText } from "@/lib/waiting-reasons";
 
 type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
@@ -13,6 +14,30 @@ export function whoOf(author: InboxAuthor | null, t: T): string {
 }
 
 /**
+ * Why a conversation waits, in words (spec 056, requisito 7): the column's code
+ * first — the table's text when it knows it — and, for an escalation or a code
+ * it does not know, what the agent wrote. Never a code: an unknown one reads
+ * «El agente pidió ayuda». The row and the composer say it like this.
+ */
+export function waitingText(code: string | null | undefined, detail: string | null | undefined, t: T): string {
+  const known = (code ?? "").trim();
+  if (known && known !== "escalated" && REASONS.has(known)) return inboxReasonText(known, t);
+  return inboxReasonText(detail ?? known, t);
+}
+
+/**
+ * An escalation as one sentence, in the thread and in the activity: a code of
+ * the table is its text («Agente sin publicar»), the agent's own words go after
+ * «El agente pidió ayuda:», and an unknown code or nothing is just «El agente
+ * pidió ayuda».
+ */
+export function escalatedText(detail: string | null | undefined, t: T): string {
+  const raw = (detail ?? "").trim();
+  const said = inboxReasonText(raw, t);
+  return raw && said === raw ? t("inbox.event.escalated.reason", { reason: raw }) : said;
+}
+
+/**
  * What happened to a conversation, as one sentence — the same words in the
  * thread and in the contact panel's activity. «Tú» gets its own verbs
  * («Tomaste el control»): a third-person template with «Tú» as subject
@@ -23,7 +48,7 @@ export function eventText(kind: string | null, author: InboxAuthor | null, detai
   const who = whoOf(author, t);
   switch (kind) {
     case "escalated":
-      return detail ? t("inbox.event.escalated.reason", { reason: detail }) : t("inbox.event.escalated");
+      return escalatedText(detail, t);
     case "takeover":
       return me ? t("inbox.event.takeover.you") : t("inbox.event.takeover", { who });
     case "released":

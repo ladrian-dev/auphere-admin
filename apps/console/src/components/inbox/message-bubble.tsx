@@ -1,4 +1,4 @@
-import { AlertTriangle, FileText, ImageIcon, Mic, Video } from "lucide-react";
+import { AlertTriangle, FileText, ImageIcon, Mic, PencilLine, Video } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@nexus/ui";
@@ -6,6 +6,8 @@ import { cn } from "@nexus/ui";
 import { useLocale, useT } from "@/i18n/client";
 import type { InboxThreadItem } from "@/lib/backend/inbox";
 import { inboxMediaUrl } from "@/lib/inbox-urls";
+
+import { CommentPost, type LoadCommentPost } from "./comment-post";
 
 import { clock } from "./inbox-model";
 
@@ -15,7 +17,18 @@ import { clock } from "./inbox-model";
  * in its own tone so a glance says who wrote. An outbound says whether it
  * arrived; a failed one says why (R8.4).
  */
-export function MessageBubble({ item, contactInitials }: { item: InboxThreadItem; contactInitials: string }) {
+export function MessageBubble({
+  item,
+  contactInitials,
+  onCorrect,
+  loadCommentPost,
+}: {
+  loadCommentPost?: LoadCommentPost;
+  item: InboxThreadItem;
+  contactInitials: string;
+  /** Spec 047 (52.1): «Corregir esta respuesta», solo sobre una respuesta del agente. */
+  onCorrect?: () => void;
+}) {
   const t = useT();
   const locale = useLocale();
   const time = clock(item.at, locale);
@@ -32,8 +45,11 @@ export function MessageBubble({ item, contactInitials }: { item: InboxThreadItem
           {contactInitials}
         </span>
         <div className="flex min-w-0 flex-col items-start gap-1">
+          {item.comment && loadCommentPost ? <CommentPost messageId={item.id} load={loadCommentPost} /> : null}
           <MediaPreview item={item} tone="light" />
           {item.text ? <Text tone="contact">{item.text}</Text> : null}
+          {item.unsent ? <span className="text-sm text-muted-foreground italic">{t("inbox.message.unsent")}</span> : null}
+          {item.opted_out ? <span className="text-sm text-muted-foreground italic">{t("inbox.message.opted_out")}</span> : null}
           <span className="text-xs text-muted-foreground">{time}</span>
         </div>
       </div>
@@ -64,10 +80,19 @@ export function MessageBubble({ item, contactInitials }: { item: InboxThreadItem
       {failed ? (
         <span role="status" className="flex items-center gap-1 text-xs text-status-danger-text">
           <AlertTriangle className="size-3" aria-hidden="true" />
-          {item.failure_reason
-            ? t("inbox.delivery.failed.reason", { reason: item.failure_reason })
-            : t("inbox.delivery.failed")}
+          {failureText(item.failure_reason, t)}
         </span>
+      ) : null}
+      {onCorrect && author?.kind === "agent" ? (
+        <button
+          type="button"
+          onClick={onCorrect}
+          data-slot="correct-answer"
+          className="inline-flex min-h-6 items-center gap-1 rounded-sm px-1 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <PencilLine className="size-3" aria-hidden="true" />
+          {t("lite.correct.open")}
+        </button>
       ) : null}
     </div>
   );
@@ -170,4 +195,13 @@ export function MediaPreview({ item, tone }: { item: InboxThreadItem; tone: "lig
       <span className="min-w-0 truncate">{name}</span>
     </a>
   );
+}
+
+/** What the provider answered goes to the logs: a person reads why in their words (INC-59). */
+const RAW_FAILURE = /MetaAPIError|Meta API error|Exception|Traceback|\(#\d+\)/;
+
+function failureText(reason: string | null | undefined, t: ReturnType<typeof useT>): string {
+  if (reason?.includes("HUMAN_AGENT")) return t("inbox.delivery.failed.human_agent");
+  if (!reason || RAW_FAILURE.test(reason)) return t("inbox.delivery.failed");
+  return t("inbox.delivery.failed.reason", { reason });
 }

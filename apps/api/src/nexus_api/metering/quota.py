@@ -89,6 +89,20 @@ def uncached_input_tokens(prompt_tokens: int, cache_read: int) -> int:
     return max(0, _as_int(prompt_tokens) - max(0, _as_int(cache_read)))
 
 
+def priced_input_tokens(prompt_tokens: int, cache_read: int, cache_write: int = 0) -> int:
+    """Entrada que se valora a precio de entrada, en dólares (INC-70).
+
+    LiteLLM da ``prompt_tokens`` con todo dentro: lo leído de caché y, en
+    Anthropic, también lo escrito. Las dos cosas se pagan en su propia fila, a su
+    tarifa, así que aquí salen las dos.
+
+    **No es la cantidad de la cuota.** ``uncached_input_tokens`` deja dentro la
+    escritura porque la cuota no tiene carril de escritura: esos tokens comen tope
+    como entrada, y cambiar eso cambiaría lo que se le cobra a un cliente.
+    """
+    return max(0, uncached_input_tokens(prompt_tokens, cache_read) - max(0, _as_int(cache_write)))
+
+
 def quota_tokens(
     *,
     prompt_tokens: int = 0,

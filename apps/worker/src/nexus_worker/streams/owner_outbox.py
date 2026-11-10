@@ -79,6 +79,7 @@ async def run_owner_outbox_dispatcher(
     client = meta_client or MetaClient(
         app_secret=settings.meta_app_secret,
         require_appsecret_proof=settings.meta_require_appsecret_proof,
+        version=settings.meta_graph_api_version,
     )
     sm = get_sessionmaker()
     try:

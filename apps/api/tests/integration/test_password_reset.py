@@ -7,7 +7,7 @@ dirección tiene cuenta. Por eso la comparación es **carácter a carácter**, y
 cubre los cuatro caminos que tienen que ser el mismo camino: con cuenta, sin
 cuenta, **con el envío caído** y **en el tope**.
 
-``send_email`` **no lanza: devuelve ``False``**. Ese es justo el caso (c): un
+``send_template`` **no lanza: devuelve ``False``**. Ese es justo el caso (c): un
 fallo de envío es un problema de Auphere, visible en sus registros y no en la
 pantalla de quien pregunta — decir «no pudimos enviarlo» revelaría que la
 cuenta existe.
@@ -31,6 +31,7 @@ from nexus_api.config import get_settings
 from nexus_api.db.models import PasswordResetRequest
 from nexus_api.db.models.console_identity import ConsoleAccount
 from nexus_api.services import console_identity
+from nexus_api.services.email_catalog import EmailKind, console_link
 from tests.conftest import mint_console_token
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -60,28 +61,26 @@ def _mail_sink(monkeypatch: pytest.MonkeyPatch, *, works: bool = True) -> list[d
     """Recoge los correos en vez de mandarlos.
 
     Con ``works=False`` devuelve ``False``, que es **exactamente** lo que hace
-    ``send_email`` cuando el proveedor rechaza o no está configurado: no lanza.
+    ``send_template`` cuando el proveedor rechaza o el entorno no envía: no
+    lanza.
     """
     sent: list[dict[str, Any]] = []
 
-    async def _fake(**kwargs: Any) -> bool:
-        sent.append(kwargs)
+    async def _fake(kind: EmailKind, **kwargs: Any) -> bool:
+        sent.append({"kind": kind, **kwargs})
         return works
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
     return sent
 
 
 def _link_token(sent: list[dict[str, Any]]) -> str:
     """El token que viajó dentro del enlace del último correo."""
-    html = sent[-1]["html"]
-    marker = "/reset/"
-    start = html.index(marker) + len(marker)
-    end = min(
-        (i for i in (html.find('"', start), html.find("<", start), html.find(">", start)) if i > 0),
-        default=len(html),
-    )
-    return html[start:end]
+    last = sent[-1]
+    assert last["kind"] is EmailKind.PASSWORD_RESET
+    url: str = last["variables"]["RESET_URL"]
+    assert url == console_link(url[url.index("/reset/") :]), "el enlace no es absoluto"
+    return url.split("/reset/", 1)[1]
 
 
 async def _ask(client: Any, email: str) -> Any:
@@ -110,7 +109,7 @@ class TestNadieAveriguaQueCuentasExisten:
     async def test_el_envio_caido_responde_igual_que_el_envio_bueno(
         self, client: Any, db_session: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``send_email`` devuelve ``False``; la pantalla no se entera.
+        """``send_template`` devuelve ``False``; la pantalla no se entera.
 
         Decir «no pudimos enviarlo» revelaría que la cuenta existe: el correo
         sólo se intenta cuando la hay.
@@ -571,13 +570,16 @@ class TestElAvisoDeQueCambio:
 
         assert len(sent) == 2, "el enlace salió pero el aviso no"
         aviso = sent[-1]
+        assert aviso["kind"] is EmailKind.PASSWORD_CHANGED
         assert aviso["to"] == email
+        # El idioma es el de la cuenta, que aquí es el de por defecto.
+        assert aviso["locale"] == "es"
         # Cuándo ocurrió: el año y la hora, que es lo que deja a alguien decir
         # «yo a esa hora no estaba».
-        assert str(datetime.now(UTC).year) in aviso["html"]
-        assert "UTC" in aviso["html"]
+        assert str(datetime.now(UTC).year) in aviso["variables"]["CHANGED_AT"]
+        assert aviso["variables"]["CHANGED_AT"].endswith(" UTC")
         # Y a quién escribir si no fue la persona.
-        assert "seguridad@ejemplo.com" in aviso["html"]
+        assert aviso["variables"]["SECURITY_CONTACT"] == "seguridad@ejemplo.com"
 
     async def test_el_aviso_no_lleva_contrasena_ni_enlace_que_sirva_para_entrar(
         self, client: Any, db_session: Any, monkeypatch: pytest.MonkeyPatch
@@ -588,7 +590,13 @@ class TestElAvisoDeQueCambio:
         que entrena a la gente a pulsar enlaces dentro de correos sobre su
         contraseña — que es exactamente el gesto que un suplantador necesita.
         Por eso la comprobación no es «no lleva el enlace de restablecer» sino
-        **no lleva ningún `href` que apunte a ninguna parte**, salvo `mailto:`.
+        **ninguna variable lleva nada que apunte a ninguna parte**.
+
+        Desde la spec 051 el cuerpo vive en la plantilla de Resend, y su único
+        destino —el ``mailto:`` del contacto— lo pone la plantilla, no el
+        código. Que la plantilla no tenga otros lo vigila la comprobación de
+        plantillas (``links_allowed=False`` en la ficha); lo que el código
+        controla son las variables, y eso es lo que se mira aquí.
         """
         monkeypatch.setattr(
             get_settings(), "security_contact_email", "seguridad@ejemplo.com", raising=False
@@ -602,14 +610,17 @@ class TestElAvisoDeQueCambio:
             f"/console/password-reset/{token}", json={"password": NUEVA}, headers=_svc()
         )
 
-        html = sent[-1]["html"]
-        assert NUEVA not in html, "el aviso llevaba la contraseña"
-        assert PASSWORD not in html
-        assert token not in html, "el aviso llevaba el enlace de restablecer"
-        for prefijo in ('href="http', "href='http", "http://", "https://"):
-            assert prefijo not in html, f"el aviso lleva un enlace ({prefijo})"
+        aviso = sent[-1]
+        assert aviso["kind"] is EmailKind.PASSWORD_CHANGED
+        assert set(aviso["variables"]) == {"CHANGED_AT", "SECURITY_CONTACT"}
+        todo = " ".join([aviso["subject"], *aviso["variables"].values()])
+        assert NUEVA not in todo, "el aviso llevaba la contraseña"
+        assert PASSWORD not in todo
+        assert token not in todo, "el aviso llevaba el enlace de restablecer"
+        for nombre, valor in aviso["variables"].items():
+            assert "http" not in valor.lower(), f"el aviso lleva un enlace en {nombre}: {valor!r}"
         # El único destino admitido es escribir a alguien.
-        assert "mailto:" in html
+        assert aviso["variables"]["SECURITY_CONTACT"] == "seguridad@ejemplo.com"
 
     async def test_si_el_aviso_no_sale_el_restablecimiento_no_se_deshace(
         self, client: Any, db_session: Any, monkeypatch: pytest.MonkeyPatch
@@ -630,11 +641,11 @@ class TestElAvisoDeQueCambio:
         # rechazar a mitad de un día.
         llamadas: list[dict[str, Any]] = []
 
-        async def _fake(**kwargs: Any) -> bool:
-            llamadas.append(kwargs)
+        async def _fake(kind: EmailKind, **kwargs: Any) -> bool:
+            llamadas.append({"kind": kind, **kwargs})
             return len(llamadas) == 1
 
-        monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+        monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
 
         await _ask(client, email)
         token = _link_token(llamadas)
@@ -655,3 +666,94 @@ class TestElAvisoDeQueCambio:
         assert any(e.get("event") == "password_reset.notice_not_sent" for e in eventos), (
             "el fallo del aviso no quedó en los registros"
         )
+
+
+# ── Spec 051: los dos correos son tipos del catálogo ───────────────────────
+
+
+class TestLoQueDiceCadaCorreo:
+    """Asunto, idioma y variables de ``password_reset`` y ``password_changed``.
+
+    El texto vive en las plantillas de Resend; aquí se fija lo que pone el
+    código: el asunto exacto del catálogo, el idioma de la cuenta y cada
+    variable con el formato que la plantilla espera.
+    """
+
+    async def test_el_enlace_es_absoluto_y_el_asunto_el_del_catalogo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nexus_api.services import password_reset
+
+        sent = _mail_sink(monkeypatch)
+        await password_reset.send_reset_mail(email="ana@agencia.com", token="tok-1", locale="es")
+        await password_reset.send_reset_mail(email="ana@agencia.com", token="tok-2", locale="en")
+        es, en = sent
+        assert es["kind"] is en["kind"] is EmailKind.PASSWORD_RESET
+        assert (es["locale"], en["locale"]) == ("es", "en")
+        assert es["subject"] == "Restablece tu contraseña de Auphere"
+        assert en["subject"] == "Reset your Auphere password"
+        assert es["variables"] == {"RESET_URL": console_link("/reset/tok-1")}
+        assert en["variables"] == {"RESET_URL": console_link("/reset/tok-2")}
+        assert es["to"] == "ana@agencia.com"
+
+    @pytest.mark.parametrize(
+        ("locale", "subject", "changed_at"),
+        [
+            (
+                "es",
+                "Se ha cambiado la contraseña de tu cuenta de Auphere",
+                "30/10/2026 a las 16:20 UTC",
+            ),
+            ("en", "Your Auphere password has been changed", "October 30, 2026 at 16:20 UTC"),
+        ],
+    )
+    async def test_el_aviso_dice_cuando_como_lo_diria_una_persona(
+        self, monkeypatch: pytest.MonkeyPatch, locale: str, subject: str, changed_at: str
+    ) -> None:
+        from nexus_api.services import password_reset
+
+        monkeypatch.setattr(
+            password_reset, "_now", lambda: datetime(2026, 10, 30, 16, 20, 59, tzinfo=UTC)
+        )
+        monkeypatch.setattr(
+            get_settings(), "security_contact_email", "seguridad@ejemplo.com", raising=False
+        )
+        sent = _mail_sink(monkeypatch)
+        await password_reset.send_changed_notice(email="ana@agencia.com", locale=locale)
+        [aviso] = sent
+        assert aviso["kind"] is EmailKind.PASSWORD_CHANGED
+        assert aviso["locale"] == locale
+        assert aviso["subject"] == subject
+        assert aviso["variables"] == {
+            "CHANGED_AT": changed_at,
+            "SECURITY_CONTACT": "seguridad@ejemplo.com",
+        }
+
+    async def test_sin_contacto_de_seguridad_escribe_a_soporte_y_lo_dice(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """En local puede faltar (producción no arranca sin él). El aviso sale
+        igual —R4.1 no admite condiciones— con la dirección de respuestas, y el
+        agujero queda en el registro en vez de escondido."""
+        import structlog
+
+        from nexus_api.services import password_reset
+
+        monkeypatch.setattr(get_settings(), "security_contact_email", "  ", raising=False)
+        sent = _mail_sink(monkeypatch)
+        with structlog.testing.capture_logs() as eventos:
+            await password_reset.send_changed_notice(email="ana@agencia.com", locale="es")
+        [aviso] = sent
+        assert aviso["variables"]["SECURITY_CONTACT"] == get_settings().email_reply_to
+        assert any(e.get("event") == "password_reset.notice_without_contact" for e in eventos)
+
+    async def test_el_idioma_de_la_cuenta_se_normaliza(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Inglés solo si la cuenta lo pide; cualquier otra cosa, español."""
+        from nexus_api.services import password_reset
+
+        sent = _mail_sink(monkeypatch)
+        await password_reset.send_reset_mail(email="a@b.com", token="t", locale="en-GB")
+        await password_reset.send_changed_notice(email="a@b.com", locale="pt")
+        assert [c["locale"] for c in sent] == ["en", "es"]

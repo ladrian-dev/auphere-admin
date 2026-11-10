@@ -65,12 +65,13 @@ WORKDIR /build/apps/api
 # resolution at build time. Resolving on every build had drifted the image
 # 123 of 148 packages away from the lock by 2026-10-22: LiteLLM 1.106 broke
 # every agent turn with tools and Composio 0.28 left connectors without
-# tools. ``--frozen`` fails the build if the lock no longer matches.
+# tools. ``--locked`` fails the build if the lock no longer matches the
+# pyprojects (``--frozen`` would export it as is and drop a new dependency).
 # ``--no-editable`` forces the path-source deps (nexus-worker, nexus-mcp,
 # nexus-ucm-schema, nexus-channels) to be installed as regular wheels
 # into ``site-packages``, NOT as ``.pth`` pointers back to /build/...
 # Otherwise the runtime stage can't find them after stripping /build.
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
+RUN uv export --locked --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
     && uv pip install --system --no-cache-dir --no-editable -r /tmp/requirements.txt \
     && uv pip install --system --no-cache-dir --no-editable --no-deps .
 # Fail the build if the LiteLLM installed crashes on any call with tools

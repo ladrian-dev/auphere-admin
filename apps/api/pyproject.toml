@@ -82,6 +82,12 @@ dependencies = [
     # Every ``import stripe`` in this codebase lives under
     # ``nexus_api/billing/`` — enforced by tests/unit/test_billing_boundary.py.
     "stripe>=15.6.1",
+    # Spec 047 (T022): the ``vector`` column type for SQLAlchemy, for the
+    # knowledge chunks of each client (exact search, no shared ANN index).
+    # MIT — «Permission is hereby granted, free of charge, to any person
+    # obtaining a copy of this software … to deal in the Software without
+    # restriction». Read in full: docs/licenses/pgvector.md.
+    "pgvector>=0.4.1",
 ]
 
 [project.optional-dependencies]
@@ -148,7 +154,7 @@ markers = [
     "unit: fast unit tests, no IO",
     "integration: requires Postgres/Redis containers",
     "isolation: blocking suite — verifies the 7 isolation guarantees",
-    "manual_only: release smoke / Browserbase / Meta — opt-in via env vars",
+    "manual_only: release smoke / Meta — opt-in via env vars",
     "slow: tests that take notable wall time; CI still runs them",
     "contract: agent ↔ UCM schema contract tests (Fase 6)",
     "evals: companion eval dataset (CO-07) — the CI gate for R1 and R2",

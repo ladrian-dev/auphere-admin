@@ -44,9 +44,9 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
     MessageStatus,
-    WhatsAppOptOut,
 )
 from nexus_api.schemas.messages import TemplateMessageAcceptedOut, TemplateMessageIn
+from nexus_api.services import whatsapp_opt_outs
 from nexus_api.services.broadcasts import (
     E164_RE,
     active_whatsapp_channel,
@@ -292,14 +292,12 @@ async def send_template_message(
     # or customers and opt-outs fork per format.
     wa_identifier = e164.removeprefix("+")
 
-    opted_out = await session.scalar(
-        sa.select(WhatsAppOptOut.id).where(
-            WhatsAppOptOut.channel_id == channel.id,
-            WhatsAppOptOut.recipient_phone == wa_identifier,
-            WhatsAppOptOut.opted_in_at.is_(None),
-        )
+    # Spec 050 (D6): an opt-out of marketing stops a marketing template only.
+    category = (resolved.template.category or "").upper() or None
+    opted_out = await whatsapp_opt_outs.blocks(
+        session, channel_id=channel.id, phone=wa_identifier, marketing=category == "MARKETING"
     )
-    if opted_out is not None:
+    if opted_out:
         log.warning(
             "direct_message.rejected",
             tenant_id=str(tenant_id),
@@ -321,6 +319,8 @@ async def send_template_message(
         "name": payload.template_name,
         "language": payload.language,
         "params": {"body": dict(payload.variables)},
+        # Spec 050: the dispatcher's opt-out check needs it.
+        "category": category,
     }
 
     if revive is not None:

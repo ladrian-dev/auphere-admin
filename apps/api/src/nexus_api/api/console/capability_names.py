@@ -19,7 +19,8 @@ Tres reglas que este fichero cumple y que sus tests fijan:
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from collections.abc import Iterable
+from typing import Final, Literal, TypedDict
 
 Kind = Literal["tool", "skill"]
 Function = Literal["appointments", "orders", "messages", "escalation", "knowledge", "other"]
@@ -42,9 +43,7 @@ class CapabilityName(TypedDict, total=False):
     #: herramientas lo deducen de las suyas.
     sectors: list[str]
     #: La integración que hace falta cuando el catálogo no la enlaza por
-    #: `connector_id`. Hoy solo AgendaPro: se conecta pegando la URL pública
-    #: de la agenda en el tenant, no con una fila de conector, así que sus
-    #: herramientas quedaron sueltas y la pantalla no podía avisar.
+    #: `connector_id`: hoy, el catálogo de Meta del canal (``channel_catalog``).
     requires: str
 
 
@@ -106,13 +105,14 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         requires="channel_catalog",
     ),
     # ── Citas ──────────────────────────────────────────────────────────
+    # Spec 048: ``booking.*`` está retirada (no se ofrece); el nombre se queda
+    # para lo que todavía la lleva hasta el borrado final.
     ("tool", "booking.create_appointment"): _t(
         "Reservar una cita",
         "Book an appointment",
         "Deja la cita puesta en la agenda del negocio.",
         "Puts the appointment in the business's calendar.",
         "appointments",
-        requires="agendapro",
     ),
     ("tool", "booking.check_availability"): _t(
         "Consultar disponibilidad",
@@ -120,7 +120,6 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Mira qué huecos quedan antes de proponer nada.",
         "Looks at what slots are free before proposing anything.",
         "appointments",
-        requires="agendapro",
     ),
     ("tool", "booking.modify_appointment"): _t(
         "Cambiar una cita",
@@ -136,25 +135,75 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Cancels an appointment and frees the slot.",
         "appointments",
     ),
+    # Spec 043 — Reservas: la agenda que el negocio ve en su consola.
+    ("tool", "reservas.services"): _t(
+        "Ver qué se puede reservar",
+        "See what can be booked",
+        "Lee los servicios, su duración y quién los hace, o el máximo por grupo.",
+        "Reads the services, how long they take and who does them, or the largest group.",
+        "appointments",
+    ),
+    ("tool", "reservas.find_slots"): _t(
+        "Buscar huecos libres",
+        "Find free times",
+        "Mira los huecos reales del día, dentro del horario del negocio.",
+        "Looks up the real free times of a day, within the business's hours.",
+        "appointments",
+    ),
+    ("tool", "reservas.create"): _t(
+        "Reservar",
+        "Book",
+        "Deja la reserva en la agenda del negocio, sin pisar otra.",
+        "Puts the booking in the business's agenda, never on top of another.",
+        "appointments",
+    ),
+    ("tool", "reservas.list_mine"): _t(
+        "Consultar las reservas de quien escribe",
+        "Look up the writer's bookings",
+        "Dice qué reservas tiene la persona con la que habla, y solo las suyas.",
+        "Says which bookings the person it is talking to has, and only theirs.",
+        "appointments",
+    ),
+    ("tool", "reservas.reschedule"): _t(
+        "Mover una reserva",
+        "Move a booking",
+        "Cambia la hora de una reserva de quien escribe a otro hueco libre.",
+        "Moves a booking of the writer to another free time.",
+        "appointments",
+    ),
+    ("tool", "reservas.cancel"): _t(
+        "Cancelar una reserva",
+        "Cancel a booking",
+        "Anula una reserva de quien escribe y ofrece el hueco a la lista de espera.",
+        "Cancels a booking of the writer and offers the time to the waitlist.",
+        "appointments",
+    ),
+    ("tool", "reservas.confirm_attendance"): _t(
+        "Confirmar la asistencia",
+        "Confirm attendance",
+        "Anota la respuesta al recordatorio: viene o no viene.",
+        "Records the answer to the reminder: coming or not.",
+        "appointments",
+    ),
+    ("tool", "reservas.join_waitlist"): _t(
+        "Apuntar en la lista de espera",
+        "Add to the waitlist",
+        "Apunta a quien escribe para avisarle si se libera un hueco.",
+        "Adds the writer to be told when a time frees up.",
+        "appointments",
+    ),
+    ("tool", "reservas.answer_offer"): _t(
+        "Responder a un hueco ofrecido",
+        "Answer an offered time",
+        "Reserva el hueco que se le ofreció si lo acepta a tiempo.",
+        "Books the offered time if they accept it in time.",
+        "appointments",
+    ),
     ("tool", "booking.get_appointments"): _t(
         "Consultar las citas de un cliente",
         "Look up a client's appointments",
         "Dice qué citas tiene un cliente y cuándo.",
         "Says which appointments a client has and when.",
-        "appointments",
-    ),
-    ("tool", "agendapro.get_today_appointments"): _t(
-        "Ver las citas de hoy",
-        "See today's appointments",
-        "Lee la agenda del día desde AgendaPro.",
-        "Reads the day's calendar from AgendaPro.",
-        "appointments",
-    ),
-    ("tool", "agendapro.scrape_no_shows"): _t(
-        "Detectar ausencias",
-        "Spot no-shows",
-        "Encuentra las citas a las que nadie se presentó.",
-        "Finds the appointments nobody turned up to.",
         "appointments",
     ),
     ("tool", "queue.join_queue"): _t(
@@ -497,6 +546,14 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Asks the business a question without dropping the conversation.",
         "escalation",
     ),
+    # Spec 047 (requisito 53): la pone y la quita la sección «Recepción».
+    ("tool", "reception.handoff"): _t(
+        "Pasar a otro agente",
+        "Hand over to another agent",
+        "Recepción pasa la conversación al agente que toca, en el mismo número.",
+        "Reception hands the conversation to the right agent, on the same number.",
+        "escalation",
+    ),
     # ── Otras ──────────────────────────────────────────────────────────
     ("tool", "client.get_history"): _t(
         "Consultar el historial del cliente",
@@ -698,6 +755,34 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
         "Cancels a booked appointment and notifies whoever had it.",
         "appointments",
     ),
+    ("tool", "GOOGLECALENDAR_FIND_FREE_SLOTS"): _t(
+        "Ver huecos libres en Google Calendar",
+        "See free slots in Google Calendar",
+        "Consulta qué horas están libres en el calendario del negocio.",
+        "Checks which times are free in the business's calendar.",
+        "appointments",
+    ),
+    ("tool", "GOOGLECALENDAR_CREATE_EVENT"): _t(
+        "Crear una cita en Google Calendar",
+        "Create an appointment in Google Calendar",
+        "Añade la cita como un evento en el calendario del negocio.",
+        "Adds the appointment as an event in the business's calendar.",
+        "appointments",
+    ),
+    ("tool", "GOOGLECALENDAR_QUICK_ADD"): _t(
+        "Apuntar una cita en Google Calendar",
+        "Note an appointment in Google Calendar",
+        "Añade la cita al calendario del negocio a partir de una frase con el día y la hora.",
+        "Adds the appointment to the business's calendar from a sentence with the day and time.",
+        "appointments",
+    ),
+    ("tool", "GOOGLECALENDAR_UPDATE_EVENT"): _t(
+        "Cambiar una cita en Google Calendar",
+        "Change an appointment in Google Calendar",
+        "Mueve o corrige una cita que ya está en el calendario del negocio.",
+        "Moves or corrects an appointment already in the business's calendar.",
+        "appointments",
+    ),
     ("tool", "HUBSPOT_SEARCH_CONTACTS"): _t(
         "Buscar un contacto",
         "Find a contact",
@@ -859,6 +944,105 @@ CAPABILITY_NAMES: dict[tuple[Kind, str], CapabilityName] = {
 }
 
 
+# ── what each tool does (spec 047, amendment of 2026-10-30, requirement 65.5) ──
+
+#: The actions an agent's text can promise. A promise is kept only by a tool that
+#: does that action (:data:`TOOL_ACTIONS`), never by a tool that merely shares its
+#: prefix: ``payments.request_review`` reviews a receipt, it neither charges nor
+#: invoices; ``reservas.services`` lists services, it does not book.
+Action = Literal[
+    "book",
+    "modify_booking",
+    "charge",
+    "collect",
+    "invoice",
+    "order",
+    "modify_order",
+    "send_media",
+    "remind",
+    "catalog",
+]
+
+#: What the console says after «No tenemos herramienta para: ».
+ACTION_LABELS: Final[dict[Action, str]] = {
+    "book": "reservar citas",
+    "modify_booking": "cambiar o cancelar citas",
+    "charge": "cobrar con tarjeta o con enlace de pago",
+    "collect": "cobrar",
+    "invoice": "emitir facturas",
+    "order": "tomar pedidos",
+    "modify_order": "cambiar o cancelar pedidos",
+    "send_media": "enviar documentos, fotos o ubicaciones",
+    "remind": "programar recordatorios",
+    "catalog": "enseñar el catálogo",
+}
+
+#: The tools that do each action, read from their description above. A tool that
+#: is not here does none of them. Every key is a ``("tool", name)`` of
+#: :data:`CAPABILITY_NAMES` (``tests/unit/test_only_what_we_have.py``).
+TOOL_ACTIONS: Final[dict[str, frozenset[Action]]] = {
+    # The agenda. ``booking.*`` is retired (spec 048) but still keeps the promise
+    # for the versions that book with it until they pass to Reservas.
+    "reservas.create": frozenset({"book"}),
+    "reservas.answer_offer": frozenset({"book"}),
+    "booking.create_appointment": frozenset({"book"}),
+    # Calendly keeps the promise too (owner, 2026-11-03), where Reservas is off. Google
+    # Calendar does not: it is a mirror of Reservas, never where an agent books (043, R11.9).
+    "CALENDLY_POST_INVITEE": frozenset({"book"}),
+    "CALENDLY_CREATE_SINGLE_USE_SCHEDULING_LINK": frozenset({"book"}),
+    "reservas.reschedule": frozenset({"modify_booking"}),
+    "reservas.cancel": frozenset({"modify_booking"}),
+    "booking.modify_appointment": frozenset({"modify_booking"}),
+    "booking.cancel_appointment": frozenset({"modify_booking"}),
+    # Reservas sends the reminder of each booking itself; the tool notes the answer.
+    "reservas.confirm_attendance": frozenset({"remind"}),
+    "notification.schedule_reminder": frozenset({"remind"}),
+    # Collections (cobranza): what is owed, reminding it and noting the payment.
+    "billing.get_my_debt": frozenset({"collect"}),
+    "billing.add_charge": frozenset({"collect"}),
+    "billing.register_payment": frozenset({"collect"}),
+    "billing.send_reminders": frozenset({"collect", "remind"}),
+    # A payment link: the only tool that takes a payment.
+    "woocommerce.build_checkout_link": frozenset({"charge", "order"}),
+    "woocommerce.create_order": frozenset({"order"}),
+    "woocommerce.update_order": frozenset({"modify_order"}),
+    "woocommerce.update_order_status": frozenset({"modify_order"}),
+    "notification.send_document": frozenset({"send_media"}),
+    "notification.send_image": frozenset({"send_media"}),
+    "notification.send_location": frozenset({"send_media"}),
+    "notification.send_audio": frozenset({"send_media"}),
+    "notification.send_video": frozenset({"send_media"}),
+    "catalog.search_products": frozenset({"catalog"}),
+    "catalog.get_product": frozenset({"catalog"}),
+    "woocommerce.list_products": frozenset({"catalog"}),
+    "woocommerce.get_product": frozenset({"catalog"}),
+    "inventory.search_products": frozenset({"catalog"}),
+    "inventory.get_product": frozenset({"catalog"}),
+}
+
+
+def actions_of(names: Iterable[str]) -> frozenset[Action]:
+    """Every action that at least one of ``names`` does."""
+    out: set[Action] = set()
+    for name in names:
+        out |= TOOL_ACTIONS.get(name, frozenset())
+    return frozenset(out)
+
+
+#: Spec 047, enmienda del 2026-10-29 (D67): la agenda (``reservas.*``) solo funciona
+#: con el módulo Reservas encendido para el cliente. No es un conector: lo
+#: enciende Auphere (Acceso, o el paso automático de la spec 048), y el validador
+#: la da por conectada solo entonces (``agent_spec.validator.load_context``).
+RESERVAS_MODULE: Final = "reservas"
+
+
+def requires_module(key: str) -> str | None:
+    """El módulo del cliente que necesita una herramienta (hoy, la agenda), o
+    ``None``. Distinto de :func:`requires_connector`: un módulo no se conecta
+    desde la pantalla de capacidades, lo enciende Auphere."""
+    return RESERVAS_MODULE if key.startswith("reservas.") else None
+
+
 def business_name(key: str, kind: Kind, lang: str) -> str:
     """El nombre para el partner; el técnico si aún no tiene uno."""
     entry = CAPABILITY_NAMES.get((kind, key))
@@ -897,15 +1081,9 @@ def sectors_of(key: str, kind: Kind, tags: list[str] | None) -> list[str]:
 def requires_connector(key: str, kind: Kind) -> str | None:
     """Qué integración hace falta cuando el catálogo no la enlaza.
 
-    `booking.check_availability` y `booking.create_appointment` leen
-    `tenants.agendapro_public_url`, así que sin la agenda enlazada no
-    funcionan — pero en `tool_catalog` figuran como nativas, sin
-    `connector_id`, porque AgendaPro no se conecta con una fila de conector.
-    Sin esto la pantalla las daría por utilizables y mentiría.
-
-    Cancelar, modificar y consultar citas NO entran: están fuera del flujo
-    público y el agente las escala al dueño, así que no dependen de la
-    agenda (`api/admin/integrations.py`).
+    Una herramienta nativa en `tool_catalog` (sin `connector_id`) que solo
+    funciona con algo del cliente —hoy, el catálogo de Meta del canal— lo dice
+    aquí. Sin esto la pantalla la daría por utilizable y mentiría.
     """
     entry = CAPABILITY_NAMES.get((kind, key))
     return entry.get("requires") if entry else None

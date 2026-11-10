@@ -18,11 +18,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   EmptyState,
+  Label,
   StatusBadge,
+  Textarea,
 } from "@nexus/ui";
 
 import type { AgentConfig, ToolWithInstallStatus } from "@/lib/backend";
 import { fullDateTime } from "@/lib/format";
+import { reasonError } from "@/lib/levers";
 
 import { promoteAgentConfigAction, rollbackAgentConfigAction } from "./actions";
 import { AgentEditor, type StageAction } from "./editor";
@@ -63,6 +66,7 @@ export function AgentVersions({
   const [draftOpen, setDraftOpen] = React.useState(versions.length === 0);
   const [expanded, setExpanded] = React.useState<number | null>(null);
   const [publishing, setPublishing] = React.useState<AgentConfig | null>(null);
+  const [promoteReason, setPromoteReason] = React.useState("");
   const [rollingBack, setRollingBack] = React.useState<AgentConfig | null>(null);
   const sorted = [...versions].sort((a, b) => b.version - a.version);
 
@@ -170,18 +174,30 @@ export function AgentVersions({
         open={publishing !== null}
         onOpenChange={(o) => !o && setPublishing(null)}
         title={`Publicar la versión ${publishing?.version ?? ""}`}
-        description="Los próximos mensajes de los clientes los atenderá esta versión. Puedes revertir en un clic."
+        description="Publicar desde el panel salta las pruebas del agente: queda en la auditoría con tu motivo. Los próximos mensajes los atenderá esta versión, y puedes revertir en un clic."
         confirmLabel="Publicar"
         cancelLabel="Cancelar"
+        confirmDisabled={reasonError(promoteReason) !== null}
         onConfirm={async () => {
           if (!publishing) return;
-          const res = await promoteAgentConfigAction(tenantId, publishing.version);
+          const res = await promoteAgentConfigAction(tenantId, publishing.version, promoteReason);
           if (!res.ok) return void toast.error("No se pudo publicar", { description: res.error });
           toast.success(`Versión ${publishing.version} publicada`);
           setPublishing(null);
+          setPromoteReason("");
           router.refresh();
         }}
-      />
+      >
+        <Label htmlFor="promote-reason">Motivo</Label>
+        <Textarea
+          id="promote-reason"
+          value={promoteReason}
+          onChange={(e) => setPromoteReason(e.target.value)}
+          rows={3}
+          maxLength={300}
+          placeholder="Por qué se publica sin pasar las pruebas"
+        />
+      </ConfirmDialog>
       <ConfirmDialog
         open={rollingBack !== null}
         onOpenChange={(o) => !o && setRollingBack(null)}

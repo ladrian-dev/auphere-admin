@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Bot, Users, Wallet } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bot, Plus, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 
 import { Alert, AlertDescription, Button, EmptyState, HighlightMetric, Metric, PageHeader, Section, formatNumber } from "@nexus/ui";
@@ -6,9 +6,12 @@ import { Alert, AlertDescription, Button, EmptyState, HighlightMetric, Metric, P
 import { AttentionBlock } from "@/components/home/attention-block";
 import { ConversationsChart } from "@/components/home/conversations-chart";
 import { creditRunway, trendDelta } from "@/components/home/home-model";
+import { PartnerPanel } from "@/components/home/partner-panel";
 import { SpendCard } from "@/components/home/spend-card";
+import { TodayDate } from "@/components/home/today-date";
+import { resolveConsoleVersion } from "@/components/shell/console-version";
 import { getT } from "@/i18n/server";
-import { backendFor } from "@/lib/backend";
+import { backendFor, type Me } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
 import { formatMoneyCompact } from "@/lib/money";
 import { LitePanel } from "@/components/lite/lite-panel";
@@ -41,7 +44,7 @@ export default async function HomePage() {
 async function PartnerHome({ principal }: { principal: PartnerPrincipal }) {
   const { t, locale } = await getT(principal.locale);
   const api = backendFor(principal);
-  const home: Home | null = await api.home().catch(() => null);
+  const [home, me] = await Promise.all([api.home().catch((): Home | null => null), api.me().catch((): Me | null => null)]);
   const readClients = can(principal.role, "clients:read");
   const writeClients = can(principal.role, "clients:write");
   const n = (v: number) => formatNumber(v, locale);
@@ -61,6 +64,41 @@ async function PartnerHome({ principal }: { principal: PartnerPrincipal }) {
       }
     : null;
   const noClients = readClients && home?.clients?.total === 0;
+
+  // Spec 047 (T163, requisito 48): con la consola nueva, el Panel sale del bloque
+  // `panel`, y «Necesita tu atención» arregla el saldo en el sitio.
+  if (resolveConsoleVersion(me) === "v2" && home?.panel) {
+    return (
+      <>
+        {/* El prototipo aprobado: «Hola, Luis», el partner y el día, y «Nuevo cliente». */}
+        <PageHeader
+          title={t("home.welcome", { name: principal.name.split(" ")[0] || principal.name })}
+          description={
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
+              <span>{principal.partnerName}</span>
+              <span aria-hidden="true">·</span>
+              <TodayDate />
+            </span>
+          }
+          size="display"
+          actions={
+            writeClients ? (
+              <Button nativeButton={false} render={<Link href="/clients?new=1" />}>
+                <Plus aria-hidden="true" />
+                {t("hu.home.newClient")}
+              </Button>
+            ) : undefined
+          }
+        />
+        {noClients ? (
+          // Sin botón: «Nuevo cliente» ya está en la cabecera (un primario por vista).
+          <EmptyState title={t("clients.empty.title")} description={t("clients.empty.body")} readonly />
+        ) : (
+          <PartnerPanel panel={home.panel} trend={trend ? { current: trend.current, previous: trend.previous } : null} />
+        )}
+      </>
+    );
+  }
 
   return (
     <>

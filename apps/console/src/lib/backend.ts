@@ -96,6 +96,18 @@ async function forwardedClientIp(): Promise<Record<string, string>> {
   }
 }
 
+/** Spec 056 (10.2): the session lookup's time limit and its tries (one retry). */
+const SESSION_TIMEOUT_MS = 5_000;
+const SESSION_ATTEMPTS = 2;
+
+/** A failure that may pass on its own: no answer (network, timeout) or the API's 5xx. */
+function passing(err: unknown): boolean {
+  if (err instanceof BackendError) return err.status >= 500;
+  // `AbortSignal.timeout` rejects with a DOMException, which is not an `Error` everywhere.
+  const name = typeof err === "object" && err !== null ? (err as { name?: unknown }).name : undefined;
+  return err instanceof TypeError || name === "TimeoutError" || name === "AbortError";
+}
+
 async function request<T>(token: string, path: string, opts: Opts = {}): Promise<T | null> {
   const url = `${env().NEXUS_BACKEND_URL}${path}`;
   const res = await fetch(url, {
@@ -170,6 +182,48 @@ export type Me = {
   companion_enabled: boolean;
   /** Spec 032: the modules Auphere gave this partner. */
   modules?: string[];
+  /** Spec 047 (R55.2): the frame this partner sees. `v2` only once Auphere
+   *  activated the new console; absent on older API responses = `v1`. */
+  console_version?: ConsoleVersion;
+};
+export type ConsoleVersion = "v1" | "v2";
+
+/** Spec 047 — `GET /console/jobs/{job_id}` (`contracts/console-api.md`). The
+ *  console polls it with a growing wait (1, 2, 4… 10 s). No cost (C9); a
+ *  failure travels as `error_code` only and the console owns the words. */
+export type JobKind =
+  | "client_read"
+  | "client_builder"
+  | "agent_draft"
+  | "tests"
+  | "publish"
+  | "fix"
+  | "copilot"
+  | "quality_check"
+  | "suggestions";
+export type JobStatus = "queued" | "running" | "done" | "failed";
+export type Job = {
+  job_id: string;
+  kind: JobKind;
+  status: JobStatus;
+  agent_id: string | null;
+  progress: { step?: string | null; blocks?: unknown[] } & Record<string, unknown>;
+  questions: Record<string, unknown>[] | null;
+  result: Record<string, unknown> | null;
+  error_code: string | null;
+  created_at: string;
+  finished_at: string | null;
+};
+export type JobAccepted = { job_id: string };
+
+/** Spec 047 (R47.2) — `GET /console/search?q=`, the ⌘K palette. Only
+ *  actions the person may do come back (§V). Labels are the console's:
+ *  screens and actions travel as stable keys. */
+export type SearchResult = {
+  clients: { ref: string; name: string; niche: string | null }[];
+  agents: { agent_id: string; name: string; client_ref: string; client_name: string }[];
+  screens: { key: string; href: string }[];
+  actions: { key: string; href: string }[];
 };
 export type ClientSummary = {
   external_client_ref: string;
@@ -253,6 +307,21 @@ export type ClientAgent = {
   channels: { id: string; display: string }[];
   active_version: number | null;
   draft_version: number | null;
+  /** Spec 047 (25, 26.1): la vida guardada, el estado visible que toda la
+   *  consola enseña igual, si es el agente por defecto y la pestaña que abre.
+   *  Ausentes en respuestas de antes de la ola 4. */
+  lifecycle?: string | null;
+  pause_reason?: string | null;
+  is_default?: boolean;
+  visible_state?: { code: string; tone: string; reason: string | null } | null;
+  opens?: "builder" | "channels" | "overview" | null;
+  /** Spec 047 (35): Recepción según la versión publicada. */
+  is_reception?: boolean;
+  /**
+   * Spec 057 (5.3): `prepared` si el borrador lleva la agenda y la versión activa
+   * no; `on` si la activa la lleva. Ausente en respuestas de antes.
+   */
+  agenda?: "none" | "prepared" | "on";
 };
 
 /** Spec 017 R3.2: qué cambia el borrador respecto a la versión que atiende
@@ -336,6 +405,12 @@ export type AuditEntry = {
   external_client_ref: string | null;
   client_name: string | null;
   summary: string;
+  /** Spec 047 (49.1): desde dónde (la consola, la consola lite, la app, Auphere, la API o solo). */
+  origin?: "console" | "lite_web" | "app" | "admin" | "api" | "system";
+  /** Spec 047 (49.1): lo sensible, marcado. */
+  sensitive?: boolean;
+  /** «{n} más como esta»: filas seguidas iguales que la API juntó en esta. */
+  more_like_this?: number;
 };
 export type AuditPage = { items: AuditEntry[]; next_cursor: string | null };
 export type Member = {
@@ -447,16 +522,30 @@ export type { Opts };
  * are spread into ``backendFor`` below. Keeps this file from being the
  * merge hotspot of every package.
  */
+import { agendaApi } from "./backend/agenda";
+import { agentConnectorsApi } from "./backend/agent-connectors";
+import { agentDraftApi } from "./backend/agent-draft";
+import { agentImproveApi } from "./backend/agent-improve";
+import { agentKnowledgeApi } from "./backend/agent-knowledge";
+import { agentLifeApi } from "./backend/agent-life";
+import { agentQualityApi } from "./backend/agent-quality";
 import { agentToolsApi } from "./backend/agent-tools";
+import { builderApi } from "./backend/builder";
 import { capabilitiesApi } from "./backend/capabilities";
+import { channelConfigApi } from "./backend/channel-config";
 import { channelsApi } from "./backend/channels";
+import { clientAccessApi } from "./backend/client-access";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
 import { inboxApi } from "./backend/inbox";
+import { inboxCorrectionsApi } from "./backend/inbox-corrections";
 import { liteApi } from "./backend/lite";
+import { modelQualityApi } from "./backend/model-quality";
 import { modelsApi } from "./backend/models";
 import { onboardingApi } from "./backend/onboarding";
 import { playgroundApi } from "./backend/playground";
+import { reservasApi } from "./backend/reservas";
+import { reservasTemplatesApi } from "./backend/reservas-templates";
 import { teammatesApi } from "./backend/teammates";
 export type { ExecMode, LocalExecCeiling, LocalExecPolicy, LocalExecPref } from "./backend/teammates";
 import { workstationApi, workstationPartnerApi } from "./backend/workstation";
@@ -491,6 +580,26 @@ export function backendFor(principal: Principal) {
       call<{ code: string }>("/console/auth/session-code", { method: "POST", body }),
     // lane modules — each lane owns its file under lib/backend/
     ...agentToolsApi(call),
+    // Spec 047 (historia 2): the agent's one draft, with If-Match.
+    ...agentDraftApi(call),
+    // Spec 047 (historia 7): el constructor de agentes y sus propuestas.
+    ...builderApi(call),
+    // Spec 047 (historias 8 y 9): playground, pruebas, revisión y «Guardar».
+    ...agentQualityApi(call),
+    // Spec 047 (historias 18 a 20): la vida del agente, el copiloto y el constructor del cliente.
+    ...agentLifeApi(call),
+    // Spec 047 (historia 22): el conocimiento propio de cada agente y «Enseñar».
+    ...agentKnowledgeApi(call),
+    // Spec 047 (historias 10 y 11): la página de cada canal, su menú y el enlace del dueño por agente.
+    ...channelConfigApi(call),
+    // Spec 047 (historias 31 y 32): el rendimiento y las mejoras de cada agente.
+    ...agentImproveApi(call),
+    // Spec 047 (historia 21): los conectores de cada agente y la página de cada conexión.
+    ...agentConnectorsApi(call),
+    // Spec 057: la agenda de cada agente («Agenda (Reservas)» en Conectores).
+    ...agendaApi(call),
+    // Spec 047 (historia 23): Agente › Avanzado › Calidad.
+    ...modelQualityApi(call),
     // Spec 017 (R5): herramientas y habilidades, en una sola lectura.
     ...capabilitiesApi(call),
     ...playgroundApi(call),
@@ -500,6 +609,15 @@ export function backendFor(principal: Principal) {
     // Spec 030: the client console (`/console/lite/*`).
     ...liteApi(call),
     ...inboxApi(call),
+    // Spec 047 (historia 32): «Corregir esta respuesta». «Agentes» y «Negocio» del
+    // cliente salieron con la spec 056 (requisito 2.1).
+    ...inboxCorrectionsApi(call),
+    // Spec 043: Reservas (`/console/lite/reservas/*`).
+    ...reservasApi(call),
+    // Spec 043, requisito 15: how its WhatsApp templates stand (Ajustes).
+    ...reservasTemplatesApi(call),
+    // Spec 056 (requisito 3): la pestaña «Acceso» de un cliente (owner y admin).
+    ...clientAccessApi(call),
     ...modelsApi(call),
     ...onboardingApi(call),
     ...workstationApi(call),
@@ -639,11 +757,14 @@ export type BillingCardView = {
 export type ChannelSignupLinkInfo = {
   state: "valid" | "used" | "expired" | "revoked" | "unknown";
   business_name: string | null;
-  mode: "cloud_api" | "coexistence" | null;
+  /** Spec 047 (31.5): `whatsapp_login` solo si Auphere activó la beta para el país del negocio. */
+  mode: "cloud_api" | "coexistence" | "whatsapp_login" | null;
   expires_at: string | null;
   meta_app_id: string | null;
   meta_config_id: string | null;
   meta_graph_version: string | null;
+  /** Spec 050: the Embedded Signup version (`meta_embedded_signup_version`). */
+  meta_signup_version?: "v4" | "v5" | null;
 };
 
 export type ChannelSignupLinkDone = {
@@ -709,18 +830,29 @@ export const consoleService = {
       { method: "POST", body },
     )) as { session_token: string; expires_at: string };
   },
-  /** `null` when the token is unknown or expired — never an exception. */
-  async session(token: string): Promise<ApiPrincipal | null> {
+  /**
+   * `null` when the token is unknown or expired — never an exception.
+   *
+   * Spec 056 (10.2): it runs on every console request, so it has a time limit
+   * and ONE retry for what may be passing — a network failure, a timeout or a
+   * 5xx. A 4xx is an answer and is not retried. Spec 056 (15.1): it also says
+   * when the session ends (`session_expires_at`), which never moves.
+   */
+  async session(token: string): Promise<(ApiPrincipal & { session_expires_at?: string | null }) | null> {
     const t = await mintServiceToken();
-    try {
-      const res = await request<{ principal: ApiPrincipal }>(t, "/console/auth/session", {
-        method: "POST",
-        body: { token },
-      });
-      return res?.principal ?? null;
-    } catch (err) {
-      if (err instanceof BackendError && err.status === 401) return null;
-      throw err;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const res = await request<{ principal: ApiPrincipal; expires_at?: string | null }>(t, "/console/auth/session", {
+          method: "POST",
+          body: { token },
+          signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
+        });
+        return res?.principal ? { ...res.principal, session_expires_at: res.expires_at ?? null } : null;
+      } catch (err) {
+        if (err instanceof BackendError && err.status === 401) return null;
+        if (attempt < SESSION_ATTEMPTS && passing(err)) continue;
+        throw err;
+      }
     }
   },
   /**

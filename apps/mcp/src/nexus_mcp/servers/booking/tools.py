@@ -1,34 +1,29 @@
 """booking.* — relational facade over the appointments table.
 
-Local-only Phase 1: every booking mutation persists in the local
-``appointments`` table. There is no AgendaPro delegate anymore — the
-admin browser MCP was removed in migration 0021 (ADR-017 pivots to a
-public-link only flow). The new public browser MCP, when it lands,
-will plug into ``CheckAvailability`` and ``CreateAppointment``;
-``ModifyAppointment``, ``CancelAppointment``, ``GetAppointments`` are
-out of scope for the public flow and the agent escalates them to the
-owner via the backchannel (ADR-018).
+Every booking mutation persists in the local ``appointments`` table and
+``external_ref`` stays ``NULL``: there is no upstream delegate.
 
-Until that MCP arrives, the ``external_ref`` column on rows we created
-stays ``NULL`` — they exist only in our DB, not in AgendaPro.
+Spec 048 retired it. ``appointments`` is an agenda the business does not see;
+new agents book with ``reservas.*`` and «Pasar a Reservas» moves a client and
+its future appointments over. These tools run only for the versions that
+still name them, until the final removal (spec 048, requisito 5).
 """
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
 
 import structlog
 from nexus_api.core.tenant_context import get_current_customer, require_current_tenant
 from nexus_api.db.models import (
     Appointment,
     AppointmentStatus,
-    ScheduledJob,
-    ScheduledJobKind,
-    ScheduledJobStatus,
-    Tenant,
+    Conversation,
 )
+from nexus_api.services.business import services_catalog
+from nexus_api.services.reception import agent_for_conversation
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,6 +67,47 @@ def _to_brief(a: Appointment) -> AppointmentBrief:
 #
 # La agenda tiene dos ejes: el negocio y la persona. La RLS cubre el primero;
 # el segundo, `nexus_mcp/_customer.py`. Ver `tests/isolation/test_35_*`.
+#
+# Y un tercero desde la spec 047 (requisito 11.4, garantía 9): un servicio del
+# catálogo de la ficha que el agente del turno no ofrece no se busca ni se
+# reserva. El agente es el que contesta en la conversación de la persona —el
+# del número o, si Recepción la derivó, el de destino— (``agent_for_conversation``),
+# nunca un argumento del modelo. Un nombre que no está
+# en el catálogo (las citas de antes, de texto libre) sigue como siempre.
+
+
+def _same_name(a: str, b: str) -> bool:
+    return " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
+
+
+async def _sibling_service(session: AsyncSession, service_name: str) -> bool:
+    """¿Es ``service_name`` un servicio del negocio que este agente no ofrece?"""
+    catalog = [
+        s for s in await services_catalog.list_services(session) if _same_name(s.name, service_name)
+    ]
+    if not catalog:
+        return False
+    agent_id = None
+    customer_id = get_current_customer()
+    if customer_id is not None:
+        conv = await session.scalar(
+            select(Conversation)
+            .where(Conversation.customer_id == customer_id)
+            .order_by(Conversation.last_message_at.desc().nulls_last())
+            .limit(1)
+        )
+        # Spec 047 (requisito 53): el agente que contesta en la conversación,
+        # el de destino si Recepción la derivó.
+        if conv is not None:
+            agent_id = await agent_for_conversation(session, conv)
+    mine = {s.id for s in await services_catalog.services_for_agent(session, agent_id)}
+    return not any(s.id in mine for s in catalog)
+
+
+NOT_OFFERED = (
+    "not_offered: you do not handle this service. Say so and hand the conversation "
+    "to the team; do not offer times for it."
+)
 
 
 async def _own_appointment(
@@ -88,68 +124,27 @@ async def _own_appointment(
     return appt
 
 
-# ── Block O helpers ──────────────────────────────────────────────────────────
+def _agent_key(customer_id: uuid.UUID, key: str) -> str:
+    """La clave que eligió el modelo, de esta persona.
 
-
-async def _tenant_uses_public_link(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
-    """True iff this tenant has an AgendaPro public booking URL configured.
-
-    The signal is the ``tenants.agendapro_public_url`` column populated
-    by the admin wizard (PATCH /tenants/{id}/integrations/agendapro/public-url).
-    Tenants without this set fall through to the local-only path —
-    useful for dev/QA tenants like ``auphere-canary`` that don't book
-    against a real AgendaPro account.
+    El modelo no conoce el id de la conversación, así que dos personas pueden
+    mandar la misma clave («sabado-1000»). Sin esto, la segunda recibía la cita
+    de la primera (/cso CSO-001, variante de `booking.*`). Cabe en la columna
+    (120).
     """
-    tenant = await session.get(Tenant, tenant_id)
-    if tenant is None:
-        return False
-    url = getattr(tenant, "agendapro_public_url", None)
-    return bool(url and isinstance(url, str) and url.strip())
+    digest = hashlib.sha256(f"{customer_id}:{key}".encode()).hexdigest()
+    return f"agent:{digest}"
 
 
-async def _enqueue_async_booking_job(
-    session: AsyncSession,
-    *,
-    tenant_id: uuid.UUID,
-    customer_id: uuid.UUID,
-    appointment: Appointment,
-    payload: CreateAppointmentInput,
-) -> None:
-    """Persist a ``scheduled_jobs`` row of kind=async_booking.
+def _replay(existing: Appointment, customer_id: uuid.UUID) -> CreateAppointmentOutput:
+    """La cita que ya creó esta clave, si es de esta persona.
 
-    Payload carries everything the cron needs to drive the public
-    booking wizard end-to-end without re-loading conversational state:
-    appointment_id (for status updates), customer details, service
-    hint, slot starts_at, idempotency_key (mirrored from the
-    appointment row so the public MCP gets it directly).
-
-    The cron picks rows with ``run_at <= now()``; we stamp ``now()`` so
-    the first execution starts on the next tick (~5s).
+    Con `_agent_key` dos personas no comparten clave; esto es la defensa por si
+    una fila llega con la de otra: una clave nunca entrega la cita ajena.
     """
-    job_payload: dict[str, Any] = {
-        "appointment_id": str(appointment.id),
-        "customer_id": str(customer_id),
-        "service_name": payload.service_name,
-        "starts_at_iso": payload.starts_at.isoformat(),
-        "duration_min": payload.duration_min,
-        "preferred_barber_id": str(payload.barber_id) if payload.barber_id else None,
-        "idempotency_key": payload.idempotency_key,
-    }
-    job = ScheduledJob(
-        tenant_id=tenant_id,
-        kind=ScheduledJobKind.ASYNC_BOOKING,
-        run_at=datetime.now(UTC),
-        payload=job_payload,
-        status=ScheduledJobStatus.PENDING,
-    )
-    session.add(job)
-    await session.flush()
-    log.info(
-        "booking.async_job_enqueued",
-        tenant_id=str(tenant_id),
-        appointment_id=str(appointment.id),
-        job_id=str(job.id),
-    )
+    if existing.customer_id != customer_id:
+        raise ToolError("idempotency_conflict")
+    return CreateAppointmentOutput(appointment=_to_brief(existing), idempotent_replay=True)
 
 
 # ── check_availability ───────────────────────────────────────────────────────
@@ -171,6 +166,8 @@ class CheckAvailability(ToolBase):
         assert isinstance(payload, CheckAvailabilityInput)
         tenant_id = require_current_tenant()
         async with tool_session() as session:
+            if await _sibling_service(session, payload.service_name):
+                raise ToolError(NOT_OFFERED)
             slots = await find_free_slots(
                 session,
                 tenant_id=tenant_id,
@@ -192,11 +189,11 @@ class CreateAppointment(ToolBase):
     name = "booking.create_appointment"
     description = (
         "Book an appointment for the person you are talking to. You cannot book "
-        "on behalf of anyone else. Idempotent: a second call with the same "
-        "``idempotency_key`` returns the original row without creating a duplicate "
-        "(required because the WhatsApp webhook may retry on transient errors). The "
-        "caller should derive a stable key from the conversation turn — for "
-        "example, ``conv:{conversation_id}:create_appt:{intent_hash}``."
+        "on behalf of anyone else. Idempotent per person: a second call with the "
+        "same ``idempotency_key`` returns their original row without creating a "
+        "duplicate (required because the WhatsApp webhook may retry on transient "
+        "errors). Derive a stable key from what is being booked — for example, "
+        "``corte-2026-10-24T10:00``."
     )
     input_model = CreateAppointmentInput
     output_model = CreateAppointmentOutput
@@ -207,30 +204,16 @@ class CreateAppointment(ToolBase):
         tenant_id = require_current_tenant()
         customer_id = current_customer_or_refuse("reservar una cita")
         ends_at = payload.starts_at + timedelta(minutes=payload.duration_min)
+        key = _agent_key(customer_id, payload.idempotency_key)
 
         async with tool_session() as session:
-            # Idempotent path: replay if (tenant_id, idempotency_key) is taken.
-            stmt = select(Appointment).where(Appointment.idempotency_key == payload.idempotency_key)
+            # Idempotent path: replay if (tenant_id, key) is taken.
+            stmt = select(Appointment).where(Appointment.idempotency_key == key)
             existing = (await session.execute(stmt)).scalar_one_or_none()
             if existing is not None:
-                # Surface the existing row's async state so the agent
-                # doesn't lie. ``confirmed`` if the cron already completed,
-                # ``enqueued_async`` if it's still in flight.
-                replay_status: Literal["confirmed", "enqueued_async"] = (
-                    "enqueued_async"
-                    if existing.public_booking_status in ("pending", "in_progress")
-                    else "confirmed"
-                )
-                return CreateAppointmentOutput(
-                    appointment=_to_brief(existing),
-                    idempotent_replay=True,
-                    booking_status=replay_status,
-                )
-
-            # Block O: detect whether the tenant uses the public AgendaPro
-            # path. If yes, persist the row as provisional and enqueue an
-            # async job; if no, fall through to the local-only path.
-            tenant_uses_public = await _tenant_uses_public_link(session, tenant_id)
+                return _replay(existing, customer_id)
+            if await _sibling_service(session, payload.service_name):
+                raise ToolError(NOT_OFFERED)
 
             row = Appointment(
                 tenant_id=tenant_id,
@@ -243,10 +226,9 @@ class CreateAppointment(ToolBase):
                 price_cents=payload.price_cents,
                 currency=payload.currency,
                 status=AppointmentStatus.BOOKED,
-                idempotency_key=payload.idempotency_key,
+                idempotency_key=key,
                 external_ref=None,
                 notes=payload.notes,
-                public_booking_status="pending" if tenant_uses_public else None,
             )
             session.add(row)
             try:
@@ -258,9 +240,7 @@ class CreateAppointment(ToolBase):
                 async with tool_session() as session2:
                     again = (
                         await session2.execute(
-                            select(Appointment).where(
-                                Appointment.idempotency_key == payload.idempotency_key
-                            )
+                            select(Appointment).where(Appointment.idempotency_key == key)
                         )
                     ).scalar_one_or_none()
                     if again is None:
@@ -268,34 +248,9 @@ class CreateAppointment(ToolBase):
                             "idempotency_key collision with no replay row — "
                             "transactional anomaly, refusing to retry"
                         ) from None
-                    replay_status_again: Literal["confirmed", "enqueued_async"] = (
-                        "enqueued_async"
-                        if again.public_booking_status in ("pending", "in_progress")
-                        else "confirmed"
-                    )
-                    return CreateAppointmentOutput(
-                        appointment=_to_brief(again),
-                        idempotent_replay=True,
-                        booking_status=replay_status_again,
-                    )
+                    return _replay(again, customer_id)
             await session.refresh(row)
-
-            booking_status: Literal["confirmed", "enqueued_async"] = "confirmed"
-            if tenant_uses_public:
-                await _enqueue_async_booking_job(
-                    session,
-                    tenant_id=tenant_id,
-                    customer_id=customer_id,
-                    appointment=row,
-                    payload=payload,
-                )
-                booking_status = "enqueued_async"
-
-            return CreateAppointmentOutput(
-                appointment=_to_brief(row),
-                idempotent_replay=False,
-                booking_status=booking_status,
-            )
+            return CreateAppointmentOutput(appointment=_to_brief(row), idempotent_replay=False)
 
 
 # ── modify_appointment ───────────────────────────────────────────────────────

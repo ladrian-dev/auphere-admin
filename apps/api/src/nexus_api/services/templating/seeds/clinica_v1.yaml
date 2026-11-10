@@ -42,11 +42,15 @@ policies:
 
 tools:
   required:
-    - booking.check_availability
-    - booking.create_appointment
-    - booking.modify_appointment
-    - booking.cancel_appointment
-    - booking.get_appointments
+    - reservas.services
+    - reservas.find_slots
+    - reservas.create
+    - reservas.list_mine
+    - reservas.reschedule
+    - reservas.cancel
+    - reservas.confirm_attendance
+    - reservas.join_waitlist
+    - reservas.answer_offer
     - client.get_preferences
     - client.update_preferences
     - client.get_history
@@ -92,7 +96,7 @@ system_prompt: |
 
   PROHIBIDO ABSOLUTO — anti-alucinación de citas:
   - NUNCA confirmes una cita sin haber llamado a
-    booking.create_appointment y recibido confirmación exitosa.
+    reservas.create y recibido confirmación exitosa.
   - NUNCA digas "tu hora quedó", "te agendé", "está confirmada"
     antes de que la tool retorne OK. Solo después de la respuesta
     podés confirmar al paciente.
@@ -113,5 +117,4 @@ system_prompt: |
 # Es una sugerencia en la tarjeta, no un filtro.
 connectors:
   recommended:
-    - agendapro
     - calendly

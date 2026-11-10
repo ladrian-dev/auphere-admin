@@ -1,0 +1,1462 @@
+"""``/console/lite/reservas/*`` — la agenda del negocio (spec 043, R2 a R5).
+
+La comparten la consola web y la app (mismo principal de cliente). Solo la
+alcanza la persona de un cliente con el módulo ``reservas``; todo corre bajo la
+RLS de su cliente (``lite_scope``) y un id de otro cliente responde el mismo 404
+que uno inventado. Las reglas viven en ``services/reservations``: aquí solo se
+traduce entre HTTP y el dominio.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import uuid
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Any, NoReturn
+
+import sqlalchemy as sa
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from redis.asyncio import Redis
+
+from nexus_api.api.console.business import hours_view
+from nexus_api.api.console.schemas_business_sections import HoursOut
+from nexus_api.api.deps import get_redis
+from nexus_api.config import get_settings
+from nexus_api.db.models import (
+    AuditLog,
+    Reservation,
+    ReservationBlock,
+    ReservationOffer,
+    ReservationOfferCandidate,
+    ReservationService,
+    ReservationServiceStaff,
+    ReservationStaff,
+    ReservationWaitlist,
+)
+from nexus_api.db.models.business import BusinessLocation
+from nexus_api.services.business import hours as ficha_hours
+from nexus_api.services.business import rules, services_catalog
+from nexus_api.services.business.sections import Actor as FichaActor
+from nexus_api.services.business.writes import SectionRevisionConflict
+from nexus_api.services.business_hours import (
+    BusinessHoursError,
+    canonical_business_hours,
+    parse_business_hours,
+    to_canonical,
+    week_canonical,
+    week_label,
+    week_of,
+)
+from nexus_api.services.reservations import calendar_sync, views, waitlist
+from nexus_api.services.reservations.calendar import staff_calendar_status
+from nexus_api.services.reservations.core import (
+    Actor,
+    Ctx,
+    NewBooking,
+    ReservationError,
+    cancel_booking,
+    capacity_day,
+    check_version,
+    contact_customer,
+    create_booking,
+    get_booking,
+    load_ctx,
+    move_booking,
+    service_warnings,
+    services_free,
+    staff_warnings,
+    transition,
+)
+from nexus_api.services.reservations.engine import capacity_fit, current_slot, first_fit
+from nexus_api.services.reservations.settings import SettingsError, apply_patch
+
+from .deps import LiteScope, lite_scope
+from .reservas_schemas import (
+    BlockCreatedOut,
+    BlockIn,
+    BlockListOut,
+    BlockOut,
+    BookingDetailOut,
+    BookingListOut,
+    BookingOut,
+    BusinessHoursPatchIn,
+    CalendarConnectIn,
+    CalendarLinkOut,
+    CancelIn,
+    CancelledBookingOut,
+    CancelPreviewOut,
+    MoveIn,
+    NewBookingIn,
+    OccupancyOut,
+    OfferListOut,
+    OfferOut,
+    ServiceIn,
+    ServiceListOut,
+    ServiceOut,
+    ServicePatchIn,
+    SettingsOut,
+    SettingsPatchIn,
+    SlotOut,
+    SlotsOut,
+    StaffCalendarIn,
+    StaffCalendarsOut,
+    StaffIn,
+    StaffListOut,
+    StaffOut,
+    StaffPatchIn,
+    SummaryOut,
+    WaitlistEntryOut,
+    WaitlistIn,
+    WaitlistOut,
+    WalkinIn,
+)
+
+router = APIRouter(prefix="/reservas")
+SCOPE = lite_scope("reservas")
+MAX_RANGE_DAYS = 62
+OCCUPANCY_RANGE_DAYS = 31
+REFRESH_EVERY_SECONDS = 5
+#: Una petición no se queda colgada de un proveedor que no contesta.
+REFRESH_TIMEOUT_SECONDS: float = 25.0
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _raise(exc: ReservationError) -> NoReturn:
+    if exc.http_status == 404:
+        raise HTTPException(status_code=404, detail="Not found")
+    raise HTTPException(status_code=exc.http_status, detail={"code": exc.code, **exc.info})
+
+
+def _actor(scope: LiteScope) -> Actor:
+    m = scope.principal.membership
+    return Actor("person", (m.display_name or m.email)[:120])
+
+
+def _ficha_actor(scope: LiteScope) -> FichaActor:
+    """Quién escribe en la ficha desde aquí (spec 047, requisito 13.5)."""
+    origin = "app" if scope.principal.phone_id is not None else "lite_web"
+    return FichaActor(kind="client_user", id=scope.principal.user_id, origin=origin)
+
+
+async def _ctx(scope: LiteScope) -> Ctx:
+    ctx = await load_ctx(scope.session, scope.principal.tenant_id)
+    if ctx is None:
+        # El módulo sin ajustes no existe: el admin lo activa con su modo.
+        raise HTTPException(status_code=409, detail={"code": "not_configured"})
+    return ctx
+
+
+def _need(ctx: Ctx, mode: str) -> None:
+    if ctx.mode != mode:
+        raise HTTPException(status_code=409, detail={"code": "wrong_mode", "mode": ctx.mode})
+
+
+def _version(if_match: str | None) -> int | None:
+    if if_match is None:
+        return None
+    try:
+        return int(if_match.strip().strip('"'))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="If-Match must be an integer version") from None
+
+
+def _hm(raw: str) -> time:
+    h, m = raw.split(":")
+    return time(int(h), int(m))
+
+
+def _range(start: date, end: date, limit: int) -> None:
+    if end < start or (end - start).days >= limit:
+        raise HTTPException(status_code=422, detail={"code": "bad_range", "max_days": limit})
+
+
+async def _idem(redis: Redis, scope: LiteScope, kind: str, key: str | None) -> uuid.UUID | None:
+    """La reintentada de una creación sin columna propia: el id de la primera."""
+    if not key:
+        return None
+    raw = await redis.get(f"lite:idem:{scope.principal.tenant_id}:{kind}:{key[:120]}")
+    if not raw:
+        return None
+    return uuid.UUID(raw.decode() if isinstance(raw, bytes) else str(raw))
+
+
+async def _remember(
+    redis: Redis, scope: LiteScope, kind: str, key: str | None, oid: uuid.UUID
+) -> None:
+    if key:
+        await redis.set(
+            f"lite:idem:{scope.principal.tenant_id}:{kind}:{key[:120]}", str(oid), ex=86400
+        )
+
+
+# ── ajustes y horario ───────────────────────────────────────────────────────
+
+
+async def _hours_out(scope: LiteScope) -> HoursOut:
+    """El horario del negocio con la forma de la ficha (spec 056, 5.1)."""
+    return await hours_view(scope.session, scope.principal.tenant_id, None, allowed=["edit"])
+
+
+async def _location_hours(scope: LiteScope) -> list[dict[str, Any]]:
+    """Las sedes vivas y su horario propio: se enseña, no se edita (5.1)."""
+    locale = await ficha_hours.business_locale(scope.session)
+    rows = (
+        await scope.session.scalars(
+            sa.select(BusinessLocation)
+            .where(BusinessLocation.archived_at.is_(None))
+            .order_by(BusinessLocation.position, BusinessLocation.name)
+        )
+    ).all()
+    out: list[dict[str, Any]] = []
+    for loc in rows:
+        own = await ficha_hours.load_week(scope.session, location_id=loc.id)
+        out.append(
+            {
+                "location": {"id": loc.id, "name": loc.name},
+                "has_own_hours": own is not None,
+                "label": ficha_hours.phrase(own, locale=locale) if own is not None else None,
+            }
+        )
+    return out
+
+
+async def _settings_out(scope: LiteScope, ctx: Ctx) -> SettingsOut:
+    s = ctx.settings
+    week = ctx.hours.week if ctx.hours is not None else None
+    lang = "es"
+    return SettingsOut.model_validate(
+        {
+            "mode": s.mode,
+            "capacity_kind": s.capacity_kind,
+            "timezone": str(ctx.tz),
+            "currency": ctx.currency,
+            "currency_set": await services_catalog.known_currency(scope.session) is not None,
+            "business_hours": week_canonical(week),
+            "business_hours_label": week_label(week, lang),
+            "hours": await _hours_out(scope),
+            "location_hours": await _location_hours(scope),
+            "hours_missing": week is None,
+            "slot_step_minutes": s.slot_step_minutes,
+            "waitlist": {"enabled": s.waitlist_enabled, "lead_minutes": s.waitlist_lead_minutes},
+            "agent": {
+                "min_notice_minutes": s.agent_min_notice_minutes,
+                "max_days_ahead": s.agent_max_days_ahead,
+            },
+            "confirmation": {"enabled": s.confirm_enabled, "when": s.confirm_when},
+            "reminder_enabled": s.reminder_enabled,
+            "release_unconfirmed": s.release_unconfirmed,
+            "capacity": {
+                "seats": s.seats,
+                "stay_minutes": s.stay_minutes,
+                "max_party": s.max_party,
+                "walkin_hold": s.walkin_hold,
+                "schedule": s.schedule,
+            }
+            if s.mode == "capacity"
+            else None,
+            "version": s.version,
+        }
+    )
+
+
+@router.get("/settings", response_model=SettingsOut)
+async def read_settings(scope: LiteScope = Depends(SCOPE)) -> SettingsOut:
+    return await _settings_out(scope, await _ctx(scope))
+
+
+@router.patch("/settings", response_model=SettingsOut)
+async def patch_settings(
+    body: SettingsPatchIn,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> SettingsOut:
+    ctx = await _ctx(scope)
+    expected = _version(if_match)
+    if expected is not None and ctx.settings.version != expected:
+        raise HTTPException(
+            status_code=412, detail={"code": "stale", "version": ctx.settings.version}
+        )
+    try:
+        apply_patch(ctx.settings, body.model_dump(exclude_unset=True))
+    except SettingsError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": "invalid", "field": exc.field, "message": exc.message}
+        ) from None
+    ctx.settings.version += 1
+    ctx.settings.updated_by = scope.principal.actor
+    await scope.session.flush()
+    return await _settings_out(scope, ctx)
+
+
+@router.patch(
+    "/business-hours",
+    response_model=HoursOut,
+    responses={
+        409: {"description": "revision_conflict: the hours changed since they were read"},
+        422: {"description": "{code, field, day}: too_many_shifts, bad_step, overlap, …"},
+    },
+)
+async def patch_business_hours(
+    body: BusinessHoursPatchIn, scope: LiteScope = Depends(SCOPE)
+) -> HoursOut:
+    """Spec 056 (5.1, 5.3): el horario de la ficha, día a día. Solo cambian los
+    días que llegan; los demás, el horario propio de cada sede y lo guardado que
+    no cumple las reglas nuevas se quedan como estaban. Con la revisión que se
+    leyó: si alguien guardó mientras tanto, ``409 revision_conflict``."""
+    stored = (await ficha_hours.load_hours(scope.session)).week
+    try:
+        week = ficha_hours.replace_days(
+            stored, {d: [(s.open, s.close) for s in v] for d, v in body.days.items()}
+        )
+    except rules.RuleError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": exc.code, "field": exc.field, "day": exc.day}
+        ) from None
+    except ficha_hours.HoursError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": exc.code, "field": "shifts", "day": exc.day}
+        ) from None
+    try:
+        await ficha_hours.save_week(
+            scope.session, week, actor=_ficha_actor(scope), expected_revision=body.revision
+        )
+    except SectionRevisionConflict as exc:
+        raise HTTPException(
+            status_code=409, detail={"code": "revision_conflict", "revision": exc.current}
+        ) from None
+    await scope.session.flush()
+    return await _hours_out(scope)
+
+
+# ── equipo ──────────────────────────────────────────────────────────────────
+
+
+def _staff_out(
+    ctx: Ctx, m: ReservationStaff, calendars: dict[uuid.UUID, dict[str, Any]]
+) -> StaffOut:
+    own = parse_business_hours(m.hours) if m.hours else None
+    business = week_canonical(ctx.hours.week) if ctx.hours is not None else None
+    return StaffOut.model_validate(
+        {
+            "id": m.id,
+            "name": m.name,
+            "email": m.email,
+            "hours": to_canonical(own) if own else None,
+            "effective_hours": to_canonical(own) if own else business,
+            "position": m.position,
+            "archived": m.archived_at is not None,
+            "calendar": calendars.get(m.id, {"status": "none"}),
+            "warnings": staff_warnings(m),
+        }
+    )
+
+
+async def _calendars(scope: LiteScope) -> dict[uuid.UUID, dict[str, Any]]:
+    return await staff_calendar_status(scope.session)
+
+
+def _clean_hours(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    try:
+        hours = week_of(canonical_business_hours(raw))
+    except BusinessHoursError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": "invalid", "message": str(exc)}
+        ) from None
+    if any(len(r) > 2 for r in hours.values()):
+        raise HTTPException(status_code=422, detail={"code": "invalid", "message": "max 2 ranges"})
+    return hours
+
+
+@router.get("/staff", response_model=StaffListOut)
+async def list_staff(
+    archived: bool = Query(default=False), scope: LiteScope = Depends(SCOPE)
+) -> StaffListOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    stmt = sa.select(ReservationStaff).order_by(
+        ReservationStaff.position, ReservationStaff.created_at
+    )
+    if not archived:
+        stmt = stmt.where(ReservationStaff.archived_at.is_(None))
+    cal = await _calendars(scope)
+    return StaffListOut(
+        items=[_staff_out(ctx, m, cal) for m in (await scope.session.execute(stmt)).scalars()]
+    )
+
+
+@router.post("/staff", response_model=StaffOut, status_code=201)
+async def create_staff(
+    body: StaffIn,
+    scope: LiteScope = Depends(SCOPE),
+    redis: Redis = Depends(get_redis),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> StaffOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    prior = await _idem(redis, scope, "staff", idempotency_key)
+    if prior is not None:
+        found = await scope.session.get(ReservationStaff, prior)
+        if found is not None:
+            return _staff_out(ctx, found, {})
+    count = await scope.session.scalar(sa.select(sa.func.count()).select_from(ReservationStaff))
+    m = ReservationStaff(
+        tenant_id=ctx.tenant_id,
+        name=body.name.strip(),
+        email=(body.email or "").strip() or None,
+        hours=_clean_hours(body.hours),
+        position=int(count or 0) + 1,
+    )
+    scope.session.add(m)
+    await scope.session.flush()
+    await _remember(redis, scope, "staff", idempotency_key, m.id)
+    return _staff_out(ctx, m, {})
+
+
+async def _staff(scope: LiteScope, staff_id: uuid.UUID) -> ReservationStaff:
+    m = await scope.session.get(ReservationStaff, staff_id)
+    if m is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return m
+
+
+@router.patch("/staff/{staff_id}", response_model=StaffOut)
+async def patch_staff(
+    staff_id: uuid.UUID, body: StaffPatchIn, scope: LiteScope = Depends(SCOPE)
+) -> StaffOut:
+    ctx = await _ctx(scope)
+    m = await _staff(scope, staff_id)
+    data = body.model_dump(exclude_unset=True)
+    if data.get("name"):
+        m.name = data["name"].strip()
+    if "email" in data:
+        m.email = (data["email"] or "").strip() or None
+    if "hours" in data:
+        m.hours = _clean_hours(data["hours"])
+    if "position" in data and data["position"] is not None:
+        m.position = int(data["position"])
+    await scope.session.flush()
+    return _staff_out(ctx, m, await _calendars(scope))
+
+
+# ── el calendario de cada profesional (requisito 12) ────────────────────────
+
+
+def _calendar_audit(scope: LiteScope, member: ReservationStaff, *, action: str) -> None:
+    """Una persona del negocio puede tocar el calendario de otra: queda escrito quién y de
+    quién. La cuenta de Google de esa persona no entra en el rastro."""
+    scope.session.add(
+        AuditLog(
+            tenant_id=scope.principal.tenant_id,
+            actor=scope.principal.actor,
+            action=action,
+            target=f"reservation_staff:{member.id}",
+            after_json={"staff": member.name},
+        )
+    )
+
+
+def _calendar_error(exc: calendar_sync.CalendarError) -> HTTPException:
+    return HTTPException(status_code=exc.status, detail={"code": exc.code, **exc.info})
+
+
+def _return_url(staff_id: uuid.UUID, *, share: bool) -> str:
+    """A dónde vuelve Google. Quien recibe el enlace no tiene por qué entrar en la consola:
+    aterriza en la página de «ya puedes cerrar esto». ``staff_id`` no es ningún secreto: la
+    vuelta solo hace que el panel mire cómo quedó."""
+    settings = get_settings()
+    if share:
+        return f"{settings.public_api_base_url.rstrip('/')}/connectors/oauth-callback"
+    return (
+        f"{settings.console_base_url.rstrip('/')}/reservas?tab=settings&calendar_return={staff_id}"
+    )
+
+
+@router.post("/staff/{staff_id}/calendar/connect", response_model=CalendarLinkOut)
+async def connect_staff_calendar(
+    staff_id: uuid.UUID, body: CalendarConnectIn, scope: LiteScope = Depends(SCOPE)
+) -> CalendarLinkOut:
+    """El enlace para que ese profesional autorice **su** cuenta. Se devuelve una vez, a
+    quien lo pidió."""
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    member = await _staff(scope, staff_id)
+    try:
+        redirect_url = await calendar_sync.start_connection(
+            scope.session,
+            ctx,
+            calendar_sync.default_gateway(),
+            member.id,
+            callback_url=_return_url(member.id, share=body.share),
+            now=_now(),
+        )
+    except calendar_sync.CalendarError as exc:
+        raise _calendar_error(exc) from None
+    _calendar_audit(scope, member, action="reservations.calendar_connect_started")
+    return CalendarLinkOut(redirect_url=redirect_url)
+
+
+@router.post("/staff/{staff_id}/calendar/refresh", response_model=StaffOut)
+async def refresh_staff_calendar(
+    staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE), redis: Redis = Depends(get_redis)
+) -> StaffOut:
+    """Mira ya cómo quedó ese profesional: al volver de Google y al reintentar, sin esperar
+    a la pasada. Pulsarlo muchas veces no llama a Google más de una vez cada poco."""
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    member = await _staff(scope, staff_id)
+    key = f"lite:calendar:refresh:{ctx.tenant_id}:{member.id}"
+    if await redis.set(key, "1", nx=True, ex=REFRESH_EVERY_SECONDS):
+        try:
+            await asyncio.wait_for(
+                calendar_sync.sync_tenant(
+                    scope.session, ctx, calendar_sync.default_gateway(), now=_now(), only=member.id
+                ),
+                timeout=REFRESH_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            raise _calendar_error(
+                calendar_sync.CalendarError(409, "calendar_unavailable")
+            ) from None
+    return _staff_out(ctx, member, await _calendars(scope))
+
+
+@router.get("/staff/{staff_id}/calendars", response_model=StaffCalendarsOut)
+async def list_staff_calendars(
+    staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)
+) -> StaffCalendarsOut:
+    """Los calendarios de la cuenta de **ese** profesional en los que se puede escribir."""
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    member = await _staff(scope, staff_id)
+    try:
+        items = await calendar_sync.calendars_of(
+            scope.session, calendar_sync.default_gateway(), member.id
+        )
+    except calendar_sync.CalendarError as exc:
+        raise _calendar_error(exc) from None
+    return StaffCalendarsOut.model_validate({"calendars": items})
+
+
+@router.put("/staff/{staff_id}/calendar", response_model=StaffOut)
+async def put_staff_calendar(
+    staff_id: uuid.UUID, body: StaffCalendarIn, scope: LiteScope = Depends(SCOPE)
+) -> StaffOut:
+    """Elige un calendario de su cuenta, o ``null`` para desconectarlo."""
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    member = await _staff(scope, staff_id)
+    try:
+        if body.calendar_id is None:
+            await calendar_sync.disconnect(scope.session, member.id, now=_now())
+            _calendar_audit(scope, member, action="reservations.calendar_disconnected")
+        else:
+            await calendar_sync.choose_calendar(
+                scope.session, calendar_sync.default_gateway(), member.id, body.calendar_id
+            )
+            _calendar_audit(scope, member, action="reservations.calendar_changed")
+    except calendar_sync.CalendarError as exc:
+        raise _calendar_error(exc) from None
+    return _staff_out(ctx, member, await _calendars(scope))
+
+
+@router.post("/staff/{staff_id}/archive", status_code=204)
+async def archive_staff(staff_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> Response:
+    m = await _staff(scope, staff_id)
+    live = await scope.session.scalar(
+        sa.select(sa.func.count())
+        .select_from(Reservation)
+        .where(
+            Reservation.staff_id == m.id,
+            Reservation.status.in_(("pending", "confirmed")),
+            Reservation.starts_at > _now(),
+        )
+    )
+    if live:
+        raise HTTPException(
+            status_code=409, detail={"code": "live_reservations", "count": int(live)}
+        )
+    m.archived_at = _now()
+    await scope.session.execute(
+        sa.delete(ReservationServiceStaff).where(ReservationServiceStaff.staff_id == m.id)
+    )
+    # Quien ya no está en el equipo no se sigue sincronizando (la pasada revoca la conexión).
+    if await calendar_sync.staff_calendar(scope.session, m.id) is not None:
+        _calendar_audit(scope, m, action="reservations.calendar_disconnected")
+    await calendar_sync.disconnect(scope.session, m.id, now=_now())
+    return Response(status_code=204)
+
+
+# ── servicios ───────────────────────────────────────────────────────────────
+#
+# Spec 056 (5.2 a 5.4): los servicios de Reservas son los de la ficha y se
+# escriben por su catálogo (``services_catalog``): un solo validador, las mismas
+# reglas (``rules``) y el historial de la ficha. Desde aquí se crean con su
+# nombre, pero no se renombran.
+
+
+async def _service_staff(scope: LiteScope, service_id: uuid.UUID) -> list[uuid.UUID]:
+    """Quién lo ofrece hoy: una persona archivada no vuelve a la lista al guardarla."""
+    rows = await scope.session.execute(
+        sa.select(ReservationServiceStaff.staff_id)
+        .join(
+            ReservationStaff,
+            sa.and_(
+                ReservationStaff.tenant_id == ReservationServiceStaff.tenant_id,
+                ReservationStaff.id == ReservationServiceStaff.staff_id,
+            ),
+        )
+        .where(
+            ReservationServiceStaff.service_id == service_id,
+            ReservationStaff.archived_at.is_(None),
+        )
+    )
+    return list(rows.scalars())
+
+
+def _service_refusal(exc: Exception) -> HTTPException:
+    """Los «no» del catálogo: ``422 {code, field}``. Una persona del equipo o un
+    servicio que no es del negocio es el 404 de siempre."""
+    if isinstance(exc, LookupError) or (
+        isinstance(exc, services_catalog.ServiceError) and exc.code == "unknown_staff"
+    ):
+        return HTTPException(status_code=404, detail="Not found")
+    if isinstance(exc, services_catalog.ServiceError):
+        return HTTPException(status_code=422, detail={"code": exc.code, "field": exc.field})
+    raise exc
+
+
+async def _service_out(scope: LiteScope, ctx: Ctx, s: ReservationService) -> ServiceOut:
+    archived = s.archived_at is not None
+    warnings = (
+        [] if archived else await service_warnings(scope.session, ctx, s, today=ctx.today(_now()))
+    )
+    return ServiceOut.model_validate(
+        {
+            "id": s.id,
+            "name": s.name,
+            "category": s.category,
+            "duration_minutes": s.duration_minutes,
+            "price": services_catalog.price_view(s),
+            "currency": s.currency,
+            "staff": "all" if s.all_staff else "some",
+            "staff_ids": [] if s.all_staff else await _service_staff(scope, s.id),
+            "position": s.position,
+            "archived": archived,
+            "warnings": warnings,
+        }
+    )
+
+
+@router.get("/services", response_model=ServiceListOut)
+async def list_services(
+    archived: bool = Query(default=False), scope: LiteScope = Depends(SCOPE)
+) -> ServiceListOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    # Spec 047: los servicios que no se reservan (un producto, un menú) son de
+    # la ficha, no de la agenda: Reservas no los enseña.
+    stmt = (
+        sa.select(ReservationService)
+        .where(ReservationService.bookable.is_(True))
+        .order_by(ReservationService.position, ReservationService.name)
+    )
+    if not archived:
+        stmt = stmt.where(ReservationService.archived_at.is_(None))
+    return ServiceListOut(
+        items=[
+            await _service_out(scope, ctx, s) for s in (await scope.session.execute(stmt)).scalars()
+        ]
+    )
+
+
+@router.post("/services", response_model=ServiceOut, status_code=201)
+async def create_service(
+    body: ServiceIn,
+    scope: LiteScope = Depends(SCOPE),
+    redis: Redis = Depends(get_redis),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> ServiceOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "services")
+    prior = await _idem(redis, scope, "service", idempotency_key)
+    if prior is not None:
+        found = await scope.session.get(ReservationService, prior)
+        if found is not None:
+            return await _service_out(scope, ctx, found)
+    data = services_catalog.ServiceData(
+        name=body.name,
+        bookable=True,
+        duration_min=body.duration_minutes,
+        price_kind=body.price.kind,
+        amount_minor=body.price.amount_minor,
+        staff_ids=tuple(body.staff_ids) if body.staff_ids is not None else None,
+        price_currency=body.price_currency,
+        category=body.category,
+    )
+    try:
+        service_id, _ = await services_catalog.create_service(
+            scope.session, data, actor=_ficha_actor(scope)
+        )
+    except (services_catalog.ServiceError, LookupError) as exc:
+        raise _service_refusal(exc) from None
+    svc = await _svc(scope, service_id)
+    await _remember(redis, scope, "service", idempotency_key, svc.id)
+    return await _service_out(scope, ctx, svc)
+
+
+async def _svc(scope: LiteScope, service_id: uuid.UUID) -> ReservationService:
+    s = await scope.session.get(ReservationService, service_id)
+    if s is None or not s.bookable:
+        raise HTTPException(status_code=404, detail="Not found")
+    return s
+
+
+def _same_name(a: str, b: str) -> bool:
+    return " ".join(a.split()) == " ".join(b.split())
+
+
+@router.patch("/services/{service_id}", response_model=ServiceOut)
+async def patch_service(
+    service_id: uuid.UUID, body: ServicePatchIn, scope: LiteScope = Depends(SCOPE)
+) -> ServiceOut:
+    """Solo cambia lo que llega (5.3): «Gratis» sigue gratis si no se toca el precio."""
+    ctx = await _ctx(scope)
+    svc = await _svc(scope, service_id)
+    data = body.model_dump(exclude_unset=True)
+    if data.get("name") is not None and not _same_name(data["name"], svc.name):
+        raise HTTPException(status_code=422, detail={"code": "rename_not_allowed", "field": "name"})
+    changes: dict[str, Any] = {}
+    if "category" in data:
+        changes["category"] = data["category"]
+    if data.get("duration_minutes") is not None:
+        changes["duration_min"] = int(data["duration_minutes"])
+    if body.price is not None:
+        changes["price"] = {"kind": body.price.kind, "amount_minor": body.price.amount_minor}
+    if data.get("price_currency"):
+        changes["price_currency"] = data["price_currency"]
+    if data.get("all_staff") or ("staff_ids" in data and data["staff_ids"] is None):
+        changes["staff"] = "all"
+    elif data.get("staff_ids") is not None:
+        changes["staff"] = [str(sid) for sid in data["staff_ids"]]
+    try:
+        if changes:
+            await services_catalog.update_service(
+                scope.session, svc.id, changes, actor=_ficha_actor(scope)
+            )
+    except (services_catalog.ServiceError, LookupError) as exc:
+        raise _service_refusal(exc) from None
+    if data.get("position") is not None:
+        svc.position = int(data["position"])
+    await scope.session.flush()
+    return await _service_out(scope, ctx, svc)
+
+
+@router.post("/services/{service_id}/archive", status_code=204)
+async def archive_service(service_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> Response:
+    svc = await _svc(scope, service_id)
+    await services_catalog.archive_service(scope.session, svc.id, actor=_ficha_actor(scope))
+    await scope.session.flush()
+    return Response(status_code=204)
+
+
+# ── reservas ────────────────────────────────────────────────────────────────
+
+
+async def _booking_out(scope: LiteScope, ctx: Ctx, res: Any) -> dict[str, Any]:
+    out = await views.bookings_out(
+        scope.session, ctx, [res], now=_now(), with_inbox=scope.principal.has("inbox")
+    )
+    return out[0]
+
+
+@router.get("/bookings", response_model=BookingListOut)
+async def list_bookings(
+    from_: date = Query(alias="from"),
+    to: date = Query(),
+    status_: list[str] = Query(default=[], alias="status"),
+    origin: list[str] = Query(default=[]),
+    staff_id: uuid.UUID | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=80),
+    scope: LiteScope = Depends(SCOPE),
+) -> BookingListOut:
+    ctx = await _ctx(scope)
+    _range(from_, to, MAX_RANGE_DAYS)
+    rows, truncated = await views.list_bookings(
+        scope.session,
+        ctx,
+        start=from_,
+        end=to,
+        statuses=status_,
+        origins=origin,
+        staff_id=staff_id,
+        q=q,
+    )
+    items = await views.bookings_out(
+        scope.session, ctx, rows, now=_now(), with_inbox=scope.principal.has("inbox")
+    )
+    return BookingListOut.model_validate(
+        {"items": items, "closed_days": views.closed_days(ctx, from_, to), "truncated": truncated}
+    )
+
+
+@router.get("/bookings/{booking_id}", response_model=BookingDetailOut)
+async def read_booking(
+    booking_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)
+) -> BookingDetailOut:
+    ctx = await _ctx(scope)
+    try:
+        res = await get_booking(scope.session, booking_id)
+    except ReservationError as exc:
+        _raise(exc)
+    out = await _booking_out(scope, ctx, res)
+    out["events"] = await views.events_out(scope.session, res.id)
+    return BookingDetailOut.model_validate(out)
+
+
+@router.post("/bookings", response_model=BookingOut, status_code=201)
+async def create(
+    body: NewBookingIn,
+    scope: LiteScope = Depends(SCOPE),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> BookingOut:
+    ctx = await _ctx(scope)
+    try:
+        res, _ = await create_booking(
+            scope.session,
+            ctx,
+            NewBooking(
+                day=body.date,
+                at=_hm(body.time),
+                origin="person",
+                channel="phone",
+                contact_name=body.contact.name,
+                contact_phone=body.contact.phone,
+                party_size=body.party_size,
+                staff_id=body.staff_id,
+                service_id=body.service_id,
+                note=body.note,
+                join_waitlist=body.join_waitlist,
+                notify=body.notify,
+                idempotency_key=f"lite:{idempotency_key}" if idempotency_key else None,
+            ),
+            actor=_actor(scope),
+            now=_now(),
+        )
+    except ReservationError as exc:
+        _raise(exc)
+    return BookingOut.model_validate(await _booking_out(scope, ctx, res))
+
+
+async def _for_write(scope: LiteScope, booking_id: uuid.UUID, if_match: str | None) -> Any:
+    try:
+        res = await get_booking(scope.session, booking_id, lock=True)
+        check_version(res, _version(if_match))
+    except ReservationError as exc:
+        _raise(exc)
+    return res
+
+
+@router.post("/bookings/{booking_id}/move", response_model=BookingOut)
+async def move(
+    booking_id: uuid.UUID,
+    body: MoveIn,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> BookingOut:
+    ctx = await _ctx(scope)
+    res = await _for_write(scope, booking_id, if_match)
+    was = ctx.local(res.starts_at)
+    try:
+        await move_booking(
+            scope.session,
+            ctx,
+            res,
+            day=body.date or was.date(),
+            at=_hm(body.time) if body.time else time(was.hour, was.minute),
+            staff_id=body.staff_id,
+            party_size=body.party_size,
+            notify=body.notify,
+            actor=_actor(scope),
+            now=_now(),
+        )
+    except ReservationError as exc:
+        _raise(exc)
+    if "note" in body.model_fields_set:
+        res.note = (body.note or "").strip()[:500] or None
+    return BookingOut.model_validate(await _booking_out(scope, ctx, res))
+
+
+@router.get("/bookings/{booking_id}/cancel-preview", response_model=CancelPreviewOut)
+async def cancel_preview(
+    booking_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)
+) -> CancelPreviewOut:
+    ctx = await _ctx(scope)
+    try:
+        res = await get_booking(scope.session, booking_id)
+    except ReservationError as exc:
+        _raise(exc)
+    p = await waitlist.cancel_preview(scope.session, ctx, res, _now())
+    return CancelPreviewOut(can_offer=p.can_offer, candidates=p.candidates, why_not=p.why_not)  # type: ignore[arg-type]
+
+
+@router.post("/bookings/{booking_id}/cancel", response_model=CancelledBookingOut)
+async def cancel(
+    booking_id: uuid.UUID,
+    body: CancelIn,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> CancelledBookingOut:
+    ctx = await _ctx(scope)
+    res = await _for_write(scope, booking_id, if_match)
+    now = _now()
+    try:
+        await cancel_booking(
+            scope.session, ctx, res, by="business", actor=_actor(scope), now=now, notify=body.notify
+        )
+    except ReservationError as exc:
+        _raise(exc)
+    offer = None
+    if ctx.mode == "services" and body.offer_slot:
+        offer = await waitlist.open_after_cancel(scope.session, ctx, res, now)
+    elif ctx.mode == "capacity":
+        opened = await waitlist.open_capacity(
+            scope.session, ctx, day=ctx.local(res.starts_at).date(), now=now
+        )
+        offer = opened[0] if opened else None
+    out = await _booking_out(scope, ctx, res)
+    if offer is not None:
+        n = await scope.session.scalar(
+            sa.select(sa.func.count())
+            .select_from(ReservationOfferCandidate)
+            .where(ReservationOfferCandidate.offer_id == offer.id)
+        )
+        out["offer"] = {"id": offer.id, "candidates": int(n or 0)}
+    else:
+        out["offer"] = None
+    return CancelledBookingOut.model_validate(out)
+
+
+async def _act(
+    scope: LiteScope, booking_id: uuid.UUID, if_match: str | None, action: str
+) -> BookingOut:
+    ctx = await _ctx(scope)
+    res = await _for_write(scope, booking_id, if_match)
+    now = _now()
+    try:
+        await transition(scope.session, ctx, res, action, actor=_actor(scope), now=now)
+    except ReservationError as exc:
+        _raise(exc)
+    if action == "noshow" and ctx.mode == "capacity":
+        await waitlist.open_capacity(
+            scope.session, ctx, day=ctx.local(res.starts_at).date(), now=now
+        )
+    return BookingOut.model_validate(await _booking_out(scope, ctx, res))
+
+
+@router.post("/bookings/{booking_id}/confirm", response_model=BookingOut)
+async def confirm(
+    booking_id: uuid.UUID,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> BookingOut:
+    return await _act(scope, booking_id, if_match, "confirm")
+
+
+@router.post("/bookings/{booking_id}/request-confirmation", response_model=BookingOut)
+async def request_confirmation(
+    booking_id: uuid.UUID,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> BookingOut:
+    return await _act(scope, booking_id, if_match, "request_confirmation")
+
+
+@router.post("/bookings/{booking_id}/arrive", response_model=BookingOut)
+async def arrive(
+    booking_id: uuid.UUID,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> BookingOut:
+    return await _act(scope, booking_id, if_match, "arrive")
+
+
+@router.post("/bookings/{booking_id}/noshow", response_model=BookingOut)
+async def noshow(
+    booking_id: uuid.UUID,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> BookingOut:
+    return await _act(scope, booking_id, if_match, "noshow")
+
+
+@router.post("/bookings/{booking_id}/undo", response_model=BookingOut)
+async def undo(
+    booking_id: uuid.UUID,
+    scope: LiteScope = Depends(SCOPE),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> BookingOut:
+    return await _act(scope, booking_id, if_match, "undo")
+
+
+@router.post("/walkins", response_model=BookingOut, status_code=201)
+async def walkin(
+    body: WalkinIn,
+    scope: LiteScope = Depends(SCOPE),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> BookingOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "capacity")
+    now = _now()
+    today = ctx.today(now)
+    cap = await capacity_day(scope.session, ctx, today)
+    at = current_slot(cap.slots, now)
+    if at is None:
+        nxt = next((s.at for s in cap.slots if s.at > now), None)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "invalid_transition",
+                "next_time": nxt.strftime("%H:%M") if nxt else None,
+            },
+        )
+    try:
+        res, _ = await create_booking(
+            scope.session,
+            ctx,
+            NewBooking(
+                day=today,
+                at=ctx.local(at).time().replace(tzinfo=None),
+                origin="walkin",
+                channel="in_person",
+                contact_name=body.name,
+                party_size=body.party_size,
+                notify=False,
+                idempotency_key=f"walkin:{idempotency_key}" if idempotency_key else None,
+            ),
+            actor=_actor(scope),
+            now=now,
+        )
+    except ReservationError as exc:
+        _raise(exc)
+    return BookingOut.model_validate(await _booking_out(scope, ctx, res))
+
+
+# ── huecos, ocupación, resumen ──────────────────────────────────────────────
+
+
+@router.get("/slots", response_model=SlotsOut)
+async def slots(
+    date_: date = Query(alias="date"),
+    service_id: uuid.UUID | None = Query(default=None),
+    staff_id: uuid.UUID | None = Query(default=None),
+    party_size: int = Query(default=1, ge=1, le=1000),
+    walkin: bool = Query(default=False),
+    exclude: uuid.UUID | None = Query(default=None),
+    scope: LiteScope = Depends(SCOPE),
+) -> SlotsOut:
+    ctx = await _ctx(scope)
+    now = _now()
+    if not ctx.day_ranges(date_):
+        return SlotsOut(date=date_, closed=True, slots=[])
+    if ctx.mode == "services":
+        if service_id is None:
+            raise HTTPException(status_code=422, detail={"code": "service_required"})
+        svc = await scope.session.get(ReservationService, service_id)
+        if svc is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        free = await services_free(
+            scope.session,
+            ctx,
+            day=date_,
+            service=svc,
+            staff_ids=[staff_id] if staff_id else None,
+            not_before=now,
+            exclude=exclude,
+        )
+        return SlotsOut(
+            date=date_,
+            closed=False,
+            slots=[SlotOut(time=t, staff_ids=ids) for t, ids in free.items()],
+        )
+    cap = await capacity_day(scope.session, ctx, date_)
+    out: list[SlotOut] = []
+    for s in cap.slots:
+        fit = capacity_fit(
+            cap.slots,
+            cap.blocked,
+            cap.people,
+            cap.rules,
+            s.at,
+            party_size,
+            now=now,
+            walkin=walkin,
+            exclude=exclude,
+        )
+        out.append(
+            SlotOut(
+                time=s.at.strftime("%H:%M"),
+                shift=s.shift,
+                fits=fit.fits,
+                left=fit.left,
+                why=fit.why,
+            )
+        )
+    nxt = first_fit(
+        cap.slots,
+        cap.blocked,
+        cap.people,
+        cap.rules,
+        party_size,
+        now=now,
+        walkin=walkin,
+        exclude=exclude,
+    )
+    return SlotsOut(
+        date=date_,
+        closed=not cap.slots,
+        slots=out,
+        first_fit=nxt.strftime("%H:%M") if nxt else None,
+    )
+
+
+@router.get("/occupancy", response_model=OccupancyOut)
+async def occupancy(
+    from_: date = Query(alias="from"), to: date = Query(), scope: LiteScope = Depends(SCOPE)
+) -> OccupancyOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "capacity")
+    _range(from_, to, OCCUPANCY_RANGE_DAYS)
+    return OccupancyOut.model_validate(
+        await views.occupancy(scope.session, ctx, start=from_, end=to, now=_now())
+    )
+
+
+@router.get("/summary", response_model=SummaryOut)
+async def summary(scope: LiteScope = Depends(SCOPE)) -> SummaryOut:
+    ctx = await _ctx(scope)
+    return SummaryOut.model_validate(
+        await views.summary(scope.session, ctx, now=_now(), with_inbox=scope.principal.has("inbox"))
+    )
+
+
+# ── bloqueos ────────────────────────────────────────────────────────────────
+
+
+def _block_out(b: ReservationBlock) -> BlockOut:
+    return BlockOut.model_validate(
+        {
+            "id": b.id,
+            "date": b.day,
+            "from": b.from_time.strftime("%H:%M"),
+            "until": b.until_time.strftime("%H:%M"),
+            "label": b.label,
+            "created_by_name": b.created_by_name,
+        }
+    )
+
+
+@router.get("/blocks", response_model=BlockListOut)
+async def list_blocks(
+    from_: date = Query(alias="from"), to: date = Query(), scope: LiteScope = Depends(SCOPE)
+) -> BlockListOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "capacity")
+    _range(from_, to, MAX_RANGE_DAYS)
+    rows = await scope.session.execute(
+        sa.select(ReservationBlock)
+        .where(
+            ReservationBlock.day >= from_,
+            ReservationBlock.day <= to,
+            ReservationBlock.removed_at.is_(None),
+        )
+        .order_by(ReservationBlock.day, ReservationBlock.from_time)
+    )
+    return BlockListOut(items=[_block_out(b) for b in rows.scalars()])
+
+
+@router.post("/blocks", response_model=BlockCreatedOut, status_code=201)
+async def create_block(
+    body: BlockIn,
+    scope: LiteScope = Depends(SCOPE),
+    redis: Redis = Depends(get_redis),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> BlockCreatedOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "capacity")
+    a, b = _hm(body.from_), _hm(body.until)
+    if b < a:
+        raise HTTPException(status_code=422, detail={"code": "invalid", "field": "until"})
+    prior = await _idem(redis, scope, "block", idempotency_key)
+    block = await scope.session.get(ReservationBlock, prior) if prior else None
+    if block is None:
+        block = ReservationBlock(
+            tenant_id=ctx.tenant_id,
+            day=body.date,
+            from_time=a,
+            until_time=b,
+            label=body.label.strip(),
+            created_by_name=_actor(scope).name,
+        )
+        scope.session.add(block)
+        await scope.session.flush()
+        await _remember(redis, scope, "block", idempotency_key, block.id)
+    lo, hi = ctx.at(body.date, a), ctx.at(body.date, b)
+    overlapping = await scope.session.scalar(
+        sa.select(sa.func.count())
+        .select_from(Reservation)
+        .where(
+            Reservation.status.in_(("pending", "confirmed", "arrived")),
+            Reservation.starts_at >= lo,
+            Reservation.starts_at <= hi,
+        )
+    )
+    return BlockCreatedOut(block=_block_out(block), overlapping_bookings=int(overlapping or 0))
+
+
+@router.post("/blocks/{block_id}/remove", status_code=204)
+async def remove_block(block_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> Response:
+    block = await scope.session.get(ReservationBlock, block_id)
+    if block is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    if block.removed_at is None:
+        block.removed_at = _now()
+    return Response(status_code=204)
+
+
+# ── lista de espera ─────────────────────────────────────────────────────────
+
+
+async def _entry_out(
+    scope: LiteScope, ctx: Ctx, e: ReservationWaitlist, now: datetime
+) -> dict[str, Any]:
+    service = await scope.session.get(ReservationService, e.service_id) if e.service_id else None
+    staff = await scope.session.get(ReservationStaff, e.staff_id) if e.staff_id else None
+    fits_now: bool | None = None
+    if ctx.mode == "capacity" and e.desired_day and e.desired_time and e.status == "waiting":
+        cap = await capacity_day(scope.session, ctx, e.desired_day)
+        at = ctx.at(e.desired_day, e.desired_time)
+        fits_now = capacity_fit(
+            cap.slots, cap.blocked, cap.people, cap.rules, at, e.party_size, now=now
+        ).fits
+    offer = (
+        await scope.session.execute(
+            sa.select(ReservationOfferCandidate.offer_id, ReservationOfferCandidate.deadline_at)
+            .join(ReservationOffer, ReservationOffer.id == ReservationOfferCandidate.offer_id)
+            .where(
+                ReservationOfferCandidate.waitlist_id == e.id,
+                ReservationOfferCandidate.status == "waiting",
+                ReservationOffer.status == "running",
+            )
+            .limit(1)
+        )
+    ).first()
+    booking_local = None
+    if e.reservation_id is not None:
+        current = await scope.session.get(Reservation, e.reservation_id)
+        if current is not None:
+            a, b = ctx.local(current.starts_at), ctx.local(current.ends_at)
+            booking_local = {
+                "date": a.date(),
+                "start": a.strftime("%H:%M"),
+                "end": b.strftime("%H:%M"),
+            }
+    return {
+        "booking_local": booking_local,
+        "id": e.id,
+        "status": e.status,
+        "contact": {"name": e.contact_name, "phone": e.contact_phone, "conversation_id": None},
+        "party_size": e.party_size,
+        "desired": {
+            "date": e.desired_day,
+            "time": e.desired_time.strftime("%H:%M") if e.desired_time else None,
+            "until": e.desired_until,
+        },
+        "service": {
+            "id": service.id,
+            "name": service.name,
+            "duration_minutes": service.duration_minutes,
+        }
+        if service
+        else None,
+        "staff": {"id": staff.id, "name": staff.name} if staff else None,
+        "booking_id": e.reservation_id,
+        "joined": {"kind": e.joined_by_kind, "name": e.joined_by_name, "at": e.created_at},
+        "fits_now": fits_now,
+        "offer": {"id": offer[0], "deadline_at": offer[1]} if offer else None,
+    }
+
+
+@router.get("/waitlist", response_model=WaitlistOut)
+async def list_waitlist(
+    status_: str = Query(default="waiting", alias="status", pattern="^(waiting|all)$"),
+    from_: date | None = Query(default=None, alias="from"),
+    to: date | None = Query(default=None),
+    scope: LiteScope = Depends(SCOPE),
+) -> WaitlistOut:
+    ctx = await _ctx(scope)
+    now = _now()
+    stmt = sa.select(ReservationWaitlist).order_by(ReservationWaitlist.created_at)
+    if status_ == "waiting":
+        stmt = stmt.where(ReservationWaitlist.status.in_(("waiting", "offered")))
+    if from_ is not None:
+        stmt = stmt.where(
+            sa.or_(
+                ReservationWaitlist.desired_day.is_(None), ReservationWaitlist.desired_day >= from_
+            )
+        )
+    if to is not None:
+        stmt = stmt.where(
+            sa.or_(ReservationWaitlist.desired_day.is_(None), ReservationWaitlist.desired_day <= to)
+        )
+    rows = list((await scope.session.execute(stmt.limit(500))).scalars())
+    return WaitlistOut.model_validate(
+        {
+            "enabled": ctx.settings.waitlist_enabled,
+            "items": [await _entry_out(scope, ctx, e, now) for e in rows],
+        }
+    )
+
+
+@router.post("/waitlist", response_model=WaitlistEntryOut, status_code=201)
+async def add_waitlist(
+    body: WaitlistIn,
+    scope: LiteScope = Depends(SCOPE),
+    redis: Redis = Depends(get_redis),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> WaitlistEntryOut:
+    ctx = await _ctx(scope)
+    now = _now()
+    prior = await _idem(redis, scope, "waitlist", idempotency_key)
+    entry = await scope.session.get(ReservationWaitlist, prior) if prior else None
+    if entry is None:
+        try:
+            entry = await waitlist.join(
+                scope.session,
+                ctx,
+                waitlist.NewEntry(
+                    contact_name=body.name.strip(),
+                    contact_phone=(body.phone or "").strip() or None,
+                    joined_by_kind="in_person" if body.in_person else "person",
+                    joined_by_name=_actor(scope).name,
+                    customer_id=await contact_customer(scope.session, ctx, body.phone, body.name),
+                    party_size=body.party_size,
+                    desired_day=body.date,
+                    desired_time=_hm(body.time) if body.time else None,
+                    desired_until=body.until,
+                    service_id=body.service_id,
+                    staff_id=body.staff_id,
+                ),
+            )
+        except ReservationError as exc:
+            _raise(exc)
+        await _remember(redis, scope, "waitlist", idempotency_key, entry.id)
+    return WaitlistEntryOut.model_validate(await _entry_out(scope, ctx, entry, now))
+
+
+async def _entry(scope: LiteScope, entry_id: uuid.UUID) -> ReservationWaitlist:
+    e = await scope.session.get(ReservationWaitlist, entry_id)
+    if e is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return e
+
+
+@router.post("/waitlist/{entry_id}/remove", status_code=204)
+async def remove_waitlist(entry_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> Response:
+    await _ctx(scope)
+    await waitlist.remove(scope.session, await _entry(scope, entry_id))
+    return Response(status_code=204)
+
+
+async def _offer_out(scope: LiteScope, ctx: Ctx, o: ReservationOffer) -> OfferOut:
+    cands = (
+        await scope.session.execute(
+            sa.select(ReservationOfferCandidate, ReservationWaitlist.contact_name)
+            .join(
+                ReservationWaitlist, ReservationWaitlist.id == ReservationOfferCandidate.waitlist_id
+            )
+            .where(ReservationOfferCandidate.offer_id == o.id)
+            .order_by(ReservationOfferCandidate.position)
+        )
+    ).all()
+    staff = await scope.session.get(ReservationStaff, o.staff_id) if o.staff_id else None
+    service = await scope.session.get(ReservationService, o.service_id) if o.service_id else None
+    a, b = ctx.local(o.starts_at), ctx.local(o.ends_at)
+    return OfferOut.model_validate(
+        {
+            "id": o.id,
+            "status": o.status,
+            "slot": {
+                "local": {
+                    "date": a.date(),
+                    "start": a.strftime("%H:%M"),
+                    "end": b.strftime("%H:%M"),
+                },
+                "staff": {"id": staff.id, "name": staff.name} if staff else None,
+                "service": {"id": service.id, "name": service.name} if service else None,
+                "seats": o.seats,
+            },
+            "cancelled_by_name": o.cancelled_by_name,
+            "window_minutes": o.window_minutes,
+            "candidates": [
+                {
+                    "position": c.position,
+                    "waitlist_id": c.waitlist_id,
+                    "name": name,
+                    "status": c.status,
+                    "deadline_at": c.deadline_at,
+                    "answered_at": c.answered_at,
+                }
+                for c, name in cands
+            ],
+            "filled_booking_id": o.filled_reservation_id,
+            "created_at": o.created_at,
+        }
+    )
+
+
+@router.post("/waitlist/{entry_id}/offer", response_model=OfferOut)
+async def offer_waitlist(entry_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> OfferOut:
+    ctx = await _ctx(scope)
+    _need(ctx, "capacity")
+    entry = await _entry(scope, entry_id)
+    try:
+        offer = await waitlist.offer_manual(scope.session, ctx, entry, _now())
+    except ReservationError as exc:
+        _raise(exc)
+    return await _offer_out(scope, ctx, offer)
+
+
+@router.get("/offers", response_model=OfferListOut)
+async def list_offers(
+    status_: str = Query(default="running", alias="status", pattern="^(running|recent)$"),
+    scope: LiteScope = Depends(SCOPE),
+) -> OfferListOut:
+    ctx = await _ctx(scope)
+    stmt = sa.select(ReservationOffer).order_by(ReservationOffer.created_at.desc())
+    if status_ == "running":
+        stmt = stmt.where(ReservationOffer.status == "running")
+    else:
+        stmt = stmt.where(
+            ReservationOffer.status != "running",
+            ReservationOffer.closed_at >= _now() - timedelta(hours=24),
+        )
+    rows = list((await scope.session.execute(stmt.limit(100))).scalars())
+    return OfferListOut(items=[await _offer_out(scope, ctx, o) for o in rows])
+
+
+@router.post("/offers/{offer_id}/stop", response_model=OfferOut)
+async def stop_offer(offer_id: uuid.UUID, scope: LiteScope = Depends(SCOPE)) -> OfferOut:
+    ctx = await _ctx(scope)
+    offer = await scope.session.get(ReservationOffer, offer_id)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    await waitlist.stop(scope.session, offer, _now())
+    return await _offer_out(scope, ctx, offer)
+
+
+__all__ = ["router"]

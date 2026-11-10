@@ -3,9 +3,14 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { agendaMessages } from "../lanes/agenda";
 import { agentsMessages } from "../lanes/agents";
+import { clientAccessMessages } from "../lanes/client-access";
 import { inboxMessages } from "../lanes/inbox";
+import { inboxCorrectMessages } from "../lanes/inbox-correct";
 import { liteMessages } from "../lanes/lite";
+import { reservasMessages } from "../lanes/reservas";
+import { reservasTemplatesMessages } from "../lanes/reservas-templates";
 import { workstationMessages } from "../lanes/workstation";
 
 /**
@@ -60,6 +65,22 @@ const corpus = sourceFiles(SRC)
 /** `t("ws.machines.title")` — la clave entera, tal cual. */
 const literal = new Set(Array.from(corpus.matchAll(/["'`]([\w.-]+)["'`]/g), (m) => m[1]!));
 
+/**
+ * Spec 031 (D16): la app lee los carriles lite e inbox generados. Una clave que
+ * solo pide la app tiene dueño; lo generado (`*.gen.ts`) no cuenta como uso.
+ */
+const APP = join(SRC, "..", "..", "mobile", "src");
+function appFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) return entry === "__tests__" ? [] : appFiles(full);
+    return /\.(ts|tsx)$/.test(entry) && !entry.endsWith(".gen.ts") ? [full] : [];
+  });
+}
+const appLiteral = new Set(
+  appFiles(APP).flatMap((f) => Array.from(readFileSync(f, "utf8").matchAll(/["'`]([\w.-]+)["'`]/g), (m) => m[1]!)),
+);
+
 /** `` t(`ws.setup.step.${x}`) `` — lo que hay antes de la interpolación. */
 const prefixes = Array.from(new Set(Array.from(corpus.matchAll(/`([\w.-]*\.)\$\{/g), (m) => m[1]!)));
 
@@ -88,8 +109,20 @@ describe("claves de la consola lite sin dueño", () => {
     ["lite", liteMessages],
     ["inbox", inboxMessages],
     ["agents", agentsMessages],
+    // Spec 043: Reservas nace vigilada, como la Bandeja.
+    ["reservas", reservasMessages],
+    // Spec 043, requisito 15: las plantillas de WhatsApp de Reservas.
+    ["reservas-templates", reservasTemplatesMessages],
+    // Spec 056: «Corregir esta respuesta», que salió del carril de Agentes del cliente.
+    ["inbox-correct", inboxCorrectMessages],
+    // Spec 056: la pestaña «Acceso» de un cliente nace vigilada.
+    ["client-access", clientAccessMessages],
+    // Spec 057: la agenda desde el agente nace vigilada.
+    ["agenda", agendaMessages],
   ] as const)("carril %s: ninguna clave se queda sin quien la pida", (_lane, lane) => {
-    const orphans = Object.keys(lane).filter((key) => !literal.has(key) && !prefixes.some((p) => key.startsWith(p)));
+    const orphans = Object.keys(lane).filter(
+      (key) => !literal.has(key) && !appLiteral.has(key) && !prefixes.some((p) => key.startsWith(p)),
+    );
     expect(orphans, `claves que no pide nadie: ${orphans.join(", ")}`).toEqual([]);
   });
 });

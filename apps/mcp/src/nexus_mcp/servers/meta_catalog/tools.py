@@ -28,7 +28,7 @@ from nexus_channels.whatsapp_meta.credentials import (
     ChannelCredentialsRepository,
     MetaCredentialsRepository,
 )
-from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
+from nexus_channels.whatsapp_meta.exceptions import MetaAPIError, MetaTransientError
 from nexus_channels.whatsapp_meta.meta_client import MetaClient
 
 from nexus_mcp.base import ToolBase, ToolError
@@ -153,15 +153,37 @@ class SearchProducts(_CatalogTool):
             )
         except MetaAPIError as exc:
             log.warning("catalog.search_failed", code=getattr(exc, "code", None), error=str(exc))
-            raise ToolError(
-                "catalog_unavailable: Meta no respondió al buscar en el catálogo. Inténtalo de nuevo."
-            ) from exc
+            raise _refusal(exc, "buscar en el catálogo") from exc
         finally:
             await client.close()
         products = [p for p in (_to_product(r) for r in rows) if p is not None]
         return SearchProductsOutput(
             query=payload.query, products=products, truncated=len(rows) >= payload.limit
         )
+
+
+#: Meta's answer when the number's connection may not read the catalogue
+#: (permission missing, catalogue not shared with the integration, token).
+_PERMISSION_CODES = frozenset({10, 200, 190})
+
+
+def _refusal(exc: MetaAPIError, doing: str) -> ToolError:
+    """What the agent is told when Meta says no. A permission refusal is not
+    worth retrying, and saying «try again» made the agent do just that
+    (QA 2026-10-30, INC-30)."""
+    if getattr(exc, "code", None) in _PERMISSION_CODES:
+        return ToolError(
+            "catalog_permission_missing: Meta no deja leer este catálogo con la conexión "
+            "del número (falta el permiso o el catálogo no está compartido con Auphere). "
+            "No lo reintentes: di que ahora no puedes enseñar el catálogo y ofrece "
+            "pasar con una persona."
+        )
+    if isinstance(exc, MetaTransientError):
+        return ToolError(f"catalog_unavailable: Meta no respondió al {doing}. Inténtalo de nuevo.")
+    return ToolError(
+        f"catalog_rejected: Meta rechazó la petición al {doing}. No lo reintentes con "
+        "los mismos datos."
+    )
 
 
 class GetProduct(_CatalogTool):
@@ -183,9 +205,7 @@ class GetProduct(_CatalogTool):
             )
         except MetaAPIError as exc:
             log.warning("catalog.get_failed", code=getattr(exc, "code", None), error=str(exc))
-            raise ToolError(
-                "catalog_unavailable: Meta no respondió al leer el catálogo. Inténtalo de nuevo."
-            ) from exc
+            raise _refusal(exc, "leer el catálogo") from exc
         finally:
             await client.close()
         product = _to_product(raw) if raw else None

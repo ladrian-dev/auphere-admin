@@ -32,7 +32,7 @@ router = APIRouter(prefix="/partners", dependencies=[Depends(require_admin_token
 def _knowledge_item(row: PartnerKnowledgeDocument) -> KnowledgeDocumentOut:
     """Metadata only. Copy declared Out fields so ``content_text`` cannot leak."""
     payload = {
-        name: getattr(row, name)
+        name: getattr(row, name, None)
         for name in KnowledgeDocumentOut.model_fields
         if name != "content_text"
     }

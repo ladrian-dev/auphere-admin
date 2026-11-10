@@ -52,6 +52,9 @@ type Props = {
   /** The degenerate case: `budget.updated.exhausted` told us the cap was
    *  reached but we have no snapshot. Same state, fewer specifics. */
   exhausted: boolean;
+  /** Sin pool y sin saldo: lo abre recargar, no esperar. Sin este dato basta
+   *  `paused.cap === 0`, que es como llega en el snapshot. */
+  noBalance?: boolean;
   onChange: (v: string) => void;
   onSend: () => void;
   onStop: () => void;
@@ -65,13 +68,14 @@ type Props = {
 };
 
 export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Composer(
-  { value, mode, busy, stoppable, blocked, paused, exhausted, onChange, onSend, onStop, onMode },
+  { value, mode, busy, stoppable, blocked, paused, exhausted, noBalance, onChange, onSend, onStop, onMode },
   ref,
 ) {
   const t = useT();
   const locale = useLocale();
   const tooLong = value.length > MAX_PROMPT;
   const halted = paused !== null || exhausted;
+  const withoutBalance = noBalance === true || paused?.cap === 0;
   const canSend = value.trim().length > 0 && !tooLong && !busy && !blocked && !halted;
   const canStop = stoppable ?? busy;
   const hintId = React.useId();
@@ -161,7 +165,11 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
             <PauseCircle aria-hidden="true" className="mt-px size-4 shrink-0" />
             <span className="min-w-0 text-pretty">
               <span className="font-medium text-foreground">{t("companion.paused.title")}</span>{" "}
-              {paused ? t("companion.paused.body") : t("companion.meter.exhausted.body")}
+              {withoutBalance
+                ? t("companion.paused.noBalance.body")
+                : paused
+                  ? t("companion.paused.body")
+                  : t("companion.meter.exhausted.body")}
             </span>
           </p>
           {/* Without the way out, a disabled box is just a wall. */}
@@ -170,9 +178,11 @@ export const Composer = React.forwardRef<HTMLTextAreaElement, Props>(function Co
               Decir «esperar no lo desbloquea» era cierto con un tope mensual
               que solo se subía a mano; con el pool semanal es falso. */}
           <p className="mt-1 pl-5 text-xs text-pretty text-muted-foreground">
-            {paused?.resetsAt
-              ? t("companion.paused.unblock", { date: formatDate(paused.resetsAt, locale) })
-              : t("companion.paused.unblock.nodate")}
+            {withoutBalance
+              ? t("companion.paused.noBalance.unblock")
+              : paused?.resetsAt
+                ? t("companion.paused.unblock", { date: formatDate(paused.resetsAt, locale) })
+                : t("companion.paused.unblock.nodate")}
           </p>
           {/* The thread is not gone and neither is anything owed. */}
           <p className="mt-1 pl-5 text-xs text-pretty text-muted-foreground">{t("companion.paused.kept")}</p>

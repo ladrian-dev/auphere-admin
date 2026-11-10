@@ -25,6 +25,7 @@ emparejamiento, con la misma política.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import uuid
@@ -54,18 +55,38 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def pkce_challenge(verifier: str) -> str:
+#: Los dos propósitos de un código (spec 031, data-model §0159). Un código de
+#: uno no se canjea en el otro: el canje filtra por propósito.
+PURPOSE_DESKTOP = "desktop_session"
+PURPOSE_PHONE = "client_phone"
+
+#: Cómo se codifica el S256 de cada propósito. El escritorio guarda lo que
+#: guardaba; el teléfono usa la forma del RFC 7636 (base64url sin relleno).
+_ENCODING = {PURPOSE_DESKTOP: "hex", PURPOSE_PHONE: "base64url"}
+
+
+def pkce_challenge(verifier: str, encoding: str = "hex") -> str:
     """S256, que es el único método que esto acepta.
 
     `plain` existe en el RFC y no se admite aquí: un challenge que es el propio
     verifier no protege de nada, y admitirlo sólo sirve para que alguien lo use
     sin darse cuenta.
+
+    ``encoding="base64url"`` es la forma del RFC 7636, la que usa el teléfono
+    (spec 031). ``hex`` es la que el escritorio guarda desde la spec 009.
     """
-    return hashlib.sha256(verifier.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(verifier.encode("utf-8")).digest()
+    if encoding == "base64url":
+        return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return digest.hex()
 
 
 async def issue_session_code(
-    session: AsyncSession, *, principal_id: uuid.UUID, code_challenge: str
+    session: AsyncSession,
+    *,
+    principal_id: uuid.UUID,
+    code_challenge: str,
+    purpose: str = PURPOSE_DESKTOP,
 ) -> str:
     """Emite el código y devuelve el texto en claro. Sólo existe aquí y en la
     pantalla: la base guarda su SHA-256 (R3.3).
@@ -77,22 +98,24 @@ async def issue_session_code(
     await session.execute(
         sa.text(
             "UPDATE console_auth.session_codes SET consumed_at = now() "
-            "WHERE principal_id = :p AND consumed_at IS NULL"
+            "WHERE principal_id = :p AND purpose = :purpose AND consumed_at IS NULL"
         ),
-        {"p": str(principal_id)},
+        {"p": str(principal_id), "purpose": purpose},
     )
     code = generate_code()
     await session.execute(
         sa.text(
             "INSERT INTO console_auth.session_codes "
-            "(code_hash, principal_id, code_challenge, expires_at) "
-            "VALUES (:h, :p, :c, :e)"
+            "(code_hash, principal_id, code_challenge, expires_at, purpose, challenge_encoding) "
+            "VALUES (:h, :p, :c, :e, :purpose, :enc)"
         ),
         {
             "h": hash_code(code),
             "p": str(principal_id),
             "c": code_challenge,
             "e": _now() + CODE_TTL,
+            "purpose": purpose,
+            "enc": _ENCODING[purpose],
         },
     )
     return code
@@ -134,7 +157,8 @@ async def redeem_session_code(
         await session.execute(
             sa.text(
                 "SELECT principal_id, code_challenge FROM console_auth.session_codes "
-                "WHERE code_hash = :h AND consumed_at IS NULL AND expires_at > now() "
+                "WHERE code_hash = :h AND purpose = 'desktop_session' "
+                "AND consumed_at IS NULL AND expires_at > now() "
                 "FOR UPDATE"
             ),
             {"h": hash_code(normalised)},
@@ -165,6 +189,58 @@ async def redeem_session_code(
     return await console_identity.start_session(session, account, ip=ip, user_agent=user_agent)
 
 
+async def consume_phone_code(
+    session: AsyncSession,
+    *,
+    code: str,
+    code_verifier: str,
+    limiter: PairingRateLimiter | None = None,
+    attempt_key: str | None = None,
+) -> uuid.UUID:
+    """Canjea un código de teléfono (spec 031) y devuelve **de quién era**.
+
+    No crea sesión web: el teléfono recibe su propia credencial
+    (``client_phones``). Mismas reglas que el canje del escritorio —un solo
+    rechazo, el límite antes que nada, PKCE después de encontrar la fila— y
+    solo admite códigos ``client_phone`` en base64url.
+    """
+    if limiter is not None and attempt_key is not None:
+        await limiter.check(attempt_key)
+
+    normalised = normalize_code(code)
+    if normalised is None:
+        await _punish(limiter, attempt_key)
+        raise SessionCodeRejected
+
+    fila = (
+        await session.execute(
+            sa.text(
+                "SELECT principal_id, code_challenge FROM console_auth.session_codes "
+                "WHERE code_hash = :h AND purpose = 'client_phone' "
+                "AND challenge_encoding = 'base64url' "
+                "AND consumed_at IS NULL AND expires_at > now() "
+                "FOR UPDATE"
+            ),
+            {"h": hash_code(normalised)},
+        )
+    ).one_or_none()
+    if fila is None:
+        await _punish(limiter, attempt_key)
+        raise SessionCodeRejected
+    expected = pkce_challenge(code_verifier, "base64url")
+    if not hmac.compare_digest(str(fila.code_challenge), expected):
+        await _punish(limiter, attempt_key)
+        raise SessionCodeRejected
+
+    await session.execute(
+        sa.text("UPDATE console_auth.session_codes SET consumed_at = now() WHERE code_hash = :h"),
+        {"h": hash_code(normalised)},
+    )
+    if limiter is not None and attempt_key is not None:
+        await limiter.clear(attempt_key)
+    return uuid.UUID(str(fila.principal_id))
+
+
 async def _punish(limiter: PairingRateLimiter | None, key: str | None) -> None:
     """Un fallo cuenta, venga de donde venga. **Todos los caminos de rechazo
     pasan por aquí**, o el límite tendría un agujero por el lado que menos se
@@ -175,7 +251,10 @@ async def _punish(limiter: PairingRateLimiter | None, key: str | None) -> None:
 
 __all__ = [
     "CODE_TTL",
+    "PURPOSE_DESKTOP",
+    "PURPOSE_PHONE",
     "SessionCodeRejected",
+    "consume_phone_code",
     "issue_session_code",
     "pkce_challenge",
     "redeem_session_code",

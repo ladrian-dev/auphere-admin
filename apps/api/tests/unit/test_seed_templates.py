@@ -31,8 +31,9 @@ def test_barbershop_v1_loads_with_expected_shape() -> None:
     assert "Barbería" in tpl.display_name
     assert tpl.agent_defaults["name"] == "Alex"
     assert tpl.agent_defaults["language"] == "es"
-    assert "booking.check_availability" in tpl.tools_required
-    assert "agendapro.create_appointment" not in tpl.tools_required  # internal-only
+    # Spec 048: the barbershop books in Reservas, the agenda the business sees.
+    assert "reservas.find_slots" in tpl.tools_required
+    assert not any(t.startswith("booking.") for t in tpl.tools_required)
     assert tpl.policies_default["cancellation"]["free_hours_before"] == 24
 
 
@@ -60,7 +61,7 @@ def test_render_resolves_placeholders_and_uses_defaults() -> None:
     assert "100% del servicio" in rendered.system_prompt
     assert "15 min" in rendered.system_prompt
     # Tools whitelist passed through
-    assert "booking.create_appointment" in rendered.tools
+    assert "reservas.create" in rendered.tools
     # Policies merged
     assert rendered.policies["cancellation"]["free_hours_before"] == 24
 
@@ -146,7 +147,7 @@ def test_aesthetic_clinic_v1_loads_with_expected_shape() -> None:
 
     # Tools recomendadas — incluye las clínicas + interactive components
     # + operator consult (backchannel para casos fuera de scope).
-    assert "booking.create_appointment" in tpl.tools_required
+    assert "reservas.create" in tpl.tools_required
     assert "response.send_interactive" in tpl.tools_required
     assert "operator.consult_owner" in tpl.tools_required
     assert "escalate.escalate_to_human" in tpl.tools_required
@@ -285,8 +286,8 @@ def test_woocommerce_sales_v1_loads_with_expected_shape() -> None:
     assert "response.send_interactive" in tpl.tools_required
     # Ninguna escritura destructiva de órdenes está en el whitelist.
     assert order_writes.isdisjoint(tpl.tools_required)
-    # No filtra tools de otros verticales (booking / billing).
-    assert "booking.create_appointment" not in tpl.tools_required
+    # No filtra tools de otros verticales (reservas / billing).
+    assert "reservas.create" not in tpl.tools_required
     assert "billing.create_account" not in tpl.tools_required
 
     assert tpl.policies_default["store"]["currency"] == "CLP"

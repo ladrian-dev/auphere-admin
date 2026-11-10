@@ -17,7 +17,7 @@ from nexus_api.core.llm_proxy import (
     resolve_litellm_proxy,
 )
 
-from nexus_worker.runtime.dispatcher import InboundEvent, process_inbound
+from nexus_worker.runtime.dispatcher import money_and_model_gate
 from nexus_worker.runtime.llm import (
     InMemoryProvider,
     LiteLLMProvider,
@@ -250,17 +250,6 @@ class TestInMemoryUnchanged:
         assert provider.calls[0].tenant_id == tenant
 
 
-class _Pipeline:
-    def __init__(self) -> None:
-        self.called = False
-
-    async def ainvoke(
-        self, state: dict[str, Any], config: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        self.called = True
-        return {"intent": "info", "response": "ok", "tool_calls": []}
-
-
 class TestWalletVsProxySkip:
     async def test_wallet_empty_wins_over_missing_proxy(
         self, monkeypatch: pytest.MonkeyPatch
@@ -283,19 +272,11 @@ class TestWalletVsProxySkip:
         )
         monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
         monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
-        pipeline = _Pipeline()
-        result = await process_inbound(
-            InboundEvent(
-                tenant_id=uuid.uuid4(),
-                channel_id=uuid.uuid4(),
-                user_id="u1",
-                content="hola",
-                provider="whatsapp",
-            ),
-            pipeline=pipeline,
-        )
+        # Spec 047: the gates run inside the turn, after the message is saved
+        # (``accept_inbound``); the order and the distinct skip are the gate's.
+        gate, _partner = await money_and_model_gate(uuid.uuid4())
+        result = {"skipped": gate.skipped if gate else None}
         assert result["skipped"] == "wallet_empty"
-        assert pipeline.called is False
 
     async def test_proxy_unavailable_is_distinct_skip(
         self, monkeypatch: pytest.MonkeyPatch
@@ -313,20 +294,12 @@ class TestWalletVsProxySkip:
         monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
         monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
         monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
-        pipeline = _Pipeline()
-        result = await process_inbound(
-            InboundEvent(
-                tenant_id=uuid.uuid4(),
-                channel_id=uuid.uuid4(),
-                user_id="u1",
-                content="hola",
-                provider="whatsapp",
-            ),
-            pipeline=pipeline,
-        )
+        # Spec 047: the gates run inside the turn, after the message is saved
+        # (``accept_inbound``); the order and the distinct skip are the gate's.
+        gate, _partner = await money_and_model_gate(uuid.uuid4())
+        result = {"skipped": gate.skipped if gate else None}
         assert result["skipped"] == LLM_PROXY_UNAVAILABLE
         assert result["skipped"] != "wallet_empty"
-        assert pipeline.called is False
 
     async def test_without_required_missing_proxy_does_not_skip_the_turn(
         self, monkeypatch: pytest.MonkeyPatch
@@ -352,17 +325,10 @@ class TestWalletVsProxySkip:
         monkeypatch.delenv("LITELLM_PROXY_API_BASE", raising=False)
         monkeypatch.delenv("NEXUS_LITELLM_PROXY_API_BASE", raising=False)
         monkeypatch.setattr("nexus_api.core.llm_proxy._settings_base_and_keys", lambda: ("", ""))
-        pipeline = _Pipeline()
-        result = await process_inbound(
-            InboundEvent(
-                tenant_id=uuid.uuid4(),
-                channel_id=uuid.uuid4(),
-                user_id="u1",
-                content="hola",
-                provider="whatsapp",
-            ),
-            pipeline=pipeline,
-        )
+        # Spec 047: the gates run inside the turn, after the message is saved
+        # (``accept_inbound``); the order and the distinct skip are the gate's.
+        gate, _partner = await money_and_model_gate(uuid.uuid4())
+        result = {"skipped": gate.skipped if gate else None}
         assert result.get("skipped") != LLM_PROXY_UNAVAILABLE
 
 

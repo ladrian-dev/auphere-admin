@@ -26,6 +26,9 @@ dependencies = [
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "psycopg[binary,pool]>=3.2.0",
+    # Spec 031 (research D8): avisos al teléfono por APNs, que solo habla HTTP/2.
+    # `h2` (MIT) es lo único nuevo; httpx y PyJWT ya estaban.
+    "httpx[http2]>=0.27.0",
     # Block H: observability. Langfuse SDK falls back to a noop client
     # when NEXUS_LANGFUSE_PUBLIC_KEY is unset, so dev/test runs do not
     # require live credentials.
@@ -54,6 +57,9 @@ dependencies = [
     # the HTTP client for completions; this dep is used ONLY for the
     # memory tool subclass + its built-in args validation.
     "anthropic>=0.104.0",
+    # Spec 047 (T022): the ``vector`` type, for the knowledge indexer job.
+    # MIT, read in full: docs/licenses/pgvector.md.
+    "pgvector>=0.4.1",
 ]
 
 [project.optional-dependencies]

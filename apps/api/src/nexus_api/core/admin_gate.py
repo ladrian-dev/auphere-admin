@@ -21,6 +21,7 @@ for the "may this sender talk at all?" question.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 ROLE_FULL = "full"
@@ -68,6 +69,36 @@ def admin_only_suppresses(policies: dict[str, Any] | None, sender: str | None) -
     return not sender_is_admin(sender, list(access.get("admin_phones") or []))
 
 
+def audience_suppresses(
+    audience: Mapping[str, Any] | None, policies: dict[str, Any] | None, sender: str | None
+) -> bool:
+    """Spec 047 (requisito 32): the channel decides who the agent answers.
+
+    ``audience`` is what the gate reads of the number: ``mode`` (``unset``,
+    ``team_only`` or ``everyone``), its ``test`` numbers and its
+    ``exception`` numbers, and ``strict`` — a WhatsApp number of a partner on
+    the new console, where the channel is the only source of truth:
+
+    - ``team_only``: only its test numbers get a reply (32.2);
+    - ``everyone``: everybody but its exceptions (32.3);
+    - ``unset`` («Sin configurar»): nobody until someone decides (32.9).
+
+    Anywhere else (``strict`` false: the partner API, a direct tenant, a
+    non-WhatsApp line) the agent's ``admin_access`` keeps deciding, because the
+    partner API still writes it there. Either way the message is stored; what
+    the gate withholds is the reply and the read receipt.
+    """
+    if not (audience or {}).get("strict"):
+        return admin_only_suppresses(policies, sender)
+    assert audience is not None
+    mode = audience.get("mode") or "unset"
+    if mode == "team_only":
+        return not sender_is_admin(sender, list(audience.get("test") or []))
+    if mode == "everyone":
+        return sender_is_admin(sender, list(audience.get("exception") or []))
+    return True
+
+
 def sender_role(policies: dict[str, Any] | None, sender: str | None) -> str | None:
     """The admin role of ``sender`` for this agent, or ``None`` if not an admin.
 
@@ -99,6 +130,7 @@ __all__ = [
     "ROLE_FULL",
     "ROLE_READONLY",
     "admin_only_suppresses",
+    "audience_suppresses",
     "sender_is_admin",
     "sender_role",
     "usable_admin_phones",

@@ -13,7 +13,6 @@ un segundo POST ni un GET de consola.
 
 from __future__ import annotations
 
-import html
 import uuid
 from datetime import UTC, datetime
 
@@ -38,7 +37,7 @@ from nexus_api.db.models.support_ticket import (
     SupportTicketEvent,
 )
 from nexus_api.services import console_notifications
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import EmailKind, lines_variable
 
 from .deps import resolve_mapping
 from .schemas_capabilities import SupportTicketIn, SupportTicketOut
@@ -74,6 +73,8 @@ async def _alert_auphere(
     body: SupportTicketIn,
     topic: str,
     sla: str,
+    partner_id: uuid.UUID,
+    partner_name: str,
     partner_slug: str,
     opened_by: str,
 ) -> None:
@@ -83,7 +84,13 @@ async def _alert_auphere(
     agregación del §25.2 (*"siete partners han pedido Shopify este
     trimestre"*) y la única que no depende de que haya un buzón
     configurado. El correo es el empujón, y es opcional.
+
+    Spec 051 (catálogo §20): sale por ``internal_alert``, en español, con una
+    línea por dato. Todo lo que escribió el partner se escapa en
+    ``lines_variable``.
     """
+    from nexus_api.services.email import send_template
+
     log.info(
         "console.support.ticket_opened",
         ticket_ref=ticket_ref,
@@ -99,27 +106,30 @@ async def _alert_auphere(
     address = get_settings().support_alert_email.strip()
     if not address:
         return
-    checked = "".join(f"<li>{html.escape(item)}</li>" for item in body.checked)
-    alternative = (
-        f"<p><b>Alternativa propuesta</b>{' (PUENTE)' if body.bridge else ''}: "
-        f"{html.escape(body.alternative)}</p>"
-        if body.alternative
-        else ""
-    )
+    lines = [f"Partner: {partner_name} ({partner_slug})"]
+    if body.client_ref:
+        lines.append(f"Cliente: {body.client_ref}")
+    lines.append(f"Qué necesita: {body.need}")
+    if body.checked:
+        lines.append("Ya comprobado:")
+        lines.extend(f"· {item}" for item in body.checked)
+    if body.alternative:
+        bridge = " (puente)" if body.bridge else ""
+        lines.append(f"Alternativa propuesta{bridge}: {body.alternative}")
+    lines.append(f"SLA: {sla}")
     try:
-        await send_email(
+        await send_template(
+            EmailKind.INTERNAL_ALERT,
             to=[address],
-            subject=f"[Auphere] {ticket_ref} · {body.category} · {topic}",
-            html=(
-                f"<p><b>{html.escape(ticket_ref)}</b> — {html.escape(body.category)} · "
-                f"<code>{html.escape(topic)}</code> · SLA <code>{html.escape(sla)}</code></p>"
-                f"<p><b>Partner</b>: {html.escape(partner_slug)}"
-                + (f" · <b>Cliente</b>: {html.escape(body.client_ref)}" if body.client_ref else "")
-                + "</p>"
-                f"<p><b>Qué necesita</b>: {html.escape(body.need)}</p>"
-                f"<p><b>Ya comprobado</b></p><ul>{checked}</ul>"
-                f"{alternative}"
-            ),
+            subject=f"[Auphere] Consulta {ticket_ref} · {body.category} · {topic}",
+            variables={
+                "HEADING": f"{partner_name} ha abierto la consulta {ticket_ref}",
+                "DETAIL": lines_variable(lines, more=lambda n: f"y {n} líneas más"),
+                "KIND": "support.ticket",
+            },
+            locale="es",
+            # Garantía 6: el aviso lleva el negocio del caso.
+            partner_id=partner_id,
         )
     except Exception:  # pragma: no cover - un aviso no puede tumbar la petición
         log.warning("console.support.alert_failed", ticket_ref=ticket_ref)
@@ -266,6 +276,8 @@ async def open_support_ticket(
         body=body,
         topic=topic,
         sla=sla,
+        partner_id=principal.partner.id,
+        partner_name=principal.partner.name,
         partner_slug=principal.partner.slug,
         opened_by=opened_by,
     )

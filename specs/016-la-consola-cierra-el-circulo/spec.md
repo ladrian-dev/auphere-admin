@@ -224,7 +224,7 @@ hace falta pulsar «Sincronizar».
 #### Criterios de aceptación
 
 1. WHEN el cupo restante de un cliente llega a cero THEN el sistema DEBE mostrar el estado «sin cupo» en la ficha, en la lista de clientes y en la portada en menos de un minuto.
-2. WHEN un mensaje entrante se salta por falta de cupo THEN el sistema DEBE crear un aviso en la consola que nombre al cliente y enlace a asignarle cupo, como máximo uno por cliente y día.
+2. WHEN un mensaje entrante se salta por falta de cupo THEN el sistema DEBE crear un aviso en la consola que nombre al cliente y enlace a asignarle cupo, como máximo uno por cliente hasta que recupere cupo. *(Enmendado el 2026-11-03 por el owner, spec 047 fase 29: antes, uno por cliente y día.)*
 3. WHERE el partner tiene destinatarios de correo configurados EL sistema DEBE enviar el mismo aviso por correo, con la misma frecuencia máxima.
 4. WHEN el partner asigna cupo a un cliente «sin cupo» THEN el sistema DEBE retirar el estado de las tres pantallas y el siguiente mensaje DEBE recibir respuesta.
 5. IF el estado se recalcula antes de enviar el aviso y el cliente ya tiene cupo THEN el sistema NO DEBE enviar el aviso.

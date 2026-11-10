@@ -20,6 +20,9 @@ viernes» signifiquen lo que quiso decir quien los escribió. Para un negocio en
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -44,6 +47,27 @@ _WEEKDAYS_ES = (
 #: sería mentir por descuido. El valor por defecto es el del canal **para que su
 #: texto siga siendo byte a byte el de antes del movimiento**.
 OWNER_BUSINESS = "del negocio"
+
+#: Spec 047 (T085, requisito 20.2): la hora simulada del playground y de las
+#: pruebas. Fuera de una simulación no hay ninguna y manda el reloj.
+_SIMULATED_NOW: ContextVar[datetime | None] = ContextVar("nexus_simulated_now", default=None)
+
+
+def current_now() -> datetime:
+    """La hora del turno: la simulada si la hay, si no la de verdad (UTC)."""
+    return _SIMULATED_NOW.get() or datetime.now(UTC)
+
+
+@contextmanager
+def simulated_clock(at: datetime) -> Iterator[None]:
+    """Todo lo que corre dentro ve ``at`` como «ahora»."""
+    token = _SIMULATED_NOW.set(at.astimezone(UTC))
+    try:
+        yield
+    finally:
+        _SIMULATED_NOW.reset(token)
+
+
 OWNER_PERSON = "de la persona con la que hablas"
 
 
@@ -72,7 +96,7 @@ def now_note(
         log.warning("pipeline.now_note.unknown_timezone", timezone=timezone_name)
         tz = ZoneInfo("UTC")
         timezone_name = "UTC"
-    local = (now or datetime.now(UTC)).astimezone(tz)
+    local = (now or current_now()).astimezone(tz)
     weekday = _WEEKDAYS_ES[local.weekday()]
     return (
         "Fecha y hora actuales en la zona horaria "

@@ -5,7 +5,15 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
-import type { CatalogList, ChannelDetail, TemplateCreated, TestSendResult, WhatsAppSignupResult } from "@/lib/backend/channels";
+import type {
+  CatalogList,
+  ChannelDetail,
+  MetaSocialConnectResult,
+  TemplateCreated,
+  TemplateList,
+  TestSendResult,
+  WhatsAppSignupResult,
+} from "@/lib/backend/channels";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /** Server Actions of lane `channels` (CP-17..19). Zod on the server, `run()`
@@ -106,6 +114,20 @@ const button = z.object({
   phone_number: z.string().max(20).optional(),
 });
 
+/**
+ * The client's templates, for the number's page (QA 2026-10-30: they only
+ * lived on a page no tab of the v2 console leads to). `null` = WhatsApp is
+ * not connected (409 upstream), as on the client's channels page.
+ */
+export async function listTemplatesAction(raw: unknown): Promise<ActionResult<TemplateList | null>> {
+  const body = z.object({ ref }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:read")) return forbidden();
+  const res = await run(() => backendFor(principal).listTemplates(body.ref));
+  if (!res.ok && res.status === 409) return { ok: true, data: null };
+  return res;
+}
+
 export async function createTemplateAction(raw: unknown): Promise<ActionResult<TemplateCreated>> {
   const body = z
     .object({
@@ -130,7 +152,7 @@ export async function createTemplateAction(raw: unknown): Promise<ActionResult<T
       footer_text: tpl.footer_text || undefined,
     }),
   );
-  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(r)}/channels`);
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(r)}`, "layout");
   return res;
 }
 
@@ -139,7 +161,7 @@ export async function deleteTemplateAction(raw: unknown): Promise<ActionResult<{
   const principal = await requirePrincipal();
   if (!can(principal.role, "channels:write")) return forbidden();
   const res = await run(() => backendFor(principal).deleteTemplate(body.ref, body.name));
-  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}/channels`);
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }
 
@@ -167,5 +189,31 @@ export async function revokeWhatsappSignupLinkAction(raw: unknown): Promise<Acti
   if (!can(principal.role, "channels:write")) return forbidden();
   const res = await run(() => backendFor(principal).revokeWhatsappSignupLink(body.ref, body.id));
   if (res.ok) revalidatePath(`/clients/${body.ref}/channels`);
+  return res;
+}
+
+// ── Instagram y Messenger (spec 049) ─────────────────────────────────
+
+const metaSocialKind = z.enum(["instagram", "messenger"]);
+
+/** The single-use code from Facebook Login for Business. The server reads
+ *  what the business granted; with several accounts it answers «choose». */
+export async function metaSocialConnectAction(raw: unknown): Promise<ActionResult<MetaSocialConnectResult>> {
+  const body = z.object({ ref, kind: metaSocialKind, code: z.string().min(1).max(2048) }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).metaSocialConnect(body.ref, body.kind, body.code));
+  if (res.ok && res.data.status === "connected") revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+export async function metaSocialCompleteAction(raw: unknown): Promise<ActionResult<MetaSocialConnectResult>> {
+  const body = z
+    .object({ ref, kind: metaSocialKind, nonce: z.string().min(8).max(64), accountId: z.string().min(1).max(64) })
+    .parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const res = await run(() => backendFor(principal).metaSocialComplete(body.ref, body.kind, body.nonce, body.accountId));
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }

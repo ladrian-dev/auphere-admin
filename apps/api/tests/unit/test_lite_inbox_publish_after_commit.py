@@ -59,6 +59,8 @@ ACTIONS: dict[str, _Action] = {
     ),
     "resolve": _Action("POST", "resolve"),
     "reopen": _Action("POST", "reopen", before=("resolve",)),
+    "clear": _Action("POST", "clear"),
+    "archive": _Action("POST", "archive"),
     "tags": _Action("PUT", "tags", json={"tags": ["vip"]}),
 }
 
@@ -200,4 +202,31 @@ async def test_every_lite_route_that_announces_is_checked() -> None:
             announcing |= {(m, route.path) for m in route.methods - {"GET", "HEAD"}}
 
     checked = {(a.method, f"{BASE}/{{conversation_id}}/{a.route}") for a in ACTIONS.values()}
-    assert announcing == checked
+    # Spec 043: Reservas recibe su Redis para la ``Idempotency-Key`` (24 h) de
+    # equipo, servicios, bloqueos y lista de espera, y para no llamar a Google más de una vez
+    # cada 5 s por persona al mirar su calendario (R12). No avisa a la Bandeja.
+    reservas = {r for r in announcing if r[1].startswith("/console/lite/reservas/")}
+    assert reservas == {
+        ("POST", "/console/lite/reservas/blocks"),
+        ("POST", "/console/lite/reservas/services"),
+        ("POST", "/console/lite/reservas/staff"),
+        ("POST", "/console/lite/reservas/staff/{staff_id}/calendar/refresh"),
+        ("POST", "/console/lite/reservas/waitlist"),
+    }
+    import inspect
+
+    from nexus_api.api.console.lite import reservas as reservas_routes
+
+    assert "publish_inbox_event" not in inspect.getsource(reservas_routes)
+    # Spec 047: pausar y reanudar un número reciben su Redis para tirar la caché
+    # del número tras el commit (``after_commit``); no avisan a la Bandeja.
+    from nexus_api.api.console.lite import agents as agents_routes
+
+    numbers = {
+        ("POST", "/console/lite/channels/{channel_id}/pause"),
+        ("POST", "/console/lite/channels/{channel_id}/resume"),
+    }
+    assert numbers <= announcing
+    source = inspect.getsource(agents_routes)
+    assert "publish_inbox_event" not in source and "scope.after_commit(_drop)" in source
+    assert announcing - reservas - numbers == checked

@@ -15,14 +15,13 @@ KB. Para alertas y métricas ver
 | Pieza | Plataforma | Region | Notas |
 |---|---|---|---|
 | `nexus-api` | Railway | us-east | FastAPI Docker (`apps/api/Dockerfile`). Owns Alembic + Drizzle migrations via release command. |
-| `nexus-worker` | Railway | us-east | Worker Docker (`apps/worker/Dockerfile`). Includes Node 20 runtime + `agendapro_browser_mcp/dist/` for the Stagehand subprocess. |
+| `nexus-worker` | Railway | us-east | Worker Docker (`apps/worker/Dockerfile`). Solo Python: la etapa de Node se fue con la spec 048. |
 | `postgres` | Railway managed | us-east | Postgres 16 + pgvector. Apache AGE diferido a Phase 3+ (KG modelado relacional). |
 | `redis` | Railway managed | us-east | Redis 7. |
 | `auphere-admin` | Vercel | global | Next.js 16. Auto-deploy en `main` (configurable). |
 | Secrets | Doppler | — | Workspace `auphere`, project `nexus`, configs `dev` + `production`. Sync nativo a Railway + Vercel. |
 | LLM observability | Langfuse Cloud | — | Workspace `auphere`. SDK con noop fallback si las keys están vacías. |
 | WhatsApp | Meta Cloud API (Tech Provider directo) | — | Webhook → `https://api.auphere.com/webhook/meta`. |
-| Browser automation | Browserbase Startup | — | Aprovisionado en Bloque J cuando se onboardee Cultor Barber. |
 
 DNS: `api.auphere.com` → Railway, `admin.auphere.com` → Vercel. Certs
 auto via Let's Encrypt (Railway) y Vercel.
@@ -96,7 +95,7 @@ curl -s https://api.auphere.com/health
 ADMIN_TOKEN=$(doppler secrets get NEXUS_ADMIN_TOKEN --plain --config=production)
 curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
   https://api.auphere.com/admin/connectors | python3 -m json.tool
-# connectors custom: agendapro, whatsapp_meta, woocommerce (+ Composio dinámicos)
+# connectors custom: whatsapp_meta, woocommerce, amigable_* (+ Composio dinámicos)
 
 curl -s -o /dev/null -w "%{http_code}\n" https://admin.auphere.com/connectors
 # 307 (redirect a login)
@@ -227,6 +226,21 @@ DR drill formal queda para Phase 2 (cuando hay 2+ clientes).
 ⚠️ Nunca pegues secretos en este repo, en Slack, ni en chat con
 Claude. Doppler es el único lugar.
 
+### Variables de la app Auphere Customers (spec 031)
+
+| Variable | Qué es | Sin ella |
+|---|---|---|
+| `NEXUS_CUSTOMERS_APP_TOKEN_SECRET` | Firma las credenciales del teléfono. Al menos 32 caracteres, y distinto de `NEXUS_DEVICE_TOKEN_SECRET` | La API no arranca en producción |
+| `NEXUS_CUSTOMERS_APP_MIN_VERSION_IOS` / `_ANDROID` | Versión mínima por plataforma, por ejemplo `1.0.0` | Vacío: no se bloquea a nadie |
+| `NEXUS_CUSTOMERS_APP_MIN_VERSION_REASON` | `contract` o `security` | `contract` |
+| `NEXUS_CUSTOMERS_APP_MIN_VERSION_FROM` | Desde cuándo rige (ISO-8601). Antes de esa fecha no cierra | Rige ya |
+| `NEXUS_APNS_KEY_ID` / `NEXUS_APNS_TEAM_ID` / `NEXUS_APNS_KEY_PEM` | La clave `.p8` de APNs y sus identificadores. El Team ID es de FACELAD mientras la app se publique ahí | Los avisos de iPhone fallan con `provider_not_configured`; la API arranca |
+| `NEXUS_APNS_TOPIC` | Bundle de la app, `com.auphere.customers` | Ese mismo valor |
+| `NEXUS_FCM_PROJECT_ID` / `NEXUS_FCM_SERVICE_ACCOUNT_JSON` | El proyecto de Firebase de Auphere y el JSON de su cuenta de servicio | Los avisos de Android fallan con `provider_not_configured` |
+
+Subir la versión mínima es cambiar la variable y redesplegar la API. No hace
+falta publicar una versión de la app (R13.2).
+
 ---
 
 ## Alembic downgrade (manual, solo Lee + revisión)
@@ -283,6 +297,14 @@ Cuando llega `alert_isolation_v1` por WhatsApp al teléfono operador:
    mientras investigás, podés silenciar via update temporal a
    `tenants.cost_alert_threshold_usd_per_day`. El silencer formal
    entra Phase 2.
+
+---
+
+## Playbook — alarma `platform-alert-dlq-entries`
+
+Ha muerto un mensaje de cliente: agotó sus reintentos y está en
+`nexus:inbound:dlq`. Mirar, descartar y reinyectar se hace con
+`./scripts/ops/dlq.sh <staging|prod> list`. Todo en [`docs/dlq.md`](../../docs/dlq.md).
 
 ---
 
@@ -380,7 +402,7 @@ con el App Secret real (firma X-Hub-Signature-256).
 
 > Phase 1 Lee onboardea cada tenant manualmente desde el panel. El wizard
 > entrega el shape mínimo (identidad + costo); los pasos posteriores
-> (WhatsApp, AgendaPro, prompt) se hacen en `/tenants/[id]/integrations`
+> (WhatsApp, Reservas, prompt) se hacen en `/tenants/[id]/integrations`
 > y `/tenants/[id]/agent`.
 
 ### Pre-requisitos por cliente
@@ -397,14 +419,23 @@ Antes de tocar el panel, asegurate de tener:
    `alert_escalation_v1`, `alert_needs_reauth_v1`, `alert_cost_threshold_v1`,
    `alert_isolation_v1`, `alert_whatsapp_burst_v1` (las `alert_*` y las
    del backchannel `auphere_owner_consult` / `auphere_owner_action_request`
-   van en la WABA de Auphere, no en la del tenant).
+   van en la WABA de Auphere, no en la del tenant). Las seis de Reservas
+   (`reserva_*`) **no se crean a mano**: `reservation-templates-cron` las
+   pide a la WABA del cliente cada 15 min en cuanto tiene Reservas y número
+   de Meta (spec 043, requisito 15). Una rechazada o pausada no se rehace
+   sola: se corrige desde **Plantillas**. El estado lo ve el negocio en
+   Reservas → Ajustes; el log es `reservation_templates.*`.
+
+   Un aviso `alert_*` sale del número del tenant solo si su WABA tiene esa
+   plantilla aprobada, y en el idioma aprobado; si no, del número de avisos
+   predeterminado de Auphere (panel → **Números de Auphere**,
+   `/auphere/channels`) en `NEXUS_AUPHERE_ALERT_TEMPLATE_LANGUAGE` (`es_CL`
+   por defecto). Sin ese número registrado, los tenants sin la plantilla no
+   reciben avisos por WhatsApp (`operator_alerter.whatsapp_unavailable` en
+   el log del scheduler). Ver `docs/canales.md` §2.
 3. **WABA del cliente**: el owner necesita acceso a su Facebook Business
    y un número (nuevo o existente) para el Embedded Signup. El flujo
    registra el número bajo la App de Auphere (Tech Provider).
-4. **Browserbase Startup tier** aprovisionado y `BROWSERBASE_API_KEY` +
-   `BROWSERBASE_PROJECT_ID` en Doppler `production` (necesario para el
-   bootstrap AgendaPro real; el panel devuelve 502 con mensaje claro si
-   las keys no están).
 
 ### Paso 1 — Crear el tenant
 
@@ -442,15 +473,78 @@ Errores típicos:
 - **409 "ya está conectado a otro tenant"** → el E.164 está usado por
   otro tenant. Desconectar el canal del tenant anterior primero.
 
-### Paso 3 — Bootstrap AgendaPro
+### Paso 3 — La agenda: Reservas
 
-Card "AgendaPro" → **Bootstrap** → dialog con login + password + business URL.
+Si el cliente da citas, su agenda es **Reservas** (spec 043; la única desde la
+spec 048): pestaña **Acceso** → módulo `reservas` → elegir el modo (Servicios o
+Aforo). Activarlo prepara el borrador de cada agente con `reservas.*`; se
+publica por la puerta. No hay agenda de terceros que conectar.
 
-- El backend invoca el subprocess Stagehand v3 + Browserbase Contexts
-  (Block E) y persiste el `context_id` encriptado en `tenant_credentials`.
-- Si Browserbase no está aprovisionado, devuelve 502 con mensaje claro.
-- Si falla por credenciales inválidas, el owner debe re-confirmar el
-  login con vos.
+Un cliente que todavía reserva con `booking.*` (la agenda de antes, en
+`appointments`, que el negocio no ve) **sigue reservando con ella**: ningún
+despliegue lo pasa a Reservas (spec 048, requisito 3, enmendado el 2026-11-10).
+Reservas se activa a mano, cliente a cliente. Si se quiere pasar de golpe a
+todos los que la nombran, existe el guion de abajo, que solo se lanza a propósito.
+
+### Paso a Reservas, a mano (spec 048)
+
+**Ningún despliegue lo lanza** desde el 2026-11-10: hasta entonces corría en la
+tarea de migración y activaba Reservas solo. Ahora es una orden del operador
+(`scripts/pass_booking_to_reservas.py`, abajo cómo). Pasa a Reservas a cada cliente con algún
+agente activo cuya versión activa o borrador nombre `booking.*` o una herramienta de
+Google Calendar o, si ya tiene Reservas, reserve con un conector (spec 043, R11): le activa
+Reservas si no lo tenía (Aforo de restaurante si es un restaurante, citas por
+persona si no; sin abrir el acceso de sus personas), publica la versión activa
+con `reservas.*` sin la puerta (firmada por `platform:reservas-pass`), reescribe
+sin publicar el borrador que la nombre e importa las citas futuras. Detalle y
+contrato del informe en `docs/reservas.md`, «El paso a Reservas, a mano».
+
+Un cliente que falla se deshace solo y los demás siguen; el guion sale con 0.
+
+**Qué mirar** en el registro de la tarea que lo lanzó (CloudWatch
+`/nexus/<entorno>/migrate`, en JSON; con Logs Insights se filtra por `event`):
+
+```
+fields @timestamp, event, tenant_id, error, passed, failed, failed_tenants,
+       activated, published, drafts, imported, not_imported
+| filter event like /reservations.auto_pass/
+| sort @timestamp desc
+```
+
+- `reservations.auto_pass_done` — una por ejecución, con los recuentos. Con
+  `passed = 0` y `failed = 0` no quedaba nadie con `booking.*`: es la señal que
+  espera el borrado final (T030 de la spec 048).
+- `reservations.auto_passed` — una por cliente pasado, con su `tenant_id`.
+- `reservations.auto_pass_failed` — una por cliente fallido, con `tenant_id` y
+  el tipo de error (sin datos de nadie). `no_partner`: el cliente no cuelga de
+  ningún partner y no se le puede encender el módulo; asígnale uno y repite.
+- `reservations.auto_pass_crashed` — el guion no llegó a recorrer los clientes
+  (base inalcanzable, por ejemplo).
+- `reservations.auto_pass_not_ready` — el agente reserva en Google y el cliente aún no
+  puede tomar una cita, con `tenant_id` y `reasons` (`reservas_off`, `hours_missing`,
+  `no_staff`, `no_services`, `no_bookable_service`, `no_capacity`). Ese agente no se ha
+  tocado, y otro del mismo cliente con `booking.*` pasa igual: el partner tiene un aviso, y el panel de operador lo enseña en Acceso. Pasa en la
+  siguiente ejecución cuando esté listo. `not_ready` en `auto_pass_done` los cuenta.
+- `reservations.pass_failed` en la auditoría del cliente — el paso falló y se deshizo; el
+  agente sigue como estaba. **No hay alarma de `auto_pass_failed`**: mirarlo tras cada ejecución.
+
+En la auditoría de cada cliente pasado queda `reservations.passed` (con
+`automatic: true`), con las versiones publicadas, los borradores reescritos y
+las citas que no se importaron y por qué. Esas citas siguen en `appointments`.
+
+**Cómo se lanza**, y repetirlo es seguro (un cliente que ya pasó se salta y nada
+se duplica): la tarea de migración con el guion como orden (mismos parámetros de
+red que `deploy-staging.yml`). En producción, ningún cliente debe tener Reservas
+sin que se haya decidido para él: no se lanza sin esa decisión.
+
+```bash
+aws ecs run-task --cluster <cluster> --task-definition <migrate_task_def> \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[<subnets>],securityGroups=[<migrate_sg>],assignPublicIp=DISABLED}" \
+  --overrides '{"containerOverrides":[{"name":"migrate","command":["python","/app/apps/api/scripts/pass_booking_to_reservas.py"]}]}'
+```
+
+En local: `uv run --directory apps/api python scripts/pass_booking_to_reservas.py`.
 
 ### Paso 4 — Agent config v1 desde el seed
 
@@ -511,7 +605,7 @@ Si acepta un número nuevo: más rápido y con menos riesgo de bloqueo.
 ## Connectors (Bloque L)
 
 Connectors unifica integraciones en una sola tabla: WhatsApp (canal),
-AgendaPro (browser_credentials), Calendar/Calendly/Notion (oauth_composio).
+WooCommerce y Amigable (api_key), Calendar/Calendly/Notion (oauth_composio).
 Decisión: ADR-011 + `architecture/connectors.md`.
 
 ### Conectar un OAuth connector (Calendar, Calendly, Notion)

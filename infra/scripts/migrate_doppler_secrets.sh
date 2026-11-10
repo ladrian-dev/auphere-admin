@@ -123,9 +123,6 @@ COPY = [
     "NEXUS_LANGFUSE_HOST",
     # Transcripción de notas de voz (whisper vía LiteLLM) y fallback del router.
     "OPENAI_API_KEY",
-    # MCP público de AgendaPro (Stagehand/Browserbase).
-    "BROWSERBASE_API_KEY",
-    "BROWSERBASE_PROJECT_ID",
 ]
 
 # Lo que NO puede salir de Doppler tal cual, porque Doppler describe Railway.

@@ -7,6 +7,7 @@ import { audienceSchema, consolePolicySchema, paymentReviewSchema } from "@/comp
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
 import type { AgentVersion, DraftDiff } from "@/lib/backend";
+import type { AgentDraft, DraftPatch } from "@/lib/backend/agent-draft-types";
 import type { AgentSettingsSaved, ConsolePolicy } from "@/lib/backend/agent-tools";
 import type { ClientModel } from "@/lib/backend/models";
 import { can, requirePrincipal } from "@/lib/principal";
@@ -78,6 +79,52 @@ export async function publishFromBarAction(raw: unknown): Promise<ActionResult<A
   const res = await run(() => backendFor(principal).publishAgentVersion(body.ref, body.version, "draft_bar", body.agent));
   // La barra vive en el layout de la ficha: al publicar tiene que
   // desaparecer de TODAS las pestañas, no solo de la que estaba abierta.
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+// ── spec 047, historia 2: el único borrador del agente ─────────────────
+
+/** The agent the draft is of: always a real id, the principal's included. */
+const agentId = z.string().uuid();
+const revision = z.number().int().min(0);
+
+const draftPatchSchema = z
+  .object({
+    system_prompt: z.string().min(1).max(200_000).optional(),
+    tools: z.array(z.string().min(1).max(160)).max(200).optional(),
+    settings: consolePolicySchema.optional(),
+    audience: audienceSchema.optional(),
+    payment_review: paymentReviewSchema.optional(),
+    note: z.string().max(500).optional(),
+  })
+  .strict()
+  .refine((p) => Object.values(p).some((v) => v !== undefined), { message: "empty" });
+
+/**
+ * La única barra de guardado de la pestaña Agente: UNA escritura en el borrador
+ * del agente, con la revisión que leyó la pantalla. Si otra persona escribió
+ * entre medias la API contesta 412 y no entra nada; `code` es
+ * `revision_conflict` e `info` trae `current` y `changes`, que la barra enseña.
+ */
+export async function saveDraftAction(raw: unknown): Promise<ActionResult<AgentDraft>> {
+  const body = z.object({ ref, agent: agentId, revision, patch: draftPatchSchema }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
+  const res = await run(() =>
+    backendFor(principal).saveAgentDraft(body.ref, body.agent, body.revision, body.patch as DraftPatch),
+  );
+  // La barra de publicar vive en el layout: tiene que enterarse del borrador nuevo.
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
+  return res;
+}
+
+/** Descartar el borrador: el agente vuelve a su versión activa, que no cambia. */
+export async function discardDraftAction(raw: unknown): Promise<ActionResult<AgentDraft>> {
+  const body = z.object({ ref, agent: agentId, revision }).parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "agents:write")) return { ok: false, status: 403, message: "forbidden" };
+  const res = await run(() => backendFor(principal).discardAgentDraft(body.ref, body.agent, body.revision));
   if (res.ok) revalidatePath(`/clients/${encodeURIComponent(body.ref)}`, "layout");
   return res;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Languages, LogOut, Moon, Sun } from "lucide-react";
+import { Languages, LogOut, Moon, Smartphone, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -79,6 +79,15 @@ export function UserMenu({ user, who, partnerName, collapsed }: Props) {
               </span>
             )}
           </DropdownMenuLabel>
+          {who.kind === "client" ? (
+            <>
+              {/* Spec 031 (R7.3): where a client person sees and signs out their phones. */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/account/phones")}>
+                <Smartphone /> {t("lite.phones.menu")}
+              </DropdownMenuItem>
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{t("shell.theme")}</DropdownMenuLabel>
           <DropdownMenuItem onClick={() => setTheme("light")} data-checked={theme === "light" || undefined}>

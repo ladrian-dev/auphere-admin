@@ -12,19 +12,21 @@ import type { InboxAuthor, InboxDetail, InboxThreadItem } from "@/lib/backend/in
 export type ComposerMode =
   /** Resolved: the box says so and offers to reopen. */
   | { kind: "resolved" }
-  /** The agent asked for help and nobody took it yet. */
-  | { kind: "waiting"; reason: string | null }
-  /** The agent answers; the person may take over. */
-  | { kind: "agent" }
+  /** The agent asked for help and nobody took it yet. `code`: the column's (spec 056, 7.1). */
+  | { kind: "waiting"; reason: string | null; code?: string | null }
+  /** The agent answers; the person may take over. `windowClosed`: it no longer can (m-24h). */
+  | { kind: "agent"; windowClosed?: true }
   /** Another person of the business answers. */
   | { kind: "other"; name: string | null }
   /** This person answers; `blocked` says why WhatsApp would refuse a send. */
   | { kind: "mine"; blocked: "window_closed" | "channel_disconnected" | null };
 
-export function composerMode(detail: Pick<InboxDetail, "state" | "assignee" | "waiting_reason" | "window" | "channel">): ComposerMode {
+export function composerMode(
+  detail: Pick<InboxDetail, "state" | "assignee" | "waiting_reason" | "waiting_code" | "window" | "channel">,
+): ComposerMode {
   if (detail.state === "resolved") return { kind: "resolved" };
-  if (detail.state === "waiting" && !detail.assignee) return { kind: "waiting", reason: detail.waiting_reason };
-  if (detail.state === "agent") return { kind: "agent" };
+  if (detail.state === "waiting" && !detail.assignee) return { kind: "waiting", reason: detail.waiting_reason, code: detail.waiting_code ?? null };
+  if (detail.state === "agent") return detail.window.open ? { kind: "agent" } : { kind: "agent", windowClosed: true };
   if (detail.assignee && !detail.assignee.is_me) return { kind: "other", name: detail.assignee.name };
   if (!detail.channel.connected) return { kind: "mine", blocked: "channel_disconnected" };
   if (!detail.window.open) return { kind: "mine", blocked: "window_closed" };
@@ -93,6 +95,21 @@ export function listTime(at: string, now: Date, locale: string): DayLabel | { ki
 
 export function clock(at: string, locale: string): string {
   return new Date(at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Spec 045 (R3.1): how long a conversation has waited for a person, in whole units. */
+export type WaitingFor = { unit: "now" | "min" | "h" | "d"; n: number };
+
+export function waitingFor(since: string, now: Date): WaitingFor | null {
+  const start = new Date(since).getTime();
+  if (Number.isNaN(start)) return null;
+  // A browser clock a little ahead of the server's must not read as a negative wait.
+  const minutes = Math.floor(Math.max(0, now.getTime() - start) / 60_000);
+  if (minutes < 1) return { unit: "now", n: 0 };
+  if (minutes < 60) return { unit: "min", n: minutes };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { unit: "h", n: hours };
+  return { unit: "d", n: Math.floor(hours / 24) };
 }
 
 /** Thread items with a separator wherever the day changes. */

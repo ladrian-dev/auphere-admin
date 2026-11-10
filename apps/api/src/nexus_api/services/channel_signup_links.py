@@ -13,6 +13,7 @@ works once, for :data:`CHANNEL_SIGNUP_LINK_TTL`, and can be revoked.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import secrets
 import uuid
@@ -48,7 +49,7 @@ _NUMBER_UNIQUE = "uq_channels_live_number"
 #: Providers that are not a client's channel (the Playground's).
 _INTERNAL_PROVIDERS = ("qa_playground",)
 
-MODES = ("coexistence", "cloud_api")
+MODES = ("coexistence", "cloud_api", "whatsapp_login")
 
 
 def hash_token(token: str) -> str:
@@ -69,7 +70,13 @@ class MintedLink:
 
 
 async def mint_link(
-    session: AsyncSession, *, tenant_id: uuid.UUID, mode: str, actor: str
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    mode: str,
+    actor: str,
+    agent_id: uuid.UUID | None = None,
+    replace: bool = False,
 ) -> MintedLink:
     """A new link for the client. It replaces the client's earlier unused ones.
 
@@ -79,7 +86,26 @@ async def mint_link(
     """
     if mode not in MODES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown_mode")
-    for earlier in await live_links(session, tenant_id):
+    if mode == "whatsapp_login" and not await whatsapp_login_allowed(session, tenant_id):
+        # Spec 047 (31.5): la beta solo donde Auphere la activó, nunca en la UE.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "whatsapp_login_unavailable"}
+        )
+    if agent_id is not None:
+        # Spec 047 (31.2): como mucho un enlace pendiente por agente; crear otro
+        # ofrece revocar el pendiente («Revocar y crear»).
+        pending = [
+            link for link in await live_links(session, tenant_id) if link.agent_id == agent_id
+        ]
+        if pending and not replace:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "link_pending_exists", "link_id": str(pending[0].id)},
+            )
+        earlier_links = pending
+    else:
+        earlier_links = await live_links(session, tenant_id)
+    for earlier in earlier_links:
         await revoke_link(session, earlier, actor=actor, reason="replaced")
     token = secrets.token_urlsafe(32)
     link = ChannelSignupLink(
@@ -89,6 +115,7 @@ async def mint_link(
         mode=mode,
         created_by=actor,
         expires_at=datetime.now(UTC) + CHANNEL_SIGNUP_LINK_TTL,
+        agent_id=agent_id,
     )
     session.add(link)
     await session.flush()
@@ -97,9 +124,33 @@ async def mint_link(
         action="channel.signup_link.created",
         target=f"tenant:{tenant_id}",
         before=None,
-        after={"link_id": str(link.id), "mode": mode, "expires_at": link.expires_at.isoformat()},
+        after={
+            "link_id": str(link.id),
+            "mode": mode,
+            "agent_id": str(agent_id) if agent_id else None,
+            "expires_at": link.expires_at.isoformat(),
+        },
     )
     return MintedLink(link=link, token=token, url=link_url(token))
+
+
+async def whatsapp_login_allowed(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """La beta «WhatsApp login» (31.5): el país del negocio está en la lista que
+    activa Auphere. La lista nunca tiene un país de la UE o del EEE (CHECK)."""
+    from nexus_api.db.models import WhatsappLoginBetaCountry
+    from nexus_api.db.models.business import BusinessProfile
+
+    country = await session.scalar(
+        sa.select(BusinessProfile.country).where(BusinessProfile.tenant_id == tenant_id)
+    )
+    if not country:
+        return False
+    found = await session.scalar(
+        sa.select(WhatsappLoginBetaCountry.country).where(
+            WhatsappLoginBetaCountry.country == str(country).upper()
+        )
+    )
+    return found is not None
 
 
 async def live_links(session: AsyncSession, tenant_id: uuid.UUID) -> list[ChannelSignupLink]:
@@ -183,6 +234,23 @@ def require_valid(link: ChannelSignupLink | None) -> ChannelSignupLink:
     return link
 
 
+async def announce_connected(
+    *, tenant_id: uuid.UUID, channel_id: uuid.UUID, agent_id: uuid.UUID | None
+) -> None:
+    """El partner se entera de que el dueño completó el enlace (31.1)."""
+    from nexus_api.services.channel_config import announce
+
+    await announce(
+        tenant_id=tenant_id,
+        kind="channel.connected",
+        data={
+            "channel_id": str(channel_id),
+            "agent_id": str(agent_id) if agent_id else None,
+            "via": "owner_link",
+        },
+    )
+
+
 @dataclass(frozen=True)
 class LinkConnected:
     channel_id: uuid.UUID
@@ -224,7 +292,12 @@ async def connect_with_link(
         bundle = await complete_meta_signup(
             session=session,
             redis=redis,
-            payload=payload,
+            # «WhatsApp login» registra un número de Cloud API.
+            payload=(
+                dataclasses.replace(payload, mode="cloud_api")
+                if payload.mode == "whatsapp_login"
+                else payload
+            ),
             tenant_id=tenant.id,
             actor=actor,
             audit_action="channel.signup_link.connect",
@@ -250,6 +323,17 @@ async def connect_with_link(
         )
     except connector_service.ConnectorNotFound:
         log.warning("signup_link.connector_missing", tenant_id=str(tenant.id))
+    if link.agent_id is not None:
+        # Spec 047 (31.1): el número queda en el agente del enlace y empieza en
+        # modo prueba con el número del dueño, que es quien lo conectó (32.9).
+        from nexus_api.services.channel_config import start_in_test_mode
+
+        channel = await session.get(Channel, result.channel_id)
+        if channel is not None:
+            channel.agent_id = link.agent_id
+            await start_in_test_mode(
+                session, channel, connector_phone=tenant.owner_phone, actor=actor
+            )
     if partner is not None:
         await activate_tenant_if_ready(session, partner=partner, tenant_id=tenant.id)
     link.consumed_at = datetime.now(UTC)

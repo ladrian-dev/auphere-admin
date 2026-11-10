@@ -68,10 +68,23 @@ async def revoke_all_access(
         str(principal_id), reason=REVOKED_ARCHIVADA_CONSOLA
     )
 
+    # Spec 031 (R7.2): los teléfonos de la app Auphere Customers también. Una
+    # cuenta de partner no tiene ninguno; una persona de cliente que restablece
+    # la contraseña sí, y una contraseña nueva cierra todas las puertas abiertas.
+    from nexus_api.services import client_phones
+
+    phones_closed = await client_phones.revoke_where(
+        session,
+        reason="password_reset" if reason == "password_reset" else "member_removed",
+        by="system",
+        principal_ids=[str(principal_id)],
+    )
+
     after: dict[str, Any] = {
         "reason": reason,
         "sessions_closed": sessions_closed,
         "machines_archived": machines_archived,
+        "phones_closed": phones_closed,
     }
     # Cuando lo decide el equipo de un partner, la fila es de ese partner: su
     # dueño la lee en Auditoría (owner, 2026-10-04). Lleva a quién se le
@@ -100,7 +113,11 @@ async def revoke_all_access(
         sessions_closed=sessions_closed,
         machines_archived=machines_archived,
     )
-    return {"sessions_closed": sessions_closed, "machines_archived": machines_archived}
+    return {
+        "sessions_closed": sessions_closed,
+        "machines_archived": machines_archived,
+        "phones_closed": phones_closed,
+    }
 
 
 __all__ = ["AUDIT_ACTION", "revoke_all_access"]

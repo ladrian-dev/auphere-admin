@@ -29,6 +29,7 @@ PLACEHOLDERS = frozenset(
     {
         "actor",
         "client",
+        "staff",
         "v",
         "status",
         "email",
@@ -126,6 +127,18 @@ REASON: _Words = {
     "session_not_recently_confirmed": {"es": "sesión sin confirmar", "en": "session not confirmed"},
     "machine_cap_reached": {"es": "límite de máquinas", "en": "machine limit reached"},
     "vanished": {"es": "la máquina desapareció", "en": "the machine vanished"},
+    # Spec 031: por qué se cerró el teléfono de una persona de cliente.
+    "signed_out": {"es": "cerró la sesión", "en": "signed out"},
+    "closed_by_person": {"es": "la cerró la propia persona", "en": "closed by the person"},
+    "closed_by_auphere": {"es": "la cerró Auphere", "en": "closed by Auphere"},
+    "access_disabled": {"es": "se apagó el acceso del negocio", "en": "the business lost access"},
+    "member_removed": {"es": "se quitó a la persona", "en": "the person was removed"},
+    "password_reset": {"es": "se restableció la contraseña", "en": "the password was reset"},
+    "abandoned": {"es": "90 días sin usarse", "en": "unused for 90 days"},
+    "refresh_reused": {
+        "es": "se reutilizó una credencial vieja",
+        "en": "an old credential was reused",
+    },
 }
 
 TICKET_CATEGORY: _Words = {
@@ -165,7 +178,6 @@ _FALLBACK: dict[str, dict[str, str]] = {
     "unknown": {"es": "sin dato", "en": "not recorded"},
 }
 
-_MODELS: dict[str, str] = dict(RESPOND_MODELS)
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
@@ -229,7 +241,8 @@ def _change(after: dict[str, Any], lang: str) -> str:
 def _model(model_id: Any, lang: str) -> str:
     if not model_id:
         return _say("unknown", lang)
-    return _MODELS.get(str(model_id), str(model_id).rsplit("/", 1)[-1])
+    # Spec 047: the offer is data (``model_profiles``); read it when used.
+    return dict(RESPOND_MODELS).get(str(model_id), str(model_id).rsplit("/", 1)[-1])
 
 
 def _cap(after: dict[str, Any], lang: str) -> str:
@@ -325,6 +338,7 @@ def values(
     return Safe(
         actor=actor,
         client=client_name or _client_ref(after.get("client_ref"), names_by_ref, lang),
+        staff=after.get("staff") or _say("someone", lang),
         v=after.get("version", before.get("version", "?")),
         status=word(STATUS, after.get("status"), lang),
         email=after.get("email", before.get("email")) or _say("someone", lang),

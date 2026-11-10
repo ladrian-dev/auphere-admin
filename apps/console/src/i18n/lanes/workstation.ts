@@ -62,10 +62,11 @@ export const workstationMessages = {
   "workstation.devices.manageLink": { es: "Gestionar máquinas", en: "Manage machines" },
 
   // ── spec 002: el puesto a nivel de partner ─────────────────────────
-  "ws.title": { es: "Puesto de trabajo", en: "Workstation" },
+  // Spec 047 (prototipo): la pantalla se llama como su entrada del menú, «Teammate».
+  "ws.title": { es: "Teammate", en: "Teammate" },
   "ws.description": {
-    es: "Tus máquinas, a qué clientes sirven y en qué directorio. Los ejecutables permitidos se gestionan en cada cliente.",
-    en: "Your machines, which clients they serve and in which directory. Allowed executables are managed per client.",
+    es: "Tu puesto de trabajo: las máquinas, a qué clientes sirven y en qué directorio. Los ejecutables permitidos se gestionan en cada cliente.",
+    en: "Your workstation: the machines, which clients they serve and in which directory. Allowed executables are managed per client.",
   },
   "ws.machines.title": { es: "Máquinas", en: "Machines" },
   "ws.machines.empty.title": { es: "Ninguna máquina registrada", en: "No machine registered" },

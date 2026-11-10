@@ -179,6 +179,9 @@ class ConnectorOut(BaseModel):
     logo_url: str | None
     capabilities: list[str] = Field(default_factory=list)
     installed: bool
+    #: Spec 043, R11.8: no se conecta aquí (Google Calendar, por profesional en Reservas). Una
+    #: conexión de antes se puede quitar, y nada más.
+    managed_elsewhere: bool = False
     status: str | None = None
     scopes_granted: list[str] = Field(default_factory=list)
     connected_at: datetime | None = None
@@ -194,10 +197,6 @@ class ConnectorOut(BaseModel):
     #: connector under ``connectors.recommended``. A suggestion on the card,
     #: never a filter.
     recommended: bool = False
-    #: Spec 016 (R6): AgendaPro is linked by its public booking page, not by
-    #: credentials. ``auth_kind`` reads ``public_url`` for it and this carries
-    #: the page (it is public; nothing secret travels).
-    public_url: str | None = None
     #: Spec 016 (R7): what happened to the sync that ran with the connect.
     #: Only on the connect response; the list does not repeat it.
     last_sync: LastSyncOut | None = None
@@ -261,7 +260,7 @@ class SkillsSaved(SkillsOut):
 
 # ── CP-15 · knowledge ──────────────────────────────────────────────────
 
-KnowledgeKind = Literal["file", "url"]
+KnowledgeKind = Literal["file", "url", "note"]
 KnowledgeStatus = Literal["pending", "indexed", "failed"]
 KnowledgeErrorCodeLit = Literal["fetch_failed", "unsupported_type", "too_large", "empty"]
 
@@ -282,6 +281,10 @@ class KnowledgeDocumentOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     indexed_at: datetime | None
+    #: Spec 047 (0193): la capa (nula = la del negocio) y la ventana para restaurar.
+    agent_id: uuid.UUID | None = None
+    removed_at: datetime | None = None
+    restore_until: datetime | None = None
 
 
 class KnowledgeListOut(BaseModel):
@@ -320,18 +323,3 @@ __all__ = [
     "ToolsIn",
     "ToolsSaved",
 ]
-
-
-class AgendaProPublicUrlIn(BaseModel):
-    """Spec 016 (R6): the client's public AgendaPro booking page. ``""`` or
-    ``null`` unlinks. Never credentials."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    public_url: str | None = Field(default=None, max_length=500)
-
-
-class AgendaProPublicUrlOut(BaseModel):
-    integration: str = "agendapro"
-    public_url: str | None
-    updated_at: datetime

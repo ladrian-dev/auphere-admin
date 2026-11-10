@@ -11,6 +11,7 @@ import type { ClientAgent } from "@/lib/backend";
 import type { ChannelDetail } from "@/lib/backend/channels";
 
 import { ChannelCard } from "./channel-card";
+import { MetaSocialCard, metaSocialName } from "./meta-social-card";
 
 /**
  * Canales (spec 018, R4): por dónde llegan los mensajes, con **el mismo
@@ -47,13 +48,13 @@ export function ChannelsList({
   const t = useT();
   const catalog = useCatalog(`/clients/${encodeURIComponent(refId)}/channels`);
   const labels = useCatalogLabels({ title: t("ch.title") });
-  const showRoles = channels.filter((c) => c.status === "active").length > 1;
+  const showRoles = channels.filter((c) => c.type === "whatsapp" && c.status === "active").length > 1;
 
   const items = React.useMemo(
     () =>
       channels.map((c) => ({
         id: c.id,
-        name: c.verified_name ?? c.provider_identifier,
+        name: c.type === "whatsapp" ? (c.verified_name ?? c.provider_identifier) : metaSocialName(c),
         search: `${c.type} ${c.provider} ${c.provider_identifier}`,
         // Un solo tipo de canal hoy: sin categorías que separar, el patrón
         // no pinta pastillas. Inventarle una sería una categoría de una.
@@ -74,9 +75,13 @@ export function ChannelsList({
           {children}
         </Link>
       )}
-      renderItem={({ id, channel }) => (
-        <ChannelCard key={id} refId={refId} channel={channel} manage={manage} showRoles={showRoles} agents={agents} agentId={agentOf[channel.id]} />
-      )}
+      renderItem={({ id, channel }) =>
+        channel.type === "instagram" || channel.type === "messenger" ? (
+          <MetaSocialCard key={id} refId={refId} channel={channel} manage={manage} />
+        ) : (
+          <ChannelCard key={id} refId={refId} channel={channel} manage={manage} showRoles={showRoles} agents={agents} agentId={agentOf[channel.id]} />
+        )
+      }
       empty={empty}
     />
   );

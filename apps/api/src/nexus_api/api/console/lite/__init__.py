@@ -11,7 +11,21 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import home, inbox, inbox_media, inbox_stream, me, notifications, usage
+from . import (
+    agents,
+    business,
+    corrections,
+    home,
+    inbox,
+    inbox_media,
+    inbox_stream,
+    me,
+    notifications,
+    phones,
+    reservas,
+    reservas_templates,
+    usage,
+)
 
 router = APIRouter(prefix="/lite", tags=["console-lite"])
 router.include_router(me.router)
@@ -22,5 +36,16 @@ router.include_router(inbox_stream.router)
 router.include_router(inbox_media.router)
 router.include_router(inbox.router)
 router.include_router(notifications.router)
+# Spec 031: los teléfonos de la persona y lo que solo hace la app.
+router.include_router(phones.router)
+# Spec 043: la agenda del negocio (módulo ``reservas``).
+router.include_router(reservas.router)
+# Spec 043, requisito 15: cómo van sus plantillas de WhatsApp (Ajustes).
+router.include_router(reservas_templates.router)
+# Spec 047: sus agentes y su ficha (módulos ``agents`` y ``business``), y
+# «Corregir esta respuesta» desde la Bandeja (módulo ``inbox``).
+router.include_router(agents.router)
+router.include_router(business.router)
+router.include_router(corrections.router)
 
 __all__ = ["router"]

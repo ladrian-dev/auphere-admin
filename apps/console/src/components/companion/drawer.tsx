@@ -65,6 +65,7 @@ type Props = {
   suggestions: string[];
   currentUserId: string | null;
   exhausted: boolean;
+  noBalance: boolean;
 };
 
 export function CompanionDrawer({
@@ -75,6 +76,7 @@ export function CompanionDrawer({
   suggestions,
   currentUserId,
   exhausted,
+  noBalance,
 }: Props) {
   const t = useT();
   const { state, threads, threadId, status, errorDetail, partial, reconnecting, deciding, decisionFailure } = controller;
@@ -314,6 +316,7 @@ export function CompanionDrawer({
           // worst version of a cap (§6.2).
           paused={paused}
           exhausted={exhausted}
+          noBalance={noBalance}
           onChange={setText}
           onSend={onSend}
           onStop={() => void controller.stop()}

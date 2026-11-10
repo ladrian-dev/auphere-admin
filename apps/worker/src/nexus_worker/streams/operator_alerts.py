@@ -1,12 +1,9 @@
 """Operator alerter — turns audit_log events into operator WhatsApp templates.
 
-Five events trigger an alert in Phase 1:
+Four events trigger an alert in Phase 1:
 
 - ``conversation.escalated`` — written by ``escalate.escalate_to_human``
   (block D). Template: ``alert_escalation_v1``.
-- ``integration.agendapro.needs_reauth`` — written by the AgendaPro
-  health-check service when re-login fails (block E + H cron).
-  Template: ``alert_needs_reauth_v1``.
 - ``cost.daily_threshold_exceeded`` — written by the cost rollup cron
   (block H) when ``messages.cost_usd`` for today crosses the tenant's
   ``cost_alert_threshold_usd_per_day``. Template: ``alert_cost_threshold_v1``.
@@ -27,6 +24,13 @@ Recipient resolution:
 2. ``settings.operator_fallback_phone`` (env) — Phase 1 default = Lee.
 3. If neither: log + skip + status='failed' with error=no_recipient.
 
+Sender resolution (``channel_config.notify_from``; bug
+el-aviso-de-escalada-no-llega): the client's number only when its WABA has the
+template APPROVED, in the language it is approved in; otherwise Auphere's
+notification number, in ``settings.auphere_alert_template_language``. With
+neither, the alert does not go out, is not marked as sent, and the log says so
+once per tenant (``operator_alerter.whatsapp_unavailable``).
+
 Tenant_id is derived from the audit_log row, NEVER from a caller arg.
 """
 
@@ -35,9 +39,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from collections.abc import Mapping
-from datetime import UTC, datetime
-from typing import Any, cast
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, cast
 
 import sqlalchemy as sa
 import structlog
@@ -55,6 +60,10 @@ from nexus_api.db.models import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+if TYPE_CHECKING:
+    from nexus_api.db.models import Channel
+    from nexus_api.services.channel_config import NotifyRoute
+
 log = structlog.get_logger(__name__)
 
 DEFAULT_TICK_SECONDS = 30.0
@@ -65,9 +74,11 @@ DEFAULT_TICK_SECONDS = 30.0
 AdapterRegistry = Mapping[str, Any]
 
 
+#: La plantilla del aviso de escalado.
+ESCALATION_TEMPLATE = "alert_escalation_v1"
+
 _ACTION_TO_TEMPLATE: dict[str, str] = {
-    "conversation.escalated": "alert_escalation_v1",
-    "integration.agendapro.needs_reauth": "alert_needs_reauth_v1",
+    "conversation.escalated": ESCALATION_TEMPLATE,
     "cost.daily_threshold_exceeded": "alert_cost_threshold_v1",
     # WP-20 — corte duro. Reutiliza la plantilla de coste ya aprobada
     # por Meta: la señal operativa es la misma ("se gastó el
@@ -186,9 +197,15 @@ async def _alert_one(
         )
         return
 
-    recipient_phone, owner_business_phone, provider = await _resolve_recipient_and_business_phone(
-        session, tenant_id
-    )
+    if audit_row.action == "conversation.escalated":
+        plan = await _channel_plan(session, audit_row.target)
+        if plan is not None:
+            # Spec 047 (requisito 33): el canal tiene sus destinatarios; cada uno
+            # se entera por su vía y nadie más (ni el dueño ni el operador).
+            await _alert_channel_recipients(session, notif, audit_row, plan, adapters, tenant_id)
+            return
+
+    recipient_phone, channel = await _resolve_recipient_and_channel(session, tenant_id)
     recipients = [recipient_phone] if recipient_phone else []
     if audit_row.action == "conversation.escalated":
         # Spec 025: the business's payment reviewers are its team on WhatsApp;
@@ -206,7 +223,7 @@ async def _alert_one(
             audit_log_id=str(audit_row.id),
         )
         return
-    if owner_business_phone is None or provider is None:
+    if channel is None:
         notif.status = OperatorNotificationStatus.FAILED
         notif.last_error = "no_whatsapp_channel_for_tenant"
         log.warning(
@@ -216,31 +233,45 @@ async def _alert_one(
         )
         return
 
-    adapter = adapters.get(provider)
-    if adapter is None:
+    from nexus_api.services.channel_config import notify_from
+
+    # The client's number only with the template approved on its WABA, in that
+    # language; otherwise Auphere's notification number.
+    route = await notify_from(session, channel, template)
+    adapter = adapters.get(channel.provider)
+    if route.source == "channel" and adapter is None:
         notif.status = OperatorNotificationStatus.FAILED
-        notif.last_error = f"no adapter for provider: {provider}"
+        notif.last_error = f"no adapter for provider: {channel.provider}"
         log.warning(
             "operator_alerter.unsupported_provider",
             tenant_id=str(tenant_id),
             audit_log_id=str(audit_row.id),
-            provider=provider,
+            provider=channel.provider,
         )
         return
 
     body_params = await _render_params(session, audit_row, template)
     errors: list[str] = []
+    sent = 0
     for recipient in recipients:
         try:
-            await _send_alert_template(
+            await _send_routed(
+                route,
                 adapter=adapter,
-                provider=provider,
-                from_phone=owner_business_phone,
+                provider=channel.provider,
+                from_phone=channel.provider_identifier,
                 recipient=recipient,
                 template=template,
                 body_params=body_params,
                 tenant_id=tenant_id,
             )
+            sent += 1
+        except WhatsAppAlertUnavailable:
+            reason = _unavailable_reason(template)
+            errors.append(reason)
+            _log_unavailable(tenant_id, reason, template=template, channel_id=channel.id)
+            # Same route for every recipient: nobody else would get it either.
+            break
         except Exception as exc:
             errors.append(f"{type(exc).__name__}: {exc}")
             log.warning(
@@ -248,12 +279,14 @@ async def _alert_one(
                 tenant_id=str(tenant_id),
                 audit_log_id=str(audit_row.id),
                 template=template,
+                notify_from=route.source,
+                language=route.language,
                 error=errors[-1][:500],
             )
     notif.attempts += 1 if errors else 0
     if errors:
         notif.last_error = " | ".join(errors)[:500]
-    if len(errors) == len(recipients):
+    if sent == 0:
         notif.status = OperatorNotificationStatus.FAILED
         return
     notif.status = OperatorNotificationStatus.SENT
@@ -263,7 +296,332 @@ async def _alert_one(
         tenant_id=str(tenant_id),
         audit_log_id=str(audit_row.id),
         template=template,
+        notify_from=route.source,
+        language=route.language,
     )
+
+
+@dataclass(frozen=True)
+class _ChannelPlan:
+    """Lo que un escalado necesita de su canal (requisito 33)."""
+
+    channel_id: uuid.UUID
+    business_phone: str
+    provider: str
+    recipients: list[Any]
+    route: NotifyRoute
+    summary: bool
+
+
+async def _channel_plan(session: AsyncSession, target: str | None) -> _ChannelPlan | None:
+    """Los destinatarios del canal de la conversación escalada, o ``None`` si
+    el canal no tiene: entonces sigue la vía de antes (dueño y revisores)."""
+    from nexus_api.db.models import Channel
+    from nexus_api.services.channel_config import notify_from, recipients_of
+
+    try:
+        conversation_id = uuid.UUID(str(target)) if target else None
+    except ValueError:
+        return None
+    if conversation_id is None:
+        return None
+    channel_id = await session.scalar(
+        sa.select(Conversation.channel_id).where(Conversation.id == conversation_id)
+    )
+    channel = await session.get(Channel, channel_id) if channel_id else None
+    if channel is None:
+        return None
+    recipients = await recipients_of(session, channel.id)
+    if not recipients:
+        return None
+    return _ChannelPlan(
+        channel_id=channel.id,
+        business_phone=channel.provider_identifier,
+        provider=channel.provider,
+        recipients=recipients,
+        route=await notify_from(session, channel, ESCALATION_TEMPLATE),
+        summary=bool((channel.config or {}).get("escalation_summary", True)),
+    )
+
+
+#: El aviso sin resumen: no dice quién ni qué pidió (requisito 33.2).
+_NO_SUMMARY = ["un cliente", "Abre la Bandeja para verla"]
+#: Lo que pone ``_render_params`` cuando no sabe quién escribió ni por qué.
+_UNKNOWN_CUSTOMER = "cliente"
+_UNKNOWN_REASON = "sin motivo informado"
+
+
+class WhatsAppAlertUnavailable(RuntimeError):
+    """The alert has no number to leave from: the client's WABA lacks the
+    template and Auphere has no notification number that can send."""
+
+
+def _unavailable_reason(template: str) -> str:
+    """The reason code left on the notification (and in the log) when the
+    WhatsApp alert cannot leave. The console shows the escalation one as the
+    ``escalation_template_missing`` check of the channel page."""
+    if template == ESCALATION_TEMPLATE:
+        return "escalation_whatsapp_unavailable"
+    return "alert_whatsapp_unavailable"
+
+
+#: How often the log repeats, per tenant and reason, that a WhatsApp alert
+#: cannot leave: once a day per worker replica, not on every tick or alert.
+_UNAVAILABLE_LOG_EVERY = timedelta(hours=24)
+_unavailable_logged: dict[tuple[uuid.UUID, str], datetime] = {}
+
+
+def _log_unavailable(
+    tenant_id: uuid.UUID,
+    reason: str,
+    *,
+    template: str,
+    channel_id: uuid.UUID | None,
+) -> None:
+    now = datetime.now(UTC)
+    key = (tenant_id, reason)
+    last = _unavailable_logged.get(key)
+    if last is not None and now - last < _UNAVAILABLE_LOG_EVERY:
+        return
+    _unavailable_logged[key] = now
+    log.warning(
+        "operator_alerter.whatsapp_unavailable",
+        tenant_id=str(tenant_id),
+        reason=reason,
+        template=template,
+        channel_id=str(channel_id) if channel_id else None,
+        fix=(
+            f"approve {template} on the client's WABA, or register Auphere's default "
+            "notification number (admin: /auphere/channels) with the template approved"
+        ),
+    )
+
+
+async def _alert_channel_recipients(
+    session: AsyncSession,
+    notif: Any,
+    audit_row: AuditLog,
+    plan: _ChannelPlan,
+    adapters: AdapterRegistry,
+    tenant_id: uuid.UUID,
+) -> None:
+    """Un aviso por destinatario y por su vía. La Bandeja ya la tiene
+    ``mark_waiting``; WhatsApp sale del número del canal o del de Auphere
+    (33.3); el resumen es mínimo y nunca llega a una persona del partner (33.4)."""
+    full = await _render_params(session, audit_row, ESCALATION_TEMPLATE)
+    errors: list[str] = []
+    attempted = 0
+    failed = 0
+    whatsapp_unavailable = False
+    for recipient in plan.recipients:
+        if recipient.via == "inbox":
+            continue
+        attempted += 1
+        if recipient.via == "whatsapp" and whatsapp_unavailable:
+            # Same route for every WhatsApp recipient: already known not to leave.
+            failed += 1
+            continue
+        try:
+            if recipient.via == "whatsapp":
+                params = full if plan.summary else _NO_SUMMARY
+                await _send_whatsapp(plan, recipient.phone_e164, params, adapters, tenant_id)
+            else:
+                partner_person = await _is_partner_person(session, recipient.email)
+                summary = full if plan.summary and not partner_person else None
+                await _send_escalation_email(recipient.email, summary, tenant_id)
+        except WhatsAppAlertUnavailable:
+            whatsapp_unavailable = True
+            failed += 1
+            reason = _unavailable_reason(ESCALATION_TEMPLATE)
+            errors.append(f"whatsapp: {reason}")
+            _log_unavailable(
+                tenant_id, reason, template=ESCALATION_TEMPLATE, channel_id=plan.channel_id
+            )
+        except Exception as exc:
+            failed += 1
+            errors.append(f"{recipient.via}: {type(exc).__name__}: {exc}")
+            log.warning(
+                "operator_alerter.channel_recipient_failed",
+                tenant_id=str(tenant_id),
+                audit_log_id=str(audit_row.id),
+                via=recipient.via,
+                notify_from=plan.route.source if recipient.via == "whatsapp" else None,
+                language=plan.route.language if recipient.via == "whatsapp" else None,
+                error=errors[-1][:300],
+            )
+    if errors:
+        notif.attempts += 1
+        notif.last_error = " | ".join(errors)[:500]
+    if attempted and failed == attempted:
+        notif.status = OperatorNotificationStatus.FAILED
+        return
+    notif.status = OperatorNotificationStatus.SENT
+    notif.sent_at = datetime.now(UTC)
+    log.info(
+        "operator_alerter.channel_recipients_sent",
+        tenant_id=str(tenant_id),
+        audit_log_id=str(audit_row.id),
+        channel_id=str(plan.channel_id),
+        notify_from=plan.route.source,
+        language=plan.route.language,
+        recipients=attempted,
+    )
+
+
+async def _send_whatsapp(
+    plan: _ChannelPlan,
+    phone: str,
+    params: list[str],
+    adapters: AdapterRegistry,
+    tenant_id: uuid.UUID,
+) -> None:
+    await _send_routed(
+        plan.route,
+        adapter=adapters.get(plan.provider),
+        provider=plan.provider,
+        from_phone=plan.business_phone,
+        recipient=phone,
+        template=ESCALATION_TEMPLATE,
+        body_params=params,
+        tenant_id=tenant_id,
+    )
+
+
+async def _send_routed(
+    route: NotifyRoute,
+    *,
+    adapter: Any,
+    provider: str,
+    from_phone: str,
+    recipient: str,
+    template: str,
+    body_params: list[str],
+    tenant_id: uuid.UUID,
+) -> None:
+    """From the client's number (its adapter) or from Auphere's, in the
+    language of ``route``."""
+    if route.source == "channel":
+        if adapter is None:
+            raise RuntimeError(f"no adapter for provider: {provider}")
+        await _send_alert_template(
+            adapter=adapter,
+            provider=provider,
+            from_phone=from_phone,
+            recipient=recipient,
+            template=template,
+            language=route.language,
+            body_params=body_params,
+            tenant_id=tenant_id,
+        )
+        return
+    await send_from_auphere(recipient, template, body_params, route.language)
+
+
+async def _auphere_send(phone: str, template: str, params: list[str], language: str) -> None:
+    """Desde el número de avisos de Auphere (el registro de ADR-018). Sesión
+    propia: el registro es global y no se lee desde una sesión del cliente.
+    Sin número que pueda enviar, :class:`WhatsAppAlertUnavailable`."""
+    from nexus_api.repositories.auphere_channels import AuphereChannelRepository, _to_resolved
+    from nexus_channels.whatsapp_meta import MetaClient
+
+    async with get_sessionmaker()() as session:
+        row = await AuphereChannelRepository(session).get_default(provider="meta")
+        channel = _to_resolved(row) if row is not None else None
+    if channel is None or not channel.can_send:
+        raise WhatsAppAlertUnavailable("no_auphere_notification_number")
+    settings = get_settings()
+    client = MetaClient(
+        app_secret=settings.meta_app_secret,
+        require_appsecret_proof=settings.meta_require_appsecret_proof,
+        version=settings.meta_graph_api_version,
+    )
+    assert channel.provider_phone_id is not None
+    assert channel.access_token is not None
+    await client.send_template(
+        phone_number_id=channel.provider_phone_id,
+        access_token=channel.access_token,
+        to=phone.lstrip("+"),
+        template_name=template,
+        language=language,
+        components=[{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}],
+    )
+
+
+#: Las pruebas lo sustituyen para no salir a Meta. ``(teléfono, plantilla,
+#: parámetros, idioma)``.
+send_from_auphere: Callable[[str, str, list[str], str], Awaitable[None]] = _auphere_send
+
+
+async def _is_partner_person(session: AsyncSession, email: str | None) -> bool:
+    """Una persona del partner nunca recibe el resumen (33.4)."""
+    from nexus_api.db.models import PartnerMembership
+
+    if not email:
+        return False
+    found = await session.scalar(
+        sa.select(PartnerMembership.id)
+        .where(sa.func.lower(PartnerMembership.email) == email.lower())
+        .limit(1)
+    )
+    return found is not None
+
+
+#: Spec 051 (catálogo §17): el correo de un escalado. ``CONTACT`` va a media
+#: frase, así que el valor por defecto va en minúscula.
+_ESCALATED_SUBJECT = {
+    "es": "Una conversación con {contact} necesita tu atención",
+    "en": "A conversation with {contact} needs your attention",
+}
+_SOMEONE = {"es": "un cliente", "en": "a customer"}
+_REASON_LINE = {
+    "es": "El motivo que ha indicado el agente es: «{reason}».",
+    "en": 'The reason the agent gave: "{reason}".',
+}
+#: Sin resumen (el canal lo apagó, o lo recibe una persona del partner, 33.4):
+#: ni quién ni por qué.
+_NO_REASON_LINE = {
+    "es": "Abre la conversación para ver los detalles.",
+    "en": "Open the conversation to see the details.",
+}
+
+
+async def _send_escalation_email(
+    email: str | None, summary: list[str] | None, tenant_id: uuid.UUID
+) -> None:
+    """``conversation_escalated`` a un destinatario del canal, en el idioma de
+    su cuenta. ``summary`` es ``[quién, por qué]`` de ``_render_params``, o
+    ``None`` cuando no le toca el resumen."""
+    from nexus_api.services.email import send_localized
+    from nexus_api.services.email_catalog import EmailKind, console_link, email_locale
+
+    if not email:
+        raise RuntimeError("no_email")
+    who, why = (summary[0], summary[1]) if summary else (None, None)
+    # Los valores por defecto de ``_render_params`` sirven para la plantilla de
+    # WhatsApp; en el correo son la frase sin nombre y sin motivo.
+    contact = who if who and who != _UNKNOWN_CUSTOMER else None
+    reason = why if why and why != _UNKNOWN_REASON else None
+    inbox_url = console_link("/inbox")
+
+    def _compose(locale: str) -> tuple[str, dict[str, str]]:
+        lang = email_locale(locale)
+        name = contact or _SOMEONE[lang]
+        line = _REASON_LINE[lang].format(reason=reason) if reason else _NO_REASON_LINE[lang]
+        return _ESCALATED_SUBJECT[lang].format(contact=name), {
+            "CONTACT": name,
+            "REASON_LINE": line,
+            "INBOX_URL": inbox_url,
+        }
+
+    ok = await send_localized(
+        EmailKind.CONVERSATION_ESCALATED,
+        to=[email],
+        compose=_compose,
+        # Garantía 6: el correo es del cliente que escaló.
+        tenant_id=tenant_id,
+    )
+    if not ok:
+        raise RuntimeError("email_not_sent")
 
 
 def _dedupe(phones: list[str]) -> list[str]:
@@ -309,15 +667,16 @@ async def _payment_reviewer_phones(session: AsyncSession, target: str | None = N
     return [r.phone for r in reviewers_of(active.policies if active is not None else None)]
 
 
-async def _resolve_recipient_and_business_phone(
+async def _resolve_recipient_and_channel(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-) -> tuple[str | None, str | None, str | None]:
-    """Return (recipient_e164, owner_whatsapp_business_phone, provider).
+) -> tuple[str | None, Channel | None]:
+    """Return (recipient_e164, the tenant's WhatsApp channel).
 
     Recipient = tenant.owner_phone || settings.operator_fallback_phone.
-    Business phone + provider = first active WhatsApp channel of this tenant.
-    The provider drives which adapter sends the alert.
+    Channel = first active WhatsApp channel of this tenant: its provider drives
+    which adapter sends the alert, and its WABA (``config.waba_id``) whether
+    the alert can leave from its number (``channel_config.notify_from``).
     """
     settings = get_settings()
     tenant_row = await session.execute(sa.select(Tenant.owner_phone).where(Tenant.id == tenant_id))
@@ -326,8 +685,8 @@ async def _resolve_recipient_and_business_phone(
 
     from nexus_api.db.models import Channel, ChannelStatus
 
-    channel_row = await session.execute(
-        sa.select(Channel.provider_identifier, Channel.provider)
+    channel: Channel | None = await session.scalar(
+        sa.select(Channel)
         .where(
             Channel.type == "whatsapp",
             Channel.status == ChannelStatus.ACTIVE,
@@ -335,11 +694,7 @@ async def _resolve_recipient_and_business_phone(
         .order_by(Channel.created_at.asc())
         .limit(1)
     )
-    row = channel_row.first()
-    if row is None:
-        return recipient, None, None
-    business_phone, provider = row
-    return recipient, business_phone, provider
+    return recipient, channel
 
 
 async def _send_alert_template(
@@ -349,10 +704,12 @@ async def _send_alert_template(
     from_phone: str,
     recipient: str,
     template: str,
+    language: str,
     body_params: list[str],
     tenant_id: uuid.UUID,
 ) -> None:
-    """Send an operator alert template via the resolved adapter.
+    """Send an operator alert template via the resolved adapter, in the
+    language the template is approved in on the sender's WABA.
 
     Meta's ``send_template`` takes a single ``params`` dict; its
     ``_build_template_components`` reads ``body`` as a positional list.
@@ -362,7 +719,7 @@ async def _send_alert_template(
         from_phone=from_phone,
         recipient=recipient,
         template_name=template,
-        language="es_CL",
+        language=language,
         tenant_id=tenant_id,
         channel_id=uuid.uuid4(),  # placeholder — adapter only logs
         params={"body": body_params},
@@ -378,7 +735,7 @@ async def _render_params(
     from the KG when needed."""
     after = cast(dict[str, Any] | None, audit_row.after_json) or {}
     if template == "alert_escalation_v1":
-        customer_label = "cliente"
+        customer_label = _UNKNOWN_CUSTOMER
         customer_id = after.get("customer_id")
         if not customer_id:
             # ``escalate.escalate_to_human`` audits the conversation, not the
@@ -399,10 +756,10 @@ async def _render_params(
                 )
                 cust = cust_row.first()
                 if cust:
-                    customer_label = cust[0] or cust[1] or "cliente"
+                    customer_label = cust[0] or cust[1] or _UNKNOWN_CUSTOMER
             except (ValueError, TypeError):
                 pass
-        reason = str(after.get("reason") or "sin motivo informado")
+        reason = str(after.get("reason") or _UNKNOWN_REASON)
         return [customer_label, reason]
     if template == "alert_needs_reauth_v1":
         return []

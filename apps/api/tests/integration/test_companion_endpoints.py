@@ -47,6 +47,7 @@ def _answer_and_meter(_call: Any) -> str:
 
     collector.record_llm_usage(
         model="anthropic/claude-sonnet-4-6",
+        task="build",
         provider="anthropic",
         usage={"prompt_tokens": 1200, "completion_tokens": 340},
     )

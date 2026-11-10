@@ -10,9 +10,9 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogH
 import { listCatalogsAction, whatsappSignupAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { CatalogList } from "@/lib/backend/channels";
+import type { CatalogList, WhatsAppSignupResult } from "@/lib/backend/channels";
 import { actionErrorText } from "@/lib/action-error";
-import { SignupError, loginWithMeta, type SignupMode } from "@/lib/meta-fb-sdk";
+import { SignupError, loginWithMeta, type SignupErrorCode, type SignupMode, type SignupVersion } from "@/lib/meta-fb-sdk";
 
 import { CatalogPicker, offerCatalogAfterSignup } from "./catalog-picker";
 
@@ -20,6 +20,8 @@ import { CatalogPicker, offerCatalogAfterSignup } from "./catalog-picker";
 export type MetaSignupConfig = {
   appId: string | null;
   graphVersion: string;
+  /** Spec 050: which Embedded Signup Meta renders (`v4` until v5 passes staging). */
+  signupVersion?: SignupVersion;
   configIdCloudApi: string | null;
   configIdCoexistence: string | null;
 };
@@ -31,7 +33,7 @@ export type MetaSignupConfig = {
  * everything around it. Without this, the popup floats over a busy console
  * and the eye does not know which of the two is asking for attention.
  */
-export function MetaWindowVeil({ open }: { open: boolean }) {
+export function MetaWindowVeil({ open, note }: { open: boolean; note?: MessageKey }) {
   const t = useT();
   if (!open) return null;
   return (
@@ -43,6 +45,7 @@ export function MetaWindowVeil({ open }: { open: boolean }) {
     >
       <p className="text-lg font-medium">{t("ch.connect.veil.title")}</p>
       <p className="max-w-md text-sm text-pistachio/80">{t("ch.connect.veil.body")}</p>
+      {note ? <p className="max-w-md text-sm text-pistachio/80">{t(note)}</p> : null}
     </div>
   );
 }
@@ -58,6 +61,47 @@ export function signupFailureKey(code: string | null | undefined): MessageKey | 
   if (code === "number_in_use") return "ch.connect.numberInUse";
   if (code === "number_held_by_previous_owner") return "ch.connect.heldByPreviousOwner";
   return null;
+}
+
+type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
+
+const SDK_FAILURE_KEY = {
+  sdk_failed: "ch.connect.sdkFailed",
+  cancelled: "ch.connect.cancelled",
+  timeout: "ch.connect.timeout",
+  no_code: "ch.connect.noCode",
+  meta_error: "common.error.backend",
+  no_number: "ch.connect.noNumber",
+  grant_only: "ch.connect.grantOnly",
+} as const satisfies Record<SignupErrorCode, MessageKey>;
+
+/** What the whole signup ended in: the new number, or why not (`code`) in words (`text`). */
+export type WhatsAppSignupOutcome = { ok: true; data: WhatsAppSignupResult } | { ok: false; code: string; text: string };
+
+/**
+ * The Embedded Signup without its buttons: Meta's window with the config id
+ * of `mode`, then the code and the WABA ids to the console API. Shared by the
+ * client's Channels page and the agent's Canales tab (spec 047, H4), so there
+ * is one way to connect a number. Never throws.
+ */
+export async function runWhatsAppSignup({ refId, meta, mode, t }: { refId: string; meta: MetaSignupConfig; mode: SignupMode; t: T }): Promise<WhatsAppSignupOutcome> {
+  const configId = mode === "coexistence" ? meta.configIdCoexistence : meta.configIdCloudApi;
+  if (!meta.appId || !configId) return { ok: false, code: "not_configured", text: t("ch.connect.byAuphere.body") };
+  try {
+    const envelope = await loginWithMeta({ appId: meta.appId, version: meta.graphVersion, configId, mode, signupVersion: meta.signupVersion });
+    const res = await whatsappSignupAction({ ref: refId, mode, ...envelope });
+    if (res.ok) return { ok: true, data: res.data };
+    // R1.4 / R4.2: the number is someone else's, or its previous owner
+    // still holds it at Meta — say so, not «error».
+    const key = signupFailureKey(res.code);
+    if (key) return { ok: false, code: res.code ?? "backend", text: t(key) };
+    // The quota 409 carries the API's English detail: never shown as is.
+    if (res.status === 409) return { ok: false, code: "quota", text: t("channels.proto.error.quota") };
+    return { ok: false, code: res.code ?? "backend", text: actionErrorText(res, t) };
+  } catch (err) {
+    const code = err instanceof SignupError ? err.code : "meta_error";
+    return { ok: false, code, text: t(SDK_FAILURE_KEY[code]) };
+  }
 }
 
 /**
@@ -97,14 +141,8 @@ export function WhatsAppConnect({
     if (!meta.appId || !configId) return;
     setWorking(true);
     try {
-      const envelope = await loginWithMeta({ appId: meta.appId, version: meta.graphVersion, configId, mode });
-      const res = await whatsappSignupAction({ ref: refId, mode, ...envelope });
-      if (!res.ok) {
-        // R1.4 / R4.2: the number is someone else's, or its previous owner
-        // still holds it at Meta — say so, not «error».
-        const key = signupFailureKey(res.code);
-        return void toast.error(key ? t(key) : actionErrorText(res, t));
-      }
+      const res = await runWhatsAppSignup({ refId, meta, mode, t });
+      if (!res.ok) return void toast.error(res.text);
       // R1.2: the card, the list and the onboarding are recomputed on the
       // server; the toast says what changed for the client right now.
       toast.success(
@@ -114,12 +152,8 @@ export function WhatsAppConnect({
       router.refresh();
       const list = await listCatalogsAction({ ref: refId, channelId: res.data.channel_id });
       if (offerCatalogAfterSignup(list) && list.ok) setOffer({ channelId: res.data.channel_id, list: list.data });
-    } catch (err) {
-      const code = err instanceof SignupError ? err.code : "meta_error";
-      const key = (
-        { sdk_failed: "ch.connect.sdkFailed", cancelled: "ch.connect.cancelled", timeout: "ch.connect.timeout", no_code: "ch.connect.noCode", meta_error: "common.error.backend" } as const
-      )[code];
-      toast.error(t(key));
+    } catch {
+      toast.error(t("common.error.backend"));
     } finally {
       setWorking(false);
     }

@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
 from nexus_channels.whatsapp_meta.signature import sign_meta_request
 
 from nexus_api.core.tenant_context import tenant_scoped_session
@@ -483,3 +484,80 @@ class TestTOFU:
         assert r.status_code == 200
         assert r.json()["status"] == "owner_channel:help_sent"
         assert any("/yes" in s["text"] for s in reply_recorder)
+
+
+class TestMixedBatch:
+    async def test_a_batch_with_the_owner_number_and_a_clients_routes_each_its_way(
+        self, client, db_session, reply_recorder, fake_redis
+    ):
+        """QA 2026-10-30 (INC-20): the owner number was decided once, by the
+        FIRST number of the POST, so a client's message in the same batch
+        went to the owner flow and was lost."""
+        ctx = await _seed_full_backchannel(db_session)
+        sm = get_sessionmaker()
+        async with sm() as session, tenant_scoped_session(session, ctx["tenant_id"]):
+            row = await session.get(OwnerConsultation, ctx["consultation_id"])
+            row.status = "cancelled"
+            row.cancelled_at = datetime.now(UTC)
+            business = f"+569{ctx['tenant_id'].int % 10**8:08d}"
+            channel = (
+                await session.execute(
+                    sa.select(Channel).where(Channel.tenant_id == ctx["tenant_id"])
+                )
+            ).scalar_one()
+            channel.provider_identifier = business
+            await session.commit()
+
+        owner = json.loads(_meta_payload("/help", owner_phone=ctx["owner_phone"]))
+        wamid = f"wamid.{uuid.uuid4().hex}"
+        owner["entry"].append(
+            {
+                "id": "WABA_CLIENT",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "metadata": {
+                                "display_phone_number": business.lstrip("+"),
+                                "phone_number_id": f"PN-{business}",
+                            },
+                            "contacts": [{"profile": {"name": "Ana"}, "wa_id": "56987654321"}],
+                            "messages": [
+                                {
+                                    "from": "56987654321",
+                                    "id": wamid,
+                                    "timestamp": "1700000000",
+                                    "type": "text",
+                                    "text": {"body": "Hola"},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        )
+        body = json.dumps(owner).encode()
+        r = await client.post(
+            "/webhook/meta",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": sign_meta_request(META_APP_SECRET, body),
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "ok"
+        assert len(reply_recorder) == 1, "the owner's /help is answered"
+        streams = [
+            k.decode() if isinstance(k, bytes) else k
+            for k in await fake_redis.keys("nexus:inbound:*")
+        ]
+        enqueued = [
+            fields
+            for stream in streams
+            for _id, fields in await fake_redis.xrange(stream, count=100)
+            if (fields.get(b"provider_message_id") or fields.get("provider_message_id"))
+            in (wamid, wamid.encode())
+        ]
+        assert enqueued, "the client's message reached its own stream"

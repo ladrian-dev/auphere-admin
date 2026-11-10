@@ -7,6 +7,9 @@ export const dynamic = "force-dynamic";
 
 const query = z.object({
   actor: z.string().max(255).optional(),
+  // Spec 047 (49.1): el CSV con los mismos filtros que la pantalla.
+  person: z.string().max(255).optional(),
+  days: z.enum(["7", "30", "90", "all"]).optional(),
   action: z.string().max(80).optional(),
   client: z.string().max(255).optional(),
   category: z.string().max(40).optional(),

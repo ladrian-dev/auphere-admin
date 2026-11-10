@@ -3,6 +3,11 @@
  * Panel and Consumo for a single client. Spread into `i18n/messages.ts`.
  */
 export const liteMessages = {
+  // ── lateral: la fase Beta (spec 045, R7) ─────────────────────────
+  "shell.beta.client.hint": {
+    es: "Auphere Customers está en fase beta. Si algo no funciona como esperas, cuéntaselo a quien te dio acceso.",
+    en: "Auphere Customers is in beta. If something doesn't work as you expect, tell whoever gave you access.",
+  },
   "lite.panel.greeting": { es: "Hola, {name}", en: "Hi, {name}" },
   // ── Panel (R4) ───────────────────────────────────────────────────
   "lite.panel.partial": {
@@ -25,7 +30,7 @@ export const liteMessages = {
   "lite.attention.inbox": { es: "Bandeja de entrada", en: "Inbox" },
   "lite.attention.waiting": { es: "{count} conversaciones esperan a una persona", en: "{count} conversations are waiting for a person" },
   "lite.attention.waiting.one": { es: "1 conversación espera a una persona", en: "1 conversation is waiting for a person" },
-  "lite.attention.attend": { es: "Atender", en: "Attend" },
+  "lite.attention.attend": { es: "Atender ahora", en: "Answer now" },
   "lite.attention.balance": { es: "Saldo", en: "Balance" },
   "lite.attention.balance_out": { es: "Tu saldo se agotó y el agente no responde", en: "Your balance is used up and the agent is not answering" },
   "lite.attention.balance_low": { es: "Te quedarás sin saldo en unos {days} días", en: "You will run out of balance in about {days} days" },
@@ -37,6 +42,48 @@ export const liteMessages = {
   },
   "lite.ok": { es: "Todo en orden. El saldo alcanza para el mes.", en: "All good. The balance lasts the month." },
   "lite.ok.noBalance.withInbox": { es: "Todo en orden. Nada espera a una persona.", en: "All good. Nothing is waiting for a person." },
+  // ── Panel: el bloque de Reservas (spec 043, T026) ────────────────
+  "lite.reservas.title": { es: "Reservas", en: "Bookings" },
+  "lite.reservas.title.services": { es: "Agenda", en: "Schedule" },
+  "lite.reservas.title.capacity": { es: "Ocupación", en: "Occupancy" },
+  "lite.reservas.see": { es: "Ver reservas", en: "See bookings" },
+  "lite.reservas.pct": { es: "{pct} %", en: "{pct}%" },
+  "lite.reservas.today": { es: "Reservas hoy", en: "Bookings today" },
+  "lite.reservas.today.split": { es: "{confirmed} confirmadas · {pending} sin confirmar", en: "{confirmed} confirmed · {pending} unconfirmed" },
+  "lite.reservas.week.occupancy": { es: "Ocupación esta semana", en: "Occupancy this week" },
+  "lite.reservas.week.occupancy.hint": { es: "De lunes a domingo", en: "Monday to Sunday" },
+  "lite.reservas.week.agent": { es: "Reservadas por el agente", en: "Booked by the agent" },
+  "lite.reservas.week.agent.hint": { es: "De la semana", en: "Of this week" },
+  "lite.reservas.month.noshow": { es: "No se presentaron", en: "No-shows" },
+  "lite.reservas.month.noshow.hint": { es: "Del mes", en: "This month" },
+  "lite.reservas.month.recovered": { es: "Huecos recuperados", en: "Openings recovered" },
+  "lite.reservas.month.recovered.hint": { es: "Con la lista de espera, este mes", en: "Through the waitlist, this month" },
+  "lite.reservas.month.recovered.off": { es: "La lista de espera está apagada", en: "The waitlist is off" },
+  "lite.reservas.people": { es: "Reservados hoy", en: "Booked today" },
+  "lite.reservas.people.hint": { es: "{unit} en {bookings}", en: "{unit} in {bookings}" },
+  "lite.reservas.inside": { es: "Dentro ahora", en: "Inside now" },
+  "lite.reservas.inside.of": { es: "De un aforo de {seats}", en: "Out of {seats} seats" },
+  "lite.reservas.inside.next": { es: "Llegan {people} en la próxima hora", en: "{people} arriving in the next hour" },
+  "lite.reservas.pending": { es: "Sin confirmar", en: "Unconfirmed" },
+  "lite.reservas.pending.hint": { es: "Reservas de hoy", en: "Today's bookings" },
+  "lite.reservas.waitlist": { es: "Lista de espera", en: "Waitlist" },
+  "lite.reservas.waitlist.hint": { es: "Esperan sitio", en: "Waiting for room" },
+  "lite.reservas.upcoming": { es: "Próximas de hoy", en: "Next today" },
+  "lite.reservas.upcoming.empty": { es: "No quedan reservas para hoy.", en: "No more bookings today." },
+  "lite.reservas.error": { es: "No se pudieron cargar las cifras de Reservas.", en: "The Bookings figures could not load." },
+  "lite.reservas.partial": {
+    es: "Parte de las cifras de Reservas no se pudo cargar.",
+    en: "Part of the Bookings figures could not load.",
+  },
+  "lite.attention.reservas": { es: "Reservas", en: "Bookings" },
+  "lite.attention.reservas.pending": {
+    es: "{count} reservas de hoy sin confirmar. El agente ya les escribió.",
+    en: "{count} of today's bookings are unconfirmed. The agent has already written to them.",
+  },
+  "lite.attention.reservas.pending.one": {
+    es: "1 reserva de hoy sin confirmar. El agente ya le escribió.",
+    en: "1 of today's bookings is unconfirmed. The agent has already written to them.",
+  },
   // ── invitación (R1.4) ────────────────────────────────────────────
   "invite.client.body": {
     es: "Te dieron acceso a la consola de {client}. Crea tu contraseña para entrar.",
@@ -63,7 +110,8 @@ export const liteMessages = {
     en: "Part of Usage could not load. Reload to try again.",
   },
   "lite.usage.cards": { es: "Saldo y gasto", en: "Balance and spend" },
-  "lite.usage.balance.runway": { es: "Cubre unos {days} días al ritmo de esta semana", en: "Lasts about {days} days at this week's pace" },
+  // Spec 045 (R4): the balance answers «until when» first. The date is the API's local date, in the person's language.
+  "lite.usage.balance.until": { es: "Te alcanza hasta el {date}", en: "Lasts until {date}" },
   "lite.usage.unreadable": { es: "No se pudo leer ahora", en: "Could not be read right now" },
   "lite.usage.month.projection": { es: "A este ritmo, {amount} a fin de mes", en: "At this pace, {amount} by the end of the month" },
   "lite.usage.month.none": { es: "Sin gasto este mes", en: "No spend this month" },
@@ -76,9 +124,15 @@ export const liteMessages = {
   "lite.usage.byAgent.spent": { es: "Gastado este mes", en: "Spent this month" },
   "lite.usage.byAgent.share": { es: "Parte del gasto", en: "Share of spend" },
   "lite.usage.detail.hint": {
-    es: "Lo que mide la plataforma por dentro, por medidor. Para revisar con detalle o exportar.",
-    en: "What the platform measures inside, per meter. To review in detail or export.",
+    es: "Lo que mide la plataforma por dentro, por canal. Para revisar con detalle o exportar.",
+    en: "What the platform measures inside, per channel. To review in detail or export.",
   },
+  // Spec 045 (R6.3): the detail in three families, one WhatsApp row and the period's spend.
+  "lite.usage.detail.channel": { es: "Canal", en: "Channel" },
+  "lite.usage.detail.unit.model": { es: "tokens", en: "tokens" },
+  "lite.usage.detail.unit.media": { es: "archivos", en: "files" },
+  "lite.usage.detail.unit.other": { es: "unidades varias", en: "mixed units" },
+  "lite.usage.detail.spend": { es: "Gasto del periodo", en: "Spend in the period" },
   // ── campana (R15) ────────────────────────────────────────────────
   "lite.bell.title": { es: "Avisos", en: "Notifications" },
   "lite.bell.readAll": { es: "Marcar todo como leído", en: "Mark all as read" },
@@ -89,4 +143,47 @@ export const liteMessages = {
   "lite.notif.client.balance_low": { es: "Tu saldo alcanza para unos {days} días", en: "Your balance lasts about {days} more days" },
   "lite.notif.client.balance_out": { es: "Tu saldo se agotó: el agente no responde", en: "Your balance is used up: the agent is not answering" },
   "lite.notif.someone": { es: "Un contacto", en: "A contact" },
+  "lite.notif.client.wallet.low": { es: "Queda poco saldo para tus agentes", en: "Your agents’ balance is running low" },
+  "lite.notif.client.wallet.not_enough": { es: "El saldo no llega a fin de mes", en: "The balance will not last the month" },
+  "lite.notif.client.wallet.empty": { es: "Se acabó el saldo: tus agentes no responden", en: "The balance ran out: your agents are not answering" },
+  "lite.notif.agent.cap.warning": { es: "Un agente va por el 80 % de su tope del mes", en: "An agent has used 80% of its monthly cap" },
+  "lite.notif.agent.cap.reached": { es: "Un agente llegó a su tope del mes y está en pausa", en: "An agent reached its monthly cap and is paused" },
+  "lite.notif.agent.paused": { es: "Pausaron uno de tus agentes", en: "One of your agents was paused" },
+  "lite.notif.agent.resumed": { es: "Uno de tus agentes vuelve a atender", en: "One of your agents is answering again" },
+  "lite.notif.channel.paused": { es: "Pausaron uno de tus números", en: "One of your numbers was paused" },
+  "lite.notif.channel.resumed": { es: "Uno de tus números vuelve a atender", en: "One of your numbers is answering again" },
+  "lite.notif.channel.problem": { es: "Uno de tus números tiene un problema y no atiende", en: "One of your numbers has a problem and is not answering" },
+  // ── Tus teléfonos (spec 031, R7.3) ───────────────────────────────
+  "lite.phones.menu": { es: "Tus teléfonos", en: "Your phones" },
+  "lite.phones.title": { es: "Tus teléfonos", en: "Your phones" },
+  "lite.phones.subtitle": {
+    es: "Los teléfonos con la sesión abierta en Auphere Customers. Cierra el que ya no uses o hayas perdido: deja de entrar y de recibir avisos al momento.",
+    en: "The phones signed in to Auphere Customers. Sign out one you no longer use or have lost: it stops getting in and getting notifications right away.",
+  },
+  "lite.phones.list": { es: "Teléfonos con la sesión abierta", en: "Signed-in phones" },
+  "lite.phones.meta": { es: "{platform} · versión {version}", en: "{platform} · version {version}" },
+  "lite.phones.lastSeen": { es: "Último uso {when}", en: "Last used {when}" },
+  "lite.phones.enrolled": { es: "Entró el {date}", en: "Signed in on {date}" },
+  "lite.phones.close": { es: "Cerrar sesión", en: "Sign out" },
+  "lite.phones.close.aria": { es: "Cerrar la sesión de {name}", en: "Sign out {name}" },
+  "lite.phones.confirm.title": { es: "¿Cerrar la sesión de {name}?", en: "Sign out {name}?" },
+  "lite.phones.confirm.body": {
+    es: "Ese teléfono deja de ver tu negocio y de recibir avisos ahora mismo. Para volver a usarlo, hay que entrar otra vez con tu correo.",
+    en: "That phone stops seeing your business and getting notifications right now. To use it again, sign in again with your email.",
+  },
+  "lite.phones.closed": { es: "Sesión cerrada en {name}", en: "{name} is signed out" },
+  "lite.phones.closeFailed": {
+    es: "No se pudo cerrar la sesión de {name}. Sigue abierta: inténtalo de nuevo.",
+    en: "{name} could not be signed out. It is still signed in. Try again.",
+  },
+  "lite.phones.empty.title": { es: "Todavía no has entrado desde un teléfono", en: "You haven't signed in from a phone yet" },
+  "lite.phones.empty.body": {
+    es: "Instala Auphere Customers en tu iPhone o Android y entra con el correo de siempre. Cada teléfono donde entres aparecerá aquí.",
+    en: "Install Auphere Customers on your iPhone or Android and sign in with your usual email. Every phone you sign in on shows up here.",
+  },
+  "lite.phones.error.title": { es: "No se pudieron cargar tus teléfonos", en: "Your phones could not load" },
+  "lite.phones.error.body": {
+    es: "Tus sesiones siguen como estaban. Vuelve a intentarlo en un momento.",
+    en: "Your sessions are as they were. Try again in a moment.",
+  },
 } as const;

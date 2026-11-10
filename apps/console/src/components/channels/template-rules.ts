@@ -152,3 +152,76 @@ export const LANGUAGES = [
 ] as const;
 
 export const SUGGESTED_VARIABLES = ["nombre", "pedido", "fecha", "total"] as const;
+
+/** What the composer starts from when a template is duplicated to fix it. */
+export type TemplateDraft = {
+  name: string;
+  language: string;
+  category: "UTILITY" | "MARKETING";
+  header: string;
+  body: string;
+  footer: string;
+  buttons: ButtonDraft[];
+  examples: Record<string, string>;
+};
+
+const text = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/**
+ * Pure: Meta's `components` of a template → a draft for the composer (QA
+ * 2026-10-30: a rejected template could only be read truncated, never fixed).
+ * The name gets `_v2` (Meta keeps the rejected one's name); examples come from
+ * named or positional params when Meta returns them.
+ */
+export function draftFromComponents(row: {
+  name: string;
+  language: string;
+  category: string | null;
+  components: Array<Record<string, unknown>>;
+}): TemplateDraft {
+  const draft: TemplateDraft = {
+    name: `${row.name}_v2`.slice(0, LIMITS.name),
+    language: row.language,
+    category: row.category === "MARKETING" ? "MARKETING" : "UTILITY",
+    header: "",
+    body: "",
+    footer: "",
+    buttons: [],
+    examples: {},
+  };
+  for (const c of row.components ?? []) {
+    const type = text(c.type).toUpperCase();
+    if (type === "HEADER" && text(c.format).toUpperCase() === "TEXT") draft.header = text(c.text);
+    if (type === "FOOTER") draft.footer = text(c.text);
+    if (type === "BODY") {
+      draft.body = text(c.text);
+      const example = (c.example ?? {}) as Record<string, unknown>;
+      const named = example.body_text_named_params;
+      if (Array.isArray(named)) {
+        for (const p of named as Array<Record<string, unknown>>) {
+          if (text(p.param_name)) draft.examples[text(p.param_name)] = text(p.example);
+        }
+      }
+      const positional = example.body_text;
+      if (Array.isArray(positional) && Array.isArray(positional[0])) {
+        (positional[0] as unknown[]).forEach((v, i) => {
+          draft.examples[String(i + 1)] = text(v);
+        });
+      }
+    }
+    if (type === "BUTTONS" && Array.isArray(c.buttons)) {
+      for (const b of c.buttons as Array<Record<string, unknown>>) {
+        const bt = text(b.type).toUpperCase();
+        if (bt === "QUICK_REPLY") draft.buttons.push({ type: "QUICK_REPLY", label: text(b.text) });
+        if (bt === "URL") draft.buttons.push({ type: "URL", label: text(b.text), url: text(b.url) });
+        if (bt === "PHONE_NUMBER") draft.buttons.push({ type: "PHONE_NUMBER", label: text(b.text), phone_number: text(b.phone_number) });
+      }
+    }
+  }
+  return draft;
+}
+
+/** Pure: a language code as people read it (`es_CL` → «Español de Chile»). */
+export function languageLabel(code: string): string {
+  return LANGUAGES.find((l) => l.code === code)?.label ?? code;
+}

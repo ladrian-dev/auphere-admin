@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_api.db.models import AgentConfig
 from nexus_api.services.skills_catalog import list_skills
 
-from .agent_drafts import DraftView, ensure_draft, load_view
+from .agent_drafts import DraftView, draft_written, ensure_draft, load_view
 from .deps import ClientScope, agent_scope
 from .schemas_agent_tools import SkillOut, SkillsIn, SkillsOut, SkillsSaved
 
@@ -97,7 +97,7 @@ async def put_skills(
             else {"skill_id": entry.skill_id, "version": entry.uploaded_version or "latest"}
         )
     draft.runtime_skills = entries or None
-    await scope.session.flush()
+    await draft_written(scope, draft)
     out = _out(await load_view(scope))
     return SkillsSaved(**out.model_dump(), draft_created=created)
 

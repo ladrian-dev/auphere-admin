@@ -1,0 +1,68 @@
+# Apuntar temporalmente los webhooks de Instagram y Page a staging
+
+**Decisión del owner (2026-10-30):** para probar y grabar, staging recibe los eventos reales de Instagram y Messenger.
+
+**Lo hace el owner**, porque la app de Meta `957213733862330` es la misma para staging y producción.
+
+## Estado
+
+**Hecho el 2026-10-30 (noche)** por el owner, con ayuda de Claude en su Chrome:
+
+| Objeto | URL | Campos suscritos |
+|---|---|---|
+| Instagram | `https://api.staging.auphere.com/webhook/meta`, verificada por Meta | 8: `comments`, `mentions`, `message_reactions`, `messages`, `messaging_handover`, `messaging_postbacks`, `messaging_referral`, `messaging_seen` |
+| Page | `https://api.staging.auphere.com/webhook/meta`, verificada por Meta | 7: `messages`, `message_echoes`, `message_reactions`, `message_reads`, `messaging_handovers`, `messaging_postbacks`, `messaging_referrals` |
+| WhatsApp Business Account | **Sin tocar:** `https://webhooks.auphere.com/webhook/meta` | — |
+| WhatsApp +34672138367 («Andres Matos \| Auphere») | Conectado en staging a «Meta Review Demo» el 2026-10-31 16:40: su WABA manda a `https://api.staging.auphere.com/webhook/meta` (`override_callback_uri`). El owner confirma que ningún cliente de producción lo usa | — |
+
+**2026-11-01 (comentarios de la Página, decisión del owner):** hecho por Claude en el Chrome del owner:
+- Webhook de Página: campo `feed` suscrito (v26.0).
+- Caso de uso de Messenger: `pages_read_engagement` añadido (Meta lo añadió también al de Instagram).
+- Caso de uso nuevo «Administrar todos los aspectos de tu página», con `pages_read_user_content` y `pages_manage_engagement`.
+- Configuración «Auphere Messenger» (`2188508105420190`): 7 permisos, con esos tres nuevos.
+
+Todo esto entra en el borrador de revisión de Meta, que sigue sin enviarse.
+
+Pendiente:
+- `messaging_policy_enforcement` en Page **no** está suscrito, y la lista de revisión de Messenger lo pide.
+- Comprobar con un DM real que llega a staging. Hace falta conectar antes una cuenta de Instagram y una Página en staging.
+
+## Por qué es seguro hoy
+
+- Producción (`main` = `daf0ca15`) aún no tiene la spec 049: hoy descarta todos los eventos de `instagram` y `page`. Mientras dure el cambio, producción no pierde nada que use.
+- **WhatsApp no se toca.** Cada número de WhatsApp lleva su propio destino (`override_callback_uri` por WABA), y el objeto `whatsapp_business_account` de la app debe quedarse como está.
+- Staging ya responde en su URL y rechaza firmas o tokens falsos (verificado el 2026-10-30, T-WH-01…04).
+- La firma de los eventos usa el secreto de la app, que es el mismo en los dos entornos, así que staging los acepta.
+
+## Antes de empezar
+
+- [ ] El despliegue de staging con los últimos cambios está terminado (te lo confirmo).
+- [ ] Tienes a mano el **verify token de staging** (`NEXUS_META_WEBHOOK_VERIFY_TOKEN` del entorno de staging, en sus secretos).
+  - Meta lo manda en la verificación, y staging solo responde si coincide.
+  - No lo pegues en el chat.
+- [ ] Apunta los valores actuales (la URL de producción y su token) para poder volver atrás.
+
+## Pasos (App Dashboard → app «Auphere» → Webhooks)
+
+1. Arriba, en el selector de objeto, elige **Instagram**.
+   - Pulsa **Editar suscripción** (*Edit subscription*).
+   - **URL de devolución de llamada:** `https://api.staging.auphere.com/webhook/meta`.
+   - **Token de verificación:** el de staging.
+   - Pulsa **Verificar y guardar**. Meta hace la verificación al momento; si falla, el token no coincide.
+   - Comprueba que los 8 campos siguen suscritos (`messages`, `comments`, …).
+2. Repite con el objeto **Page**: misma URL, mismo token. Comprueba que siguen sus 7 campos.
+3. Mira que siga suscrito `messaging_policy_enforcement` en Page (pendiente de T050). Si no lo está, suscríbelo ahora.
+4. **No toques** el objeto **WhatsApp Business Account**.
+
+## Cuando termines
+
+Avísame y compruebo que staging reciba los eventos. Para eso:
+- conecto en staging la cuenta de Instagram y la Página de prueba, con tu autorización;
+- mandas un DM de prueba;
+- verifico en la bandeja y en los registros que llegó al cliente correcto.
+
+## Para volver atrás
+
+Mismos pasos, poniendo otra vez la URL de producción, `https://webhooks.auphere.com/webhook/meta`, con su verify token.
+
+**Hay que hacerlo antes de promover la spec 049 a producción.** A partir de ese momento, producción necesita esos eventos y los reenvía a staging cuando son suyos.

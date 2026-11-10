@@ -52,7 +52,8 @@ async def test_overview_counts_partners_clients_and_money(
     client, console_world, admin_headers
 ) -> None:
     a, b = console_world["a"], console_world["b"]
-    # 1 US$ = 100 000 credits (billing/pricing.py). 2.5 US$ + 1.25 US$.
+    # 1 US$ = 100 000 credits (billing/pricing.py). 2.5 US$ + 1 US$; the 0.25 US$
+    # of B's pool is not balance.
     await _wallet(a["partner_id"], purchased=250_000)
     await _wallet(b["partner_id"], purchased=100_000, included=25_000)
     await _exhaust_cap(b["partner_id"], b["tenant_id"])
@@ -65,7 +66,7 @@ async def test_overview_counts_partners_clients_and_money(
     assert body["partners"]["active"] >= 2
     assert body["clients"]["active"] >= 2
     # The sum of each partner's own balance, read under that partner's GUC.
-    assert body["balance_cents"] == 250 + 125
+    assert body["balance_cents"] == 250 + 100
     assert body["unreadable"] == []
     without_cap = {row["tenant_id"] for row in body["clients_without_cap"]}
     assert without_cap == {str(b["tenant_id"])}
@@ -173,6 +174,31 @@ async def test_members_lists_people_and_pending_invitations(
 
     missing = await client.get(f"/admin/partners/{uuid.uuid4()}/members", headers=admin_headers)
     assert missing.status_code == 404
+
+
+async def test_members_does_not_show_an_invitation_past_its_term_as_pending(
+    client, console_world, admin_headers, db_session
+) -> None:
+    a = console_world["a"]
+    now = datetime.now(UTC)
+    db_session.add_all(
+        PartnerInvitation(
+            partner_id=a["partner_id"],
+            email=email,
+            role="analyst",
+            token_hash=uuid.uuid4().hex + uuid.uuid4().hex,
+            expires_at=expires_at,
+        )
+        for email, expires_at in (
+            ("viva@partner-a.example", now + timedelta(days=1)),
+            ("vencida@partner-a.example", now - timedelta(days=1)),
+        )
+    )
+    await db_session.commit()
+
+    res = await client.get(f"/admin/partners/{a['partner_id']}/members", headers=admin_headers)
+    assert res.status_code == 200, res.text
+    assert [i["email"] for i in res.json()["invitations"]] == ["viva@partner-a.example"]
 
 
 async def test_instance_names_environment_schema_and_commit(client, admin_headers) -> None:

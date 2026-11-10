@@ -29,6 +29,7 @@ import sqlalchemy as sa
 from nexus_api.db.models import PartnerDevice, PartnerMembership
 from nexus_api.db.models.console_identity import ConsoleAccount
 from nexus_api.services import console_identity
+from nexus_api.services.email_catalog import EmailKind
 from tests.conftest import mint_console_token
 
 pytestmark = [pytest.mark.isolation, pytest.mark.asyncio]
@@ -46,22 +47,19 @@ def _svc() -> dict[str, str]:
 def _mail_sink(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     sent: list[dict[str, Any]] = []
 
-    async def _fake(**kwargs: Any) -> bool:
-        sent.append(kwargs)
+    async def _fake(kind: EmailKind, **kwargs: Any) -> bool:
+        sent.append({"kind": kind, **kwargs})
         return True
 
-    monkeypatch.setattr("nexus_api.services.email.send_email", _fake)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
     return sent
 
 
 def _link_token(sent: list[dict[str, Any]]) -> str:
-    html = sent[-1]["html"]
-    start = html.index("/reset/") + len("/reset/")
-    end = min(
-        (i for i in (html.find('"', start), html.find("<", start), html.find(">", start)) if i > 0),
-        default=len(html),
-    )
-    return html[start:end]
+    """El token del último enlace de restablecer (spec 051: una variable)."""
+    assert sent[-1]["kind"] is EmailKind.PASSWORD_RESET
+    url: str = sent[-1]["variables"]["RESET_URL"]
+    return url.split("/reset/", 1)[1]
 
 
 async def _person_with_everything(

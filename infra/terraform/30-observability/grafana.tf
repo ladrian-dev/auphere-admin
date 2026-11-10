@@ -18,11 +18,12 @@
 
 variable "grafana_enabled" {
   description = <<-EOT
-    Crea Grafana. Apagado por defecto para que un `apply` de las alarmas
-    en un workspace nuevo no levante un servicio de más sin pedirlo.
+    Viene de <workspace>.tfvars. Si Terraform te lo pregunta, te falta -var-file.
+    Crea Grafana. Sin default a propósito: con `false` por defecto, olvidar un
+    -var en un entorno donde está en marcha destruía sus 11 recursos.
   EOT
   type        = bool
-  default     = false
+  nullable    = false
 }
 
 variable "grafana_image_tag" {

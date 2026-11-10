@@ -21,7 +21,7 @@ limpios:
 
 | Paso | api | worker |
 |---|---|---|
-| `uv export --frozen --no-dev --no-emit-project` | ok (135 paquetes) | ok |
+| `uv export --frozen --no-dev --no-emit-project` (`--locked` desde la corrección) | ok (135 paquetes) | ok |
 | `uv pip install --no-editable -r` + `--no-deps .` | ok | ok |
 | `python -I -m nexus_api.core.litellm_smoke` | `litellm 1.83.0: tool calls need no missing package` | `litellm 1.83.14: …` |
 | importar desde `site-packages` | `nexus_api.main`, `nexus_worker.bootstrap`, `nexus_mcp`, `nexus_channels`, `ucm_schema` | `nexus_worker.main`, `nexus_api.main` |

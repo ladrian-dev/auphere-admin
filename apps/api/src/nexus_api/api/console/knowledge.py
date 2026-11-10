@@ -30,6 +30,7 @@ from nexus_api.db.models import (
     KnowledgeErrorCode,
 )
 from nexus_api.services import knowledge_indexer as indexer
+from nexus_api.services.knowledge import layers
 from nexus_api.services.knowledge_indexer import IndexingError
 
 from .deps import ClientScope, client_scope
@@ -76,15 +77,20 @@ def _audit(scope: ClientScope, action: str, doc: KnowledgeDocument, after: dict[
 async def list_documents(
     scope: ClientScope = Depends(client_scope("knowledge:read")),
 ) -> KnowledgeListOut:
+    # Spec 047 (D14): la capa del negocio; las fuentes propias de cada agente
+    # están en su pestaña Conocimiento.
+    business = sa.and_(KnowledgeDocument.agent_id.is_(None), KnowledgeDocument.removed_at.is_(None))
     rows = (
         await scope.session.scalars(
-            sa.select(KnowledgeDocument).order_by(KnowledgeDocument.created_at.desc())
+            sa.select(KnowledgeDocument)
+            .where(business)
+            .order_by(KnowledgeDocument.created_at.desc())
         )
     ).all()
     indexed_chars = await scope.session.scalar(
         sa.select(
             sa.func.coalesce(sa.func.sum(sa.func.length(KnowledgeDocument.content_text)), 0)
-        ).where(KnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value)
+        ).where(KnowledgeDocument.status == KnowledgeDocumentStatus.INDEXED.value, business)
     )
     return KnowledgeListOut(
         items=[_out(r) for r in rows],
@@ -131,6 +137,7 @@ async def upload_document(
     _mark(doc, extracted, error)
     scope.session.add(doc)
     await scope.session.flush()
+    await indexed(scope, doc)
     _audit(scope, "knowledge.upload", doc, {"status": doc.status, "error_code": doc.error_code})
     await scope.session.refresh(doc)
     return _out(doc)
@@ -157,6 +164,7 @@ async def add_url(
     await _index_url(doc, body.url, title_override=body.title)
     scope.session.add(doc)
     await scope.session.flush()
+    await indexed(scope, doc)
     _audit(scope, "knowledge.add_url", doc, {"status": doc.status, "error_code": doc.error_code})
     await scope.session.refresh(doc)
     return _out(doc)
@@ -173,9 +181,29 @@ async def _index_url(doc: KnowledgeDocument, url: str, *, title_override: str | 
         doc.title = fetched.title[:255]
 
 
-async def _get(scope: ClientScope, doc_id: uuid.UUID) -> KnowledgeDocument:
+async def indexed(scope: ClientScope, doc: KnowledgeDocument) -> None:
+    """Spec 047 (D14): los fragmentos de la fuente, con su capa, y la revisión
+    de esa capa sube."""
+    await layers.index_document(scope.session, doc)
+    await layers.bump(scope.session, doc.tenant_id, doc.agent_id)
+
+
+async def _get(
+    scope: ClientScope,
+    doc_id: uuid.UUID,
+    *,
+    agent_id: uuid.UUID | None = None,
+    removed: bool = False,
+) -> KnowledgeDocument:
+    """Una fuente de **esta** capa: la de otro cliente o de otra capa es un 404, y
+    una ya quitada también, salvo para restaurarla (``removed``)."""
     doc = await scope.session.get(KnowledgeDocument, doc_id)
-    if doc is None:  # RLS: another tenant's id is simply not there
+    if (
+        doc is None
+        or doc.tenant_id != scope.tenant.id
+        or doc.agent_id != agent_id
+        or (doc.removed_at is not None and not removed)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
     return doc
 
@@ -185,10 +213,26 @@ async def delete_document(
     doc_id: uuid.UUID,
     scope: ClientScope = Depends(client_scope("knowledge:write")),
 ) -> None:
+    """Quitar: deja de usarse desde el siguiente turno; se restaura durante 10
+    minutos (spec 047, 37.3)."""
     doc = await _get(scope, doc_id)
     _audit(scope, "knowledge.delete", doc, {})
-    await scope.session.delete(doc)
-    await scope.session.flush()
+    await layers.remove(scope.session, doc, actor=scope.principal.actor)
+
+
+@router.post("/{doc_id}/restore", response_model=KnowledgeDocumentOut)
+async def restore_document(
+    doc_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("knowledge:write")),
+) -> KnowledgeDocumentOut:
+    doc = await _get(scope, doc_id, removed=True)
+    try:
+        await layers.restore(scope.session, doc)
+    except layers.KnowledgeError as exc:
+        raise HTTPException(status_code=exc.status, detail={"code": exc.code}) from None
+    _audit(scope, "knowledge.restore", doc, {})
+    await scope.session.refresh(doc)
+    return _out(doc)
 
 
 @router.post("/{doc_id}/reindex", response_model=KnowledgeDocumentOut)
@@ -210,6 +254,7 @@ async def reindex_document(
     else:
         _mark(doc, None, KnowledgeErrorCode(doc.error_code or "empty"))
     await scope.session.flush()
+    await indexed(scope, doc)
     _audit(scope, "knowledge.reindex", doc, {"status": doc.status, "error_code": doc.error_code})
     await scope.session.refresh(doc)
     return _out(doc)

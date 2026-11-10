@@ -1,4 +1,6 @@
+from datetime import date
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -7,6 +9,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # module constant so the production secret guard can compare against it
 # without duplicating the literal.
 _DEV_FERNET_KEY = "RQ8j4zYQ3W3ofSt7pUJoKxTYwhZ8JkRdJ-T_Wc1G3xs="
+
+
+#: Spec 050 (3.6): when Meta stops serving each Graph version
+#: (``docs/graph-api/changelog/versions``). A version not listed has more
+#: than two years left; add it here when Meta publishes its date.
+META_GRAPH_VERSION_EXPIRES: dict[str, date] = {
+    "v21.0": date(2027, 1, 21),
+    "v22.0": date(2027, 5, 20),
+    "v25.0": date(2028, 7, 29),
+}
+#: Days before expiry the operator starts hearing about it.
+META_GRAPH_VERSION_NOTICE_DAYS = 60
+
+
+def graph_version_notice(version: str, today: date) -> tuple[date, int] | None:
+    """``(expires_on, days_left)`` when ``version`` dies within the notice
+    window (or already died), else ``None``. Pure."""
+    expires = META_GRAPH_VERSION_EXPIRES.get(version)
+    if expires is None:
+        return None
+    days_left = (expires - today).days
+    return (expires, days_left) if days_left <= META_GRAPH_VERSION_NOTICE_DAYS else None
 
 
 class Settings(BaseSettings):
@@ -89,6 +113,34 @@ class Settings(BaseSettings):
     desktop_min_version_reason: str = "contract"
     desktop_min_version_from: str = ""
 
+    #: Spec 031 (research D18): la versión mínima de la app Auphere Customers,
+    #: por plataforma, con las mismas tres reglas que la del escritorio —ausente
+    #: no bloquea, hay fecha de entrada en vigor y solo se bloquea por contrato o
+    #: seguridad—. Subirla no exige publicar una versión de la app (R13.2).
+    customers_app_min_version_ios: str = ""
+    customers_app_min_version_android: str = ""
+    customers_app_min_version_reason: str = "contract"
+    customers_app_min_version_from: str = ""
+
+    #: Firma las credenciales del teléfono (spec 031, research D4). Propio y
+    #: distinto de ``device_token_secret``: comprometer uno no abre el otro. El
+    #: valor de abajo solo vale en desarrollo.
+    customers_app_token_secret: str = "dev-customers-app-secret-change-me-32+"
+
+    #: Avisos al teléfono (spec 031, research D8). Vacíos = el reparto marca las
+    #: entregas como fallidas con ``provider_not_configured``; la API arranca.
+    #: ``apns_key_pem`` admite ``\\n`` escapados, como la clave de la consola.
+    apns_key_id: str = ""
+    apns_team_id: str = ""
+    apns_key_pem: str = ""
+    apns_topic: str = "com.auphere.customers"
+    #: ``production`` o ``sandbox``: el entorno lo decide el build, y la app lo
+    #: dice al registrar su destino. Esto es solo el valor por defecto.
+    apns_default_environment: str = "production"
+    fcm_project_id: str = ""
+    #: El JSON de la cuenta de servicio de Firebase, entero.
+    fcm_service_account_json: str = ""
+
     admin_token: str = "dev-admin-token-change-me"
 
     # Meta WhatsApp Cloud API — direct Tech Provider integration. The only
@@ -109,11 +161,19 @@ class Settings(BaseSettings):
     # these to ``FB.login({config_id})``.
     meta_config_id_wa_cloud_api: str = "1976547999669619"
     meta_config_id_wa_coexistence: str = "27787800820807899"
+    # Spec 047 (D12): la configuración de ES de la beta «WhatsApp login», cuando
+    # Meta la dé a la app de Auphere. Sin ella, ese modo usa la de Cloud API.
+    meta_config_id_wa_login: str | None = None
     # Business Manager hosting the Meta App (Facelad SpA — Tech Provider).
     meta_business_manager_id: str = "342042661294231"
     # Graph API version pinned at the client level. Bump as Meta rolls
     # new majors — keep the pin so the deprecation surface is explicit.
-    meta_graph_api_version: str = "v22.0"
+    # Spec 050: every MetaClient and both browsers read this one.
+    meta_graph_api_version: str = "v26.0"
+    # Spec 050 (D3): the Embedded Signup the browsers open. v4 is Meta's
+    # current one; v5 (coexistence on by default, ``FINISH`` without
+    # ``waba_id``) is switched on in staging once the five paths pass.
+    meta_embedded_signup_version: Literal["v4", "v5"] = "v4"
     # Webhook callback URL passed to ``subscribed_apps`` per tenant.
     # Defaults to the production webhooks subdomain; override in dev via
     # ``NEXUS_META_WEBHOOK_CALLBACK_URL`` (an ngrok tunnel pointing to
@@ -123,6 +183,27 @@ class Settings(BaseSettings):
     # ``Require App Secret Proof`` ON in the Meta App since 2026-05-21, so
     # this stays True in every environment that talks to the real API.
     meta_require_appsecret_proof: bool = True
+
+    # Spec 049 — Instagram (Unified Login) and Messenger. Same Meta App, two
+    # more Facebook Login for Business configurations; both issue a business
+    # integration system-user token that does not expire. Public values.
+    meta_config_id_instagram: str = "1157578836735566"
+    meta_config_id_messenger: str = "2188508105420190"
+    # The version the Instagram and Page webhooks are subscribed at.
+    meta_social_graph_api_version: str = "v26.0"
+    # Meta allows ONE callback URL per object per app for ``instagram`` and
+    # ``page`` (no ``override_callback_uri`` like WhatsApp's). Staging and
+    # production share the app, so whichever receives an event for an
+    # account it does not own forwards it, body and signature untouched, to
+    # the other. Empty disables forwarding (dev).
+    meta_webhook_peer_url: str = ""
+    # After Meta approves the permissions: every partner sees Instagram and
+    # Messenger, not only the ones in ``partners.beta_channels``.
+    meta_social_general_availability: bool = False
+    # After Meta approves Human Agent: a person can answer on Instagram and
+    # Messenger up to 7 days after the last message. Until then, 24 hours:
+    # Meta refuses every message with the tag (INC-59).
+    meta_human_agent_approved: bool = False
 
     # TikTok Business Messaging API — single Auphere developer app, same
     # Tech-Provider shape as Meta: every tenant authorises *this* app over
@@ -177,6 +258,14 @@ class Settings(BaseSettings):
     # is Lee. Templates for the tenant owner override this when present.
     operator_fallback_phone: str | None = None
 
+    # The language the ``alert_*`` templates are approved in on Auphere's WABA.
+    # Alerts sent from Auphere's notification number (the default row of
+    # ``auphere_owner_channels``) go out in it; alerts sent from a client's
+    # number go out in the language that client's WABA approved
+    # (``whatsapp_template_status``). Bug el-aviso-de-escalada-no-llega:
+    # a language the WABA does not have is Meta's error 132001.
+    auphere_alert_template_language: str = "es_CL"
+
     # WP-07: worker services expected to report a heartbeat, comma-separated.
     # Single-service deploys keep the default; after cutting over to the
     # split deployment set
@@ -191,10 +280,11 @@ class Settings(BaseSettings):
             name.strip() for name in self.expected_worker_services.split(",") if name.strip()
         )
 
-    # WP-06 (plataforma v2, Fase 0): destination for platform-level alerts
-    # (queue backlog, DLQ entries, dead workers, cache-ratio collapse, Meta
-    # failure bursts). Unset → alerts are logged at ERROR only.
-    operator_alert_email: str | None = None
+    # Spec 047 (D14): el conocimiento. Lo que cabe entero en el prompt de un agente
+    # (el del negocio más el suyo) y el modelo de embeddings (Titan v2 por el
+    # proxy). Sin modelo, la recuperación es solo por palabras.
+    knowledge_char_budget: int = 20_000
+    knowledge_embedding_model: str | None = None
 
     # Owner backchannel (ADR-018 / architecture/owner-backchannel.md).
     # Auphere backchannel numbers live in the ``auphere_owner_channels``
@@ -308,9 +398,10 @@ class Settings(BaseSettings):
     # ``True``  = su ausencia es un error ruidoso y el turno se descarta.
     #
     # El defecto es ``False`` a propósito: producción no lleva proxy
-    # (``litellm.tf:23`` lo fija a staging) y antes de esta bandera la
+    # (``litellm.tf`` lo fija a staging) y antes de esta bandera la
     # ausencia enmudecía a todo tenant con partner sin error ni alarma —
-    # el corte de 2 h 37 del 31-ago-2026. Staging lo pone a ``True``.
+    # el corte de 2 h 37 del 31-ago-2026. Desde la enmienda del 2026-11-03
+    # tampoco la lleva staging, salvo con ``llm_via_proxy``.
     llm_proxy_required: bool = False
     llm_improve_timeout_s: float = 30.0
     # Token budget guardrails so a runaway prompt doesn't bill us 100k
@@ -415,6 +506,10 @@ class Settings(BaseSettings):
     # ticket es un acto deliberado y con confirmación humana delante, así
     # que una ráfaga solo puede ser un bucle.
     console_support_tickets_per_minute: int = 6
+    # Spec 056 (research R3): invitaciones de personas de cliente por partner y
+    # minuto, desde la pestaña Acceso. Cada una manda un correo por Resend, que
+    # comparten staging y prod (100 al día): una ráfaga solo puede ser un bucle.
+    console_client_invites_per_minute: int = 5
 
     # ── Block N: WhatsApp media + multimodal ────────────────────────────────
     # S3 (or S3-compatible — Cloudflare R2, MinIO) for media storage. All
@@ -482,28 +577,35 @@ class Settings(BaseSettings):
             )
         )
 
-    # Transactional email (Resend HTTP API) — used for the monthly partner
-    # receipt. When the key is unset/placeholder the email step no-ops with a
-    # warning, so the receipt is still generated and visible in the panel.
+    # Transactional email (Resend HTTP API, spec 051). Every email is a kind of
+    # ``services/email_catalog.py`` sent through a template published in
+    # Resend; the body lives there, the subject and variables here.
     resend_api_key: str = "dev-resend-key-change-me"
-    receipt_from_email: str = "Auphere <facturacion@auphere.com>"
-    #: El alta tiene **su propio** remitente y no hereda el de los recibos.
-    #: Salía de «facturación» sin que nadie lo decidiera —``send_email`` cae a
-    #: ``receipt_from_email`` cuando quien llama no pasa remitente—, y el primer
-    #: correo que recibe alguien que no te conoce no puede venir de ahí: todavía
-    #: no hay nada que facturar, invita a marcarlo como no deseado y ensucia la
-    #: reputación de la dirección que sí tiene que llegar cuando haya recibos.
+    #: Spec 051, R1. ``resend`` lo envía todo; ``access`` solo los correos de
+    #: acceso (alta, invitaciones, contraseña) y el resto queda en el registro
+    #: (``email.suppressed``); ``log`` no envía nada. ``auto`` es ``resend`` en
+    #: producción, ``access`` en staging y ``log`` en local y CI. Staging
+    #: llevaba la clave de Resend en su secreto y escribía a personas reales
+    #: alertas, recibos y avisos: **la clave ya no decide qué sale, decide
+    #: esto**. ``resend`` en staging es para probar una plantilla a propósito, y
+    #: el arranque lo deja dicho. Producción con ``log`` o ``access`` no
+    #: arranca (guardia de abajo): es lo que permite que un enlace de un solo
+    #: uso acabe en un registro sin que nunca sea el de producción.
+    email_delivery: Literal["auto", "resend", "access", "log"] = "auto"
+    #: Recibos y cobros. Las direcciones de Auphere van en inglés (spec 051,
+    #: revisión del owner del 2026-10-30).
+    receipt_from_email: str = "Auphere <billing@auphere.com>"
+    #: El remitente de todo lo que no es un cobro. **No hereda el de los
+    #: recibos**: el alta salía de facturación por herencia (spec 006), y el
+    #: primer correo que recibe alguien que no te conoce no puede venir de ahí.
+    #: Tampoco es un «no-reply» desde la spec 051: con ``email_reply_to`` en
+    #: soporte, un remitente que dice «no respondas» se contradice.
     #: **El dominio tiene que estar verificado en el proveedor** o el envío se
     #: rechaza con un 403 (pasó en staging el 2026-09-14).
-    signup_from_email: str = "Auphere <no-reply@auphere.com>"
-    #: Sumidero SMTP local (spec 011, D-4). **Vacía en producción, y no es un
-    #: descuido**: el repliegue sólo se enciende cuando NO hay clave de Resend
-    #: y SÍ hay esto, combinación que producción no tiene. Por eso no entra en
-    #: la guardia de arranque de secretos de fábrica: no es un secreto, y
-    #: puesta en producción no haría nada porque el proveedor gana.
-    #: En local, ``smtp://mailhog:1025`` — el contenedor lleva en
-    #: ``docker-compose.yml`` sin conectar a nada desde que se eligió Resend.
-    smtp_url: str = ""
+    notifications_from_email: str = "Auphere <notifications@auphere.com>"
+    #: A dónde llega una respuesta a cualquier correo (spec 051, D3). Un buzón
+    #: que alguien lee: el correo lo firma «el equipo de Auphere».
+    email_reply_to: str = "support@auphere.com"
     #: A quién escribe alguien a quien le han cambiado la contraseña sin
     #: pedirlo (spec 011, R4.2). **Sin defecto a propósito**: no se inventa una
     #: dirección que quizá nadie lee, y la del operador es la de una persona,
@@ -517,9 +619,23 @@ class Settings(BaseSettings):
     security_contact_email: str = ""
 
     @property
-    def email_enabled(self) -> bool:
+    def email_mode(self) -> Literal["resend", "access", "log"]:
+        """El modo resuelto (spec 051, R1.1) según el entorno."""
+        if self.email_delivery == "auto":
+            if self.is_prod:
+                return "resend"
+            return "access" if self.environment.lower() == "staging" else "log"
+        return self.email_delivery
+
+    @property
+    def email_delivers(self) -> bool:
+        """Hay un proveedor que de verdad envía: un modo que envía y clave real.
+
+        Es la pregunta que separa «este entorno no manda correo» (no es una
+        avería) de «el proveedor dijo que no» (sí lo es), spec 006 §5 ter.
+        """
         key = self.resend_api_key
-        return bool(key) and not key.startswith("dev-")
+        return self.email_mode != "log" and bool(key) and not key.startswith("dev-")
 
     # ── Partner console (PLAN-CONSOLE-V1, CP-03) ────────────────────────
     #
@@ -575,7 +691,7 @@ class Settings(BaseSettings):
     #: Separados por comas, como ``expected_worker_services``.
     auphere_partner_slugs: str = ""
 
-    @field_validator("console_jwt_public_key", mode="before")
+    @field_validator("console_jwt_public_key", "apns_key_pem", mode="before")
     @classmethod
     def _pem_newlines(cls, v: object) -> object:
         # Secret managers and .env files usually cannot carry real newlines;
@@ -591,6 +707,20 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.environment.lower() in {"prod", "production"}
+
+    @property
+    def meta_webhook_peer(self) -> str | None:
+        """Where an Instagram or Page event for an account this environment
+        does not own is forwarded (spec 049). Explicit setting first; then
+        production ↔ staging by environment; nothing in dev."""
+        if self.meta_webhook_peer_url:
+            return self.meta_webhook_peer_url
+        env = self.environment.lower()
+        if env in {"prod", "production"}:
+            return "https://api.staging.auphere.com/webhook/meta"
+        if env == "staging":
+            return "https://webhooks.auphere.com/webhook/meta"
+        return None
 
     @property
     def is_dev(self) -> bool:
@@ -669,6 +799,10 @@ class Settings(BaseSettings):
         # máquina de un partner.
         if "change-me" in self.device_token_secret:
             offenders.append("NEXUS_DEVICE_TOKEN_SECRET")
+        # Spec 031: con el valor de fábrica, cualquiera que lea el repo podría
+        # acuñar la sesión del teléfono de una persona de cliente.
+        if "change-me" in self.customers_app_token_secret:
+            offenders.append("NEXUS_CUSTOMERS_APP_TOKEN_SECRET")
         # Cierra las 20+ rutas de ``/admin`` (``impersonate`` incluida). Con el
         # valor de fábrica, cualquiera que lea este repositorio tiene el Bearer
         # del panel de operador.
@@ -690,6 +824,12 @@ class Settings(BaseSettings):
         # destino, y su ausencia sólo se paga en producción.
         if not self.security_contact_email.strip():
             offenders.append("NEXUS_SECURITY_CONTACT_EMAIL")
+        # Spec 051 (R1.3). Un correo retenido escribe sus enlaces de un solo
+        # uso en los registros. Es aceptable fuera de producción porque
+        # producción no puede retener nada; y retener aquí dejaría a partners
+        # sin recibos ni avisos sin que nada lo dijera.
+        if self.email_delivery in {"log", "access"}:
+            offenders.append("NEXUS_EMAIL_DELIVERY")
         if offenders:
             raise ValueError(
                 "Refusing to boot in production with dev placeholder secrets: "

@@ -20,10 +20,12 @@ import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import sqlalchemy as sa
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
+from nexus_channels.meta_social import META_SOCIAL_PROVIDERS
 from nexus_channels.whatsapp_meta.credentials import (
     ChannelCredentialsRepository,
     MetaCredentials,
@@ -36,14 +38,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from nexus_api.api.deps import get_redis
+from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.core.tenant_resolver import invalidate_tenant_cache
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Connector
 from nexus_api.repositories.audit import AuditRepository
+from nexus_api.services import meta_social_service
 from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
 from nexus_api.services.meta_signup_service import build_meta_client as _build_meta_client
 
 from .deps import ClientScope, client_scope
+from .diagnostics import subscription_owner
 from .schemas import ChannelOut
 from .schemas_channels import (
     CatalogErrorOut,
@@ -55,6 +61,7 @@ from .schemas_channels import (
     ChannelDetailOut,
     ChannelRoleIn,
     ChannelsOverviewOut,
+    MetaSocialOfferOut,
 )
 
 log = structlog.get_logger(__name__)
@@ -156,6 +163,19 @@ def _detail(
         catalog=_catalog_of(cfg),
         catalog_state=catalog_state or ("linked" if cfg.get("catalog_id") else "none"),
         catalog_error=_catalog_error_of(cfg),
+        display_name=_s("name"),
+        username=_s("username"),
+        picture_url=_s("picture_url"),
+        needs_attention=_s("needs_attention"),
+        needs_attention_help=(
+            meta_social_service.REASON_HELP.get(str(cfg.get("needs_attention")))
+            if cfg.get("needs_attention")
+            else None
+        ),
+        comments_enabled=(
+            cfg.get("comments_enabled") is not False if ch.type is ChannelType.INSTAGRAM else None
+        ),
+        comment_public_reply=_s("comment_public_reply"),
     )
 
 
@@ -183,6 +203,9 @@ async def count_connected_channels(session: AsyncSession) -> int:
             .where(
                 Channel.status != ChannelStatus.DISCONNECTED,
                 Channel.provider.not_in(INTERNAL_PROVIDERS),
+                # Spec 049: the quota is WhatsApp numbers; an Instagram
+                # account or a Page does not take a number's slot.
+                Channel.provider.not_in(tuple(META_SOCIAL_PROVIDERS)),
             )
         )
         or 0
@@ -224,11 +247,21 @@ async def channels_overview(
     redis: Redis = Depends(get_redis),
 ) -> ChannelsOverviewOut:
     rows = await _all_channels(scope.session)
-    used = sum(1 for c in rows if c.status is not ChannelStatus.DISCONNECTED)
+    used = sum(
+        1
+        for c in rows
+        if c.status is not ChannelStatus.DISCONNECTED and c.provider not in META_SOCIAL_PROVIDERS
+    )
     limit = scope.principal.partner.max_channels_per_client
     creds = await MetaCredentialsRepository(scope.session).get()
     logos = await channel_logos(scope.session)
+    known = {c.id: (c.config or {}).get("catalog_id") for c in rows}
     states = await reconcile_catalogs(scope.session, rows, redis)
+    # Un catálogo elegido en la ventana de Meta entra aquí, al conciliar.
+    for c in rows:
+        adopted = (c.config or {}).get("catalog_id")
+        if adopted and adopted != known[c.id]:
+            await _catalog_skills(scope, c)
     return ChannelsOverviewOut(
         channels=[_detail(c, logos, states.get(c.id)) for c in rows],
         max_channels=limit,
@@ -236,6 +269,11 @@ async def channels_overview(
         can_connect=used < limit,
         roles_required=roles_required(rows),
         meta_connected=creds is not None,
+        meta_social=(
+            MetaSocialOfferOut.model_validate(meta_social_service.offer(scope.principal.partner))
+            if meta_social_service.enabled_kinds(scope.principal.partner)
+            else None
+        ),
     )
 
 
@@ -278,7 +316,10 @@ def build_meta_client() -> MetaClient:
 
 #: Lo que conectar hizo en Meta, en el orden en que se deshace. ``unsubscribe``
 #: solo entra cuando el número era el último vivo de su WABA en el cliente:
-#: la suscripción es por cuenta, no por número (spec 021, R2.3).
+#: la suscripción es por cuenta, no por número (spec 021, R2.3). Y es de la
+#: **app**, que es la misma en staging y en producción: antes de desuscribir se
+#: mira que emita al webhook de este entorno (bug
+#: ``desconectar-respeta-el-otro-entorno``).
 UNLINK_STEPS: tuple[str, ...] = ("deregister", "unsubscribe")
 
 # Lo que Meta contesta a ``deregister`` sobre un número en coexistencia
@@ -427,6 +468,17 @@ async def reconcile_catalogs(
                     states[ch.id] = "permission_missing"
                     continue
                 found = verdict.get("catalog")
+                detached = cfg.get("catalog_detached")
+                if detached is not None:
+                    if isinstance(found, dict) and found.get("id") == detached:
+                        # El partner lo desconectó y Meta lo sigue teniendo
+                        # (no hay DELETE): para Auphere no hay catálogo.
+                        found = None
+                    else:
+                        # Meta cambió (otro catálogo o ninguno): manda Meta.
+                        cfg.pop("catalog_detached", None)
+                        ch.config = cfg
+                        flag_modified(ch, "config")
                 if (found or {}).get("id") != cfg.get("catalog_id") or not cfg.get(
                     "catalog_checked_at"
                 ):
@@ -535,10 +587,11 @@ async def set_channel_catalog(
 ) -> ChannelDetailOut:
     """Enlazar un catálogo a la cuenta del número (o cambiarlo).
 
-    Con otro ya enlazado, primero se desenlaza y luego se enlaza el nuevo
-    (research D4). Si el segundo paso falla, el canal queda **sin** catálogo
-    y con el motivo: honesto y reversible. Meta primero y base después es
-    seguro aquí porque la conciliación al listar adopta lo que Meta tenga.
+    Cambiar es enlazar el nuevo **sin desenlazar antes**: el edge
+    ``/{waba}/product_catalogs`` de Graph no admite DELETE (referencia de
+    Graph; spec 050 research D11). Si Meta rechaza el nuevo, el viejo sigue
+    y la tarjeta dice el motivo. Meta primero y base después es seguro aquí
+    porque la conciliación al listar adopta lo que Meta tenga.
     """
     ch, creds, waba_id, business_id = await _channel_with_creds(scope.session, channel_id)
     cfg = dict(ch.config or {})
@@ -571,17 +624,10 @@ async def set_channel_catalog(
                 status_code=status.HTTP_409_CONFLICT, detail={"code": "catalog_not_owned"}
             )
         if before is not None and before.id == body.catalog_id:
-            return _detail(ch, await channel_logos(scope.session), "linked")
+            out = _detail(ch, await channel_logos(scope.session), "linked")
+            out.catalog_skills_added = await _catalog_skills(scope, ch)
+            return out
 
-        if before is not None:
-            try:
-                await client.unlink_catalog(
-                    waba_id=waba_id, catalog_id=before.id, access_token=creds.bisuat
-                )
-            except MetaAPIError as exc:
-                raise _meta_refusal(exc) from exc
-            meta["unlinked"] = before.id
-            _write_catalog(cfg, None)
         try:
             await client.link_catalog(
                 waba_id=waba_id, catalog_id=body.catalog_id, access_token=creds.bisuat
@@ -595,9 +641,9 @@ async def set_channel_catalog(
                 cfg.pop("catalog_error", None)
                 meta["declared"] = body.catalog_id
                 return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
-            if isinstance(exc, MetaTransientError) and before is None:
+            if isinstance(exc, MetaTransientError):
                 raise _meta_refusal(exc) from exc
-            # El viejo ya no está y el nuevo no entró: se dice, no se finge.
+            # El nuevo no entró y el viejo (si había) sigue: se dice el motivo.
             cfg["catalog_error"] = {
                 "code": "catalog_permission_missing"
                 if catalog_permission_missing(exc)
@@ -610,11 +656,20 @@ async def set_channel_catalog(
         else:
             _write_catalog(cfg, chosen)
             cfg.pop("catalog_error", None)
+            cfg.pop("catalog_detached", None)
+            if before is not None:
+                meta["replaced"] = before.id
             meta["linked"] = body.catalog_id
     finally:
         await client.close()
 
     return await _finish_catalog_change(scope, redis, ch, cfg, waba_id, before, meta)
+
+
+async def _catalog_skills(scope: ClientScope, ch: Channel) -> list[str]:
+    from .capabilities_client import enable_catalog_skills
+
+    return await enable_catalog_skills(scope, ch.agent_id)
 
 
 async def _finish_catalog_change(
@@ -630,6 +685,11 @@ async def _finish_catalog_change(
     flag_modified(ch, "config")
     await redis.delete(_cache_key(waba_id))
     after = _catalog_of(cfg)
+    added: list[str] = []
+    if after is not None and (before is None or before.id != after.id):
+        added = await _catalog_skills(scope, ch)
+    if added:
+        meta["skills_added"] = added
     await AuditRepository(scope.session).record(
         actor=scope.principal.actor,
         action="console.channel.catalog",
@@ -638,7 +698,9 @@ async def _finish_catalog_change(
         after={"catalog": after.model_dump(mode="json") if after else None, "meta": meta},
     )
     state: CatalogState = "coexistence" if is_coexistence(cfg) else ("linked" if after else "none")
-    return _detail(ch, await channel_logos(scope.session), state)
+    out = _detail(ch, await channel_logos(scope.session), state)
+    out.catalog_skills_added = added
+    return out
 
 
 @router.delete("/{channel_id}/catalog", response_model=ChannelDetailOut)
@@ -647,8 +709,14 @@ async def clear_channel_catalog(
     scope: ClientScope = Depends(client_scope("channels:write")),
     redis: Redis = Depends(get_redis),
 ) -> ChannelDetailOut:
-    """Desenlazar el catálogo. Si Meta rechaza, el catálogo sigue y se dice:
-    borrar a ciegas dejaría a Meta enseñando productos que la consola no ve."""
+    """Dejar de usar el catálogo en este número.
+
+    No se llama a Meta: el edge ``/{waba}/product_catalogs`` de Graph no
+    admite DELETE (spec 050 research D11). El agente deja de mandar tarjetas
+    porque el worker lee ``config.catalog_id``, y ``catalog_detached`` evita
+    que la conciliación vuelva a adoptar ese mismo catálogo mientras Meta lo
+    siga teniendo enlazado. Quitar el enlace en Meta se hace desde el
+    Administrador de WhatsApp."""
     ch = await scope.session.get(Channel, channel_id)
     if ch is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
@@ -656,36 +724,14 @@ async def clear_channel_catalog(
     before = _catalog_of(cfg)
     if before is None:
         return _detail(ch, await channel_logos(scope.session), "none")
-    creds = await _creds_for(scope.session, ch)
-    waba_id = str(cfg.get("waba_id") or (creds.waba_id if creds else "") or "")
+    waba_id = str(cfg.get("waba_id") or "")
     meta: dict[str, Any] = {}
     if is_coexistence(cfg):
         # Nada que deshacer en Meta: el enlace vive en la app del teléfono.
         meta["skipped"] = "coexistence"
-    elif creds is not None and waba_id:
-        client = build_meta_client()
-        try:
-            await client.unlink_catalog(
-                waba_id=waba_id, catalog_id=before.id, access_token=creds.bisuat
-            )
-            meta["unlinked"] = before.id
-        except MetaAPIError as exc:
-            cfg["catalog_error"] = {
-                "code": "catalog_permission_missing"
-                if catalog_permission_missing(exc)
-                else "catalog_meta_rejected",
-                "message": getattr(exc, "message", str(exc))[:200],
-                "at": _now(),
-            }
-            ch.config = cfg
-            flag_modified(ch, "config")
-            log.warning("channel.catalog.unlink_failed", channel_id=str(ch.id), error=str(exc))
-            return _detail(ch, await channel_logos(scope.session), "linked")
-        finally:
-            await client.close()
     else:
-        # Sin credencial no hay nada que deshacer en Meta: se anota.
-        meta["skipped"] = "no_credentials"
+        cfg["catalog_detached"] = before.id
+        meta["detached"] = before.id
     _write_catalog(cfg, None)
     cfg.pop("catalog_error", None)
     ch.config = cfg
@@ -710,6 +756,7 @@ async def clear_channel_catalog(
 async def disconnect_channel(
     channel_id: uuid.UUID,
     scope: ClientScope = Depends(client_scope("channels:write")),
+    redis: Redis = Depends(get_redis),
 ) -> ChannelDetailOut:
     """Soltar un número: el agente deja de atender por él, y Meta lo suelta.
 
@@ -744,6 +791,8 @@ async def disconnect_channel(
     ch = await scope.session.get(Channel, channel_id)
     if ch is None:  # RLS esconde las filas de otro tenant → el mismo 404
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="channel not found")
+    if ch.provider in META_SOCIAL_PROVIDERS:
+        return await _disconnect_meta_social(scope, ch, redis)
     tenant_id = scope.tenant.id
     sm = get_sessionmaker()
 
@@ -793,10 +842,18 @@ async def disconnect_channel(
             # Ya estaba hecho del todo: quien pulsa dos veces no merece un error.
             return _detail(fila, await channel_logos(s1))
 
+    # El resolver guarda número → cliente una hora en Redis. Sin esto, los
+    # mensajes del número seguían llegando a este agente hasta que caducaba; y
+    # ahora que la suscripción de otro entorno se deja viva, eso importa más
+    # (bug ``desconectar-respeta-el-otro-entorno``).
+    await invalidate_tenant_cache(redis, ch.provider, ch.provider_identifier)
+
     # ── 2 · Meta, paso a paso, quitando cada uno al terminar ───────────
     client = build_meta_client()
+    settings = get_settings()
     done: list[str] = []
     skipped: list[str] = []
+    kept: dict[str, str | None] | None = None
     try:
         async with sm() as s2, tenant_scoped_session(s2, tenant_id):
             fila = await s2.get(Channel, channel_id)
@@ -821,6 +878,35 @@ async def disconnect_channel(
                                 phone_number_id=phone_number_id, access_token=token
                             )
                         elif step == "unsubscribe":
+                            # Solo se borra la suscripción que se sabe propia.
+                            # Una de más no rompe nada (sus mensajes llegan a un
+                            # canal desconectado); una de menos deja sordo, sin
+                            # aviso, al entorno que sí la usaba (2026-10-22: el
+                            # número de pruebas de staging, desconectado en prod).
+                            owner, target = subscription_owner(
+                                await client.list_subscribed_apps(
+                                    waba_id=waba_id, access_token=token
+                                ),
+                                app_id=settings.meta_app_id,
+                                callback_url=settings.meta_webhook_callback_url,
+                            )
+                            if owner != "ours":
+                                kept = {
+                                    "reason": "not_subscribed"
+                                    if owner == "none"
+                                    else "subscription_elsewhere",
+                                    "callback_host": urlsplit(target).hostname if target else None,
+                                }
+                                log.info(
+                                    "channel.unlink.subscription_kept",
+                                    channel_id=str(channel_id),
+                                    waba_id=waba_id,
+                                    **kept,
+                                )
+                                skipped.append(step)
+                                pending.remove(step)
+                                await MetaCredentialsRepository(s2).delete()
+                                continue
                             await client.unsubscribe_app(waba_id=waba_id, access_token=token)
                     except MetaAPIError as exc:
                         if step == "deregister" and deregister_not_applicable(exc):
@@ -868,6 +954,8 @@ async def disconnect_channel(
             meta: dict[str, object] = {"done": done, "pending": pending}
             if skipped:
                 meta["skipped"] = skipped
+            if kept:
+                meta["kept_subscription"] = kept
             if cfg.get("unlink_error"):
                 meta["error"] = cfg["unlink_error"]
             await AuditRepository(s2).record(
@@ -888,3 +976,28 @@ async def disconnect_channel(
 
 
 __all__ = ["count_connected_channels", "roles_required", "router"]
+
+
+async def _disconnect_meta_social(
+    scope: ClientScope, ch: Channel, redis: Redis
+) -> ChannelDetailOut:
+    """Spec 049, requirement 5.3: stop receiving and sending now, drop the
+    token now; the data of the channel is erased 30 days later
+    (``meta_social_retention_cron``). One transaction: there is no Meta-side
+    state to retry — a failed unsubscribe is logged and the app stops
+    acting on the account either way."""
+    before = ch.status.value
+    if ch.status is not ChannelStatus.DISCONNECTED:
+        await meta_social_service.connector(scope.session, redis).disconnect(ch)
+    cfg = ch.config or {}
+    await AuditRepository(scope.session).record(
+        actor=scope.principal.actor,
+        action="channel.meta_social.disconnect",
+        target=f"channel:{ch.id}",
+        before={"status": before},
+        after={
+            "status": ChannelStatus.DISCONNECTED.value,
+            "display_name": (f"@{cfg['username']}" if cfg.get("username") else cfg.get("name")),
+        },
+    )
+    return _detail(ch, await channel_logos(scope.session))

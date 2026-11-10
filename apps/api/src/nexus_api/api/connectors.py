@@ -137,87 +137,95 @@ async def composio_webhook(
     }
 
 
+#: Lo que el proveedor dice al volver de una autorización que no terminó.
+_DID_NOT_FINISH = frozenset({"failed", "failure", "error", "denied", "cancelled", "canceled"})
+
+
 @router.get("/connectors/oauth-callback", response_class=HTMLResponse)
 async def oauth_callback(
     request: Request,
     consent_token: str = "",
+    status: str = "",
     session: AsyncSession = Depends(get_db_session),
 ) -> HTMLResponse:
-    """Land the tenant owner here after they consent on the provider's page.
+    """Land whoever authorized here after they consent on the provider's page.
 
     We do NOT exchange code here — Composio does that side internally and
-    fires the webhook. Our only job is to render a friendly "you're set"
-    page (or "this link expired" page if the consent_token is bad).
+    fires the webhook. Our only job is to say what happened, and only what we
+    know: a failed authorization does not read as done (spec 043, R12.10).
 
     The consent_token in the query string proves the user came from a link
-    we minted. Without it (or with a tampered/expired one) we still render
-    a generic landing page — never an error that leaks info.
+    we minted. A tampered or expired one reads as «this link no longer works»,
+    never as an error that leaks info. A staff member's own calendar comes back
+    here without one when the link was shared, with the provider's ``status``.
     """
     settings = get_settings()
-    success = False
-    if consent_token:
+    outcome = "unknown"
+    if status.strip().lower() in _DID_NOT_FINISH:
+        outcome = "failed"
+    elif consent_token:
         try:
             verify_consent_token(
                 token=consent_token,
                 secret=settings.connector_consent_secret,
             )
-            success = True
+            outcome = "success"
         except (ConsentTokenInvalid, ConsentTokenExpired) as exc:
             log.info("oauth_callback.token_check_failed", error=str(exc))
-    # The webhook has likely already arrived; this page is purely UX.
-    html = _SUCCESS_PAGE if success else _GENERIC_PAGE
-    return HTMLResponse(content=html, status_code=200)
+            outcome = "expired"
+    elif status.strip().lower() == "success":
+        outcome = "success"
+    return HTMLResponse(content=_PAGES[outcome], status_code=200)
 
 
-_SUCCESS_PAGE = """<!doctype html>
+def _landing(title: str, body: str, *, mark: str = "") -> str:
+    return f"""<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Conexión establecida — Auphere</title>
+  <title>{title} — Auphere</title>
   <style>
-    body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    body {{ font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
            max-width: 480px; margin: 80px auto; padding: 0 24px; color: #0a0a0a;
-           background: #fafafa; line-height: 1.55; }
-    .ok { display: inline-block; width: 56px; height: 56px; border-radius: 999px;
+           background: #fafafa; line-height: 1.55; }}
+    .ok {{ display: inline-block; width: 56px; height: 56px; border-radius: 999px;
           background: #2CC295; color: white; line-height: 56px; text-align: center;
-          font-size: 28px; margin-bottom: 16px; }
-    h1 { font-size: 22px; margin: 0 0 8px; letter-spacing: -0.01em; }
-    p { color: #525252; }
-    .small { font-size: 13px; color: #737373; margin-top: 32px; }
+          font-size: 28px; margin-bottom: 16px; }}
+    h1 {{ font-size: 22px; margin: 0 0 8px; letter-spacing: -0.01em; }}
+    p {{ color: #525252; }}
   </style>
 </head>
 <body>
-  <div class="ok">✓</div>
-  <h1>Conexión establecida</h1>
-  <p>Tu agente ya puede acceder al servicio que acabas de autorizar. Puedes
-     cerrar esta ventana.</p>
-  <p class="small">Si tienes dudas, contacta al equipo de Auphere.</p>
+  {mark}
+  <h1>{title}</h1>
+  <p>{body}</p>
 </body>
 </html>
 """
 
-_GENERIC_PAGE = """<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Auphere</title>
-  <style>
-    body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-           max-width: 480px; margin: 80px auto; padding: 0 24px; color: #0a0a0a;
-           background: #fafafa; line-height: 1.55; }
-    h1 { font-size: 22px; margin: 0 0 8px; letter-spacing: -0.01em; }
-    p { color: #525252; }
-  </style>
-</head>
-<body>
-  <h1>Auphere</h1>
-  <p>Si llegaste aquí después de autorizar un servicio para tu agente, ya
-     deberías ver el connector como conectado. Si no, contacta al equipo.</p>
-</body>
-</html>
-"""
+
+_PAGES = {
+    "success": _landing(
+        "Autorización recibida",
+        "Puedes cerrar esta ventana. Comprueba en el panel que aparece como conectada.",
+        mark='<div class="ok">✓</div>',
+    ),
+    "failed": _landing(
+        "No se pudo conectar",
+        "La autorización no terminó. Vuelve al panel e inténtalo de nuevo, o pide a quien te "
+        "envió el enlace uno nuevo.",
+    ),
+    "expired": _landing(
+        "Este enlace ya no sirve",
+        "Pide a quien te lo envió uno nuevo.",
+    ),
+    "unknown": _landing(
+        "Auphere",
+        "Si venías de autorizar tu cuenta, comprueba en el panel si aparece como conectada. Si "
+        "no, avisa a quien te envió el enlace.",
+    ),
+}
 
 
 __all__ = ["router"]

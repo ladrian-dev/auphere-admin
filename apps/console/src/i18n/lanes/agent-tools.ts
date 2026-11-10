@@ -177,6 +177,16 @@ export const agentToolsMessages = {
   "connectors.pause": { es: "Pausar", en: "Pause" },
   "connectors.resume": { es: "Reanudar", en: "Resume" },
   "connectors.disconnect": { es: "Desconectar", en: "Disconnect" },
+  "connectors.remove": { es: "Quitar", en: "Remove" },
+  "connectors.remove.title": { es: "Quitar {name}", en: "Remove {name}" },
+  "connectors.remove.body": {
+    es: "Sus citas en ese calendario dejarán de bloquear horas en Reservas, así que esas horas se podrán volver a dar. Un agente que aún reserva en Google se quedará sin agenda.",
+    en: "Its appointments in that calendar will stop blocking hours in Reservas, so those hours can be given again. An agent that still books in Google will be left without an agenda.",
+  },
+  "connectors.managedElsewhere": {
+    es: "Uno nuevo ya no se conecta aquí: cada profesional conecta el suyo en Reservas, en Ajustes, en la consola del negocio. Este sigue sirviendo a los agentes que aún reservan en Google, y lo que hay en su calendario bloquea horas.",
+    en: "A new one is no longer connected here: each professional connects their own in Reservas, under Settings, in the business's console. This one still serves agents that book in Google, and what's in its calendar blocks hours.",
+  },
   "connectors.disconnect.title": { es: "Desconectar {name}", en: "Disconnect {name}" },
   "connectors.disconnect.body": { es: "Las herramientas de este conector dejarán de funcionar hasta que lo vuelvas a conectar. Las credenciales se eliminan.", en: "This connector's tools stop working until you connect it again. Credentials are removed." },
   "connectors.consent.opened": { es: "Se abrió la ventana de consentimiento de {name}. Al terminar, pulsa Sincronizar.", en: "The consent window for {name} opened. When done, press Sync." },
@@ -188,19 +198,6 @@ export const agentToolsMessages = {
   "connectors.disconnected": { es: "{name} desconectado.", en: "{name} disconnected." },
   "connectors.tools": { es: "{on} de {total} herramientas activas", en: "{on} of {total} tools on" },
   "connectors.lastSync": { es: "Última sincronización", en: "Last sync" },
-  "connectors.agendapro.title": { es: "Agenda pública de AgendaPro", en: "AgendaPro public booking page" },
-  "connectors.agendapro.body": { es: "AgendaPro no tiene API ni clave: el agente reserva en la página pública de reservas del negocio. Pega aquí esa dirección.", en: "AgendaPro has no API or key: the agent books through the business's public booking page. Paste that address here." },
-  "connectors.agendapro.link": { es: "Enlazar la agenda", en: "Link the booking page" },
-  "connectors.agendapro.relink": { es: "Cambiar la agenda", en: "Change the booking page" },
-  "connectors.agendapro.field": { es: "Dirección pública de la agenda", en: "Public booking page address" },
-  "connectors.agendapro.placeholder": { es: "https://minegocio.site.agendapro.com/cl/sucursal", en: "https://mybusiness.site.agendapro.com/cl/branch" },
-  "connectors.agendapro.help": { es: "Es el enlace que el negocio comparte con sus clientes para reservar (empieza por https:// y termina en agendapro.com). Nunca pidas la contraseña.", en: "The link the business shares with its customers to book (starts with https:// and ends in agendapro.com). Never ask for the password." },
-  "connectors.agendapro.linked": { es: "Agenda enlazada. Las herramientas de reservas ya pueden usarla.", en: "Booking page linked. The booking tools can use it now." },
-  "connectors.agendapro.invalid": { es: "Tiene que ser una dirección https:// de agendapro.com.", en: "It must be an https:// address on agendapro.com." },
-  "connectors.agendapro.unlink": { es: "Desenlazar", en: "Unlink" },
-  "connectors.agendapro.unlink.title": { es: "Desenlazar la agenda de {name}", en: "Unlink {name}'s booking page" },
-  "connectors.agendapro.unlink.body": { es: "El agente dejará de poder reservar hasta que vuelvas a enlazarla. No se borra nada en AgendaPro.", en: "The agent will not be able to book until you link it again. Nothing is deleted in AgendaPro." },
-  "connectors.agendapro.unlinked": { es: "Agenda desenlazada.", en: "Booking page unlinked." },
   "connectors.lastSync.ok": { es: "Conectado · {n} herramientas", en: "Connected · {n} tools" },
   "connectors.lastSync.provider_unavailable": { es: "Guardado, pero no se pudo sincronizar: el proveedor no responde.", en: "Saved, but it could not sync: the provider is not answering." },
   "connectors.lastSync.auth_rejected": { es: "La clave fue rechazada por el proveedor. Revísala.", en: "The provider rejected the key. Check it." },
@@ -233,7 +230,7 @@ export const agentToolsMessages = {
   "knowledge.readonly": { es: "Tu rol solo permite ver el conocimiento.", en: "Your role can only view knowledge." },
   "knowledge.empty.title": { es: "Este cliente aún no tiene conocimiento", en: "This client has no knowledge yet" },
   "playbook.empty.title": { es: "Tu guía está vacía", en: "Your playbook is empty" },
-  "playbook.empty.body": { es: "Sube las reglas y documentos comunes a todos tus clientes (PDF, TXT, MD o HTML hasta 10 MB) o añade una URL pública.", en: "Upload the rules and documents shared by all your clients (PDF, TXT, MD or HTML up to 10 MB) or add a public URL." },
+  "playbook.empty.body": { es: "Sube las reglas y documentos comunes a todos tus clientes o añade una URL pública.", en: "Upload the rules and documents shared by all your clients, or add a public URL." },
   "knowledge.empty.body": { es: "Sube un PDF, TXT, MD o HTML (hasta 10 MB) o añade una URL pública.", en: "Upload a PDF, TXT, MD or HTML (up to 10 MB) or add a public URL." },
   "knowledge.usage": { es: "{used} de {cap} caracteres indexados en el prompt", en: "{used} of {cap} indexed characters in the prompt" },
   "knowledge.usage.label": { es: "Uso del presupuesto del prompt", en: "Prompt budget usage" },
@@ -257,6 +254,8 @@ export const agentToolsMessages = {
   "knowledge.col.indexed": { es: "Indexado", en: "Indexed" },
   "knowledge.kind.file": { es: "Archivo", en: "File" },
   "knowledge.kind.url": { es: "URL", en: "URL" },
+  // Spec 047 (37.3): lo que se enseñó con «Enseñar» para todo el negocio.
+  "knowledge.kind.note": { es: "Enseñado", en: "Taught" },
   "knowledge.status.pending": { es: "Pendiente", en: "Pending" },
   "knowledge.status.indexed": { es: "Indexado", en: "Indexed" },
   "knowledge.status.failed": { es: "Fallido", en: "Failed" },
@@ -271,9 +270,17 @@ export const agentToolsMessages = {
   "knowledge.delete.title": { es: "Eliminar «{title}»", en: "Delete \"{title}\"" },
   "knowledge.delete.body": { es: "El agente dejará de consultar este documento de inmediato. No se puede deshacer.", en: "The agent stops consulting this document immediately. This cannot be undone." },
   "knowledge.deleted": { es: "«{title}» eliminado.", en: "\"{title}\" deleted." },
+  // Spec 047 (12.2): en un cliente, quitar se deshace durante 10 minutos. La Guía del partner sigue borrando.
+  "knowledge.delete.body.undo": { es: "Ningún agente lo usa desde el siguiente mensaje. Puedes deshacerlo durante 10 minutos.", en: "No agent uses it from the next message. You can undo it for 10 minutes." },
+  "knowledge.deleted.undo": { es: "«{title}» eliminado. Puedes deshacerlo durante 10 minutos.", en: "\"{title}\" deleted. You can undo it for 10 minutes." },
+  "knowledge.undo": { es: "Deshacer", en: "Undo" },
+  "knowledge.restored": { es: "«{title}» vuelve a usarse.", en: "\"{title}\" is used again." },
+  "knowledge.undo.closed": { es: "Han pasado más de 10 minutos: ya no se puede deshacer.", en: "More than 10 minutes have passed: it can no longer be undone." },
+  // Spec 047 (37.1): en Negocio todas las fuentes son de la capa del negocio.
+  "knowledge.layer.business": { es: "Todas estas fuentes las ven todos los agentes de este cliente. Lo que es solo de un agente está en su sección Conocimiento.", en: "Every agent of this client sees all these sources. What belongs to one agent only is in its Knowledge section." },
   "playbook.title": { es: "Guía del partner", en: "Partner playbook" },
   // R5.3: quién la lee, dicho antes que de qué va. Es la confusión que más
   // caro sale — subir al sitio equivocado significa que el agente no ve lo
   // que debía, o que ve lo que no era para él.
-  "playbook.description": { es: "Lo que lee el Companion, el asistente de esta consola, para ayudarte con todos tus clientes. Ningún agente de WhatsApp la ve: no llega a la conversación con el cliente final. El texto extraído no sale de aquí.", en: "What the Companion, this console's assistant, reads to help you across all your clients. No WhatsApp agent sees it: it never reaches the conversation with the end client. Extracted text never leaves this page." },
+  "playbook.description": { es: "Lo que lee el Companion, el asistente de esta consola, para ayudarte con todos tus clientes. Ningún agente de WhatsApp la ve: no llega a la conversación con el cliente final.", en: "What the Companion, this console's assistant, reads to help you across all your clients. No WhatsApp agent sees it: it never reaches the conversation with the end client." },
 } as const;

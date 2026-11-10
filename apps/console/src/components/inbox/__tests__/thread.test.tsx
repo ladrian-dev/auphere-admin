@@ -62,6 +62,30 @@ describe("Thread", () => {
     expect(screen.getByRole("status")).toHaveTextContent("No se envió: fuera de la ventana de 24 h");
   });
 
+  it("what Meta answers is not shown: a person reads why in their words", () => {
+    view([
+      message({
+        direction: "outbound",
+        author: ME,
+        text: "Hola",
+        delivery: "failed",
+        // eslint-disable-next-line nexus-ui/no-raw-colors -- Meta's error code, not a colour.
+        failure_reason: "MetaAPIError: Meta API error 400: (#100) Cannot tag messages with 'HUMAN_AGENT' without prior approval.",
+      }),
+      message({ id: "m2", direction: "outbound", author: ME, text: "Otra", delivery: "failed", failure_reason: "MetaAPIError: Meta API error 500" }),
+    ]);
+    const [first, second] = screen.getAllByRole("status");
+    expect(first).toHaveTextContent("Meta todavía no permite responder pasadas 24 horas");
+    expect(second).toHaveTextContent(/^No se envió$/);
+    expect(document.body.textContent).not.toMatch(/MetaAPIError|#100/);
+  });
+
+  it("a message the contact deleted says so, with nothing left to read", () => {
+    view([message({ id: "stop", text: "BAJA", opted_out: true }), message({ text: null, unsent: true })]);
+    expect(screen.getByText(/Se dio de baja de la publicidad/)).toBeInTheDocument();
+    expect(screen.getByText("El contacto eliminó este mensaje")).toBeInTheDocument();
+  });
+
   it("what happened to the conversation sits in its place", () => {
     view([
       message({ id: "e1", type: "event", kind: "escalated", author: { kind: "agent", name: null, is_me: false }, detail: "Pide un reembolso", text: null }),

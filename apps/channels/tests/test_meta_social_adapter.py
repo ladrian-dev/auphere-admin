@@ -1,0 +1,314 @@
+"""Spec 049 — Instagram / Messenger outbound and message splitting."""
+
+from __future__ import annotations
+
+import json
+import uuid
+from typing import Any
+
+import httpx
+import pytest
+
+from nexus_channels.base import ChannelCapabilityError
+from nexus_channels.meta_social.adapter import MetaSocialChannelAdapter, SendContext
+from nexus_channels.meta_social.graph import MetaSocialClient
+from nexus_channels.meta_social.text import split_message
+from nexus_channels.meta_social.webhook_adapter import PROVIDER_INSTAGRAM, PROVIDER_MESSENGER
+
+TENANT = uuid.uuid4()
+CHANNEL = uuid.uuid4()
+
+
+# ── splitting ───────────────────────────────────────────────────────────────
+
+
+def test_short_text_is_one_message() -> None:
+    assert split_message("hola", max_bytes=1000) == ["hola"]
+
+
+def test_split_respects_bytes_and_words() -> None:
+    text = ("ñandú " * 400).strip()  # 2 bytes per ñ/ú → well over 1000 bytes
+    chunks = split_message(text, max_bytes=1000)
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert len(chunk.encode()) <= 1000
+        assert not chunk.startswith(" ") and not chunk.endswith(" ")
+        assert all(word == "ñandú" for word in chunk.split())
+    assert " ".join(chunks) == text
+
+
+def test_split_prefers_paragraphs() -> None:
+    first = "a" * 900
+    text = f"{first}\n\n{'b' * 500}"
+    assert split_message(text, max_bytes=1000) == [first, "b" * 500]
+
+
+def test_split_by_characters_for_messenger() -> None:
+    chunks = split_message("x " * 1500, max_chars=2000)
+    assert all(len(c) <= 2000 for c in chunks)
+    assert len(chunks) == 2
+
+
+# ── adapter ─────────────────────────────────────────────────────────────────
+
+
+class Recorder:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, Any], Any]] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        self.calls.append((request.method, request.url.path, dict(request.url.params), body))
+        if request.url.path.endswith(("/replies", "/comments")):
+            return httpx.Response(200, json={"id": "R_1"})
+        return httpx.Response(
+            200, json={"recipient_id": "U", "message_id": f"mid.{len(self.calls)}"}
+        )
+
+
+def _adapter(
+    provider: str, rec: Recorder, *, public_reply: str | None = None
+) -> MetaSocialChannelAdapter:
+    client = MetaSocialClient("secret", transport=httpx.MockTransport(rec.handler))
+
+    async def loader(*, tenant_id: uuid.UUID, channel_id: uuid.UUID) -> SendContext:
+        return SendContext(account_id="ACC", token="TOKEN", public_comment_reply=public_reply)
+
+    return MetaSocialChannelAdapter(client, provider=provider, context_loader=loader)
+
+
+async def test_send_text_is_a_response_from_the_account() -> None:
+    rec = Recorder()
+    result = await _adapter(PROVIDER_INSTAGRAM, rec).send_text(
+        from_phone="ACC", recipient="IGSID", text="hello", tenant_id=TENANT, channel_id=CHANNEL
+    )
+    method, path, params, body = rec.calls[0]
+    assert method == "POST" and path == "/v26.0/ACC/messages"
+    assert body == {
+        "recipient": {"id": "IGSID"},
+        "message": {"text": "hello"},
+        "messaging_type": "RESPONSE",
+    }
+    assert "appsecret_proof" in params
+    assert "access_token" not in params  # header only, never the URL
+    assert result.provider_message_id == "mid.1"
+
+
+async def test_human_agent_tag_only_when_asked() -> None:
+    rec = Recorder()
+    await _adapter(PROVIDER_MESSENGER, rec).send_text(
+        from_phone="ACC",
+        recipient="PSID",
+        text="hi",
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        human_agent=True,
+    )
+    body = rec.calls[0][3]
+    assert body["messaging_type"] == "MESSAGE_TAG"
+    assert body["tag"] == "HUMAN_AGENT"
+
+
+async def test_long_instagram_reply_is_split() -> None:
+    rec = Recorder()
+    await _adapter(PROVIDER_INSTAGRAM, rec).send_text(
+        from_phone="ACC",
+        recipient="IGSID",
+        text="palabra " * 300,
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+    )
+    assert len(rec.calls) == 3
+    assert all(len(c[3]["message"]["text"].encode()) <= 1000 for c in rec.calls)
+
+
+async def test_private_reply_goes_to_the_comment_once_then_public_line() -> None:
+    rec = Recorder()
+    await _adapter(PROVIDER_INSTAGRAM, rec, public_reply="We sent you a DM").send_text(
+        from_phone="ACC",
+        recipient="IGSID",
+        text="palabra " * 300,
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:C_1",
+    )
+    assert len(rec.calls) == 2
+    _, path, _, body = rec.calls[0]
+    assert path == "/v26.0/ACC/messages"
+    assert body["recipient"] == {"comment_id": "C_1"}
+    assert len(body["message"]["text"].encode()) <= 1000
+    _, path, params, _ = rec.calls[1]
+    assert path == "/v26.0/C_1/replies" and params["message"] == "We sent you a DM"
+
+
+async def test_a_page_comment_gets_a_private_reply_and_a_line_under_the_post() -> None:
+    # Owner, 2026-10-31: same as Instagram, from the Page; the public line
+    # goes to ``/comments`` (a Page's post), not ``/replies``.
+    rec = Recorder()
+    await _adapter(PROVIDER_MESSENGER, rec, public_reply="We sent you a message").send_text(
+        from_phone="ACC",
+        recipient="U_77",
+        text="It depends on the plan; let me tell you here.",
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:POST_1_C_9",
+    )
+    assert len(rec.calls) == 2
+    _, path, _, body = rec.calls[0]
+    assert path == "/v26.0/ACC/messages"
+    assert body["recipient"] == {"comment_id": "POST_1_C_9"}
+    _, path, params, _ = rec.calls[1]
+    assert path == "/v26.0/POST_1_C_9/comments" and params["message"] == "We sent you a message"
+
+
+async def test_interactive_becomes_quick_replies() -> None:
+    rec = Recorder()
+    block = {
+        "type": "button",
+        "body": {"text": "Pick one"},
+        "action": {
+            "buttons": [
+                {"type": "reply", "reply": {"id": "a", "title": "Morning appointment slot"}}
+            ]
+        },
+    }
+    await _adapter(PROVIDER_INSTAGRAM, rec).send_interactive(
+        from_phone="ACC", recipient="IGSID", interactive=block, tenant_id=TENANT, channel_id=CHANNEL
+    )
+    message = rec.calls[0][3]["message"]
+    assert message["text"] == "Pick one"
+    assert message["quick_replies"] == [
+        {"content_type": "text", "title": "Morning appointment", "payload": "a"}
+    ]
+
+
+async def test_in_a_comment_turn_buttons_and_media_become_the_one_private_reply() -> None:
+    """QA 2026-10-30 (INC-21): quick replies and attachments ignored the
+    comment context and went as a DM by ``recipient.id``, which Meta refuses."""
+    rec = Recorder()
+    adapter = _adapter(PROVIDER_INSTAGRAM, rec)
+    block = {
+        "type": "button",
+        "body": {"text": "Pick one"},
+        "action": {"buttons": [{"type": "reply", "reply": {"id": "a", "title": "Morning"}}]},
+    }
+    await adapter.send_interactive(
+        from_phone="ACC",
+        recipient="IGSID",
+        interactive=block,
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:C_9",
+    )
+    body = rec.calls[-1][3]
+    assert body["recipient"] == {"comment_id": "C_9"}
+    assert body["message"] == {"text": "Pick one\n• Morning"}
+
+    await adapter.send_image(
+        from_phone="ACC",
+        recipient="IGSID",
+        link="https://s3/x.jpg",
+        caption="Our menu",
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+        context_message_id="comment:C_10",
+    )
+    body = rec.calls[-1][3]
+    assert body["recipient"] == {"comment_id": "C_10"}
+    assert body["message"] == {"text": "Our menu"}
+
+    with pytest.raises(ChannelCapabilityError):
+        await adapter.send_audio(
+            from_phone="ACC",
+            recipient="IGSID",
+            link="https://s3/x.ogg",
+            tenant_id=TENANT,
+            channel_id=CHANNEL,
+            context_message_id="comment:C_11",
+        )
+
+
+async def test_templates_do_not_exist_here() -> None:
+    with pytest.raises(ChannelCapabilityError):
+        await _adapter(PROVIDER_INSTAGRAM, Recorder()).send_template()
+
+
+async def test_media_by_url_with_caption_after() -> None:
+    rec = Recorder()
+    await _adapter(PROVIDER_MESSENGER, rec).send_image(
+        from_phone="ACC",
+        recipient="P",
+        link="https://s3/x.jpg",
+        caption="Menu",
+        tenant_id=TENANT,
+        channel_id=CHANNEL,
+    )
+    assert rec.calls[0][3]["message"]["attachment"]["type"] == "image"
+    assert rec.calls[1][3]["message"] == {"text": "Menu"}
+
+
+async def test_attachment_download_refuses_foreign_hosts() -> None:
+    adapter = _adapter(PROVIDER_INSTAGRAM, Recorder())
+    with pytest.raises(ValueError):
+        await adapter.fetch_media_bytes(media_id="url:https://evil.example.com/x", tenant_id=TENANT)
+
+
+async def test_the_profile_brings_the_name_and_the_picture_bytes() -> None:
+    """Owner, 2026-10-30: the inbox shows the person's name and photo. The
+    picture's CDN link expires, so the adapter hands over its bytes; only
+    Meta's hosts and images, and a missing picture keeps the name."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "scontent.xx.fbcdn.net":
+            return httpx.Response(200, content=b"\x89PNG", headers={"content-type": "image/png"})
+        if request.url.path.endswith("/IGSID_1"):
+            return httpx.Response(
+                200,
+                json={"name": "Ana", "profile_pic": "https://scontent.xx.fbcdn.net/p.png"},
+            )
+        if request.url.path.endswith("/IGSID_2"):
+            return httpx.Response(
+                200, json={"username": "ana.store", "profile_pic": "https://evil.example/p.png"}
+            )
+        return httpx.Response(404, json={"error": {"message": "no", "code": 100}})
+
+    client = MetaSocialClient("secret", transport=httpx.MockTransport(handler))
+
+    async def loader(*, tenant_id: uuid.UUID, channel_id: uuid.UUID) -> SendContext:
+        return SendContext(account_id="ACC", token="TOKEN")
+
+    adapter = MetaSocialChannelAdapter(client, provider=PROVIDER_INSTAGRAM, context_loader=loader)
+    found = await adapter.fetch_profile(recipient="IGSID_1", tenant_id=TENANT, channel_id=CHANNEL)
+    assert found is not None
+    assert (found.name, found.picture, found.picture_mime) == ("Ana", b"\x89PNG", "image/png")
+
+    foreign = await adapter.fetch_profile(recipient="IGSID_2", tenant_id=TENANT, channel_id=CHANNEL)
+    assert foreign is not None and foreign.name == "ana.store" and foreign.picture is None
+
+    assert (
+        await adapter.fetch_profile(recipient="NOPE", tenant_id=TENANT, channel_id=CHANNEL) is None
+    )
+
+
+async def test_a_page_comment_without_author_gets_its_name_from_the_comment() -> None:
+    """Staging, 2026-11-01: a Page comment came without ``from``; the comment
+    itself names its author (``pages_read_user_content``)."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(f"{request.url.path}?{request.url.params.get('fields')}")
+        if request.url.path.endswith("/P_C_1"):
+            return httpx.Response(200, json={"id": "P_C_1", "from": {"id": "U", "name": "Pedro"}})
+        return httpx.Response(404, json={"error": {"message": "no", "code": 100}})
+
+    client = MetaSocialClient("secret", transport=httpx.MockTransport(handler))
+
+    async def loader(*, tenant_id: uuid.UUID, channel_id: uuid.UUID) -> SendContext:
+        return SendContext(account_id="PAGE", token="PAGE_TOKEN")
+
+    adapter = MetaSocialChannelAdapter(client, provider=PROVIDER_MESSENGER, context_loader=loader)
+    found = await adapter.fetch_profile(
+        recipient="comment:P_C_1", tenant_id=TENANT, channel_id=CHANNEL
+    )
+    assert found is not None and found.name == "Pedro" and found.picture is None
+    assert seen == ["/v26.0/P_C_1?from"]

@@ -28,8 +28,8 @@ pero NUNCA diagnósticos, medicación crónica, condiciones psiquiátricas
 o detalles reproductivos sensibles.**
 
 La memoria es para servir mejor a la paciente, no para construir un
-expediente clínico. El expediente clínico vive en AgendaPro / EHR
-del tenant, no en `agent_memories`.
+expediente clínico. El expediente clínico vive en el sistema clínico
+(EHR) del tenant, no en `agent_memories`.
 
 ## Dos niveles de scope
 

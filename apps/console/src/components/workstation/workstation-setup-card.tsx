@@ -45,6 +45,7 @@ export function WorkstationSetupCard({ setup }: { setup: SetupOut | null }) {
   return (
     <Section
       id="ws-setup"
+      className="rounded-lg"
       title={t("ws.setup.title")}
       description={
         setup ? (

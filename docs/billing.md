@@ -28,6 +28,12 @@ en **staging** (2026-09-13); en **producción, no** — ver «Las cuatro claves�
 > cliente se repone **una vez por mes de calendario** y lo que ve un cliente como saldo
 > nunca supera el recargado de su partner.
 
+> **Desde el 2026-11-03 un partner nuevo nace con 0 US$, también en el pool**
+> (`partners.weekly_pool_tokens` = 0, migración 0216). Los que ya existían conservan el
+> suyo. El panel de Auphere llama «Saldo disponible» solo a lo recargado. Sin pool, el
+> tope del Companion es el saldo recargado: no arranca hasta que el partner recarga. Quien
+> conserva pool sigue parándose al agotarlo, aunque tenga saldo recargado.
+
 ## Pagos del partner fuera de Stripe (2026-10-20)
 
 - **Quien paga es el partner**, no su cliente. Los pagos por transferencia, cripto u otro medio se anotan en el Admin, en **Partners → el partner → Facturas → «Pagos recibidos fuera de Stripe»**, eligiendo el cliente y el mes que cubren.
@@ -57,6 +63,105 @@ operador; el partner la lee en frases).
   Auphere)» en la ficha del cliente, en la lista de clientes y en Consumo.
 - Un cliente directo de Auphere (sin partner) nunca se para por saldo: el
   endpoint responde 422 `no_partner`.
+
+## La tarea, la decisión y la partida de cada consumo (spec 047, ola 1)
+
+- **`usage_records` gana `task`, `route_decision_id` y `line`** (migración
+  `0177`). El colector las lleva en cada evento y `persist_rows` las escribe.
+- **`task`** es la tarea de la taxonomía del router
+  (`contracts/router-and-catalog.md` §1; `collector.LLM_TASKS`, atada por una
+  prueba a la del catálogo). Una llamada a un modelo sin tarea falla con
+  `NEXUS_USAGE_REQUIRE_TASK=1` (las pruebas) y en producción se mide igual y
+  queda como anomalía (`usage.task_missing`): perder la medición sería regalar
+  el gasto. **`route_decision_id`** enlaza con `llm.route_decision`.
+- **`line`** se deriva de `source` al escribir (`USAGE_LINE_BY_SOURCE`):
+  `channel` → «Conversaciones»; el playground (`qa`), el constructor, las
+  pruebas, la lectura de webs, la indexación y las sugerencias → «Construcción y
+  pruebas» (`build`); el Companion → `companion`; las certificaciones que lanza
+  Auphere → `platform`. Las filas de antes quedan en `NULL`.
+- **Construcción y pruebas nunca sale de la bolsa del cliente**: el débito y el
+  contador de presupuesto solo miran `channel`. Un trabajo nuevo de esa partida
+  abre su buffer con `usage_turn(..., source=SOURCE_READER)` (o el suyo) y el id
+  del trabajo como `turn_id`.
+- **Un turno se cobra una vez aunque se reintente**: conserva su `turn_id` en
+  cada intento, y el débito es `channel:{turno}` en el libro.
+
+## Las bolsas de los clientes (spec 047, ola 7)
+
+Con la consola nueva, el dinero de cada cliente es **su bolsa**: dinero apartado
+de la cuenta del partner, en EUR (zona euro) o USD (el resto), según el país de su
+ficha. Sustituye a `partner_allocations` (que era un tope de gasto, no dinero).
+
+- **Cuándo cobra un partner de las bolsas** (`services/wallet/bags.bags_active`):
+  tiene la consola nueva **y** confirmó «Repartir tu saldo en bolsas», o nunca
+  tuvo asignaciones. Hasta entonces todo sigue como antes. Con bolsas, el alta de
+  un cliente no siembra asignación (`seed_default_allocation` devuelve 0): nace
+  con la bolsa vacía; el playground funciona y el canal no abre hasta que tenga
+  saldo.
+- **Unidades**: cien milésimas de la moneda (las de los créditos), enteros. El
+  cambio es el de referencia del BCE (`fx_rates`, base EUR), redondeo al par.
+- **Cada traspaso** (asignar, bajar, mover, rellenar, migrar, cambiar de moneda)
+  es una fila de `wallet_transfers` con su clave de idempotencia y el cambio y su
+  fecha, un asiento en el libro de la cuenta (`usage_ledger`, `bag_assign` saca y
+  `bag_return` devuelve; nunca del pool incluido) y su gemelo en
+  `client_wallet_entries` (con el saldo de después y un `seq` que ordena los de
+  una misma transacción).
+- **El turno** se cobra de la bolsa (`wallet/turns.charge_turn`, desde
+  `metering/consumer._debit_channel_wallet`), convertido al cambio del día; si
+  cruza el cero, solo lo que quedaba (el resto lo absorbe Auphere). La misma
+  `usage_ref` no cobra dos veces. La puerta del turno (`allow_channel_turn`) abre
+  mientras la bolsa tenga saldo; con la bolsa a cero los agentes publicados se
+  pausan «sin saldo» y vuelven solos al subir el saldo (solo esos).
+- **El gasto del mes de un cliente** sale de su bolsa, nunca del libro de la
+  cuenta, que no ve los turnos que paga la bolsa: `bags.bag_spend` (consola lite
+  y Panel del cliente del partner) y `bags.spent_this_month` (la bolsa en la
+  lista y la ficha del partner). `month_spent_micros` solo vuelve a cero con el
+  primer movimiento del mes, así que hasta entonces el gasto del mes es cero, no
+  el del mes pasado (bug `gasto-del-mes-a-cero-con-bolsas`).
+- **El tope de cada agente** (`agents.monthly_cap_micros`, mes UTC, moneda de la
+  bolsa): al 80 % avisa una vez al mes; al 100 % pausa ese agente (`agent_cap`)
+  hasta el mes siguiente o hasta que se sube. Puede estar por encima de la bolsa.
+- **Los avisos de la bolsa** (`wallet/alerts`): «Queda poco» (bajo el 20 % de la
+  base del mes, una vez al mes, se apaga con la casilla del modal), «No llega a
+  fin de mes» (al ritmo de 7 días, con al menos 3 días de consumo) y «Agotada»
+  (cada día). Se rearman al subir el saldo. Con bolsas, `client.out_of_quota`, los
+  avisos de saldo de la lite de antes y `qa.cap_reached` no salen (T161): ni del
+  turno saltado ni de la red de seguridad del cron (`evaluate_partner_wallet_alerts`).
+- **Borrar un cliente** devuelve antes su bolsa a la cuenta; **archivarlo**
+  ofrece devolverla (`bag_left` en la respuesta).
+- **Solo Auphere cambia la moneda de la cuenta**
+  (`PUT /admin/partners/{id}/account-currency`): convierte lo que queda y deja un
+  traspaso `currency_change`. Limitación conocida: los débitos de la cuenta
+  (Companion y teammates) siguen midiéndose en unidades de USD.
+
+### Los crons del dinero (planificador)
+
+| Cron | Cuándo | Qué |
+|---|---|---|
+| `fx-rates-cron` | cada 6 h | Descarga el cambio del BCE a `fx_rates` |
+| `bag-refill-cron` | cada hora; actúa el día 1 UTC | Rellena las bolsas con relleno, primero las que antes se acaban; avisa de lo que faltó (`client.wallet.refill_short`); reanuda los agentes pausados por su tope |
+| `bag-alerts-cron` | cada hora | Los avisos de cada bolsa |
+| `ledger-reconciliation-cron` | cada día | El cuadre al céntimo: cada bolsa es la suma de sus asientos y su último asiento; lo que la cuenta sacó para bolsas es lo que dicen los traspasos. Una diferencia sale como `wallet.reconciliation_mismatch` (error) |
+
+### Consumo por partidas
+
+`GET /console/usage/summary`, `/daily`, `/detail` y `/export.csv` salen de una sola
+función (`services/wallet/usage_lines.spend`), así que la misma cifra se lee igual
+en Consumo, la lista de clientes, el Panel y la consola lite:
+
+| Partida | Quién la paga | De dónde sale |
+|---|---|---|
+| Conversaciones | la bolsa del cliente | `client_wallet_entries` `debit_turn` (y los débitos de cuenta con cliente de antes) |
+| Pruebas a cargo del cliente | la bolsa del cliente | `client_wallet_entries` `debit_tests`: las pasadas completas pedidas después de la primera de cada agente (spec 047, requisito 68). La que sigue a un cambio que hizo Auphere por su cuenta no se cobra (68.14). No cuentan para el tope del agente ni para el ritmo de la bolsa |
+| Mensajes de Meta | el negocio, a Meta | la estimación diaria de `messages.cost_usd` (`daily_cost_snapshots`); siempre «aprox.», nunca sale de la bolsa |
+| Construcción y pruebas | Auphere, hasta el tope | lo medido con origen de construcción, a precio (coste × 2,2); el mes en curso es `partner_build_budget` |
+| Companion y teammates | la cuenta | los débitos sin cliente |
+
+**«Construcción y pruebas»** tiene un tope mensual en dinero por partner (50 en la
+moneda de la cuenta por defecto; `PUT /admin/partners/{id}/build-budget`). Al 80 %
+avisa; al 100 % el constructor, las pruebas y el playground responden `402
+build_budget_exhausted` hasta el día 1 o hasta que Auphere lo sube; la edición a
+mano sigue. «Pedir ampliación» queda en `build_budget_requests` (una al día).
 
 ## Tarjeta guardada, recarga automática y pospago (spec 041)
 

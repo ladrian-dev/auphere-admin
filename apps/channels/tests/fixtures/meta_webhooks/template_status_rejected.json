@@ -1,0 +1,25 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "field": "message_template_status_update",
+          "value": {
+            "event": "REJECTED",
+            "message_template_id": 2034567890123456,
+            "message_template_name": "recordatorio_cita",
+            "message_template_language": "es",
+            "reason": "INVALID_FORMAT",
+            "message_template_category": "UTILITY",
+            "rejection_info": {
+              "reason": "Invalid variable",
+              "recommendation": "Remove trailing variables"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

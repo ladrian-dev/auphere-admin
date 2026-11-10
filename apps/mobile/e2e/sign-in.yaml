@@ -1,0 +1,40 @@
+# Spec 031 · R1 (enmienda del 2026-10-20), CE-001. Vale en es y en. — entrar con correo y
+# contraseña en la propia app, sin pasar por la consola, y llegar al primer
+# módulo del cliente. Una contraseña mala primero: dice lo mismo sin decir qué
+# falló.
+appId: ${APP_ID || "com.auphere.customers.dev"}
+---
+- clearState
+- launchApp
+# Lo primero que pinte: el lanzador de un build de desarrollo, o la app.
+- extendedWaitUntil:
+    visible: "Development Build|Tu negocio, en el bolsillo|Your business, in your pocket|Hola, .*|Hi, .*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Development Build"
+    file: _dev-server.yaml
+- assertVisible: "Tu negocio, en el bolsillo|Your business, in your pocket"
+- tapOn:
+    id: "sign-in-email"
+- inputText: ${EMAIL}
+# «Siguiente» en el teclado pasa a la contraseña; «Entrar» en el teclado entra.
+- pressKey: Enter
+- inputText: "no-es-la-contrasena"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "El correo o la contraseña no son correctos.|The email or the password isn't right."
+    timeout: 15000
+- tapOn:
+    id: "sign-in-password"
+- eraseText: 40
+- inputText: ${PASSWORD}
+- pressKey: Enter
+# La pantalla de avisos sale una vez por entrada, antes del diálogo del sistema.
+- extendedWaitUntil:
+    visible: "Entérate de lo que te necesita|Hear about what needs you"
+    timeout: 20000
+- tapOn:
+    id: "notices-later"
+- assertVisible:
+    text: "Hola, .*|Hi, .*"

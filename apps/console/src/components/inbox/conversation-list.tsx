@@ -1,7 +1,8 @@
-import { Inbox, Search } from "lucide-react";
+import { CheckCircle2, Inbox, Search } from "lucide-react";
 
 import { Alert, AlertDescription, Button, NativeSelect, Skeleton, cn } from "@nexus/ui";
 
+import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
 import { useT } from "@/i18n/client";
 import type { InboxCounts, InboxFilter, InboxPage } from "@/lib/backend/inbox";
 
@@ -9,6 +10,8 @@ import { ConversationRow } from "./conversation-row";
 
 /** The id the global search (⌘K) focuses — R7.4. */
 export const INBOX_SEARCH_ID = "inbox-search";
+/** The id the «N agentes activos» pill of the head focuses (spec 045, R6.2). */
+export const INBOX_AGENT_FILTER_ID = "inbox-agent-filter";
 
 const FILTERS: InboxFilter[] = ["all", "unread", "waiting", "resolved"];
 
@@ -18,6 +21,10 @@ const FILTERS: InboxFilter[] = ["all", "unread", "waiting", "resolved"];
  * Five states, each its own: loading (rows the size of real ones), an inbox
  * that never had a conversation, filters that match nothing, a failed read,
  * and the list. «Más» loads the next page by cursor.
+ *
+ * Spec 056 (6.2, D6): «Abiertas» (`all`) empty while the client has resolved
+ * ones is not «no results»: it says how many are resolved and opens them. Only
+ * the default list — no search, agent or channel — counts them.
  */
 export function ConversationList({
   page,
@@ -27,6 +34,8 @@ export function ConversationList({
   query,
   agent,
   agents,
+  channel,
+  channelKinds,
   counts,
   selectedId,
   now,
@@ -34,6 +43,7 @@ export function ConversationList({
   onFilter,
   onQuery,
   onAgent,
+  onChannel,
   onOpen,
   onMore,
   onRetry,
@@ -47,6 +57,10 @@ export function ConversationList({
   agent: string | null;
   /** Empty with one agent: then there is nothing to choose. */
   agents: { id: string; name: string }[];
+  /** The kind it shows, `null` for all of them. */
+  channel: string | null;
+  /** The kinds this client has: with one, there is nothing to choose. */
+  channelKinds: string[];
   counts: InboxCounts;
   selectedId: string | null;
   now: Date;
@@ -54,12 +68,17 @@ export function ConversationList({
   onFilter: (f: InboxFilter) => void;
   onQuery: (q: string) => void;
   onAgent: (agent: string | null) => void;
+  onChannel: (channel: string | null) => void;
   onOpen: (id: string) => void;
   onMore: () => void;
   onRetry: () => void;
   onClear: () => void;
 }) {
   const t = useT();
+  const kinds = channelKinds.filter(hasBrandLogo);
+  const resolved = filter === "all" && !query.trim() && agent === null && channel === null ? (page?.resolved ?? 0) : 0;
+  const channelName = (kind: string) =>
+    kind === "instagram" ? t("inbox.channel.instagram") : kind === "messenger" ? t("inbox.channel.messenger") : kind === "whatsapp" ? t("inbox.channel.whatsapp") : kind;
   const label = (f: InboxFilter) =>
     f === "all"
       ? t("inbox.filter.all")
@@ -102,8 +121,31 @@ export function ConversationList({
             </Button>
           ))}
         </div>
+        {kinds.length > 1 ? (
+          <div role="group" aria-label={t("inbox.filter.channel")} className="flex flex-wrap items-center gap-1">
+            <Button type="button" size="sm" variant={channel === null ? "secondary" : "ghost"} aria-pressed={channel === null} onClick={() => onChannel(null)}>
+              {t("inbox.filter.channel.all")}
+            </Button>
+            {kinds.map((kind) => (
+              <Button
+                key={kind}
+                type="button"
+                size="sm"
+                variant={channel === kind ? "secondary" : "ghost"}
+                aria-pressed={channel === kind}
+                aria-label={channelName(kind)}
+                title={channelName(kind)}
+                onClick={() => onChannel(channel === kind ? null : kind)}
+                className="px-1"
+              >
+                <BrandLogo brand={kind} size="sm" className="size-5 rounded-full" />
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {agents.length > 1 ? (
           <NativeSelect
+            id={INBOX_AGENT_FILTER_ID}
             size="sm"
             aria-label={t("inbox.filter.agent")}
             value={agent ?? ""}
@@ -132,7 +174,20 @@ export function ConversationList({
         ) : loading && !page ? (
           <ListSkeleton label={t("inbox.list.loading")} />
         ) : page && page.items.length === 0 ? (
-          page.has_any ? (
+          resolved > 0 ? (
+            <div role="status" className="flex flex-col items-center gap-3 px-5 py-12 text-center">
+              <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground">
+                <CheckCircle2 className="size-5" aria-hidden="true" />
+              </span>
+              <p className="text-sm font-medium text-balance">{t("inbox.empty.open.title")}</p>
+              <p className="text-sm text-muted-foreground tabular-nums">
+                {resolved === 1 ? t("inbox.empty.open.resolved.one") : t("inbox.empty.open.resolved", { count: resolved })}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => onFilter("resolved")}>
+                {t("inbox.empty.open.action")}
+              </Button>
+            </div>
+          ) : page.has_any ? (
             <div role="status" className="flex flex-col items-center gap-3 px-5 py-10 text-center">
               <p className="text-sm text-muted-foreground text-pretty">{t("inbox.empty.filtered")}</p>
               <Button type="button" variant="outline" size="sm" onClick={onClear}>

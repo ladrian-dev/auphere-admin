@@ -1,7 +1,12 @@
+import { formatAmount } from "@/lib/amount";
+
 /**
  * Spec 027: the partner reads and writes money. The API sends and receives
  * integer cents of USD; the console never sees credits and never knows the
  * rate. These two functions are the only place money is formatted or parsed.
+ *
+ * Spec 056 (requisito 13): formatting goes through `lib/amount.ts`, the one
+ * money format of the console; US$ cents are its minor unit.
  */
 
 export type Locale = "es" | "en";
@@ -9,14 +14,17 @@ export type Locale = "es" | "en";
 /** Cents as the partner reads them: «12,35 US$» (es) · «$12.35» (en). */
 export function formatMoney(cents: number | null | undefined, locale: Locale = "es"): string {
   if (cents == null || !Number.isFinite(cents)) return "—";
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).format(cents / 100);
+  return formatAmount({ amount_minor: cents, currency: "USD" }, locale);
 }
 
-/** Compact for tight cards: «1,2 mil US$». Below 1 000 US$ it is the full amount. */
-export function formatMoneyCompact(cents: number | null | undefined, locale: Locale = "es"): string {
+/**
+ * Compact for tight cards: «1,2 mil US$». Below 1 000 it is the full amount.
+ * `currency`: a client's bag (spec 047) is in EUR or USD; the partner's, US$.
+ */
+export function formatMoneyCompact(cents: number | null | undefined, locale: Locale = "es", currency = "USD"): string {
   if (cents == null || !Number.isFinite(cents)) return "—";
-  if (Math.abs(cents) < 100_000) return formatMoney(cents, locale);
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(cents / 100);
+  if (Math.abs(cents) < 100_000) return formatAmount({ amount_minor: cents, currency }, locale);
+  return new Intl.NumberFormat(locale, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(cents / 100);
 }
 
 export type ParsedMoney = { kind: "empty" } | { kind: "money"; cents: number } | { kind: "invalid" };

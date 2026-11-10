@@ -7,7 +7,8 @@
  * paso en vez de ofrecer uno que esta pantalla no puede dar. La presencia nunca
  * se pinta como error.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -107,6 +108,28 @@ describe("ideal", () => {
     list({ machines: [machine()] });
     fireEvent.click(screen.getByRole("button", { name: /^archivar: macbook de luis$/i }));
     expect(screen.getByRole("dialog")).toHaveTextContent(/esto archiva, no borra/i);
+  });
+});
+
+describe("como el prototipo «Consola de partners v2» (spec 047)", () => {
+  const two = () => [machine(), machine({ id: "33333333-3333-3333-3333-333333333333", display_name: "PC oficina", hostname: "DESKTOP-7Q2K" })];
+
+  it("con más de dos botones en la lista, Renombrar y Archivar van en «⋯»", async () => {
+    const user = userEvent.setup();
+    list({ machines: two() });
+    expect(screen.queryByRole("button", { name: /^renombrar: /i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Más opciones de MacBook de Luis" }));
+    const items = (await screen.findAllByRole("menuitem")).map((i) => i.textContent);
+    expect(items).toEqual(["Renombrar", "Archivar"]);
+    await user.click(screen.getByRole("menuitem", { name: "Archivar" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent(/esto archiva, no borra/i);
+  });
+
+  it("cada máquina lleva su baldosa y su nombre como encabezado; lo pendiente de declarar, en ámbar", () => {
+    list({ machines: [machine({ clients: [{ ref: "cultor", name: "Cultor", workdir: null, needs_directory: true }] })] });
+    const card = screen.getByRole("heading", { level: 3, name: "MacBook de Luis" }).closest("[data-slot=machine-card]") as HTMLElement;
+    expect(card.querySelector("[data-slot=machine-tile] svg")).not.toBeNull();
+    expect(within(card).getByText(/pendiente de declarar desde la máquina/i).closest("[data-tone]")).toHaveAttribute("data-tone", "warn");
   });
 });
 

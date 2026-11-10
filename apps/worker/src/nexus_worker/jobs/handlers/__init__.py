@@ -1,0 +1,37 @@
+"""Los manejadores de los trabajos largos, uno por ``kind`` (spec 047).
+
+Importar este paquete los registra en ``default_registry``, que es el que usa
+``jobs-consumer``; ``nexus_worker.jobs`` lo importa al final de su
+``__init__``. Un tipo nuevo es un módulo nuevo aquí y su línea de import.
+
+- ``client_read``: la lectura de la web y de las redes de un cliente (T049).
+- ``agent_draft``: «Generar borrador», el constructor de agentes (T079).
+- ``tests``: la suite de un agente, tres pasadas por prueba (T086).
+- ``publish``: «Guardar», la puerta y la publicación (T093).
+- ``client_builder``: «Completar con el constructor», la ficha propuesta (T098);
+  desde la enmienda del 2026-10-29 lo lanza el sistema (T205).
+- ``sector_identify``: identificar el sector del negocio (T200).
+- ``agenda_text``: la propuesta de texto al cambiar la agenda de un agente (spec 057, T027).
+"""
+
+from __future__ import annotations
+
+from nexus_worker.jobs.handlers import (
+    agenda_text,
+    agent_draft,
+    agent_publish,
+    agent_tests,
+    client_builder,
+    client_read,
+    sector_identify,
+)
+
+__all__ = [
+    "agenda_text",
+    "agent_draft",
+    "agent_publish",
+    "agent_tests",
+    "client_builder",
+    "client_read",
+    "sector_identify",
+]

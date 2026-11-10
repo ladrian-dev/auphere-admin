@@ -18,9 +18,12 @@ Una ruta nueva entra en el barrido el día que se monta.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
+from fastapi import APIRouter
 from fastapi.routing import APIRoute
 
 from nexus_api.main import app
@@ -88,3 +91,54 @@ def test_every_lite_route_is_an_api_route() -> None:
     """Control del control: el filtro de arriba ve las rutas lite."""
     lite = [r for r in app.routes if isinstance(r, APIRoute) and r.path.startswith(LITE)]
     assert {f"{sorted(r.methods)[0]} {r.path}" for r in lite} == set(_route_ids(lite=True))
+
+
+# ── Spec 047, T021: una ruta de mañana entra sola ──────────────────────────
+
+
+@contextmanager
+def mounted(*routes: tuple[str, str]) -> Iterator[None]:
+    """Monta rutas de prueba en la app de verdad y las quita al salir. Las
+    funciones de barrido leen ``app.routes`` cada vez: si una ruta montada aquí
+    no aparece en ellas, el barrido era una lista y no lo sabíamos."""
+    router = APIRouter()
+    for method, path in routes:
+
+        async def _probe() -> dict[str, str]:  # pragma: no cover - nunca se llama
+            return {}
+
+        router.add_api_route(path, _probe, methods=[method])
+    app.include_router(router)
+    try:
+        yield
+    finally:
+        probes = set(routes)
+        app.router.routes[:] = [
+            r
+            for r in app.router.routes
+            if not (isinstance(r, APIRoute) and any((m, r.path) in probes for m in r.methods or ()))
+        ]
+
+
+def test_a_lite_route_mounted_tomorrow_enters_both_sweeps() -> None:
+    """Spec 047 (requisito 56.10): las rutas nuevas de ``/console/lite/*`` entran
+    en este barrido —y en el de ``test_phone_route_scope``— el día que se montan,
+    porque los dos se calculan de ``app.routes``, no de una lista escrita."""
+    from tests.isolation.test_phone_route_scope import _lite_gets
+
+    probe = ("GET", "/console/lite/agents/{agent_id}/probe-047")
+    with mounted(probe):
+        assert f"GET {probe[1]}" in _route_ids(lite=True)
+        assert f"GET {probe[1]}" not in _route_ids(lite=False)
+        assert probe[1] in _lite_gets()
+    assert f"GET {probe[1]}" not in _route_ids(lite=True), "la ruta de prueba no se desmontó"
+
+
+def test_an_app_route_mounted_tomorrow_breaks_the_closed_app_list() -> None:
+    """``/app/*`` lo barre ``test_app_public_routes`` con una lista CERRADA: una
+    ruta nueva bajo ``/app`` lo pone en rojo hasta que alguien la escribe."""
+    from tests.isolation.test_app_public_routes import PUBLIC_APP_ROUTES, _mounted_app_routes
+
+    with mounted(("GET", "/app/probe-047")):
+        assert _mounted_app_routes() - PUBLIC_APP_ROUTES == {("GET", "/app/probe-047")}
+    assert _mounted_app_routes() == PUBLIC_APP_ROUTES

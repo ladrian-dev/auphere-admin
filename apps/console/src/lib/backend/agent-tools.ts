@@ -18,7 +18,7 @@ import type {
   ToolCatalogOut,
   ToolMode,
   ToolModeOut,
-  ToolsSaved, AgendaProPublicUrlOut,
+  ToolsSaved,
   AudienceIn,
   PaymentReview,
 } from "./agent-tools-types";
@@ -63,9 +63,6 @@ export function agentToolsApi(call: Call) {
     resumeConnector: (ref: string, slug: string) => call<ConnectorOut>(`${base(ref)}/connectors/${enc(slug)}/resume`, { method: "POST" }),
     connectApiKey: (ref: string, slug: string, body: ConnectApiKeyBody) =>
       call<ConnectorOut>(`${base(ref)}/connectors/${enc(slug)}/api-key`, { method: "POST", body }),
-    // Spec 016 (R6): the client's public AgendaPro page. "" unlinks.
-    setAgendaProUrl: (ref: string, public_url: string | null) =>
-      call<AgendaProPublicUrlOut>(`${base(ref)}/integrations/agendapro/public-url`, { method: "PUT", body: { public_url } }),
 
     listSkills: (ref: string) => call<SkillsOut>(`${base(ref)}/skills`),
     putSkills: (ref: string, skills: string[]) => call<SkillsSaved>(`${base(ref)}/skills`, { method: "PUT", body: { skills } }),

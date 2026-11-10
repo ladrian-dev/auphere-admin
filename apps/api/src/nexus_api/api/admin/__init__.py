@@ -9,29 +9,38 @@ from nexus_api.api.admin import (
     backchannel_owners,
     billing,
     budget_policies,
+    certifications,
     channel_signup_links,
     channels_overview,
     client_access,
+    client_controls,
     connectors,
     conversations,
     cost,
     evals,
     impersonate,
-    integrations,
     isolation,
     meta_signup,
+    meta_social,
     model_bindings,
+    models_catalog,
+    opt_outs,
     overview,
     partner_access,
     partner_billing,
+    partner_invitations,
     partner_knowledge,
     partner_llm,
     partner_models,
+    partner_money,
     partner_wallet,
     partners,
     prompt_library,
     receipts,
+    router_policies,
     screenshots,
+    sector_guides,
+    sector_tests,
     signups,
     skills,
     tenant_capabilities,
@@ -43,6 +52,8 @@ from nexus_api.api.admin import (
     tool_catalog,
     unlimited_consumption,
     usage_overview,
+    whatsapp_login_beta,
+    whatsapp_pin,
     whatsapp_templates,
 )
 
@@ -58,15 +69,20 @@ router.include_router(unlimited_consumption.router)
 router.include_router(agent_configs.router)
 # Spec 030: los agentes de un cliente.
 router.include_router(agents.router)
+# Spec 049: erase one person's Instagram / Messenger data.
+router.include_router(meta_social.router)
 router.include_router(conversations.router)
 router.include_router(tool_catalog.router)
-router.include_router(integrations.router)
 router.include_router(connectors.router)
 router.include_router(screenshots.router)
 router.include_router(isolation.router)
 router.include_router(evals.router)
 router.include_router(prompt_library.router)
 router.include_router(meta_signup.router)
+# Spec 050: rotate a number's two-step PIN.
+router.include_router(whatsapp_pin.router)
+# Spec 050: a business's WhatsApp opt-outs, and lifting one.
+router.include_router(opt_outs.router)
 router.include_router(tiktok_authorize.router)
 router.include_router(skills.router)
 router.include_router(audit.router)
@@ -74,6 +90,8 @@ router.include_router(auphere_channels.router)
 router.include_router(backchannel_owners.router)
 router.include_router(whatsapp_templates.router)
 router.include_router(partners.router)
+# Spec 052: invitar, reenviar y revocar al propietario de un partner.
+router.include_router(partner_invitations.router)
 router.include_router(channels_overview.router)
 router.include_router(tenants_health.router)
 router.include_router(tenant_capabilities.router)
@@ -95,3 +113,20 @@ router.include_router(billing.router)
 router.include_router(model_bindings.router)
 router.include_router(budget_policies.router)
 router.include_router(cost.router)
+# Spec 047 (T150): el catálogo de despliegues, la política del router y las
+# certificaciones, sin tocar la base a mano (historia 30).
+router.include_router(models_catalog.router)
+router.include_router(router_policies.router)
+router.include_router(certifications.router)
+router.include_router(sector_tests.router)
+router.include_router(sector_tests.calibration_router)
+router.include_router(sector_tests.eval_router)
+# Spec 047, enmienda del 2026-10-29 (T201, 58.5): sectores sin guía y «Convertir».
+router.include_router(sector_guides.router)
+# Spec 047 (T117): la beta «WhatsApp login» por país; nunca la UE ni el EEE.
+router.include_router(whatsapp_login_beta.router)
+# Spec 047 (T158): el tope de construcción y la moneda de la cuenta.
+router.include_router(partner_money.router)
+# Spec 047 (T180): el ensayo y la activación de la consola nueva.
+# Spec 047 (T172): la restricción soberana y las conciliaciones.
+router.include_router(client_controls.router)

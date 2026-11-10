@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Batería común en español de la certificación por clase (spec 047, requisito 42.1). Los pesos y el umbral los publica el admin con la versión; pass^3 manda.",
+  "weights": {
+    "pass3": 0.6,
+    "tool_args_valid": 0.15,
+    "reasks": 0.1,
+    "unsupported_claims": 0.1,
+    "language_drift": 0.05
+  },
+  "threshold": 0.9,
+  "sources": {
+    "driver": "Los casos del driver de evaluación: los conjuntos sembrados de services/evals/seed_datasets.",
+    "tau_bench_es": "El paquete es de tau-bench 2.0. No viaja en el repositorio: se carga desde la ruta que fija NEXUS_TAU_BENCH_ES_PATH.",
+    "reservas": "El dominio propio de reservas: battery_v1/reservas.json."
+  }
+}

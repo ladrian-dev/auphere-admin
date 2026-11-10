@@ -17,7 +17,8 @@ Uso (lee ``NEXUS_DATABASE_URL`` del entorno):
 
 Sin ``--password`` genera una y la imprime UNA vez. Es lo razonable para el
 alta inicial de un panel interno: no hay flujo de invitación por correo
-—``email_enabled`` está apagado en producción— y teclear la contraseña de
+—el catálogo de correos de la spec 051 no tiene uno para el panel, y
+``email_delivers`` solo es cierto en producción— y teclear la contraseña de
 otra persona en una línea de comandos deja el secreto en el historial del
 shell y en los logs de la task.
 

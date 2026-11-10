@@ -40,6 +40,35 @@ export function notificationText(locale: Locale, n: Pick<Notification, "kind" | 
   if (n.kind === "client.activated" && n.data?.first === true) {
     return `${translate(locale, "notif.kind.client.activated.first")} ${translate(locale, "notif.kind.client.activated", vars)}`;
   }
+  // Spec 043 (R11.4): sigue reservando en Google, y qué le falta, en palabras.
+  if (n.kind === "reservas.pass_not_ready") {
+    const reasons = Array.isArray(n.data?.reasons) ? (n.data.reasons as unknown[]).map(String) : [];
+    if (reasons.includes("pass_failed")) return translate(locale, "notif.kind.reservas.pass_not_ready.failed", vars);
+    const words = reasons
+      .map((r) => `notif.reservas.reason.${r}` as MessageKey)
+      .filter((key) => key in messages)
+      .map((key) => translate(locale, key));
+    return translate(locale, "notif.kind.reservas.pass_not_ready", { ...vars, missing: words.join(", ") });
+  }
+  // Spec 047 (45.7): «Pedir saldo» con su nota, si la trae.
+  if (n.kind === "client.balance_request") {
+    const by = typeof n.data?.by_name === "string" && n.data.by_name.trim() ? n.data.by_name.trim() : null;
+    const note = typeof n.data?.note === "string" && n.data.note.trim() ? n.data.note.trim() : null;
+    const key: MessageKey = by
+      ? note
+        ? "notif.kind.client.balance_request.by.note"
+        : "notif.kind.client.balance_request.by"
+      : note
+        ? "notif.kind.client.balance_request.note"
+        : "notif.kind.client.balance_request";
+    return translate(locale, key, { ...vars, by: by ?? "", note: note ?? "" });
+  }
+  // Spec 047 (49.6): el aviso de un agente lo nombra cuando trae su nombre, y
+  // dice quién fue cuando lo hizo una persona del cliente.
+  const named = `notif.kind.${n.kind}.agent` as MessageKey;
+  if (typeof vars.agent === "string" && named in messages) {
+    return translate(locale, named, { ...vars, by: vars.by ?? translate(locale, "notif.by.someone") });
+  }
   const key = `notif.kind.${n.kind}` as MessageKey;
   if (key in messages) return translate(locale, key, vars);
   return translate(locale, "notif.kind.unknown", { kind: n.kind });

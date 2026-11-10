@@ -54,6 +54,8 @@ from nexus_api.db.models import (
 )
 from nexus_api.repositories.partner_membership import hash_invitation_token
 from nexus_api.services import console_identity, inbox_lifecycle
+from nexus_api.services.reservations import admin as reservations_admin
+from nexus_api.services.reservations import passing as reservations_passing
 
 log = structlog.get_logger(__name__)
 
@@ -61,10 +63,11 @@ log = structlog.get_logger(__name__)
 class ClientAccessError(Exception):
     """Un no con nombre. ``code`` es vocabulario cerrado; ``status`` el HTTP."""
 
-    def __init__(self, code: str, status: int) -> None:
+    def __init__(self, code: str, status: int, **info: Any) -> None:
         super().__init__(code)
         self.code = code
         self.status = status
+        self.info = info
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,10 @@ class AccessView:
     enabled: bool
     modules: tuple[str, ...]
     members: list[MemberRow] = field(default_factory=list)
+    #: Spec 043: el modo de Reservas, las vivas y las versiones por promover.
+    reservas: dict[str, Any] | None = None
+    #: Spec 043, R11.4: quién sigue reservando en Google y qué le falta para pasar.
+    reservas_pending_pass: dict[str, Any] | None = None
 
 
 def _now() -> datetime:
@@ -98,7 +105,7 @@ def _ordered(modules: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     return tuple(m for m in CLIENT_MODULES if m in have)
 
 
-async def _partner_of(session: AsyncSession, tenant: Tenant) -> Partner | None:
+async def partner_of(session: AsyncSession, tenant: Tenant) -> Partner | None:
     """El partner del cliente: el de ``tenants.partner_id`` si está mapeado, y
     si no, el de su mapeo en ``partner_tenants``."""
     stmt = sa.select(PartnerTenant.partner_id).where(PartnerTenant.tenant_id == tenant.id)
@@ -178,14 +185,19 @@ async def _members(session: AsyncSession, tenant_id: uuid.UUID) -> list[MemberRo
 
 async def read_access(session: AsyncSession, tenant_id: uuid.UUID) -> AccessView:
     tenant = await _tenant(session, tenant_id)
-    partner = await _partner_of(session, tenant)
+    partner = await partner_of(session, tenant)
     reason: str | None = None
     if tenant.status == TenantStatus.ARCHIVED:
         reason = "archived"
     elif partner is None:
         reason = "no_partner"
     access = await session.get(ClientAccess, tenant_id)
+    async with reservations_admin.as_tenant(session, tenant_id):
+        reservas = await reservations_admin.admin_view(session, tenant_id, now=_now())
+        pending = await reservations_passing.pending_pass(session, tenant_id, now=_now())
     return AccessView(
+        reservas=reservas,
+        reservas_pending_pass=pending,
         eligible=reason is None,
         ineligible_reason=reason,
         partner=partner,
@@ -215,7 +227,16 @@ def _audit(
     )
 
 
-async def _end_sessions(session: AsyncSession, user_ids: list[str]) -> int:
+async def _end_sessions(
+    session: AsyncSession, user_ids: list[str], *, phone_reason: str = "member_removed"
+) -> int:
+    """Cierra las sesiones web **y los teléfonos** de esas personas (spec 031,
+    R7.2): apagar el acceso o quitar a alguien no puede dejar una app abierta."""
+    from nexus_api.services import client_phones
+
+    await client_phones.revoke_where(
+        session, reason=phone_reason, by="system", principal_ids=list(user_ids)
+    )
     closed = 0
     for raw in user_ids:
         try:
@@ -233,15 +254,19 @@ async def set_access(
     enabled: bool,
     modules: list[str],
     actor: str,
+    reservas: reservations_admin.Choice | None = None,
 ) -> AccessView:
     """Enciende, apaga o cambia los módulos. Apagar cierra las sesiones de
-    todas las personas del cliente (R1.7)."""
+    todas las personas del cliente (R1.7). Con ``reservas``, el modo de
+    Reservas (spec 043), en la misma transacción."""
     tenant = await _tenant(session, tenant_id)
-    partner = await _partner_of(session, tenant)
+    partner = await partner_of(session, tenant)
     if partner is None:
         raise ClientAccessError("no_partner", 409)
     if tenant.status == TenantStatus.ARCHIVED:
         raise ClientAccessError("archived", 409)
+    # Spec 056 (requisito 2.3): ``agents`` y ``business`` ya no están en
+    # ``CLIENT_MODULES``; un retirado es tan desconocido como uno inventado.
     unknown = set(modules) - set(CLIENT_MODULES)
     if unknown:
         raise ClientAccessError("unknown_module", 422)
@@ -250,6 +275,10 @@ async def set_access(
         raise ClientAccessError("no_modules", 422)
     access = await session.get(ClientAccess, tenant_id)
     had_inbox = bool(access and ClientModule.INBOX.value in (access.modules or []))
+    # Spec 048 (decision 16): Reservas is on when it is on the list; ``enabled``
+    # only says whether the client's people can sign in.
+    had_reservas = bool(access and access.reservas_on)
+    wants_reservas = ClientModule.RESERVAS.value in ordered
     wants_inbox = ClientModule.INBOX.value in ordered
     if wants_inbox and not had_inbox and not await _whatsapp_connected(session, tenant_id):
         raise ClientAccessError("inbox_requires_whatsapp", 422)
@@ -274,12 +303,31 @@ async def set_access(
                 )
             )
         ).scalars()
-        await _end_sessions(session, list(active))
+        await _end_sessions(session, list(active), phone_reason="access_disabled")
 
     # Sin Bandeja nadie atendería las conversaciones que un escalado dejó con
-    # el agente callado: vuelven al agente (R11.5).
+    # el agente callado: vuelven al agente (R11.5). Sus avisos «espera a una
+    # persona» pasan a atendidos en esta misma transacción (spec 056, 8.1).
     if had_inbox and (not enabled or not wants_inbox):
-        await inbox_lifecycle.release_escalated_for_tenant(session, tenant_id, actor=actor)
+        released = await inbox_lifecycle.release_escalated_for_tenant(
+            session, tenant_id, actor=actor
+        )
+        await inbox_lifecycle.mark_waiting_handled(tenant_id, released, session=session)
+
+    if wants_reservas or had_reservas or reservas is not None:
+        try:
+            async with reservations_admin.as_tenant(session, tenant_id):
+                await reservations_admin.apply_choice(
+                    session,
+                    tenant_id,
+                    had_module=had_reservas,
+                    wants_module=wants_reservas,
+                    choice=reservas,
+                    actor=actor,
+                    now=_now(),
+                )
+        except reservations_admin.ReservasChoiceError as exc:
+            raise ClientAccessError(exc.code, exc.status, **exc.info) from None
 
     _audit(
         session,
@@ -519,6 +567,7 @@ __all__ = [
     "accept_invitation",
     "client_name",
     "invite",
+    "partner_of",
     "pending_invitation",
     "read_access",
     "resend",

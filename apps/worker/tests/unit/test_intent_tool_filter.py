@@ -143,3 +143,28 @@ class TestPaymentReviewOnEveryIntent:
         assert "payments.request_review" not in _filter_tools_for_intent_with_composio(
             bundle, "escalate"
         )
+
+
+class TestHandOffOnEveryIntent:
+    """QA de staging del 2026-11-08 (H-02): una petición de reserva se clasifica ``book`` y,
+    si la regla del agente pide pasar la conversación, el agente decía «te paso con alguien
+    del equipo» sin poder hacerlo: la herramienta solo se ofrecía en ``escalate``."""
+
+    def test_the_hand_off_is_offered_on_every_intent(self) -> None:
+        bundle = _bundle({"escalate.escalate_to_human", "reservas.create"})
+        for intent in ("escalate", "info", "book", "queue", "fallback"):
+            assert "escalate.escalate_to_human" in _filter_tools_for_intent_with_composio(
+                bundle, intent
+            ), intent
+
+    def test_only_when_the_agent_has_it(self) -> None:
+        bundle = _bundle({"reservas.create"})
+        for intent in ("escalate", "info", "book", "queue", "fallback"):
+            assert "escalate.escalate_to_human" not in _filter_tools_for_intent_with_composio(
+                bundle, intent
+            ), intent
+
+    def test_it_is_offered_once(self) -> None:
+        bundle = _bundle({"escalate.escalate_to_human"})
+        tools = _filter_tools_for_intent_with_composio(bundle, "escalate")
+        assert tools.count("escalate.escalate_to_human") == 1

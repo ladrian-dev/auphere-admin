@@ -103,10 +103,15 @@ async def test_filters_and_counts_are_per_person(client, db_session, console_wor
     assert (await client.post(f"{LIST}/{c0}/unread", headers=me())).status_code == 204
     assert (await client.get(COUNTS, headers=me())).json()["unread"] == 2
 
-    # Un entrante nuevo después de leer vuelve a contar.
+    # Un entrante nuevo después de leer vuelve a contar...
+    assert (await client.post(f"{LIST}/{c0}/read", headers=me())).status_code == 204
+    later = datetime.now(UTC)
+    await _set(db_session, c0, last_inbound_at=later, last_attended_inbound_at=later)
+    assert (await client.get(COUNTS, headers=me())).json()["unread"] == 2
+    # ...pero uno silenciado (spec 045) solo mueve la ventana de WhatsApp.
     assert (await client.post(f"{LIST}/{c0}/read", headers=me())).status_code == 204
     await _set(db_session, c0, last_inbound_at=datetime.now(UTC))
-    assert (await client.get(COUNTS, headers=me())).json()["unread"] == 2
+    assert (await client.get(COUNTS, headers=me())).json()["unread"] == 1
 
 
 async def test_search_by_name_phone_and_text(client, db_session, console_world) -> None:
@@ -223,3 +228,106 @@ async def test_without_the_inbox_module_there_is_no_inbox(
     assert (await client.get(COUNTS, headers=member["headers"]())).status_code == 403
     # Una persona del partner no alcanza la Bandeja de nadie.
     assert (await client.get(LIST, headers=w["headers"]())).status_code == 403
+
+
+async def test_a_stored_profile_picture_is_served_through_the_api(
+    client, db_session, console_world
+) -> None:
+    """Owner, 2026-10-30: the inbox shows the person's photo (Instagram /
+    Messenger). The list says ``has_avatar`` and the API streams the bytes:
+    no storage link reaches the browser, and another client's id is a 404."""
+    from nexus_api.db.models import Customer
+    from nexus_api.services.media_storage import get_media_storage
+
+    w = console_world["a"]
+    inbox = await make_inbox(
+        db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"], conversations=2
+    )
+    stored = await get_media_storage().put_inbound(
+        tenant_slug="t", wamid="avatar-x", content=b"\x89PNG", content_type="image/png"
+    )
+    first = (
+        await db_session.execute(
+            sa.select(Conversation.customer_id).where(Conversation.id == inbox["conversations"][0])
+        )
+    ).scalar_one()
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == first).values(avatar_s3_key=stored.key)
+    )
+    await db_session.commit()
+
+    items = (await client.get(LIST, headers=inbox["headers"]())).json()["items"]
+    by_id = {i["id"]: i for i in items}
+    assert by_id[str(inbox["conversations"][0])]["contact"]["has_avatar"] is True
+    assert by_id[str(inbox["conversations"][1])]["contact"]["has_avatar"] is False
+    assert "avatar_url" not in by_id[str(inbox["conversations"][0])]["contact"]
+
+    pic = await client.get(f"{LIST}/{inbox['conversations'][0]}/avatar", headers=inbox["headers"]())
+    assert pic.status_code == 200, pic.text
+    assert pic.content == b"\x89PNG" and pic.headers["content-type"] == "image/png"
+    none = await client.get(
+        f"{LIST}/{inbox['conversations'][1]}/avatar", headers=inbox["headers"]()
+    )
+    assert none.status_code == 404
+
+    other = console_world["b"]
+    theirs = await make_inbox(
+        db_session, partner_id=other["partner_id"], tenant_id=other["tenant_id"]
+    )
+    foreign = await client.get(
+        f"{LIST}/{inbox['conversations'][0]}/avatar", headers=theirs["headers"]()
+    )
+    assert foreign.status_code == 404
+
+
+async def test_open_and_empty_with_resolved_ones_says_how_many(
+    client, db_session, console_world
+) -> None:
+    """Spec 056 (6.2, D6): «Abiertas» —el valor ``all`` de siempre— vacía y con
+    conversaciones resueltas dice cuántas hay, para que la consola lleve a
+    Resueltas. Solo se cuenta con la lista por defecto y la página vacía: con
+    una búsqueda, otro filtro o algo que enseñar, ``resolved`` es 0."""
+    w = console_world["a"]
+    inbox = await make_inbox(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    c0, c1 = inbox["conversations"]
+    await _set(db_session, c0, status=ConversationStatus.CLOSED)
+    await _set(db_session, c1, status=ConversationStatus.CLOSED)
+    me = inbox["headers"]
+
+    body = (await client.get(LIST, headers=me())).json()
+    assert body["items"] == []
+    assert body["resolved"] == 2
+    assert body["has_any"] is True, "las apps viejas siguen leyendo has_any"
+
+    for params in ({"filter": "resolved"}, {"filter": "unread"}, {"q": "nadie"}):
+        assert (await client.get(LIST, headers=me(), params=params)).json()["resolved"] == 0
+
+    await _set(db_session, c1, status=ConversationStatus.OPEN)
+    body = (await client.get(LIST, headers=me())).json()
+    assert [i["id"] for i in body["items"]] == [str(c1)]
+    assert body["resolved"] == 0
+
+
+async def test_a_whatsapp_handle_reads_with_its_plus(client, db_session, console_world) -> None:
+    """Spec 056 (13.3): Meta guarda el número de WhatsApp sin «+»; la Bandeja lo
+    enseña con él. Lo que no es un número (Instagram, Messenger) sale tal cual."""
+    from nexus_api.db.models import Customer
+
+    w = console_world["a"]
+    inbox = await make_inbox(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    c0, c1 = inbox["customers"]
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == c0).values(identifier="5491155550000", name=None)
+    )
+    await db_session.execute(
+        sa.update(Customer).where(Customer.id == c1).values(identifier="+34600111222")
+    )
+    await db_session.commit()
+
+    items = (await client.get(LIST, headers=inbox["headers"]())).json()["items"]
+    handles = {i["id"]: i["contact"]["handle"] for i in items}
+    names = {i["id"]: i["contact"]["name"] for i in items}
+    assert handles[str(inbox["conversations"][0])] == "+5491155550000"
+    assert handles[str(inbox["conversations"][1])] == "+34600111222", "sin dos «+»"
+    # Sin nombre, el contacto se llama por su número, y también con «+».
+    assert names[str(inbox["conversations"][0])] == "+5491155550000"

@@ -16,6 +16,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { toFailure, type Result } from "@/lib/action-result";
 import { BackendError, backend } from "@/lib/backend";
 import { clearImpersonateCookie, setImpersonateCookie } from "@/lib/impersonate";
 import { requireOperator } from "@/lib/session";
@@ -23,6 +24,7 @@ import type {
   PartnerApiKeyCreatedOut,
   PartnerApiKeyCreateInput,
   PartnerApiKeyOut,
+  PartnerCreatedOut,
   PartnerCreateInput,
   PartnerLlmOut,
   PartnerModelsOut,
@@ -38,6 +40,8 @@ import type {
   ReceiptOut,
   ReceiptSendOut,
 } from "@/lib/backend";
+
+import { INVITATION_WORDS, OPERATOR_DISABLED, PARTNER_MAY_EXIST } from "./_invitation/messages";
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -57,16 +61,27 @@ function err(e: unknown): { ok: false; error: string } {
 
 // ── partner CRUD ─────────────────────────────────────────────────────────────
 
+/**
+ * Spec 052: crea el partner e invita a su propietario. El operador de la sesión
+ * firma. Si la respuesta se pierde, puede que el partner exista: se dice eso, y
+ * no un error que invite a repetir a ciegas.
+ */
 export async function createPartnerAction(
   body: PartnerCreateInput,
-): Promise<ActionResult<PartnerOut>> {
+): Promise<Result<PartnerCreatedOut>> {
+  const operator = await requireOperator();
+  if (operator.access !== "ok") return { ok: false, error: OPERATOR_DISABLED };
   try {
-    const r = await backend.createPartner(body);
-    if (!r) return { ok: false, error: "Respuesta vacía del backend" };
-    revalidatePath("/partners");
+    // Sin `revalidatePath`: repintaría esta página en la misma respuesta, y un
+    // fallo ahí se llevaría el único ejemplar del enlace. El listado es dinámico.
+    const r = await backend.createPartner(body, operator.id);
+    if (!r) return { ok: false, code: "unknown_outcome", error: PARTNER_MAY_EXIST };
     return { ok: true, data: r };
   } catch (e) {
-    return err(e);
+    if (!(e instanceof BackendError) || e.status >= 500) {
+      return { ok: false, code: "unknown_outcome", error: PARTNER_MAY_EXIST };
+    }
+    return toFailure(e, INVITATION_WORDS);
   }
 }
 

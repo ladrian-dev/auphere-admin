@@ -6,9 +6,10 @@ Quién es esa persona lo decide el servidor, no el modelo: ver
 
 from __future__ import annotations
 
-from nexus_api.db.models import Appointment, Customer
+from nexus_api.db.models import Appointment, Customer, Reservation
 from sqlalchemy import desc, select
 
+from nexus_mcp._agenda import not_imported, staff_names
 from nexus_mcp._customer import current_customer_or_refuse
 from nexus_mcp._db import tool_session
 from nexus_mcp.base import InputModel, OutputModel, ToolBase, ToolError
@@ -79,9 +80,10 @@ class GetHistory(ToolBase):
     name = "client.get_history"
     description = (
         "Return the most recent appointments of the person you are talking to "
-        "(default 10, max 50), sorted by start time descending. Useful for 'lo "
-        "mismo de siempre' lookups and for telling a returning customer when they "
-        "last visited. There is no way to read anyone else's history."
+        "(default 10, max 50), sorted by start time descending — their Reservas "
+        "bookings and any older appointment. Useful for 'lo mismo de siempre' "
+        "lookups and for telling a returning customer when they last visited. "
+        "There is no way to read anyone else's history."
     )
     input_model = GetHistoryInput
     output_model = GetHistoryOutput
@@ -90,14 +92,48 @@ class GetHistory(ToolBase):
         assert isinstance(payload, GetHistoryInput)
         customer_id = current_customer_or_refuse("leer el historial")
         async with tool_session() as session:
-            stmt = (
-                select(Appointment)
-                .where(Appointment.customer_id == customer_id)
-                .order_by(desc(Appointment.starts_at))
-                .limit(payload.limit)
+            # Spec 048 (requisito 4.1): the Reservas bookings, and the older
+            # appointments that were not passed over (an imported one counts
+            # once, as its booking).
+            bookings = (
+                (
+                    await session.execute(
+                        select(Reservation)
+                        .where(Reservation.customer_id == customer_id)
+                        .order_by(desc(Reservation.starts_at))
+                        .limit(payload.limit)
+                    )
+                )
+                .scalars()
+                .all()
             )
-            rows = (await session.execute(stmt)).scalars().all()
+            older = (
+                (
+                    await session.execute(
+                        select(Appointment)
+                        .where(Appointment.customer_id == customer_id, not_imported())
+                        .order_by(desc(Appointment.starts_at))
+                        .limit(payload.limit)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            names = await staff_names(session, (r.staff_id for r in bookings))
             items = [
+                HistoryAppointment(
+                    appointment_id=r.id,
+                    starts_at=r.starts_at,
+                    service_name=r.service_name or "",
+                    barber_id=None,
+                    status=r.status,
+                    price_cents=int(r.price_minor or 0),
+                    currency=r.currency or "CLP",
+                    source="reservas",
+                    staff_name=names.get(r.staff_id) if r.staff_id else None,
+                )
+                for r in bookings
+            ] + [
                 HistoryAppointment(
                     appointment_id=a.id,
                     starts_at=a.starts_at,
@@ -106,10 +142,12 @@ class GetHistory(ToolBase):
                     status=a.status.value,
                     price_cents=a.price_cents,
                     currency=a.currency,
+                    source="appointments",
                 )
-                for a in rows
+                for a in older
             ]
-        return GetHistoryOutput(customer_id=customer_id, appointments=items)
+            items.sort(key=lambda h: h.starts_at, reverse=True)
+        return GetHistoryOutput(customer_id=customer_id, appointments=items[: payload.limit])
 
 
 CLIENT_TOOLS: tuple[type[ToolBase], ...] = (GetPreferences, UpdatePreferences, GetHistory)

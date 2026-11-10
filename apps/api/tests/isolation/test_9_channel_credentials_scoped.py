@@ -25,7 +25,7 @@ async def test_credentials_invisible_across_tenants(db_session, tenants_ab):
         db_session.add(
             TenantCredentials(
                 tenant_id=a,
-                integration="agendapro",
+                integration="woocommerce",
                 encrypted_payload=b"A-secret",
             )
         )
@@ -35,7 +35,7 @@ async def test_credentials_invisible_across_tenants(db_session, tenants_ab):
         db_session.add(
             TenantCredentials(
                 tenant_id=b,
-                integration="agendapro",
+                integration="woocommerce",
                 encrypted_payload=b"B-secret",
             )
         )
@@ -49,19 +49,19 @@ async def test_credentials_invisible_across_tenants(db_session, tenants_ab):
 
 async def test_credentials_table_unique_constraint_per_tenant(db_session, tenants_ab):
     """Same tenant can't have two rows for the same integration; different
-    tenants both can have agendapro creds at once."""
+    tenants both can have woocommerce creds at once."""
     a = tenants_ab["a"]
     async with db_session.begin():
         await set_tenant(db_session, a)
         db_session.add(
             TenantCredentials(
                 tenant_id=a,
-                integration="agendapro",
+                integration="woocommerce",
                 encrypted_payload=b"v1",
             )
         )
 
-    # Adding another agendapro for the same tenant should violate the unique
+    # Adding another woocommerce row for the same tenant should violate the unique
     # constraint.
     from sqlalchemy.exc import IntegrityError
 
@@ -71,7 +71,7 @@ async def test_credentials_table_unique_constraint_per_tenant(db_session, tenant
             db_session.add(
                 TenantCredentials(
                     tenant_id=a,
-                    integration="agendapro",
+                    integration="woocommerce",
                     encrypted_payload=b"v2",
                 )
             )

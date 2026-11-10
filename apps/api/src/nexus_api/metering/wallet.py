@@ -543,6 +543,14 @@ async def allow_channel_turn(tenant_id: uuid.UUID) -> bool:
             if await _is_unlimited(session, tenant_id):
                 return True
             await apply_partner_to_session(session, partner_id)
+            # Spec 047 (D25): con bolsas, el turno lo paga la bolsa del cliente:
+            # puede abrirse mientras le quede saldo.
+            # Una sola consulta: la puerta corre en cada turno (< 15 ms p95).
+            from nexus_api.services.wallet.bags import gate_facts
+
+            with_bags, balance = await gate_facts(session, partner_id, tenant_id)
+            if with_bags:
+                return bool(balance and balance > 0)
             row = await session.get(PartnerWallet, partner_id)
             if row is None:
                 return False
@@ -1059,6 +1067,13 @@ async def seed_default_allocation(
     """
     if default_cap < 0:
         raise ValueError("default cap must be >= 0")
+    # Spec 047 (D25, 43.12): un partner que cobra de las bolsas no tiene
+    # asignaciones; el cliente nuevo nace con su bolsa vacía. Sembrar aquí una
+    # fila devolvería al partner a ``partner_allocations`` sin que lo pidiera.
+    from nexus_api.services.wallet.bags import bags_active
+
+    if await bags_active(session, partner_id):
+        return 0
     existing = await session.scalar(
         sa.select(PartnerAllocation).where(
             PartnerAllocation.partner_id == partner_id,

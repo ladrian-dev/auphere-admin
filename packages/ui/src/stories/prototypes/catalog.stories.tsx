@@ -100,7 +100,7 @@ const HABILIDADES: Elemento[] = [
 
 const CONECTORES: Elemento[] = [
   { id: "woo", nombre: "WooCommerce", descripcion: "Catálogo y pedidos de la tienda.", categoria: "Tienda", activo: true, matiz: { texto: "Error al sincronizar", tono: "danger" } },
-  { id: "agendapro", nombre: "AgendaPro", descripcion: "La agenda de citas del negocio.", categoria: "Citas", activo: false },
+  { id: "gcal", nombre: "Google Calendar", descripcion: "Las citas del negocio en su calendario.", categoria: "Citas", activo: false },
   { id: "cobro", nombre: "Amigable Cobro", descripcion: "Cobros y enlaces de pago.", categoria: "Pagos", activo: true, matiz: { texto: "Conectado", tono: "positive" } },
   { id: "venta", nombre: "Amigable Venta", descripcion: "Presupuestos y ventas.", categoria: "Pagos", activo: false },
 ];

@@ -31,6 +31,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Tenant
 from nexus_api.services.channel_signup_links import (
+    announce_connected,
     connect_with_link,
     find_link,
     hash_token,
@@ -52,6 +53,7 @@ class LinkInfoOut(BaseModel):
     meta_app_id: str | None = None
     meta_config_id: str | None = None
     meta_graph_version: str | None = None
+    meta_signup_version: str | None = None
 
 
 class LinkSignupIn(BaseModel):
@@ -108,10 +110,15 @@ async def link_info(
         meta_config_id=(
             settings.meta_config_id_wa_coexistence
             if mode == "coexistence"
+            # Spec 047 (D12): la beta «WhatsApp login» tiene su propia
+            # configuración de ES cuando Meta la da; hasta entonces, la de Cloud API.
+            else (settings.meta_config_id_wa_login or settings.meta_config_id_wa_cloud_api)
+            if mode == "whatsapp_login"
             else settings.meta_config_id_wa_cloud_api
         )
         or None,
         meta_graph_version=settings.meta_graph_api_version,
+        meta_signup_version=settings.meta_embedded_signup_version,
     )
 
 
@@ -151,9 +158,13 @@ async def link_signup(
             ),
         )
         tenant = await s.get(Tenant, tenant_id)
-        return LinkSignupOut(
+        out = LinkSignupOut(
             status="connected",
             channel_id=result.channel_id,
             display_phone_number=result.display_phone_number,
             business_name=tenant.name if tenant else "",
         )
+        agent_id = link.agent_id
+    # Spec 047 (31.1): committed; now the partner hears about it.
+    await announce_connected(tenant_id=tenant_id, channel_id=out.channel_id, agent_id=agent_id)
+    return out

@@ -35,7 +35,7 @@ import asyncio
 import contextlib
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -44,14 +44,26 @@ import structlog
 from nexus_api.core.streams import xadd_capped
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models.usage_record import USAGE_LINE_BY_SOURCE
 from nexus_api.metering.pricing_policy import UnweightedModel, weights_for
-from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens, uncached_input_tokens
+from nexus_api.metering.quota import (
+    billable_qty_for_meter,
+    priced_input_tokens,
+    quota_tokens,
+    uncached_input_tokens,
+)
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
 from nexus_worker.metering.budget import add_spend
-from nexus_worker.metering.collector import SOURCE_CHANNEL, USAGE_SOURCES, USAGE_STREAM
+from nexus_worker.metering.collector import (
+    SOURCE_CHANNEL,
+    SOURCE_TESTS_CLIENT,
+    USAGE_SOURCES,
+    USAGE_STREAM,
+)
 from nexus_worker.metering.pricing import (
+    ModelPrice,
     get_catalog,
     get_unit_prices,
     lane_weights_from,
@@ -107,12 +119,15 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
     source = fields.get("source") or SOURCE_CHANNEL
     if source not in USAGE_SOURCES:
         raise ValueError(f"'source' desconocido: {source!r}")
+    # Spec 047 (0177): la partida de Consumo se deriva del origen al escribir.
+    line = USAGE_LINE_BY_SOURCE[source]
     events = json.loads(fields["events"])
     if not isinstance(events, list):
         raise ValueError("'events' no es una lista")
 
     rows: list[dict[str, Any]] = []
     for event in events:
+        decision = event.get("route_decision_id")
         rows.append(
             {
                 "tenant_id": tenant_id,
@@ -134,6 +149,11 @@ def rows_from_entry(fields: dict[str, str]) -> tuple[uuid.UUID, list[dict[str, A
                 "agent_id": uuid.UUID(agent_id) if agent_id else None,
                 "idempotency_key": event["idempotency_key"],
                 "source": source,
+                # Spec 047 (requisitos 40.1 y 40.9): la tarea de la llamada y
+                # la decisión del router. Las entradas de antes no las llevan.
+                "task": event.get("task"),
+                "route_decision_id": uuid.UUID(decision) if decision else None,
+                "line": line,
             }
         )
     _apply_native_breakdown(rows)
@@ -230,16 +250,49 @@ def _apply_lane_weights(rows: list[dict[str, Any]], weights: dict[str, dict[str,
             )
 
 
+def _apply_costs(
+    rows: list[dict[str, Any]],
+    catalog: dict[str, ModelPrice],
+    unit_prices: dict[str, Decimal],
+) -> None:
+    """Pone ``cost_usd`` a cada fila, con cada token valorado una sola vez (INC-70).
+
+    ``quantity`` de ``llm.input_tokens`` es el prompt bruto y lleva dentro lo que
+    ya se paga en las filas de caché. Una fila suelta no lo sabe, así que se agrupa
+    por llamada como en los dos pasos de arriba. No sirve ``billable_qty``: desde
+    la spec 007 lleva el peso de la cuota, y esto son dólares. ``quantity`` no se
+    toca: es lo medido, y de ahí sale el cobro (``_turn_quota``).
+    """
+    tokens: dict[str, dict[str, int]] = {}
+    for row in rows:
+        meter = str(row.get("meter") or "")
+        if meter.startswith("llm."):
+            tokens.setdefault(_llm_call_key(row), {})[meter] = int(row["quantity"] or 0)
+    for row in rows:
+        valued = row
+        if row["meter"] == "llm.input_tokens":
+            call = tokens[_llm_call_key(row)]
+            valued = {
+                **row,
+                "quantity": priced_input_tokens(
+                    call["llm.input_tokens"],
+                    call.get("llm.cache_read", 0),
+                    call.get("llm.cache_write", 0),
+                ),
+            }
+        row["cost_usd"] = price_row(valued, catalog, unit_prices)
+
+
 _INSERT_SQL = sa.text(
     """
     INSERT INTO usage_records (
         tenant_id, occurred_at, meter, quantity, billable_qty, cost_usd,
         provider, model, conversation_id, agent_config_id, agent_id, idempotency_key,
-        source
+        source, task, route_decision_id, line
     ) VALUES (
         :tenant_id, :occurred_at, :meter, :quantity, :billable_qty, :cost_usd,
         :provider, :model, :conversation_id, :agent_config_id, :agent_id, :idempotency_key,
-        :source
+        :source, :task, :route_decision_id, :line
     )
     ON CONFLICT (idempotency_key, occurred_at) DO NOTHING
     """
@@ -289,10 +342,56 @@ def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str
     return turns
 
 
+def _by_source_and_agent(
+    rows: list[dict[str, Any]],
+) -> dict[tuple[str, Any], list[dict[str, Any]]]:
+    """Un lote junta las filas de un cliente, sean de lo que sean: cada una se cobra según
+    su origen y a su agente, nunca según la primera (bug ``un-lote-cobra-por-su-primera-fila``)."""
+    groups: dict[tuple[str, Any], list[dict[str, Any]]] = {}
+    for row in rows:
+        source = str(row.get("source") or SOURCE_CHANNEL)
+        groups.setdefault((source, row.get("agent_id")), []).append(row)
+    return groups
+
+
 async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
-    source = str((rows[0] or {}).get("source") or SOURCE_CHANNEL) if rows else SOURCE_CHANNEL
-    if source != SOURCE_CHANNEL:
-        return
+    for (source, agent_id), group in _by_source_and_agent(rows).items():
+        if source == SOURCE_CHANNEL:
+            await _debit_channel_rows(tenant_id, group, agent_id)
+        elif source == SOURCE_TESTS_CLIENT:
+            await _debit_tests_rows(tenant_id, group, agent_id)
+
+
+async def _debit_tests_rows(
+    tenant_id: uuid.UUID, rows: list[dict[str, Any]], agent_id: Any
+) -> None:
+    """Requisito 68: una pasada a cargo de la bolsa, una entrada por pasada. Si falla, la
+    entrada se reintenta (el cobro es idempotente por su referencia)."""
+    # Sin partner o sin catálogo no se acusa la entrada: se reintenta, y el cobro es
+    # idempotente. Una pasada que pidió la bolsa no se queda sin cobrar en silencio.
+    partner_id = await _partner_for(tenant_id)
+    if partner_id is None:
+        raise RuntimeError(f"bag pass without a partner: tenant {tenant_id}")
+    from nexus_api.services.wallet.turns import charge_tests
+
+    weights = lane_weights_from(await get_catalog())
+    if not weights:
+        raise RuntimeError("bag pass without a catalog to price it")
+    for turn, qty in _turn_quota(rows, weights).items():
+        if qty <= 0:
+            continue
+        await charge_tests(
+            partner_id=partner_id,
+            tenant_id=tenant_id,
+            agent_id=uuid.UUID(str(agent_id)) if agent_id else None,
+            amount_usd=qty,
+            usage_ref=f"{SOURCE_TESTS_CLIENT}:{turn}",
+        )
+
+
+async def _debit_channel_rows(
+    tenant_id: uuid.UUID, rows: list[dict[str, Any]], agent_id: Any
+) -> None:
     partner_id = await _partner_for(tenant_id)
     if partner_id is None:
         return
@@ -313,17 +412,29 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
         except Exception as exc:  # pragma: no cover - defensivo
             log.warning("metering.catalog_unavailable_for_weights", error=str(exc))
             return
-    # Spec 030: the agent the turn ran for — same for every row of an entry.
-    agent_id = (rows[0] or {}).get("agent_id") if rows else None
     # Owner, 2026-10-20: a client with unlimited consumption is measured the
     # same and written as ``absorbed`` — Auphere covers it; the partner's
     # balance and the client's cap do not move. Unreadable → raise and retry,
     # never a guess about who pays.
     unlimited = await is_unlimited(tenant_id)
+    # Spec 047 (D25): con bolsas, el turno lo paga la bolsa del cliente (con el
+    # cambio del día); la cuenta del partner ya apartó ese dinero al asignar.
+    from nexus_api.services.wallet.turns import bags_on, charge_turn
+
+    with_bags = not unlimited and await bags_on(partner_id)
     for turn, qty in _turn_quota(rows, weights).items():
         if qty <= 0:
             continue
         key = f"channel:{turn}"
+        if with_bags:
+            await charge_turn(
+                partner_id=partner_id,
+                tenant_id=tenant_id,
+                agent_id=uuid.UUID(str(agent_id)) if agent_id else None,
+                amount_usd=qty,
+                usage_ref=key,
+            )
+            continue
         if unlimited:
             await record_absorbed(
                 partner_id=partner_id,
@@ -396,14 +507,19 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
     for tenant_id, rows in rows_by_tenant.items():
         if not rows:
             continue
+        for row in rows:
+            # Spec 047 (0177): toda fila sale con su partida, también la que
+            # no viene de ``rows_from_entry``; tarea y decisión, si las hubo.
+            row.setdefault("task", None)
+            row.setdefault("route_decision_id", None)
+            row.setdefault("line", USAGE_LINE_BY_SOURCE.get(str(row.get("source") or "")))
         if catalog:
             # Spec 007: la segunda mitad del desglose. El catálogo ya está
             # leído para valorar en dólares, así que ponderar aquí no cuesta
             # ninguna consulta nueva.
             _apply_lane_weights(rows, lane_weights_from(catalog))
         if catalog or unit_prices:
-            for row in rows:
-                row["cost_usd"] = price_row(row, catalog, unit_prices)
+            _apply_costs(rows, catalog, unit_prices)
             # WP-20 — el contador de presupuesto se alimenta AQUÍ, con el
             # precio ya calculado. Va unos segundos por detrás del gasto
             # real (el metering es asíncrono) y es un compromiso asumido:
@@ -416,7 +532,40 @@ async def persist_rows(rows_by_tenant: dict[uuid.UUID, list[dict[str, Any]]]) ->
                 await session.execute(_INSERT_SQL, chunk)
                 sent += len(chunk)
         await _debit_channel_wallet(tenant_id, rows)
+        await _record_build_line(tenant_id, rows)
     return sent
+
+
+async def _record_build_line(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
+    """Spec 047 (46.5, D29): lo de la partida «Construcción y pruebas», a precio
+    (coste por 2,2, en cien milésimas), suma a la del partner del mes. La paga
+    Auphere; la partida solo frena al llegar al tope. Nunca rompe la ingesta."""
+    cost = sum(Decimal(str(r.get("cost_usd") or 0)) for r in rows if r.get("line") == "build")
+    if cost <= 0:
+        return
+    partner_id = await _partner_for(tenant_id)
+    if partner_id is None:
+        return
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.services.channel_config import announce
+    from nexus_api.services.wallet import build_budget
+
+    amount = int(cost * Decimal("2.2") * 100_000)
+    try:
+        async with get_sessionmaker()() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            notices = await build_budget.record(session, partner_id, amount)
+    except Exception as exc:
+        log.warning("metering.build_budget_failed", tenant_id=str(tenant_id), error=str(exc))
+        return
+    for kind in notices:
+        await announce(
+            tenant_id=tenant_id,
+            kind=kind,
+            severity="warning" if kind.endswith("warning") else "critical",
+            data={"line": "build"},
+            dedupe_key=f"{kind}:{partner_id}:{datetime.now(UTC).strftime('%Y-%m')}",
+        )
 
 
 _PARTNER_SQL = sa.text("SELECT partner_id FROM partner_tenants WHERE tenant_id = :t LIMIT 1")

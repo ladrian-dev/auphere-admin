@@ -5,6 +5,13 @@
  */
 export const inboxMessages = {
   "inbox.title": { es: "Bandeja de entrada", en: "Inbox" },
+  // Spec 049: the client may answer on Instagram and Messenger too — the Inbox names no channel it may not have.
+  "inbox.intro.one": { es: "Tu agente responde a tus clientes. Tú entras cuando hace falta.", en: "Your agent answers your customers. You step in when needed." },
+  "inbox.intro.many": {
+    es: "Tus agentes responden a tus clientes. Tú entras cuando hace falta.",
+    en: "Your agents answer your customers. You step in when needed.",
+  },
+  "inbox.agents.active": { es: "{count} agentes activos", en: "{count} active agents" },
   "inbox.live.reconnecting": { es: "Reconectando…", en: "Reconnecting…" },
   "inbox.live.reconnecting.hint": {
     es: "Se cortó la conexión en vivo. Lo nuevo aparecerá en cuanto vuelva.",
@@ -19,11 +26,14 @@ export const inboxMessages = {
   "inbox.search": { es: "Buscar", en: "Search" },
   "inbox.search.label": { es: "Buscar por nombre, teléfono o mensaje", en: "Search by name, phone or message" },
   "inbox.filters": { es: "Filtros", en: "Filters" },
-  "inbox.filter.all": { es: "Todas", en: "All" },
+  // Spec 056 (6.1, D6): el valor sigue siendo `all`; enseña las que no están resueltas.
+  "inbox.filter.all": { es: "Abiertas", en: "Open" },
   "inbox.filter.unread": { es: "Sin leer", en: "Unread" },
   "inbox.filter.waiting": { es: "Necesita humano", en: "Needs a human" },
   "inbox.filter.waiting.count": { es: "Necesita humano · {count}", en: "Needs a human · {count}" },
   "inbox.filter.resolved": { es: "Resueltas", en: "Resolved" },
+  "inbox.filter.channel": { es: "Canal", en: "Channel" },
+  "inbox.filter.channel.all": { es: "Todos los canales", en: "All channels" },
   "inbox.filter.agent": { es: "Agente", en: "Agent" },
   "inbox.filter.agent.all": { es: "Todos los agentes", en: "All agents" },
   "inbox.badge.agent": { es: "Agente:", en: "Agent:" },
@@ -32,12 +42,24 @@ export const inboxMessages = {
   "inbox.list.loading": { es: "Cargando conversaciones", en: "Loading conversations" },
   "inbox.empty.title": { es: "Aún no hay conversaciones", en: "No conversations yet" },
   "inbox.empty.body": {
-    es: "Cuando alguien escriba a tu WhatsApp, la conversación aparecerá aquí.",
-    en: "When someone messages your WhatsApp, the conversation will show up here.",
+    es: "Cuando alguien te escriba, la conversación aparecerá aquí.",
+    en: "When someone messages you, the conversation will show up here.",
   },
   "inbox.empty.filtered": { es: "No hay conversaciones con estos filtros.", en: "No conversations match these filters." },
-  "inbox.empty.clear": { es: "Ver todas las conversaciones", en: "See all conversations" },
+  "inbox.empty.clear": { es: "Quitar los filtros", en: "Clear filters" },
+  // Spec 056 (6.2): «Abiertas» vacía, con conversaciones resueltas.
+  "inbox.empty.open.title": { es: "No tienes conversaciones abiertas", en: "You have no open conversations" },
+  "inbox.empty.open.resolved": { es: "{count} resueltas", en: "{count} resolved" },
+  "inbox.empty.open.resolved.one": { es: "1 resuelta", en: "1 resolved" },
+  "inbox.empty.open.action": { es: "Ver las resueltas", en: "See resolved" },
   "inbox.row.unread": { es: "Sin leer", en: "Unread" },
+  // Spec 045 (R3.1): why and since when a conversation waits for a person.
+  "inbox.row.reason": { es: "Motivo del agente:", en: "Agent's reason:" },
+  "inbox.row.waiting.now": { es: "Espera hace menos de 1 min", en: "Waiting for less than a minute" },
+  "inbox.row.waiting.min": { es: "Espera hace {n} min", en: "Waiting for {n} min" },
+  "inbox.row.waiting.h": { es: "Espera hace {n} h", en: "Waiting for {n} h" },
+  "inbox.row.waiting.d": { es: "Espera hace {n} días", en: "Waiting for {n} days" },
+  "inbox.row.waiting.d.one": { es: "Espera hace 1 día", en: "Waiting for 1 day" },
   "inbox.row.media": { es: "Archivo", en: "File" },
   "inbox.row.you": { es: "Tú: {text}", en: "You: {text}" },
   "inbox.row.agent": { es: "Agente: {text}", en: "Agent: {text}" },
@@ -71,8 +93,19 @@ export const inboxMessages = {
   "inbox.delivery.sent": { es: "Enviado", en: "Sent" },
   "inbox.delivery.delivered": { es: "Entregado", en: "Delivered" },
   "inbox.delivery.read": { es: "Leído", en: "Read" },
+  "inbox.message.unsent": { es: "El contacto eliminó este mensaje", en: "The contact deleted this message" },
+  "inbox.message.opted_out": {
+    es: "Se dio de baja de la publicidad. El agente no responde a este mensaje.",
+    en: "Opted out of marketing. The agent does not answer this message.",
+  },
+  "inbox.comment.on": { es: "Comentó en esta publicación", en: "Commented on this post" },
+  "inbox.comment.open": { es: "Ver la publicación", en: "See the post" },
   "inbox.delivery.failed": { es: "No se envió", en: "Not sent" },
   "inbox.delivery.failed.reason": { es: "No se envió: {reason}", en: "Not sent: {reason}" },
+  "inbox.delivery.failed.human_agent": {
+    es: "No se envió: Meta todavía no permite responder pasadas 24 horas desde el último mensaje del contacto.",
+    en: "Not sent: Meta doesn't allow replies yet more than 24 hours after the contact's last message.",
+  },
   "inbox.media.image": { es: "Imagen", en: "Image" },
   "inbox.media.document": { es: "Documento", en: "Document" },
   "inbox.media.audio": { es: "Audio", en: "Audio" },
@@ -98,8 +131,23 @@ export const inboxMessages = {
   "inbox.action.unread": { es: "Marcar como no leída", en: "Mark as unread" },
   "inbox.action.resolve": { es: "Marcar como resuelta", en: "Mark as resolved" },
   "inbox.action.reopen": { es: "Reabrir", en: "Reopen" },
+  "inbox.action.more": { es: "Más acciones", en: "More actions" },
+  "inbox.action.clear": { es: "Vaciar chat", en: "Clear chat" },
+  "inbox.action.delete": { es: "Eliminar chat", en: "Delete chat" },
+  "inbox.clear.title": { es: "¿Vaciar este chat?", en: "Clear this chat?" },
+  "inbox.clear.body": {
+    es: "Los mensajes dejan de verse aquí y el agente deja de tenerlos en cuenta. Las notas y etiquetas se mantienen. El contacto conserva su copia en la app, y Auphere guarda los mensajes archivados según su política de retención.",
+    en: "The messages stop showing here and the agent stops taking them into account. Notes and tags stay. The contact keeps their own copy in the app, and Auphere keeps the messages archived under its retention rules.",
+  },
+  "inbox.delete.title": { es: "¿Eliminar este chat?", en: "Delete this chat?" },
+  "inbox.delete.body": {
+    es: "Sale de tu bandeja. Si esta persona vuelve a escribir, empieza un chat nuevo y responde el agente. Ella conserva su copia en la app, y Auphere guarda la conversación archivada según su política de retención.",
+    en: "It leaves your inbox. If this person writes again, a new chat starts and the agent answers. They keep their own copy in the app, and Auphere keeps the conversation archived under its retention rules.",
+  },
   "inbox.action.panel": { es: "Datos del contacto", en: "Contact details" },
   "inbox.action.panel.hide": { es: "Ocultar datos del contacto", en: "Hide contact details" },
+  "inbox.toast.cleared": { es: "Chat vaciado", en: "Chat cleared" },
+  "inbox.toast.deleted": { es: "Chat eliminado", en: "Chat deleted" },
   "inbox.toast.resolved": { es: "Conversación resuelta", en: "Conversation resolved" },
   "inbox.toast.unread": { es: "Marcada como no leída", en: "Marked as unread" },
   "inbox.stale": {
@@ -112,8 +160,8 @@ export const inboxMessages = {
   "inbox.composer.hint": { es: "Enter envía · Mayúsculas+Enter salta de línea", en: "Enter sends · Shift+Enter adds a line" },
   "inbox.composer.send": { es: "Enviar", en: "Send" },
   "inbox.composer.agent": {
-    es: "El agente está respondiendo en WhatsApp. Si quieres escribir tú, toma el control.",
-    en: "The agent is answering on WhatsApp. If you want to write yourself, take over.",
+    es: "El agente está respondiendo. Si quieres escribir tú, toma el control.",
+    en: "The agent is answering. If you want to write yourself, take over.",
   },
   "inbox.composer.other": {
     es: "{name} está atendiendo esta conversación.",
@@ -127,13 +175,17 @@ export const inboxMessages = {
     es: "Conversación resuelta. Si el contacto vuelve a escribir, se reabre y responde el agente.",
     en: "Conversation resolved. If the contact writes again, it reopens and the agent answers.",
   },
+  "inbox.composer.agent_window_closed": {
+    es: "El agente ya no puede responder: pasó el plazo desde el último mensaje del contacto. Podrá hacerlo cuando vuelva a escribir.",
+    en: "The agent can no longer answer: the time since the contact's last message has passed. It can answer when they write again.",
+  },
   "inbox.composer.window_closed": {
-    es: "Pasaron más de 24 horas desde el último mensaje del contacto. WhatsApp no deja escribirle hasta que vuelva a escribir.",
-    en: "More than 24 hours have passed since the contact's last message. WhatsApp won't let you write until they write again.",
+    es: "Pasó el plazo para escribir a este contacto desde su último mensaje. Podrás hacerlo cuando vuelva a escribir.",
+    en: "The time to write to this contact since their last message has passed. You can write when they write again.",
   },
   "inbox.composer.channel_disconnected": {
-    es: "Tu número de WhatsApp está desconectado. Pide a quien lo gestiona que lo vuelva a conectar.",
-    en: "Your WhatsApp number is disconnected. Ask whoever manages it to reconnect it.",
+    es: "Este canal está desconectado. Pide a quien lo gestiona que lo vuelva a conectar.",
+    en: "This channel is disconnected. Ask whoever manages it to reconnect it.",
   },
   "inbox.composer.not_assigned_to_you": {
     es: "Ya no atiendes esta conversación. Toma el control para escribir.",
@@ -163,6 +215,7 @@ export const inboxMessages = {
   "inbox.panel.attends": { es: "Atiende", en: "Answering" },
   "inbox.panel.channel": { es: "Canal", en: "Channel" },
   "inbox.panel.phone": { es: "Teléfono", en: "Phone" },
+  "inbox.panel.account": { es: "Cuenta", en: "Account" },
   "inbox.panel.first": { es: "Primer mensaje", en: "First message" },
   "inbox.panel.conversations": { es: "Conversaciones", en: "Conversations" },
   "inbox.panel.activity": { es: "Actividad", en: "Activity" },
@@ -182,6 +235,8 @@ export const inboxMessages = {
   "inbox.panel.note.saved": { es: "Guardada", en: "Saved" },
   "inbox.panel.note.error": { es: "No se pudo guardar", en: "Couldn't save" },
   "inbox.channel.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
+  "inbox.channel.instagram": { es: "Instagram", en: "Instagram" },
+  "inbox.channel.messenger": { es: "Messenger", en: "Messenger" },
   // ── search from anywhere (R7.4) ─────────────────────────────────
   "inbox.globalSearch": { es: "Buscar en la bandeja", en: "Search the inbox" },
 } as const;

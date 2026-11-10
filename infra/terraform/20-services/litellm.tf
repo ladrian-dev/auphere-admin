@@ -13,6 +13,17 @@ variable "litellm_enabled" {
   default     = false
 }
 
+variable "llm_via_proxy" {
+  description = <<-EOT
+    Saca las llamadas a modelos por el proxy en vez de ir directas al proveedor.
+    Apagado, staging hace lo mismo que producción (enmienda de ADR-036,
+    2026-11-03). Encenderlo es la vuelta atrás, y solo tiene efecto en staging
+    con el proxy creado (``litellm_enabled``).
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "litellm_image" {
   description = "Imagen oficial pinneada. No usar :latest."
   type        = string
@@ -21,6 +32,7 @@ variable "litellm_image" {
 
 locals {
   litellm_count = var.litellm_enabled && terraform.workspace == "staging" ? 1 : 0
+  llm_via_proxy = var.llm_via_proxy && local.litellm_count == 1
   litellm_cpu   = 256
   # 512 MiB se quedaba corto: el 2026-09-01 la task murió con
   # ``OutOfMemoryError: container killed due to memory usage`` (exit 137)

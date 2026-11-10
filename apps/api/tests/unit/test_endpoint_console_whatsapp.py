@@ -75,8 +75,22 @@ class _MetaRefusesRegister(_FakeMeta):
     """Meta rechaza el ``register``: el número sigue en otra cuenta."""
 
     async def register_phone(self, **_: Any) -> dict[str, Any]:
+        from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
+
         self.calls.append("register_phone")
-        raise RuntimeError("(#133010) Account has not been registered")
+        raise MetaAPIError(
+            "(#133010) Account has not been registered", status_code=400, code=133010
+        )
+
+
+class _MetaDownOnRegister(_FakeMeta):
+    """Meta no responde al ``register`` (timeout o 5xx)."""
+
+    async def register_phone(self, **_: Any) -> dict[str, Any]:
+        from nexus_channels.whatsapp_meta.exceptions import MetaTransientError
+
+        self.calls.append("register_phone")
+        raise MetaTransientError("Service temporarily unavailable", status_code=503)
 
 
 async def _signup(
@@ -208,6 +222,21 @@ async def test_a_number_meta_still_holds_has_its_own_sentence(
         )
         == 0
     )
+
+
+async def test_meta_not_answering_the_register_is_not_blamed_on_a_previous_owner(
+    client, console_world, db_session, monkeypatch
+) -> None:
+    """QA 2026-10-30 (INC-15): a timeout or a 5xx came out as
+    ``number_held_by_previous_owner`` and sent the partner after the wrong
+    person. It is Meta not answering: 502."""
+    b = console_world["b"]
+    number = f"+3461{uuid.uuid4().int % 10**7:07d}"
+    r, _ = await _signup(
+        client, b, number, monkeypatch, fake=_MetaDownOnRegister(number), mode="cloud_api"
+    )
+    assert r.status_code == 502, r.text
+    assert "number_held_by_previous_owner" not in r.text
 
 
 async def test_signup_keeps_the_business_id_the_catalog_needs(

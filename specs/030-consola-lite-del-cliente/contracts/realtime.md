@@ -7,7 +7,7 @@ Mensajes JSON sin cuerpo de mensaje (la consola vuelve a pedir lo que cambió):
 ```json
 {"event": "conversation.updated", "conversation_id": "…", "at": "…"}
 {"event": "message.new", "conversation_id": "…", "message_id": "…", "direction": "inbound", "at": "…"}
-{"event": "message.status", "conversation_id": "…", "message_id": "…", "delivery": "failed", "at": "…"}
+{"event": "message.status", "conversation_id": "…", "message_id": "…", "status": "failed", "at": "…"}
 ```
 
 | Quién publica | Cuándo |

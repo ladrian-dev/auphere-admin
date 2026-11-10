@@ -60,7 +60,9 @@ class _FakeGrader:
         self.calls: list[dict] = []
 
     async def grade(self, **kwargs):
-        self.calls.append(kwargs)
+        from nexus_api.core.llm_proxy import current_llm_proxy_partner
+
+        self.calls.append({**kwargs, "partner_id": current_llm_proxy_partner()})
         if self.boom:
             raise RuntimeError("el proveedor dice que no")
         return _Verdict(self.overall, "todo bien" if self.overall == "pass" else "faltó el horario")
@@ -228,3 +230,35 @@ async def test_an_unusable_job_is_acked_and_does_not_block_the_queue(clean_strea
 
     await drain_once(clean_stream, grader=_FakeGrader(), consumer_name="test")
     assert (await _message(tenant_id, msg_id))[0] == "pass", "el trabajo bueno no se procesó"
+
+
+async def test_the_grader_goes_out_with_the_clients_partner_key(clean_stream, db_session) -> None:
+    """Con el proxy obligatorio (staging) el grader solo llega al modelo con la
+    clave del partner del cliente (fallo el-constructor-no-llega-al-modelo-en-staging).
+
+    ``db_session`` vacía la base al terminar: el partner que crea no puede quedar
+    para las pruebas que cuentan partners (``test_dev_seed_fabrica``)."""
+    from nexus_api.db.models import Partner
+
+    tenant_id, partner_id = uuid.uuid4(), uuid.uuid4()
+    conv_id, msg_id = await _seed(tenant_id)
+    sm = get_sessionmaker()
+    async with sm() as session:
+        session.add(Partner(id=partner_id, name="Grader", slug=f"grader-{partner_id.hex[:8]}"))
+        await session.flush()
+        tenant = await session.get(Tenant, tenant_id)
+        assert tenant is not None
+        tenant.partner_id = partner_id
+        await session.commit()
+    await publish_grade_job(
+        tenant_id=tenant_id,
+        conversation_id=conv_id,
+        message_id=msg_id,
+        intent="info",
+        user_message="¿a qué hora abren?",
+        response=CONTENT,
+    )
+
+    grader = _FakeGrader()
+    assert await drain_once(clean_stream, grader=grader, consumer_name="test") == 1
+    assert [c["partner_id"] for c in grader.calls] == [partner_id]

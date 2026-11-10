@@ -1152,7 +1152,9 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
                     "openai/gpt-5.6-luna. No gpt-5.6."
                 ),
                 required=True,
-                enum=RESPOND_MODEL_IDS,
+                # Spec 047 (T139): la oferta sale de los datos; el esquema de la
+                # herramienta la congela al construirse el catálogo.
+                enum=tuple(RESPOND_MODEL_IDS),
             ),
         ),
         max_chars=4_000,

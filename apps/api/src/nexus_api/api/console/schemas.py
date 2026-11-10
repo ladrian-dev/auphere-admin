@@ -25,6 +25,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 # ── principal ──────────────────────────────────────────────────────────
 
+ConsoleVersion = Literal["v1", "v2"]
+
 
 class PartnerBrief(BaseModel):
     slug: str
@@ -56,6 +58,10 @@ class MeOut(BaseModel):
     companion_enabled: bool = False
     #: Spec 032: the modules Auphere gave this partner (sidebar + Companion).
     modules: list[str] = Field(default_factory=list)
+    #: Spec 047 (R55.2, research D38): which console frame this partner sees.
+    #: ``v2`` only once Auphere activated the new console for the partner;
+    #: until then, the console of today.
+    console_version: ConsoleVersion = "v1"
 
 
 # ── clients ────────────────────────────────────────────────────────────
@@ -253,6 +259,11 @@ class AgentPublishIn(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     origin: Literal["draft_bar", "agent_tab"] = Field(default="agent_tab", alias="from")
+    # Spec 047 (T093): the gate is the same everywhere (23.7). «Guardar
+    # igualmente» with a normal test in red; an owner or admin may skip a
+    # critical test or a blocker writing the reason (23.2, 23.3).
+    accept_normal_failures: bool = False
+    override_reason: str | None = Field(default=None, max_length=500)
 
 
 class DraftSettingChangeOut(BaseModel):
@@ -412,15 +423,21 @@ class AuditEntryOut(BaseModel):
     actor: str
     #: Spec 029: who wrote it, so the console draws a face or an icon.
     actor_kind: Literal["person", "companion", "auphere", "api_key", "machine", "system"] = "system"
+    #: Spec 047 (events.md §4): desde dónde (también la consola lite y la app).
+    origin: Literal["console", "lite_web", "app", "admin", "api", "system"] = "system"
     action: str
     #: Spec 029: the vocabulary's category and severity (``critical`` marks
     #: what cannot be undone: deleting a client, revoking a key).
     category: str | None = None
     severity: str = "info"
+    #: Spec 047 (49.1): lo sensible se marca (la gravedad ``critical``).
+    sensitive: bool = False
     target: str
     external_client_ref: str | None
     client_name: str | None
     summary: str
+    #: «{n} más como esta»: filas seguidas iguales (persona, acción, cliente, día).
+    more_like_this: int = 0
 
 
 class AuditPageOut(BaseModel):
@@ -676,3 +693,86 @@ class BillingOut(BaseModel):
     #: Spec 034: whether the plans exist. Off, the screen shows no plans and
     #: no provider portal — only the credit purchase and the receipts.
     memberships_enabled: bool = False
+
+
+# ── jobs (spec 047, ``contracts/console-api.md`` §Convenciones) ───────────
+
+JobKind = Literal[
+    "client_read",
+    "client_builder",
+    "agent_draft",
+    "tests",
+    "publish",
+    "fix",
+    "copilot",
+    "quality_check",
+    "suggestions",
+]
+JobStatus = Literal["queued", "running", "done", "failed"]
+
+
+class JobAcceptedOut(BaseModel):
+    """``202`` of every route that starts a long job."""
+
+    job_id: uuid.UUID
+
+
+class JobOut(BaseModel):
+    """``GET /console/jobs/{job_id}``. The console polls it (1, 2, 4… 10 s).
+
+    No cost (C9): what a job spent is Auphere's, and the partner sees the
+    «Construcción y pruebas» line in Consumo, not per job. A failure travels
+    as ``error_code`` only; the console owns the words.
+    """
+
+    job_id: uuid.UUID
+    kind: JobKind
+    status: JobStatus
+    #: Under its client; ``None`` for client-level jobs (``client_read``…).
+    agent_id: uuid.UUID | None = None
+    #: The blocks already written and the current step:
+    #: ``{"step": str | None, "blocks": [...]}``.
+    progress: dict[str, Any] = Field(default_factory=dict)
+    #: The builder's open questions, when it needs answers to go on.
+    questions: list[dict[str, Any]] | None = None
+    result: dict[str, Any] | None = None
+    error_code: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+
+
+# ── search, ⌘K (spec 047, R47.2) ───────────────────────────────────────
+
+
+class SearchClientHit(BaseModel):
+    ref: str
+    name: str
+    #: The client's niche; ``None`` until the business profile exists (ola 2).
+    niche: str | None = None
+
+
+class SearchAgentHit(BaseModel):
+    agent_id: uuid.UUID
+    name: str
+    client_ref: str
+    client_name: str
+
+
+class SearchScreenHit(BaseModel):
+    #: Stable key; the console owns the label (``shell.search.screen.<key>``).
+    key: str
+    href: str
+
+
+class SearchActionHit(BaseModel):
+    """Only actions the principal may do (§V: what is not allowed is absent)."""
+
+    key: str
+    href: str
+
+
+class SearchOut(BaseModel):
+    clients: list[SearchClientHit] = Field(default_factory=list)
+    agents: list[SearchAgentHit] = Field(default_factory=list)
+    screens: list[SearchScreenHit] = Field(default_factory=list)
+    actions: list[SearchActionHit] = Field(default_factory=list)

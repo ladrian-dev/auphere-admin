@@ -154,9 +154,9 @@ async def test_dry_run_audit_failure_does_not_break_conversation():
 
 
 async def test_dry_run_gates_internal_dispatch_too():
-    """The dispatch_internal path (used by subprocess delegates like
-    agendapro) MUST also be gated — otherwise the public booking tool
-    would be blocked but its delegate would still hit the provider.
+    """The dispatch_internal path (for a server that delegates to an
+    internal tool) MUST also be gated — otherwise the public tool would be
+    blocked but its delegate would still hit the provider.
     """
     audit_calls: list[str] = []
 

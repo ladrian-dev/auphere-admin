@@ -1,10 +1,10 @@
-"""Spec 016 (garantías 4 y 6): las cinco acciones nuevas dejan rastro y no
-dejan secretos.
+"""Spec 016 (garantías 4 y 6): las acciones nuevas dejan rastro y no dejan
+secretos.
 
 Cada una escribe ``audit_log`` con ``actor = console:{email}`` y un
 ``after_json`` que no contiene la clave de API, el código de Meta ni nada
-que no deba leerse en la auditoría del partner. La URL pública de AgendaPro
-es pública y sí viaja.
+que no deba leerse en la auditoría del partner. (Eran cinco: la quinta, la
+agenda pública de un conector de navegador, se fue con la spec 048.)
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ pytestmark = pytest.mark.asyncio
 ACTIONS = (
     "console.allocation.move",
     "console.model.update",
-    "console.integration.agendapro_url",
     "console.connector.connect",
     "console.channel.connect",
 )
@@ -37,7 +36,7 @@ SECRETS = ("ck_secret_016", "cs_secret_016", "META-CODE-016", "EAA-bisuat")
 
 
 @pytest.mark.usefixtures("seeded_connectors", "fake_composio")
-async def test_the_five_actions_leave_a_trail_without_secrets(
+async def test_the_actions_leave_a_trail_without_secrets(
     client, console_world, db_session, monkeypatch
 ) -> None:
     from tests.integration.test_console_wallet import _add_unallocated_client
@@ -55,12 +54,6 @@ async def test_the_five_actions_leave_a_trail_without_secrets(
     )
     assert r.status_code == 200, r.text
     r = await client.put(f"{base}/model", headers=h(), json={"model_id": "openai/gpt-5.6-luna"})
-    assert r.status_code == 200, r.text
-    r = await client.put(
-        f"{base}/integrations/agendapro/public-url",
-        headers=h(),
-        json={"public_url": "https://trail.site.agendapro.com/cl/x"},
-    )
     assert r.status_code == 200, r.text
     r = await client.post(
         f"{base}/connectors/woocommerce/api-key",

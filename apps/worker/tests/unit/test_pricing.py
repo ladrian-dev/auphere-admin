@@ -89,3 +89,40 @@ def test_a_float_quantity_does_not_poison_the_arithmetic() -> None:
     dinero."""
     row = {"meter": "llm.input_tokens", "quantity": 1500.0, "model": SONNET.model_id}
     assert price_row(row, CATALOG) == Decimal("0.00450000")
+
+
+# ── spec 047: ``cheapest_model`` con sus filtros (plan, ola 6) ─────────────
+
+
+async def test_the_cheapest_model_filters_status_tools_allowlist_and_residency(monkeypatch) -> None:
+    """Sin filtros, el más barato del catálogo podía ser uno deprecado o uno sin
+    herramientas, y el turno degradado es un turno con herramientas."""
+    from nexus_worker.metering import pricing
+
+    def price(model_id: str, inp: str, **over: object) -> ModelPrice:
+        return ModelPrice(model_id=model_id, input_per_mtok=Decimal(inp), **over)  # type: ignore[arg-type]
+
+    catalog = {
+        p.model_id: p
+        for p in (
+            price("viejo/deprecado", "0.01", status="deprecated"),
+            price("voz/sin-tools", "0.02", supports_tools=False),
+            price("fuera/no-permitido", "0.03"),
+            price("global/barato", "0.04"),
+            price("ue/barato", "0.05", residency="eu"),
+            price("ue/caro", "3", residency="eu"),
+        )
+    }
+
+    async def fake_catalog(**_: object) -> dict[str, ModelPrice]:
+        return catalog
+
+    monkeypatch.setattr(pricing, "get_catalog", fake_catalog)
+    # Lo de siempre, que es lo que llama hoy el grafo, ya no elige un deprecado
+    # ni uno sin herramientas.
+    assert await pricing.cheapest_model() == "fuera/no-permitido"
+    allowed = frozenset({"global/barato", "ue/barato", "ue/caro", "voz/sin-tools"})
+    assert await pricing.cheapest_model(allowed=allowed) == "global/barato"
+    assert await pricing.cheapest_model(allowed=allowed, eu_only=True) == "ue/barato"
+    assert await pricing.cheapest_model(allowed=allowed, needs_tools=False) == "voz/sin-tools"
+    assert await pricing.cheapest_model(allowed=frozenset({"viejo/deprecado"})) is None

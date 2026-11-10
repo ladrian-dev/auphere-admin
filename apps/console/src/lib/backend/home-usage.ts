@@ -103,8 +103,41 @@ export type Home = {
   credit?: HomeCredit | null;
   spend?: HomeSpend | null;
   portfolio?: PortfolioRow[] | null;
+  /** Spec 047 (requisito 48): el Panel de la consola nueva; `null` con la de hoy. */
+  panel?: HomePanel | null;
   errors: string[];
   generated_in_ms: number;
+};
+
+// ── spec 047 · el Panel del partner (requisito 48, T163) ─────────────────
+export type PanelMoney = { amount_micros: number; currency: "EUR" | "USD" };
+export type PanelSpendShare = {
+  kind: "client" | "rest" | "line";
+  external_client_ref: string | null;
+  client_name: string | null;
+  line: "conversations" | "meta" | "build" | "companion" | null;
+  amount: PanelMoney;
+  approx: boolean;
+};
+export type PanelAttentionCode = "no_balance" | "channel_problem" | "integration_reauth" | "agent_cap" | "agent_without_channel" | "low_balance" | "no_agents";
+export type PanelAttentionAction = "assign_balance" | "request_balance" | "fix_channel" | "reconnect" | "raise_cap" | "connect_channel" | "new_agent";
+export type PanelAttention = {
+  external_client_ref: string;
+  client_name: string | null;
+  code: PanelAttentionCode;
+  count: number;
+  action: PanelAttentionAction;
+  href: string;
+};
+export type HomePanel = {
+  spend: { period: "month"; since: string; until: string; total: PanelMoney; shares: PanelSpendShare[] } | null;
+  clients: { period: "now"; serving: number; not_archived: number; onboarding: number } | null;
+  balance: { period: "now"; available: PanelMoney; in_bags: PanelMoney; in_bags_approx: boolean } | null;
+  conversations_per_day: { period: "7d"; days: string[]; resolved_without_person: number[]; handed_to_person: number[] } | null;
+  attention: PanelAttention[] | null;
+  /** «Todos tus clientes están atendiendo». */
+  all_serving: boolean;
+  errors: string[];
 };
 
 export type UsageMonth = {
@@ -188,6 +221,10 @@ export type AuditQuery = {
   after?: string;
   before?: string;
   lang?: string;
+  /** Spec 047 (49.1): la persona (el mismo valor que `actor`), el periodo y si se juntan las filas iguales. */
+  person?: string;
+  days?: "7" | "30" | "90" | "all";
+  group?: boolean;
 };
 
 export type AuditFilterOption = { value: string; label: string };

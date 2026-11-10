@@ -109,3 +109,38 @@ def test_an_empty_catalog_makes_every_tool_a_write() -> None:
     """Es lo que pasa si la consulta del catálogo falla. Se gradúa de
     más, que es el lado correcto en el que equivocarse."""
     assert turn_writes([{"tool": "kg.query", "status": "ok"}], frozenset()) is True
+
+
+# ── spec 047 (T143): el muestreo del juez sale del perfil ─────────────────
+
+
+def test_the_profile_sampling_overrides_the_agents_rate() -> None:
+    """«Económico» muestrea el 10 %, «Equilibrado» el 100 % (contrato §3): el
+    perfil manda sobre el ``sample_rate`` del agente cuando lo fija."""
+    assert _decide(judge_sampling=1.0).reason == "sampled_in"
+    assert _decide(sample_rate=1.0, judge_sampling=0.0).mode == "deferred"
+
+
+def test_by_risk_grades_a_risky_turn_now_and_samples_the_rest() -> None:
+    """«Automático»: según el riesgo del turno, que da el clasificador tipado."""
+    high = _decide(judge_sampling="by_risk", risk="high")
+    assert high.is_sync and high.reason == "risk:high"
+    assert _decide(judge_sampling="by_risk", risk="low").mode == "deferred"
+    # Los turnos de riesgo por intención o escritura siguen siendo síncronos.
+    assert _decide(judge_sampling="by_risk", risk="low", intent="book").is_sync
+
+
+def test_the_judge_task_routes_to_another_family() -> None:
+    from nexus_worker.runtime.grading_policy import JUDGE_TASK, judge_route
+    from nexus_worker.runtime.model_resolver import RouteContext
+    from tests.unit._router_world import TENANT, cert, dep, profile, snapshot
+
+    claude = dep("eu-a/claude", provider="prov_a", family="anthropic-claude", price_in="0.1")
+    gpt = dep("eu-b/gpt", provider="prov_b", family="openai-gpt", price_in="0.5")
+    policy = profile("platform", judge={"min_quality": 0.9})
+    world = snapshot([claude, gpt], [cert(claude, JUDGE_TASK), cert(gpt, JUDGE_TASK)], policy)
+    ctx = RouteContext(tenant_id=TENANT, catalog=world, eu_only=True, now=1.0)
+    decision = judge_route(policy, ctx, judged_family="anthropic-claude")
+    assert decision.task == "judge"
+    assert decision.models == (gpt.key,)
+    assert {r.deployment: r.reason for r in decision.rejected} == {claude.key: "same_family"}

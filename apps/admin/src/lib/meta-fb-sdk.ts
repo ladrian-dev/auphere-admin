@@ -79,7 +79,10 @@ export interface MetaSignupEnvelope {
  */
 const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const META_GRAPH_VERSION =
-  process.env.NEXT_PUBLIC_META_GRAPH_API_VERSION ?? "v22.0";
+  process.env.NEXT_PUBLIC_META_GRAPH_API_VERSION ?? "v26.0";
+/** Spec 050: Embedded Signup v4 until v5 passes the five paths in staging. */
+const META_SIGNUP_VERSION: SignupVersion =
+  process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_VERSION === "v5" ? "v5" : "v4";
 export const META_CONFIG_ID_CLOUD_API =
   process.env.NEXT_PUBLIC_META_CONFIG_ID_WA_CLOUD_API;
 export const META_CONFIG_ID_COEXISTENCE =
@@ -93,6 +96,13 @@ function requireAppId(): string {
   }
   return META_APP_ID;
 }
+
+/** Exact origins Meta posts Embedded Signup messages from. */
+const META_ORIGINS = new Set([
+  "https://www.facebook.com",
+  "https://web.facebook.com",
+  "https://business.facebook.com",
+]);
 
 let sdkPromise: Promise<FbSdk> | null = null;
 
@@ -151,6 +161,7 @@ export type SignupMode = "cloud_api" | "coexistence";
 export async function loginWithMeta(
   configId: string,
   mode: SignupMode = "cloud_api",
+  signupVersion: SignupVersion = META_SIGNUP_VERSION,
 ): Promise<MetaSignupEnvelope> {
   const sdk = await loadFbSdk();
 
@@ -163,12 +174,9 @@ export async function loginWithMeta(
     business_id?: string;
   }>((resolve, reject) => {
     const onMessage = (event: MessageEvent) => {
-      // Origin guard. Meta posts from facebook.com (the popup origin).
-      // Without this we'd parse messages from any iframe on the page.
-      if (
-        typeof event.origin !== "string" ||
-        !event.origin.endsWith("facebook.com")
-      ) {
+      // Origin guard: Meta's exact origins, never a suffix match
+      // (``evilfacebook.com`` ends in ``facebook.com`` too).
+      if (typeof event.origin !== "string" || !META_ORIGINS.has(event.origin)) {
         return;
       }
       // Meta posts the envelope as a JSON STRING, not as an object. Older
@@ -177,40 +185,26 @@ export async function loginWithMeta(
       // forever even though the WABA was already attached server-side at
       // Meta. Always JSON.parse first; tolerate the (rare) case where Meta
       // sends an already-parsed object.
-      const data = parseMetaSignupMessage(event.data);
-      if (data === null) return;
+      const msg = parseMetaSignupMessage(event.data);
+      if (msg === null) return;
       if (typeof console !== "undefined") {
-        console.debug("[meta-fb-sdk] postMessage received", data);
+        console.debug("[meta-fb-sdk] postMessage received", msg);
       }
-      // Cloud API completes with "FINISH" carrying all three ids.
-      // Coexistence completes with "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
-      // carrying only waba_id — the backend derives phone_number_id from
-      // GET /{waba_id}/phone_numbers. Treat both as success.
-      const isFinish =
-        data.event === "FINISH" ||
-        data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
-      if (isFinish && data.data) {
-        window.removeEventListener("message", onMessage);
-        const waba = data.data.waba_id;
-        if (!waba) {
-          reject(new Error("Meta devolvió FINISH sin waba_id."));
-          return;
-        }
-        resolve({
-          waba_id: waba,
-          phone_number_id: data.data.phone_number_id || undefined,
-          business_id: data.data.business_id || undefined,
-        });
-      } else if (data.event === "CANCEL" || data.event === "ERROR") {
-        window.removeEventListener("message", onMessage);
-        reject(
-          new Error(
-            data.event === "CANCEL"
-              ? "El cliente canceló el flow de conexión."
-              : `Meta devolvió un error: ${data.data?.error_message ?? "desconocido"}`,
-          ),
-        );
+      // Same decision as the console (spec 050): both v4 FINISH events and
+      // v5's FINISH (WABA in ``messaging_account_ids``) are success;
+      // FINISH_ONLY_WABA / FINISH_GRANT_ONLY_API_ACCESS say what is missing.
+      const outcome = signupOutcome(msg);
+      if (outcome === null) return;
+      window.removeEventListener("message", onMessage);
+      if (outcome.kind === "failed") {
+        reject(new Error(FAILURE_TEXT[outcome.code](outcome.detail)));
+        return;
       }
+      resolve({
+        waba_id: outcome.waba_id,
+        phone_number_id: outcome.phone_number_id,
+        business_id: outcome.business_id,
+      });
     };
     window.addEventListener("message", onMessage);
     // Timeout safety: 5 min — popup remains open while the user logs in,
@@ -244,25 +238,10 @@ export async function loginWithMeta(
         config_id: configId,
         response_type: "code",
         override_default_response_type: true,
-        // ``featureType`` is THE differentiator between Cloud API and
-        // Coexistence flows. The configuration ID alone routes the user to
-        // the same WhatsApp Cloud onboarding wizard; only this extras field
-        // makes Meta render the Coexistence path that preserves the
-        // tenant's WhatsApp Business mobile app.
-        //
-        //   Cloud API    → featureType: "" (or omitted)
-        //   Coexistence  → featureType: "whatsapp_business_app_onboarding"
-        //
-        // ``sessionInfoVersion: "3"`` matches the postMessage envelope
-        // schema we already parse (data.event, data.data.waba_id, etc.).
-        extras: {
-          setup: {},
-          featureType:
-            mode === "coexistence"
-              ? "whatsapp_business_app_onboarding"
-              : "",
-          sessionInfoVersion: "3",
-        },
+        // ``featureType`` (v4) is THE differentiator between Cloud API and
+        // Coexistence: the configuration ID alone routes both to the same
+        // wizard. v5 turns coexistence on by default. See ``signupExtras``.
+        extras: signupExtras(mode, signupVersion),
       },
     );
   });
@@ -277,20 +256,30 @@ export async function loginWithMeta(
 }
 
 // ── postMessage shape ──────────────────────────────────────────────────────
+//
+// Spec 050: the pure part below is the same as the console's
+// (``apps/console/src/lib/meta-fb-sdk.ts``); ``meta-fb-sdk-parity.test.ts``
+// fails if the two drift.
 
-interface MetaSignupMessage {
+export type SignupVersion = "v4" | "v5";
+
+export interface MetaSignupMessage {
   type: "WA_EMBEDDED_SIGNUP";
-  // Cloud API → "FINISH". Coexistence → "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING".
   event:
     | "FINISH"
+    | "FINISH_ONLY_WABA"
     | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+    | "FINISH_GRANT_ONLY_API_ACCESS"
     | "CANCEL"
     | "ERROR";
   data?: {
     waba_id?: string;
     phone_number_id?: string;
     business_id?: string;
+    /** v5: the WABA comes here instead of ``waba_id``. */
+    messaging_account_ids?: string[] | string;
     error_message?: string;
+    current_step?: string;
   };
 }
 
@@ -302,7 +291,7 @@ interface MetaSignupMessage {
  *  else (other iframes, browser extensions, devtools messages, etc.) is
  *  silently ignored.
  */
-function parseMetaSignupMessage(raw: unknown): MetaSignupMessage | null {
+export function parseMetaSignupMessage(raw: unknown): MetaSignupMessage | null {
   let parsed: unknown = raw;
   if (typeof raw === "string") {
     try {
@@ -315,4 +304,95 @@ function parseMetaSignupMessage(raw: unknown): MetaSignupMessage | null {
   const candidate = parsed as { type?: unknown };
   if (candidate.type !== "WA_EMBEDDED_SIGNUP") return null;
   return parsed as MetaSignupMessage;
+}
+
+export type SignupFailureCode =
+  | "cancelled"
+  | "meta_error"
+  | "no_number"
+  | "grant_only";
+
+export type SignupOutcome =
+  | {
+      kind: "finished";
+      waba_id: string;
+      phone_number_id?: string;
+      business_id?: string;
+    }
+  | { kind: "failed"; code: SignupFailureCode; detail?: string };
+
+const FAILURE_TEXT: Record<SignupFailureCode, (detail?: string) => string> = {
+  cancelled: () => "El cliente canceló el flow de conexión.",
+  meta_error: (detail) =>
+    `Meta devolvió un error: ${detail ?? "desconocido"}`,
+  no_number: () =>
+    "La WABA quedó creada, pero sin número. Vuelve a abrir Meta y añade el número.",
+  grant_only: () =>
+    "Meta dio acceso a la cuenta, pero no compartió ningún número. Vuelve a abrir Meta y elige el número.",
+};
+
+function firstId(ids: string[] | string | undefined): string | undefined {
+  const id = Array.isArray(ids) ? ids[0] : ids;
+  return typeof id === "string" && id ? id : undefined;
+}
+
+/** Pure: what a parsed message means, or ``null`` while the wizard is open. */
+export function signupOutcome(
+  msg: MetaSignupMessage | null,
+): SignupOutcome | null {
+  if (msg === null) return null;
+  const data = msg.data ?? {};
+  switch (msg.event) {
+    case "FINISH":
+    case "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING": {
+      const waba = data.waba_id || firstId(data.messaging_account_ids);
+      if (!waba) {
+        return {
+          kind: "failed",
+          code: "meta_error",
+          detail: `${msg.event} without waba_id`,
+        };
+      }
+      return {
+        kind: "finished",
+        waba_id: waba,
+        phone_number_id: data.phone_number_id || undefined,
+        business_id: data.business_id || undefined,
+      };
+    }
+    case "FINISH_ONLY_WABA":
+      return { kind: "failed", code: "no_number" };
+    case "FINISH_GRANT_ONLY_API_ACCESS":
+      return { kind: "failed", code: "grant_only" };
+    case "CANCEL":
+      return { kind: "failed", code: "cancelled", detail: data.current_step };
+    case "ERROR":
+      return { kind: "failed", code: "meta_error", detail: data.error_message };
+    default:
+      return null;
+  }
+}
+
+/**
+ * The ``extras`` of ``FB.login``. v4: coexistence is ``featureType``,
+ * Cloud API sends nothing else, and no ``sessionInfoVersion`` (retired
+ * with v4). v5: coexistence is on by default, so Cloud API turns it off.
+ */
+export function signupExtras(
+  mode: SignupMode,
+  version: SignupVersion = "v4",
+): Record<string, unknown> {
+  if (version === "v5") {
+    return mode === "coexistence"
+      ? { version: "v5" }
+      : {
+          version: "v5",
+          features: [
+            { name: "whatsapp_business_app_onboarding", enabled: false },
+          ],
+        };
+  }
+  return mode === "coexistence"
+    ? { setup: {}, featureType: "whatsapp_business_app_onboarding" }
+    : { setup: {} };
 }

@@ -22,6 +22,7 @@ import base64
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -76,7 +77,10 @@ def _visible(viewer: Viewer) -> sa.ColumnElement[bool]:
 
 
 def _read_expr(user_id: str) -> sa.ColumnElement[bool]:
-    """``read`` = personal row marked, or a per-user read row exists."""
+    """``read`` = personal row marked, or a per-user read row exists — or, spec
+    056 (8.2), the notice is handled: an ``inbox.waiting`` whose conversation no
+    longer waits is not pending for anyone. It stays in the list, never in the
+    count."""
     exists = (
         sa.select(sa.literal(1))
         .select_from(ConsoleNotificationRead)
@@ -86,7 +90,11 @@ def _read_expr(user_id: str) -> sa.ColumnElement[bool]:
         )
         .exists()
     )
-    return sa.or_(ConsoleNotification.read_at.is_not(None), exists)
+    return sa.or_(
+        ConsoleNotification.read_at.is_not(None),
+        ConsoleNotification.handled_at.is_not(None),
+        exists,
+    )
 
 
 def _encode_cursor(created_at: datetime, id_: uuid.UUID) -> str:
@@ -106,15 +114,93 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         ) from None
 
 
+#: Spec 047 (events.md §3): el enlace al arreglo de cada aviso nuevo. ``{ref}``
+#: es el cliente; ``{agent}``, ``{channel}`` y ``{connection}``, los ids que trae
+#: el aviso.
+LINKS: dict[str, str] = {
+    "client.wallet.low": "/clients/{ref}?assign=1",
+    "client.wallet.not_enough": "/clients/{ref}?assign=1",
+    "client.wallet.empty": "/clients/{ref}?assign=1",
+    "client.wallet.refill_short": "/usage",
+    "client.balance_request": "/clients/{ref}?assign=1",
+    "agent.cap.warning": "/clients/{ref}/agents/{agent}?tab=advanced",
+    "agent.cap.reached": "/clients/{ref}/agents/{agent}?tab=advanced",
+    "agent.paused": "/clients/{ref}/agents/{agent}",
+    "agent.resumed": "/clients/{ref}/agents/{agent}",
+    "channel.paused": "/clients/{ref}/channels/{channel}",
+    "channel.resumed": "/clients/{ref}/channels/{channel}",
+    "channel.problem": "/clients/{ref}/channels/{channel}",
+    "channel.connected": "/clients/{ref}/channels/{channel}",
+    "integration.reauth_required": "/clients/{ref}/integrations/{connection}",
+    "client.business_changed": "/clients/{ref}/business",
+    "client.read.done": "/clients/{ref}/business",
+    "client.read.failed": "/clients/{ref}/business",
+    "agent.tests.failing": "/clients/{ref}/agents/{agent}?tab=tests",
+    "agent.suggestions.ready": "/clients/{ref}/agents/{agent}?tab=performance",
+    "agent.correction.proposed": "/clients/{ref}/agents/{agent}?tab=improvements",
+    "build.budget.warning": "/usage",
+    "build.budget.exhausted": "/usage",
+    "model.retirement": "/clients/{ref}/agents/{agent}?tab=quality",
+    "model.price_change": "/clients/{ref}/agents/{agent}?tab=quality",
+    "reservas.pass_not_ready": "/clients/{ref}",
+}
+
+
+#: Los avisos que también ve la persona del cliente (``audience = client``,
+#: events.md §3.1) enlazan a SU consola, la lite: allí no hay ``/clients/…``.
+#: Spec 056 (requisitos 2.4 y 2.7): los de agentes y números siguen llegando a su
+#: campana, pero sin enlace, porque Agentes ya no es una pantalla del cliente.
+LITE_LINKS: dict[str, str] = {
+    "inbox.waiting": "/inbox",
+    "client.balance_low": "/usage",
+    "client.balance_out": "/usage",
+    "client.wallet.low": "/usage",
+    "client.wallet.not_enough": "/usage",
+    "client.wallet.empty": "/usage",
+}
+
+
+def link_for(
+    kind: str, ref: str | None, data: dict[str, Any], *, audience: str = "partner"
+) -> str | None:
+    """El enlace del aviso, o ``None`` si le falta lo que necesita (un aviso de
+    cliente sin cliente no enlaza a un sitio roto). Al cliente, su consola."""
+    if audience == "client":
+        lite = LITE_LINKS.get(kind)
+        conversation = data.get("conversation_id")
+        if lite == "/inbox" and conversation:
+            return f"/inbox?c={conversation}"
+        return lite
+    template = LINKS.get(kind)
+    if template is None:
+        return None
+    values = {
+        "ref": ref,
+        "agent": data.get("agent_id"),
+        "channel": data.get("channel_id"),
+        "connection": data.get("connection_id"),
+    }
+    needed = [k for k in ("ref", "agent", "channel", "connection") if "{" + k + "}" in template]
+    if any(not values[k] for k in needed):
+        # Sin el agente o el canal, la página del cliente; sin cliente, nada.
+        if values["ref"] and "{ref}" in template:
+            return f"/clients/{values['ref']}"
+        return None
+    return template.format(**{k: v for k, v in values.items() if v})
+
+
 def _out(n: ConsoleNotification, *, read: bool) -> NotificationOut:
+    data = dict(n.payload or {})
     return NotificationOut(
         id=n.id,
         kind=n.kind,
         severity=n.severity,
-        data=dict(n.payload or {}),
+        data=data,
         external_client_ref=n.external_client_ref,
         read=read,
+        handled=n.handled_at is not None,
         created_at=n.created_at,
+        href=link_for(n.kind, n.external_client_ref, data, audience=n.audience),
     )
 
 

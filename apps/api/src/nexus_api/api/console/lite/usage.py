@@ -14,7 +14,8 @@ por el ámbito lo impediría. El cliente sale igual de la membresía verificada.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from collections.abc import Mapping
+from datetime import UTC, date, datetime, time, timedelta
 
 import sqlalchemy as sa
 import structlog
@@ -24,18 +25,30 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import get_db_session
+from nexus_api.billing.pricing import credits_to_cents
+from nexus_api.config import get_settings
 from nexus_api.core.client_auth import ClientPrincipal, require_client_principal
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Agent, AgentStatus, Channel, Conversation, PartnerTenant
+from nexus_api.db.models import (
+    Agent,
+    AgentStatus,
+    Channel,
+    Conversation,
+    PartnerTenant,
+    Tenant,
+    TenantStatus,
+)
 from nexus_api.metering.wallet import AgentFilter, allocations_for, credit_burn, read_wallet
 from nexus_api.services.console_home import REVIEW_WINDOW, tenant_snapshots
+from nexus_api.services.console_home_blocks import ClientRow, SpendBlock, days_until, spend_block
 from nexus_api.services.console_reporting import month_bounds, partner_mappings
-from nexus_api.services.lite_home import agent_spend, balance_of
+from nexus_api.services.lite_home import agent_spend, bag_balance, balance_of
+from nexus_api.services.wallet.bags import AgentKey, BagSpend, bag_spend
 
 from ..schemas import UsageBucketOut
 from ..usage import bucket_report, csv_export, spend_report
-from .home import LiteBalanceOut
+from .home import LiteBalanceOut, balance_out
 
 router = APIRouter(prefix="/usage")
 log = structlog.get_logger(__name__)
@@ -46,6 +59,8 @@ class LiteUsageMonthOut(BaseModel):
     projection_cents: int | None
     conversations: int | None
     avg_per_conversation_cents: int | None
+    #: Spec 047: con bolsas, la moneda de la bolsa (EUR o USD); sin ellas, USD.
+    currency: str = "USD"
 
 
 class AgentUsageOut(BaseModel):
@@ -63,6 +78,14 @@ class LiteUsageSummaryOut(BaseModel):
     month: LiteUsageMonthOut | None
     by_agent: list[AgentUsageOut] | None = None
     errors: list[str]
+    #: Spec 047 (``lite-app-api.md`` §4, ``events.md`` §1.4): ``ok``, ``low``,
+    #: ``not_enough`` o ``empty``; ``None`` sin bolsa.
+    bag_state: str | None = None
+    #: Días que alcanza al ritmo de los últimos 7; ``None`` con menos de 3 días
+    #: de consumo («Aún no hay datos para estimarlo»).
+    days_left: int | None = None
+    #: A quién pedir saldo: «Pídeselo a {partner}».
+    partner_name: str = ""
 
 
 class LiteSpendOut(BaseModel):
@@ -90,46 +113,99 @@ async def _mapping(session: AsyncSession, principal: ClientPrincipal) -> Partner
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No client access")
 
 
+def _of_agent(agent: AgentFilter, key: AgentKey) -> bool:
+    """The bag's charges of one agent: the principal also owns those without one,
+    like :meth:`AgentFilter.clause` in the account's ledger."""
+    return key == agent.agent_id or (agent.is_principal and key is None)
+
+
+def _bag_month(
+    found: BagSpend,
+    mapping: PartnerTenant,
+    *,
+    since: datetime,
+    until: datetime,
+    now: datetime,
+    agent: AgentFilter | None = None,
+) -> SpendBlock:
+    """Spec 047 (46.7): the month of the bag with the partner's sums
+    (``spend_block``): what the bag spent this month —the partner's figure— or,
+    for one agent, its charges this month; projected at the last 7 days' pace."""
+    if agent is None:
+        month, recent = found.month, sum(found.last_7d.values())
+    else:
+        month = sum(v for k, v in found.by_agent(since.date()).items() if _of_agent(agent, k))
+        recent = sum(v for k, v in found.last_7d.items() if _of_agent(agent, k))
+    row = ClientRow(
+        mapping.tenant_id, mapping.external_client_ref, mapping.client_name, TenantStatus.ACTIVE
+    )
+    return spend_block(
+        [row],
+        {mapping.tenant_id: month},
+        0,
+        daily_7d=recent / REVIEW_WINDOW.days,
+        days_left=days_until(until, now),
+    )
+
+
 @router.get("/summary", response_model=LiteUsageSummaryOut)
 async def usage_summary(
     principal: ClientPrincipal = Depends(require_client_principal("usage")),
     session: AsyncSession = Depends(get_db_session),
 ) -> LiteUsageSummaryOut:
     now = datetime.now(UTC)
-    since, _until, _e, _d = month_bounds(now)
+    since, until, _e, _d = month_bounds(now)
     errors: list[str] = []
     tid = principal.tenant_id
     balance: LiteBalanceOut | None = None
+    bag_state: str | None = None
+    days_left: int | None = None
     try:
-        burn = await credit_burn(principal.partner.id, [tid], now - REVIEW_WINDOW)
-        allocation = (await allocations_for(principal.partner.id, [tid])).get(tid)
-        wallet = await read_wallet(principal.partner.id)
-        if wallet is None:
-            raise RuntimeError("wallet unreadable")
-        balance = LiteBalanceOut.model_validate(
-            balance_of(allocation, burn.get(tid, 0), wallet.purchased_remaining),
-            from_attributes=True,
-        )
+        # Spec 047 (46.7): con bolsas, la misma cifra que la consola del partner.
+        raw = await bag_balance(principal.partner.id, tid, now)
+        if raw is None:
+            burn = await credit_burn(principal.partner.id, [tid], now - REVIEW_WINDOW)
+            allocation = (await allocations_for(principal.partner.id, [tid])).get(tid)
+            wallet = await read_wallet(principal.partner.id)
+            if wallet is None:
+                raise RuntimeError("wallet unreadable")
+            raw = balance_of(allocation, burn.get(tid, 0), wallet.purchased_remaining)
+        # La zona del negocio, en una lectura propia: esta ruta abre sus
+        # transacciones más abajo y la sesión de la petición no puede empezar una.
+        async with get_sessionmaker()() as tz_session:
+            tenant = await tz_session.get(Tenant, tid)
+        balance = balance_out(raw, tz_name=tenant.timezone if tenant is not None else None, now=now)
+        bag_state = raw.state
+        days_left = int(raw.days_left) if raw.days_left is not None else None
     except Exception as exc:
         log.warning("lite_usage.balance_failed", error=str(exc))
         errors.append("balance")
     month: LiteUsageMonthOut | None = None
+    agent_burn: Mapping[AgentKey, int] | None = None
     try:
         mapping = await _mapping(session, principal)
-        spend = await spend_report(
-            principal.partner.id, [mapping], {tid: mapping}, 7, whole_portfolio=False
-        )
+        # Spec 047 (46.7): con bolsas el turno se cobra solo de la bolsa y el libro
+        # de la cuenta no lo ve (bug ``gasto-del-mes-a-cero-con-bolsas``).
+        from_bag = await bag_spend(principal.partner.id, tid, since=since, now=now)
+        if from_bag is not None:
+            block = _bag_month(from_bag, mapping, since=since, until=until, now=now)
+            spent, projected, currency = block.cents, block.projected_cents, from_bag.currency
+            agent_burn = from_bag.by_agent(since.date())
+        else:
+            spend = await spend_report(
+                principal.partner.id, [mapping], {tid: mapping}, 7, whole_portfolio=False
+            )
+            spent, projected, currency = spend.month_cents, spend.projected_cents, spend.currency
         snap = await tenant_snapshots([tid], month_start=since, now=now)
         snapshot = snap.snapshots.get(tid)
         conversations = snapshot.conversations_month if snapshot is not None else None
-        nothing = spend.month_cents == 0 and spend.projected_cents == 0
+        nothing = spent == 0 and projected == 0
         month = LiteUsageMonthOut(
-            spent_cents=spend.month_cents,
-            projection_cents=None if nothing else spend.projected_cents,
+            spent_cents=spent,
+            projection_cents=None if nothing else projected,
             conversations=conversations,
-            avg_per_conversation_cents=(
-                round(spend.month_cents / conversations) if conversations else None
-            ),
+            avg_per_conversation_cents=(round(spent / conversations) if conversations else None),
+            currency=currency,
         )
     except HTTPException:
         raise
@@ -139,15 +215,38 @@ async def usage_summary(
     by_agent: list[AgentUsageOut] | None = None
     if month is not None:
         try:
-            by_agent = await _usage_by_agent(principal, since=since, total_cents=month.spent_cents)
+            by_agent = await _usage_by_agent(
+                principal, since=since, total_cents=month.spent_cents, burn=agent_burn
+            )
         except Exception as exc:
             log.warning("lite_usage.by_agent_failed", error=str(exc))
             errors.append("by_agent")
-    return LiteUsageSummaryOut(balance=balance, month=month, by_agent=by_agent, errors=errors)
+    return LiteUsageSummaryOut(
+        balance=balance,
+        month=month,
+        by_agent=by_agent,
+        errors=errors,
+        bag_state=bag_state,
+        days_left=days_left,
+        partner_name=_ask_whom(principal),
+    )
+
+
+def _ask_whom(principal: ClientPrincipal) -> str:
+    """«Pídeselo a {partner}» (sin botón de pedir: specs 031 R4.4 y 044 R13.4).
+    El cliente de Auphere se lo pide a Auphere, como en ``/me``."""
+    partner = principal.partner
+    if partner.slug in get_settings().auphere_partner_slug_set:
+        return "Auphere"
+    return partner.name
 
 
 async def _usage_by_agent(
-    principal: ClientPrincipal, *, since: datetime, total_cents: int
+    principal: ClientPrincipal,
+    *,
+    since: datetime,
+    total_cents: int,
+    burn: Mapping[AgentKey, int] | None = None,
 ) -> list[AgentUsageOut] | None:
     """Spend split to the cent (``agent_spend``) plus the month's conversations
     on each agent's numbers — a number without an agent is the principal's.
@@ -163,6 +262,7 @@ async def _usage_by_agent(
             tenant_id=principal.tenant_id,
             since=since,
             total_cents=total_cents,
+            burn=burn,
         )
         if spend is None:
             return None
@@ -226,13 +326,37 @@ async def usage_spend(
     agent: uuid.UUID | None = Query(default=None, description="Only this agent (spec 030)"),
 ) -> LiteSpendOut:
     mapping = await _mapping(session, principal)
+    chosen = await _agent_filter(principal, agent) if agent is not None else None
+    now = datetime.now(UTC)
+    day_list = [now.date() - timedelta(days=days - 1 - i) for i in range(days)]
+    month_start, until, _elapsed, _days = month_bounds(now)
+    # Spec 047 (46.7): con bolsas, los cobros de la bolsa por día, en su moneda.
+    from_bag = await bag_spend(
+        principal.partner.id,
+        principal.tenant_id,
+        since=min(datetime.combine(day_list[0], time.min, tzinfo=UTC), month_start),
+        now=now,
+    )
+    if from_bag is not None:
+        per_day = dict.fromkeys(day_list, 0)
+        for (day, key), amount in from_bag.cells.items():
+            if day in per_day and (chosen is None or _of_agent(chosen, key)):
+                per_day[day] += amount
+        block = _bag_month(from_bag, mapping, since=month_start, until=until, now=now, agent=chosen)
+        return LiteSpendOut(
+            currency=from_bag.currency,
+            days=day_list,
+            series_cents=[credits_to_cents(per_day[d], nearest=True) for d in day_list],
+            month_cents=block.cents,
+            projected_cents=block.projected_cents,
+        )
     report = await spend_report(
         principal.partner.id,
         [mapping],
         {principal.tenant_id: mapping},
         days,
         whole_portfolio=False,
-        agent=await _agent_filter(principal, agent) if agent is not None else None,
+        agent=chosen,
     )
     return LiteSpendOut(
         currency=report.currency,

@@ -17,8 +17,13 @@ import type { Role } from "./permissions";
  * in; this module only carries the answer.
  */
 
-/** The client console's modules, in sidebar order (Panel, Bandeja, Consumo). */
-export const CLIENT_MODULES = ["panel", "inbox", "usage"] as const;
+/**
+ * The client console's modules, in sidebar order (Panel, Bandeja, Reservas,
+ * Consumo — `CLIENT_MODULES` in `db/models/client_access.py`). Spec 056
+ * (requisito 2.1) retired Agentes and Negocio: they are the partner's now, and a
+ * name the API might still send is dropped like any unknown one.
+ */
+export const CLIENT_MODULES = ["panel", "inbox", "reservas", "usage"] as const;
 export type ClientModule = (typeof CLIENT_MODULES)[number];
 
 type PrincipalBase = {
@@ -31,7 +36,16 @@ type PrincipalBase = {
   partnerSlug: string;
   partnerName: string;
   consoleEnabled: boolean;
+  /**
+   * Spec 056 (15.1): when the session ends (`expires_at` of
+   * `POST /console/auth/session`), so the console can warn on its last day.
+   * It never moves: the session lasts 7 days from sign-in (15.2).
+   */
+  sessionExpiresAt?: string | null;
 };
+
+/** The session's answer: the principal plus, from spec 056, when the session ends. */
+export type SessionPrincipal = ApiPrincipal & { session_expires_at?: string | null };
 
 /**
  * Spec 032: the partner console's modules, in sidebar order, then the
@@ -92,15 +106,25 @@ export type PrincipalResolution =
   | { kind: "disabled"; email: string; partnerName: string; clientName?: string }
   | { kind: "ok"; principal: Principal };
 
+function isClientModule(m: string): m is ClientModule {
+  return (CLIENT_MODULES as readonly string[]).includes(m);
+}
+
+/**
+ * Spec 031 (R3.2): the API sends the modules already in sidebar order
+ * (`ClientAccess.ordered_modules()`), and that order is the only one — the
+ * console and the phone app both paint it as it comes. This only drops what the
+ * console cannot render yet and repeats; it never re-sorts.
+ */
 function clientModules(raw: string[]): ClientModule[] {
-  return CLIENT_MODULES.filter((m) => raw.includes(m));
+  return raw.filter(isClientModule).filter((m, i, all) => all.indexOf(m) === i);
 }
 
 function partnerModules(raw: string[]): PartnerModule[] {
   return PARTNER_MODULES.filter((m) => raw.includes(m));
 }
 
-export function toResolution(p: ApiPrincipal): PrincipalResolution {
+export function toResolution(p: SessionPrincipal): PrincipalResolution {
   const email = p.email;
   const isClient = p.kind === "client";
   const clientName = isClient ? { clientName: p.client_name ?? "" } : {};
@@ -128,6 +152,7 @@ export function toResolution(p: ApiPrincipal): PrincipalResolution {
     partnerSlug: p.partner_slug ?? "",
     partnerName: p.partner_name ?? "",
     consoleEnabled: p.console_enabled,
+    sessionExpiresAt: p.session_expires_at ?? null,
   };
   if (isClient) {
     const modules = clientModules(p.modules ?? []);
@@ -153,10 +178,17 @@ export function firstPartnerModulePath(modules: readonly PartnerModule[]): strin
   return PARTNER_MODULE_PATH[first as Exclude<PartnerModule, "companion">];
 }
 
-/** Where a client lands: its first module, in sidebar order. */
+/** Where each client module lives (spec 043 adds Reservas). */
+const CLIENT_MODULE_PATH: Record<ClientModule, string> = {
+  panel: "/",
+  inbox: "/inbox",
+  reservas: "/reservas",
+  usage: "/usage",
+};
+
+/** Where a client lands: its first module, in the order the API sent. */
 export function firstModulePath(modules: readonly ClientModule[]): string {
-  const first = CLIENT_MODULES.find((m) => modules.includes(m)) ?? "panel";
-  return first === "panel" ? "/" : first === "inbox" ? "/inbox" : "/usage";
+  return CLIENT_MODULE_PATH[modules[0] ?? "panel"];
 }
 
 /**
@@ -169,6 +201,19 @@ export function firstModulePath(modules: readonly ClientModule[]): string {
 export function clientModuleOfPath(pathname: string): ClientModule | null {
   if (pathname === "/") return "panel";
   if (pathname === "/inbox") return "inbox";
+  if (pathname === "/reservas") return "reservas";
   if (pathname === "/usage") return "usage";
   return null;
+}
+
+/**
+ * Spec 031 (R7.3): the client person's own account pages. They belong to the
+ * person, not to a module — every client person has them, whatever modules its
+ * client has. `page-guards.test.ts` ties this list to the pages that call
+ * `requireClientAccount`.
+ */
+export const CLIENT_ACCOUNT_PATHS = ["/account/phones"] as const;
+
+export function isClientAccountPath(pathname: string): boolean {
+  return (CLIENT_ACCOUNT_PATHS as readonly string[]).includes(pathname);
 }

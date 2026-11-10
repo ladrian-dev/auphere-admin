@@ -1,4 +1,83 @@
-# El registro autónomo de partners
+# El registro de partners
+
+Hay dos formas de que nazca un partner. **La habitual es la del panel**: la decide
+el equipo de Auphere (Luis, 2026-11-03). La otra es el alta autónoma, y es de lo
+que trata casi todo este documento.
+
+| | Desde el panel (spec 052) | Alta autónoma (spec 006) |
+|---|---|---|
+| **Quién la inicia** | Un operador, en `/partners/new` | La propia persona, en `/signup` |
+| **Cómo se sabe quién es el dueño** | El operador escribe su correo | Verifica el suyo con un enlace |
+| **La persona** | Recibe una invitación, elige contraseña y entra | Entra al terminar, sin invitación por correo |
+| **La invitación** | `team_invite`, 21 días, con «Auphere» de quien invita | Se emite y se acepta en la misma transacción |
+| **La consola** | Encendida | Encendida |
+| **El contacto** | La dirección invitada | Vacío |
+| **Quién firma la auditoría** | El operador, por su correo (`operator:…`) | La persona |
+
+## 0 · El alta desde el panel
+
+Implementa la spec [`052-invitar-al-propietario`](../specs/052-invitar-al-propietario/spec.md).
+Las reglas viven en `services/owner_invitation.py`; las rutas, en
+`api/admin/partner_invitations.py`, y crear, en `api/admin/partners.py`.
+
+**Crear son dos tiempos.** Primero, en una transacción: el partner con la consola
+encendida, la invitación de propietario y la auditoría de ambos. Si algo falla, no
+queda nada y no sale ningún correo. Después, fuera de ella, el correo. Si no sale, el
+partner y la invitación siguen en pie, porque deshacerlos dejaría a la operadora con
+el identificador usado y sin saber por qué.
+
+**El resultado no se va solo.** El panel lo pinta en la misma URL y nunca confía en un
+aviso que desaparece. Lleva el enlace absoluto de aceptación, que no se volverá a
+mostrar porque de un token solo se guarda el hash, y si el correo no salió ofrece
+reintentar. No pasa por ninguna URL del panel ni por la auditoría.
+
+**El enlace no llega a los registros por la ruta.** El de aceptar lleva el token en la
+ruta, y abrirlo lo escribía en la línea de acceso de `uvicorn`, en el `path` de cada línea
+de la petición y en el span. Los tres pasan ahora por `core/logging_context.safe_path`, que
+quita cualquier tramo con forma de token, y lo prueba un barrido de las rutas con `{token}`
+(`tests/isolation/test_tokens_stay_out_of_request_logs.py`). Cubre también el alta y
+restablecer la contraseña. **Lo que queda fuera:** el registro de peticiones de Vercel, que
+ve `/invite/<token>` en la consola y no pasa por esta API.
+
+**«Enviada» es que el proveedor la aceptó.** `partner_invitations.last_sent_at` guarda
+el último envío aceptado. Sin esa fecha, la pantalla dice «no consta el envío», y eso
+incluye una caída entre crear y enviar. No hay seguimiento de entrega, así que nunca
+dice «entregada».
+
+**Una sola invitación de dueño viva por partner**, a cualquier dirección. Lo garantiza
+tomar la fila del partner con `FOR NO KEY UPDATE`, no un índice: `FOR UPDATE`
+interbloquearía con aceptar, que toma `FOR KEY SHARE` por su FK.
+
+| Acción | Qué hace | Cuándo se niega |
+|---|---|---|
+| **Crear** | Lo anterior | Identificador usado; la dirección ya es de una persona de otro partner o de un cliente, porque fallaría al aceptarla |
+| **Invitar** (pestaña Equipo) | Para un partner sin propietario activo. Sugiere la dirección de una invitación caducada o, si no, el contacto, y no envía nada hasta pulsar | Tiene propietario activo, otra invitación de Auphere viva, la consola apagada o está suspendido; la dirección ya es de su equipo o vive en otro sitio |
+| **Reenviar** | Otro enlace para la misma dirección, con el plazo completo. El anterior muere | Lo mismo, y además si la invitación ya se aceptó, se revocó o caducó, diciendo cuál |
+| **Revocar** | Con confirmación. El enlace deja de abrir al momento, y a la persona no se le avisa | Si ya aceptó. Sea cual sea el estado del partner: reduce el acceso |
+
+**Es de Auphere** la invitación de rol propietario que no emitió ninguna persona del
+partner. Las demás se ven en Equipo, sin acciones. Una vencida se trata como caducada
+aunque nadie haya abierto su enlace, que es lo único que la marcaba.
+
+**El contacto sigue a la invitación solo** si estaba vacío o era la dirección de la
+invitación que esta sustituye. Es lo que corrige una dirección mal escrita. Uno
+escrito a mano no se toca.
+
+**Quién puede.** Token del panel y `X-Operator-Id` de un operador habilitado. El rol
+no se comprueba, igual que en el resto del panel (ADR-009).
+`tests/isolation/test_owner_invitation_scope.py` barre estas rutas: una invitación de
+otro partner no se distingue, byte a byte, de una inexistente.
+
+**Un despliegue no envía nada.** Los partners que ya existen no reciben nada hasta que
+un operador lo decide, partner a partner, en su pestaña Equipo. La cabecera de la ficha
+dice en todas las pestañas cuándo falta el propietario.
+
+**Lo que no hace:** añadir un segundo dueño ni traspasar la propiedad, reintentar solo,
+ni invitar en bloque.
+
+---
+
+# El alta autónoma
 
 Cómo alguien pasa de «quiere ser partner» a «tiene una consola con su empresa
 dentro», sin que nadie del equipo ejecute nada. Implementa la spec
@@ -186,7 +265,7 @@ miraba el resultado.
 
 | Situación | Respuesta | Por qué |
 |---|---|---|
-| Sin proveedor configurado | `202` | No es una avería. Ese entorno no manda correo y nunca prometió hacerlo. |
+| Sin proveedor configurado, o en modo registro (local) | `202` | No es una avería. Ese entorno no manda correo y nunca prometió hacerlo. |
 | Proveedor configurado que rechaza | `502` | Eso es una avería, y callársela convierte el alta en un callejón sin salida silencioso. |
 
 **El 502 no abre el oráculo que `CE-004` cierra.** Que el proveedor rechace no
@@ -194,17 +273,19 @@ depende de la dirección: le pasa a todas por igual, así que la respuesta sigue
 siendo idéntica exista o no la cuenta. Hay una prueba que lo fija, y una
 mutación que la pone roja si alguien hace que el fallo dependa del correo.
 
-> **El paso de Mailhog del quickstart no puede funcionar.** `docker-compose`
-> levanta Mailhog, pero `services/email.py` sólo habla con Resend: en local
-> `email_enabled` es `False` y no se manda nada a ninguna parte. El enlace del
-> alta en desarrollo se saca de la base de datos, no de `localhost:8025`.
+La distinción la hace `settings.email_delivers`: hay proveedor de verdad si
+el modo envía los correos de acceso (`resend` en producción, `access` en
+staging) y la clave es real (spec 051, `docs/correos.md`). En staging el correo
+del alta sale de verdad: es de acceso. En local el modo es `log`, y el enlace del
+alta sale en el registro (`email.suppressed`, `links.SIGNUP_URL`), sin Mailhog,
+que se retiró.
 
 ## 5 quater · De quién viene el correo
 
-**`no-reply@auphere.com`, y es una decisión, no una herencia.**
+**`notifications@auphere.com`, y es una decisión, no una herencia.**
 
-Salía de `facturacion@auphere.com` porque `send_email` cae a
-`receipt_from_email` cuando quien llama no pasa remitente. El primer correo que
+Salía de facturación porque el antiguo `send_email` caía al remitente de los
+recibos cuando quien llamaba no pasaba otro. El primer correo que
 recibe alguien que no te conoce no puede venir de «facturación»: todavía no hay
 nada que facturar, invita a marcarlo como no deseado, y ensucia la reputación de
 la dirección que **sí** tiene que llegar cuando haya recibos de verdad.
@@ -212,6 +293,12 @@ la dirección que **sí** tiene que llegar cuando haya recibos de verdad.
 Los dos correos del alta —el enlace y el «ya tienes cuenta»— usan el **mismo**
 remitente. Que vinieran de sitios distintos delataría cuál te tocó, que es justo
 lo que `CE-004` cierra.
+
+Hasta la spec 051 era `no-reply@auphere.com`. Se cambió porque todos los
+correos responden ahora a `support@auphere.com`, y un remitente que dice «no
+respondas» se contradice con eso. Lo que protegía la regla anterior sigue en
+pie: el alta no sale de facturación, y sus dos correos comparten remitente, que
+ahora declara la ficha de cada tipo en `services/email_catalog.py`.
 
 No hace falta configurar nada más: Resend verifica el **dominio**, así que
 cualquier buzón de `auphere.com` sale en cuanto el dominio está verificado.
@@ -281,8 +368,8 @@ normal de un alta abandonada).
 
 ## 8 · Lo que ve el operador
 
-Al abrir la puerta, el panel deja de ser donde se crean los partners y pasa a
-ser donde uno **se entera** de los que se crearon sin él. Eso es `/signups`.
+El panel sigue siendo donde el equipo crea partners (§0). Además, es donde uno
+**se entera** de los que se crearon sin él. Eso es `/signups`.
 
 La tabla mezcla a propósito dos cosas que no son iguales —empresas ya nacidas y
 registros a medias—: separarlas en dos pantallas escondería justo la relación

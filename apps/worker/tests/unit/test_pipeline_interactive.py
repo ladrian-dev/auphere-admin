@@ -55,7 +55,10 @@ class _ScriptedProvider:
         role: str,
         model: str,
         messages: list[dict[str, str]],
+        extra: dict[str, Any] | None = None,
     ) -> str:
+        # ``extra`` as in ``LLMProvider``: the classifier forces its label through it
+        # on anthropic/ and openai/ models, and a double without it fails every call.
         return self.text_to_return
 
     async def acomplete_with_tools(
@@ -144,8 +147,14 @@ def _stub_dispatch(monkeypatch: pytest.MonkeyPatch, *, status: str = "ok") -> li
     async def _empty_kg(_tid: uuid.UUID) -> str:
         return ""
 
+    async def _nothing_gated(_tid: uuid.UUID) -> frozenset[str]:
+        # Without the DB the gate cannot be read, and an unread gate is closed
+        # (T217): this test is not about gating, so the tenant gated nothing.
+        return frozenset()
+
     monkeypatch.setattr(pipeline, "_dispatch_tool", _fake)
     monkeypatch.setattr(pipeline, "_load_kg_snapshot_text", _empty_kg)
+    monkeypatch.setattr(pipeline, "_load_gated_tools", _nothing_gated)
     return seen
 
 
@@ -174,7 +183,10 @@ class TestCapture:
                         ),
                     ),
                 ),
-            ]
+            ],
+            # «tu cita» pasa el filtro del freno de citas (spec 056): su
+            # clasificador lee una pregunta, no una cita hecha.
+            text_to_return="NO",
         )
         bundle = _bundle(tools=frozenset({_INTERACTIVE_TOOL_NAME}))
         # Register the tool so ``get_openai_tools`` returns a non-empty

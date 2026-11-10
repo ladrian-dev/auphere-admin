@@ -6,8 +6,9 @@ import { Button, Skeleton } from "@nexus/ui";
 import { useLocale, useT } from "@/i18n/client";
 import type { InboxThreadItem } from "@/lib/backend/inbox";
 
-import { eventText } from "./event-text";
+import { escalatedText, eventText } from "./event-text";
 import { clock, dayLabel, withDaySeparators } from "./inbox-model";
+import type { LoadCommentPost } from "./comment-post";
 import { MessageBubble } from "./message-bubble";
 
 /**
@@ -25,6 +26,8 @@ export function Thread({
   contactInitials,
   now,
   onOlder,
+  onCorrect,
+  loadCommentPost,
 }: {
   items: InboxThreadItem[];
   hasOlder: boolean;
@@ -32,6 +35,9 @@ export function Thread({
   contactInitials: string;
   now: Date;
   onOlder: () => void;
+  /** Spec 047 (52.1): «Corregir esta respuesta» sobre cada respuesta del agente. */
+  onCorrect?: (item: InboxThreadItem) => void;
+  loadCommentPost?: LoadCommentPost;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -51,11 +57,15 @@ export function Thread({
       role="log"
       aria-label={t("inbox.thread")}
       aria-live="polite"
+      // A thread with no link or button inside still scrolls: it takes the
+      // focus so the keyboard can scroll it (WCAG 2.1.1, axe
+      // `scrollable-region-focusable`).
+      tabIndex={0}
       onScroll={(e) => {
         const el = e.currentTarget;
         atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
       }}
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-5 md:px-6"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:px-6"
     >
       {hasOlder ? (
         <Button type="button" variant="ghost" size="sm" className="self-center" disabled={loadingOlder} onClick={onOlder}>
@@ -75,7 +85,13 @@ export function Thread({
         return item.type === "event" ? (
           <EventLine key={row.key} item={item} time={clock(item.at, locale)} />
         ) : (
-          <MessageBubble key={row.key} item={item} contactInitials={contactInitials} />
+          <MessageBubble
+            key={row.key}
+            item={item}
+            contactInitials={contactInitials}
+            loadCommentPost={loadCommentPost}
+            onCorrect={onCorrect && item.direction === "outbound" && item.author?.kind === "agent" ? () => onCorrect(item) : undefined}
+          />
         );
       })}
     </div>
@@ -93,7 +109,7 @@ function EventLine({ item, time }: { item: InboxThreadItem; time: string }) {
       >
         <AlertTriangle className="mt-px size-4 shrink-0" aria-hidden="true" />
         <span className="text-pretty">
-          {item.detail ? t("inbox.event.escalated.reason", { reason: item.detail }) : t("inbox.event.escalated")} · {time}
+          {escalatedText(item.detail, t)} · {time}
         </span>
       </p>
     );

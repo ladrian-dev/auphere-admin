@@ -24,12 +24,15 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from redis.asyncio import Redis
+from sqlalchemy.exc import IntegrityError
 
 from nexus_api.api.deps import get_redis
+from nexus_api.config import get_settings
 from nexus_api.db.models import (
     AuditLog,
     Channel,
     ChannelStatus,
+    ChannelType,
     ContactNote,
     Conversation,
     ConversationEventKind,
@@ -41,9 +44,11 @@ from nexus_api.db.models import (
     MessageStatus,
     SavedReply,
 )
-from nexus_api.services import conversation_control, inbox_lifecycle, inbox_view
+from nexus_api.services import conversation_control, inbox_comment_post, inbox_lifecycle, inbox_view
+from nexus_api.services import lite_send_idempotency as idempotency
 from nexus_api.services.conversation_control import VersionMismatch
 from nexus_api.services.inbox_stream import publish_inbox_event
+from nexus_api.services.meta_window import person_window
 
 from .deps import LiteScope, lite_scope
 
@@ -73,6 +78,10 @@ class ContactOut(BaseModel):
     name: str
     handle: str
     initials: str
+    #: Instagram / Messenger: the person's profile picture is stored and
+    #: served at ``/inbox/conversations/{id}/avatar`` (owner, 2026-10-30).
+    #: No storage link reaches the browser. False on WhatsApp.
+    has_avatar: bool = False
 
 
 class LastMessageOut(BaseModel):
@@ -80,6 +89,18 @@ class LastMessageOut(BaseModel):
     author: AuthorOut
     preview: str
     has_media: bool
+
+
+class WaitingOut(BaseModel):
+    """Spec 045 (R3.1): por qué y desde cuándo espera a una persona."""
+
+    reason: str | None
+    since: datetime
+
+
+class AgentRefOut(BaseModel):
+    id: uuid.UUID
+    name: str
 
 
 class ConversationItemOut(BaseModel):
@@ -92,6 +113,11 @@ class ConversationItemOut(BaseModel):
     last_message: LastMessageOut | None
     unread: bool
     tags: list[str]
+    waiting: WaitingOut | None = None
+    #: Spec 047 (50.7): «La atiende {agente}», también con un solo agente.
+    handled_by_agent: AgentRefOut | None = None
+    #: Spec 047 (50.7): el código de ``events.md`` §2 mientras espera a una persona.
+    waiting_reason: str | None = None
 
 
 class CountsOut(BaseModel):
@@ -103,8 +129,12 @@ class ConversationPageOut(BaseModel):
     items: list[ConversationItemOut]
     next_cursor: str | None
     counts: CountsOut
+    #: Lo leen las apps de antes de la spec 056: no se quita.
     has_any: bool
     channel_kinds: list[str]
+    #: Spec 056 (6.2): cuántas resueltas hay cuando «Abiertas» (``filter=all``,
+    #: sin búsqueda, agente ni canal) sale vacía, para llevar a Resueltas. Si no, 0.
+    resolved: int = 0
 
 
 class WindowOut(BaseModel):
@@ -112,11 +142,30 @@ class WindowOut(BaseModel):
     closes_at: datetime | None
 
 
+class NextBookingLocal(BaseModel):
+    date: str
+    start: str
+    end: str
+
+
+class NextBookingOut(BaseModel):
+    """Spec 043: la próxima reserva viva del contacto (con el módulo)."""
+
+    id: uuid.UUID
+    starts_at: datetime
+    local: NextBookingLocal
+    status: str
+    service_name: str | None
+    party_size: int | None
+
+
 class ContactDetailOut(BaseModel):
     name: str
     handle: str
+    has_avatar: bool = False
     first_message_at: datetime | None
     conversations: int
+    next_booking: NextBookingOut | None = None
 
 
 class NoteOut(BaseModel):
@@ -141,7 +190,15 @@ class ConversationDetailOut(BaseModel):
     channel: dict[str, Any]
     contact: ContactDetailOut
     summary: str | None
+    #: El motivo de la espera: el código de ``events.md`` §2 o, si la pidió el
+    #: agente (``escalated``), su disparador («{disparador}»), como en la spec 045.
     waiting_reason: str | None
+    #: Spec 047 (50.7, events.md §2): el código de por qué espera, siempre código
+    #: (el de arriba conserva el texto del disparador para la web de la 045).
+    waiting_code: str | None = None
+    waiting_since: datetime | None = None
+    #: Spec 047 (50.7): «La atiende {agente}», también con un solo agente.
+    handled_by_agent: AgentRefOut | None = None
     tags: list[str]
     note: NoteOut
     activity: list[ActivityOut]
@@ -159,6 +216,17 @@ class ThreadItemOut(BaseModel):
     failure_reason: str | None = None
     kind: str | None = None
     detail: str | None = None
+    unsent: bool = False
+    comment: bool = False
+    opted_out: bool = False
+
+
+class CommentPostOut(BaseModel):
+    """The post a comment was left on, as Meta shows it now."""
+
+    text: str | None = None
+    image_url: str | None = None
+    permalink: str | None = None
 
 
 class ThreadOut(BaseModel):
@@ -256,11 +324,37 @@ async def _conversation(scope: LiteScope, conversation_id: uuid.UUID) -> Convers
     return conv
 
 
+def _handler(
+    agent: tuple[uuid.UUID, str] | None, agents: list[tuple[uuid.UUID, str]]
+) -> AgentRefOut | None:
+    """Spec 047 (50.7): quién la atiende. Con dos agentes o más lo dice
+    ``inbox_view`` (el agente de su número, o el principal); con uno solo, es ese."""
+    if agent is not None:
+        return AgentRefOut(id=agent[0], name=agent[1])
+    if len(agents) == 1:
+        return AgentRefOut(id=agents[0][0], name=agents[0][1])
+    return None
+
+
+async def _waiting_codes(scope: LiteScope, ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """El código guardado de por qué espera cada conversación (``events.md`` §2)."""
+    if not ids:
+        return {}
+    rows = await scope.session.execute(
+        sa.select(Conversation.id, Conversation.waiting_reason).where(
+            Conversation.id.in_(ids), Conversation.waiting_reason.is_not(None)
+        )
+    )
+    return {cid: str(code) for cid, code in rows.all()}
+
+
 async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetailOut:
     d = await inbox_view.detail(
         scope.session, conv, tenant_id=scope.principal.tenant_id, me=_me(scope)
     )
+    agents = await inbox_view.client_agents(scope.session)
     return ConversationDetailOut(
+        handled_by_agent=_handler(d.agent, agents),
         id=conv.id,
         state=d.state,  # type: ignore[arg-type]
         assignee=_author(d.assignee),
@@ -271,11 +365,15 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
         contact=ContactDetailOut(
             name=d.contact_name,
             handle=d.contact_handle,
+            has_avatar=bool(d.contact_avatar_key),
             first_message_at=d.first_message_at,
             conversations=d.conversations,
+            next_booking=await _next_booking(scope, conv),
         ),
         summary=d.summary,
         waiting_reason=d.waiting_reason,
+        waiting_code=conv.waiting_reason if conv.waiting_reason else None,
+        waiting_since=d.waiting_since,
         tags=d.tags,
         note=NoteOut(body=d.note_body, updated_at=d.note_updated_at),
         activity=[
@@ -288,6 +386,19 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
             for a in d.activity
         ],
     )
+
+
+async def _next_booking(scope: LiteScope, conv: Conversation) -> NextBookingOut | None:
+    if not scope.principal.has("reservas"):
+        return None
+    from nexus_api.services.reservations.core import load_ctx
+    from nexus_api.services.reservations.views import next_booking_of
+
+    ctx = await load_ctx(scope.session, scope.principal.tenant_id)
+    if ctx is None:
+        return None
+    found = await next_booking_of(scope.session, ctx, conv.customer_id, datetime.now(UTC))
+    return NextBookingOut.model_validate(found) if found else None
 
 
 def _publish(
@@ -313,6 +424,18 @@ def _publish(
     scope.after_commit(_announce)
 
 
+def _wait_ended(scope: LiteScope, conv_id: uuid.UUID) -> None:
+    """Spec 056 (8.1, D8): la conversación ya no espera a una persona. Su aviso
+    «espera a una persona» pasa a atendido **cuando se confirme** la transacción
+    (como ``_publish``): si hace rollback, el aviso sigue pendiente."""
+    tenant_id = scope.principal.tenant_id
+
+    async def _handle() -> None:
+        await inbox_lifecycle.mark_waiting_handled(tenant_id, [conv_id])
+
+    scope.after_commit(_handle)
+
+
 # ── reads ──────────────────────────────────────────────────────────────
 
 
@@ -326,6 +449,7 @@ async def list_conversations(
     agent: uuid.UUID | None = Query(
         default=None, description="Only this agent's numbers (spec 030)"
     ),
+    channel: ChannelType | None = Query(default=None, description="Only this kind of channel"),
 ) -> ConversationPageOut:
     try:
         page = await inbox_view.list_conversations(
@@ -337,17 +461,25 @@ async def list_conversations(
             cursor=cursor,
             limit=limit,
             agent=agent,
+            channel=channel,
         )
     except (ValueError, UnicodeDecodeError):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="bad cursor"
         ) from None
+    agents = await inbox_view.client_agents(scope.session)
+    codes = await _waiting_codes(scope, [i.id for i in page.items if i.state == "waiting"])
     return ConversationPageOut(
         items=[
             ConversationItemOut(
+                handled_by_agent=_handler(i.agent, agents),
+                waiting_reason=codes.get(i.id),
                 id=i.id,
                 contact=ContactOut(
-                    name=i.contact_name, handle=i.contact_handle, initials=_initials(i.contact_name)
+                    name=i.contact_name,
+                    handle=i.contact_handle,
+                    initials=_initials(i.contact_name),
+                    has_avatar=bool(i.contact_avatar_key),
                 ),
                 channel={"kind": i.channel_kind},
                 agent=({"id": str(i.agent[0]), "name": i.agent[1]} if i.agent else None),
@@ -365,6 +497,11 @@ async def list_conversations(
                 ),
                 unread=i.unread,
                 tags=i.tags,
+                waiting=(
+                    WaitingOut(reason=i.waiting_reason, since=i.waiting_since)
+                    if i.state == "waiting" and i.waiting_since is not None
+                    else None
+                ),
             )
             for i in page.items
         ],
@@ -372,6 +509,7 @@ async def list_conversations(
         counts=CountsOut(unread=page.unread, waiting=page.waiting),
         has_any=page.has_any,
         channel_kinds=page.channel_kinds,
+        resolved=page.resolved,
     )
 
 
@@ -432,6 +570,9 @@ async def read_thread(
                 failure_reason=i.failure_reason,
                 kind=i.event_kind,
                 detail=i.detail,
+                unsent=i.unsent,
+                comment=i.comment,
+                opted_out=i.opted_out,
             )
             for i in items
         ],
@@ -453,6 +594,23 @@ async def _set_read(scope: LiteScope, conv: Conversation, *, unread: bool) -> No
         row.read_at = datetime.now(UTC)
         row.marked_unread = False
     await scope.session.flush()
+
+
+@router.get(
+    "/conversations/{conversation_id}/messages/{message_id}/post",
+    response_model=CommentPostOut | None,
+)
+async def read_comment_post(
+    message_id: uuid.UUID,
+    conversation_id: uuid.UUID = ConversationId,
+    scope: LiteScope = Depends(lite_scope("inbox")),
+    redis: Redis = Depends(get_redis),
+) -> CommentPostOut | None:
+    """The post of a comment. ``null`` when Meta does not give it: the comment
+    still reads on its own."""
+    conv = await _conversation(scope, conversation_id)
+    post = await inbox_comment_post.read(scope.session, redis, conv, message_id)
+    return CommentPostOut(**post) if post else None
 
 
 @router.post("/conversations/{conversation_id}/read", status_code=status.HTTP_204_NO_CONTENT)
@@ -532,6 +690,7 @@ async def take_over(
     _audit(scope, "inbox.takeover", conv.id, {"control_version": conv.agent_active_version})
     await scope.session.flush()
     _publish(redis, scope, conv.id)
+    _wait_ended(scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -568,6 +727,7 @@ async def give_back(
     _audit(scope, "inbox.released", conv.id, {"control_version": conv.agent_active_version})
     await scope.session.flush()
     _publish(redis, scope, conv.id)
+    _wait_ended(scope, conv.id)
     return await _detail_out(scope, conv)
 
 
@@ -577,9 +737,18 @@ async def _can_send(scope: LiteScope, conv: Conversation) -> Channel:
     if conv.agent_active or conv.assigned_user_id != _me(scope):
         raise _conflict("not_assigned_to_you")
     now = datetime.now(UTC)
-    if conv.last_inbound_at is None or conv.last_inbound_at + inbox_view.WINDOW <= now:
-        raise _conflict("window_closed")
     channel = await scope.session.get(Channel, conv.channel_id)
+    # Spec 049: a person on Instagram / Messenger has 7 days once Meta approves
+    # HUMAN_AGENT.
+    window = (
+        person_window(
+            channel.type.value, human_agent_approved=get_settings().meta_human_agent_approved
+        )
+        if channel is not None
+        else inbox_view.WINDOW
+    )
+    if conv.last_inbound_at is None or conv.last_inbound_at + window <= now:
+        raise _conflict("window_closed")
     if channel is None or channel.status != ChannelStatus.ACTIVE:
         raise _conflict("channel_disconnected")
     return channel
@@ -592,11 +761,20 @@ async def _can_send(scope: LiteScope, conv: Conversation) -> Channel:
 )
 async def send_message(
     body: SendIn,
+    response: Response,
     conversation_id: uuid.UUID = ConversationId,
     scope: LiteScope = Depends(lite_scope("inbox")),
     redis: Redis = Depends(get_redis),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> SentOut:
+    """Envía texto. Con ``Idempotency-Key`` (spec 031, R6.4) un reintento no
+    manda otro WhatsApp: ver ``services/lite_send_idempotency``."""
+    key = idempotency.parse_key(idempotency_key)
     conv = await _conversation(scope, conversation_id)
+    if key is not None:
+        prior = await idempotency.prior_send(scope.session, key=key, conversation_id=conv.id)
+        if prior is not None:
+            return await _answer_prior(scope, redis, conv, prior, response)
     await _can_send(scope, conv)
     now = datetime.now(UTC)
     msg = Message(
@@ -610,14 +788,62 @@ async def send_message(
         # La membresía, no el ``user_id``: ``actor_id`` es UUID y el id de
         # la consola es texto de Better Auth.
         actor_id=scope.principal.membership.id,
+        idempotency_key=key,
     )
-    scope.session.add(msg)
+    raced = await _insert_once(scope, msg, key=key, conversation_id=conv.id)
+    if raced is not None:
+        response.status_code = status.HTTP_200_OK
+        return _sent(raced)
     conv.last_message_at = now
     _audit(scope, "inbox.message_sent", conv.id, {"length": len(body.text)})
     await scope.session.flush()
     await scope.session.refresh(msg)
     _publish(redis, scope, conv.id, "message.new", message_id=str(msg.id), direction="outbound")
     return SentOut(id=msg.id, at=msg.created_at, delivery="pending")
+
+
+def _sent(msg: Message) -> SentOut:
+    return SentOut(id=msg.id, at=msg.created_at, delivery=msg.status.value)
+
+
+async def _answer_prior(
+    scope: LiteScope, redis: Redis, conv: Conversation, prior: Message, response: Response
+) -> SentOut:
+    """Un envío anterior con la misma clave: replay, o reintento si falló."""
+    response.status_code = status.HTTP_200_OK
+    if idempotency.classify(prior) == "replay":
+        return _sent(prior)
+    # Esta vez sí se envía: las precondiciones valen igual que para uno nuevo.
+    await _can_send(scope, conv)
+    idempotency.revive(prior)
+    _audit(scope, "inbox.message_sent", conv.id, {"retry_of": str(prior.id)})
+    await scope.session.flush()
+    _publish(redis, scope, conv.id, "message.new", message_id=str(prior.id), direction="outbound")
+    return _sent(prior)
+
+
+async def _insert_once(
+    scope: LiteScope, msg: Message, *, key: str | None, conversation_id: uuid.UUID
+) -> Message | None:
+    """Inserta ``msg``. Si otra petición con la misma clave ganó la carrera,
+    devuelve **su** fila en vez de fallar: el índice único choca dentro de un
+    savepoint y la transacción de la ruta sigue viva."""
+    if key is None:
+        scope.session.add(msg)
+        return None
+    try:
+        async with scope.session.begin_nested():
+            scope.session.add(msg)
+            await scope.session.flush()
+    except IntegrityError:
+        scope.session.expunge(msg)
+        winner = await idempotency.prior_send(
+            scope.session, key=key, conversation_id=conversation_id
+        )
+        if winner is None:  # pragma: no cover - el índice dice que existe
+            raise
+        return winner
+    return None
 
 
 # ── lifecycle ──────────────────────────────────────────────────────────
@@ -634,7 +860,38 @@ async def resolve(
         _audit(scope, "inbox.resolved", conv.id, {})
         await scope.session.flush()
         _publish(redis, scope, conv.id)
+        _wait_ended(scope, conv.id)
     return await _detail_out(scope, conv)
+
+
+@router.post("/conversations/{conversation_id}/clear", response_model=ConversationDetailOut)
+async def clear(
+    conversation_id: uuid.UUID = ConversationId,
+    scope: LiteScope = Depends(lite_scope("inbox")),
+    redis: Redis = Depends(get_redis),
+) -> ConversationDetailOut:
+    """«Vaciar el chat»: empty for the Inbox and for the agent, not erased."""
+    conv = await _conversation(scope, conversation_id)
+    await inbox_lifecycle.clear(scope.session, conv)
+    _audit(scope, "inbox.cleared", conv.id, {})
+    await scope.session.flush()
+    _publish(redis, scope, conv.id)
+    return await _detail_out(scope, conv)
+
+
+@router.post("/conversations/{conversation_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
+async def archive(
+    conversation_id: uuid.UUID = ConversationId,
+    scope: LiteScope = Depends(lite_scope("inbox")),
+    redis: Redis = Depends(get_redis),
+) -> None:
+    """«Eliminar el chat»: out of the Inbox, archived rather than erased."""
+    conv = await _conversation(scope, conversation_id)
+    await inbox_lifecycle.archive(scope.session, conv, actor=f"client:{_me(scope)}")
+    _audit(scope, "inbox.archived", conv.id, {})
+    await scope.session.flush()
+    _publish(redis, scope, conv.id)
+    _wait_ended(scope, conv.id)
 
 
 @router.post("/conversations/{conversation_id}/reopen", response_model=ConversationDetailOut)

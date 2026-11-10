@@ -93,7 +93,9 @@ export function nextAction(
     case "agent":
       return { ...common, kind: "link", href: `${base}/agent` };
     case "channel":
-      return { ...common, kind: "link", href: `${base}/channels` };
+      // Channels are connected from each agent in the v2 console; the old
+      // client-level page is not reachable from any tab (QA 2026-10-30).
+      return { ...common, kind: "link", href: `${base}/agents` };
     case "quota":
       // Iteración 1: el crédito se asigna en la pantalla de consumo, que es
       // la que hay. Asignarlo sin salir de la ficha es de la iteración 3.

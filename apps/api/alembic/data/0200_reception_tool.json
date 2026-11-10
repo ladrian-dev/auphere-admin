@@ -1,0 +1,81 @@
+{
+  "reception.handoff": {
+    "description": "Hand this conversation over to another agent of this business, one of the agents listed in your instructions, when what the customer asks is theirs. Same chat and same number: the other agent answers right away with its own instructions and tools. Give a short summary so the customer is not asked again. If the result says it was not handed over, keep the conversation or hand it to a person.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "description": "For the agent that takes it, in one or two sentences: what the customer wants and what they already told you, so they are not asked again.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "to_agent_id": {
+          "description": "The agent that takes the conversation: the id of one of the agents listed under «Derivar a otro agente» in your instructions. Any other agent is refused.",
+          "format": "uuid",
+          "title": "To Agent Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to_agent_id",
+        "summary"
+      ],
+      "title": "HandoffInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "handed_off": {
+          "title": "Handed Off",
+          "type": "boolean"
+        },
+        "hop": {
+          "title": "Hop",
+          "type": "integer"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "handed_off",
+            "not_reception",
+            "not_in_list",
+            "same_agent",
+            "target_unavailable",
+            "loop"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "to_agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Agent"
+        }
+      },
+      "required": [
+        "handed_off",
+        "outcome",
+        "hop",
+        "note"
+      ],
+      "title": "HandoffOutput",
+      "type": "object"
+    },
+    "side_effects": [
+      "mutates_db"
+    ]
+  }
+}

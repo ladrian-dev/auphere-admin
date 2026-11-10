@@ -101,6 +101,8 @@ class ConnectorOut(BaseModel):
     auto_enable_destructive: bool
     consent_link_template_name: str | None
     status: str
+    #: Spec 047 (36.4): los ajustes que pide cada activación.
+    settings_schema: dict[str, Any] | None = None
 
 
 class TenantConnectorOut(BaseModel):
@@ -136,7 +138,7 @@ class InitiateConsentOut(BaseModel):
 
 class BootstrapBrowserIn(BaseModel):
     """Bootstrap a browser_credentials connector by linking an existing
-    tenant_credentials row (created via the AgendaPro bootstrap flow).
+    tenant_credentials row.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -311,7 +313,7 @@ async def initiate_consent(
     # Lazy upsert: if the slug is registered in Composio but doesn't have
     # a row in ``connectors`` yet (true for any OAuth toolkit the operator
     # added in the dashboard since the last deploy), create one from the
-    # Composio metadata. Custom seeds (whatsapp_meta, agendapro) already
+    # Composio metadata. Custom seeds (whatsapp_meta, woocommerce…) already
     # have rows from the seed runner.
     slug_lower = slug.lower()
     try:
@@ -574,7 +576,7 @@ async def sync_connector(
                 deprecated=reconciled.tools_deprecated,
                 unchanged_count=0,
             )
-        result = await connector_service.sync_tools_for(
+        result = await connector_service.resync(
             session,
             tenant_connector=tc,
             connector=connector,

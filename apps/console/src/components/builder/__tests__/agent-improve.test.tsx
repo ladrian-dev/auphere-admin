@@ -1,0 +1,454 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+
+import { axeViolations } from "@nexus/ui/test/axe";
+
+import { LocaleProvider } from "@/i18n/client";
+import type { ClientAgent } from "@/lib/backend";
+import type { AgentConversationPage, AgentPerformance, Improvement, Improvements } from "@/lib/backend/agent-improve-types";
+import type { BuilderDraft } from "@/lib/backend/builder-types";
+
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
+vi.mock("sonner", () => ({ toast }));
+vi.mock("@/app/(console)/clients/[ref]/agents/improve-actions", () => ({}));
+vi.mock("@/app/(console)/clients/[ref]/agents/builder-actions", () => ({}));
+
+const { AgentPerformancePanel } = await import("../agent-performance");
+const { AgentImprovementsPanel } = await import("../agent-improvements");
+const { ReceptionBadge, ReceptionSection } = await import("../reception-section");
+type PerfActions = NonNullable<React.ComponentProps<typeof AgentPerformancePanel>["actions"]>;
+type ImpActions = NonNullable<React.ComponentProps<typeof AgentImprovementsPanel>["actions"]>;
+
+/**
+ * Spec 047 — la pantalla del agente del partner gana Rendimiento y Mejoras
+ * (T174; requisitos 51 y 52.2) y Recepción (T178; requisito 53). Nada de esto
+ * enseña un mensaje: las conversaciones llegan con sus metadatos y una
+ * corrección con la lección y la paráfrasis.
+ */
+
+const REF = "barberia-cultor";
+const AGENT = "00000000-0000-4000-8000-0000000000a1";
+const VENTAS = "00000000-0000-4000-8000-0000000000a3";
+const CITAS = "00000000-0000-4000-8000-0000000000a4";
+const ok = <T,>(data: T) => ({ ok: true as const, data });
+const usd = (amount_micros: number) => ({ amount_micros, currency: "USD" as const });
+
+function perf(days = 30): AgentPerformance {
+  const series = Array.from({ length: days }, (_, i) => ({
+    day: new Date(Date.UTC(2026, 8, 29 + i)).toISOString().slice(0, 10),
+    conversations: i % 3,
+    resolved_without_person: i % 2,
+    handed_to_person: i % 3 === 2 ? 1 : 0,
+    spent: usd(12_000),
+  }));
+  return {
+    days,
+    since: "2026-09-29T00:00:00Z",
+    until: "2026-10-29T00:00:00Z",
+    conversations: 42,
+    resolved_without_person: 35,
+    handed_to_person: 7,
+    resolved_pct: 83.3,
+    spent: usd(4_200_000),
+    spend_per_conversation: usd(100_000),
+    series,
+  };
+}
+
+const page: AgentConversationPage = {
+  items: [
+    {
+      id: "00000000-0000-4000-8000-00000000c001",
+      started_at: "2026-10-27T09:00:00Z",
+      last_activity_at: "2026-10-27T09:12:00Z",
+      channel_type: "whatsapp",
+      duration_seconds: 720,
+      messages_count: 9,
+      outcome: "handed_to_person",
+      in_progress: false,
+      handoff_reason: "reception_loop",
+      spent: usd(150_000),
+    },
+  ],
+  next_cursor: "c2",
+};
+
+describe("Rendimiento (T174; H9, 63.2)", { timeout: 30_000 }, () => {
+  // `hidden`: esta persona no puede leer conversaciones (un `undefined` a secas tomaría el valor por defecto).
+  function view(
+    over: Partial<PerfActions> = {},
+    list: AgentConversationPage | null | "hidden" = page,
+    { initial = perf() as AgentPerformance | null, cap = null as { amount_micros: number; currency: "EUR" | "USD" } | null } = {},
+  ) {
+    const conversations = list === "hidden" ? undefined : list;
+    const actions: PerfActions = {
+      load: vi.fn(async (b) => ok(perf(b.days))),
+      more: vi.fn(async () => ok({ items: [{ ...page.items[0]!, id: "00000000-0000-4000-8000-00000000c002", handoff_reason: null, outcome: "resolved_without_person" as const }], next_cursor: null })),
+      ...over,
+    };
+    const r = render(
+      <LocaleProvider locale="es">
+        <AgentPerformancePanel
+          refId={REF}
+          agentId={AGENT}
+          performance={initial}
+          conversations={conversations}
+          cap={cap}
+          suggestions={<section aria-label="Sugerencias de prueba">Sugerencias</section>}
+          actions={actions}
+        />
+      </LocaleProvider>,
+    );
+    return { ...r, actions };
+  }
+
+  it("arriba, en dos columnas, los 30 días con tres cifras y las sugerencias; debajo, la gráfica y las conversaciones solo con metadatos; pasa axe", async () => {
+    const { container } = view({}, page, { cap: { amount_micros: 1_500_000, currency: "USD" } });
+    const top = container.querySelector("[data-slot=performance-top]") as HTMLElement;
+    const summary = within(top).getByRole("region", { name: "Últimos 30 días" });
+    expect(within(top).getByRole("region", { name: "Sugerencias de prueba" })).toBeInTheDocument();
+    const figures = summary;
+    expect(within(figures).getByText("42")).toBeInTheDocument();
+    expect(within(figures).getByText("Conversaciones")).toBeInTheDocument();
+    expect(within(figures).getByText("83 %")).toBeInTheDocument();
+    expect(within(figures).getByText("Resueltas sin persona")).toBeInTheDocument();
+    expect(within(figures).getByText(/42,00/)).toBeInTheDocument();
+    expect(within(figures).getByText(/^Consumido de la bolsa · tope 15,00/)).toBeInTheDocument();
+    // Sin el selector de periodo arriba: la píldora es de la gráfica, debajo.
+    expect(within(top).queryByRole("tablist")).toBeNull();
+    const chart = container.querySelector("[data-slot=performance-chart]") as HTMLElement;
+    expect(within(chart).getByRole("tab", { name: "30 días" })).toHaveAttribute("aria-selected", "true");
+    const table = screen.getByRole("table", { name: "Conversaciones" });
+    expect(within(table).getByText("WhatsApp")).toBeInTheDocument();
+    expect(within(table).getByText("12 min")).toBeInTheDocument();
+    expect(within(table).getByText("Derivaciones en bucle")).toBeInTheDocument();
+    expect(within(table).getByText("Pasó a una persona")).toBeInTheDocument();
+    expect(screen.getByText(/Nunca los mensajes ni quién era el cliente/)).toBeInTheDocument();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("sin conversaciones, «Resueltas sin persona» dice «—»; sin tope, solo lo consumido", () => {
+    view({}, page, { initial: { ...perf(), conversations: 0, resolved_without_person: 0, handed_to_person: 0, resolved_pct: null } });
+    const summary = screen.getByRole("region", { name: "Últimos 30 días" });
+    expect(within(summary).getByText("—")).toBeInTheDocument();
+    expect(within(summary).getByText("Consumido de la bolsa")).toBeInTheDocument();
+  });
+
+  it("la píldora de la gráfica cambia su periodo, también con las flechas; los 30 días de arriba se quedan", async () => {
+    const user = userEvent.setup();
+    const { actions } = view();
+    await user.click(screen.getByRole("tab", { name: "7 días" }));
+    await waitFor(() => expect(actions.load).toHaveBeenCalledWith({ ref: REF, agent: AGENT, days: 7 }));
+    expect(await screen.findByText("Últimos 7 días")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Últimos 30 días" })).toBeInTheDocument();
+    screen.getByRole("tab", { name: "7 días" }).focus();
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() => expect(actions.load).toHaveBeenCalledWith({ ref: REF, agent: AGENT, days: 30 }));
+    expect(screen.getByRole("tab", { name: "30 días" })).toHaveFocus();
+  });
+
+  it("«Ver más» sigue el cursor; sin permiso, la lista no se pinta", async () => {
+    const user = userEvent.setup();
+    const { actions, unmount } = view();
+    await user.click(screen.getByRole("button", { name: "Ver más" }));
+    await waitFor(() => expect(actions.more).toHaveBeenCalledWith({ ref: REF, agent: AGENT, cursor: "c2" }));
+    expect(await screen.findByText("Sin persona")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ver más" })).toBeNull();
+    unmount();
+
+    view({}, "hidden");
+    expect(screen.queryByRole("table", { name: "Conversaciones" })).toBeNull();
+  });
+
+  it("si el periodo de la gráfica no llega, lo dice y deja reintentar", async () => {
+    const user = userEvent.setup();
+    const load = vi.fn().mockResolvedValueOnce({ ok: false, status: 500, message: "x" }).mockResolvedValueOnce(ok(perf(90)));
+    view({ load });
+    await user.click(screen.getByRole("tab", { name: "90 días" }));
+    expect(await screen.findByText("No pudimos leer el rendimiento")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByText("Últimos 90 días")).toBeInTheDocument();
+  });
+
+  it("si los 30 días no llegaron, el resumen lo dice y se reintenta en el sitio", async () => {
+    const user = userEvent.setup();
+    const { actions } = view({}, page, { initial: null });
+    const summary = screen.getByRole("region", { name: "Últimos 30 días" });
+    expect(within(summary).getByText("No pudimos leer el rendimiento")).toBeInTheDocument();
+    await user.click(within(summary).getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(actions.load).toHaveBeenCalledWith({ ref: REF, agent: AGENT, days: 30 }));
+    expect(await within(summary).findByText("42")).toBeInTheDocument();
+  });
+});
+
+function suggestion(over: Partial<Improvement> = {}): Improvement {
+  return {
+    id: "00000000-0000-4000-8000-0000000000d1",
+    kind: "suggestion",
+    week: "2026-10-19",
+    topic: "12 clientes preguntaron por el aparcamiento y el agente no supo",
+    summary: "Añadir dónde aparcar.",
+    lesson: null,
+    origin: null,
+    conversations_count: 12,
+    contacts_count: 9,
+    proposal_id: "p1",
+    diff: { ops: [{ op: "add", path: "/rules/-", value: "El aparcamiento está en la calle de atrás" }] },
+    test: { name: "Pregunta por el aparcamiento", persona: "", first_message: "¿Dónde aparco?", plan: "", criteria: [], critical: false },
+    created_at: "2026-10-26T10:00:00Z",
+    ...over,
+  };
+}
+
+const correction = suggestion({
+  id: "00000000-0000-4000-8000-0000000000d2",
+  kind: "correction",
+  week: null,
+  topic: "¿Dais citas el día de fiesta?",
+  summary: "No des citas los festivos",
+  lesson: "No des citas los festivos",
+  origin: "app",
+  conversations_count: 1,
+  contacts_count: 1,
+});
+
+const BATCH = "00000000-0000-4000-8000-0000000000b1";
+const batched = suggestion({
+  ...correction,
+  id: BATCH,
+  topic: "¿Atendéis los festivos?",
+  batch: { id: BATCH, agents_count: 3 },
+});
+
+describe("Sugerencias de esta semana (T174; H9, 63.2)", { timeout: 30_000 }, () => {
+  function view(data: Improvements | null, over: Partial<ImpActions> = {}) {
+    const actions: ImpActions = {
+      reload: vi.fn(async () => ok({ items: [suggestion()], allowed: ["accept", "discard"] as ("accept" | "discard")[] })),
+      accept: vi.fn(async () => ok({ id: "x", status: "accepted" as const, draft_revision: 9, test_id: "t9" })),
+      discard: vi.fn(async () => ok({ id: "x", status: "discarded" as const, suppress_until: "2026-11-27T00:00:00Z" })),
+      acceptBatch: vi.fn(async () => ok({ batch_id: BATCH, applied: 3, skipped: [] })),
+      discardBatch: vi.fn(async () => ok({ batch_id: BATCH, applied: 0, skipped: [] })),
+      ...over,
+    };
+    const onAccepted = vi.fn();
+    const r = render(
+      <LocaleProvider locale="es">
+        <AgentImprovementsPanel refId={REF} agentId={AGENT} improvements={data} onAccepted={onAccepted} actions={actions} />
+      </LocaleProvider>,
+    );
+    return { ...r, actions, onAccepted };
+  }
+  const ver = (topic: string) => screen.getByRole("button", { name: `Ver «${topic}»` });
+
+  it("una fila por mejora con su bombilla, a cuántos afecta o de dónde viene, y «Ver»; nunca el mensaje; pasa axe", async () => {
+    const { container } = view({ items: [suggestion(), correction], allowed: ["accept", "discard"] });
+    const card = screen.getByRole("region", { name: "Sugerencias de esta semana" });
+    const list = within(card).getByRole("list", { name: "Mejoras por decidir" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).getByText("12 clientes preguntaron por el aparcamiento y el agente no supo")).toBeInTheDocument();
+    expect(within(list).getByText("12 conversaciones de 9 clientes")).toBeInTheDocument();
+    expect(within(list).getByText("Corrección del negocio · Desde la app")).toBeInTheDocument();
+    // Aceptar y descartar viven dentro de «Ver», no en la fila.
+    expect(within(list).queryByRole("button", { name: /Aceptar|Descartar|Acciones de/ })).toBeNull();
+    expect(within(list).getAllByRole("button", { name: /^Ver «/ })).toHaveLength(2);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("«Ver» enseña la propuesta y su prueba; aceptar dice en qué quedó el borrador y avisa a la pantalla", async () => {
+    const user = userEvent.setup();
+    const { actions, onAccepted } = view({ items: [suggestion(), correction], allowed: ["accept", "discard"] });
+    await user.click(ver(correction.topic));
+    let dialog = await screen.findByRole("dialog", { name: correction.topic });
+    expect(within(dialog).getByText("No des citas los festivos")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cerrar" }));
+    await user.click(ver(suggestion().topic));
+    dialog = await screen.findByRole("dialog", { name: suggestion().topic });
+    expect(within(dialog).getByText("Prueba nueva: Pregunta por el aparcamiento")).toBeInTheDocument();
+    expect(within(dialog).getByText("12 conversaciones de 9 clientes")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Aceptar" }));
+    await waitFor(() => expect(actions.accept).toHaveBeenCalledWith({ ref: REF, agent: AGENT, id: suggestion().id }));
+    expect(await screen.findByText(/El cambio y su prueba están en el borrador \(revisión 9\)/)).toBeInTheDocument();
+    expect(onAccepted).toHaveBeenCalledWith(expect.objectContaining({ draft_revision: 9 }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("descartar desde «Ver» pide el motivo (al menos 3 caracteres) y no vuelve en 30 días", async () => {
+    const user = userEvent.setup();
+    const { actions } = view({ items: [suggestion()], allowed: ["accept", "discard"] });
+    await user.click(ver(suggestion().topic));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar" }));
+    const dialog = await screen.findByRole("dialog", { name: "¿Por qué la descartas?" });
+    expect(within(dialog).getByText("No volveremos a proponerla en 30 días.")).toBeInTheDocument();
+    await user.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "no");
+    await user.click(within(dialog).getByRole("button", { name: "Descartar" }));
+    expect(within(dialog).getByText("Escribe el motivo, al menos 3 caracteres.")).toBeInTheDocument();
+    expect(actions.discard).not.toHaveBeenCalled();
+    await user.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), " aplica: no tenemos parking");
+    await user.click(within(dialog).getByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(actions.discard).toHaveBeenCalledWith({ ref: REF, agent: AGENT, id: suggestion().id, reason: "no aplica: no tenemos parking" }));
+    expect(toast.success).toHaveBeenCalledWith("Descartada. No volverá en 30 días.");
+    expect(screen.getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+  });
+
+  /** Spec 056 (9.2): una corrección de «Todo el negocio» llegó a varios agentes y se decide en todos a la vez. */
+  it("el lote dice a cuántos agentes llegó y se acepta en todos de una vez", async () => {
+    const user = userEvent.setup();
+    const { actions, onAccepted } = view(
+      { items: [batched], allowed: ["accept", "discard"] },
+      { acceptBatch: vi.fn(async () => ok({ batch_id: BATCH, applied: 2, skipped: [{ agent_id: VENTAS, code: "improvement_outdated" }] })) },
+    );
+    expect(screen.getByText("Corrección del negocio · Desde la app · En 3 agentes")).toBeInTheDocument();
+    await user.click(ver(batched.topic));
+    const dialog = await screen.findByRole("dialog", { name: batched.topic });
+    expect(within(dialog).getByText("La misma corrección llegó a 3 agentes. Se decide en todos a la vez.")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Aceptar" })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Aceptar en los 3 agentes" }));
+    await waitFor(() => expect(actions.acceptBatch).toHaveBeenCalledWith({ ref: REF, batch: BATCH }));
+    expect(actions.accept).not.toHaveBeenCalled();
+    expect(await screen.findByText("Aceptada en 2 agentes")).toBeInTheDocument();
+    expect(screen.getByText(/En 1 agente no se pudo aplicar/)).toBeInTheDocument();
+    expect(onAccepted).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+  });
+
+  it("descartar el lote pide el motivo y lo descarta en todos", async () => {
+    const user = userEvent.setup();
+    const { actions } = view({ items: [batched], allowed: ["accept", "discard"] });
+    await user.click(ver(batched.topic));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar" }));
+    const dialog = await screen.findByRole("dialog", { name: "¿Por qué la descartas?" });
+    expect(within(dialog).getByText("Se descarta en los 3 agentes a los que llegó.")).toBeInTheDocument();
+    await user.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "No aplica aquí");
+    await user.click(within(dialog).getByRole("button", { name: "Descartar en los 3 agentes" }));
+    await waitFor(() => expect(actions.discardBatch).toHaveBeenCalledWith({ ref: REF, batch: BATCH, reason: "No aplica aquí" }));
+    expect(actions.discard).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("Descartada en los 3 agentes.");
+  });
+
+  it("los «no» de la API en palabras; quien solo lee no tiene botones; vacío y error", async () => {
+    const user = userEvent.setup();
+    const { unmount } = view({ items: [suggestion()], allowed: ["accept", "discard"] }, { accept: vi.fn(async () => ({ ok: false as const, status: 409, message: "x", code: "improvement_outdated" })) });
+    await user.click(ver(suggestion().topic));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Aceptar" }));
+    expect(await within(screen.getByRole("dialog")).findByText("El borrador cambió y la propuesta ya no encaja.")).toBeInTheDocument();
+    unmount();
+
+    const reader = view({ items: [suggestion()], allowed: [] });
+    await user.click(ver(suggestion().topic));
+    expect(within(await screen.findByRole("dialog")).queryByRole("button", { name: /Aceptar|Descartar/ })).toBeNull();
+    reader.unmount();
+
+    const empty = view({ items: [], allowed: ["accept", "discard"] });
+    expect(within(screen.getByRole("region", { name: "Sugerencias de esta semana" })).getByText("Nada que mejorar por ahora")).toBeInTheDocument();
+    empty.unmount();
+
+    const broken = view(null);
+    expect(screen.getByText("No pudimos leer las mejoras")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(broken.actions.reload).toHaveBeenCalledWith({ ref: REF, agent: AGENT }));
+  });
+});
+
+describe("Recepción (T178)", { timeout: 30_000 }, () => {
+  const agents: ClientAgent[] = [
+    { id: AGENT, name: "Recepción", status: "active", is_principal: true, channels: [], active_version: 2, draft_version: null },
+    { id: VENTAS, name: "Ventas mayoristas", status: "active", is_principal: false, channels: [], active_version: 1, draft_version: null, visible_state: { code: "serving", tone: "positive", reason: null } },
+    { id: CITAS, name: "Citas", status: "active", is_principal: false, channels: [], active_version: 1, draft_version: null, visible_state: { code: "paused", tone: "warn", reason: "manual" } },
+    { id: "00000000-0000-4000-8000-0000000000a9", name: "Vieja", status: "archived", is_principal: false, channels: [], active_version: null, draft_version: null },
+  ];
+
+  type Save = React.ComponentProps<typeof ReceptionSection>["onSave"];
+  function view(reception = { enabled: false }, onSave: Save = vi.fn(async () => ok({} as BuilderDraft)), canWrite = true) {
+    const onReload = vi.fn();
+    const r = render(
+      <LocaleProvider locale="es">
+        <ReceptionSection agentId={AGENT} reception={reception} agents={agents} canWrite={canWrite} onSave={onSave} onReload={onReload} />
+      </LocaleProvider>,
+    );
+    return { ...r, onSave, onReload };
+  }
+
+  it("marcar como Recepción, elegir destinos de este cliente y decir cuándo; guarda el AgentSpec", async () => {
+    const user = userEvent.setup();
+    const { onSave, container } = view();
+    expect(screen.getByText("No deriva")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Editar Recepción" }));
+    await user.click(screen.getByRole("checkbox", { name: /Este agente es Recepción/ }));
+    // Solo los demás agentes vivos de este cliente: ni él mismo ni el archivado.
+    expect(screen.getByRole("checkbox", { name: "Derivar a Ventas mayoristas" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Derivar a Recepción|Derivar a Vieja/ })).toBeNull();
+    expect(screen.getByText(/En pausa ahora/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Guardar en el borrador" }));
+    expect(screen.getByText("Elige al menos un agente al que derivar.")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Derivar a Ventas mayoristas" }));
+    await user.click(screen.getByRole("button", { name: "Guardar en el borrador" }));
+    expect(screen.getByText("Di cuándo derivarle.")).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: /Cuándo derivar a Ventas mayoristas/ }), "Quiere comprar  al por mayor");
+    expect(await axeViolations(container)).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Guardar en el borrador" }));
+    await waitFor(() => expect(vi.mocked(onSave)).toHaveBeenCalledWith({ enabled: true, targets: [{ agent_id: VENTAS, when: "Quiere comprar al por mayor" }] }));
+  });
+
+  it("lee lo guardado con sus destinos; un 412 avisa y vuelve a leer; sin permiso, sin «Editar»", async () => {
+    const user = userEvent.setup();
+    const conflict: Save = vi.fn(async () => ({ ok: false as const, status: 412, message: "x", code: "revision_conflict" }));
+    const { onReload, unmount } = view({ enabled: true, targets: [{ agent_id: VENTAS, when: "Quiere comprar al por mayor" }] } as never, conflict);
+    expect(screen.getByText("Es Recepción")).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "A quién deriva" });
+    expect(within(list).getByText("Ventas mayoristas")).toBeInTheDocument();
+    expect(within(list).getByText("Cuándo: Quiere comprar al por mayor")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Editar Recepción" }));
+    await user.click(screen.getByRole("button", { name: "Guardar en el borrador" }));
+    expect(await screen.findByText(/Alguien guardó este agente mientras editabas/)).toBeInTheDocument();
+    expect(onReload).toHaveBeenCalled();
+    unmount();
+
+    view({ enabled: false }, undefined, false);
+    expect(screen.queryByRole("button", { name: "Editar Recepción" })).toBeNull();
+  });
+});
+
+describe("La marca «Recepción» de la cabecera", () => {
+  function badge(published: boolean | undefined, drafted: boolean) {
+    const { container, unmount } = render(
+      <LocaleProvider locale="es">
+        <ReceptionBadge published={published} drafted={drafted} />
+      </LocaleProvider>,
+    );
+    const text = container.querySelector("[data-slot=agent-reception]")?.textContent ?? null;
+    unmount();
+    return text;
+  }
+
+  it("dice lo publicado y avisa de lo que cambia el borrador", () => {
+    expect(badge(true, true)).toBe("Recepción");
+    expect(badge(true, false)).toBe("Deja de ser Recepción al publicar");
+    expect(badge(false, true)).toBe("Recepción al publicar");
+    expect(badge(false, false)).toBeNull();
+    // Sin el dato de la API, manda el borrador (lo de antes).
+    expect(badge(undefined, true)).toBe("Recepción");
+  });
+
+  it("marca los destinos que también son Recepción", async () => {
+    const user = userEvent.setup();
+    render(
+      <LocaleProvider locale="es">
+        <ReceptionSection
+          agentId={AGENT}
+          reception={{ enabled: true, targets: [] }}
+          agents={[
+            { id: AGENT, name: "Recepción", status: "active", is_principal: true, channels: [], active_version: 2, draft_version: null },
+            { id: VENTAS, name: "Ventas", status: "active", is_principal: false, channels: [], active_version: 1, draft_version: null, is_reception: true },
+          ]}
+          canWrite
+          onSave={vi.fn()}
+          onReload={vi.fn()}
+        />
+      </LocaleProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Editar Recepción" }));
+    expect(screen.getAllByText("También es Recepción")).toHaveLength(1);
+  });
+});

@@ -6,9 +6,9 @@ addressed to the partner — decision C2: we bill the partner).
 **printable, self-contained HTML document** (``Content-Disposition:
 attachment``). There is no PDF renderer in the repo (no weasyprint /
 reportlab dependency) and adding a native one for v1 was not worth it:
-the browser's "print to PDF" on this document IS the PDF, and the same
-``render_receipt_html`` already produces the monthly e-mail, so the two
-never disagree. Only receipts of the principal's partner resolve; any
+the browser's "print to PDF" on this document IS the PDF
+(``services/partner_receipt_document.py``). The monthly e-mail is a separate
+Resend template since spec 051; both read the same ``ReceiptResult``. Only receipts of the principal's partner resolve; any
 other id is an opaque 404.
 """
 
@@ -70,7 +70,7 @@ from nexus_api.services.partner_receipt import (
     _model_from_description,
     due_date_for,
 )
-from nexus_api.services.partner_receipt_email import receipt_subject, render_receipt_html
+from nexus_api.services.partner_receipt_document import receipt_subject, render_receipt_html
 
 from .schemas import (
     BillingOut,

@@ -566,7 +566,7 @@ _qa_pipeline_live: Any | None = None
 
 # Playground hops (classify + respond). Closed catalog ids only — G1 has
 # Sol, not Haiku/Sonnet. Empty fallback = no vendor acompletion hop.
-QA_CLASSIFY_MODEL = "openai/gpt-5.6-sol"
+QA_CLASSIFY_MODEL = "anthropic/claude-haiku-5-5"
 QA_RESPOND_MODEL = "openai/gpt-5.6-sol"
 
 
@@ -607,6 +607,7 @@ def _get_qa_pipeline(*, live: bool) -> Any:
         classify_model=QA_CLASSIFY_MODEL,
         respond_model=QA_RESPOND_MODEL,
         fallback_model="",
+        classify_fallback_model=QA_RESPOND_MODEL,
     )
     pipeline = build_qa_pipeline(
         agent_loader=AgentLoader(),

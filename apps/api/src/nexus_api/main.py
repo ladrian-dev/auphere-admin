@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from nexus_api import __version__
 from nexus_api.api import (
     admin,
+    app_public,
     console,
     device_bridge,
     messages,
@@ -73,7 +74,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         log.exception("companion.reaper.failed")
 
+    # Spec 047 (T139): the offer and what a hop may run are data
+    # (``model_profiles``), not constants. Read them once at start; without the
+    # database the boot seed stays, which is today's catalogue. Best-effort.
+    try:
+        from nexus_api.core import respond_catalog
+        from nexus_api.db.base import get_sessionmaker
+
+        async with get_sessionmaker()() as session:
+            await respond_catalog.refresh_from_db(session)
+    except Exception:
+        log.exception("respond_catalog.refresh_failed")
+
     log.info("api.startup", env=settings.environment, version=__version__)
+    from nexus_api.services.email import log_delivery_mode
+
+    log_delivery_mode("api")
     try:
         yield
     finally:
@@ -142,6 +158,8 @@ app.include_router(webhooks.router)
 app.include_router(connectors_public.router)
 app.include_router(qa.router)
 app.include_router(device_bridge.router)
+# Spec 031: lo público de la app Auphere Customers (canje, renovación, config).
+app.include_router(app_public.router)
 app.add_exception_handler(device_bridge.DeviceRefused, device_bridge.device_refused_handler)  # type: ignore[arg-type]
 # ADR-028 + WP-28: superficie pública de partners (clave secreta,
 # servidor a servidor), montada una vez por versión viva. `/v1` está

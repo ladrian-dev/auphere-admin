@@ -33,7 +33,41 @@ const CONSOLE_URL = (process.env.NEXUS_CONSOLE_URL ?? "http://localhost:3110").r
 );
 
 // ── Spec 030: acceso del cliente a su consola lite ────────────────────────
-export type ClientModule = "panel" | "inbox" | "usage";
+/** Spec 056 (requisito 2.1): Agentes y Negocio salieron; la API los rechaza con `unknown_module`. */
+export type ClientModule = "panel" | "inbox" | "reservas" | "usage";
+/** Spec 043: how the business books — with a person of the team, or by headcount. */
+export type ReservasMode = "services" | "capacity";
+/** Spec 043: the kind of an Aforo business. It brings the words and the starting values. */
+export type CapacityKind = "restaurant" | "bar" | "classes" | "tours" | "rooms" | "spa";
+/** Spec 043 (contracts/admin-api.md): the client's Reservas settings, as the access tab sees them. */
+export type ClientReservasOut = {
+  mode: ReservasMode;
+  capacity_kind: CapacityKind | null;
+  /** Future live reservations (pending, confirmed): a mode change cancels them. */
+  live_future: number;
+  /** Agents with a version prepared by the (de)activation that nobody promoted yet. */
+  agents_pending_promotion: { agent_id: string; name: string; version: number }[];
+  /** Agents whose live version still books outside Reservas, until their draft is published. */
+  agents_with_other_calendar: { agent_id: string; name: string }[];
+};
+export type ReservasNotReadyReason =
+  | "reservas_off"
+  | "hours_missing"
+  | "no_staff"
+  | "no_services"
+  | "no_bookable_service"
+  | "no_capacity";
+/** Spec 043: `on_live` only counts when the mode changes; the API defaults to `refuse`. */
+export type ClientReservasIn = {
+  mode: ReservasMode;
+  capacity_kind?: CapacityKind;
+  on_live?: "refuse" | "cancel_and_notify";
+};
+export type ClientAccessIn = {
+  enabled: boolean;
+  modules: ClientModule[];
+  reservas?: ClientReservasIn;
+};
 export type ClientMemberOut = {
   id: string;
   kind: "member" | "invitation";
@@ -51,13 +85,33 @@ export type ClientAccessOut = {
   enabled: boolean;
   modules: ClientModule[];
   members: ClientMemberOut[];
+  /** Spec 043: `null` while the client never had Reservas settings. */
+  reservas: ClientReservasOut | null;
+  /** Spec 043: who still books in Google and what is missing for it to pass. `null`: nobody. */
+  reservas_pending_pass: {
+    agents: { agent_id: string; name: string }[];
+    reasons: ReservasNotReadyReason[];
+  } | null;
+};
+/** Spec 031 (R7.4): one phone of a client person, active or recently closed. */
+export type ClientPhoneOut = {
+  id: string;
+  display_name: string;
+  platform: "ios" | "android";
+  app_version: string;
+  last_seen_at: string;
+  enrolled_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  revoked_by: string | null;
 };
 export type ClientInvitationOut = {
   id: string;
   email: string;
   status: string;
   expires_at: string;
-  accept_path: string;
+  /** The whole link, the one the e-mail carries. The API's `accept_path` opens nothing from the panel. */
+  accept_url: string;
   email_sent: boolean;
 };
 
@@ -92,7 +146,7 @@ type FetchOpts = {
   headers?: Record<string, string>;
 };
 
-async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
+export async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | null> {
   const url = `${BACKEND_URL}${path}`;
   const init: RequestInit = {
     method: opts.method ?? "GET",
@@ -140,8 +194,6 @@ export type Tenant = {
   owner_phone: string | null;
   owner_email: string | null;
   cost_alert_threshold_usd_per_day: string;
-  /** ADR-017: public AgendaPro URL used by the new public browser MCP. */
-  agendapro_public_url: string | null;
   /** Set when the client pays a flat monthly plan (Facturación tab). */
   billing_plan_id?: string | null;
   /** The partner this client belongs to; ``null`` = a direct Auphere client. */
@@ -816,6 +868,8 @@ export type Connector = {
   auto_enable_destructive: boolean;
   consent_link_template_name: string | null;
   status: ConnectorCatalogStatus;
+  /** Spec 047 (36.4): the settings each activation asks for (JSON Schema); null = none. */
+  settings_schema?: Record<string, unknown> | null;
 };
 
 export type TenantConnectorStatus =
@@ -946,9 +1000,58 @@ export type PartnerInvitation = {
   role: string;
   expires_at: string;
   created_at: string;
+  /** Spec 052: the last send the provider accepted; null is «not on record». */
+  last_sent_at: string | null;
+  /** An owner invitation no person of the partner issued: only these have actions. */
+  from_auphere: boolean;
 };
 
-export type PartnerMembersOut = { members: PartnerMember[]; invitations: PartnerInvitation[] };
+/** Spec 052: what the Team tab and the header of the file paint. */
+export type PartnerOwnerState = {
+  has_active_owner: boolean;
+  can_invite: boolean;
+  can_resend: boolean;
+  block: "suspended" | "console_off" | null;
+  expired_email: string | null;
+  expired_at: string | null;
+  suggested_email: string | null;
+};
+
+export type PartnerMembersOut = {
+  members: PartnerMember[];
+  invitations: PartnerInvitation[];
+  owner: PartnerOwnerState;
+};
+
+/** Spec 052: what happened to one send. The only place the link exists. */
+export type OwnerInvitationResult = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+  last_sent_at: string | null;
+  email_sent: boolean;
+  accept_url: string;
+};
+
+export type OwnerInvitationRevoked = {
+  id: string;
+  email: string;
+  status: string;
+  /** False if this call changed nothing: there may be another link alive. */
+  changed: boolean;
+};
+
+/** Spec 052 (R6.4): one platform audit row of a partner, as a sentence. */
+export type PartnerAuditLine = {
+  id: string;
+  action: string;
+  actor: string;
+  summary: string;
+  created_at: string;
+};
 
 export type PartnerCardNews = {
   partner_id: string;
@@ -994,6 +1097,14 @@ export type PartnerAccessOut = {
   console_enabled: boolean;
   modules: PartnerModule[];
   catalog: { id: PartnerModule; kind: "nav" | "assistant" }[];
+};
+
+/** Spec 049: channels switched on for one partner before Meta approves them for all. */
+export type BetaChannel = "instagram" | "messenger";
+export type PartnerBetaChannelsOut = {
+  channels: BetaChannel[];
+  catalog: BetaChannel[];
+  general_availability: boolean;
 };
 
 /** Spec 035: the messaging channels Auphere knows, and whether each can start. */
@@ -1174,18 +1285,41 @@ export type TenantHealth = {
   connectors_attention: number;
 };
 
+/** Spec 050 (5.5): one WhatsApp opt-out of a business, newest first. */
+export type OptOut = {
+  id: string;
+  channel_id: string;
+  channel_identifier: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  phone: string | null;
+  scope: "marketing" | "all" | string;
+  source: "meta" | "keyword" | "operator" | string;
+  reason: string;
+  opted_out_at: string;
+  opted_in_at: string | null;
+  lifted_by: string | null;
+  liftable: boolean;
+};
+
 export type AdminInstance = {
   environment: string;
   schema_revision: string | null;
   commit: string;
   checks: Record<string, string>;
+  /** Spec 050 (3.6): the Graph version, and its expiry when it is 60 days away or less. */
+  meta_graph_version?: string;
+  meta_graph_expires_on?: string | null;
+  meta_graph_days_left?: number | null;
 };
 
 export type PartnerCreateInput = {
   name: string;
   slug: string;
-  contact_email?: string | null;
+  owner_email: string;
 };
+
+export type PartnerCreatedOut = PartnerOut & { invitation: OwnerInvitationResult };
 
 export type PartnerUpdateInput = Partial<{
   name: string;
@@ -1655,10 +1789,11 @@ export const backend = {
       body,
     }),
 
-  promoteAgentConfig: (tenantId: string, version: number) =>
+  /** Promoting from the panel skips the gate (spec 047, R23): the API asks why. */
+  promoteAgentConfig: (tenantId: string, version: number, reason: string) =>
     call<AgentConfig>(
       `/admin/tenants/${tenantId}/agent-config/${version}/promote`,
-      { method: "POST" },
+      { method: "POST", body: { reason } },
     ),
 
   rollbackAgentConfig: (tenantId: string, version: number) =>
@@ -1997,20 +2132,6 @@ export const backend = {
       `/admin/tenants/${tenantId}/tool-catalog?include_deprecated=${includeDeprecated}`,
     ).then((r) => r ?? []),
 
-  // AgendaPro public link (ADR-017). The legacy bootstrap + health-check
-  // endpoints were removed in migration 0021 — the agent now consumes
-  // AgendaPro only via the tenant's public booking URL.
-  setAgendaProPublicUrl: (tenantId: string, publicUrl: string | null) =>
-    call<{
-      integration: string;
-      public_url: string | null;
-      updated_at: string;
-      audit_log_id: string;
-    }>(`/admin/tenants/${tenantId}/integrations/agendapro/public-url`, {
-      method: "PATCH",
-      body: { public_url: publicUrl },
-    }),
-
   getIsolationMetrics: (tenantId: string) =>
     call<IsolationMetricsOut>(
       `/admin/tenants/${tenantId}/isolation/metrics`,
@@ -2094,6 +2215,34 @@ export const backend = {
     call<{ name: string; deleted: boolean }>(
       `/admin/tenants/${tenantId}/whatsapp/templates/${encodeURIComponent(name)}`,
       { method: "DELETE" },
+    ),
+
+  /** Spec 049: what a person sent through an Instagram or Messenger channel is emptied. */
+  erasePerson: (
+    tenantId: string,
+    channelId: string,
+    body: { identifier: string; requested_by: string },
+    operatorId: string,
+  ) =>
+    call<{ erased: boolean; messages_emptied: number }>(
+      `/admin/tenants/${tenantId}/channels/${channelId}/erase-person`,
+      { method: "POST", body, headers: { "X-Operator-Id": operatorId } },
+    ),
+
+  listOptOuts: (tenantId: string) =>
+    call<OptOut[]>(`/admin/tenants/${tenantId}/opt-outs`).then((r) => r ?? []),
+
+  liftOptOut: (tenantId: string, optOutId: string, reason: string) =>
+    call<OptOut>(`/admin/tenants/${tenantId}/opt-outs/${optOutId}/lift`, {
+      method: "POST",
+      body: { reason },
+    }),
+
+  /** Spec 050: new two-step PIN for a Cloud API number. The PIN never comes back. */
+  rotateWhatsAppPin: (tenantId: string, channelId: string) =>
+    call<{ status: "rotated"; channel_id: string }>(
+      `/admin/tenants/${tenantId}/channels/${channelId}/two-step-pin`,
+      { method: "POST" },
     ),
 
   metaTestSend: (tenantId: string, body: MetaTestSendInput) =>
@@ -2254,8 +2403,36 @@ export const backend = {
   getPartner: (partnerId: string) =>
     call<PartnerOut>(`/admin/partners/${partnerId}`, { optional: true }),
 
-  createPartner: (body: PartnerCreateInput) =>
-    call<PartnerOut>("/admin/partners", { method: "POST", body }),
+  createPartner: (body: PartnerCreateInput, operatorId: string) =>
+    call<PartnerCreatedOut>("/admin/partners", {
+      method: "POST",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  inviteOwner: (partnerId: string, email: string, operatorId: string) =>
+    call<OwnerInvitationResult>(`/admin/partners/${partnerId}/invitations`, {
+      method: "POST",
+      body: { email },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  resendOwnerInvitation: (partnerId: string, invitationId: string, operatorId: string) =>
+    call<OwnerInvitationResult>(`/admin/partners/${partnerId}/invitations/${invitationId}/resend`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  revokeOwnerInvitation: (partnerId: string, invitationId: string, operatorId: string) =>
+    call<OwnerInvitationRevoked>(`/admin/partners/${partnerId}/invitations/${invitationId}/revoke`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listPartnerAuditLog: (partnerId: string, limit = 100) =>
+    call<PartnerAuditLine[]>(`/admin/partners/${partnerId}/audit-log?limit=${limit}`).then((r) => r ?? []),
 
   updatePartner: (partnerId: string, body: PartnerUpdateInput) =>
     call<PartnerOut>(`/admin/partners/${partnerId}`, {
@@ -2506,6 +2683,17 @@ export const backend = {
       headers: { "X-Operator-Id": operatorId },
     }),
 
+  // Spec 049: Instagram / Messenger in beta, per partner.
+  getPartnerBetaChannels: (partnerId: string) =>
+    call<PartnerBetaChannelsOut>(`/admin/partners/${partnerId}/beta-channels`),
+
+  setPartnerBetaChannels: (partnerId: string, channels: BetaChannel[], operatorId: string) =>
+    call<PartnerBetaChannelsOut>(`/admin/partners/${partnerId}/beta-channels`, {
+      method: "PUT",
+      body: { channels },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
   getPartnerMembers: (partnerId: string) =>
     call<PartnerMembersOut>(`/admin/partners/${partnerId}/members`),
 
@@ -2534,11 +2722,7 @@ export const backend = {
     call<ClientAccessOut>(`/admin/tenants/${tenantId}/client-access`, {
       headers: { "X-Operator-Id": operatorId },
     }),
-  setClientAccess: (
-    tenantId: string,
-    body: { enabled: boolean; modules: ClientModule[] },
-    operatorId: string,
-  ) =>
+  setClientAccess: (tenantId: string, body: ClientAccessIn, operatorId: string) =>
     call<ClientAccessOut>(`/admin/tenants/${tenantId}/client-access`, {
       method: "PUT",
       body,
@@ -2563,6 +2747,16 @@ export const backend = {
     call<null>(`/admin/tenants/${tenantId}/client-members/${memberId}/revoke`, {
       method: "POST",
       body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listClientMemberPhones: (tenantId: string, memberId: string, operatorId: string) =>
+    call<ClientPhoneOut[]>(`/admin/tenants/${tenantId}/client-members/${memberId}/phones`, {
+      headers: { "X-Operator-Id": operatorId },
+    }),
+  closeClientMemberPhone: (tenantId: string, memberId: string, phoneId: string, operatorId: string) =>
+    call<null>(`/admin/tenants/${tenantId}/client-members/${memberId}/phones/${phoneId}`, {
+      method: "DELETE",
       headers: { "X-Operator-Id": operatorId },
     }),
 

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
 import type {
+  InboxCommentPost,
   InboxCounts,
   InboxDetail,
   InboxPage,
@@ -38,13 +39,14 @@ const listSchema = z.object({
   filter: z.enum(["all", "unread", "waiting", "resolved"]).default("all"),
   q: z.string().trim().max(120).optional(),
   agent: id.optional(),
+  channel: z.enum(["whatsapp", "instagram", "messenger"]).optional(),
   cursor: cursor.optional(),
 });
 export async function listConversationsAction(raw: unknown): Promise<ActionResult<InboxPage>> {
   const p = listSchema.parse(raw);
   const principal = await inboxPrincipal();
   if (!principal) return forbidden;
-  return run(() => backendFor(principal).inboxList({ filter: p.filter, q: p.q || undefined, agent: p.agent, cursor: p.cursor }));
+  return run(() => backendFor(principal).inboxList({ filter: p.filter, q: p.q || undefined, agent: p.agent, channel: p.channel, cursor: p.cursor }));
 }
 
 export async function inboxCountsAction(): Promise<ActionResult<InboxCounts>> {
@@ -100,12 +102,17 @@ export async function giveBackAction(raw: unknown): Promise<ActionResult<InboxDe
   return run(() => backendFor(principal).inboxGiveBack(p.id, p.version));
 }
 
-const sendSchema = z.object({ id, text: z.string().max(4096).refine((v) => v.trim().length > 0) });
+const sendSchema = z.object({
+  id,
+  text: z.string().max(4096).refine((v) => v.trim().length > 0),
+  // Spec 031 (R6.4): optional; the composer reuses it on a retry of the same text.
+  idempotencyKey: z.string().uuid().optional(),
+});
 export async function sendMessageAction(raw: unknown): Promise<ActionResult<InboxSent>> {
   const p = sendSchema.parse(raw);
   const principal = await inboxPrincipal();
   if (!principal) return forbidden;
-  return run(() => backendFor(principal).inboxSend(p.id, p.text));
+  return run(() => backendFor(principal).inboxSend(p.id, p.text, p.idempotencyKey));
 }
 
 export async function resolveAction(raw: unknown): Promise<ActionResult<InboxDetail>> {
@@ -120,6 +127,30 @@ export async function reopenAction(raw: unknown): Promise<ActionResult<InboxDeta
   const principal = await inboxPrincipal();
   if (!principal) return forbidden;
   return run(() => backendFor(principal).inboxReopen(p.id));
+}
+
+const commentPostSchema = z.object({ id, messageId: id });
+export async function commentPostAction(raw: unknown): Promise<ActionResult<InboxCommentPost | null>> {
+  const p = commentPostSchema.parse(raw);
+  const principal = await inboxPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).inboxCommentPost(p.id, p.messageId));
+}
+
+/** «Vaciar el chat»: empty for the Inbox and the agent, archived rather than erased. */
+export async function clearChatAction(raw: unknown): Promise<ActionResult<InboxDetail>> {
+  const p = idSchema.parse(raw);
+  const principal = await inboxPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).inboxClear(p.id));
+}
+
+/** «Eliminar el chat»: out of the Inbox, archived rather than erased (constitution §IV). */
+export async function archiveChatAction(raw: unknown): Promise<ActionResult<null>> {
+  const p = idSchema.parse(raw);
+  const principal = await inboxPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).inboxArchive(p.id));
 }
 
 const tagsSchema = z.object({ id, tags: z.array(z.string().max(80)).max(20) });

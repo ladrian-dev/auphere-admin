@@ -14,6 +14,11 @@ Barrido sobre todas las rutas ``GET`` de ``/console/lite/*``:
 
 Cada parámetro de ruta lite tiene que saber qué objeto del vecino probar
 (``_FOREIGN``); uno nuevo sin entrada pone el barrido en rojo a propósito.
+
+Spec 056 (requisito 2.5): Agentes y Negocio ya no son módulos del cliente. Sus
+rutas siguen montadas y responden **siempre** el 403 de un módulo que no se
+tiene, el mismo byte a byte con un objeto de la vecina, con uno inventado y que
+el de cualquier otro módulo ausente (``test_retired_routes_answer_the_absent_module``).
 """
 
 from __future__ import annotations
@@ -66,8 +71,13 @@ async def _neighbourhood(db_session, console_world) -> dict[str, Any]:
         )
     )
     await db_session.commit()
+    # Spec 056: sin Agentes ni Negocio, que ya no se pueden guardar (0224). Sus
+    # rutas se barren aparte y responden el 403 de un módulo ausente.
+    modules = ("panel", "inbox", "usage")
     for tenant_id in (a["tenant_id"], neighbour):
-        await make_client_access(db_session, partner_id=a["partner_id"], tenant_id=tenant_id)
+        await make_client_access(
+            db_session, partner_id=a["partner_id"], tenant_id=tenant_id, modules=modules
+        )
     member = await add_client_member(
         db_session, partner_id=a["partner_id"], tenant_id=a["tenant_id"]
     )
@@ -107,6 +117,7 @@ async def _neighbourhood(db_session, console_world) -> dict[str, Any]:
     )
     db_session.add_all([media, reply])
     await db_session.commit()
+    spec_047 = await _neighbour_spec_047(db_session, neighbour, inbox["conversations"][0], media.id)
     return {
         "member": member,
         "neighbour": neighbour,
@@ -114,7 +125,70 @@ async def _neighbourhood(db_session, console_world) -> dict[str, Any]:
         "conversation_id": inbox["conversations"][0],
         "message_id": media.id,
         "reply_id": reply.id,
+        **spec_047,
     }
+
+
+async def _neighbour_spec_047(
+    db_session, neighbour: uuid.UUID, conversation_id: uuid.UUID, message_id: uuid.UUID
+) -> dict[str, uuid.UUID]:
+    """Spec 047 (T167, T176): lo de la vecina que las rutas nuevas nombran por id
+    — su agente y su número, una sede, una fecha especial, un servicio, un cambio
+    de su ficha y una corrección."""
+    from datetime import date
+
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.models import InboxCorrection, ReservationService
+    from nexus_api.db.models.business import (
+        BusinessChange,
+        BusinessLocation,
+        BusinessSpecialDate,
+    )
+    from tests.integration.clients._client_world import add_agent
+
+    agent = await add_agent(db_session, neighbour, "Agente de la vecina")
+    await db_session.commit()
+    async with tenant_scoped_session(db_session, neighbour):
+        location = BusinessLocation(tenant_id=neighbour, name="Sede de la vecina")
+        special = BusinessSpecialDate(
+            tenant_id=neighbour,
+            name="Festivo de la vecina",
+            date_from=date(2026, 12, 25),
+            date_to=date(2026, 12, 25),
+        )
+        service = ReservationService(
+            tenant_id=neighbour, name="Servicio de la vecina", duration_minutes=30
+        )
+        change = BusinessChange(
+            tenant_id=neighbour, section="locations", kind="edit", origin="lite_web"
+        )
+        db_session.add_all([location, special, service, change])
+        await db_session.flush()
+        correction = InboxCorrection(
+            tenant_id=neighbour,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            agent_id=agent["agent_id"],
+            author_client_user_id="vecina",
+            origin="lite_web",
+            scope="business",
+            kind="data",
+            lesson="Dato de la vecina.",
+            status="draft",
+        )
+        db_session.add(correction)
+        await db_session.flush()
+        ids = {
+            "agent_id": agent["agent_id"],
+            "channel_id": agent["channel_id"],
+            "location_id": location.id,
+            "special_id": special.id,
+            "service_id": service.id,
+            "change_id": change.id,
+            "correction_id": correction.id,
+        }
+    await db_session.commit()
+    return {k: v for k, v in ids.items() if v is not None}
 
 
 #: Para cada parámetro de ruta lite: qué objeto de la vecina se prueba.
@@ -123,6 +197,14 @@ _FOREIGN: dict[str, Callable[[dict[str, Any]], str]] = {
     "conversation_id": lambda w: str(w["conversation_id"]),
     "message_id": lambda w: str(w["message_id"]),
     "reply_id": lambda w: str(w["reply_id"]),
+    # Spec 047.
+    "agent_id": lambda w: str(w["agent_id"]),
+    "channel_id": lambda w: str(w["channel_id"]),
+    "location_id": lambda w: str(w["location_id"]),
+    "special_id": lambda w: str(w["special_id"]),
+    "service_id": lambda w: str(w["service_id"]),
+    "change_id": lambda w: str(w["change_id"]),
+    "correction_id": lambda w: str(w["correction_id"]),
 }
 
 
@@ -131,12 +213,49 @@ _FOREIGN: dict[str, Callable[[dict[str, Any]], str]] = {
 #: ``test_lite_inbox_media_and_stream.py::test_stream_relays_only_its_clients_channel``.
 _STREAMS = {"/console/lite/inbox/stream"}
 
+#: Spec 031: rutas que solo tienen sentido desde la app (la web recibe 403
+#: ``phone_only``). Se barren con la credencial del teléfono en
+#: ``test_phone_route_scope.py``, que importa este mismo vecindario.
+PHONE_ONLY = {"/console/lite/phones/current/notices"}
+
+
+#: Spec 043: Reservas tiene rutas por modo y con rango de fechas; su barrido,
+#: en los dos modos y con las dos credenciales, es
+#: ``test_reservas_client_vs_client.py``.
+RESERVAS_PREFIX = "/console/lite/reservas"
+
+#: Spec 056 (requisito 2.5): los routers de los módulos retirados. Una ruta suya,
+#: la de hoy o una que se monte mañana, entra sola en el barrido del 403.
+RETIRED_ROUTERS = frozenset(
+    {"nexus_api.api.console.lite.agents", "nexus_api.api.console.lite.business"}
+)
+
+
+def is_retired(route: Any) -> bool:
+    return getattr(route.endpoint, "__module__", "") in RETIRED_ROUTERS
+
+
+def retired_routes() -> list[tuple[str, str]]:
+    """Cada ``(método, ruta)`` de Agentes y Negocio de la consola lite."""
+    return sorted(
+        (method, r.path)
+        for r in _console_routes()
+        if r.path.startswith("/console/lite") and is_retired(r)
+        for method in r.methods
+        if method != "HEAD"
+    )
+
 
 def _lite_gets() -> list[str]:
     return [
         r.path
         for r in _console_routes()
-        if r.path.startswith("/console/lite") and "GET" in r.methods and r.path not in _STREAMS
+        if r.path.startswith("/console/lite")
+        and "GET" in r.methods
+        and r.path not in _STREAMS
+        and r.path not in PHONE_ONLY
+        and not r.path.startswith(RESERVAS_PREFIX)
+        and not is_retired(r)
     ]
 
 
@@ -188,11 +307,56 @@ _INBOX_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("POST", "/console/lite/inbox/conversations/{conversation_id}/messages", {"text": "hola"}),
     ("POST", "/console/lite/inbox/conversations/{conversation_id}/resolve", None),
     ("POST", "/console/lite/inbox/conversations/{conversation_id}/reopen", None),
+    ("POST", "/console/lite/inbox/conversations/{conversation_id}/clear", None),
+    ("POST", "/console/lite/inbox/conversations/{conversation_id}/archive", None),
     ("PUT", "/console/lite/inbox/conversations/{conversation_id}/tags", {"tags": ["x"]}),
     ("PUT", "/console/lite/inbox/conversations/{conversation_id}/note", {"body": "x"}),
     ("PATCH", "/console/lite/inbox/replies/{reply_id}", {"body": "x"}),
     ("DELETE", "/console/lite/inbox/replies/{reply_id}", None),
+    # Spec 047 (T176): corregir una respuesta del agente.
+    (
+        "POST",
+        "/console/lite/inbox/{conversation_id}/messages/{message_id}/corrections",
+        {"text": "El aparcamiento está detrás.", "scope": "business"},
+    ),
 ]
+
+#: Spec 047 (T176): las escrituras nuevas con id fuera de la Bandeja, con un
+#: cuerpo válido. Todas llevan ``If-Match`` (las correcciones lo exigen; las demás
+#: lo ignoran). Las de Agentes y Negocio (T167) salieron con la spec 056: las barre
+#: ``test_retired_routes_answer_the_absent_module``.
+_LITE_WRITES: list[tuple[str, str, dict[str, Any] | None]] = [
+    ("PATCH", "/console/lite/corrections/{correction_id}", {"paraphrase": "Un cliente pregunta."}),
+    ("POST", "/console/lite/corrections/{correction_id}/send", None),
+    ("POST", "/console/lite/corrections/{correction_id}/undo", None),
+]
+_IF_MATCH = {"If-Match": '"1"'}
+
+
+async def probe_write(
+    client,
+    world: dict[str, Any],
+    headers: Callable[[], dict[str, str]],
+    method: str,
+    path: str,
+    body: Any,
+) -> None:
+    """La escritura sobre lo de la vecina responde **igual, byte a byte**, que sobre
+    un id que no existe. Cada parámetro de la ruta se cambia por su objeto de la
+    vecina (o por un id inventado)."""
+    params = [seg[1:-1] for seg in path.split("/") if seg.startswith("{")]
+    foreign_path, ghost_path = path, path
+    for p in params:
+        foreign_path = foreign_path.replace("{" + p + "}", str(world[p]))
+        ghost_path = ghost_path.replace("{" + p + "}", str(uuid.uuid4()))
+    # Los tokens de la consola son de un solo uso: uno por petición.
+    foreign = await client.request(
+        method, foreign_path, headers={**headers(), **_IF_MATCH}, json=body
+    )
+    ghost = await client.request(method, ghost_path, headers={**headers(), **_IF_MATCH}, json=body)
+    assert foreign.status_code == ghost.status_code, (path, foreign.status_code, ghost.status_code)
+    assert foreign.status_code in (404, 412), (path, foreign.status_code, foreign.text[:200])
+    assert foreign.content == ghost.content, path
 
 
 def test_every_inbox_write_with_an_id_is_probed() -> None:
@@ -213,16 +377,72 @@ async def test_inbox_writes_on_a_neighbour_object_are_the_same_404(
     method: str, path: str, body: dict[str, Any] | None, client, db_session, console_world
 ) -> None:
     world = await _neighbourhood(db_session, console_world)
-    headers = world["member"]["headers"]
-    param = path.split("{", 1)[1].split("}", 1)[0]
+    await probe_write(client, world, world["member"]["headers"], method, path, body)
+
+
+@pytest.mark.parametrize(("method", "path", "body"), _LITE_WRITES)
+async def test_lite_writes_on_a_neighbour_object_are_the_same_404(
+    method: str, path: str, body: dict[str, Any] | None, client, db_session, console_world
+) -> None:
+    """Spec 047: tocar la corrección de la vecina, igual que tocar algo que no
+    existe."""
+    world = await _neighbourhood(db_session, console_world)
+    await probe_write(client, world, world["member"]["headers"], method, path, body)
+
+
+#: Un módulo que la persona no tiene (Reservas): la respuesta con la que se comparan
+#: las de los módulos retirados.
+ABSENT_MODULE_PROBE = "/console/lite/reservas/settings"
+
+
+async def probe_retired(
+    client,
+    world: dict[str, Any],
+    headers: Callable[[], dict[str, str]],
+    method: str,
+    path: str,
+) -> None:
+    """Spec 056 (requisito 2.5): la ruta de un módulo retirado responde el 403 de
+    un módulo ausente, **igual, byte a byte,** con el objeto de la vecina, con uno
+    inventado y que la de Reservas para quien no la tiene."""
+    params = [seg[1:-1] for seg in path.split("/") if seg.startswith("{")]
+    missing = [p for p in params if p not in _FOREIGN]
+    assert not missing, f"{path}: no foreign object to probe for {missing}"
+    foreign_path, ghost_path = path, path
+    for p in params:
+        foreign_path = foreign_path.replace("{" + p + "}", _FOREIGN[p](world))
+        ghost_path = ghost_path.replace("{" + p + "}", str(uuid.uuid4()))
+    body = None if method in ("GET", "DELETE") else {}
+    absent = await client.get(ABSENT_MODULE_PROBE, headers=headers())
     foreign = await client.request(
-        method, path.replace("{" + param + "}", str(world[param])), headers=headers(), json=body
+        method, foreign_path, headers={**headers(), **_IF_MATCH}, json=body
     )
-    ghost = await client.request(
-        method, path.replace("{" + param + "}", str(uuid.uuid4())), headers=headers(), json=body
+    ghost = await client.request(method, ghost_path, headers={**headers(), **_IF_MATCH}, json=body)
+    assert absent.status_code == 403, absent.text[:200]
+    assert foreign.status_code == ghost.status_code == 403, (
+        method,
+        path,
+        foreign.status_code,
+        foreign.text[:200],
     )
-    assert foreign.status_code == ghost.status_code == 404, (path, foreign.status_code)
-    assert foreign.content == ghost.content
+    assert foreign.content == ghost.content == absent.content, path
+    assert NEIGHBOUR_NAME not in foreign.text
+
+
+async def test_the_retired_modules_still_have_routes() -> None:
+    """Si alguien borra las rutas, responderían 404 y no el 403 de un módulo
+    ausente (research R2): este barrido se quedaría vacío sin avisar."""
+    paths = {p for _, p in retired_routes()}
+    assert "/console/lite/agents" in paths
+    assert "/console/lite/business" in paths
+
+
+@pytest.mark.parametrize(("method", "path"), retired_routes())
+async def test_retired_routes_answer_the_absent_module(
+    method: str, path: str, client, db_session, console_world
+) -> None:
+    world = await _neighbourhood(db_session, console_world)
+    await probe_retired(client, world, world["member"]["headers"], method, path)
 
 
 async def test_an_attachment_to_a_neighbour_conversation_is_the_same_404(

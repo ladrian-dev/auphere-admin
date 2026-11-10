@@ -1,0 +1,259 @@
+"use client";
+
+import * as React from "react";
+
+import { reloadSectionAction } from "@/app/(console)/clients/[ref]/business/actions";
+import { BusinessLinks } from "@/components/business/sources/business-links";
+import { BusinessSources } from "@/components/business/sources/business-sources";
+import { useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
+import type { Basics, Faqs, Hours, Locations, Policies, SectionState, SectorOption, Services, SpecialDates } from "@/lib/backend/business-sections";
+import type { BusinessRecord, LinkItem, Section, Sources } from "@/lib/backend/client-records";
+
+import { BasicsSection } from "./basics-section";
+import { FaqsSection } from "./faqs-section";
+import { HoursSection } from "./hours-section";
+import { BUSINESS_GRID, BUSINESS_INDEX_LIST, BUSINESS_SECTIONS_COLUMN } from "./layout";
+import { LocationsSection } from "./locations-section";
+import { PoliciesSection } from "./policies-section";
+import { sectorSuggestion } from "./proposals-model";
+import { SectionEditProvider, SectionError, SectionFrame, SectionStateMark, type Result } from "./section-frame";
+import { ServicesSection } from "./services-section";
+import { SpecialDatesSection } from "./special-dates-section";
+
+export type BusinessData = {
+  basics: Result<Basics>;
+  locations: Result<Locations>;
+  hours: Result<Hours>;
+  specialDates: Result<SpecialDates>;
+  services: Result<Services>;
+  /** «Políticas» y «Preguntas frecuentes» (enmienda del 2026-10-29, 60.4; sin ellas, no se pintan). */
+  policies?: Result<Policies>;
+  faqs?: Result<Faqs>;
+  /** Los sectores con guía para el selector de Datos básicos (57.5). */
+  sectors?: Result<SectorOption[]>;
+  /** «Documentos y webs» y «Redes sociales» (sin ellas, no se pintan). */
+  sources?: Result<Sources>;
+  record?: Result<BusinessRecord>;
+};
+
+type Key = "basics" | "locations" | "hours" | "services" | "policies" | "faqs" | "sources" | "links";
+type Reloadable = "basics" | "locations" | "hours" | "special_dates" | "services" | "policies" | "faqs";
+const ORDER: readonly { key: Key; id: string; title: MessageKey; api?: Reloadable }[] = [
+  { key: "basics", id: "business-basics", title: "business.basics.title", api: "basics" },
+  { key: "locations", id: "business-locations", title: "business.locations.title", api: "locations" },
+  { key: "hours", id: "business-hours", title: "business.hours.title", api: "hours" },
+  { key: "services", id: "business-services", title: "business.services.title", api: "services" },
+  { key: "policies", id: "business-policies", title: "business.policies.title", api: "policies" },
+  { key: "faqs", id: "business-faqs", title: "business.faqs.title", api: "faqs" },
+  { key: "sources", id: "business-sources", title: "business.docs.title" },
+  { key: "links", id: "business-links", title: "business.socials.section" },
+];
+
+/**
+ * Las redes guardadas, como las devuelve `GET /business` (`spec.links`). Ese
+ * documento es portable y no lleva `id`, y cada enlace trae solo su `url` o su
+ * `handle`; aquí el `id` es solo la clave de la fila.
+ */
+function linksOf(record: BusinessRecord): LinkItem[] {
+  const raw = record.spec.links;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((l, i) => {
+    if (typeof l !== "object" || l === null || typeof (l as LinkItem).network !== "string") return [];
+    const { network, url, handle } = l as LinkItem;
+    return [{ id: `saved-${i}`, network, url: url ?? null, handle: handle ?? null }];
+  });
+}
+
+/**
+ * La página Negocio de un cliente (spec 047, T060), como el prototipo aprobado
+ * («Consola de partners v2»): un índice lateral con un círculo por sección
+ * (requisito 8.5) y la nota de que todo lo heredan sus agentes, y seis
+ * secciones en lectura con su «Editar» o «Añadir…». Una sola edición a la vez.
+ * Las fechas especiales viven dentro de Horarios. Cada sección carga y falla
+ * sola: si una no llega, lo dice y deja reintentar, y las demás siguen.
+ *
+ * Enmienda del 2026-10-29 (T209): «Políticas» y «Preguntas frecuentes» detrás
+ * de Servicios, con lo sugerido por el sistema en su sección (60.4, 60.5), y
+ * el sector en Datos básicos (57.5). Lo sugerido sale de las propuestas
+ * pendientes de `GET /business`; si la ficha no se pudo leer, cada sección lo
+ * dice y enseña lo escrito.
+ */
+export function BusinessSectionsView({ refId, canWrite, data: initial }: { refId: string; canWrite: boolean; data: BusinessData }) {
+  const t = useT();
+  const [data, setData] = React.useState(initial);
+  const [linksSaved, setLinksSaved] = React.useState<{ revision: number; filled: boolean } | null>(null);
+  // Spec 055 (requisito 4): lo que cada sección avisó; va antes que la carga inicial.
+  const [reported, setReported] = React.useState<Partial<Record<Key, SectionState>>>({});
+  const reportState = React.useCallback(
+    (key: Key) => (state: SectionState) => setReported((prev) => (prev[key] === state ? prev : { ...prev, [key]: state })),
+    [],
+  );
+  // Spec 055: la moneda es de los dos, y cambiarla sube la revisión de los dos. La
+  // sección que no la cambió se vuelve a leer y a montar, para no quedarse con lo viejo.
+  const [versions, setVersions] = React.useState({ basics: 0, services: 0 });
+  const [, startTransition] = React.useTransition();
+  function reloadAfterCurrency(key: "basics" | "services") {
+    startTransition(async () => {
+      const res = await reloadSectionAction({ ref: refId, section: key });
+      if (!res?.ok) return;
+      setData((prev) => ({ ...prev, [key]: res }));
+      setVersions((prev) => ({ ...prev, [key]: prev[key] + 1 }));
+    });
+  }
+  const locations = data.locations.ok ? data.locations.data.items : [];
+  const record = data.record?.ok ? data.record.data : null;
+  // Sin ficha no se sabe qué hay sugerido (`null`); con ella, sus propuestas pendientes.
+  const suggestions = record ? record.suggestions : null;
+  const stateIn = (section: Section): SectionState | null => record?.sections.find((x) => x.section === section)?.state ?? null;
+
+  function retry(key: keyof BusinessData, api: Reloadable) {
+    startTransition(async () => {
+      const res = await reloadSectionAction({ ref: refId, section: api });
+      if (res?.ok) setData((prev) => ({ ...prev, [key]: res }));
+    });
+  }
+
+  const shown = ORDER.filter((item) =>
+    item.key === "sources"
+      ? data.sources !== undefined
+      : item.key === "links"
+        ? data.record !== undefined
+        : item.key === "policies"
+          ? data.policies !== undefined
+          : item.key === "faqs"
+            ? data.faqs !== undefined
+            : true,
+  );
+
+  function stateOf(key: Key): SectionState | null {
+    if (key === "sources") return data.sources?.ok ? (data.sources.data.items.length ? "complete" : "pending") : stateIn("sources");
+    // Lo mismo que hace la API al guardar (`put_links`): con enlaces, completa.
+    if (key === "links") return linksSaved ? (linksSaved.filled ? "complete" : "pending") : stateIn("links");
+    const entry = data[key];
+    return entry?.ok ? (reported[key] ?? entry.data.state) : null;
+  }
+
+  function failedFrame(item: (typeof ORDER)[number], onRetry?: () => void) {
+    return (
+      <SectionFrame id={item.id} title={t(item.title)} canWrite={canWrite}>
+        <SectionError onRetry={onRetry} />
+      </SectionFrame>
+    );
+  }
+
+  function body(item: (typeof ORDER)[number]) {
+    switch (item.key) {
+      case "basics":
+        return data.basics.ok ? (
+          <BasicsSection key={versions.basics} refId={refId} basics={data.basics.data} onPriceCurrencyChange={() => reloadAfterCurrency("services")} canWrite={canWrite} sectors={data.sectors} sectorProposal={sectorSuggestion(suggestions)} onStateChange={reportState("basics")} />
+        ) : (
+          failedFrame(item, () => retry("basics", "basics"))
+        );
+      case "locations":
+        return data.locations.ok ? (
+          <LocationsSection
+            refId={refId}
+            locations={data.locations.data}
+            canWrite={canWrite}
+            confirmable
+            onChange={(next) => setData((prev) => ({ ...prev, locations: { ok: true, data: next } }))}
+          />
+        ) : (
+          failedFrame(item, () => retry("locations", "locations"))
+        );
+      case "hours":
+        return data.hours.ok ? (
+          <HoursSection refId={refId} hours={data.hours.data} locations={locations} canWrite={canWrite} confirmable onStateChange={reportState("hours")}>
+            {data.specialDates.ok ? (
+              <SpecialDatesSection
+                refId={refId}
+                specialDates={data.specialDates.data}
+                locations={locations}
+                canWrite={canWrite}
+                nested
+                timezone={data.basics.ok ? data.basics.data.timezone : null}
+              />
+            ) : null}
+          </HoursSection>
+        ) : (
+          failedFrame(item, () => retry("hours", "hours"))
+        );
+      case "services":
+        return data.services.ok ? (
+          <ServicesSection key={versions.services} refId={refId} services={data.services.data} onPriceCurrencyChange={() => reloadAfterCurrency("basics")} canWrite={canWrite} confirmable onStateChange={reportState("services")} />
+        ) : (
+          failedFrame(item, () => retry("services", "services"))
+        );
+      case "policies":
+        return data.policies?.ok ? (
+          <PoliciesSection refId={refId} policies={data.policies.data} suggestions={suggestions} canWrite={canWrite} onStateChange={reportState("policies")} />
+        ) : (
+          failedFrame(item, () => retry("policies", "policies"))
+        );
+      case "faqs":
+        return data.faqs?.ok ? (
+          <FaqsSection refId={refId} faqs={data.faqs.data} suggestions={suggestions} canWrite={canWrite} onStateChange={reportState("faqs")} />
+        ) : (
+          failedFrame(item, () => retry("faqs", "faqs"))
+        );
+      case "sources":
+        return (
+          <SectionFrame id={item.id} title={t(item.title)} state={stateOf("sources")} canWrite={canWrite}>
+            <BusinessSources refId={refId} initial={data.sources?.ok ? data.sources.data : null} canWrite={canWrite} bare />
+          </SectionFrame>
+        );
+      case "links":
+        return record ? (
+          <SectionFrame id={item.id} title={t(item.title)} state={stateOf("links")} canWrite={canWrite}>
+            <BusinessLinks
+              refId={refId}
+              links={linksOf(record)}
+              revision={linksSaved?.revision ?? record.sections.find((x) => x.section === "links")?.revision ?? 0}
+              canWrite={canWrite}
+              onSaved={(revision, links) => setLinksSaved({ revision, filled: links.length > 0 })}
+              bare
+            />
+          </SectionFrame>
+        ) : (
+          failedFrame(item)
+        );
+    }
+  }
+
+  return (
+    <SectionEditProvider>
+      <div className={BUSINESS_GRID}>
+        <div className="grid min-w-0 gap-3 lg:sticky lg:top-20">
+          <nav aria-label={t("business.page.index")} className="min-w-0">
+            {/* `relative`: el estado `sr-only` de cada sección es absoluto y, sin
+                un contenedor posicionado, ensancha la página a 375 px. */}
+            <ul className={BUSINESS_INDEX_LIST} data-scroll-x>
+              {shown.map((item) => {
+                const state = stateOf(item.key);
+                return (
+                  <li key={item.id} className="shrink-0">
+                    <a
+                      href={`#${item.id}`}
+                      className="flex h-9 min-w-0 items-center justify-between gap-3 rounded-md px-3 text-sm transition-colors duration-(--duration-hover) hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      <span className="min-w-0 truncate">{t(item.title)}</span>
+                      {state ? <SectionStateMark state={state} /> : null}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+          <p className="hidden px-3 text-xs text-pretty text-muted-foreground lg:block">{t("business.page.note")}</p>
+        </div>
+        <div className={BUSINESS_SECTIONS_COLUMN}>
+          {/* The client's name is the page's h1 (the client frame); the sections are h2. */}
+          {shown.map((item) => (
+            <React.Fragment key={item.id}>{body(item)}</React.Fragment>
+          ))}
+        </div>
+      </div>
+    </SectionEditProvider>
+  );
+}

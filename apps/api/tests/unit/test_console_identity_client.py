@@ -10,13 +10,14 @@ lo que la consola pinta.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from nexus_api.api.console.auth import principal_out
-from nexus_api.db.models import PARTNER_NAV_MODULES, ClientAccess, ClientMembership
+from nexus_api.db.models import PARTNER_NAV_MODULES, ClientAccess, ClientMembership, Partner
 from nexus_api.services import console_identity
 from tests.conftest import make_client_access
 
@@ -68,6 +69,46 @@ async def test_client_account_resolves_as_client(db_session, console_world, test
     assert out.modules == ["panel", "usage"]
     # Ningún permiso del partner viaja a la consola de un cliente.
     assert out.permissions == []
+
+
+async def test_the_new_console_no_longer_adds_agents_and_business(
+    db_session, console_world, test_engine
+) -> None:
+    """Spec 056 (requisito 2.1): con la consola nueva tampoco vienen Agentes ni
+    Negocio. El menú dice lo mismo que ``core.client_auth``."""
+    w = console_world["a"]
+    await make_client_access(
+        db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"], modules=("panel", "usage")
+    )
+    partner = await db_session.get(Partner, w["partner_id"])
+    assert partner is not None
+    partner.console_v2_enabled_at = datetime.now(UTC)
+    await db_session.commit()
+    account = await _account_with_client_membership(test_engine, w)
+
+    out = await _view(test_engine, account)
+
+    assert out.access == "ok"
+    assert out.modules == ["panel", "usage"]
+
+
+async def test_the_defaults_do_not_open_a_client_without_modules(
+    db_session, console_world, test_engine
+) -> None:
+    w = console_world["a"]
+    await make_client_access(
+        db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"], modules=()
+    )
+    partner = await db_session.get(Partner, w["partner_id"])
+    assert partner is not None
+    partner.console_v2_enabled_at = datetime.now(UTC)
+    await db_session.commit()
+    account = await _account_with_client_membership(test_engine, w)
+
+    out = await _view(test_engine, account)
+
+    assert out.access == "disabled"
+    assert out.modules == []
 
 
 async def test_access_switched_off_reads_as_disabled(

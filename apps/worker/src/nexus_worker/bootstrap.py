@@ -36,25 +36,32 @@ from nexus_api.core.otel_metrics import ensure_queue_gauges, install_metrics
 from nexus_api.core.redis_client import get_redis
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import Channel
+from nexus_channels.base import ChannelCapabilityError
+from nexus_channels.meta_social import (
+    PROVIDER_INSTAGRAM,
+    PROVIDER_MESSENGER,
+    URL_MEDIA_PREFIX,
+    MetaSocialChannelAdapter,
+    MetaSocialClient,
+    SendContext,
+)
+from nexus_channels.meta_social.credentials import SocialCredentialsRepository
 from nexus_channels.tiktok_bm import TikTokChannelAdapter, TikTokClient
 from nexus_channels.tiktok_bm.credentials import TikTokCredentialsRepository
 from nexus_channels.whatsapp_meta import MetaChannelAdapter, MetaClient
 from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
-from nexus_mcp.servers.agendapro_public.transport import (
-    build_default_pool_from_env as build_agendapro_public_pool_from_env,
-)
-from nexus_mcp.servers.agendapro_public.transport import (
-    set_default_transport as set_agendapro_public_transport,
-)
 
 from nexus_worker.billing.expire_credit_cron import run_expire_credit_cron
 from nexus_worker.billing.process_event import run_billing_event_consumer
 from nexus_worker.config import WorkerSettings, get_api_settings, get_worker_settings
 from nexus_worker.guardrails import OutcomeGrader
 from nexus_worker.health import run_heartbeat
+from nexus_worker.jobs import run_jobs_consumer
 from nexus_worker.observability import init_langfuse
 from nexus_worker.observability import shutdown as langfuse_shutdown
 from nexus_worker.observability.otel import install_worker_tracing
+from nexus_worker.push.dispatcher import run_push_dispatcher
 from nexus_worker.runtime.agent_loader import AgentLoader
 from nexus_worker.runtime.checkpointer import postgres_checkpointer
 from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
@@ -62,7 +69,6 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.signup.expire_signups_cron import run_expire_signups_cron
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
-from nexus_worker.streams.async_booking_cron import run_async_booking_cron
 from nexus_worker.streams.checkpoint_retention_cron import run_checkpoint_retention_cron
 from nexus_worker.streams.claimer import run_stream_claimer
 from nexus_worker.streams.cobranza_reminder_cron import run_cobranza_reminder_cron
@@ -76,7 +82,12 @@ from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.memory_versions_retention import (
     run_memory_versions_retention_cron,
 )
-from nexus_worker.streams.no_show_scrape_cron import run_no_show_scrape_cron
+from nexus_worker.streams.meta_echoes_consumer import run_meta_echoes_consumer
+from nexus_worker.streams.meta_history_consumer import run_meta_history_consumer
+from nexus_worker.streams.meta_reconciliation_cron import run_meta_reconciliation_cron
+from nexus_worker.streams.meta_social_cron import run_meta_social_cron
+from nexus_worker.streams.meta_state_sync_consumer import run_meta_state_sync_consumer
+from nexus_worker.streams.model_lifecycle_cron import run_model_lifecycle_cron
 from nexus_worker.streams.operator_alerts import run_operator_alerter
 from nexus_worker.streams.outbound import run_outbound_dispatcher
 from nexus_worker.streams.owner_consultation_timeout_cron import (
@@ -90,10 +101,22 @@ from nexus_worker.streams.partner_charges_cron import run_partner_charges_cron
 from nexus_worker.streams.partner_receipt_cron import run_partner_receipt_cron
 from nexus_worker.streams.platform_watcher import run_platform_watcher
 from nexus_worker.streams.reminder_cron import run_reminder_cron
+from nexus_worker.streams.reservation_calendar_cron import run_reservation_calendar_cron
+from nexus_worker.streams.reservation_offers_cron import run_reservation_offers_cron
+from nexus_worker.streams.reservation_outbox_cron import run_reservation_outbox_cron
+from nexus_worker.streams.reservation_templates_cron import run_reservation_templates_cron
+from nexus_worker.streams.reservations_cron import run_reservations_cron
 from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
+from nexus_worker.streams.wallet_crons import (
+    run_bag_alerts_cron,
+    run_bag_refill_cron,
+    run_fx_rates_cron,
+    run_ledger_reconciliation_cron,
+)
 from nexus_worker.streams.wallet_renewal_cron import run_wallet_renewal_cron
+from nexus_worker.streams.weekly_suggestions_cron import run_weekly_suggestions_cron
 from nexus_worker.streams.whatsapp_health_cron import run_whatsapp_health_cron
 from nexus_worker.streams.workflow_pack_cron import run_workflow_pack_cron
 
@@ -121,6 +144,15 @@ RUNNER_TASK_NAMES = frozenset(
         # reparte, con la restricción única de ``provider_event_id``
         # sosteniendo la idempotencia.
         "billing-event-consumer",
+        # Spec 047 (research D43): los trabajos largos (leer la web, construir,
+        # probar, publicar…). Consumidor de ``nexus:jobs`` que escala en
+        # horizontal como los demás; reclama solo sus huérfanos.
+        "jobs-consumer",
+        # Spec 047 (T110): la coexistencia. El webhook deja los ecos, el
+        # historial y los contactos de la app en tres streams; estos los leen.
+        "meta-echoes-consumer",
+        "meta-history-consumer",
+        "meta-state-sync-consumer",
     }
 )
 EGRESS_TASK_NAMES = frozenset(
@@ -128,6 +160,9 @@ EGRESS_TASK_NAMES = frozenset(
         "heartbeat",
         "outbound-dispatcher",
         "owner-outbox-dispatcher",
+        # Spec 031: los avisos al teléfono (APNs y FCM). Egress como los otros
+        # dos: envía hacia fuera, drena un outbox y no es un cron.
+        "push-dispatcher",
     }
 )
 SCHEDULER_TASK_NAMES = frozenset(
@@ -147,12 +182,12 @@ SCHEDULER_TASK_NAMES = frozenset(
         # Spec 006: barre las solicitudes de alta que nadie llegó a usar.
         "expire-signups-cron",
         "isolation-event-drainer",
-        "no-show-scrape-cron",
         "cost-rollup-cron",
         "isolation-watcher",
         "whatsapp-health-cron",
         "tiktok-token-refresh-cron",
-        "async-booking-cron",
+        # Spec 049: Instagram / Messenger health (resubscribe) and 30-day erasure.
+        "meta-social-cron",
         "continuous-eval-cron",
         "memory-versions-retention-cron",
         "owner-consultation-timeout-sweep",
@@ -166,6 +201,31 @@ SCHEDULER_TASK_NAMES = frozenset(
         # Spec 003 — cierra las tareas de teammate vencidas. Corre sin persona,
         # así que es del planificador y no del runner.
         "teammate-task-expiry-cron",
+        # Spec 043 — Reservas: confirmaciones, liberar, terminar y caducar (60 s);
+        # el avance de las ofertas de la lista (15 s); los avisos al cliente
+        # final (10 s); y P3, el Google Calendar del equipo (120 s). También en
+        # ``_spawn`` y en ``ALL_EXPECTED``.
+        "reservations-cron",
+        "reservation-offers-cron",
+        "reservation-outbox-cron",
+        "reservation-calendar-cron",
+        # Spec 043, requisito 15 — las seis plantillas de WhatsApp de Reservas,
+        # pedidas solas a la WABA de cada cliente (15 min). También en
+        # ``_spawn`` y en ``ALL_EXPECTED``.
+        "reservation-templates-cron",
+        # Spec 047 (T037): lo entregado por Meta frente a lo guardado, por canal
+        # y día. Sin persona y una vez al día: del planificador.
+        "meta-reconciliation-cron",
+        # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.
+        "model-lifecycle-cron",
+        # Spec 047 (T156, T157): el dinero de la consola nueva.
+        "fx-rates-cron",
+        "bag-refill-cron",
+        "bag-alerts-cron",
+        "ledger-reconciliation-cron",
+        # Spec 047 (T174): las sugerencias semanales de cada agente, dentro de su
+        # cliente. Sin persona y con modelo: del planificador, no del runner.
+        "weekly-suggestions-cron",
     }
 )
 
@@ -186,7 +246,6 @@ class WorkerContext:
     stop: asyncio.Event
     meta_client: MetaClient
     channel_adapters: dict[str, Any]
-    agendapro_public_pool: Any
     outcome_grader: OutcomeGrader | None
     _cleanup: list[Any] = field(default_factory=list)
 
@@ -235,6 +294,7 @@ def build_context(service_name: str) -> WorkerContext:
     meta_client = MetaClient(
         app_secret=nexus_settings.meta_app_secret,
         require_appsecret_proof=nexus_settings.meta_require_appsecret_proof,
+        version=nexus_settings.meta_graph_api_version,
     )
     meta_adapter = MetaChannelAdapter(meta_client, credentials_loader=_load_meta_credentials)
 
@@ -255,14 +315,68 @@ def build_context(service_name: str) -> WorkerContext:
     tiktok_adapter = TikTokChannelAdapter(
         tiktok_client, credentials_loader=_load_tiktok_credentials
     )
-    channel_adapters = {"meta": meta_adapter, "tiktok": tiktok_adapter}
+    # Spec 049 — Instagram and Messenger. One Graph client, two adapters; the
+    # token is resolved per CHANNEL (each account / Page has its own).
+    social_client = MetaSocialClient(
+        nexus_settings.meta_app_secret,
+        version=nexus_settings.meta_social_graph_api_version,
+        require_appsecret_proof=nexus_settings.meta_require_appsecret_proof,
+    )
+
+    async def _load_social_context(*, tenant_id: uuid.UUID, channel_id: uuid.UUID) -> SendContext:
+        async with sm() as cred_session, tenant_scoped_session(cred_session, tenant_id):
+            channel = await cred_session.get(Channel, channel_id)
+            creds = await SocialCredentialsRepository(cred_session).get(channel_id)
+            if channel is None or creds is None:
+                raise ChannelCapabilityError("the Instagram / Messenger channel has no credential")
+            public_reply = (channel.config or {}).get("comment_public_reply")
+            return SendContext(
+                account_id=channel.provider_identifier,
+                token=creds.send_token,
+                public_comment_reply=public_reply
+                if isinstance(public_reply, str) and public_reply.strip()
+                else None,
+            )
+
+    instagram_adapter = MetaSocialChannelAdapter(
+        social_client, provider=PROVIDER_INSTAGRAM, context_loader=_load_social_context
+    )
+    messenger_adapter = MetaSocialChannelAdapter(
+        social_client, provider=PROVIDER_MESSENGER, context_loader=_load_social_context
+    )
+    channel_adapters = {
+        "meta": meta_adapter,
+        "tiktok": tiktok_adapter,
+        PROVIDER_INSTAGRAM: instagram_adapter,
+        PROVIDER_MESSENGER: messenger_adapter,
+    }
 
     # WP-11 (D10): the runner resolves inbound media (webhook publishes only
     # the provider media id). The Meta adapter's fetch_media_bytes carries
-    # the per-channel credential scoping already.
+    # the per-channel credential scoping already. Instagram / Messenger
+    # attachments arrive as ``url:`` CDN links and go to their adapter.
     from nexus_worker.multimodal.media_fetch import set_media_fetcher
 
-    set_media_fetcher(meta_adapter.fetch_media_bytes)
+    async def _fetch_media(
+        *, media_id: str, tenant_id: uuid.UUID, channel_id: uuid.UUID | None = None
+    ) -> tuple[bytes, str | None, str | None]:
+        fetched: tuple[bytes, str | None, str | None]
+        if media_id.startswith(URL_MEDIA_PREFIX):
+            fetched = await instagram_adapter.fetch_media_bytes(
+                media_id=media_id, tenant_id=tenant_id, channel_id=channel_id
+            )
+        else:
+            fetched = await meta_adapter.fetch_media_bytes(
+                media_id=media_id, tenant_id=tenant_id, channel_id=channel_id
+            )
+        return fetched
+
+    set_media_fetcher(_fetch_media)
+
+    from nexus_worker.runtime.dispatcher import set_profile_fetcher
+
+    set_profile_fetcher(PROVIDER_INSTAGRAM, instagram_adapter.fetch_profile)
+    set_profile_fetcher(PROVIDER_MESSENGER, messenger_adapter.fetch_profile)
 
     # Los dos ticks azules también salen de aquí, no del webhook: el
     # handler decidía Y enviaba, y esa llamada a Meta dentro del ack hacía
@@ -271,11 +385,6 @@ def build_context(service_name: str) -> WorkerContext:
     from nexus_worker.runtime.read_receipts import set_read_receipt_sender
 
     set_read_receipt_sender("meta", meta_adapter.mark_as_read)
-
-    # Block O: AgendaPro public-link Node MCP subprocess pool (lazy —
-    # tolerates missing Node binary in dev/test).
-    agendapro_public_pool = build_agendapro_public_pool_from_env()
-    set_agendapro_public_transport(agendapro_public_pool)
 
     # Fase C — outcome grader, independent provider so the guardrail call
     # doesn't ride the agent's retry chain.
@@ -303,7 +412,6 @@ def build_context(service_name: str) -> WorkerContext:
         stop=stop,
         meta_client=meta_client,
         channel_adapters=channel_adapters,
-        agendapro_public_pool=agendapro_public_pool,
         outcome_grader=outcome_grader,
     )
 
@@ -327,8 +435,6 @@ async def pipeline_scope(ctx: WorkerContext) -> AsyncIterator[Any]:
 async def shutdown_context(ctx: WorkerContext) -> None:
     with contextlib.suppress(Exception):
         await ctx.meta_client.close()
-    with contextlib.suppress(Exception):
-        await ctx.agendapro_public_pool.shutdown()
     langfuse_shutdown()
 
 
@@ -387,6 +493,32 @@ def runner_tasks(
                 stop=ctx.stop,
             ),
         ),
+        _spawn(
+            "jobs-consumer",
+            run_jobs_consumer(
+                ctx.redis,
+                consumer_name=ws.inbound_consumer_name + ":jobs",
+                stop=ctx.stop,
+            ),
+        ),
+        _spawn(
+            "meta-echoes-consumer",
+            run_meta_echoes_consumer(
+                ctx.redis, consumer_name=ws.inbound_consumer_name + ":echoes", stop=ctx.stop
+            ),
+        ),
+        _spawn(
+            "meta-history-consumer",
+            run_meta_history_consumer(
+                ctx.redis, consumer_name=ws.inbound_consumer_name + ":history", stop=ctx.stop
+            ),
+        ),
+        _spawn(
+            "meta-state-sync-consumer",
+            run_meta_state_sync_consumer(
+                ctx.redis, consumer_name=ws.inbound_consumer_name + ":state_sync", stop=ctx.stop
+            ),
+        ),
     ]
 
 
@@ -400,6 +532,7 @@ def egress_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.
             "owner-outbox-dispatcher",
             run_owner_outbox_dispatcher(stop=ctx.stop, meta_client=ctx.meta_client),
         ),
+        _spawn("push-dispatcher", run_push_dispatcher(stop=ctx.stop)),
     ]
 
 
@@ -449,6 +582,19 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
             "cobranza-reminder-cron",
             run_cobranza_reminder_cron(stop=ctx.stop, redis=ctx.redis),
         ),
+        # Spec 043 — Reservas (contracts/worker-y-avisos.md).
+        _spawn("reservations-cron", run_reservations_cron(stop=ctx.stop)),
+        _spawn("reservation-offers-cron", run_reservation_offers_cron(stop=ctx.stop)),
+        _spawn("reservation-outbox-cron", run_reservation_outbox_cron(stop=ctx.stop)),
+        _spawn("reservation-calendar-cron", run_reservation_calendar_cron(stop=ctx.stop)),
+        _spawn("reservation-templates-cron", run_reservation_templates_cron(stop=ctx.stop)),
+        _spawn("meta-reconciliation-cron", run_meta_reconciliation_cron(stop=ctx.stop)),
+        _spawn("model-lifecycle-cron", run_model_lifecycle_cron(stop=ctx.stop, redis=ctx.redis)),
+        _spawn("fx-rates-cron", run_fx_rates_cron(stop=ctx.stop)),
+        _spawn("bag-refill-cron", run_bag_refill_cron(stop=ctx.stop)),
+        _spawn("bag-alerts-cron", run_bag_alerts_cron(stop=ctx.stop)),
+        _spawn("ledger-reconciliation-cron", run_ledger_reconciliation_cron(stop=ctx.stop)),
+        _spawn("weekly-suggestions-cron", run_weekly_suggestions_cron(stop=ctx.stop)),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.
@@ -457,10 +603,6 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("expire-credit-cron", run_expire_credit_cron(stop=ctx.stop)),
         _spawn("expire-signups-cron", run_expire_signups_cron(stop=ctx.stop)),
         _spawn("isolation-event-drainer", isolation_event_drainer(ctx.stop)),
-        _spawn(
-            "no-show-scrape-cron",
-            run_no_show_scrape_cron(stop=ctx.stop, tick_seconds=ws.no_show_scrape_tick_seconds),
-        ),
         _spawn(
             "cost-rollup-cron",
             run_cost_rollup_cron(stop=ctx.stop, tick_seconds=ws.cost_rollup_tick_seconds),
@@ -471,7 +613,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("whatsapp-health-cron", run_whatsapp_health_cron(stop=ctx.stop)),
         _spawn("tiktok-token-refresh-cron", run_tiktok_token_refresh_cron(stop=ctx.stop)),
-        _spawn("async-booking-cron", run_async_booking_cron(stop=ctx.stop)),
+        _spawn("meta-social-cron", run_meta_social_cron(stop=ctx.stop, redis=ctx.redis)),
         _spawn(
             "continuous-eval-cron",
             run_continuous_eval_cron(
@@ -532,6 +674,9 @@ async def run_service(
         egress=egress,
         metering=metering,
     )
+    from nexus_api.services.email import log_delivery_mode
+
+    log_delivery_mode(service_name)
     # One heartbeat per PROCESS, outside the leader gate: a hot-standby
     # scheduler must keep beating or the dead-worker alert pages for a
     # replica that is doing exactly its job.

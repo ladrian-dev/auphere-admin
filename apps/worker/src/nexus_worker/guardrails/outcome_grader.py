@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -150,9 +151,21 @@ class OutcomeGrader:
         *,
         provider: LLMProvider,
         model: str = DEFAULT_GRADER_MODEL,
+        judge_for: Callable[[str | None], Sequence[str]] | None = None,
     ) -> None:
+        """``judge_for`` (spec 047, T143): given the family of the model that
+        wrote the draft, the judge models to use — the router's ``judge`` task,
+        which never returns that same family (``grading_policy.judge_route``).
+        Without it, ``model`` as before."""
         self._provider = provider
         self._model = model
+        self._judge_for = judge_for
+
+    def _judges(self, judged_family: str | None) -> tuple[str, ...]:
+        if self._judge_for is None:
+            return (self._model,)
+        chosen = tuple(m for m in self._judge_for(judged_family) if m)
+        return chosen or (self._model,)
 
     async def grade(
         self,
@@ -162,6 +175,7 @@ class OutcomeGrader:
         rubric_body: str,
         draft_response: str,
         tool_envelopes: list[dict[str, Any]],
+        judged_family: str | None = None,
     ) -> GraderVerdict:
         """Run one grading pass and return the verdict.
 
@@ -169,6 +183,9 @@ class OutcomeGrader:
         verdict is ``fail`` with a feedback string the pipeline can
         surface either to the agent (for retry) or — at max retries —
         to the operator's alert.
+
+        ``judged_family`` is the family of the model that wrote the draft:
+        the judge is of another one (requisito 42.5).
         """
         try:
             tool_json = json.dumps(
@@ -193,10 +210,11 @@ class OutcomeGrader:
             },
         ]
         try:
+            # Role ``grader`` = task ``judge`` on the meter (``llm.TASK_BY_ROLE``).
             raw = await self._provider.acomplete(
                 tenant_id=tenant_id,
                 role="grader",
-                model=self._model,
+                model=self._judges(judged_family)[0],
                 messages=messages,
             )
         except Exception as exc:

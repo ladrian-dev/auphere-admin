@@ -1,0 +1,21 @@
+# Workspace propio de la app móvil (spec 031, research D13).
+#
+# Expo SDK 58 fija React 19.3.0 y la raíz del monorepo fija 19.2.4 para la
+# consola: dos versiones de React en un solo árbol rompen en tiempo de
+# ejecución. pnpm resuelve el pnpm-workspace.yaml MÁS CERCANO subiendo desde el
+# cwd, así que dentro de apps/mobile la raíz no existe. Nunca se añade
+# `apps/mobile` a la lista de la raíz ni se usa `workspace:*` desde aquí: lo
+# compartido entra como archivos generados (scripts/gen-*.ts).
+packages:
+  - "."
+onlyBuiltDependencies: []
+
+# Parches sobre dependencias publicadas. Cada uno dice por qué y se retira en
+# cuanto la versión publicada lo arregle.
+#
+# - expo-symbols: en Android dibuja el icono como un texto de `size` dentro de
+#   una caja de `size × size`, sin `allowFontScaling={false}`. Con el texto del
+#   sistema al 200 % el glifo dobla su tamaño y la caja lo recorta (visto en el
+#   pase vivo de la spec 031). Sigue igual en 58.0.4, la última del SDK 58.
+patchedDependencies:
+  expo-symbols@58.0.4: patches/expo-symbols@58.0.4.patch

@@ -38,6 +38,14 @@ from typing import Any
 import yaml
 
 _SEEDS_DIR = Path(__file__).resolve().parent / "seeds"
+
+#: Spec 047 (T056, research D15): the business hours are not copied into a
+#: prompt any more. Without the operator's own text, the template points at the
+#: business profile's block (``services/business/compilation.py``), which is
+#: the only place the agent reads the hours from.
+DERIVED_PLACEHOLDERS: dict[str, str] = {
+    "tenant.business_hours_label": "el que indica «Horario» en los datos vigentes del negocio",
+}
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z][a-zA-Z0-9_.]*)\}")
 
 #: Un bloque que **solo existe si al agente se lo dijeron** (spec 019, T036).
@@ -229,7 +237,8 @@ def render_seed_template(
       1. Exact match in ``placeholders`` (key = dotted path).
       2. Default in ``template.agent_defaults`` (for ``agent.*``).
       3. Default in ``template.policies_default`` (for ``policies.*``).
-      4. Raise ``SeedTemplatePlaceholderMissing``.
+      4. What the business profile owns (:data:`DERIVED_PLACEHOLDERS`).
+      5. Raise ``SeedTemplatePlaceholderMissing``.
 
     Returns a ``RenderedSeedTemplate`` with the resolved prompt + the
     template's recommended tools + the merged policies (defaults +
@@ -247,6 +256,8 @@ def render_seed_template(
             value = _walk(template.policies_default, key.removeprefix("policies.").split("."))
             if value is not None:
                 return str(value)
+        if key in DERIVED_PLACEHOLDERS:
+            return DERIVED_PLACEHOLDERS[key]
         raise SeedTemplatePlaceholderMissing(key)
 
     def _walk(node: Any, parts: list[str]) -> Any:

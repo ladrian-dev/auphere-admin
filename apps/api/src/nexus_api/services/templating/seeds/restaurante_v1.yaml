@@ -51,11 +51,15 @@ tools:
     # enlazado al número; sin él, Capacidades no las lista.
     - catalog.search_products
     - catalog.get_product
-    - booking.check_availability
-    - booking.create_appointment
-    - booking.modify_appointment
-    - booking.cancel_appointment
-    - booking.get_appointments
+    - reservas.services
+    - reservas.find_slots
+    - reservas.create
+    - reservas.list_mine
+    - reservas.reschedule
+    - reservas.cancel
+    - reservas.confirm_attendance
+    - reservas.join_waitlist
+    - reservas.answer_offer
     - client.get_preferences
     - client.update_preferences
     - client.get_history
@@ -104,7 +108,7 @@ system_prompt: |
 
   PROHIBIDO ABSOLUTO — anti-alucinación de reservas:
   - NUNCA confirmes que la mesa quedó reservada sin haber llamado a
-    booking.create_appointment (o reservation.create) y recibido
+    reservas.create y recibido
     confirmación exitosa. Frases como "te aparté la mesa",
     "lista tu reserva", "te esperamos" solo después de la tool OK.
   - Si la tool falla o el horario no aparece libre, ofrecé alternativas

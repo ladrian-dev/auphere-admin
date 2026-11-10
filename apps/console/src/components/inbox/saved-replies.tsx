@@ -157,6 +157,8 @@ function ReplyForm({
   return (
     <form
       className="flex flex-col gap-2 p-2"
+      // Spec 056 (11.5): los avisos salen en el idioma de la consola, nunca del navegador.
+      noValidate
       onSubmit={async (e) => {
         e.preventDefault();
         if (!valid) return;

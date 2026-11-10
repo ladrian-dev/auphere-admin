@@ -1,7 +1,7 @@
 """Block H: operator alerter — 3 new audit actions → WhatsApp templates.
 
 The alerter (block F) ledgers + dispatches WhatsApp templates for
-``conversation.escalated`` + ``integration.agendapro.needs_reauth``.
+``conversation.escalated`` + ``connector.needs_reauth``.
 Block H adds three more action handlers:
 
 - ``cost.daily_threshold_exceeded`` → ``alert_cost_threshold_v1``.
@@ -24,7 +24,9 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import AuditLog
 
-pytestmark = pytest.mark.asyncio
+# Los clientes tienen las plantillas de aviso aprobadas en su WABA: el aviso sale
+# de su número. Sin ellas sale del de Auphere (test_operator_alert_sender.py).
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("alert_templates_approved")]
 
 
 async def _seed_audit(

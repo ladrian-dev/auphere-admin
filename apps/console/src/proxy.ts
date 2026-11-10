@@ -70,7 +70,8 @@ export function proxy(request: NextRequest) {
     // already trusts; the host is listed for browsers without strict-dynamic.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://connect.facebook.net${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    // fbcdn / cdninstagram: the picture of the post a comment was left on (Inbox).
+    "img-src 'self' data: blob: https://*.fbcdn.net https://*.cdninstagram.com",
     "font-src 'self' data:",
     // Dev only: Next's HMR websocket is a different scheme, so 'self' does not cover it.
     `connect-src 'self' https://graph.facebook.com https://www.facebook.com${isDev ? " ws://localhost:* wss://localhost:*" : ""}`,

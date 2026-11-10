@@ -39,6 +39,31 @@ describe("InboxView", () => {
     expect(await screen.findByRole("textbox", { name: "Escribir un mensaje" })).toBeInTheDocument();
   });
 
+  it("when the real message arrives before the send answers, it shows once", async () => {
+    const opened = { detail: detail({ state: "person", assignee: ME }), thread: { items: [message()], next_before: null } };
+    let accept!: (v: unknown) => void;
+    a.sendMessageAction.mockReturnValue(new Promise((r) => (accept = r)));
+    renderInbox({ selectedId: ID, open: opened });
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Escribir un mensaje" }), "Te reservo el sábado{Enter}");
+    const log = screen.getByRole("log");
+    expect(await within(log).findByText("Te reservo el sábado")).toBeInTheDocument();
+
+    a.openConversationAction.mockResolvedValue({
+      ok: true,
+      data: {
+        ...opened,
+        thread: {
+          items: [message(), message({ id: "real", direction: "outbound", author: ME, text: "Te reservo el sábado", at: new Date().toISOString(), delivery: "sent" })],
+          next_before: null,
+        },
+      },
+    });
+    await act(async () => accept({ ok: true, data: {} }));
+    await waitFor(() => expect(within(log).getAllByText("Te reservo el sábado")).toHaveLength(1));
+    expect(within(log).queryByText("· Enviando…")).toBeNull();
+  });
+
   it("a send shows at once and goes away with the reason if the API refuses it", async () => {
     a.openConversationAction.mockResolvedValue({
       ok: true,
@@ -55,7 +80,7 @@ describe("InboxView", () => {
 
     await act(async () => refuse({ ok: false, status: 409, message: "", code: "window_closed" }));
     await waitFor(() => expect(within(log).queryByText("Te reservo el sábado")).toBeNull());
-    expect(screen.getByRole("alert")).toHaveTextContent("Pasaron más de 24 horas");
+    expect(screen.getByRole("alert")).toHaveTextContent("Pasó el plazo para escribir");
     expect(screen.getByRole("textbox", { name: "Escribir un mensaje" })).toHaveValue("Te reservo el sábado");
   });
 

@@ -4,8 +4,8 @@
 la consola lite de un cliente y elige sus módulos. Lo que fija este archivo:
 
 - quién es elegible (cliente en un partner, no archivado) y por qué no;
-- las reglas de módulos: al menos uno con el acceso encendido, y la Bandeja
-  solo con un WhatsApp conectado;
+- las reglas de módulos: al menos uno con el acceso encendido, la Bandeja
+  solo con un WhatsApp conectado, y Agentes y Negocio nunca (spec 056);
 - apagar el acceso cierra las sesiones de sus personas;
 - la auditoría nombra al OPERADOR (``operator:<correo>``), nunca el prefijo
   del token del admin; sin operador identificado, no hay acción.
@@ -105,6 +105,20 @@ async def test_enabling_needs_at_least_one_module(
     )
     assert resp.status_code == 422
     assert resp.json()["detail"]["code"] == "no_modules"
+
+
+@pytest.mark.parametrize("retired", ["agents", "business"])
+async def test_a_retired_module_is_an_unknown_module(
+    retired: str, client, db_session, console_world, admin_headers
+) -> None:
+    """Spec 056 (requisito 2.3): Agentes y Negocio ya no se guardan."""
+    w = console_world["a"]
+    headers, _ = await _headers(db_session, admin_headers)
+    resp = await client.put(
+        _url(w["tenant_id"]), headers=headers, json={"enabled": True, "modules": ["panel", retired]}
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"]["code"] == "unknown_module"
 
 
 async def test_inbox_needs_a_connected_whatsapp(

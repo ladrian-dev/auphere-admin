@@ -28,6 +28,7 @@ turns this red before it can ship.
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -90,6 +91,44 @@ ALLOWED_FIELDS_BY_SCHEMA: dict[tuple[str, str], str] = {
         "What Meta answered when it rejected a catalogue operation — a "
         "provider error about the partner's product catalogue, never text a "
         "customer wrote."
+    ),
+    ("VisibleOut", "reason"): (
+        "Spec 047: the code of why an agent or a channel is paused or has a "
+        "problem (``manual``, ``no_balance``, ``agent_cap``, ``auth_expired``…), "
+        "set by the system or by a console action — never text."
+    ),
+    ("SessionOut", "transcript"): (
+        "Spec 047 (requisito 20): a playground session over the agent's draft, "
+        "with simulated time and agenda. Every «customer» turn is typed by the "
+        "partner's own person testing; the playground has no channel, so no end "
+        "customer can be in it."
+    ),
+    ("TestOut", "transcript"): (
+        "Spec 047, enmienda (61.6): the conversation of one run of the agent's "
+        "own test, between the draft and Auphere's simulated customer over a "
+        "simulated agenda, without a channel: no end customer takes part in it. "
+        "What it CAN carry of one (T217, security review of 2026-10-30): a test "
+        "created from a weekly suggestion (``kind = conversation``, "
+        "``services/improvement/suggestions.py``) has its ``first_message``, "
+        "``persona`` and ``plan`` written by a model that read the week's real "
+        "conversations, masked only for names, phones, e-mails and documents; "
+        "the simulated customer then speaks from them, and ``TestOut`` serves "
+        "those three fields too. Contained by: the model is told never to copy "
+        "a real message; ``_store`` drops the suggestion whose texts carry a "
+        "contact's data (``Contacts.found_in``) or whose test copies a message "
+        "of the batch almost literally (word n-grams, ``copies_a_message``); "
+        "and only members of the partner that owns the client, with "
+        "``agents:read``, read it. The residue that stays: a paraphrase that is "
+        "not literal and names no one."
+    ),
+    ("TestAttemptOut", "transcript"): (
+        "Every pass of the last run of a test: the same conversations as "
+        "``TestOut.transcript`` (which is one of them), with the same residue "
+        "and the same containment. Typed so this walk reads it."
+    ),
+    ("TestTurnOut", "text"): (
+        "One turn of those conversations: what the simulated customer or the "
+        "draft said. See ``TestOut.transcript``."
     ),
 }
 
@@ -317,6 +356,21 @@ def test_closed_vocabularies_and_the_inbox_are_the_only_ways_out() -> None:
     assert _offenders("/console/lite/inbox/x", walk("Leak")) == {"Leak.tenant_id"}
 
 
+def test_every_pass_of_a_test_is_seen_by_the_walk(openapi: dict[str, Any]) -> None:
+    """Spec 047, T217 (security review of 2026-10-30): the passes of a test
+    (``TestOut.attempts``) carry the same conversations as ``TestOut.transcript``.
+    Typed, the walk reads them, word for word, and their exceptions are explicit
+    in ``ALLOWED_FIELDS_BY_SCHEMA``; an untyped ``dict`` would hide them."""
+    components = openapi["components"]["schemas"]
+    suite = openapi["paths"]["/console/clients/{ref}/agents/{agent_id}/tests"]["get"]
+    fields = _route_response_fields(suite, components)
+    for pair in (("TestOut", "transcript"), ("TestAttemptOut", "transcript")):
+        assert pair in fields, sorted(fields)
+        assert pair in ALLOWED_FIELDS_BY_SCHEMA, pair
+    assert ("TestTurnOut", "text") in fields
+    assert ("TestTurnOut", "text") in ALLOWED_FIELDS_BY_SCHEMA
+
+
 def test_the_body_check_would_catch_a_leak(openapi: dict[str, Any]) -> None:
     """Control of the control: a schema with ``content`` is detected."""
     fake = {"properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/X"}}}}
@@ -334,9 +388,18 @@ async def test_every_route_requires_the_principal(route_id: str, client) -> None
     assert resp.status_code == 401, f"{route_id} answered {resp.status_code} without a token"
 
 
-def _fill(path: str, *, ref: str) -> str:
-    """Give every path parameter a syntactically valid value."""
-    return (
+def _fill(path: str, *, ref: str, ids: dict[str, str] | None = None) -> str:
+    """Give every path parameter a syntactically valid value.
+
+    ``ids`` points a parameter at a REAL object (spec 047, T021): the C8 sweep
+    below fills ``{conversation_id}``, ``{channel_id}``, ``{job_id}``… with
+    objects of a client whose base is full of message bodies and phones, so a
+    route that leaked them would answer with them instead of a 404. Any
+    parameter nobody names gets a fresh UUID: a route mounted tomorrow with a
+    new ``{x}`` is filled the day it lands, never left as literal braces."""
+    for name, value in (ids or {}).items():
+        path = path.replace("{" + name + "}", value)
+    path = (
         path.replace("{ref}", ref)
         .replace("{version}", "1")
         .replace("{key_id}", str(uuid.uuid4()))
@@ -358,7 +421,10 @@ def _fill(path: str, *, ref: str) -> str:
         .replace("{conversation_id}", str(uuid.uuid4()))
         .replace("{message_id}", str(uuid.uuid4()))
         .replace("{reply_id}", str(uuid.uuid4()))
+        # spec 031: los teléfonos de la persona de cliente
+        .replace("{phone_id}", str(uuid.uuid4()))
     )
+    return re.sub(r"\{[a-z_]+\}", lambda _m: str(uuid.uuid4()), path)
 
 
 def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
@@ -379,10 +445,6 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/skills"): {"skills": []},
         ("PUT", "/console/clients/{ref}/allocation"): {"cap_cents": 1},
         ("PUT", "/console/clients/{ref}/model"): {"model_id": "openai/gpt-5.6-sol"},
-        # Spec 016 (R6): la agenda pública de AgendaPro.
-        ("PUT", "/console/clients/{ref}/integrations/agendapro/public-url"): {
-            "public_url": "https://demo.site.agendapro.com/cl/sucursal"
-        },
         ("PUT", "/console/clients/{ref}/workflow"): {
             "trigger": "event",
             "steps": ["end"],
@@ -404,6 +466,27 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("POST", "/console/clients/{ref}/playground/threads"): {"title": "x"},
         ("PATCH", "/console/clients/{ref}/playground/threads/{thread_id}"): {"title": "x"},
         ("POST", "/console/clients/{ref}/playground/threads/{thread_id}/runs"): {"prompt": "x"},
+        # Spec 047: el constructor, las pruebas, la publicación y la bolsa.
+        ("POST", "/console/clients/{ref}/agents/draft-jobs"): {"name": "x", "start": "blank"},
+        ("POST", "/console/clients/{ref}/agents/{agent_id}/test-runs"): {"scope": "all"},
+        ("POST", "/console/clients/{ref}/agents/{agent_id}/publish"): {},
+        ("POST", "/console/clients/{ref}/bag/assign"): {
+            "amount": {"amount_micros": 100000, "currency": "USD"}
+        },
+        ("POST", "/console/clients/{ref}/bag/lower"): {
+            "amount": {"amount_micros": 100000, "currency": "USD"}
+        },
+        ("PUT", "/console/clients/{ref}/bag/refill"): {"up_to": None},
+        ("PUT", "/console/clients/{ref}/bag/currency"): {"currency": "USD"},
+        ("POST", "/console/clients/{ref}/bag/request"): {},
+        # Spec 056 (T028): el acceso del cliente desde la consola de partners.
+        ("PUT", "/console/clients/{ref}/client-access"): {"enabled": False, "modules": []},
+        ("POST", "/console/clients/{ref}/client-members"): {"email": "x@example.com"},
+        # Spec 057 (T005): «Agenda (Reservas)» de un agente.
+        ("PUT", "/console/clients/{ref}/agents/{agent_id}/agenda"): {
+            "enabled": True,
+            "reservas": {"mode": "services"},
+        },
     }
     return bodies.get((sorted(route.methods)[0], route.path))
 
@@ -471,3 +554,127 @@ async def test_the_summary_composes_four_reads_and_none_of_them_leaks(
         r = await client.get(path, headers=a["headers"]())
         assert r.status_code == 404, f"{path} → {r.status_code}"
         assert r.json() == {"detail": "Unknown client reference"}
+
+
+# ── 7. C8 con datos: ninguna lectura del partner trae palabras ni teléfonos ──
+#
+# Spec 047, T021 (requisitos 56.9 y 51.2). Las comprobaciones 1-3 miran el
+# OpenAPI: un campo que se llame como un cuerpo. Esta mira lo que la ruta
+# DEVUELVE de verdad, contra una base llena de cuerpos de mensaje, notas,
+# transcripciones, llamadas a herramientas, nombres y teléfonos de clientes
+# finales (``_partner_world``). Un campo con nombre inocente (``summary``,
+# ``detail``, un ``dict`` sin tipo) que acabara llevando el mensaje de alguien
+# lo pone en rojo. Recorre todas las lecturas del partner, las de A2 incluidas
+# (``/console/jobs/{job_id}``, ``/console/search``), el día que se montan.
+
+_SEARCH_PARAMS = {"q", "query", "search", "term"}
+
+
+def _partner_reads() -> list[str]:
+    return sorted(
+        r.path
+        for r in _console_routes()
+        if "GET" in r.methods
+        and not r.path.startswith("/console/lite")
+        # Las de SSE no terminan; lo que emiten lo cubren sus propias suites.
+        and not r.path.endswith("/stream")
+    )
+
+
+def _sample(schema: dict[str, Any], components: dict[str, Any]) -> str:
+    """Un valor válido para un parámetro obligatorio de la query."""
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        return _sample(components.get(ref.rsplit("/", 1)[-1], {}), components)
+    for option in schema.get("anyOf") or schema.get("oneOf") or []:
+        if option.get("type") != "null":
+            return _sample(option, components)
+    if "enum" in schema:
+        return str(schema["enum"][0])
+    kind, fmt = schema.get("type"), schema.get("format")
+    if kind in {"integer", "number"}:
+        return str(schema.get("minimum", 1))
+    if kind == "boolean":
+        return "true"
+    if fmt == "uuid":
+        return str(uuid.uuid4())
+    if fmt == "date":
+        return "2026-10-01"
+    if fmt == "date-time":
+        return "2026-10-01T00:00:00Z"
+    return "x"
+
+
+def _query_for(
+    op: dict[str, Any], world: dict[str, Any], components: dict[str, Any]
+) -> dict[str, str]:
+    """Los obligatorios, con un valor válido; los de búsqueda, con el nombre del
+    cliente final (buscarlo es otra forma de filtrarlo); el cliente, el de A."""
+    params: dict[str, str] = {}
+    for p in op.get("parameters", []):
+        if p.get("in") != "query":
+            continue
+        name = p["name"]
+        if name in _SEARCH_PARAMS:
+            params[name] = world["canaries"].name
+        elif name in {"client", "ref", "client_ref"}:
+            params[name] = world["ref"]
+        elif p.get("required"):
+            params[name] = _sample(p.get("schema") or {}, components)
+    return params
+
+
+@pytest.mark.parametrize("path", _partner_reads())
+async def test_no_partner_read_carries_an_end_customers_words_or_phone(
+    path: str, client, db_session, console_world, openapi: dict[str, Any]
+) -> None:
+    from ._partner_world import partner_world
+
+    world = await partner_world(db_session, console_world)
+    op = openapi["paths"][path]["get"]
+    resp = await client.get(
+        _fill(path, ref=world["ref"], ids=world["ids"]),
+        params=_query_for(op, world, openapi["components"]["schemas"]),
+        headers=world["headers"](),
+    )
+    leaked = sorted(
+        label
+        for label, canary in world["canaries"].words_and_phones().items()
+        if canary in resp.text
+    )
+    assert not leaked, f"GET {path} ({resp.status_code}) devuelve: {leaked}"
+
+
+async def test_the_c8_sweep_reaches_real_data(client, db_session, console_world) -> None:
+    """Control del control: el mundo tiene los datos y las rutas llegan a ellos.
+
+    Las conversaciones del partner las cuentan (sin cuerpos), el trabajo existe
+    para ``/console/jobs/{job_id}``, y la Bandeja de la persona del cliente —el
+    único sitio de ``/console/*`` que sirve cuerpos— sí devuelve el cuerpo
+    marcado: si no, su ausencia en las rutas del partner no probaría nada."""
+    from ._partner_world import partner_world
+
+    world = await partner_world(db_session, console_world)
+    convs = await client.get(
+        f"/console/clients/{world['ref']}/conversations", headers=world["headers"]()
+    )
+    assert convs.status_code == 200 and convs.json()["total"] >= 3, convs.text[:300]
+    if any(r.path == "/console/jobs/{job_id}" for r in _console_routes()):
+        job = await client.get(
+            f"/console/jobs/{world['ids']['job_id']}", headers=world["headers"]()
+        )
+        assert job.status_code == 200, job.text[:300]
+    thread = await client.get(
+        f"/console/lite/inbox/conversations/{world['ids']['conversation_id']}/messages",
+        headers=world["client_headers"](),
+    )
+    assert thread.status_code == 200, thread.text[:300]
+    assert world["canaries"].body_in in thread.text
+    assert world["canaries"].body_out in thread.text
+
+
+def test_fill_never_leaves_a_parameter_unfilled() -> None:
+    """Una ruta con un ``{x}`` que nadie conoce se rellena igual (la de mañana)."""
+    filled = _fill("/console/clients/{ref}/agents/{agent_id}/thing/{brand_new}", ref="r")
+    assert "{" not in filled and filled.startswith("/console/clients/r/agents/")
+    assert _fill("/console/jobs/{job_id}", ref="r", ids={"job_id": "J"}) == "/console/jobs/J"

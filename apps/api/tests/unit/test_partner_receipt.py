@@ -1,13 +1,15 @@
-"""Unit tests for the partner-receipt money math + rendering (DB-free)."""
+"""Unit tests for the partner-receipt money math + its email (DB-free)."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
+from nexus_api.services.email_catalog import CATALOG, EmailKind
 from nexus_api.services.partner_receipt import (
     ReceiptLine,
     ReceiptResult,
@@ -18,7 +20,8 @@ from nexus_api.services.partner_receipt import (
     subscription_active,
     subscription_cents,
 )
-from nexus_api.services.partner_receipt_email import receipt_subject, render_receipt_html
+from nexus_api.services.partner_receipt_document import receipt_subject, render_receipt_html
+from nexus_api.services.partner_receipt_email import receipt_email
 
 pytestmark = [pytest.mark.unit]
 
@@ -131,8 +134,11 @@ def _result() -> ReceiptResult:
     )
 
 
-class TestRendering:
-    def test_subject_names_partner_and_period(self) -> None:
+class TestPrintableReceipt:
+    """The console download (``/console/billing/receipts/{id}/download``) still
+    renders its own HTML document: it is printed, not mailed."""
+
+    def test_title_names_partner_and_period(self) -> None:
         assert receipt_subject(_result()) == "Recibo Junio 2026 — Facelad SPA"
 
     def test_html_shows_total_due_and_all_lines(self) -> None:
@@ -146,3 +152,121 @@ class TestRendering:
         r = _result()
         no_fx = ReceiptResult(**{**r.__dict__, "clp_per_usd": None})
         assert "dólar observado" not in render_receipt_html(no_fx)
+
+
+class TestReceiptEmail:
+    """Spec 051: the receipt is the ``receipt`` template; this builds its subject
+    and variables, in the language of whoever receives it."""
+
+    def test_spanish_subject_names_the_month_and_the_partner(self) -> None:
+        subject, _ = receipt_email(_result(), "es")
+        assert subject == "Tu recibo de junio de 2026 (Facelad SPA)"
+
+    def test_english_subject(self) -> None:
+        subject, _ = receipt_email(_result(), "en")
+        assert subject == "Your Auphere receipt for June 2026 (Facelad SPA)"
+
+    def test_variables_are_exactly_the_templates(self) -> None:
+        for locale in ("es", "en"):
+            _, variables = receipt_email(_result(), locale)
+            assert set(variables) == CATALOG[EmailKind.RECEIPT].variables
+            assert all(isinstance(v, str) for v in variables.values())
+
+    def test_spanish_variables(self) -> None:
+        _, v = receipt_email(_result(), "es")
+        assert v["PARTNER_NAME"] == "Facelad SPA"
+        assert v["PERIOD"] == "junio de 2026"
+        assert v["TOTAL"] == "US$125.99"
+        assert v["DUE_ON"] == "5 de julio de 2026"
+        assert v["BILLING_URL"].startswith("http")
+        assert v["BILLING_URL"].endswith("/billing")
+
+    def test_english_variables(self) -> None:
+        _, v = receipt_email(_result(), "en")
+        assert v["PERIOD"] == "June 2026"
+        assert v["TOTAL"] == "US$125.99"
+        assert v["DUE_ON"] == "July 5, 2026"
+
+    def test_lines_carry_every_concept_and_its_amount(self) -> None:
+        _, v = receipt_email(_result(), "es")
+        assert v["LINES"].split("<br>") == [
+            "Barber Supply — comisión 2,5% · US$100.99",
+            "New Air — suscripción mensual · US$25.00",
+            "Vedhome — sin cargos · US$0.00",
+        ]
+
+    def test_lines_are_escaped_once(self) -> None:
+        r = _result()
+        odd = ReceiptLine(uuid.uuid4(), "odd", "A & B", "inactive", "A & B <x>", 0)
+        _, v = receipt_email(ReceiptResult(**{**r.__dict__, "lines": [odd]}), "es")
+        assert v["LINES"] == "A &amp; B &lt;x&gt; · US$0.00"
+
+    def test_lines_that_do_not_fit_end_in_how_many_are_left(self) -> None:
+        r = _result()
+        many = [
+            ReceiptLine(
+                uuid.uuid4(), f"c{i}", f"Cliente {i}", "inactive", f"Cliente {i:03d} " + "x" * 60, 0
+            )
+            for i in range(100)
+        ]
+        bulky = ReceiptResult(**{**r.__dict__, "lines": many})
+        _, es = receipt_email(bulky, "es")
+        assert len(es["LINES"]) <= 2000
+        last = es["LINES"].split("<br>")[-1]
+        assert last.startswith("y ") and last.endswith(" conceptos más")
+        _, en = receipt_email(bulky, "en")
+        last_en = en["LINES"].split("<br>")[-1]
+        assert last_en.startswith("and ") and last_en.endswith(" more items")
+
+    def test_fx_note_names_the_rate(self) -> None:
+        _, es = receipt_email(_result(), "es")
+        assert es["FX_NOTE"] == (
+            "Los importes en pesos chilenos se han convertido a dólares al tipo de cambio "
+            "observado el día de emisión (932,84 CLP por USD)."
+        )
+        _, en = receipt_email(_result(), "en")
+        assert en["FX_NOTE"] == (
+            "Amounts in Chilean pesos were converted to US dollars at the observed exchange "
+            "rate on the issue date (932.84 CLP per USD)."
+        )
+
+    def test_fx_note_is_empty_without_a_conversion(self) -> None:
+        r = _result()
+        no_fx = ReceiptResult(**{**r.__dict__, "clp_per_usd": None})
+        for locale in ("es", "en"):
+            _, v = receipt_email(no_fx, locale)
+            assert v["FX_NOTE"] == ""
+
+
+class TestAdminResend:
+    async def test_mail_goes_to_billing_in_the_partners_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nexus_api.api.admin.receipts import _mail
+
+        calls: list[dict[str, Any]] = []
+
+        async def _fake(kind: EmailKind, **kw: Any) -> bool:
+            calls.append({"kind": kind, **kw})
+            return True
+
+        monkeypatch.setattr("nexus_api.services.email.send_localized", _fake)
+        r = _result()
+        assert await _mail(r) is True
+        assert len(calls) == 1
+        call = calls[0]
+        assert call["kind"] is EmailKind.RECEIPT
+        assert call["to"] == "contacto@facelad.com"
+        assert call["partner_id"] == r.partner_id
+        assert call["compose"]("es") == receipt_email(r, "es")
+        assert call["compose"]("en") == receipt_email(r, "en")
+
+    async def test_no_billing_email_sends_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nexus_api.api.admin.receipts import _mail
+
+        async def _boom(*_a: Any, **_kw: Any) -> bool:
+            raise AssertionError("no debería enviar")
+
+        monkeypatch.setattr("nexus_api.services.email.send_localized", _boom)
+        r = _result()
+        assert await _mail(ReceiptResult(**{**r.__dict__, "billing_email": None})) is False

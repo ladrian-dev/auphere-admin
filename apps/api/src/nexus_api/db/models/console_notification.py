@@ -72,6 +72,48 @@ class NotificationKind(str, enum.Enum):
     CLIENT_BALANCE_LOW = "client.balance_low"
     # El saldo del cliente se agotó: el agente no responde. payload: {}
     CLIENT_BALANCE_OUT = "client.balance_out"
+    # Spec 047 (T049) — la lectura de la web del cliente terminó, para quien la
+    # lanzó. payload: {external_client_ref, job_id} (+ error_code si falló).
+    CLIENT_READ_DONE = "client.read.done"
+    CLIENT_READ_FAILED = "client.read.failed"
+    # Spec 047 — the rest of ``contracts/events.md`` §3 (partner and client
+    # audiences; the ``ops.*`` ones go to the operator panel). The payload never
+    # carries message bodies (C8) nor our cost (C9).
+    CLIENT_WALLET_LOW = "client.wallet.low"
+    CLIENT_WALLET_NOT_ENOUGH = "client.wallet.not_enough"
+    CLIENT_WALLET_EMPTY = "client.wallet.empty"
+    CLIENT_WALLET_REFILL_SHORT = "client.wallet.refill_short"
+    CLIENT_BALANCE_REQUEST = "client.balance_request"
+    AGENT_CAP_WARNING = "agent.cap.warning"
+    AGENT_CAP_REACHED = "agent.cap.reached"
+    AGENT_PAUSED = "agent.paused"
+    AGENT_RESUMED = "agent.resumed"
+    CHANNEL_PAUSED = "channel.paused"
+    CHANNEL_RESUMED = "channel.resumed"
+    CHANNEL_PROBLEM = "channel.problem"
+    CHANNEL_CONNECTED = "channel.connected"
+    INTEGRATION_REAUTH_REQUIRED = "integration.reauth_required"
+    CLIENT_BUSINESS_CHANGED = "client.business_changed"
+    AGENT_TESTS_FAILING = "agent.tests.failing"
+    AGENT_SUGGESTIONS_READY = "agent.suggestions.ready"
+    AGENT_CORRECTION_PROPOSED = "agent.correction.proposed"
+    BUILD_BUDGET_WARNING = "build.budget.warning"
+    BUILD_BUDGET_EXHAUSTED = "build.budget.exhausted"
+    MODEL_RETIREMENT = "model.retirement"
+    MODEL_PRICE_CHANGE = "model.price_change"
+    # Spec 050 — Meta changed something on the client's WhatsApp that stops or
+    # will stop sends. payload: {external_client_ref, template_name?, phone?,
+    # reason?, quality?, category?}
+    TEMPLATE_PAUSED = "template.paused"
+    TEMPLATE_DISABLED = "template.disabled"
+    TEMPLATE_QUALITY_DROPPED = "template.quality_dropped"
+    TEMPLATE_RECATEGORIZED = "template.recategorized"
+    # Spec 043, R11.4 — a client still books in Google and cannot pass to Reservas
+    # yet, or its pass failed. payload: {external_client_ref, reasons}
+    RESERVAS_PASS_NOT_READY = "reservas.pass_not_ready"
+    CHANNEL_ACCOUNT_REVIEW = "channel.account_review"
+    CHANNEL_ACCOUNT_ALERT = "channel.account_alert"
+    CHANNEL_NAME_REJECTED = "channel.name_rejected"
 
 
 class NotificationAudience(str, enum.Enum):
@@ -101,6 +143,12 @@ class ConsoleNotification(Base):
             postgresql_where=text("dedupe_key IS NOT NULL"),
         ),
         Index("ix_console_notifications_partner_created", "partner_id", "created_at"),
+        # Spec 056 (0227): los avisos «Espera a una persona» pendientes de una conversación.
+        Index(
+            "ix_console_notifications_waiting_pending",
+            text("(payload->>'conversation_id')"),
+            postgresql_where=text("kind = 'inbox.waiting' AND handled_at IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -130,6 +178,10 @@ class ConsoleNotification(Base):
         default=NotificationAudience.PARTNER.value,
         server_default="partner",
     )
+    #: Spec 056 (migración 0227, requisito 8.1): un ``inbox.waiting`` atendido
+    #: (tomada, devuelta, resuelta o liberada su conversación). Deja de contar
+    #: en la campana y sigue en la lista. ``NULL``: pendiente.
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ConsoleNotificationRead(Base):

@@ -31,6 +31,7 @@ from nexus_api.db.models import (
     ConversationStatus,
 )
 from nexus_api.services import inbox_lifecycle
+from nexus_api.services.email_catalog import EmailKind
 from nexus_api.services.inbox_stream import inbox_channel
 from tests.conftest import make_inbox
 
@@ -39,12 +40,15 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mails(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Lo que llega a ``send_template`` (spec 051): tipo, destinatarios, asunto y
+    variables, ya en el idioma de cada grupo."""
     sent: list[dict[str, Any]] = []
 
-    async def _send(**kw: Any) -> None:
-        sent.append(kw)
+    async def _send(kind: EmailKind, **kw: Any) -> bool:
+        sent.append({"kind": kind, **kw})
+        return True
 
-    monkeypatch.setattr("nexus_api.services.console_notifications.send_email", _send)
+    monkeypatch.setattr("nexus_api.services.email.send_template", _send)
     return sent
 
 
@@ -112,6 +116,8 @@ async def test_with_inbox_the_agent_goes_quiet_and_the_client_is_told(
     assert conv.agent_active is False
     assert conv.assigned_user_id is None
     assert conv.takeover_context["reason"] == "escalated"
+    # Spec 047 (contracts/events.md §2): la espera dice por qué.
+    assert conv.waiting_reason == "escalated"
     (event,) = await _events(db_session, c0)
     assert event.kind == "escalated" and event.actor == "agent"
     assert event.payload == {
@@ -126,7 +132,11 @@ async def test_with_inbox_the_agent_goes_quiet_and_the_client_is_told(
     (row,) = await _notifications(db_session, w["partner_id"])
     assert row.audience == "client"
     assert row.external_client_ref == w["ref"]
-    assert row.payload == {"conversation_id": str(c0), "contact": "Contacto 0"}
+    assert row.payload == {
+        "conversation_id": str(c0),
+        "contact": "Contacto 0",
+        "reason": "escalated",
+    }
     (mail,) = mails
     member_email = (
         await db_session.execute(
@@ -135,8 +145,20 @@ async def test_with_inbox_the_agent_goes_quiet_and_the_client_is_told(
         )
     ).scalar_one()
     assert mail["to"] == [member_email]
-    assert f"/inbox?c={c0}" in mail["html"]
-    assert "Pide un reembolso" not in mail["html"]
+    # Spec 051 (catálogo §14): su plantilla, con el contacto y el enlace a la
+    # conversación; nunca el motivo ni el texto de un mensaje (spec 030).
+    assert mail["kind"] == EmailKind.INBOX_WAITING
+    assert mail["subject"] == "Contacto 0 está esperando una respuesta"
+    assert mail["variables"]["CONTACT"] == "Contacto 0"
+    assert mail["variables"]["CONVERSATION_URL"].endswith(f"/inbox?c={c0}")
+    assert mail["variables"]["CONVERSATION_URL"].startswith("http"), "R2.6: enlace absoluto"
+    shown = json.dumps([mail["subject"], mail["variables"]], ensure_ascii=False)
+    assert "Pide un reembolso" not in shown
+    assert "Cliente habitual" not in shown
+    # Garantía 6: el correo lleva el negocio.
+    assert mail["partner_id"] == w["partner_id"]
+    assert mail["client_ref"] == w["ref"]
+    assert mail["tenant_id"] == w["tenant_id"]
 
     # La primera lectura puede ser la confirmación de la suscripción (None).
     published = None

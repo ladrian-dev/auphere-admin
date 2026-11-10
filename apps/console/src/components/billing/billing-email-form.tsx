@@ -12,7 +12,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, DescriptionList, Input, Label } from "@nexus/ui";
+import { Button, Card, CardContent, Input, Label } from "@nexus/ui";
 
 import { setBillingEmailAction } from "@/app/(console)/billing/actions";
 import { useT } from "@/i18n/client";
@@ -40,31 +40,6 @@ export function BillingEmailForm({
       ? t("billing.email.fallback", { email: contactEmail })
       : t("billing.notSet");
 
-  if (!editing) {
-    return (
-      <div className="flex max-w-lg flex-wrap items-center gap-3">
-        <DescriptionList
-          layout="inline"
-          className="min-w-0 flex-1"
-          items={[{ key: "email", term: t("billing.email"), detail: empty, mono: Boolean(email), truncate: true }]}
-        />
-        {canManage ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setValue(email ?? "");
-              setEditing(true);
-            }}
-          >
-            {t(email ? "billing.email.change" : "billing.email.add")}
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-
   function save(event: React.FormEvent) {
     event.preventDefault();
     const next = value.trim();
@@ -80,31 +55,61 @@ export function BillingEmailForm({
     });
   }
 
+  // Spec 047 (prototipo): una tarjeta con «Añadir» o «Cambiar» en su cabecera,
+  // el correo (o adónde van hoy los avisos) y la nota de para qué sirve.
   return (
-    <form onSubmit={save} noValidate className="flex max-w-lg flex-col gap-2">
-      <Label htmlFor="billing-email">{t("billing.email")}</Label>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          id="billing-email"
-          type="email"
-          autoComplete="email"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={contactEmail ?? "facturas@tuempresa.com"}
-          className="min-w-0 flex-1"
-          aria-describedby="billing-email-help"
-          autoFocus
-        />
-        <Button type="submit" size="sm" disabled={pending}>
-          {pending ? t("card.saving") : t("card.save")}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setEditing(false)}>
-          {t("billing.email.cancel")}
-        </Button>
-      </div>
-      <p id="billing-email-help" className="text-xs text-muted-foreground">
-        {t("billing.email.help")}
-      </p>
-    </form>
+    <Card data-slot="billing-email">
+      <CardContent className="grid min-w-0 gap-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <h2 id="billing-email-h" className="text-base font-semibold">
+            {t("billing.email")}
+          </h2>
+          {canManage && !editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setValue(email ?? "");
+                setEditing(true);
+              }}
+            >
+              {t(email ? "billing.email.change" : "billing.email.add")}
+            </Button>
+          ) : null}
+        </div>
+        {editing ? (
+          <form onSubmit={save} noValidate className="flex min-w-0 flex-wrap items-center gap-2">
+            <Label htmlFor="billing-email" className="sr-only">
+              {t("billing.email")}
+            </Label>
+            <Input
+              id="billing-email"
+              type="email"
+              autoComplete="email"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={contactEmail ?? "facturas@tuempresa.com"}
+              className="min-w-0 flex-1"
+              aria-describedby="billing-email-help"
+              autoFocus
+            />
+            <Button type="submit" size="sm" disabled={pending}>
+              {pending ? t("card.saving") : t("card.save")}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setEditing(false)}>
+              {t("billing.email.cancel")}
+            </Button>
+          </form>
+        ) : (
+          <p className={email ? "truncate font-mono text-sm" : "text-sm text-pretty text-muted-foreground"} title={email ?? undefined}>
+            {empty}
+          </p>
+        )}
+        <p id="billing-email-help" className="text-sm text-pretty text-muted-foreground">
+          {t("billing.email.help")}
+        </p>
+      </CardContent>
+    </Card>
   );
 }

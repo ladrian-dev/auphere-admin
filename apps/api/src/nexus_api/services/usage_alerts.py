@@ -7,9 +7,10 @@ that cap, this module:
 1. inserts ONE ``console_notifications`` row per threshold and month
    (``dedupe_key = partner:<id>:usage:<80|100>:<YYYY-MM>``, unique index of
    0086 → re-evaluating never duplicates), and
-2. e-mails ``partners.usage_alert_recipients`` (Resend via
-   ``services/email.py``, best-effort: a failed mail never fails the
-   evaluation, the in-app notification is the durable record).
+2. e-mails ``partners.usage_alert_recipients`` (spec 051: the
+   ``usage_cap_threshold`` / ``usage_cap_reached`` templates, each person in
+   the language of their console account; best-effort: a failed mail never
+   fails the evaluation, the in-app notification is the durable record).
 
 **v1 warns, it does not cut.** At 100 % nothing stops: no channel is
 paused and no message is refused. Cutting a partner's end customers off
@@ -28,7 +29,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from html import escape
 
 import sqlalchemy as sa
 import structlog
@@ -49,7 +49,7 @@ from nexus_api.services.console_reporting import (
     reporting_transaction,
     tenant_ids_of,
 )
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import EmailKind, console_link, format_month
 
 log = structlog.get_logger(__name__)
 
@@ -152,38 +152,70 @@ async def evaluate_partner_usage_alerts(
     return result
 
 
+def format_count(value: float, locale: str) -> str:
+    """A whole count as the reader writes it: «1.234» in Spanish, «1,234» in English."""
+    text = f"{value:,.0f}"
+    return text if locale == "en" else text.replace(",", ".")
+
+
 async def _notify_by_email(partner: Partner, ev: AlertEvaluation, since: datetime) -> bool:
+    """Spec 051: ``usage_cap_threshold`` at 80 %, ``usage_cap_reached`` at 100 %.
+    When both are crossed at once only the 100 % one goes out."""
+    from nexus_api.services.email import send_localized
+
     recipients = [r for r in (partner.usage_alert_recipients or []) if isinstance(r, str) and r]
-    if not recipients:
+    if not recipients or ev.cap is None:
         return False
     top = max(ev.created)
-    period = f"{since:%Y-%m}"
-    used = f"{ev.used:,.0f}"
-    cap = f"{ev.cap:,}" if ev.cap is not None else "—"
+    cap = ev.cap
+
     if top >= 100:
-        subject = f"[Auphere] {partner.name}: tope mensual de mensajes alcanzado ({period})"
-        headline = "Habéis alcanzado el 100 % del tope mensual de mensajes."
-        note = (
-            "El servicio sigue activo: en esta versión el tope solo avisa. "
-            "Si necesitáis ampliarlo, respondednos a este correo."
+
+        def compose_reached(locale: str) -> tuple[str, dict[str, str]]:
+            subject = (
+                "You've reached your monthly message limit"
+                if locale == "en"
+                else "Has alcanzado tu límite mensual de mensajes"
+            )
+            return subject, {
+                "PARTNER_NAME": partner.name,
+                "CAP": format_count(cap, locale),
+                "PERIOD": format_month(since.year, since.month, locale),
+                "ALERTS_URL": console_link("/usage/alerts"),
+            }
+
+        sent = await send_localized(
+            EmailKind.USAGE_CAP_REACHED,
+            to=recipients,
+            compose=compose_reached,
+            partner_id=partner.id,
         )
     else:
-        subject = f"[Auphere] {partner.name}: {top} % del tope mensual de mensajes ({period})"
-        headline = f"Habéis superado el {top} % del tope mensual de mensajes."
-        note = "Al llegar al 100 % os avisaremos de nuevo. El servicio no se interrumpe."
-    html = f"""\
-<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#111">
-  <h2 style="margin:0 0 8px">{escape(headline)}</h2>
-  <p style="margin:0 0 16px;color:#555">{escape(partner.name)} · {period}</p>
-  <p style="margin:0 0 8px;font-size:15px"><strong>Mensajes del mes:</strong> {used} de {cap}</p>
-  <p style="margin:0 0 16px;font-size:14px;color:#333">{escape(note)}</p>
-  <p style="color:#999;font-size:12px;margin:24px 0 0">Auphere · alerta de consumo configurada en la consola de partners (Consumo → Alertas).</p>
-</div>"""
-    try:
-        sent = await send_email(to=recipients, subject=subject, html=html)
-    except Exception as exc:  # pragma: no cover - send_email already swallows
-        log.warning("usage_alerts.email_failed", partner_id=str(partner.id), error=str(exc))
-        return False
+        # The real percentage, rounded down: never more than there is, and,
+        # the threshold being whole, never less than the one just crossed.
+        percent = str(int(ev.percent if ev.percent is not None else top))
+
+        def compose_threshold(locale: str) -> tuple[str, dict[str, str]]:
+            subject = (
+                f"You've used {percent}% of your monthly message limit"
+                if locale == "en"
+                else f"Llevas el {percent} % de tu límite mensual de mensajes"
+            )
+            return subject, {
+                "PARTNER_NAME": partner.name,
+                "PERCENT": percent,
+                "USED": format_count(ev.used, locale),
+                "CAP": format_count(cap, locale),
+                "PERIOD": format_month(since.year, since.month, locale),
+                "USAGE_URL": console_link("/usage"),
+            }
+
+        sent = await send_localized(
+            EmailKind.USAGE_CAP_THRESHOLD,
+            to=recipients,
+            compose=compose_threshold,
+            partner_id=partner.id,
+        )
     log.info(
         "usage_alerts.notified",
         partner_id=str(partner.id),

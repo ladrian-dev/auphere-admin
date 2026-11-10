@@ -49,8 +49,9 @@ from nexus_api.db.models import (
 pytestmark = [pytest.mark.asyncio, pytest.mark.isolation]
 
 #: Una capacidad real del catálogo base, para que el cruce falle por alcance
-#: y no porque el nombre no exista.
-UNA = "booking.create_appointment"
+#: y no porque el nombre no exista. (Spec 048: ``booking.*`` está retirada y ya
+#: no es una capacidad que se ofrezca; la de Reservas sí.)
+UNA = "reservas.create"
 
 
 def _agent(tenant_id: uuid.UUID, *, tools: list[str]) -> AgentConfig:
@@ -131,7 +132,7 @@ async def test_a_foreign_ref_writes_nothing_and_leaves_no_trace(
     client, console_world, db_session
 ) -> None:
     a, b = console_world["a"], console_world["b"]
-    await _seed(db_session, b["tenant_id"], tools=["booking.check_availability"])
+    await _seed(db_session, b["tenant_id"], tools=["reservas.find_slots"])
 
     for body in (
         {"key": UNA, "kind": "tool", "enabled": True},
@@ -151,7 +152,7 @@ async def test_a_foreign_ref_writes_nothing_and_leaves_no_trace(
             AgentConfig.status == AgentConfigStatus.ACTIVE,
         )
     )
-    assert activo is not None and activo.tools == ["booking.check_availability"]
+    assert activo is not None and activo.tools == ["reservas.find_slots"]
 
     # Y sobre todo: el intento no le dejó un borrador. `ensure_draft` corre
     # dentro de este endpoint; si el alcance se comprobara después, B se

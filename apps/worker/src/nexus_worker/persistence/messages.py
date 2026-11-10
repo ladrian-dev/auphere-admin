@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import structlog
 from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.models import (
     Conversation,
@@ -28,22 +29,82 @@ from nexus_api.services import inbox_lifecycle
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+log = structlog.get_logger(__name__)
+
+
+def identity_of(identifier: str) -> dict[str, str]:
+    """Spec 050: what a bare WhatsApp identifier is. A BSUID (``CC.…``) has a
+    dot, which a phone never does."""
+    return {"bsuid": identifier} if "." in identifier else {"phone": identifier}
+
 
 async def upsert_customer(
     session: AsyncSession,
     *,
     identifier: str,
     name: str | None = None,
+    bsuid: str | None = None,
+    phone: str | None = None,
+    username: str | None = None,
 ) -> Customer:
+    """Find or create the person behind an inbound (spec 050, D2).
+
+    ``identifier`` keeps its meaning and is never rewritten: the phone when
+    the person had one at creation, the BSUID otherwise. Resolution:
+
+    1. by ``bsuid``;
+    2. by phone (``phone`` column or a phone-shaped ``identifier``) — and,
+       since Meta gave both together, the BSUID is attached to that row;
+    3. by ``identifier`` (every channel that is not WhatsApp, and rows from
+       before the BSUID existed);
+    4. otherwise a new row.
+
+    Two existing rows are never merged: if the BSUID and the phone point at
+    different people, the BSUID's wins and the conflict is logged.
+    """
     require_current_tenant()
-    stmt = select(Customer).where(Customer.identifier == identifier)
-    existing = (await session.execute(stmt)).scalar_one_or_none()
-    if existing is not None:
-        return existing
+    found: Customer | None = None
+    phone_taken = False
+    if bsuid:
+        found = await session.scalar(select(Customer).where(Customer.bsuid == bsuid))
+        if found is not None and phone and found.phone != phone:
+            other = await session.scalar(
+                select(Customer.id)
+                .where((Customer.phone == phone) | (Customer.identifier == phone))
+                .where(Customer.id != found.id)
+                .limit(1)
+            )
+            if other is not None:
+                # Two people Meta now describes as one: keep both untouched.
+                phone_taken = True
+                log.warning("customer.identity_conflict", reason="bsuid_and_phone_differ")
+    if found is None and phone:
+        found = await session.scalar(
+            select(Customer)
+            .where((Customer.phone == phone) | (Customer.identifier == phone))
+            .order_by(Customer.created_at)
+            .limit(1)
+        )
+    if found is None:
+        found = await session.scalar(select(Customer).where(Customer.identifier == identifier))
+    if found is not None:
+        changed = False
+        if bsuid and found.bsuid is None:
+            found.bsuid, changed = bsuid, True
+        if phone and found.phone is None and not phone_taken:
+            found.phone, changed = phone, True
+        if username and found.username != username:
+            found.username, changed = username, True
+        if changed:
+            await session.flush()
+        return found
     customer = Customer(
         tenant_id=require_current_tenant(),
         identifier=identifier,
         name=name,
+        bsuid=bsuid,
+        phone=phone,
+        username=username,
         preferences={},
     )
     session.add(customer)
@@ -163,6 +224,15 @@ async def persist_inbound_message(
     return msg
 
 
+#: Spec 047 (0176): ``messages.origin`` of a reply, from who wrote it.
+_ORIGIN_BY_ACTOR: dict[str, str] = {
+    "agent": "agent",
+    "system": "system",
+    "member": "business_person",
+    "operator": "business_person",
+}
+
+
 async def persist_outbound_message(
     session: AsyncSession,
     *,
@@ -197,8 +267,23 @@ async def persist_outbound_message(
     ``adapter.send_interactive``. ``content`` should still be set to a
     sensible fallback text (typically the component's ``body``) so the
     operator panel and Langfuse traces have something human-readable.
+
+    Spec 047 (T035, requisito 1.3): inside a channel turn the reply is an
+    effect. Its ``turn_effects`` key and its row go in the caller's
+    transaction together, so a retried turn that writes its answer again gets
+    the row of the first attempt back instead of a second message to the
+    contact. Outside a turn (operator sends, the Playground) nothing changes.
     """
     require_current_tenant()
+    from nexus_worker.runtime.turn_effects import claim_reply, record_reply
+    from nexus_worker.runtime.turns import current_turn
+
+    reply = await claim_reply(session)
+    if reply is not None and reply[1] is not None:
+        prior = await session.get(Message, reply[1])
+        if prior is not None:
+            return prior
+    turn = current_turn()
     msg = Message(
         tenant_id=require_current_tenant(),
         conversation_id=conversation_id,
@@ -219,9 +304,14 @@ async def persist_outbound_message(
         actor_id=actor_id,
         # Spec 030: which of the client's agents wrote it.
         agent_id=agent_id,
+        # Spec 047 (0176): who wrote it and the turn it answers.
+        origin=_ORIGIN_BY_ACTOR.get(actor_kind),
+        turn_id=turn.turn_id if turn is not None else None,
     )
     session.add(msg)
     await session.flush()
     await session.refresh(msg)
+    if reply is not None:
+        await record_reply(session, reply[0], msg.id)
     await _touch_last_message(session, conversation_id, msg.created_at)
     return msg

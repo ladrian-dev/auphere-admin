@@ -29,7 +29,9 @@ describe("connect WhatsApp — which control the page shows (spec 016, R1.1/R1.3
   it("reads the environment names the console actually uses", () => {
     expect(
       metaSignupConfig({ NEXUS_META_APP_ID: "123", NEXUS_META_GRAPH_API_VERSION: "v22.0", NEXUS_META_CONFIG_ID_WA_CLOUD_API: "c1" }),
-    ).toEqual({ appId: "123", graphVersion: "v22.0", configIdCloudApi: "c1", configIdCoexistence: null });
+    ).toEqual({ appId: "123", graphVersion: "v22.0", signupVersion: "v4", configIdCloudApi: "c1", configIdCoexistence: null });
+    // Spec 050: v5 only when the environment says so.
+    expect(metaSignupConfig({ NEXUS_META_GRAPH_API_VERSION: "v26.0", NEXUS_META_EMBEDDED_SIGNUP_VERSION: "v5" }).signupVersion).toBe("v5");
     expect(metaSignupConfig({ NEXUS_META_GRAPH_API_VERSION: "v22.0" }).appId).toBeNull();
   });
   it("with Meta configured renders the real «Conectar WhatsApp» button, enabled", () => {
@@ -91,6 +93,15 @@ describe("mientras la ventana de Meta está abierta (2026-09-30)", () => {
     const veil = screen.getByRole("status");
     expect(veil).toHaveTextContent("Estamos en la ventana de Meta");
     expect(veil.className).toContain("bg-dark-green");
+  });
+
+  it("en Instagram y Messenger recuerda dar acceso a los activos del negocio (revisión de Meta)", () => {
+    render(
+      <LocaleProvider locale="en">
+        <MetaWindowVeil open note="ch.social.veil.access" />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("explicit access to the business's assets");
   });
 
   it("y desaparece en cuanto Meta devuelve", () => {

@@ -15,9 +15,8 @@ Tick: 1 hour by default. The Cloud API rate limit on this endpoint is
 generous (per-WABA, not per-phone), so we can re-check every tenant once
 an hour without burning the budget.
 
-Pattern: shared with ``health_check_cron`` (AgendaPro) — RLS-free tenant
-discovery, then per-tenant scoped session for the channel update +
-audit log insert. The per-tenant BISUAT is resolved INSIDE the scoped
+Pattern: RLS-free tenant discovery, then per-tenant scoped session for the
+channel update + audit log insert. The per-tenant BISUAT is resolved INSIDE the scoped
 session (RLS is the only authority on which credentials row is read).
 """
 
@@ -26,11 +25,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
-from nexus_api.config import get_settings
+from nexus_api.config import get_settings, graph_version_notice
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
@@ -41,6 +41,7 @@ from nexus_api.db.models import (
     Tenant,
     TenantStatus,
 )
+from nexus_api.services.channel_config import health_degraded, set_health
 from nexus_channels.whatsapp_meta import MetaClient
 from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
 from nexus_channels.whatsapp_meta.exceptions import MetaAPIError
@@ -60,7 +61,9 @@ async def run_whatsapp_health_cron(
     """Background task. Returns when ``stop`` is set."""
     log.info("whatsapp_health.start", tick_seconds=tick_seconds)
     sm = get_sessionmaker()
+    warned_on: date | None = None
     while not stop.is_set():
+        warned_on = warn_if_graph_version_expiring(warned_on)
         try:
             tenant_ids = await _list_active_tenants(sm)
             for tid in tenant_ids:
@@ -74,6 +77,82 @@ async def run_whatsapp_health_cron(
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=tick_seconds)
     log.info("whatsapp_health.stopped")
+
+
+def _limit(value: Any) -> str | None:
+    """``whatsapp_business_manager_messaging_limit`` as a ``TIER_*`` string."""
+    if isinstance(value, str) and value:
+        return value
+    if isinstance(value, dict):
+        for key in ("current_limit", "limit", "tier"):
+            if isinstance(value.get(key), str):
+                return str(value[key])
+    return None
+
+
+def apply_phone_snapshot(channel: Channel, payload: dict[str, Any]) -> None:
+    """Spec 050 (4.2, 8.4): what ``GET /{phone_number_id}`` says, on the channel.
+
+    The snapshot fields are refreshed. A YELLOW / RED reading degrades the
+    number with ``problem_reason = "quality"`` and ``problem_source =
+    "quality"`` unless an account problem is already there; GREEN clears only
+    a problem the cron set (or a pre-050 one without a source). An account
+    problem is cleared by its own opposite event, never by quality.
+    """
+    cfg = dict(channel.config or {})
+    quality = payload.get("quality_rating") or payload.get("qualityRating")
+    display = payload.get("display_phone_number") or payload.get("display_name")
+    verified = payload.get("verified_name") or payload.get("verifiedName")
+    limit = _limit(payload.get("whatsapp_business_manager_messaging_limit")) or _limit(
+        payload.get("messaging_limit_tier")
+    )
+    if quality:
+        cfg["quality_rating"] = quality
+    if display:
+        cfg["display_name"] = display
+    if verified:
+        cfg["verified_name"] = verified
+    if limit:
+        cfg["messaging_limit"] = limit
+    if isinstance(payload.get("name_status"), str):
+        cfg["name_status"] = payload["name_status"]
+
+    source = cfg.get("problem_source")
+    mine = source == "quality" or (source is None and channel.problem_reason in (None, "quality"))
+    level = quality.upper() if isinstance(quality, str) else ""
+    channel.config = cfg
+    # A paused number stays paused: set_health changes what resuming returns.
+    if level in {"YELLOW", "RED"}:
+        if not health_degraded(channel) or mine:
+            set_health(channel, degraded=True)
+            channel.problem_reason = "quality"
+            channel.config = {**(channel.config or {}), "problem_source": "quality"}
+    elif level == "GREEN" and health_degraded(channel) and mine:
+        set_health(channel, degraded=False)
+        channel.problem_reason = None
+        channel.config = {k: v for k, v in (channel.config or {}).items() if k != "problem_source"}
+
+
+def warn_if_graph_version_expiring(
+    warned_on: date | None, *, today: date | None = None
+) -> date | None:
+    """Spec 050 (3.6): once a day, an error-level log while the Graph
+    version dies within 60 days; the panel's Estado page says the same.
+    Returns the day it last warned."""
+    day = today or datetime.now(tz=UTC).date()
+    if warned_on == day:
+        return warned_on
+    version = get_settings().meta_graph_api_version
+    notice = graph_version_notice(version, day)
+    if notice is None:
+        return warned_on
+    log.error(
+        "meta.graph_version_expiring",
+        version=version,
+        expires_on=notice[0].isoformat(),
+        days_left=notice[1],
+    )
+    return day
 
 
 async def _list_active_tenants(sm: sa.orm.sessionmaker) -> list[uuid.UUID]:  # type: ignore[type-arg]
@@ -132,6 +211,7 @@ async def _check_channel(
     client = MetaClient(
         app_secret=settings.meta_app_secret,
         require_appsecret_proof=settings.meta_require_appsecret_proof,
+        version=settings.meta_graph_api_version,
     )
     try:
         try:
@@ -153,34 +233,11 @@ async def _check_channel(
         await client.close()
 
     prior_quality = cfg.get("quality_rating")
-    new_quality = payload.get("quality_rating") or payload.get("qualityRating")
-    new_display = payload.get("display_phone_number") or payload.get("display_name")
-    new_verified = payload.get("verified_name") or payload.get("verifiedName")
-
-    # Persist refreshed snapshot.
-    cfg = dict(cfg)
-    if new_quality:
-        cfg["quality_rating"] = new_quality
-    if new_display:
-        cfg["display_name"] = new_display
-    if new_verified:
-        cfg["verified_name"] = new_verified
-    channel.config = cfg
+    old_status = channel.status
+    apply_phone_snapshot(channel, payload)
+    new_quality = (channel.config or {}).get("quality_rating")
     channel.last_health_check_at = datetime.now(UTC)
     channel.last_provider_synced_at = datetime.now(UTC)
-
-    # Mark the channel DEGRADED on a YELLOW / RED transition so the
-    # operator panel surfaces it. The original status is restored
-    # automatically on the next GREEN reading.
-    old_status = channel.status
-    if isinstance(new_quality, str) and new_quality.upper() in {"YELLOW", "RED"}:
-        channel.status = ChannelStatus.DEGRADED
-    elif (
-        isinstance(new_quality, str)
-        and new_quality.upper() == "GREEN"
-        and channel.status == ChannelStatus.DEGRADED
-    ):
-        channel.status = ChannelStatus.ACTIVE
 
     if prior_quality != new_quality or old_status != channel.status:
         audit = AuditLog(

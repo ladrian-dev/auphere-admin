@@ -20,15 +20,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from redis.asyncio import Redis
 
 from nexus_api.api.deps import get_redis
-from nexus_api.core.errors import AgentConfigConflict
+from nexus_api.core.errors import AgentConfigConflict, RollbackTargetNeverPublished
 from nexus_api.db.models import AgentConfig
 from nexus_api.services.agent_config_service import AgentConfigService
-from nexus_api.services.agent_console_policy import (
-    has_disclosure_decision,
-    with_disclosure_default,
-)
+from nexus_api.services.agent_console_policy import has_disclosure_decision
 
-from .agent_drafts import copy_runtime_fields, draft_diff, draft_screens, load_view
+from .agent_drafts import draft_diff, draft_screens, draft_written, ensure_draft, load_view
 from .deps import ClientScope, agent_scope
 from .schemas import AgentBundleOut, AgentDraftIn, AgentPublishIn, AgentVersionOut, DraftDiffOut
 
@@ -104,45 +101,51 @@ async def get_draft_diff(scope: ClientScope = Depends(agent_scope("agents:read")
     "/versions",
     response_model=AgentVersionOut,
     status_code=status.HTTP_201_CREATED,
-    responses={409: {"description": "Draft conflicts with the current state."}},
+    responses={
+        409: {
+            "description": "Draft conflicts with the current state; structured_agent: the "
+            "tools of a structured agent change in its AgentSpec."
+        }
+    },
 )
 async def stage_version(
     body: AgentDraftIn,
     scope: ClientScope = Depends(agent_scope("agents:write")),
 ) -> AgentVersionOut:
-    """Stage a new (non-active) version. Channels, policies and runtime
-    capabilities are copied from the active version so a partner editing
-    the prompt cannot accidentally drop the runtime wiring.
+    """Write the prompt (and, if sent, the tools) into the agent's draft.
 
-    CP-31: a version staged from the console always carries an explicit
-    AI-disclosure decision — the default (``enabled=true``) is written
-    here, attributed to the actor, unless the policies already have one.
+    Spec 047 (R3.1): this used to stage a NEW version copied from the
+    active one, so the settings saved a minute earlier stayed behind in a
+    version nobody would publish. Now it writes into THE draft — created
+    on demand as a full copy of the active version, runtime wiring
+    included — and everything else in it stays.
+
+    Policies are never accepted raw from the console (platform keys such
+    as ``admin_access``/``llm`` live there). CP-31: a draft written from
+    the console always carries an explicit AI-disclosure decision.
+
+    Spec 047, T217 (65.10): the tools of a structured agent change only through
+    its AgentSpec and the validator; sent here, ``409 structured_agent`` as on
+    ``PUT …/tools``. The console only sends the prompt.
     """
-    service = AgentConfigService(scope.session)
-    active = await service.get_active(agent_id=scope.agent_id)
-    actor = scope.principal.actor
-    # Policies are never accepted raw from the console (platform keys such
-    # as ``admin_access``/``llm`` live there); the partner edits ONLY
-    # ``policies.console`` through the validated settings endpoint.
-    policies = dict(active.policies) if active else {}
-    try:
-        cfg = await service.stage_new_version(
-            actor=actor,
-            system_prompt_rendered=body.system_prompt,
-            channels=list(active.channels) if active else [],
-            tools=(body.tools if body.tools is not None else list(active.tools) if active else []),
-            policies=with_disclosure_default(policies, actor=actor),
-            seed_template_ref=active.seed_template_ref if active else None,
-            kg_schema_id=active.kg_schema_id if active else None,
-            agent_id=scope.agent_id or (active.agent_id if active else None),
-        )
-    except AgentConfigConflict as exc:
-        # Unknown tools / invalid combination — the draft is not storable.
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
-    copy_runtime_fields(active, cfg)
-    return _version_out(cfg)
+    if body.tools is not None:
+        from .agent_draft_routes import is_structured, structured_agent_error
+
+        if is_structured((await load_view(scope)).target):
+            raise structured_agent_error()
+        try:
+            await AgentConfigService(scope.session)._validate_tools(body.tools)
+        except AgentConfigConflict as exc:
+            # Unknown tools / invalid combination — the draft is not storable.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
+    draft, _created = await ensure_draft(scope)
+    draft.system_prompt_rendered = body.system_prompt
+    if body.tools is not None:
+        draft.tools = list(dict.fromkeys(body.tools))
+    await draft_written(scope, draft)
+    return _version_out(draft)
 
 
 DISCLOSURE_REQUIRED_DETAIL = (
@@ -181,12 +184,35 @@ async def publish_version(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DISCLOSURE_REQUIRED_DETAIL)
     if not (target.system_prompt_rendered or "").strip():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=EMPTY_PROMPT_DETAIL)
+    # Spec 047 (T093, 23.7): the same gate as «Guardar» in the new console,
+    # the operator panel and the partner API.
+    from nexus_api.services import publishing
+
+    payload = body or AgentPublishIn()
     try:
-        cfg = await service.promote(
-            version, actor=scope.principal.actor, origin=(body or AgentPublishIn()).origin
+        done = await publishing.publish(
+            scope.session,
+            agent_id=target.agent_id,
+            version=target,
+            actor=scope.principal.actor,
+            role=scope.principal.role,
+            partner_id=scope.principal.partner.id,
+            accept_normal_failures=payload.accept_normal_failures,
+            override_reason=payload.override_reason,
+            origin=payload.origin,
         )
+    except publishing.GateBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "gate_blocked", "gate": exc.gate.to_json()},
+        ) from exc
+    except publishing.OverrideForbidden as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail={"code": "override_forbidden"}
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=_conflict_status(exc), detail=str(exc)) from exc
+    cfg = done.version
     await _publish_promote(redis, scope)
     return _version_out(cfg)
 
@@ -201,13 +227,25 @@ async def rollback_version(
     scope: ClientScope = Depends(agent_scope("agents:write")),
     redis: Redis = Depends(get_redis),
 ) -> AgentVersionOut:
+    """Back to a version that was live. A draft never goes live this way (spec
+    047, requisito 23): 409 ``rollback_target_never_published``, with the way
+    to publish it — «Guardar», which runs its tests and the gate."""
     service = AgentConfigService(scope.session)
-    if scope.agent_id is not None:
-        target = await service.configs.get_by_version(version)
-        if target is None or target.agent_id != scope.agent_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
+    target = await service.configs.get_by_version(version)
+    if scope.agent_id is not None and (target is None or target.agent_id != scope.agent_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
     try:
         cfg = await service.rollback(version, actor=scope.principal.actor)
+    except RollbackTargetNeverPublished as exc:
+        assert target is not None
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "publish": f"/console/clients/{scope.ref}/agents/{target.agent_id}/publish",
+            },
+        ) from exc
     except AgentConfigConflict as exc:
         raise HTTPException(status_code=_conflict_status(exc), detail=str(exc)) from exc
     await _publish_promote(redis, scope)

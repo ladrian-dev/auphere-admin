@@ -204,6 +204,89 @@ class PortfolioRowOut(BaseModel):
     href: str
 
 
+class PanelMoneyOut(BaseModel):
+    amount_micros: int
+    currency: str
+
+
+class PanelSpendShareOut(BaseModel):
+    kind: Literal["client", "rest", "line"]
+    external_client_ref: str | None
+    client_name: str | None
+    line: Literal["conversations", "meta", "build", "companion"] | None
+    amount: PanelMoneyOut
+    approx: bool = False
+
+
+class PanelSpendOut(BaseModel):
+    period: Literal["month"] = "month"
+    since: datetime
+    until: datetime
+    total: PanelMoneyOut
+    shares: list[PanelSpendShareOut]
+
+
+class PanelClientsOut(BaseModel):
+    period: Literal["now"] = "now"
+    serving: int
+    not_archived: int
+    onboarding: int
+
+
+class PanelBalanceOut(BaseModel):
+    period: Literal["now"] = "now"
+    available: PanelMoneyOut
+    in_bags: PanelMoneyOut
+    in_bags_approx: bool
+
+
+class PanelDailyOut(BaseModel):
+    period: Literal["7d"] = "7d"
+    days: list[date]
+    resolved_without_person: list[int]
+    handed_to_person: list[int]
+
+
+class PanelAttentionOut(BaseModel):
+    external_client_ref: str
+    client_name: str | None
+    code: Literal[
+        "no_balance",
+        "channel_problem",
+        "integration_reauth",
+        "agent_cap",
+        "agent_without_channel",
+        "low_balance",
+        "no_agents",
+    ]
+    count: int
+    action: Literal[
+        "assign_balance",
+        "request_balance",
+        "fix_channel",
+        "reconnect",
+        "raise_cap",
+        "connect_channel",
+        "new_agent",
+    ]
+    href: str
+
+
+class HomePanelOut(BaseModel):
+    """Spec 047 (requisito 48): el Panel de la consola nueva. Las conversaciones de
+    7 días son ``conversations_trend`` (su periodo: los últimos 7 días contra los 7
+    anteriores)."""
+
+    spend: PanelSpendOut | None
+    clients: PanelClientsOut | None
+    balance: PanelBalanceOut | None
+    conversations_per_day: PanelDailyOut | None
+    attention: list[PanelAttentionOut] | None
+    #: «Todos tus clientes están atendiendo».
+    all_serving: bool
+    errors: list[str] = Field(default_factory=list)
+
+
 class HomeOut(BaseModel):
     """One response. A block is ``null`` when the principal lacks the
     permission that guards it or when its query failed (partial error —
@@ -221,6 +304,8 @@ class HomeOut(BaseModel):
     credit: HomeCreditOut | None = None
     spend: HomeSpendOut | None = None
     portfolio: list[PortfolioRowOut] | None = None
+    #: Spec 047: solo con la consola nueva.
+    panel: HomePanelOut | None = None
     errors: list[str] = Field(default_factory=list, description="Blocks that failed")
     generated_in_ms: int
 

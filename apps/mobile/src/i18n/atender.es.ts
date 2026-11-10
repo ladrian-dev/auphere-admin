@@ -1,0 +1,37 @@
+/** Spec 044 (Inicio, Bandeja y conversación): the app's own words, Spanish. Spread into `app.es.ts`. */
+export const atenderEs = {
+  // ── Inicio (R9) ──────────────────────────────────────────────────
+  "app.home.reservas.unconfirmed": "{n} reservas de hoy sin confirmar. El agente ya les escribió.",
+  "app.home.reservas.unconfirmed.one": "1 reserva de hoy sin confirmar. El agente ya le escribió.",
+  "app.home.reservas.see": "Ver reservas",
+  "app.home.today.title": "Hoy en Reservas",
+  "app.home.today.services": "{n} reservas hoy",
+  "app.home.today.services.one": "1 reserva hoy",
+  "app.home.today.next": "Próxima a las {time} · {n} sin confirmar",
+  "app.home.today.none": "No quedan más reservas hoy.",
+  "app.home.today.inside": "{inside} de {capacity} dentro ahora",
+  "app.home.today.arriving": "Llegan {n} {unit} en la próxima hora · {w} en lista de espera",
+  "app.home.today.arriving.noWait": "Llegan {n} {unit} en la próxima hora",
+  "app.home.inbox.see": "Ver la Bandeja",
+  // ── Bandeja (R10) ────────────────────────────────────────────────
+  "app.inbox.waitingGroup": "Esperan a una persona · {n}",
+  "app.inbox.others": "Las demás",
+  "app.inbox.waitingFor": "Necesita humano · hace {time}",
+  "app.inbox.footer": "Aquí solo están las conversaciones que atiende o atendió tu agente. El resto de chats de tu WhatsApp no aparece.",
+  "app.inbox.ago.min": "{n} min",
+  "app.inbox.ago.h": "{n} h",
+  "app.inbox.ago.d": "{n} d",
+  // ── conversación (R11) ───────────────────────────────────────────
+  "app.inbox.waitingSince": "Espera hace {time} · lo pidió {agent}",
+  "app.inbox.waitingSince.noAgent": "Espera hace {time} · lo pidió el agente",
+  "app.inbox.agentAnswers": "Responde {agent}. Si entras, deja de responder.",
+  "app.inbox.agentAnswers.noAgent": "Responde el agente. Si entras, deja de responder.",
+  "app.inbox.mineLine": "Atiendes tú · {agent} está en pausa",
+  "app.inbox.mineLine.noAgent": "Atiendes tú · el agente está en pausa",
+  "app.inbox.giveBack.short": "Devolver",
+  "app.inbox.attends.waiting": "Espera a una persona",
+  "app.inbox.attends.resolved": "Resuelta",
+  "app.inbox.attends.agent": "Atiende {agent}",
+  "app.inbox.attends.agent.noName": "Atiende el agente",
+  "app.inbox.replies.chips": "Respuestas guardadas",
+} as const;

@@ -1,0 +1,856 @@
+"""Spec 047, T083 — las pruebas del agente (historia 8; requisito 21).
+
+- **Tipos**: del caso (las genera el constructor), del sector y añadidas por
+  personas; cada una con sus campos.
+- **El estado final** se comprueba, no solo lo que dice el agente (21.3).
+- **Pasadas**: 3; pasa con 3 de 3, y con 1 o 2 es «Inestable» (21.4).
+- **Fallos**: «Por qué falló», con lo que se comprobó (21.5).
+- **«No aplica»**, solo del sector y con su razón; no corre ni cuenta (21.6).
+- **Desactualización**: cambiar el borrador las marca; pasarlas las limpia (21.7).
+- **Juez**: una dimensión por criterio, con «No sé», y no bloquea sin calibrar (21.8).
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
+
+import pytest
+import sqlalchemy as sa
+from nexus_worker.jobs.handlers import agent_tests as tests_handler
+from nexus_worker.runtime import booking_brake
+from nexus_worker.runtime.llm import InMemoryProvider, LLMRouter, ToolCall
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.db.models.agent_spec import AgentTest, AgentTestResult, AgentTestRun, AgentTestSuite
+from nexus_api.services.testing import suites as suites_service
+
+from ..business._business_world import Biz, new_business, write
+from ._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft, turn_reservas_on
+
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+
+MADRID = ZoneInfo("Europe/Madrid")
+WEEK = {d: [{"open": "10:00", "close": "20:00"}] for d in ("mon", "tue", "wed", "thu", "fri")}
+
+
+@pytest.fixture
+async def biz(client: Any, db_session: AsyncSession, console_world: dict[str, Any]) -> Biz:
+    biz = await new_business(client, db_session, console_world, name="Barbería Cultor")
+    # La barbería tiene Reservas encendido: sin él, la agenda cuenta como sin activar (D67).
+    await turn_reservas_on(db_session, biz)
+    await write(client, biz, "PUT", "/hours", {"layout": "daily", "days": WEEK}, revision=0)
+    return biz
+
+
+@pytest.fixture(autouse=True)
+def one_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Las pasadas en orden, para que el modelo de mentira sepa cuál es cuál."""
+    monkeypatch.setattr(tests_handler, "PARALLEL", 1)
+
+
+def _monday() -> date:
+    today = datetime.now(MADRID).date()
+    return today + timedelta(days=(7 - today.weekday()) % 7 or 7)
+
+
+def _is_the_brake(call: Any) -> bool:
+    return any(
+        m.get("role") == "system"
+        and str(m.get("content") or "").startswith(booking_brake.CLASSIFY_PROMPT)
+        for m in call.messages
+    )
+
+
+class Booker:
+    """Un agente de mentira que reserva en las pasadas que se le digan."""
+
+    def __init__(self, books_on: set[int]) -> None:
+        self.books_on = books_on
+        self.attempt = 0
+        self.pending: list[ToolCall] = []
+        self.provider = InMemoryProvider()
+        self.provider.responder = self._respond
+        self.provider.tool_caller = self._tools
+        self.router = LLMRouter(
+            provider=self.provider, classify_model="t/c", respond_model="t/r", fallback_model=""
+        )
+
+    def _respond(self, call: Any) -> str:
+        if call.role == "classify" and _is_the_brake(call):
+            # El freno de citas (spec 056) pregunta por la respuesta de una pasada
+            # que no reservó: «Te he reservado…» sin reserva sí lo afirma. No es un
+            # turno nuevo, así que no cuenta como pasada.
+            return "YES"
+        if call.role == "classify":
+            self.attempt += 1
+            if self.attempt in self.books_on:
+                self.pending = [
+                    ToolCall(
+                        id=f"c{self.attempt}",
+                        name="reservas.create",
+                        arguments={
+                            "date": _monday().isoformat(),
+                            "time": "10:00",
+                            "idempotency_key": f"k{self.attempt}",
+                        },
+                    )
+                ]
+            return "book"
+        return "Te he reservado el lunes a las 10:00."
+
+    def _tools(self, call: Any) -> list[ToolCall]:
+        if call.role == "classify" or not self.pending:
+            return []
+        return [self.pending.pop(0)]
+
+
+async def _agent(client: Any, biz: Biz, fake_redis: Any, name: str = "Recepción") -> uuid.UUID:
+    resp = await start_draft(client, f"/console/clients/{biz.ref}", biz.headers(), name=name)
+    await run_jobs(fake_redis, FakeBuilder(reply=RECEPTION))
+    body = (
+        await client.get(f"/console/jobs/{resp.json()['job_id']}", headers=biz.headers())
+    ).json()
+    return uuid.UUID(body["result"]["agent_id"])
+
+
+def _url(biz: Biz, agent_id: uuid.UUID) -> str:
+    return f"/console/clients/{biz.ref}/agents/{agent_id}"
+
+
+async def _only(client: Any, biz: Biz, agent_id: uuid.UUID, body: dict[str, Any]) -> str:
+    """Añade una prueba y deja solo esa como aplicable (las del caso, «No aplica»
+    no vale para ellas: se archivan aquí para aislar la que se prueba)."""
+    resp = await client.post(f"{_url(biz, agent_id)}/tests", json=body, headers=biz.headers())
+    assert resp.status_code == 201, resp.text
+    suite = resp.json()
+    return next(t["id"] for t in suite["tests"] if t["name"] == body["name"])
+
+
+async def _run(
+    client: Any, biz: Biz, agent_id: uuid.UUID, fake_redis: Any, test_id: str, **kw: Any
+) -> dict[str, Any]:
+    resp = await client.post(
+        f"{_url(biz, agent_id)}/test-runs",
+        json={"scope": "one", "test_id": test_id},
+        headers=biz.headers(),
+    )
+    assert resp.status_code == 202, resp.text
+    await run_jobs(fake_redis, None, **kw)
+    job = (await client.get(f"/console/jobs/{resp.json()['job_id']}", headers=biz.headers())).json()
+    assert job["status"] == "done", job
+    suite = (await client.get(f"{_url(biz, agent_id)}/tests", headers=biz.headers())).json()
+    return next(t for t in suite["tests"] if t["id"] == test_id) | {"_suite": suite}
+
+
+BOOKING_TEST = {
+    "name": "Pide cita el lunes",
+    "persona": "Cliente habitual",
+    "first_message": "¿Me das cita el lunes a las 10?",
+    "plan": "Acepta la hora que le ofrecen.",
+    "expected_state": {"booking": {"created": True}},
+    "criteria": [{"key": "confirms", "text": "Confirma la cita con día y hora."}],
+    "critical": True,
+}
+
+
+async def test_the_three_kinds_and_their_fields(client: Any, biz: Biz, fake_redis: Any) -> None:
+    agent_id = await _agent(client, biz, fake_redis)
+    await _only(client, biz, agent_id, BOOKING_TEST)
+    suite = (await client.get(f"{_url(biz, agent_id)}/tests", headers=biz.headers())).json()
+    kinds = {t["kind"] for t in suite["tests"]}
+    assert {"case", "person"} <= kinds
+    mine = next(t for t in suite["tests"] if t["kind"] == "person")
+    for key in (
+        "name",
+        "persona",
+        "first_message",
+        "plan",
+        "expected_state",
+        "criteria",
+        "critical",
+    ):
+        assert mine[key] == BOOKING_TEST[key]
+    assert mine["status"] == "not_run"
+    assert suite["allowed"] == ["add", "edit", "run"]
+    assert suite["judge_calibrated"] is False
+
+
+async def test_three_runs_pass_three_of_three_and_two_of_three_is_flaky(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    agent_id = await _agent(client, biz, fake_redis)
+    test_id = await _only(client, biz, agent_id, BOOKING_TEST)
+    passed = await _run(client, biz, agent_id, fake_redis, test_id, router=Booker({1, 2, 3}).router)
+    assert (passed["status"], passed["passes"], passed["decided"]) == ("passed", 3, 3)
+    assert passed["why_failed"] is None and passed["stale"] is False
+
+    flaky = await _run(client, biz, agent_id, fake_redis, test_id, router=Booker({1, 3}).router)
+    assert (flaky["status"], flaky["passes"]) == ("flaky", 2)
+    # «Por qué falló»: lo que se comprobó en la pasada que falló.
+    assert "tenía que quedar una cita y no quedó" in (flaky["why_failed"] or "")
+
+    failed = await _run(client, biz, agent_id, fake_redis, test_id, router=Booker(set()).router)
+    assert (failed["status"], failed["passes"]) == ("failed", 0)
+    assert str(test_id) in failed["_suite"]["summary"]["critical_failed"]
+
+    # Cada pasada guarda el estado final que se comprobó y su conversación.
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        results = (
+            await db_session.scalars(
+                sa.select(AgentTestResult).where(AgentTestResult.test_id == uuid.UUID(test_id))
+            )
+        ).all()
+    assert len(results) == 9
+    assert all(r.final_state.get("booking") is not None for r in results)
+    assert all(r.transcript[0]["role"] == "customer" for r in results)
+
+
+async def test_not_applicable_only_for_sector_tests_with_a_reason(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    agent_id = await _agent(client, biz, fake_redis)
+    test_id = await _only(client, biz, agent_id, BOOKING_TEST)
+    refused = await client.patch(
+        f"{_url(biz, agent_id)}/tests/{test_id}",
+        json={"not_applicable_reason": "No hacemos citas"},
+        headers=biz.headers(),
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["code"] == "not_applicable_only_sector"
+    # Una del sector, sí; sin razón, no.
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await db_session.scalar(
+            sa.select(AgentTestSuite).where(AgentTestSuite.agent_id == agent_id)
+        )
+        assert suite is not None
+        sector = AgentTest(
+            tenant_id=biz.tenant_id,
+            suite_id=suite.id,
+            kind="sector",
+            name="Pide factura",
+            first_message="¿Me hacéis factura?",
+            sector_test_ref="barberia_peluqueria@1#factura",
+        )
+        db_session.add(sector)
+        await db_session.commit()
+        sector_id = sector.id
+    no_reason = await client.patch(
+        f"{_url(biz, agent_id)}/tests/{sector_id}",
+        json={"not_applicable_reason": "x"},
+        headers=biz.headers(),
+    )
+    assert no_reason.status_code == 422
+    ok = await client.patch(
+        f"{_url(biz, agent_id)}/tests/{sector_id}",
+        json={"not_applicable_reason": "No emitimos facturas"},
+        headers=biz.headers(),
+    )
+    assert ok.status_code == 200, ok.text
+    row = next(t for t in ok.json()["tests"] if t["id"] == str(sector_id))
+    assert (
+        row["status"] == "not_applicable" and row["not_applicable_reason"] == "No emitimos facturas"
+    )
+    assert ok.json()["summary"]["not_applicable"] == 1
+    # No corre: «todas» no la incluye.
+    run = await client.post(
+        f"{_url(biz, agent_id)}/test-runs", json={"scope": "all"}, headers=biz.headers()
+    )
+    assert run.status_code == 202
+    assert run.json()["tests"] == ok.json()["summary"]["total"] - 1
+
+
+async def test_a_sector_test_can_only_not_apply(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """21.6: quitarle «crítica» a una prueba del sector sería saltarse la puerta."""
+    agent_id = await _agent(client, biz, fake_redis)
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await db_session.scalar(
+            sa.select(AgentTestSuite).where(AgentTestSuite.agent_id == agent_id)
+        )
+        assert suite is not None
+        sector = AgentTest(
+            tenant_id=biz.tenant_id,
+            suite_id=suite.id,
+            kind="sector",
+            name="Pide factura",
+            first_message="¿Me hacéis factura?",
+            critical=True,
+            sector_test_ref="barberia_peluqueria@1#factura",
+        )
+        db_session.add(sector)
+        await db_session.commit()
+        sector_id = sector.id
+    url = f"{_url(biz, agent_id)}/tests/{sector_id}"
+
+    for change in ({"critical": False}, {"name": "Otra"}, {"plan": "Otro plan de cliente"}):
+        refused = await client.patch(url, json=change, headers=biz.headers())
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["detail"]["code"] == "sector_test_locked"
+
+    fine = await client.patch(
+        url, json={"not_applicable_reason": "No emitimos facturas"}, headers=biz.headers()
+    )
+    assert fine.status_code == 200, fine.text
+
+
+async def test_running_clears_stale_and_editing_marks_it(
+    client: Any, biz: Biz, fake_redis: Any
+) -> None:
+    agent_id = await _agent(client, biz, fake_redis)
+    test_id = await _only(client, biz, agent_id, BOOKING_TEST)
+    edited = await client.patch(
+        f"{_url(biz, agent_id)}/tests/{test_id}",
+        json={"plan": "Pide las 11."},
+        headers=biz.headers(),
+    )
+    row = next(t for t in edited.json()["tests"] if t["id"] == test_id)
+    assert row["stale"] is True
+    after = await _run(client, biz, agent_id, fake_redis, test_id, router=Booker({1, 2, 3}).router)
+    assert after["stale"] is False
+
+
+async def test_the_judge_has_one_dimension_per_criterion_and_does_not_block_uncalibrated(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    agent_id = await _agent(client, biz, fake_redis)
+    body = dict(BOOKING_TEST)
+    body["criteria"] = [
+        {"key": "confirms", "text": "Confirma la cita con día y hora."},
+        {"key": "policy", "text": "Recuerda la política de cancelación."},
+    ]
+    test_id = await _only(client, biz, agent_id, body)
+
+    async def strict_judge(_messages: list[dict[str, str]]) -> str:
+        return (
+            '{"dimensions": [{"key": "confirms", "verdict": "pass", "why": "Lo dice."},'
+            ' {"key": "policy", "verdict": "fail", "why": "No recuerda la política."}]}'
+        )
+
+    lenient = await _run(
+        client,
+        biz,
+        agent_id,
+        fake_redis,
+        test_id,
+        router=Booker({1, 2, 3}).router,
+        judge=strict_judge,
+    )
+    # Sin calibrar, el juez se enseña pero no tumba la prueba: decide el estado.
+    assert lenient["status"] == "passed"
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        result = await db_session.scalar(
+            sa.select(AgentTestResult)
+            .where(AgentTestResult.test_id == uuid.UUID(test_id))
+            .order_by(AgentTestResult.created_at.desc())
+        )
+    assert result is not None
+    assert [d["key"] for d in result.dimensions] == ["confirms", "policy"]
+    assert {d["verdict"] for d in result.dimensions} == {"pass", "fail"}
+
+    # Un juez que no sabe: «No sé» en cada dimensión que no dijo.
+    async def silent_judge(_messages: list[dict[str, str]]) -> str:
+        return "no lo sé"
+
+    await _run(
+        client,
+        biz,
+        agent_id,
+        fake_redis,
+        test_id,
+        router=Booker({1, 2, 3}).router,
+        judge=silent_judge,
+    )
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        result = await db_session.scalar(
+            sa.select(AgentTestResult)
+            .where(AgentTestResult.test_id == uuid.UUID(test_id))
+            .order_by(AgentTestResult.created_at.desc())
+        )
+    assert result is not None and {d["verdict"] for d in result.dimensions} == {"unknown"}
+
+    # Calibrado (certificación de la tarea ``judge``), el mismo juez sí bloquea.
+    async with db_session.begin():
+        deployment = await db_session.scalar(sa.text("SELECT id FROM model_profiles LIMIT 1"))
+        await db_session.execute(
+            sa.text(
+                "INSERT INTO model_task_certifications "
+                "(deployment_id, task, battery_version, scores, quality, passed) "
+                "VALUES (:d, 'judge', 1, '{}'::jsonb, 0.9, true)"
+            ),
+            {"d": deployment},
+        )
+    strict = await _run(
+        client,
+        biz,
+        agent_id,
+        fake_redis,
+        test_id,
+        router=Booker({1, 2, 3}).router,
+        judge=strict_judge,
+    )
+    assert strict["status"] == "failed"
+    assert "policy" in (strict["why_failed"] or "")
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        runs = (await db_session.scalars(sa.select(AgentTestRun))).all()
+    assert all(r.paid_by == "partner" for r in runs)
+
+
+# ── Spec 047, enmienda del 2026-10-29 (T195/T206, requisito 61) ────────────
+
+
+class SimCustomer:
+    """El cliente simulado, de mentira: siempre la misma respuesta."""
+
+    def __init__(self, status: str, message: str = "Gracias, perfecto.") -> None:
+        self.status = status
+        self.message = message
+        self.calls = 0
+
+    async def __call__(
+        self, messages: list[dict[str, str]], *, avoid_model: str | None = None
+    ) -> str:
+        import json
+
+        self.calls += 1
+        return json.dumps({"message": self.message, "status": self.status})
+
+
+async def test_a_pass_is_a_conversation_kept_turn_by_turn(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """61.1, 61.3 y 61.6: cada pasada conversa con el cliente simulado hasta que
+    cumple su plan; la conversación y por qué terminó se sirven a «Por qué falló»."""
+    agent_id = await _agent(client, biz, fake_redis)
+    test_id = await _only(client, biz, agent_id, BOOKING_TEST)
+    customer = SimCustomer("plan_done")
+    passed = await _run(
+        client, biz, agent_id, fake_redis, test_id, router=Booker({1, 2, 3}).router,
+        customer=customer,
+    )  # fmt: skip
+    assert passed["status"] == "passed" and customer.calls == 3
+    assert passed["stop"] == "plan_done"
+    roles = [t["role"] for t in passed["transcript"]]
+    assert roles == ["customer", "agent", "customer"]
+    assert passed["transcript"][0]["text"] == BOOKING_TEST["first_message"]
+    assert passed["transcript"][1]["actions"], "lo que habría hecho el agente"
+    assert [a["stop"] for a in passed["attempts"]] == ["plan_done"] * 3
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        results = (
+            await db_session.scalars(
+                sa.select(AgentTestResult).where(AgentTestResult.test_id == uuid.UUID(test_id))
+            )
+        ).all()
+    assert {r.stop for r in results} == {"plan_done"}
+    assert all(r.final_state["booking"]["items"] for r in results), "la cita en Reservas"
+
+
+async def test_eight_turns_without_the_plan_fail_with_that_reason(
+    client: Any, biz: Biz, fake_redis: Any
+) -> None:
+    agent_id = await _agent(client, biz, fake_redis)
+    body = {**BOOKING_TEST, "name": "Nunca acaba", "expected_state": {}}
+    test_id = await _only(client, biz, agent_id, body)
+    customer = SimCustomer("continue", "¿Y entonces?")
+    failed = await _run(
+        client, biz, agent_id, fake_redis, test_id, router=Booker(set()).router, customer=customer
+    )
+    assert failed["status"] == "failed" and failed["stop"] == "turn_limit"
+    assert "8 turnos" in (failed["why_failed"] or "")
+    assert sum(1 for t in failed["transcript"] if t["role"] == "customer") == 8
+    assert customer.calls == 3 * 7
+
+
+async def test_the_cost_is_estimated_before_running_the_suite(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """61.8: con ``dry_run`` dice cuánto costaría, sin encolar nada."""
+    from nexus_api.db.models import Job
+
+    agent_id = await _agent(client, biz, fake_redis)
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        before = len((await db_session.scalars(sa.select(Job.id))).all())
+    resp = await client.post(
+        f"{_url(biz, agent_id)}/test-runs",
+        json={"scope": "all", "dry_run": True},
+        headers=biz.headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["tests"] > 0
+    assert out["calls"]["agent"] == out["tests"] * 3 * 2
+    assert "estimate" in out and "unknown_prices" in out
+    # Sin la consola nueva no hay partida que mirar: la consola no pregunta (66.5).
+    assert (out["payer"], out["left"], out["fits"]) == ("auphere", None, True)
+    if out["estimate"] is not None:
+        assert out["estimate"]["currency"] == "USD" and out["estimate"]["amount_micros"] > 0
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        after = len((await db_session.scalars(sa.select(Job.id))).all())
+    assert after == before, "una estimación no encola nada"
+
+
+async def test_with_the_new_console_the_estimate_says_what_is_left(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """66.5: la consola solo pregunta si la pasada no cabe en lo que queda de la partida."""
+    from datetime import UTC
+
+    from nexus_api.db.models import Partner
+
+    agent_id = await _agent(client, biz, fake_redis)
+    partner = await db_session.get(Partner, biz.partner_id)
+    assert partner is not None
+    partner.console_v2_enabled_at = datetime.now(UTC)
+    await db_session.commit()
+    resp = await client.post(
+        f"{_url(biz, agent_id)}/test-runs",
+        json={"scope": "all", "dry_run": True},
+        headers=biz.headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["payer"] == "auphere"
+    assert out["left"]["amount_micros"] == 50 * 100_000, "50 por defecto, en cien milésimas"
+    assert out["fits"] is True
+
+
+# ── T217: el gasto de las pruebas tiene tope ────────────────────────────────
+
+
+async def test_one_live_run_per_agent_a_second_one_returns_it(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    """Spec 047, T217 (revisión de seguridad del 2026-10-30): «Construcción y pruebas»
+    la paga Auphere hasta el tope; pulsar «Probar» dos veces no lanza dos pasadas.
+    Con una viva, ``POST …/test-runs`` la devuelve (como «Volver a leer»)."""
+    from nexus_api.db.models import Job
+
+    agent_id = await _agent(client, biz, fake_redis)
+    test_id = await _only(client, biz, agent_id, BOOKING_TEST)
+    url = f"{_url(biz, agent_id)}/test-runs"
+
+    async def queued() -> int:
+        entries = await fake_redis.xrange("nexus:jobs")
+        return sum(1 for _id, f in entries if f["kind"] == "tests")
+
+    before = await queued()
+    first = await client.post(url, json={"scope": "one", "test_id": test_id}, headers=biz.headers())
+    assert first.status_code == 202, first.text
+    second = await client.post(url, json={"scope": "all"}, headers=biz.headers())
+    assert second.status_code == 202, second.text
+    assert second.json() == first.json(), "la viva, no otra"
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        jobs = (
+            await db_session.scalars(
+                sa.select(Job.id).where(Job.kind == "tests", Job.agent_id == agent_id)
+            )
+        ).all()
+    assert [str(j) for j in jobs] == [first.json()["job_id"]]
+    assert await queued() == before + 1, "encolada una vez"
+
+    # Terminada, se puede lanzar otra.
+    await run_jobs(fake_redis, None, router=Booker({1, 2, 3}).router)
+    third = await client.post(url, json={"scope": "one", "test_id": test_id}, headers=biz.headers())
+    assert third.status_code == 202, third.text
+    assert third.json()["job_id"] != first.json()["job_id"]
+
+
+async def test_the_suite_stops_when_build_and_tests_runs_out(
+    client: Any,
+    db_session: AsyncSession,
+    biz: Biz,
+    fake_redis: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T217: la pasada vuelve a mirar la partida antes de cada prueba. Si se agota,
+    no empieza las que faltan y lo dice: el trabajo falla con
+    ``build_budget_exhausted`` y la pasada cuenta lo que no corrió. Las que sí
+    corrieron guardan sus resultados."""
+    from nexus_api.services.wallet import build_budget
+    from nexus_api.services.wallet.bags import WalletError
+
+    agent_id = await _agent(client, biz, fake_redis)
+    first_id = await _only(client, biz, agent_id, BOOKING_TEST)
+    second_id = await _only(client, biz, agent_id, {**BOOKING_TEST, "name": "Pide cita otra vez"})
+    run = await client.post(
+        f"{_url(biz, agent_id)}/test-runs", json={"scope": "all"}, headers=biz.headers()
+    )
+    assert run.status_code == 202, run.text
+    total = run.json()["tests"]
+    assert total >= 2
+
+    asked: list[uuid.UUID] = []
+
+    async def one_test_left(partner_id: uuid.UUID) -> None:
+        asked.append(partner_id)
+        if len(asked) > 1:
+            raise WalletError("build_budget_exhausted", 402)
+
+    monkeypatch.setattr(build_budget, "require_room_for_partner", one_test_left)
+    await run_jobs(fake_redis, None, router=Booker({1, 2, 3}).router)
+
+    job = (await client.get(f"/console/jobs/{run.json()['job_id']}", headers=biz.headers())).json()
+    assert (job["status"], job["error_code"]) == ("failed", "build_budget_exhausted"), job
+    assert set(asked) == {biz.partner_id} and len(asked) == 2, "una vez por prueba, y para"
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        row = await db_session.get(AgentTestRun, uuid.UUID(run.json()["run_id"]))
+        assert row is not None
+        results = (
+            await db_session.scalars(
+                sa.select(AgentTestResult).where(AgentTestResult.run_id == row.id)
+            )
+        ).all()
+    assert row.status == "failed"
+    assert row.summary["stopped"] == "build_budget_exhausted"
+    assert row.summary["not_started"] == total - 1
+    assert len(results) == 3 and len({r.test_id for r in results}) == 1, "la empezada termina"
+    suite = (await client.get(f"{_url(biz, agent_id)}/tests", headers=biz.headers())).json()
+    ran = {str(r.test_id) for r in results}
+    for t in suite["tests"]:
+        if t["id"] in (first_id, second_id) and t["id"] not in ran:
+            assert t["status"] == "not_run", t
+
+
+# ── requisito 66: la suite sigue a las herramientas del agente ──────────────
+
+
+async def _suite_with(
+    session: AsyncSession, tenant_id: uuid.UUID, tests: list[dict[str, Any]]
+) -> Any:
+    """Una suite suelta, sin pasar por el constructor."""
+    from nexus_api.services import agents as agent_service
+
+    agent = await agent_service.create_agent(
+        session, tenant_id, name=f"Reconcilia {uuid.uuid4().hex[:6]}", actor="test"
+    )
+    suite = AgentTestSuite(id=uuid.uuid4(), tenant_id=tenant_id, agent_id=agent.id, revision=1)
+    session.add(suite)
+    await session.flush()
+    for item in tests:
+        kind = item.pop("kind")
+        by = item.pop("by", "system")
+        await suites_service.add_test(session, suite, item, kind=kind, by=by)
+    return suite
+
+
+def _case(name: str, first: str, **extra: Any) -> dict[str, Any]:
+    return {"kind": "case", "by": "builder", "name": name, "first_message": first, **extra}
+
+
+def _sector(name: str, first: str, **extra: Any) -> dict[str, Any]:
+    return {"kind": "sector", "name": name, "first_message": first, **extra}
+
+
+async def test_a_calendar_connected_later_brings_back_what_it_said_did_not_apply(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    """«Ana»: conectó Google Calendar y sus pruebas de cita siguieron «No aplica», mientras
+    «Pide cita sin agenda», crítica, esperaba lo contrario y bloqueaba cada guardado. Esa
+    no se archiva al guardar el borrador, que se puede descartar: se archiva antes de pagar
+    una pasada."""
+    from nexus_api.services.testing.sector_catalog import (
+        NO_CALENDAR_TEST,
+        SYSTEM_REASON,
+        reconcile_suite,
+    )
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await _suite_with(
+            db_session,
+            biz.tenant_id,
+            [
+                _sector(
+                    "Pide cita",
+                    "¿Tienes hueco mañana?",
+                    expected_state={"booking": {"created": True}},
+                    critical=True,
+                    not_applicable_reason=f"{SYSTEM_REASON} reservar citas.",
+                ),
+                _case(
+                    NO_CALENDAR_TEST,
+                    "¿Me das cita el viernes?",
+                    expected_state={"escalated": True},
+                    criteria=[{"key": "no_promise", "text": "No promete hora."}],
+                    critical=True,
+                ),
+            ],
+        )
+        tools = ["CALENDLY_POST_INVITEE"]
+        assert await reconcile_suite(db_session, suite, tools=tools, compact=False) == 1
+        by_name = {t.name: t for t in await suites_service.list_tests(db_session, suite)}
+        assert by_name["Pide cita"].not_applicable_reason is None
+        assert by_name["Pide cita"].stale is True
+        assert NO_CALENDAR_TEST in by_name
+        # Sin el calendario, «No aplica» vuelve: se puede deshacer.
+        assert await reconcile_suite(db_session, suite, tools=[], compact=False) == 1
+        assert await reconcile_suite(db_session, suite, tools=tools, compact=False) == 1
+        # Antes de una pasada, sí.
+        assert await reconcile_suite(db_session, suite, tools=tools) == 1
+        live = await suites_service.list_tests(db_session, suite)
+        assert [t.name for t in live] == ["Pide cita"]
+        # Otra vez, nada: se puede llamar antes de cada pasada.
+        assert await reconcile_suite(db_session, suite, tools=tools) == 0
+
+
+async def test_a_critical_is_only_replaced_by_a_critical_that_runs(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    """Una crítica en rojo no se quita por una normal igual: la puerta dejaría de frenar."""
+    from nexus_api.services.testing.sector_catalog import reconcile_suite
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await _suite_with(
+            db_session,
+            biz.tenant_id,
+            [
+                _sector("Precio", "¿Cuánto cuesta?"),
+                _case("Precio", "¿Cuánto cuesta?", critical=True),
+            ],
+        )
+        await reconcile_suite(db_session, suite, tools=[])
+        live = await suites_service.list_tests(db_session, suite)
+        assert {(t.kind, t.critical) for t in live} == {("sector", False), ("case", True)}
+
+
+async def test_saving_a_draft_never_archives(db_session: AsyncSession, biz: Biz) -> None:
+    from nexus_api.services.testing.sector_catalog import reconcile_suite
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await _suite_with(
+            db_session,
+            biz.tenant_id,
+            [_sector("Se queja", "Nadie me contestó."), _case("Se queja", "Me atendieron fatal.")],
+        )
+        assert await reconcile_suite(db_session, suite, tools=[], compact=False) == 0
+        assert len(await suites_service.list_tests(db_session, suite)) == 2
+
+
+async def test_what_a_person_edited_or_revived_is_theirs(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    """66.3: editar una del caso o reactivar una del sector es de la persona desde entonces."""
+    from nexus_api.services.testing.sector_catalog import SYSTEM_REASON, reconcile_suite
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await _suite_with(
+            db_session,
+            biz.tenant_id,
+            [
+                _sector("Se queja", "Nadie me contestó."),
+                _case("Se queja", "Me atendieron fatal."),
+                _sector(
+                    "Pide cita",
+                    "¿Tienes hueco?",
+                    expected_state={"booking": {"created": True}},
+                    not_applicable_reason=f"{SYSTEM_REASON} reservar citas.",
+                ),
+            ],
+        )
+        tests = {(t.kind, t.name): t for t in await suites_service.list_tests(db_session, suite)}
+        tests["case", "Se queja"].created_by_kind = "partner_member"
+        revived = tests["sector", "Pide cita"]
+        revived.not_applicable_reason = None
+        revived.created_by_kind = "partner_member"
+        await db_session.flush()
+        await reconcile_suite(db_session, suite, tools=[])
+        live = await suites_service.list_tests(db_session, suite)
+        assert len(live) == 3
+        assert next(t for t in live if t.name == "Pide cita").not_applicable_reason is None
+
+
+async def test_a_person_s_reason_and_a_person_s_test_stay(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    from nexus_api.services.testing.sector_catalog import reconcile_suite
+
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await _suite_with(
+            db_session,
+            biz.tenant_id,
+            [
+                _sector(
+                    "Pide cita",
+                    "¿Tienes hueco?",
+                    expected_state={"booking": {"created": True}},
+                    not_applicable_reason="Aquí no se reserva por chat.",
+                ),
+                {
+                    "kind": "person",
+                    "by": "partner_member",
+                    "name": "Pide cita",
+                    "first_message": "¿Tienes hueco?",
+                },
+            ],
+        )
+        await reconcile_suite(db_session, suite, tools=["reservas.create"])
+        live = await suites_service.list_tests(db_session, suite)
+        assert len(live) == 2
+        assert next(t for t in live if t.kind == "sector").not_applicable_reason == (
+            "Aquí no se reserva por chat."
+        )
+
+
+async def test_what_the_case_repeats_goes_and_the_spare_ones_leave_by_the_end(
+    db_session: AsyncSession, biz: Biz
+) -> None:
+    from nexus_api.services.testing.sector_catalog import SUITE_TARGET, reconcile_suite
+
+    spare = [_sector(f"Extra {n}", f"Pregunta rara número {n}") for n in range(SUITE_TARGET + 3)]
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        suite = await _suite_with(
+            db_session,
+            biz.tenant_id,
+            [
+                _sector("Se queja", "Nadie me contestó.", critical=True),
+                _case("Se queja", "Me atendieron fatal."),
+                *spare,
+            ],
+        )
+        await reconcile_suite(db_session, suite, tools=[])
+        live = await suites_service.list_tests(db_session, suite)
+        assert len(live) == SUITE_TARGET
+        assert not [t for t in live if t.kind == "case"]
+        assert any(t.critical for t in live)
+
+
+async def test_an_estimate_counts_the_clean_suite_and_writes_nothing(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any
+) -> None:
+    from nexus_api.db.models import Agent
+    from nexus_api.services.testing.sector_catalog import SUITE_TARGET
+
+    agent_id = await _agent(client, biz, fake_redis)
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        agent = await db_session.get(Agent, agent_id)
+        assert agent is not None
+        suite = await suites_service.ensure_suite(db_session, agent_id)
+        for n in range(SUITE_TARGET + 5):
+            await suites_service.add_test(
+                db_session,
+                suite,
+                {"name": f"Extra {n}", "first_message": f"Pregunta rara {n}"},
+                kind="sector",
+                by="system",
+            )
+    await db_session.commit()
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        before = await db_session.scalar(
+            sa.select(sa.func.count()).select_from(AgentTest).where(AgentTest.archived_at.is_(None))
+        )
+    resp = await client.post(
+        f"{_url(biz, agent_id)}/test-runs",
+        json={"scope": "all", "dry_run": True},
+        headers=biz.headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tests"] < before
+    async with tenant_scoped_session(db_session, biz.tenant_id):
+        after = await db_session.scalar(
+            sa.select(sa.func.count()).select_from(AgentTest).where(AgentTest.archived_at.is_(None))
+        )
+    assert after == before

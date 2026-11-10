@@ -10,11 +10,12 @@ Two families:
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator
 
 #: The scope vocabulary, mirrored from ``ApiKeyScope`` so the admin
 #: surface rejects unknown values at the edge instead of storing them.
@@ -87,12 +88,47 @@ class WidgetSessionOut(BaseModel):
 # ── /admin/partners ──────────────────────────────────────────────────────────
 
 
+_ADDRESS_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normal_address(value: object) -> object:
+    """Trimmed and lower-cased, like every invitation. On purpose not ``EmailStr``,
+    which refuses special-use domains: here the shape is enough, and the real
+    proof is that the link arrives and the person opens it. No spaces also means
+    no header injection."""
+    if not isinstance(value, str):
+        return value
+    value = value.strip().lower()
+    if not _ADDRESS_SHAPE.match(value):
+        raise ValueError("invalid e-mail")
+    return value
+
+
+OwnerAddress = Annotated[str, BeforeValidator(_normal_address), Field(max_length=255)]
+
+
 class PartnerCreateIn(BaseModel):
+    """Spec 052: a partner is born with its owner invited. The address also
+    becomes its contact, so no separate one is asked for (decision D2)."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9-]*$")
-    contact_email: EmailStr | None = None
+    owner_email: OwnerAddress
+
+
+class OwnerInviteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: OwnerAddress
+
+
+class OwnerInvitationActionIn(BaseModel):
+    """Resend and revoke take nothing but the path. The empty model is what makes
+    a ``tenant_id`` or a ``partner_id`` in the body a 422 instead of being ignored."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class PartnerUpdateIn(BaseModel):
@@ -142,7 +178,8 @@ class PartnerOut(BaseModel):
     activated_at: datetime | None = None
     clients_count: int | None = None
     members_count: int | None = None
-    #: Available balance in US$ cents, rounded down like the console shows it.
+    #: Available balance in US$ cents, rounded down like the console shows it:
+    #: what was recharged, without the weekly pool (spec 047, 46.1).
     #: None when the ledger could not be read (fail-closed, never a guess).
     available_cents: int | None = None
     #: Spec 041: how the partner is charged and its card (never more than the
@@ -171,13 +208,80 @@ class PartnerInvitationOut(BaseModel):
     role: str
     expires_at: datetime
     created_at: datetime
+    #: Spec 052: the last send the provider accepted; null is «not known to
+    #: have gone out». Only recorded for Auphere's invitations.
+    last_sent_at: datetime | None = None
+    #: An owner invitation no person of the partner issued. Only these have
+    #: actions in the panel.
+    from_auphere: bool = False
+
+
+class OwnerStateOut(BaseModel):
+    """Spec 052: what the Team tab and the header of the partner's file paint."""
+
+    has_active_owner: bool
+    #: R3.1: no active owner, no live invitation of Auphere, active, console on.
+    can_invite: bool
+    #: R4.1, R4.4: no active owner, active, console on.
+    can_resend: bool
+    #: Why neither can happen, when the reason is the partner's state.
+    block: Literal["suspended", "console_off"] | None = None
+    #: R3.10: the last invitation of Auphere, if it expired and nobody is in.
+    expired_email: str | None = None
+    expired_at: datetime | None = None
+    #: R3.2, R3.10: what the form offers already written. Nothing is sent until
+    #: the operator presses.
+    suggested_email: str | None = None
 
 
 class PartnerMembersOut(BaseModel):
-    """Spec 031 (R4.6): the partner's people and its pending invitations."""
+    """Spec 031 (R4.6): the partner's people and its live invitations."""
 
     members: list[PartnerMemberOut]
     invitations: list[PartnerInvitationOut]
+    owner: OwnerStateOut
+
+
+class OwnerInvitationResultOut(BaseModel):
+    """Spec 052: what happened to one send. Once, and only here, the link: the
+    token is not stored, so this is the single time it exists outside the mail."""
+
+    id: uuid.UUID
+    email: str
+    role: str
+    status: str
+    expires_at: datetime
+    created_at: datetime
+    last_sent_at: datetime | None
+    #: What the provider said. Never «delivered»: that is not known.
+    email_sent: bool
+    accept_url: str
+
+
+class PartnerCreatedOut(PartnerOut):
+    """Spec 052: the partner, and what became of its owner's invitation."""
+
+    invitation: OwnerInvitationResultOut
+
+
+class OwnerInvitationRevokedOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    status: str
+    #: False if this call changed nothing (R5.4). It matters: the row may be
+    #: dead because it was resent, and then there is another link alive.
+    changed: bool
+
+
+class PartnerAuditLineOut(BaseModel):
+    """One platform audit row of a partner, as a sentence. Only the sentence: the
+    raw before/after stay in the base."""
+
+    id: uuid.UUID
+    action: str
+    actor: str
+    summary: str
+    created_at: datetime
 
 
 class ApiKeyCreateIn(BaseModel):

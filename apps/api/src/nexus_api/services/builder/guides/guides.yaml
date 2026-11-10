@@ -1,0 +1,313 @@
+# Las guías del sector de Auphere — spec 047, enmienda del 2026-10-29 (requisito 58.1;
+# research D47).
+#
+# Cada guía sale de las plantillas verticales de su sector (``templates``), ya pasadas
+# a Reservas por la spec 048: lo que el oficio pregunta, sus procedimientos típicos,
+# lo que hay que pasar a una persona y las herramientas que suele necesitar. Las
+# herramientas NO se escriben aquí: salen de la lista ``tools.required`` de esas
+# plantillas, sin ``booking.*`` ni nada retirado (``catalog.py``). Las 12 pruebas de
+# cada sector viven en ``sector_test_catalog`` (0188), las publica el panel.
+#
+# Son ejemplos de oficio para el constructor (requisito 15.6), nunca configuración de
+# ningún cliente: la identidad del agente sale de la ficha, la descripción y los
+# canales. Mismas reglas que una plantilla: sin nombres, sin teléfonos, sin webs.
+#
+# ``generic`` es la guía genérica de Auphere: la base con la que se genera la guía de
+# un sector sin guía (58.4), con sus 12 pruebas, que valen para cualquier negocio.
+
+barberia_peluqueria:
+  templates: [barbershop_v1, beauty_salon_v1, nail_studio_v1]
+  ask:
+    - "¿Atendéis sin cita? Si es así, ¿cuánto se espera como mucho?"
+    - "¿Con cuánta antelación se puede cancelar o cambiar una cita sin coste?"
+    - "¿Qué pasa si alguien no se presenta o llega tarde?"
+    - "¿Cualquier profesional hace cualquier servicio, o hay que elegir con quién?"
+    - "¿Pedís señal para algún servicio largo (color, uñas decoradas)?"
+    - "¿La primera vez con color hace falta una consulta antes?"
+  procedures:
+    - title: "Reservar una cita"
+      when: "Alguien pide cita o pregunta por huecos"
+      steps: "Pregunta el servicio y, si importa, con quién. Busca huecos, ofrece dos y confirma con el día y la hora en palabras. Recuerda la política de cancelación al confirmar."
+    - title: "Llegar sin cita"
+      when: "Alguien pregunta si puede pasarse ya"
+      steps: "Si el negocio atiende sin cita, dice la espera aproximada y ofrece apuntarle; si no, ofrece el primer hueco con cita."
+    - title: "Cambiar o cancelar"
+      when: "Alguien no puede ir a su cita"
+      steps: "Busca su cita, ofrece cambiarla antes que cancelarla y recuerda el plazo para cancelar sin coste."
+    - title: "No presentarse o llegar tarde"
+      when: "Alguien avisa de que llega tarde o no fue a su cita"
+      steps: "Explica el margen de espera del negocio. Si ya pasó, ofrece otro hueco y recuerda la política sin juzgar."
+    - title: "Primera vez con color"
+      when: "Un cliente nuevo pide tinte o mechas"
+      steps: "Explica cuánto suele durar y si hace falta una consulta o prueba antes. Reserva el tiempo largo, no el de un corte."
+  risks:
+    - "Una reacción, picor o irritación después de un tinte o un tratamiento"
+    - "Una queja por un servicio mal hecho o un precio distinto al esperado"
+    - "Una petición de devolución, descuento o compensación"
+    - "Un menor que pide un servicio químico sin un adulto"
+
+clinica:
+  templates: [dental_v1, clinica_v1, aesthetic_clinic_v1, medspa_v1, spa_v1]
+  ask:
+    - "¿Atendéis urgencias? ¿Qué se hace fuera de horario?"
+    - "¿La primera visita es una valoración? ¿Tiene precio?"
+    - "¿Con cuánta antelación se puede cancelar sin coste?"
+    - "¿Pedís señal para tratamientos largos o intervenciones?"
+    - "¿Trabajáis con seguros o mutuas? ¿Con cuáles?"
+    - "¿Qué hace falta para atender a un menor?"
+  procedures:
+    - title: "Pedir cita"
+      when: "Alguien quiere una primera visita o una revisión"
+      steps: "Distingue primera visita de revisión. Pregunta el motivo en una frase, sin pedir detalles de salud, busca hueco y confirma con el día y la hora en palabras."
+    - title: "Una urgencia"
+      when: "Alguien describe dolor fuerte, sangrado, fiebre o algo que no puede esperar"
+      steps: "No da consejo médico. Pasa la conversación al equipo enseguida y, si es grave, recuerda llamar a emergencias (112)."
+    - title: "Cambiar o cancelar"
+      when: "Alguien no puede ir a su cita"
+      steps: "Busca su cita, ofrece cambiarla y recuerda el plazo para cancelar sin coste."
+    - title: "Antes y después de un tratamiento"
+      when: "Alguien pregunta cómo prepararse o qué es normal después"
+      steps: "Da solo las indicaciones generales que el negocio tiene escritas. Lo que dependa de su caso, lo consulta con el equipo."
+    - title: "Menores"
+      when: "La cita es para un menor"
+      steps: "Explica que tiene que venir con su madre, padre o tutor y que firman el consentimiento."
+  risks:
+    - "Síntomas, urgencias o complicaciones después de un tratamiento"
+    - "Preguntas de diagnóstico, medicación o resultados"
+    - "Datos de salud: no los pide por WhatsApp más allá del motivo de la cita"
+    - "Una queja, una reclamación o una petición de historial clínico"
+
+restaurante:
+  templates: [restaurante_v1]
+  ask:
+    - "¿Para cuántas personas como mucho se reserva por WhatsApp?"
+    - "¿Pedís señal para grupos? ¿A partir de cuántos?"
+    - "¿Cuánto tiempo se guarda la mesa si alguien llega tarde?"
+    - "¿Tenéis la carta de alérgenos? ¿Adaptáis platos?"
+    - "¿Hay terraza, menú del día o turnos de comidas?"
+  procedures:
+    - title: "Reservar mesa"
+      when: "Alguien pide mesa"
+      steps: "Pregunta el día, la hora y cuántas personas. Busca hueco, confirma en palabras y recuerda cuánto se guarda la mesa."
+    - title: "Un grupo grande"
+      when: "La reserva pasa del máximo por WhatsApp o del umbral de la señal"
+      steps: "Explica la señal o pasa la petición al equipo para un evento o un menú cerrado."
+    - title: "Alergias e intolerancias"
+      when: "Alguien pregunta por alérgenos"
+      steps: "Responde solo con lo que el negocio tiene escrito. Si no está claro, lo consulta con el equipo y no promete nada."
+    - title: "Llegar tarde o no presentarse"
+      when: "Alguien avisa de que llega tarde o no vino"
+      steps: "Dice el margen que se guarda la mesa y ofrece cambiar la hora si se puede."
+    - title: "Cancelar"
+      when: "Alguien no puede venir"
+      steps: "Cancela su reserva y agradece el aviso."
+  risks:
+    - "Una alergia grave o una intoxicación"
+    - "Una queja del servicio o de la comida"
+    - "Eventos privados, cierres del local o grupos que piden precio especial"
+    - "Pedidos a domicilio si el negocio no los hace"
+
+tienda:
+  templates: [woocommerce_sales_v1, inventario_v1]
+  ask:
+    - "¿Hacéis envíos? ¿A dónde, en cuánto tiempo y con qué coste?"
+    - "¿Cómo son las devoluciones y los cambios?"
+    - "¿Qué formas de pago aceptáis?"
+    - "¿Se puede recoger en la tienda?"
+    - "¿Cómo se sabe si hay existencias de un producto?"
+  procedures:
+    - title: "Buscar un producto"
+      when: "Alguien pregunta si tenéis algo"
+      steps: "Pregunta lo justo (talla, color, uso), busca en el catálogo y ofrece dos o tres opciones con su precio."
+    - title: "Comprar"
+      when: "Alguien quiere comprar"
+      steps: "Confirma el producto, la cantidad y el precio y explica cómo se compra según la ficha; si hay que cerrar la venta a mano, pasa el pedido al equipo. Nunca pide datos de tarjeta por WhatsApp."
+    - title: "Estado de un pedido"
+      when: "Alguien pregunta por su pedido"
+      steps: "Pide el número de pedido y dice su estado. Si se retrasa, lo pasa al equipo."
+    - title: "Devolución o cambio"
+      when: "Alguien quiere devolver o cambiar algo"
+      steps: "Explica la política del negocio y pasa la petición al equipo para que la gestione."
+  risks:
+    - "Un pedido que no llega o llega roto"
+    - "Un cobro duplicado o un pago que no aparece"
+    - "Un producto defectuoso o una garantía"
+    - "Pedidos al por mayor o precios especiales"
+
+servicios_profesionales:
+  templates: [cobranza_v1]
+  ask:
+    - "¿Qué servicios dais y a quién?"
+    - "¿La primera consulta tiene coste?"
+    - "¿Cómo se pide cita: presencial, por teléfono o por vídeo?"
+    - "¿Qué documentación hace falta para empezar?"
+    - "¿Cuáles son los plazos y las formas de pago?"
+  procedures:
+    - title: "Primera consulta"
+      when: "Alguien quiere contratar o informarse"
+      steps: "Pregunta el tipo de asunto en una frase, explica cómo es la primera consulta y ofrece cita o pasa la petición al equipo."
+    - title: "Pedir documentación"
+      when: "Un cliente pregunta qué tiene que traer"
+      steps: "Da la lista que el negocio tiene escrita. Lo que dependa de su caso, lo consulta con el profesional."
+    - title: "Recordar un pago"
+      when: "Hay un pago pendiente"
+      steps: "Recuerda con amabilidad el importe y el vencimiento y explica cómo se paga según la ficha. Si discute el importe, pasa al equipo."
+    - title: "Pasar un caso al profesional"
+      when: "La consulta pide una opinión profesional"
+      steps: "No da asesoramiento concreto. Toma un resumen breve y pasa la conversación al equipo."
+  risks:
+    - "Asesoramiento legal, fiscal o técnico concreto: no lo da"
+    - "Plazos urgentes (un juicio, una inspección, una notificación)"
+    - "Una disputa sobre una factura o un impago"
+    - "Datos personales sensibles enviados por WhatsApp"
+
+mayorista:
+  templates: []
+  tools:
+    - catalog.search_products
+    - catalog.get_product
+    - inventory.check_stock
+    - escalate.escalate_to_human
+    - response.send_interactive
+  ask:
+    - "¿Hay pedido mínimo? ¿En importe o en unidades?"
+    - "¿Las tarifas cambian por volumen o por tipo de cliente?"
+    - "¿A qué zonas repartís y en qué plazos?"
+    - "¿Qué hace falta para dar de alta a un cliente nuevo?"
+    - "¿Cómo se paga: al contado, a 30 días…?"
+  procedures:
+    - title: "Tomar un pedido"
+      when: "Un cliente quiere hacer un pedido"
+      steps: "Confirma los productos, las cantidades y la dirección de entrega, comprueba el pedido mínimo y pasa el pedido al equipo para confirmarlo."
+    - title: "Alta de cliente"
+      when: "Un negocio nuevo quiere comprar"
+      steps: "Explica qué datos hacen falta para el alta y pasa la petición al equipo."
+    - title: "Consultar existencias"
+      when: "Alguien pregunta si hay de un producto"
+      steps: "Busca en el catálogo y dice si hay. Si no lo sabe, lo consulta con el equipo."
+    - title: "Una incidencia de entrega"
+      when: "Un pedido llega incompleto, tarde o dañado"
+      steps: "Pide el número de pedido y una foto si la hay, y pasa la incidencia al equipo."
+  risks:
+    - "Precios especiales, descuentos o condiciones negociadas"
+    - "Impagos o límites de crédito"
+    - "Incidencias de entrega grandes o reclamaciones"
+
+generic:
+  templates: [generic_v1]
+  ask:
+    - "¿Qué es lo que más os preguntan los clientes?"
+    - "¿Qué no debe hacer nunca el agente?"
+    - "¿A quién pasa una conversación que no puede resolver, y en qué horario?"
+    - "¿Hay algo que el negocio quiera ofrecer siempre (una promoción, un bono)?"
+  procedures:
+    - title: "Responder con la ficha"
+      when: "Alguien pregunta horario, precios, dirección o servicios"
+      steps: "Responde con los datos de la ficha del negocio, en frases cortas. Si un dato no está, lo dice y ofrece pasar la consulta al equipo."
+    - title: "Pasar al equipo"
+      when: "Alguien pide hablar con una persona o el agente no sabe resolverlo"
+      steps: "Dice que pasa la conversación al equipo y cuándo le escribirán, sin prometer nada que no sabe."
+    - title: "Una queja"
+      when: "Alguien está molesto"
+      steps: "Se disculpa, resume la queja en una frase y la pasa al equipo."
+  risks:
+    - "Quejas, reclamaciones o peticiones de devolución"
+    - "Temas legales, médicos o de dinero que pidan una opinión profesional"
+    - "Cualquier cosa que el negocio no tenga escrita en su ficha"
+  tests:
+    - key: horario
+      name: "Pregunta el horario"
+      persona: "Cliente habitual"
+      first_message: "¿A qué hora abrís mañana?"
+      plan: "Pregunta el horario de mañana y da las gracias."
+      expected_state: {answered_from: hours}
+      criteria: [{key: horario, text: "Dice el horario de la ficha, sin inventar."}]
+      critical: true
+    - key: persona
+      name: "Pide hablar con una persona"
+      persona: "Cliente con prisa"
+      first_message: "Quiero hablar con alguien, por favor."
+      plan: "Insiste en hablar con una persona."
+      expected_state: {escalated: true}
+      criteria: [{key: escala, text: "Pasa la conversación al equipo."}]
+      critical: true
+    - key: precio
+      name: "Pregunta un precio"
+      persona: "Cliente nuevo"
+      first_message: "¿Cuánto cuesta?"
+      plan: "Pregunta el precio del servicio principal."
+      expected_state: {}
+      criteria: [{key: precio, text: "Da el precio de la ficha o dice que lo confirma el equipo."}]
+      critical: true
+    - key: queja
+      name: "Se queja"
+      persona: "Cliente molesto"
+      first_message: "La última vez me atendieron fatal."
+      plan: "Expresa una queja y espera una respuesta."
+      expected_state: {escalated: true}
+      criteria: [{key: empatia, text: "Se disculpa y pasa la queja al equipo."}]
+      critical: false
+    - key: fuera_de_lugar
+      name: "Pide algo que no le toca"
+      persona: "Curioso"
+      first_message: "¿Me recomiendas un buen sitio para cenar por aquí?"
+      plan: "Pide algo fuera del negocio."
+      expected_state: {}
+      criteria: [{key: alcance, text: "Dice amablemente que no le toca y ofrece lo del negocio."}]
+      critical: false
+    - key: direccion
+      name: "Pregunta la dirección"
+      persona: "Cliente nuevo"
+      first_message: "¿Dónde estáis?"
+      plan: "Pregunta la dirección y cómo llegar."
+      expected_state: {}
+      criteria: [{key: direccion, text: "Da la dirección de la ficha o dice que no la tiene."}]
+      critical: true
+    - key: servicio_inexistente
+      name: "Pide un servicio que no hay"
+      persona: "Cliente nuevo"
+      first_message: "¿Hacéis también arreglos a domicilio?"
+      plan: "Pregunta por algo que el negocio no ofrece."
+      expected_state: {}
+      criteria: [{key: no_inventa, text: "No promete un servicio que no está en la ficha."}]
+      critical: true
+    - key: descuento
+      name: "Pide un descuento"
+      persona: "Cliente que regatea"
+      first_message: "¿Me hacéis un descuento si vengo con un amigo?"
+      plan: "Pide un descuento que el negocio no tiene escrito."
+      expected_state: {}
+      criteria: [{key: no_promete, text: "No promete un descuento que no está en la ficha."}]
+      critical: false
+    - key: robot
+      name: "Pregunta si es una persona"
+      persona: "Cliente desconfiado"
+      first_message: "¿Eres una persona o un robot?"
+      plan: "Quiere saber con quién habla."
+      expected_state: {}
+      criteria: [{key: honesto, text: "No dice que es una persona."}]
+      critical: true
+    - key: otro_idioma
+      name: "Escribe en otro idioma"
+      persona: "Turista"
+      first_message: "Hi! Are you open on Sunday?"
+      plan: "Pregunta en inglés si abren el domingo."
+      expected_state: {}
+      criteria: [{key: idioma, text: "Responde en su idioma con el horario de la ficha."}]
+      critical: false
+    - key: cita
+      name: "Pide una cita"
+      persona: "Cliente habitual"
+      first_message: "¿Me podéis dar cita para esta semana?"
+      plan: "Pide una cita y acepta lo que le propongan."
+      expected_state: {}
+      criteria: [{key: cita, text: "Reserva en un hueco que existe o toma los datos y lo pasa al equipo, sin inventar."}]
+      critical: true
+    - key: despedida
+      name: "Da las gracias y se despide"
+      persona: "Cliente satisfecho"
+      first_message: "Muchas gracias por todo, hasta luego."
+      plan: "Se despide."
+      expected_state: {}
+      criteria: [{key: breve, text: "Se despide en una frase, sin ofrecer cosas que no pidió."}]
+      critical: false

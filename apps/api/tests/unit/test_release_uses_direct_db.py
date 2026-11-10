@@ -35,7 +35,8 @@ from nexus_api.db.base import get_direct_engine, reset_engine_cache
 DIRECT = "postgresql+asyncpg://u:p@aurora.internal:5432/nexus"
 POOLER = "postgresql+asyncpg://u:p@pgbouncer.staging.internal:5432/nexus"
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "seed_connectors.py"
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+SCRIPT = SCRIPTS / "seed_connectors.py"
 
 
 @pytest.fixture(autouse=True)
@@ -90,3 +91,40 @@ def test_the_seeder_asks_for_the_direct_engine():
 
     source = SCRIPT.read_text()
     assert "get_engine()" not in source, "el sembrador del release no debe ir por el pooler"
+
+
+# ── Spec 048 (T028, amended 2026-11-10): the pass to Reservas, by hand only ─
+
+AUTO_PASS = SCRIPTS / "pass_booking_to_reservas.py"
+RELEASE = SCRIPTS / "release.sh"
+
+
+def test_the_auto_pass_asks_for_the_direct_engine():
+    """It runs as a one-off task, like the seeder: it goes to the direct database."""
+    spec = importlib.util.spec_from_file_location("pass_booking_to_reservas_wiring", AUTO_PASS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.get_direct_engine is get_direct_engine
+
+    source = AUTO_PASS.read_text()
+    assert "get_engine()" not in source
+    assert "get_sessionmaker()" not in source
+
+
+def test_a_deploy_never_switches_reservas_on():
+    """Requirement 3.1 as amended on 2026-11-10: Reservas is switched on by
+    hand. ``release.sh`` migrates and seeds the connectors, and never runs the
+    pass to Reservas, which turned the module on and published agents without
+    the test gate."""
+    lines = [line.strip() for line in RELEASE.read_text().splitlines()]
+    code = [line for line in lines if line and not line.startswith(("#", "echo "))]
+
+    def at(fragment: str) -> int:
+        found = [i for i, line in enumerate(code) if fragment in line]
+        assert len(found) == 1, (fragment, found)
+        return found[0]
+
+    assert at("alembic upgrade head") < at("scripts/seed_connectors.py")
+    assert not [line for line in code if "pass_booking_to_reservas" in line]
+    assert not [line for line in code if "reservations" in line or "auto_pass" in line]

@@ -371,6 +371,48 @@ async def test_session_resolves_expires_and_logout_is_idempotent(
         assert out.status_code == 204
 
 
+async def test_the_session_says_when_it_expires_and_reading_it_does_not_move_it(
+    client, console_world, db_session
+) -> None:
+    """Spec 056 (15.1, 15.2): ``/session`` devuelve ``expires_at`` para que la
+    consola avise el último día. Es el de la fila: leer la sesión, aunque toque
+    ``last_used_at``, no la alarga. Sigue caducando a los 7 días del login."""
+    a = console_world["a"]
+    account = await _make_account(db_session, email=_email())
+    await _link_membership(db_session, account, a["partner_id"])
+    login = await client.post(
+        "/console/auth/login",
+        headers=_svc_headers(),
+        json={"email": account.email, "password": PASSWORD},
+    )
+    body = login.json()
+    token, issued = body["token"], datetime.fromisoformat(body["expires_at"])
+    assert issued - datetime.now(UTC) <= console_identity.SESSION_TTL
+
+    hashed = console_identity.hash_session_token(token)
+    # Hace una hora que no se usa: leerla la toca, pero no la alarga.
+    await db_session.execute(
+        sa.update(ConsoleSession)
+        .where(ConsoleSession.token_hash == hashed)
+        .values(last_used_at=datetime.now(UTC) - timedelta(hours=1))
+    )
+    await db_session.commit()
+    for _ in range(2):
+        read = await client.post(
+            "/console/auth/session", headers=_svc_headers(), json={"token": token}
+        )
+        assert read.status_code == 200, read.text
+        assert datetime.fromisoformat(read.json()["expires_at"]) == issued
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        sa.select(ConsoleSession).where(ConsoleSession.token_hash == hashed)
+    )
+    assert stored is not None
+    assert stored.expires_at == issued
+    assert datetime.now(UTC) - stored.last_used_at < timedelta(minutes=1), "sí se tocó"
+    await db_session.commit()
+
+
 async def test_unknown_session_token_is_401(client, console_world) -> None:
     r = await client.post("/console/auth/session", headers=_svc_headers(), json={"token": "n" * 43})
     assert r.status_code == 401

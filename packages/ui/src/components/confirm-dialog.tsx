@@ -34,6 +34,15 @@ type ConfirmDialogProps = {
   onConfirm: () => void | Promise<void>;
   /** Error message from a failed confirm — shown inline, form is kept. */
   error?: React.ReactNode;
+  /** Extra fields shown under the description (e.g. the reason an audited action asks for). */
+  children?: React.ReactNode;
+  /** Keeps the confirm button disabled while the extra fields are not valid. */
+  confirmDisabled?: boolean;
+  /**
+   * Where focus goes on close, when what opened the dialog no longer exists (the confirmed
+   * action removed it). Nothing returned: focus goes back to what opened it, as usual.
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
 };
 
 /**
@@ -52,6 +61,9 @@ function ConfirmDialog({
   typeToConfirmLabel,
   onConfirm,
   error,
+  children,
+  confirmDisabled = false,
+  returnFocus,
 }: ConfirmDialogProps) {
   const copy = useUiCopy();
   const confirmLabel = confirmLabelProp ?? copy.confirm;
@@ -67,7 +79,8 @@ function ConfirmDialog({
     }
   }, [open]);
 
-  const enabled = !pending && (typeToConfirm ? typed.trim() === typeToConfirm : true);
+  const enabled =
+    !pending && !confirmDisabled && (typeToConfirm ? typed.trim() === typeToConfirm : true);
 
   async function confirm() {
     if (!enabled) return;
@@ -81,11 +94,16 @@ function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => onOpenChange(next)}>
-      <DialogContent showCloseButton={false} aria-busy={pending || undefined}>
+      <DialogContent
+        showCloseButton={false}
+        aria-busy={pending || undefined}
+        finalFocus={() => returnFocus?.() ?? true}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
+        {children ? <div className="grid gap-2">{children}</div> : null}
         {typeToConfirm ? (
           <form
             className="grid gap-2"

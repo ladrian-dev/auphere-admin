@@ -82,11 +82,13 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
     ):
         collector.record_llm_usage(
             model="anthropic/claude-haiku-4-5",
+            task="classify",
             provider="anthropic",
             usage={"prompt_tokens": 700, "completion_tokens": 20},
         )
         collector.record_llm_usage(
             model="anthropic/claude-sonnet-4-6",
+            task="tool_turn",
             provider="anthropic",
             usage={
                 "prompt_tokens": 5000,
@@ -138,8 +140,9 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
     for meter, _q, _m, cost, *_ in rows:
         assert cost is not None, f"{meter} entró sin precio"
         costs[meter] = costs.get(meter, Decimal(0)) + cost
-    # haiku 700 in @ $1/MTok + sonnet 5000 in @ $3/MTok
-    assert costs["llm.input_tokens"] == Decimal("0.01570000")
+    # haiku 700 in @ $1/MTok + sonnet 800 in @ $3/MTok: de los 5000 de sonnet,
+    # 4200 son de caché y se pagan en su fila (INC-70).
+    assert costs["llm.input_tokens"] == Decimal("0.00310000")
     # haiku 20 out @ $5 + sonnet 300 out @ $15
     assert costs["llm.output_tokens"] == Decimal("0.00460000")
     # sonnet 4200 de caché leída @ $0.30/MTok — el descuento aparece de
@@ -147,7 +150,7 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
     assert costs["llm.cache_read"] == Decimal("0.00126000")
 
     total = sum(c for c in costs.values() if c is not None)
-    assert total == Decimal("0.02156000"), "coste real del turno, en dólares"
+    assert total == Decimal("0.00896000"), "coste real del turno, en dólares"
     # Spec 007: ``quantity`` sigue siendo el nativo; ``billable_qty`` lleva el
     # peso de SU carril y de SU modelo. Las dos llamadas del turno usan cerebros
     # distintos, y ahí se ve por qué el peso no puede ser del turno:
@@ -186,6 +189,7 @@ async def test_replaying_the_stream_creates_no_duplicates(clean_usage_stream) ->
         async with collector.usage_turn(tenant_id=tenant_id, turn_id=f"turn-{i}"):
             collector.record_llm_usage(
                 model="anthropic/claude-sonnet-4-6",
+                task="tool_turn",
                 provider="anthropic",
                 usage={"prompt_tokens": 1000, "completion_tokens": 100},
             )
@@ -225,6 +229,7 @@ async def test_entries_survive_a_persist_failure_and_land_on_the_next_pass(
     async with collector.usage_turn(tenant_id=tenant_id, turn_id="reintentable"):
         collector.record_llm_usage(
             model="anthropic/claude-sonnet-4-6",
+            task="tool_turn",
             provider="anthropic",
             usage={"prompt_tokens": 100, "completion_tokens": 10},
         )
@@ -263,7 +268,10 @@ async def test_a_poison_entry_goes_to_the_dlq_and_stops_blocking(clean_usage_str
     await redis.xadd(collector.USAGE_STREAM, {"tenant_id": "no-soy-un-uuid", "events": "[]"})
     async with collector.usage_turn(tenant_id=tenant_id, turn_id="bueno"):
         collector.record_llm_usage(
-            model="m", provider="anthropic", usage={"prompt_tokens": 10, "completion_tokens": 1}
+            model="m",
+            provider="anthropic",
+            usage={"prompt_tokens": 10, "completion_tokens": 1},
+            task="answer",
         )
 
     await drain_once(redis, consumer_name="test-metering")

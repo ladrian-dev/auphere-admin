@@ -37,16 +37,13 @@ function filesUnder(dir: string, suffix: string): string[] {
   });
 }
 
-function pagesUnder(dir: string): string[] {
-  return readdirSync(dir).flatMap((entry) => {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) return pagesUnder(full);
-    return entry === "page.tsx" ? [full] : [];
-  });
-}
-
-describe("las páginas de (auth)", () => {
-  const pages = pagesUnder(AUTH_DIR);
+/**
+ * Spec 056 (14.1): la regla vale para **todo** `.tsx` de `(auth)`, no solo las
+ * páginas. El layout pintaba «auphere · Beta · Acceso» con `getT("es")`: con el
+ * navegador en inglés, la cabecera salía en español y el cuerpo en inglés.
+ */
+describe("las páginas y los layouts de (auth)", () => {
+  const pages = filesUnder(AUTH_DIR, ".tsx");
 
   it("hay páginas que comprobar (si no, esta prueba no vigila nada)", () => {
     expect(pages.length).toBeGreaterThan(0);

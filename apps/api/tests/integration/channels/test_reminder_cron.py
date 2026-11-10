@@ -16,6 +16,8 @@ from nexus_worker.streams.reminder_cron import _process_pending
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
+    AgentConfig,
+    AgentConfigStatus,
     Message,
     MessageDirection,
     MessageStatus,
@@ -136,3 +138,103 @@ async def test_reminder_cron_isolation_two_tenants(
     # bleed.
     assert await _count_pending_outbound(info_a["tenant_id"]) == 1
     assert await _count_pending_outbound(info_b["tenant_id"]) == 1
+
+
+# ── bug el-recordatorio-programado-no-sale ───────────────────────────────────
+#
+# Las pruebas de arriba siembran el payload con las claves que el cron espera.
+# Ésta lo programa como lo hace el agente —con la herramienta— y deja que lo
+# envíe el cron: si productor y consumidor vuelven a divergir, se ve aquí.
+
+
+async def test_reminder_scheduled_by_the_tool_is_sent(
+    db_session,
+    two_tenants_with_channels: dict[str, dict[str, Any]],
+):
+    from nexus_mcp import build_default_registry
+    from nexus_mcp.registry import reset_default_registry
+
+    from nexus_api.core.tenant_context import customer_context, tenant_context
+
+    info = two_tenants_with_channels["a"]
+    # Desde el bug recordatorios-sin-tope, la herramienta solo programa las
+    # plantillas que permite la política del agente.
+    db_session.add(
+        AgentConfig(
+            tenant_id=info["tenant_id"],
+            version=1,
+            status=AgentConfigStatus.ACTIVE,
+            system_prompt_rendered="Eres Alex.",
+            channels=[],
+            tools=["notification.schedule_reminder"],
+            policies={"scheduled_reminders": {"templates": ["reminder_24h"]}},
+        )
+    )
+    await db_session.commit()
+    reset_default_registry()
+    registry = build_default_registry()
+    with tenant_context(info["tenant_id"]), customer_context(info["customer_id"]):
+        env = await registry.dispatch(
+            "notification.schedule_reminder",
+            {
+                "conversation_id": str(info["conversation_id"]),
+                "run_at": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+                "template_name": "reminder_24h",
+                "parameters": {"name": "Ana"},
+            },
+            whitelist=["notification.schedule_reminder"],
+        )
+    job_id = uuid.UUID(env["result"]["reminder_id"])
+
+    await _process_pending(get_sessionmaker())
+
+    job = await _read_job(info["tenant_id"], job_id)
+    assert job.status is ScheduledJobStatus.SENT, job.last_error
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, info["tenant_id"]):
+        row = (
+            await session.execute(
+                sa.select(Message).where(
+                    Message.conversation_id == info["conversation_id"],
+                    Message.direction == MessageDirection.OUTBOUND,
+                )
+            )
+        ).scalar_one()
+    assert row.template_payload == {
+        "name": "reminder_24h",
+        "language": "es",
+        "params": {"body": {"name": "Ana"}},
+    }
+
+
+async def test_reminder_legacy_payload_keeps_its_language(
+    two_tenants_with_channels: dict[str, dict[str, Any]],
+):
+    """Las filas antiguas (``template``/``params``/``language``) siguen saliendo,
+    y con su idioma: el cron lo tiraba."""
+    info = two_tenants_with_channels["a"]
+    job_id = await _seed_scheduled(
+        tenant_info=info,
+        template="reminder_1h",
+        run_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+
+    await _process_pending(get_sessionmaker())
+
+    job = await _read_job(info["tenant_id"], job_id)
+    assert job.status is ScheduledJobStatus.SENT, job.last_error
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, info["tenant_id"]):
+        row = (
+            await session.execute(
+                sa.select(Message).where(
+                    Message.conversation_id == info["conversation_id"],
+                    Message.direction == MessageDirection.OUTBOUND,
+                )
+            )
+        ).scalar_one()
+    assert row.template_payload is not None
+    assert row.template_payload["language"] == "es_CL"
+    assert row.template_payload["params"] == {
+        "body": {"customer_name": "Juan", "barber_name": "Luis"}
+    }

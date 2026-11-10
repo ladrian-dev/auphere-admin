@@ -1,0 +1,557 @@
+"use client";
+
+import { Play, Plus, Wrench } from "lucide-react";
+import * as React from "react";
+import { toast } from "sonner";
+
+import { Button, Callout, Field, Input, StatusBadge, StatusDot, Textarea, formatNumber } from "@nexus/ui";
+
+import {
+  addTestAction,
+  qualityJobAction,
+  estimateTestsAction,
+  runTestsAction,
+  setNotApplicableAction,
+  testsAction,
+} from "@/app/(console)/clients/[ref]/agents/quality-actions";
+import { useLocale, useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
+import type { AgentTest, QualityJob, TestBody, TestRunAccepted, TestRunScope, TestSuite } from "@/lib/backend/agent-quality-types";
+
+import { sleep, type Result } from "./builder-model";
+import { STATUS_TONE, failedConversation, groupTests, isFailing, isGenerated, naReason, runFailedKey, runRefusedKey, waitForJob } from "./quality-model";
+import { useRunEstimate, type EstimateRun } from "./run-estimate";
+import { TestConversation } from "./test-conversation";
+
+type Ids = { ref: string; agent: string };
+export type TestListActions = {
+  load: (body: Ids) => Promise<Result<TestSuite>>;
+  run: (body: Ids & { scope: TestRunScope; test?: string; confirmed_tests?: number }) => Promise<Result<TestRunAccepted>>;
+  poll: (body: { ref: string; job: string }) => Promise<Result<QualityJob>>;
+  notApplicable: (body: Ids & { test: string; reason: string }) => Promise<Result<TestSuite>>;
+  add: (body: Ids & { test: TestBody }) => Promise<Result<TestSuite>>;
+  /** Sin ella, la pasada arranca sin preguntar. */
+  estimate?: EstimateRun;
+};
+
+const SERVER_ACTIONS: TestListActions = {
+  load: (body) => testsAction(body),
+  run: (body) => runTestsAction(body),
+  estimate: (body) => estimateTestsAction(body),
+  poll: (body) => qualityJobAction(body),
+  notApplicable: (body) => setNotApplicableAction(body),
+  add: (body) => addTestAction(body),
+};
+
+/**
+ * Las pruebas del agente (spec 047, historia 8; requisito 21): todas, por tipo
+ * (del caso, del sector, añadidas), cada una con su estado —«Pasa»,
+ * «Inestable», «Falla», «No sé», «No se pudo probar», «Sin ejecutar», «No aplica»— y
+ * «Desactualizada» cuando cambió algo desde la última pasada.
+ *
+ * «No se pudo probar» es que un modelo no respondió: no le apunta nada al agente,
+ * así que no lleva «Por qué falló» ni «Arreglar», y se puede repetir.
+ *
+ * La que no pasa trae «Por qué falló» con lo que se comprobó (el estado final,
+ * no lo que dijo el agente), la conversación con el cliente simulado turno a
+ * turno y por qué terminó (enmienda del 2026-10-29, 61.6), y «Arreglar», que
+ * abre las instrucciones del borrador. Las de una guía generada para el
+ * cliente llevan «Generada» (58.4). Una del sector se puede marcar «No aplica» escribiendo la razón.
+ * Ejecutar es un trabajo: la lista se vuelve a leer al terminar. Sin el juez
+ * calibrado, se dice que solo cuenta el estado final (21.8).
+ *
+ * Enmienda del 2026-10-30 (T228; 65.8 y 65.9): una del sector que pide lo que
+ * el agente no tiene llega ya «No aplica», con su razón; se ve igual y se
+ * reactiva como cualquiera («Vuelve a aplicar», sin doble envío, y si no se
+ * puede lo dice en su fila). Un agente estructurado sin ninguna prueba que le
+ * aplique no se guarda: la lista lo dice encima de «Añadir una prueba», que la
+ * puerta puede abrir desde fuera (`addRequest`).
+ */
+export function TestList({
+  refId,
+  agentId,
+  suite: initial,
+  canWrite,
+  refreshKey = 0,
+  structured = false,
+  addRequest = 0,
+  onFix,
+  onWhy,
+  onChanged,
+  actions = SERVER_ACTIONS,
+  wait = sleep,
+}: {
+  refId: string;
+  agentId: string;
+  /** `null` si no se pudo leer. */
+  suite: TestSuite | null;
+  canWrite: boolean;
+  /** Cambia cuando el borrador cambió: la lista se vuelve a leer. */
+  refreshKey?: number;
+  /** Un agente con AgentSpec estructurado: sin ninguna prueba que le aplique no se guarda (65.9). */
+  structured?: boolean;
+  /** Sube cuando alguien de fuera (la puerta) pide «Añadir una prueba»: se abre su formulario. */
+  addRequest?: number;
+  /** «Arreglar»: abrir el bloque del borrador donde se corrige. */
+  onFix?: (test: AgentTest) => void;
+  /** «¿Por qué dijo esto?»: el copiloto explica la última respuesta de la prueba. */
+  onWhy?: (test: AgentTest) => void;
+  /** Una pasada terminó o una prueba cambió: la cabecera cuenta otra cosa. */
+  onChanged?: () => void;
+  actions?: TestListActions;
+  wait?: (ms: number) => Promise<void>;
+}) {
+  const t = useT();
+  const locale = useLocale();
+  const ids = React.useMemo(() => ({ ref: refId, agent: agentId }), [refId, agentId]);
+  const [suite, setSuite] = React.useState(initial);
+  const [running, setRunning] = React.useState<{ count: number; scope: TestRunScope } | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [adding, setAdding] = React.useState(false);
+  const alive = React.useRef(true);
+  React.useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
+
+  const reload = React.useCallback(async () => {
+    const res = await actions.load(ids);
+    if (!alive.current) return;
+    if (res.ok) setSuite(res.data);
+  }, [actions, ids]);
+
+  const seen = React.useRef(refreshKey);
+  React.useEffect(() => {
+    if (seen.current === refreshKey) return;
+    seen.current = refreshKey;
+    void reload();
+  }, [refreshKey, reload]);
+
+  // «Añadir una prueba» pedido desde fuera: el formulario se abre (y su campo toma el foco).
+  const [seenAdd, setSeenAdd] = React.useState(addRequest);
+  if (seenAdd !== addRequest) {
+    setSeenAdd(addRequest);
+    if (addRequest > 0) setAdding(true);
+  }
+
+  const can = (what: "add" | "edit" | "run") => canWrite && Boolean(suite?.allowed.includes(what));
+
+  const starting = React.useRef(false);
+
+  const { ask, dialog: confirmRun, pending } = useRunEstimate({
+    estimate: actions.estimate,
+    ids,
+    start: (scope, confirmedTests) => runTests(scope, undefined, confirmedTests),
+  });
+
+  async function runTests(scope: TestRunScope, test?: string, confirmedTests?: number) {
+    if (starting.current) return;
+    starting.current = true;
+    setError(null);
+    const res = await actions.run({ ...ids, scope, ...(test ? { test } : {}), ...(confirmedTests ? { confirmed_tests: confirmedTests } : {}) });
+    starting.current = false;
+    if (!res.ok) {
+      setError(t(runRefusedKey(res)));
+      return;
+    }
+    setRunning({ count: res.data.tests, scope });
+    const done = await waitForJob(() => actions.poll({ ref: refId, job: res.data.job_id }), { wait, cancelled: () => !alive.current });
+    if (!alive.current) return;
+    setRunning(null);
+    if (!done || !done.ok) setError(t("builder.suite.error.run"));
+    else if (done.data.status === "failed") setError(t(runFailedKey(done.data.error_code)));
+    else toast.success(t("builder.suite.ran"));
+    await reload();
+    onChanged?.();
+  }
+
+  if (!suite) {
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-3 text-sm" data-slot="test-list">
+        <p className="text-muted-foreground">{t("builder.suite.error.load")}</p>
+        <Button size="sm" variant="outline" onClick={() => void reload()}>
+          {t("builder.suite.retry")}
+        </Button>
+      </div>
+    );
+  }
+
+  const { summary } = suite;
+  const counted = summary.total - summary.not_applicable;
+  const onTheBag = suite.next_full_pass === "client_bag";
+  const offerFailed = onTheBag && counted > summary.passed;
+  // Todas las desactualizadas son una pasada entera, y esa la cobra «Ejecutar todas».
+  const offerStale = summary.stale > 0 && (!onTheBag || summary.stale < counted);
+  const busy = running !== null || pending;
+  const applying = suite.tests.filter((test) => test.status !== "not_applicable");
+  const notApplying = suite.tests.filter((test) => test.status === "not_applicable");
+  const row = (test: AgentTest) => (
+    <TestRow
+      key={test.id}
+      test={test}
+      canEdit={can("edit")}
+      canRun={can("run") && running === null}
+      canRetry={can("run")}
+      onRun={() => void runTests("one", test.id)}
+      onFix={onFix && canWrite ? () => onFix(test) : undefined}
+      onWhy={onWhy ? () => onWhy(test) : undefined}
+      onNotApplicable={async (reason) => {
+        const res = await actions.notApplicable({ ...ids, test: test.id, reason });
+        if (res.ok) {
+          setSuite(res.data);
+          onChanged?.();
+        }
+        return res;
+      }}
+    />
+  );
+
+  return (
+    <div className="grid min-w-0 gap-4" data-slot="test-list">
+      {confirmRun}
+      <p className="text-sm text-pretty text-muted-foreground">{t("builder.suite.intro")}</p>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-sm" data-slot="test-summary">
+        <span className="font-medium">{t("builder.suite.summary", { passed: summary.passed, total: counted })}</span>
+        {summary.rate !== null ? <span className="text-muted-foreground">{t("builder.suite.rate", { rate: formatNumber(summary.rate, locale, { maximumFractionDigits: 1 }) })}</span> : null}
+        {summary.stale > 0 ? <StatusBadge tone="warn">{t("builder.suite.stale", { n: summary.stale })}</StatusBadge> : null}
+      </div>
+      {!suite.judge_calibrated ? <Callout tone="info">{t("builder.suite.judge")}</Callout> : null}
+      {summary.model_failed > 0 && !error && !running ? (
+        <Callout tone="warning">
+          {t("builder.suite.modelFailed", { n: summary.model_failed })}
+          {can("run") ? ` ${t("builder.suite.modelFailed.retry")}` : ""}
+        </Callout>
+      ) : null}
+
+      {can("run") && onTheBag ? <p className="text-sm text-pretty text-muted-foreground">{t("builder.suite.nextOnTheBag")}</p> : null}
+      {can("run") ? (
+        <div className="flex min-w-0 flex-wrap gap-2">
+          {offerFailed ? (
+            <Button onClick={() => void ask("failed")} loading={running?.scope === "failed"} disabled={busy}>
+              <Play aria-hidden="true" />
+              {t("builder.suite.runFailed")}
+            </Button>
+          ) : null}
+          {offerStale && onTheBag ? (
+            <Button variant={offerFailed ? "outline" : "default"} onClick={() => void ask("affected")} loading={running?.scope === "affected"} disabled={busy}>
+              {t("builder.suite.runStale")}
+            </Button>
+          ) : null}
+          <Button variant={onTheBag && (offerFailed || offerStale) ? "outline" : "default"} onClick={() => void ask("all")} loading={running?.scope === "all"} disabled={busy}>
+            {onTheBag && (offerFailed || offerStale) ? null : <Play aria-hidden="true" />}
+            {t("builder.suite.runAll")}
+          </Button>
+          {offerStale && !onTheBag ? (
+            <Button variant="outline" onClick={() => void ask("affected")} loading={running?.scope === "affected"} disabled={busy}>
+              {t("builder.suite.runStale")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <p role="status" className="inline-flex min-w-0 items-center gap-2 text-sm text-muted-foreground empty:hidden">
+        {running ? (
+          <>
+            <StatusDot tone="info" pulse />
+            {t("builder.suite.running", { n: running.count })}
+          </>
+        ) : null}
+      </p>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive text-pretty">
+          {error}
+        </p>
+      ) : null}
+
+      {structured && counted <= 0 ? (
+        // 65.9: la puerta no guarda un estructurado sin ninguna prueba que le aplique.
+        <Callout tone="warning">{t("builder.suite.noneApplies")}</Callout>
+      ) : null}
+      {!suite.tests.length ? <p className="text-sm text-muted-foreground">{t("builder.suite.empty")}</p> : null}
+      {groupTests(applying).map((group) => (
+        <div key={group.kind} className="grid min-w-0 gap-2">
+          <h3 className="text-sm font-semibold" id={`tests-${group.kind}`}>
+            {t(`builder.suite.kind.${group.kind}` as MessageKey)} · {group.tests.length}
+          </h3>
+          {group.kind === "sector" && group.tests.some(isGenerated) ? (
+            <p className="text-xs text-pretty text-muted-foreground" data-slot="tests-generated">
+              {t("builder.suite.generated.hint")}
+            </p>
+          ) : null}
+          <ul aria-labelledby={`tests-${group.kind}`} className="grid min-w-0 gap-2">
+            {group.tests.map(row)}
+          </ul>
+        </div>
+      ))}
+      {notApplying.length ? (
+        // No cuentan ni cuestan (65.8): plegadas, para que la lista sea lo que se va a correr.
+        <details className="min-w-0 text-sm" data-slot="tests-not-applicable">
+          <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            {notApplying.length === 1 ? t("builder.suite.na.group.one") : t("builder.suite.na.group.other", { n: notApplying.length })}
+          </summary>
+          <ul className="mt-2 grid min-w-0 gap-2">{notApplying.map(row)}</ul>
+        </details>
+      ) : null}
+
+      {can("add") ? (
+        adding ? (
+          <AddTestForm
+            key={addRequest}
+            onCancel={() => setAdding(false)}
+            onAdd={async (body) => {
+              const res = await actions.add({ ...ids, test: body });
+              if (res.ok) {
+                setSuite(res.data);
+                setAdding(false);
+                toast.success(t("builder.suite.saved"));
+              }
+              return res;
+            }}
+          />
+        ) : (
+          <div>
+            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+              <Plus aria-hidden="true" />
+              {t("builder.suite.add")}
+            </Button>
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function TestRow({
+  test,
+  canEdit,
+  canRun,
+  canRetry,
+  onRun,
+  onFix,
+  onWhy,
+  onNotApplicable,
+}: {
+  test: AgentTest;
+  canEdit: boolean;
+  canRun: boolean;
+  /** Puede repetirla, aunque ahora corra otra pasada: decide lo que se le pide. */
+  canRetry: boolean;
+  onRun: () => void;
+  onFix?: () => void;
+  onWhy?: () => void;
+  onNotApplicable: (reason: string) => Promise<Result<TestSuite>>;
+}) {
+  const t = useT();
+  const nameId = React.useId();
+  const [marking, setMarking] = React.useState(false);
+  const [reviving, setReviving] = React.useState(false);
+  const [reviveError, setReviveError] = React.useState(false);
+  const failing = isFailing(test.status);
+  /** «No sé» no es un fallo del agente: se explica, y no hay nada que arreglar. */
+  const undecided = test.status === "unknown";
+
+  /** «Vuelve a aplicar»: una sola vez mientras se guarda; si no se puede, lo dice aquí. */
+  async function revive() {
+    if (reviving) return;
+    setReviving(true);
+    setReviveError(false);
+    const res = await onNotApplicable("").catch(() => null);
+    setReviving(false);
+    if (!res?.ok) setReviveError(true);
+  }
+  const sector = test.kind === "sector";
+  const conversation = failing ? failedConversation(test) : null;
+
+  return (
+    <li aria-labelledby={nameId} className="grid min-w-0 gap-2 rounded-md border border-border p-3" data-slot="test-row" data-status={test.status}>
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div className="grid min-w-0 flex-1 basis-48 gap-1">
+          <span id={nameId} className="text-sm font-medium text-pretty wrap-anywhere">
+            {test.name}
+          </span>
+          <span className="text-xs text-pretty wrap-anywhere text-muted-foreground">{t("builder.suite.first", { text: test.first_message })}</span>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {isGenerated(test) ? (
+            <StatusBadge tone="info" dot={false}>
+              {t("builder.suite.generated")}
+            </StatusBadge>
+          ) : null}
+          {test.critical ? <StatusBadge tone="danger" dot={false}>{t("builder.suite.critical")}</StatusBadge> : null}
+          <StatusBadge tone={STATUS_TONE[test.status]}>{t(`builder.suite.status.${test.status}` as MessageKey)}</StatusBadge>
+          {test.stale && test.status !== "not_applicable" ? <StatusBadge tone="warn">{t("builder.suite.staleBadge")}</StatusBadge> : null}
+        </div>
+      </div>
+      {test.decided > 0 && test.status !== "not_applicable" ? (
+        <p className="text-xs text-muted-foreground tabular-nums">{t("builder.suite.passes", { passes: test.passes, decided: test.decided })}</p>
+      ) : null}
+      {test.not_applicable_reason ? (
+        // La razón puede llegar con su «No aplica» delante (65.8): no se repite.
+        <p className="text-xs text-pretty break-words text-muted-foreground">{t("builder.suite.na.shown", { reason: naReason(test.not_applicable_reason) })}</p>
+      ) : null}
+      {test.status === "model_failed" ? (
+        <p className="text-xs text-pretty wrap-anywhere text-muted-foreground" data-slot="test-untested">
+          {t("builder.suite.untested", { why: test.why_untested || t("builder.suite.untested.why") })}
+          {canRetry ? ` ${t("builder.suite.untested.retry")}` : ""}
+        </p>
+      ) : null}
+      {failing ? (
+        <details className="min-w-0 text-sm" data-slot="test-why">
+          <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{t(undecided ? "builder.suite.why.undecided" : "builder.suite.why")}</summary>
+          <div className="mt-1 grid min-w-0 gap-2">
+            <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{test.why_failed || t(undecided ? "builder.suite.why.undecided.none" : "builder.suite.why.none")}</p>
+            {conversation ? <TestConversation transcript={conversation.transcript} stop={conversation.stop} /> : null}
+          </div>
+        </details>
+      ) : null}
+      {marking ? (
+        <NotApplicableForm name={test.name} onCancel={() => setMarking(false)} onSave={onNotApplicable} onDone={() => setMarking(false)} />
+      ) : (
+        <div className="flex min-w-0 flex-wrap gap-2 empty:hidden">
+          {failing && !undecided && onFix ? (
+            <Button size="sm" variant="outline" onClick={onFix} aria-label={t("builder.suite.fix.label", { name: test.name })}>
+              <Wrench aria-hidden="true" />
+              {t("builder.suite.fix")}
+            </Button>
+          ) : null}
+          {failing && onWhy ? (
+            <Button size="sm" variant="ghost" onClick={onWhy} aria-label={t("builder.copilot.why.test", { name: test.name })}>
+              {t("builder.copilot.why")}
+            </Button>
+          ) : null}
+          {canRun && test.status !== "not_applicable" ? (
+            <Button size="sm" variant="ghost" onClick={onRun} aria-label={t("builder.suite.runOne", { name: test.name })}>
+              <Play aria-hidden="true" />
+              {t("builder.suite.run")}
+            </Button>
+          ) : null}
+          {canEdit && sector && !test.not_applicable_reason ? (
+            <Button size="sm" variant="ghost" onClick={() => setMarking(true)} aria-label={t("builder.suite.na.label", { name: test.name })}>
+              {t("builder.suite.na")}
+            </Button>
+          ) : null}
+          {canEdit && sector && test.not_applicable_reason ? (
+            <Button size="sm" variant="ghost" loading={reviving} onClick={() => void revive()}>
+              {t("builder.suite.na.undo")}
+            </Button>
+          ) : null}
+        </div>
+      )}
+      {reviveError ? (
+        <p role="alert" className="text-xs text-pretty text-destructive">
+          {t("builder.suite.na.undo.error")}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+function NotApplicableForm({
+  name,
+  onSave,
+  onCancel,
+  onDone,
+}: {
+  name: string;
+  onSave: (reason: string) => Promise<Result<TestSuite>>;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  const t = useT();
+  const [reason, setReason] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const fieldRef = React.useRef<HTMLTextAreaElement>(null);
+  React.useEffect(() => {
+    fieldRef.current?.focus();
+  }, []);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (reason.trim().length < 3) {
+      setError(t("builder.suite.na.required"));
+      return;
+    }
+    setBusy(true);
+    const res = await onSave(reason.trim());
+    setBusy(false);
+    if (res.ok) return onDone();
+    setError(res.code === "reason_required" ? t("builder.suite.na.required") : t("builder.suite.error.save"));
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="grid min-w-0 gap-2" aria-label={t("builder.suite.na.label", { name })}>
+      <Field label={t("builder.suite.na.reason")} error={error ?? undefined} required>
+        {(a11y) => <Textarea {...a11y} ref={fieldRef} value={reason} rows={2} maxLength={500} onChange={(e) => setReason(e.target.value)} />}
+      </Field>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" size="sm" loading={busy}>
+          {t("builder.suite.na.save")}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+          {t("builder.suite.na.cancel")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function AddTestForm({ onAdd, onCancel }: { onAdd: (body: TestBody) => Promise<Result<TestSuite>>; onCancel: () => void }) {
+  const t = useT();
+  const [name, setName] = React.useState("");
+  const [first, setFirst] = React.useState("");
+  const [critical, setCritical] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  // Al abrirse (con su botón o desde la puerta), el foco va a su primer campo: el botón ya no está.
+  React.useEffect(() => {
+    // Desde la puerta, su sección puede seguir plegada: sin abrirla, el foco no llega.
+    const folded = nameRef.current?.closest("details");
+    if (folded) folded.open = true;
+    nameRef.current?.focus();
+  }, []);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    if (!name.trim() || !first.trim()) {
+      setError(t("builder.suite.add.required"));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const res = await onAdd({ name: name.trim(), first_message: first.trim(), critical });
+    setBusy(false);
+    if (!res.ok) setError(t("builder.suite.error.save"));
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="grid min-w-0 gap-3 rounded-md border border-border p-3" aria-label={t("builder.suite.add")}>
+      <Field label={t("builder.suite.add.name")} required>
+        {(a11y) => <Input {...a11y} ref={nameRef} value={name} maxLength={120} autoComplete="off" onChange={(e) => setName(e.target.value)} />}
+      </Field>
+      <Field label={t("builder.suite.add.first")} required>
+        {(a11y) => <Textarea {...a11y} value={first} rows={2} maxLength={2000} onChange={(e) => setFirst(e.target.value)} />}
+      </Field>
+      <label className="flex min-h-6 items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-primary" checked={critical} onChange={(e) => setCritical(e.target.checked)} />
+        {t("builder.suite.add.critical")}
+      </label>
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" size="sm" loading={busy}>
+          {t("builder.suite.add.save")}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+          {t("builder.suite.add.cancel")}
+        </Button>
+      </div>
+    </form>
+  );
+}

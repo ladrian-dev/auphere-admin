@@ -73,6 +73,8 @@ class SignupConfigOut(BaseModel):
     cloud_api_config_id: str
     coexistence_config_id: str
     graph_api_version: str
+    #: Spec 050: ``v4`` or ``v5`` — which ``extras`` the partner passes to ``FB.login``.
+    embedded_signup_version: str = "v4"
 
 
 class WhatsAppSignupIn(BaseModel):
@@ -227,6 +229,7 @@ async def whatsapp_signup_config(
         cloud_api_config_id=settings.meta_config_id_wa_cloud_api,
         coexistence_config_id=settings.meta_config_id_wa_coexistence,
         graph_api_version=settings.meta_graph_api_version,
+        embedded_signup_version=settings.meta_embedded_signup_version,
     )
 
 

@@ -1,0 +1,91 @@
+/** ES/EN del carril `inbox-correct` — «Corregir esta respuesta» en la Bandeja de
+ *  la persona del cliente (spec 047, T176). Vivían en el carril `lite-agents`, que
+ *  se borró con Agentes y Negocio del cliente (spec 056, requisito 2.1). Las
+ *  claves no cambian de nombre. Sin punto y coma (`words.test.ts`). */
+export const inboxCorrectMessages = {
+  "lite.correct.open": { es: "Corregir esta respuesta", en: "Correct this answer" },
+  "lite.correct.title": { es: "Corregir esta respuesta", en: "Correct this answer" },
+  "lite.correct.description": {
+    es: "Dinos cómo debió responder el agente. Quien gestiona tus agentes nunca ve el mensaje del cliente.",
+    en: "Tell us how the agent should have answered. Whoever manages your agents never sees the customer’s message.",
+  },
+  "lite.correct.done.description": { es: "Tu corrección está enviada.", en: "Your correction has been sent." },
+  "lite.correct.answer": { es: "La respuesta del agente", en: "The agent’s answer" },
+  "lite.correct.text": { es: "Cómo debió responder, o la regla", en: "How it should have answered, or the rule" },
+  "lite.correct.text.hint": {
+    es: "Por ejemplo «El aparcamiento está en la calle de atrás» o «No des citas los festivos».",
+    en: "For example “Parking is on the street behind” or “Do not book on public holidays”.",
+  },
+  "lite.correct.scope": { es: "¿Para quién vale?", en: "Who is it for?" },
+  "lite.correct.scope.business": { es: "Todo el negocio", en: "The whole business" },
+  // Spec 056 (9.4): lo que de verdad pasa con cada tipo de corrección.
+  "lite.correct.scope.business.hint": {
+    es: "Un dato va a la ficha de tu negocio y lo usan todos tus agentes. Una regla se propone a cada uno de tus agentes activos.",
+    en: "A fact goes into your business profile and all your agents use it. A rule is proposed to each of your active agents.",
+  },
+  "lite.correct.scope.agent": { es: "Solo este agente", en: "Only this agent" },
+  "lite.correct.scope.agent.hint": {
+    es: "Solo para el agente que respondió, sea un dato o una regla.",
+    en: "Only for the agent that answered, whether it is a fact or a rule.",
+  },
+  "lite.correct.next": { es: "Continuar", en: "Continue" },
+  "lite.correct.cancel": { es: "Cancelar", en: "Cancel" },
+  "lite.correct.close": { es: "Cerrar", en: "Close" },
+  "lite.correct.theAgent": { es: "el agente", en: "the agent" },
+  "lite.correct.kind.data": { es: "Es un dato", en: "It is a fact" },
+  "lite.correct.kind.behavior": { es: "Es un comportamiento", en: "It is a behaviour" },
+  "lite.correct.kind.data.business": {
+    es: "Se guarda al momento en la ficha de tu negocio. Todos tus agentes lo usan desde el siguiente mensaje y lo puedes deshacer.",
+    en: "It is saved right away in your business profile. All your agents use it from the next message and you can undo it.",
+  },
+  "lite.correct.kind.data.agent": {
+    es: "Se guarda al momento en lo que sabe {agent}. Lo usa desde el siguiente mensaje y lo puedes deshacer.",
+    en: "It is saved right away in what {agent} knows. It uses it from the next message and you can undo it.",
+  },
+  "lite.correct.kind.behavior.body": {
+    es: "Le llega a quien gestiona tus agentes como propuesta, con una prueba nueva, y decide si se aplica.",
+    en: "It reaches whoever manages your agents as a proposal, with a new test, and they decide whether to apply it.",
+  },
+  "lite.correct.lesson": { es: "Tu corrección", en: "Your correction" },
+  "lite.correct.paraphrase": { es: "Lo que preguntó el cliente, sin datos personales", en: "What the customer asked, without personal data" },
+  "lite.correct.paraphrase.hint": {
+    es: "Así lo verá quien gestiona tus agentes. Revísalo y cámbialo si hace falta.",
+    en: "This is how whoever manages your agents will see it. Check it and change it if needed.",
+  },
+  "lite.correct.pii.title": { es: "Quita estos datos personales antes de enviar", en: "Remove this personal data before sending" },
+  "lite.correct.pii.inLesson": { es: "{what} en tu corrección: «{text}»", en: "{what} in your correction: “{text}”" },
+  "lite.correct.pii.inParaphrase": { es: "{what} en lo que preguntó el cliente: «{text}»", en: "{what} in what the customer asked: “{text}”" },
+  "lite.correct.pii.recheck": { es: "Lo volvemos a comprobar al enviar.", en: "We check it again when you send it." },
+  "lite.correct.pii.email": { es: "Un correo", en: "An e-mail" },
+  "lite.correct.pii.phone": { es: "Un teléfono", en: "A phone number" },
+  "lite.correct.pii.name": { es: "Un nombre", en: "A name" },
+  "lite.correct.pii.document": { es: "Un documento de identidad", en: "An ID document" },
+  "lite.correct.pii.other": { es: "Un dato personal", en: "Personal data" },
+  "lite.correct.send.data": { es: "Guardar el dato", en: "Save the fact" },
+  "lite.correct.send.behavior": { es: "Enviar la propuesta", en: "Send the proposal" },
+  "lite.correct.done.data": { es: "Hecho. {agent} lo sabe desde el siguiente mensaje.", en: "Done. {agent} knows it from the next message." },
+  "lite.correct.done.behavior": {
+    es: "Enviado. Quien gestiona tus agentes lo verá en las mejoras del agente y decidirá.",
+    en: "Sent. Whoever manages your agents will see it in the agent’s improvements and decide.",
+  },
+  "lite.correct.done.undone": { es: "Deshecho. El agente vuelve a responder como antes.", en: "Undone. The agent answers as before again." },
+  "lite.correct.undo": { es: "Deshacer", en: "Undo" },
+  "lite.correct.undone": { es: "Corrección deshecha.", en: "Correction undone." },
+  "lite.correct.error.textRequired": { es: "Escribe cómo debió responder.", en: "Write how it should have answered." },
+  "lite.correct.error.scopeRequired": { es: "Elige para quién vale.", en: "Choose who it is for." },
+  "lite.correct.error.notAgent": { es: "Solo se corrigen las respuestas del agente.", en: "Only the agent’s answers can be corrected." },
+  "lite.correct.error.pii": { es: "Quita los datos personales que te marcamos antes de enviar.", en: "Remove the personal data we marked before sending." },
+  "lite.correct.error.paraphrase": {
+    es: "Escribe lo que preguntó el cliente. Es la pregunta que verá el agente.",
+    en: "Write what the customer asked. It is the question the agent will see.",
+  },
+  "lite.correct.error.ruleTooLong": { es: "La regla es demasiado larga. Como mucho {max} caracteres.", en: "The rule is too long. {max} characters at most." },
+  "lite.correct.error.conflict": { es: "Esta corrección cambió mientras la revisabas. Revísala y vuelve a enviarla.", en: "This correction changed while you were checking it. Check it and send it again." },
+  "lite.correct.error.notDraft": { es: "Esta corrección ya se envió.", en: "This correction was already sent." },
+  "lite.correct.error.invalid": { es: "No encaja con el agente así. Escríbela de otra forma.", en: "It does not fit the agent this way. Write it differently." },
+  "lite.correct.error.agentGone": { es: "Ese agente ya no está.", en: "That agent is no longer there." },
+  "lite.correct.error.gone": { es: "Esa respuesta ya no está.", en: "That answer is no longer there." },
+  "lite.correct.error.forbidden": { es: "No tienes acceso a la Bandeja desde esta cuenta.", en: "This account has no access to the Inbox." },
+  "lite.correct.error.generic": { es: "No se pudo enviar. No se ha cambiado nada.", en: "It could not be sent. Nothing has changed." },
+  "lite.correct.error.undo": { es: "Ya no se puede deshacer.", en: "It can no longer be undone." },
+} as const;

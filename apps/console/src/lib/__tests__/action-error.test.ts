@@ -13,7 +13,36 @@ describe("actionErrorText", () => {
     expect(actionErrorText({ ok: false, status: 503, message: "upstream timeout at 10.0.0.3" }, t)).toBe("<common.error.backend>");
     expect(actionErrorText({ ok: false, status: 0, message: "" }, t)).toBe("<common.error.backend>");
   });
+  it("the API's raw JSON never reaches a person", () => {
+    const raw = 'backend 422 https://api/x: {"detail":{"code":"something_new"}}';
+    expect(actionErrorText({ ok: false, status: 422, message: raw, code: "something_new" }, t)).toBe("<common.error.backend>");
+  });
+  it("the gate and a refused change have their sentence", () => {
+    expect(actionErrorText({ ok: false, status: 409, message: "backend 409", code: "gate_blocked" }, t)).toBe("<common.error.gate_blocked>");
+    expect(actionErrorText({ ok: false, status: 422, message: "backend 422", code: "spec_invalid" }, t)).toBe("<common.error.spec_invalid>");
+    expect(actionErrorText({ ok: false, status: 422, message: "backend 422", code: "tool_in_use" }, t)).toBe("<common.error.tool_in_use>");
+  });
   it("a human 4xx passes through", () => {
     expect(actionErrorText({ ok: false, status: 409, message: "Ya existe un cliente con esa referencia" }, t)).toBe("Ya existe un cliente con esa referencia");
+  });
+});
+
+/**
+ * Spec 047, enmienda del 2026-10-30 (T228; `contracts/console-api.md` §11
+ * «Códigos nuevos»): los códigos nuevos llegan a pantallas que usan esta
+ * función (la barra de guardar de antes, el alta de agente de antes). La
+ * frase la escribe la consola, nunca el `detail` de la API.
+ */
+describe("actionErrorText · solo lo que tenemos", () => {
+  it("cada código nuevo con su frase, aunque la API mande otra cosa en `message`", () => {
+    expect(actionErrorText({ ok: false, status: 409, message: "structured agent", code: "structured_agent" }, t)).toBe("<common.error.structured_agent>");
+    expect(actionErrorText({ ok: false, status: 410, message: "gone", code: "seed_template_retired" }, t)).toBe("<common.error.seed_template_retired>");
+    expect(actionErrorText({ ok: false, status: 422, message: "gone", code: "seed_template_retired" }, t)).toBe("<common.error.seed_template_retired>");
+    expect(actionErrorText({ ok: false, status: 503, message: "facts", code: "facts_unavailable" }, t)).toBe("<common.error.facts_unavailable>");
+  });
+
+  it("dice dónde se conecta lo que no se conecta aquí, sin enseñar el código", () => {
+    const text = actionErrorText({ ok: false, status: 409, message: "x", code: "connect_from_reservas" }, ((key: string) => key) as never);
+    expect(text).toBe("common.error.connect_from_reservas");
   });
 });

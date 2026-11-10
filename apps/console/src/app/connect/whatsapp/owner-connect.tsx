@@ -6,9 +6,26 @@ import * as React from "react";
 import { Button } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
-import { SignupError, loginWithMeta, type SignupMode } from "@/lib/meta-fb-sdk";
+import { SignupError, loginWithMeta, type SignupMode, type SignupVersion } from "@/lib/meta-fb-sdk";
 
 import { ownerConnectAction } from "./actions";
+
+/** El modo del enlace: los dos de Meta y, donde Auphere activó la beta, «WhatsApp login» (spec 047, 31.5). */
+export type OwnerLinkMode = SignupMode | "whatsapp_login";
+
+/**
+ * Spec 047 (31.5): «WhatsApp login» registra un número de Cloud API, así que la
+ * ventana de Meta se abre en ese modo. La API solo crea estos enlaces donde la
+ * beta está activa para el país del negocio (nunca en la UE), así que aquí sí
+ * se puede decir «sin cuenta de Meta».
+ */
+export function sdkModeOf(mode: OwnerLinkMode): SignupMode {
+  return mode === "coexistence" ? "coexistence" : "cloud_api";
+}
+
+function bodyKey(mode: OwnerLinkMode) {
+  return mode === "coexistence" ? "connect.body" : mode === "whatsapp_login" ? "connect.body.whatsapp_login" : "connect.body.cloud";
+}
 
 /**
  * Spec 040: the one button the business owner sees. It opens Meta's
@@ -20,12 +37,14 @@ export function OwnerConnect({
   appId,
   configId,
   version,
+  signupVersion,
 }: {
   name: string;
-  mode: SignupMode;
+  mode: OwnerLinkMode;
   appId: string;
   configId: string;
   version: string;
+  signupVersion?: SignupVersion;
 }) {
   const t = useT();
   const [working, setWorking] = React.useState(false);
@@ -36,7 +55,7 @@ export function OwnerConnect({
     setError(null);
     setWorking(true);
     try {
-      const envelope = await loginWithMeta({ appId, version, configId, mode });
+      const envelope = await loginWithMeta({ appId, version, configId, mode: sdkModeOf(mode), signupVersion });
       // The token is not here: the server action reads it from the cookie.
       const res = await ownerConnectAction(envelope);
       if (res.ok) {
@@ -57,7 +76,16 @@ export function OwnerConnect({
     } catch (err) {
       // Closing Meta's window is not an error worth shouting about.
       if (err instanceof SignupError && err.code === "cancelled") return;
-      setError(err instanceof SignupError && err.code === "sdk_failed" ? t("ch.connect.sdkFailed") : t("connect.error.generic"));
+      const code = err instanceof SignupError ? err.code : null;
+      setError(
+        code === "sdk_failed"
+          ? t("ch.connect.sdkFailed")
+          : code === "no_number"
+            ? t("ch.connect.noNumber")
+            : code === "grant_only"
+              ? t("ch.connect.grantOnly")
+              : t("connect.error.generic"),
+      );
     } finally {
       setWorking(false);
     }
@@ -79,9 +107,7 @@ export function OwnerConnect({
     <section className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold text-balance">{t("connect.title", { name })}</h1>
-        <p className="text-sm text-pretty text-muted-foreground">
-          {mode === "coexistence" ? t("connect.body") : t("connect.body.cloud")}
-        </p>
+        <p className="text-sm text-pretty text-muted-foreground">{t(bodyKey(mode))}</p>
       </div>
       {error ? (
         <p role="alert" className="text-sm text-pretty text-destructive">
@@ -89,7 +115,7 @@ export function OwnerConnect({
         </p>
       ) : null}
       <Button size="lg" onClick={start} disabled={working} aria-busy={working}>
-        {working ? t("connect.working") : t("connect.start")}
+        {working ? t("connect.working") : mode === "whatsapp_login" ? t("connect.start.whatsapp_login") : t("connect.start")}
       </Button>
     </section>
   );

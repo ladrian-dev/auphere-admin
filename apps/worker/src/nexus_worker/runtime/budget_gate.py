@@ -18,6 +18,10 @@ Así que cortar significa exactamente tres cosas, en este orden:
    en ``audit_log`` → alerter → plantilla de WhatsApp). Si nadie se
    entera, el corte solo consigue que el negocio pierda clientes en
    silencio.
+
+Spec 047 (requisito 44.8): el mensaje del contacto ya está guardado cuando se
+llega aquí, y la conversación pasa a la Bandeja como «Espera a una persona»
+con el motivo ``turn_limit``.
 """
 
 from __future__ import annotations
@@ -28,12 +32,18 @@ import sqlalchemy as sa
 import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import Conversation
+from nexus_api.services import inbox_lifecycle
 
 from nexus_worker.metering.budget import BudgetVerdict
 
 log = structlog.get_logger(__name__)
 
 ACTOR = "budget_gate"
+#: Spec 047 (``contracts/events.md`` §2): el corte del presupuesto de Auphere
+#: es un límite de gasto, no la bolsa del cliente —no se arregla asignando
+#: saldo—, así que su motivo es «Límite del turno» y no «Sin saldo».
+CUTOFF_REASON = "turn_limit"
 # Acción del audit_log que el alerter traduce a plantilla de WhatsApp.
 ESCALATION_ACTION = "budget.hard_limit_reached"
 
@@ -76,8 +86,17 @@ async def apply_hard_cutoff(
     en el log.
     """
     sm = get_sessionmaker()
+    mark: inbox_lifecycle.WaitingMark | None = None
     try:
         async with sm() as session, tenant_scoped_session(session, tenant_id):
+            # Spec 047 (requisito 44.8): el corte cumple el requisito 2. El
+            # mensaje ya está guardado (el despachador guarda antes de las
+            # puertas); aquí la conversación espera a una persona con su motivo.
+            conversation = await session.get(Conversation, conversation_id)
+            if conversation is not None:
+                mark = await inbox_lifecycle.mark_waiting_reason(
+                    session, conversation, reason=CUTOFF_REASON
+                )
             already = await session.scalar(
                 _ALREADY_WARNED_SQL, {"c": str(conversation_id), "body": HANDOFF_MESSAGE}
             )
@@ -85,6 +104,8 @@ async def apply_hard_cutoff(
                 # Ya se avisó hace poco en esta conversación. Se sigue sin
                 # abrir turno, pero no se repite el mensaje: el corte no
                 # puede convertirse en spam hacia el cliente final.
+                await session.commit()
+                await _announce(mark)
                 return False
 
             await session.execute(
@@ -113,6 +134,7 @@ async def apply_hard_cutoff(
                 },
             )
             await session.commit()
+        await _announce(mark)
         log.warning(
             "budget.hard_cutoff",
             tenant_id=str(tenant_id),
@@ -126,6 +148,13 @@ async def apply_hard_cutoff(
     except Exception as exc:
         log.error("budget.cutoff_failed", tenant_id=str(tenant_id), error=str(exc))
         return False
+
+
+async def _announce(mark: inbox_lifecycle.WaitingMark | None) -> None:
+    """Con Bandeja, su gente se entera de la espera (uno por espera). Sin
+    Bandeja el aviso al dueño ya es la fila de ``ESCALATION_ACTION``."""
+    if mark is not None:
+        await inbox_lifecycle.announce_waiting(mark)
 
 
 def _payload(verdict: BudgetVerdict) -> str:

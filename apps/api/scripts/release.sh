@@ -11,6 +11,15 @@
 #   1. ``alembic upgrade head`` — owns the application's ``public``
 #      schema and creates the ``auth`` namespace (migration 0011).
 #   2. Sembrar el catálogo de conectores (idempotente).
+#   3. Spec 048 (requirement 3): the automatic pass to Reservas. Every client
+#      whose agents still name ``booking.*`` gets Reservas (if it had none),
+#      a published version with ``reservas.*`` and its future appointments.
+#      Each client in its own transaction, under its RLS; one that fails is
+#      rolled back alone and logged (``reservations.auto_pass_failed``); the
+#      summary is ``reservations.auto_pass_done``. It NEVER aborts the deploy:
+#      the runtime still runs ``booking.*`` for whoever keeps it. Idempotent:
+#      a client that already passed is skipped. RUNBOOK.md, «Paso automático
+#      a Reservas».
 #
 # Env vars:
 #   NEXUS_DATABASE_URL_DIRECT — la base REAL, y la que usa todo lo que corre
@@ -44,5 +53,12 @@ echo "release: seeding connectors catalog"
 # Block L — apply Connector seed YAMLs. Idempotente. Va a la base DIRECTA,
 # igual que Alembic: aquí el nombre del pooler no resuelve.
 python /app/apps/api/scripts/seed_connectors.py
+
+# Spec 048, requirement 3 (amended 2026-11-10): a deploy never switches
+# Reservas on nor publishes an agent. Here ran ``pass_booking_to_reservas.py``,
+# which turned Reservas on for every client whose agents named ``booking.*``
+# and published their versions without the test gate. Reservas is switched on
+# by hand, client by client (Acceso, or «Gestiona citas» on an agent); the
+# script stays as an operator tool that is only run on purpose.
 
 echo "release: done"

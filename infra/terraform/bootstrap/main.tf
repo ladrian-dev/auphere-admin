@@ -116,6 +116,14 @@ resource "aws_ecr_repository" "repos" {
 
 # keep-50, NO keep-10: precedente real de un lifecycle agresivo podando
 # imágenes de Lambdas/servicios ociosos y rompiéndolos al siguiente arranque.
+#
+# Las de producción van aparte (regla 1). Con una sola regla de 50 para todo,
+# los despliegues de staging empujaron fuera la imagen que corría en prod: el
+# 2026-11-10 `nexus-api:prod` y `nexus-worker:prod` ya no existían, y una tarea
+# de prod que se reiniciara no habría podido arrancar. Una imagen que encaja en
+# una regla no la puede expirar otra de menor prioridad, así que lo etiquetado
+# `prod*` (`prod` y `prod-<sha>`, que empuja deploy-prod) solo cuenta en la
+# suya: se quedan las 10 últimas de producción, que son también la vuelta atrás.
 resource "aws_ecr_lifecycle_policy" "keep_50" {
   for_each   = aws_ecr_repository.repos
   repository = each.value.name
@@ -124,6 +132,17 @@ resource "aws_ecr_lifecycle_policy" "keep_50" {
     rules = [
       {
         rulePriority = 1
+        description  = "keep the last 10 production images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["prod"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 2
         description  = "keep last 50 images"
         selection = {
           tagStatus   = "any"

@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
+from nexus_api.config import get_settings
 from nexus_api.db.models import ClientInvitation, ClientMembership, ConsoleSession
 from nexus_api.services import console_identity, operator_identity
 from tests.conftest import console_headers
@@ -184,6 +185,46 @@ async def test_resend_kills_the_previous_link(
     assert old.status_code == 404
     new = await _accept(client, resent.json()["accept_path"])
     assert new.status_code == 200, new.text
+
+
+@pytest.mark.parametrize("works", [True, False], ids=["sent", "not_sent"])
+async def test_invite_and_resend_answer_the_absolute_link_the_email_carries(
+    client, db_session, console_world, admin_headers, monkeypatch, works
+) -> None:
+    """Bug enlace-de-invitacion-que-no-abre: what the panel shows to pass on by
+    hand opens, with the address of this environment's console, also (above
+    all) when the e-mail did not go out."""
+    monkeypatch.setattr(get_settings(), "console_base_url", "https://consola.entorno.test/")
+    mails: list[dict] = []
+
+    async def _fake(kind, **kwargs) -> bool:
+        mails.append(kwargs)
+        return works
+
+    monkeypatch.setattr("nexus_api.services.email.send_template", _fake)
+    w, headers = await _setup(client, db_session, console_world, admin_headers)
+
+    invited = await client.post(
+        _members(w["tenant_id"]), headers=headers, json={"email": "a@minegocio.test"}
+    )
+    assert invited.status_code == 201, invited.text
+    body = invited.json()
+    assert body["email_sent"] is works
+    token = body["accept_path"].rsplit("/", 1)[-1]
+    assert body["accept_url"] == f"https://consola.entorno.test/invite/{token}"
+    assert mails[-1]["variables"]["ACCEPT_URL"] == body["accept_url"]
+
+    resent = await client.post(f"{_members(w['tenant_id'])}/{body['id']}/resend", headers=headers)
+    assert resent.status_code == 201, resent.text
+    again = resent.json()
+    assert again["email_sent"] is works
+    new_token = again["accept_path"].rsplit("/", 1)[-1]
+    assert new_token != token
+    assert again["accept_url"] == f"https://consola.entorno.test/invite/{new_token}"
+    assert mails[-1]["variables"]["ACCEPT_URL"] == again["accept_url"]
+
+    # The link opens: the token inside it is the one that resolves.
+    assert (await _accept(client, again["accept_url"])).status_code == 200
 
 
 async def test_revoke_a_person_closes_sessions_and_is_idempotent(

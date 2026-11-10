@@ -25,6 +25,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
+from nexus_api.core.errors import AgentConfigConflict
 from nexus_api.core.tenant_context import tenant_context, tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Agent, AgentConfig, AgentConfigStatus
@@ -110,11 +111,15 @@ async def test_without_an_agent_the_principal_answers(console_world) -> None:
 
 
 async def test_versions_keep_counting_per_client(console_world) -> None:
+    """The client-wide ``version`` keeps counting across agents; the agent's own
+    number («v{n} de {agente}», spec 047 R3.4) counts per agent. And B, which
+    already has its draft (v3), gets no second one (R3.1)."""
     tenant_id = console_world["a"]["tenant_id"]
-    _a, b = await _two_agents(tenant_id)
+    a, b = await _two_agents(tenant_id)
     with tenant_context(tenant_id):
         async with get_sessionmaker()() as s, tenant_scoped_session(s, tenant_id):
-            draft = await AgentConfigRepository(s).create_staged(
+            repo = AgentConfigRepository(s)
+            draft = await repo.create_staged(
                 system_prompt_rendered="x",
                 channels=[],
                 tools=[],
@@ -122,10 +127,24 @@ async def test_versions_keep_counting_per_client(console_world) -> None:
                 seed_template_ref=None,
                 kg_schema_id=None,
                 created_by="test",
-                agent_id=b,
+                agent_id=a,
             )
             assert draft.version == 4
-            assert draft.agent_id == b
+            assert draft.agent_id == a
+            assert draft.agent_version_number == 2
+            numbers = {c.version: c.agent_version_number for c in await repo.list_all(agent_id=b)}
+            assert numbers == {2: 1, 3: 2}
+            with pytest.raises(AgentConfigConflict, match="already has a draft"):
+                await repo.create_staged(
+                    system_prompt_rendered="y",
+                    channels=[],
+                    tools=[],
+                    policies={},
+                    seed_template_ref=None,
+                    kg_schema_id=None,
+                    created_by="test",
+                    agent_id=b,
+                )
 
 
 async def test_the_database_refuses_two_active_versions_of_one_agent(console_world) -> None:

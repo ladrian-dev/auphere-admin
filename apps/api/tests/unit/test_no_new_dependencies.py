@@ -74,6 +74,11 @@ BASELINE: frozenset[str] = frozenset(
         # MIT no alcanza el uso en red, no impone reciprocidad y no restringe
         # el uso multi-tenant. Es un sí (§VIII).
         "stripe",
+        # Spec 047 (T022, 2026-10-26). MIT, leída entera en el paquete
+        # instalado (0.5.1). El párrafo, citado en
+        # specs/047-la-fabrica-de-agentes/plan.md §Contexto técnico y en
+        # docs/licenses/pgvector.md, es el mismo de stripe, arriba. Es un sí.
+        "pgvector",
         "structlog",
         "uvicorn",
     }

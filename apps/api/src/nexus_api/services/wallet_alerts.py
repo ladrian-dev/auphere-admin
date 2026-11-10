@@ -42,10 +42,12 @@ from nexus_api.db.models import (
     NotificationKind,
     NotificationSeverity,
     Partner,
+    PartnerTenant,
+    Tenant,
 )
 from nexus_api.metering.wallet import purchased_spent_since, read_wallet
 from nexus_api.services.console_reporting import month_bounds
-from nexus_api.services.email import send_email
+from nexus_api.services.email_catalog import EmailKind, console_link, format_month
 
 log = structlog.get_logger(__name__)
 
@@ -68,9 +70,32 @@ def wallet_dedupe_key(partner_id: uuid.UUID, threshold: int, since: datetime) ->
     return f"partner:{partner_id}:wallet:{threshold}:{since:%Y-%m}"
 
 
-def client_out_of_quota_dedupe_key(partner_id: uuid.UUID, ref: str, now: datetime) -> str:
-    """Uno por cliente y día (spec 016, R2.3)."""
-    return f"partner:{partner_id}:client.out_of_quota:{ref}:{now:%Y-%m-%d}"
+def client_out_of_quota_dedupe_key(partner_id: uuid.UUID, ref: str) -> str:
+    """Uno por cliente hasta que recupere saldo (spec 047, enmienda de 44.5): el
+    cron suelta la clave con :func:`_rearm_out_of_quota`."""
+    return f"partner:{partner_id}:client.out_of_quota:{ref}"
+
+
+async def _rearm_out_of_quota(
+    session: AsyncSession, partner_id: uuid.UUID, still_out: list[str]
+) -> None:
+    """Quien la puerta del canal vuelve a dejar pasar puede volver a avisar.
+
+    ``still_out`` sale de ``quota_state``, la misma lectura que la puerta: con
+    otra, un cliente bloqueado vería soltarse su clave y cada turno saltado
+    volvería a avisar, cada 15 minutos.
+    """
+    await session.execute(
+        sa.update(ConsoleNotification)
+        .where(
+            ConsoleNotification.partner_id == partner_id,
+            ConsoleNotification.kind == NotificationKind.CLIENT_OUT_OF_QUOTA.value,
+            ConsoleNotification.dedupe_key.is_not(None),
+            ConsoleNotification.external_client_ref.not_in(still_out),
+        )
+        .values(dedupe_key=None)
+        .execution_options(synchronize_session=False)
+    )
 
 
 def _alert_recipients(partner: Partner) -> list[str]:
@@ -78,18 +103,17 @@ def _alert_recipients(partner: Partner) -> list[str]:
 
 
 async def _emit_client_out_of_quota(
-    session: AsyncSession, partner: Partner, ref: str, *, now: datetime | None = None
+    session: AsyncSession, partner: Partner, ref: str
 ) -> ConsoleNotification | None:
     """Aviso «{cliente} se ha quedado sin cupo» en la campana y por correo.
 
     Spec 016 (R2.2-R2.3). Dentro de la transacción del llamador. Si el
     partner tiene ``usage_alert_recipients`` el correo va a ellos con un
     texto que dice qué hacer; si no, ``emit`` avisa a owners y admins como
-    con cualquier ``warning``. Un segundo aviso el mismo día no se crea.
+    con cualquier ``warning``. No se crea otro hasta que recupere saldo.
     """
     from nexus_api.services.console_notifications import emit
 
-    ts = now or datetime.now(UTC)
     recipients = _alert_recipients(partner)
     row = await emit(
         session,
@@ -98,31 +122,52 @@ async def _emit_client_out_of_quota(
         data={"external_client_ref": ref, "remaining": 0},
         severity=NotificationSeverity.WARNING,
         external_client_ref=ref,
-        dedupe_key=client_out_of_quota_dedupe_key(partner.id, ref, ts),
+        dedupe_key=client_out_of_quota_dedupe_key(partner.id, ref),
         email=not recipients,
     )
     if row is not None and recipients:
-        await _email_client_out_of_quota(partner, ref, recipients)
+        name = await _client_display_name(session, partner.id, ref)
+        await _email_client_out_of_quota(partner, ref, name, recipients)
     return row
 
 
-async def _email_client_out_of_quota(partner: Partner, ref: str, recipients: list[str]) -> bool:
-    subject = f"[Auphere] {partner.name}: {ref} se ha quedado sin saldo"
-    html = (
-        '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-        'max-width:560px;margin:0 auto;color:#111">'
-        f"<p style='font-size:16px;margin:0 0 8px'><strong>El cliente {ref} ha agotado su "
-        "saldo y sus mensajes no se están atendiendo.</strong></p>"
-        "<p style='margin:0'>Habla con tu cliente y súbele el tope en la sección "
-        "Consumo de la consola. En cuanto tenga saldo, el agente vuelve a contestar solo.</p>"
-        "</div>"
+async def _client_display_name(session: AsyncSession, partner_id: uuid.UUID, ref: str) -> str:
+    """El nombre con el que el partner conoce al cliente: el que le puso en el
+    mapeo, si no el de su tenant, y si no hay ninguno, su referencia."""
+    found = (
+        await session.execute(
+            sa.select(PartnerTenant.client_name, Tenant.name)
+            .join(Tenant, Tenant.id == PartnerTenant.tenant_id)
+            .where(PartnerTenant.partner_id == partner_id, PartnerTenant.external_client_ref == ref)
+        )
+    ).first()
+    if found is None:
+        return ref
+    client_name, tenant_name = found
+    return client_name or tenant_name or ref
+
+
+async def _email_client_out_of_quota(
+    partner: Partner, ref: str, name: str, recipients: list[str]
+) -> bool:
+    """Spec 051: ``client_out_of_quota``, en el idioma de cada destinatario."""
+    from nexus_api.services.email import send_localized
+
+    def compose(locale: str) -> tuple[str, dict[str, str]]:
+        subject = (
+            f"{name} has run out of balance"
+            if locale == "en"
+            else f"{name} se ha quedado sin saldo"
+        )
+        return subject, {"CLIENT_NAME": name, "USAGE_URL": console_link("/usage")}
+
+    return await send_localized(
+        EmailKind.CLIENT_OUT_OF_QUOTA,
+        to=recipients,
+        compose=compose,
+        partner_id=partner.id,
+        client_ref=ref,
     )
-    try:
-        await send_email(to=recipients, subject=subject, html=html)
-        return True
-    except Exception as exc:  # pragma: no cover - best effort
-        log.warning("wallet_alerts.client_email_failed", partner_id=str(partner.id), error=str(exc))
-        return False
 
 
 async def notify_client_out_of_quota_detached(tenant_id: uuid.UUID) -> ConsoleNotification | None:
@@ -148,6 +193,12 @@ async def notify_client_out_of_quota_detached(tenant_id: uuid.UUID) -> ConsoleNo
         if mapping is None:
             return None
         partner_id, ref = mapping
+        # Spec 047 (T161): con bolsas avisa ``client.wallet.empty`` (el cron de
+        # avisos de la bolsa); este aviso queda para la consola de hoy.
+        from nexus_api.services.wallet.turns import bags_on
+
+        if await bags_on(partner_id):
+            return None
         if await allow_channel_turn(tenant_id):
             return None
         partner = await session.get(Partner, partner_id)
@@ -165,10 +216,12 @@ async def notify_client_out_of_quota_detached(tenant_id: uuid.UUID) -> ConsoleNo
 
 
 def client_balance_dedupe_key(tenant_id: uuid.UUID, kind: str, now: datetime) -> str:
-    """Agotado: uno por cliente y día (como el del partner). «No llega a fin
-    de mes»: uno por cliente y mes — repetirlo cada día sería ruido."""
-    period = f"{now:%Y-%m-%d}" if kind == "balance_out" else f"{now:%Y-%m}"
-    return f"client:{tenant_id}:{kind}:{period}"
+    """Agotado: uno por cliente hasta que recupere saldo (como el del partner).
+    «No llega a fin de mes»: uno por cliente y mes — repetirlo cada día sería
+    ruido."""
+    if kind == "balance_out":
+        return f"client:{tenant_id}:{kind}"
+    return f"client:{tenant_id}:{kind}:{now:%Y-%m}"
 
 
 async def _lite_enabled(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
@@ -198,7 +251,7 @@ async def _emit_client_balance(
     data: dict[str, object] = {}
     if days_left is not None:
         data["days_left"] = max(round(days_left), 0)
-    return await emit(
+    row = await emit(
         session,
         partner_id=partner_id,
         kind=(
@@ -212,6 +265,19 @@ async def _emit_client_balance(
         dedupe_key=client_balance_dedupe_key(tenant_id, kind, ts),
         audience=NotificationAudience.CLIENT,
     )
+    if row is not None:
+        # Spec 031 (R8.4): el aviso al teléfono va con la fila de la campana, en
+        # la misma sesión. Uno deduplicado (``None``) no avisa otra vez.
+        from nexus_api.services import push_events
+
+        await push_events.enqueue(
+            session,
+            tenant_id=tenant_id,
+            kind="client.balance",
+            notification_id=row.id,
+            dedupe_key=f"client.balance:{row.id}",
+        )
+    return row
 
 
 async def evaluate_client_balance_alerts(
@@ -225,11 +291,16 @@ async def evaluate_client_balance_alerts(
     transacción abierta y gestiona las suyas, cortas.
     """
     from nexus_api.db.models import ClientAccess, PartnerTenant
-    from nexus_api.metering.wallet import allocations_for, credit_burn
+    from nexus_api.metering.wallet import allocations_for, credit_burn, quota_state
     from nexus_api.services.console_home import REVIEW_WINDOW
     from nexus_api.services.console_home_blocks import days_until
     from nexus_api.services.lite_home import balance_notice, balance_of
 
+    # Spec 047 (T161): con bolsas, los avisos del cliente son ``client.wallet.*``.
+    from nexus_api.services.wallet.turns import bags_on
+
+    if await bags_on(partner_id):
+        return []
     ts = now or datetime.now(UTC)
     _since, until, _elapsed, _days = month_bounds(ts)
     async with session.begin():
@@ -251,11 +322,17 @@ async def evaluate_client_balance_alerts(
     allocations = await allocations_for(partner_id, tenant_ids)
     burn = await credit_burn(partner_id, tenant_ids, ts - REVIEW_WINDOW)
     to_month_end = days_until(until, ts)
+    gate_closed = await quota_state(partner_id, tenant_ids)
 
     told: list[str] = []
+    recovered: list[str] = []
     for tenant_id in tenant_ids:
         balance = balance_of(allocations.get(tenant_id), burn.get(tenant_id, 0))
         notice = balance_notice(balance, to_month_end)
+        # Se rearma solo si también la puerta le deja pasar: el aviso «agotado»
+        # lo dispara el turno saltado (ver ``_rearm_out_of_quota``).
+        if notice != "balance_out" and not gate_closed.get(tenant_id, True):
+            recovered.append(client_balance_dedupe_key(tenant_id, "balance_out", ts))
         if notice is None:
             continue
         async with session.begin():
@@ -270,6 +347,14 @@ async def evaluate_client_balance_alerts(
             )
         if row is not None:
             told.append(refs[tenant_id])
+    if recovered:
+        async with session.begin():
+            await session.execute(
+                sa.update(ConsoleNotification)
+                .where(ConsoleNotification.dedupe_key.in_(recovered))
+                .values(dedupe_key=None)
+                .execution_options(synchronize_session=False)
+            )
     return told
 
 
@@ -356,13 +441,20 @@ async def evaluate_partner_wallet_alerts(
     if result.percent_used is None:
         return result
 
-    async with session.begin():
-        result.clients_out = await clients_without_quota(session, partner.id)
+    # Spec 047 (T161): con bolsas, el saldo de cada cliente es su bolsa y su
+    # aviso es ``client.wallet.empty``, como en ``notify_client_out_of_quota_detached``.
+    # El cupo de hoy no tiene filas y decía «sin saldo» con la bolsa llena.
+    from nexus_api.services.wallet.turns import bags_on
+
+    if not await bags_on(partner.id):
+        async with session.begin():
+            result.clients_out = await clients_without_quota(session, partner.id)
+            await _rearm_out_of_quota(session, partner.id, result.clients_out)
     # Spec 016 (R2.2): red de seguridad. El aviso por cliente lo dispara el
     # turno saltado; si el despachador no llegó a avisar, lo hace el cron.
     for ref in result.clients_out:
         async with session.begin():
-            await _emit_client_out_of_quota(session, partner, ref, now=now)
+            await _emit_client_out_of_quota(session, partner, ref)
 
     for threshold in THRESHOLDS:
         if result.percent_used < threshold:
@@ -400,46 +492,85 @@ async def evaluate_partner_wallet_alerts(
     return result
 
 
+def _clients_out_note(count: int, locale: str) -> str:
+    """La frase de ``wallet_low`` sobre los clientes que ya no contestan."""
+    if count <= 0:
+        return ""
+    if locale == "en":
+        if count == 1:
+            return (
+                "Also, one of your clients has already reached its own limit and isn't "
+                "replying, even though you still have balance left."
+            )
+        return (
+            f"Also, {count} of your clients have already reached their own limit and aren't "
+            "replying, even though you still have balance left."
+        )
+    if count == 1:
+        return (
+            "Además, uno de tus clientes ya ha llegado a su propio límite y no está "
+            "respondiendo, aunque todavía te quede saldo."
+        )
+    return (
+        f"Además, {count} de tus clientes ya han llegado a su propio límite y no están "
+        "respondiendo, aunque todavía te quede saldo."
+    )
+
+
 async def _notify_by_email(partner: Partner, ev: WalletAlertEvaluation, since: datetime) -> bool:
-    recipients = [r for r in (partner.usage_alert_recipients or []) if isinstance(r, str) and r]
+    """Spec 051: ``wallet_low`` al 80 %, ``wallet_empty`` al 100 %. Si los dos
+    umbrales se cruzan a la vez, solo sale el de 100 %: el de 80 % ya llega tarde.
+
+    A la lista de alertas del partner, en el idioma de la cuenta de cada uno.
+    """
+    from nexus_api.services.email import send_localized
+
+    recipients = _alert_recipients(partner)
     if not recipients:
         return False
     top = max(ev.created)
-    period = f"{since:%Y-%m}"
+    billing_url = console_link("/billing")
+
     if top >= 100:
-        subject = f"[Auphere] {partner.name}: saldo agotado — los agentes han dejado de responder"
-        headline = "Se ha agotado el saldo del mes y vuestros agentes ya no están contestando."
-        note = (
-            "Esto no es un aviso preventivo: los mensajes que lleguen ahora no reciben "
-            "respuesta. Escribidnos y recargamos el saldo."
+
+        def compose_empty(locale: str) -> tuple[str, dict[str, str]]:
+            subject = (
+                "Your balance has run out and your agents have stopped replying"
+                if locale == "en"
+                else "Tu saldo se ha agotado y tus agentes no responden"
+            )
+            return subject, {
+                "PARTNER_NAME": partner.name,
+                "PERIOD": format_month(since.year, since.month, locale),
+                "BILLING_URL": billing_url,
+            }
+
+        return await send_localized(
+            EmailKind.WALLET_EMPTY, to=recipients, compose=compose_empty, partner_id=partner.id
         )
-    else:
-        subject = f"[Auphere] {partner.name}: queda el {100 - top} % del saldo ({period})"
-        headline = f"Habéis consumido el {top} % del saldo del mes."
-        note = (
-            "Cuando se agote, los agentes dejarán de responder a vuestros clientes. "
-            "Avisadnos antes de llegar ahí y lo ampliamos."
+
+    # El porcentaje real, hacia abajo: nunca dice más del que hay, y como el
+    # umbral es entero, nunca dice menos que el umbral cruzado.
+    percent = str(int(ev.percent_used if ev.percent_used is not None else top))
+    clients_out = len(ev.clients_out)
+
+    def compose_low(locale: str) -> tuple[str, dict[str, str]]:
+        subject = (
+            f"You've used {percent}% of this month's balance"
+            if locale == "en"
+            else f"Has usado el {percent} % del saldo de este mes"
         )
-    extra = ""
-    if ev.clients_out:
-        extra = (
-            f"<p style='margin:12px 0 0'>Además, <strong>{len(ev.clients_out)}</strong> "
-            "cliente(s) ya han agotado su tope y no están respondiendo, "
-            "aunque quede saldo general.</p>"
-        )
-    html = (
-        '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-        'max-width:560px;margin:0 auto;color:#111">'
-        f"<p style='font-size:16px;margin:0 0 8px'><strong>{headline}</strong></p>"
-        f"<p style='margin:0'>{note}</p>{extra}"
-        f"<p style='color:#666;font-size:13px;margin:20px 0 0'>Periodo {period}.</p></div>"
+        return subject, {
+            "PARTNER_NAME": partner.name,
+            "PERCENT_USED": percent,
+            "PERIOD": format_month(since.year, since.month, locale),
+            "CLIENTS_OUT_NOTE": _clients_out_note(clients_out, locale),
+            "BILLING_URL": billing_url,
+        }
+
+    return await send_localized(
+        EmailKind.WALLET_LOW, to=recipients, compose=compose_low, partner_id=partner.id
     )
-    try:
-        await send_email(to=recipients, subject=subject, html=html)
-        return True
-    except Exception as exc:  # pragma: no cover - best effort
-        log.warning("wallet_alerts.email_failed", partner_id=str(partner.id), error=str(exc))
-        return False
 
 
 __all__ = [

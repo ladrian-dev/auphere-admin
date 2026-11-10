@@ -80,6 +80,24 @@ def _diff(before: dict[str, Any], after: dict[str, Any]) -> tuple[dict[str, Any]
     return b, a
 
 
+async def _write_hours(
+    session: AsyncSession, tenant: Tenant, raw: dict[str, Any] | None, *, actor: str
+) -> None:
+    """Spec 047 (T056): el horario es el de la ficha. Lo que llega (cualquiera de
+    las formas de antes, ya canónica) se escribe ahí, y ``tenants.business_hours``
+    queda como su proyección. Solo una etiqueta, sin días (la del prompt de antes),
+    no es un horario: se guarda tal cual y la ficha no se toca."""
+    from nexus_api.services.business import hours
+    from nexus_api.services.business.sections import Actor
+
+    week = hours.week_of_view(raw) if raw and "days" in raw else hours.week_from_legacy(raw)
+    if week is None and raw and "days" not in raw:
+        tenant.business_hours = raw
+        return
+    operator = Actor(kind="operator", id=f"admin:{actor[:8]}", origin="admin")
+    await hours.save_week(session, week, actor=operator)
+
+
 def _tenant_to_dict(t: Tenant) -> dict[str, Any]:
     return {
         "name": t.name,
@@ -174,6 +192,8 @@ async def create_tenant(
         token = _current_tenant.set(tenant.id)
         try:
             await apply_tenant_to_session(session, tenant.id)
+            if body.business_hours is not None:
+                await _write_hours(session, tenant, body.business_hours, actor=actor)
             await AuditRepository(session).record(
                 actor=f"admin:{actor[:8]}",
                 action="tenant.create",
@@ -272,7 +292,7 @@ async def update_tenant(
     if "owner_phone" in payload:
         tenant.owner_phone = payload["owner_phone"]
     if "business_hours" in payload:
-        tenant.business_hours = payload["business_hours"]
+        await _write_hours(session, tenant, payload["business_hours"], actor=actor)
     if "cost_alert_threshold_usd_per_day" in payload:
         tenant.cost_alert_threshold_usd_per_day = Decimal(
             str(payload["cost_alert_threshold_usd_per_day"])

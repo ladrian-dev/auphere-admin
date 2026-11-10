@@ -666,3 +666,116 @@ async def test_reconnecting_the_same_number_still_refreshes_the_tenant_credentia
     )
     assert cred is not None
     assert b"EAA-rotated-system-user-token-abcdef" in cred.encrypted_payload
+
+
+# ── spec 050: the two-step PIN is kept, and a reconnect keeps the setup ─────
+
+
+def _registered_pins(mock: respx.MockRouter, pnid: str) -> list[str]:
+    return [
+        json.loads(call.request.content)["pin"]
+        for call in mock.calls
+        if call.request.url.path.endswith(f"/{pnid}/register")
+    ]
+
+
+async def test_the_cloud_api_pin_is_stored_encrypted_and_never_returned(
+    client, admin_headers, seed_tenants, db_session
+):
+    from nexus_channels.whatsapp_meta.credentials import MetaCredentials
+
+    tenant_id = seed_tenants["a"]
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        _mock_happy_path(mock)
+        r = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/signup",
+            json=_signup_body(),
+            headers=admin_headers,
+        )
+        [pin] = _registered_pins(mock, "PN_TEST")
+    assert r.status_code == 201, r.text
+    assert pin not in r.text and "pin" not in r.json()
+
+    chan = await db_session.scalar(
+        select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
+    )
+    assert chan is not None and chan.config_encrypted is not None
+    assert MetaCredentials.from_payload(chan.config_encrypted).two_step_pin == pin
+    assert pin not in json.dumps(chan.config)
+
+
+async def test_the_owned_number_pin_is_stored_and_reused_on_reconnect(
+    client, admin_headers, seed_tenants, db_session
+):
+    from nexus_channels.whatsapp_meta.credentials import MetaCredentials
+
+    tenant_id = seed_tenants["a"]
+    pins: list[str] = []
+    for token in ("EAA-system-user-token-one-aaaa", "EAA-system-user-token-two-bbbb"):
+        async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+            mock.post("/PN_TEST/register").respond(200, json={"success": True})
+            mock.post("/WABA_TEST/subscribed_apps").respond(200, json={"success": True})
+            mock.get("/PN_TEST").respond(200, json=_ok_phone_response())
+            r = await client.post(
+                f"/admin/tenants/{tenant_id}/integrations/meta/connect-owned",
+                json={
+                    "system_user_token": token,
+                    "waba_id": "WABA_TEST",
+                    "phone_number_id": "PN_TEST",
+                },
+                headers=admin_headers,
+            )
+            assert r.status_code == 201, r.text
+            pins += _registered_pins(mock, "PN_TEST")
+    # Meta keeps the first PIN as the number's two-step PIN: a second
+    # register has to send the same one.
+    assert len(pins) == 2 and pins[0] == pins[1]
+    chan = await db_session.scalar(
+        select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
+    )
+    assert chan is not None and chan.config_encrypted is not None
+    assert MetaCredentials.from_payload(chan.config_encrypted).two_step_pin == pins[0]
+
+
+async def test_reconnecting_keeps_catalog_history_audience_and_escalation(
+    client, admin_headers, seed_tenants, db_session
+):
+    tenant_id = seed_tenants["a"]
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        _mock_happy_path(mock)
+        first = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/signup",
+            json=_signup_body(),
+            headers=admin_headers,
+        )
+    assert first.status_code == 201, first.text
+
+    chan = await db_session.scalar(
+        select(Channel).where(Channel.tenant_id == tenant_id, Channel.provider == "meta")
+    )
+    assert chan is not None
+    setup = {
+        "catalog_id": "CATALOG_9",
+        "history_import": {"state": "done"},
+        "escalation_enabled": True,
+        "escalation_recipients": ["+56911112222"],
+        "wait_message": "Un momento",
+    }
+    chan.config = {**chan.config, **setup}
+    chan.audience_mode = "team_only"
+    await db_session.commit()
+
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        _mock_happy_path(mock)
+        again = await client.post(
+            f"/admin/tenants/{tenant_id}/integrations/meta/signup",
+            json=_signup_body(),
+            headers=admin_headers,
+        )
+    assert again.status_code == 201, again.text
+
+    await db_session.refresh(chan)
+    for key, value in setup.items():
+        assert chan.config[key] == value, key
+    assert chan.audience_mode == "team_only"
+    assert chan.config["waba_id"] == "WABA_TEST"  # Meta's facts are refreshed

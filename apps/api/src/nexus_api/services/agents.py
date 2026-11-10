@@ -47,11 +47,12 @@ class AgentError(Exception):
 
 
 async def principal_agent_id(session: AsyncSession) -> uuid.UUID | None:
-    """El activo más antiguo del cliente de la sesión."""
+    """El agente por defecto del cliente de la sesión (spec 047, 26.3); sin uno
+    marcado, el activo más antiguo, como antes."""
     found: uuid.UUID | None = await session.scalar(
         sa.select(Agent.id)
         .where(Agent.status == AgentStatus.ACTIVE.value)
-        .order_by(Agent.created_at, Agent.id)
+        .order_by(Agent.is_default.desc(), Agent.created_at, Agent.id)
         .limit(1)
     )
     return found
@@ -124,10 +125,9 @@ async def list_agents(session: AsyncSession, *, include_archived: bool = False) 
                 created_at=a.created_at,
                 channels=channels.get(a.id, []),
                 active_version=active,
-                # A draft counts only if it is newer than what is live.
-                draft_version=draft
-                if draft is not None and (active is None or draft > active)
-                else None,
+                # Spec 047: the agent's one draft, whatever its number — a
+                # change published at once can leave the active one higher.
+                draft_version=draft,
             )
         )
     return out
@@ -165,7 +165,19 @@ async def create_agent(
 ) -> Agent:
     """El agente, sin versiones. Quien llama siembra su borrador v1 (con
     ``stage_from_seed`` y este ``agent_id``) en la misma transacción."""
-    agent = Agent(id=uuid.uuid4(), tenant_id=tenant_id, name=_clean_name(name))
+    # Spec 047 (26.2): el primer agente vivo del cliente es su agente por defecto.
+    # Si ya hay otro vivo (el principal que crearon los caminos de antes, sin
+    # marcar), el nuevo no le quita el sitio: sin marca, manda el más antiguo.
+    other_live = await session.scalar(
+        sa.select(Agent.id).where(Agent.tenant_id == tenant_id, Agent.lifecycle != "archived")
+    )
+    agent = Agent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        name=_clean_name(name),
+        lifecycle="draft",
+        is_default=other_live is None,
+    )
     session.add(agent)
     try:
         async with session.begin_nested():
@@ -215,7 +227,21 @@ async def archive_agent(session: AsyncSession, agent_id: uuid.UUID, *, actor: st
     if not others:
         raise AgentError("last_agent", 409)
     agent.status = AgentStatus.ARCHIVED.value
+    agent.lifecycle = "archived"
+    agent.pause_reason = None
     agent.updated_at = datetime.now(UTC)
+    if agent.is_default:
+        # Spec 047 (26.2): siempre hay uno; el de hoy pasa al más antiguo vivo.
+        agent.is_default = False
+        await session.flush()
+        heir = await session.scalar(
+            sa.select(Agent)
+            .where(Agent.status == AgentStatus.ACTIVE.value, Agent.id != agent.id)
+            .order_by(Agent.created_at, Agent.id)
+            .limit(1)
+        )
+        if heir is not None:
+            heir.is_default = True
     await session.flush()
     _audit(
         session, agent.tenant_id, actor, "agent.archived", f"agent:{agent.id}", {"name": agent.name}

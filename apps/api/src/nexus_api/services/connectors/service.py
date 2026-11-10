@@ -30,10 +30,12 @@ audit row.
 from __future__ import annotations
 
 import json
+import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 import structlog
 from sqlalchemy import select
@@ -53,6 +55,13 @@ from nexus_api.db.models import (
     ToolStatus,
 )
 from nexus_api.services.agent_config_service import AgentConfigService
+from nexus_api.services.connectors.booking_skills import (
+    BOOKING_TOOLS,
+    _agent_or_principal,
+    _already_enabled,
+    enable_after_sync,
+    enable_booking_skills,
+)
 
 from .composio_client import (
     ComposioClientProtocol,
@@ -67,6 +76,11 @@ from .toolkits import allowlist_for, hint_for_slug
 log = structlog.get_logger(__name__)
 
 # ── exceptions ──────────────────────────────────────────────────────────────
+
+
+#: Connectors whose tools are never an agent's. They are connected elsewhere: Google
+#: Calendar, per professional from Reservas (spec 043, requirements 11 and 12).
+SYSTEM_ONLY_CONNECTORS: Final = frozenset({"googlecalendar"})
 
 
 class ConnectorNotFound(LookupError):
@@ -132,6 +146,20 @@ def _entity_for_tenant(tenant: Tenant) -> str:
     return f"tenant_{tenant.slug}"
 
 
+async def has_live_install(session: AsyncSession, slug: str) -> bool:
+    """¿El cliente de esta transacción tiene ese conector, y nadie lo ha quitado?"""
+    found = await session.scalar(
+        select(TenantConnector.id)
+        .join(Connector, Connector.id == TenantConnector.connector_id)
+        .where(
+            Connector.slug == slug,
+            TenantConnector.status != TenantConnectorStatus.DISCONNECTED.value,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
 async def _load_connector_by_slug(session: AsyncSession, slug: str) -> Connector:
     """Connectors live in the global catalog — no RLS, slug is unique."""
     conn = await session.scalar(select(Connector).where(Connector.slug == slug))
@@ -186,6 +214,8 @@ async def _write_audit(
 _TOOL_SLUG_ANNOTATIONS: dict[str, dict[str, bool]] = {
     # Google Calendar — common slug patterns from Composio.
     "GOOGLECALENDAR_LIST_EVENTS": {"read_only": True, "destructive": False},
+    "GOOGLECALENDAR_EVENTS_LIST": {"read_only": True, "destructive": False},
+    "GOOGLECALENDAR_FIND_FREE_SLOTS": {"read_only": True, "destructive": False},
     "GOOGLECALENDAR_FIND_EVENT": {"read_only": True, "destructive": False},
     "GOOGLECALENDAR_GET_EVENT": {"read_only": True, "destructive": False},
     "GOOGLECALENDAR_LIST_CALENDARS": {"read_only": True, "destructive": False},
@@ -228,6 +258,44 @@ def _drop_blank_tools(tools: list[ComposioTool], *, connector_slug: str) -> list
     return kept
 
 
+#: Verbs that change something. A name that carries one is never read-only, whatever
+#: else it says: ``_LIST_`` made ``GOOGLECALENDAR_CALENDAR_LIST_DELETE`` read-only.
+#: Nouns that look like verbs (``POST``, ``SHARE``) stay out: whole words only.
+_WRITE_VERBS = frozenset(
+    {
+        "ADD",
+        "APPEND",
+        "CANCEL",
+        "CLEAR",
+        "CREATE",
+        "DELETE",
+        "DESTROY",
+        "EDIT",
+        "ERASE",
+        "INSERT",
+        "MODIFY",
+        "MOVE",
+        "PATCH",
+        "PUBLISH",
+        "PURGE",
+        "REMOVE",
+        "RENAME",
+        "REPLACE",
+        "REVOKE",
+        "SEND",
+        "TRASH",
+        "UPDATE",
+        "UPLOAD",
+        "UPSERT",
+        "WRITE",
+    }
+)
+
+
+def name_says_it_writes(name: str) -> bool:
+    return not _WRITE_VERBS.isdisjoint(re.split(r"[^A-Z0-9]+", name.upper()))
+
+
 def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     """Resolve read_only / destructive for a tool.
 
@@ -238,12 +306,17 @@ def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     2. Hard-coded mapping in ``_TOOL_SLUG_ANNOTATIONS``.
     3. Heuristic on slug prefix (LIST_, GET_, FIND_, SEARCH_ → read_only).
     4. Conservative fallback: destructive=true.
+
+    From step 1 on, a name that says it changes something is never read-only.
     """
     hint = hint_for_slug(tool.slug)
     if hint is not None:
         return {"read_only": hint["read_only"], "destructive": hint["destructive"]}
+    writes = name_says_it_writes(tool.slug)
     tags = tool.raw_tags or {}
     if "readOnlyHint" in tags or "destructiveHint" in tags:
+        if writes and tags.get("readOnlyHint"):
+            return {"read_only": False, "destructive": True}
         return {
             "read_only": bool(tags.get("readOnlyHint", False)),
             "destructive": bool(tags.get("destructiveHint", False)),
@@ -251,9 +324,10 @@ def _derive_annotations(tool: ComposioTool) -> dict[str, bool]:
     if tool.slug in _TOOL_SLUG_ANNOTATIONS:
         return dict(_TOOL_SLUG_ANNOTATIONS[tool.slug])
     upper = tool.slug.upper()
-    for prefix in ("_LIST_", "_GET_", "_FIND_", "_SEARCH_", "_READ_"):
-        if prefix in upper:
-            return {"read_only": True, "destructive": False}
+    if not writes:
+        for prefix in ("_LIST_", "_GET_", "_FIND_", "_SEARCH_", "_READ_"):
+            if prefix in upper:
+                return {"read_only": True, "destructive": False}
     return {"read_only": False, "destructive": True}
 
 
@@ -415,6 +489,7 @@ async def complete_consent_from_webhook(
     if tc is None:
         return None
 
+    pending_agent: uuid.UUID | None = None
     connector = await session.get(Connector, tc.connector_id)
     if connector is None:  # pragma: no cover — FK guarantees this
         msg = f"orphan tenant_connector {tc.id}"
@@ -427,9 +502,13 @@ async def complete_consent_from_webhook(
         tc.consent_token = None
         tc.consent_token_expires_at = None
         action = "connector.connect_completed"
+        pending_agent = await _apply_pending_activation(session, tc, actor=actor)
     elif upstream_status == "EXPIRED":
         tc.status = TenantConnectorStatus.NEEDS_REAUTH.value
         action = "connector.needs_reauth"
+        # Spec 047 (36.3): «Hay que volver a autorizar» — the tests of the agents
+        # that use it go stale and run again; the partner hears it after commit.
+        await _on_needs_reauth(session, tc, connector)
     elif upstream_status == "FAILED":
         tc.status = TenantConnectorStatus.ERROR.value
         action = "connector.error"
@@ -494,6 +573,11 @@ async def complete_consent_from_webhook(
     await auto_enable_connector_tools(
         session, tenant_id=tc.tenant_id, connector=connector, actor=actor
     )
+    # Owner, 2026-11-03: what can book turns booking on. After the sync: the first
+    # connection has no tools in the catalog until here.
+    await enable_booking_once(
+        session, connector=connector, install=tc, agent_id=pending_agent, actor=actor
+    )
     return CompleteConsentResult(
         tenant_connector_id=tc.id,
         tools_added=sync.added,
@@ -501,6 +585,111 @@ async def complete_consent_from_webhook(
         auto_enabled=auto_enabled,
         blocked_pending_operator=blocked,
     )
+
+
+async def switched_off_by_a_person(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    names: Iterable[str],
+) -> set[str]:
+    """Which of ``names`` a person left off in this agent, with a switch of the
+    console: the last thing they did with each one."""
+    targets = {f"capability:{name}": name for name in names}
+    if not targets:
+        return set()
+    rows = await session.execute(
+        select(AuditLog.target, AuditLog.after_json["enabled"].astext)
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == "console.capability.update",
+            AuditLog.target.in_(targets),
+            AuditLog.after_json["agent_id"].astext == str(agent_id),
+            AuditLog.after_json["enabled"].astext.in_(["true", "false"]),
+        )
+        .order_by(AuditLog.created_at)
+    )
+    last = {target: enabled for target, enabled in rows.all()}
+    return {targets[target] for target, enabled in last.items() if enabled == "false"}
+
+
+async def enable_booking_once(
+    session: AsyncSession,
+    *,
+    connector: Connector,
+    install: TenantConnector,
+    agent_id: uuid.UUID | None,
+    actor: str,
+) -> list[str]:
+    """What can book turns booking on once per agent, and never over a person: saving
+    its settings or authorizing it again does not undo a switch left off."""
+    names = BOOKING_TOOLS.get(connector.slug)
+    if not names:
+        return []
+    target = await _agent_or_principal(session, agent_id)
+    if target is None:
+        return []
+    if await _already_enabled(session, connector, install, target):
+        return []
+    if await switched_off_by_a_person(
+        session, tenant_id=install.tenant_id, agent_id=target, names=names
+    ):
+        return []
+    return await enable_booking_skills(
+        session, connector=connector, install=install, agent_id=target, actor=actor
+    )
+
+
+async def _apply_pending_activation(
+    session: AsyncSession, tc: TenantConnector, *, actor: str
+) -> uuid.UUID | None:
+    """Spec 047 (35.3): connecting from an agent's Integrations tab leaves the
+    agent and the permission on the install; when the authorisation completes,
+    the integration is activated for that agent. Returns that agent."""
+    import uuid as _uuid
+
+    from nexus_api.services.activations import ensure_activation
+
+    pending = (tc.config or {}).get("pending_activation")
+    if not isinstance(pending, dict) or not pending.get("agent_id"):
+        return None
+    permission = str(pending.get("permission") or "read")
+    if permission not in {"read", "ask_before_write", "read_write"}:
+        permission = "read"
+    agent_id = _uuid.UUID(str(pending["agent_id"]))
+    await ensure_activation(
+        session,
+        tenant_id=tc.tenant_id,
+        agent_id=agent_id,
+        install=tc,
+        actor=str(pending.get("by") or actor),
+        permission=permission,  # type: ignore[arg-type]
+    )
+    tc.config = {k: v for k, v in (tc.config or {}).items() if k != "pending_activation"}
+    return agent_id
+
+
+async def _on_needs_reauth(
+    session: AsyncSession, tc: TenantConnector, connector: Connector
+) -> None:
+    from nexus_api.services.activations import on_needs_reauth
+    from nexus_api.services.business.writes import after_commit
+    from nexus_api.services.channel_config import announce
+
+    await on_needs_reauth(session, tc)
+    tenant_id, slug = tc.tenant_id, connector.slug
+
+    async def _tell() -> None:
+        await announce(
+            tenant_id=tenant_id,
+            kind="integration.reauth_required",
+            severity="warning",
+            data={"integration": slug, "connection_id": str(tc.id)},
+            dedupe_key=f"integration.reauth_required:{tc.id}",
+        )
+
+    after_commit(session, _tell)
 
 
 async def reconcile_connector_status(
@@ -535,6 +724,8 @@ async def reconcile_connector_status(
     connection_id = (tenant_connector.credentials_ref or {}).get("composio_connection_id")
     if not connection_id:
         return None
+    # Spec 047 (36.1): the hour of the last health check, whatever it says.
+    tenant_connector.last_checked_at = datetime.now(UTC)
     try:
         account = await composio.get_account(str(connection_id))
     except ComposioNotFound:
@@ -567,6 +758,27 @@ async def reconcile_connector_status(
         composio=composio,
         actor=actor,
     )
+
+
+async def resync(
+    session: AsyncSession,
+    *,
+    tenant_connector: TenantConnector,
+    connector: Connector,
+    composio: ComposioClientProtocol,
+    actor: str,
+) -> SyncToolsResult:
+    """A sync someone asked for: the catalog, and the booking skills of the agents
+    that were connected before the catalog had them."""
+    result = await sync_tools_for(
+        session,
+        tenant_connector=tenant_connector,
+        connector=connector,
+        composio=composio,
+        actor=actor,
+    )
+    await enable_after_sync(session, connector=connector, install=tenant_connector, actor=actor)
+    return result
 
 
 async def sync_tools_for(
@@ -748,6 +960,10 @@ async def auto_enable_connector_tools(
     """
     if not connector.auto_enable_on_connect:
         return []
+    # Google Calendar is the system's (spec 043, R11.1): connecting it gives no agent
+    # anything, not even what only reads.
+    if connector.slug in SYSTEM_ONLY_CONNECTORS:
+        return []
 
     tool_rows = (
         await session.scalars(
@@ -778,7 +994,22 @@ async def auto_enable_connector_tools(
         return []
 
     current = set(base.tools)
-    added = [name for name in candidates if name not in current]
+    # Reconnecting comes through here too: what a person left off stays off.
+    left_off = await switched_off_by_a_person(
+        session, tenant_id=tenant_id, agent_id=base.agent_id, names=candidates
+    )
+    added = [name for name in candidates if name not in current and name not in left_off]
+    # Spec 047 (T128): the agent that gets the tools also gets its activation, so
+    # the per-agent rule never takes away what connecting just gave.
+    from nexus_api.services.activations import ensure_activations_for_tools
+
+    await ensure_activations_for_tools(
+        session,
+        tenant_id=tenant_id,
+        agent_id=base.agent_id,
+        tools=set(candidates) | current,
+        actor=actor,
+    )
     if not added:
         return []
 
@@ -1180,6 +1411,7 @@ async def delete_override(
 
 
 __all__ = [
+    "SYSTEM_ONLY_CONNECTORS",
     "CompleteConsentResult",
     "ConnectorAlreadyConnected",
     "ConnectorNotConfigured",
@@ -1194,6 +1426,7 @@ __all__ = [
     "disconnect_connector",
     "initiate_consent",
     "reissue_consent",
+    "resync",
     "sync_tools_for",
     "upsert_override",
 ]

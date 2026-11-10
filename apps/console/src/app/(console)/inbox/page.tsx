@@ -9,7 +9,7 @@ import { requireClientPrincipal } from "@/lib/principal";
 
 export const generateMetadata = (): Promise<Metadata> => pageTitle("nav.inbox");
 
-type Search = { c?: string; q?: string; filter?: string; agent?: string };
+type Search = { c?: string; q?: string; filter?: string; agent?: string; channel?: string };
 
 const FILTERS: readonly InboxFilter[] = ["all", "unread", "waiting", "resolved"];
 
@@ -29,6 +29,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const filter = FILTERS.includes(sp.filter as InboxFilter) ? (sp.filter as InboxFilter) : "all";
   const query = (sp.q ?? "").trim().slice(0, 120);
+  const channel = ["whatsapp", "instagram", "messenger"].includes(sp.channel ?? "") ? (sp.channel as string) : null;
   const selectedId = z.string().uuid().safeParse(sp.c).success ? (sp.c as string) : null;
 
   const api = backendFor(principal);
@@ -38,7 +39,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     .catch(() => []);
   const agent = agents.some((a) => a.id === sp.agent) ? (sp.agent as string) : null;
   const [page, replies, suggested, open] = await Promise.all([
-    api.inboxList({ filter, q: query || undefined, agent: agent ?? undefined }).catch(() => null),
+    api.inboxList({ filter, q: query || undefined, agent: agent ?? undefined, channel: channel ?? undefined }).catch(() => null),
     api.inboxReplies().catch(() => null),
     api
       .inboxSuggestedTags()
@@ -56,8 +57,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   // view's own URL updates use `history.replaceState` and do not get here.
   return (
     <InboxView
-      key={`${selectedId ?? ""}|${filter}|${query}|${agent ?? ""}`}
-      initial={{ filter, query, agent, agents, page, selectedId, open, replies, suggested }}
+      key={`${selectedId ?? ""}|${filter}|${query}|${agent ?? ""}|${channel ?? ""}`}
+      initial={{ filter, query, agent, channel, agents, page, selectedId, open, replies, suggested }}
     />
   );
 }

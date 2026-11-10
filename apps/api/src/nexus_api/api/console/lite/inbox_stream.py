@@ -9,11 +9,17 @@ No abre transacción de base: una SSE vive minutos, y una transacción abierta
 tanto tiempo retendría una conexión del pool. La persona y su cliente se
 verifican al abrir; si se le retira el acceso, la próxima reconexión ya no
 pasa.
+
+La línea de un teléfono (spec 031) se corta sola a los cinco minutos: un
+teléfono cerrado, una persona quitada o un acceso apagado dejan de recibir
+eventos, como tarde, en ese plazo (R7.2 pide menos de 15). La app reconecta
+sola y vuelve a pasar por la puerta. La línea de la consola web no cambia.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 
 import structlog
@@ -29,6 +35,7 @@ router = APIRouter(prefix="/inbox")
 log = structlog.get_logger(__name__)
 
 HEARTBEAT_SECONDS = 15.0
+PHONE_LINE_SECONDS = 300.0
 
 
 @router.get("/stream")
@@ -38,18 +45,24 @@ async def stream(
     redis: Redis = Depends(get_redis),
 ) -> EventSourceResponse:
     channel = inbox_channel(principal.tenant_id)
+    lasts = PHONE_LINE_SECONDS if principal.phone_id is not None else None
 
     async def events() -> AsyncIterator[dict[str, str]]:
         pubsub = redis.pubsub()
         await pubsub.subscribe(channel)
+        until = None if lasts is None else time.monotonic() + lasts
         yield {"event": "ready", "data": "{}"}
         try:
             while True:
                 if await request.is_disconnected():
                     break
-                msg = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=HEARTBEAT_SECONDS
-                )
+                wait = HEARTBEAT_SECONDS
+                if until is not None:
+                    left = until - time.monotonic()
+                    if left <= 0:
+                        break
+                    wait = min(wait, left)
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=wait)
                 if msg is None:
                     yield {"event": "ping", "data": "{}"}
                     continue

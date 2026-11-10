@@ -2,14 +2,19 @@ import { ArrowLeft, Check, Mail, PanelRight, RotateCcw } from "lucide-react";
 
 import { Button, cn } from "@nexus/ui";
 
+import { RowActions } from "@/components/row-actions";
 import { useT } from "@/i18n/client";
 import type { InboxDetail } from "@/lib/backend/inbox";
 
+import { ChannelBadge } from "./channel-badge";
+import { ContactAvatar } from "./contact-avatar";
+
 /**
  * The top of an open conversation (spec 030, R9, R12): who it is, who
- * answers now, and the three actions that do not need the composer —
- * mark as unread, resolve / reopen, show the contact panel. Icon buttons
- * carry their name for assistive tech and as a `title` for the eye.
+ * answers now, and the actions that do not need the composer — mark as
+ * unread, resolve / reopen, show the contact panel; clearing and deleting the
+ * chat, rarer and heavier, in the «⋯» menu. Icon buttons carry their name for
+ * assistive tech and as a `title` for the eye.
  */
 export function ThreadHeader({
   detail,
@@ -21,6 +26,8 @@ export function ThreadHeader({
   onResolve,
   onReopen,
   onTogglePanel,
+  onClearChat,
+  onDeleteChat,
 }: {
   detail: InboxDetail;
   initials: string;
@@ -31,14 +38,18 @@ export function ThreadHeader({
   onResolve: () => void;
   onReopen: () => void;
   onTogglePanel: () => void;
+  onClearChat: () => void;
+  onDeleteChat: () => void;
 }) {
   const t = useT();
   const resolved = detail.state === "resolved";
   // Spec 030: with more than one agent, the one of this number by name.
+  // Spec 047 (53.2): after Recepción hands it over, the agent that answers now.
+  const handler = detail.handled_by_agent ?? detail.agent;
   const attends =
     detail.state === "agent"
-      ? detail.agent
-        ? t("inbox.assigned", { name: detail.agent.name })
+      ? handler
+        ? t("inbox.assigned", { name: handler.name })
         : t("inbox.assigned.agent")
       : detail.assignee
         ? detail.assignee.is_me
@@ -53,8 +64,9 @@ export function ThreadHeader({
       <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={onBack} aria-label={t("inbox.back")}>
         <ArrowLeft />
       </Button>
-      <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-sm font-semibold text-accent-deep">
-        {initials}
+      <span className="relative size-10 shrink-0">
+        <ContactAvatar conversationId={detail.id} hasAvatar={detail.contact.has_avatar} initials={initials} className="size-10 text-sm" />
+        <ChannelBadge kind={detail.channel.kind} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
         <h2 className="truncate text-base font-semibold" title={detail.contact.name}>
@@ -84,6 +96,14 @@ export function ThreadHeader({
         >
           <PanelRight />
         </IconAction>
+        <RowActions
+          menu
+          ariaLabel={t("inbox.action.more")}
+          actions={[
+            { label: t("inbox.action.clear"), onSelect: onClearChat, disabled: busy },
+            { label: t("inbox.action.delete"), onSelect: onDeleteChat, disabled: busy },
+          ]}
+        />
       </div>
     </div>
   );

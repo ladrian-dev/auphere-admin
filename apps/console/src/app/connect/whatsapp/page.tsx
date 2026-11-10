@@ -38,7 +38,8 @@ export default async function OwnerConnectPage() {
       mode={info.mode}
       appId={info.meta_app_id}
       configId={info.meta_config_id}
-      version={info.meta_graph_version ?? "v22.0"}
+      version={info.meta_graph_version ?? "v26.0"}
+      signupVersion={info.meta_signup_version ?? "v4"}
     />
   );
 }

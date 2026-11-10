@@ -1,0 +1,18 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "field": "business_username_updates",
+          "value": {
+            "display_phone_number": "34600000001",
+            "username": "barberiacultor",
+            "status": "approved"
+          }
+        }
+      ]
+    }
+  ]
+}

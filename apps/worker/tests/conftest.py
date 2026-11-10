@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 
 import pytest
+
+# Spec 047 (T023): a model call without its router task fails in the tests.
+os.environ.setdefault("NEXUS_USAGE_REQUIRE_TASK", "1")
 from nexus_api.core.llm_proxy import bind_llm_proxy_partner, reset_llm_proxy_partner
 
 TEST_PROXY_PARTNER = uuid.UUID("00000000-0000-0000-0000-00000000a001")

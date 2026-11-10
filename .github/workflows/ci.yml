@@ -1,9 +1,15 @@
 name: ci
 
+# Solo de camino a producción. En ``develop`` ya no corre sola: tardaba más de
+# una hora y frenaba cada arreglo de staging (decisión de Luis, 2026-11-03;
+# docs/develop-sin-tuberia.md). ``workflow_dispatch`` es para lanzarla a mano
+# sobre develop antes de abrir el PR a main.
 on:
   pull_request:
+    branches: [main]
   push:
-    branches: [main, develop]
+    branches: [main]
+  workflow_dispatch:
 
 # Un grupo por evento: el de un PR por su número, el de un push por su rama.
 # Con ``ci-${{ github.ref }}`` a secas, el run de un PR que GitHub lanza al
@@ -89,6 +95,12 @@ jobs:
       - name: pytest — apps/api (unit + isolation + integration)
         working-directory: apps/api
         run: pytest -x --tb=short
+      # Spec 031 (D14): the phone app's types are generated from this file. A
+      # route that changes shape without re-exporting it fails here, not on a
+      # phone.
+      - name: "mobile — OpenAPI contract up to date"
+        working-directory: apps/api
+        run: python scripts/export_openapi.py --check
       # CO-07. Corre por segunda vez a propósito: el paso de arriba es la
       # barrera (ya rompe el build), y este deja el reparto del dataset y
       # los dos números de R1 —falsos positivos y recall— en su propio
@@ -234,10 +246,36 @@ jobs:
           BETTER_AUTH_URL: http://localhost:3110
         run: pnpm build
 
-  # ADR-017 / migration 0021 — the AgendaPro admin browser MCP (Node
-  # subprocess) was removed. The ``test-mcp-node`` job that built +
-  # tested it is gone with it. When the new public-link MCP lands a
-  # replacement job will live here.
+  # Spec 031 (D13): Auphere Customers lives in its own pnpm workspace with its
+  # own lockfile (Expo 58 pins React 19.3, the console 19.2). ``pnpm verify``
+  # is tsc + eslint + jest + the three generated files (types, tokens, words)
+  # checked against their sources — the same as ``./scripts/verify.sh mobile``.
+  test-mobile:
+    name: test-mobile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+      - name: install (apps/mobile workspace)
+        working-directory: apps/mobile
+        run: pnpm install --frozen-lockfile
+      - name: "mobile — typecheck + lint + jest + generated files"
+        working-directory: apps/mobile
+        run: pnpm verify
+      # No expo-doctor here (2026-10-28): it compares the app with the SDK
+      # patches Expo publishes every few weeks, so it went red on its own
+      # (2026-10-22 and 2026-10-28) and blocked deploy-staging with no change
+      # of ours. Run `npx expo-doctor` by hand when the app's dependencies change.
+
+  # No Node job for the MCP: the browser booking MCP it would build was
+  # removed (migration 0021, then spec 048 for its public-link successor).
 
   lint:
     name: lint
@@ -293,6 +331,42 @@ jobs:
       - name: mypy --strict (mcp)
         working-directory: apps/mcp
         run: mypy --strict src/nexus_mcp
+
+  # Spec 047 (T203, research D50): el navegador de respaldo. Job propio porque
+  # su lock es propio —Playwright no entra en la API ni en el worker— y sus
+  # versiones no deben mezclarse con las de ``test-api`` en el mismo Python.
+  # Se instala igual que channels: desde el LOCK (``uv export --frozen``), no
+  # resolviendo de cero. El paquete ``playwright`` no descarga navegadores al
+  # instalarse y las pruebas lo simulan: aquí no hay Chromium.
+  test-renderer:
+    name: test-renderer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: install uv
+        run: pip install uv
+      - name: install renderer deps (desde uv.lock)
+        working-directory: apps/renderer
+        run: |
+          set -euo pipefail
+          uv export --frozen --extra dev --no-emit-project --no-hashes \
+            > /tmp/ci-renderer-requirements.txt
+          uv pip install --system -r /tmp/ci-renderer-requirements.txt
+          uv pip install --system --no-deps .
+      - name: ruff check + format --check
+        working-directory: apps/renderer
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+      - name: mypy --strict
+        working-directory: apps/renderer
+        run: mypy --strict src/nexus_renderer
+      - name: pytest (sin navegador)
+        working-directory: apps/renderer
+        run: pytest -x --tb=short
 
   # WP-23/25: la infraestructura también tiene tests que bloquean — fmt y
   # validate de cada stack (sin backend: no toca AWS ni el estado).

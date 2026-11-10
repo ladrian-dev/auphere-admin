@@ -104,6 +104,103 @@ async def test_codes_become_words_and_refs_become_names(db_session) -> None:
     )
 
 
+async def test_inviting_an_owner_reads_as_a_sentence_signed_by_auphere(db_session) -> None:
+    """Spec 052 (R6.4): the console shows the operator as Auphere's team, and the
+    panel names the person (``actor_label``)."""
+    audit_module.reset_vocabulary_cache_for_tests()
+    vocab = await audit_module.load_vocabulary(db_session, force=True)
+    after = {"email": "duena@negocio.test", "role": "owner"}
+
+    def row(action: str) -> AuditLog:
+        return AuditLog(
+            tenant_id=None,
+            actor="operator:ana@auphere.com",
+            action=action,
+            target="partner:x",
+            after_json=after,
+        )
+
+    for action in (
+        "partner.owner_invited",
+        "partner.owner_invitation_resent",
+        "partner.owner_invitation_revoked",
+    ):
+        for lang in ("es", "en"):
+            sentence = audit_module.summarise(row(action), None, vocab, lang, partner_name="Acme")
+            assert sentence.startswith("Auphere "), sentence
+            assert "duena@negocio.test" in sentence and "Acme" in sentence
+            assert "?" not in sentence and "ana@auphere.com" not in sentence
+            named = audit_module.summarise(
+                row(action), None, vocab, lang, partner_name="Acme", actor_label="ana@auphere.com"
+            )
+            assert named.startswith("ana@auphere.com ")
+
+
+async def test_the_client_access_actions_name_who_did_them(db_session) -> None:
+    """Spec 056 (3.8, 0225): the partner changes its client's access too, so the
+    sentence names who did it instead of saying «Auphere» outright. Auphere's
+    team still reads as «Auphere» in the console."""
+    audit_module.reset_vocabulary_cache_for_tests()
+    vocab = await audit_module.load_vocabulary(db_session, force=True)
+    after = {"enabled": True, "modules": ["panel"]}
+
+    def say(actor: str, action: str, lang: str) -> str:
+        row = AuditLog(
+            tenant_id=None, actor=actor, action=action, target="tenant:x", after_json=after
+        )
+        return audit_module.summarise(row, "Lola Mento", vocab, lang)
+
+    for action in (
+        "client_access.updated",
+        "client_member.invited",
+        "client_member.resent",
+        "client_member.revoked",
+    ):
+        for lang in ("es", "en"):
+            assert vocab[action].summary(lang).startswith("{actor} "), (action, lang)
+            by_partner = say("console:maria@negocio.test", action, lang)
+            assert by_partner.startswith("maria@negocio.test "), by_partner
+            assert "Lola Mento" in by_partner and "?" not in by_partner
+            by_operator = say("operator:ana@auphere.com", action, lang)
+            assert by_operator.startswith("Auphere "), by_operator
+            assert "ana@auphere.com" not in by_operator
+    assert say("console:maria@negocio.test", "client_access.updated", "es") == (
+        "maria@negocio.test cambió el acceso de Lola Mento a su consola."
+    )
+
+
+async def test_the_brake_and_the_correction_batches_have_their_sentences(db_session) -> None:
+    """Spec 056 (1.5, 9.2, 0225): the booking brake writes as the worker, and the
+    partner accepts or discards a correction for several agents at once."""
+    audit_module.reset_vocabulary_cache_for_tests()
+    vocab = await audit_module.load_vocabulary(db_session, force=True)
+
+    def say(actor: str, action: str, after: dict, lang: str = "es") -> str:
+        row = AuditLog(tenant_id=None, actor=actor, action=action, target="x", after_json=after)
+        return audit_module.summarise(row, "Lola Mento", vocab, lang)
+
+    brake = {"agent_id": "a", "turn_id": "t", "outcome": "retried"}
+    assert say("system:worker", "agent.booking_brake", brake) == (
+        "El freno de citas actuó en una conversación de Lola Mento."
+    )
+    assert say("system:worker", "agent.booking_brake", brake, "en") == (
+        "The booking brake stepped in on a conversation of Lola Mento."
+    )
+    assert vocab["agent.booking_brake"].category == "agents"
+
+    batch = {"agents": ["a", "b"], "skipped": []}
+    for action, es, en in (
+        ("correction.batch_accepted", "aceptó", "accepted"),
+        ("correction.batch_discarded", "descartó", "discarded"),
+    ):
+        assert vocab[action].category == "improvement"
+        spanish = say("console:maria@negocio.test", action, batch)
+        assert spanish.startswith(f"maria@negocio.test {es} una corrección de Lola Mento")
+        english = say("console:maria@negocio.test", action, batch, "en")
+        assert english.startswith(f"maria@negocio.test {en} a correction from Lola Mento")
+        assert "?" not in spanish + english
+
+
 async def test_the_actions_written_outside_the_console_read_as_sentences(db_session) -> None:
     """What staging showed as «Auphere · connector.disconnect ·
     connector:googlesheets», with the payloads the real writers store."""
@@ -252,13 +349,13 @@ _APPS = Path(__file__).resolve().parents[3]
 #: Written to ``qa.audit_log`` (the Playground's own trail), not ``audit_log``.
 _NOT_THE_PARTNER_TRAIL = {"thread.create", "thread.patch"}
 _WRITTEN = (
-    re.compile(r"""action\s*=\s*["']([a-z_]+\.[a-z_.]+)["']"""),
-    re.compile(r"""_audit\([^,()]+,\s*["']([a-z_]+\.[a-z_.]+)["']"""),
+    re.compile(r"""action\s*=\s*["']([a-z_]+\.[a-z0-9_.]+)["']"""),
+    re.compile(r"""_audit\([^,()]+,\s*["']([a-z_]+\.[a-z0-9_.]+)["']"""),
     # Constants: ``ESCALATION_ACTION = "budget.hard_limit_reached"``.
     re.compile(
-        r"""^[A-Z_]*ACTION[A-Z_]*(?:\s*:\s*[^=\n]+)?\s*=\s*["']([a-z_]+\.[a-z_.]+)["']""", re.M
+        r"""^[A-Z_]*ACTION[A-Z_]*(?:\s*:\s*[^=\n]+)?\s*=\s*["']([a-z_]+\.[a-z0-9_.]+)["']""", re.M
     ),
-    re.compile(r"""INSERT INTO audit_log[^;]*?'([a-z_]+\.[a-z_.]+)'""", re.S),
+    re.compile(r"""INSERT INTO audit_log[^;]*?'([a-z_]+\.[a-z0-9_.]+)'""", re.S),
 )
 
 

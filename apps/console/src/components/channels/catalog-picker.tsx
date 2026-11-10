@@ -210,6 +210,7 @@ export function CatalogPicker({
   offer = false,
   preloaded = null,
   coexistence = false,
+  onApplied,
 }: {
   refId: string;
   channelId: string;
@@ -220,6 +221,8 @@ export function CatalogPicker({
   coexistence?: boolean;
   /** La lista ya pedida (la oferta tras el alta la pide para decidir si abrirse). */
   preloaded?: CatalogList | null;
+  /** Tras guardar, para la pantalla que guarda el canal en su propio estado (la página del número). */
+  onApplied?: () => void;
 }) {
   const t = useT();
   const router = useRouter();
@@ -262,12 +265,15 @@ export function CatalogPicker({
       setChosen(null);
       setLoaded(null);
       onOpenChange(false);
-      if (res.data.catalog) toast.success(t("ch.catalog.done", { name: res.data.catalog.name ?? res.data.catalog.id }));
-      else if (res.data.catalog_error) {
+      if (res.data.catalog) {
+        const name = res.data.catalog.name ?? res.data.catalog.id;
+        toast.success(t(res.data.catalog_skills_added?.length ? "ch.catalog.done.skills" : "ch.catalog.done", { name }));
+      } else if (res.data.catalog_error) {
         const key = catalogFailureKey(res.data.catalog_error.code);
         toast.error(key ? t(key, { message: res.data.catalog_error.message ?? "" }) : t("common.error.backend"));
       }
       router.refresh();
+      onApplied?.();
     });
   }
 
@@ -288,7 +294,9 @@ export function CatalogPicker({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{offer ? t("ch.catalog.offer.title") : t("ch.catalog.picker.title")}</DialogTitle>
-            <DialogDescription>{offer ? t("ch.catalog.offer.help") : t("ch.catalog.picker.help")}</DialogDescription>
+            <DialogDescription>
+              {offer ? t(state.kind === "ready" && state.linkedId ? "ch.catalog.offer.linked" : "ch.catalog.offer.help") : t("ch.catalog.picker.help")}
+            </DialogDescription>
           </DialogHeader>
           <CatalogPickerBody state={state} current={current} busy={pending} onChoose={choose} coexistence={coexistence} onDeclare={declare} />
           <DialogFooter>

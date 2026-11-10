@@ -39,3 +39,24 @@ state_bucket = "nexus-terraform-state-793033583982"
 # necesita el equivalente porque allí ``litellm_count`` es 0 por workspace,
 # pase lo que pase con la variable.
 litellm_enabled = true
+
+# Las llamadas a modelos van directas al proveedor, como en producción, y el
+# proxy sigue encendido sin uso (enmienda de ADR-036, 2026-11-03). Volver a
+# pasarlas por él es poner esto a ``true`` y aplicar.
+llm_via_proxy = false
+
+# Spec 031: los avisos de la app (APNs y FCM). Se encienden **después** de
+# crear las cinco claves en el secreto de este entorno:
+#
+#   AWS_PROFILE=nexus ./infra/scripts/add_app_secret_keys.sh <ws> \
+#     NEXUS_APNS_KEY_ID NEXUS_APNS_TEAM_ID NEXUS_APNS_KEY_PEM \
+#     NEXUS_FCM_PROJECT_ID NEXUS_FCM_SERVICE_ACCOUNT_JSON
+#
+# 2026-10-20: APNs creadas en el secreto de staging (clave de FACELAD,
+# Sandbox & Production).
+# 2026-10-22: FCM creadas (proyecto de Firebase `auphere-customers`, cuenta de
+# servicio `firebase-adminsdk-fbsvc`).
+push_secret_keys = [
+  "NEXUS_APNS_KEY_ID", "NEXUS_APNS_TEAM_ID", "NEXUS_APNS_KEY_PEM",
+  "NEXUS_FCM_PROJECT_ID", "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
+]

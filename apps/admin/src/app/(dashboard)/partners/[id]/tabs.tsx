@@ -27,6 +27,8 @@ export const PARTNER_TAB_GROUPS: ProfileTabGroup[] = [
     tabs: [
       { seg: "team", label: "Equipo" },
       { seg: "money", label: "Facturas" },
+      // Spec 047 (T172; 43.1, 46.5): «Construcción y pruebas» and the account currency.
+      { seg: "limits", label: "Tope y moneda" },
     ],
   },
 ];

@@ -86,6 +86,7 @@ def _spend_tokens() -> None:
     pasa por ``LiteLLMProvider._raw_complete`` y anota su consumo."""
     collector.record_llm_usage(
         model="anthropic/claude-sonnet-4-6",
+        task="tool_turn",
         provider="anthropic",
         usage={"prompt_tokens": 1200, "completion_tokens": 340},
     )
@@ -210,6 +211,7 @@ async def test_qa_spend_is_not_billed_to_the_client(
     async with usage_turn(tenant_id=tenant_id, turn_id=str(uuid.uuid4()), source=SOURCE_CHANNEL):
         collector.record_llm_usage(
             model="anthropic/claude-sonnet-4-6",
+            task="tool_turn",
             provider="anthropic",
             usage={"prompt_tokens": 1_000_000, "completion_tokens": 0},
         )
@@ -217,6 +219,7 @@ async def test_qa_spend_is_not_billed_to_the_client(
     async with usage_turn(tenant_id=tenant_id, turn_id=str(uuid.uuid4()), source=SOURCE_QA):
         collector.record_llm_usage(
             model="anthropic/claude-sonnet-4-6",
+            task="tool_turn",
             provider="anthropic",
             usage={"prompt_tokens": 9_000_000, "completion_tokens": 0},
         )

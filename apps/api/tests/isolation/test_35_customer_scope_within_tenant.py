@@ -30,6 +30,7 @@ En rojo bloquea el merge.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -189,6 +190,70 @@ async def test_a_booking_belongs_to_the_customer_in_context(db_session, tenants_
     row = await db_session.get(Appointment, out.appointment.appointment_id)
     await db_session.refresh(row)
     assert row.customer_id == w["mine"]
+
+
+# ── la clave de idempotencia es de cada persona ────────────────────────
+#
+# /cso CSO-001 (2026-10-22), variante de `booking.*`: el modelo elige la clave
+# y no conoce el id de la conversación, así que la deriva de lo que se reserva
+# («sabado-1000»), que es justo lo que dos personas comparten.
+
+
+def _create(key: str, when: datetime) -> CreateAppointmentInput:
+    return CreateAppointmentInput(
+        service_name="Corte", starts_at=when, duration_min=30, idempotency_key=key
+    )
+
+
+async def test_the_same_idempotency_key_never_hands_over_another_persons_appointment(
+    db_session, tenants_ab
+):
+    """La segunda persona no recibe la cita de la primera: obtiene la suya."""
+    t = tenants_ab["a"]
+    w = await _seed(db_session, t)
+    day = (datetime.now(UTC) + timedelta(days=4)).replace(minute=0, second=0, microsecond=0)
+    at_10, at_11 = day.replace(hour=10), day.replace(hour=11)
+
+    with tenant_context(t), customer_context(w["other"]):
+        theirs = await CreateAppointment().run(_create("sabado-1000", at_10))
+    with tenant_context(t), customer_context(w["mine"]):
+        mine = await CreateAppointment().run(_create("sabado-1000", at_11))
+        again = await CreateAppointment().run(_create("sabado-1000", at_11))
+
+    assert mine.idempotent_replay is False, "recibí la cita de otra persona"
+    assert mine.appointment.appointment_id != theirs.appointment.appointment_id
+    assert mine.appointment.starts_at == at_11
+    # Repetir la misma llamada sigue siendo idempotente, para quien la hizo.
+    assert again.idempotent_replay is True
+    assert again.appointment.appointment_id == mine.appointment.appointment_id
+
+    owners = {
+        appt_id: (await db_session.get(Appointment, appt_id)).customer_id
+        for appt_id in (theirs.appointment.appointment_id, mine.appointment.appointment_id)
+    }
+    assert owners == {
+        theirs.appointment.appointment_id: w["other"],
+        mine.appointment.appointment_id: w["mine"],
+    }
+
+
+async def test_a_row_with_this_persons_key_but_another_owner_is_refused(db_session, tenants_ab):
+    """Defensa en el replay: aunque una fila llegue con la clave que derivaría
+    esta persona, la herramienta no entrega una cita que no es suya."""
+    t = tenants_ab["a"]
+    w = await _seed(db_session, t)
+    # El formato que guarda la herramienta: `agent:` + sha256(cliente:clave).
+    digest = hashlib.sha256(f"{w['mine']}:sabado-1000".encode()).hexdigest()
+    theirs = await db_session.get(Appointment, w["appt_other"])
+    theirs.idempotency_key = f"agent:{digest}"
+    await db_session.commit()
+
+    with (
+        tenant_context(t),
+        customer_context(w["mine"]),
+        pytest.raises(ToolError, match="idempotency_conflict"),
+    ):
+        await CreateAppointment().run(_create("sabado-1000", datetime.now(UTC) + timedelta(days=4)))
 
 
 # ── sin cliente en contexto, no se atiende a nadie ─────────────────────

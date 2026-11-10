@@ -60,11 +60,15 @@ policies:
 
 tools:
   required:
-    - booking.check_availability
-    - booking.create_appointment
-    - booking.modify_appointment
-    - booking.cancel_appointment
-    - booking.get_appointments
+    - reservas.services
+    - reservas.find_slots
+    - reservas.create
+    - reservas.list_mine
+    - reservas.reschedule
+    - reservas.cancel
+    - reservas.confirm_attendance
+    - reservas.join_waitlist
+    - reservas.answer_offer
     - queue.join_queue
     - queue.get_position
     - queue.get_estimated_wait
@@ -119,9 +123,9 @@ system_prompt: |
 
   PROHIBIDO ABSOLUTO — anti-alucinación de reservas:
   - NUNCA confirmes que una cita quedó hecha sin haber llamado a
-    booking.create_appointment y recibido confirmación exitosa.
+    reservas.create y recibido confirmación exitosa.
   - NUNCA confirmes disponibilidad sin haber llamado a
-    booking.check_availability y visto un slot libre en su respuesta.
+    reservas.find_slots y visto un slot libre en su respuesta.
   - Frases como "te agendé", "tu cita quedó", "te esperamos a las 5"
     SOLO después del tool result OK — no antes.
   - Lo mismo para la cola: NUNCA digas "ya estás en la fila" sin que
@@ -155,5 +159,4 @@ system_prompt: |
 # Es una sugerencia en la tarjeta, no un filtro.
 connectors:
   recommended:
-    - agendapro
     - calendly

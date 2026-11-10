@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SidebarProvider } from "@nexus/ui";
@@ -19,30 +19,33 @@ vi.mock("@/app/(console)/inbox/actions", () => ({
 const { AppSidebar } = await import("../app-sidebar");
 
 /**
- * Spec 030 (R3.1, R3.2, R3.3): el lateral de una persona de cliente lleva la
- * insignia «lite», al pie su nombre y el de su negocio, y nada del partner.
+ * Spec 030 (R3.1, R3.2, R3.3): el lateral de una persona de cliente lleva al
+ * pie su nombre y el de su negocio, y nada del partner. Spec 045 (R7): junto
+ * al logotipo, la misma insignia «Beta» que el partner, con su propia pista;
+ * «lite» (jerga interna) ya no se ve.
  */
-function renderSidebar(props: Parameters<typeof AppSidebar>[0]) {
+function renderSidebar(props: Parameters<typeof AppSidebar>[0], open = true) {
   return render(
     <LocaleProvider locale="es">
-      <SidebarProvider defaultOpen>
+      <SidebarProvider defaultOpen={open}>
         <AppSidebar {...props} />
       </SidebarProvider>
     </LocaleProvider>,
   );
 }
 
+const CLIENT_HINT = "Auphere Customers está en fase beta. Si algo no funciona como esperas, cuéntaselo a quien te dio acceso.";
+
 describe("AppSidebar — consola lite", () => {
   const user = { name: "Valeria Ríos", email: "valeria@minegocio.test" };
 
-  it("shows the lite badge, the client's modules and the business at the foot", () => {
+  it("shows the client's modules and the business at the foot", () => {
     renderSidebar({
       who: { kind: "client", modules: ["panel", "inbox", "usage"], clientName: "Flor y Encanto" },
       partnerName: "Amacrux",
       partnerSlug: "amacrux",
       user,
     });
-    expect(screen.getByText("lite")).toBeTruthy();
     const nav = screen.getByLabelText("Primary");
     const links = within(nav).getAllByRole("link").map((a) => a.textContent);
     expect(links).toEqual(["Panel", "Bandeja de entrada", "Consumo"]);
@@ -70,7 +73,44 @@ describe("AppSidebar — consola lite", () => {
     counts.unread = 0;
   });
 
-  it("keeps the partner sidebar without the badge", () => {
+  it("says Beta like the partner's, with the client's own hint, and never «lite» (spec 045, R7.1–R7.2)", () => {
+    renderSidebar({
+      who: { kind: "client", modules: ["panel", "inbox", "usage"], clientName: "Flor y Encanto" },
+      partnerName: "Amacrux",
+      partnerSlug: "amacrux",
+      user,
+    });
+    const beta = screen.getByText("Beta");
+    expect(beta.getAttribute("title")).toBe(CLIENT_HINT);
+    expect(screen.queryByText("lite")).toBeNull();
+
+    cleanup();
+    renderSidebar({
+      who: { kind: "partner", role: "owner", modules: [...PARTNER_MODULES] },
+      partnerName: "Amacrux",
+      partnerSlug: "amacrux",
+      user,
+    });
+    const partnerBeta = screen.getByText("Beta");
+    // The same component and tone: only the hint is the client's own.
+    expect(partnerBeta.className).toBe(beta.className);
+    expect(partnerBeta.getAttribute("title")).not.toBe(CLIENT_HINT);
+  });
+
+  it("hides the badge like the partner's when the sidebar is folded (spec 045, story 3)", () => {
+    renderSidebar(
+      {
+        who: { kind: "client", modules: ["panel", "inbox", "usage"], clientName: "Flor y Encanto" },
+        partnerName: "Amacrux",
+        partnerSlug: "amacrux",
+        user,
+      },
+      false,
+    );
+    expect(screen.getByText("Beta")).toHaveClass("opacity-0");
+  });
+
+  it("keeps the partner sidebar its own", () => {
     renderSidebar({
       who: { kind: "partner", role: "owner", modules: [...PARTNER_MODULES] },
       partnerName: "Amacrux",
@@ -78,6 +118,7 @@ describe("AppSidebar — consola lite", () => {
       user,
     });
     expect(screen.queryByText("lite")).toBeNull();
+    expect(screen.getByText("Beta").getAttribute("title")).toMatch(/^La consola está en fase beta/);
     expect(screen.getByText("Clientes")).toBeTruthy();
   });
 });

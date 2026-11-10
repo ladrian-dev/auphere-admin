@@ -60,3 +60,32 @@ export async function revokeSignupLinkAction(tenantId: string, linkId: string): 
     return { ok: false, error: toError(err) };
   }
 }
+
+/** Spec 050 (5.5): lift a stop word's or an operator's opt-out, with a reason. */
+export async function liftOptOutAction(tenantId: string, optOutId: string, reason: string): Promise<Result<null>> {
+  await requireOperator();
+  try {
+    await backend.liftOptOut(tenantId, optOutId, reason);
+    revalidatePath(`/tenants/${tenantId}/channels`);
+    return { ok: true, data: null };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+/** Spec 049 (5.5): the operator signs it, and the request's origin stays in the audit. */
+export async function erasePersonAction(
+  tenantId: string,
+  channelId: string,
+  body: { identifier: string; requested_by: string },
+): Promise<Result<{ erased: boolean; messages_emptied: number }>> {
+  const operator = await requireOperator();
+  try {
+    const data = await backend.erasePerson(tenantId, channelId, body, operator.id);
+    if (!data) return { ok: false, error: "empty_response" };
+    revalidatePath(`/tenants/${tenantId}/channels`);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}

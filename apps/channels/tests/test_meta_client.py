@@ -200,6 +200,36 @@ async def test_every_transport_error_promotes_to_transient(
                 await client.list_templates(waba_id="WABA_1", access_token=_TOKEN)
 
 
+async def test_list_templates_follows_the_cursor() -> None:
+    """Spec 043 (15.2): sin cursor solo se veía la primera página, y una
+    plantilla de la segunda se habría pedido otra vez."""
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.get("/WABA_1/message_templates").respond(200, json={"data": []})
+        async with MetaClient(_SECRET) as client:
+            await client.list_templates(waba_id="WABA_1", access_token=_TOKEN)
+            await client.list_templates(waba_id="WABA_1", access_token=_TOKEN, after="QVFI")
+        first, second = (c.request.url.params for c in route.calls)
+        assert first["limit"] == "100" and "after" not in first
+        assert second["after"] == "QVFI"
+
+
+async def test_one_attempt_means_no_retry() -> None:
+    """Spec 043 (15.5): la pasada de las plantillas no reintenta dentro de sí."""
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.post("/WABA_1/message_templates").respond(503, json={"error": {}})
+        async with MetaClient(_SECRET, max_retries=1) as client:
+            with pytest.raises(MetaTransientError):
+                await client.create_template(
+                    waba_id="WABA_1",
+                    access_token=_TOKEN,
+                    name="reserva_confirmada",
+                    language="es",
+                    category="UTILITY",
+                    components=[],
+                )
+        assert route.call_count == 1
+
+
 async def test_send_template_builds_payload() -> None:
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
         route = mock.post("/PN_1/messages").respond(200, json={"messages": [{"id": "wamid.T"}]})
@@ -345,15 +375,14 @@ async def test_get_linked_catalog_is_none_when_the_waba_has_none() -> None:
             assert await client.get_linked_catalog(waba_id="WABA_1", access_token=_TOKEN) is None
 
 
-async def test_link_and_unlink_catalog_hit_the_waba_edge() -> None:
+async def test_link_catalog_hits_the_waba_edge_and_there_is_no_unlink() -> None:
     async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
         link = mock.post("/WABA_1/product_catalogs").respond(200, json={"success": True})
-        unlink = mock.delete("/WABA_1/product_catalogs").respond(200, json={"success": True})
         async with MetaClient(_SECRET) as client:
             await client.link_catalog(waba_id="WABA_1", catalog_id="CAT_1", access_token=_TOKEN)
-            await client.unlink_catalog(waba_id="WABA_1", catalog_id="CAT_1", access_token=_TOKEN)
         assert json.loads(link.calls.last.request.content) == {"catalog_id": "CAT_1"}
-        assert unlink.calls.last.request.url.params["catalog_id"] == "CAT_1"
+    # Graph no admite DELETE en /{waba}/product_catalogs (spec 050 D11).
+    assert not hasattr(MetaClient, "unlink_catalog")
 
 
 async def test_search_products_filters_by_name_and_caps_the_limit() -> None:

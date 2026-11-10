@@ -1,0 +1,259 @@
+"use client";
+
+import * as React from "react";
+import { toast } from "sonner";
+
+import { Button, ConfirmDialog, NativeSelect } from "@nexus/ui";
+
+import { loadHoursAction, saveHoursAction } from "@/app/(console)/clients/[ref]/business/actions";
+import { useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
+import type { Day, Hours, HoursBody, Layout, Location, SectionState } from "@/lib/backend/business-sections";
+
+import { blockRows, blocksLoss, bodyFromDraft, draftFromHours, readRows, reviewDays, shiftsText, toBlocks, validateDraft, type HoursDraft } from "./hours-model";
+import { ConflictNotice, EditAction, ReadList, SectionFrame, problemOf, useReportState, useSectionEdit, type Result } from "./section-frame";
+import { WeekEditor } from "./week-editor";
+
+type Save = (body: { ref: string; revision: number; locationId: string | null; body: HoursBody }) => Promise<Result<Hours>>;
+type Load = (body: { ref: string; locationId: string | null }) => Promise<Result<Hours>>;
+
+const ERRORS = new Set(["too_many_shifts", "overlap", "overlap_next_day", "invalid_time", "bad_step", "invalid_day"]);
+
+/**
+ * «Horario» de Negocio (spec 047, T060; requisito 10, historia 5): el del
+ * negocio o el propio de una sede, por bloques o día por día, con hasta 6
+ * turnos, los nocturnos rotulados y la frase «Así lo dirá el agente» que
+ * devuelve la API al guardar. Pasar a bloques con días distintos pide
+ * confirmación diciendo qué se pierde (10.6).
+ *
+ * Como el prototipo aprobado: se lee (los días agrupados y la frase) y
+ * «Editar» abre el editor con «Guardar horario» y «Cancelar». `children` va al
+ * final de la tarjeta: las fechas especiales viven dentro de Horarios.
+ */
+export function HoursSection({
+  refId,
+  hours: initial,
+  locations,
+  canWrite,
+  save = (b) => saveHoursAction(b),
+  load = (b) => loadHoursAction(b),
+  children,
+  confirmable = false,
+  onStateChange,
+}: {
+  refId: string;
+  hours: Hours;
+  locations: readonly Location[];
+  canWrite: boolean;
+  save?: Save;
+  load?: Load;
+  children?: React.ReactNode;
+  /** «Es correcto» de lo leído de la web: solo en la consola del partner. */
+  confirmable?: boolean;
+  onStateChange?: (state: SectionState) => void;
+}) {
+  const t = useT();
+  const [hours, setHours] = React.useState(initial);
+  const [draft, setDraft] = React.useState<HoursDraft>(() => draftFromHours(initial));
+  const [inherit, setInherit] = React.useState(initial.inherits);
+  const [lost, setLost] = React.useState<Day[] | null>(null);
+  const [problem, setProblem] = React.useState<string | null>(null);
+  const [pending, startTransition] = React.useTransition();
+  const base = React.useId();
+  const edit = useSectionEdit("business-hours");
+  useReportState(hours.state, onStateChange);
+  const editing = canWrite && edit.editing;
+  const editable = editing && !inherit;
+  const live = locations.filter((l) => !l.archived);
+  const dayName = (d: Day) => t(`business.hours.day.${d}` as MessageKey);
+  // Spec 056 (5.5): lo guardado fuera del paso de 5 minutos, marcado «Revísalo».
+  const review = reviewDays(hours);
+
+  function reset(next: Hours) {
+    setHours(next);
+    setDraft(draftFromHours(next));
+    setInherit(next.inherits);
+    setProblem(null);
+  }
+
+  function change(next: HoursDraft) {
+    setDraft(next);
+    setProblem(null);
+  }
+
+  function chooseLayout(layout: Layout) {
+    if (layout === draft.layout) return;
+    if (layout === "daily") return change({ ...draft, layout });
+    const loss = blocksLoss(draft);
+    if (loss.length) setLost(loss);
+    else change(toBlocks(draft));
+  }
+
+  function switchLocation(value: string) {
+    const locationId = value || null;
+    startTransition(async () => {
+      const res = await load({ ref: refId, locationId });
+      if (res.ok) reset(res.data);
+      else toast.error(t("business.section.error"));
+    });
+  }
+
+  function submit(confirmLoss = false) {
+    const problems = validateDraft(draft, hours);
+    if (!inherit && problems.length) {
+      const first = problems[0];
+      if (first) setProblem(t(`business.hours.error.${first.code}` as MessageKey, { day: dayName(first.day) }));
+      return;
+    }
+    const body: HoursBody = inherit ? { inherit: true } : bodyFromDraft(draft, { confirmLoss });
+    startTransition(async () => {
+      const res = await save({ ref: refId, revision: hours.revision, locationId: hours.location_id, body });
+      if (res.ok) {
+        reset(res.data);
+        edit.close();
+        toast.success(t("business.section.saved"));
+        return;
+      }
+      const code = problemOf(res);
+      if (res.status === 409 && res.code === "blocks_lose_days") {
+        setLost((res.info?.lost as Day[] | undefined) ?? blocksLoss(draft));
+      } else if (code === "conflict") {
+        setProblem("conflict");
+      } else if (ERRORS.has(code)) {
+        const day = typeof res.info?.day === "string" ? dayName(res.info.day as Day) : "";
+        setProblem(t(`business.hours.error.${code}` as MessageKey, { day }));
+      } else {
+        setProblem(t("business.section.error.generic"));
+      }
+    });
+  }
+
+  const shown = inherit ? draftFromHours(hours) : draft;
+  const read = readRows(hours);
+  const readName = (row: (typeof read)[number]) =>
+    row.key === "weekdays"
+      ? t("business.hours.row.weekdays")
+      : row.days.length > 1
+        ? t("business.hours.read.range", { from: dayName(row.days[0] as Day), to: dayName(row.days[row.days.length - 1] as Day).toLowerCase() })
+        : dayName(row.key);
+
+  function cancel() {
+    reset(hours);
+    edit.close();
+  }
+
+  return (
+    <SectionFrame
+      id="business-hours"
+      title={t("business.hours.title")}
+      state={hours.state}
+      canWrite={canWrite}
+      confirm={confirmable ? { refId, section: "hours", onConfirmed: () => setHours((prev) => ({ ...prev, state: "complete" })) } : undefined}
+      action={editing ? null : <EditAction label={t("business.section.edit.label", { section: t("business.hours.title") })} onClick={edit.open} />}
+    >
+      <div className="grid min-w-0 gap-4">
+        {/* Elegir de qué sede es el horario solo hace falta al editarlo. */}
+        {editing && live.length > 0 ? (
+          <div className="grid min-w-0 gap-2 sm:max-w-sm">
+            <label htmlFor={`${base}-of`} className="text-sm font-medium">
+              {t("business.hours.of")}
+            </label>
+            <NativeSelect id={`${base}-of`} value={hours.location_id ?? ""} onChange={(e) => switchLocation(e.target.value)} disabled={pending}>
+              <option value="">{t("business.hours.of.business")}</option>
+              {live.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        ) : null}
+
+        {!editing ? (
+          read.length ? (
+            <div className="grid min-w-0 gap-3">
+              <ReadList
+                rows={read.map((row) => ({
+                  label: readName(row),
+                  value: row.shifts.length ? <span className="tabular-nums">{shiftsText(row.shifts, t("business.hours.read.next_day"))}</span> : t("business.hours.closed"),
+                  muted: !row.shifts.length,
+                }))}
+              />
+              {hours.label ? <p className="text-xs text-pretty text-muted-foreground">{t("business.hours.read.says", { phrase: hours.label })}</p> : null}
+            </div>
+          ) : (
+            <p className="text-sm text-pretty text-muted-foreground">{t("business.hours.phrase.none")}</p>
+          )
+        ) : null}
+
+        {editing && hours.location_id ? (
+          <label className="flex min-h-6 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={inherit}
+              onChange={(e) => {
+                setInherit(e.target.checked);
+              }}
+            />
+            {t("business.hours.inherit")}
+          </label>
+        ) : null}
+
+        {editable ? (
+          <fieldset className="grid min-w-0 gap-2">
+            <legend className="text-sm font-medium">{t("business.hours.layout")}</legend>
+            <div className="flex min-w-0 flex-wrap gap-4">
+              {(["blocks", "daily"] as const).map((layout) => (
+                <label key={layout} className="flex min-h-6 items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name={`${base}-layout`}
+                    className="size-4 accent-primary"
+                    checked={draft.layout === layout}
+                    onChange={() => chooseLayout(layout)}
+                  />
+                  {t(`business.hours.layout.${layout}` as MessageKey)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
+
+        {editing ? <WeekEditor draft={shown} rows={blockRows(shown.layout)} editable={editable} review={review} onChange={change} /> : null}
+
+        {problem === "conflict" ? <ConflictNotice onReload={() => switchLocation(hours.location_id ?? "")} /> : null}
+        {problem && problem !== "conflict" ? (
+          <p role="alert" className="text-sm text-destructive">
+            {problem}
+          </p>
+        ) : null}
+
+        {editing ? (
+          <div className="flex min-w-0 flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={() => submit()} disabled={pending}>
+              {t("business.hours.save")}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={cancel}>
+              {t("business.section.cancel")}
+            </Button>
+          </div>
+        ) : null}
+        {children}
+      </div>
+
+      <ConfirmDialog
+        open={lost !== null}
+        onOpenChange={(open) => !open && setLost(null)}
+        title={t("business.hours.loss.title")}
+        description={t("business.hours.loss.body", { days: (lost ?? []).map((d) => dayName(d).toLowerCase()).join(", ") })}
+        confirmLabel={t("business.hours.loss.confirm")}
+        cancelLabel={t("business.section.cancel")}
+        onConfirm={() => {
+          change(toBlocks(draft));
+          setLost(null);
+        }}
+      />
+    </SectionFrame>
+  );
+}

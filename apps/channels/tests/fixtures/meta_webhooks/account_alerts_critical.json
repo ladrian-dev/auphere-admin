@@ -1,0 +1,23 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "field": "account_alerts",
+          "value": {
+            "entity_type": "PHONE_NUMBER",
+            "entity_id": "106540352242922",
+            "alert_info": {
+              "alert_severity": "CRITICAL",
+              "alert_status": "ACTIVE",
+              "alert_type": "INCREASED_CAPABILITIES_ELIGIBILITY_FAILED",
+              "alert_description": "The business is not eligible for increased capabilities."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

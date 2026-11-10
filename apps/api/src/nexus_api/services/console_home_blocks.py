@@ -418,18 +418,244 @@ def days_until(end: datetime, now: datetime) -> float:
     return max(0.0, (end - now).total_seconds() / 86400)
 
 
+# ── Spec 047 (T065, T067): la bolsa, el Panel del cliente y las acciones ───────
+#
+# La bolsa se lee de ``partner_allocations`` hasta la ola 7, en US$. Las cifras
+# salen de las mismas cuentas que la consola lite (``lite_home.balance_of``,
+# ``spend_block`` y ``split_cents``) para que cuadren al céntimo (requisito
+# 14.6); los días, del ritmo medio de los últimos 7 días **completos**, y solo
+# con 3 días o más de consumo (14.1, 14.2, ``contracts/events.md`` §1.4).
+
+#: Días completos que cuentan para el ritmo.
+PACE_DAYS = 7
+#: Con menos días de consumo, los días no se estiman.
+MIN_PACE_DAYS = 3
+#: El aviso ámbar (requisito 14.1).
+WARN_SPENT_PCT = 80
+#: «Saldo bajo»: por debajo de este porcentaje de su base (``attention.py``).
+LOW_LEFT_PCT = 20
+#: Lo que le falta a la ficha, en el orden del Panel (requisito 14.5).
+MISSING_ORDER: tuple[str, ...] = ("hours", "services", "locations", "sources", "links")
+#: Agentes en «Agentes que más consumen».
+TOP_AGENTS = 4
+
+
+@dataclass(frozen=True)
+class BagBlock:
+    """La bolsa de un cliente, en céntimos de ``currency`` (y en créditos para
+    el ritmo, que no depende del redondeo). ``state``: ``ok``, ``low``,
+    ``not_enough``, ``empty``, ``unlimited`` o ``unassigned``."""
+
+    state: str
+    currency: str
+    assigned: bool
+    unlimited: bool
+    cap_cents: int | None
+    remaining_cents: int | None
+    spent_cents: int | None
+    pct_spent: float | None
+    pct_left: float | None
+    days_left: float | None
+    days_estimable: bool
+    alerts: tuple[str, ...]
+    #: Para la regla de atención (``attention.ClientFacts``).
+    empty: bool
+
+
+def pace(daily_credits: list[int]) -> tuple[float, int]:
+    """El ritmo medio diario de los últimos ``PACE_DAYS`` días completos y en
+    cuántos hubo consumo."""
+    days = daily_credits[-PACE_DAYS:]
+    active = sum(1 for d in days if d > 0)
+    return (sum(days) / PACE_DAYS if days else 0.0), active
+
+
+def bag_block(
+    allocation: tuple[int, int] | None,
+    *,
+    purchased: int | None,
+    daily_credits: list[int],
+    out_of_quota: bool,
+    unlimited: bool,
+    days_to_month_end: float,
+) -> BagBlock:
+    """La bolsa (ver arriba). ``out_of_quota`` es ``wallet.quota_state``: la
+    definición de «no puede atender por saldo» que usa la puerta del turno."""
+    if unlimited:
+        return BagBlock(
+            "unlimited", CURRENCY, True, True, None, None, None, None, None, None, False, (), False
+        )
+    if allocation is None:
+        return BagBlock(
+            "unassigned",
+            CURRENCY,
+            False,
+            False,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            False,
+            (),
+            True,
+        )
+    cap, remaining = allocation
+    if purchased is not None:
+        # Nunca más que el dinero que existe (spec 033, como la consola lite).
+        remaining = max(0, min(remaining, purchased))
+    spent = max(0, cap - remaining)
+    daily, active_days = pace(daily_credits)
+    estimable = active_days >= MIN_PACE_DAYS and daily > 0
+    days = round(remaining / daily, 1) if estimable else None
+    pct_spent = round(spent / cap * 100, 1) if cap > 0 else None
+    pct_left = round(remaining / cap * 100, 1) if cap > 0 else None
+    empty = out_of_quota or remaining <= 0
+    alerts: tuple[str, ...] = ()
+    if empty:
+        alerts = ("empty",)
+    elif pct_spent is not None and pct_spent >= WARN_SPENT_PCT:
+        alerts = ("warn_80",)
+    if empty:
+        state = "empty"
+    elif pct_left is not None and pct_left < LOW_LEFT_PCT:
+        state = "low"
+    elif days is not None and days < days_to_month_end:
+        state = "not_enough"
+    else:
+        state = "ok"
+    return BagBlock(
+        state=state,
+        currency=CURRENCY,
+        assigned=True,
+        unlimited=False,
+        cap_cents=credits_to_cents(cap),
+        remaining_cents=credits_to_cents(remaining),
+        spent_cents=credits_to_cents(spent, nearest=True),
+        pct_spent=pct_spent,
+        pct_left=pct_left,
+        days_left=days,
+        days_estimable=estimable,
+        alerts=alerts,
+        empty=empty,
+    )
+
+
+def first_missing(states: Mapping[str, str]) -> str | None:
+    """Lo primero que le falta a la ficha (requisito 14.5); ``None`` si nada."""
+    for section in MISSING_ORDER:
+        if states.get(section, "pending") == "pending":
+            return section
+    return None
+
+
+@dataclass(frozen=True)
+class AgentFigures:
+    agent_id: uuid.UUID
+    name: str
+    visible: str
+    credits: int
+    cents: int
+    conversations: int
+
+
+@dataclass(frozen=True)
+class AgentShare:
+    agent_id: uuid.UUID
+    name: str
+    cents: int
+    share_pct: float
+
+
+def spend_shares(figures: list[AgentFigures]) -> list[AgentShare]:
+    """La barra del consumo repartida por agente, de más a menos."""
+    total = sum(f.credits for f in figures)
+    ranked = sorted((f for f in figures if f.credits > 0), key=lambda f: (-f.credits, f.name))
+    return [
+        AgentShare(
+            agent_id=f.agent_id,
+            name=f.name,
+            cents=f.cents,
+            share_pct=round(f.credits / total * 100, 1) if total else 0.0,
+        )
+        for f in ranked
+    ]
+
+
+def top_spenders(figures: list[AgentFigures], limit: int = TOP_AGENTS) -> list[AgentFigures]:
+    """Los que más consumen: primero el consumo, después las conversaciones."""
+    return sorted(figures, key=lambda f: (-f.credits, -f.conversations, f.name))[:limit]
+
+
+def per_conversation_cents(cents: int, conversations: int) -> int | None:
+    return round(cents / conversations) if conversations > 0 else None
+
+
+@dataclass(frozen=True)
+class MonthBlock:
+    period_start: date
+    period_end: date
+    conversations: int
+    handed_to_person: int
+    resolved_without_person: int
+    resolved_pct: float | None
+
+
+def month_block(start: date, end: date, conversations: int, handed: int) -> MonthBlock:
+    handed = max(0, min(handed, conversations))
+    resolved = conversations - handed
+    return MonthBlock(
+        period_start=start,
+        period_end=end,
+        conversations=conversations,
+        handed_to_person=handed,
+        resolved_without_person=resolved,
+        resolved_pct=round(resolved / conversations * 100, 1) if conversations else None,
+    )
+
+
+def client_actions(permissions: frozenset[str] | set[str], *, archived: bool) -> list[str]:
+    """Lo que el menú ⋯ ofrece a esta persona (requisito 7.6): lo que no puede
+    no sale, salvo «Asignar saldo», que pasa a «Pedir saldo»."""
+    out: list[str] = []
+    if "clients:write" in permissions:
+        out.append("edit")
+    out.append("assign_balance" if "usage:write" in permissions else "request_balance")
+    if "agents:write" in permissions and not archived:
+        out.append("new_agent")
+    if "clients:write" in permissions:
+        out.append("restore" if archived else "archive")
+    if "clients:delete" in permissions:
+        out.append("delete")
+    return out
+
+
 __all__ = [
+    "MISSING_ORDER",
     "SEVERITY",
+    "AgentFigures",
+    "AgentShare",
+    "BagBlock",
     "ClientRow",
+    "MonthBlock",
     "attention_items",
+    "bag_block",
+    "client_actions",
     "credit_block",
     "credit_low_items",
     "days_until",
+    "first_missing",
     "fix_href",
     "merge_attention",
+    "month_block",
+    "pace",
+    "per_conversation_cents",
     "portfolio_rows",
     "review_block",
     "spend_block",
+    "spend_shares",
+    "top_spenders",
     "trend_block",
     "window",
 ]

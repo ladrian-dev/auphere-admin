@@ -34,8 +34,15 @@ class WorkerSettings(BaseSettings):
     # explicitly through fixtures.
     #
     # The fallback model lives hardcoded in ``main.py`` — see comment there.
-    llm_classify_model: str = "openai/gpt-5.6-sol"
+    # Clasificar devuelve una palabra: tiene su propio modelo, barato y rápido (requisito 69).
+    llm_classify_model: str = "anthropic/claude-haiku-5-5"
     llm_respond_model: str = "openai/gpt-5.6-sol"
+    # Leer una web o identificar el sector extrae datos de un texto largo: no es clasificar.
+    llm_extract_model: str = "openai/gpt-5.6-sol"
+    # El cliente simulado y el juez de las pruebas: una conversación por pasada no
+    # necesita el modelo de responder, y el juez no puede ser el modelo juzgado
+    # (si lo es, su veredicto no cuenta y la prueba se queda en «No sé»).
+    llm_simulation_model: str = "openai/gpt-5.6-terra"
     llm_use_inmemory: bool = False
 
     # Redis Stream names.
@@ -61,10 +68,14 @@ class WorkerSettings(BaseSettings):
     # Flor y Encanto, 2026-10-05: a customer who writes «Y tulipanes?» and,
     # three seconds later, «y para mañana qué horarios hay?» got two full
     # answers, each with its own product cards. People send one thought in
-    # several bubbles; a person reads them all and answers once. When a
-    # text entry is dequeued, the slot waits this long for the rest of the
-    # thought and folds what arrived into one turn. 0 disables it.
-    runner_coalesce_window_ms: int = 1500
+    # several bubbles; a person reads them all and answers once.
+    #
+    # Spec 047 (requisito 1.1, research D9 y D43): each saved inbound schedules
+    # its conversation's turn this long ahead in the deferred queue, and every
+    # new message pushes it back — one turn for the whole burst, whichever
+    # replica got each bubble. 3 s by default; Auphere sets it per deployment
+    # (``NEXUS_RUNNER_COALESCE_WINDOW_MS``). 0 runs each turn inline.
+    runner_coalesce_window_ms: int = 3000
 
     # ── WP-13: checkpoint retention ─────────────────────────────────────────
     # Keep the newest N checkpoints per conversation thread; purge threads
@@ -91,7 +102,6 @@ class WorkerSettings(BaseSettings):
 
     # Cron tick overrides (test fixtures use these to drop seconds → ms).
     health_check_tick_seconds: float = 3600.0
-    no_show_scrape_tick_seconds: float = 3600.0
     cost_rollup_tick_seconds: float = 3600.0
     isolation_watcher_tick_seconds: float = 60.0
 

@@ -53,7 +53,7 @@ export default async function WorkstationPage() {
 
   return (
     <>
-      <PageHeader eyebrow={principal.partnerName} title={t("ws.title")} description={t("ws.description")} />
+      <PageHeader size="display" title={t("ws.title")} description={t("ws.description")} />
       <PresenceRefresh />
       {canPair ? <WorkstationSetupCard setup={setup} /> : null}
       <MachinesList
@@ -64,11 +64,7 @@ export default async function WorkstationPage() {
         manager={can(principal.role, "workstation:write")}
         currentUserId={principal.userId}
       />
-      {ceiling ? (
-        <div className="mt-6">
-          <LocalExecCeiling ceiling={ceiling.ceiling} manage={can(principal.role, "teammates:policy")} />
-        </div>
-      ) : null}
+      {ceiling ? <LocalExecCeiling ceiling={ceiling.ceiling} manage={can(principal.role, "teammates:policy")} /> : null}
     </>
   );
 }

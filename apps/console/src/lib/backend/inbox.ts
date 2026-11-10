@@ -16,15 +16,25 @@ export type InboxAuthor = { kind: InboxAuthorKind; name: string | null; is_me: b
 
 export type InboxConversation = {
   id: string;
-  contact: { name: string; handle: string; initials: string };
+  /** `has_avatar`: Instagram / Messenger picture, served by the BFF (never a storage link). */
+  contact: { name: string; handle: string; initials: string; has_avatar?: boolean };
   channel: { kind: string };
   agent: { id: string; name: string } | null;
   state: InboxState;
+  /** Spec 045 (R3.1): why and since when it waits for a person; `null` unless `state = "waiting"`. */
+  waiting: InboxWaiting | null;
   assignee: InboxAuthor | null;
   last_message: { at: string; author: InboxAuthor; preview: string; has_media: boolean } | null;
   unread: boolean;
   tags: string[];
+  /** Spec 047 (50.7, 53.2): «La atiende {agente}», también con un solo agente o tras una derivación de Recepción. */
+  handled_by_agent?: { id: string; name: string } | null;
+  /** Spec 047 (50.7): why it waits, the code of `events.md` §2. */
+  waiting_reason?: string | null;
 };
+
+/** The agent's last escalation: its reason (it may leave none) and when it happened. */
+export type InboxWaiting = { reason: string | null; since: string };
 
 export type InboxCounts = { unread: number; waiting: number };
 
@@ -35,6 +45,8 @@ export type InboxPage = {
   /** Whether the client has any conversation at all — tells an empty inbox from an empty filter. */
   has_any: boolean;
   channel_kinds: string[];
+  /** Spec 056 (6.2): how many are resolved when «Abiertas» (`all`, no search, agent or channel) comes back empty; else 0. */
+  resolved?: number;
 };
 
 export type InboxActivity = { kind: string; at: string; actor: InboxAuthor; detail: string | null };
@@ -48,9 +60,16 @@ export type InboxDetail = {
   control_version: number;
   window: { open: boolean; closes_at: string | null };
   channel: { kind: string; connected: boolean };
-  contact: { name: string; handle: string; first_message_at: string | null; conversations: number };
+  contact: { name: string; handle: string; first_message_at: string | null; conversations: number; has_avatar?: boolean };
   summary: string | null;
+  /** The reason of the last escalation: a code of `events.md` §2 or the agent's own words. */
   waiting_reason: string | null;
+  /** Spec 047 (50.7): why it waits, always the column's code (`waiting_reason` keeps the agent's words). */
+  waiting_code?: string | null;
+  /** Spec 045 (R3.2): when the agent asked for a person; `null` unless `state = "waiting"`. */
+  waiting_since: string | null;
+  /** Spec 047 (50.7, 53.2): who answers it now — the agent Recepción handed it to, if any. */
+  handled_by_agent?: { id: string; name: string } | null;
   tags: string[];
   note: { body: string; updated_at: string | null };
   activity: InboxActivity[];
@@ -70,7 +89,15 @@ export type InboxThreadItem = {
   failure_reason: string | null;
   kind: string | null;
   detail: string | null;
+  /** The customer deleted it on their side: there is nothing left to read. */
+  unsent?: boolean;
+  /** A comment on a post, not a direct message. */
+  comment?: boolean;
+  /** A stop word: the contact opted out of marketing and the agent did not answer. */
+  opted_out?: boolean;
 };
+
+export type InboxCommentPost = { text: string | null; image_url: string | null; permalink: string | null };
 
 export type InboxThread = { items: InboxThreadItem[]; next_before: string | null };
 export type InboxSent = { id: string; at: string; delivery: string };
@@ -79,6 +106,7 @@ export type SavedReply = { id: string; title: string; body: string };
 /** Backend paths the BFF route handlers proxy. */
 export const inboxStreamPath = "/console/lite/inbox/stream";
 export const inboxMediaPath = (messageId: string) => `/console/lite/inbox/messages/${encodeURIComponent(messageId)}/media`;
+export const inboxAvatarPath = (conversationId: string) => `/console/lite/inbox/conversations/${encodeURIComponent(conversationId)}/avatar`;
 export const inboxAttachmentPath = (conversationId: string) =>
   `/console/lite/inbox/conversations/${encodeURIComponent(conversationId)}/attachments`;
 
@@ -88,7 +116,7 @@ export function inboxApi(call: Call) {
   const enc = encodeURIComponent;
   const ifMatch = (version?: number) => (version === undefined ? undefined : { "If-Match": String(version) });
   return {
-    inboxList: (p: { filter?: InboxFilter; q?: string; agent?: string; cursor?: string; limit?: number } = {}) =>
+    inboxList: (p: { filter?: InboxFilter; q?: string; agent?: string; channel?: string; cursor?: string; limit?: number } = {}) =>
       call<InboxPage>(`${C}${q(p)}`),
     inboxCounts: () => call<InboxCounts>("/console/lite/inbox/counts"),
     inboxDetail: (id: string) => call<InboxDetail>(`${C}/${enc(id)}`),
@@ -100,10 +128,18 @@ export function inboxApi(call: Call) {
       call<InboxDetail>(`${C}/${enc(id)}/takeover`, { method: "POST", headers: ifMatch(version) }),
     inboxGiveBack: (id: string, version?: number) =>
       call<InboxDetail>(`${C}/${enc(id)}/release`, { method: "POST", headers: ifMatch(version) }),
-    inboxSend: (id: string, text: string) =>
-      call<InboxSent>(`${C}/${enc(id)}/messages`, { method: "POST", body: { text } }),
+    inboxSend: (id: string, text: string, idempotencyKey?: string) =>
+      call<InboxSent>(`${C}/${enc(id)}/messages`, {
+        method: "POST",
+        body: { text },
+        ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
+      }),
     inboxResolve: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/resolve`, { method: "POST" }),
     inboxReopen: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/reopen`, { method: "POST" }),
+    inboxCommentPost: (id: string, messageId: string) =>
+      call<InboxCommentPost | null>(`${C}/${enc(id)}/messages/${enc(messageId)}/post`),
+    inboxClear: (id: string) => call<InboxDetail>(`${C}/${enc(id)}/clear`, { method: "POST" }),
+    inboxArchive: (id: string) => call<null>(`${C}/${enc(id)}/archive`, { method: "POST" }),
     inboxSetTags: (id: string, tags: string[]) =>
       call<{ tags: string[] }>(`${C}/${enc(id)}/tags`, { method: "PUT", body: { tags } }),
     inboxSuggestedTags: () => call<{ tags: string[] }>("/console/lite/inbox/tags"),

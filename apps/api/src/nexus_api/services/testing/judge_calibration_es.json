@@ -1,0 +1,563 @@
+[
+ {
+  "id": "cal-01",
+  "criteria": [
+   {
+    "key": "hours",
+    "text": "Dice el horario de la ficha (L-V 10:00-20:00), sin inventar."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿A qué hora abrís?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Abrimos de lunes a viernes de 10:00 a 20:00."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "hours": "pass"
+  }
+ },
+ {
+  "id": "cal-02",
+  "criteria": [
+   {
+    "key": "hours",
+    "text": "Dice el horario de la ficha (L-V 10:00-20:00), sin inventar."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿A qué hora abrís?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Abrimos todos los días de 9 a 22."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "hours": "fail"
+  }
+ },
+ {
+  "id": "cal-03",
+  "criteria": [
+   {
+    "key": "hours",
+    "text": "Dice el horario de la ficha (L-V 10:00-20:00), sin inventar."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿A qué hora abrís?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Ahora mismo te lo confirmo."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "hours": "unknown"
+  }
+ },
+ {
+  "id": "cal-04",
+  "criteria": [
+   {
+    "key": "escalates",
+    "text": "Pasa la conversación al equipo cuando se lo piden."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "Quiero hablar con una persona"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Te paso con el equipo, enseguida te escriben."
+    ]
+   }
+  ],
+  "actions": [
+   "Pasar la conversación al equipo"
+  ],
+  "labels": {
+   "escalates": "pass"
+  }
+ },
+ {
+  "id": "cal-05",
+  "criteria": [
+   {
+    "key": "escalates",
+    "text": "Pasa la conversación al equipo cuando se lo piden."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "Quiero hablar con una persona"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Yo te puedo ayudar con todo, ¿qué necesitas?"
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "escalates": "fail"
+  }
+ },
+ {
+  "id": "cal-06",
+  "criteria": [
+   {
+    "key": "price",
+    "text": "Da el precio de la ficha (corte 15 €) o dice que lo confirma el equipo."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Cuánto cuesta un corte?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "El corte cuesta 15 €."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "price": "pass"
+  }
+ },
+ {
+  "id": "cal-07",
+  "criteria": [
+   {
+    "key": "price",
+    "text": "Da el precio de la ficha (corte 15 €) o dice que lo confirma el equipo."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Cuánto cuesta un corte?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "El corte cuesta 10 €, ¡oferta!"
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "price": "fail"
+  }
+ },
+ {
+  "id": "cal-08",
+  "criteria": [
+   {
+    "key": "price",
+    "text": "Da el precio de la ficha (corte 15 €) o dice que lo confirma el equipo."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Cuánto cuesta un corte?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "El precio te lo confirma el equipo."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "price": "pass"
+  }
+ },
+ {
+  "id": "cal-09",
+  "criteria": [
+   {
+    "key": "booked",
+    "text": "Confirma la cita con día y hora en palabras."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Tienes hueco el lunes?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Te he reservado el lunes 3 a las 10:00 para un corte."
+    ]
+   }
+  ],
+  "actions": [
+   "Reservar Corte de pelo el 03/11/2031 a las 10:00"
+  ],
+  "labels": {
+   "booked": "pass"
+  }
+ },
+ {
+  "id": "cal-10",
+  "criteria": [
+   {
+    "key": "booked",
+    "text": "Confirma la cita con día y hora en palabras."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Tienes hueco el lunes?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Sí, hay hueco."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "booked": "fail"
+  }
+ },
+ {
+  "id": "cal-11",
+  "criteria": [
+   {
+    "key": "scope",
+    "text": "Dice amablemente que eso no le toca."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Me recomiendas un restaurante?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Eso no te lo puedo decir yo; aquí te ayudo con la barbería."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "scope": "pass"
+  }
+ },
+ {
+  "id": "cal-12",
+  "criteria": [
+   {
+    "key": "scope",
+    "text": "Dice amablemente que eso no le toca."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Me recomiendas un restaurante?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Prueba La Tasca, está genial."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "scope": "fail"
+  }
+ },
+ {
+  "id": "cal-13",
+  "criteria": [
+   {
+    "key": "register",
+    "text": "Trata al cliente de usted."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "Buenas"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Buenas tardes, ¿en qué puedo ayudarle?"
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "register": "pass"
+  }
+ },
+ {
+  "id": "cal-14",
+  "criteria": [
+   {
+    "key": "register",
+    "text": "Trata al cliente de usted."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "Buenas"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "¡Hola! ¿Qué necesitas?"
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "register": "fail"
+  }
+ },
+ {
+  "id": "cal-15",
+  "criteria": [
+   {
+    "key": "register",
+    "text": "Trata al cliente de usted."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "Buenas"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Buenas tardes."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "register": "unknown"
+  }
+ },
+ {
+  "id": "cal-16",
+  "criteria": [
+   {
+    "key": "hours",
+    "text": "Dice el horario de la ficha (L-V 10:00-20:00), sin inventar."
+   },
+   {
+    "key": "price",
+    "text": "Da el precio de la ficha (corte 15 €) o dice que lo confirma el equipo."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Horario y precio del corte?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "De lunes a viernes de 10:00 a 20:00; el corte, 15 €."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "hours": "pass",
+   "price": "pass"
+  }
+ },
+ {
+  "id": "cal-17",
+  "criteria": [
+   {
+    "key": "hours",
+    "text": "Dice el horario de la ficha (L-V 10:00-20:00), sin inventar."
+   },
+   {
+    "key": "price",
+    "text": "Da el precio de la ficha (corte 15 €) o dice que lo confirma el equipo."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Horario y precio del corte?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "De lunes a viernes de 10:00 a 20:00; el corte, 20 €."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "hours": "pass",
+   "price": "fail"
+  }
+ },
+ {
+  "id": "cal-18",
+  "criteria": [
+   {
+    "key": "escalates",
+    "text": "Pasa la conversación al equipo cuando se lo piden."
+   },
+   {
+    "key": "scope",
+    "text": "Dice amablemente que eso no le toca."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "Esto es una vergüenza, quiero hablar con el dueño"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Lo siento mucho. Te paso con el equipo ahora mismo."
+    ]
+   }
+  ],
+  "actions": [
+   "Pasar la conversación al equipo"
+  ],
+  "labels": {
+   "escalates": "pass",
+   "scope": "unknown"
+  }
+ },
+ {
+  "id": "cal-19",
+  "criteria": [
+   {
+    "key": "booked",
+    "text": "Confirma la cita con día y hora en palabras."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "Resérvame el domingo"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Los domingos está cerrado; ¿te va bien el lunes a las 10:00?"
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "booked": "fail"
+  }
+ },
+ {
+  "id": "cal-20",
+  "criteria": [
+   {
+    "key": "hours",
+    "text": "Dice el horario de la ficha (L-V 10:00-20:00), sin inventar."
+   }
+  ],
+  "transcript": [
+   {
+    "role": "customer",
+    "bubbles": [
+     "¿Abrís el sábado?"
+    ]
+   },
+   {
+    "role": "agent",
+    "bubbles": [
+     "Los sábados no abrimos; de lunes a viernes de 10:00 a 20:00."
+    ]
+   }
+  ],
+  "actions": [],
+  "labels": {
+   "hours": "pass"
+  }
+ }
+]

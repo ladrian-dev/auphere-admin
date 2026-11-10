@@ -44,6 +44,9 @@ class GetDailyReportInput(InputModel):
 
 class BarberDailyTotal(OutputModel):
     barber_id: uuid.UUID | None
+    #: Spec 048: the person's name — the barber's, or the Reservas staff
+    #: member's when no barber of the graph has it (then ``barber_id`` is null).
+    name: str | None = None
     appointments_count: int
     gross_revenue_cents: int
     commission_cents: int

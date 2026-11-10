@@ -11,6 +11,7 @@ partner, no conversaciones del negocio: no aparecen nunca.
 from __future__ import annotations
 
 import base64
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -21,11 +22,13 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from nexus_api.config import get_settings
 from nexus_api.db.models import (
     Agent,
     AgentStatus,
     Channel,
     ChannelStatus,
+    ChannelType,
     ClientMembership,
     ContactNote,
     Conversation,
@@ -38,6 +41,7 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
 )
+from nexus_api.services.meta_window import person_window
 
 #: El canal del Playground: pruebas del partner, nunca conversaciones del negocio.
 PLAYGROUND_PROVIDER = "qa_playground"
@@ -46,6 +50,20 @@ WINDOW = timedelta(hours=24)
 PREVIEW_CHARS = 140
 
 Filter = str  # all | unread | waiting | resolved
+
+#: Un número de WhatsApp tal como lo guarda Meta: solo cifras, sin «+».
+_DIGITS = re.compile(r"^\+?\d{6,15}$")
+
+
+def display_handle(identifier: str | None, channel: str | None) -> str:
+    """Spec 056 (13.3): cómo se lee el contacto. En WhatsApp es un teléfono y va
+    con «+» y su prefijo (Meta lo da sin el «+»); agruparlo pediría
+    libphonenumber y queda fuera. En Instagram y Messenger el identificador no es
+    un teléfono y sale tal cual."""
+    raw = (identifier or "").strip()
+    if channel == ChannelType.WHATSAPP.value and _DIGITS.match(raw):
+        return raw if raw.startswith("+") else f"+{raw}"
+    return raw
 
 
 def state_of(conversation: Conversation) -> str:
@@ -74,8 +92,8 @@ def unread_expr(user_id: str) -> sa.ColumnElement[bool]:
     return sa.or_(
         sa.func.coalesce(marked, sa.false()),
         sa.and_(
-            Conversation.last_inbound_at.is_not(None),
-            Conversation.last_inbound_at
+            Conversation.last_attended_inbound_at.is_not(None),
+            Conversation.last_attended_inbound_at
             > sa.func.coalesce(read, sa.text("'-infinity'::timestamptz")),
         ),
     )
@@ -83,6 +101,26 @@ def unread_expr(user_id: str) -> sa.ColumnElement[bool]:
 
 def _not_playground() -> sa.ColumnElement[bool]:
     return Channel.provider != PLAYGROUND_PROVIDER
+
+
+def _in_inbox() -> sa.ColumnElement[bool]:
+    """Spec 045 (R1): la conversación existe para la Bandeja si el agente la
+    atiende o la atendió, y no es del Playground. Lo demás —un número que la
+    puerta de números permitidos silenció, un envío del sistema que nadie
+    contestó— no se lista, no se cuenta y su id responde 404."""
+    return sa.and_(_not_playground(), Conversation.attended_at.is_not(None))
+
+
+def _not_silenced() -> sa.ColumnElement[bool]:
+    """Sin los entrantes silenciados (spec 045, R1.4). Una palabra de baja no
+    tiene turno, pero el hilo la enseña marcada (spec 050, 5.3)."""
+    return sa.or_(Message.skipped_reason.is_(None), Message.skipped_reason == "opted_out")
+
+
+def _shown_message() -> sa.ColumnElement[bool]:
+    """Los mensajes que el hilo enseña: desde el primero atendido, sin los
+    silenciados. Correlacionado con ``Conversation``."""
+    return sa.and_(_not_silenced(), Message.created_at >= Conversation.attended_at)
 
 
 def encode_cursor(at: datetime | None, id_: uuid.UUID) -> str:
@@ -123,7 +161,15 @@ class ListItem:
     unread: bool
     tags: list[str]
     # Spec 030: the agent of the conversation's number — only with 2+ agents.
+    # Spec 047 (53.2): who answers now, the target when Recepción handed it over.
     agent: tuple[uuid.UUID, str] | None = None
+    # Spec 045 (R3.1): why and since when it waits — only while it waits.
+    waiting_reason: str | None = None
+    waiting_since: datetime | None = None
+    # Spec 047 (53.2): «La atiende {agente}» — only when Recepción handed it over.
+    handled_by: tuple[uuid.UUID, str] | None = None
+    #: Instagram / Messenger: where the person's profile picture is stored.
+    contact_avatar_key: str | None = None
 
 
 @dataclass
@@ -134,6 +180,9 @@ class ListPage:
     waiting: int = 0
     has_any: bool = False
     channel_kinds: list[str] = field(default_factory=list)
+    #: Spec 056 (6.2, D6): cuántas resueltas hay cuando «Abiertas» —la lista por
+    #: defecto, sin búsqueda, agente ni canal— sale vacía. Si no, 0.
+    resolved: int = 0
 
 
 @dataclass(frozen=True)
@@ -171,6 +220,26 @@ def agent_of_channel(agents: list[tuple[uuid.UUID, str]]) -> sa.ColumnElement[uu
     )
 
 
+def handled_by_col() -> sa.ScalarSelect[uuid.UUID]:
+    """Spec 047 (53.2): the agent Recepción handed the conversation to, while it
+    is alive (an archived one gives it back to the number's agent, as the turn
+    does: ``services.reception.agent_for_conversation``). Correlated with
+    ``Conversation``."""
+    return (
+        sa.select(Agent.id)
+        .where(Agent.id == Conversation.handled_by_agent_id, Agent.lifecycle != "archived")
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+
+
+def agent_of_conversation(
+    agents: list[tuple[uuid.UUID, str]],
+) -> sa.ColumnElement[uuid.UUID | None]:
+    """Who answers in a conversation: Recepción's target, else the number's agent."""
+    return sa.func.coalesce(handled_by_col(), agent_of_channel(agents))
+
+
 async def member_names(session: AsyncSession, tenant_id: uuid.UUID) -> Members:
     rows = await session.execute(
         sa.select(
@@ -205,8 +274,22 @@ def author_of(
     return Author(kind="agent")
 
 
+#: How a contact's reaction is stored (``api/webhooks/meta*.py``).
+_REACTION = re.compile(r"^\[reaction:(?P<emoji>.*?):on=.*\]$", re.DOTALL)
+
+
+def _readable(content: str | None) -> str | None:
+    """What a person reads for a stored message: a reaction is its emoji, not
+    the internal id of the message it points at (INC-57)."""
+    mark = _REACTION.match(content or "")
+    if mark is None:
+        return content
+    emoji = mark["emoji"]
+    return "✕" if emoji == "(removed)" else emoji
+
+
 def _preview(content: str | None) -> str:
-    text = " ".join((content or "").split())
+    text = " ".join((_readable(content) or "").split())
     return text if len(text) <= PREVIEW_CHARS else text[: PREVIEW_CHARS - 1].rstrip() + "…"
 
 
@@ -220,11 +303,13 @@ async def list_conversations(
     cursor: str | None,
     limit: int,
     agent: uuid.UUID | None = None,
+    channel: ChannelType | None = None,
 ) -> ListPage:
     page = ListPage()
     unread = unread_expr(me)
     agents = await client_agents(session)
-    agent_col = agent_of_channel(agents)
+    # Spec 047 (53.2): who answers now — the filter by agent included.
+    agent_col = agent_of_conversation(agents)
     names_by_agent = dict(agents)
     base = (
         sa.select(
@@ -232,12 +317,14 @@ async def list_conversations(
             Customer.name,
             Customer.identifier,
             Channel.type,
+            Customer.avatar_s3_key,
             unread.label("unread"),
             agent_col.label("agent_id"),
+            handled_by_col().label("handled_by"),
         )
         .join(Customer, Customer.id == Conversation.customer_id)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(_not_playground())
+        .where(_in_inbox())
     )
     if flt == "resolved":
         base = base.where(Conversation.status == ConversationStatus.CLOSED)
@@ -249,12 +336,18 @@ async def list_conversations(
             base = base.where(unread)
     if agent is not None:
         base = base.where(agent_col == agent)
+    if channel is not None:
+        base = base.where(Channel.type == channel)
     if q:
         like = f"%{q.strip()}%"
         in_messages = (
             sa.select(sa.literal(1))
             .select_from(Message)
-            .where(Message.conversation_id == Conversation.id, Message.content.ilike(like))
+            .where(
+                Message.conversation_id == Conversation.id,
+                _shown_message(),
+                Message.content.ilike(like),
+            )
             .exists()
         )
         base = base.where(
@@ -285,6 +378,7 @@ async def list_conversations(
     names = await member_names(session, tenant_id)
     last_by_conv: dict[uuid.UUID, Message] = {}
     tags_by_conv: dict[uuid.UUID, list[str]] = {}
+    waiting_by_conv: dict[uuid.UUID, tuple[str | None, datetime]] = {}
     if ids:
         ranked = (
             sa.select(
@@ -293,7 +387,8 @@ async def list_conversations(
                 .over(partition_by=Message.conversation_id, order_by=Message.created_at.desc())
                 .label("rn"),
             )
-            .where(Message.conversation_id.in_(ids))
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(Message.conversation_id.in_(ids), _shown_message())
             .subquery()
         )
         latest = aliased(Message, ranked)
@@ -307,9 +402,12 @@ async def list_conversations(
             )
         ).all():
             tags_by_conv.setdefault(cid, []).append(str(tag))
+        waiting_ids = [r[0].id for r in shown if r[0].status == ConversationStatus.ESCALATED]
+        if waiting_ids:
+            waiting_by_conv = await _last_escalations(session, waiting_ids)
 
     show_agents = len(agents) > 1
-    for conv, name, identifier, channel_type, is_unread, agent_id in shown:
+    for conv, name, identifier, channel_type, avatar_key, is_unread, agent_id, handled_by in shown:
         msg = last_by_conv.get(conv.id)
         last = (
             LastMessage(
@@ -322,11 +420,14 @@ async def list_conversations(
             else None
         )
         assignee = names.author(conv.assigned_user_id, me=me) if conv.assigned_user_id else None
+        handle = display_handle(str(identifier), str(getattr(channel_type, "value", channel_type)))
         page.items.append(
             ListItem(
                 id=conv.id,
-                contact_name=str(name or identifier),
-                contact_handle=str(identifier),
+                # Sin nombre, el contacto se llama por su número, también con «+» (13.3).
+                contact_name=str(name or handle),
+                contact_handle=handle,
+                contact_avatar_key=avatar_key,
                 channel_kind=str(getattr(channel_type, "value", channel_type)),
                 state=state_of(conv),
                 assignee=assignee,
@@ -338,6 +439,13 @@ async def list_conversations(
                     if show_agents and agent_id is not None
                     else None
                 ),
+                waiting_reason=waiting_by_conv.get(conv.id, (None, None))[0],
+                waiting_since=waiting_by_conv.get(conv.id, (None, None))[1],
+                handled_by=(
+                    (handled_by, names_by_agent.get(handled_by, "—"))
+                    if handled_by is not None
+                    else None
+                ),
             )
         )
 
@@ -345,7 +453,7 @@ async def list_conversations(
         sa.select(sa.func.count())
         .select_from(Conversation)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(_not_playground())
+        .where(_in_inbox())
     )
     page.unread = int(
         await session.scalar(
@@ -358,6 +466,21 @@ async def list_conversations(
         or 0
     )
     page.has_any = bool(await session.scalar(counts_base))
+    if (
+        flt == "all"
+        and not q
+        and agent is None
+        and channel is None
+        and not cursor
+        and not page.items
+        and page.has_any
+    ):
+        page.resolved = int(
+            await session.scalar(
+                counts_base.where(Conversation.status == ConversationStatus.CLOSED)
+            )
+            or 0
+        )
     kinds = await session.execute(
         sa.select(sa.distinct(Channel.type)).where(
             _not_playground(), Channel.config["role"].astext.is_distinct_from("notifications")
@@ -367,13 +490,48 @@ async def list_conversations(
     return page
 
 
+async def _last_escalations(
+    session: AsyncSession, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str | None, datetime]]:
+    """El motivo y el momento del último escalado de cada conversación."""
+    ranked = (
+        sa.select(
+            ConversationEvent.conversation_id,
+            ConversationEvent.payload,
+            ConversationEvent.created_at,
+            sa.func.row_number()
+            .over(
+                partition_by=ConversationEvent.conversation_id,
+                order_by=ConversationEvent.created_at.desc(),
+            )
+            .label("rn"),
+        )
+        .where(
+            ConversationEvent.conversation_id.in_(ids),
+            ConversationEvent.kind == ConversationEventKind.ESCALATED.value,
+        )
+        .subquery()
+    )
+    out: dict[uuid.UUID, tuple[str | None, datetime]] = {}
+    for cid, payload, at in (
+        await session.execute(
+            sa.select(ranked.c.conversation_id, ranked.c.payload, ranked.c.created_at).where(
+                ranked.c.rn == 1
+            )
+        )
+    ).all():
+        reason = (payload or {}).get("reason") or None
+        out[cid] = (str(reason) if reason else None, at)
+    return out
+
+
 async def counts(session: AsyncSession, *, me: str) -> tuple[int, int]:
     unread = unread_expr(me)
     base = (
         sa.select(sa.func.count())
         .select_from(Conversation)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(_not_playground())
+        .where(_in_inbox())
     )
     n_unread = await session.scalar(
         base.where(Conversation.status != ConversationStatus.CLOSED, unread)
@@ -384,14 +542,29 @@ async def counts(session: AsyncSession, *, me: str) -> tuple[int, int]:
     return int(n_unread or 0), int(n_waiting or 0)
 
 
+async def first_waiting(session: AsyncSession) -> uuid.UUID | None:
+    """La conversación que espera a una persona desde hace más tiempo sin
+    respuesta —la que «Atender» abre primero—, entre las que la Bandeja
+    enseña. RLS: el tenant de la sesión."""
+    found: uuid.UUID | None = await session.scalar(
+        sa.select(Conversation.id)
+        .join(Channel, Channel.id == Conversation.channel_id)
+        .where(Conversation.status == ConversationStatus.ESCALATED, _in_inbox())
+        .order_by(Conversation.last_inbound_at.desc().nulls_last(), Conversation.id)
+        .limit(1)
+    )
+    return found
+
+
 async def get_conversation(
     session: AsyncSession, conversation_id: uuid.UUID
 ) -> Conversation | None:
-    """La conversación, si es del cliente de la sesión y no del Playground."""
+    """La conversación, si es del cliente de la sesión, no es del Playground y
+    el agente la atiende o la atendió (spec 045): lo demás, 404."""
     row = await session.execute(
         sa.select(Conversation)
         .join(Channel, Channel.id == Conversation.channel_id)
-        .where(Conversation.id == conversation_id, _not_playground())
+        .where(Conversation.id == conversation_id, _in_inbox())
     )
     return row.scalar_one_or_none()
 
@@ -419,11 +592,26 @@ class Detail:
     conversations: int
     summary: str | None
     waiting_reason: str | None
+    waiting_since: datetime | None
     tags: list[str]
     note_body: str
     note_updated_at: datetime | None
     activity: list[Activity]
     agent: tuple[uuid.UUID, str] | None = None
+    # Spec 047 (53.2): «La atiende {agente}» — only when Recepción handed it over.
+    handled_by: tuple[uuid.UUID, str] | None = None
+    #: Instagram / Messenger: where the person's profile picture is stored.
+    contact_avatar_key: str | None = None
+
+
+def _event_detail(event: ConversationEvent) -> str | None:
+    """Lo que la Bandeja dice de un evento: el motivo de un escalado y, de una
+    derivación de Recepción (spec 047, 53.2), a quién pasó."""
+    if event.kind == "escalated" and event.payload.get("reason"):
+        return str(event.payload.get("reason"))
+    if event.kind == "agent_changed" and event.payload.get("to_agent_name"):
+        return str(event.payload.get("to_agent_name"))
+    return None
 
 
 def _event_actor(actor: str, *, me: str, names: Members) -> Author:
@@ -445,19 +633,18 @@ async def detail(
     customer = await session.get(Customer, conversation.customer_id)
     channel = await session.get(Channel, conversation.channel_id)
     first = await session.scalar(
-        sa.select(sa.func.min(Message.created_at)).where(
-            Message.conversation_id.in_(
-                sa.select(Conversation.id).where(
-                    Conversation.customer_id == conversation.customer_id
-                )
-            )
-        )
+        sa.select(sa.func.min(Message.created_at))
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .where(Conversation.customer_id == conversation.customer_id, _shown_message())
     )
     rows_for_customer = int(
         await session.scalar(
             sa.select(sa.func.count())
             .select_from(Conversation)
-            .where(Conversation.customer_id == conversation.customer_id)
+            .where(
+                Conversation.customer_id == conversation.customer_id,
+                Conversation.attended_at.is_not(None),
+            )
         )
         or 0
     )
@@ -505,12 +692,33 @@ async def detail(
     note = await session.get(ContactNote, conversation.customer_id)
     agents = await client_agents(session)
     agent: tuple[uuid.UUID, str] | None = None
+    # Spec 047 (53.2): Recepción la derivó — la atiende el destino mientras viva.
+    handled_id = await session.scalar(
+        sa.select(Agent.id).where(
+            Agent.id == conversation.handled_by_agent_id, Agent.lifecycle != "archived"
+        )
+    )
+    handled_by = (handled_id, dict(agents).get(handled_id, "—")) if handled_id else None
     if len(agents) > 1:
-        agent_id = (channel.agent_id if channel else None) or agents[0][0]
+        agent_id = handled_id or (channel.agent_id if channel else None) or agents[0][0]
         agent = (agent_id, dict(agents).get(agent_id, "—"))
     now = datetime.now(UTC)
-    closes = conversation.last_inbound_at + WINDOW if conversation.last_inbound_at else None
+    # Spec 049: on Instagram and Messenger, once Meta approves HUMAN_AGENT, a
+    # person can still answer for 7 days; the composer stays open that long.
+    window = (
+        person_window(
+            channel.type.value, human_agent_approved=get_settings().meta_human_agent_approved
+        )
+        if channel is not None
+        else WINDOW
+    )
+    closes = conversation.last_inbound_at + window if conversation.last_inbound_at else None
     payload: dict[str, Any] = last_escalation.payload if last_escalation is not None else {}
+    # Sin nombre, el contacto se llama por su número, también con «+» (13.3).
+    handle = display_handle(
+        customer.identifier if customer else "",
+        str(getattr(channel.type, "value", channel.type)) if channel else None,
+    )
     return Detail(
         conversation=conversation,
         state=state_of(conversation),
@@ -523,12 +731,16 @@ async def detail(
         window_closes_at=closes,
         channel_kind=str(getattr(channel.type, "value", channel.type)) if channel else "whatsapp",
         channel_connected=bool(channel and channel.status == ChannelStatus.ACTIVE),
-        contact_name=str((customer.name or customer.identifier) if customer else "—"),
-        contact_handle=str(customer.identifier if customer else ""),
+        contact_name=str((customer.name or handle) if customer else "—"),
+        contact_handle=handle,
+        contact_avatar_key=customer.avatar_s3_key if customer else None,
         first_message_at=first,
         conversations=rows_for_customer + reopened,
         summary=(payload.get("customer_summary") or None) if last_escalation else None,
         waiting_reason=(payload.get("reason") or None)
+        if (last_escalation and conversation.status == ConversationStatus.ESCALATED)
+        else None,
+        waiting_since=last_escalation.created_at
         if (last_escalation and conversation.status == ConversationStatus.ESCALATED)
         else None,
         tags=tags,
@@ -539,15 +751,12 @@ async def detail(
                 kind=e.kind,
                 at=e.created_at,
                 actor=_event_actor(e.actor, me=me, names=names),
-                detail=(
-                    str(e.payload.get("reason"))[:80]
-                    if e.kind == "escalated" and e.payload.get("reason")
-                    else None
-                ),
+                detail=(_event_detail(e) or "")[:80] or None,
             )
             for e in events
         ],
         agent=agent,
+        handled_by=handled_by,
     )
 
 
@@ -566,6 +775,9 @@ class ThreadItem:
     failure_reason: str | None = None
     event_kind: str | None = None
     detail: str | None = None
+    unsent: bool = False
+    comment: bool = False
+    opted_out: bool = False
 
 
 async def thread(
@@ -579,10 +791,16 @@ async def thread(
 ) -> tuple[list[ThreadItem], str | None]:
     """Mensajes y eventos en orden, paginando hacia atrás desde ``before``."""
     names = await member_names(session, tenant_id)
-    msg_stmt = sa.select(Message).where(Message.conversation_id == conversation.id)
+    # Spec 045 (R1.4): desde el primer mensaje atendido, sin los silenciados.
+    msg_stmt = sa.select(Message).where(Message.conversation_id == conversation.id, _not_silenced())
+    if conversation.attended_at is not None:
+        msg_stmt = msg_stmt.where(Message.created_at >= conversation.attended_at)
     ev_stmt = sa.select(ConversationEvent).where(
         ConversationEvent.conversation_id == conversation.id
     )
+    if conversation.attended_at is not None:
+        # «Vaciar» (2026-11-01) moves this floor: what happened before goes with it.
+        ev_stmt = ev_stmt.where(ConversationEvent.created_at >= conversation.attended_at)
     if before:
         b_at, _ = decode_cursor(before)
         if b_at is not None:
@@ -612,12 +830,16 @@ async def thread(
                 at=m.created_at,
                 direction=str(getattr(m.direction, "value", m.direction)),
                 author=author_of(m.direction, m.actor_kind, m.actor_id, me=me, names=names),
-                text=m.content or None,
+                text=_readable(m.content) or None,
                 media_kind=m.media_kind,
                 media_filename=m.media_filename,
                 media_transcript=m.media_transcript,
                 delivery=status if m.direction == MessageDirection.OUTBOUND else None,
                 failure_reason=(m.last_error or m.failure_code) if status == "failed" else None,
+                unsent=bool((m.interactive_payload or {}).get("unsent")),
+                opted_out=m.skipped_reason == "opted_out",
+                comment=m.direction == MessageDirection.INBOUND
+                and (m.provider_message_id or "").startswith("comment:"),
             )
         )
     for e in evs:
@@ -628,11 +850,7 @@ async def thread(
                 at=e.created_at,
                 author=_event_actor(e.actor, me=me, names=names),
                 event_kind=e.kind,
-                detail=(
-                    str(e.payload.get("reason"))
-                    if e.kind == "escalated" and e.payload.get("reason")
-                    else None
-                ),
+                detail=_event_detail(e),
             )
         )
     items.sort(key=lambda i: i.at, reverse=True)
@@ -653,6 +871,8 @@ __all__ = [
     "ThreadItem",
     "counts",
     "detail",
+    "display_handle",
+    "first_waiting",
     "get_conversation",
     "list_conversations",
     "state_of",

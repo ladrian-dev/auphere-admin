@@ -10,7 +10,9 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -59,14 +61,64 @@ class MediaKind(str, enum.Enum):
     CONTACTS = "contacts"
 
 
+#: Spec 047 (migración 0176, ``contracts/events.md`` §2): por qué una
+#: conversación espera a una persona. Lista cerrada; salvo ``out_of_audience``,
+#: la conversación va a la Bandeja «Espera a una persona».
+#: Spec 056 (0223): ``booking_unbacked``, el freno de citas la pasó a una persona.
+#: No es de puerta (``inbox_lifecycle.GATE_REASONS``): no lo libera la siguiente
+#: respuesta del agente.
+WAITING_REASONS: tuple[str, ...] = (
+    "no_balance",
+    "agent_cap",
+    "paused_agent",
+    "paused_channel",
+    "paused_client",
+    "archived_client",
+    "channel_problem",
+    "agent_unpublished",
+    "out_of_audience",
+    "no_model",
+    "provider_failure",
+    "turn_limit",
+    "escalated",
+    "human_takeover",
+    "reception_loop",
+    "booking_unbacked",
+    # Spec 057 (0229, requisito 4.2): la agenda sin terminar y un agente sin
+    # herramienta de derivar: el runtime pasó la cita a una persona.
+    "agenda_not_ready",
+)
+#: Spec 047 (0176): quién escribió un mensaje.
+MESSAGE_ORIGINS: tuple[str, ...] = (
+    "customer",
+    "agent",
+    "business_person",
+    "business_app_echo",
+    "history_import",
+    "system",
+)
+
+
 class Customer(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "customers"
     __table_args__ = (
         UniqueConstraint("tenant_id", "identifier", name="uq_customers_tenant_identifier"),
     )
 
+    # The phone (digits) when the person had one at creation, the BSUID
+    # otherwise. Never rewritten: it keys the agent's thread and everything
+    # that already points at the person (spec 050, D2).
     identifier: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Migration 0206 — spec 050: Meta's business-scoped user id (``CC.…``),
+    # the phone when known and the WhatsApp username. Meta assigns them; the
+    # model never passes them.
+    bsuid: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Migration 0212 — Instagram / Messenger: where the worker stored the
+    # person's profile picture (Meta's CDN link expires). None on WhatsApp.
+    avatar_s3_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     preferences: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     kg_node_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -153,6 +205,36 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     #: Última actividad en cualquier sentido: el orden de la Bandeja.
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Spec 045 (migración 0171): la Bandeja solo enseña lo que el agente
+    # atiende o atendió. Un entrante «atendido» es uno que la puerta de
+    # números permitidos (spec 024) no silenció, en un número con agente.
+    #: Primer entrante atendido. ``NULL`` = la conversación no existe para la
+    #: Bandeja (un número silenciado, un envío del sistema sin respuesta).
+    attended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Último entrante atendido: contra lo que se mide el «sin leer». No es
+    #: ``last_inbound_at``, que sigue siendo la ventana de 24 h de WhatsApp.
+    last_attended_inbound_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Spec 047 (migración 0176). Todo entrante se guarda antes de las puertas;
+    # la puerta que no deja contestar escribe aquí su código (``WAITING_REASONS``)
+    # y la conversación pasa a la Bandeja con él.
+    waiting_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: El último turno que tomó sus mensajes (agrupación de 3 s, requisito 1.1).
+    last_turn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Coexistencia (ola 4): un eco del negocio deja la conversación a una
+    #: persona hasta esta hora.
+    takeover_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Spec 047 (0191, P3): the agent Recepción handed the conversation to —
+    #: who answers from then on (``services.reception.agent_for_conversation``).
+    #: ``NULL`` = the number's agent. Composite FK to ``agents`` (same client).
+    handled_by_agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: Handoffs so far (CHECK ≥ 0, 0200): the fifth goes to a person
+    #: (``reception_loop``). Back to 0 when the conversation returns to Recepción.
+    reception_hops: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+
 
 class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     __tablename__ = "messages"
@@ -177,7 +259,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    trace_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    trace_id: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     tool_calls: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     # Block F: outbound retry bookkeeping. Populated only by the outbound
     # dispatcher; inbound rows leave them untouched.
@@ -199,7 +281,7 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # the webhook can ``ON CONFLICT DO NOTHING`` the dedupe. Populated for
     # both inbound (parsed from webhook) and outbound (recorded once the provider
     # accepts the send).
-    provider_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Status callback lifecycle. ``status`` advances through SENT →
     # DELIVERED → READ on the receiver side; ``failed_at`` + ``failure_code``
     # capture a terminal failure from Meta (e.g. 131026 recipient unable,
@@ -230,12 +312,12 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     # reacted to. For outbound reactions we set both before sending; for
     # inbound the webhook fills them when ``type=reaction``.
     reaction_emoji: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    reaction_target_wamid: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    reaction_target_wamid: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     # Quoted reply: when the customer (or the agent) cites a previous
     # message, this column holds the cited wamid. The pipeline uses it to
     # surface context that would otherwise be lost.
-    context_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    context_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     # Interactive component payload — populated by the checkpoint node
     # when the agent's turn included a ``response.send_interactive``
@@ -281,6 +363,10 @@ class Message(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # Spec 030: which agent wrote an agent message (several per client).
     agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Spec 047 (migración 0176): who wrote it (``MESSAGE_ORIGINS``), and the turn
+    # that took it. An inbound message has no turn until one takes it.
+    origin: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    turn_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
@@ -302,6 +388,14 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         UniqueConstraint(
             "tenant_id", "channel_id", "recipient_phone", name="uq_optout_tenant_channel_phone"
         ),
+        # Garantía 1: (tenant_id, customer_id) → customers (tenant_id, id). A
+        # deleted customer lets go of the column; the opt-out stays by phone.
+        ForeignKeyConstraint(
+            ["tenant_id", "customer_id"],
+            ["customers.tenant_id", "customers.id"],
+            name="fk_optout_customer",
+            ondelete="SET NULL (customer_id)",
+        ),
     )
 
     channel_id: Mapped[uuid.UUID] = mapped_column(
@@ -310,10 +404,18 @@ class WhatsAppOptOut(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
         nullable=False,
         index=True,
     )
-    recipient_phone: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Nullable since 0206: a person known only by BSUID has no phone.
+    recipient_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Migration 0206 — spec 050: who opted out, of what, and through which path.
+    # ``marketing`` blocks marketing templates and broadcasts only; ``all``
+    # (every row before 0206) blocks every send but the opt-out confirmation.
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    scope: Mapped[str] = mapped_column(String(12), nullable=False, default="marketing")
+    source: Mapped[str] = mapped_column(String(12), nullable=False, default="keyword")
+    lifted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reason: Mapped[str] = mapped_column(String(40), nullable=False)
     trigger_keyword: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    source_wamid: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    source_wamid: Mapped[str | None] = mapped_column(String(512), nullable=True)
     opted_out_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     opted_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -349,6 +451,11 @@ class WhatsAppTemplateStatus(UUIDPrimaryKey, TimestampMixin, Base):
     template_name: Mapped[str] = mapped_column(String(120), nullable=False)
     language: Mapped[str] = mapped_column(String(20), nullable=False)
     category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Migration 0206 — spec 050: recategorisation (announced and applied) and
+    # Meta's quality score. ``status`` is Meta's value as sent (uppercase).
+    previous_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    pending_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    quality: Mapped[str | None] = mapped_column(String(12), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_event_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

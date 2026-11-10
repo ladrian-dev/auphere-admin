@@ -21,8 +21,8 @@ def test_all_seeds_parse() -> None:
     Composio owns the catalog for OAuth toolkits."""
     seeds = load_all_seeds()
     slugs = {s.slug for s in seeds}
+    # Spec 048: no AgendaPro seed, so release.sh cannot bring it back.
     assert slugs == {
-        "agendapro",
         "amigable_cobro",
         "amigable_venta",
         "tiktok_bm",
@@ -142,7 +142,7 @@ def test_seed_model_is_frozen() -> None:
     """Pydantic frozen model raises ValidationError on attribute assignment."""
     from pydantic import ValidationError
 
-    s = load_seed("agendapro")
+    s = load_seed("woocommerce")
     assert isinstance(s, ConnectorSeed)
     with pytest.raises(ValidationError):
         s.slug = "mutated"  # type: ignore[misc]

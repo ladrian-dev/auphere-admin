@@ -30,6 +30,9 @@ ALL_EXPECTED = {
     "owner-fanout-consumer",
     "outbound-dispatcher",
     "owner-outbox-dispatcher",
+    # Spec 031: los avisos al teléfono. En los tres sitios: ``_spawn``,
+    # ``EGRESS_TASK_NAMES`` y aquí.
+    "push-dispatcher",
     "operator-alerter",
     "grade-consumer",
     "platform-watcher",
@@ -52,13 +55,19 @@ ALL_EXPECTED = {
     # literalmente «a task assigned to none dies without a trace» de la cabecera
     # de este fichero, con el camino del dinero dentro.
     "billing-event-consumer",
+    # Spec 047 (D43): los trabajos largos. En ``RUNNER_TASK_NAMES``, su
+    # ``_spawn`` en ``runner_tasks`` y aquí.
+    "jobs-consumer",
+    # Spec 047 (T110): los tres consumidores de coexistencia, en la familia runner.
+    "meta-echoes-consumer",
+    "meta-history-consumer",
+    "meta-state-sync-consumer",
     "isolation-event-drainer",
-    "no-show-scrape-cron",
     "cost-rollup-cron",
     "isolation-watcher",
     "whatsapp-health-cron",
     "tiktok-token-refresh-cron",
-    "async-booking-cron",
+    "meta-social-cron",
     "continuous-eval-cron",
     "memory-versions-retention-cron",
     "owner-consultation-timeout-sweep",
@@ -73,6 +82,29 @@ ALL_EXPECTED = {
     "workflow-pack-cron",
     # Spec 003
     "teammate-task-expiry-cron",
+    # Spec 043 (Reservas): confirmaciones, liberar, terminar, caducar; el
+    # avance de las ofertas de la lista; los avisos al cliente final. En los
+    # tres sitios: ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
+    "reservations-cron",
+    "reservation-offers-cron",
+    "reservation-outbox-cron",
+    "reservation-calendar-cron",
+    # Spec 043, requisito 15: las seis plantillas de WhatsApp de Reservas, que
+    # se piden solas a Meta cada 15 min. En ``SCHEDULER_TASK_NAMES``, ``_spawn``
+    # y aquí.
+    "reservation-templates-cron",
+    # Spec 047 (T037): la conciliación diaria con Meta.
+    "meta-reconciliation-cron",
+    # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.
+    "model-lifecycle-cron",
+    # Spec 047 (T156, T157): el cambio del BCE, el relleno, los avisos y el cuadre.
+    "fx-rates-cron",
+    "bag-refill-cron",
+    "bag-alerts-cron",
+    "ledger-reconciliation-cron",
+    # Spec 047 (T174): las sugerencias semanales. En los tres sitios:
+    # ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
+    "weekly-suggestions-cron",
 }
 
 
@@ -99,7 +131,6 @@ def _dummy_ctx() -> SimpleNamespace:
         loader=object(),
         channel_adapters={},
         meta_client=object(),
-        agendapro_public_pool=object(),
         outcome_grader=None,
     )
 
@@ -135,3 +166,31 @@ async def test_combined_families_have_one_heartbeat() -> None:
         t.cancel()
     with contextlib.suppress(Exception):
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def test_agendapro_left_the_worker() -> None:
+    """Spec 048 (requisito 1.3): no AgendaPro process group, no async booking
+    and no no-show scraping — neither in the name contract nor in the
+    context the three services share."""
+    import dataclasses
+
+    gone = {"no-show-scrape-cron", "async-booking-cron"}
+    every = (
+        bootstrap.RUNNER_TASK_NAMES | bootstrap.SCHEDULER_TASK_NAMES | bootstrap.EGRESS_TASK_NAMES
+    )
+    assert not every & gone
+    fields = {f.name for f in dataclasses.fields(bootstrap.WorkerContext)}
+    assert "agendapro_public_pool" not in fields
+
+
+def test_there_is_no_weekly_reread() -> None:
+    """Spec 047, enmienda del 2026-10-29 (requisito 59.6, D48): sources are read
+    again when they change, never on a weekly cron — neither in the name contract
+    nor as a module someone could wire back."""
+    import importlib.util
+
+    every = (
+        bootstrap.RUNNER_TASK_NAMES | bootstrap.SCHEDULER_TASK_NAMES | bootstrap.EGRESS_TASK_NAMES
+    )
+    assert "source-reread-cron" not in every
+    assert importlib.util.find_spec("nexus_worker.streams.source_reread_cron") is None

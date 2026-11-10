@@ -40,6 +40,8 @@ os.environ.setdefault("NEXUS_ADMIN_TOKEN", "test-admin-token")
 os.environ.setdefault("NEXUS_WEBHOOK_HMAC_SECRET", "test-hmac-secret")
 os.environ.setdefault("NEXUS_FERNET_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("NEXUS_ISOLATION_ENFORCER_RAISE_IN_DEV", "false")
+# Spec 047 (T023): a model call without its router task fails in the tests.
+os.environ.setdefault("NEXUS_USAGE_REQUIRE_TASK", "1")
 
 # ── Partner console (CP-03): one Ed25519 keypair per test session ──────────
 # The API only ever holds the PUBLIC key; tests mint tokens with the private
@@ -326,6 +328,50 @@ async def test_engine() -> AsyncIterator[Any]:
 
 
 _TRUNCATE_TABLES = (
+    # Spec 047 — los trabajos largos (0175): cuelgan del tenant y del agente.
+    "jobs",
+    # Spec 047, bloque B (0176 a 0180): el turno, la ficha y el router por cliente.
+    # Las tablas de plataforma (precios, taxonomía, perfiles) guardan su semilla.
+    "turn_effects",
+    "meta_reconciliation_runs",
+    # Spec 047 (0191): los países de la beta de «Iniciar sesión con WhatsApp».
+    # Sin semilla; una prueba que abre un país no lo deja abierto a la siguiente.
+    "whatsapp_login_beta_countries",
+    # Spec 047, enmienda (0207): las guías convertidas por Auphere. Sin semilla.
+    "sector_guides",
+    "business_links",
+    "business_suggestions",
+    "business_changes",
+    "business_field_provenance",
+    "business_sections",
+    "business_profiles",
+    "agent_model_certifications",
+    "router_anomalies",
+    # Spec 047, bloque C (0183): horarios, sedes, servicios por agente y
+    # compilaciones.
+    "agent_version_compilations",
+    "agent_services",
+    "business_faqs",
+    "business_special_shifts",
+    "business_special_dates",
+    "business_shifts",
+    "business_schedules",
+    "business_locations",
+    # Spec 043 — Reservas (todas cuelgan del tenant; el CASCADE las alcanza
+    # igual, pero nombrarlas deja el orden escrito).
+    "reservation_busy",
+    "reservation_staff_calendars",
+    "reservation_outbox",
+    "reservation_offer_candidates",
+    "reservation_offers",
+    "reservation_waitlist",
+    "reservation_blocks",
+    "reservation_events",
+    "reservations",
+    "reservation_service_staff",
+    "reservation_services",
+    "reservation_staff",
+    "reservation_settings",
     # Block L — connectors module (tenant-scoped FK to tenants must clear first).
     "tenant_connector_tool_overrides",
     "tenant_connectors",
@@ -504,8 +550,8 @@ async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
         )
         async with test_engine.begin() as conn:
             # Block L — clean test-inserted tool_catalog rows. The baseline
-            # rows are seeded by migrations 0003 (21 LLM-facing) + 0009 (6
-            # agendapro internal) and must survive. Connector-derived rows
+            # rows are seeded by migrations (0003's 21 LLM-facing and the
+            # ones after it) and must survive. Connector-derived rows
             # use mcp_server starting with "composio:" (see seed YAMLs) or
             # have a non-null connector_id (set by tools.sync). The
             # ``SHARED_TOOL_FOR_ISOLATION`` row from
@@ -519,6 +565,15 @@ async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
                 )
             )
             await conn.execute(text("DELETE FROM connectors"))
+            # Spec 047, enmienda (T201): las pruebas de una guía convertida entran
+            # en el catálogo con su clave; las de los seis sectores (0188) quedan.
+            await conn.execute(
+                text(
+                    "DELETE FROM sector_test_catalog WHERE sector_key NOT IN ("
+                    "'barberia_peluqueria', 'clinica', 'restaurante', 'tienda', "
+                    "'servicios_profesionales', 'mayorista')"
+                )
+            )
 
 
 # ── seed helpers ────────────────────────────────────────────────────────────────
@@ -937,6 +992,9 @@ async def make_inbox(
             status=ConversationStatus.OPEN,
             last_inbound_at=at,
             last_message_at=at + timedelta(seconds=5),
+            # Spec 045: el entrante de abajo lo atendió el agente.
+            attended_at=at,
+            last_attended_inbound_at=at,
         )
         db_session.add(conv)
         await db_session.flush()
@@ -1058,6 +1116,28 @@ WALLET_LANES: dict[str, str] = {
     "channel": "channel:",  # nexus_worker/metering/consumer.py
     "local_exec": "local_exec:",  # services/local_workstation_metering.py
 }
+
+
+@pytest.fixture
+def month_end_far(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The balance notice only fires when the balance runs out before the month
+    ends, so on the last days of every month it stays quiet and the tests that
+    spend at the real clock failed (CI of 2026-10-30). This keeps the month end at
+    least 20 days ahead in the two modules that read it; whether the balance
+    lasts is what those tests check, not the calendar."""
+    from datetime import UTC, datetime, timedelta
+
+    from nexus_api.services import console_reporting
+
+    real = console_reporting.month_bounds
+
+    def bounds(now: Any = None) -> tuple[Any, Any, int, int]:
+        start, end, elapsed, days = real(now)
+        floor = (now or datetime.now(UTC)) + timedelta(days=20)
+        return start, max(end, floor), elapsed, days
+
+    monkeypatch.setattr("nexus_api.services.lite_home.month_bounds", bounds)
+    monkeypatch.setattr("nexus_api.services.wallet_alerts.month_bounds", bounds)
 
 
 async def spend_from_wallet(
@@ -1201,3 +1281,162 @@ async def give_recharged_balance(partner_id: uuid.UUID, credits: int = 1_000_000
             row = PartnerWallet(partner_id=partner_id, included_remaining=0, purchased_remaining=0)
             session.add(row)
         row.purchased_remaining = credits
+
+
+# ── Spec 031: el teléfono de una persona de cliente ────────────────────────
+#
+# La app Auphere Customers no usa el JWT de 60 s de la BFF: tiene su propia
+# credencial (``core.phone_credential``) y entra por la misma puerta
+# (``require_client_principal``). Estas ayudas dan de alta un teléfono como lo
+# haría el canje, sin pasar por el código, para las suites que prueban lo que
+# hay detrás de la puerta.
+
+
+def phone_headers(
+    access_token: str, *, platform: str = "ios", app_version: str = "1.0.0"
+) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "X-App-Platform": platform,
+        "X-App-Version": app_version,
+    }
+
+
+async def add_client_phone(
+    db_session: AsyncSession,
+    *,
+    membership_id: uuid.UUID,
+    platform: str = "ios",
+    install_id: str | None = None,
+    display_name: str = "iPhone de Valeria",
+) -> dict[str, Any]:
+    """Un teléfono activo de la persona ``membership_id``; devuelve ids,
+    credenciales y una fábrica de cabeceras de app."""
+    from nexus_api.db.models import ClientMembership
+    from nexus_api.services import client_phones
+
+    membership = await db_session.get(ClientMembership, membership_id)
+    assert membership is not None
+    tokens = await client_phones.enroll(
+        db_session,
+        membership=membership,
+        platform=platform,
+        display_name=display_name,
+        install_id=install_id or uuid.uuid4().hex,
+        app_version="1.0.0",
+        locale="es",
+    )
+    await db_session.commit()
+    return {
+        "phone_id": tokens.phone_id,
+        "access_token": tokens.access_token,
+        "refresh_token": tokens.refresh_token,
+        "headers": lambda **kw: phone_headers(tokens.access_token, platform=platform, **kw),
+    }
+
+
+async def make_console_account(db_session: AsyncSession, *, email: str | None = None) -> uuid.UUID:
+    """Una cuenta de ``console_auth.principals``: lo que hay detrás de una
+    membresía de verdad (su ``user_id`` es el id de la cuenta en texto)."""
+    pid = uuid.uuid4()
+    await db_session.execute(
+        text(
+            "INSERT INTO console_auth.principals (id, email, password_hash) "
+            "VALUES (:i, :e, 'scrypt$x')"
+        ),
+        {"i": str(pid), "e": email or f"acct-{pid.hex[:10]}@cliente.test"},
+    )
+    await db_session.commit()
+    return pid
+
+
+# ── Spec 043: un cliente con Reservas ───────────────────────────────────────
+
+#: Abre todos los días de 09:00 a 21:00: ninguna prueba depende de qué día cae.
+OPEN_EVERY_DAY = {
+    d: [{"from": "09:00", "to": "21:00"}]
+    for d in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+}
+
+
+async def make_reservas(
+    db_session: AsyncSession,
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    mode: str = "services",
+    capacity_kind: str | None = None,
+    hours: dict[str, Any] | None = OPEN_EVERY_DAY,
+    modules: tuple[str, ...] = ("panel", "inbox", "reservas", "usage"),
+    with_access: bool = True,
+) -> dict[str, Any]:
+    """Un cliente con el módulo ``reservas`` en ``mode``, su horario, su zona
+    (Santiago) y una persona. En Servicios, dos personas del equipo (Lucía con
+    pausa de 14 a 15, Marcos) y dos servicios (Corte 30 min, Color 90 min).
+    Aforo de restaurante con un horario de franjas que cubre el día entero
+    (cada 30 min de 10:00 a 20:00): ninguna prueba depende de la hora."""
+    from nexus_api.db.models import (
+        ReservationService,
+        ReservationSettings,
+        ReservationStaff,
+        Tenant,
+    )
+    from nexus_api.services.reservations.settings import apply_defaults
+
+    tenant = await db_session.get(Tenant, tenant_id)
+    assert tenant is not None
+    tenant.timezone = "America/Santiago"
+    tenant.market = "CL"
+    tenant.business_hours = hours
+    settings = ReservationSettings(tenant_id=tenant_id, version=1, updated_by="operator:tests")
+    apply_defaults(settings, mode, capacity_kind or ("restaurant" if mode == "capacity" else None))
+    if mode == "capacity":
+        settings.schedule = {"model": "slots", "step_minutes": 30, "from": "10:00", "to": "20:00"}
+    db_session.add(settings)
+    await db_session.flush()
+    out: dict[str, Any] = {"tenant_id": tenant_id}
+    if mode == "services":
+        lucia = ReservationStaff(
+            tenant_id=tenant_id,
+            name="Lucía",
+            position=1,
+            hours={
+                d: [{"from": "09:00", "to": "14:00"}, {"from": "15:00", "to": "21:00"}]
+                for d in OPEN_EVERY_DAY
+            },
+        )
+        marcos = ReservationStaff(tenant_id=tenant_id, name="Marcos", position=2)
+        corte = ReservationService(
+            tenant_id=tenant_id,
+            name="Corte",
+            duration_minutes=30,
+            price_minor=15000,
+            currency="CLP",
+        )
+        color = ReservationService(
+            tenant_id=tenant_id,
+            name="Color",
+            duration_minutes=90,
+            price_minor=45000,
+            currency="CLP",
+        )
+        db_session.add_all([lucia, marcos, corte, color])
+        await db_session.flush()
+        out.update(lucia=lucia.id, marcos=marcos.id, corte=corte.id, color=color.id)
+    if with_access:
+        await make_client_access(
+            db_session, partner_id=partner_id, tenant_id=tenant_id, modules=modules
+        )
+        member = await add_client_member(db_session, partner_id=partner_id, tenant_id=tenant_id)
+        out["member"] = member
+        out["headers"] = member["headers"]
+    await db_session.commit()
+    return out
+
+
+def future_day(days: int = 3) -> Any:
+    """Un día que siempre es futuro, en la zona de las pruebas."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    return (datetime.now(ZoneInfo("America/Santiago")) + timedelta(days=days)).date()

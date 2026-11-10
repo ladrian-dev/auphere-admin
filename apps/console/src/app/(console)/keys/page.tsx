@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@nexus/ui";
 
-import { KeysList } from "@/components/keys/keys-list";
+import { KeysList, NewKeyButton } from "@/components/keys/keys-list";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
 import { can, requirePartnerPrincipal } from "@/lib/principal";
@@ -15,10 +15,12 @@ export default async function KeysPage() {
   if (!can(principal.role, "keys:read")) redirect("/");
   const { t } = await getT(principal.locale);
   const keys = await backendFor(principal).listKeys();
+  const manage = can(principal.role, "keys:manage");
   return (
     <>
-      <PageHeader eyebrow={t("nav.group.account")} title={t("keys.title")} description={t("keys.description")} />
-      <KeysList keys={keys} manage={can(principal.role, "keys:manage")} />
+      {/* Spec 047 (prototipo): «Nueva clave» en la cabecera de la página. */}
+      <PageHeader size="display" title={t("keys.title")} description={t("keys.description")} actions={manage ? <NewKeyButton /> : undefined} />
+      <KeysList keys={keys} manage={manage} />
     </>
   );
 }

@@ -6,7 +6,6 @@ import { z } from "zod";
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
 import type { ConnectorOut, ConnectorSyncOut, ConsentOut } from "@/lib/backend/agent-tools";
-import type { AgendaProPublicUrlOut } from "@/lib/backend/agent-tools-types";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /**
@@ -87,18 +86,6 @@ export async function connectApiKeyAction(raw: unknown): Promise<ActionResult<Co
       endpoint_meta: body.endpoint_meta,
     }),
   );
-  if (res.ok) revalidateRecord(body.ref);
-  return res;
-}
-
-/** Spec 016 (R6): enlazar o desenlazar la agenda pública del cliente. Nunca credenciales. */
-export async function setAgendaProUrlAction(
-  raw: unknown,
-): Promise<ActionResult<AgendaProPublicUrlOut>> {
-  const body = z.object({ ref, public_url: z.string().max(500).nullable() }).parse(raw);
-  const principal = await requirePrincipal();
-  if (!can(principal.role, "agents:write")) return forbidden();
-  const res = await run(() => backendFor(principal).setAgendaProUrl(body.ref, body.public_url));
   if (res.ok) revalidateRecord(body.ref);
   return res;
 }

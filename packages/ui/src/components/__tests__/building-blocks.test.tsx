@@ -374,4 +374,16 @@ describe("Metric styles chosen for the home (spec 026)", () => {
     expect(screen.getByText("18 % más")).toBeTruthy();
     expect(screen.getByRole("link").getAttribute("href")).toBe("/clients");
   });
+
+  it("G · the highlighted figure can draw its trend as a band along the bottom edge (spec 045)", () => {
+    const { container } = render(
+      <HighlightMetric label="Conversaciones" value="75" trend={{ values: [5, 21, 9], ariaLabel: "Conversaciones por día", style: "area" }} />,
+    );
+    const card = container.querySelector('[data-slot="highlight-metric"]');
+    expect(card?.className).toContain("overflow-hidden");
+    const spark = card?.querySelector('[data-slot="sparkline"]');
+    expect(spark?.getAttribute("aria-label")).toBe("Conversaciones por día");
+    // The band bleeds to the card's edges: it is the last thing in the card.
+    expect(card?.lastElementChild).toBe(spark);
+  });
 });

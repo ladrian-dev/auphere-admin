@@ -25,12 +25,32 @@ Quitar la Bandeja o apagar el acceso devuelve al agente las conversaciones que
 se quedaron calladas por un escalado (``release_escalated_for_tenant``): sin
 Bandeja, nadie las atendería nunca.
 
+**Spec 047 — el motivo (requisitos 2.3 y 1.5).** Toda conversación que espera
+dice por qué, en ``conversations.waiting_reason`` (``contracts/events.md`` §2).
+El escalado del agente es ``escalated``. Las puertas del turno (sin saldo,
+pausa, canal con problemas, agente sin publicar, sin modelo, el modelo falló…)
+pasan por ``mark_waiting_reason``: el mensaje ya está guardado, la conversación
+espera a una persona con su motivo y el agente **no** se calla en ella —la
+puerta ya lo calla—; cuando la puerta se abre y el agente vuelve a contestar,
+``release_reason`` la devuelve sola. Fuera de la audiencia guarda el motivo sin
+ir a la Bandeja, y «la lleva una persona» lo guarda sin pisar una espera.
+
+**Spec 056 — el aviso se cierra solo (requisito 8, D8).** Cuando la
+conversación deja de esperar —alguien la toma, la devuelve al agente, la resuelve
+o la elimina, la puerta se abre (``release_reason``) o el cliente se queda sin
+Bandeja (``release_escalated_for_tenant``)—, su aviso ``inbox.waiting`` pasa a
+atendido con ``mark_waiting_handled``: ``handled_at`` (migración 0227). Deja de
+contar en la campana y sigue en la lista. Se llama tras el commit, en su propia
+sesión de plataforma como ``_notify_waiting``, o dentro de la transacción de quien
+ya tiene una de plataforma (``client_access.set_access``).
+
 Ninguna función hace commit en la sesión que recibe.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -42,8 +62,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
+    Channel,
     ClientAccess,
     ClientModule,
+    ConsoleNotification,
     Conversation,
     ConversationEvent,
     ConversationEventKind,
@@ -54,8 +76,10 @@ from nexus_api.db.models import (
     NotificationSeverity,
     PartnerTenant,
 )
+from nexus_api.db.models.conversation import WAITING_REASONS
 from nexus_api.services import conversation_control
 from nexus_api.services.inbox_stream import publish_inbox_event
+from nexus_api.services.inbox_view import display_handle
 
 log = structlog.get_logger(__name__)
 
@@ -63,6 +87,30 @@ log = structlog.get_logger(__name__)
 AGENT = "agent"
 SYSTEM = "system"
 CONTACT = "contact"
+
+#: Spec 047: los motivos que escribe una puerta del turno. Mientras la puerta
+#: está cerrada la conversación espera a una persona; al abrirse, el agente la
+#: recupera en su siguiente respuesta.
+GATE_REASONS: frozenset[str] = frozenset(
+    {
+        "no_balance",
+        "agent_cap",
+        "paused_agent",
+        "paused_channel",
+        "paused_client",
+        "archived_client",
+        "channel_problem",
+        "agent_unpublished",
+        "no_model",
+        "provider_failure",
+        "turn_limit",
+    }
+)
+#: Motivos que se guardan sin convertir la conversación en una espera: fuera de
+#: la audiencia no espera a nadie, y la que lleva una persona ya la atiende.
+NOT_WAITING: frozenset[str] = frozenset({"out_of_audience", "human_takeover"})
+#: Lo que el agente, al volver a contestar, deja de tener por cierto.
+_STALE_WHEN_ANSWERED: frozenset[str] = GATE_REASONS | NOT_WAITING
 
 
 def _now() -> datetime:
@@ -95,10 +143,16 @@ async def record_event(
 
 
 async def _contact_name(session: AsyncSession, conversation: Conversation) -> str | None:
+    """Sin nombre, el contacto se llama por su número como en la Bandeja: en
+    WhatsApp, con «+» (spec 056, 13.3)."""
     customer = await session.get(Customer, conversation.customer_id)
     if customer is None:
         return None
-    return customer.name or customer.identifier
+    if customer.name:
+        return customer.name
+    channel = await session.get(Channel, conversation.channel_id)
+    kind = channel.type.value if channel is not None else None
+    return display_handle(customer.identifier, kind) or None
 
 
 @dataclass(frozen=True)
@@ -110,6 +164,8 @@ class WaitingMark:
     event_id: uuid.UUID
     inbox: bool
     contact: str | None
+    #: Spec 047: el código de ``contracts/events.md`` §2.
+    reason: str | None = None
 
 
 async def mark_waiting(
@@ -122,6 +178,7 @@ async def mark_waiting(
     """El agente pidió ayuda: estado, evento y, si el cliente tiene Bandeja,
     el agente callado. No avisa: eso es ``announce_waiting``, tras el commit."""
     conversation.status = ConversationStatus.ESCALATED
+    conversation.waiting_reason = "escalated"
     event = await record_event(
         session,
         conversation,
@@ -135,6 +192,18 @@ async def mark_waiting(
             conversation, reason="escalated", notes=reason, operator_label=AGENT
         )
         conversation.assigned_user_id = None
+    if inbox:
+        # Spec 031 (R8.2, R8.5): el aviso al teléfono nace aquí, en la
+        # transacción del escalado. Si el escalado no se confirma, no avisa.
+        from nexus_api.services import push_events
+
+        await push_events.enqueue(
+            session,
+            tenant_id=conversation.tenant_id,
+            kind="inbox.waiting",
+            conversation_id=conversation.id,
+            dedupe_key=f"inbox.waiting:{event.id}",
+        )
     await session.flush()
     return WaitingMark(
         tenant_id=conversation.tenant_id,
@@ -142,7 +211,85 @@ async def mark_waiting(
         event_id=event.id,
         inbox=inbox,
         contact=await _contact_name(session, conversation) if inbox else None,
+        reason="escalated",
     )
+
+
+async def mark_waiting_reason(
+    session: AsyncSession,
+    conversation: Conversation,
+    *,
+    reason: str,
+    inbox: bool | None = None,
+) -> WaitingMark | None:
+    """Spec 047: una puerta del turno no dejó contestar. El mensaje ya está
+    guardado; aquí la conversación guarda el motivo y, salvo los de
+    ``NOT_WAITING``, pasa a «Espera a una persona».
+
+    Devuelve la marca **solo cuando empieza una espera** (o cambia su motivo):
+    es lo que ``announce_waiting`` avisa tras el commit. Diez mensajes sin saldo
+    son una espera y un aviso, no diez. A diferencia del escalado, el agente no
+    se calla en la conversación: lo calla la puerta mientras está cerrada.
+    """
+    if reason not in WAITING_REASONS:  # pragma: no cover - error de programación
+        raise ValueError(f"unknown waiting reason: {reason!r}")
+    previous = conversation.waiting_reason
+    if reason == "human_takeover" and conversation.status == ConversationStatus.ESCALATED:
+        # Ya espera a una persona (un escalado, una puerta): que la lleve una
+        # persona lo dirá quien la tome, no el siguiente mensaje del contacto.
+        return None
+    conversation.waiting_reason = reason
+    if reason in NOT_WAITING:
+        await session.flush()
+        return None
+    if conversation.status == ConversationStatus.ESCALATED and previous == reason:
+        await session.flush()
+        return None
+    conversation.status = ConversationStatus.ESCALATED
+    event = await record_event(
+        session, conversation, ConversationEventKind.ESCALATED, SYSTEM, {"reason": reason}
+    )
+    has_inbox = await tenant_has_inbox(session, conversation.tenant_id) if inbox is None else inbox
+    if has_inbox:
+        from nexus_api.services import push_events
+
+        await push_events.enqueue(
+            session,
+            tenant_id=conversation.tenant_id,
+            kind="inbox.waiting",
+            conversation_id=conversation.id,
+            dedupe_key=f"inbox.waiting:{event.id}",
+        )
+    await session.flush()
+    return WaitingMark(
+        tenant_id=conversation.tenant_id,
+        conversation_id=conversation.id,
+        event_id=event.id,
+        inbox=has_inbox,
+        contact=await _contact_name(session, conversation) if has_inbox else None,
+        reason=reason,
+    )
+
+
+async def release_reason(session: AsyncSession, conversation: Conversation) -> bool:
+    """Spec 047: el agente vuelve a contestar. Un motivo de puerta deja de ser
+    cierto, y la espera que abrió vuelve al agente. El escalado no: ese lo
+    resuelve una persona."""
+    reason = conversation.waiting_reason
+    if reason not in _STALE_WHEN_ANSWERED:
+        return False
+    conversation.waiting_reason = None
+    if reason in GATE_REASONS and conversation.status == ConversationStatus.ESCALATED:
+        conversation.status = ConversationStatus.OPEN
+        await record_event(
+            session,
+            conversation,
+            ConversationEventKind.RELEASED,
+            SYSTEM,
+            {"why": "gate_open", "reason": reason},
+        )
+    await session.flush()
+    return True
 
 
 async def announce_waiting(mark: WaitingMark, *, redis: Redis | None = None) -> None:
@@ -183,12 +330,75 @@ async def _notify_waiting(mark: WaitingMark) -> None:
                 kind=NotificationKind.INBOX_WAITING,
                 severity=NotificationSeverity.WARNING,
                 external_client_ref=ref,
-                data={"conversation_id": str(mark.conversation_id), "contact": mark.contact},
+                data={
+                    "conversation_id": str(mark.conversation_id),
+                    "contact": mark.contact,
+                    # Spec 047: por qué espera; nunca el texto del mensaje.
+                    "reason": mark.reason,
+                },
                 dedupe_key=f"inbox.waiting:{mark.event_id}",
                 audience=NotificationAudience.CLIENT,
             )
     except Exception as exc:  # pragma: no cover - el aviso no puede tumbar el escalado
         log.warning("inbox_lifecycle.notify_failed", error=str(exc))
+
+
+async def mark_waiting_handled(
+    tenant_id: uuid.UUID,
+    conversation_ids: Iterable[uuid.UUID],
+    *,
+    session: AsyncSession | None = None,
+) -> int:
+    """Spec 056 (8.1): los avisos «espera a una persona» pendientes de esas
+    conversaciones pasan a atendidos. Devuelve cuántos.
+
+    ``console_notifications`` es del partner, no del cliente: el ``UPDATE``
+    filtra por el partner y por el cliente (``external_client_ref``), así que el
+    aviso de otro cliente del mismo partner no se toca aunque nombre el mismo id.
+
+    Sin ``session`` abre la suya de plataforma y confirma: es lo que se llama tras
+    el commit de una ruta lite (``scope.after_commit``) o del despachador, y nunca
+    lanza, porque cerrar el aviso no puede tumbar lo que ya pasó. Con ``session``
+    (una de plataforma, como la de ``client_access.set_access``) va en esa
+    transacción."""
+    ids = sorted({str(c) for c in conversation_ids})
+    if not ids:
+        return 0
+    if session is not None:
+        return await _handle_waiting(session, tenant_id, ids)
+    try:
+        async with get_sessionmaker()() as own, own.begin():
+            return await _handle_waiting(own, tenant_id, ids)
+    except Exception as exc:  # pragma: no cover - el aviso no puede tumbar la transición
+        log.warning("inbox_lifecycle.handle_failed", error=str(exc))
+        return 0
+
+
+async def _handle_waiting(session: AsyncSession, tenant_id: uuid.UUID, ids: list[str]) -> int:
+    access = await session.get(ClientAccess, tenant_id)
+    if access is None:
+        return 0
+    ref = await session.scalar(
+        sa.select(PartnerTenant.external_client_ref).where(
+            PartnerTenant.partner_id == access.partner_id,
+            PartnerTenant.tenant_id == tenant_id,
+        )
+    )
+    if ref is None:
+        return 0
+    result = await session.execute(
+        sa.update(ConsoleNotification)
+        .where(
+            ConsoleNotification.partner_id == access.partner_id,
+            ConsoleNotification.external_client_ref == ref,
+            ConsoleNotification.kind == NotificationKind.INBOX_WAITING.value,
+            ConsoleNotification.handled_at.is_(None),
+            ConsoleNotification.payload["conversation_id"].astext.in_(ids),
+        )
+        .values(handled_at=_now())
+        .execution_options(synchronize_session=False)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def resolve(session: AsyncSession, conversation: Conversation, *, actor: str) -> bool:
@@ -199,11 +409,39 @@ async def resolve(session: AsyncSession, conversation: Conversation, *, actor: s
     conversation.status = ConversationStatus.CLOSED
     conversation.closed_at = _now()
     conversation.assigned_user_id = None
+    conversation.waiting_reason = None
+    # Spec 047 (requisito 53): la derivación de Recepción dura lo que la
+    # conversación; la siguiente empieza otra vez en Recepción y sin saltos.
+    conversation.handled_by_agent_id = None
+    conversation.reception_hops = 0
     if not conversation.agent_active:
         conversation_control.resume(conversation)
     await record_event(session, conversation, ConversationEventKind.RESOLVED, actor)
     await session.flush()
     return True
+
+
+async def clear(session: AsyncSession, conversation: Conversation) -> None:
+    """«Vaciar el chat» (owner, 2026-11-01). Nothing is erased (constitution §IV:
+    borrar no existe): the Inbox and the agent read from ``attended_at`` on, so
+    moving it to now leaves the chat empty for both. The rows stay for the
+    retention rules. The Meta window (``last_inbound_at``, ``last_dm_at``) is
+    the channel's, not the chat's, and does not move."""
+    conversation.attended_at = _now()
+    conversation.last_attended_inbound_at = None
+    conversation.last_message_at = None
+    await session.flush()
+
+
+async def archive(session: AsyncSession, conversation: Conversation, *, actor: str) -> None:
+    """«Eliminar el chat» (owner, 2026-11-01): out of the Inbox, archived rather
+    than erased (constitution §IV). ``attended_at = NULL`` is exactly a
+    conversation that does not exist for the Inbox (spec 045, R1); if the contact
+    writes again it reopens with the agent and only the new messages show."""
+    await resolve(session, conversation, actor=actor)
+    conversation.attended_at = None
+    conversation.last_attended_inbound_at = None
+    await session.flush()
 
 
 async def reopen(session: AsyncSession, conversation: Conversation, *, actor: str) -> bool:
@@ -213,6 +451,7 @@ async def reopen(session: AsyncSession, conversation: Conversation, *, actor: st
     conversation.status = ConversationStatus.OPEN
     conversation.closed_at = None
     conversation.assigned_user_id = None
+    conversation.waiting_reason = None
     if not conversation.agent_active:
         conversation_control.resume(conversation)
     await record_event(session, conversation, ConversationEventKind.REOPENED, actor)
@@ -222,10 +461,11 @@ async def reopen(session: AsyncSession, conversation: Conversation, *, actor: st
 
 async def release_escalated_for_tenant(
     session: AsyncSession, tenant_id: uuid.UUID, *, actor: str
-) -> int:
+) -> list[uuid.UUID]:
     """Sin Bandeja, las conversaciones calladas por un escalado vuelven al
     agente. Las que una persona tomó a mano se respetan: esa persona sigue
-    con su WhatsApp y el admin puede devolverlas."""
+    con su WhatsApp y el admin puede devolverlas. Devuelve las que volvieron,
+    para cerrar sus avisos (``mark_waiting_handled``, spec 056)."""
     rows = (
         (
             await session.execute(
@@ -242,6 +482,7 @@ async def release_escalated_for_tenant(
     )
     for conversation in rows:
         conversation_control.resume(conversation)
+        conversation.waiting_reason = None
         await record_event(
             session,
             conversation,
@@ -251,19 +492,43 @@ async def release_escalated_for_tenant(
         )
     if rows:
         await session.flush()
-    return len(rows)
+    return [conversation.id for conversation in rows]
+
+
+async def tell_escalation_recipients(
+    session: AsyncSession, conversation: Conversation, *, reason: str
+) -> None:
+    """Spec 047 (requisito 2.5): sin Bandeja, los destinatarios de escalado del
+    canal se enteran por la vía de hoy —la fila ``conversation.escalated`` que el
+    alertador convierte en la plantilla al dueño— hasta que la ola 4 traiga los
+    destinatarios por canal. Sin texto del mensaje: solo el motivo."""
+    from nexus_api.repositories import AuditRepository
+
+    await AuditRepository(session).record(
+        actor="system:turn",
+        action="conversation.escalated",
+        target=str(conversation.id),
+        before=None,
+        after={"status": conversation.status.value, "reason": reason},
+    )
 
 
 __all__ = [
     "AGENT",
     "CONTACT",
+    "GATE_REASONS",
+    "NOT_WAITING",
     "SYSTEM",
     "WaitingMark",
     "announce_waiting",
     "mark_waiting",
+    "mark_waiting_handled",
+    "mark_waiting_reason",
     "record_event",
     "release_escalated_for_tenant",
+    "release_reason",
     "reopen",
     "resolve",
+    "tell_escalation_recipients",
     "tenant_has_inbox",
 ]

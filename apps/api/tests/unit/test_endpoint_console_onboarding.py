@@ -21,6 +21,7 @@ from nexus_api.db.models import (
     ConsoleNotification,
     NotificationKind,
     Partner,
+    PartnerInvitation,
     PartnerTenant,
     Tenant,
     TenantPlan,
@@ -424,6 +425,28 @@ async def test_status_active_with_published_agent_activates_partner(
     assert inv.status_code == 201
     r = await client.get("/console/onboarding", headers=h())
     assert {s["key"]: s["done"] for s in r.json()["steps"]}["team"] is True
+
+
+async def test_team_step_does_not_count_an_invitation_past_its_term(
+    client, console_world, db_session
+) -> None:
+    h = console_world["a"]["headers"]
+    inv = await client.post(
+        "/console/team/invitations", headers=h(), json={"email": "t@example.com", "role": "analyst"}
+    )
+    assert inv.status_code == 201
+    r = await client.get("/console/onboarding", headers=h())
+    assert {s["key"]: s["done"] for s in r.json()["steps"]}["team"] is True
+
+    await db_session.execute(
+        sa.update(PartnerInvitation)
+        .where(PartnerInvitation.partner_id == console_world["a"]["partner_id"])
+        .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    )
+    await db_session.commit()
+
+    r = await client.get("/console/onboarding", headers=h())
+    assert {s["key"]: s["done"] for s in r.json()["steps"]}["team"] is False
 
 
 async def test_agent_config_versions_status_enum_is_used(console_world) -> None:

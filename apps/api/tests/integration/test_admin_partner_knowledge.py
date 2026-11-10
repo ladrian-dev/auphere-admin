@@ -80,6 +80,10 @@ async def test_admin_knowledge_lists_own_playbook_without_content_text(
         "created_at",
         "updated_at",
         "indexed_at",
+        # Spec 047 (T133): la capa del documento y su papelera; ningún texto.
+        "agent_id",
+        "removed_at",
+        "restore_until",
     }
 
 

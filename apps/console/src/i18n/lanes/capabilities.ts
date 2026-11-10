@@ -109,10 +109,6 @@ export const capabilitiesMessages = {
     es: "La tienda del negocio: productos, precios y estado de los pedidos.",
     en: "The business's store: products, prices and order status.",
   },
-  "connectors.desc.agendapro": {
-    es: "La agenda del negocio, para consultar huecos y reservar una cita.",
-    en: "The business's calendar, to check slots and book an appointment.",
-  },
   "connectors.desc.amigable_cobro": {
     es: "Cobros y enlaces de pago, para cerrar la venta en la conversación.",
     en: "Payments and payment links, to close the sale inside the conversation.",

@@ -96,7 +96,7 @@ const CAPACIDADES: Capacidad[] = [
     recomendada: true,
     encendida: false,
     enLaActiva: false,
-    necesita: "AgendaPro",
+    necesita: "Google Calendar",
     modo: { pordefecto: "siempre", forzado: null },
     tecnico: { nombre: "booking.create", tipo: "Herramienta", version: "12 sept 2026", etiquetas: ["booking", "write"] },
   },
@@ -109,7 +109,7 @@ const CAPACIDADES: Capacidad[] = [
     recomendada: true,
     encendida: true,
     enLaActiva: true,
-    necesita: "AgendaPro",
+    necesita: "Google Calendar",
     modo: { pordefecto: "siempre", forzado: null },
     tecnico: { nombre: "booking.check_availability", tipo: "Herramienta", version: "12 sept 2026", etiquetas: ["booking", "read"] },
   },
@@ -364,7 +364,7 @@ function Pantalla({
     ? []
     : catalogoVacio
       ? [
-          { nombre: "AgendaPro", desbloquea: 0, estado: "No conectado" },
+          { nombre: "Google Calendar", desbloquea: 0, estado: "No conectado" },
           { nombre: "Amigable Cobro", desbloquea: 0, estado: "Con errores" },
         ]
       : Object.entries(

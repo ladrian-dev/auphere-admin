@@ -24,6 +24,7 @@ from nexus_api.metering.wallet import (
     reconcile_purchased,
 )
 from nexus_api.services import partner_billing as pb
+from nexus_api.services.email_catalog import EmailKind
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -459,10 +460,12 @@ async def test_a_card_that_asks_for_3d_secure_waits_for_the_partner(
     monkeypatch.setattr(pb, "get_client", lambda: fake)
     sent: list[dict] = []
 
-    async def capture(**kw):
-        sent.append(kw)
+    async def capture(kind, **kw):
+        sent.append({"kind": kind, **kw})
+        return True
 
-    monkeypatch.setattr(pb, "_send_action_email", capture)
+    # Spec 051: the ``charge_confirm`` template, in the payer's language.
+    monkeypatch.setattr("nexus_api.services.email.send_localized", capture)
     async with get_sessionmaker()() as s, s.begin():
         await s.execute(
             sa.update(Partner)
@@ -486,8 +489,23 @@ async def test_a_card_that_asks_for_3d_secure_waits_for_the_partner(
     charge = (await _charges(pid))[0]
     assert charge.status == "action_required"
     assert charge.action_url and charge.action_url.startswith("https://invoice.stripe.test/")
-    assert sent and sent[0]["url"] == charge.action_url
-    assert sent[0]["to"] == "facturas@partner-a.example"
+    assert len(sent) == 1
+    mail = sent[0]
+    assert mail["kind"] is EmailKind.CHARGE_CONFIRM
+    assert mail["to"] == "facturas@partner-a.example"
+    assert mail["partner_id"] == pid
+    subject, variables = mail["compose"]("es")
+    assert subject == "Confirma el pago de US$20.00 con tu banco"
+    assert variables == {
+        "PARTNER_NAME": "Console Partner A",
+        "AMOUNT": "US$20.00",
+        "CONCEPT": "la recarga automática de saldo",
+        "CONFIRM_URL": charge.action_url,
+    }
+    subject_en, variables_en = mail["compose"]("en")
+    assert subject_en == "Confirm your payment of US$20.00"
+    assert variables_en["CONCEPT"] == "your automatic balance top-up"
+    assert variables_en["AMOUNT"] == "US$20.00"
     # Not a decline: no attempt counted, and no second charge while it waits.
     async with get_sessionmaker()() as s, s.begin():
         await apply_partner_to_session(s, pid)

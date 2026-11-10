@@ -567,6 +567,15 @@ export const companionMessages = {
     es: "Vuelve solo al empezar tu semana. Si no puedes esperar, con saldo en la cuenta el trabajo continúa: escríbenos y lo añadimos.",
     en: "It comes back on its own when your week starts. If you cannot wait, work continues with credit on the account: contact us and we will add it.",
   },
+  // Sin pool semanal (un partner nuevo nace así) esperar no lo abre: solo recargar.
+  "companion.paused.noBalance.body": {
+    es: "La cuenta no tiene saldo.",
+    en: "The account has no balance.",
+  },
+  "companion.paused.noBalance.unblock": {
+    es: "Vuelve a funcionar en cuanto recargues saldo.",
+    en: "It works again as soon as you top up your balance.",
+  },
   "companion.paused.kept": {
     es: "La conversación no se pierde, y si te dejé una confirmación pendiente puedes responderla igual.",
     en: "The conversation is not lost, and if I left you a pending confirmation you can still answer it.",

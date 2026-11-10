@@ -1,7 +1,7 @@
 name: deploy-staging
 
-# WP-25: develop → staging AUTOMÁTICO, tras esperar al workflow ``ci`` del
-# MISMO commit en verde. Secuencia: wait-for-ci → build+push imágenes →
+# WP-25: develop → staging AUTOMÁTICO, sin pasar por ``ci`` (decisión de Luis,
+# 2026-11-03; docs/develop-sin-tuberia.md). Secuencia: build+push imágenes →
 # task de migración (BLOQUEANTE: exit != 0 aborta el deploy, mismo contrato
 # que el preDeployCommand de Railway) → force-new-deployment de los 4
 # servicios.
@@ -35,49 +35,9 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      actions: read # wait-for-ci lee los runs del workflow ci
 
     steps:
       - uses: actions/checkout@v5
-
-      - name: wait for ci on this commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # El workflow ci corre en paralelo sobre el mismo push; el deploy
-          # no avanza hasta que ese run del MISMO sha esté verde. Cualquier
-          # conclusión != success aborta el deploy.
-          #
-          # La espera es de 90 min y no de 30 por una avería del 2026-09-13:
-          # ``ci`` tardó 36m37s, acabó en VERDE, y el deploy ya se había
-          # rendido seis minutos antes. El resultado se lee como «el
-          # despliegue falló» cuando lo que pasó es que se esperó de menos.
-          # La suite venía creciendo —15m39s, 16m55s, 21m53s, 36m37s— así que
-          # el margen se lo comió el propio proyecto. Esperar de más no cuesta
-          # nada: si ``ci`` se cuelga, el paso siguiente no arranca igual.
-          for i in $(seq 1 180); do
-            # Solo el run del push: el de un PR con el mismo sha no es el que
-            # cuenta (el 2026-10-20 este paso esperó a uno cancelado).
-            RUN=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&per_page=50" \
-              --jq '[.workflow_runs[] | select(.name == "ci")][0] // empty')
-            if [ -n "$RUN" ]; then
-              STATUS=$(echo "$RUN" | jq -r .status)
-              CONCLUSION=$(echo "$RUN" | jq -r .conclusion)
-              echo "ci: status=$STATUS conclusion=$CONCLUSION (intento $i)"
-              if [ "$STATUS" = "completed" ]; then
-                [ "$CONCLUSION" = "success" ] && exit 0
-                echo "::error::ci terminó en '$CONCLUSION' — deploy abortado."
-                exit 1
-              fi
-            else
-              echo "ci: aún sin run para ${{ github.sha }} (intento $i)"
-            fi
-            sleep 30
-          done
-          echo "::error::timeout (90 min) esperando al workflow ci. NO es un fallo
-          de despliegue: ci no había terminado. Mira su duración antes de tocar nada.
-          exit 1
 
       - name: configure aws credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v5
@@ -133,8 +93,19 @@ jobs:
             --query 'tasks[0].taskArn' --output text)
           echo "migration task: $TASK_ARN"
 
-          aws ecs wait tasks-stopped \
-            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN"
+          # Igual que deploy-prod: ``aws ecs wait tasks-stopped`` se rinde a los
+          # 10 minutos y la tarea sigue, así que se espera hasta 45 a que pare.
+          for i in $(seq 1 180); do
+            STATUS=$(aws ecs describe-tasks \
+              --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
+              --query 'tasks[0].lastStatus' --output text)
+            [ "$STATUS" = "STOPPED" ] && break
+            sleep 15
+          done
+          if [ "$STATUS" != "STOPPED" ]; then
+            echo "::error::La migración sigue corriendo tras 45 min. Servicios sin tocar; mira /nexus/staging/migrate antes de relanzar."
+            exit 1
+          fi
 
           # Índice directo: la task de migración tiene UN contenedor. (El
           # filtro JMESPath [?name==...][0] devuelve vacío — las

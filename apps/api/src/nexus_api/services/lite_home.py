@@ -18,31 +18,34 @@ y pinta el resto (constitución §V). Nunca un cero donde no se sabe.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy as sa
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.billing.pricing import credits_to_cents
-from nexus_api.db.models import Agent, AgentStatus, Conversation, ConversationStatus, TenantStatus
+from nexus_api.db.models import Agent, AgentStatus, TenantStatus
 from nexus_api.metering.wallet import (
     allocations_for,
     credit_burn,
     credit_burn_by_agent,
     read_wallet,
 )
+from nexus_api.services import inbox_view
 from nexus_api.services.console_home import REVIEW_WINDOW, tenant_snapshots
 from nexus_api.services.console_home_blocks import (
     SHOWN_DAYS,
     ClientRow,
     days_until,
-    review_block,
     spend_block,
     trend_block,
 )
 from nexus_api.services.console_reporting import month_bounds
+from nexus_api.services.wallet.bags import bag_spend
 
 log = structlog.get_logger(__name__)
 
@@ -64,6 +67,8 @@ class LiteConversations:
 class LiteSpendMonth:
     total_cents: int
     by_agent: list[AgentSpend] | None = None
+    #: Spec 047: con bolsas, la moneda de la bolsa; sin ellas, la del libro (USD).
+    currency: str = "USD"
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,34 @@ class LiteBalance:
     remaining_cents: int | None
     cap_cents: int | None
     days_left: float | None
+    #: Spec 047: la bolsa va en la moneda del cliente (EUR o USD).
+    currency: str = "USD"
+    #: Spec 047 (``events.md`` §1.4): ``ok``, ``low``, ``not_enough`` o ``empty``;
+    #: ``None`` sin bolsa (o con las asignaciones de antes).
+    state: str | None = None
+
+
+def balance_horizon(
+    balance: LiteBalance, *, tz_name: str | None, now: datetime
+) -> tuple[int, date | None]:
+    """Spec 045 (R4): ``(month_days_left, runs_out_on)`` en la zona del negocio.
+
+    ``month_days_left`` son los días del mes que quedan, hoy incluido.
+    ``runs_out_on`` es hoy más los días enteros que dura el saldo al ritmo de
+    los últimos 7 días; ``None`` sin gasto o sin saldo asignado. Con el saldo
+    agotado, hoy."""
+    try:
+        tz = ZoneInfo(tz_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+    today = now.astimezone(tz).date()
+    next_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_days_left = (next_month - today).days
+    if not balance.assigned or balance.days_left is None:
+        return month_days_left, None
+    if (balance.remaining_cents or 0) <= 0:
+        return month_days_left, today
+    return month_days_left, today + timedelta(days=int(balance.days_left))
 
 
 @dataclass(frozen=True)
@@ -124,6 +157,45 @@ def balance_of(
     )
 
 
+async def bag_balance(
+    partner_id: uuid.UUID, tenant_id: uuid.UUID, now: datetime
+) -> LiteBalance | None:
+    """Spec 047 (46.7): con bolsas, el saldo del cliente es su bolsa, igual que en
+    la consola del partner (``client_overview``); ``None`` si el partner sigue con
+    ``partner_allocations``."""
+    from nexus_api.core.partner_context import apply_partner_to_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import ClientWallet
+    from nexus_api.services.wallet import alerts as wallet_alerts
+    from nexus_api.services.wallet.bags import as_client, bags_active
+
+    async with get_sessionmaker()() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        if not await bags_active(session, partner_id):
+            return None
+        await as_client(session, tenant_id)
+        bag = await session.get(ClientWallet, tenant_id)
+        if bag is None or not (bag.balance_micros or bag.month_base_micros):
+            return LiteBalance(
+                assigned=False,
+                remaining_cents=None,
+                cap_cents=None,
+                days_left=None,
+                currency=bag.currency if bag else "USD",
+                state="empty" if bag is not None else None,
+            )
+        pace = await wallet_alerts.pace_per_day(session, bag, now.date())
+        left = wallet_alerts.days_left(bag.balance_micros, pace)
+        return LiteBalance(
+            assigned=True,
+            remaining_cents=credits_to_cents(bag.balance_micros),
+            cap_cents=credits_to_cents(bag.month_base_micros),
+            days_left=0.0 if bag.balance_micros <= 0 else (None if left is None else float(left)),
+            currency=bag.currency,
+            state=await wallet_alerts.bag_state(session, bag, now.date()),
+        )
+
+
 @dataclass(frozen=True)
 class AgentSpend:
     agent_id: uuid.UUID
@@ -156,11 +228,16 @@ async def agent_spend(
     tenant_id: uuid.UUID,
     since: datetime,
     total_cents: int,
+    burn: Mapping[uuid.UUID | None, int] | None = None,
 ) -> list[AgentSpend] | None:
     """Spec 030 (R4.2, R5.3): the month's spend per agent, or ``None`` with a
     single agent — a one-row breakdown says nothing. What was spent before
     agents existed is the principal's; an archived agent appears only if it
-    spent something."""
+    spent something.
+
+    ``burn`` is what each agent spent; without it, the account's ledger. With
+    bags it is the bag's charges (``bags.bag_spend``): the ledger never sees a
+    turn the bag paid."""
     agents = (
         await session.execute(
             sa.select(Agent.id, Agent.name, Agent.status)
@@ -171,7 +248,8 @@ async def agent_spend(
     active = [a for a in agents if a.status == AgentStatus.ACTIVE.value]
     if len(active) < 2:
         return None
-    burn = await credit_burn_by_agent(partner_id, tenant_id, since)
+    if burn is None:
+        burn = await credit_burn_by_agent(partner_id, tenant_id, since)
     principal = active[0].id
     rows = [
         (a.id, a.name, burn.get(a.id, 0) + (burn.get(None, 0) if a.id == principal else 0))
@@ -198,18 +276,6 @@ def balance_notice(balance: LiteBalance, days_to_month_end: float) -> str | None
     if balance.days_left is not None and balance.days_left < days_to_month_end:
         return "balance_low"
     return None
-
-
-async def _first_waiting(session: AsyncSession) -> uuid.UUID | None:
-    """La conversación que espera a una persona desde hace más tiempo sin
-    respuesta —la que «Atender» abre primero—. RLS: el tenant de la sesión."""
-    found: uuid.UUID | None = await session.scalar(
-        sa.select(Conversation.id)
-        .where(Conversation.status == ConversationStatus.ESCALATED)
-        .order_by(Conversation.last_inbound_at.desc().nulls_last(), Conversation.id)
-        .limit(1)
-    )
-    return found
 
 
 async def lite_home(
@@ -239,37 +305,54 @@ async def lite_home(
             prev_7d=trend.previous,
             daily=[DayCount(d, n) for d, n in zip(trend.days, trend.series, strict=True)],
         )
-        if with_inbox:
-            review = review_block([row], snap.snapshots)
-            out.waiting = LiteWaiting(
-                count=review.escalated,
-                first_conversation_id=await _first_waiting(session) if review.escalated else None,
-            )
     except Exception as exc:
         log.warning("lite_home.snapshot_failed", error=str(exc))
         out.errors.append("conversations")
+
+    # ── lo que espera a una persona: el número de la Bandeja (spec 045) ──
+    if with_inbox:
+        try:
+            _unread, waiting = await inbox_view.counts(session, me="")
+            out.waiting = LiteWaiting(
+                count=waiting,
+                first_conversation_id=await inbox_view.first_waiting(session) if waiting else None,
+            )
+        except Exception as exc:
+            log.warning("lite_home.waiting_failed", error=str(exc))
+            out.errors.append("conversations")
 
     # ── saldo y gasto (libro del partner, solo las filas del cliente) ──
     burn_7d = 0
     try:
         burn = await credit_burn(partner_id, [tenant_id], now - REVIEW_WINDOW)
         burn_7d = burn.get(tenant_id, 0)
-        allocation = (await allocations_for(partner_id, [tenant_id])).get(tenant_id)
-        wallet = await read_wallet(partner_id)
-        if wallet is None:
-            raise RuntimeError("wallet unreadable")
-        out.balance = balance_of(allocation, burn_7d, wallet.purchased_remaining)
+        from_bag = await bag_balance(partner_id, tenant_id, now)
+        if from_bag is not None:
+            out.balance = from_bag
+        else:
+            allocation = (await allocations_for(partner_id, [tenant_id])).get(tenant_id)
+            wallet = await read_wallet(partner_id)
+            if wallet is None:
+                raise RuntimeError("wallet unreadable")
+            out.balance = balance_of(allocation, burn_7d, wallet.purchased_remaining)
     except Exception as exc:
         log.warning("lite_home.balance_failed", error=str(exc))
         out.errors.append("balance")
     try:
-        month_burn = await credit_burn(partner_id, [tenant_id], since)
-        prev_start = (since - timedelta(days=1)).replace(day=1)
-        prev = await credit_burn(partner_id, [tenant_id], prev_start, prev_start + (now - since))
+        # Spec 047 (46.7): con bolsas el turno se cobra solo de la bolsa y el libro
+        # de la cuenta no lo ve (bug ``gasto-del-mes-a-cero-con-bolsas``).
+        charged = await bag_spend(partner_id, tenant_id, since=since, now=now)
+        by_agent: Mapping[uuid.UUID | None, int] | None = None
+        if charged is not None:
+            month_credits = charged.month
+            by_agent = charged.by_agent(since.date())
+        else:
+            month_burn = await credit_burn(partner_id, [tenant_id], since)
+            month_credits = month_burn.get(tenant_id, 0)
         block = spend_block(
             [row],
-            {tenant_id: month_burn.get(tenant_id, 0)},
-            prev.get(tenant_id, 0),
+            {tenant_id: month_credits},
+            0,
             daily_7d=burn_7d / REVIEW_WINDOW.days,
             days_left=days_until(until, now),
         )
@@ -281,7 +364,9 @@ async def lite_home(
                 tenant_id=tenant_id,
                 since=since,
                 total_cents=block.cents,
+                burn=by_agent,
             ),
+            currency=charged.currency if charged is not None else block.currency,
         )
     except Exception as exc:
         log.warning("lite_home.spend_failed", error=str(exc))
@@ -303,6 +388,7 @@ __all__ = [
     "AgentSpend",
     "LiteHome",
     "agent_spend",
+    "bag_balance",
     "balance_notice",
     "balance_of",
     "lite_home",
