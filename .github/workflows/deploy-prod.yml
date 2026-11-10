@@ -116,9 +116,12 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          # Dos tags: el móvil ``prod`` que corren las task definitions, y el
-          # sha, que es lo que permite volver atrás sin reconstruir nada —
-          # basta apuntar el taskdef a un sha anterior.
+          # Tres tags: el móvil ``prod`` que corren las task definitions, el
+          # sha, y ``prod-<sha>``, que es lo que permite volver atrás sin
+          # reconstruir nada. El sha solo no basta: la regla de ECR de las 50
+          # últimas cuenta también las de staging, y el 2026-11-10 ya se había
+          # llevado la imagen que corría en prod. Lo etiquetado ``prod*`` tiene
+          # su propia regla (las 10 últimas, infra/terraform/bootstrap/main.tf).
           for image in nexus-api nexus-worker; do
             case "$image" in
               nexus-api)    dockerfile=apps/api/Dockerfile ;;
@@ -127,9 +130,11 @@ jobs:
             docker build -f "$dockerfile" \
               --build-arg NEXUS_GIT_SHA="$SHA" \
               -t "$REGISTRY/$image:$SHA" \
+              -t "$REGISTRY/$image:prod-$SHA" \
               -t "$REGISTRY/$image:prod" \
               .
             docker push "$REGISTRY/$image:$SHA"
+            docker push "$REGISTRY/$image:prod-$SHA"
             docker push "$REGISTRY/$image:prod"
           done
 
@@ -157,8 +162,23 @@ jobs:
             --query 'tasks[0].taskArn' --output text)
           echo "migration task: $TASK_ARN"
 
-          aws ecs wait tasks-stopped \
-            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN"
+          # ``aws ecs wait tasks-stopped`` se rinde a los 10 minutos (100
+          # consultas cada 6 s) y la tarea sigue: si la migración tardara más,
+          # el job fallaría sin rodar los servicios, la migración haría commit
+          # igual y prod quedaría con el esquema nuevo y el código viejo. Las
+          # migraciones van en una sola transacción, así que se espera hasta
+          # 45 minutos a que la tarea pare de verdad.
+          for i in $(seq 1 180); do
+            STATUS=$(aws ecs describe-tasks \
+              --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
+              --query 'tasks[0].lastStatus' --output text)
+            [ "$STATUS" = "STOPPED" ] && break
+            sleep 15
+          done
+          if [ "$STATUS" != "STOPPED" ]; then
+            echo "::error::La migración sigue corriendo tras 45 min. Servicios sin tocar; mira /nexus/prod/migrate antes de relanzar."
+            exit 1
+          fi
 
           # Índice directo: la task de migración tiene UN contenedor. El
           # filtro JMESPath [?name==...][0] devuelve vacío (las proyecciones

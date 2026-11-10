@@ -93,8 +93,19 @@ jobs:
             --query 'tasks[0].taskArn' --output text)
           echo "migration task: $TASK_ARN"
 
-          aws ecs wait tasks-stopped \
-            --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN"
+          # Igual que deploy-prod: ``aws ecs wait tasks-stopped`` se rinde a los
+          # 10 minutos y la tarea sigue, así que se espera hasta 45 a que pare.
+          for i in $(seq 1 180); do
+            STATUS=$(aws ecs describe-tasks \
+              --cluster "${{ steps.params.outputs.cluster }}" --tasks "$TASK_ARN" \
+              --query 'tasks[0].lastStatus' --output text)
+            [ "$STATUS" = "STOPPED" ] && break
+            sleep 15
+          done
+          if [ "$STATUS" != "STOPPED" ]; then
+            echo "::error::La migración sigue corriendo tras 45 min. Servicios sin tocar; mira /nexus/staging/migrate antes de relanzar."
+            exit 1
+          fi
 
           # Índice directo: la task de migración tiene UN contenedor. (El
           # filtro JMESPath [?name==...][0] devuelve vacío — las
