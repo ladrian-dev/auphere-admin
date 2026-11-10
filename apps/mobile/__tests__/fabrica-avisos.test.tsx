@@ -125,7 +125,7 @@ describe("the conversation says why it waits, by its code (50.7, `waiting_code`)
 describe("Consumo: the bag's state and whom to ask (50.6, `events.md` §1.4)", () => {
   const summary = (over: Partial<UsageSummary>): UsageSummary => ({
     balance: { assigned: true, remaining_cents: 120000, cap_cents: 1000000, days_left: 4, month_days_left: 10, currency: "EUR" },
-    month: { spent_cents: 5000, projection_cents: 9000, conversations: 40, avg_per_conversation_cents: 125 },
+    month: { spent_cents: 5000, projection_cents: 9000, conversations: 40, avg_per_conversation_cents: 125, currency: "EUR" },
     by_agent: null,
     errors: [],
     bag_state: "low",

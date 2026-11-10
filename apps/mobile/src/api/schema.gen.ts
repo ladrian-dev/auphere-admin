@@ -1698,6 +1698,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/console/lite/reservas/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Templates */
+        get: operations["read_templates_console_lite_reservas_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/console/lite/reservas/waitlist": {
         parameters: {
             query?: never;
@@ -3061,6 +3078,11 @@ export interface components {
         LiteSpendMonthOut: {
             /** By Agent */
             by_agent?: components["schemas"]["AgentSpendOut"][] | null;
+            /**
+             * Currency
+             * @default USD
+             */
+            currency: string;
             /** Total Cents */
             total_cents: number;
         };
@@ -3113,6 +3135,11 @@ export interface components {
             avg_per_conversation_cents: number | null;
             /** Conversations */
             conversations: number | null;
+            /**
+             * Currency
+             * @default USD
+             */
+            currency: string;
             /** Projection Cents */
             projection_cents: number | null;
             /** Spent Cents */
@@ -3809,6 +3836,31 @@ export interface components {
             body?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** ReservasTemplateOut */
+        ReservasTemplateOut: {
+            /** Name */
+            name: string;
+            /** Rejection */
+            rejection?: ("invalid_format" | "incorrect_category" | "promotional" | "abusive_content" | "other") | null;
+            /** Since */
+            since?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "approved" | "in_review" | "rejected" | "paused" | "not_created";
+            /** Why Not Created */
+            why_not_created?: ("no_whatsapp" | "on_its_way" | "deleted") | null;
+        };
+        /** ReservasTemplatesOut */
+        ReservasTemplatesOut: {
+            /** Approved */
+            approved: number;
+            /** Items */
+            items: components["schemas"]["ReservasTemplateOut"][];
+            /** Whatsapp */
+            whatsapp: boolean;
         };
         /** SentOut */
         SentOut: {
@@ -8348,6 +8400,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_templates_console_lite_reservas_templates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+                "X-App-Platform"?: string | null;
+                "X-App-Version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservasTemplatesOut"];
                 };
             };
             /** @description Validation Error */

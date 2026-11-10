@@ -3596,6 +3596,11 @@
             ],
             "title": "By Agent"
           },
+          "currency": {
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
           "total_cents": {
             "title": "Total Cents",
             "type": "integer"
@@ -3747,6 +3752,11 @@
               }
             ],
             "title": "Conversations"
+          },
+          "currency": {
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
           },
           "projection_cents": {
             "anyOf": [
@@ -5142,6 +5152,103 @@
           }
         },
         "title": "ReplyPatchIn",
+        "type": "object"
+      },
+      "ReservasTemplateOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rejection": {
+            "anyOf": [
+              {
+                "enum": [
+                  "invalid_format",
+                  "incorrect_category",
+                  "promotional",
+                  "abusive_content",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "state": {
+            "enum": [
+              "approved",
+              "in_review",
+              "rejected",
+              "paused",
+              "not_created"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "why_not_created": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no_whatsapp",
+                  "on_its_way",
+                  "deleted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Not Created"
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "title": "ReservasTemplateOut",
+        "type": "object"
+      },
+      "ReservasTemplatesOut": {
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReservasTemplateOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "whatsapp": {
+            "title": "Whatsapp",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "whatsapp",
+          "approved",
+          "items"
+        ],
+        "title": "ReservasTemplatesOut",
         "type": "object"
       },
       "SentOut": {
@@ -17868,6 +17975,88 @@
           }
         },
         "summary": "Summary",
+        "tags": [
+          "console",
+          "console-lite"
+        ]
+      }
+    },
+    "/console/lite/reservas/templates": {
+      "get": {
+        "operationId": "read_templates_console_lite_reservas_templates_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Platform"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-App-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservasTemplatesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Templates",
         "tags": [
           "console",
           "console-lite"
