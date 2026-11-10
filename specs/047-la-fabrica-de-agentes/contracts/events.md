@@ -185,7 +185,7 @@ garantía 6 (`test_49`) lo rechaza.
 | `turn.coalesced` | `turn_id`, `conversation_id`, `message_count`, `window_ms` |
 | `turn.effect` | `turn_id`, `effect` (`reserve`, `charge`, `send_link`, `reply`), `idempotency_key`, `replayed` |
 | `llm.route_decision` | `decision_id` (el que enlaza `usage_records.route_decision_id`), `turn_id` o `job_id`, `conversation_id`, `agent_version`, `task`, `profile`, `policy_version`, `candidates_rejected` (lista de `{deployment, reason}`), `chosen`, `fallback_used`, `escalated`, `latency_ms`, `cost_micros`, `price_micros` |
-| `builder.job` | `job_id`, `kind` (`agent_draft`, `client_profile`, `tests`, `fix`, `copilot`), `status`, `duration_ms`, `cost_micros`, `validator_errors` |
+| `builder.job` | `job_id`, `kind` (`agent_draft`, `client_profile`, `tests`, `fix`, `copilot`, `agenda_text`), `status`, `duration_ms`, `cost_micros`, `validator_errors`, `ops`, `fallback` (solo `agenda_text`, spec 057: cuántas operaciones propone y si salió del respaldo sin modelo) |
 | `suite.run` | `run_id`, `version_id`, `policy`, `passed`, `flaky`, `failed`, `model_failed`, `cost_micros` |
 | `gate.decision` | `version_id`, `outcome` (`published`, `blocked`, `override`), `blocking` (códigos). No se llama `result`: la garantía 6 prohíbe ese nombre en los eventos |
 | `wallet.transfer` | `transfer_id`, `kind`, `amount_micros`, `currency`, `fx_rate`, `fx_date` |
