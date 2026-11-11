@@ -21,6 +21,7 @@ from nexus_api.db.models import (
     NotificationSeverity,
     Partner,
     PartnerAllocation,
+    PartnerMembership,
     PartnerTenant,
     PartnerWallet,
     Tenant,
@@ -109,6 +110,13 @@ def mails(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
     monkeypatch.setattr("nexus_api.services.email.send_localized", _send)
     return sent
+
+
+@pytest.fixture
+def paused_emails_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Los correos de saldo están en pausa (spec 047, criterio 44.9). Las
+    pruebas de lo que dicen los encienden: es lo que saldrá el día que vuelvan."""
+    monkeypatch.setattr("nexus_api.services.console_notifications.EMAIL_PAUSED_KINDS", frozenset())
 
 
 def _of(sent: list[dict[str, Any]], kind: EmailKind) -> list[dict[str, Any]]:
@@ -318,7 +326,29 @@ async def test_a_caller_with_an_open_transaction_fails_loudly(db_session) -> Non
 # ── spec 051 · los correos del saldo ─────────────────────────────────────────
 
 
-async def test_eighty_percent_emails_wallet_low_in_each_language(db_session, mails) -> None:
+async def test_account_balance_emails_are_paused(db_session, mails) -> None:
+    """Enmienda del 2026-11-11 (criterio 44.9): el saldo de la cuenta del
+    partner avisa en la campana, al 80 % y al agotarse, y no por correo."""
+    low = await _partner(db_session, available=int(CAP * 0.2), spent=int(CAP * 0.8))
+    low.usage_alert_recipients = ["ops@example.com"]
+    empty = await _partner(db_session, available=0)
+    empty.usage_alert_recipients = ["ops@example.com"]
+    await db_session.commit()
+
+    ev = await evaluate_partner_wallet_alerts(db_session, low)
+    assert ev.created == [80] and ev.emailed is False
+    assert await _kinds(db_session, low.id) == {"wallet.low": "warning"}
+    await db_session.commit()
+
+    ev = await evaluate_partner_wallet_alerts(db_session, empty)
+    assert ev.created == [80, 100] and ev.emailed is False
+    assert (await _kinds(db_session, empty.id))["wallet.empty"] == "critical"
+    assert mails == [], "ningún correo por el saldo de la cuenta"
+
+
+async def test_eighty_percent_emails_wallet_low_in_each_language(
+    db_session, mails, paused_emails_on
+) -> None:
     partner = await _partner(db_session, available=int(CAP * 0.2), spent=int(CAP * 0.8))
     partner.usage_alert_recipients = ["ops@example.com", "dueno@example.com"]
     await db_session.commit()
@@ -346,7 +376,9 @@ async def test_eighty_percent_emails_wallet_low_in_each_language(db_session, mai
     assert variables_en["CLIENTS_OUT_NOTE"] == ""
 
 
-async def test_wallet_low_says_how_many_clients_have_stopped(db_session, mails) -> None:
+async def test_wallet_low_says_how_many_clients_have_stopped(
+    db_session, mails, paused_emails_on
+) -> None:
     partner = await _partner(db_session, available=int(CAP * 0.2), spent=int(CAP * 0.8))
     partner.usage_alert_recipients = ["ops@example.com"]
     await db_session.commit()
@@ -368,7 +400,9 @@ async def test_wallet_low_says_how_many_clients_have_stopped(db_session, mails) 
     assert len(_of(mails, EmailKind.CLIENT_OUT_OF_QUOTA)) == 2
 
 
-async def test_wallet_low_with_one_client_stopped_says_one(db_session, mails) -> None:
+async def test_wallet_low_with_one_client_stopped_says_one(
+    db_session, mails, paused_emails_on
+) -> None:
     partner = await _partner(db_session, available=int(CAP * 0.2), spent=int(CAP * 0.8))
     partner.usage_alert_recipients = ["ops@example.com"]
     await db_session.commit()
@@ -386,7 +420,9 @@ async def test_wallet_low_with_one_client_stopped_says_one(db_session, mails) ->
     )
 
 
-async def test_an_empty_wallet_emails_only_wallet_empty(db_session, mails) -> None:
+async def test_an_empty_wallet_emails_only_wallet_empty(
+    db_session, mails, paused_emails_on
+) -> None:
     partner = await _partner(db_session, available=0)
     partner.usage_alert_recipients = ["ops@example.com"]
     await db_session.commit()
@@ -538,7 +574,9 @@ async def test_the_rollout_does_not_repeat_a_notice_already_sent(db_session) -> 
     assert keys == {key, f"{key}:2026-11-02", other}
 
 
-async def test_out_of_quota_notice_is_once_per_client_and_emails(db_session, mails) -> None:
+async def test_out_of_quota_notice_is_once_per_client_and_emails(
+    db_session, mails, paused_emails_on
+) -> None:
     partner = await _partner(db_session, available=CAP)
     partner.usage_alert_recipients = ["ops@example.com"]
     await db_session.commit()
@@ -580,6 +618,48 @@ async def test_out_of_quota_notice_is_once_per_client_and_emails(db_session, mai
     assert len(sent) == 1
 
 
+async def test_out_of_quota_email_is_paused_for_everyone(db_session, mails) -> None:
+    """Enmienda del 2026-11-11 (criterio 44.9): el aviso se queda en la campana
+    y no sale ningún correo, ni a la lista de alertas ni a owners y admins, ni
+    por el turno saltado ni por el cron."""
+    with_list = await _partner(db_session, available=CAP)
+    with_list.usage_alert_recipients = ["ops@example.com"]
+    without_list = await _partner(db_session, available=CAP)
+    db_session.add(
+        PartnerMembership(
+            id=uuid.uuid4(),
+            partner_id=without_list.id,
+            user_id=f"user_{uuid.uuid4().hex[:8]}",
+            email="duena@example.com",
+            role="owner",
+            status="active",
+        )
+    )
+    await db_session.commit()
+    listed, _ = await _mapped_client(db_session, with_list, "con-lista", cap=50_000, remaining=0)
+    unlisted, _ = await _mapped_client(
+        db_session, without_list, "sin-lista", cap=50_000, remaining=0
+    )
+    await _mapped_client(db_session, without_list, "por-el-cron", cap=50_000, remaining=0)
+
+    for tenant_id in (listed, unlisted):
+        row = await notify_client_out_of_quota_detached(tenant_id)
+        assert row is not None and row.kind == "client.out_of_quota"
+    ev = await evaluate_partner_wallet_alerts(db_session, without_list)
+    assert len(ev.clients_out) == 2
+
+    notices = await db_session.scalar(
+        sa.select(sa.func.count())
+        .select_from(ConsoleNotification)
+        .where(
+            ConsoleNotification.partner_id.in_([with_list.id, without_list.id]),
+            ConsoleNotification.kind == "client.out_of_quota",
+        )
+    )
+    assert notices == 3, "la campana sigue avisando"
+    assert mails == [], "ningún correo por client.out_of_quota"
+
+
 async def test_out_of_quota_notice_rechecks_the_gate_before_speaking(db_session) -> None:
     """R2.5: si al recomprobar el cliente ya tiene cupo, no hay aviso."""
     partner = await _partner(db_session, available=CAP)
@@ -598,7 +678,7 @@ async def test_out_of_quota_notice_rechecks_the_gate_before_speaking(db_session)
 
 
 async def test_out_of_quota_email_uses_the_name_the_partner_gave_the_client(
-    db_session, mails
+    db_session, mails, paused_emails_on
 ) -> None:
     partner = await _partner(db_session, available=CAP)
     partner.usage_alert_recipients = ["ops@example.com"]

@@ -59,6 +59,23 @@ log = structlog.get_logger(__name__)
 #: Roles that receive the e-mail copy of a warning/critical notification.
 _EMAIL_ROLES: frozenset[str] = frozenset({PartnerRole.OWNER.value, PartnerRole.ADMIN.value})
 
+#: Spec 047, criterio 44.9 (owner, 2026-11-11): los correos de saldo que están
+#: en pausa para cualquiera, partner o persona del cliente, se pida el correo o
+#: no. Son los de «sin saldo» de un cliente y los del saldo de la cuenta del
+#: partner. El aviso sigue en la campana y en el teléfono. Para devolver uno
+#: basta quitarlo de aquí: su texto, su plantilla y sus destinatarios no se han
+#: tocado. ``emit`` la aplica a lo que pasa por él; ``wallet_alerts`` la lee
+#: para los correos que envía por su cuenta.
+EMAIL_PAUSED_KINDS: frozenset[str] = frozenset(
+    {
+        NotificationKind.CLIENT_OUT_OF_QUOTA.value,
+        NotificationKind.CLIENT_BALANCE_OUT.value,
+        NotificationKind.CLIENT_WALLET_EMPTY.value,
+        NotificationKind.WALLET_LOW.value,
+        NotificationKind.WALLET_EMPTY.value,
+    }
+)
+
 
 async def emit(
     session: AsyncSession,
@@ -106,7 +123,7 @@ async def emit(
         return None
 
     want_email = email if email is not None else sev_value in {"warning", "critical"}
-    if want_email:
+    if want_email and kind_value not in EMAIL_PAUSED_KINDS:
         await _email_best_effort(session, row)
     return row
 

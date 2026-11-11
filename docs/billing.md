@@ -124,8 +124,10 @@ ficha. Sustituye a `partner_allocations` (que era un tope de gasto, no dinero).
 - **Los avisos de la bolsa** (`wallet/alerts`): «Queda poco» (bajo el 20 % de la
   base del mes, una vez al mes, se apaga con la casilla del modal), «No llega a
   fin de mes» (al ritmo de 7 días, con al menos 3 días de consumo) y «Agotada»
-  (cada día). Se rearman al subir el saldo. Con bolsas, `client.out_of_quota`, los
-  avisos de saldo de la lite de antes y `qa.cap_reached` no salen (T161): ni del
+  (una sola vez, hasta que recupere saldo; desde el 2026-11-11 sin correo, solo
+  campana y teléfono: spec 047, criterio 44.9, `EMAIL_PAUSED_KINDS` en
+  `services/console_notifications.py`). Se rearman al subir el saldo. Con
+  bolsas, `client.out_of_quota`, los avisos de saldo de la lite de antes y `qa.cap_reached` no salen (T161): ni del
   turno saltado ni de la red de seguridad del cron (`evaluate_partner_wallet_alerts`).
 - **Borrar un cliente** devuelve antes su bolsa a la cuenta; **archivarlo**
   ofrece devolverla (`bag_left` en la respuesta).
