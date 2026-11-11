@@ -564,10 +564,32 @@ async def _ensure_qa_conversation(
 _qa_pipeline_dry: Any | None = None
 _qa_pipeline_live: Any | None = None
 
-# Playground hops (classify + respond). Closed catalog ids only — G1 has
-# Sol, not Haiku/Sonnet. Empty fallback = no vendor acompletion hop.
-QA_CLASSIFY_MODEL = "anthropic/claude-haiku-5-5"
-QA_RESPOND_MODEL = "openai/gpt-5.6-sol"
+# Playground hops (classify + respond). Spec 059 (5.7): the same models as a
+# real turn of this deployment, from the platform registry
+# (``nexus_worker.platform_models.default_models``), resolved when the graph is
+# built — never written by hand. Empty fallback = no vendor acompletion hop.
+#
+# ``QA_CLASSIFY_MODEL`` and ``QA_RESPOND_MODEL`` stay readable as module
+# attributes (``console/playground.py`` checks them against the catalog before
+# each turn), but they resolve through the registry on every read, so the check
+# and the graph never disagree.
+
+
+def qa_models() -> tuple[str, str]:
+    """``(classify, respond)``: the models the Playground uses in this deployment."""
+    from nexus_worker.platform_models import default_models
+
+    models = default_models()
+    return models["qa_classify"], models["qa_respond"]
+
+
+_QA_MODEL_NAMES = {"QA_CLASSIFY_MODEL": 0, "QA_RESPOND_MODEL": 1}
+
+
+def __getattr__(name: str) -> str:
+    if name in _QA_MODEL_NAMES:
+        return qa_models()[_QA_MODEL_NAMES[name]]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _get_qa_pipeline(*, live: bool) -> Any:
@@ -601,13 +623,14 @@ def _get_qa_pipeline(*, live: bool) -> Any:
 
     from nexus_api.core.qa_checkpointer import get_qa_checkpointer
 
+    classify_model, respond_model = qa_models()
     provider = LiteLLMProvider()
     llm_router = LLMRouter(
         provider=provider,
-        classify_model=QA_CLASSIFY_MODEL,
-        respond_model=QA_RESPOND_MODEL,
+        classify_model=classify_model,
+        respond_model=respond_model,
         fallback_model="",
-        classify_fallback_model=QA_RESPOND_MODEL,
+        classify_fallback_model=respond_model,
     )
     pipeline = build_qa_pipeline(
         agent_loader=AgentLoader(),
@@ -623,6 +646,8 @@ def _get_qa_pipeline(*, live: bool) -> Any:
         "qa.pipeline.compiled",
         mode="live" if live else "dry_run",
         checkpointer="async_postgres",
+        classify_model=classify_model,
+        respond_model=respond_model,
     )
     return pipeline
 

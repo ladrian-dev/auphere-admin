@@ -18,14 +18,15 @@ import {
 } from "@nexus/ui";
 
 import { runEvalAction } from "../actions";
-import { BANK_SIZE, formatPct, parseEvalLimit } from "../labels";
+import { formatPct, parseEvalLimit } from "../labels";
 
 /**
  * Spec 047 (T100, 54.4): run the builder over the bank. One call to the
  * builder's model per description, paid by Auphere; it writes nothing in any
- * client, and the screen waits until it ends.
+ * client, and the screen waits until it ends. Spec 059 (5.6): `bankSize` is
+ * the size the API says.
  */
-export function RunEval() {
+export function RunEval({ bankSize }: { bankSize: number }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [limit, setLimit] = useState("");
@@ -35,7 +36,7 @@ export function RunEval() {
 
   async function run() {
     setFailure(null);
-    const parsed = parseEvalLimit(limit);
+    const parsed = parseEvalLimit(limit, bankSize);
     if (!parsed.ok) {
       setError(parsed.error);
       return;
@@ -75,7 +76,7 @@ export function RunEval() {
           <DialogTitle>Correr la evaluación del constructor</DialogTitle>
           <DialogDescription>
             Pasa cada descripción del banco por el constructor, con el catálogo de un cliente sin integraciones conectadas, y no
-            escribe nada en ningún cliente. Una llamada al modelo por descripción, la paga Auphere: con las {BANK_SIZE} tarda
+            escribe nada en ningún cliente. Una llamada al modelo por descripción, la paga Auphere: con las {bankSize} tarda
             varios minutos y la pantalla espera a que termine.
           </DialogDescription>
         </DialogHeader>
@@ -89,11 +90,11 @@ export function RunEval() {
           <Field
             label="Descripciones"
             optionalLabel="Opcional"
-            hint={`Vacío: las ${BANK_SIZE} del banco. Una tanda corta sirve para comprobar que funciona, pero entra en el historial y en la comparación con la siguiente.`}
+            hint={`Vacío: las ${bankSize} del banco. Una tanda corta sirve para comprobar que funciona, pero entra en el historial y en la comparación con la siguiente.`}
             error={error ?? undefined}
           >
             {(a11y) => (
-              <Input {...a11y} inputMode="numeric" placeholder={String(BANK_SIZE)} value={limit} onChange={(e) => setLimit(e.target.value)} />
+              <Input {...a11y} inputMode="numeric" placeholder={String(bankSize)} value={limit} onChange={(e) => setLimit(e.target.value)} />
             )}
           </Field>
           {failure ? (

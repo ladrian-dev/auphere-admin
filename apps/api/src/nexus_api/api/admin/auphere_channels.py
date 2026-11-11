@@ -11,13 +11,20 @@ Operations:
 - ``GET    /admin/auphere/channels``       list (active by default; ?include_inactive=true)
 - ``POST   /admin/auphere/channels``       create
 - ``GET    /admin/auphere/channels/{id}``  get one
-- ``PATCH  /admin/auphere/channels/{id}``  update / rotate secret
-- ``DELETE /admin/auphere/channels/{id}``  soft-deactivate (set active=false)
+- ``PATCH  /admin/auphere/channels/{id}``  update (token, Meta number id…), with a reason
+- ``DELETE /admin/auphere/channels/{id}``  soft-deactivate (set active=false), with a reason
 
 There is no hard-delete endpoint: deactivation is reversible via PATCH
 and preserves any ``owner_phone_index.auphere_channel_id`` references
 (which keep resolving via SET NULL fallback should the row ever be
 removed by ops directly in SQL).
+
+Spec 059 (T041; requisitos 6.2 y 6.4): every write names the panel's
+operator (``X-Operator-Id``, :func:`require_operator`) and the audit
+records that person (:func:`operator_actor`), never a slice of the admin
+token. PATCH and DELETE also carry a ``reason``, which lands in the audit.
+``webhook_secret`` is still accepted for compatibility; the panel no
+longer sends it.
 """
 
 from __future__ import annotations
@@ -25,14 +32,16 @@ from __future__ import annotations
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.api.admin.operator import operator_actor, require_operator
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.redis_client import get_redis
 from nexus_api.core.security import require_admin_token
-from nexus_api.db.models import AuphereOwnerChannel
+from nexus_api.db.models import AuphereOwnerChannel, OperatorAccount
 from nexus_api.repositories import AuditRepository, AuphereChannelRepository
 from nexus_api.repositories.auphere_channels import invalidate_inbound_phone_ids
 from nexus_api.schemas.auphere_channels import (
@@ -43,6 +52,39 @@ from nexus_api.schemas.auphere_channels import (
 
 router = APIRouter()
 log = structlog.get_logger()
+
+REASON_MAX = 500
+
+
+def _required_reason(value: str) -> str:
+    text = value.strip()
+    if not text:
+        raise ValueError("reason must not be blank")
+    return text
+
+
+class UpdateIn(AuphereOwnerChannelUpdateIn):
+    """PATCH body: any field of the number, and why (spec 059, 6.2)."""
+
+    reason: str = Field(min_length=1, max_length=REASON_MAX)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, v: str) -> str:
+        return _required_reason(v)
+
+
+class DeactivateIn(BaseModel):
+    """DELETE body: why the number stops sending (spec 059, 6.4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=REASON_MAX)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, v: str) -> str:
+        return _required_reason(v)
 
 
 def _to_out(row: AuphereOwnerChannel) -> AuphereOwnerChannelOut:
@@ -139,10 +181,11 @@ async def get_channel(
     "/auphere/channels",
     response_model=AuphereOwnerChannelOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin_token)],
 )
 async def create_channel(
     body: AuphereOwnerChannelCreateIn,
-    actor: str = Depends(require_admin_token),
+    operator: OperatorAccount = Depends(require_operator),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
 ) -> AuphereOwnerChannelOut:
@@ -198,7 +241,7 @@ async def create_channel(
         await session.refresh(row)
         await _record_audit(
             session,
-            actor=f"admin:{actor[:8]}",
+            actor=operator_actor(operator),
             action="auphere_channel.created",
             row=row,
             after=_audit_snapshot(row),
@@ -221,11 +264,12 @@ async def create_channel(
 @router.patch(
     "/auphere/channels/{channel_id}",
     response_model=AuphereOwnerChannelOut,
+    dependencies=[Depends(require_admin_token)],
 )
 async def update_channel(
     channel_id: uuid.UUID,
-    body: AuphereOwnerChannelUpdateIn,
-    actor: str = Depends(require_admin_token),
+    body: UpdateIn,
+    operator: OperatorAccount = Depends(require_operator),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
 ) -> AuphereOwnerChannelOut:
@@ -242,7 +286,7 @@ async def update_channel(
         # Apply only the fields the caller provided. ``model_dump(
         # exclude_unset=True)`` distinguishes "field omitted" from "field
         # set to null" — important for ``is_default=False`` toggles.
-        patch = body.model_dump(exclude_unset=True)
+        patch = body.model_dump(exclude_unset=True, exclude={"reason"})
 
         # Handle is_default flipping: if turning ON, ensure no other default
         # exists for this provider. If turning OFF, no-op (DB allows it).
@@ -284,11 +328,11 @@ async def update_channel(
         await session.refresh(row)
         await _record_audit(
             session,
-            actor=f"admin:{actor[:8]}",
+            actor=operator_actor(operator),
             action="auphere_channel.updated",
             row=row,
             before=before,
-            after=_audit_snapshot(row),
+            after={**_audit_snapshot(row), "reason": body.reason},
         )
         log.info(
             "auphere_channel.updated",
@@ -307,10 +351,12 @@ async def update_channel(
 @router.delete(
     "/auphere/channels/{channel_id}",
     response_model=AuphereOwnerChannelOut,
+    dependencies=[Depends(require_admin_token)],
 )
 async def deactivate_channel(
     channel_id: uuid.UUID,
-    actor: str = Depends(require_admin_token),
+    body: DeactivateIn = Body(...),
+    operator: OperatorAccount = Depends(require_operator),
     session: AsyncSession = Depends(get_db_session),
     redis: Redis = Depends(get_redis),
 ) -> AuphereOwnerChannelOut:
@@ -334,11 +380,11 @@ async def deactivate_channel(
         await session.refresh(row)
         await _record_audit(
             session,
-            actor=f"admin:{actor[:8]}",
+            actor=operator_actor(operator),
             action="auphere_channel.deactivated",
             row=row,
             before=before,
-            after=_audit_snapshot(row),
+            after={**_audit_snapshot(row), "reason": body.reason},
         )
         log.info(
             "auphere_channel.deactivated",

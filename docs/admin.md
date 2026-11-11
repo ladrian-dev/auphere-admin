@@ -30,7 +30,7 @@ Ordenada como el super admin de Chatwoot (`src/components/shell/nav.ts`):
 |---|---|
 | — | Panel (`/`) |
 | Gestionar | Partners · Clientes (`/tenants`) · Consumo (`/usage`) · Altas · Tickets (con contador de abiertos) |
-| Plataforma | Canales (`/channels`) · Conectores (`/connectors`) · Números de Auphere (`/auphere/channels`) · Playground QA (`/qa`) · Modelos (`/models`) · Router (`/router`) · Certificaciones (`/certifications`) · Constructor (`/builder`) |
+| Plataforma | Canales (`/channels`) · Conectores (`/connectors`) · Números de Auphere (`/auphere/channels`) · Playground QA (`/qa`) · Modelos (`/models`) · Constructor (`/builder`). Router (`/router`) y Certificaciones (`/certifications`) están **aparcados** (spec 059): ver abajo |
 | Instancia | Estado (`/status`) |
 
 ⌘K abre una paleta que busca vistas, partners, clientes y tickets abiertos.
@@ -185,6 +185,25 @@ CHECK de la migración 0191, y la API los rechaza igual (`eu_country_not_allowed
 Activar y quitar piden un **motivo** de 3 a 300 caracteres y llevan `X-Operator-Id`;
 los dos van a la auditoría (`whatsapp.login_beta.enabled|disabled`).
 
+Spec 059 (5.3): la pestaña **solo existe si el despliegue tiene la configuración de
+Meta** del alta sin cuenta (`NEXUS_META_CONFIG_ID_WA_LOGIN`). `GET
+/admin/whatsapp/login-beta/countries` devuelve `{configured, countries}`; sin ella no
+hay pestaña y `/channels/whatsapp-login` da «no existe». Hoy no está en ningún entorno.
+
+## Números de Auphere (`/auphere/channels`)
+
+Los números de WhatsApp propios de Auphere, desde los que se escribe a los dueños y
+salen los avisos de operador (`api/admin/auphere_channels.py`; registro
+`auphere_owner_channels`, ADR-018). Sin ninguno no salen esas consultas ni esos
+avisos por WhatsApp; en producción está vacío a propósito (Luis, 2026-11-11).
+
+Rehecha en la spec 059 con el estilo del panel: tabla con el número, el
+identificador en Meta, si es el de por defecto (★) y si está activo, y diálogos de
+alta y de edición (token e identificador del número en Meta, con motivo). Las
+confirmaciones son de la página. `POST`, `PATCH` y `DELETE` exigen `X-Operator-Id`;
+`PATCH` y `DELETE`, un motivo. La auditoría nombra a la persona (`operator:{email}`).
+«Rotar secret» se retiró: escribía una columna heredada de YCloud que nadie lee.
+
 ## Estado (`/status`)
 
 `GET /admin/instance`: entorno, revisión de Alembic, commit de la imagen de la API
@@ -197,6 +216,7 @@ disponible», diferencias del libro y días con diferencias con Meta. Una fuente
 se pudo leer sale «Sin leer», nunca 0. Luego:
 
 - **Router**: la misma vista que `/router/anomalies` (`GET /admin/router/anomalies?since=`).
+  Con el router aparcado (spec 059) no se pinta, ni sus tres cifras.
 - **Libro de las bolsas** (`GET /admin/reconciliations?days=`, `ledger`): el cuadre
   calculado al momento, el mismo del proceso diario, de los partners con la consola
   nueva y las bolsas activas. Cada diferencia en palabras: la bolsa de un cliente (por
@@ -224,6 +244,30 @@ recargado con el libro.
 
 ## Modelos, Router y Certificaciones (spec 047)
 
+> **Spec 059 (2026-11-11): el router está aparcado en el panel** mientras se
+> estudia. `apps/admin/src/lib/router-panel.ts` (`ROUTER_PANEL_VISIBLE = false`) es
+> el único interruptor: con él apagado, el menú y la paleta no tienen Router ni
+> Certificaciones, sus direcciones dan «no existe», Estado no pinta el bloque Router
+> y Modelos no pinta «Nuevo despliegue», «Activar», «Certificado en» ni «Le falta».
+> La API y el worker no cambian. Lo que sigue describe las pantallas tal como
+> vuelven al encenderlo; Modelos, tal como queda hoy, está justo debajo.
+
+- **Modelos hoy** (spec 059). La cabecera enseña el multiplicador objetivo, con
+  «Cambiar». Una fila por modelo con cinco columnas:
+  - el modelo, con chips de estado, «En uso» (los usos en palabras) y «Retirada
+    detenida»;
+  - el proveedor y la residencia;
+  - el coste por millón;
+  - la venta por millón con el multiplicador de cada carril, y «Desfasado» o «Bajo
+    el suelo».
+
+  Las acciones son «Precio» y un menú con «Pesos de venta», «Cancelar retirada» o
+  «Volver a disponible», y al final, separadas, «Retirar» y «No disponible». Estas
+  dos solo aparecen si el modelo no está en uso; la API las rechaza igual
+  ([modelos-y-router.md](modelos-y-router.md)). El diálogo de coste viene
+  precargado con el vigente y la fecha de hoy, rechaza fechas pasadas y no avisa a
+  nadie.
+
 El catálogo de modelos, la política del router y las certificaciones, sin tocar la
 base a mano (historia 30; `contracts/admin-api.md` §1 a §3). Cada escritura lleva
 `X-Operator-Id` y un **motivo**, que van a la auditoría de plataforma, y se aplica
@@ -236,9 +280,8 @@ Cómo funciona lo que hay detrás: [modelos-y-router.md](modelos-y-router.md).
   tareas certificadas y **lo que le falta para activarse**, en palabras. Filtros por
   estado. Acciones de la fila: «Activar» (por la puerta de
   `router_catalog.activate_deployment`, que dice antes y después todo lo que falta),
-  «Precio» (con vigencia y fuente; si sube más de un 10 % el precio por mensaje de un
-  agente, avisa a su partner y dice a cuántos), «Retirar» (con fecha: enseña el
-  sustituto propuesto a cada agente fijado) y «No disponible». «Nuevo despliegue» da
+  «Precio» (con vigencia y fuente; desde la spec 059 no avisa a nadie), «Retirar» (con
+  fecha: enseña el sustituto propuesto a cada agente fijado) y «No disponible». «Nuevo despliegue» da
   de alta en borrador, sin retención ni contrato: una licencia excluida (Llama 4,
   Qwen3.8-Flash-Next, AGPL) se rechaza y la razón queda en la auditoría
   (`deployment.rejected`). Editar las capacidades, la región, la ruta o el modelo
@@ -284,10 +327,12 @@ ya existen no cambian; los agentes nuevos del sector nacen con la versión nueva
 
 ### Calibración del juez (`/builder/judge-calibration`)
 
-T087, requisito 21.8. Dice arriba si el juez **ya bloquea** publicaciones (hay un
-despliegue con la calibración aprobada y vigente, la misma regla que
-`judge.judge_calibrated`) o si todavía no, y entonces una prueba se decide solo por el
-estado final. Debajo, el informe de un despliegue: el acuerdo con las etiquetas humanas
+T087, requisito 21.8. Dice arriba **qué modelo es el juez** (el de
+`default_models()["judge"]`) y si **ya bloquea** publicaciones: solo cuando ese modelo
+tiene la calibración aprobada y vigente (`judge.judge_calibrated(session, model=…)`,
+spec 059, 5.4; la de otro modelo no cuenta). Si no, una prueba se decide solo por el
+estado final. `GET /admin/builder/judge-calibration` devuelve `{judge_model,
+judge_calibrated, reports}`. Debajo, el informe de un despliegue: el acuerdo con las etiquetas humanas
 frente al umbral del 85 %, y cada criterio del conjunto etiquetado
 (`judge_calibration_es.json`) con la etiqueta, lo que dijo el juez y si coinciden, con
 el filtro «Solo los desacuerdos». Si hay varias, la tabla «Todas las calibraciones»
@@ -297,15 +342,15 @@ Auphere, y la pantalla espera el resultado.
 
 ### Evaluación del constructor (`/builder/eval`)
 
-T100, requisito 54.4, CE-002 y CE-003. La última evaluación contra el banco de 100
-descripciones (`eval_bank_v1.json`) en tres cifras, cada una con su objetivo y la
-diferencia con la anterior: el porcentaje de borradores que pasan el validador a la
-primera (objetivo 95 %), el que pasa la batería del sector sin edición (70 %; hoy sale
-«Sin medir», porque la evaluación no corre esas pruebas) y el p90 del borrador (menos de
-30 s; bajar es mejorar). Debajo, el historial (`GET /admin/builder/eval`, las últimas
-20). «Correr la evaluación» acepta un número de descripciones (vacío: las 100) y llama
-a `POST /admin/builder/eval`, que no escribe nada en ningún cliente y responde cuando
-termina.
+T100, requisito 54.4, CE-002 y CE-003. La última evaluación contra el banco
+(`eval_bank_v2.json`; la pantalla dice cuántas descripciones tiene, `bank_size`, hoy
+120) en dos cifras, cada una con su objetivo y la diferencia con la anterior: el
+porcentaje de borradores que pasan el validador a la primera (objetivo 95 %) y el p90
+del borrador (menos de 30 s; bajar es mejorar). La de la batería del sector sin edición
+no se enseña mientras la evaluación no la mida (spec 059, 5.6). Debajo, el historial
+(`GET /admin/builder/eval` devuelve `{bank_size, runs}`, las últimas 20). «Correr la
+evaluación» acepta un número de descripciones (vacío: todas) y llama a `POST
+/admin/builder/eval`, que no escribe nada en ningún cliente y responde cuando termina.
 
 ### Sectores sin guía (`/builder/sector-guides`)
 

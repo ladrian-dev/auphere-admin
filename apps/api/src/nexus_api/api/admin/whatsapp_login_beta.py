@@ -1,7 +1,9 @@
 """La beta «WhatsApp login» por país en el panel de operador — spec 047, T117
 (requisitos 31.5 y 54.7; ``contracts/admin-api.md``).
 
-- ``GET /admin/whatsapp/login-beta/countries``: dónde está activada;
+- ``GET /admin/whatsapp/login-beta/countries``: si el despliegue tiene la
+  configuración de Meta del alta sin cuenta (``configured``, spec 059, 5.3) y
+  dónde está activada;
 - ``PUT /admin/whatsapp/login-beta/countries/{iso2}`` ``{enabled, reason}``:
   activarla o quitarla. Un país de la UE o del EEE es un ``422``
   (``eu_country_not_allowed``); la base lo rechaza también (CHECK de la 0191).
@@ -23,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin.operator import operator_actor, require_operator
 from nexus_api.api.deps import get_db_session
+from nexus_api.config import get_settings
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import AuditLog, OperatorAccount, WhatsappLoginBetaCountry
 
@@ -54,6 +57,13 @@ class CountryOut(BaseModel):
     enabled_by: str
 
 
+class CountriesOut(BaseModel):
+    #: Spec 059 (5.3): sin ``meta_config_id_wa_login`` el alta sin cuenta no puede
+    #: arrancar, y el panel no enseña la beta.
+    configured: bool
+    countries: list[CountryOut]
+
+
 class CountryIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -61,18 +71,14 @@ class CountryIn(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
 
 
-@router.get("", response_model=list[CountryOut])
-async def list_countries(session: AsyncSession = Depends(get_db_session)) -> list[CountryOut]:
+@router.get("", response_model=CountriesOut)
+async def list_countries(session: AsyncSession = Depends(get_db_session)) -> CountriesOut:
     async with session.begin():
-        rows = (
-            await session.scalars(
-                sa.select(WhatsappLoginBetaCountry).order_by(WhatsappLoginBetaCountry.country)
-            )
-        ).all()
-    return [
-        CountryOut(country=r.country, enabled_at=r.enabled_at, enabled_by=r.enabled_by)
-        for r in rows
-    ]
+        countries = await _listed(session)
+    return CountriesOut(
+        configured=bool((get_settings().meta_config_id_wa_login or "").strip()),
+        countries=countries,
+    )
 
 
 @router.put("/{iso2}", response_model=list[CountryOut])
