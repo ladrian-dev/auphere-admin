@@ -427,23 +427,68 @@ todo idempotente):
   sigue certificado) o a «Automático» con **una versión nueva**
   (`publish_copy`, su historial) y `agent.quality_changed` en la auditoría; el
   despliegue pasa a `retired`. Los agentes con perfil no notan nada.
-- **Precio**: entra con su fecha (`add_price`, `model_prices`). Si sube más de
-  un 10 % el precio estimado por mensaje de un agente —fijado en él o que lo usó
-  los últimos 30 días: con lo que gastó, o con una llamada típica sin tráfico—,
-  su partner recibe `model.price_change` **antes** de que entre en vigor (uno por
-  cambio). En su fecha, el cron lo pasa a las columnas de `model_profiles` que
-  lee el medidor; solo los precios posteriores a la 0180 (`PRICES_FROM`), para
-  que uno antiguo nunca pise una columna. Los pesos del medidor no se tocan solos
-  (spec 007, R3.3).
-- **«No disponible»**: `mark_unavailable`; el router deja de usarlo desde el
+- **Coste**: entra con su fecha (`add_price`, `model_prices`), **nunca pasada**
+  (`422 in_the_past`: el medidor no revalora lo que ya ocurrió). En su fecha, el
+  cron lo pasa a las columnas de `model_profiles` que lee el medidor; solo los
+  precios posteriores a la 0180 (`PRICES_FROM`), para que uno antiguo nunca pise
+  una columna. **No avisa a nadie** (spec 059, 3.12): el aviso `model.price_change`
+  se retiró, porque calculaba la subida sobre el coste y el partner paga por los
+  pesos. Los pesos no se tocan solos (spec 007, R3.3): se cambian desde Modelos
+  ([billing.md](billing.md)).
+- **«No disponible»**: `mark_unavailable`; el modelo deja de ejecutarse desde el
   siguiente turno, también en las conversaciones con afinidad (`pin_broken =
-  status`).
+  status`). Guarda el estado que tenía (`status_before_unavailable`, 0231).
+
+### Nadie deja mudos a los agentes (spec 059)
+
+«Retirar» y «No disponible» **se rechazan sobre un modelo en uso**
+(`services/model_usage.py`, `model_lifecycle.guard_not_in_use`, siempre sin caché):
+
+- **un valor por defecto de la plataforma**: el registro
+  `nexus_worker/platform_models.default_models()` (responder y su reserva,
+  clasificar y su reserva, extraer, simular, construir, leer, sector, cliente
+  simulado, juez, Playground, freno de reservas, calificador, companion,
+  transcribir, visión, mejorar, la reserva de la consola y las evaluaciones del
+  panel). `tests/unit/test_platform_default_models.py` **barre** los campos
+  `*_model` de las dos configuraciones y los modelos escritos a mano en el código:
+  un valor por defecto que no pase por el registro lo rompe;
+- **un agente activo que responde con él**: por la asignación de su cliente, por
+  su elección o por el valor por defecto (`fixed_deployment`);
+- **una asignación de cliente** en cualquier rol (`tenant_model_bindings`).
+
+El barrido recorre todos los clientes, cada uno bajo su GUC, y solo devuelve
+recuentos y nombres de cliente (garantía 1, `tests/isolation/test_model_usage_scan_rls.py`).
+
+**Lo que usa el worker de verdad lo publica su latido**
+(`nexus_worker/health.py`, `{"v": 1, "models": default_models()}` en
+`nexus:health:{servicio}:{instancia}`, 60 s). La API compara las claves que
+resuelve el worker (`WORKER_USES`) con lo que calcula ella: sin latido
+(`no_heartbeat`), con uno de una versión que no publica (`unpublished`) o con otros
+modelos en esas claves (`mismatch`), responde `409 defaults_unverified` y no retira
+nada. Las claves de la API (companion, visión, evaluaciones…) no se comparan. Todo
+lo publicado también protege. **Tras fusionar, la primera comprobación en staging
+es que Modelos diga `verified`.**
+
+**Vuelta atrás**: `cancel_retirement` (`retiring → active`, sin fecha) y
+`restore_available` (vuelve al estado que tenía, sin pasar por la puerta de
+activación; si se marcó antes de la 0231, el de su última auditoría; sin rastro,
+`draft`).
+
+**Retirada detenida**: si llega la fecha de un modelo que ya estaba en retirada y
+algún agente no tiene sustituto certificado ni «Automático» que lo atienda
+(`auto_servable`), no se retira el modelo ni se mueve a nadie. Queda en retirada,
+Modelos lo enseña («Retirada detenida», `retirement_blocked_agents`) y el cron
+registra `deployment.retirement_blocked` una vez al día y el evento
+`model_lifecycle.retirement_blocked` en cada pasada. Si el proveedor apaga el
+modelo de verdad, esos agentes fallarán: la señal existe para moverlos antes.
 
 **Desde el siguiente turno**: quien cambia el catálogo llama a
 `router_catalog.catalog_changed()` (este proceso olvida su catálogo:
 `model_resolver` se apunta al importarse) y publica `catalog` en
 `nexus:agent_config:promote`; el suscriptor de promoción del worker lo oye y
-llama a `invalidate_catalog()`.
+llama a `invalidate_catalog()`. Desde la spec 059, los dos olvidan también el
+catálogo del medidor (`metering.pricing.invalidate`) y el objetivo de venta: un
+cambio de pesos cobra desde el turno siguiente.
 
 ## Bedrock y Scaleway (T142)
 

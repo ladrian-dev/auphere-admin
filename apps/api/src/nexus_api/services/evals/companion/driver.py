@@ -35,6 +35,10 @@ from typing import Any
 
 from nexus_api.services.evals.companion.dataset import CompanionCase, Step
 
+#: Spec 059 (1.1): el modelo con el que corren las evaluaciones del Companion, en
+#: el registro de valores por defecto (``nexus_worker.platform_models``).
+COMPANION_EVAL_MODEL = "anthropic/claude-sonnet-4-6"
+
 
 @dataclass
 class ScriptedModel:
@@ -144,7 +148,7 @@ async def run_case(
     case: CompanionCase,
     *,
     belt: Any,
-    model: str = "anthropic/claude-sonnet-4-6",
+    model: str = COMPANION_EVAL_MODEL,
     provider: Any = None,
 ) -> TurnResult:
     """Corre un caso y devuelve lo que pasó.

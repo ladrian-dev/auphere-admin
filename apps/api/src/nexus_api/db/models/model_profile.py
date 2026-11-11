@@ -162,6 +162,9 @@ class ModelProfile(Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     retire_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Spec 059 (0231): el estado que tenía al marcarlo «No disponible». «Volver a
+    # disponible» lo devuelve ahí sin pasar por la puerta de activación.
+    status_before_unavailable: Mapped[str | None] = mapped_column(Text, nullable=True)
     capabilities: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
