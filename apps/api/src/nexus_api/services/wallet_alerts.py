@@ -111,11 +111,16 @@ async def _emit_client_out_of_quota(
     partner tiene ``usage_alert_recipients`` el correo va a ellos con un
     texto que dice qué hacer; si no, ``emit`` avisa a owners y admins como
     con cualquier ``warning``. No se crea otro hasta que recupere saldo.
-    """
-    from nexus_api.services.console_notifications import emit
 
-    recipients = _alert_recipients(partner)
-    row = await emit(
+    Mientras el tipo esté en ``console_notifications.EMAIL_PAUSED_KINDS`` (spec
+    047, criterio 44.9) solo queda la campana: ``emit`` no envía, y aquí
+    tampoco se escribe a la lista de alertas.
+    """
+    from nexus_api.services import console_notifications
+
+    paused = NotificationKind.CLIENT_OUT_OF_QUOTA.value in console_notifications.EMAIL_PAUSED_KINDS
+    recipients = [] if paused else _alert_recipients(partner)
+    row = await console_notifications.emit(
         session,
         partner_id=partner.id,
         kind=NotificationKind.CLIENT_OUT_OF_QUOTA,
@@ -522,13 +527,19 @@ async def _notify_by_email(partner: Partner, ev: WalletAlertEvaluation, since: d
     umbrales se cruzan a la vez, solo sale el de 100 %: el de 80 % ya llega tarde.
 
     A la lista de alertas del partner, en el idioma de la cuenta de cada uno.
+    Mientras su tipo esté en ``console_notifications.EMAIL_PAUSED_KINDS`` (spec
+    047, criterio 44.9) no sale: queda la fila de la campana.
     """
+    from nexus_api.services import console_notifications
     from nexus_api.services.email import send_localized
 
     recipients = _alert_recipients(partner)
     if not recipients:
         return False
     top = max(ev.created)
+    kind = NotificationKind.WALLET_EMPTY if top >= 100 else NotificationKind.WALLET_LOW
+    if kind.value in console_notifications.EMAIL_PAUSED_KINDS:
+        return False
     billing_url = console_link("/billing")
 
     if top >= 100:

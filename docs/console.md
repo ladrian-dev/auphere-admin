@@ -29,8 +29,13 @@ integraciones y observa lo que pasa. La API decide; la consola pinta y dice
 2. **Cupo** (`/usage`): la unidad es **créditos**. «Sin cupo» significa lo
    mismo en la ficha, la lista, la portada y el aviso que en la puerta del canal
    (`metering/wallet.py::quota_state`). Cuando un turno se salta por falta de
-   cupo, el partner recibe `client.out_of_quota` (campana + correo, uno por
-   cliente y día); el cliente final no recibe nada distinto. Mover cupo es
+   cupo, el partner recibe `client.out_of_quota` en la campana, una vez por
+   cliente hasta que recupere saldo. Los correos de «sin saldo»
+   (`client.out_of_quota`, `client.wallet.empty` y `client.balance_out`) y los
+   del saldo de la cuenta del partner (`wallet.low` y `wallet.empty`) están en
+   pausa desde el 2026-11-11 (spec 047, criterio 44.9; `EMAIL_PAUSED_KINDS`
+   en `services/console_notifications.py`). El cliente final no recibe nada
+   distinto. Mover cupo es
    **una** llamada transaccional (`POST /console/wallet/allocations/move`).
 3. **Agente**: ajustes estructurados, herramientas, habilidades, conocimiento y
    la tarjeta **Modelo** (`GET /console/models` con `relative_cost`, «×N

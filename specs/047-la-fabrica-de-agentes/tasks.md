@@ -2448,6 +2448,23 @@ La primera pasada en producción falló por el plazo del proveedor y el owner de
 
   Entregado el 2026-11-10, sin commit. Verde: `test_bootstrap_split.py` (6), `agent-improve.test.tsx` y `agent-builder.test.tsx` con las de i18n (149), `verify.sh lint`, `tsc` y eslint de lo tocado.
 
+## Fase 31 — Enmienda del 2026-11-11: los correos de saldo en pausa (criterio 44.9)
+
+Tras las quejas de clientes por correos innecesarios, el owner deshabilita por ahora el correo de `client.out_of_quota`, a cualquiera, después sus dos hermanos (`client.wallet.empty` y `client.balance_out`) y por último los del saldo de la cuenta del partner (`wallet.low` y `wallet.empty`). Solo el correo: la campana, el teléfono, las claves, las plantillas y los textos se quedan (spec, sesión 2026-11-11). La alerta de la DLQ, que pidió quitar a la vez, ya no salía por correo desde la spec 051.
+
+- [x] T251 Pruebas primero, en rojo:
+  - `tests/integration/test_wallet_alerts.py::test_out_of_quota_email_is_paused_for_everyone` — con lista de alertas y sin ella, por el turno saltado y por el cron: tres avisos en la campana y ningún correo.
+  - `tests/unit/test_client_balance_alerts.py::test_out_of_balance_emails_are_paused_for_everyone` — los tres avisos, al partner y a la gente del cliente: las filas están y no sale ningún correo; «Queda poco» sí sale.
+  - `tests/integration/test_wallet_alerts.py::test_account_balance_emails_are_paused` — la cuenta del partner al 80 % y agotada: la fila está y no sale correo.
+  - Las pruebas de lo que dicen esos correos los encienden (`paused_emails_on` y `out_of_balance_emails_on`).
+  _Requisitos: 44.9_
+- [x] T252 `services/console_notifications.py`: `EMAIL_PAUSED_KINDS`; `emit` no envía correo de un tipo en pausa, se pida o no. _Requisitos: 44.9_
+- [x] T253 `services/wallet_alerts.py`: `_emit_client_out_of_quota` tampoco escribe a la lista de alertas mientras el tipo esté en pausa. _Requisitos: 44.9_
+- [x] T254 Documentos: `docs/console.md` (cupo) y `docs/billing.md` (los avisos de la bolsa, que además decía «cada día»). _Requisitos: 44.9_
+- [x] T255 `services/wallet_alerts.py`: `_notify_by_email` no envía `wallet_low` ni `wallet_empty` mientras su tipo esté en pausa; `wallet.low` y `wallet.empty` entran en `EMAIL_PAUSED_KINDS`. _Requisitos: 44.9_
+
+  Entregado el 2026-11-11, sin commit. Verde: los diecisiete archivos de pruebas que tocan estos avisos (225) y `verify.sh lint`.
+
 ---
 
 ## Dependencias y orden

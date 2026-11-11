@@ -23,7 +23,7 @@ import pytest
 import sqlalchemy as sa
 
 from nexus_api.db.models import ConsoleNotification, PartnerAllocation
-from nexus_api.services import wallet_alerts
+from nexus_api.services import channel_config, wallet_alerts
 from nexus_api.services.email_catalog import EmailKind
 from nexus_api.services.lite_home import LiteBalance, balance_notice
 from tests.conftest import add_client_member, make_client_access, spend_from_wallet
@@ -44,6 +44,13 @@ def mails(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
     monkeypatch.setattr("nexus_api.services.email.send_template", _send)
     return sent
+
+
+@pytest.fixture
+def out_of_balance_emails_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Los correos de «sin saldo» están en pausa (spec 047, criterio 44.9). Las
+    pruebas de lo que dicen los encienden: es lo que saldrá el día que vuelvan."""
+    monkeypatch.setattr("nexus_api.services.console_notifications.EMAIL_PAUSED_KINDS", frozenset())
 
 
 def _client_mail(mails: list[dict[str, Any]], kind: EmailKind) -> dict[str, Any]:
@@ -90,7 +97,47 @@ async def test_the_bell_and_the_panel_share_one_rule() -> None:
     assert balance_notice(LiteBalance(True, 4000, 5000, None), days_to_end) is None
 
 
-async def test_out_of_quota_tells_the_client_too(db_session, console_world, mails) -> None:
+async def test_out_of_balance_emails_are_paused_for_everyone(
+    db_session, console_world, mails
+) -> None:
+    """Enmienda del 2026-11-11 (criterio 44.9): «sin saldo» no sale por correo ni
+    al partner ni a la gente del cliente, con bolsa o sin ella. La campana sigue,
+    y lo que no es «sin saldo» sigue saliendo."""
+    w = console_world["a"]
+    await make_client_access(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    await add_client_member(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
+    await _allocation(db_session, w["tenant_id"], cap=5000, remaining=0)
+    await db_session.commit()
+    bag = {"balance_micros": 0, "currency": "EUR"}
+
+    await wallet_alerts.notify_client_out_of_quota_detached(w["tenant_id"])
+    await channel_config.announce(
+        tenant_id=w["tenant_id"],
+        kind="client.wallet.empty",
+        severity="critical",
+        data=bag,
+        to_client=True,
+    )
+
+    assert len(await _rows(db_session, w["partner_id"], "client.out_of_quota")) == 1
+    assert len(await _rows(db_session, w["partner_id"], "client.balance_out")) == 1
+    empty = await _rows(db_session, w["partner_id"], "client.wallet.empty")
+    assert sorted(row.audience for row in empty) == ["client", "partner"]
+    assert mails == [], "ningún correo de «sin saldo»"
+
+    await channel_config.announce(
+        tenant_id=w["tenant_id"],
+        kind="client.wallet.low",
+        severity="warning",
+        data={**bag, "base_micros": 10},
+        to_client=True,
+    )
+    assert sorted(m["kind"] for m in mails) == [EmailKind.CLIENT_NOTICE, EmailKind.PARTNER_NOTICE]
+
+
+async def test_out_of_quota_tells_the_client_too(
+    db_session, console_world, mails, out_of_balance_emails_on
+) -> None:
     w = console_world["a"]
     await make_client_access(db_session, partner_id=w["partner_id"], tenant_id=w["tenant_id"])
     member = await add_client_member(
@@ -157,7 +204,9 @@ async def test_out_of_balance_is_said_once_until_it_recovers(
     assert len(await _rows(db_session, w["partner_id"], "client.balance_out")) == 2
 
 
-async def test_without_lite_access_only_the_partner_hears(db_session, console_world, mails) -> None:
+async def test_without_lite_access_only_the_partner_hears(
+    db_session, console_world, mails, out_of_balance_emails_on
+) -> None:
     w = console_world["a"]
     await _allocation(db_session, w["tenant_id"], cap=5000, remaining=0)
     await wallet_alerts.notify_client_out_of_quota_detached(w["tenant_id"])
