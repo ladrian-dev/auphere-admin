@@ -1,10 +1,21 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+
 import { Button, Callout, ErrorState, Input, Label, NativeSelect, PageHeader } from "@nexus/ui";
 import { modelsBackend } from "@/lib/backend-models";
+import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 
 import { CertificationsView } from "./certifications-view";
 import { RunCertification } from "./run-certification";
 
-export const metadata = { title: "Certificaciones" };
+/**
+ * Spec 059 (2.3): parked, the address is «no existe» from the metadata on — before
+ * streaming starts, so it is a real 404 and the tab does not say «Certificaciones».
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  if (!ROUTER_PANEL_VISIBLE) notFound();
+  return { title: "Certificaciones" };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -17,6 +28,8 @@ export default async function CertificationsPage({
 }: {
   searchParams: Promise<{ deployment?: string; task?: string }>;
 }) {
+  // Spec 059 (2.3): parked, the address is «no existe», before asking the API.
+  if (!ROUTER_PANEL_VISIBLE) notFound();
   const { deployment, task } = await searchParams;
   const [data, taxonomy, deployments, batteries] = await Promise.all([
     modelsBackend.certifications({ deployment: deployment || undefined, task: task || undefined }).catch(() => null),
