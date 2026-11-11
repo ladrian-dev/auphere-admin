@@ -1,6 +1,6 @@
 # Especificación: la fábrica de agentes — un cliente es un negocio y un agente es quien lo atiende
 
-**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos. **Enmendada el 2026-10-29** (lista para staging, rama `047-lista-para-staging`): §Clarifications, sesión 2026-10-29, y requisitos 57 a 64. **Enmendada el 2026-11-10** (owner): las sugerencias semanales (51.3 a 51.6) se retiran por ahora; §Clarifications, sesión 2026-11-10, y criterio 51.7.
+**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos. **Enmendada el 2026-10-29** (lista para staging, rama `047-lista-para-staging`): §Clarifications, sesión 2026-10-29, y requisitos 57 a 64. **Enmendada el 2026-11-10** (owner): las sugerencias semanales (51.3 a 51.6) se retiran por ahora; §Clarifications, sesión 2026-11-10, y criterio 51.7. **Enmendada el 2026-11-11** (owner): los correos de «sin saldo» (`client.out_of_quota`, `client.wallet.empty` y `client.balance_out`) y los del saldo de la cuenta del partner (`wallet.low` y `wallet.empty`) quedan en pausa; §Clarifications, sesión 2026-11-11, y criterio 44.9.
 
 > **Número.** Iba a ser la 046, pero ese número ya lo usa la spec de Andrés «un alta que termina en un agente que responde» (2026-10-24, rama `046-alta-que-responde`). Esta spec reutiliza su iteración 1a. Por decisión del owner del 2026-10-26, sustituye sus iteraciones 2 y 3, y «activar» pasa a ser por canal: ver §Clarifications y §Dependencias y enmiendas.
 
@@ -196,6 +196,24 @@ El 2026-11-10, tras el paso a producción, la primera pasada de las sugerencias 
   - La tabla `agent_suggestions` y sus datos.
   - La librería `services/improvement/suggestions.py`, el módulo del cron y sus pruebas, para que la spec nueva decida qué aprovecha.
 - Q: ¿Qué pasa con las sugerencias que ya existían? → A: **Nada.** En producción no hay ninguna: las dos pasadas fallaron. En staging, las que queden abiertas se pueden aceptar o descartar como hasta ahora, y su propuesta caduca sola.
+
+### Session 2026-11-11 (enmienda: los correos de «sin saldo» en pausa)
+
+El 2026-11-11 varios clientes se quejaron de correos innecesarios. La lista de Resend lo explicaba: hasta el paso a producción del día 10 salía cada medianoche un `[Auphere] client.out_of_quota (warning)` por cada cliente sin saldo, con las claves del aviso volcadas en el cuerpo. La versión desplegada ya lo dice una sola vez y con texto propio (criterio 44.5 y spec 051), pero el owner decidió no enviarlo.
+
+**Decisiones del owner:**
+
+- Q: ¿Se sigue enviando el correo de `client.out_of_quota`, ahora que sale una vez? → A: **No: se deshabilita por ahora, a cualquiera** (owner: «deshabilita por ahora el envío de este correo a cualquiera»). Entra el criterio 44.9.
+- Q: ¿Y sus hermanos, `client.wallet.empty` (el mismo aviso cuando el cliente ya tiene bolsa, al partner y a la gente del cliente) y `client.balance_out` (la gente del cliente con consola, sin bolsa)? → A: **También en pausa** (owner: «pausar también»). Con solo el primero, a un partner con bolsas le seguiría llegando el correo.
+- Q: ¿Y los del saldo de la cuenta del propio partner, `wallet.low` (al 80 %) y `wallet.empty` (agotado)? → A: **También en pausa** (owner: «incluye esos que están pendientes»).
+
+**Decididas en esta enmienda** (se pueden reabrir):
+
+- Q: ¿Qué se pausa? → A: **Solo el correo**, de los cinco avisos y por todas sus vías: la lista de alertas de consumo del partner (`client_out_of_quota`, `wallet_low` y `wallet_empty`), owners y admins (`partner_notice`) y las personas del cliente (`client_balance_out` y `client_notice`). La campana se queda, con su clave: es lo que el Panel y «Necesita tu atención» leen. El aviso al teléfono de las personas del cliente también se queda.
+- Q: ¿Qué no entra? → A: **Los que avisan a un cliente antes de quedarse sin saldo**: «Queda poco» y «No llega a fin de mes» de la bolsa, y `client.balance_low`. El owner no los nombró. Tampoco los avisos de tope (`usage.*`, `agent.cap.*`), que no son de saldo.
+- Q: ¿Cómo vuelve? → A: Quitando el tipo de `EMAIL_PAUSED_KINDS` en `services/console_notifications.py`, que es donde `emit` decide el correo de cualquier aviso; `wallet_alerts` la lee para los dos que envía por su cuenta.
+- **Coste conocido:** con `wallet.empty` en pausa, un partner cuya cuenta se queda sin saldo solo se entera por la campana, y sus agentes ya no responden. Las plantillas de Resend, el texto de `email_notices` y las fichas del catálogo se quedan.
+- Q: ¿Y la alerta de la DLQ que el owner pidió quitar a la vez? → A: **Ya no sale por correo**: la spec 051 (requisito 9.1) lo retiró y llegó a producción el 2026-11-10. El último salió ese día a las 17:00 UTC. No hay nada que cambiar.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -1966,11 +1984,12 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    - **«No llega a fin de mes»**: cuando, al ritmo de los últimos 7 días, la bolsa se acaba antes del día 1. Una vez al mes por cliente.
    - **«Agotada»**: cuando llega a cero. Una sola vez por cliente, hasta que recupere saldo. *(Enmendado el 2026-11-03 por el owner: antes, una vez al día mientras durara. Un cliente sin saldo escribía cada día a su partner y a su gente, aunque nadie le hubiera escrito a su agente. Vale también para `client.out_of_quota` y `client.balance_out`, los avisos de quien aún no tiene bolsa. Tareas T230 a T233.)*
    Cada aviso DEBE volver a armarse cuando la bolsa recupera saldo por encima de su umbral.
-6. Los avisos al partner DEBEN ir a la campana y al correo de sus destinatarios de alertas, o a owners y admins si no hay destinatarios. Los avisos a las personas del cliente DEBEN ir a la campana, al correo y al push, con lo que queda y a quién pedir saldo (el nombre del partner), sin ningún botón de pedir.
+6. Los avisos al partner DEBEN ir a la campana y al correo de sus destinatarios de alertas, o a owners y admins si no hay destinatarios. Los avisos a las personas del cliente DEBEN ir a la campana, al correo y al push, con lo que queda y a quién pedir saldo (el nombre del partner), sin ningún botón de pedir. *(Desde el 2026-11-11, los avisos de «sin saldo» y los del saldo de la cuenta del partner no van al correo: criterio 9.)*
 7. La casilla «Avisarme cuando le quede menos del 20 %» del modal de asignar DEBE controlar el aviso «Queda poco» de ese cliente.
 8. Las políticas de presupuesto internas de Auphere (por cliente o por partner, sobre el coste) DEBEN seguir como red de seguridad, con dos condiciones:
    - su corte DEBE cumplir el requisito 2: el mensaje se guarda y va a la Bandeja con su motivo;
    - su umbral blando PUEDE apagar el juez, pero NO DEBE llevar a un agente a un modelo que no esté certificado para él.
+9. MIENTRAS dure la pausa que el owner decidió el 2026-11-11, WHEN un cliente se queda sin saldo, con bolsa o sin ella, THEN el sistema DEBE dejar su aviso (`client.out_of_quota`, `client.wallet.empty` o `client.balance_out`) en la campana de quien le toca, y el aviso al teléfono de las personas del cliente, y NO DEBE enviar ningún correo por él: ni a los destinatarios de alertas, ni a owners y admins, ni a las personas del cliente; ni por el turno saltado ni por el cron. Lo mismo vale para el saldo de la cuenta del partner: WHEN llega al 80 % o se agota THEN el aviso (`wallet.low` o `wallet.empty`) DEBE quedar en su campana y NO DEBE salir por correo. Los avisos previos de un cliente («Queda poco», «No llega a fin de mes» y `client.balance_low`) DEBEN seguir saliendo por correo como hasta ahora. *(Enmienda del 2026-11-11; enmienda el «Agotada» del criterio 5 y el correo del 6. Tareas T251 a T255.)*
 
 ### Requisito 45 — Asignar y pedir saldo en la consola
 
@@ -2630,6 +2649,7 @@ Decisión de Luis del 2026-11-05: «los paga auphere pero solo debe ejecutarse u
   - **Se enmienda** (owner, 2026-10-26): su requisito 4 decía que activar un cliente exige agente publicado, canal que conversa y saldo. Ahora no se activa el cliente, que siempre está activo (requisito 4.7): se activa cada canal, y «A todos» exige agente publicado y saldo (requisito 32.8). Su tarea T011 no se construye. La enmienda está escrita también en la spec 046.
 - **KB**: `architecture/agent-isolation.md` gana la garantía 9, y se escribe `decisions/ADR-049-la-fabrica-de-agentes.md`.
 - **Spec 048, retirar AgendaPro** (2026-10-29): sale el conector AgendaPro y las herramientas `booking.*`; la agenda de todos los agentes es Reservas (`reservas.*`). Las guías del sector (requisito 58) salen de las plantillas ya pasadas a Reservas, así que la 048 va antes que las tareas de la guía (fase 27).
+- **Enmienda del 2026-11-11** (criterio 44.9): el owner pausa los correos de «sin saldo» (`client.out_of_quota`, `client.wallet.empty` y `client.balance_out`) y los del saldo de la cuenta del partner (`wallet.low` y `wallet.empty`); la campana y el teléfono se quedan. Enmienda también lo que las specs 016 (R2.2), 030 (R15.3), 033 y 051 dicen de esos correos.
 - **Enmienda del 2026-11-10** (criterio 51.7): el owner retira por ahora las sugerencias semanales. Una spec nueva definirá cómo se mejora solo el agente.
 - **Enmienda del 2026-11-04** (requisitos 66 y 67): el estudio de staging de ese día y la petición de Luis. Pendiente de su revisión; enmienda 21.1 y 61.8.
 - **Enmienda del 2026-10-29** (requisitos 57 a 64): la sustenta `research/2026-10-29-auditoria-del-constructor/_index.md` y la recoge ADR-049 §Enmiendas.
