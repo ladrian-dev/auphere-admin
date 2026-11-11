@@ -69,6 +69,15 @@ locals {
     { name = "NEXUS_DB_TRANSACTION_POOLING", value = "true" },
     { name = "NEXUS_OTEL_ENABLED", value = "true" },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://127.0.0.1:4318" },
+    # Trazas apagadas (2026-11-11). Nadie las consulta y el 98 % eran spans
+    # raíz sueltos de SELECT y Valkey de los procesos de fondo: 214 k trazas
+    # al día y ~31 USD/mes de X-Ray sin que nadie las leyera. La regla de
+    # muestreo de X-Ray (`nexus-base`, 30-observability) no servía: el SDK no
+    # la consulta y, sin esta variable, usa `parentbased_always_on`.
+    # Las métricas (turn_latency_ms, colas, p95, autoescalado) no dependen de
+    # esto: se registran aparte y viajan por el pipeline `metrics`.
+    # Volver a encenderlas es borrar esta línea y aplicar.
+    { name = "OTEL_TRACES_SAMPLER", value = "always_off" },
     # Los dos ajustes que hacen MEDIBLES en CloudWatch los SLI del plan.
     # Por defecto el SDK exporta acumulativo y con histogramas de buckets
     # explícitos, y así:
@@ -243,8 +252,9 @@ locals {
           exporters  = ["awsemf"]
         }
         # Sin este pipeline los spans OTLP de la app reciben 404 del
-        # collector (visto en el primer despliegue). X-Ray es el destino
-        # provisional hasta el WP de Grafana self-hosted (D8 enmendada).
+        # collector (visto en el primer despliegue). Se queda aunque las
+        # trazas estén apagadas (OTEL_TRACES_SAMPLER=always_off, arriba):
+        # así volver a encenderlas es cambiar una sola variable.
         traces = {
           receivers  = ["otlp"]
           processors = ["batch"]
