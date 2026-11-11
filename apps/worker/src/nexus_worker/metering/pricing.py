@@ -231,7 +231,7 @@ async def load_catalog() -> dict[str, ModelPrice]:
     return catalog
 
 
-def _warn_on_weight_drift(catalog: dict[str, ModelPrice]) -> None:
+def _warn_on_weight_drift(catalog: dict[str, ModelPrice], *, target: Decimal | None = None) -> None:
     """Avisa si algún peso dejó de corresponder a su tarifa (spec 007, R6).
 
     Las tarifas viven en la base para que cambiarlas sea una fila y no un
@@ -261,6 +261,9 @@ def _warn_on_weight_drift(catalog: dict[str, ModelPrice]) -> None:
             prices,
             lane_weights_from(catalog),
             sell_usd_per_million=Decimal(CREDIT_USD_PER_MILLION),
+            # Spec 059 (3.10): el objetivo vigente, no la constante. Sin él, la
+            # constante de siembra: una comprobación vieja vale más que ninguna.
+            **({"target": target} if target is not None else {}),
         )
     except Exception as exc:  # pragma: no cover - una comprobación no rompe una carga
         log.warning("pricing.weight_drift_check_failed", error=str(exc))
@@ -309,7 +312,9 @@ async def get_catalog(*, force: bool = False) -> dict[str, ModelPrice]:
             _cache = await load_catalog()
             _cached_at = time.monotonic()
             log.info("pricing.catalog_loaded", models=len(_cache))
-            _warn_on_weight_drift(_cache)
+            from nexus_api.metering.sale_policy import target_multiplier
+
+            _warn_on_weight_drift(_cache, target=await target_multiplier())
         except Exception as exc:
             # Un catálogo viejo vale infinitamente más que ninguno: seguir
             # valorando con tarifas de hace 6 minutos es mejor que dejar de

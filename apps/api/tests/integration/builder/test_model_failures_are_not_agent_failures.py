@@ -313,14 +313,22 @@ async def test_a_judge_without_a_model_is_not_a_failure_of_the_agent(
     fake_redis: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Calibrado, el juez decide: sin él no se sabe. El trabajo no revienta."""
+    """Calibrado, el juez decide: sin él no se sabe. El trabajo no revienta.
+
+    Spec 059 (5.4, T031): se pregunta por la calibración del juez del registro, no
+    por la de cualquier despliegue."""
+    from nexus_worker.platform_models import default_models
 
     async def judge(_messages: list[dict[str, str]]) -> str:
         raise RuntimeError(SECRET)
 
-    async def calibrated(_session: Any) -> bool:
+    asked: list[str] = []
+
+    async def calibrated(_session: Any, *, model: str) -> bool:
+        asked.append(model)
         return True
 
+    monkeypatch.setenv("NEXUS_LLM_JUDGE_MODEL", "mistral/juez-de-prueba")
     monkeypatch.setattr(tests_handler.judge_service, "judge_calibrated", calibrated)
     agent_id = await _agent(client, biz, fake_redis, db_session)
     test_id = await _add(client, biz, agent_id)
@@ -330,6 +338,7 @@ async def test_a_judge_without_a_model_is_not_a_failure_of_the_agent(
     job = await _job(client, biz, accepted["job_id"])
     assert (job["status"], job["error_code"]) == ("failed", "model_unavailable"), job
     assert _test(await _suite(client, biz, agent_id), test_id)["status"] == "model_failed"
+    assert asked and set(asked) == {default_models()["judge"]} == {"mistral/juez-de-prueba"}
 
 
 async def test_a_judge_without_a_model_does_not_undo_what_the_final_state_decided(

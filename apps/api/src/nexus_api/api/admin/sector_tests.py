@@ -136,11 +136,22 @@ class CalibrateIn(BaseModel):
 @calibration_router.get("")
 async def calibration_report(
     session: AsyncSession = Depends(get_db_session),
-) -> list[dict[str, Any]]:
-    from nexus_api.services.testing.calibration import latest_report
+) -> dict[str, Any]:
+    """Las calibraciones, la más reciente primero, y el juez de este despliegue
+    (spec 059, 5.5): qué modelo juzga (``default_models()["judge"]``) y si está
+    calibrado él. La calibración de otro modelo no lo hace bloquear."""
+    from nexus_worker.platform_models import default_models
 
+    from nexus_api.services.testing.calibration import latest_report
+    from nexus_api.services.testing.judge import judge_calibrated
+
+    judge_model = default_models()["judge"]
     async with session.begin():
-        return await latest_report(session)
+        return {
+            "judge_model": judge_model,
+            "judge_calibrated": await judge_calibrated(session, model=judge_model),
+            "reports": await latest_report(session),
+        }
 
 
 @calibration_router.post("", status_code=status.HTTP_201_CREATED)
@@ -226,11 +237,13 @@ async def _catalog_context(session: AsyncSession) -> Any:
 
 
 @eval_router.get("")
-async def eval_history(session: AsyncSession = Depends(get_db_session)) -> list[dict[str, Any]]:
-    from nexus_api.services.builder.evaluation import history
+async def eval_history(session: AsyncSession = Depends(get_db_session)) -> dict[str, Any]:
+    """Las evaluaciones, la última primero, y cuántas descripciones tiene el banco
+    de verdad (spec 059, 5.6): la pantalla dice ese número, no uno fijo."""
+    from nexus_api.services.builder.evaluation import bank, history
 
     async with session.begin():
-        return await history(session)
+        return {"bank_size": len(bank()), "runs": await history(session)}
 
 
 @eval_router.post("", status_code=status.HTTP_201_CREATED)

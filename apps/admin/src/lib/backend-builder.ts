@@ -104,7 +104,6 @@ export const builderBackend = {
       headers: op(operatorId),
     }),
 
-  calibrations: () => call<CalibrationReport[]>("/admin/builder/judge-calibration"),
   calibrate: (deploymentId: string, operatorId: string) =>
     call<CalibrationRun>("/admin/builder/judge-calibration", {
       method: "POST",
@@ -112,7 +111,6 @@ export const builderBackend = {
       headers: op(operatorId),
     }),
 
-  evalRuns: () => call<EvalRun[]>("/admin/builder/eval"),
   runEval: (limit: number | null, operatorId: string) =>
     call<EvalRun>("/admin/builder/eval", {
       method: "POST",

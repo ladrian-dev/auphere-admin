@@ -17,8 +17,15 @@ export type LoginBetaCountry = {
   enabled_by: string;
 };
 
+/**
+ * Spec 059 (5.3): `configured` says whether the deployment has Meta's
+ * configuration for signing up without an account (`meta_config_id_wa_login`).
+ * Without it the beta cannot start anywhere, and the panel does not show it.
+ */
+export type LoginBetaCountries = { configured: boolean; countries: LoginBetaCountry[] };
+
 export const loginBetaBackend = {
-  countries: () => call<LoginBetaCountry[]>("/admin/whatsapp/login-beta/countries"),
+  countries: () => call<LoginBetaCountries>("/admin/whatsapp/login-beta/countries"),
   /** Answers the whole list after the change. */
   setCountry: (iso2: string, body: { enabled: boolean; reason: string }, operatorId: string) =>
     call<LoginBetaCountry[]>(`/admin/whatsapp/login-beta/countries/${encodeURIComponent(iso2)}`, {

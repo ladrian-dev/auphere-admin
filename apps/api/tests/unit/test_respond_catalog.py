@@ -9,9 +9,9 @@ from fastapi import HTTPException
 from nexus_worker.config import WorkerSettings
 from nexus_worker.runtime.llm import _proxied_acompletion
 
+from nexus_api.api import qa as qa_api
 from nexus_api.api.console import companion as companion_api
 from nexus_api.api.console import playground as playground_api
-from nexus_api.api.qa import QA_CLASSIFY_MODEL, QA_RESPOND_MODEL
 from nexus_api.config import Settings
 from nexus_api.core import respond_catalog
 from nexus_api.core.respond_catalog import (
@@ -83,10 +83,16 @@ def test_the_classifier_has_its_own_model_that_a_hop_accepts() -> None:
     assert model in respond_catalog.BOOT_HOP_MODEL_IDS
 
 
-def test_playground_classify_and_respond_are_sol() -> None:
-    assert QA_CLASSIFY_MODEL == "anthropic/claude-haiku-5-5"
-    assert QA_RESPOND_MODEL == SOL_MODEL_ID
-    assert hop_models_in_catalog(QA_CLASSIFY_MODEL, QA_RESPOND_MODEL)
+def test_playground_classify_and_respond_are_the_runtime_s() -> None:
+    """Spec 059 (5.7): el Playground clasifica y responde con los modelos del runtime
+    del despliegue (el registro), no con unos escritos a mano."""
+    from nexus_worker.config import get_worker_settings
+    from nexus_worker.platform_models import default_models
+
+    worker = get_worker_settings()
+    assert qa_api.QA_CLASSIFY_MODEL == default_models()["qa_classify"] == worker.llm_classify_model
+    assert qa_api.QA_RESPOND_MODEL == default_models()["qa_respond"] == worker.llm_respond_model
+    assert hop_models_in_catalog(qa_api.QA_CLASSIFY_MODEL, qa_api.QA_RESPOND_MODEL)
 
 
 def test_companion_catalog_miss_is_a_human_409(monkeypatch) -> None:

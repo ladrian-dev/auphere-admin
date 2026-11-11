@@ -61,9 +61,13 @@ export function calibrationState(report: CalibrationReport): { label: string; to
   return { label: "Aprobada", tone: "positive" };
 }
 
-/** The calibration that lets the judge block a publication, if there is one. */
-export function blockingCalibration(reports: CalibrationReport[]): CalibrationReport | null {
-  return reports.find((r) => r.passed && !r.invalidated_at) ?? null;
+/**
+ * The calibration that lets the judge block a publication: the passed one, still
+ * in force, of the model that judges (spec 059, 5.4). Another model's does not
+ * count, however good. The API decides it too (`judge_calibrated`).
+ */
+export function judgeCalibration(reports: CalibrationReport[], judgeModel: string): CalibrationReport | null {
+  return reports.find((r) => r.model_id === judgeModel && r.passed && !r.invalidated_at) ?? null;
 }
 
 export const CALIBRATION_ERRORS: Record<string, string> = {
@@ -72,24 +76,30 @@ export const CALIBRATION_ERRORS: Record<string, string> = {
 
 // ── la evaluación del constructor ──────────────────────────────────────────
 
-/** The descriptions of the bank v1 (`services/builder/eval_bank_v1.json`). */
-export const BANK_SIZE = 100;
-
-/** How many descriptions to run: empty is the whole bank (`null`). */
-export function parseEvalLimit(raw: string): { ok: true; limit: number | null } | { ok: false; error: string } {
+/**
+ * How many descriptions to run: empty, or the whole bank, is `null`. The size of
+ * the bank is what the API says (`bank_size`, spec 059, 5.6), not a fixed number.
+ */
+export function parseEvalLimit(
+  raw: string,
+  bankSize: number,
+): { ok: true; limit: number | null } | { ok: false; error: string } {
   const text = raw.trim();
   if (!text) return { ok: true, limit: null };
   const value = Number(text);
-  if (!Number.isInteger(value) || value < 1 || value > BANK_SIZE) {
-    return { ok: false, error: `Un número entero entre 1 y ${BANK_SIZE}, o vacío para todo el banco.` };
+  if (!Number.isInteger(value) || value < 1 || value > bankSize) {
+    return { ok: false, error: `Un número entero entre 1 y ${bankSize}, o vacío para todo el banco.` };
   }
-  return { ok: true, limit: value === BANK_SIZE ? null : value };
+  return { ok: true, limit: value === bankSize ? null : value };
 }
 
-/** CE-002 and CE-003: what the builder has to reach. */
+/**
+ * CE-002 and CE-003: what the builder has to reach. The sector battery unedited
+ * is not here: the evaluation does not measure it, so the screen does not show
+ * it (spec 059, 5.6).
+ */
 export const EVAL_TARGETS = {
   validator_first_pass_pct: 95,
-  sector_pass_unedited_pct: 70,
   draft_p90_ms: 30_000,
 } as const;
 

@@ -226,12 +226,21 @@ Los tres pesos viven en `model_profiles` (columnas `quota_weight_*`) y se
 derivan de la tarifa de **su propio carril**:
 
 ```
-w_carril = 2,2 x price_carril_per_mtok / 10
+w_carril = objetivo x price_carril_per_mtok / 10
 ```
 
-- **2,2x es el objetivo**: margen del **54,5 %**, el mismo en los tres carriles
-  de todos los modelos. Por eso **el margen no depende de la mezcla** de trabajo
-  que haga el partner — que es la propiedad entera.
+- **El objetivo es 2,2x** por defecto: margen del **54,5 %**, el mismo en los tres
+  carriles de todos los modelos. Por eso **el margen no depende de la mezcla** de
+  trabajo que haga el partner — que es la propiedad entera. Desde la spec 059 es un
+  **ajuste de plataforma** (`platform_settings.sale_multiplier`, 0231;
+  `metering/sale_policy.py`) que Auphere cambia en Modelos con un motivo; puede
+  aplicar a la vez los pesos propuestos a todos los modelos con coste
+  (`PUT /admin/models/sale-policy`). La constante `QUOTA_TARGET_MULTIPLIER` queda
+  como su siembra.
+- **Los pesos se editan en Modelos** (`PUT /admin/models/deployments/{id}/weights`):
+  los tres a la vez, con motivo y auditoría (`deployment.weights_changed`), desde el
+  turno siguiente y **sin avisar a los partners** (decisión de Luis, 2026-11-11). El
+  panel propone los del objetivo y marca «Desfasado» o «Bajo el suelo».
 - **1,50x es el suelo**: nunca por debajo, en ningún carril y en ningún modelo,
   **nunca en promedio**. Lo vigila
   `tests/integration/test_quota_floor.py`, que lee el **catálogo real de la
@@ -243,8 +252,9 @@ funcionando por minutos—, y un modelo con dos pesos y uno nulo lo rechaza un
 `CHECK` del esquema y `weights_for` en el código.
 
 **Si alguien cambia una tarifa y olvida el peso**, `weight_drift` lo detecta al
-cargar el catálogo y lo registra con el modelo y el carril, distinguiendo la
-divergencia que sigue sobre el suelo de la que lo cruza. No bloquea el arranque:
+cargar el catálogo, contra el objetivo vigente, y lo registra con el modelo y el
+carril, distinguiendo la divergencia que sigue sobre el suelo de la que lo cruza.
+Modelos lo enseña en la fila. No bloquea el arranque:
 una divergencia no puede tumbar la plataforma, pero tampoco puede ser invisible.
 
 > **Un cambio de pesos no revalora nada.** La unidad no cambia de definición,

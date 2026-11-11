@@ -23,7 +23,6 @@ Es la única superficie que enseña costes (54.11): precios del proveedor tal cu
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -41,8 +40,10 @@ from nexus_api.api.admin.operator import operator_actor, require_operator
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import OperatorAccount
+from nexus_api.metering import sale_policy
 from nexus_api.repositories import AuditRepository
-from nexus_api.services import model_lifecycle
+from nexus_api.services import model_lifecycle, model_usage
+from nexus_api.services.model_usage import ModelUses, uses_of, uses_of_many
 from nexus_api.services.router_catalog import (
     ACTIVATION_MESSAGES,
     CATALOG_CHANGED,
@@ -69,16 +70,46 @@ def _http(code: str, http_status: int, **extra: Any) -> HTTPException:
     return HTTPException(status_code=http_status, detail={"code": code, **extra})
 
 
-def default_respond_model() -> str | None:
-    """El modelo de respuesta global del worker: los agentes de hoy sin modelo
-    propio están fijados en él (``model_lifecycle``)."""
-    return os.environ.get("NEXUS_LLM_RESPOND_MODEL") or None
+def default_respond_model() -> str:
+    """El modelo de respuesta del worker: los agentes de hoy sin modelo propio están
+    fijados en él (``model_lifecycle``). Spec 059: sale del registro de valores por
+    defecto, el mismo que publica el latido del worker."""
+    from nexus_worker.platform_models import default_models
+
+    return str(default_models()["respond"])
+
+
+def lifecycle_http(exc: model_lifecycle.LifecycleError) -> HTTPException:
+    """Lo que no se puede hacer en el ciclo de vida, en el código del contrato
+    (``specs/059…/contracts/admin-api.md`` §2 a §5)."""
+    if exc.code == "model_in_use" and exc.uses is not None:
+        return _http(
+            "model_in_use",
+            status.HTTP_409_CONFLICT,
+            defaults=list(exc.uses.defaults),
+            agents=exc.uses.agents,
+            clients=list(exc.uses.clients),
+        )
+    if exc.code == "defaults_unverified" and exc.uses is not None:
+        return _http("defaults_unverified", status.HTTP_409_CONFLICT, problem=exc.uses.problem)
+    if exc.code in ("not_retiring", "not_unavailable"):
+        return _http(exc.code, status.HTTP_409_CONFLICT, message=str(exc))
+    if exc.code == "unknown_deployment":
+        return _http(exc.code, status.HTTP_404_NOT_FOUND)
+    return _http(exc.code, status.HTTP_422_UNPROCESSABLE_ENTITY, message=str(exc))
 
 
 async def publish_catalog_change(redis: Redis) -> None:
     """Desde el siguiente turno: este proceso y, por el canal de promoción, los
-    workers. Si Redis falla, los demás lo ven en 5 minutos como mucho."""
+    workers. Si Redis falla, los demás lo ven en 5 minutos como mucho. Spec 059
+    (3.2): también el catálogo del medidor y el objetivo de venta, que es donde
+    viven los pesos que se cobran."""
+    from nexus_worker.metering import pricing
+
     catalog_changed()
+    pricing.invalidate()
+    sale_policy.invalidate()
+    model_usage.invalidate()
     try:
         await redis.publish(PROMOTE_CHANNEL, CATALOG_CHANGED)
     except Exception as exc:
@@ -197,15 +228,47 @@ class DeploymentRow(BaseModel):
     certified_tasks: list[str]
     activation_missing: list[str]
     activation_messages: dict[str, str]
+    #: Spec 059 (1.1 a 1.5): si está en uso y por qué. El panel no ofrece
+    #: «Retirar» ni «No disponible» sobre un modelo en uso; la API lo rechaza igual.
+    uses: dict[str, Any] | None = None
+    #: Spec 059 (1.8): los agentes que detienen su retirada, si la fecha pasó.
+    retirement_blocked_agents: int | None = None
+    #: Spec 059 (3.1, 3.8): coste, peso, venta y multiplicador por carril, la
+    #: propuesta del objetivo y el estado.
+    sale: dict[str, Any] | None = None
 
 
 class DeploymentList(BaseModel):
     items: list[DeploymentRow]
     statuses: list[str]
+    #: Spec 059: el multiplicador objetivo, el suelo y el precio del crédito.
+    sale_policy: dict[str, Any] | None = None
+
+
+class WeightsPut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input: Decimal | None = Field(default=None, gt=0)
+    cache_read: Decimal | None = Field(default=None, gt=0)
+    output: Decimal | None = Field(default=None, gt=0)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class SalePolicyPut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    multiplier: Decimal = Field(gt=0)
+    apply_to_all: bool = False
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class SalePolicyOut(BaseModel):
+    sale_policy: dict[str, Any]
+    applied_to: list[str]
 
 
 class PriceOut(BaseModel):
-    alerts: int
+    #: Spec 059 (3.12): sin ``alerts``. El coste no avisa a nadie.
     deployment: DeploymentRow
 
 
@@ -225,7 +288,38 @@ class RetireOut(BaseModel):
 # ── lectura ────────────────────────────────────────────────────────────────
 
 
-def _row(deployment: Deployment, snapshot: CatalogSnapshot) -> DeploymentRow:
+def _costs(deployment: Deployment) -> tuple[dict[str, Decimal | None], bool]:
+    """El coste vigente por carril y si el modelo se cobra por minuto."""
+    price = deployment.current_price()
+    if price is None:
+        return {"input": None, "cache_read": None, "output": None}, False
+    per_minute = price.audio_minute is not None and price.input is None and price.output is None
+    return {
+        "input": price.input,
+        "cache_read": price.cache_read,
+        "output": price.output,
+    }, per_minute
+
+
+def _weights(deployment: Deployment) -> dict[str, Decimal | None]:
+    return {"input": deployment.w_in, "cache_read": deployment.w_cache, "output": deployment.w_out}
+
+
+def _sale(deployment: Deployment, target: Decimal | None) -> dict[str, Any]:
+    costs, per_minute = _costs(deployment)
+    return sale_policy.sale_view(
+        costs=costs, weights=_weights(deployment), target=target, per_minute=per_minute
+    )
+
+
+def _row(
+    deployment: Deployment,
+    snapshot: CatalogSnapshot,
+    *,
+    uses: ModelUses | None = None,
+    blocked: int | None = None,
+    target: Decimal | None = None,
+) -> DeploymentRow:
     certified = snapshot.certified_tasks(deployment.key)
     missing = activation_problems(deployment, class_certified_tasks=certified)
     price = deployment.current_price()
@@ -238,6 +332,9 @@ def _row(deployment: Deployment, snapshot: CatalogSnapshot) -> DeploymentRow:
         certified_tasks=sorted(certified),
         activation_missing=list(missing),
         activation_messages={m: ACTIVATION_MESSAGES[m] for m in missing},
+        uses=None if uses is None else uses.to_contract(),
+        retirement_blocked_agents=blocked,
+        sale=_sale(deployment, target),
     )
 
 
@@ -259,21 +356,33 @@ async def list_deployments(
     provider: str | None = None,
     task: str | None = None,
     session: AsyncSession = Depends(get_db_session),
+    redis: Redis = Depends(get_redis),
 ) -> DeploymentList:
     """Despliegues con capacidades, residencia, retención, licencia, contrato,
-    estado, retirada, cuota, precios y certificaciones; y lo que les falta para
-    activarse."""
+    estado, retirada, cuota, precios y certificaciones; lo que les falta para
+    activarse; si están en uso y si su retirada está detenida (spec 059)."""
     from nexus_api.db.models.router import DEPLOYMENT_STATUSES
 
     snapshot = await _snapshot(session)
-    items = [
-        _row(d, snapshot)
+    chosen = [
+        d
         for d in sorted(snapshot.deployments.values(), key=lambda d: (d.provider, d.key))
         if (status_filter is None or d.status == status_filter)
         and (provider is None or d.provider == provider)
         and (task is None or task in snapshot.certified_tasks(d.key))
     ]
-    return DeploymentList(items=items, statuses=list(DEPLOYMENT_STATUSES))
+    uses = await uses_of_many([d.key for d in chosen], redis=redis, cached=True)
+    blocked = await model_lifecycle.blocked_retirements()
+    target = await sale_policy.target_multiplier()
+    items = [
+        _row(d, snapshot, uses=uses[d.key], blocked=blocked.get(d.key), target=target)
+        for d in chosen
+    ]
+    return DeploymentList(
+        items=items,
+        statuses=list(DEPLOYMENT_STATUSES),
+        sale_policy=sale_policy.policy_view(target),
+    )
 
 
 # ── escritura ──────────────────────────────────────────────────────────────
@@ -356,9 +465,13 @@ def _assign(columns: dict[str, Any]) -> str:
     )
 
 
-async def _reload(session: AsyncSession, deployment_id: uuid.UUID) -> DeploymentRow:
+async def _reload(
+    session: AsyncSession, deployment_id: uuid.UUID, *, redis: Redis | None = None
+) -> DeploymentRow:
     snapshot = await _snapshot(session)
-    return _row(_by_uuid(snapshot, deployment_id), snapshot)
+    deployment = _by_uuid(snapshot, deployment_id)
+    uses = None if redis is None else await uses_of(deployment.key, redis=redis)
+    return _row(deployment, snapshot, uses=uses, target=await sale_policy.target_multiplier())
 
 
 @router.post("/deployments", response_model=DeploymentRow, status_code=status.HTTP_201_CREATED)
@@ -567,8 +680,8 @@ async def add_price(
     operator: OperatorAccount = Depends(require_operator),
     redis: Redis = Depends(get_redis),
 ) -> PriceOut:
-    """Un precio nuevo con su vigencia y su fuente. Si sube más de un 10 % el
-    precio estimado por mensaje de algún agente, su partner lo sabe ya (41.8)."""
+    """Un coste nuevo con su vigencia (nunca pasada) y su fuente. No avisa a nadie:
+    el coste solo mueve el margen de Auphere (spec 059, 3.12 y 4.4)."""
     current = _by_uuid(await _snapshot(session), deployment_id)
     price = Price(
         valid_from=body.valid_from,
@@ -583,14 +696,12 @@ async def add_price(
         currency=body.currency,
         unit=body.unit,
     )
-    alerts = await model_lifecycle.add_price(
-        current.key,
-        price,
-        actor=operator_actor(operator),
-        default_respond=default_respond_model(),
-    )
+    try:
+        await model_lifecycle.add_price(current.key, price, actor=operator_actor(operator))
+    except model_lifecycle.LifecycleError as exc:
+        raise lifecycle_http(exc) from exc
     await publish_catalog_change(redis)
-    return PriceOut(alerts=len(alerts), deployment=await _reload(session, deployment_id))
+    return PriceOut(deployment=await _reload(session, deployment_id, redis=redis))
 
 
 @router.post("/deployments/{deployment_id}/retire", response_model=RetireOut)
@@ -601,8 +712,8 @@ async def retire(
     operator: OperatorAccount = Depends(require_operator),
     redis: Redis = Depends(get_redis),
 ) -> RetireOut:
-    """La fecha de retirada: sigue atendiendo hasta entonces; los partners con
-    agentes fijados reciben el aviso con el sustituto propuesto (41.7)."""
+    """La fecha de retirada: sigue atendiendo hasta entonces. Solo sobre un modelo
+    sin uso: si no, ``409 model_in_use`` o ``409 defaults_unverified`` (spec 059)."""
     current = _by_uuid(await _snapshot(session), deployment_id)
     try:
         proposals = await model_lifecycle.announce_retirement(
@@ -611,12 +722,13 @@ async def retire(
             actor=operator_actor(operator),
             reason=body.reason,
             default_respond=default_respond_model(),
+            redis=redis,
         )
     except model_lifecycle.LifecycleError as exc:
-        raise _http(exc.code, status.HTTP_422_UNPROCESSABLE_ENTITY, message=str(exc)) from exc
+        raise lifecycle_http(exc) from exc
     await publish_catalog_change(redis)
     return RetireOut(
-        deployment=await _reload(session, deployment_id),
+        deployment=await _reload(session, deployment_id, redis=redis),
         proposals=[
             ProposalOut(
                 tenant_id=p.agent.tenant_id,
@@ -638,14 +750,195 @@ async def unavailable(
     operator: OperatorAccount = Depends(require_operator),
     redis: Redis = Depends(get_redis),
 ) -> DeploymentRow:
-    """Deja de cumplir su contrato o su licencia: el router deja de usarlo desde
-    el siguiente turno (41.9)."""
+    """Deja de cumplir su contrato o su licencia: deja de ejecutarse desde el
+    siguiente turno (41.9). Solo sobre un modelo sin uso (spec 059)."""
     current = _by_uuid(await _snapshot(session), deployment_id)
-    await model_lifecycle.mark_unavailable(
-        current.key, actor=operator_actor(operator), reason=body.reason
-    )
+    try:
+        await model_lifecycle.mark_unavailable(
+            current.key, actor=operator_actor(operator), reason=body.reason, redis=redis
+        )
+    except model_lifecycle.LifecycleError as exc:
+        raise lifecycle_http(exc) from exc
     await publish_catalog_change(redis)
-    return await _reload(session, deployment_id)
+    return await _reload(session, deployment_id, redis=redis)
 
 
-__all__ = ["default_respond_model", "publish_catalog_change", "router"]
+@router.post("/deployments/{deployment_id}/cancel-retirement", response_model=DeploymentRow)
+async def cancel_retirement(
+    deployment_id: uuid.UUID,
+    body: ReasonIn,
+    session: AsyncSession = Depends(get_db_session),
+    operator: OperatorAccount = Depends(require_operator),
+    redis: Redis = Depends(get_redis),
+) -> DeploymentRow:
+    """Spec 059 (1.6): un modelo en retirada vuelve a activo y sin fecha."""
+    current = _by_uuid(await _snapshot(session), deployment_id)
+    try:
+        await model_lifecycle.cancel_retirement(
+            current.key, actor=operator_actor(operator), reason=body.reason
+        )
+    except model_lifecycle.LifecycleError as exc:
+        raise lifecycle_http(exc) from exc
+    await publish_catalog_change(redis)
+    return await _reload(session, deployment_id, redis=redis)
+
+
+@router.post("/deployments/{deployment_id}/restore", response_model=DeploymentRow)
+async def restore(
+    deployment_id: uuid.UUID,
+    body: ReasonIn,
+    session: AsyncSession = Depends(get_db_session),
+    operator: OperatorAccount = Depends(require_operator),
+    redis: Redis = Depends(get_redis),
+) -> DeploymentRow:
+    """Spec 059 (1.7): un modelo «No disponible» vuelve al estado que tenía, sin
+    pasar por la puerta de activación."""
+    current = _by_uuid(await _snapshot(session), deployment_id)
+    try:
+        await model_lifecycle.restore_available(
+            current.key, actor=operator_actor(operator), reason=body.reason
+        )
+    except model_lifecycle.LifecycleError as exc:
+        raise lifecycle_http(exc) from exc
+    await publish_catalog_change(redis)
+    return await _reload(session, deployment_id, redis=redis)
+
+
+# ── la venta (spec 059, requisito 3) ───────────────────────────────────────
+
+
+def _six(value: Decimal | None) -> str | None:
+    return None if value is None else str(Decimal(value).quantize(Decimal("0.000001")))
+
+
+async def _write_weights(
+    session: AsyncSession, key: str, weights: dict[str, Decimal], *, actor: str, reason: str
+) -> None:
+    before = (
+        await session.execute(
+            sa.text(
+                "SELECT quota_weight_input, quota_weight_cache_read, quota_weight_output "
+                "FROM model_profiles WHERE model_id = :k FOR UPDATE"
+            ),
+            {"k": key},
+        )
+    ).one()
+    await session.execute(
+        sa.text(
+            "UPDATE model_profiles SET quota_weight_input = :i, quota_weight_cache_read = :c, "
+            "quota_weight_output = :o, updated_at = now() WHERE model_id = :k"
+        ),
+        {"k": key, "i": weights["input"], "c": weights["cache_read"], "o": weights["output"]},
+    )
+    await AuditRepository(session).record(
+        actor=actor,
+        action="deployment.weights_changed",
+        target=f"deployment:{key}",
+        before={
+            "weights": {
+                "input": _six(before[0]),
+                "cache_read": _six(before[1]),
+                "output": _six(before[2]),
+            }
+        },
+        after={"weights": {k: _six(v) for k, v in weights.items()}, "reason": reason},
+        platform=True,
+    )
+
+
+@router.put("/deployments/{deployment_id}/weights", response_model=DeploymentRow)
+async def put_weights(
+    deployment_id: uuid.UUID,
+    body: WeightsPut,
+    session: AsyncSession = Depends(get_db_session),
+    operator: OperatorAccount = Depends(require_operator),
+    redis: Redis = Depends(get_redis),
+) -> DeploymentRow:
+    """Spec 059 (3.2 a 3.5, 3.11): los tres pesos de venta de un modelo, con su
+    motivo. Entran desde el turno siguiente y no avisan a los partners."""
+    current = _by_uuid(await _snapshot(session), deployment_id)
+    if not body.reason.strip():
+        raise _http("reason_required", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    raw = {"input": body.input, "cache_read": body.cache_read, "output": body.output}
+    if any(v is None for v in raw.values()):
+        raise _http("partial_weights", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    weights = {k: Decimal(v) for k, v in raw.items() if v is not None}
+    costs, per_minute = _costs(current)
+    if per_minute:
+        raise _http("per_minute", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    sinking = sale_policy.lanes_below_floor(weights, costs)
+    if sinking:
+        raise _http("below_floor", status.HTTP_422_UNPROCESSABLE_ENTITY, lanes=sinking)
+    async with session.begin():
+        await _write_weights(
+            session,
+            current.key,
+            weights,
+            actor=operator_actor(operator),
+            reason=body.reason.strip(),
+        )
+    await publish_catalog_change(redis)
+    return await _reload(session, deployment_id, redis=redis)
+
+
+@router.get("/sale-policy")
+async def get_sale_policy() -> dict[str, Any]:
+    """Spec 059 (3.6): el multiplicador objetivo, el suelo y el precio del crédito."""
+    return sale_policy.policy_view(await sale_policy.target_multiplier())
+
+
+@router.put("/sale-policy", response_model=SalePolicyOut)
+async def put_sale_policy(
+    body: SalePolicyPut,
+    session: AsyncSession = Depends(get_db_session),
+    operator: OperatorAccount = Depends(require_operator),
+    redis: Redis = Depends(get_redis),
+) -> SalePolicyOut:
+    """Spec 059 (3.6, 3.7): el objetivo nuevo, con su motivo. Con
+    ``apply_to_all``, cada modelo cobrado por tokens con coste vigente recibe los
+    pesos propuestos, en la misma transacción. Sin él, ningún peso cambia."""
+    if not body.reason.strip():
+        raise _http("reason_required", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    try:
+        sale_policy.check_target(body.multiplier)
+    except sale_policy.SalePolicyError as exc:
+        raise _http(exc.code, status.HTTP_422_UNPROCESSABLE_ENTITY) from exc
+    snapshot = await _snapshot(session)
+    actor = operator_actor(operator)
+    applied: list[str] = []
+    async with session.begin():
+        before = await sale_policy.store_target(session, body.multiplier, actor=actor)
+        if body.apply_to_all:
+            for deployment in sorted(snapshot.deployments.values(), key=lambda d: d.key):
+                costs, per_minute = _costs(deployment)
+                proposed = None if per_minute else sale_policy.propose(costs, body.multiplier)
+                if proposed is None:
+                    continue
+                await _write_weights(
+                    session,
+                    deployment.key,
+                    proposed,
+                    actor=actor,
+                    reason=f"Multiplicador {body.multiplier}: {body.reason.strip()}",
+                )
+                applied.append(deployment.key)
+        await AuditRepository(session).record(
+            actor=actor,
+            action="platform.sale_multiplier_changed",
+            target="platform:sale_multiplier",
+            before={"multiplier": None if before is None else str(before)},
+            after={
+                "multiplier": str(body.multiplier),
+                "applied_to": applied,
+                "reason": body.reason.strip(),
+            },
+            platform=True,
+        )
+    await publish_catalog_change(redis)
+    return SalePolicyOut(
+        sale_policy=sale_policy.policy_view(await sale_policy.target_multiplier()),
+        applied_to=applied,
+    )
+
+
+__all__ = ["default_respond_model", "lifecycle_http", "publish_catalog_change", "router"]

@@ -56,7 +56,7 @@ from nexus_worker.billing.expire_credit_cron import run_expire_credit_cron
 from nexus_worker.billing.process_event import run_billing_event_consumer
 from nexus_worker.config import WorkerSettings, get_api_settings, get_worker_settings
 from nexus_worker.guardrails import OutcomeGrader
-from nexus_worker.health import run_heartbeat
+from nexus_worker.health import models_payload, run_heartbeat
 from nexus_worker.jobs import run_jobs_consumer
 from nexus_worker.observability import init_langfuse
 from nexus_worker.observability import shutdown as langfuse_shutdown
@@ -441,7 +441,11 @@ def _spawn(name: str, coro: Any) -> asyncio.Task[None]:
 
 
 def _heartbeat_task(ctx: WorkerContext) -> asyncio.Task[None]:
-    return _spawn("heartbeat", run_heartbeat(ctx.redis, service=ctx.service_name, stop=ctx.stop))
+    # Spec 059 (1.5): el latido lleva los modelos que usa este worker de verdad.
+    return _spawn(
+        "heartbeat",
+        run_heartbeat(ctx.redis, service=ctx.service_name, stop=ctx.stop, payload=models_payload()),
+    )
 
 
 def runner_tasks(

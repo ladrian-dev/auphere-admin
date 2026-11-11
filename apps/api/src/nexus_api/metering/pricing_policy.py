@@ -172,7 +172,9 @@ def weights_for(
 
 #: Lo que se cobra sobre el coste de proveedor (spec 007). El **objetivo** puede
 #: moverse por decisión comercial; el **suelo** es la regla que hace que esa
-#: decisión no pueda ser un descuido.
+#: decisión no pueda ser un descuido. Spec 059: el objetivo vigente es el ajuste
+#: ``platform_settings.sale_multiplier`` (``metering.sale_policy``); esta constante
+#: queda como su valor de siembra y el de los tests. El suelo sigue siendo fijo.
 QUOTA_TARGET_MULTIPLIER = Decimal("2.2")
 QUOTA_FLOOR_MULTIPLIER = Decimal("1.50")
 
@@ -203,6 +205,7 @@ def weight_drift(
     *,
     sell_usd_per_million: Decimal,
     tolerance: Decimal = Decimal("0.000001"),
+    target: Decimal = QUOTA_TARGET_MULTIPLIER,
 ) -> list[WeightDrift]:
     """Carriles cuyo peso guardado no corresponde ya a su tarifa.
 
@@ -230,7 +233,7 @@ def weight_drift(
             stored = lanes.get(lane)
             if price is None or stored is None or Decimal(price) <= 0:
                 continue
-            expected = QUOTA_TARGET_MULTIPLIER * Decimal(price) / sell_usd_per_million
+            expected = target * Decimal(price) / sell_usd_per_million
             if abs(Decimal(stored) - expected) <= tolerance:
                 continue
             drifts.append(

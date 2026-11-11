@@ -54,23 +54,25 @@ describe("the figures of the builder's evaluation", () => {
     expect(evalDelta("draft_p90_ms", -2200)?.tone).toBe("positive");
     expect(evalDelta("draft_p90_ms", 300)).toMatchObject({ label: "+300 ms", tone: "negative" });
     expect(evalDelta("validator_first_pass_pct", 0)?.tone).toBe("neutral");
-    expect(evalDelta("sector_pass_unedited_pct", null)).toBeUndefined();
+    expect(evalDelta("validator_first_pass_pct", null)).toBeUndefined();
     expect(plain(formatMs(12_000))).toBe("12 s");
   });
 
-  it("runs the whole bank when the number is empty", () => {
-    expect(parseEvalLimit("")).toEqual({ ok: true, limit: null });
-    expect(parseEvalLimit("100")).toEqual({ ok: true, limit: null });
-    expect(parseEvalLimit(" 4 ")).toEqual({ ok: true, limit: 4 });
-    expect(parseEvalLimit("0").ok).toBe(false);
-    expect(parseEvalLimit("101").ok).toBe(false);
-    expect(parseEvalLimit("2.5").ok).toBe(false);
+  /** Spec 059 (5.6): the bank has the size the API says, not a fixed 100. */
+  it("runs the whole bank when the number is empty, whatever its size", () => {
+    expect(parseEvalLimit("", 120)).toEqual({ ok: true, limit: null });
+    expect(parseEvalLimit("120", 120)).toEqual({ ok: true, limit: null });
+    expect(parseEvalLimit("100", 120)).toEqual({ ok: true, limit: 100 });
+    expect(parseEvalLimit(" 4 ", 120)).toEqual({ ok: true, limit: 4 });
+    expect(parseEvalLimit("0", 120).ok).toBe(false);
+    expect(parseEvalLimit("121", 120)).toEqual({ ok: false, error: "Un número entero entre 1 y 120, o vacío para todo el banco." });
+    expect(parseEvalLimit("2.5", 120).ok).toBe(false);
   });
 });
 
 describe("the evaluation screen", () => {
   it("shows the last run against the one before and the targets", () => {
-    render(<EvalView runs={[LATEST, FIRST]} operatorId={OPERATOR} />);
+    render(<EvalView runs={[LATEST, FIRST]} bankSize={120} operatorId={OPERATOR} />);
     const last = screen.getByRole("region", { name: "La última evaluación" });
     expect(within(last).getByText(/banco v1 · Tú/)).toBeTruthy();
     expect(within(last).getByText("96 %")).toBeTruthy();
@@ -78,36 +80,54 @@ describe("the evaluation screen", () => {
     expect(plain(within(last).getByText(/Objetivo 95 %/).textContent)).toBe("Objetivo 95 % · antes 90 %");
     expect(within(last).getByText("12 s")).toBeTruthy();
     expect(within(last).getByText("Mejor que la evaluación anterior: −2,2 s")).toBeTruthy();
-    expect(within(last).getByText("Sin medir")).toBeTruthy();
-    expect(within(last).getByText("La batería del sector sin edición está sin medir")).toBeTruthy();
     const history = screen.getByRole("region", { name: "Historial" });
     expect(within(history).getAllByRole("row")).toHaveLength(3);
     expect(within(history).getByText("Operador 99999999")).toBeTruthy();
   });
 
+  /** Spec 059 (5.6): the evaluation does not measure the sector battery, so it does not show it. */
+  it("does not show the sector battery figure it never measures", () => {
+    render(<EvalView runs={[{ ...LATEST, sector_pass_unedited_pct: 80 }, FIRST]} bankSize={120} operatorId={OPERATOR} />);
+    expect(screen.queryByText(/Batería/)).toBeNull();
+    expect(screen.queryByText(/batería del sector/)).toBeNull();
+    expect(screen.queryByText("80 %")).toBeNull();
+    expect(screen.queryByText("Sin medir")).toBeNull();
+    const history = screen.getByRole("region", { name: "Historial" });
+    expect(within(history).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Fecha",
+      "Banco",
+      "Quién",
+      "Validador a la primera",
+      "p90 del borrador",
+    ]);
+  });
+
   it("says when there is nothing to compare with", () => {
-    render(<EvalView runs={[FIRST]} operatorId={OPERATOR} />);
+    render(<EvalView runs={[FIRST]} bankSize={120} operatorId={OPERATOR} />);
     expect(screen.getByText("Es la primera: todavía no hay con qué compararla.")).toBeTruthy();
     expect(screen.queryByText(/pts/)).toBeNull();
   });
 
-  it("has an empty state", () => {
-    render(<EvalView runs={[]} operatorId={OPERATOR} />);
+  it("has an empty state that says the real size of the bank", () => {
+    render(<EvalView runs={[]} bankSize={120} operatorId={OPERATOR} />);
     expect(screen.getByText("Todavía no se ha corrido la evaluación")).toBeTruthy();
+    expect(screen.getByText(/las 120 descripciones del banco/)).toBeTruthy();
+    expect(screen.queryByText(/100/)).toBeNull();
   });
 });
 
 describe("running the evaluation", () => {
   it("checks the number of descriptions and runs it", async () => {
     h.run.mockResolvedValue({ ok: true, data: LATEST });
-    render(<RunEval />);
+    render(<RunEval bankSize={120} />);
     await userEvent.click(screen.getByRole("button", { name: "Correr la evaluación" }));
     const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/con las 120 tarda varios minutos/)).toBeTruthy();
     const count = within(dialog).getByRole("textbox", { name: /Descripciones/ });
     await userEvent.type(count, "500");
     await userEvent.click(within(dialog).getByRole("button", { name: "Correr" }));
     expect(h.run).not.toHaveBeenCalled();
-    expect(within(dialog).getByText(/entre 1 y 100/)).toBeTruthy();
+    expect(within(dialog).getByText(/entre 1 y 120/)).toBeTruthy();
 
     await userEvent.clear(count);
     await userEvent.type(count, "4");
@@ -119,7 +139,7 @@ describe("running the evaluation", () => {
 
   it("runs the whole bank by default", async () => {
     h.run.mockResolvedValue({ ok: true, data: LATEST });
-    render(<RunEval />);
+    render(<RunEval bankSize={120} />);
     await userEvent.click(screen.getByRole("button", { name: "Correr la evaluación" }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Correr" }));
     expect(h.run).toHaveBeenCalledWith(null);
