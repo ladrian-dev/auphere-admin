@@ -51,7 +51,19 @@ export function ConnectorsCatalog({ rows }: { rows: Array<{ connector: Connector
         >
           <div className="flex items-start justify-between gap-3">
             <ConnectorLogo connector={row.connector} size="lg" />
-            {row.connector.status === "beta" ? <Badge variant="outline">Beta</Badge> : null}
+            <span className="flex flex-wrap justify-end gap-1">
+              {row.connector.status === "beta" ? <Badge variant="outline">Beta</Badge> : null}
+              {/* Spec 060 (3.4): no está disponible para todos los partners. */}
+              {row.connector.access && !row.connector.access.default_enabled ? (
+                <Badge variant="outline">Solo algunos partners</Badge>
+              ) : row.connector.access && row.connector.access.partner_decisions > 0 ? (
+                <Badge variant="outline">
+                  {row.connector.access.partner_decisions === 1
+                    ? "1 decisión por partner"
+                    : `${row.connector.access.partner_decisions} decisiones por partner`}
+                </Badge>
+              ) : null}
+            </span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium">{row.connector.display_name}</span>

@@ -874,6 +874,8 @@ export type Connector = {
   status: ConnectorCatalogStatus;
   /** Spec 047 (36.4): the settings each activation asks for (JSON Schema); null = none. */
   settings_schema?: Record<string, unknown> | null;
+  /** Spec 060 (3.4): its default for partners and how many partners have their own decision. */
+  access?: { default_enabled: boolean; partner_decisions: number } | null;
 };
 
 export type TenantConnectorStatus =
@@ -902,6 +904,8 @@ export type TenantConnector = {
   connected_at: string | null;
   disconnected_at: string | null;
   consent_token_expires_at: string | null;
+  /** Spec 060 (3.5): whether the client's partner may use this connector. */
+  available_for_partner?: boolean;
 };
 
 export type InitiateConsentOut = {

@@ -21,7 +21,14 @@ import { ConnectorLogo } from "@/components/brand/connector-logo";
 import { AUTH_KIND_HINT, categoryName, connectorState, isChannelOnly } from "@/components/connectors/labels";
 import { SettingsFields } from "@/components/connectors/settings-fields";
 import { CrumbName } from "@/components/shell/crumb-names";
+import { ReadError } from "@/components/states/read-error";
 import { backend, type TenantConnectorStatus } from "@/lib/backend";
+import { connectorAccessBackend } from "@/lib/backend-connector-access";
+
+import { ConnectorAccessPanel } from "./connector-access-panel";
+
+/** Spec 060 (1.5): de sistema, no de un agente; la disponibilidad por partner no se gestiona. */
+const SYSTEM_CONNECTORS = new Set(["googlecalendar"]);
 
 export const metadata = { title: "Conector" };
 export const dynamic = "force-dynamic";
@@ -29,13 +36,17 @@ export const dynamic = "force-dynamic";
 /** Spec 035 (R4): one connector of the catalog and the clients that use it. */
 export default async function ConnectorPage({ params }: { params: Promise<{ slug: string }> }) {
   const slug = decodeURIComponent((await params).slug);
-  const [connector, installs] = await Promise.all([
+  const [connector, installs, access, partners] = await Promise.all([
     backend.getConnector(slug),
     backend.listConnectorInstalls().catch(() => ({}) as Record<string, never>),
+    // Spec 060: null si es de sistema (Google Calendar) o si la API no respondió.
+    connectorAccessBackend.forConnector(slug).catch(() => "error" as const),
+    backend.listPartners().catch(() => []),
   ]);
   if (!connector) notFound();
   if (isChannelOnly(connector)) redirect("/channels");
   const clients = [...(installs[slug] ?? [])].sort((a, b) => a.tenant_name.localeCompare(b.tenant_name));
+  const managed = !SYSTEM_CONNECTORS.has(slug);
 
   return (
     <>
@@ -86,6 +97,27 @@ export default async function ConnectorPage({ params }: { params: Promise<{ slug
       >
         <SettingsFields schema={connector.settings_schema} />
       </Section>
+      {managed ? (
+        <Section
+          flat
+          title="Disponible para"
+          description="Qué partners pueden ofrecer este conector a sus clientes. Cada partner sigue el valor por defecto salvo que decidas otra cosa para él."
+        >
+          {access === "error" || access === null ? (
+            <ReadError
+              title="No se pudo leer la disponibilidad"
+              description="La API no respondió. Vuelve a intentarlo en un momento."
+            />
+          ) : (
+            <ConnectorAccessPanel
+              slug={slug}
+              name={connector.display_name}
+              access={access}
+              partners={partners.map((p) => ({ id: p.id, name: p.name }))}
+            />
+          )}
+        </Section>
+      ) : null}
       <Section flat title="Clientes que lo usan">
         {clients.length === 0 ? (
           <EmptyState
