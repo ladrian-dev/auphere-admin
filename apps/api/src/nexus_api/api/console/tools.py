@@ -40,6 +40,7 @@ from nexus_api.db.models import (
 )
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.agent_spec.retired import RETIRED_TOOLS, SYSTEM_ONLY_PREFIX, agent_may_use
+from nexus_api.services.connectors import availability
 from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.composio_client import (
@@ -50,6 +51,7 @@ from nexus_api.services.connectors.composio_client import (
     ComposioError,
     ComposioUnavailable,
 )
+from nexus_api.services.connectors.errors import not_found_message
 from nexus_api.services.connectors.gating import ToolNotInCatalog
 from nexus_api.services.connectors.runtime import get_composio_client
 from nexus_api.services.connectors.service import (
@@ -133,9 +135,13 @@ async def _catalog(scope: ClientScope, view: DraftView) -> ToolCatalogOut:
     enabled = set(target.tools or []) if target else set()
     active_enabled = set(view.active.tools or []) if view.active else set()
     overrides = await _overrides(scope.session)
+    # Spec 060 (5.1): lo de un conector que el partner del cliente no puede usar no sale.
+    withheld = await availability.unavailable_slugs_for_tenant(scope.session, scope.tenant.id)
     tools: list[ToolOut] = []
     for tool, slug, display_name, provider_meta, install_status in await _tool_rows(scope.session):
         if slug is not None and _is_channel_only(slug, provider_meta):
+            continue
+        if slug is not None and slug in withheld:
             continue
         override = overrides.get(tool.name)
         default_mode = cast(ToolMode, tool.default_mode)
@@ -199,6 +205,31 @@ async def put_tools(
     if is_structured((await load_view(scope)).target):
         raise structured_agent_error()
     names = list(dict.fromkeys(body.tools))
+    view = await load_view(scope)
+    had = set(view.target.tools or []) if view.target else set()
+    # Spec 060 (5.1 y 5.2): una herramienta nueva de un conector que el partner del
+    # cliente ya no puede usar se rechaza igual que una que no existe; las que el
+    # agente ya tenía se conservan (5.7).
+    withheld = await availability.unavailable_slugs_for_tenant(scope.session, scope.tenant.id)
+    if withheld:
+        hidden = (
+            set(
+                (
+                    await scope.session.scalars(
+                        sa.select(ToolCatalog.name)
+                        .join(Connector, Connector.id == ToolCatalog.connector_id)
+                        .where(Connector.slug.in_(withheld), ToolCatalog.name.in_(names))
+                    )
+                ).all()
+            )
+            - had
+        )
+        if hidden:
+            unknown = [n for n in names if n in hidden]
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tools not in catalog: " + ", ".join(unknown),
+            )
     service = AgentConfigService(scope.session)
     try:
         await service._validate_tools(names)
@@ -206,8 +237,6 @@ async def put_tools(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    view = await load_view(scope)
-    had = set(view.target.tools or []) if view.target else set()
     added = {
         n: RETIRED_TOOLS.get(n)
         for n in names
@@ -294,7 +323,9 @@ async def _recommended_connectors(sector: str | None) -> set[str]:
 async def _connectors(
     scope: ClientScope, composio: ComposioClientProtocol, view: DraftView
 ) -> list[ConnectorOut]:
-    entries = await connector_catalog.list_catalog(scope.session, composio)
+    entries = await connector_catalog.list_catalog(
+        scope.session, composio, audience=connector_catalog.ForTenant(scope.tenant.id)
+    )
     recommended = await _recommended_connectors(await client_sector(scope.session))
     installs = {
         c.slug: tc
@@ -373,6 +404,14 @@ def _guard_slug(slug: str) -> str:
     return slug
 
 
+async def _hide_withheld(scope: ClientScope, slug: str, detail: str) -> None:
+    """Spec 060 (5.1 y 5.2): un conector que el partner del cliente ya no puede usar
+    se responde igual que uno que no existe. ``detail`` es el de la propia ruta para
+    un slug desconocido, para que las dos respuestas sean idénticas."""
+    if slug in await availability.unavailable_slugs_for_tenant(scope.session, scope.tenant.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+
 @router.post(
     "/connectors/{slug}/consent",
     response_model=ConsentOut,
@@ -387,6 +426,12 @@ async def start_consent(
     """Start (or re-issue) the OAuth consent of an ``oauth_composio``
     connector. The signed URL is returned once, to this caller."""
     slug = _guard_slug(slug)
+    # Spec 060 (5.2): lo que el partner del cliente no puede usar no existe aquí.
+    if slug in await availability.unavailable_slugs_for_tenant(scope.session, scope.tenant.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=connector_catalog.unknown_connector_message(slug),
+        )
     # Spec 043, R11.8: uno nuevo se conecta por profesional en Reservas. Uno de antes se puede
     # renovar: un agente que aún reserva en Google lo necesita, y lo que hay allí bloquea horas.
     if slug in connector_service.SYSTEM_ONLY_CONNECTORS and not (
@@ -470,6 +515,7 @@ async def sync_connector(
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorSyncOut:
     slug = _guard_slug(slug)
+    await _hide_withheld(scope, slug, "unknown connector")
     connector = await scope.session.scalar(sa.select(Connector).where(Connector.slug == slug))
     if connector is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown connector")
@@ -521,6 +567,7 @@ async def disconnect_connector(
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> ConnectorOut:
     slug = _guard_slug(slug)
+    await _hide_withheld(scope, slug, not_found_message(slug))
     try:
         await connector_service.disconnect_connector(
             scope.session,
@@ -552,6 +599,7 @@ async def _set_status(
     to_status: str,
     action: str,
 ) -> ConnectorOut:
+    await _hide_withheld(scope, slug, "connector not installed")
     tc = await scope.session.scalar(
         sa.select(TenantConnector)
         .join(Connector, TenantConnector.connector_id == Connector.id)

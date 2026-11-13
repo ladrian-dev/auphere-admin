@@ -316,17 +316,45 @@ def settings_schema_of(connector: Connector) -> dict[str, Any] | None:
     return connector.settings_schema or SETTINGS_SCHEMAS.get(connector.slug)
 
 
+@dataclass(frozen=True)
+class ForOperator:
+    """Auphere, desde el panel: ve todo el catálogo."""
+
+
+@dataclass(frozen=True)
+class ForTenant:
+    """La consola de un cliente: solo lo disponible para su partner (spec 060)."""
+
+    tenant_id: uuid.UUID
+
+
+#: Para quién se lista. Obligatorio, para que cada llamada nueva decida
+#: (``mypy --strict``) en vez de olvidarse del filtro (spec 060, research D8).
+Audience = ForOperator | ForTenant
+OPERATOR = ForOperator()
+
+
+async def _withheld(session: AsyncSession, audience: Audience) -> frozenset[str]:
+    if isinstance(audience, ForOperator):
+        return frozenset()
+    from nexus_api.services.connectors.availability import unavailable_slugs_for_tenant
+
+    return await unavailable_slugs_for_tenant(session, audience.tenant_id)
+
+
 async def list_catalog(
     session: AsyncSession,
     composio: ComposioClientProtocol,
     *,
+    audience: Audience,
     category: str | None = None,
     status_filter: str | None = None,
 ) -> list[CatalogConnector]:
     """Return the merged catalog.
 
     Filters apply post-merge so they work uniformly across persisted and
-    dynamic entries.
+    dynamic entries. ``audience`` decide si se quitan los conectores no
+    disponibles para el partner del cliente (spec 060, requisito 5.1).
     """
     stmt = select(Connector).where(Connector.auth_kind != "oauth_composio")
     rows = (await session.scalars(stmt)).all()
@@ -361,6 +389,9 @@ async def list_catalog(
         by_slug[d.slug] = d
     merged = list(by_slug.values())
 
+    withheld = await _withheld(session, audience)
+    if withheld:
+        merged = [c for c in merged if c.slug not in withheld]
     if category:
         merged = [c for c in merged if c.category == category]
     if status_filter:
@@ -373,6 +404,8 @@ async def get_catalog_entry(
     session: AsyncSession,
     composio: ComposioClientProtocol,
     slug: str,
+    *,
+    audience: Audience,
 ) -> CatalogConnector | None:
     """Lookup a single catalog entry by slug. Returns ``None`` if the slug
     is unknown to both the seed catalog and Composio.
@@ -381,6 +414,8 @@ async def get_catalog_entry(
     any) is only used as a fallback when Composio is unreachable.
     """
     slug = slug.lower()
+    if slug in await _withheld(session, audience):
+        return None
     row = await session.scalar(select(Connector).where(Connector.slug == slug))
     if row is not None and row.auth_kind != "oauth_composio":
         return _project_persisted(row)
@@ -438,8 +473,13 @@ async def ensure_composio_connector_persisted(
             session.add(row)
             await session.flush()
             return row
-    msg = (
+    raise LookupError(unknown_connector_message(slug))
+
+
+def unknown_connector_message(slug: str) -> str:
+    """El texto de un conector que ni los seeds ni Composio conocen. Spec 060: la
+    consola responde igual a uno no disponible para el partner (sin oráculo)."""
+    return (
         f"connector {slug!r} not registered as seed or in Composio dashboard — "
         "the catalog is out of sync; refresh the panel"
     )
-    raise LookupError(msg)

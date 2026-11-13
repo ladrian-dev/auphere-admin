@@ -14,6 +14,7 @@ from nexus_api.api.admin import (
     channels_overview,
     client_access,
     client_controls,
+    connector_access,
     connectors,
     conversations,
     cost,
@@ -74,6 +75,8 @@ router.include_router(meta_social.router)
 router.include_router(conversations.router)
 router.include_router(tool_catalog.router)
 router.include_router(connectors.router)
+# Spec 060: qué partners pueden usar cada conector.
+router.include_router(connector_access.router)
 router.include_router(screenshots.router)
 router.include_router(isolation.router)
 router.include_router(evals.router)

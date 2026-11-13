@@ -173,6 +173,35 @@ Separados como las Bandejas y las Integraciones de Chatwoot.
   (`GET /admin/channels`) y `/connectors` el catálogo con cuántos clientes usan cada uno
   (`GET /admin/connectors-installs`). Las dos leen cliente a cliente con su GUC.
 
+### Qué partners pueden usar cada conector (spec 060)
+
+Cada conector tiene un **valor por defecto para los partners** (habilitado, salvo que
+Auphere lo cambie) y cada partner puede tener una **decisión propia** que manda sobre él.
+Un cliente sin partner sigue el valor por defecto. Los canales y Google Calendar no
+entran: son de Canales y de Reservas.
+
+- **Ficha del partner → Conectores** (`/partners/{id}/connectors`): cada conector con si
+  sus clientes lo pueden usar, de dónde sale (valor por defecto o decisión propia) y
+  cuántos clientes lo tienen conectado.
+- **Ficha del conector → Disponible para** (`/connectors/{slug}`): el valor por defecto y
+  los partners con decisión propia. Las dos fichas escriben lo mismo.
+- Para dejar un conector **solo para un partner**: valor por defecto «Deshabilitado» y ese
+  partner «Habilitado». Un partner que se dé de alta después no lo ve.
+- Cada cambio pide un **motivo** y queda en la auditoría
+  (`connector_access.default_changed` y `connector_access.partner_changed`).
+- **Antes de quitar el acceso**, si algún cliente afectado lo tiene conectado, el panel
+  enseña quiénes y cuántos agentes usan sus herramientas, y pide confirmar
+  (`409 confirm_required`). No se puede quitar el conector por defecto de un partner para
+  dar de alta clientes (`409 partner_default_connector`).
+- **Quitar el acceso no borra nada**: la conexión, sus credenciales, activaciones y
+  excepciones se quedan. Sus herramientas dejan de llegar al turno y a los procesos
+  programados; al rehabilitarlo vuelve todo. En la ficha del cliente la conexión se marca
+  «No disponible para su partner».
+- API: `GET /admin/partners/{id}/connectors`, `GET /admin/connectors/{slug}/access`,
+  `PUT /admin/connectors/{slug}/partners/{partner_id}` y
+  `PUT /admin/connectors/{slug}/access/default`
+  (`specs/060-acceso-conectores-por-partner/contracts/admin-api.md`).
+
 ## Beta «WhatsApp login» por país (spec 047)
 
 `/channels/whatsapp-login`, la segunda pestaña de Canales (T117; requisitos 31.5, 31.6

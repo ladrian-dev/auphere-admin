@@ -131,6 +131,10 @@ class Context:
     #: Spec 043, R11.3: las de Google Calendar que este agente ya tiene. Siguen hasta que pase a
     #: Reservas, porque la consola manda la ficha entera y no las podría quitar; una nueva, no.
     held_tools: frozenset[str] = frozenset()
+    #: Spec 060 (5.7): las integraciones que el partner del cliente ya no puede usar y
+    #: que este agente ya nombra. Se conservan sin mostrarse para que vuelvan al
+    #: rehabilitarlas; no se ofrecen para nada nuevo.
+    held_integrations: frozenset[str] = frozenset()
 
     def usable(self, name: str) -> bool:
         """Spec 047, enmienda del 2026-10-30 (65.2): la herramienta está disponible
@@ -332,8 +336,8 @@ def validate_spec(
     # conector ofrecido acabaría en un «Conectar {X}» que no lleva a nada; un
     # módulo (Reservas) o el catálogo de Meta nunca se «conectan» desde el agente.
     if spec.skills or spec.connection_requests:
-        skill_ok = ctx.skill_integrations()
-        connect_ok = ctx.offered_connectors()
+        skill_ok = ctx.skill_integrations() | ctx.held_integrations
+        connect_ok = ctx.offered_connectors() | ctx.held_integrations
         for i, skill in enumerate(spec.skills or []):
             if skill.integration is not None and skill.integration not in skill_ok:
                 problems.append(
@@ -450,6 +454,10 @@ async def load_context(
     # ve «SIN ACTIVAR». En el turno respondería «Reservas no está activo».
     reservas_on = await reservas_enabled(session, tenant_id)
     model_args = _model_visible_args()
+    # Spec 060 (5.1): lo que el partner del cliente no puede usar no se ofrece.
+    from nexus_api.services.connectors.availability import unavailable_slugs_for_tenant
+
+    withheld = await unavailable_slugs_for_tenant(session, tenant_id)
     tools: dict[str, ToolInfo] = {}
     for tool, slug, connector_status in rows.tuples().all():
         integration = slug or requires_connector(tool.name, "tool") or requires_module(tool.name)
@@ -468,7 +476,8 @@ async def load_context(
             name=tool.name,
             status=getattr(tool.status, "value", str(tool.status)),
             integration=integration,
-            integration_offered=connector_status in (None, "available", "beta"),
+            integration_offered=connector_status in (None, "available", "beta")
+            and slug not in withheld,
             connected=connected,
             activatable=slug is not None,
             args=props,
@@ -502,19 +511,39 @@ async def load_context(
             ).all()
             if n
         )
+    # Lo que ninguna versión nueva podría nombrar y este agente ya nombra se conserva:
+    # Google Calendar (spec 043, R11.3) y lo de un conector que su partner perdió
+    # (spec 060, 5.7). Una nueva, no.
+    held_tools: frozenset[str] = frozenset()
+    held_integrations: frozenset[str] = frozenset()
+    if agent_id is not None:
+        named_tools, named_integrations = await _named_by_agent(session, agent_id)
+        held_tools = frozenset(
+            n
+            for n in named_tools
+            if not agent_may_use(n) or (n in tools and tools[n].integration in withheld)
+        )
+        held_integrations = (
+            named_integrations
+            | frozenset(tools[n].integration or "" for n in named_tools if n in tools)
+        ) & withheld
     return Context(
         tools=tools,
         service_ids=service_ids,
         agent_ids=agent_ids,
         foreign_names=foreign,
         legacy_chars=legacy_chars,
-        held_tools=await _held_tools(session, agent_id) if agent_id is not None else frozenset(),
+        held_tools=held_tools,
+        held_integrations=held_integrations,
     )
 
 
-async def _held_tools(session: AsyncSession, agent_id: uuid.UUID) -> frozenset[str]:
-    """Lo que este agente ya nombra y ninguna versión nueva podría nombrar: en su versión activa o
-    en su borrador, en sus herramientas, en el AgentSpec o en sus procedimientos."""
+async def _named_by_agent(
+    session: AsyncSession, agent_id: uuid.UUID
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Las herramientas y las integraciones que este agente ya nombra: en su versión
+    activa o en su borrador, en sus herramientas, en el AgentSpec, en sus
+    procedimientos, en sus habilidades y en sus peticiones de conexión."""
     from nexus_api.db.models import AgentConfig, AgentConfigStatus
 
     rows = await session.execute(
@@ -524,6 +553,7 @@ async def _held_tools(session: AsyncSession, agent_id: uuid.UUID) -> frozenset[s
         )
     )
     names: set[Any] = set()
+    integrations: set[Any] = set()
     for tools, spec in rows.all():
         doc = spec if isinstance(spec, Mapping) else {}
         names.update(tools or [])
@@ -531,7 +561,14 @@ async def _held_tools(session: AsyncSession, agent_id: uuid.UUID) -> frozenset[s
         for procedure in doc.get("procedures") or []:
             if isinstance(procedure, Mapping):
                 names.update(procedure.get("tools") or [])
-    return frozenset(n for n in names if isinstance(n, str) and not agent_may_use(n))
+        for key in ("skills", "connection_requests"):
+            for item in doc.get(key) or []:
+                if isinstance(item, Mapping):
+                    integrations.add(item.get("integration"))
+    return (
+        frozenset(n for n in names if isinstance(n, str)),
+        frozenset(i for i in integrations if isinstance(i, str)),
+    )
 
 
 @lru_cache(maxsize=1)

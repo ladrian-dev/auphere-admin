@@ -71,6 +71,7 @@ from .composio_client import (
     ComposioUnavailable,
 )
 from .consent_token import sign_consent_token
+from .errors import ConnectorNotFound, not_found_message
 from .toolkits import allowlist_for, hint_for_slug
 
 log = structlog.get_logger(__name__)
@@ -81,10 +82,6 @@ log = structlog.get_logger(__name__)
 #: Connectors whose tools are never an agent's. They are connected elsewhere: Google
 #: Calendar, per professional from Reservas (spec 043, requirements 11 and 12).
 SYSTEM_ONLY_CONNECTORS: Final = frozenset({"googlecalendar"})
-
-
-class ConnectorNotFound(LookupError):
-    pass
 
 
 class ConnectorAlreadyConnected(RuntimeError):
@@ -164,9 +161,20 @@ async def _load_connector_by_slug(session: AsyncSession, slug: str) -> Connector
     """Connectors live in the global catalog — no RLS, slug is unique."""
     conn = await session.scalar(select(Connector).where(Connector.slug == slug))
     if conn is None:
-        msg = f"connector slug not found in catalog: {slug!r}"
-        raise ConnectorNotFound(msg)
+        raise ConnectorNotFound(not_found_message(slug))
     return conn
+
+
+async def _load_available_connector(
+    session: AsyncSession, tenant_id: uuid.UUID, slug: str
+) -> Connector:
+    """Spec 060 (5.2): el conector, solo si el partner del cliente puede usarlo.
+    Si no, ``ConnectorUnavailable``, que es un ``ConnectorNotFound`` con el mismo
+    texto: quien llama responde igual que a un slug que no existe."""
+    from nexus_api.services.connectors.availability import ensure_connector_available
+
+    await ensure_connector_available(session, tenant_id, slug)
+    return await _load_connector_by_slug(session, slug)
 
 
 async def _load_tenant_connector(
@@ -356,7 +364,7 @@ async def initiate_consent(
     actor: str,
 ) -> InitiateConsentResult:
     """Start the OAuth consent dance for an oauth_composio connector."""
-    connector = await _load_connector_by_slug(session, connector_slug)
+    connector = await _load_available_connector(session, tenant.id, connector_slug)
     if connector.auth_kind != "oauth_composio":
         msg = (
             f"connector {connector_slug} has auth_kind={connector.auth_kind!r}; "
@@ -495,7 +503,18 @@ async def complete_consent_from_webhook(
         msg = f"orphan tenant_connector {tc.id}"
         raise RuntimeError(msg)
 
-    if upstream_status == "ACTIVE":
+    from nexus_api.services.connectors.availability import unavailable_slugs_for_tenant
+
+    if upstream_status == "ACTIVE" and connector.slug in await unavailable_slugs_for_tenant(
+        session, tc.tenant_id
+    ):
+        # Spec 060 (5.2): un consentimiento iniciado antes de que el partner perdiera
+        # el conector no deja una conexión utilizable.
+        tc.status = TenantConnectorStatus.ERROR.value
+        tc.consent_token = None
+        tc.consent_token_expires_at = None
+        action = "connector.unavailable_for_partner"
+    elif upstream_status == "ACTIVE":
         tc.status = TenantConnectorStatus.CONNECTED.value
         tc.connected_at = datetime.now(UTC)
         tc.scopes_granted = list(granted_scopes)
@@ -543,7 +562,7 @@ async def complete_consent_from_webhook(
     )
     counters.incr(f"connector.consent.{action.split('.')[-1]}:{connector.slug}")
 
-    if upstream_status != "ACTIVE":
+    if upstream_status != "ACTIVE" or tc.status != TenantConnectorStatus.CONNECTED.value:
         return CompleteConsentResult(
             tenant_connector_id=tc.id,
             tools_added=[],
@@ -1096,7 +1115,7 @@ async def bootstrap_browser_credentials(
     actor: str,
 ) -> TenantConnector:
     """Register an existing tenant_credentials row as a connector install."""
-    connector = await _load_connector_by_slug(session, connector_slug)
+    connector = await _load_available_connector(session, tenant.id, connector_slug)
     if connector.auth_kind != "browser_credentials":
         msg = (
             f"connector {connector_slug} has auth_kind={connector.auth_kind!r}; "
@@ -1170,7 +1189,7 @@ async def bootstrap_api_key(
     row (if any) is left in place — historical credentials are an
     audit signal, not garbage.
     """
-    connector = await _load_connector_by_slug(session, connector_slug)
+    connector = await _load_available_connector(session, tenant.id, connector_slug)
     if connector.auth_kind != "api_key":
         msg = (
             f"connector {connector_slug} has auth_kind={connector.auth_kind!r}; "

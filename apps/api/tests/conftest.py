@@ -417,6 +417,10 @@ _TRUNCATE_TABLES = (
     "partner_allocations",
     "partner_wallets",
     "partner_model_allowlist",
+    # Spec 060 (0232): qué partners pueden usar cada conector. Sin semilla: sin
+    # filas todo está disponible, y una prueba que restringe no restringe la siguiente.
+    "connector_partner_access",
+    "connector_access_defaults",
     "partner_tenants",
     "api_keys",
     # Migration 0080 — console principals. Invitations FK memberships

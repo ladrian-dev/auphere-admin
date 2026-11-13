@@ -39,6 +39,7 @@ from nexus_api.db.models import (
 )
 from sqlalchemy import select, text
 
+from nexus_mcp._connector_access import connection_is_available
 from nexus_mcp.base import ToolBase, ToolError
 from nexus_mcp.servers.amigable_cobro.client import DEFAULT_BASE_URL, AmigableCobroClient
 from nexus_mcp.servers.amigable_cobro.errors import AmigableCobroNotFound
@@ -102,6 +103,11 @@ async def _load_amigable_client(tenant_id: uuid.UUID) -> AmigableCobroClient:
         if row is None:
             raise AmigableCobroNotConfigured(
                 "Amigable Cobro connector is not connected for this tenant"
+            )
+        # Spec 060 (5.4): si el partner del cliente perdió el conector, «sin conexión».
+        if not await connection_is_available(session, tenant_id, _AMIGABLE_SLUG):
+            raise AmigableCobroNotConfigured(
+                "Amigable Cobro is not available to this client's partner"
             )
         tc: TenantConnector = row[0]
         cred_ref: dict[str, Any] = tc.credentials_ref or {}
