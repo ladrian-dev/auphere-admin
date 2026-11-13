@@ -133,7 +133,13 @@ async def _rows(scope: ClientScope) -> list[sa.Row[Any]]:
         )
         .order_by(ToolCatalog.name)
     )
-    return list((await scope.session.execute(stmt)).all())
+    rows = list((await scope.session.execute(stmt)).all())
+    # Spec 060 (5.1): lo de un conector que el partner del cliente no puede usar
+    # no aparece; ni apagado ni con aviso.
+    from nexus_api.services.connectors.availability import unavailable_slugs_for_tenant
+
+    withheld = await unavailable_slugs_for_tenant(scope.session, scope.tenant.id)
+    return [r for r in rows if r[1] not in withheld] if withheld else rows
 
 
 async def _overrides(scope: ClientScope) -> dict[str, str]:

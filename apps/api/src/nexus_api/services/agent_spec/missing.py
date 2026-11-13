@@ -112,8 +112,10 @@ def strip_doc(
     connection requests. So every read and write of its draft goes through here:
     nothing is refused for it, and the console reads it as missing."""
     lacking: list[MissingCapability] = []
-    skill_ok = ctx.skill_integrations()
-    offered = ctx.offered_connectors()
+    # Spec 060 (5.7): lo de un conector que el partner perdió y el agente ya tenía
+    # se conserva sin anotarse como «falta»: vuelve al rehabilitarlo.
+    skill_ok = ctx.skill_integrations() | ctx.held_integrations
+    offered = ctx.offered_connectors() | ctx.held_integrations
     out = dict(doc)
     skills = []
     for skill in doc.get("skills") or []:

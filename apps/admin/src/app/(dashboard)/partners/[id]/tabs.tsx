@@ -17,6 +17,8 @@ export const PARTNER_TAB_GROUPS: ProfileTabGroup[] = [
     tabs: [
       // Spec 032: which console views and services this partner has.
       { seg: "modules", label: "Módulos" },
+      // Spec 060: qué conectores pueden usar sus clientes.
+      { seg: "connectors", label: "Conectores" },
       { seg: "settings", label: "Configuración" },
       { seg: "knowledge", label: "Conocimiento" },
     ],

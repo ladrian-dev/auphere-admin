@@ -137,6 +137,7 @@ async def tool_policy(
     """La política de herramientas de conectores para el turno de ``agent_id``.
     Dentro de la sesión del cliente."""
     from nexus_api.services.channel_config import partner_on_v2
+    from nexus_api.services.connectors import availability
 
     # Spec 047, enmienda del 2026-10-29 (requisito 62.2, D53): también las
     # herramientas de un conector que el cliente aún no conectó (``connection_id``
@@ -144,7 +145,7 @@ async def tool_policy(
     # las ve hasta que la conexión exista y esté activada para el agente.
     rows = (
         await session.execute(
-            sa.select(ToolCatalog.name, ToolCatalog.read_only, TenantConnector.id)
+            sa.select(ToolCatalog.name, ToolCatalog.read_only, TenantConnector.id, Connector.slug)
             .join(Connector, Connector.id == ToolCatalog.connector_id)
             .outerjoin(
                 TenantConnector,
@@ -188,7 +189,15 @@ async def tool_policy(
     # versión lo nombre. Uno que aún no pasó sigue como estaba: quitárselo sin darle Reservas
     # lo dejaría sin agenda.
     passed = await _books_in_reservas(session, agent_id)
-    for name, catalog_read_only, connection_id in rows:
+    # Spec 060 (5.3): un conector no disponible para el partner del cliente no llega
+    # al turno, por ninguna rama. Va antes de cualquier ``continue``, incluida la que
+    # deja pasar fuera de la consola nueva. Si no se puede leer, el error sube y
+    # ``_load_tool_policy`` cierra el turno (5.8).
+    unavailable = await availability.unavailable_slugs_for_tenant(session, tenant_id)
+    for name, catalog_read_only, connection_id, slug in rows:
+        if slug in unavailable:
+            blocked.add(name)
+            continue
         if passed and name.startswith(SYSTEM_ONLY_PREFIX):
             blocked.add(name)
             continue
@@ -217,8 +226,14 @@ async def tool_policy(
 async def connection_of(
     session: AsyncSession, tenant_id: uuid.UUID, slug: str
 ) -> tuple[Connector, TenantConnector | None]:
+    from nexus_api.services.connectors.availability import unavailable_slugs_for_tenant
+
     connector = await session.scalar(sa.select(Connector).where(Connector.slug == slug))
-    if connector is None:
+    # Spec 060 (5.2): un conector que el partner del cliente no puede usar se
+    # responde igual que uno que no existe, en conectar, activar y desactivar.
+    if connector is None or connector.slug in await unavailable_slugs_for_tenant(
+        session, tenant_id
+    ):
         raise ActivationError("unknown_integration", 404)
     install = await session.scalar(
         sa.select(TenantConnector).where(
