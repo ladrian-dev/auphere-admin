@@ -30,6 +30,7 @@ from typing import Annotated, Any
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,6 +84,11 @@ from nexus_api.services.connectors.runtime import (  # noqa: E402, I001
 # ── shape ───────────────────────────────────────────────────────────────────
 
 
+class ConnectorAccessSummary(BaseModel):
+    default_enabled: bool = True
+    partner_decisions: int = 0
+
+
 class ConnectorOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     # ``id`` is null for dynamic Composio entries that haven't been
@@ -103,6 +109,9 @@ class ConnectorOut(BaseModel):
     status: str
     #: Spec 047 (36.4): los ajustes que pide cada activación.
     settings_schema: dict[str, Any] | None = None
+    #: Spec 060 (3.4): su valor por defecto para los partners y cuántos tienen
+    #: decisión propia, para marcarlo en el catálogo del panel.
+    access: ConnectorAccessSummary | None = None
 
 
 class TenantConnectorOut(BaseModel):
@@ -123,6 +132,9 @@ class TenantConnectorOut(BaseModel):
     connected_at: datetime | None
     disconnected_at: datetime | None
     consent_token_expires_at: datetime | None
+    #: Spec 060 (3.5): si el partner del cliente puede usar este conector. Una
+    #: conexión que ya no puede se marca «No disponible para su partner».
+    available_for_partner: bool = True
 
 
 class InitiateConsentOut(BaseModel):
@@ -214,10 +226,42 @@ async def list_catalog(
     items = await connector_catalog.list_catalog(
         session,
         composio,
+        audience=connector_catalog.OPERATOR,
         category=category,
         status_filter=status_filter,
     )
-    return [ConnectorOut.model_validate(c.__dict__) for c in items]
+    from nexus_api.db.models import ConnectorAccessDefault, ConnectorPartnerAccess
+
+    defaults = {
+        slug: enabled
+        for slug, enabled in (
+            await session.execute(
+                select(ConnectorAccessDefault.connector_slug, ConnectorAccessDefault.enabled)
+            )
+        ).all()
+    }
+    decisions = {
+        slug: int(n)
+        for slug, n in (
+            await session.execute(
+                select(ConnectorPartnerAccess.connector_slug, sa_func.count()).group_by(
+                    ConnectorPartnerAccess.connector_slug
+                )
+            )
+        ).all()
+    }
+    return [
+        ConnectorOut.model_validate(
+            {
+                **c.__dict__,
+                "access": ConnectorAccessSummary(
+                    default_enabled=defaults.get(c.slug, True),
+                    partner_decisions=decisions.get(c.slug, 0),
+                ),
+            }
+        )
+        for c in items
+    ]
 
 
 @router.get("/connectors/{slug}", response_model=ConnectorOut)
@@ -227,7 +271,9 @@ async def get_catalog_entry(
     composio: ComposioClientProtocol = Depends(get_composio_client),
     actor: str = Depends(require_admin_token),
 ) -> ConnectorOut:
-    entry = await connector_catalog.get_catalog_entry(session, composio, slug)
+    entry = await connector_catalog.get_catalog_entry(
+        session, composio, slug, audience=connector_catalog.OPERATOR
+    )
     if entry is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -249,6 +295,9 @@ async def _list_tenant_installs(
         .order_by(Connector.category, Connector.display_name)
     )
     rows = (await session.execute(stmt)).all()
+    from nexus_api.services.connectors.availability import unavailable_slugs_for_tenant
+
+    withheld = await unavailable_slugs_for_tenant(session, tenant_id)
     out: list[TenantConnectorOut] = []
     for tc, c in rows:
         out.append(
@@ -269,6 +318,7 @@ async def _list_tenant_installs(
                 connected_at=tc.connected_at,
                 disconnected_at=tc.disconnected_at,
                 consent_token_expires_at=tc.consent_token_expires_at,
+                available_for_partner=c.slug not in withheld,
             )
         )
     return out

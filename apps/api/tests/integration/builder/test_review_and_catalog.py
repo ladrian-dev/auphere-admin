@@ -236,7 +236,9 @@ async def test_the_judge_blocks_only_once_calibrated(
         return judge
 
     async with db_session.begin():
-        deployment = await db_session.scalar(sa.text("SELECT id FROM model_profiles LIMIT 1"))
+        deployment, model_id = (
+            await db_session.execute(sa.text("SELECT id, model_id FROM model_profiles LIMIT 1"))
+        ).one()
     try:
         set_calibration_judge(judge_that(agree=False))
         poor = await client.post(
@@ -245,7 +247,7 @@ async def test_the_judge_blocks_only_once_calibrated(
         assert poor.status_code == 201, poor.text
         assert poor.json()["passed"] is False and poor.json()["agreement"] < 0.85
         async with db_session.begin():
-            assert await judge_calibrated(db_session) is False
+            assert await judge_calibrated(db_session, model=model_id) is False
 
         set_calibration_judge(judge_that(agree=True))
         good = await client.post(
@@ -253,8 +255,9 @@ async def test_the_judge_blocks_only_once_calibrated(
         )
         assert good.json()["passed"] is True and good.json()["agreement"] == 1.0
         async with db_session.begin():
-            assert await judge_calibrated(db_session) is True
-        report = (await client.get("/admin/builder/judge-calibration", headers=ops)).json()
+            assert await judge_calibrated(db_session, model=model_id) is True
+        page = (await client.get("/admin/builder/judge-calibration", headers=ops)).json()
+        report = page["reports"]
         assert report[0]["passed"] is True
         assert len(report[0]["scores"]["items"]) == sum(len(e["labels"]) for e in examples.values())
     finally:
@@ -293,6 +296,8 @@ async def test_the_builder_eval_measures_the_bank_and_compares(
         second = await client.post("/admin/builder/eval", json={"limit": 2}, headers=ops)
         assert second.json()["vs_previous"]["validator_first_pass_pct"] == 0.0
         listed = (await client.get("/admin/builder/eval", headers=ops)).json()
-        assert len(listed) >= 2
+        assert len(listed["runs"]) >= 2
+        # Spec 059 (5.6, T033): la pantalla dice el tamaño real del banco.
+        assert listed["bank_size"] == len(bank()) == 120
     finally:
         set_eval_model(None)

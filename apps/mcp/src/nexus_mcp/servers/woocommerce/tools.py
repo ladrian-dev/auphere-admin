@@ -50,6 +50,7 @@ from nexus_api.db.models import (
 from nexus_api.db.models import Customer as NexusCustomer
 from sqlalchemy import select
 
+from nexus_mcp._connector_access import connection_is_available
 from nexus_mcp.base import ToolBase, ToolError
 from nexus_mcp.servers.woocommerce._ownership import order_belongs_to, own_orders
 from nexus_mcp.servers.woocommerce.client import WooCommerceClient
@@ -142,6 +143,9 @@ async def _load_woocommerce_client(tenant_id: uuid.UUID) -> WooCommerceClient:
         ).first()
         if row is None:
             raise WooCommerceNotConfigured("WooCommerce connector is not connected for this tenant")
+        # Spec 060 (5.4): si el partner del cliente perdió el conector, «sin conexión».
+        if not await connection_is_available(session, tenant_id, _WOOCOMMERCE_SLUG):
+            raise WooCommerceNotConfigured("WooCommerce is not available to this client's partner")
         tc: TenantConnector = row[0]
         cred_ref: dict[str, Any] = tc.credentials_ref or {}
         tenant_credentials_id_raw = cred_ref.get("tenant_credentials_id")

@@ -33,7 +33,7 @@ async def test_the_beta_is_enabled_per_country_and_never_in_the_eu(
 ) -> None:
     op, email = await _operator(db_session)
     headers = {**admin_headers, "X-Operator-Id": op}
-    assert (await client.get(URL, headers=headers)).json() == []
+    assert (await client.get(URL, headers=headers)).json()["countries"] == []
 
     on = await client.put(
         f"{URL}/cl", json={"enabled": True, "reason": "Meta la activó en Chile"}, headers=headers
@@ -74,4 +74,30 @@ async def test_without_an_operator_nothing_changes(
         f"{URL}/CL", json={"enabled": True, "reason": "x" * 5}, headers=admin_headers
     )
     assert resp.status_code in (400, 401, 403), "sin la persona de Auphere no se cambia"
-    assert (await client.get(URL, headers=admin_headers)).json() == []
+    assert (await client.get(URL, headers=admin_headers)).json()["countries"] == []
+
+
+async def test_the_list_says_whether_the_deployment_has_meta_s_configuration(
+    client: Any, admin_headers: dict[str, str], db_session: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec 059 (5.3, T035): sin la configuración de Meta del alta sin cuenta, el
+    panel no enseña la beta. La lista lo dice con ``configured``."""
+    from nexus_api.config import get_settings
+
+    op, _email = await _operator(db_session)
+    headers = {**admin_headers, "X-Operator-Id": op}
+    for empty in (None, ""):
+        monkeypatch.setattr(get_settings(), "meta_config_id_wa_login", empty, raising=False)
+        body = (await client.get(URL, headers=admin_headers)).json()
+        assert body == {"configured": False, "countries": []}
+
+    monkeypatch.setattr(get_settings(), "meta_config_id_wa_login", "1234567890", raising=False)
+    on = await client.put(
+        f"{URL}/CL", json={"enabled": True, "reason": "Meta la activó"}, headers=headers
+    )
+    assert on.status_code == 200, on.text
+    assert [c["country"] for c in on.json()] == ["CL"], "el PUT sigue devolviendo la lista"
+    body = (await client.get(URL, headers=admin_headers)).json()
+    assert body["configured"] is True
+    assert [c["country"] for c in body["countries"]] == ["CL"]
+    await client.put(f"{URL}/CL", json={"enabled": False, "reason": "limpieza"}, headers=headers)

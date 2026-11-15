@@ -1,5 +1,4 @@
 import {
-  Callout,
   EmptyState,
   Metric,
   Section,
@@ -14,16 +13,15 @@ import type { EvalRun } from "@/lib/backend-builder";
 
 import { DATE, EVAL_TARGETS, actorLabel, evalDelta, formatEvalValue, formatMs, formatPct, type EvalMetric } from "../labels";
 
+/**
+ * What the evaluation measures. Spec 059 (5.6): not the sector battery unedited
+ * — the evaluation does not run it on each draft, so it is not shown.
+ */
 const METRICS: { metric: EvalMetric; label: string; target: string }[] = [
   {
     metric: "validator_first_pass_pct",
     label: "Validador a la primera",
     target: `Objetivo ${formatPct(EVAL_TARGETS.validator_first_pass_pct)}`,
-  },
-  {
-    metric: "sector_pass_unedited_pct",
-    label: "Batería del sector sin edición",
-    target: `Objetivo ${formatPct(EVAL_TARGETS.sector_pass_unedited_pct)}`,
   },
   {
     metric: "draft_p90_ms",
@@ -32,22 +30,22 @@ const METRICS: { metric: EvalMetric; label: string; target: string }[] = [
   },
 ];
 
-type Props = { runs: EvalRun[]; operatorId: string };
+type Props = { runs: EvalRun[]; bankSize: number; operatorId: string };
 
 /**
- * Spec 047 (T100, 54.4, CE-002, CE-003): the builder against the bank of 100
- * descriptions — how many drafts pass the validator first time, how many pass
- * their sector's battery unedited, and the p90 of a draft — compared with the
- * run before.
+ * Spec 047 (T100, 54.4, CE-002, CE-003): the builder against the bank of
+ * descriptions — how many drafts pass the validator first time and the p90 of
+ * a draft — compared with the run before. Spec 059 (5.6): the bank has the size
+ * the API says.
  */
-export function EvalView({ runs, operatorId }: Props) {
+export function EvalView({ runs, bankSize, operatorId }: Props) {
   const [latest, previous] = runs;
   if (!latest) {
     return (
       <EmptyState
         readonly
         title="Todavía no se ha corrido la evaluación"
-        description="«Correr la evaluación» pasa por el constructor las 100 descripciones del banco y guarda las tres cifras."
+        description={`«Correr la evaluación» pasa por el constructor las ${bankSize} descripciones del banco y guarda sus dos cifras.`}
       />
     );
   }
@@ -64,7 +62,7 @@ export function EvalView({ runs, operatorId }: Props) {
         ) : (
           <p className="text-sm text-muted-foreground text-pretty">Es la primera: todavía no hay con qué compararla.</p>
         )}
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {METRICS.map(({ metric, label, target }) => {
             const before = previous ? previous[metric] : null;
             return (
@@ -78,11 +76,6 @@ export function EvalView({ runs, operatorId }: Props) {
             );
           })}
         </div>
-        {latest.sector_pass_unedited_pct === null ? (
-          <Callout tone="info" title="La batería del sector sin edición está sin medir">
-            Esta evaluación no corrió las pruebas del sector sobre cada borrador, así que esa cifra queda vacía y no se compara.
-          </Callout>
-        ) : null}
       </Section>
       <Section title="Historial" description="Las últimas evaluaciones, la más reciente primero, con la diferencia con la anterior.">
         <Table>
@@ -92,7 +85,6 @@ export function EvalView({ runs, operatorId }: Props) {
               <TableHead>Banco</TableHead>
               <TableHead>Quién</TableHead>
               <TableHead>Validador a la primera</TableHead>
-              <TableHead>Batería sin edición</TableHead>
               <TableHead>p90 del borrador</TableHead>
             </TableRow>
           </TableHeader>

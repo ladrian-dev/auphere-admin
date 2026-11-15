@@ -36,6 +36,7 @@ from nexus_api.db.models import AgentConfig, Partner, Tenant, TenantStatus
 from nexus_api.repositories.partner import EmbedAuditRepository
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.connectors.service import (
+    ConnectorNotFound,
     IncompatibleAuthKind,
     bootstrap_api_key,
 )
@@ -108,7 +109,9 @@ async def provision_client_blueprint(
                 endpoint_meta=connector_meta or {},
                 actor=actor,
             )
-        except (IncompatibleAuthKind, ValueError) as exc:
+        except (IncompatibleAuthKind, ValueError, ConnectorNotFound) as exc:
+            # Spec 060 (5.2): un conector que el partner ya no puede usar es
+            # ``ConnectorUnavailable``, un ``ConnectorNotFound``: el alta lo rechaza.
             raise ProvisioningError(str(exc)) from exc
         connector_connected = True
         await audit.record(

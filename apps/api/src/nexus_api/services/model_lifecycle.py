@@ -13,14 +13,22 @@ Tres cosas que Auphere hace desde el panel y que el cron del worker
   o a «Automático» si no, con **una versión nueva** (su historial) y una fila de
   auditoría ``agent.quality_changed``; el despliegue pasa a ``retired``. Los
   agentes con perfil no notan nada: el router deja de elegirlo.
-- **Precio** (41.8). Un precio entra con su fecha (``add_price``). Si sube más de
-  un 10 % el precio estimado por mensaje de un agente —con lo que ese agente
-  gastó los últimos 30 días, o con una llamada típica si no tiene tráfico—, su
-  partner recibe ``model.price_change`` antes de que entre en vigor. En su
-  fecha, el cron lo pasa a las columnas que lee el medidor.
-- **«No disponible»** (41.9). ``mark_unavailable``: el router deja de usarlo
-  desde el siguiente turno (``router_catalog.catalog_changed`` en este proceso
-  y ``CATALOG_CHANGED`` por el canal de promoción en los demás).
+- **Coste** (41.8, enmendado por la spec 059, 3.12). Un precio de coste entra con
+  su fecha, nunca pasada (``add_price``), y en su fecha el cron lo pasa a las
+  columnas que lee el medidor. **No avisa a nadie**: lo que paga el partner sale de
+  los pesos de venta, y el coste solo mueve el margen de Auphere.
+- **«No disponible»** (41.9). ``mark_unavailable``: el modelo deja de ejecutarse
+  desde el siguiente turno (``router_catalog.catalog_changed`` en este proceso y
+  ``CATALOG_CHANGED`` por el canal de promoción en los demás).
+
+**Spec 059: nadie deja mudos a los agentes.** «Retirar» y «No disponible» se
+rechazan sobre un modelo en uso (``services.model_usage``: un valor por defecto de
+la plataforma, un agente que responde con él o una asignación de cliente) y cuando
+no se puede verificar qué usa el worker. Las dos tienen vuelta atrás
+(``cancel_retirement`` y ``restore_available``). Y si llega la fecha de un modelo
+que ya estaba en retirada y aún tiene agentes que no tienen a dónde ir —sin
+sustituto y sin «Automático» que los atienda—, no se retira ni se los mueve: se
+queda en retirada y se avisa una vez al día (``deployment.retirement_blocked``).
 
 **Quién está «fijado»** en un despliegue: un agente con «Fijar un modelo»
 (``model_policy.kind = pinned``) y **un agente de hoy** —sin ``model_policy``—,
@@ -39,7 +47,7 @@ import math
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -53,13 +61,14 @@ from nexus_api.repositories import AuditRepository
 from nexus_api.repositories.agent_config import AgentConfigRepository
 from nexus_api.services import console_notifications
 from nexus_api.services.certification import certified_deployments_for_agent
+from nexus_api.services.model_usage import ModelUses, uses_of
 from nexus_api.services.router_catalog import (
     AUTO_MODEL_POLICY,
     NOMINAL_ESTIMATE,
     CatalogSnapshot,
     Deployment,
     Price,
-    TokenEstimate,
+    auto_servable,
     catalog_changed,
     estimate_cost_micros,
     hard_reason,
@@ -71,8 +80,6 @@ log = structlog.get_logger(__name__)
 
 #: Los avisos de retirada: a 30 días (o en cuanto se sabe) y a 7 (``events.md`` §3).
 RETIREMENT_NOTICE_DAYS: tuple[int, ...] = (30, 7)
-#: Un precio que sube el estimado por mensaje más que esto avisa (research, parte 7).
-PRICE_ALERT_RATIO = Decimal("1.10")
 #: Quien firma lo que hace el ciclo de vida solo.
 LIFECYCLE_ACTOR = "system:model_lifecycle"
 #: La ventana del perfil de turno de un agente (39.4).
@@ -82,20 +89,19 @@ USAGE_WINDOW_DAYS = 30
 #: medidor, así que un precio antiguo nunca pisa una columna.
 PRICES_FROM: date = date(2026, 10, 27)
 _CONVERSATION_TASKS = ("answer", "tool_turn")
-_TOKEN_METERS = {
-    "llm.input_tokens": "input_tokens",
-    "llm.output_tokens": "output_tokens",
-    "llm.cache_read": "cache_read_tokens",
-    "llm.cache_write": "cache_write_tokens",
-}
+#: Los estados a los que puede volver un modelo «No disponible» (0231).
+_RESTORABLE = frozenset({"draft", "certifying", "active", "retiring", "retired", "deprecated"})
 
 
 class LifecycleError(ValueError):
-    """Una operación del catálogo que no se puede hacer, con su código."""
+    """Una operación del catálogo que no se puede hacer, con su código. Si el motivo
+    es el uso del modelo (``model_in_use``, ``defaults_unverified``), ``uses`` dice
+    cuál."""
 
-    def __init__(self, code: str, detail: str) -> None:
+    def __init__(self, code: str, detail: str, *, uses: ModelUses | None = None) -> None:
         super().__init__(detail)
         self.code = code
+        self.uses = uses
 
 
 # ── lo que se lee de cada cliente ──────────────────────────────────────────
@@ -138,26 +144,18 @@ class Proposal:
         return self.substitute or "auto"
 
 
-@dataclass(frozen=True)
-class PriceAlert:
-    partner_id: uuid.UUID
-    deployment: str
-    valid_from: date
-    increase_pct: int
-    agents: tuple[dict[str, Any], ...]
-
-
 @dataclass
 class LifecycleReport:
     """Lo que hizo una pasada del cron."""
 
     retirement_notices: int = 0
-    price_notices: int = 0
     moved_agents: int = 0
     retired: list[str] = field(default_factory=list)
     prices_applied: list[str] = field(default_factory=list)
     #: Los clientes cuyos agentes cambiaron de versión: el worker los recarga.
     tenants_changed: set[uuid.UUID] = field(default_factory=set)
+    #: Spec 059 (1.8): las retiradas detenidas, con cuántos agentes atrapan.
+    blocked: dict[str, int] = field(default_factory=dict)
 
     @property
     def catalog_changed(self) -> bool:
@@ -371,6 +369,25 @@ async def _notify_retirement(
     return sent
 
 
+async def guard_not_in_use(key: str, *, redis: Any | None = None) -> None:
+    """Spec 059 (1.1 a 1.5): ``model_in_use`` si el modelo está en uso, o
+    ``defaults_unverified`` si no se puede verificar qué usa el worker. Sin caché:
+    un modelo recién asignado tiene que contar."""
+    if redis is None:
+        from nexus_api.core import redis_client
+
+        redis = redis_client.get_redis()
+    uses = await uses_of(key, redis=redis, cached=False)
+    if uses.in_use:
+        raise LifecycleError("model_in_use", f"{key} está en uso", uses=uses)
+    if not uses.verified:
+        raise LifecycleError(
+            "defaults_unverified",
+            f"no se puede verificar qué usa el worker ({uses.problem})",
+            uses=uses,
+        )
+
+
 async def announce_retirement(
     key: str,
     *,
@@ -379,15 +396,18 @@ async def announce_retirement(
     reason: str | None = None,
     now: datetime | None = None,
     default_respond: str | None = None,
+    redis: Any | None = None,
 ) -> list[Proposal]:
     """Auphere registra la fecha de retirada: ``retiring`` hasta entonces, y el
     aviso a los partners con agentes fijados si ya toca (con menos de 30 días,
-    en el acto). Devuelve el sustituto propuesto a cada agente fijado."""
+    en el acto). Devuelve el sustituto propuesto a cada agente fijado. Desde la
+    spec 059, solo sobre un modelo sin uso (``guard_not_in_use``)."""
     moment = now or datetime.now(UTC)
     if retire_after.tzinfo is None:
         raise LifecycleError("naive_date", "retire_after necesita zona horaria")
     if retire_after <= moment:
         raise LifecycleError("in_the_past", "la fecha de retirada ya pasó")
+    await guard_not_in_use(key, redis=redis)
     async with get_sessionmaker()() as session, session.begin():
         before = await session.scalar(
             sa.text("SELECT status FROM model_profiles WHERE model_id = :k FOR UPDATE"),
@@ -464,9 +484,84 @@ async def _move_agent(proposal: Proposal, *, retiring_key: str) -> bool:
     return True
 
 
-async def _retire_due(key: str, report: LifecycleReport, *, default_respond: str | None) -> None:
+def _trapped(snapshot: CatalogSnapshot, proposals: Sequence[Proposal]) -> list[Proposal]:
+    """Los agentes que no tienen a dónde ir: sin sustituto y sin «Automático» que
+    pueda atender a su cliente (spec 059, 1.8). Moverlos los dejaría mudos."""
+    return [
+        p
+        for p in proposals
+        if p.substitute is None
+        and not auto_servable(snapshot, eu_only=p.agent.eu_only, sovereign=p.agent.sovereign)
+    ]
+
+
+def _respond_default(default_respond: str | None) -> str:
+    if default_respond:
+        return default_respond
+    from nexus_worker.platform_models import default_models
+
+    return str(default_models()["respond"])
+
+
+async def blocked_retirements(
+    *, now: datetime | None = None, default_respond: str | None = None
+) -> dict[str, int]:
+    """``modelo → agentes atrapados`` de cada modelo en retirada con la fecha ya
+    pasada que no se puede retirar (spec 059, 1.8). Lo enseña Modelos."""
+    moment = now or datetime.now(UTC)
     snapshot = await _snapshot()
-    for proposal in await _proposals(key, default_respond=default_respond, snapshot=snapshot):
+    respond = _respond_default(default_respond)
+    out: dict[str, int] = {}
+    for key, deployment in sorted(snapshot.deployments.items()):
+        if deployment.status != "retiring" or deployment.retire_after is None:
+            continue
+        if moment < deployment.retire_after:
+            continue
+        trapped = _trapped(
+            snapshot, await _proposals(key, default_respond=respond, snapshot=snapshot)
+        )
+        if trapped:
+            out[key] = len(trapped)
+    return out
+
+
+async def _record_blocked(key: str, *, agents: int, moment: datetime) -> None:
+    """Una auditoría ``deployment.retirement_blocked`` al día por modelo, y el
+    evento en cada pasada para que lo vea quien mire los logs."""
+    day = moment.date().isoformat()
+    log.warning("model_lifecycle.retirement_blocked", deployment=key, agents=agents, day=day)
+    async with get_sessionmaker()() as session, session.begin():
+        seen = await session.scalar(
+            sa.text(
+                "SELECT 1 FROM audit_log WHERE action = 'deployment.retirement_blocked' "
+                "AND target = :t AND after_json ->> 'date' = :d LIMIT 1"
+            ),
+            {"t": f"deployment:{key}", "d": day},
+        )
+        if seen:
+            return
+        await AuditRepository(session).record(
+            actor=LIFECYCLE_ACTOR,
+            action="deployment.retirement_blocked",
+            target=f"deployment:{key}",
+            after={"agents": agents, "date": day},
+            platform=True,
+        )
+
+
+async def _retire_due(
+    key: str, report: LifecycleReport, *, default_respond: str | None, now: datetime
+) -> None:
+    snapshot = await _snapshot()
+    proposals = await _proposals(
+        key, default_respond=_respond_default(default_respond), snapshot=snapshot
+    )
+    trapped = _trapped(snapshot, proposals)
+    if trapped:
+        report.blocked[key] = len(trapped)
+        await _record_blocked(key, agents=len(trapped), moment=now)
+        return
+    for proposal in proposals:
         if await _move_agent(proposal, retiring_key=key):
             report.moved_agents += 1
             report.tenants_changed.add(proposal.agent.tenant_id)
@@ -492,11 +587,13 @@ async def _retire_due(key: str, report: LifecycleReport, *, default_respond: str
 # ── «No disponible» (41.9) ─────────────────────────────────────────────────
 
 
-async def mark_unavailable(key: str, *, actor: str, reason: str) -> str:
-    """El despliegue deja de cumplir su contrato o su licencia: el router deja
-    de usarlo desde el siguiente turno. Devuelve el estado que tenía."""
+async def mark_unavailable(key: str, *, actor: str, reason: str, redis: Any | None = None) -> str:
+    """El despliegue deja de cumplir su contrato o su licencia: deja de ejecutarse
+    desde el siguiente turno. Solo sobre un modelo sin uso (spec 059). Guarda el
+    estado que tenía para «Volver a disponible», y lo devuelve."""
     if not reason.strip():
         raise LifecycleError("reason_required", "hace falta el motivo")
+    await guard_not_in_use(key, redis=redis)
     async with get_sessionmaker()() as session, session.begin():
         before = await session.scalar(
             sa.text("SELECT status FROM model_profiles WHERE model_id = :k FOR UPDATE"),
@@ -506,10 +603,12 @@ async def mark_unavailable(key: str, *, actor: str, reason: str) -> str:
             raise LifecycleError("unknown_deployment", key)
         await session.execute(
             sa.text(
-                "UPDATE model_profiles SET status = 'unavailable', updated_at = now() "
+                "UPDATE model_profiles SET status = 'unavailable', "
+                "status_before_unavailable = CASE WHEN :b = 'unavailable' "
+                "THEN status_before_unavailable ELSE :b END, updated_at = now() "
                 "WHERE model_id = :k"
             ),
-            {"k": key},
+            {"k": key, "b": before},
         )
         await AuditRepository(session).record(
             actor=actor,
@@ -523,84 +622,100 @@ async def mark_unavailable(key: str, *, actor: str, reason: str) -> str:
     return str(before)
 
 
-# ── precio (41.8) ──────────────────────────────────────────────────────────
-
-
-def _usage_cost_micros(usage: Mapping[str, tuple[Decimal, Decimal]]) -> int:
-    return int(sum((cost for _qty, cost in usage.values()), Decimal(0)) * 1_000_000)
-
-
-def _estimate(usage: Mapping[str, tuple[Decimal, Decimal]]) -> TokenEstimate:
-    tokens = {
-        field_name: int(usage.get(meter, (Decimal(0), Decimal(0)))[0])
-        for meter, field_name in _TOKEN_METERS.items()
-    }
-    return TokenEstimate(**tokens)
-
-
-def message_price_ratio(
-    agent: AgentInCatalog, key: str, *, old: Price, new: Price
-) -> Decimal | None:
-    """Cuánto cambia el precio estimado por mensaje del agente si ``key`` pasa
-    de ``old`` a ``new``: con su perfil de turno de 30 días (39.4) —lo demás que
-    gastó no cambia— o, sin tráfico con ese modelo, con una llamada típica."""
-    on_key = agent.usage.get(key)
-    if on_key:
-        tokens = _estimate(on_key)
-        old_cost, new_cost = estimate_cost_micros(old, tokens), estimate_cost_micros(new, tokens)
-        total = sum(_usage_cost_micros(u) for u in agent.usage.values())
-        other = max(0, total - _usage_cost_micros(on_key))
-    else:
-        old_cost = estimate_cost_micros(old, NOMINAL_ESTIMATE)
-        new_cost = estimate_cost_micros(new, NOMINAL_ESTIMATE)
-        other = 0
-    if old_cost is None or new_cost is None or other + old_cost <= 0:
-        return None
-    return Decimal(other + new_cost) / Decimal(other + old_cost)
-
-
-async def _price_alerts(
-    key: str, price: Price, *, default_respond: str | None, now: datetime
-) -> list[PriceAlert]:
-    snapshot = await _snapshot()
-    deployment = snapshot.deployments.get(key)
-    old = deployment.price_on(price.valid_from - timedelta(days=1)) if deployment else None
-    if old is None:
-        return []
-    agents = await scan_agents(
-        default_respond=default_respond, usage_since=now - timedelta(days=USAGE_WINDOW_DAYS)
-    )
-    rows: dict[uuid.UUID, list[tuple[Decimal, AgentInCatalog]]] = {}
-    for agent in agents:
-        if agent.partner_id is None or not (agent.fixed_on == key or key in agent.usage):
-            continue
-        ratio = message_price_ratio(agent, key, old=old, new=price)
-        if ratio is not None and ratio > PRICE_ALERT_RATIO:
-            rows.setdefault(agent.partner_id, []).append((ratio, agent))
-    alerts: list[PriceAlert] = []
+async def cancel_retirement(key: str, *, actor: str, reason: str) -> None:
+    """Spec 059 (1.6): ``retiring`` vuelve a ``active`` y sin fecha. Los avisos
+    pendientes dejan de salir, porque el cron solo recorre lo que está en
+    retirada."""
+    if not reason.strip():
+        raise LifecycleError("reason_required", "hace falta el motivo")
     async with get_sessionmaker()() as session, session.begin():
-        for partner_id, items in sorted(rows.items(), key=lambda kv: str(kv[0])):
-            pct = _pct(max(r for r, _ in items))
-            listed = tuple(
-                a.notice_row(increase_pct=_pct(r))
-                for r, a in sorted(items, key=lambda x: (str(x[1].client_ref), x[1].agent_name))
+        row = (
+            await session.execute(
+                sa.text(
+                    "SELECT status, retire_after FROM model_profiles WHERE model_id = :k FOR UPDATE"
+                ),
+                {"k": key},
             )
-            row = await console_notifications.emit(
-                session,
-                partner_id=partner_id,
-                kind=NotificationKind.MODEL_PRICE_CHANGE,
-                severity=NotificationSeverity.WARNING,
-                data={
-                    "deployment": key,
-                    "valid_from": price.valid_from.isoformat(),
-                    "increase_pct": pct,
-                    "agents": list(listed),
-                },
-                dedupe_key=f"model.price_change:{key}:{price.valid_from.isoformat()}:{partner_id}",
+        ).one_or_none()
+        if row is None:
+            raise LifecycleError("unknown_deployment", key)
+        if row.status != "retiring":
+            raise LifecycleError("not_retiring", f"{key} está {row.status}")
+        await session.execute(
+            sa.text(
+                "UPDATE model_profiles SET status = 'active', retire_after = NULL, "
+                "updated_at = now() WHERE model_id = :k"
+            ),
+            {"k": key},
+        )
+        await AuditRepository(session).record(
+            actor=actor,
+            action="deployment.retirement_cancelled",
+            target=f"deployment:{key}",
+            before={
+                "status": "retiring",
+                "retire_after": row.retire_after.isoformat() if row.retire_after else None,
+            },
+            after={"status": "active", "reason": reason.strip()},
+            platform=True,
+        )
+    catalog_changed()
+
+
+async def restore_available(key: str, *, actor: str, reason: str) -> str:
+    """Spec 059 (1.7): «No disponible» vuelve al estado que tenía, sin pasar por
+    la puerta de activación: es deshacer, no activar. El estado sale de la
+    columna; si el modelo se marcó antes de la 0231, de su última auditoría; y si
+    no hay rastro, ``draft``, que no atiende a nadie. Devuelve el estado."""
+    if not reason.strip():
+        raise LifecycleError("reason_required", "hace falta el motivo")
+    async with get_sessionmaker()() as session, session.begin():
+        row = (
+            await session.execute(
+                sa.text(
+                    "SELECT status, status_before_unavailable FROM model_profiles "
+                    "WHERE model_id = :k FOR UPDATE"
+                ),
+                {"k": key},
             )
-            if row is not None:
-                alerts.append(PriceAlert(partner_id, key, price.valid_from, pct, listed))
-    return alerts
+        ).one_or_none()
+        if row is None:
+            raise LifecycleError("unknown_deployment", key)
+        if row.status != "unavailable":
+            raise LifecycleError("not_unavailable", f"{key} está {row.status}")
+        target = row.status_before_unavailable
+        if target is None:
+            target = await session.scalar(
+                sa.text(
+                    "SELECT before_json ->> 'status' FROM audit_log "
+                    "WHERE action = 'deployment.unavailable' AND target = :t "
+                    "AND before_json ->> 'status' <> 'unavailable' "
+                    "ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"t": f"deployment:{key}"},
+            )
+        if target not in _RESTORABLE:
+            target = "draft"
+        await session.execute(
+            sa.text(
+                "UPDATE model_profiles SET status = :s, status_before_unavailable = NULL, "
+                "updated_at = now() WHERE model_id = :k"
+            ),
+            {"k": key, "s": target},
+        )
+        await AuditRepository(session).record(
+            actor=actor,
+            action="deployment.restored",
+            target=f"deployment:{key}",
+            before={"status": "unavailable"},
+            after={"status": target, "reason": reason.strip()},
+            platform=True,
+        )
+    catalog_changed()
+    return str(target)
+
+
+# ── precio (41.8) ──────────────────────────────────────────────────────────
 
 
 async def add_price(
@@ -609,12 +724,13 @@ async def add_price(
     *,
     actor: str,
     today: date | None = None,
-    default_respond: str | None = None,
-) -> list[PriceAlert]:
-    """Un precio nuevo con su vigencia y su fuente. Si sube más de un 10 % el
-    precio estimado por mensaje de algún agente, avisa a su partner ya: antes de
-    que entre en vigor. Devuelve los avisos enviados."""
+) -> None:
+    """Un coste nuevo con su vigencia y su fuente. No avisa a nadie (spec 059,
+    3.12): el coste solo mueve el margen de Auphere. No entra con una fecha
+    pasada (4.4): el medidor no revalora lo que ya pasó."""
     day = today or datetime.now(UTC).date()
+    if price.valid_from < day:
+        raise LifecycleError("in_the_past", "la fecha de vigencia ya pasó")
     async with get_sessionmaker()() as session, session.begin():
         deployment_id = await session.scalar(
             sa.text("SELECT id FROM model_profiles WHERE model_id = :k"), {"k": key}
@@ -659,13 +775,6 @@ async def add_price(
             platform=True,
         )
     catalog_changed()
-    moment = datetime.combine(day, datetime.min.time(), tzinfo=UTC)
-    return await _price_alerts(key, price, default_respond=default_respond, now=moment)
-
-
-def _pct(ratio: Decimal) -> int:
-    """La subida en puntos enteros: 1,25 → 25."""
-    return round((ratio - 1) * 100)
 
 
 def _json(value: Mapping[str, Any]) -> str:
@@ -742,9 +851,8 @@ async def _apply_due_prices(today: date) -> list[str]:
 async def run_lifecycle(
     *, now: datetime | None = None, default_respond: str | None = None
 ) -> LifecycleReport:
-    """Una pasada: avisos de retirada a 30 y a 7 días, avisos de precio de lo
-    que aún no está en vigor, y lo que vence hoy (retiradas y precios).
-    Idempotente: cada aviso se deduplica y lo hecho no se rehace."""
+    """Una pasada: avisos de retirada a 30 y a 7 días y lo que vence hoy (retiradas
+    y precios). Idempotente: cada aviso se deduplica y lo hecho no se rehace."""
     moment = now or datetime.now(UTC)
     report = LifecycleReport()
     snapshot = await _snapshot()
@@ -752,30 +860,20 @@ async def run_lifecycle(
         if deployment.status != "retiring" or deployment.retire_after is None:
             continue
         if moment >= deployment.retire_after:
-            await _retire_due(key, report, default_respond=default_respond)
+            await _retire_due(key, report, default_respond=default_respond, now=moment)
             continue
         proposals = await _proposals(key, default_respond=default_respond, snapshot=snapshot)
         report.retirement_notices += await _notify_retirement(
             key, retire_after=deployment.retire_after, now=moment, proposals=proposals
         )
-    today = moment.date()
-    for key, deployment in sorted(snapshot.deployments.items()):
-        if deployment.status not in ("active", "retiring"):
-            continue
-        for price in deployment.prices:
-            if price.valid_from > today:
-                alerts = await _price_alerts(
-                    key, price, default_respond=default_respond, now=moment
-                )
-                report.price_notices += len(alerts)
-    report.prices_applied = await _apply_due_prices(today)
+    report.prices_applied = await _apply_due_prices(moment.date())
     if report.catalog_changed or report.moved_agents:
         catalog_changed()
     log.info(
         "model_lifecycle.tick",
         retirement_notices=report.retirement_notices,
-        price_notices=report.price_notices,
         moved_agents=report.moved_agents,
+        blocked=report.blocked,
         retired=report.retired,
         prices_applied=report.prices_applied,
     )
@@ -785,20 +883,21 @@ async def run_lifecycle(
 __all__ = [
     "LIFECYCLE_ACTOR",
     "PRICES_FROM",
-    "PRICE_ALERT_RATIO",
     "RETIREMENT_NOTICE_DAYS",
     "USAGE_WINDOW_DAYS",
     "AgentInCatalog",
     "LifecycleError",
     "LifecycleReport",
-    "PriceAlert",
     "Proposal",
     "add_price",
     "announce_retirement",
+    "blocked_retirements",
+    "cancel_retirement",
     "fixed_deployment",
+    "guard_not_in_use",
     "mark_unavailable",
-    "message_price_ratio",
     "propose_substitute",
+    "restore_available",
     "run_lifecycle",
     "scan_agents",
 ]

@@ -65,6 +65,14 @@ async def run_promote_subscriber(
                 # Spec 047 (41.9, 40.13): the operator changed the model catalog
                 # or a router profile — the next turn reads it, not in 5 minutes.
                 model_resolver.invalidate_catalog()
+                # Spec 059 (3.2): the sale weights and the target live in the
+                # meter's catalog — the next valuation charges the new ones.
+                from nexus_api.metering import sale_policy
+
+                from nexus_worker.metering import pricing
+
+                pricing.invalidate()
+                sale_policy.invalidate()
                 continue
             # ``<tenant_id>`` (every agent of the tenant — what every publisher
             # sends today) or ``<tenant_id>:<agent_id>`` (spec 030: just that

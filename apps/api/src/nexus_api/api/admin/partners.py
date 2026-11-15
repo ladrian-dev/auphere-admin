@@ -341,6 +341,17 @@ async def update_partner(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail=f"connector {changes['default_connector_slug']!r} not found",
                     )
+                # Spec 060 (4.3): el conector por defecto de un partner tiene que estar
+                # disponible para él, o el alta de sus clientes fallaría.
+                from nexus_api.services.connectors.availability import (
+                    unavailable_slugs_for_partner,
+                )
+
+                if connector.slug in await unavailable_slugs_for_partner(session, partner.id):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={"code": "default_connector_unavailable"},
+                    )
         for field, value in changes.items():
             setattr(partner, field, value)
         # ``updated_at`` is server-side ``onupdate``: the flush expires it,

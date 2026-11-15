@@ -54,6 +54,7 @@ from nexus_api.db.models import (
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
 
+from nexus_mcp._connector_access import connection_is_available
 from nexus_mcp.base import ToolBase, ToolError
 from nexus_mcp.servers.amigable_venta.client import DEFAULT_BASE_URL, AmigableVentaClient
 from nexus_mcp.servers.catalogo_local.client import LocalCatalogClient
@@ -144,6 +145,9 @@ async def _load_amigable_venta_client(tenant_id: uuid.UUID) -> AmigableVentaClie
             raise InventoryNotConfigured(
                 "Amigable Venta connector is not connected for this tenant"
             )
+        # Spec 060 (5.4): si el partner del cliente perdió el conector, «sin conexión».
+        if not await connection_is_available(session, tenant_id, _AMIGABLE_VENTA_SLUG):
+            raise InventoryNotConfigured("Amigable Venta is not available to this client's partner")
         tc: TenantConnector = row[0]
         cred_ref: dict[str, Any] = tc.credentials_ref or {}
         tenant_credentials_id_raw = cred_ref.get("tenant_credentials_id")

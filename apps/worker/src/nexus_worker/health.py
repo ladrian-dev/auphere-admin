@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import socket
+from collections.abc import Callable
 
 import structlog
 from redis.asyncio import Redis
@@ -25,6 +27,22 @@ log = structlog.get_logger(__name__)
 HEARTBEAT_KEY_PREFIX = "nexus:health:"
 HEARTBEAT_TTL_S = 60
 HEARTBEAT_INTERVAL_S = 20.0
+#: Spec 059 (1.5): la versión de lo que publica el latido. La API
+#: (``nexus_api.services.model_usage``) trata cualquier otra como «sin publicar».
+HEARTBEAT_VERSION = 1
+
+
+def models_payload() -> Callable[[], str]:
+    """El valor del latido con los modelos que usa este worker de verdad, con los
+    ajustes de su despliegue ya aplicados (spec 059, research D2). La API los
+    compara con los que calcula ella antes de dejar retirar un modelo."""
+
+    def build() -> str:
+        from nexus_worker.platform_models import default_models
+
+        return json.dumps({"v": HEARTBEAT_VERSION, "models": default_models()}, sort_keys=True)
+
+    return build
 
 
 def instance_name() -> str:
@@ -39,12 +57,21 @@ async def run_heartbeat(
     service: str,
     stop: asyncio.Event | None = None,
     interval_s: float = HEARTBEAT_INTERVAL_S,
+    payload: Callable[[], str] | None = None,
 ) -> None:
     key = f"{HEARTBEAT_KEY_PREFIX}{service}:{instance_name()}"
     log.info("heartbeat.start", service=service, key=key)
     while stop is None or not stop.is_set():
+        value = "1"
+        if payload is not None:
+            try:
+                value = payload()
+            except Exception as exc:
+                # Vivo pero sin publicar: la API lo leerá como «sin publicar» y
+                # no dejará retirar nada, que es lo seguro.
+                log.warning("heartbeat.payload_failed", service=service, error=str(exc))
         try:
-            await redis.setex(key, HEARTBEAT_TTL_S, "1")
+            await redis.setex(key, HEARTBEAT_TTL_S, value)
         except Exception as exc:
             log.warning("heartbeat.write_failed", service=service, error=str(exc))
         if stop is None:

@@ -1,6 +1,7 @@
 import { Callout, EmptyState, ErrorState, PageHeader, Section } from "@nexus/ui";
 
 import { backend } from "@/lib/backend";
+import { loginBetaBackend } from "@/lib/backend-whatsapp-beta";
 
 import { CatalogGrid } from "./catalog-grid";
 import { ChannelsTable } from "./channels-table";
@@ -15,9 +16,11 @@ export const dynamic = "force-dynamic";
  * client's own Canales tab, where the wizard knows whose number it is.
  */
 export default async function ChannelsPage() {
-  const [catalog, all] = await Promise.all([
+  const [catalog, all, beta] = await Promise.all([
     backend.getChannelCatalog().catch(() => null),
     backend.listAllChannels().catch(() => null),
+    // Spec 059 (5.3): the beta's tab only where it is configured; unreadable, no tab.
+    loginBetaBackend.countries().catch(() => null),
   ]);
   const active: Record<string, number> = {};
   for (const c of all?.channels ?? []) if (c.status !== "disconnected") active[c.type] = (active[c.type] ?? 0) + 1;
@@ -28,7 +31,7 @@ export default async function ChannelsPage() {
         title="Canales"
         description="Por dónde escriben los clientes de cada negocio. Para conectar uno, entra en el cliente y pulsa «Añadir canal»."
       />
-      <ChannelsTabs current="/channels" />
+      <ChannelsTabs current="/channels" beta={beta?.configured === true} />
       {catalog ? (
         <Section
           flat

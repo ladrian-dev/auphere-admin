@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: h.refresh, repl
 
 const { CalibrationView } = await import("../judge-calibration/calibration-view");
 const { RunCalibration } = await import("../judge-calibration/run-calibration");
-const { agreementOf, blockingCalibration, calibrationState, formatShare } = await import("../labels");
+const { agreementOf, calibrationState, formatShare, judgeCalibration } = await import("../labels");
 
 const ITEMS = [
   { id: "cal-01", key: "hours", label: "pass", judge: "pass", match: true },
@@ -34,6 +34,10 @@ const POOR: CalibrationReport = {
   certified_at: "2026-10-27T10:00:00Z",
   invalidated_at: null,
 };
+const LUNA_JUDGE = { model: "openai/gpt-5.6-luna", calibrated: false };
+const MISTRAL_JUDGE = { model: "mistral/large-eu", calibrated: true };
+const plain = (text: string | null | undefined) => (text ?? "").replace(/\s/g, " ");
+
 const GOOD: CalibrationReport = {
   ...POOR,
   deployment_id: "d-mistral",
@@ -60,14 +64,22 @@ describe("the judge's calibration", () => {
     expect(calibrationState(POOR)).toEqual({ label: "Suspendida", tone: "danger" });
     expect(calibrationState(GOOD)).toEqual({ label: "Aprobada", tone: "positive" });
     expect(calibrationState({ ...GOOD, invalidated_at: "2026-10-27T11:00:00Z" }).label).toBe("Caducada");
-    expect(blockingCalibration([POOR])).toBeNull();
-    expect(blockingCalibration([POOR, { ...GOOD, invalidated_at: "2026-10-27T11:00:00Z" }])).toBeNull();
-    expect(blockingCalibration([POOR, GOOD])).toBe(GOOD);
+  });
+
+  /** Spec 059 (5.4, 5.5): only the calibration of the model that judges counts. */
+  it("only the judge's own passed calibration still in force counts", () => {
+    expect(judgeCalibration([POOR], "openai/gpt-5.6-luna")).toBeNull();
+    expect(judgeCalibration([POOR, { ...GOOD, invalidated_at: "2026-10-27T11:00:00Z" }], "mistral/large-eu")).toBeNull();
+    expect(judgeCalibration([POOR, GOOD], "mistral/large-eu")).toBe(GOOD);
+    expect(judgeCalibration([POOR, GOOD], "openai/gpt-5.6-luna")).toBeNull();
   });
 
   it("says the judge does not block yet, and shows the agreement against the threshold", () => {
-    render(<CalibrationView reports={[POOR]} />);
+    render(<CalibrationView judge={LUNA_JUDGE} reports={[POOR]} />);
     expect(screen.getByText("El juez todavía no bloquea ninguna publicación")).toBeTruthy();
+    expect(plain(screen.getByText(/El juez de este despliegue es/).textContent)).toContain(
+      "El juez de este despliegue es openai/gpt-5.6-luna y no tiene una calibración aprobada y vigente",
+    );
     expect(screen.getByText(/se decide solo por el estado final/)).toBeTruthy();
     expect(screen.getByText("Informe de openai/gpt-5.6-luna")).toBeTruthy();
     const meter = screen.getByRole("progressbar", { name: "Acuerdo con las etiquetas humanas" });
@@ -83,7 +95,7 @@ describe("the judge's calibration", () => {
   });
 
   it("filters the disagreements", async () => {
-    render(<CalibrationView reports={[POOR]} />);
+    render(<CalibrationView judge={LUNA_JUDGE} reports={[POOR]} />);
     await userEvent.click(screen.getByRole("checkbox", { name: "Solo los desacuerdos (2)" }));
     const rows = within(screen.getByRole("table", { name: "Ejemplos de la calibración" })).getAllByRole("row");
     expect(rows).toHaveLength(3);
@@ -91,21 +103,35 @@ describe("the judge's calibration", () => {
     expect(screen.getAllByText("No sé").length).toBeGreaterThan(0);
   });
 
-  it("says the judge blocks once one deployment passed, and lists every calibration", () => {
-    render(<CalibrationView reports={[POOR, GOOD]} selected="d-mistral" />);
+  it("says the judge blocks once the judge itself passed, and lists every calibration", () => {
+    render(<CalibrationView judge={MISTRAL_JUDGE} reports={[POOR, GOOD]} />);
     expect(screen.getByText("El juez ya puede bloquear una publicación")).toBeTruthy();
+    expect(plain(screen.getByText(/El juez de este despliegue es/).textContent)).toContain(
+      "El juez de este despliegue es mistral/large-eu: coincide con las etiquetas humanas en el 91,3 %",
+    );
+    // Without a choice, the judge's own report is the one open.
     expect(screen.getByText("Informe de mistral/large-eu")).toBeTruthy();
     const all = screen.getByRole("region", { name: "Todas las calibraciones" });
     expect(within(all).getByRole("link", { name: "openai/gpt-5.6-luna" }).getAttribute("href")).toBe(
       "/builder/judge-calibration?deployment=d-gpt",
     );
     expect(within(all).getByText("Aprobada")).toBeTruthy();
+    expect(within(all).getByText("Juez")).toBeTruthy();
   });
 
-  it("has an empty state", () => {
-    render(<CalibrationView reports={[]} />);
+  it("a passed calibration of another model does not make the judge block", () => {
+    render(<CalibrationView judge={LUNA_JUDGE} reports={[POOR, GOOD]} selected="d-mistral" />);
+    expect(screen.getByText("El juez todavía no bloquea ninguna publicación")).toBeTruthy();
+    expect(screen.queryByText("El juez ya puede bloquear una publicación")).toBeNull();
+    expect(screen.getByText(/Las calibraciones aprobadas de otros modelos no cuentan/)).toBeTruthy();
+    expect(screen.getByText("Informe de mistral/large-eu")).toBeTruthy();
+  });
+
+  it("has an empty state that still names the judge", () => {
+    render(<CalibrationView judge={LUNA_JUDGE} reports={[]} />);
     expect(screen.getByText("Todavía no se ha calibrado ningún juez")).toBeTruthy();
     expect(screen.getByText("El juez todavía no bloquea ninguna publicación")).toBeTruthy();
+    expect(screen.getByText(/openai\/gpt-5.6-luna/)).toBeTruthy();
   });
 });
 

@@ -10,6 +10,7 @@ router decide sin llamar a nadie.
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -17,6 +18,7 @@ from typing import Any
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
+from nexus_worker.platform_models import default_models
 from nexus_worker.runtime import model_resolver
 
 from nexus_api.core import respond_catalog
@@ -192,7 +194,13 @@ async def test_changing_capabilities_expires_the_class_certifications(client, op
     assert live == 0, "las capacidades caducan la certificación (42.2)"
 
 
-async def test_prices_retirement_and_unavailable(client, ops) -> None:
+async def test_prices_retirement_and_unavailable(client, ops, fake_redis) -> None:
+    # Spec 059: retirar y «No disponible» exigen verificar qué usa el worker.
+    await fake_redis.set(
+        "nexus:health:nexus-worker:host-1",
+        json.dumps({"v": 1, "models": default_models()}),
+        ex=60,
+    )
     created = await _created(client, ops)
     url = f"{BASE}/{created['uuid']}"
     price = await client.post(
@@ -208,7 +216,7 @@ async def test_prices_retirement_and_unavailable(client, ops) -> None:
         },
     )
     assert price.status_code == 201, price.text
-    assert price.json()["alerts"] == 0
+    assert "alerts" not in price.json(), "spec 059: el coste no avisa a nadie"
     listed = (await client.get(BASE, headers=ops["headers"])).json()["items"]
     [row] = [d for d in listed if d["deployment"]["id"] == KEY]
     assert [p["valid_from"] for p in row["deployment"]["prices"]] == ["2030-01-01"]

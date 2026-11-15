@@ -3,6 +3,11 @@
  * certifications (`contracts/admin-api.md` §1–§3). Apart from `backend.ts` so
  * the screens of the ola 6 carry their own types; same `call`, same token.
  *
+ * Spec 059 (`specs/059-aparcar-router-y-precios/contracts/admin-api.md`): each
+ * row says what uses its model and what it sells for; the way back from a
+ * retirement and from «No disponible»; the sale weights and the platform's
+ * target multiplier. Decimals travel as strings, as the API writes them.
+ *
  * Every write names the operator (`X-Operator-Id`) and carries its reason:
  * the API puts both in the platform audit. Server-side only.
  */
@@ -56,6 +61,52 @@ export type DeploymentContract = {
   meter_weights: { w_in: number | null; w_cache: number | null; w_out: number | null };
 };
 
+/** Why the API could not check the worker's models (research D2). */
+export type ModelUsesProblem = "no_heartbeat" | "unpublished" | "mismatch" | "api_outdated";
+
+/** §1: what uses a model. `defaults` is an open list of the registry's uses. */
+export type ModelUses = {
+  defaults: string[];
+  agents: number;
+  clients: string[];
+  verified: boolean;
+  problem: ModelUsesProblem | null;
+};
+
+export type SaleLaneKey = "input" | "cache_read" | "output";
+
+/** One lane, per million tokens: cost, weight, sale (`weight × sell`) and `sale ÷ cost`. */
+export type SaleLane = {
+  cost: string | null;
+  weight: string | null;
+  sale: string | null;
+  multiplier: string | null;
+};
+
+/** `unknown`: the target cannot be read and nothing sinks under the floor (4.7). */
+export type SaleState =
+  | "on_target"
+  | "drift"
+  | "below_floor"
+  | "unweighted"
+  | "per_minute"
+  | "no_cost"
+  | "unknown";
+
+/** §1: what the partner pays for a model. Per minute, or without cost, there are no lanes to propose. */
+export type SaleInfo = {
+  state: SaleState;
+  lanes: Partial<Record<SaleLaneKey, SaleLane>> | null;
+  proposed: Record<SaleLaneKey, string> | null;
+};
+
+/** §1 and §7: `multiplier` is `null` when the setting cannot be read (4.7). */
+export type SalePolicy = {
+  multiplier: string | null;
+  floor: string;
+  sell_usd_per_million: string;
+};
+
 export type DeploymentRow = {
   uuid: string;
   display_name: string | null;
@@ -64,7 +115,44 @@ export type DeploymentRow = {
   certified_tasks: string[];
   activation_missing: string[];
   activation_messages: Record<string, string>;
+  uses: ModelUses;
+  sale: SaleInfo;
+  /** The agents still answering with a model whose retirement day came (1.8). */
+  retirement_blocked_agents: number | null;
 };
+
+export type DeploymentList = { items: DeploymentRow[]; statuses: DeploymentStatus[]; sale_policy: SalePolicy };
+
+/**
+ * Spec 059: the panel and the API do not deploy in the same instant (Vercel and
+ * ECS). An older API sends no `uses`, `sale` nor `sale_policy`: the panel fills
+ * them without claiming anything it does not know — the use stays «not verified»
+ * and the sale «without a target».
+ */
+export function normalizeRow(row: DeploymentRow): DeploymentRow {
+  return {
+    ...row,
+    // `api_outdated` (panel only): that API does not protect, so the panel treats
+    // the model as in use and offers no destructive action.
+    uses: row.uses ?? { defaults: [], agents: 0, clients: [], verified: false, problem: "api_outdated" },
+    sale: row.sale ?? { state: "unknown", lanes: null, proposed: null },
+    retirement_blocked_agents: row.retirement_blocked_agents ?? null,
+  };
+}
+
+export function normalizeList(list: DeploymentList): DeploymentList {
+  return {
+    ...list,
+    items: list.items.map(normalizeRow),
+    sale_policy: list.sale_policy ?? { multiplier: null, floor: "1.5", sell_usd_per_million: "10" },
+  };
+}
+
+/** §6: the three weights, or none; decimals greater than zero. */
+export type WeightsIn = { input: string; cache_read: string; output: string; reason: string };
+
+/** §7. */
+export type SalePolicyIn = { multiplier: string; apply_to_all: boolean; reason: string };
 
 export type DeploymentIn = {
   id: string;
@@ -216,8 +304,8 @@ function query(params: Record<string, string | undefined>): string {
 
 export const modelsBackend = {
   listDeployments: (filters: { status?: string; provider?: string; task?: string } = {}) =>
-    call<{ items: DeploymentRow[]; statuses: DeploymentStatus[] }>(
-      `/admin/models/deployments${query(filters)}`,
+    call<DeploymentList>(`/admin/models/deployments${query(filters)}`).then((list) =>
+      list === null ? null : normalizeList(list),
     ),
   createDeployment: (body: DeploymentIn, operatorId: string) =>
     call<DeploymentRow>("/admin/models/deployments", {
@@ -231,8 +319,9 @@ export const modelsBackend = {
       body: { reason },
       headers: op(operatorId),
     }),
+  /** §3: no notice to the partners any more; a date before today is `422 in_the_past`. */
   addPrice: (uuid: string, body: PriceIn, operatorId: string) =>
-    call<{ alerts: number; deployment: DeploymentRow }>(`/admin/models/deployments/${uuid}/prices`, {
+    call<{ deployment: DeploymentRow }>(`/admin/models/deployments/${uuid}/prices`, {
       method: "POST",
       body,
       headers: op(operatorId),
@@ -246,6 +335,35 @@ export const modelsBackend = {
     call<DeploymentRow>(`/admin/models/deployments/${uuid}/unavailable`, {
       method: "POST",
       body: { reason },
+      headers: op(operatorId),
+    }),
+  /** §4: `retiring → active`. */
+  cancelRetirement: (uuid: string, reason: string, operatorId: string) =>
+    call<DeploymentRow>(`/admin/models/deployments/${uuid}/cancel-retirement`, {
+      method: "POST",
+      body: { reason },
+      headers: op(operatorId),
+    }),
+  /** §5: `unavailable →` the state it had before. */
+  restore: (uuid: string, reason: string, operatorId: string) =>
+    call<DeploymentRow>(`/admin/models/deployments/${uuid}/restore`, {
+      method: "POST",
+      body: { reason },
+      headers: op(operatorId),
+    }),
+  /** §6: in force when saved, without telling the partners. */
+  putWeights: (uuid: string, body: WeightsIn, operatorId: string) =>
+    call<DeploymentRow>(`/admin/models/deployments/${uuid}/weights`, {
+      method: "PUT",
+      body,
+      headers: op(operatorId),
+    }),
+  /** §7. */
+  getSalePolicy: () => call<SalePolicy>("/admin/models/sale-policy"),
+  putSalePolicy: (body: SalePolicyIn, operatorId: string) =>
+    call<{ sale_policy: SalePolicy; applied_to: string[] }>("/admin/models/sale-policy", {
+      method: "PUT",
+      body,
       headers: op(operatorId),
     }),
 

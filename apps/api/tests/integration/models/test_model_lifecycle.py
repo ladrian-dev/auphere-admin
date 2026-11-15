@@ -7,10 +7,15 @@
   En la fecha, cada agente pasa al propuesto si está certificado para él, o a
   «Automático» si no, con una versión nueva (su historial) y una fila de
   auditoría. Los agentes con perfil no notan nada.
-- **Precio**: un precio nuevo entra con su fecha. Si sube más de un 10 % el
-  precio estimado por mensaje de un agente, su partner recibe
-  ``model.price_change`` antes de que entre en vigor.
+- **Precio**: un precio nuevo entra con su fecha. Desde la spec 059 no avisa a
+  nadie (``test_cost_without_notices.py``).
 - **«No disponible»**: el router deja de usarlo desde el siguiente turno.
+
+**Spec 059.** Anunciar la retirada de un modelo con agentes ya no se puede
+(``test_lifecycle_guards.py``). Lo que sigue aquí es lo que hace el cron con un
+modelo que **ya estaba** en retirada: avisa a 30 y a 7 días y, en la fecha, mueve
+cada agente a su sustituto certificado; si alguno no tiene a dónde ir, la
+retirada se detiene en vez de dejarlo en «Automático» sin modelo.
 
 Contra la base de verdad, con despliegues de prueba (prefijo ``c3l-``) que se
 borran al acabar: ``model_profiles`` es de plataforma y el ``conftest`` no lo
@@ -26,9 +31,11 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+import fakeredis.aioredis
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
+from nexus_worker.platform_models import default_models
 from nexus_worker.runtime import model_resolver
 from nexus_worker.runtime.model_resolver import PinnedModel, RouteContext, chain_for
 
@@ -179,6 +186,19 @@ async def _notices(partner_id: uuid.UUID, kind: str) -> list[ConsoleNotification
         return list(rows.all())
 
 
+async def _retiring(key: str, retire_after: datetime) -> None:
+    """Un modelo que ya estaba en retirada antes de las guardas de la spec 059."""
+    async with get_sessionmaker()() as session, session.begin():
+        await session.execute(
+            sa.text(
+                "UPDATE model_profiles SET status = 'retiring', retire_after = :d "
+                "WHERE model_id = :k"
+            ),
+            {"k": key, "d": retire_after},
+        )
+    model_resolver.invalidate_catalog()
+
+
 def _pinned(key: str) -> dict[str, Any]:
     return {"model_policy": {"kind": "pinned", "deployment": key}}
 
@@ -234,16 +254,14 @@ async def test_a_retirement_is_announced_30_and_7_days_ahead_with_the_closest_su
     agents,
 ) -> None:
     a, b = agents["a"], agents["b"]
-    proposals = await model_lifecycle.announce_retirement(
-        OLD, retire_after=NOW + timedelta(days=45), actor="operator:luis@auphere.com", now=NOW
-    )
-    by_agent = {p.agent.agent_id: p.substitute for p in proposals}
-    assert by_agent == {
-        agents["certified"][0]: NEAR,
-        agents["uncertified"][0]: None,
-        agents["today"][0]: None,
-    }, "de la misma gama y con el precio más cercano; sin certificado, «Automático»"
-    assert await _notices(a["partner_id"], "model.retirement") == [], "faltan más de 30 días"
+    with pytest.raises(model_lifecycle.LifecycleError) as caught:
+        await model_lifecycle.announce_retirement(
+            OLD, retire_after=NOW + timedelta(days=45), actor="operator:luis@auphere.com", now=NOW
+        )
+    assert caught.value.code == "model_in_use", "spec 059: con agentes no se anuncia"
+    await _retiring(OLD, NOW + timedelta(days=45))
+    report = await model_lifecycle.run_lifecycle(now=NOW)
+    assert report.retirement_notices == 0, "faltan más de 30 días"
 
     report = await model_lifecycle.run_lifecycle(now=NOW + timedelta(days=15))
     assert report.retirement_notices == 2  # partner A y partner B
@@ -273,33 +291,36 @@ async def test_a_retirement_is_announced_30_and_7_days_ahead_with_the_closest_su
 
 async def test_a_short_notice_retirement_is_announced_at_once(agents) -> None:
     a = agents["a"]
-    await model_lifecycle.announce_retirement(
-        OLD, retire_after=NOW + timedelta(days=10), actor="operator:luis@auphere.com", now=NOW
-    )
+    await _retiring(OLD, NOW + timedelta(days=10))
+    await model_lifecycle.run_lifecycle(now=NOW)
     [notice] = await _notices(a["partner_id"], "model.retirement")
     assert notice.payload["days_left"] == 10
 
 
-async def test_on_the_date_the_agents_move_with_their_history(agents) -> None:
-    a, b = agents["a"], agents["b"]
-    await model_lifecycle.announce_retirement(
-        OLD, retire_after=NOW + timedelta(days=30), actor="operator:luis@auphere.com", now=NOW
-    )
+async def test_on_the_date_agents_with_nowhere_to_go_hold_the_retirement(agents) -> None:
+    """Spec 059 (1.8): «Ventas» y «De hoy» no tienen sustituto certificado, y
+    «Automático» no puede atender a su cliente. Moverlos los dejaría mudos."""
+    a = agents["a"]
+    await _retiring(OLD, NOW + timedelta(days=30))
+    report = await model_lifecycle.run_lifecycle(now=NOW + timedelta(days=30, minutes=1))
+    assert report.retired == [] and report.moved_agents == 0
+    assert report.blocked == {OLD: 2}
+    certified = await _versions(a["tenant_id"], agents["certified"][0])
+    assert certified == [("active", _pinned(OLD))], "ni siquiera el que tenía sustituto"
+
+
+async def test_on_the_date_the_agents_move_with_their_history(console_world, catalog) -> None:
+    a = console_world["a"]
+    certified = await _agent(a["tenant_id"], "Reservas", _pinned(OLD), certified=(NEAR, FAR, BIG))
+    await _retiring(OLD, NOW + timedelta(days=30))
     report = await model_lifecycle.run_lifecycle(now=NOW + timedelta(days=30, minutes=1))
     assert report.retired == [OLD]
-    assert report.moved_agents == 3
+    assert report.moved_agents == 1
 
-    certified = await _versions(a["tenant_id"], agents["certified"][0])
-    assert certified == [
+    assert await _versions(a["tenant_id"], certified[0]) == [
         ("archived", _pinned(OLD)),
         ("active", {"model_policy": {"kind": "pinned", "deployment": NEAR}}),
     ]
-    uncertified = await _versions(a["tenant_id"], agents["uncertified"][0])
-    assert uncertified[-1] == ("active", AUTO)
-    today = await _versions(b["tenant_id"], agents["today"][0])
-    assert today[-1][0] == "active" and today[-1][1]["model_policy"] == AUTO["model_policy"]
-    assert today[-1][1]["llm"] == {"respond_model": OLD}, "lo demás de la versión, igual"
-    assert len(await _versions(b["tenant_id"], agents["profiled"][0])) == 1
 
     async with get_sessionmaker()() as session, tenant_scoped_session(session, a["tenant_id"]):
         audit = (
@@ -311,7 +332,7 @@ async def test_on_the_date_the_agents_move_with_their_history(agents) -> None:
                 )
             )
         ).all()
-    assert len(audit) == 2
+    assert len(audit) == 1
     assert {row.actor for row in audit} == {"system:model_lifecycle"}
     assert {row.after["reason"] for row in audit} == {"model.retirement"}
 
@@ -324,10 +345,7 @@ async def test_on_the_date_the_agents_move_with_their_history(agents) -> None:
 
 
 async def test_a_retiring_model_keeps_serving_until_its_date(agents) -> None:
-    await model_lifecycle.announce_retirement(
-        OLD, retire_after=NOW + timedelta(days=30), actor="operator:luis@auphere.com", now=NOW
-    )
-    model_resolver.invalidate_catalog()
+    await _retiring(OLD, NOW + timedelta(days=30))
     snapshot = await model_resolver.get_catalog_snapshot(force=True)
     assert snapshot.deployments[OLD].status == "retiring"
     decision = chain_for(
@@ -346,39 +364,13 @@ async def test_a_retiring_model_keeps_serving_until_its_date(agents) -> None:
 # ── precio (41.8) ──────────────────────────────────────────────────────────
 
 
-async def test_a_price_rise_over_ten_percent_is_announced_before_it_takes_effect(
-    agents,
-) -> None:
-    a, b = agents["a"], agents["b"]
-    soon = NOW.date() + timedelta(days=20)
-    small = Price(valid_from=soon, input=Decimal("1.04"), output=Decimal("5.2"))
-    assert await model_lifecycle.add_price(OLD, small, actor="operator:x", today=NOW.date()) == []
-    assert await _notices(a["partner_id"], "model.price_change") == []
-
-    later = soon + timedelta(days=10)
-    big = Price(valid_from=later, input=Decimal("1.30"), output=Decimal("6.5"))
-    alerts = await model_lifecycle.add_price(OLD, big, actor="operator:x", today=NOW.date())
-    assert {x.partner_id for x in alerts} == {a["partner_id"], b["partner_id"]}
-    [notice] = await _notices(a["partner_id"], "model.price_change")
-    assert notice.payload["deployment"] == OLD
-    assert notice.payload["valid_from"] == later.isoformat()
-    # Frente al precio que sustituye (el de +4 % del día 20), no al de hoy:
-    # 1950 / 1560 µUSD por mensaje nominal.
-    assert notice.payload["increase_pct"] == 25
-    assert sorted(x["agent"] for x in notice.payload["agents"]) == ["Reservas", "Ventas"]
-    [for_b] = await _notices(b["partner_id"], "model.price_change")
-    assert sorted(x["agent"] for x in for_b.payload["agents"]) == ["Automático", "De hoy"], (
-        "también el agente con perfil que lo usa: su precio por mensaje sube"
-    )
-
-    report = await model_lifecycle.run_lifecycle(now=NOW + timedelta(days=1))
-    assert report.price_notices == 0, "uno por cambio"
-
-
 async def test_a_price_enters_on_its_date(agents) -> None:
     soon = NOW.date() + timedelta(days=5)
     await model_lifecycle.add_price(
-        OLD, Price(valid_from=soon, input=Decimal("1.30"), output=Decimal("6.5")), actor="x"
+        OLD,
+        Price(valid_from=soon, input=Decimal("1.30"), output=Decimal("6.5")),
+        actor="x",
+        today=NOW.date(),
     )
     await model_lifecycle.run_lifecycle(now=NOW)
     async with get_sessionmaker()() as session:
@@ -400,9 +392,15 @@ async def test_a_price_enters_on_its_date(agents) -> None:
 # ── «No disponible» (41.9) ─────────────────────────────────────────────────
 
 
-async def test_unavailable_stops_being_used_from_the_next_turn(agents) -> None:
-    b = agents["b"]
-    profiled, _ = agents["profiled"]
+async def test_unavailable_stops_being_used_from_the_next_turn(console_world, catalog) -> None:
+    """Un agente con perfil no está «fijado»: lo usa porque el router lo elige, así
+    que el modelo no está en uso y se puede marcar «No disponible» (spec 059)."""
+    b = console_world["b"]
+    profiled, _ = await _agent(b["tenant_id"], "Automático", AUTO, certified=(OLD,))
+    redis = fakeredis.aioredis.FakeRedis()
+    await redis.set(
+        "nexus:health:nexus-worker:host-1", json.dumps({"v": 1, "models": default_models()}), ex=60
+    )
     snapshot = await model_resolver.get_catalog_snapshot(force=True)
     now = NOW.timestamp()
     ctx = RouteContext(
@@ -417,7 +415,7 @@ async def test_unavailable_stops_being_used_from_the_next_turn(agents) -> None:
     assert chain_for("answer", snapshot.profiles["auto"], ctx).chosen == OLD
 
     await model_lifecycle.mark_unavailable(
-        OLD, actor="operator:luis@auphere.com", reason="El proveedor rompió su DPA."
+        OLD, actor="operator:luis@auphere.com", reason="El proveedor rompió su DPA.", redis=redis
     )
     fresh = await model_resolver.get_catalog_snapshot()
     decision = chain_for(
@@ -441,7 +439,7 @@ async def test_unavailable_stops_being_used_from_the_next_turn(agents) -> None:
 
 
 def test_the_notice_days_are_the_contracts() -> None:
-    """Research, parte 7: aviso de retirada ≥ 30 días; de precio, +10 %."""
-    days, ratio = model_lifecycle.RETIREMENT_NOTICE_DAYS, model_lifecycle.PRICE_ALERT_RATIO
-    assert days == (30, 7)
-    assert ratio == Decimal("1.10")
+    """Research, parte 7: aviso de retirada ≥ 30 días. El de precio se retiró con la
+    spec 059 (3.12)."""
+    assert model_lifecycle.RETIREMENT_NOTICE_DAYS == (30, 7)
+    assert not hasattr(model_lifecycle, "PRICE_ALERT_RATIO")

@@ -44,10 +44,14 @@ export default async function TenantConnectorsPage({
           tenantId={id}
           rows={catalog
             .filter((c) => !isChannelOnly(c) && c.status !== "deprecated")
-            .map((c) => ({
-              connector: c,
-              status: installed.find((tc) => tc.connector_slug === c.slug)?.status ?? null,
-            }))}
+            .map((c) => {
+              const install = installed.find((tc) => tc.connector_slug === c.slug);
+              return {
+                connector: c,
+                status: install?.status ?? null,
+                availableForPartner: install?.available_for_partner,
+              };
+            })}
         />
       )}
     </div>

@@ -465,7 +465,13 @@ principal si lo pide una habilidad) o «Conectado» con «Ajustes» y «Quitar»
 buscador sin etiqueta a la vista y el filtro segmentado con recuentos («Todos»,
 «Conectados» y cada categoría). Primero lo que piden las habilidades y luego lo
 conectado (62.5, `orderConnectors`). WhatsApp y TikTok no
-salen: son canales (`provider_meta.channel_only`), como en el admin. «Conectar» pide el
+salen: son canales (`provider_meta.channel_only`), como en el admin. **Spec 060**: tampoco
+sale un conector que Auphere no ha habilitado para el partner del cliente (el catálogo
+disponible para el partner de la 047, 35.2). No aparece en integraciones, capacidades,
+conectores del agente, herramientas del conector ni en el constructor; pedir su detalle,
+conectarlo o activarlo responde lo mismo que un conector que no existe. Un agente que ya
+tenía sus herramientas se sigue guardando: se conservan sin mostrarse y vuelven al
+rehabilitarlo. Detalle en `docs/admin.md`, «Qué partners pueden usar cada conector». «Conectar» pide el
 permiso y llama a `POST …/connections`: si ya estaba autorizado, lo activa; si es
 OAuth, abre la autorización y la API lo activa al terminar; si pide una clave
 (`409 authorize_with_form`), se guarda con el alta de siempre y después

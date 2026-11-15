@@ -373,9 +373,16 @@ async def test_the_judge_has_one_dimension_per_criterion_and_does_not_block_unca
         )
     assert result is not None and {d["verdict"] for d in result.dimensions} == {"unknown"}
 
-    # Calibrado (certificación de la tarea ``judge``), el mismo juez sí bloquea.
+    # Calibrado (certificación de la tarea ``judge``), el mismo juez sí bloquea. Spec
+    # 059 (5.4): la calibración que cuenta es la del modelo que hace de juez.
+    from nexus_worker.platform_models import default_models
+
     async with db_session.begin():
-        deployment = await db_session.scalar(sa.text("SELECT id FROM model_profiles LIMIT 1"))
+        deployment = await db_session.scalar(
+            sa.text("SELECT id FROM model_profiles WHERE model_id = :m"),
+            {"m": default_models()["judge"]},
+        )
+        assert deployment is not None, "el juez del registro está en el catálogo"
         await db_session.execute(
             sa.text(
                 "INSERT INTO model_task_certifications "

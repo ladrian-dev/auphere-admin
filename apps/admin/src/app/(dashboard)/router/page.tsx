@@ -1,11 +1,22 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+
 import { ErrorState, PageHeader, Section } from "@nexus/ui";
 import { modelsBackend } from "@/lib/backend-models";
+import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 
 import { ProfileEditor } from "./profile-editor";
 import { RoutePreview } from "./route-preview";
 import { RouterTabs } from "./router-tabs";
 
-export const metadata = { title: "Router" };
+/**
+ * Spec 059 (2.3): parked, the address is «no existe» from the metadata on — before
+ * streaming starts, so it is a real 404 and the tab does not say «Router».
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  if (!ROUTER_PANEL_VISIBLE) notFound();
+  return { title: "Router" };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -14,6 +25,8 @@ export const dynamic = "force-dynamic";
  * the next turn — and a preview of what it would choose for an agent.
  */
 export default async function RouterPage() {
+  // Spec 059 (2.3): parked, the address is «no existe», before asking the API.
+  if (!ROUTER_PANEL_VISIBLE) notFound();
   const [taxonomy, profiles, deployments] = await Promise.all([
     modelsBackend.taxonomy().catch(() => null),
     modelsBackend.profiles().catch(() => null),

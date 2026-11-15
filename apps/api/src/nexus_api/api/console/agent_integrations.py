@@ -188,7 +188,12 @@ async def agent_integrations(
     composio: ComposioClientProtocol = Depends(get_composio_client),
 ) -> list[IntegrationOut]:
     assert scope.agent_id is not None
-    entries = await connector_catalog.list_catalog(scope.session, composio, category=category)
+    entries = await connector_catalog.list_catalog(
+        scope.session,
+        composio,
+        audience=connector_catalog.ForTenant(scope.tenant.id),
+        category=category,
+    )
     installs = {
         row.Connector.slug: row.TenantConnector
         for row in (
@@ -486,6 +491,12 @@ async def _install(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown connection")
     connector = await scope.session.get(Connector, install.connector_id)
     assert connector is not None
+    # Spec 060 (5.1 y 5.2): la conexión de un conector que el partner del cliente ya
+    # no puede usar se responde igual que una que no existe.
+    from nexus_api.services.connectors.availability import unavailable_slugs_for_tenant
+
+    if connector.slug in await unavailable_slugs_for_tenant(scope.session, scope.tenant.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown connection")
     return install, connector
 
 

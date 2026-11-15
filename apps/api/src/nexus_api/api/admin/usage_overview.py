@@ -48,6 +48,7 @@ from nexus_api.db.models.channel import QA_PLAYGROUND_PROVIDER
 from nexus_api.db.models.conversation import Conversation, Message, MessageDirection
 from nexus_api.db.models.usage_record import UsageRecord
 from nexus_api.metering.pricing_policy import QUOTA_TARGET_MULTIPLIER
+from nexus_api.metering.sale_policy import target_multiplier
 from nexus_api.metering.wallet import credit_burn_by_day
 
 log = structlog.get_logger(__name__)
@@ -393,7 +394,8 @@ async def usage_overview(
             margin_pct=_margin(sale, total_cost),
             markup_pct=_markup(sale, total_cost),
             effective_multiplier=round(float(sale / total_cost), 2) if total_cost > 0 else None,
-            configured_multiplier=str(QUOTA_TARGET_MULTIPLIER),
+            # Spec 059 (3.6): el objetivo vigente; la constante si no se puede leer.
+            configured_multiplier=str(await target_multiplier() or QUOTA_TARGET_MULTIPLIER),
             tests_cost_usd=_dec(total_tests),
             net_profit_usd=_dec(sale - total_cost - total_tests),
             unpriced_events=unpriced_total,

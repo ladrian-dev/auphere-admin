@@ -93,6 +93,15 @@ def set_eval_llm_router(router: LLMRouter | None) -> None:
     _eval_router = router
 
 
+#: Spec 059 (1.1): los modelos de la cadena con la que corren las evaluaciones del
+#: panel. Están en el registro de valores por defecto
+#: (``nexus_worker.platform_models.default_models``), así que ninguno se puede
+#: retirar ni marcar «No disponible» mientras esta cadena los use.
+EVAL_CLASSIFY_MODEL = "anthropic/claude-haiku-4-5-20251001"
+EVAL_RESPOND_MODEL = "anthropic/claude-sonnet-4-6"
+EVAL_FALLBACK_MODEL = "openai/gpt-4o"
+
+
 def _resolve_router() -> LLMRouter:
     if _eval_router is not None:
         return _eval_router
@@ -101,9 +110,9 @@ def _resolve_router() -> LLMRouter:
 
     return LLMRouter(
         provider=LiteLLMProvider(),
-        classify_model="anthropic/claude-haiku-4-5-20251001",
-        respond_model="anthropic/claude-sonnet-4-6",
-        fallback_model="openai/gpt-4o",
+        classify_model=EVAL_CLASSIFY_MODEL,
+        respond_model=EVAL_RESPOND_MODEL,
+        fallback_model=EVAL_FALLBACK_MODEL,
     )
 
 

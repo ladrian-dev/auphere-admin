@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { NAV, allNavItems, isActive } from "../nav";
+import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
+
+import { NAV, allNavItems, isActive, navFor } from "../nav";
 
 describe("operator panel navigation (spec 031, R2)", () => {
   it("declares the groups and entries in the agreed order (R2.1)", () => {
@@ -16,10 +18,9 @@ describe("operator panel navigation (spec 031, R2)", () => {
       "Conectores",
       "Números de Auphere",
       "Playground QA",
-      // Spec 047 (T150): el catálogo de modelos, el router y las certificaciones.
+      // Spec 047 (T150): el catálogo de modelos. Router y Certificaciones,
+      // aparcados por la spec 059 (requisito 2).
       "Modelos",
-      "Router",
-      "Certificaciones",
       // Spec 047 (T087, T090, T100): la calidad del constructor.
       "Constructor",
       "Estado",
@@ -44,5 +45,42 @@ describe("operator panel navigation (spec 031, R2)", () => {
     const home = allNavItems()[0];
     expect(isActive("/", home)).toBe(true);
     expect(isActive("/partners", home)).toBe(false);
+  });
+});
+
+/** Spec 059, historia 2: the router is parked behind one setting. */
+describe("the parked router (2.1, 2.2, 2.7)", () => {
+  it("is parked by default, in every environment", () => {
+    expect(ROUTER_PANEL_VISIBLE).toBe(false);
+  });
+
+  it("parked, neither the sidebar nor the command palette offer Router or Certificaciones", () => {
+    const hrefs = allNavItems().map((i) => i.href);
+    expect(hrefs).not.toContain("/router");
+    expect(hrefs).not.toContain("/certifications");
+    expect(navFor(false)).toEqual(NAV);
+  });
+
+  it("visible, both come back where they were, and nothing else changes", () => {
+    const visible = navFor(true).flatMap((g) => g.items.map((i) => i.label));
+    expect(visible).toEqual([
+      "Panel",
+      "Partners",
+      "Clientes",
+      "Consumo",
+      "Altas",
+      "Tickets",
+      "Canales",
+      "Conectores",
+      "Números de Auphere",
+      "Playground QA",
+      "Modelos",
+      "Router",
+      "Certificaciones",
+      "Constructor",
+      "Estado",
+    ]);
+    const parked = navFor(false).flatMap((g) => g.items.map((i) => i.label));
+    expect(visible.filter((l) => l !== "Router" && l !== "Certificaciones")).toEqual(parked);
   });
 });

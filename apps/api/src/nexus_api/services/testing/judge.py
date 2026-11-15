@@ -12,7 +12,7 @@ El juez **no bloquea** una publicación hasta estar calibrado contra etiquetas
 humanas en español: la calibración es la certificación de clase de la tarea
 ``judge`` (``model_task_certifications``), con el acuerdo con las etiquetas como
 nota. Sin ella, sus dimensiones se enseñan pero la pasada se decide solo por el
-estado final.
+estado final. Cuenta solo la del modelo que hace de juez (spec 059, 5.4).
 """
 
 from __future__ import annotations
@@ -283,14 +283,21 @@ def agreement(labels: Sequence[Verdict], verdicts: Sequence[Verdict]) -> float:
     return hits / len(labels)
 
 
-async def judge_calibrated(session: AsyncSession) -> bool:
-    """¿Hay un despliegue del juez con su calibración vigente y aprobada?"""
+async def judge_calibrated(session: AsyncSession, *, model: str) -> bool:
+    """¿Tiene ``model``, el modelo que hace de juez en este despliegue, su
+    calibración aprobada y vigente?
+
+    Spec 059 (5.4): la de otro modelo no cuenta. Antes bastaba con que algún
+    despliegue estuviera calibrado para que el juez bloqueara, aunque juzgara otro.
+    Quien llama pasa el juez del registro (``default_models()["judge"]``)."""
     found = await session.scalar(
         sa.text(
-            "SELECT 1 FROM model_task_certifications "
-            "WHERE task = :t AND passed AND invalidated_at IS NULL LIMIT 1"
+            "SELECT 1 FROM model_task_certifications c "
+            "JOIN model_profiles p ON p.id = c.deployment_id "
+            "WHERE c.task = :t AND c.passed AND c.invalidated_at IS NULL "
+            "AND p.model_id = :m LIMIT 1"
         ),
-        {"t": JUDGE_TASK},
+        {"t": JUDGE_TASK, "m": model},
     )
     return found is not None
 

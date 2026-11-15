@@ -152,6 +152,14 @@ class RunOut(BaseModel):
     tests: int
 
 
+def _judge_model() -> str:
+    """El modelo que hace de juez en este despliegue, del registro de la plataforma
+    (spec 059, 5.4): la calibración que cuenta es la suya, no la de cualquiera."""
+    from nexus_worker.platform_models import default_models
+
+    return str(default_models()["judge"])
+
+
 def _error(code: str, status_code: int) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code})
 
@@ -202,7 +210,7 @@ async def _suite_out(scope: ClientScope) -> SuiteOut:
     return SuiteOut(
         summary=summary,
         tests=[_test_out(t, outcomes[t.id]) for t in tests],
-        judge_calibrated=await judge_calibrated(scope.session),
+        judge_calibrated=await judge_calibrated(scope.session, model=_judge_model()),
         allowed=["add", "edit", "run"] if writes else [],
         next_full_pass=await billing.next_full_pass(
             scope.session,

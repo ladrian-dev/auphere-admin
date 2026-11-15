@@ -6,9 +6,10 @@ import { SectionTabs } from "@/components/shell/section-tabs";
 import { backend } from "@/lib/backend";
 import { leversBackend } from "@/lib/backend-levers";
 import { modelsBackend } from "@/lib/backend-models";
+import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 
 import { AnomaliesView } from "../router/anomalies/anomalies-view";
-import { DAY_OPTIONS, anomalyTotals, daysLabel, parseDays, sinceFor } from "./anomalies";
+import { DAY_OPTIONS, anomalyTotals, daysLabel, parseDays, sinceFor, summaryItems } from "./anomalies";
 import { GraphVersionCallout } from "./graph-version-callout";
 import { LedgerDiffs, MetaDiffs } from "./reconciliations-view";
 
@@ -18,19 +19,20 @@ export const dynamic = "force-dynamic";
 const ENV_LABEL: Record<string, string> = { production: "Producción", staging: "Staging", dev: "Desarrollo local" };
 const CHECK_LABEL: Record<string, string> = { postgres: "Base de datos", redis: "Redis" };
 
-const n = (value: number | null) => (value === null ? "Sin leer" : value);
-
 /**
  * Spec 031 (R6): is the API up, where is it, and what is deployed. Spec 047
  * (T172; 54.9, 43.9, 2.6): and what Auphere has to look at — the router's
  * reserve models and «Sin modelo disponible», the ledger's differences and
- * Meta's reconciliation of messages.
+ * Meta's reconciliation of messages. Spec 059 (2.4): with the router parked
+ * (`lib/router-panel.ts`), no Router block, none of its figures and no link
+ * to it; it is not even read.
  */
 export default async function StatusPage({ searchParams }: { searchParams: Promise<{ days?: string | string[] }> }) {
   const days = parseDays((await searchParams).days);
+  const routerVisible = ROUTER_PANEL_VISIBLE;
   const [instance, router, recon] = await Promise.all([
     backend.getInstance().catch(() => null),
-    modelsBackend.anomalies(sinceFor(days)).catch(() => null),
+    routerVisible ? modelsBackend.anomalies(sinceFor(days)).catch(() => null) : null,
     leversBackend.reconciliations(days).catch(() => null),
   ]);
   const totals = anomalyTotals(router, recon);
@@ -82,30 +84,26 @@ export default async function StatusPage({ searchParams }: { searchParams: Promi
           <DescriptionList
             layout="stacked"
             columns={3}
-            items={[
-              { key: "reserve", term: "Con modelo de reserva", detail: n(totals.reserve) },
-              { key: "no_model", term: "Sin modelo", detail: n(totals.noModel) },
-              { key: "waiting", term: "Esperan por «Sin modelo disponible»", detail: n(totals.waiting) },
-              { key: "ledger", term: "Diferencias del libro", detail: n(totals.ledger) },
-              { key: "meta", term: "Días con diferencias con Meta", detail: n(totals.meta) },
-            ]}
+            items={summaryItems(totals, routerVisible)}
           />
         </Section>
-        <Section
-          title="Router"
-          description="Las decisiones que cayeron en el modelo de reserva o se quedaron sin modelo en la residencia del cliente, y quién espera en la Bandeja por «Sin modelo disponible»."
-          actions={
-            <Link href="/router/anomalies" className="text-sm text-primary-deep underline-offset-4 hover:underline">
-              Abrir en Router
-            </Link>
-          }
-        >
-          {router === null ? (
-            <ErrorState title="No se pudieron leer las anomalías del router" description="La API no respondió. Vuelve a intentarlo en un momento." />
-          ) : (
-            <AnomaliesView data={router} />
-          )}
-        </Section>
+        {routerVisible ? (
+          <Section
+            title="Router"
+            description="Las decisiones que cayeron en el modelo de reserva o se quedaron sin modelo en la residencia del cliente, y quién espera en la Bandeja por «Sin modelo disponible»."
+            actions={
+              <Link href="/router/anomalies" className="text-sm text-primary-deep underline-offset-4 hover:underline">
+                Abrir en Router
+              </Link>
+            }
+          >
+            {router === null ? (
+              <ErrorState title="No se pudieron leer las anomalías del router" description="La API no respondió. Vuelve a intentarlo en un momento." />
+            ) : (
+              <AnomaliesView data={router} />
+            )}
+          </Section>
+        ) : null}
         <Section title="Libro de las bolsas" description="El cuadre de cada bolsa y de cada cuenta, calculado ahora: lo mismo que el proceso diario.">
           {recon === null ? (
             <ErrorState title="No se pudieron leer las conciliaciones" description="La API no respondió. Vuelve a intentarlo en un momento." />

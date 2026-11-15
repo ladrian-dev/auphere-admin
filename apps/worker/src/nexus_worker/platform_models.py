@@ -52,4 +52,111 @@ def platform_model(task: str) -> str:
     return settings.llm_extract_model
 
 
-__all__ = ["PLATFORM_MODELS", "platform_model"]
+# ── Spec 059: el registro de los modelos que la plataforma usa por defecto ──
+#
+# La protección de «Retirar» y «No disponible» (requisito 1.1) se apoya en este
+# registro: un modelo que aparezca aquí no se puede retirar ni marcar no disponible.
+# Lo leen la API, para decidir, y el latido del worker, que lo publica tal como lo
+# resuelve su proceso (1.5). ``tests/unit/test_platform_default_models.py`` barre
+# las configuraciones y el código: un valor por defecto que no pase por aquí lo
+# rompe.
+
+#: Campos ``*_model`` de las configuraciones que no son un valor por defecto de
+#: una tarea, con su motivo. Vacío hoy: cada campo es un uso.
+EXCLUDED_FIELDS: Final[dict[str, str]] = {}
+
+#: Ficheros con identificadores de modelo escritos a mano que no eligen modelo para
+#: ninguna tarea, con su motivo. Ruta relativa a ``src/``.
+EXCLUDED_SOURCES: Final[dict[str, str]] = {
+    "nexus_api/core/respond_catalog.py": (
+        "la semilla del catálogo y la lista de identificadores conocidos: no elige "
+        "modelo para ninguna tarea. Su SOL_MODEL_ID sí es un valor por defecto, y "
+        "entra en el registro como console_fallback y partner_default"
+    ),
+    "nexus_api/core/litellm_smoke.py": (
+        "la prueba de humo manual de LiteLLM (python -m): no corre en ningún servicio"
+    ),
+}
+
+
+#: Los usos que resuelve el proceso del worker con su propio entorno. Son los que la
+#: API compara con lo que publica el latido (research D2): los demás (companion,
+#: visión, evaluaciones, Playground…) los resuelve la API con el suyo, y que el
+#: worker los vea distintos no es un desacuerdo.
+WORKER_USES: Final[frozenset[str]] = frozenset(
+    {
+        "classify",
+        "classify_fallback",
+        "respond",
+        "respond_fallback",
+        "booking_brake",
+        "outcome_grader",
+        "extract",
+        "simulation",
+        *PLATFORM_MODELS,
+    }
+)
+
+
+def default_models() -> dict[str, str]:
+    """``uso → modelo`` de todo lo que la plataforma resuelve por defecto en este
+    proceso, con los ajustes del despliegue ya aplicados. Datos planos: el latido
+    lo publica tal cual."""
+    from nexus_api.config import get_settings
+    from nexus_api.core.respond_catalog import SOL_MODEL_ID
+    from nexus_api.services.evals.companion.driver import COMPANION_EVAL_MODEL
+    from nexus_api.services.evals.judge import EVAL_JUDGE_MODEL
+    from nexus_api.services.evals.pipeline_driver import (
+        EVAL_CLASSIFY_MODEL,
+        EVAL_FALLBACK_MODEL,
+        EVAL_RESPOND_MODEL,
+    )
+
+    from nexus_worker.config import get_worker_settings
+    from nexus_worker.guardrails.outcome_grader import DEFAULT_GRADER_MODEL
+
+    worker = get_worker_settings()
+    api = get_settings()
+    models: dict[str, str] = {
+        # El turno: ``bootstrap.build_default_router`` usa el de responder como
+        # reserva de los dos, y el freno de reservas clasifica con el clasificador.
+        "classify": worker.llm_classify_model,
+        "classify_fallback": worker.llm_respond_model,
+        "respond": worker.llm_respond_model,
+        "respond_fallback": worker.llm_respond_model,
+        "booking_brake": worker.llm_classify_model,
+        "outcome_grader": DEFAULT_GRADER_MODEL,
+        "extract": worker.llm_extract_model,
+        "simulation": worker.llm_simulation_model,
+        # El Playground QA responde como un turno real (5.7).
+        "qa_classify": worker.llm_classify_model,
+        "qa_respond": worker.llm_respond_model,
+        # La API.
+        "improve": api.llm_improve_model,
+        "companion": api.llm_companion_model,
+        "transcribe": api.llm_transcribe_model,
+        "vision": api.llm_vision_model,
+        "console_fallback": SOL_MODEL_ID,
+        "partner_default": SOL_MODEL_ID,
+        # Las evaluaciones que lanza el panel.
+        "evals_classify": EVAL_CLASSIFY_MODEL,
+        "evals_respond": EVAL_RESPOND_MODEL,
+        "evals_fallback": EVAL_FALLBACK_MODEL,
+        "evals_judge": EVAL_JUDGE_MODEL,
+        "evals_companion": COMPANION_EVAL_MODEL,
+    }
+    if api.knowledge_embedding_model:
+        models["knowledge_embedding"] = api.knowledge_embedding_model
+    for task in PLATFORM_MODELS:
+        models[task] = platform_model(task)
+    return models
+
+
+__all__ = [
+    "EXCLUDED_FIELDS",
+    "EXCLUDED_SOURCES",
+    "PLATFORM_MODELS",
+    "WORKER_USES",
+    "default_models",
+    "platform_model",
+]

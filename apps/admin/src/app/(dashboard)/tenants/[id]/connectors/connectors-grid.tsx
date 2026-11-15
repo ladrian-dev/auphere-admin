@@ -11,7 +11,12 @@ import { catalogLabels, useCatalog } from "@/components/catalog/use-catalog";
 import { categoryName, connectorState, urgency } from "@/components/connectors/labels";
 import type { Connector, TenantConnectorStatus } from "@/lib/backend";
 
-export type GridConnector = { connector: Connector; status: TenantConnectorStatus | null };
+export type GridConnector = {
+  connector: Connector;
+  status: TenantConnectorStatus | null;
+  /** Spec 060 (3.5): false si el partner del cliente ya no puede usar este conector. */
+  availableForPartner?: boolean;
+};
 
 /**
  * Spec 035: the client's connectors, like Chatwoot's Integrations — a card
@@ -60,10 +65,17 @@ export function ConnectorsGrid({ tenantId, rows }: { tenantId: string; rows: Gri
           <div key={id} className="flex flex-col gap-4 rounded-md p-4 ring-1 ring-foreground/10">
             <div className="flex items-start justify-between gap-3">
               <ConnectorLogo connector={row.connector} size="lg" />
-              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <StatusDot tone={state.tone} />
-                {state.label}
-              </span>
+              {row.availableForPartner === false ? (
+                <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  <StatusDot tone="warning" />
+                  No disponible para su partner
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  <StatusDot tone={state.tone} />
+                  {state.label}
+                </span>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium">{row.connector.display_name}</span>

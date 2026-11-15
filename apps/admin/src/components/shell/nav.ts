@@ -1,4 +1,6 @@
 import type { LucideIcon } from "lucide-react";
+
+import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 import {
   Activity,
   BadgeCheck,
@@ -25,7 +27,10 @@ import {
 export type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean };
 export type NavGroup = { id: string; label: string | null; items: NavItem[] };
 
-export const NAV: NavGroup[] = [
+/** The routes that only make sense with the router deciding (spec 059, requisito 2). */
+const ROUTER_ROUTES = new Set(["/router", "/certifications"]);
+
+const ALL: NavGroup[] = [
   {
     id: "home",
     label: null,
@@ -54,7 +59,8 @@ export const NAV: NavGroup[] = [
       { href: "/auphere/channels", label: "Números de Auphere", icon: Phone },
       { href: "/qa", label: "Playground QA", icon: FlaskConical },
       // Spec 047 (T150, historia 30): the model catalog, the router's policy
-      // and the certifications, without touching the database.
+      // and the certifications, without touching the database. Router and
+      // Certificaciones are parked by spec 059 (`navFor`).
       { href: "/models", label: "Modelos", icon: Cpu },
       { href: "/router", label: "Router", icon: Route },
       { href: "/certifications", label: "Certificaciones", icon: BadgeCheck },
@@ -70,6 +76,18 @@ export const NAV: NavGroup[] = [
     items: [{ href: "/status", label: "Estado", icon: Activity }],
   },
 ];
+
+/**
+ * The sidebar for a value of the router setting: parked, without Router and
+ * Certificaciones; visible, exactly as spec 047 left it. Pure, so both values
+ * are tested.
+ */
+export function navFor(routerVisible: boolean): NavGroup[] {
+  if (routerVisible) return ALL;
+  return ALL.map((g) => ({ ...g, items: g.items.filter((i) => !ROUTER_ROUTES.has(i.href)) }));
+}
+
+export const NAV: NavGroup[] = navFor(ROUTER_PANEL_VISIBLE);
 
 /** R2.2: a child route keeps its section lit (`/partners/x/money` → Partners). */
 export function isActive(pathname: string, item: NavItem): boolean {

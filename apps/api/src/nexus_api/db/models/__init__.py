@@ -130,6 +130,7 @@ from nexus_api.db.models.connector import (
     TenantConnectorStatus,
     TenantConnectorToolOverride,
 )
+from nexus_api.db.models.connector_access import ConnectorAccessDefault, ConnectorPartnerAccess
 from nexus_api.db.models.console_identity import (
     CONSOLE_AUTH_SCHEMA,
     ConsoleAccount,
@@ -439,7 +440,9 @@ __all__ = [
     "CompanionRun",
     "CompanionThread",
     "Connector",
+    "ConnectorAccessDefault",
     "ConnectorAuthKind",
+    "ConnectorPartnerAccess",
     "ConnectorStatus",
     "ConnectorToolMode",
     "ConsoleAccount",

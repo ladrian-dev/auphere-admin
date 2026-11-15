@@ -6,7 +6,12 @@ const TABS = [
   { href: "/channels/whatsapp-login", label: "Beta «WhatsApp login»" },
 ] as const;
 
-/** The views of Canales: every client's channels, and the beta by country. */
-export function ChannelsTabs({ current }: { current: (typeof TABS)[number]["href"] }) {
-  return <SectionTabs label="Canales" tabs={TABS} current={current} />;
+/**
+ * The views of Canales: every client's channels, and the beta by country.
+ * Spec 059 (5.3): the beta only when the deployment has Meta's configuration
+ * for it (`beta`); without it the tab is not there at all.
+ */
+export function ChannelsTabs({ current, beta }: { current: (typeof TABS)[number]["href"]; beta: boolean }) {
+  const tabs = beta ? TABS : TABS.filter((t) => t.href !== "/channels/whatsapp-login");
+  return <SectionTabs label="Canales" tabs={tabs} current={current} />;
 }

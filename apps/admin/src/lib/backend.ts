@@ -701,6 +701,10 @@ export type AuphereOwnerChannelOut = {
   updated_at: string;
 };
 
+/**
+ * Spec 059 (D11, 5.1): the panel no longer sends `webhook_secret` — Meta signs
+ * with the app's secret — though the API still accepts it.
+ */
 export type AuphereChannelCreateInput = {
   phone_e164: string;
   display_name: string;
@@ -708,18 +712,18 @@ export type AuphereChannelCreateInput = {
   provider?: AuphereChannelProvider;
   provider_phone_id?: string | null;
   is_default?: boolean;
-  webhook_secret?: string | null;
   access_token?: string | null;
 };
 
+/** Spec 059 (6.2, 6.4): every change carries its reason, which goes to the audit. */
 export type AuphereChannelUpdateInput = {
   display_name?: string;
   country_code?: string | null;
   provider_phone_id?: string | null;
   active?: boolean;
   is_default?: boolean;
-  webhook_secret?: string | null;
   access_token?: string | null;
+  reason: string;
 };
 
 // ── owner_phone_index (per tenant) ────────────────────────────────────
@@ -870,6 +874,8 @@ export type Connector = {
   status: ConnectorCatalogStatus;
   /** Spec 047 (36.4): the settings each activation asks for (JSON Schema); null = none. */
   settings_schema?: Record<string, unknown> | null;
+  /** Spec 060 (3.4): its default for partners and how many partners have their own decision. */
+  access?: { default_enabled: boolean; partner_decisions: number } | null;
 };
 
 export type TenantConnectorStatus =
@@ -898,6 +904,8 @@ export type TenantConnector = {
   connected_at: string | null;
   disconnected_at: string | null;
   consent_token_expires_at: string | null;
+  /** Spec 060 (3.5): whether the client's partner may use this connector. */
+  available_for_partner?: boolean;
 };
 
 export type InitiateConsentOut = {
@@ -2068,22 +2076,25 @@ export const backend = {
       { optional: true },
     ),
 
-  createAuphereChannel: (body: AuphereChannelCreateInput) =>
+  // Spec 059 (6.4): every write names the operator (`X-Operator-Id`), and the
+  // audit records that person; a change and a deactivation carry their reason.
+
+  createAuphereChannel: (body: AuphereChannelCreateInput, operatorId: string) =>
     call<AuphereOwnerChannelOut>(
       "/admin/auphere/channels",
-      { method: "POST", body },
+      { method: "POST", body, headers: { "X-Operator-Id": operatorId } },
     ),
 
-  updateAuphereChannel: (id: string, body: AuphereChannelUpdateInput) =>
+  updateAuphereChannel: (id: string, body: AuphereChannelUpdateInput, operatorId: string) =>
     call<AuphereOwnerChannelOut>(
-      `/admin/auphere/channels/${id}`,
-      { method: "PATCH", body },
+      `/admin/auphere/channels/${encodeURIComponent(id)}`,
+      { method: "PATCH", body, headers: { "X-Operator-Id": operatorId } },
     ),
 
-  deactivateAuphereChannel: (id: string) =>
+  deactivateAuphereChannel: (id: string, reason: string, operatorId: string) =>
     call<AuphereOwnerChannelOut>(
-      `/admin/auphere/channels/${id}`,
-      { method: "DELETE" },
+      `/admin/auphere/channels/${encodeURIComponent(id)}`,
+      { method: "DELETE", body: { reason }, headers: { "X-Operator-Id": operatorId } },
     ),
 
   // ── Backchannel owners (per tenant) ────────────────────────────────

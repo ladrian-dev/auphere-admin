@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DeploymentRow } from "@/lib/backend-models";
 
+import { ON_TARGET, POLICY } from "./fixtures";
+
 const h = vi.hoisted(() => ({
   activate: vi.fn(),
   retire: vi.fn(),
@@ -56,6 +58,9 @@ function row(o: Partial<DeploymentRow> = {}, status: DeploymentRow["deployment"]
     activation_messages: {
       subprocessor_not_listed: "El proveedor no está dado de alta como subprocesador.",
     },
+    uses: { defaults: [], agents: 0, clients: [], verified: true, problem: null },
+    sale: ON_TARGET,
+    retirement_blocked_agents: null,
     ...o,
   };
 }
@@ -115,8 +120,7 @@ describe("the catalog dialogs", () => {
         ],
       },
     });
-    render(<RetireDialog row={row({}, "active")} />);
-    await open("Retirar");
+    render(<RetireDialog row={row({}, "active")} open onOpenChange={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
     const date = dialog.querySelector('input[type="date"]') as HTMLInputElement;
     await userEvent.type(date, "2026-12-01");
@@ -133,8 +137,7 @@ describe("the catalog dialogs", () => {
 
   it("«No disponible» is a destructive write with its reason", async () => {
     h.unavailable.mockResolvedValue({ ok: true, data: row({}, "unavailable") });
-    render(<UnavailableDialog row={row({}, "active")} />);
-    await open("No disponible");
+    render(<UnavailableDialog row={row({}, "active")} open onOpenChange={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "Rompió el DPA");
     await userEvent.click(within(dialog).getByRole("button", { name: "Marcar no disponible" }));
@@ -165,10 +168,12 @@ describe("the catalog dialogs", () => {
   });
 });
 
-describe("the catalog table", () => {
-  it("says what each deployment lacks and offers only the writes that apply", () => {
+describe("the catalog table, with the router visible", () => {
+  it("says what each deployment lacks and offers only the writes that apply", async () => {
     render(
       <DeploymentsTable
+        policy={POLICY}
+        routerVisible
         rows={[
           row(),
           row(
@@ -186,16 +191,25 @@ describe("the catalog table", () => {
     );
     const [, draft, active] = screen.getAllByRole("row");
     expect(within(draft!).getByText(/subprocesador/)).toBeTruthy();
-    expect(within(draft!).getByRole("button", { name: "Activar" })).toBeTruthy();
-    expect(within(draft!).queryByRole("button", { name: "Retirar" })).toBeNull();
-    expect(within(active!).queryByRole("button", { name: "Activar" })).toBeNull();
-    expect(within(active!).getByRole("button", { name: "Retirar" })).toBeTruthy();
     expect(within(active!).getByText("classify")).toBeTruthy();
     expect(within(active!).getByText("Nada")).toBeTruthy();
+
+    const items = async (name: string) => {
+      await userEvent.click(screen.getByRole("button", { name: `Más acciones de ${name}` }));
+      const found = (await screen.findAllByRole("menuitem")).map((i) => i.textContent);
+      await userEvent.keyboard("{Escape}");
+      return found;
+    };
+    const draftItems = await items("Haiku UE");
+    expect(draftItems).toContain("Activar");
+    expect(draftItems).not.toContain("Retirar");
+    const activeItems = await items("Activo");
+    expect(activeItems).not.toContain("Activar");
+    expect(activeItems).toContain("Retirar");
   });
 
   it("has an empty state", () => {
-    render(<DeploymentsTable rows={[]} />);
-    expect(screen.getByText("Ningún despliegue con este estado")).toBeTruthy();
+    render(<DeploymentsTable rows={[]} policy={POLICY} routerVisible={false} />);
+    expect(screen.getByText("Ningún modelo con este estado")).toBeTruthy();
   });
 });

@@ -11,7 +11,8 @@ activa). Cada pasada, con la agenda simulada sembrada de nuevo (61.7):
 2. se comprueba el **estado final**: la cita en la agenda de Reservas, el
    escalado y si se pidió un pago (61.4);
 3. si hay juez, juzga **una dimensión por criterio**, con «No sé». Solo bloquea si
-   está calibrado (``testing.judge.judge_calibrated``). Si es el modelo que
+   está calibrado el modelo que hace de juez en el despliegue
+   (``testing.judge.judge_calibrated``, spec 059, 5.4). Si es el modelo que
    respondió, no cuenta; si es de su familia, se avisa (61.5).
 
 La conversación y por qué terminó se guardan en el resultado de la pasada
@@ -104,7 +105,8 @@ CustomerFactory = Callable[[uuid.UUID], Customer | None]
 
 
 def judge_model() -> str:
-    """El de la plataforma (requisito 64.2): ``NEXUS_LLM_JUDGE_MODEL`` o el de clasificar."""
+    """El de la plataforma (requisito 64.2): ``NEXUS_LLM_JUDGE_MODEL`` o el de simular.
+    Es el mismo que el registro publica como ``default_models()["judge"]`` (spec 059)."""
     from nexus_worker.platform_models import platform_model
 
     return platform_model("judge")
@@ -424,7 +426,9 @@ async def run_suite(
             scope=run.scope,
             test_id=scope_test,
         )
-        judge_blocks = await judge_service.judge_calibrated(session)
+        # Spec 059 (5.4): solo bloquea si está calibrado el juez del registro, no
+        # cualquier modelo calibrado como juez.
+        judge_blocks = await judge_service.judge_calibrated(session, model=judge_model())
         session.expunge_all()
     on_the_bag = run.paid_by == "client_bag"
     paid = run.paid_by == "partner" or on_the_bag

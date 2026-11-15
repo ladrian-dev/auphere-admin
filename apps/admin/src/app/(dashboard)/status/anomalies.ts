@@ -73,3 +73,25 @@ export function anomalyTotals(
     meta: recon ? recon.meta.length : null,
   };
 }
+
+const unread = (value: number | null): number | string => (value === null ? "Sin leer" : value);
+
+/**
+ * The figures of the summary, in their order. Spec 059 (2.4): with the router
+ * parked, its three figures go with its block; the ledger's and Meta's stay.
+ */
+export function summaryItems(
+  totals: { [K in keyof AnomalyTotals]: number | null },
+  routerVisible: boolean,
+): { key: string; term: string; detail: number | string }[] {
+  const router = [
+    { key: "reserve", term: "Con modelo de reserva", detail: unread(totals.reserve) },
+    { key: "no_model", term: "Sin modelo", detail: unread(totals.noModel) },
+    { key: "waiting", term: "Esperan por «Sin modelo disponible»", detail: unread(totals.waiting) },
+  ];
+  return [
+    ...(routerVisible ? router : []),
+    { key: "ledger", term: "Diferencias del libro", detail: unread(totals.ledger) },
+    { key: "meta", term: "Días con diferencias con Meta", detail: unread(totals.meta) },
+  ];
+}

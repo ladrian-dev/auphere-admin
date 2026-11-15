@@ -51,6 +51,9 @@ log = structlog.get_logger(__name__)
 
 
 JUDGE_META_PROMPT_VERSION = "p.v2"
+#: Spec 059 (1.1): el juez de las evaluaciones del panel, en el registro de valores
+#: por defecto (``nexus_worker.platform_models.default_models``).
+EVAL_JUDGE_MODEL = "anthropic/claude-sonnet-4-6"
 
 _VALID_VERDICTS: frozenset[str] = frozenset({"pass", "fail", "unknown"})
 
@@ -123,7 +126,7 @@ class LiteLLMJudgeProvider:
     disabled and runs are operator-triggered.
     """
 
-    def __init__(self, model: str = "anthropic/claude-sonnet-4-6") -> None:
+    def __init__(self, model: str = EVAL_JUDGE_MODEL) -> None:
         self._model = model
 
     async def judge(
