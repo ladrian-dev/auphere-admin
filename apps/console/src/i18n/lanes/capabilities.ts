@@ -87,6 +87,7 @@ export const capabilitiesMessages = {
   // colar jerga en la pantalla, y juntarlas todas bajo un nombre honesto
   // dice la verdad sin inventarles una categoría (R4.5).
   "int.cat.booking": { es: "Citas", en: "Appointments" },
+  "int.cat.lodging": { es: "Alojamientos", en: "Stays" },
   "int.cat.calendar": { es: "Calendario", en: "Calendar" },
   "int.cat.billing": { es: "Cobros", en: "Payments" },
   "int.cat.catalog": { es: "Catálogo y ventas", en: "Catalog and sales" },
@@ -116,6 +117,10 @@ export const capabilitiesMessages = {
   "connectors.desc.amigable_venta": {
     es: "Catálogo y presupuestos, para responder qué hay y cuánto cuesta.",
     en: "Catalog and quotes, to answer what there is and what it costs.",
+  },
+  "connectors.desc.quedate": {
+    es: "Busca y cotiza alojamientos de Quédate, da de alta anfitriones, crea sus anuncios con las fotos que mandan y los manda a revisión de Quédate.",
+    en: "Searches and prices Quédate stays, signs up hosts, creates their listings with the photos they send and sends them to Quédate's review.",
   },
   "connectors.desc.whatsapp_meta": {
     es: "El número de WhatsApp por el que el agente atiende.",
