@@ -296,3 +296,59 @@ async def test_the_playground_lists_each_agents_threads(client, db_session, cons
         _u(a, f"/playground/threads?agent={uuid.uuid4()}"), headers=a["headers"]()
     )
     assert ghost.status_code == 404
+
+
+async def test_a_playground_thread_from_before_agents_runs_with_the_principal(
+    client, db_session, console_world, monkeypatch
+) -> None:
+    """Fallo ``playground-del-panel-sin-agente``: sin agente en el estado, la política
+    de activaciones de la 047 cierra los conectores. Un hilo de antes de los agentes
+    (``agent_id`` NULL) corre con el principal y queda sellado con él."""
+    states: list[dict[str, Any]] = []
+
+    class _Capture:
+        async def astream_events(self, state, config, version="v2"):  # type: ignore[no-untyped-def]
+            states.append(dict(state))
+            for _ in ():
+                yield {}
+
+    monkeypatch.setattr("nexus_api.api.qa._get_qa_pipeline", lambda *, live: _Capture())
+    a = console_world["a"]
+    await _principal_live(client, a)
+    principal = (await client.get(_u(a, "/agents"), headers=a["headers"]())).json()[0]["id"]
+    thread = await client.post(
+        _u(a, "/playground/threads"), headers=a["headers"](), json={"title": "Antiguo"}
+    )
+    assert thread.status_code == 201, thread.text
+    thread_id = thread.json()["id"]
+    await db_session.execute(
+        sa.update(QAThread).where(QAThread.id == uuid.UUID(thread_id)).values(agent_id=None)
+    )
+    await db_session.commit()
+
+    run = await client.post(
+        _u(a, f"/playground/threads/{thread_id}/runs"),
+        headers=a["headers"](),
+        json={"prompt": "hola"},
+    )
+    assert run.status_code == 202, run.text
+    async with client.stream(
+        "GET",
+        _u(a, f"/playground/threads/{thread_id}/stream"),
+        params={"run_id": run.json()["run_id"]},
+        headers=a["headers"](),
+    ) as stream:
+        seen = ""
+        async for chunk in stream.aiter_text():
+            seen += chunk
+            if "run.completed" in seen:
+                break
+
+    assert states and states[0].get("agent_id") == principal
+    sealed = await db_session.scalar(
+        sa.select(QAThread.agent_id)
+        .where(QAThread.id == uuid.UUID(thread_id))
+        .execution_options(populate_existing=True)
+    )
+    await db_session.commit()
+    assert str(sealed) == principal

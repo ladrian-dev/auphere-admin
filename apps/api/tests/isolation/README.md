@@ -21,6 +21,7 @@ Block B introduces the foundation tests; block C will replace the contract-only 
 | `test_15_tiktok_channel_isolation.py` | extra — TikTok channel resolution + OAuth state | Live |
 | `test_meta_social_channel_isolation.py` | extra — Instagram / Messenger resolution, disconnect, per-channel credential (spec 049) | Live |
 | `test_owner_invitation_scope.py` | 6 and 1 (touched), and partner ↔ partner — sweeps the panel's invitation write routes (spec 052) | Live |
+| `test_qa_thread_agent_within_tenant.py` | 1 and 9 (touched) — a Playground thread only tests an agent of its own client: another client's `agent_id` is a 404, and a thread without agent seals its own client's principal (bug `playground-del-panel-sin-agente`) | Live |
 
 10 tests minimum; running this directory by itself blocks merge if any fail.
 

@@ -10,9 +10,11 @@ function thread(over: Partial<QAThread> = {}): QAThread {
   return {
     id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
     tenant_id: "tn",
+    agent_id: null,
     operator_id: "op",
     external_id: null,
     title: "Audit me",
+    dry_run: true,
     archived_at: null,
     last_run_at: null,
     message_count: 0,

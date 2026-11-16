@@ -3,7 +3,9 @@
 Endpoints
 ---------
 
-``POST   /qa/threads``               — create a thread (tenant_id in body)
+``POST   /qa/threads``               — create a thread (tenant_id in body; optional
+                                       agent_id, an active agent of that tenant —
+                                       the principal without it)
 ``GET    /qa/threads``                — list operator's threads (filter by tenant)
 ``GET    /qa/threads/{id}``           — detail (thread + counts)
 ``PATCH  /qa/threads/{id}``           — rename / archive
@@ -44,6 +46,8 @@ from nexus_api.core.tenant_context import (
     tenant_context,
 )
 from nexus_api.db.models import (
+    Agent,
+    AgentStatus,
     Channel,
     ChannelStatus,
     ChannelType,
@@ -104,6 +108,9 @@ async def qa_session(
 
 class ThreadCreate(BaseModel):
     tenant_id: uuid.UUID
+    # Spec 030: the agent this thread tests, fixed for its whole life. An
+    # active agent of ``tenant_id`` or 404; without it, the principal.
+    agent_id: uuid.UUID | None = None
     title: str = Field(default="Untitled", max_length=200)
     # ADR-024 — default to the safe (dry_run) mode. Operators that want
     # an end-to-end run against the tenant's real connectors flip this
@@ -123,6 +130,9 @@ class ThreadPatch(BaseModel):
 class ThreadOut(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    # NULL only on a thread from before spec 030 that has not run since: the
+    # principal's, sealed on its next turn.
+    agent_id: uuid.UUID | None
     operator_id: str
     external_id: str | None
     title: str
@@ -176,6 +186,7 @@ def _thread_out(t: QAThread) -> ThreadOut:
     return ThreadOut(
         id=t.id,
         tenant_id=t.tenant_id,
+        agent_id=t.agent_id,
         operator_id=t.operator_id,
         external_id=t.external_id,
         title=t.title,
@@ -196,6 +207,77 @@ async def _load_thread(session: AsyncSession, thread_id: uuid.UUID) -> QAThread:
             detail=f"thread {thread_id} not found",
         )
     return thread
+
+
+async def _agent_for_new_thread(
+    session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    """Spec 030: the agent a new thread tests — ``agent_id`` or the principal.
+
+    ``agent_id`` comes from the browser and ``qa.threads.agent_id`` has no FK:
+    it must be an active agent of THIS tenant or the answer is 404. RLS already
+    hides another tenant's agent; the tenant is checked too so the guarantee
+    never rests on one layer alone (same as ``console.deps.agent_scope``).
+    The caller's tx must already carry ``app.tenant_id``.
+    """
+    from nexus_api.services.agents import principal_agent_id
+
+    if agent_id is None:
+        return await principal_agent_id(session)
+    found = await session.get(Agent, agent_id)
+    if found is None or found.tenant_id != tenant_id or found.status != AgentStatus.ACTIVE.value:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent")
+    return agent_id
+
+
+async def thread_agent_id(session: AsyncSession, thread: QAThread) -> uuid.UUID | None:
+    """The agent a QA thread tests (spec 030), for every Playground turn.
+
+    A thread from before spec 030 (``agent_id`` NULL) is the principal's: it is
+    resolved and sealed on the thread, so a conversation of tests never jumps
+    agent half-way when the principal changes. ``None`` only when the tenant
+    has no active agent. The caller's tx must already carry ``app.tenant_id``
+    (``principal_agent_id`` relies on RLS) and ``app.operator_id``.
+    """
+    from nexus_api.services.agents import principal_agent_id
+
+    if thread.agent_id is None:
+        thread.agent_id = await principal_agent_id(session)
+    return thread.agent_id
+
+
+def qa_turn_state(
+    *,
+    tenant_id: uuid.UUID,
+    agent_id: uuid.UUID | None,
+    channel_id: uuid.UUID,
+    user_id: str,
+    conversation_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    inbound_message_id: uuid.UUID,
+    user_message: str,
+) -> dict[str, Any]:
+    """The graph state of one Playground turn — panel (``/send``, ``/runs``)
+    and console alike, so the three paths never drift apart again.
+
+    ``agent_id`` is what the channel's dispatcher sets: the pipeline loads THIS
+    agent's version and, since spec 047, its connector activations. Without it
+    the activation policy finds none and, for a client of the new console,
+    closes every connector tool (bug ``playground-del-panel-sin-agente``).
+    """
+    state: dict[str, Any] = {
+        "tenant_id": str(tenant_id),
+        "channel_id": str(channel_id),
+        "channel_type": ChannelType.WEB.value,
+        "user_id": user_id,
+        "conversation_id": str(conversation_id),
+        "customer_id": str(customer_id),
+        "inbound_message_id": str(inbound_message_id),
+        "user_message": user_message,
+    }
+    if agent_id is not None:
+        state["agent_id"] = str(agent_id)
+    return state
 
 
 # ── endpoints ────────────────────────────────────────────────────────────────
@@ -228,9 +310,11 @@ async def create_thread(
     tenant_token = _current_tenant.set(body.tenant_id)
     try:
         await apply_tenant_to_session(session, body.tenant_id)
+        agent_id = await _agent_for_new_thread(session, body.tenant_id, body.agent_id)
         thread = QAThread(
             operator_id=operator_id,
             tenant_id=body.tenant_id,
+            agent_id=agent_id,
             title=body.title,
             dry_run=body.dry_run,
         )
@@ -244,7 +328,11 @@ async def create_thread(
             action="thread.create",
             target_kind="qa.thread",
             target_id=str(thread.id),
-            payload={"title": body.title, "dry_run": body.dry_run},
+            payload={
+                "title": body.title,
+                "dry_run": body.dry_run,
+                "agent_id": str(agent_id) if agent_id else None,
+            },
         )
         if not body.dry_run:
             # ADR-024 — surface a loud audit row when a thread is born
@@ -661,6 +749,7 @@ async def _run_in_process(
     customer_id: uuid.UUID,
     channel_id: uuid.UUID,
     tenant_id: uuid.UUID,
+    agent_id: uuid.UUID | None,
     user_id: str,
     user_message: str,
     live: bool,
@@ -705,16 +794,16 @@ async def _run_in_process(
     )
 
     pipeline = _get_qa_pipeline(live=live)
-    state = {
-        "tenant_id": str(tenant_id),
-        "channel_id": str(channel_id),
-        "channel_type": ChannelType.WEB.value,
-        "user_id": user_id,
-        "conversation_id": str(conversation_id),
-        "customer_id": str(customer_id),
-        "inbound_message_id": str(inbound_id),
-        "user_message": user_message,
-    }
+    state = qa_turn_state(
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        channel_id=channel_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        customer_id=customer_id,
+        inbound_message_id=inbound_id,
+        user_message=user_message,
+    )
     config = {"configurable": {"thread_id": str(qa_thread_id)}}
 
     op_token = _current_operator.set(operator_id)
@@ -817,6 +906,7 @@ async def send_message(
             conv_id = conversation.id
             inbound_id = inbound.id
             tenant_id_local = thread.tenant_id
+            agent_id_local = await thread_agent_id(session, thread)
             cust_id = customer.id
             chan_id = channel.id
             cust_identifier = customer.identifier
@@ -840,6 +930,7 @@ async def send_message(
             customer_id=cust_id,
             channel_id=chan_id,
             tenant_id=tenant_id_local,
+            agent_id=agent_id_local,
             user_id=cust_identifier,
             user_message=body.message,
             live=thread_live,
@@ -1016,6 +1107,7 @@ async def start_thread_run(
             conv_id = conversation.id
             inbound_id = inbound.id
             tenant_id_local = thread.tenant_id
+            agent_id_local = await thread_agent_id(session, thread)
             cust_id = customer.id
             chan_id = channel.id
             cust_identifier = customer.identifier
@@ -1038,16 +1130,16 @@ async def start_thread_run(
 
     partner_id = await partner_id_for_tenant_standalone(tenant_id_local)
     pipeline = _get_qa_pipeline(live=thread_live)
-    graph_state = {
-        "tenant_id": str(tenant_id_local),
-        "channel_id": str(chan_id),
-        "channel_type": ChannelType.WEB.value,
-        "user_id": cust_identifier,
-        "conversation_id": str(conv_id),
-        "customer_id": str(cust_id),
-        "inbound_message_id": str(inbound_id),
-        "user_message": body.message,
-    }
+    graph_state = qa_turn_state(
+        tenant_id=tenant_id_local,
+        agent_id=agent_id_local,
+        channel_id=chan_id,
+        user_id=cust_identifier,
+        conversation_id=conv_id,
+        customer_id=cust_id,
+        inbound_message_id=inbound_id,
+        user_message=body.message,
+    )
     graph_config = {"configurable": {"thread_id": str(thread_id)}}
 
     async def _driver(handle: qa_streaming.RunHandle) -> None:

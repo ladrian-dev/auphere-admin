@@ -194,7 +194,12 @@ AGENT_TABLES: dict[str, Case | Reason] = {
     ),
     "qa.threads": Reason(
         "QA Playground de los operadores de Auphere (RLS por ``operator_id``): "
-        "``agent_id`` es el agente probado y ningún agente lee estos hilos."
+        "``agent_id`` es el agente que prueba el hilo, fijado al crearlo (o sellado con "
+        "el principal en uno de antes) y llevado al estado de cada turno: el turno carga "
+        "ese agente y sus activaciones, no las de un hermano (tests/integration/"
+        "connectors/test_panel_playground_tests_the_agent.py), y el agente de otro "
+        "cliente da 404 (test_qa_thread_agent_within_tenant). Ningún agente lee estos "
+        "hilos."
     ),
 }
 

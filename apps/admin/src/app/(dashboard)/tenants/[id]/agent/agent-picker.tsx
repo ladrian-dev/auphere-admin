@@ -45,11 +45,17 @@ export function AgentPicker({
   tenantId,
   agents,
   selectedId,
+  allowCreate = true,
+  inline = false,
 }: {
   tenantId: string;
   agents: TenantAgent[];
   /** The agent on screen; the principal when the URL names none. */
   selectedId: string | null;
+  /** «Nuevo agente». Off where an agent is only chosen, as in the Playground. */
+  allowCreate?: boolean;
+  /** Label beside the select, for a header row; stacked otherwise. */
+  inline?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -80,10 +86,15 @@ export function AgentPicker({
     go(result.data.id);
   }
 
+  // Nothing to choose and nothing to create: no empty box in the caller's row.
+  if (!allowCreate && agents.length <= 1) return null;
+
   return (
     <div className="flex flex-wrap items-end gap-2" data-slot="agent-picker">
       {agents.length > 1 ? (
-        <label className="grid gap-2 text-sm">
+        <label
+          className={inline ? "flex items-center gap-2 text-sm" : "grid gap-2 text-sm"}
+        >
           <span className="text-muted-foreground">Agente</span>
           {/* Same height, border and focus ring as the admin's Input. */}
           <select
@@ -101,6 +112,7 @@ export function AgentPicker({
           </select>
         </label>
       ) : null}
+      {allowCreate ? (
       <Dialog
         open={open}
         onOpenChange={(next) => {
@@ -146,6 +158,7 @@ export function AgentPicker({
           </Form>
         </DialogContent>
       </Dialog>
+      ) : null}
     </div>
   );
 }
