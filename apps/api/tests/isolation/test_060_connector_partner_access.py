@@ -465,7 +465,7 @@ async def test_each_credential_loader_says_not_configured_when_its_partner_lost_
     for slug, _loader, _error in loaders:
         await connect(db_session, b, connectors[slug])
         await _decide(db_session, slug, b.partner_id, enabled=False)
-    for slug, loader, error in loaders:
+    for _slug, loader, error in loaders:
         with pytest.raises(error, match="not available"):
             await loader(b.tenant_id)
 
