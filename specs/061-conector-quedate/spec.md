@@ -150,6 +150,7 @@ Un huésped busca un apartamento para unas fechas. El agente busca, le enseña u
 9. Ninguna de estas herramientas DEBE recibir un identificador de cliente final, de tenant, de anfitrión ni una clave. El anfitrión sale del vínculo.
 10. IF Quédate responde 403 a una operación sobre el anfitrión vinculado THEN el sistema DEBE marcar el vínculo para revisión y decirlo, sin intentar otra clave.
 11. WHEN se vincula un anfitrión THEN el sistema DEBE auditarlo con el cliente final, sin datos personales.
+12. WHEN el clasificador del turno elige cualquier intención, también la escalada o el saludo, THEN el sistema DEBE ofrecer al modelo las herramientas de Quédate que el agente tenga activadas. (Staging, 2026-11-17: un alta con nombre, documento y correo se clasificó como escalada, el turno se quedó sin `register_me` y el agente pasó la conversación a una persona. Mismo precedente que la revisión de pagos de la spec 025.)
 
 ### Requisito 4 — Los anuncios de la persona
 

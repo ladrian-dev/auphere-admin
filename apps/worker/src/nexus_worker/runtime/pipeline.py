@@ -669,7 +669,10 @@ _CONNECTOR_TOOL_INTENTS: frozenset[str] = frozenset({"book", "queue", "info", "f
 # the classifier routinely files a receipt under ``escalate``.
 # ``reception`` (spec 047, requisito 53): «quiero hablar con ventas» is as often
 # an ``escalate`` as an ``info``; Recepción must be able to hand over on both.
-_EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments", "reception"})
+# ``quedate`` (spec 061): a host sign-up carries name, document and email, and the
+# classifier filed it under ``escalate`` in staging (2026-11-17); without
+# ``quedate.register_me`` the agent handed over instead of signing the person up.
+_EVERY_INTENT_TOOLKITS: frozenset[str] = frozenset({"payments", "reception", "quedate"})
 
 # Spec 047 (requisito 53): Recepción's hand-over is terminal, like the
 # interactive component — once it lands, the target answers, not Recepción.
