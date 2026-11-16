@@ -25,6 +25,7 @@ def test_all_seeds_parse() -> None:
     assert slugs == {
         "amigable_cobro",
         "amigable_venta",
+        "quedate",
         "tiktok_bm",
         "whatsapp_meta",
         "woocommerce",

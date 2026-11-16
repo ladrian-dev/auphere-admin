@@ -1,0 +1,3103 @@
+{
+  "quedate.add_listing_photos": {
+    "description": "Upload to a listing of this key the photos chosen by photo_id from quedate.recent_photos of this conversation (1 to 20). Photos cannot be removed later.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "photo_ids": {
+          "description": "De quedate.recent_photos.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Photo Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "listing_id",
+        "photo_ids"
+      ],
+      "title": "ListingPhotosInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "total_photos": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Photos"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "PhotosOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.add_my_listing_photos": {
+    "description": "Upload to a listing of the person you are talking to the photos they chose, by photo_id from quedate.recent_photos (1 to 20). A photo cannot be removed later.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "photo_ids": {
+          "description": "De quedate.recent_photos.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Photo Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "listing_id",
+        "photo_ids"
+      ],
+      "title": "ListingPhotosInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "total_photos": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Photos"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "PhotosOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.booking_settings": {
+    "description": "How booking works in Quédate now ('immediate' or 'request') and Quédate's support WhatsApp.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin argumentos.",
+      "properties": {},
+      "title": "_Empty",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "booking_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "immediate",
+                "request"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Booking Mode"
+        },
+        "support_whatsapp": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Support Whatsapp"
+        }
+      },
+      "title": "BookingSettingsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.create_host": {
+    "description": "Create a Quédate host for someone else (team use): name, email, phone, identity document (CI with V- or E-, PASAPORTE or RIF), date of birth, sex and nationality (VEN by default). If the email already belongs to a host of this key, returns it.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "date_of_birth": {
+          "format": "date",
+          "title": "Date Of Birth",
+          "type": "string"
+        },
+        "document_number": {
+          "description": "Para CI: V- (6 a 8 dígitos) o E- (6 a 9), p. ej. V-18234567.",
+          "maxLength": 20,
+          "minLength": 3,
+          "title": "Document Number",
+          "type": "string"
+        },
+        "document_type": {
+          "description": "CI, PASAPORTE o RIF.",
+          "enum": [
+            "CI",
+            "PASAPORTE",
+            "RIF"
+          ],
+          "title": "Document Type",
+          "type": "string"
+        },
+        "email": {
+          "maxLength": 160,
+          "minLength": 5,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+          "title": "Email",
+          "type": "string"
+        },
+        "first_name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "First Name",
+          "type": "string"
+        },
+        "last_name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Last Name",
+          "type": "string"
+        },
+        "nationality": {
+          "default": "VEN",
+          "description": "ISO alfa-3, p. ej. VEN.",
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Nationality",
+          "type": "string"
+        },
+        "phone": {
+          "maxLength": 20,
+          "minLength": 7,
+          "pattern": "^\\+?[0-9 ()-]{7,20}$",
+          "title": "Phone",
+          "type": "string"
+        },
+        "sex": {
+          "enum": [
+            "M",
+            "F"
+          ],
+          "title": "Sex",
+          "type": "string"
+        }
+      },
+      "required": [
+        "first_name",
+        "last_name",
+        "document_type",
+        "document_number",
+        "date_of_birth",
+        "sex",
+        "email",
+        "phone"
+      ],
+      "title": "CreateHostInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "already_existed": {
+          "default": false,
+          "title": "Already Existed",
+          "type": "boolean"
+        },
+        "created": {
+          "title": "Created",
+          "type": "boolean"
+        },
+        "host_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Id"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "rejected_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejected Field"
+        }
+      },
+      "required": [
+        "created"
+      ],
+      "title": "CreateHostOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.create_listing": {
+    "description": "Create a draft listing for a host of this key (team use), with property type and sector ids from the catalog. Not retried: Quédate does not delete.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "amenities": {
+          "description": "Nombres de quedate.listing_options.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Amenities",
+          "type": "array"
+        },
+        "apartment_suite": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Apartment Suite"
+        },
+        "bathrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "multipleOf": 0.5,
+          "title": "Bathrooms",
+          "type": "number"
+        },
+        "bedrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "title": "Bedrooms",
+          "type": "integer"
+        },
+        "beds": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Beds",
+          "type": "integer"
+        },
+        "description": {
+          "maxLength": 3000,
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "host_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Id",
+          "type": "string"
+        },
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        },
+        "max_guests": {
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Guests",
+          "type": "integer"
+        },
+        "price_per_night": {
+          "exclusiveMinimum": 0,
+          "title": "Price Per Night",
+          "type": "number"
+        },
+        "property_type_id": {
+          "description": "De quedate.listing_options.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Property Type Id",
+          "type": "string"
+        },
+        "sector_id": {
+          "description": "De quedate.list_locations.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Sector Id",
+          "type": "string"
+        },
+        "street_address": {
+          "maxLength": 200,
+          "minLength": 3,
+          "title": "Street Address",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "minLength": 3,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "property_type_id",
+        "sector_id",
+        "street_address",
+        "latitude",
+        "longitude",
+        "price_per_night",
+        "max_guests",
+        "bedrooms",
+        "beds",
+        "bathrooms",
+        "host_id"
+      ],
+      "title": "CreateListingInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingWriteOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.create_my_listing": {
+    "description": "Create a draft listing for the person you are talking to, with property type and sector ids from quedate.listing_options and quedate.list_locations. Then add photos and send it to Quédate's review. Not retried: Quédate does not delete.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "amenities": {
+          "description": "Nombres de quedate.listing_options.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Amenities",
+          "type": "array"
+        },
+        "apartment_suite": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Apartment Suite"
+        },
+        "bathrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "multipleOf": 0.5,
+          "title": "Bathrooms",
+          "type": "number"
+        },
+        "bedrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "title": "Bedrooms",
+          "type": "integer"
+        },
+        "beds": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Beds",
+          "type": "integer"
+        },
+        "description": {
+          "maxLength": 3000,
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        },
+        "max_guests": {
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Guests",
+          "type": "integer"
+        },
+        "price_per_night": {
+          "exclusiveMinimum": 0,
+          "title": "Price Per Night",
+          "type": "number"
+        },
+        "property_type_id": {
+          "description": "De quedate.listing_options.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Property Type Id",
+          "type": "string"
+        },
+        "sector_id": {
+          "description": "De quedate.list_locations.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Sector Id",
+          "type": "string"
+        },
+        "street_address": {
+          "maxLength": 200,
+          "minLength": 3,
+          "title": "Street Address",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "minLength": 3,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "property_type_id",
+        "sector_id",
+        "street_address",
+        "latitude",
+        "longitude",
+        "price_per_night",
+        "max_guests",
+        "bedrooms",
+        "beds",
+        "bathrooms"
+      ],
+      "title": "CreateMyListingInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingWriteOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.get_host": {
+    "description": "One host of this business's Quédate key: contact, verification status and listings.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "host_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "host_id"
+      ],
+      "title": "HostRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "MyListingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Price"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Status"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "title": "MyListingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "document_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Type"
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Email"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kyc_document_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Document Status"
+        },
+        "kyc_selfie_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Selfie Status"
+        },
+        "kyc_verified": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Verified"
+        },
+        "listings": {
+          "items": {
+            "$ref": "#/$defs/MyListingBrief"
+          },
+          "title": "Listings",
+          "type": "array"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "phone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phone"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "HostDetailOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.get_listing": {
+    "description": "Public details of one Quédate stay by id or slug, with the dates that are not available. Never includes the host's contact data.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing": {
+          "description": "UUID o slug del anuncio.",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Listing",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing"
+      ],
+      "title": "GetListingInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "amenities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Amenities",
+          "type": "array"
+        },
+        "bathrooms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bathrooms"
+        },
+        "bedrooms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bedrooms"
+        },
+        "beds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Beds"
+        },
+        "booking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Booking Mode"
+        },
+        "check_in_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Check In Time"
+        },
+        "check_out_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Check Out Time"
+        },
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "City"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "host_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Name"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "max_guests": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Guests"
+        },
+        "max_nights": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Nights"
+        },
+        "min_nights": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Nights"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "property_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Property Type"
+        },
+        "rental_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rental Type"
+        },
+        "slug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slug"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "unavailable_dates": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unavailable Dates",
+          "type": "array"
+        },
+        "unavailable_dates_truncated": {
+          "default": false,
+          "title": "Unavailable Dates Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ListingDetail",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.get_managed_listing": {
+    "description": "One listing of this business's Quédate key, with its status and host.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "booking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Booking Mode"
+        },
+        "host_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Id"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "max_guests": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Guests"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "rental_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rental Type"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "street_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Street Address"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ManagedListingDetail",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.hide_listing": {
+    "description": "Hide a listing of this key (status hidden). Quédate does not delete listings.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.hide_my_listing": {
+    "description": "Hide a listing of the person you are talking to (status hidden). Quédate does not delete listings.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.host_verification_link": {
+    "description": "The identity verification link of a host of this key, to send to that person. Lasts 7 days.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "host_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "host_id"
+      ],
+      "title": "HostRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "reused": {
+          "title": "Reused",
+          "type": "boolean"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "reused"
+      ],
+      "title": "VerificationLinkOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.list_hosts": {
+    "description": "All hosts this business's Quédate key created, 10 per page, with their verification status.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "default": 1,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        }
+      },
+      "title": "PageInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "HostBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "kyc_verified": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Kyc Verified"
+            },
+            "listings_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Listings Count"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "title": "HostBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/HostBrief"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "last_page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Page"
+        },
+        "page": {
+          "default": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "HostsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.list_listings": {
+    "description": "All listings of this business's Quédate key, 10 per page, optionally of one host.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "host_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Id"
+        },
+        "page": {
+          "default": 1,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        }
+      },
+      "title": "ListListingsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "ManagedListing": {
+          "additionalProperties": false,
+          "properties": {
+            "host_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Host Id"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Price"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Status"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "title": "ManagedListing",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ManagedListing"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "last_page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Page"
+        },
+        "page": {
+          "default": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ListingsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.list_locations": {
+    "description": "Valid Quédate locations with their ids. No arguments: the states. With state: its cities. With state and city: its sectors. A listing needs the sector id.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "city": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ciudad dentro del estado.",
+          "title": "City"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Estado, p. ej. Miranda.",
+          "title": "State"
+        }
+      },
+      "title": "ListLocationsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "Named": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "title": "Named",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Named"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "level": {
+          "enum": [
+            "states",
+            "cities",
+            "sectors"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "level",
+        "items"
+      ],
+      "title": "ListLocationsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.listing_options": {
+    "description": "Options to create a Quédate listing: property types and amenities with their ids, rental types, booking modes, identity document types and today's BCV rate.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin argumentos.",
+      "properties": {},
+      "title": "_Empty",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "Named": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "title": "Named",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "amenities": {
+          "items": {
+            "$ref": "#/$defs/Named"
+          },
+          "title": "Amenities",
+          "type": "array"
+        },
+        "bcv_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bcv Rate"
+        },
+        "booking_modes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Booking Modes",
+          "type": "array"
+        },
+        "document_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Document Types",
+          "type": "array"
+        },
+        "property_types": {
+          "items": {
+            "$ref": "#/$defs/Named"
+          },
+          "title": "Property Types",
+          "type": "array"
+        },
+        "rental_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rental Types",
+          "type": "array"
+        }
+      },
+      "required": [
+        "property_types",
+        "amenities",
+        "rental_types",
+        "booking_modes",
+        "document_types"
+      ],
+      "title": "ListingOptionsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.my_host": {
+    "description": "The Quédate host account of the person you are talking to: whether they are linked, their name, identity verification status and how many listings they have.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin argumentos.",
+      "properties": {},
+      "title": "_Empty",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "kyc_document_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Document Status"
+        },
+        "kyc_selfie_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Selfie Status"
+        },
+        "kyc_verified": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Verified"
+        },
+        "linked": {
+          "title": "Linked",
+          "type": "boolean"
+        },
+        "listings_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listings Count"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "needs_review": {
+          "default": false,
+          "title": "Needs Review",
+          "type": "boolean"
+        },
+        "next_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Step"
+        }
+      },
+      "required": [
+        "linked"
+      ],
+      "title": "MyHostOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.my_listings": {
+    "description": "The Quédate listings of the person you are talking to, with their status and price. Only theirs.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin argumentos.",
+      "properties": {},
+      "title": "_Empty",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "MyListingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Price"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Status"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "title": "MyListingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MyListingBrief"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "linked": {
+          "title": "Linked",
+          "type": "boolean"
+        },
+        "next_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Step"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total"
+        }
+      },
+      "required": [
+        "linked"
+      ],
+      "title": "MyListingsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.my_verification_link": {
+    "description": "The Quédate link the person you are talking to opens on their phone to verify their identity. It lasts 7 days; the same link is returned while it is valid.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin argumentos.",
+      "properties": {},
+      "title": "_Empty",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "reused": {
+          "title": "Reused",
+          "type": "boolean"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "reused"
+      ],
+      "title": "VerificationLinkOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.quote_stay": {
+    "description": "Price a stay in a Quédate listing: total in USD and VES with the BCV rate. If the dates are taken or the guests exceed capacity, available=false with Quédate's message.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "check_in": {
+          "format": "date",
+          "title": "Check In",
+          "type": "string"
+        },
+        "check_out": {
+          "format": "date",
+          "title": "Check Out",
+          "type": "string"
+        },
+        "guests": {
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Guests",
+          "type": "integer"
+        },
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "check_in",
+        "check_out",
+        "guests"
+      ],
+      "title": "QuoteStayInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "bcv_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bcv Rate"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "nights": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nights"
+        },
+        "total_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Usd"
+        },
+        "total_ves": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Ves"
+        }
+      },
+      "required": [
+        "available"
+      ],
+      "title": "QuoteStayOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.recent_photos": {
+    "description": "The photos the person you are talking to sent in this conversation in the last 24 hours (up to 20), each with a photo_id and when it was sent. Ask them which ones to use: an uploaded photo cannot be removed from Quédate.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin argumentos.",
+      "properties": {},
+      "title": "_Empty",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "RecentPhoto": {
+          "additionalProperties": false,
+          "properties": {
+            "photo_id": {
+              "title": "Photo Id",
+              "type": "string"
+            },
+            "sent_at": {
+              "title": "Sent At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "photo_id",
+            "sent_at"
+          ],
+          "title": "RecentPhoto",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "photos": {
+          "items": {
+            "$ref": "#/$defs/RecentPhoto"
+          },
+          "title": "Photos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "photos"
+      ],
+      "title": "RecentPhotosOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.register_me": {
+    "description": "Sign up the person you are talking to as a host on Quédate. Ask for first and last name, email, identity document (CI with V- or E-, PASAPORTE or RIF) and number, date of birth, sex and nationality (VEN by default). READ THE EMAIL BACK and pass email_confirmed=true only after they confirm it. Their phone is taken from this chat. If they are already linked, nothing is created.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "date_of_birth": {
+          "format": "date",
+          "title": "Date Of Birth",
+          "type": "string"
+        },
+        "document_number": {
+          "description": "Para CI: V- (6 a 8 dígitos) o E- (6 a 9), p. ej. V-18234567.",
+          "maxLength": 20,
+          "minLength": 3,
+          "title": "Document Number",
+          "type": "string"
+        },
+        "document_type": {
+          "description": "CI, PASAPORTE o RIF.",
+          "enum": [
+            "CI",
+            "PASAPORTE",
+            "RIF"
+          ],
+          "title": "Document Type",
+          "type": "string"
+        },
+        "email": {
+          "maxLength": 160,
+          "minLength": 5,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+          "title": "Email",
+          "type": "string"
+        },
+        "email_confirmed": {
+          "description": "true solo si le leíste el correo a la persona y confirmó que es el suyo y está bien escrito.",
+          "title": "Email Confirmed",
+          "type": "boolean"
+        },
+        "first_name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "First Name",
+          "type": "string"
+        },
+        "last_name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Last Name",
+          "type": "string"
+        },
+        "nationality": {
+          "default": "VEN",
+          "description": "ISO alfa-3, p. ej. VEN.",
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Nationality",
+          "type": "string"
+        },
+        "sex": {
+          "enum": [
+            "M",
+            "F"
+          ],
+          "title": "Sex",
+          "type": "string"
+        }
+      },
+      "required": [
+        "first_name",
+        "last_name",
+        "document_type",
+        "document_number",
+        "date_of_birth",
+        "sex",
+        "email",
+        "email_confirmed"
+      ],
+      "title": "RegisterMeInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "already_linked": {
+          "default": false,
+          "title": "Already Linked",
+          "type": "boolean"
+        },
+        "kyc_verified": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Verified"
+        },
+        "linked_existing": {
+          "default": false,
+          "title": "Linked Existing",
+          "type": "boolean"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "next_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Step"
+        },
+        "registered": {
+          "title": "Registered",
+          "type": "boolean"
+        },
+        "rejected_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejected Field"
+        }
+      },
+      "required": [
+        "registered"
+      ],
+      "title": "RegisterMeOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.search_listings": {
+    "description": "Search Quédate's published stays by free text, city, state, dates (YYYY-MM-DD), guests, property type, price per night and rental type. Up to 10 results.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "check_in": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Check In"
+        },
+        "check_out": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Check Out"
+        },
+        "city": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "City"
+        },
+        "guests": {
+          "anyOf": [
+            {
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guests"
+        },
+        "max_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Price"
+        },
+        "min_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Price"
+        },
+        "property_type": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Property Type"
+        },
+        "q": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Q"
+        },
+        "rental_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "nightly",
+                "monthly"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rental Type"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State"
+        }
+      },
+      "title": "SearchListingsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "ListingSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "city": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "City"
+            },
+            "currency": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Currency"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "max_guests": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Max Guests"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Price"
+            },
+            "rating": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rating"
+            },
+            "rental_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rental Type"
+            },
+            "slug": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Slug"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "State"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "title": "ListingSummary",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ListingSummary"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "SearchListingsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.submit_listing": {
+    "description": "Send a listing of this key to Quédate's review (pending_approval). This tool never publishes.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.submit_my_listing": {
+    "description": "Send a listing of the person you are talking to to Quédate's review (pending_approval). Quédate publishes it when approved; this tool never publishes.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.upload_host_identity": {
+    "description": "Upload the identity document photo (required) and selfie (optional) of a host of this key, chosen by photo_id from quedate.recent_photos of this conversation.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_photo_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Document Photo Id",
+          "type": "string"
+        },
+        "host_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Id",
+          "type": "string"
+        },
+        "selfie_photo_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selfie Photo Id"
+        }
+      },
+      "required": [
+        "document_photo_id",
+        "host_id"
+      ],
+      "title": "UploadHostIdentityInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "kyc_document_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Document Status"
+        },
+        "kyc_selfie_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Selfie Status"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "uploaded": {
+          "title": "Uploaded",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "uploaded"
+      ],
+      "title": "IdentityOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.upload_my_identity": {
+    "description": "Upload the photo of the identity document (required) and a selfie (optional) of the person you are talking to, chosen by photo_id from quedate.recent_photos after they tell you which ones. Quédate reviews them.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_photo_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Document Photo Id",
+          "type": "string"
+        },
+        "selfie_photo_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selfie Photo Id"
+        }
+      },
+      "required": [
+        "document_photo_id"
+      ],
+      "title": "UploadMyIdentityInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "kyc_document_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Document Status"
+        },
+        "kyc_selfie_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kyc Selfie Status"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "uploaded": {
+          "title": "Uploaded",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "uploaded"
+      ],
+      "title": "IdentityOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  }
+}

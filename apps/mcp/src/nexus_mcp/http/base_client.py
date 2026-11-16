@@ -132,6 +132,7 @@ class BaseHTTPConnectorClient:
         timeout_s: float | None = None,
         max_retries: int | None = None,
         user_agent: str = "Auphere-Nexus/1.0 (+https://auphere.com)",
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not base_url.startswith("https://"):
             # Security: refuse plaintext. WooCommerce Basic Auth over
@@ -142,6 +143,10 @@ class BaseHTTPConnectorClient:
         self.timeout_s = timeout_s if timeout_s is not None else self.DEFAULT_TIMEOUT_S
         self.max_retries = max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
         self.user_agent = user_agent
+        # Spec 061: the contract tests pass an ``httpx.MockTransport`` to see the
+        # real request (method, path, headers, body) without a network. ``None``
+        # is httpx's default transport, as before.
+        self._transport = transport
 
     # ── extension hooks (subclasses override) ────────────────────────────
 
@@ -195,8 +200,13 @@ class BaseHTTPConnectorClient:
         *,
         params: dict[str, Any] | None = None,
         json: Any | None = None,
+        data: dict[str, Any] | None = None,
+        files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
     ) -> tuple[httpx.Response, dict[str, Any] | list[Any] | None]:
         """Send ``method path``. Returns ``(response, parsed_body)``.
+
+        ``data`` and ``files`` send ``multipart/form-data`` (spec 061: photos and
+        identity documents). Callers that pass them should not retry a write.
 
         ``parsed_body`` is the JSON-decoded body, or ``None`` if the
         response had no body or non-JSON content type. The raw
@@ -213,12 +223,15 @@ class BaseHTTPConnectorClient:
                     timeout=self.timeout_s,
                     headers=self._default_headers(),
                     auth=self._auth(),
+                    transport=self._transport,
                 ) as client:
                     response = await client.request(
                         method=method,
                         url=url,
                         params=params,
                         json=json,
+                        data=data,
+                        files=files,
                     )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 # Bounded retry on transport failures only.

@@ -202,6 +202,54 @@ entran: son de Canales y de Reservas.
   `PUT /admin/connectors/{slug}/access/default`
   (`specs/060-acceso-conectores-por-partner/contracts/admin-api.md`).
 
+### Quédate (spec 061, enmienda del 2026-11-16)
+
+El conector de la plataforma de alquileres de Amacrux, sobre la **API del agente** de
+Quédate (`/api/v1/agent/*`).
+
+- **Nace deshabilitado por defecto** (migración 0233). En cada entorno, Auphere lo
+  habilita para cada partner desde la ficha del conector, con un motivo.
+- **Conectar no activa nada** (`auto_enable_on_connect: false`): el partner activa cada
+  herramienta por agente con su permiso. Qué agente tiene las de equipo lo decide el
+  partner, no el conector.
+- **Conexión**: el cliente pega una clave que genera en su propio panel de Quédate
+  (Gestión de Tokens, alcance `agent:onboarding`) y, si quiere, el **entorno**: `dev`
+  apunta al de pruebas de Quédate (`dev-api.quedate.net`); vacío o cualquier otra cosa,
+  a producción (`api-v2.quedate.net`). Las dos direcciones están fijas en el código:
+  nadie escribe una URL. La clave se comprueba con `GET /agent/hosts?per_page=1` al
+  conectar, desde la consola y desde
+  `POST /admin/tenants/{id}/connectors/quedate/connect-api-key`.
+- **La clave aísla**: solo alcanza los anfitriones y anuncios que ella misma creó. Una
+  clave nueva deja fuera a los anteriores: las personas vinculadas a ellos quedan **en
+  revisión** al primer 403.
+- **27 herramientas** (`specs/061-conector-quedate/contracts/tools.md`):
+  - catálogo y públicas: ubicaciones, opciones de anuncio, buscar, ver, cotizar y modo
+    de reserva;
+  - las fotos que la persona mandó en las últimas 24 horas, para que elija cuáles subir;
+  - de la persona que escribe: darse de alta como anfitriona, su cuenta, su enlace de
+    verificación, subir su documento, y crear, ilustrar, mandar a revisión, ocultar y
+    listar sus anuncios;
+  - de equipo, sobre cualquier anfitrión de la clave: las mismas operaciones con
+    `host_id`.
+- **Nunca publica**: solo manda a revisión de Quédate (`pending_approval`) u oculta
+  (`hidden`). Quédate no borra, así que crear anfitriones, anuncios o subir fotos no se
+  reintenta solo.
+- **Anfitriones vinculados**: al dar de alta a una persona, Auphere guarda **qué
+  anfitrión es suyo**, sin ninguna credencial (`customer_connector_accounts`, con RLS;
+  se borra con el cliente final y con el negocio). Un anfitrión es de una sola persona
+  del negocio. Si Quédate dice que el correo ya está tomado, solo se vincula el
+  anfitrión de la clave con ese correo cuando su teléfono es el del chat: el correo lo
+  puede decir cualquiera.
+  - La ficha del conector del cliente (`/tenants/{id}/connectors/quedate`) enseña cuántas
+    personas tienen su cuenta vinculada, cuántas están en revisión y la fecha del último
+    vínculo, sin nombrar a nadie
+    (`GET /admin/tenants/{id}/connectors/quedate/customer-accounts`).
+- Auditoría: `connector.customer_account_linked`; `connector.customer_account_link_failed`
+  si Quédate pudo crear la cuenta pero no quedó vinculada; y
+  `connector.external_write_unconfirmed` si una escritura en Quédate se quedó sin
+  respuesta.
+- Detalle en `specs/061-conector-quedate/`.
+
 ## Beta «WhatsApp login» por país (spec 047)
 
 `/channels/whatsapp-login`, la segunda pestaña de Canales (T117; requisitos 31.5, 31.6

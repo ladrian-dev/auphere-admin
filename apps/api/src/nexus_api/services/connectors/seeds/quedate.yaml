@@ -1,0 +1,54 @@
+# Connector seed — Quédate (Amacrux's rentals platform), spec 061 amended 2026-11-16.
+#
+# auth_kind=api_key: the client connects with a key it generates in its own
+# Quédate panel (Gestión de Tokens, scope agent:onboarding). Every quedate.*
+# tool that reaches Quédate's agent API sends it; the public tools send none.
+# The key is checked on connect with GET /agent/hosts?per_page=1
+# (services/connectors/key_check.py).
+#
+# The key isolates: it only sees the hosts and listings it created. A new key
+# leaves the old hosts out of reach; the people linked to them are marked for
+# review (customer_connector_accounts.needs_review).
+#
+# environment: the client writes "dev" to point at Quédate's development
+# environment (dev-api.quedate.net); anything else, empty included, is
+# production (api-v2.quedate.net). The addresses are fixed in the code
+# (nexus_mcp.servers.quedate.client.BASES): nobody types a URL.
+#
+# tenant_connectors.credentials_ref shape:
+#   {"tenant_credentials_id": "<uuid>", "endpoint_meta": {"environment": "dev"}}
+# tenant_credentials.encrypted_payload (Fernet) decrypts to JSON:
+#   {"api_key": "<token>"}
+#
+# Born disabled for partners by default (migration 0233, spec 060): Auphere
+# enables it for each partner from the panel. Connecting enables no tool in any
+# agent: the partner activates each one per agent with its permission.
+slug: quedate
+display_name: Quédate
+vendor: Amacrux
+category: lodging
+capabilities:
+  - read
+  - write
+auth_kind: api_key
+mcp_server_ref: internal:quedate
+provider_meta:
+  vendor_url: https://quedate.net
+  docs_url: https://anfitrion.quedate.net/#/admin/docs
+  # secret=true masks the input and routes the value to the Fernet-encrypted
+  # payload; secret=false fields land in endpoint_meta.
+  credentials_form:
+    - field: api_key
+      label: Clave de API (Gestión de Tokens, alcance agent:onboarding)
+      placeholder: 1|...
+      secret: true
+      required: true
+    - field: environment
+      label: Entorno (vacío = producción; escribe dev para pruebas)
+      placeholder: producción
+      secret: false
+      required: false
+auto_enable_on_connect: false
+auto_enable_destructive: false
+consent_link_template_name: null
+status: available

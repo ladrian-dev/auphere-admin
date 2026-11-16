@@ -31,7 +31,9 @@ def test_default_registry_has_all_block_d_tools():
     # + payments.request_review (spec 025)
     # + the nine reservas.* (spec 043)
     # + reception.handoff (spec 047, requisito 53)
-    assert len(names) == 71
+    # + the twenty-seven quedate.* (spec 061, amended 2026-11-16)
+    assert len(names) == 98
+    assert len({n for n in names if n.startswith("quedate.")}) == 27
     assert "reception.handoff" in names
     assert {n for n in names if n.startswith("reservas.")} == {
         "reservas.services",

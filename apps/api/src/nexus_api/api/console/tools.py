@@ -40,7 +40,7 @@ from nexus_api.db.models import (
 )
 from nexus_api.services.agent_config_service import AgentConfigService
 from nexus_api.services.agent_spec.retired import RETIRED_TOOLS, SYSTEM_ONLY_PREFIX, agent_may_use
-from nexus_api.services.connectors import availability
+from nexus_api.services.connectors import availability, key_check
 from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.composio_client import (
@@ -735,6 +735,16 @@ async def _sync_after_connect(
 ) -> LastSyncOut:
     """The sync of ``sync_connector`` with its outcome as data, not as HTTP."""
     now = datetime.now(UTC)
+    # Spec 061 (requisito 1): the key of an ``api_key`` connector with a checker
+    # is checked against the provider before any tool is enabled.
+    key_outcome = await key_check.check(
+        scope.session, tenant_id=scope.tenant.id, connector=connector
+    )
+    if key_outcome == "rejected":
+        await key_check.mark_rejected(scope.session, tenant_id=scope.tenant.id, connector=connector)
+        return LastSyncOut(status="error", reason="auth_rejected", at=now)
+    if key_outcome == "unavailable":
+        return LastSyncOut(status="error", reason="provider_unavailable", at=now)
     try:
         reconciled = await connector_service.reconcile_connector_status(
             scope.session,

@@ -112,6 +112,26 @@ LEGIT_CUSTOMER_ARGS: dict[tuple[str, str], str] = {
         "El nombre que el cliente final da para el resumen del pedido que ven los "
         "revisores del negocio: se escribe, no busca a nadie."
     ),
+    # Spec 061 (research D11, enmienda del 2026-11-16): las tres entradas que suben
+    # el techo, razonadas. Las tres ESCRIBEN datos en Quédate para crear una cuenta
+    # de anfitrión; ninguna busca ni lee a un cliente final de Auphere.
+    ("quedate.register_me", "email"): (
+        "El correo de la propia persona del turno para crear SU cuenta de anfitriona en "
+        "Quédate: se escribe en Quédate, no busca a nadie, y el anfitrión queda atado en "
+        "el servidor al cliente final del turno (test_061_customer_connector_accounts). "
+        "Quédate no da de alta sin correo, y el agente debe leérselo a la persona antes "
+        "(3.3). Su teléfono no es argumento: sale de la ficha del cliente final."
+    ),
+    **{
+        pair: (
+            "Herramienta de equipo: da de alta en Quédate a OTRA persona con los datos "
+            "que el personal del negocio escribe. Se escribe en Quédate con la clave del "
+            "negocio, no busca ni lee a ningún cliente final de Auphere, y no toca el "
+            "vínculo de la persona del turno. Qué agente la tiene lo decide el partner "
+            "(Luis, 2026-11-16)."
+        )
+        for pair in (("quedate.create_host", "email"), ("quedate.create_host", "phone"))
+    },
     **{
         pair: _OPERATOR
         for pair in (
@@ -133,7 +153,10 @@ LEGIT_CUSTOMER_ARGS: dict[tuple[str, str], str] = {
 
 #: Entradas al escribirse (2026-10-26). No sube: una herramienta nueva —las de
 #: la 047 incluidas— resuelve al cliente final en el servidor.
-INVENTORY_CEILING = 28
+#: Subidas: 28 → 29 el 2026-11-13, spec 061, ``quedate.register_me.email``; y
+#: 29 → 31 el 2026-11-16, enmienda de la 061, ``quedate.create_host.email`` y
+#: ``.phone`` (research D11, razonadas arriba).
+INVENTORY_CEILING = 31
 
 
 def customer_args(definitions: list[Any]) -> set[tuple[str, str]]:

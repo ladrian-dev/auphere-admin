@@ -63,6 +63,8 @@ FORBIDDEN_TABLES: list[str] = [
     "customers",
     "tenant_credentials",
     "tenant_connectors",
+    # Spec 061: la credencial de terceros de un cliente final.
+    "customer_connector_accounts",
     "agent_memories",
     # ``audit_log`` salió de esta lista en la 0084 (consola de partners,
     # CP-28): la consola lista la auditoría de TODOS los clientes de un

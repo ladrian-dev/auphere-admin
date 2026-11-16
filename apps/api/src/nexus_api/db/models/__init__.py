@@ -156,6 +156,7 @@ from nexus_api.db.models.conversation import (
     WhatsAppOptOut,
     WhatsAppTemplateStatus,
 )
+from nexus_api.db.models.customer_connector_account import CustomerConnectorAccount
 from nexus_api.db.models.daily_cost_snapshot import DailyCostSnapshot
 from nexus_api.db.models.evals import (
     EvalCase,
@@ -456,6 +457,7 @@ __all__ = [
     "ConversationStatus",
     "ConversationTag",
     "Customer",
+    "CustomerConnectorAccount",
     "DailyCostSnapshot",
     "DeviceClientLink",
     "EmbedAuditLog",

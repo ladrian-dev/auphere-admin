@@ -408,6 +408,9 @@ _TRUNCATE_TABLES = (
     # then the main table, then customers (FK target of memories).
     "agent_memory_versions",
     "agent_memories",
+    # Migración 0233 — spec 061: la cuenta de terceros de un cliente final.
+    # Cuelga de customers (CASCADE): fuera antes que ellos.
+    "customer_connector_accounts",
     "customers",
     # Migrations 0047/0048 — partner platform + broadcasts (ADR-028).
     "broadcast_recipients",
