@@ -64,6 +64,20 @@ async def _insert(key: str, *, price: dict[str, Any], weights: tuple[Any, Any, A
 
 @pytest_asyncio.fixture(autouse=True)
 async def _world() -> AsyncIterator[None]:
+    # «Aplicar a todos» reescribe los pesos de TODOS los modelos con coste, también
+    # los sembrados por las migraciones, que no se truncan entre pruebas. Sin
+    # devolverlos, la siguiente que cobra (test_metering_end_to_end) mide con los
+    # pesos de 2,5 y no con los de 2,2.
+    async with get_sessionmaker()() as session:
+        seeded_weights = [
+            dict(row._mapping)
+            for row in await session.execute(
+                sa.text(
+                    "SELECT id, quota_weight_input AS i, quota_weight_cache_read AS c, "
+                    "quota_weight_output AS o FROM model_profiles"
+                )
+            )
+        ]
     await _insert(
         TOKENS,
         price={"i": Decimal("4"), "c": Decimal("0.4"), "o": Decimal("20"), "m": None},
@@ -80,15 +94,26 @@ async def _world() -> AsyncIterator[None]:
     yield
     async with get_sessionmaker()() as session, session.begin():
         await session.execute(sa.text("DELETE FROM model_profiles WHERE model_id LIKE 'c59s-%'"))
+        if seeded_weights:
+            await session.execute(
+                sa.text(
+                    "UPDATE model_profiles SET quota_weight_input = :i, "
+                    "quota_weight_cache_read = :c, quota_weight_output = :o WHERE id = :id"
+                ),
+                seeded_weights,
+            )
         await session.execute(
             sa.text(
                 "UPDATE platform_settings SET value = '2.2'::jsonb WHERE key = 'sale_multiplier'"
             )
         )
+    from nexus_worker.metering import pricing
+
     model_resolver.invalidate_catalog()
     respond_catalog.reset()
     model_usage.invalidate()
     sale_policy.invalidate()
+    pricing.invalidate()
 
 
 @pytest_asyncio.fixture
