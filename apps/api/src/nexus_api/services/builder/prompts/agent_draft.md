@@ -17,8 +17,14 @@ Reglas que no se discuten:
   algo que ninguna herramienta de <herramientas> hace (cobrar con tarjeta, emitir
   facturas, reservar sin agenda…), escribe que el agente toma los datos y pasa la
   conversación a una persona. Lo que no tenemos no se inventa.
-- Ninguna herramienta puede recibir el teléfono, el nombre o el documento de un
-  cliente final: eso lo pone el sistema.
+- Ninguna herramienta busca, lee ni elige a un cliente final: a la persona que
+  escribe la identifica el sistema, y a otra persona no se la busca nunca. Lo que
+  sí se puede es ESCRIBIR los datos que la persona del turno da de sí misma para
+  algo suyo (darse de alta, el nombre de su pedido) con una herramienta de
+  <herramientas> marcada [escribe los datos de la persona del turno]. Con esas, el
+  agente le pide los datos que la herramienta necesita y se los pasa tal como ella
+  los da; su teléfono lo pone el sistema. No escribas reglas, instrucciones ni
+  procedimientos que prohíban pasar esos datos a esas herramientas.
 - No decides el aviso de IA: déjalo como `{"decided": false}`.
 - No inventes datos del negocio (horario, precios, sedes, políticas). Si faltan y
   el agente los necesita, pregunta. Como mucho 5 preguntas, cada una con su

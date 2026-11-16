@@ -23,6 +23,7 @@ de Mejora; hoy no hay correcciones que barrer.
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -180,6 +181,51 @@ def test_no_tool_takes_an_end_customer_but_the_inventoried() -> None:
     stale = sorted(LEGIT_CUSTOMER_ARGS.keys() - found)
     assert not stale, f"entradas que ya no hacen falta: {stale}. Quítalas y baja el techo."
     assert len(LEGIT_CUSTOMER_ARGS) <= INVENTORY_CEILING
+
+
+def test_the_builder_neither_shows_nor_keeps_a_tool_that_takes_an_end_customer() -> None:
+    """Spec 047, 70.1 a 70.3 (enmienda del 2026-11-16): el constructor sabe ahora que
+    las herramientas del inventario escriben los datos de la persona del turno. Eso no
+    afloja la garantía 8: del registro entero, lo que recibe un cliente final fuera del
+    inventario del validador (``SERVER_SIDE_ARGS``) ni se le enseña ni sobrevive al
+    saneado, conectado y sin conectar. Lo de dentro sí."""
+    from nexus_api.services.agent_spec.validator import SERVER_SIDE_ARGS, Context, ToolInfo
+    from nexus_api.services.builder.agent_draft import DraftRequest, build_messages, sanitize
+    from nexus_api.services.business.compilation import Facts
+
+    registry = build_default_registry()
+    definitions = registry.get_tool_definitions(registry.names())
+    picks = {
+        tool
+        for tool, arg in customer_args(definitions)
+        if arg != "conversation_id" and (tool, arg) not in SERVER_SIDE_ARGS
+    }
+    assert {"quedate.create_host", "billing.find_client"} <= picks, "el barrido no ve nada"
+    request = DraftRequest.clean("Recepción", "Atiende a quien escribe por WhatsApp.")
+    facts = Facts(name="Negocio de prueba")
+    for connected in (True, False):
+        ctx = Context(
+            tools={
+                d.name: ToolInfo(
+                    d.name,
+                    integration=d.name.split(".")[0],
+                    connected=connected,
+                    args=frozenset((d.parameters or {}).get("properties") or {}),
+                )
+                for d in definitions
+            }
+        )
+        shown = build_messages(request, facts, ctx)[1]["content"]
+        listed = set(re.findall(r"^- ([a-z0-9_]+\.[a-z0-9_]+) ", shown, re.M))
+        assert "quedate.register_me" in listed, "el barrido no ve el catálogo"
+        assert not listed & picks, f"el constructor ve {sorted(listed & picks)}"
+        raw = {
+            "instructions": [{"title": "Cómo atiendes", "body": "Con la ficha."}],
+            "tools": [*sorted(picks), "quedate.register_me"],
+        }
+        draft = sanitize(raw, request, ctx, facts, model_policy=None)
+        assert not set(draft.spec.tools or []) & picks
+        assert "quedate.register_me" in (draft.spec.tools or [])
 
 
 def test_operator_tools_are_only_seeded_on_admin_only_agents() -> None:
