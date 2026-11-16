@@ -140,7 +140,7 @@ Un huésped busca un apartamento para unas fechas. El agente busca, le enseña u
    - nombre, apellido y correo;
    - tipo y número de documento;
    - fecha de nacimiento, sexo y nacionalidad (por defecto, `VEN`).
-2. El teléfono del alta DEBE salir del registro del cliente final, no de un argumento.
+2. El teléfono del alta DEBE salir del canal del cliente final, no de un argumento: el teléfono que dio Meta o, en WhatsApp, su identificador. En Instagram y Messenger el identificador es el id de Meta y NO DEBE mandarse como teléfono: el alta va sin él (Quédate no lo exige; comprobado en dev el 2026-11-16).
 3. El alta DEBE exigir que el agente confirme que leyó el correo a la persona y que ella lo confirmó.
 4. IF la persona ya tiene un anfitrión vinculado y en buen estado THEN el sistema NO DEBE crear otro.
 5. IF Quédate responde que el correo ya está tomado THEN el sistema DEBE buscar ese correo entre los anfitriones de la clave y vincularlo SOLO si el teléfono de ese anfitrión es el del cliente final del turno (el del canal, que nadie escribe) y ningún otro cliente final del negocio lo tiene vinculado. Si no está, o no se cumple, NO DEBE vincular nada y DEBE devolver que el correo ya es de otra cuenta. (Enmienda tras /cso del 2026-11-16: vincular por correo dejaba a cualquiera quedarse con el anfitrión de otra persona.)
@@ -165,7 +165,7 @@ Un huésped busca un apartamento para unas fechas. El agente busca, le enseña u
 3. El sistema DEBE ofrecer **mandar a revisión** un anuncio suyo (`pending_approval`) y **ocultarlo** (`hidden`). El agente NO DEBE poder publicarlo directamente (Luis, 2026-11-16).
 4. El sistema DEBE ofrecer la lista de sus anuncios: identificador, título, estado y precio.
 5. IF el anuncio no es de su anfitrión THEN el sistema DEBE rechazarlo antes de escribir nada.
-6. Crear un anuncio y subir fotos NO DEBEN reintentarse solos. IF no hay respuesta THEN DEBE quedar en la auditoría.
+6. Crear un anuncio, subir fotos y subir el documento de identidad NO DEBEN reintentarse solos. IF no hay respuesta THEN DEBE quedar en la auditoría.
 7. Las escrituras de una misma persona DEBEN ir de una en una.
 
 ### Requisito 5 — Las herramientas de equipo
