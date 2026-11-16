@@ -760,7 +760,7 @@ async def _store(batch: Batch, raw: Mapping[str, Any], *, now: datetime) -> Repo
             except PatchError:
                 report.drop("patch")
                 continue
-            checked, problems = validate_spec(patched, ctx, author="suggestion")
+            checked, problems = validate_spec(patched, ctx, author="suggestion", base=batch.doc)
             if checked is None or problems:
                 report.drop("invalid")
                 continue

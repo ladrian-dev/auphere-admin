@@ -462,7 +462,7 @@ async def _proposal_for(
     ctx = await load_context(
         session, partner_id=partner_id, legacy_chars=legacy_chars_of(spec), agent_id=agent.id
     )
-    checked, problems = validate_spec(patched, ctx, author="correction")
+    checked, problems = validate_spec(patched, ctx, author="correction", base=spec)
     if checked is None or problems:
         raise CorrectionError("invalid_proposal", 422, problems=problems_out(problems))
     return await proposal_state.propose(

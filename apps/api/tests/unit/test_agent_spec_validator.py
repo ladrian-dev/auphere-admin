@@ -171,6 +171,42 @@ def test_the_builder_cannot_decide_the_ai_disclosure() -> None:
     assert _codes(STRUCTURED, author="person") == set()
 
 
+@pytest.mark.parametrize("author", ["builder", "copilot", "suggestion", "correction"])
+def test_a_proposal_keeps_the_notice_a_person_decided(author: str) -> None:
+    """Spec 047, 70.6 (staging, 2026-11-16): con el aviso ya decidido por una persona,
+    el copiloto no podía aplicar nada. Lo que no lo toca pasa; con ``base``, el estado
+    sobre el que se propone, se compara el aviso entero."""
+    base = copy.deepcopy(STRUCTURED)  # decidido por una persona, en el primer mensaje
+    rule = _doc(rules=[*STRUCTURED.get("rules", []), "No ofrezcas descuentos."])
+    assert _codes(rule, author=author, base=base) == set()
+    # El documento vale igual que el AgentSpec.
+    spec_base, _problems = validate_spec(base, CTX)
+    assert _codes(rule, author=author, base=spec_base) == set()
+
+    notice = ("/ai_disclosure/decided", "ai_disclosure_decided_by_builder")
+    changed = {
+        "decide": ({"decided": False}, STRUCTURED["ai_disclosure"]),
+        "mode": (STRUCTURED["ai_disclosure"], {**STRUCTURED["ai_disclosure"], "mode": "on_ask"}),
+        "text": (STRUCTURED["ai_disclosure"], {**STRUCTURED["ai_disclosure"], "text": "Hola."}),
+        "undecide": (STRUCTURED["ai_disclosure"], {"decided": False}),
+    }
+    for what, (before, after) in changed.items():
+        proposed = _doc(ai_disclosure=after)
+        assert notice in _codes(proposed, author=author, base=_doc(ai_disclosure=before)), what
+    # Una persona lo cambia como quiera.
+    assert _codes(_doc(ai_disclosure={"decided": False}), author="person", base=base) == set()
+
+
+def test_without_the_state_a_decided_notice_is_still_refused() -> None:
+    """70.7: falla cerrado. Quien valida sin decir sobre qué propone (el borrador nuevo)
+    no deja un aviso decidido."""
+    notice = ("/ai_disclosure/decided", "ai_disclosure_decided_by_builder")
+    assert notice in _codes(STRUCTURED, author="copilot")
+    assert notice in _codes(STRUCTURED, author="copilot", base=None)
+    # Un ``base`` que no es un AgentSpec tampoco cuenta como decidido por una persona.
+    assert notice in _codes(STRUCTURED, author="copilot", base={"ai_disclosure": "sí"})
+
+
 def test_instructions_are_at_most_8000_characters() -> None:
     doc = _doc()
     doc["instructions"]["sections"] = [{"title": f"S{i}", "body": "x" * 4000} for i in range(3)]
