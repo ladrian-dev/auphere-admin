@@ -82,3 +82,8 @@ description: "Tareas de la spec 061: conector de Quédate (enmienda del 2026-11-
 
   _Requisitos: todos_
 - [x] T063 Guion de commits rehecho. _Requisitos: —_
+
+## Fase 8: Lo que encontró staging (2026-11-17)
+
+- [x] T064 `quedate` en `_EVERY_INTENT_TOOLKITS` del pipeline, con su prueba en `apps/worker/tests/unit/test_intent_tool_filter.py`. _Requisitos: 3.12_
+
