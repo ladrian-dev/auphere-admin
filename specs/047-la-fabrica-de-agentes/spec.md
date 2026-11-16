@@ -1,6 +1,6 @@
 # Especificación: la fábrica de agentes — un cliente es un negocio y un agente es quien lo atiende
 
-**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos. **Enmendada el 2026-10-29** (lista para staging, rama `047-lista-para-staging`): §Clarifications, sesión 2026-10-29, y requisitos 57 a 64. **Enmendada el 2026-11-10** (owner): las sugerencias semanales (51.3 a 51.6) se retiran por ahora; §Clarifications, sesión 2026-11-10, y criterio 51.7. **Enmendada el 2026-11-11** (owner): los correos de «sin saldo» (`client.out_of_quota`, `client.wallet.empty` y `client.balance_out`) y los del saldo de la cuenta del partner (`wallet.low` y `wallet.empty`) quedan en pausa; §Clarifications, sesión 2026-11-11, y criterio 44.9.
+**Rama**: `047-la-fabrica-de-agentes` · **Creada**: 2026-10-26 · **Estado**: Borrador, pendiente de aprobación. Está clarificado el 2026-10-26 y tiene plan, tareas y `/speckit-analyze` hechos. **Enmendada el 2026-10-29** (lista para staging, rama `047-lista-para-staging`): §Clarifications, sesión 2026-10-29, y requisitos 57 a 64. **Enmendada el 2026-11-10** (owner): las sugerencias semanales (51.3 a 51.6) se retiran por ahora; §Clarifications, sesión 2026-11-10, y criterio 51.7. **Enmendada el 2026-11-11** (owner): los correos de «sin saldo» (`client.out_of_quota`, `client.wallet.empty` y `client.balance_out`) y los del saldo de la cuenta del partner (`wallet.low` y `wallet.empty`) quedan en pausa; §Clarifications, sesión 2026-11-11, y criterio 44.9. **Enmendada el 2026-11-16** (staging, agente «Anfitriones Quédate»): el constructor distingue buscar a un cliente final de escribir los datos que la persona del turno da de sí misma (spec 061), y una propuesta respeta el aviso de IA que ya decidió una persona; §Clarifications, sesión 2026-11-16, y requisito 70.
 
 > **Número.** Iba a ser la 046, pero ese número ya lo usa la spec de Andrés «un alta que termina en un agente que responde» (2026-10-24, rama `046-alta-que-responde`). Esta spec reutiliza su iteración 1a. Por decisión del owner del 2026-10-26, sustituye sus iteraciones 2 y 3, y «activar» pasa a ser por canal: ver §Clarifications y §Dependencias y enmiendas.
 
@@ -214,6 +214,34 @@ El 2026-11-11 varios clientes se quejaron de correos innecesarios. La lista de R
 - Q: ¿Cómo vuelve? → A: Quitando el tipo de `EMAIL_PAUSED_KINDS` en `services/console_notifications.py`, que es donde `emit` decide el correo de cualquier aviso; `wallet_alerts` la lee para los dos que envía por su cuenta.
 - **Coste conocido:** con `wallet.empty` en pausa, un partner cuya cuenta se queda sin saldo solo se entera por la campana, y sus agentes ya no responden. Las plantillas de Resend, el texto de `email_notices` y las fichas del catálogo se quedan.
 - Q: ¿Y la alerta de la DLQ que el owner pidió quitar a la vez? → A: **Ya no sale por correo**: la spec 051 (requisito 9.1) lo retiró y llegó a producción el 2026-11-10. El último salió ese día a las 17:00 UTC. No hay nada que cambiar.
+
+### Session 2026-11-16 (enmienda: el alta de la persona del turno y el aviso ya decidido)
+
+El 2026-11-16, en staging, el constructor preparó el agente «Anfitriones Quédate» (cliente «Prueba Quédate 061», partner «Demo (staging)»). La tarea de alta no llevaba `quedate.register_me`, y las reglas decían «No envíes teléfono, nombre o documento de un cliente final como argumentos…». Así el agente se negaba a dar de alta a quien escribe, que es lo que pide la spec 061 (requisito 3). Hubo que editarlo a mano. Después, el copiloto no pudo aplicar ninguna propuesta en ese agente: «El aviso de IA lo decide una persona, no el constructor».
+
+Lo explican tres causas, comprobadas en el código de `develop` (bcd80129):
+
+1. El prompt del constructor (`prompts/agent_draft.md`) prohíbe que una herramienta reciba el nombre, el teléfono o el documento de un cliente final, sin excepción. El modelo copia esa frase como regla del agente.
+2. El catálogo que ve el constructor enseña herramientas que él mismo no puede poner, como `quedate.create_host` o las de operador. Si el modelo elige `create_host` para el alta, el saneado la quita (`end_customer_argument`) y la tarea se queda sin herramienta de alta. Antes de `02532d90` le pasaba lo mismo a `register_me`; ahora el saneado ya la conserva.
+3. El validador rechaza cualquier propuesta que no sea de una persona en cuanto el aviso de IA está decidido, aunque lo decidiera una persona y la propuesta no lo toque. Afecta al copiloto, a las sugerencias, a las correcciones y al texto de la agenda.
+
+**Decididas en esta enmienda** (sin Luis; se pueden reabrir):
+
+- Q: ¿Es enmienda de la 047 o de la 061? → A: **De la 047.** El constructor, el copiloto y el criterio 16.6 son de esta spec. La excepción del inventario (`SERVER_SIDE_ARGS`, razonada en `tests/isolation/test_51`) es de la 061 y no cambia: ni entra ni sale nada.
+- Q: ¿Basta con cambiar el prompt? → A: **No.** Lo que haga el modelo no se puede probar sin modelo. Por eso van cuatro piezas:
+  - el prompt distingue buscar a otra persona (prohibido) de escribir los datos que la persona da de sí misma (permitido);
+  - el catálogo marca las herramientas del inventario, sacadas del inventario mismo;
+  - el catálogo deja de enseñar lo que el constructor no puede poner;
+  - el saneado quita la regla que prohíbe pasar esos datos cuando el borrador lleva una herramienta del inventario.
+
+  Las tres últimas sí se prueban.
+- Q: ¿La marca dice qué argumento escribe? → A: **No.** El inventario solo nombra `email` de `register_me`. El nombre y el documento no son del eje de la garantía 8. La marca dice que la herramienta escribe los datos que la persona da de sí misma, y no habla del teléfono: sale del canal (spec 061, 3.2).
+- Q: ¿Dónde quita el saneado esa regla? → A: **Solo en las reglas**, que es donde la puso el modelo. No toca las instrucciones ni los procedimientos. Se quedan la regla que prohíbe buscar a otra persona y la que pone una condición al alta («sin el correo confirmado», «hasta tener los datos»), que la protege.
+- Q: ¿Qué cuenta como cambiar el aviso? → A: **El objeto entero**: decidido o no, cómo y qué dice. Un autor que no es una persona no lo decide, no lo cambia y tampoco lo deja sin decidir. Si se valida sin el estado sobre el que se propone, se sigue rechazando un aviso decidido: falla cerrado.
+- **Fuera de esta enmienda:**
+  - si `quedate.create_host` entra en el inventario (pendiente del /cso del 2026-11-16, spec 061);
+  - el banco de evaluación del constructor, que sigue con sus 120 negocios;
+  - comprobar con el modelo de verdad que ya no escribe la regla. Se comprueba al regenerar el agente en staging.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -2591,6 +2619,26 @@ Decisión de Luis del 2026-11-05: «los paga auphere pero solo debe ejecutarse u
 3. El juez NO DEBE elegir el modelo del clasificador mientras haya otro disponible.
 4. El modelo DEBE estar en el catálogo con sus precios y sus tres pesos: un turno que lo use se cobra como cualquier otro.
 
+### Requisito 70 — El alta de la persona del turno y el aviso ya decidido (enmienda del 2026-11-16)
+
+**Historia de usuario:** Como partner, quiero que el constructor prepare un agente que dé de alta a quien escribe con los datos que esa persona da, y seguir cambiándolo con el copiloto después de decidir el aviso de IA. Así no tengo que corregir a mano lo que escribió el constructor.
+
+Lo sustenta el agente «Anfitriones Quédate» de staging (§Clarifications, sesión 2026-11-16).
+
+#### Criterios de aceptación
+
+1. El constructor DEBE distinguir dos cosas (garantía 8):
+   - buscar, leer o elegir a un cliente final con una herramienta está prohibido;
+   - escribir los datos que la persona del turno da de sí misma, en una herramienta del inventario cerrado de la garantía 8 (`SERVER_SIDE_ARGS`, razonado en `tests/isolation/test_51`), está permitido.
+
+   El constructor NO DEBE escribir en el agente una regla que prohíba pasar esos datos a esas herramientas.
+2. CUANDO el constructor reciba el catálogo, ENTONCES cada herramienta del inventario DEBE llevar una marca que diga que escribe los datos que la persona da de sí misma. La marca DEBE salir del inventario, sin una segunda lista, y NO DEBE nombrar el teléfono, que sale del canal (spec 061, 3.2).
+3. El catálogo del constructor NO DEBE enseñar una herramienta que el constructor no puede poner porque recibe un cliente final fuera del inventario. Hoy son `quedate.create_host` y las de operador.
+4. SI el borrador lleva una herramienta del inventario y una regla prohíbe pasar a las herramientas el nombre, el documento, el correo o el teléfono de una persona, ENTONCES el saneado DEBE quitar esa regla. NO DEBEN quitarse ni la regla que prohíbe buscar a otra persona ni la que pone una condición al alta («no llames a la herramienta de alta sin el correo confirmado», spec 061, 3.3).
+5. SI el modelo pone `quedate.register_me` en una tarea, ENTONCES el borrador DEBE conservarla en esa tarea y en las herramientas del agente, conectada o pendiente de conexión.
+6. Un autor que no es una persona (el constructor, el copiloto, una sugerencia o una corrección) NO DEBE cambiar el aviso de IA: ni decidirlo, ni cambiar cómo o qué dice, ni dejarlo sin decidir. SI una persona ya lo decidió y la propuesta no lo toca, ENTONCES el validador DEBE aceptarla, al proponerla y al aplicarla. Precisa el 16.6, que se aplicaba como «nadie más que una persona guarda un aviso decidido».
+7. SI se valida lo que propone un autor que no es una persona sin el estado sobre el que propone, ENTONCES el validador DEBE rechazar un aviso decidido, como hasta ahora.
+
 ## Criterios de éxito *(obligatorio)*
 
 - **CE-001**: Un partner que nunca usó la consola crea un cliente y deja un agente respondiendo bien en el playground en menos de 10 minutos, sin ayuda (mediana de 5 partners en una prueba de uso).
@@ -2649,6 +2697,7 @@ Decisión de Luis del 2026-11-05: «los paga auphere pero solo debe ejecutarse u
   - **Se enmienda** (owner, 2026-10-26): su requisito 4 decía que activar un cliente exige agente publicado, canal que conversa y saldo. Ahora no se activa el cliente, que siempre está activo (requisito 4.7): se activa cada canal, y «A todos» exige agente publicado y saldo (requisito 32.8). Su tarea T011 no se construye. La enmienda está escrita también en la spec 046.
 - **KB**: `architecture/agent-isolation.md` gana la garantía 9, y se escribe `decisions/ADR-049-la-fabrica-de-agentes.md`.
 - **Spec 048, retirar AgendaPro** (2026-10-29): sale el conector AgendaPro y las herramientas `booking.*`; la agenda de todos los agentes es Reservas (`reservas.*`). Las guías del sector (requisito 58) salen de las plantillas ya pasadas a Reservas, así que la 048 va antes que las tareas de la guía (fase 27).
+- **Enmienda del 2026-11-16** (requisito 70): el constructor y las herramientas de la spec 061 que escriben los datos de la persona del turno; y las propuestas sobre un agente con el aviso de IA ya decidido. Precisa el 16.6. No cambia el inventario de la garantía 8.
 - **Enmienda del 2026-11-11** (criterio 44.9): el owner pausa los correos de «sin saldo» (`client.out_of_quota`, `client.wallet.empty` y `client.balance_out`) y los del saldo de la cuenta del partner (`wallet.low` y `wallet.empty`); la campana y el teléfono se quedan. Enmienda también lo que las specs 016 (R2.2), 030 (R15.3), 033 y 051 dicen de esos correos.
 - **Enmienda del 2026-11-10** (criterio 51.7): el owner retira por ahora las sugerencias semanales. Una spec nueva definirá cómo se mejora solo el agente.
 - **Enmienda del 2026-11-04** (requisitos 66 y 67): el estudio de staging de ese día y la petición de Luis. Pendiente de su revisión; enmienda 21.1 y 61.8.
