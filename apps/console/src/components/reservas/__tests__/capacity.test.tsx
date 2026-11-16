@@ -89,6 +89,10 @@ describe("Aforo · map", () => {
 
   it("the hour panel: people of the hour, what is left, who arrives, who waits", async () => {
     a.offerWaitlistAction.mockResolvedValue({ ok: true, data: {} });
+    // «Reservar a esta hora» opens the booking dialog, which asks for the slots
+    // 200 ms later. Unanswered, the bare mock returns undefined and `.then` throws
+    // outside the test whenever the runner is slow enough to reach the timer.
+    a.capacitySlotsAction.mockResolvedValue({ ok: true, data: { date: TODAY, closed: false, slots: [], first_fit: null } });
     renderView(data());
     await userEvent.click(screen.getByRole("button", { name: "jueves, 22 de octubre a las 20:30: 40 de 64 comensales" }));
     const panel = await screen.findByRole("dialog", { name: "20:30 · 40 de 64 comensales" });
