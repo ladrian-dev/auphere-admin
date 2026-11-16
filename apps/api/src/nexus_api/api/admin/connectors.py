@@ -42,6 +42,7 @@ from nexus_api.db.models import (
     Channel,
     Connector,
     ConnectorToolMode,
+    CustomerConnectorAccount,
     Tenant,
     TenantConnector,
     TenantConnectorStatus,
@@ -49,6 +50,7 @@ from nexus_api.db.models import (
     TenantCredentials,
 )
 from nexus_api.services.connectors import catalog as connector_catalog
+from nexus_api.services.connectors import key_check
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.connectors.composio_client import (
     ComposioAuthConfigAmbiguous,
@@ -203,6 +205,21 @@ class OverrideOut(BaseModel):
     reason: str | None
     set_by_actor: str
     updated_at: datetime
+
+
+class CustomerAccountsOut(BaseModel):
+    """Spec 061 (requisito 6): cuántas personas tienen su cuenta vinculada, sin datos de nadie.
+
+    El vínculo no guarda credencial (enmienda del 2026-11-16): solo qué cuenta es de quién."""
+
+    slug: str
+    linked: int
+    needs_review: int
+    last_linked_at: datetime | None
+
+
+#: Los conectores que vinculan a cada persona con su cuenta (``customer_connector_accounts``).
+PERSON_ACCOUNT_CONNECTORS = frozenset({"quedate"})
 
 
 class SyncOut(BaseModel):
@@ -550,12 +567,11 @@ async def connect_api_key(
        creates/updates the ``tenant_connectors`` install.
     3. ``connector.connect_completed`` audit log row is written.
 
-    Note: connectivity to the upstream API is NOT validated here.
-    Validating would require an outbound HTTPS call from the API process
-    which is not currently part of the admin layer's contract. The first
-    tool invocation surfaces auth errors as ``tenant_connectors.status =
-    needs_reauth`` — that is the supported feedback loop until we add a
-    health-check endpoint in a follow-up.
+    Spec 061 (requisito 1): a connector with a key checker
+    (``services/connectors/key_check.py``, today only ``quedate``) is checked
+    against its provider here. A rejected key leaves the install in
+    ``needs_reauth``; a provider that does not answer leaves it saved
+    unchecked. Connectors without a checker are not validated, as before.
     """
     tenant = await session.get(Tenant, tenant_id)
     assert tenant is not None  # scoped_session_from_path guards this
@@ -574,11 +590,50 @@ async def connect_api_key(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    connector = await session.scalar(select(Connector).where(Connector.slug == slug))
+    if connector is not None:
+        outcome = await key_check.check(session, tenant_id=tenant_id, connector=connector)
+        if outcome == "rejected":
+            await key_check.mark_rejected(session, tenant_id=tenant_id, connector=connector)
     installs = await _list_tenant_installs(session, tenant_id)
     out = next((i for i in installs if i.connector_slug == slug), None)
     if out is None:  # pragma: no cover
         raise HTTPException(status_code=500, detail="post-connect lookup failed")
     return out
+
+
+@router.get(
+    "/tenants/{tenant_id}/connectors/{slug}/customer-accounts",
+    response_model=CustomerAccountsOut,
+)
+async def tenant_customer_accounts(
+    tenant_id: Annotated[uuid.UUID, Path()],
+    slug: str,
+    session: AsyncSession = Depends(scoped_session_from_path),
+    actor: str = Depends(require_admin_token),
+) -> CustomerAccountsOut:
+    """Spec 061 (requisito 6): el resumen de los anfitriones vinculados de un cliente.
+
+    Solo cuenta: no devuelve personas ni ids externos. Un conector que no vincula
+    personas responde 404 y el panel no pinta el bloque.
+    """
+    if slug not in PERSON_ACCOUNT_CONNECTORS:
+        raise HTTPException(status_code=404, detail="customer_accounts_not_supported")
+    row = (
+        await session.execute(
+            select(
+                sa_func.count(),
+                sa_func.count().filter(CustomerConnectorAccount.needs_review.is_(True)),
+                sa_func.max(CustomerConnectorAccount.created_at),
+            ).where(
+                CustomerConnectorAccount.tenant_id == tenant_id,
+                CustomerConnectorAccount.connector_slug == slug,
+            )
+        )
+    ).one()
+    return CustomerAccountsOut(
+        slug=slug, linked=int(row[0]), needs_review=int(row[1]), last_linked_at=row[2]
+    )
 
 
 @router.post(

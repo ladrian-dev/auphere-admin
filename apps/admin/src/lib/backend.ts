@@ -121,6 +121,14 @@ export function consoleHref(path: string): string {
   return `${CONSOLE_URL}${suffix}`;
 }
 
+/** Spec 061: el resumen de los anfitriones vinculados de un conector, sin datos de nadie. */
+export type CustomerAccountsSummary = {
+  slug: string;
+  linked: number;
+  needs_review: number;
+  last_linked_at: string | null;
+};
+
 export class BackendError extends Error {
   constructor(
     public readonly status: number,
@@ -2376,6 +2384,14 @@ export const backend = {
     call<InitiateConsentOut>(
       `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/reissue-consent`,
       { method: "POST", body: {} },
+    ),
+
+  /** Spec 061 (requisito 6): cuántas personas del cliente tienen su cuenta del
+   *  conector vinculada. ``null`` si el conector no guarda cuentas por persona. */
+  getCustomerAccounts: (tenantId: string, slug: string) =>
+    call<CustomerAccountsSummary>(
+      `/admin/tenants/${tenantId}/connectors/${encodeURIComponent(slug)}/customer-accounts`,
+      { optional: true },
     ),
 
   listConnectorToolOverrides: (tenantId: string) =>

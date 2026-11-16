@@ -351,6 +351,48 @@ TOOL_FAMILIES: dict[str, tuple[Case | Reason, frozenset[str]]] = {
             }
         ),
     ),
+    # Spec 061 (enmienda del 2026-11-16): Quédate con la clave del negocio. Las
+    # públicas no leen nada del cliente; las de la persona actúan sobre el anfitrión
+    # vinculado al cliente final del turno, que es uno por persona y no por agente
+    # (garantía 8, test_061_customer_connector_accounts); las de equipo, sobre los
+    # anfitriones de la clave del negocio, que tampoco son de ningún agente.
+    "quedate": (
+        Reason(
+            _CLIENT_DATA + "Alojamientos públicos de Quédate, el anfitrión de la persona "
+            "del turno y los anfitriones de la clave del negocio; nada es de un agente."
+        ),
+        frozenset(
+            {
+                "quedate.list_locations",
+                "quedate.listing_options",
+                "quedate.search_listings",
+                "quedate.get_listing",
+                "quedate.quote_stay",
+                "quedate.booking_settings",
+                "quedate.recent_photos",
+                "quedate.register_me",
+                "quedate.my_host",
+                "quedate.my_verification_link",
+                "quedate.upload_my_identity",
+                "quedate.create_my_listing",
+                "quedate.add_my_listing_photos",
+                "quedate.submit_my_listing",
+                "quedate.hide_my_listing",
+                "quedate.my_listings",
+                "quedate.list_hosts",
+                "quedate.get_host",
+                "quedate.create_host",
+                "quedate.host_verification_link",
+                "quedate.upload_host_identity",
+                "quedate.list_listings",
+                "quedate.get_managed_listing",
+                "quedate.create_listing",
+                "quedate.add_listing_photos",
+                "quedate.submit_listing",
+                "quedate.hide_listing",
+            }
+        ),
+    ),
     "billing": (
         Reason(_CLIENT_DATA + "Cuentas de Amigable Cobro del negocio."),
         frozenset(
