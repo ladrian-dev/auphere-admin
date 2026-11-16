@@ -18,8 +18,9 @@ sin llamar a ningún modelo:
   el constructor;
 - **nada de otro cliente**: los servicios y los agentes que cita son del cliente,
   y ningún texto lleva el nombre de otro cliente del partner;
-- **el aviso de IA lo decide una persona** (16.6): una propuesta del constructor
-  que lo trae decidido se rechaza.
+- **el aviso de IA lo decide una persona** (16.6 y 70.6): quien no es una persona
+  no lo cambia. Con ``base``, el estado sobre el que propone, el aviso tiene que
+  quedar igual que en él; sin ``base`` (un borrador nuevo), no puede llegar decidido.
 
 La parte pura es :func:`validate_spec`; :func:`load_context` lee de la base lo
 que necesita, con el cliente del contexto (RLS).
@@ -29,7 +30,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Final, Literal
@@ -46,6 +47,7 @@ from nexus_api.services.agent_spec.schema import (
     SPEC_TOOL_NAME_PATTERN,
     TOOL_NAME_PATTERN,
     AgentSpec,
+    AiDisclosure,
 )
 
 Author = Literal["person", "builder", "copilot", "suggestion", "correction", "migration"]
@@ -86,7 +88,24 @@ SERVER_SIDE_ARGS: Final = frozenset(
         ("quedate.register_me", "email"),
     }
 )
+#: Spec 047, 70.2: las herramientas del inventario, que escriben los datos que la
+#: persona del turno da de sí misma. El constructor las ve marcadas.
+OWN_DATA_TOOLS: Final = frozenset(tool for tool, _arg in SERVER_SIDE_ARGS)
 _ALWAYS_INJECTED: Final = "conversation_id"
+
+
+def end_customer_picks(name: str, args: Iterable[str]) -> list[str]:
+    """Los argumentos de ``name`` con los que el modelo elegiría a un cliente final
+    (garantía 8): los del eje, menos la conversación, que la pone el servidor, y lo
+    que el inventario (``SERVER_SIDE_ARGS``) dice que solo escribe. Lo usan el
+    validador y el catálogo del constructor (70.3), para que no puedan divergir."""
+    return sorted(
+        arg
+        for arg in set(args) & END_CUSTOMER_ARGS
+        if arg != _ALWAYS_INJECTED and (name, arg) not in SERVER_SIDE_ARGS
+    )
+
+
 _TOOL_NAME: Final = re.compile(SPEC_TOOL_NAME_PATTERN)
 #: What the builder may propose (65.3): a connector's provider slug is not one of them.
 _BUILDER_TOOL_NAME: Final = re.compile(TOOL_NAME_PATTERN)
@@ -234,9 +253,14 @@ def validate_spec(
     ctx: Context,
     *,
     author: Author = "person",
+    base: AgentSpec | Mapping[str, Any] | None = None,
 ) -> tuple[AgentSpec | None, list[Problem]]:
     """``(spec, [])`` si vale; ``(spec o None, problemas)`` si no. Siempre en el
-    mismo orden, para que la consola los pinte igual cada vez."""
+    mismo orden, para que la consola los pinte igual cada vez.
+
+    ``base``: el AgentSpec (o su documento) sobre el que propone quien no es una
+    persona. Con él, el aviso de IA que ya decidió una persona no impide la
+    propuesta, siempre que quede igual (70.6)."""
     try:
         spec = doc if isinstance(doc, AgentSpec) else AgentSpec.model_validate(doc)
     except ValidationError as exc:
@@ -323,11 +347,7 @@ def validate_spec(
                 )
             )
         if strict_customer and pointer.startswith("/tools/"):
-            picked = sorted(
-                arg
-                for arg in info.args & END_CUSTOMER_ARGS
-                if arg != _ALWAYS_INJECTED and (name, arg) not in SERVER_SIDE_ARGS
-            )
+            picked = end_customer_picks(name, info.args)
             if picked:
                 problems.append(
                     Problem(
@@ -397,8 +417,12 @@ def validate_spec(
                     )
                 )
 
-    # El aviso de IA lo decide una persona (16.6).
-    if author != "person" and spec.ai_disclosure.decided:
+    # El aviso de IA lo decide una persona (16.6). Quien no es una persona no lo
+    # cambia: ni lo decide, ni cambia cómo o qué dice, ni lo deja sin decidir (70.6).
+    # Sin el estado sobre el que propone, no puede llegar decidido (70.7).
+    kept = _disclosure_of(base)
+    changed = spec.ai_disclosure.decided if kept is None else spec.ai_disclosure != kept
+    if author != "person" and changed:
         problems.append(
             Problem(
                 "/ai_disclosure/decided",
@@ -407,6 +431,19 @@ def validate_spec(
             )
         )
     return spec, problems
+
+
+def _disclosure_of(base: AgentSpec | Mapping[str, Any] | None) -> AiDisclosure | None:
+    """El aviso de IA de ``base``, o ``None`` si no hay ``base`` o no se puede leer:
+    entonces cuenta como sin decidir por una persona (falla cerrado, 70.7)."""
+    if base is None:
+        return None
+    if isinstance(base, AgentSpec):
+        return base.ai_disclosure
+    try:
+        return AiDisclosure.model_validate(base.get("ai_disclosure"))
+    except ValidationError:
+        return None
 
 
 # ── el contexto desde la base ────────────────────────────────────────────────
@@ -604,9 +641,12 @@ def problems_out(problems: list[Problem]) -> list[dict[str, str]]:
 
 __all__ = [
     "END_CUSTOMER_ARGS",
+    "OWN_DATA_TOOLS",
+    "SERVER_SIDE_ARGS",
     "Context",
     "Problem",
     "ToolInfo",
+    "end_customer_picks",
     "load_context",
     "problems_out",
     "validate_spec",

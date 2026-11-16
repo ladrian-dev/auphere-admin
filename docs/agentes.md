@@ -77,6 +77,26 @@ Todo lo largo es un **trabajo** (`jobs`, `services/jobs.py`) que corre el worker
   - el **catálogo** con lo que hace cada herramienta (`capability_names`) y si este
     cliente la tiene. Las de un nombre que el AgentSpec no admite (Composio, en
     mayúsculas) no se enseñan.
+- **Los datos de la persona del turno** (enmienda del 2026-11-16, requisito 70).
+  Ninguna herramienta busca ni elige a un cliente final (garantía 8). Las del
+  inventario cerrado de `validator.SERVER_SIDE_ARGS` (razonado en
+  `tests/isolation/test_51`), como `quedate.register_me` o
+  `payments.request_review`, **escriben** los datos que la persona del turno da de
+  sí misma. Así funciona:
+  - El catálogo del constructor marca esas herramientas con
+    `[escribe los datos de la persona del turno]` (`agent_draft.OWN_DATA_MARK`). El
+    prompt le dice que las use con lo que la persona escribe, y su teléfono lo pone
+    el sistema.
+  - El catálogo no enseña las que el constructor no puede poner, porque dejan elegir
+    a un cliente final fuera del inventario (`validator.end_customer_picks`). Son
+    `quedate.create_host` y las de operador. Antes se enseñaban, el saneado las
+    quitaba y la tarea que las citaba se quedaba sin herramienta.
+  - Si el borrador lleva una del inventario, el saneado quita la regla que prohíbe
+    pasar a las herramientas el nombre, el documento, el correo o el teléfono
+    (`agent_draft.forbids_own_data`). Se quedan la que prohíbe buscar a otra persona y
+    la que pone una condición al alta («sin el correo confirmado»).
+
+  En staging, «Anfitriones Quédate» salió con esa regla y no daba de alta a nadie.
 - **La agenda solo con Reservas encendido** (D67): `validator.load_context` da las
   `reservas.*` por conectadas solo si el cliente tiene el módulo Reservas
   (`ClientAccess.reservas_on` y su modo elegido). Apagado, cuentan como sin
@@ -380,7 +400,12 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
 El aviso de IA lo decide una persona en la pantalla del agente, en su bloque
 «Aviso de IA» (en el primer mensaje de cada conversación o solo si le preguntan,
 con sus palabras opcionales); «Arreglar en el borrador» del hallazgo lo abre. El
-constructor no lo deja decidido (16.6).
+constructor no lo deja decidido (16.6). Ninguna propuesta que no sea de una persona
+lo cambia: ni el constructor, ni el copiloto, ni una sugerencia, ni una corrección
+(70.6). `validate_spec(…, base=)` compara el aviso entero con el del estado sobre
+el que se propone. Por eso el copiloto sigue proponiendo y aplicando en un agente
+con el aviso ya decidido. Sin `base` (un borrador nuevo), un aviso decidido se
+rechaza (70.7).
 
 El validador y el aviso de IA no se saltan nunca. Una prueba normal en rojo deja
 «Guardar igualmente»; una crítica, la regresión o un bloqueante solo los salta un

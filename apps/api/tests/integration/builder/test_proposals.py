@@ -214,3 +214,58 @@ async def test_applying_passes_the_validator_again(
     resp = await client.post(f"{_url(biz, agent_id)}/proposals/{pid2}/apply", headers=biz.headers())
     assert resp.status_code == 422
     assert resp.json()["detail"]["problems"][0]["code"] == "ai_disclosure_decided_by_builder"
+
+
+async def _decide_the_notice(client: Any, biz: Biz, agent_id: uuid.UUID) -> dict[str, Any]:
+    """Una persona decide el aviso de IA en el borrador, como en la consola."""
+    spec, revision = await _state(client, biz, agent_id)
+    spec["ai_disclosure"] = {"decided": True, "mode": "first_message", "text": "Soy un asistente."}
+    resp = await client.patch(
+        f"{_url(biz, agent_id)}/draft",
+        json={"spec": spec},
+        headers={**biz.headers(), "If-Match": f'"{revision}"'},
+    )
+    assert resp.status_code == 200, resp.text
+    decided, _rev = await _state(client, biz, agent_id)
+    assert decided["ai_disclosure"]["decided"] is True
+    return decided
+
+
+@pytest.mark.parametrize("author", ["copilot", "builder"])
+async def test_a_proposal_applies_on_a_notice_a_person_decided(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any, author: str
+) -> None:
+    """Spec 047, 70.6 (staging, 2026-11-16): con el aviso decidido por una persona, el
+    copiloto no podía aplicar nada («El aviso de IA lo decide una persona, no el
+    constructor»). Lo que no toca el aviso se aplica, y el aviso sigue igual."""
+    agent_id = await _agent(client, biz, fake_redis, "Recepción")
+    spec = await _decide_the_notice(client, biz, agent_id)
+    pid = await _propose(db_session, biz, agent_id, spec, RULE, author=author)
+    applied = await client.post(
+        f"{_url(biz, agent_id)}/proposals/{pid}/apply", headers=biz.headers()
+    )
+    assert applied.status_code == 200, applied.text
+    after, _rev = await _state(client, biz, agent_id)
+    assert "Ofrece siempre el primer hueco libre." in after["rules"]
+    assert after["ai_disclosure"] == spec["ai_disclosure"]
+
+
+@pytest.mark.parametrize(
+    "ops",
+    [
+        [{"op": "replace", "path": "/ai_disclosure/mode", "value": "on_ask"}],
+        [{"op": "replace", "path": "/ai_disclosure", "value": {"decided": False}}],
+    ],
+    ids=["cambia cómo", "lo deja sin decidir"],
+)
+async def test_a_proposal_cannot_change_a_notice_a_person_decided(
+    client: Any, db_session: AsyncSession, biz: Biz, fake_redis: Any, ops: list[dict[str, Any]]
+) -> None:
+    agent_id = await _agent(client, biz, fake_redis, "Recepción")
+    spec = await _decide_the_notice(client, biz, agent_id)
+    pid = await _propose(db_session, biz, agent_id, spec, ops, author="copilot")
+    resp = await client.post(f"{_url(biz, agent_id)}/proposals/{pid}/apply", headers=biz.headers())
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"]["problems"][0]["code"] == "ai_disclosure_decided_by_builder"
+    after, _rev = await _state(client, biz, agent_id)
+    assert after["ai_disclosure"] == spec["ai_disclosure"]

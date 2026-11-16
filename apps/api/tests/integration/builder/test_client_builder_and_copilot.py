@@ -309,3 +309,53 @@ async def test_a_free_request_goes_through_the_model_and_the_validator(
         assert refused.json()["proposals"] == []
     finally:
         set_copilot_model(None)
+
+
+async def test_the_copilot_proposes_and_applies_on_a_notice_a_person_decided(
+    client: Any, biz: Biz, fake_redis: Any
+) -> None:
+    """Spec 047, 70.6 (staging, 2026-11-16): con el aviso de IA decidido por una
+    persona, el copiloto con modelo respondía «no pasa las comprobaciones» y el de reglas
+    proponía algo que no se podía aplicar."""
+    agent_id = await _agent(client, biz, fake_redis)
+    got = await client.get(f"{_url(biz, agent_id)}/draft", headers=biz.headers())
+    spec, revision = got.json()["spec"], got.json()["revision"]
+    spec["ai_disclosure"] = {"decided": True, "mode": "first_message"}
+    saved = await client.patch(
+        f"{_url(biz, agent_id)}/draft",
+        json={"spec": spec},
+        headers={**biz.headers(), "If-Match": f'"{revision}"'},
+    )
+    assert saved.status_code == 200, saved.text
+
+    async def model(_messages: list[dict[str, str]]) -> str:
+        return json.dumps(
+            {
+                "answer": "Te propongo un saludo más corto.",
+                "summary": "Saludo más corto",
+                "ops": [{"op": "replace", "path": "/voice/greeting", "value": "¡Hola!"}],
+            }
+        )
+
+    try:
+        for kind, message, use in (
+            ("con modelo", "Que salude más corto", model),
+            ("sin modelo", "No ofrezcas descuentos", None),
+        ):
+            set_copilot_model(use)
+            resp = await client.post(
+                f"{_url(biz, agent_id)}/copilot", json={"message": message}, headers=biz.headers()
+            )
+            assert resp.status_code == 200, resp.text
+            proposals = [p for p in resp.json()["proposals"] if p["kind"] == "agent_spec_patch"]
+            assert proposals, (kind, resp.json())
+            applied = await client.post(
+                f"{_url(biz, agent_id)}/proposals/{proposals[0]['id']}/apply",
+                headers=biz.headers(),
+            )
+            assert applied.status_code == 200, (kind, applied.text)
+    finally:
+        set_copilot_model(None)
+    after = (await client.get(f"{_url(biz, agent_id)}/draft", headers=biz.headers())).json()
+    assert after["spec"]["voice"]["greeting"] == "¡Hola!"
+    assert after["spec"]["ai_disclosure"] == {"decided": True, "mode": "first_message"}

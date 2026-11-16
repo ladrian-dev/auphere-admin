@@ -2465,6 +2465,44 @@ Tras las quejas de clientes por correos innecesarios, el owner deshabilita por a
 
   Entregado el 2026-11-11, sin commit. Verde: los diecisiete archivos de pruebas que tocan estos avisos (225) y `verify.sh lint`.
 
+## Fase 32 — Enmienda del 2026-11-16: el alta de la persona del turno y el aviso ya decidido (requisito 70)
+
+En staging, el constructor dejó a «Anfitriones Quédate» sin `quedate.register_me` en la tarea de alta y con una regla que se lo prohibía. Después, el copiloto no pudo aplicar nada en ese agente porque una persona ya había decidido su aviso de IA (spec, sesión 2026-11-16). Sobre `develop` (bcd80129).
+
+- [x] T256 Pruebas primero, en rojo:
+  - `tests/unit/test_builder_sign_up_of_the_person.py`:
+    - el catálogo marca justo las herramientas de `SERVER_SIDE_ARGS`;
+    - no enseña `quedate.create_host` ni las de operador;
+    - el prompt ya no prohíbe sin excepción;
+    - el saneado quita la regla literal de staging y deja la que prohíbe buscar a otra persona;
+    - `register_me`, con sus argumentos de `0233_quedate_tools.json`, se queda en la tarea de alta, conectada y pendiente de conexión.
+  - `tests/unit/test_agent_spec_validator.py`: con `base`, un aviso que decidió una persona pasa una propuesta que no lo toca. Decidirlo, cambiarlo o quitarlo no pasa. Sin `base`, decidido no pasa.
+  - `tests/integration/builder/test_proposals.py`: aplicar la propuesta del copiloto en un agente con el aviso decidido da 200. Una que lo cambia da 422.
+  - `tests/integration/builder/test_client_builder_and_copilot.py`: el copiloto con modelo propone en un agente con el aviso decidido.
+  - `tests/integration/connectors/test_quedate_in_the_builder.py`: el trabajo del borrador, para un cliente con Quédate habilitado y conectado, deja `register_me` en la tarea de alta. Quita la regla de staging y deja la que exige el correo confirmado. En rojo contra `develop`.
+  - `tests/isolation/test_51_new_tools_take_no_end_customer.py`: el constructor no enseña ni conserva ninguna herramienta del registro con un cliente final fuera del inventario.
+
+  _Requisitos: 70.1 a 70.7_
+- [x] T257 `prompts/agent_draft.md`: buscar a otra persona frente a escribir los datos de la persona del turno, con la marca del catálogo. _Requisitos: 70.1_
+- [x] T258 `validator.end_customer_picks` y `_catalog_lines`: la marca y fuera lo que el constructor no puede poner. _Requisitos: 70.2, 70.3_
+- [x] T259 `sanitize`: `forbids_own_data` en las reglas, con una herramienta del inventario en el borrador. _Requisitos: 70.4, 70.5_
+- [x] T260 `validate_spec(…, base=)` y los seis que parchean un agente existente. _Requisitos: 70.6, 70.7_
+- [x] T261 Documentos: `docs/agentes.md`. _Requisitos: 70.*_
+- [x] T262 Cierre:
+  - las pruebas tocadas, una suite a la vez;
+  - `verify.sh lint`;
+  - `/cso` del cambio;
+  - el guion de commits.
+
+  Queda fuera, y se dice: regenerar el agente en staging con el modelo de verdad. _Requisitos: 70.*_
+
+  Entregado el 2026-11-17, sin commit. Verde:
+  - las seis suites nuevas o tocadas;
+  - las del constructor, mejoras, conectores y aislamiento que pasan por el código tocado;
+  - `verify.sh lint`.
+
+  `/cso` del diff sin hallazgos propios. Siguen abiertos los dos medios de la 061 del 2026-11-16. El del alta con el correo de otra persona queda más expuesto, porque ahora el constructor sí pone `register_me`.
+
 ---
 
 ## Dependencias y orden

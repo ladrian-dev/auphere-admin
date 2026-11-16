@@ -634,7 +634,7 @@ async def apply_proposal(
         ctx = await load_context(
             scope.session, partner_id=scope.principal.partner.id, agent_id=scope.agent_id
         )
-        checked, problems = validate_spec(doc, ctx, author=proposal.author)  # type: ignore[arg-type]
+        checked, problems = validate_spec(doc, ctx, author=proposal.author, base=spec)  # type: ignore[arg-type]
         if checked is None or problems:
             raise _error(
                 "invalid_proposal",

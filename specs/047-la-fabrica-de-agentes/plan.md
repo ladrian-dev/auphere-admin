@@ -770,6 +770,57 @@ Rutas relativas a `apps/api/src/nexus_api` salvo que se diga otra cosa.
 - `docs/agentes.md`: el requisito 65;
 - `docs/console.md`: «No tenemos herramienta para: …».
 
+## Enmienda del 2026-11-16 · El alta de la persona del turno y el aviso ya decidido
+
+**Qué cubre:** el requisito 70 (`spec.md`). Las decisiones están en Clarifications, sesión 2026-11-16. Las tareas son la fase 32 de `tasks.md`. Va sobre `develop` (bcd80129), con la 061 y `02532d90` dentro.
+
+### Constitution Check de la enmienda
+
+| # | Principio | ¿Cumple? | Prueba / justificación |
+|---|---|---|---|
+| I | Aislamiento | ☑ | Sin tablas. La garantía 8 no se afloja: el inventario (`SERVER_SIDE_ARGS` y `LEGIT_CUSTOMER_ARGS`) no cambia y el validador sigue rechazando lo de fuera. Un caso nuevo en `tests/isolation/test_51` comprueba que el constructor ni enseña ni conserva una herramienta con un cliente final fuera del inventario |
+| II | Superficie | ☑ | `0`. Sin rutas ni campos nuevos |
+| III | Lo leído es dato | ☑ | Sin cambios: la descripción y la ficha siguen valladas. La marca del catálogo la escribe el código, no un dato |
+| IV | Acción `mutates` | ☑ | Las propuestas siguen sin aplicarse solas. El aviso de IA sigue siendo de una persona (16.6): ahora un autor que no es una persona tampoco puede quitarlo ni cambiarlo |
+| V | Estados honestos | ☑ | El agente deja de negarse a lo que sí puede hacer |
+| VI | Por API | ☑ | Todo por `/console/*` |
+| VII | Test primero | ☑ | Fase 32: las pruebas en rojo antes |
+| VIII | Licencias | ☑ | Sin dependencias nuevas |
+| IX | KB | ☑ | La sesión 2026-11-16 de la spec y la nota de la carpeta compartida de la sesión |
+
+### Diseño
+
+Rutas relativas a `apps/api/src/nexus_api`.
+
+- **70.1.** `services/builder/prompts/agent_draft.md`: la regla de las líneas 20 y 21 pasa a distinguir buscar a otra persona de escribir los datos que la persona da de sí misma, y remite a la marca del catálogo.
+- **70.2 y 70.3.** `_catalog_lines` (`services/builder/agent_draft.py`):
+  - marca las herramientas de `SERVER_SIDE_ARGS`;
+  - deja fuera las que el validador rechaza al constructor por `end_customer_argument`.
+
+  Para que las dos cosas salgan de lo mismo, el cálculo del validador se saca a una función, `end_customer_picks(name, args)`, en `services/agent_spec/validator.py`, que usan el validador y el catálogo.
+- **70.4.** En `sanitize`, `forbids_own_data(text)` quita de las reglas lo que prohíbe pasar a las herramientas los datos de una persona, solo si el borrador conserva una herramienta del inventario. Pide, en este orden y en la misma frase:
+  - una negación pegada a un verbo de pasar o enviar;
+  - un dato de una persona;
+  - las herramientas o sus argumentos.
+
+  No casa si la frase habla de buscar o de otra persona, ni si pone una condición («sin», «hasta», «antes de», «si no»): esa regla protege el alta.
+- **70.5.** Ya lo hace `02532d90`. Lo fija una prueba con los argumentos de verdad de `alembic/data/0233_quedate_tools.json`.
+- **70.6 y 70.7.** `validate_spec` gana `base`, el AgentSpec (o su documento) sobre el que se propone:
+  - con `base`, un autor que no es una persona no puede dejar el aviso distinto del de `base`;
+  - sin `base`, se mantiene el rechazo de un aviso decidido.
+
+  Pasan `base` los que parchean un agente existente:
+  - `copilot_model.ask`;
+  - `api/console/agent_builder.apply_proposal`;
+  - `api/console/agent_improvement`;
+  - `services/improvement/corrections.py`;
+  - `services/improvement/suggestions.py`;
+  - `services/builder/agenda_text._checked`.
+
+  El borrador nuevo (`sanitize`) no tiene `base`. El código del problema (`ai_disclosure_decided_by_builder`) no cambia: la consola no lo lee por su nombre.
+
+**Documentación**, en el mismo cambio: `docs/agentes.md` (las herramientas que escriben los datos de la persona y el aviso que respetan las propuestas).
+
 ## Estructura
 
 ```text

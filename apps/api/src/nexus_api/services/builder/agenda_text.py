@@ -248,7 +248,7 @@ def _checked(
     """Lo que la propuesta deja, si se puede enseñar: valida, no promete nada nuevo sin
     herramienta y, con la agenda, nada la prohíbe."""
     cleaned, _lacking = missing.strip_doc(after, ctx)
-    spec, problems = validate_spec(cleaned, ctx, author="builder")
+    spec, problems = validate_spec(cleaned, ctx, author="builder", base=before)
     if spec is None or problems:
         return None
     try:
