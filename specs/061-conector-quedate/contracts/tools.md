@@ -29,7 +29,7 @@
 
 | Herramienta | Argumentos | Efectos | Petición |
 |---|---|---|---|
-| `quedate.register_me` | `first_name`, `last_name`, `email`, `email_confirmed`, `document_type`, `document_number`, `date_of_birth`, `sex`, `nationality` (`VEN` por defecto). El teléfono sale del cliente final | escribe | `POST /agent/hosts`. Con 422 de correo tomado, se busca en `GET /agent/hosts` y se vincula solo si su teléfono es el del chat y nadie más del negocio lo tiene; si no, «ese correo ya es de otra cuenta» |
+| `quedate.register_me` | `first_name`, `last_name`, `email`, `email_confirmed`, `document_type`, `document_number`, `date_of_birth`, `sex`, `nationality` (`VEN` por defecto). El teléfono sale del canal del cliente final (en Instagram y Messenger, ninguno) | escribe | `POST /agent/hosts`. Con 422 de correo tomado, se busca en `GET /agent/hosts` y se vincula solo si su teléfono es el del chat y nadie más del negocio lo tiene; si no, «ese correo ya es de otra cuenta» |
 | `quedate.my_host` | — | — | `GET /agent/hosts/{vínculo}` |
 | `quedate.my_verification_link` | — | escribe (estado) | `GET /agent/hosts/{vínculo}/kyc-link`. Se reutiliza mientras queden más de 24 h |
 | `quedate.upload_my_identity` | `document_photo_id`, `selfie_photo_id?` | escribe | `POST /agent/hosts/{vínculo}/kyc` (multipart: `document_image`, `selfie_image`) |
