@@ -52,6 +52,13 @@ CTX = Context(
         "shopify.list_orders": ToolInfo(
             "shopify.list_orders", integration="shopify", integration_offered=False
         ),
+        # Spec 061: el alta de la persona del turno y el alta de equipo.
+        "quedate.register_me": ToolInfo(
+            "quedate.register_me", args=frozenset({"first_name", "email", "email_confirmed"})
+        ),
+        "quedate.create_host": ToolInfo(
+            "quedate.create_host", args=frozenset({"first_name", "email", "phone"})
+        ),
     },
     service_ids=frozenset({SERVICE}),
     agent_ids=frozenset({SIBLING}),
@@ -110,6 +117,24 @@ def test_an_end_customer_as_argument_is_refused() -> None:
     assert ("/tools/1", "end_customer_argument") in codes
     # El que pone el servidor (``conversation_id``) no cuenta.
     assert ("/tools/0", "end_customer_argument") not in codes
+
+
+def test_the_quedate_sign_up_of_the_person_of_the_turn_can_be_switched_on() -> None:
+    """Spec 061: el correo de ``register_me`` se escribe, no busca a nadie. Sin la
+    excepción, la consola no dejaba encender el alta (staging, 2026-11-16). El alta de
+    equipo sigue fuera, pendiente de la decisión sobre las herramientas de equipo."""
+    codes = _codes(_doc(tools=["quedate.register_me", "quedate.create_host"]))
+    assert ("/tools/0", "end_customer_argument") not in codes
+    assert ("/tools/1", "end_customer_argument") in codes
+
+
+def test_every_server_side_exception_is_reasoned_in_test_51() -> None:
+    """Las dos listas no pueden divergir: cada excepción del validador tiene su razón
+    en el inventario de ``tests/isolation/test_51``."""
+    from nexus_api.services.agent_spec.validator import SERVER_SIDE_ARGS
+    from tests.isolation.test_51_new_tools_take_no_end_customer import LEGIT_CUSTOMER_ARGS
+
+    assert set(SERVER_SIDE_ARGS) <= set(LEGIT_CUSTOMER_ARGS)
 
 
 def test_a_migrated_agent_keeps_its_operator_tools_unless_the_builder_proposes() -> None:

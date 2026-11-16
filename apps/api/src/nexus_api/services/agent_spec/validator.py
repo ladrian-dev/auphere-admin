@@ -78,6 +78,12 @@ END_CUSTOMER_ARGS: Final = frozenset(
 SERVER_SIDE_ARGS: Final = frozenset(
     {
         ("payments.request_review", "customer_name"),
+        # Spec 061: el correo de la propia persona del turno para darla de alta en
+        # Quédate. Se escribe, no busca a nadie, y el anfitrión queda atado en el
+        # servidor al cliente final del turno. Sin esta entrada la consola no deja
+        # encender el alta (staging, 2026-11-16). ``quedate.create_host`` sigue
+        # fuera: es de equipo y está pendiente de la decisión del /cso del 16.
+        ("quedate.register_me", "email"),
     }
 )
 _ALWAYS_INJECTED: Final = "conversation_id"
