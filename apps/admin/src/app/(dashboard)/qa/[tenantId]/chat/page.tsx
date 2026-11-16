@@ -15,10 +15,12 @@
  */
 import { notFound } from "next/navigation";
 
-import { PlaygroundShell } from "@/components/qa/playground-shell";
+import { AgentPicker } from "@/app/(dashboard)/tenants/[id]/agent/agent-picker";
+import { AgentsUnreadable, PlaygroundShell } from "@/components/qa/playground-shell";
 import { CrumbName } from "@/components/shell/crumb-names";
 import { backend } from "@/lib/backend";
 import { qaApi, type QAThread } from "@/lib/qa-api";
+import { pickPlaygroundAgent, shellAgent, threadsOfAgent } from "@/lib/qa-playground-agent";
 import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "QA Playground" };
@@ -28,21 +30,28 @@ export default async function PlaygroundPage({
   searchParams,
 }: {
   params: Promise<{ tenantId: string }>;
-  searchParams: Promise<{ thread?: string }>;
+  searchParams: Promise<{ thread?: string; agent?: string }>;
 }) {
   const { tenantId } = await params;
-  const { thread: activeThreadId } = await searchParams;
+  const { thread: activeThreadId, agent } = await searchParams;
   const operator = await requireOperator();
   const operatorId = operator.id;
 
-  const [tenant, agentBundle, threads] = await Promise.all([
+  // Spec 030: `?agent=` says which agent is tested (the principal without it).
+  const listed = await backend.listTenantAgents(tenantId).catch(() => null);
+  const { agents, selected } = pickPlaygroundAgent(listed, agent);
+  const [tenant, agentBundle, allThreads] = await Promise.all([
     backend.getTenant(tenantId),
-    backend.getAgentConfig(tenantId),
+    backend.getAgentConfig(
+      tenantId,
+      selected && !selected.is_principal ? selected.id : undefined,
+    ),
     qaApi
-      .listThreads({ operatorId, tenantId, limit: 50 })
+      .listThreads({ operatorId, tenantId, limit: 200 })
       .catch(() => [] as QAThread[]),
   ]);
   if (!tenant) notFound();
+  const threads = threadsOfAgent(allThreads, selected);
 
   const activeThread = activeThreadId
     ? (threads.find((t) => t.id === activeThreadId) ?? null)
@@ -57,7 +66,21 @@ export default async function PlaygroundPage({
         name: tenant.name,
         slug: tenant.slug,
       }}
+      agent={shellAgent(selected)}
       agentVersion={agentBundle.active?.version ?? null}
+      agentPicker={
+        listed === null ? (
+          <AgentsUnreadable />
+        ) : (
+          <AgentPicker
+            tenantId={tenant.id}
+            agents={agents}
+            selectedId={selected?.id ?? null}
+            allowCreate={false}
+            inline
+          />
+        )
+      }
       operatorId={operatorId}
       operatorEmail={operator.email ?? null}
       initialThreads={threads}

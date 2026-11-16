@@ -24,7 +24,7 @@
  * service is wired into local dev (already validated in the Fase 0
  * spike).
  */
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { type ReactNode, useCallback, useMemo, useState, useTransition } from "react";
 // `auditRefreshKey` bumps after each successful turn so the inspector's
 // Audit tab re-fetches and shows freshly-blocked side-effects without
 // the operator having to switch tabs.
@@ -38,9 +38,24 @@ import { InspectorDrawer } from "./inspector-drawer";
 import { ThreadList } from "./thread-list";
 import { ThreadPane } from "./thread-pane";
 
+const LIVE_NOTE = "Este hilo usa los conectores reales del cliente.";
+const DRY_RUN_NOTE = "Las herramientas con efectos se simulan.";
+
+/** The error state of the agent selector: the list could not be read, so
+ *  nothing is chosen and new threads test the principal (the API's default). */
+export function AgentsUnreadable() {
+  return (
+    <span role="status" className="min-w-0 text-xs text-status-warning-text">
+      No se pudo leer la lista de agentes: se prueba el principal.
+    </span>
+  );
+}
+
 export function PlaygroundShell({
   tenant,
+  agent = null,
   agentVersion,
+  agentPicker = null,
   operatorId,
   operatorEmail,
   initialThreads,
@@ -49,7 +64,13 @@ export function PlaygroundShell({
   embedded = false,
 }: {
   tenant: { id: string; name: string; slug: string };
+  /** Spec 030: the agent new threads test. `query` is its `?agent=` value —
+   *  `null` for the principal, so its links stay as they were. `null` when
+   *  the client's agents could not be read: the API picks the principal. */
+  agent?: { id: string; name: string; query: string | null } | null;
   agentVersion: number | null;
+  /** The page's agent selector (only with more than one agent). */
+  agentPicker?: ReactNode;
   operatorId: string;
   operatorEmail: string | null;
   initialThreads: QAThread[];
@@ -65,29 +86,48 @@ export function PlaygroundShell({
   const [activeThread, setActiveThread] = useState<QAThread | null>(
     initialActiveThread,
   );
+  // Spec 030: another agent on screen is a navigation, not a remount, so the
+  // selector keeps its focus. Its threads come in; no thread stays open.
+  const [shownAgent, setShownAgent] = useState<string | null>(agent?.id ?? null);
+  if (shownAgent !== (agent?.id ?? null)) {
+    setShownAgent(agent?.id ?? null);
+    setThreads(initialThreads);
+    setActiveThread(initialActiveThread);
+  }
   const [channel, setChannel] = useState<ChannelKind>("web");
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
   const [qaRuntime, setQARuntime] = useState<QARuntime | null>(null);
   const [, startTransition] = useTransition();
 
+  const agentQuery = agent?.query ?? null;
   const selectThread = useCallback(
     (thread: QAThread | null) => {
       setActiveThread(thread);
-      const search = thread ? `?thread=${thread.id}` : "";
+      // `?agent=` survives a change of thread: the list and the header are
+      // that agent's.
+      const params = new URLSearchParams();
+      if (agentQuery) params.set("agent", agentQuery);
+      if (thread) params.set("thread", thread.id);
+      const search = params.size ? `?${params}` : "";
       startTransition(() => {
         router.replace(`${basePath ?? `/qa/${tenant.id}/chat`}${search}`, { scroll: false });
       });
     },
-    [router, tenant.id, basePath],
+    [router, tenant.id, basePath, agentQuery],
   );
 
+  const agentId = agent?.id ?? null;
   const onCreateThread = useCallback(
     async (title?: string) => {
       const res = await fetch(`/api/qa/threads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant_id: tenant.id, title }),
+        body: JSON.stringify({
+          tenant_id: tenant.id,
+          title,
+          ...(agentId ? { agent_id: agentId } : {}),
+        }),
       });
       if (!res.ok) {
         throw new Error(`createThread failed (${res.status})`);
@@ -96,7 +136,7 @@ export function PlaygroundShell({
       setThreads((prev) => [thread, ...prev]);
       selectThread(thread);
     },
-    [selectThread, tenant.id],
+    [selectThread, tenant.id, agentId],
   );
 
   const onAddOptimisticThread = useCallback((thread: QAThread) => {
@@ -109,11 +149,15 @@ export function PlaygroundShell({
     () => ({
       tenantLabel: `${tenant.name}`,
       tenantSlug: tenant.slug,
-      agentLabel:
-        agentVersion != null ? `Agente v${agentVersion}` : "Agente (sin versión)",
+      agentLabel: `${agent?.name ?? "Agente"} ${
+        agentVersion != null ? `v${agentVersion}` : "(sin versión)"
+      }`,
     }),
-    [agentVersion, tenant.name, tenant.slug],
+    [agent?.name, agentVersion, tenant.name, tenant.slug],
   );
+  // ADR-024: the badge tells the mode of the thread on screen. With no thread,
+  // what «+ nueva» creates: dry run.
+  const live = activeThread != null && !activeThread.dry_run;
 
   return (
     <div
@@ -125,21 +169,34 @@ export function PlaygroundShell({
       data-qa-playground-root
     >
       {/* Header */}
-      <header className="flex items-center gap-4 border-b border-border bg-card/50 px-4 py-3 text-sm">
-        <div className="flex flex-col">
-          <span className="font-semibold tracking-tight">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card/50 px-4 py-3 text-sm">
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-semibold tracking-tight">
             {headerSummary.tenantLabel}
           </span>
-          <span className="font-mono text-xs text-muted-foreground">
+          <span className="truncate font-mono text-xs text-muted-foreground">
             {headerSummary.tenantSlug} · {headerSummary.agentLabel}
           </span>
         </div>
-        <span
-          aria-label="Dry run sandbox"
-          className="ml-2 rounded-full bg-status-warning-bg px-3 py-1 text-xs font-bold uppercase tracking-eyebrow text-status-warning-text"
-        >
-          Dry run
-        </span>
+        {live ? (
+          <span
+            data-qa-mode="live"
+            title={LIVE_NOTE}
+            className="shrink-0 rounded-full border border-status-danger-border bg-status-danger-bg px-3 py-1 text-xs font-bold uppercase tracking-eyebrow text-status-danger-text"
+          >
+            En vivo
+          </span>
+        ) : (
+          <span
+            data-qa-mode="dry_run"
+            title={DRY_RUN_NOTE}
+            className="shrink-0 rounded-full border border-status-warning-border bg-status-warning-bg px-3 py-1 text-xs font-bold uppercase tracking-eyebrow text-status-warning-text"
+          >
+            Dry run
+          </span>
+        )}
+        <span className="sr-only">{live ? LIVE_NOTE : DRY_RUN_NOTE}</span>
+        {agentPicker}
         <div className="flex-1" />
         {operatorEmail && (
           <span

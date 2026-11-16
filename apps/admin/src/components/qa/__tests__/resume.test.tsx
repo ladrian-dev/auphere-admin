@@ -66,9 +66,11 @@ function makeThread(over: Partial<QAThread> = {}): QAThread {
   return {
     id: "11111111-1111-1111-1111-111111111111",
     tenant_id: "tn",
+    agent_id: null,
     operator_id: "op",
     external_id: null,
     title: "Resumable thread",
+    dry_run: true,
     archived_at: null,
     last_run_at: null,
     message_count: 3,

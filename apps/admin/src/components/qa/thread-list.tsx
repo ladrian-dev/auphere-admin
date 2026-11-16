@@ -77,6 +77,9 @@ export function ThreadList({
                 <span className="line-clamp-1">{t.title}</span>
                 <span className="block font-mono text-[10px] text-muted-foreground">
                   {t.id.slice(0, 8)} · {t.message_count} msg
+                  {!t.dry_run ? (
+                    <span className="text-status-danger-text"> · en vivo</span>
+                  ) : null}
                   {t.archived_at ? " · archivado" : ""}
                 </span>
               </button>
