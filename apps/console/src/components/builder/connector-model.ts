@@ -77,7 +77,7 @@ export function rowLayout(c: AgentConnector, canWrite: boolean): { primary: RowI
   return { primary, menu };
 }
 
-const NAMED_CATEGORIES = new Set(["booking", "calendar", "billing", "catalog", "ecommerce", "messaging", "docs", "crm"]);
+const NAMED_CATEGORIES = new Set(["booking", "lodging", "calendar", "billing", "catalog", "ecommerce", "messaging", "docs", "crm"]);
 /** Una categoría que la consola no sabe nombrar cae en «El resto», como en Conectores del cliente. */
 export const OTHER_CATEGORY = "other";
 

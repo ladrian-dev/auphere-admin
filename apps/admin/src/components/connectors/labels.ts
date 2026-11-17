@@ -8,6 +8,8 @@ import type { Connector, ConnectorAuthKind, TenantConnectorStatus } from "@/lib/
 /** The partner console's names (spec 018 R4.5). */
 export const CATEGORY_LABEL: Record<string, string> = {
   booking: "Citas",
+  // Spec 061: Quédate, alquiler de alojamientos.
+  lodging: "Alojamientos",
   calendar: "Calendario",
   billing: "Cobros",
   catalog: "Catálogo y ventas",

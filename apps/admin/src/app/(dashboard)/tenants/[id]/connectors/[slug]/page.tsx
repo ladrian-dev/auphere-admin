@@ -18,6 +18,7 @@ import {
   SyncButton,
 } from "../../_integrations/connector-actions";
 import { WooCommerceSetupDialog } from "../../_integrations/setup-wizards";
+import { CustomerAccounts, type CustomerAccountsState } from "./customer-accounts";
 import { ToolOverrides } from "./tool-overrides";
 
 export const dynamic = "force-dynamic";
@@ -30,12 +31,17 @@ export const dynamic = "force-dynamic";
 export default async function TenantConnectorPage({ params }: { params: Promise<{ id: string; slug: string }> }) {
   const { id, slug: rawSlug } = await params;
   const slug = decodeURIComponent(rawSlug);
-  const [connector, tenant, installed, tools, overrides] = await Promise.all([
+  const [connector, tenant, installed, tools, overrides, accounts] = await Promise.all([
     backend.getConnector(slug),
     backend.getTenant(id),
     backend.listTenantConnectors(id).catch(() => []),
     backend.listTenantToolCatalog(id, false).catch(() => []),
     backend.listConnectorToolOverrides(id).catch(() => []),
+    // Spec 061: solo los conectores con cuentas por persona responden; el resto, 404 → null.
+    backend
+      .getCustomerAccounts(id, slug)
+      .then((data): CustomerAccountsState | null => (data ? { kind: "ok", data } : null))
+      .catch((): CustomerAccountsState => ({ kind: "error" })),
   ]);
   if (!connector || !tenant) notFound();
   // WhatsApp and TikTok are channels: their page is in Canales.
@@ -133,6 +139,8 @@ export default async function TenantConnectorPage({ params }: { params: Promise<
       >
         <ToolOverrides tenantId={id} tools={ownTools} />
       </Section>
+
+      {accounts ? <CustomerAccounts state={accounts} /> : null}
     </div>
   );
 }

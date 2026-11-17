@@ -97,7 +97,7 @@ async def propose_with_model(
     except PatchError:
         return CopilotAnswer("No sé proponer ese cambio sin romper el agente.")
     cleaned, lacking = missing.strip_doc(patched, ctx)
-    checked, problems = validate_spec(cleaned, ctx, author="copilot")
+    checked, problems = validate_spec(cleaned, ctx, author="copilot", base=spec)
     if checked is None or problems:
         return CopilotAnswer(
             "El cambio que se me ocurre no pasa las comprobaciones; edítalo a mano.",

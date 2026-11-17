@@ -168,3 +168,20 @@ class TestHandOffOnEveryIntent:
         bundle = _bundle({"escalate.escalate_to_human"})
         tools = _filter_tools_for_intent_with_composio(bundle, "escalate")
         assert tools.count("escalate.escalate_to_human") == 1
+
+
+class TestQuedateOnEveryIntent:
+    """Spec 061 (staging, 2026-11-17): a sign-up message full of personal data was
+    classified ``escalate``; without ``quedate.register_me`` in the turn the agent
+    could not sign the person up and handed over instead. Like the payment review,
+    Quédate's tools are offered on every intent; the agent's activation and the
+    whitelist still decide which ones."""
+
+    def test_quedate_tools_are_offered_on_every_intent(self) -> None:
+        tools = {"quedate.register_me", "quedate.my_host", "escalate.escalate_to_human"}
+        bundle = _bundle(tools)
+        for intent in ("escalate", "greeting", "info", "book", "queue", "fallback"):
+            result = _filter_tools_for_intent_with_composio(bundle, intent)
+            assert "quedate.register_me" in result, intent
+            assert "quedate.my_host" in result, intent
+            assert set(result) <= tools, intent

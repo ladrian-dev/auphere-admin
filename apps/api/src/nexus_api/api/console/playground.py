@@ -72,7 +72,6 @@ from nexus_api.core.tenant_context import (
     tenant_context,
 )
 from nexus_api.db.models import (
-    ChannelType,
     Message,
     MessageDirection,
     Partner,
@@ -530,7 +529,9 @@ async def start_run(
                 thread_id=thread.id, operator_id=operator_id, status=QA_RUN_STATUS_RUNNING
             )
             session.add(qa_run)
-            thread_agent_id = thread.agent_id
+            # A thread from before spec 030 has no agent: the principal's,
+            # sealed now (without it every connector tool closes, spec 047).
+            thread_agent_id = await qa_api.thread_agent_id(session, thread)
             thread.last_run_at = func.now()
             thread.message_count = (thread.message_count or 0) + 1
             await session.flush()
@@ -548,19 +549,17 @@ async def start_run(
 
     # Console threads are always dry-run (no toggle): the safe pipeline.
     pipeline = qa_api._get_qa_pipeline(live=False)
-    graph_state = {
-        "tenant_id": str(tenant_id),
-        "channel_id": str(chan_id),
-        "channel_type": ChannelType.WEB.value,
-        "user_id": cust_identifier,
-        "conversation_id": str(conv_id),
-        "customer_id": str(cust_id),
-        "inbound_message_id": str(inbound_id),
-        "user_message": body.prompt,
-    }
-    if thread_agent_id is not None:
-        # Spec 030: the run tests the agent the thread was opened for.
-        graph_state["agent_id"] = str(thread_agent_id)
+    # Spec 030: the run tests the agent the thread was opened for.
+    graph_state = qa_api.qa_turn_state(
+        tenant_id=tenant_id,
+        agent_id=thread_agent_id,
+        channel_id=chan_id,
+        user_id=cust_identifier,
+        conversation_id=conv_id,
+        customer_id=cust_id,
+        inbound_message_id=inbound_id,
+        user_message=body.prompt,
+    )
     graph_config = {"configurable": {"thread_id": str(thread_id)}}
     partner_id = partner.id
 

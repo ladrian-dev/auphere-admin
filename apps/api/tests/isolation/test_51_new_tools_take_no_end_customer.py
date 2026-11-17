@@ -23,6 +23,7 @@ de Mejora; hoy no hay correcciones que barrer.
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -112,6 +113,26 @@ LEGIT_CUSTOMER_ARGS: dict[tuple[str, str], str] = {
         "El nombre que el cliente final da para el resumen del pedido que ven los "
         "revisores del negocio: se escribe, no busca a nadie."
     ),
+    # Spec 061 (research D11, enmienda del 2026-11-16): las tres entradas que suben
+    # el techo, razonadas. Las tres ESCRIBEN datos en Quédate para crear una cuenta
+    # de anfitrión; ninguna busca ni lee a un cliente final de Auphere.
+    ("quedate.register_me", "email"): (
+        "El correo de la propia persona del turno para crear SU cuenta de anfitriona en "
+        "Quédate: se escribe en Quédate, no busca a nadie, y el anfitrión queda atado en "
+        "el servidor al cliente final del turno (test_061_customer_connector_accounts). "
+        "Quédate no da de alta sin correo, y el agente debe leérselo a la persona antes "
+        "(3.3). Su teléfono no es argumento: sale de la ficha del cliente final."
+    ),
+    **{
+        pair: (
+            "Herramienta de equipo: da de alta en Quédate a OTRA persona con los datos "
+            "que el personal del negocio escribe. Se escribe en Quédate con la clave del "
+            "negocio, no busca ni lee a ningún cliente final de Auphere, y no toca el "
+            "vínculo de la persona del turno. Qué agente la tiene lo decide el partner "
+            "(Luis, 2026-11-16)."
+        )
+        for pair in (("quedate.create_host", "email"), ("quedate.create_host", "phone"))
+    },
     **{
         pair: _OPERATOR
         for pair in (
@@ -133,7 +154,10 @@ LEGIT_CUSTOMER_ARGS: dict[tuple[str, str], str] = {
 
 #: Entradas al escribirse (2026-10-26). No sube: una herramienta nueva —las de
 #: la 047 incluidas— resuelve al cliente final en el servidor.
-INVENTORY_CEILING = 28
+#: Subidas: 28 → 29 el 2026-11-13, spec 061, ``quedate.register_me.email``; y
+#: 29 → 31 el 2026-11-16, enmienda de la 061, ``quedate.create_host.email`` y
+#: ``.phone`` (research D11, razonadas arriba).
+INVENTORY_CEILING = 31
 
 
 def customer_args(definitions: list[Any]) -> set[tuple[str, str]]:
@@ -157,6 +181,51 @@ def test_no_tool_takes_an_end_customer_but_the_inventoried() -> None:
     stale = sorted(LEGIT_CUSTOMER_ARGS.keys() - found)
     assert not stale, f"entradas que ya no hacen falta: {stale}. Quítalas y baja el techo."
     assert len(LEGIT_CUSTOMER_ARGS) <= INVENTORY_CEILING
+
+
+def test_the_builder_neither_shows_nor_keeps_a_tool_that_takes_an_end_customer() -> None:
+    """Spec 047, 70.1 a 70.3 (enmienda del 2026-11-16): el constructor sabe ahora que
+    las herramientas del inventario escriben los datos de la persona del turno. Eso no
+    afloja la garantía 8: del registro entero, lo que recibe un cliente final fuera del
+    inventario del validador (``SERVER_SIDE_ARGS``) ni se le enseña ni sobrevive al
+    saneado, conectado y sin conectar. Lo de dentro sí."""
+    from nexus_api.services.agent_spec.validator import SERVER_SIDE_ARGS, Context, ToolInfo
+    from nexus_api.services.builder.agent_draft import DraftRequest, build_messages, sanitize
+    from nexus_api.services.business.compilation import Facts
+
+    registry = build_default_registry()
+    definitions = registry.get_tool_definitions(registry.names())
+    picks = {
+        tool
+        for tool, arg in customer_args(definitions)
+        if arg != "conversation_id" and (tool, arg) not in SERVER_SIDE_ARGS
+    }
+    assert {"quedate.create_host", "billing.find_client"} <= picks, "el barrido no ve nada"
+    request = DraftRequest.clean("Recepción", "Atiende a quien escribe por WhatsApp.")
+    facts = Facts(name="Negocio de prueba")
+    for connected in (True, False):
+        ctx = Context(
+            tools={
+                d.name: ToolInfo(
+                    d.name,
+                    integration=d.name.split(".")[0],
+                    connected=connected,
+                    args=frozenset((d.parameters or {}).get("properties") or {}),
+                )
+                for d in definitions
+            }
+        )
+        shown = build_messages(request, facts, ctx)[1]["content"]
+        listed = set(re.findall(r"^- ([a-z0-9_]+\.[a-z0-9_]+) ", shown, re.M))
+        assert "quedate.register_me" in listed, "el barrido no ve el catálogo"
+        assert not listed & picks, f"el constructor ve {sorted(listed & picks)}"
+        raw = {
+            "instructions": [{"title": "Cómo atiendes", "body": "Con la ficha."}],
+            "tools": [*sorted(picks), "quedate.register_me"],
+        }
+        draft = sanitize(raw, request, ctx, facts, model_policy=None)
+        assert not set(draft.spec.tools or []) & picks
+        assert "quedate.register_me" in (draft.spec.tools or [])
 
 
 def test_operator_tools_are_only_seeded_on_admin_only_agents() -> None:

@@ -27,18 +27,25 @@ del tenant (`/tenants/[id]`).
    - Sidebar izquierdo: threads QA previos del operator para este tenant.
    - Central: dropdown **"Preview as"** (web / whatsapp), thread, composer.
    - Sidebar derecho: drawer Inspector con 5 tabs.
-5. Escribir un mensaje. El agente responde con streaming.
-6. Cambiar el dropdown a **whatsapp** para ver cómo se vería en el
+5. Si el cliente tiene más de un agente, elegir en el encabezado cuál se
+   prueba (`?agent=`; sin él, el principal). La lista lateral enseña los
+   threads de ese agente y **+ nueva** abre uno con él. Un thread prueba
+   siempre el agente con el que nació, con su versión y sus conectores
+   activados, como en su canal.
+6. Escribir un mensaje. El agente responde con streaming.
+7. Cambiar el dropdown a **whatsapp** para ver cómo se vería en el
    canal real (re-renderiza, NO re-ejecuta).
-7. Cerrar la pestaña: el thread queda en la lista lateral para retomar.
+8. Cerrar la pestaña: el thread queda en la lista lateral para retomar.
 
-> Badge **DRY RUN** siempre visible en el header. Si no lo ves, parar
-> y reportar inmediatamente — significa que el ambiente está mal
-> configurado.
+> El badge del header dice el modo del thread en pantalla: **DRY RUN**
+> (el de siempre: las tools con efectos se simulan) o **EN VIVO** (usa
+> los conectores reales del cliente). Los threads nuevos nacen en
+> dry run. Si ves **EN VIVO** en un thread que no pusiste tú en vivo,
+> parar y reportar inmediatamente.
 
 ## 3. Qué garantías tiene
 
-Siete guardas, cada una con un test que la enforcea. Si alguno se
+Ocho guardas, cada una con un test que la enforcea. Si alguno se
 pone rojo, el feature no merge y/o se rollbackea (ver §7).
 
 | # | Guarda | Test |
@@ -50,6 +57,7 @@ pone rojo, el feature no merge y/o se rollbackea (ver §7).
 | 5 | Endpoints `/qa/*` requieren Bearer admin + `X-Operator-Id` | [`tests/integration/test_qa_endpoints.py`](../../apps/api/tests/integration/test_qa_endpoints.py) |
 | 6 | INSERT cross-operator rechazado por `WITH CHECK` | [`tests/isolation/test_8_qa_thread_isolation_by_operator.py::test_qa_cross_operator_insert_rejected`](../../apps/api/tests/isolation/test_8_qa_thread_isolation_by_operator.py) |
 | 7 | UCM emitido por el agente piloto valida contra WhatsApp | (Fase 6 Bloque C — `tests/integration/test_ucm_contract.py`) |
+| 8 | Un thread prueba un agente activo de su cliente (otro cliente: 404) y cada turno lleva ese agente, con sus activaciones | [`tests/isolation/test_qa_thread_agent_within_tenant.py`](../../apps/api/tests/isolation/test_qa_thread_agent_within_tenant.py) + [`tests/integration/connectors/test_panel_playground_tests_the_agent.py`](../../apps/api/tests/integration/connectors/test_panel_playground_tests_the_agent.py) |
 
 Los tests 1-6 están todos verdes al cierre de Fase 6. El 7 depende
 del agente piloto cuando exista; mientras el grafo emita UCM tipo

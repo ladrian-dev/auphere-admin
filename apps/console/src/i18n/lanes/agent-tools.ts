@@ -210,6 +210,8 @@ export const agentToolsMessages = {
   "connectors.field.amigable_cobro.entity_id": { es: "Identificador de entidad", en: "Entity identifier" },
   "connectors.field.amigable_cobro.token": { es: "Token de la API", en: "API token" },
   "connectors.field.amigable_venta.token": { es: "Clave de la API", en: "API key" },
+  "connectors.field.quedate.api_key": { es: "Clave de API de Quédate (Gestión de Tokens, alcance agent:onboarding)", en: "Quédate API key (Token management, scope agent:onboarding)" },
+  "connectors.field.quedate.environment": { es: "Entorno: déjalo vacío para producción o escribe dev para el de pruebas de Quédate", en: "Environment: leave it empty for production or type dev for Quédate's test environment" },
   "connectors.apiKey.title": { es: "Conectar {name} con clave de API", en: "Connect {name} with an API key" },
   "connectors.apiKey.body": { es: "Las credenciales se cifran al guardarse y nunca se vuelven a mostrar.", en: "Credentials are encrypted on save and never shown again." },
   "connectors.apiKey.submit": { es: "Guardar y conectar", en: "Save and connect" },

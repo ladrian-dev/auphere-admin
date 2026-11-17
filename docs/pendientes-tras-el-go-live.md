@@ -201,7 +201,7 @@ Dos consecuencias prácticas, no opiniones:
 | **T039/T043** (spec 001) | La suite de contención en Windows, con rutas relativas NT. Nunca se ha ejecutado |
 | **`companion-evals-live` en rojo** | Falla en `main` desde el 2026-09-12, dos días seguidos. Ajeno a este despliegue y sin mirar |
 | **`nexus-state.md`** | Sin tocar desde el 2026-08-07. Describe un mundo anterior a las specs 002–005 y a este go-live. Es el documento de estado canónico del vault |
-| **`test-api` inestable** | El paso de pytest ha ido 765s, 784s, 840s, 849s, 1140s y 1978s. El pico de 1978s tumbó un deploy por timeout (arreglado subiendo la espera a 90 min), y el run siguiente volvió a 15m48s. Nadie sabe de dónde sale la variabilidad |
+| **`test-api` inestable** | El paso de pytest ha ido 765s, 784s, 840s, 849s, 1140s y 1978s. El pico de 1978s tumbó un deploy por timeout (arreglado subiendo la espera a 90 min), y el run siguiente volvió a 15m48s. Nadie sabe de dónde sale la variabilidad. **2026-11-16:** en `main` el trabajo entero ya va por 66–92 min, y en `develop` el mismo árbol tardó 52. Los 90 min volvieron a tumbar un deploy (PR 23); la espera sube a 150 |
 | **`infra/railway/` y `deploy.yml`** | Muertos desde el corte a AWS del 2026-08-19. `CLAUDE.md` los declara «dead weight, kept until someone removes them» |
 | **Comentario obsoleto** | `deploy-prod.yml` dice que «api.auphere.com sigue apuntando a Railway». Es falso desde el 2026-08-19 |
 | **`NEXUS_WEBHOOK_HMAC_SECRET`** | Aprovisionado en Terraform y en `populate_app_secret.sh`, que afirma que «los partners ya firman con este valor». Ningún código lo lee: se retiró de `Settings` el 2026-09-13. O alguien lo usa y falta el verificador, o sobra en infra |

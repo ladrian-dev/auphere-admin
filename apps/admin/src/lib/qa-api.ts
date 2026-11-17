@@ -78,9 +78,15 @@ async function qaCall<T>(
 export type QAThread = {
   id: string;
   tenant_id: string;
+  /** Spec 030: the agent this thread tests. `null` only on a thread from
+   *  before agents per client that has not run since — the principal's. */
+  agent_id: string | null;
   operator_id: string;
   external_id: string | null;
   title: string;
+  /** ADR-024: `true` intercepts every side effect; `false` runs the
+   *  tenant's real connectors. */
+  dry_run: boolean;
   archived_at: string | null;
   last_run_at: string | null;
   message_count: number;
@@ -90,6 +96,8 @@ export type QAThread = {
 
 export type QAThreadCreateInput = {
   tenant_id: string;
+  /** An active agent of `tenant_id` (404 otherwise); the principal if absent. */
+  agent_id?: string;
   title?: string;
 };
 

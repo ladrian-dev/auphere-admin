@@ -401,7 +401,7 @@ async def _apply_change(
         legacy_chars=svc.legacy_chars_of(spec),
         agent_id=scope.agent_id,
     )
-    checked, problems = validate_spec(doc, ctx, author=author)
+    checked, problems = validate_spec(doc, ctx, author=author, base=spec)
     if checked is None or problems:
         raise _error(
             svc.SuggestionError(

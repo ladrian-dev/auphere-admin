@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models import (
@@ -63,7 +64,14 @@ def _decision(slug: str, partner_id: uuid.UUID, *, enabled: bool) -> ConnectorPa
 
 
 async def test_without_rows_everything_is_available(db_session: AsyncSession) -> None:
-    """1.1: al desplegar, ningún partner ni cliente pierde nada."""
+    """1.1: al desplegar, ningún partner ni cliente pierde nada.
+
+    Sin filas, todo disponible. La migración 0233 (spec 061) deja a propósito la fila
+    de Quédate, deshabilitado por defecto: se vacían las dos tablas para probar la regla
+    y no lo que haya sembrado una migración posterior.
+    """
+    await db_session.execute(sa.delete(ConnectorPartnerAccess))
+    await db_session.execute(sa.delete(ConnectorAccessDefault))
     a = await _partner(db_session, "a")
     t = await _tenant(db_session, a)
     assert await unavailable_slugs_for_tenant(db_session, t) == frozenset()

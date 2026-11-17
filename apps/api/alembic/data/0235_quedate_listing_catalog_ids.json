@@ -1,0 +1,335 @@
+{
+  "quedate.create_listing": {
+    "description": "Create a draft listing for a host of this key (team use). Its property_type_id comes from quedate.listing_options and its sector_id from quedate.list_locations, both called in this same turn: ids are not kept between turns. Not retried: Quédate does not delete.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "amenities": {
+          "description": "Nombres de quedate.listing_options.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Amenities",
+          "type": "array"
+        },
+        "apartment_suite": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Apartment Suite"
+        },
+        "bathrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "multipleOf": 0.5,
+          "title": "Bathrooms",
+          "type": "number"
+        },
+        "bedrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "title": "Bedrooms",
+          "type": "integer"
+        },
+        "beds": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Beds",
+          "type": "integer"
+        },
+        "description": {
+          "maxLength": 3000,
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "host_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Id",
+          "type": "string"
+        },
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        },
+        "max_guests": {
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Guests",
+          "type": "integer"
+        },
+        "price_per_night": {
+          "exclusiveMinimum": 0,
+          "title": "Price Per Night",
+          "type": "number"
+        },
+        "property_type_id": {
+          "description": "De quedate.listing_options, consultada en este mismo turno. Nunca lo escribas de memoria.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Property Type Id",
+          "type": "string"
+        },
+        "sector_id": {
+          "description": "De quedate.list_locations, consultada en este mismo turno. Nunca lo escribas de memoria.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Sector Id",
+          "type": "string"
+        },
+        "street_address": {
+          "maxLength": 200,
+          "minLength": 3,
+          "title": "Street Address",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "minLength": 3,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "property_type_id",
+        "sector_id",
+        "street_address",
+        "latitude",
+        "longitude",
+        "price_per_night",
+        "max_guests",
+        "bedrooms",
+        "beds",
+        "bathrooms",
+        "host_id"
+      ],
+      "title": "CreateListingInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingWriteOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.create_my_listing": {
+    "description": "Create a draft listing for the person you are talking to. Its property_type_id comes from quedate.listing_options and its sector_id from quedate.list_locations, both called in this same turn: ids are not kept between turns, so look them up again right before creating. Then add photos and send it to Quédate's review. Not retried: Quédate does not delete.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "amenities": {
+          "description": "Nombres de quedate.listing_options.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Amenities",
+          "type": "array"
+        },
+        "apartment_suite": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Apartment Suite"
+        },
+        "bathrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "multipleOf": 0.5,
+          "title": "Bathrooms",
+          "type": "number"
+        },
+        "bedrooms": {
+          "maximum": 50,
+          "minimum": 0,
+          "title": "Bedrooms",
+          "type": "integer"
+        },
+        "beds": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Beds",
+          "type": "integer"
+        },
+        "description": {
+          "maxLength": 3000,
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "latitude": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Latitude",
+          "type": "number"
+        },
+        "longitude": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Longitude",
+          "type": "number"
+        },
+        "max_guests": {
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Guests",
+          "type": "integer"
+        },
+        "price_per_night": {
+          "exclusiveMinimum": 0,
+          "title": "Price Per Night",
+          "type": "number"
+        },
+        "property_type_id": {
+          "description": "De quedate.listing_options, consultada en este mismo turno. Nunca lo escribas de memoria.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Property Type Id",
+          "type": "string"
+        },
+        "sector_id": {
+          "description": "De quedate.list_locations, consultada en este mismo turno. Nunca lo escribas de memoria.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Sector Id",
+          "type": "string"
+        },
+        "street_address": {
+          "maxLength": 200,
+          "minLength": 3,
+          "title": "Street Address",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "minLength": 3,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "property_type_id",
+        "sector_id",
+        "street_address",
+        "latitude",
+        "longitude",
+        "price_per_night",
+        "max_guests",
+        "bedrooms",
+        "beds",
+        "bathrooms"
+      ],
+      "title": "CreateMyListingInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingWriteOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  }
+}

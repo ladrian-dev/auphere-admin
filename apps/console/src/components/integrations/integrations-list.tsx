@@ -46,7 +46,7 @@ function urgency(status: string | null): number {
 /** Las categorías que la consola sabe nombrar. Una que no esté aquí existe
  *  —la fuente puede añadirlas— pero no tiene nombre de negocio, así que cae
  *  en «El resto» en vez de enseñar su clave interna (R4.5). */
-const NAMED = new Set(["booking", "calendar", "billing", "catalog", "ecommerce", "messaging", "docs", "crm"]);
+const NAMED = new Set(["booking", "lodging", "calendar", "billing", "catalog", "ecommerce", "messaging", "docs", "crm"]);
 
 export function IntegrationsList({
   refId,

@@ -51,7 +51,13 @@ from nexus_api.services.agent_spec.legacy import LEGACY_DEPLOYMENT
 from nexus_api.services.agent_spec.missing import MissingCapability, Source
 from nexus_api.services.agent_spec.retired import RETIRED_TOOLS, agent_may_use
 from nexus_api.services.agent_spec.schema import TOOL_NAME_PATTERN, AgentSpec, dump
-from nexus_api.services.agent_spec.validator import Context, load_context, validate_spec
+from nexus_api.services.agent_spec.validator import (
+    OWN_DATA_TOOLS,
+    Context,
+    end_customer_picks,
+    load_context,
+    validate_spec,
+)
 from nexus_api.services.builder.guides import generated as guides_generated
 from nexus_api.services.builder.guides import render as render_guide
 from nexus_api.services.builder.guides import resolve as guides_resolve
@@ -183,13 +189,22 @@ def _mapping(value: Any) -> Mapping[str, Any]:
 
 AGENDA_PREFIX: Final = "reservas."
 _TOOL_NAME: Final = re.compile(TOOL_NAME_PATTERN)
+#: Spec 047, 70.2: la marca de las herramientas que escriben los datos que la persona
+#: del turno da de sí misma (el inventario de la garantía 8). El prompt la explica.
+#: No nombra el teléfono: sale del canal (spec 061, 3.2).
+OWN_DATA_MARK: Final = "[escribe los datos de la persona del turno]"
 
 
 def _catalog_lines(ctx: Context) -> list[str]:
     """Lo que el constructor ve del catálogo: cada herramienta que puede usar, con
     lo que hace (``capability_names``) y si este cliente la tiene. Una con un
     nombre que el AgentSpec no admite (las de Composio, en mayúsculas y sin punto)
-    no se enseña: si el modelo la eligiera, el borrador entero no validaría."""
+    no se enseña: si el modelo la eligiera, el borrador entero no validaría.
+
+    Spec 047, enmienda del 2026-11-16: tampoco se enseña la que deja elegir a un
+    cliente final fuera del inventario (70.3), porque el saneado la quitaría y la
+    tarea que la cita se quedaría sin ella. Las del inventario llevan
+    :data:`OWN_DATA_MARK` (70.2)."""
     from nexus_api.api.console.capability_names import description_of
 
     lines = []
@@ -201,6 +216,7 @@ def _catalog_lines(ctx: Context) -> list[str]:
             or name in RETIRED_TOOLS
             or not agent_may_use(name)
             or not _TOOL_NAME.fullmatch(name)
+            or end_customer_picks(name, info.args)
         ):
             continue
         if info.integration is None:
@@ -214,8 +230,58 @@ def _catalog_lines(ctx: Context) -> list[str]:
             # Meta del canal) no se conecta desde el agente: está o no está.
             state = f"necesita {info.integration}: SIN ACTIVAR para este cliente, no la uses"
         what = description_of(name, "tool", "es")
-        lines.append(f"- {name} ({state})" + (f": {what}" if what else ""))
+        line = f"- {name} ({state})" + (f": {what}" if what else "")
+        lines.append(f"{line} {OWN_DATA_MARK}" if name in OWN_DATA_TOOLS else line)
     return lines
+
+
+#: Spec 047, 70.4: una regla que prohíbe pasar a las herramientas los datos de una
+#: persona. Dice, en este orden y en la misma frase: que no se pasa o se envía, qué
+#: dato y que es a una herramienta o como argumento. Se quedan:
+#: - la que habla de buscar o de otra persona, que es la de la garantía 8;
+#: - la que pone una condición al alta («sin el correo confirmado», «hasta tener
+#:   los datos», «antes de»), que la protege (spec 061, 3.3).
+_OWN_DATA_SENTENCE: Final = re.compile(r"[.;:!?\n]+")
+_FORBIDS_PASSING: Final = re.compile(
+    r"\b(no|nunca|jam[aá]s)\s+"
+    r"((debes|deber[ií]as|puedes|tienes que|hay que)\s+)?"
+    r"((le|les|se|lo|la|los|las)\s+)?"
+    r"(env[ií]\w*|pases|pasar|pase|mand\w*|uses|usar|use|incluy\w*|incluir|compart\w*|"
+    r"introduz\w*|introducir|pongas|poner|des|dar|facilit\w*|proporcion\w*)\b",
+    re.I,
+)
+_CONDITION: Final = re.compile(
+    r"\b(sin|hasta|antes|salvo|excepto|menos que|mientras|si no|que no)\b", re.I
+)
+_PERSON_DATA: Final = re.compile(
+    r"\b(tel[eé]fonos?|m[oó]viles|m[oó]vil|celulares?|nombres?|apellidos?|documentos?|"
+    r"c[eé]dulas?|dni|nie|rif|pasaportes?|correos?|e-?mails?|datos personales|"
+    r"datos (del|de la|de un|de una) (cliente|persona|usuari[oa]))\b",
+    re.I,
+)
+_TO_TOOLS: Final = re.compile(r"\b(argumentos?|par[aá]metros?|herramientas?)\b", re.I)
+_SEARCHES: Final = re.compile(
+    r"\b(busc\w*|busqu\w*|consult\w*|otr[oa]s? (persona|cliente|client[ae]|usuari[oa])s?|"
+    r"ajen[oa]s?|terceros?)\b",
+    re.I,
+)
+
+
+def forbids_own_data(text: str) -> bool:
+    """Spec 047, 70.4: ``text`` prohíbe pasar a las herramientas el nombre, el
+    documento, el correo o el teléfono de una persona, como la regla que el
+    constructor copió en staging el 2026-11-16 («No envíes teléfono, nombre o
+    documento de un cliente final como argumentos…»). No casa con «no busques a otra
+    persona», que es lo que prohíbe la garantía 8, ni con la regla que pone una
+    condición al alta («no llames a la herramienta sin el correo confirmado»)."""
+    for sentence in _OWN_DATA_SENTENCE.split(text or ""):
+        if _SEARCHES.search(sentence) or _CONDITION.search(sentence):
+            continue
+        passing = _FORBIDS_PASSING.search(sentence)
+        data = _PERSON_DATA.search(sentence, passing.end()) if passing else None
+        if data and _TO_TOOLS.search(sentence, data.end()):
+            return True
+    return False
 
 
 def available_lines(ctx: Context, *, only: Iterable[str] | None = None) -> list[str]:
@@ -617,12 +683,17 @@ def sanitize(
         for f in raw.get("faqs") or []
         if isinstance(f, Mapping) and f.get("q") and f.get("a")
     ][:100]
+    # 70.4: con una herramienta que escribe los datos de la persona del turno, la regla
+    # que prohíbe pasárselos deja al agente sin poder usarla (staging, 2026-11-16).
+    writes_own_data = any(t in OWN_DATA_TOOLS for t in tools)
     rules = [
         rule
         for rule in (
             _str(r, 300) for r in raw.get("rules") or [] if isinstance(r, str) and r.strip()
         )
-        if not promises(rule) and not forbids(rule)
+        if not promises(rule)
+        and not forbids(rule)
+        and not (writes_own_data and forbids_own_data(rule))
     ][:30]
 
     doc: dict[str, Any] = {
@@ -1354,6 +1425,7 @@ __all__ = [
     "BUSINESS_TARGETS",
     "CASE_TESTS",
     "MAX_QUESTIONS",
+    "OWN_DATA_MARK",
     "BuilderUnavailable",
     "Draft",
     "DraftInputInvalid",
@@ -1364,6 +1436,7 @@ __all__ = [
     "build_messages",
     "draft_from_template",
     "ensure_client_guide",
+    "forbids_own_data",
     "offline_output",
     "parse_output",
     "sanitize",

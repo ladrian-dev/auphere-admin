@@ -1,0 +1,618 @@
+{
+ "_source": "Capturas de dev-api.quedate.net (API del agente) del 2026-11-16, sin datos personales ni claves. Ver scratchpad/tools/scrub.py.",
+ "catalogs_200": {
+  "success": true,
+  "data": {
+   "states": [
+    {
+     "id": "019e623d-4f44-711a-9e62-1481e6667289",
+     "name": "Amazonas",
+     "cities": [
+      {
+       "id": "019e623d-4f51-70cd-bdca-07ac4b4b5df3",
+       "legacy_id": null,
+       "state_id": "019e623d-4f44-711a-9e62-1481e6667289",
+       "name": "Alto Orinoco",
+       "created_at": "2026-05-26T03:04:05.000000Z",
+       "updated_at": "2026-05-26T03:04:05.000000Z",
+       "deleted_at": null,
+       "sectors": [
+        {
+         "id": "019e623d-4f70-7302-9364-5eec6a853e8b",
+         "city_id": "019e623d-4f51-70cd-bdca-07ac4b4b5df3",
+         "name": "Alto Orinoco La Esmeralda"
+        },
+        {
+         "id": "019e623d-4f7b-71fd-b825-e0b415dbc386",
+         "city_id": "019e623d-4f51-70cd-bdca-07ac4b4b5df3",
+         "name": "Huachamacare Acanaña"
+        }
+       ]
+      },
+      {
+       "id": "019e623d-4f91-73df-a74f-27beb5a6a7ef",
+       "legacy_id": null,
+       "state_id": "019e623d-4f44-711a-9e62-1481e6667289",
+       "name": "Atabapo",
+       "created_at": "2026-05-26T03:04:05.000000Z",
+       "updated_at": "2026-05-26T03:04:05.000000Z",
+       "deleted_at": null,
+       "sectors": [
+        {
+         "id": "019e623d-4f98-7063-9795-24ea20ce1ee6",
+         "city_id": "019e623d-4f91-73df-a74f-27beb5a6a7ef",
+         "name": "Ucata Laja Lisa"
+        },
+        {
+         "id": "019e623d-4f9b-72f6-86f5-a5f94e9b8781",
+         "city_id": "019e623d-4f91-73df-a74f-27beb5a6a7ef",
+         "name": "Yapacana Macuruco"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "019e623d-50b0-7102-b49b-ffea6847d1d1",
+     "name": "Anzoátegui",
+     "cities": [
+      {
+       "id": "019e623d-50b4-72d6-b22f-cad1290781be",
+       "legacy_id": null,
+       "state_id": "019e623d-50b0-7102-b49b-ffea6847d1d1",
+       "name": "Anaco",
+       "created_at": "2026-05-26T03:04:06.000000Z",
+       "updated_at": "2026-05-26T03:04:06.000000Z",
+       "deleted_at": null,
+       "sectors": [
+        {
+         "id": "019e623d-50bc-70e8-8d23-673be3b5b01d",
+         "city_id": "019e623d-50b4-72d6-b22f-cad1290781be",
+         "name": "Anaco"
+        },
+        {
+         "id": "019e623d-50c3-73c8-9c36-cabd38e6f711",
+         "city_id": "019e623d-50b4-72d6-b22f-cad1290781be",
+         "name": "San Joaquín"
+        }
+       ]
+      },
+      {
+       "id": "019e623d-50ce-7121-86e9-aca2294fcbaf",
+       "legacy_id": null,
+       "state_id": "019e623d-50b0-7102-b49b-ffea6847d1d1",
+       "name": "Aragua",
+       "created_at": "2026-05-26T03:04:06.000000Z",
+       "updated_at": "2026-05-26T03:04:06.000000Z",
+       "deleted_at": null,
+       "sectors": [
+        {
+         "id": "019e623d-50d4-71a6-9f84-350eece99f52",
+         "city_id": "019e623d-50ce-7121-86e9-aca2294fcbaf",
+         "name": "Cachipo"
+        },
+        {
+         "id": "019e623d-50dc-733e-908a-271292b66d68",
+         "city_id": "019e623d-50ce-7121-86e9-aca2294fcbaf",
+         "name": "Aragua de Barcelona"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "property_types": [
+    {
+     "id": "019e623d-9064-70c0-a947-6d1e3781490d",
+     "name": "Casa",
+     "description": "Una casa completa con todas las comodidades",
+     "icon": "🏠"
+    },
+    {
+     "id": "019e623d-90c5-72b8-8b39-0336f0b86d56",
+     "name": "Apartamento",
+     "description": "Un apartamento completo para ti solo",
+     "icon": "🏢"
+    },
+    {
+     "id": "019e623d-9101-72a5-9fd2-a3c2a524a811",
+     "name": "Habitación",
+     "description": "Espacio privado para dormir y descansar. Puede ser con baño privado o acceso a un baño compartido.",
+     "icon": "🚪"
+    }
+   ],
+   "amenities": [
+    {
+     "id": "019e623d-91bc-7304-b254-45ca252c1122",
+     "name": "Wifi",
+     "icon": "wifi"
+    },
+    {
+     "id": "019e623d-91ce-701b-99f7-de5e32f49483",
+     "name": "Piscina",
+     "icon": "pool"
+    },
+    {
+     "id": "019e623d-91e0-7062-9535-d778b086fe68",
+     "name": "Aire Acondicionado",
+     "icon": "ac"
+    }
+   ],
+   "rental_types": [
+    "nightly",
+    "monthly"
+   ],
+   "booking_modes": [
+    "immediate",
+    "request"
+   ],
+   "document_types": [
+    "CI",
+    "PASAPORTE",
+    "RIF"
+   ],
+   "bcv_rate": 914.0218
+  }
+ },
+ "hosts_empty_200": {
+  "success": true,
+  "data": {
+   "current_page": 1,
+   "data": [],
+   "from": null,
+   "last_page": 1,
+   "per_page": 20,
+   "to": null,
+   "total": 0
+  }
+ },
+ "hosts_page_200": {
+  "success": true,
+  "data": {
+   "current_page": 1,
+   "data": [
+    {
+     "id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+     "legacy_id": null,
+     "name": "Ana Prueba",
+     "email": "ana.prueba@example.com",
+     "google_id": null,
+     "apple_id": null,
+     "avatar": null,
+     "email_verified_at": "2026-11-16T19:40:37.000000Z",
+     "is_admin": 0,
+     "admin_profile_id": null,
+     "kyc_verified": false,
+     "kyc_document_status": "locked",
+     "kyc_selfie_status": "locked",
+     "kyc_rejection_reason": null,
+     "document_type": "CI",
+     "document_number": "V-00000000",
+     "phone": "+584120000000",
+     "first_name": "Ana",
+     "last_name": "Prueba",
+     "date_of_birth": "1990-01-01",
+     "document_expiration_date": null,
+     "issuing_country": null,
+     "nationality": "VEN",
+     "sex": "M",
+     "document_image_url": null,
+     "selfie_image_url": null,
+     "kyc_submitted_at": null,
+     "kyc_verified_at": null,
+     "suspended_at": null,
+     "suspension_reason": null,
+     "is_host": 1,
+     "referral_code": null,
+     "referred_by_user_id": null,
+     "referred_by_code": null,
+     "created_at": "2026-11-16T19:40:37.000000Z",
+     "updated_at": "2026-11-16T19:40:37.000000Z",
+     "deleted_at": null,
+     "listings_count": 1
+    }
+   ],
+   "from": 1,
+   "last_page": 1,
+   "per_page": 1,
+   "to": 1,
+   "total": 1
+  }
+ },
+ "host_create_201": {
+  "success": true,
+  "message": "Anfitrión creado exitosamente. Ahora puedes cargar su KYC o crearle anuncios.",
+  "data": {
+   "id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+   "name": "Ana Prueba",
+   "first_name": "Ana",
+   "last_name": "Prueba",
+   "email": "ana.prueba@example.com",
+   "phone": "+584120000000",
+   "document_type": "CI",
+   "document_number": "V-00000000",
+   "kyc_verified": false,
+   "kyc_status": "pending_documents",
+   "created_at": "2026-11-16T19:40:37.000000Z"
+  }
+ },
+ "host_get_200": {
+  "success": true,
+  "data": {
+   "id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+   "name": "Ana Prueba",
+   "first_name": "Ana",
+   "last_name": "Prueba",
+   "email": "ana.prueba@example.com",
+   "phone": "+584120000000",
+   "document_type": "CI",
+   "document_number": "V-00000000",
+   "date_of_birth": "1990-01-01",
+   "sex": "M",
+   "nationality": "VEN",
+   "kyc_verified": false,
+   "kyc_document_status": "locked",
+   "kyc_selfie_status": "locked",
+   "listings": [],
+   "created_at": "2026-11-16T19:40:37.000000Z"
+  }
+ },
+ "host_email_taken_422": {
+  "success": false,
+  "error_code": "VALIDATION_ERROR",
+  "message": "Error de validación al registrar al anfitrión.",
+  "errors": {
+   "email": "ana.prueba@example.com"
+  }
+ },
+ "kyc_link_200": {
+  "success": true,
+  "message": "Enlace seguro de KYC generado. El anfitrión puede abrirlo en su navegador móvil para verificar su identidad.",
+  "data": {
+   "host_id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+   "host_name": "Ana Prueba",
+   "kyc_url": "https://dev.quedate.net/kyc/redacted-token",
+   "expires_in_days": 7
+  }
+ },
+ "kyc_missing_document_422": {
+  "success": false,
+  "error_code": "VALIDATION_ERROR",
+  "message": "Error al validar las imágenes de KYC.",
+  "errors": {
+   "document_image": [
+    "The document image field is required."
+   ]
+  }
+ },
+ "listing_create_201": {
+  "success": true,
+  "message": "Anuncio creado como borrador. Sube al menos 3 fotografías para poder publicarlo.",
+  "data": {
+   "id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+   "host_id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+   "title": "Prueba Auphere Nexus (no publicar)",
+   "price_per_night": "10.00",
+   "status": "draft",
+   "created_at": "2026-11-16T19:41:02.000000Z"
+  }
+ },
+ "listings_page_200": {
+  "success": true,
+  "data": {
+   "current_page": 1,
+   "data": [
+    {
+     "id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+     "legacy_id": null,
+     "user_id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+     "sector_id": "019e623d-7b1b-72fb-88a1-326c917acc47",
+     "property_type_id": "019e623d-90c5-72b8-8b39-0336f0b86d56",
+     "title": "Prueba Auphere Nexus (no publicar)",
+     "slug": "prueba-auphere-nexus-no-publicar",
+     "street_address": "Calle Ficticia 1",
+     "apartment_suite": "Apto 1",
+     "zip_code": null,
+     "check_in_time": "15:00:00",
+     "check_out_time": "11:00:00",
+     "min_nights": 1,
+     "max_nights": 30,
+     "min_months": null,
+     "max_months": null,
+     "allow_smoking": 0,
+     "allow_events": 0,
+     "allow_pets": 0,
+     "quiet_hours": null,
+     "booking_mode": "immediate",
+     "rental_type": "nightly",
+     "completed_flow": 1,
+     "ical_token": "ical-token-redacted",
+     "description": "Anuncio de prueba creado por el equipo de Auphere para validar la integración. No es real.",
+     "price_per_night": "10.00",
+     "base_price_per_night": "10.00",
+     "commission_rate": "0.00",
+     "price_per_night_ves": "9140.22",
+     "currency": "USD",
+     "max_guests": 2,
+     "bedrooms": 1,
+     "beds": 1,
+     "bathrooms": "1.0",
+     "status": "hidden",
+     "submitted_for_review_at": null,
+     "property_document_path": null,
+     "suspension_reason": null,
+     "ad_package_id": null,
+     "ad_expires_at": null,
+     "ad_status": "free",
+     "latitude": 10.5,
+     "longitude": -66.9,
+     "created_at": "2026-11-16T19:41:02.000000Z",
+     "updated_at": "2026-11-16T19:41:04.000000Z",
+     "deleted_at": null,
+     "owner": {
+      "id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+      "name": "Ana Prueba",
+      "email": "ana.prueba@example.com"
+     },
+     "media": [
+      {
+       "id": "01a1e5e0-9719-73b7-891e-fb7bdf4a6f39",
+       "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+       "file_path": "listings/redacted/foto-1.webp",
+       "sort_order": 0
+      },
+      {
+       "id": "01a1e5e0-973d-7205-90b8-ce885f00535b",
+       "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+       "file_path": "listings/redacted/foto-1.webp",
+       "sort_order": 1
+      },
+      {
+       "id": "01a1e5e0-975d-7173-9c96-8443014dbca2",
+       "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+       "file_path": "listings/redacted/foto-1.webp",
+       "sort_order": 2
+      }
+     ]
+    }
+   ],
+   "from": 1,
+   "last_page": 1,
+   "per_page": 20,
+   "to": 1,
+   "total": 1
+  }
+ },
+ "listing_get_200": {
+  "success": true,
+  "data": {
+   "id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+   "legacy_id": null,
+   "user_id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+   "sector_id": "019e623d-7b1b-72fb-88a1-326c917acc47",
+   "property_type_id": "019e623d-90c5-72b8-8b39-0336f0b86d56",
+   "title": "Prueba Auphere Nexus (no publicar)",
+   "slug": "prueba-auphere-nexus-no-publicar",
+   "street_address": "Calle Ficticia 1",
+   "apartment_suite": "Apto 1",
+   "zip_code": null,
+   "check_in_time": "15:00:00",
+   "check_out_time": "11:00:00",
+   "min_nights": 1,
+   "max_nights": 30,
+   "min_months": null,
+   "max_months": null,
+   "allow_smoking": 0,
+   "allow_events": 0,
+   "allow_pets": 0,
+   "quiet_hours": null,
+   "booking_mode": "immediate",
+   "rental_type": "nightly",
+   "completed_flow": 1,
+   "ical_token": "ical-token-redacted",
+   "description": "Anuncio de prueba creado por el equipo de Auphere para validar la integración. No es real.",
+   "price_per_night": "10.00",
+   "base_price_per_night": "10.00",
+   "commission_rate": "0.00",
+   "price_per_night_ves": "9140.22",
+   "currency": "USD",
+   "max_guests": 2,
+   "bedrooms": 1,
+   "beds": 1,
+   "bathrooms": "1.0",
+   "status": "hidden",
+   "submitted_for_review_at": null,
+   "property_document_path": null,
+   "suspension_reason": null,
+   "ad_package_id": null,
+   "ad_expires_at": null,
+   "ad_status": "free",
+   "latitude": 10.5,
+   "longitude": -66.9,
+   "created_at": "2026-11-16T19:41:02.000000Z",
+   "updated_at": "2026-11-16T19:41:04.000000Z",
+   "deleted_at": null,
+   "owner": {
+    "id": "01a1e5e0-3250-7139-a8ee-6607a31515b7",
+    "name": "Ana Prueba",
+    "email": "ana.prueba@example.com",
+    "phone": "+584120000000",
+    "kyc_verified": false
+   },
+   "media": [
+    {
+     "id": "01a1e5e0-9719-73b7-891e-fb7bdf4a6f39",
+     "model_type": "App\\Models\\Listing",
+     "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+     "file_path": "listings/redacted/foto-1.webp",
+     "file_name": "foto-1.webp",
+     "mime_type": "image/webp",
+     "file_size": null,
+     "sort_order": 0,
+     "metadata": null,
+     "created_at": "2026-11-16T19:41:03.000000Z",
+     "updated_at": "2026-11-16T19:41:03.000000Z",
+     "deleted_at": null
+    },
+    {
+     "id": "01a1e5e0-973d-7205-90b8-ce885f00535b",
+     "model_type": "App\\Models\\Listing",
+     "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+     "file_path": "listings/redacted/foto-1.webp",
+     "file_name": "foto-1.webp",
+     "mime_type": "image/webp",
+     "file_size": null,
+     "sort_order": 1,
+     "metadata": null,
+     "created_at": "2026-11-16T19:41:03.000000Z",
+     "updated_at": "2026-11-16T19:41:03.000000Z",
+     "deleted_at": null
+    },
+    {
+     "id": "01a1e5e0-975d-7173-9c96-8443014dbca2",
+     "model_type": "App\\Models\\Listing",
+     "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+     "file_path": "listings/redacted/foto-1.webp",
+     "file_name": "foto-1.webp",
+     "mime_type": "image/webp",
+     "file_size": null,
+     "sort_order": 2,
+     "metadata": null,
+     "created_at": "2026-11-16T19:41:03.000000Z",
+     "updated_at": "2026-11-16T19:41:03.000000Z",
+     "deleted_at": null
+    }
+   ],
+   "amenities": [
+    {
+     "id": "019e623d-91bc-7304-b254-45ca252c1122",
+     "legacy_id": "1",
+     "name": "Wifi",
+     "icon": "wifi",
+     "created_at": "2026-05-26T03:04:22.000000Z",
+     "updated_at": "2026-07-17T03:50:13.000000Z",
+     "deleted_at": null,
+     "pivot": {
+      "listing_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+      "amenity_id": "019e623d-91bc-7304-b254-45ca252c1122",
+      "value": null,
+      "created_at": "2026-11-16T19:41:02.000000Z",
+      "updated_at": "2026-11-16T19:41:02.000000Z"
+     }
+    }
+   ],
+   "sector": {
+    "id": "019e623d-7b1b-72fb-88a1-326c917acc47",
+    "legacy_id": null,
+    "city_id": "019e623d-7b12-7243-a3b3-df8dcb59dcf9",
+    "name": "23 de enero",
+    "created_at": "2026-05-26T03:04:16.000000Z",
+    "updated_at": "2026-05-26T03:04:16.000000Z",
+    "deleted_at": null,
+    "city": {
+     "id": "019e623d-7b12-7243-a3b3-df8dcb59dcf9",
+     "legacy_id": null,
+     "state_id": "019e623d-7b05-720f-a915-80fe58b879d0",
+     "name": "Libertador",
+     "created_at": "2026-05-26T03:04:16.000000Z",
+     "updated_at": "2026-05-26T03:04:16.000000Z",
+     "deleted_at": null,
+     "state": {
+      "id": "019e623d-7b05-720f-a915-80fe58b879d0",
+      "legacy_id": null,
+      "country_id": "019e623d-4f09-724a-9fc6-79eeef36f4a2",
+      "name": "Distrito Capital",
+      "created_at": "2026-05-26T03:04:16.000000Z",
+      "updated_at": "2026-05-26T03:04:16.000000Z",
+      "deleted_at": null
+     }
+    }
+   }
+  }
+ },
+ "media_200": {
+  "success": true,
+  "message": "3 fotografía(s) subida(s) y convertida(s) a WebP.",
+  "data": {
+   "total_photos": 3,
+   "media": [
+    {
+     "id": "01a1e5e0-9719-73b7-891e-fb7bdf4a6f39",
+     "model_type": "App\\Models\\Listing",
+     "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+     "file_path": "listings/redacted/foto-1.webp",
+     "file_name": "foto-1.webp",
+     "mime_type": "image/webp",
+     "file_size": null,
+     "sort_order": 0,
+     "metadata": null,
+     "created_at": "2026-11-16T19:41:03.000000Z",
+     "updated_at": "2026-11-16T19:41:03.000000Z",
+     "deleted_at": null
+    },
+    {
+     "id": "01a1e5e0-973d-7205-90b8-ce885f00535b",
+     "model_type": "App\\Models\\Listing",
+     "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+     "file_path": "listings/redacted/foto-1.webp",
+     "file_name": "foto-1.webp",
+     "mime_type": "image/webp",
+     "file_size": null,
+     "sort_order": 1,
+     "metadata": null,
+     "created_at": "2026-11-16T19:41:03.000000Z",
+     "updated_at": "2026-11-16T19:41:03.000000Z",
+     "deleted_at": null
+    },
+    {
+     "id": "01a1e5e0-975d-7173-9c96-8443014dbca2",
+     "model_type": "App\\Models\\Listing",
+     "model_id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+     "file_path": "listings/redacted/foto-1.webp",
+     "file_name": "foto-1.webp",
+     "mime_type": "image/webp",
+     "file_size": null,
+     "sort_order": 2,
+     "metadata": null,
+     "created_at": "2026-11-16T19:41:03.000000Z",
+     "updated_at": "2026-11-16T19:41:03.000000Z",
+     "deleted_at": null
+    }
+   ]
+  }
+ },
+ "status_pending_200": {
+  "success": true,
+  "message": "Estado del anuncio cambiado exitosamente a 'pending_approval'.",
+  "data": {
+   "id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+   "status": "pending_approval"
+  }
+ },
+ "status_hidden_200": {
+  "success": true,
+  "message": "Estado del anuncio cambiado exitosamente a 'hidden'.",
+  "data": {
+   "id": "01a1e5e0-944a-719d-b72b-01610e0996a5",
+   "status": "hidden"
+  }
+ },
+ "forbidden_403": {
+  "success": false,
+  "error_code": "FORBIDDEN",
+  "message": "No tienes autorización para acceder a este anfitrión."
+ },
+ "bad_status_422": {
+  "success": false,
+  "error_code": "FORBIDDEN",
+  "message": "No tienes autorización para cambiar el estado de este anuncio."
+ },
+ "settings_public_200": {
+  "success": true,
+  "data": {
+   "nightly_charge_enabled": true,
+   "c2p_enabled": "true",
+   "support_whatsapp": "+584141234567"
+  }
+ }
+}
