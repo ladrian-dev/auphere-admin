@@ -86,4 +86,4 @@ description: "Tareas de la spec 061: conector de Quédate (enmienda del 2026-11-
 ## Fase 8: Lo que encontró staging (2026-11-17)
 
 - [x] T064 `quedate` en `_EVERY_INTENT_TOOLKITS` del pipeline, con su prueba en `apps/worker/tests/unit/test_intent_tool_filter.py`. _Requisitos: 3.12_
-
+- [x] T065 Las herramientas que reciben `listing_id` dicen de dónde sacarlo, con su prueba en `apps/mcp/tests/test_quedate_contract_unit.py`, y la migración 0234 pone al día `tool_catalog`. _Requisitos: 4.8_

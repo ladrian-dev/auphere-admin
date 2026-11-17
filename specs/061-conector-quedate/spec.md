@@ -168,6 +168,7 @@ Un huésped busca un apartamento para unas fechas. El agente busca, le enseña u
 5. IF el anuncio no es de su anfitrión THEN el sistema DEBE rechazarlo antes de escribir nada.
 6. Crear un anuncio, subir fotos y subir el documento de identidad NO DEBEN reintentarse solos. IF no hay respuesta THEN DEBE quedar en la auditoría.
 7. Las escrituras de una misma persona DEBEN ir de una en una.
+8. Toda herramienta que recibe el id de un anuncio DEBE decir, en su descripción y en la del campo, de dónde sacarlo: `quedate.my_listings` (la persona), `quedate.list_listings` (equipo) o `quedate.search_listings` (cotizar). (Staging, 2026-11-17: entre turnos el agente no conserva lo que devolvió una herramienta; sin el id del anuncio que acababa de crear, pasó la conversación a una persona.)
 
 ### Requisito 5 — Las herramientas de equipo
 
