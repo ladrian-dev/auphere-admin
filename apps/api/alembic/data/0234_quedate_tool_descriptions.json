@@ -1,0 +1,733 @@
+{
+  "quedate.add_listing_photos": {
+    "description": "Upload to a listing of this key the photos chosen by photo_id from quedate.recent_photos of this conversation (1 to 20). Photos cannot be removed later. If you do not have its listing_id from this same turn, find it with quedate.list_listings first.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "description": "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "photo_ids": {
+          "description": "De quedate.recent_photos.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Photo Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "listing_id",
+        "photo_ids"
+      ],
+      "title": "ListingPhotosInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "total_photos": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Photos"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "PhotosOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.add_my_listing_photos": {
+    "description": "Upload to a listing of the person you are talking to the photos they chose, by photo_id from quedate.recent_photos (1 to 20). A photo cannot be removed later. If you do not have its listing_id from this same turn, find it with quedate.my_listings first.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "description": "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "photo_ids": {
+          "description": "De quedate.recent_photos.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Photo Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "listing_id",
+        "photo_ids"
+      ],
+      "title": "ListingPhotosInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "total_photos": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Photos"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "PhotosOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.get_managed_listing": {
+    "description": "One listing of this business's Quédate key, with its status and host. If you do not have its listing_id from this same turn, find it with quedate.list_listings first.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "description": "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "booking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Booking Mode"
+        },
+        "host_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Id"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "max_guests": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Guests"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "rental_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rental Type"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "street_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Street Address"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ManagedListingDetail",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.hide_listing": {
+    "description": "Hide a listing of this key (status hidden). Quédate does not delete listings. If you do not have its listing_id from this same turn, find it with quedate.list_listings first.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "description": "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.hide_my_listing": {
+    "description": "Hide a listing of the person you are talking to (status hidden). Quédate does not delete listings. If you do not have its listing_id from this same turn, find it with quedate.my_listings first.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "description": "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.my_listings": {
+    "description": "The Quédate listings of the person you are talking to, with their id, status and price. Only theirs. Use it to find the listing_id before adding photos, sending it to review or hiding it.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "description": "Sin argumentos.",
+      "properties": {},
+      "title": "_Empty",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "MyListingBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Price"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Status"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "title": "MyListingBrief",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MyListingBrief"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "linked": {
+          "title": "Linked",
+          "type": "boolean"
+        },
+        "next_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Step"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total"
+        }
+      },
+      "required": [
+        "linked"
+      ],
+      "title": "MyListingsOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.quote_stay": {
+    "description": "Price a stay in a Quédate listing: total in USD and VES with the BCV rate. If the dates are taken or the guests exceed capacity, available=false with Quédate's message. The listing_id comes from quedate.search_listings.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "check_in": {
+          "format": "date",
+          "title": "Check In",
+          "type": "string"
+        },
+        "check_out": {
+          "format": "date",
+          "title": "Check Out",
+          "type": "string"
+        },
+        "guests": {
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Guests",
+          "type": "integer"
+        },
+        "listing_id": {
+          "description": "Id del alojamiento, de quedate.search_listings. Nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "check_in",
+        "check_out",
+        "guests"
+      ],
+      "title": "QuoteStayInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "bcv_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bcv Rate"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "nights": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nights"
+        },
+        "total_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Usd"
+        },
+        "total_ves": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Ves"
+        }
+      },
+      "required": [
+        "available"
+      ],
+      "title": "QuoteStayOutput",
+      "type": "object"
+    },
+    "read_only": true,
+    "side_effects": []
+  },
+  "quedate.submit_listing": {
+    "description": "Send a listing of this key to Quédate's review (pending_approval). This tool never publishes. If you do not have its listing_id from this same turn, find it with quedate.list_listings first.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "description": "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  },
+  "quedate.submit_my_listing": {
+    "description": "Send a listing of the person you are talking to to Quédate's review (pending_approval). Quédate publishes it when approved; this tool never publishes. If you do not have its listing_id from this same turn, find it with quedate.my_listings first.",
+    "destructive": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "description": "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "ListingRefInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "listing_id": {
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "listing_id",
+        "status"
+      ],
+      "title": "StatusOutput",
+      "type": "object"
+    },
+    "read_only": false,
+    "side_effects": [
+      "mutates_db"
+    ]
+  }
+}

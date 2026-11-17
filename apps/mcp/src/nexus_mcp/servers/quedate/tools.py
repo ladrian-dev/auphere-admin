@@ -512,7 +512,8 @@ class QuoteStay(_QuedateTool):
     name = "quedate.quote_stay"
     description = (
         "Price a stay in a Quédate listing: total in USD and VES with the BCV rate. If the "
-        "dates are taken or the guests exceed capacity, available=false with Quédate's message."
+        "dates are taken or the guests exceed capacity, available=false with Quédate's message. "
+        "The listing_id comes from quedate.search_listings."
     )
     input_model = QuoteStayInput
     output_model = QuoteStayOutput
@@ -977,6 +978,7 @@ class AddMyListingPhotos(_PersonTool):
     description = (
         "Upload to a listing of the person you are talking to the photos they chose, by "
         "photo_id from quedate.recent_photos (1 to 20). A photo cannot be removed later."
+        " If you do not have its listing_id from this same turn, find it with quedate.my_listings first."
     )
     input_model = ListingPhotosInput
     output_model = PhotosOutput
@@ -1035,19 +1037,28 @@ class SubmitMyListing(_MyStatusTool):
     description = (
         "Send a listing of the person you are talking to to Quédate's review "
         "(pending_approval). Quédate publishes it when approved; this tool never publishes."
+        " If you do not have its listing_id from this same turn, find it with quedate.my_listings first."
     )
     target = "pending_approval"
 
 
 class HideMyListing(_MyStatusTool):
     name = "quedate.hide_my_listing"
-    description = "Hide a listing of the person you are talking to (status hidden). Quédate does not delete listings."
+    description = (
+        "Hide a listing of the person you are talking to (status hidden). Quédate does not "
+        "delete listings."
+        " If you do not have its listing_id from this same turn, find it with quedate.my_listings first."
+    )
     target = "hidden"
 
 
 class MyListings(_PersonTool):
     name = "quedate.my_listings"
-    description = "The Quédate listings of the person you are talking to, with their status and price. Only theirs."
+    description = (
+        "The Quédate listings of the person you are talking to, with their id, status and "
+        "price. Only theirs. Use it to find the listing_id before adding photos, sending it "
+        "to review or hiding it."
+    )
     input_model = _Empty
     output_model = MyListingsOutput
 
@@ -1273,7 +1284,10 @@ class ListListings(_TeamTool):
 
 class GetManagedListing(_TeamTool):
     name = "quedate.get_managed_listing"
-    description = "One listing of this business's Quédate key, with its status and host."
+    description = (
+        "One listing of this business's Quédate key, with its status and host."
+        " If you do not have its listing_id from this same turn, find it with quedate.list_listings first."
+    )
     input_model = ListingRefInput
     output_model = ManagedListingDetail
 
@@ -1319,6 +1333,7 @@ class AddListingPhotos(_TeamTool):
     description = (
         "Upload to a listing of this key the photos chosen by photo_id from "
         "quedate.recent_photos of this conversation (1 to 20). Photos cannot be removed later."
+        " If you do not have its listing_id from this same turn, find it with quedate.list_listings first."
     )
     input_model = ListingPhotosInput
     output_model = PhotosOutput
@@ -1354,13 +1369,20 @@ class _TeamStatusTool(_TeamTool):
 
 class SubmitListing(_TeamStatusTool):
     name = "quedate.submit_listing"
-    description = "Send a listing of this key to Quédate's review (pending_approval). This tool never publishes."
+    description = (
+        "Send a listing of this key to Quédate's review (pending_approval). This tool never "
+        "publishes."
+        " If you do not have its listing_id from this same turn, find it with quedate.list_listings first."
+    )
     target = "pending_approval"
 
 
 class HideListing(_TeamStatusTool):
     name = "quedate.hide_listing"
-    description = "Hide a listing of this key (status hidden). Quédate does not delete listings."
+    description = (
+        "Hide a listing of this key (status hidden). Quédate does not delete listings."
+        " If you do not have its listing_id from this same turn, find it with quedate.list_listings first."
+    )
     target = "hidden"
 
 

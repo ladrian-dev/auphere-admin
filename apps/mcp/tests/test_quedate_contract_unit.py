@@ -185,3 +185,23 @@ def test_no_tool_takes_identity_or_keys_as_arguments(cls: Any) -> None:
     assert not props & FORBIDDEN_ARGS, cls.name
     if cls.name in tools.PERSON_TOOLS:
         assert "host_id" not in props, f"{cls.name}: el anfitrión sale del vínculo"
+
+
+def _finder(name: str) -> str:
+    if name == "quedate.quote_stay":
+        return "quedate.search_listings"
+    return "quedate.my_listings" if name in tools.PERSON_TOOLS else "quedate.list_listings"
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [t for t in tools.QUEDATE_TOOLS if "listing_id" in t.input_model.model_fields],
+    ids=lambda c: c.name,
+)
+def test_a_tool_that_takes_a_listing_id_says_where_to_find_it(cls: Any) -> None:
+    """Staging, 2026-11-17: entre turnos el agente no conserva lo que devolvió una
+    herramienta; sin el id del anuncio, escaló en vez de buscarlo (requisito 4.8)."""
+    finder = _finder(cls.name)
+    assert finder in cls.description, cls.name
+    field = cls.input_model.model_json_schema()["properties"]["listing_id"]
+    assert finder in field.get("description", ""), cls.name

@@ -118,7 +118,12 @@ class ListingDetail(OutputModel):
 
 
 class QuoteStayInput(InputModel):
-    listing_id: str = Field(..., min_length=1, max_length=64)
+    listing_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Id del alojamiento, de quedate.search_listings. Nunca lo inventes.",
+    )
     check_in: date
     check_out: date
     guests: int = Field(..., ge=1, le=50)
@@ -267,8 +272,14 @@ class ListingWriteOutput(OutputModel):
     message: str | None = None
 
 
+_LISTING_ID = (
+    "Id del anuncio. Si no lo devolvió una herramienta en este mismo turno, búscalo con "
+    "quedate.my_listings (los de la persona) o quedate.list_listings (equipo); nunca lo inventes."
+)
+
+
 class ListingPhotosInput(InputModel):
-    listing_id: str = Field(..., min_length=1, max_length=64)
+    listing_id: str = Field(..., min_length=1, max_length=64, description=_LISTING_ID)
     photo_ids: list[str] = Field(
         ..., min_length=1, max_length=20, description="De quedate.recent_photos."
     )
@@ -281,7 +292,7 @@ class PhotosOutput(OutputModel):
 
 
 class ListingRefInput(InputModel):
-    listing_id: str = Field(..., min_length=1, max_length=64)
+    listing_id: str = Field(..., min_length=1, max_length=64, description=_LISTING_ID)
 
 
 class StatusOutput(OutputModel):
