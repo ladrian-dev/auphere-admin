@@ -6,10 +6,17 @@ re-seed the connector catalog from the YAML files before every test.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Any
+
 import pytest_asyncio
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin import connectors as admin_connectors
+from nexus_api.db.models import Connector, ToolCatalog
 from nexus_api.services.connectors import catalog as connector_catalog
 from nexus_api.services.connectors.composio_client import (
     ComposioTool,
@@ -30,6 +37,65 @@ async def seeded_catalog(db_session: AsyncSession) -> None:
     """
     seeds = load_all_seeds()
     await apply_seeds(db_session, seeds)
+
+
+#: Las filas de ``tool_catalog`` de Quédate tal como quedan tras las migraciones:
+#: la 0233 las crea y la 0234 y la 0235 cambian descripciones y esquemas.
+_ALEMBIC_DATA = Path(__file__).parents[3] / "alembic" / "data"
+_QUEDATE_SNAPSHOTS = (
+    "0233_quedate_tools.json",
+    "0234_quedate_tool_descriptions.json",
+    "0235_quedate_listing_catalog_ids.json",
+)
+
+
+def quedate_tools() -> dict[str, dict[str, Any]]:
+    catalog: dict[str, dict[str, Any]] = {}
+    for snapshot in _QUEDATE_SNAPSHOTS:
+        for name, spec in json.loads((_ALEMBIC_DATA / snapshot).read_text("utf-8")).items():
+            catalog[name] = {**catalog.get(name, {}), **spec}
+    return catalog
+
+
+@pytest_asyncio.fixture
+async def quedate_catalog(db_session: AsyncSession, seeded_catalog: None) -> None:
+    """Las 27 herramientas de Quédate, enlazadas a su conector.
+
+    Las crea la migración con ``connector_id``, y la limpieza de ``db_session``
+    borra después de cada prueba toda fila con ``connector_id`` y todos los
+    conectores. Sin este fixture solo existen en la primera prueba de la sesión: así
+    falló la del constructor en la tubería del 2026-11-17, sola en verde.
+    """
+    connector_id = await db_session.scalar(
+        sa.select(Connector.id).where(Connector.slug == "quedate")
+    )
+    assert connector_id is not None, "el seed de quedate no está aplicado"
+    rows = [
+        {
+            "name": name,
+            "description": spec["description"],
+            "mcp_server": "quedate-server",
+            "input_schema": spec["input_schema"],
+            "output_schema": spec["output_schema"],
+            "side_effects": list(spec["side_effects"]),
+            "capability_tags": ["quedate", "read" if spec["read_only"] else "write"],
+            "cost_estimate": {},
+            "connector_id": connector_id,
+            "read_only": bool(spec["read_only"]),
+            "destructive": False,
+            "requires_consent": True,
+            "default_mode": "always",
+        }
+        for name, spec in quedate_tools().items()
+    ]
+    stmt = insert(ToolCatalog).values(rows)
+    await db_session.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[ToolCatalog.name],
+            set_={"connector_id": stmt.excluded.connector_id},
+        )
+    )
+    await db_session.commit()
 
 
 @pytest_asyncio.fixture

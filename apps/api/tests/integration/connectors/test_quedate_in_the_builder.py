@@ -66,7 +66,7 @@ async def test_a_draft_for_a_client_with_quedate_signs_up_the_person(
     client: Any,
     db_session: AsyncSession,
     console_world: dict[str, Any],
-    seeded_catalog: None,
+    quedate_catalog: None,
     fake_composio: Any,
     fake_redis: Any,
     monkeypatch: pytest.MonkeyPatch,
