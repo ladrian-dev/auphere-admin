@@ -77,6 +77,17 @@ type Opts = {
   signal?: AbortSignal;
   /** Extra request headers — e.g. `If-Match` on the Inbox's take over / give back (spec 030). */
   headers?: Record<string, string>;
+  /**
+   * Spec 062: time limit per attempt. Reads get `READ_TIMEOUT_MS` by default;
+   * writes get none, because the builder can legitimately take minutes.
+   */
+  timeoutMs?: number;
+  /**
+   * Spec 062: the call can be repeated without effect, so a timeout, a cut
+   * connection or a 5xx is retried once. Defaults to `true` for GET only; a
+   * POST that only reads (the session lookup) says so explicitly.
+   */
+  idempotent?: boolean;
 };
 
 /**
@@ -96,9 +107,16 @@ async function forwardedClientIp(): Promise<Record<string, string>> {
   }
 }
 
-/** Spec 056 (10.2): the session lookup's time limit and its tries (one retry). */
+/** Spec 056 (10.2): the session lookup's time limit. */
 const SESSION_TIMEOUT_MS = 5_000;
-const SESSION_ATTEMPTS = 2;
+/**
+ * Spec 062: a read's time limit per attempt. The prod API answered every
+ * request of 2026-11-03..16 within 10.3 s (p99 under 0.33 s); a read that has
+ * not answered in 15 s is lost on the way, not being worked on.
+ */
+const READ_TIMEOUT_MS = 15_000;
+/** Spec 062: one try and, when it is safe, one retry. Never more. */
+const ATTEMPTS = 2;
 
 /** A failure that may pass on its own: no answer (network, timeout) or the API's 5xx. */
 function passing(err: unknown): boolean {
@@ -108,10 +126,62 @@ function passing(err: unknown): boolean {
   return err instanceof TypeError || name === "TimeoutError" || name === "AbortError";
 }
 
-async function request<T>(token: string, path: string, opts: Opts = {}): Promise<T | null> {
+/**
+ * Codes that undici puts in `cause` when the connection never opened: the
+ * request was not sent, so not even a write reached the API.
+ */
+const NEVER_SENT = new Set(["UND_ERR_CONNECT_TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH"]);
+
+/** The system code behind `fetch failed`; with several addresses it comes grouped in an `AggregateError`. */
+function causeCode(err: unknown): string | undefined {
+  const cause = (err as { cause?: unknown } | null)?.cause as { code?: unknown; errors?: unknown } | undefined;
+  if (!cause || typeof cause !== "object") return undefined;
+  if (typeof cause.code === "string") return cause.code;
+  if (Array.isArray(cause.errors)) {
+    const inner = cause.errors.find((e) => typeof (e as { code?: unknown } | null)?.code === "string") as { code: string } | undefined;
+    return inner?.code;
+  }
+  return undefined;
+}
+
+function neverSent(err: unknown): boolean {
+  return err instanceof TypeError && NEVER_SENT.has(causeCode(err) ?? "");
+}
+
+/**
+ * Spec 062: every attempt mints its own token (`mint`). The API consumes each
+ * `jti` on first sight, so a retry with the same token is a 401 by design —
+ * that is what sent people back to /login on 2026-11-17.
+ */
+async function request<T>(mint: () => Promise<string>, path: string, opts: Opts = {}): Promise<T | null> {
+  const method = opts.method ?? "GET";
+  const idempotent = opts.idempotent ?? method === "GET";
+  const timeoutMs = opts.timeoutMs ?? (method === "GET" ? READ_TIMEOUT_MS : undefined);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await attemptOnce<T>(await mint(), path, method, opts, timeoutMs);
+    } catch (err) {
+      const again = attempt < ATTEMPTS && !opts.signal?.aborted && (neverSent(err) || (idempotent && passing(err)));
+      if (!again) throw err;
+      console.warn(
+        JSON.stringify({
+          event: "console.backend_retry",
+          method,
+          path: path.split("?")[0],
+          attempt,
+          reason: err instanceof BackendError ? `http_${err.status}` : (causeCode(err) ?? (err as { name?: string }).name ?? "unknown"),
+        }),
+      );
+    }
+  }
+}
+
+async function attemptOnce<T>(token: string, path: string, method: Method, opts: Opts, timeoutMs: number | undefined): Promise<T | null> {
   const url = `${env().NEXUS_BACKEND_URL}${path}`;
+  const limit = timeoutMs !== undefined ? AbortSignal.timeout(timeoutMs) : undefined;
+  const signal = limit && opts.signal ? AbortSignal.any([limit, opts.signal]) : (limit ?? opts.signal);
   const res = await fetch(url, {
-    method: opts.method ?? "GET",
+    method,
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
@@ -121,7 +191,7 @@ async function request<T>(token: string, path: string, opts: Opts = {}): Promise
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     cache: "no-store",
-    signal: opts.signal,
+    signal,
   });
   if (res.status === 404 && opts.optional) return null;
   const text = await res.text();
@@ -554,8 +624,7 @@ import { workstationApi, workstationPartnerApi } from "./backend/workstation";
 export function callFor(principal: Principal): Call {
   const claims = { userId: principal.userId, partnerId: principal.partnerId, role: principal.role };
   return async <T>(path: string, opts?: Opts): Promise<T> => {
-    const token = await mintPrincipalToken(claims);
-    return (await request<T>(token, path, opts)) as T;
+    return (await request<T>(() => mintPrincipalToken(claims), path, opts)) as T;
   };
 }
 
@@ -777,34 +846,29 @@ export type ChannelSignupLinkDone = {
 export const consoleService = {
   /** Spec 040: the owner has no account — the service credential carries the call. */
   async channelSignupInfo(token: string): Promise<ChannelSignupLinkInfo> {
-    const t = await mintServiceToken();
-    return (await request<ChannelSignupLinkInfo>(t, `/console/channel-signup/${encodeURIComponent(token)}`)) as ChannelSignupLinkInfo;
+    return (await request<ChannelSignupLinkInfo>(mintServiceToken, `/console/channel-signup/${encodeURIComponent(token)}`)) as ChannelSignupLinkInfo;
   },
   async channelSignupComplete(
     token: string,
     body: { code: string; waba_id: string; phone_number_id?: string; business_id?: string },
   ): Promise<ChannelSignupLinkDone> {
-    const t = await mintServiceToken();
-    return (await request<ChannelSignupLinkDone>(t, `/console/channel-signup/${encodeURIComponent(token)}`, {
+    return (await request<ChannelSignupLinkDone>(mintServiceToken, `/console/channel-signup/${encodeURIComponent(token)}`, {
       method: "POST",
       body,
     })) as ChannelSignupLinkDone;
   },
   async lookupInvitation(token: string): Promise<InvitationLookup | null> {
-    const t = await mintServiceToken();
-    return request<InvitationLookup>(t, `/console/invitations/${encodeURIComponent(token)}`, { optional: true });
+    return request<InvitationLookup>(mintServiceToken, `/console/invitations/${encodeURIComponent(token)}`, { optional: true });
   },
   async acceptInvitation(token: string, body: { password: string; display_name?: string | null }): Promise<InvitationAccepted> {
-    const t = await mintServiceToken();
-    return (await request<InvitationAccepted>(t, `/console/invitations/${encodeURIComponent(token)}/accept`, {
+    return (await request<InvitationAccepted>(mintServiceToken, `/console/invitations/${encodeURIComponent(token)}/accept`, {
       method: "POST",
       body,
     })) as InvitationAccepted;
   },
   /** 401 → wrong credentials (also: locked account). 429 → too many attempts. */
   async login(body: { email: string; password: string }): Promise<LoginResult> {
-    const t = await mintServiceToken();
-    return (await request<LoginResult>(t, "/console/auth/login", { method: "POST", body })) as LoginResult;
+    return (await request<LoginResult>(mintServiceToken, "/console/auth/login", { method: "POST", body })) as LoginResult;
   },
   /**
    * Canjea el código de un solo uso de la app de escritorio (spec 009, R4).
@@ -823,9 +887,8 @@ export const consoleService = {
     code: string;
     code_verifier: string;
   }): Promise<{ session_token: string; expires_at: string }> {
-    const t = await mintServiceToken();
     return (await request<{ session_token: string; expires_at: string }>(
-      t,
+      mintServiceToken,
       "/console/auth/session-code/redeem",
       { method: "POST", body },
     )) as { session_token: string; expires_at: string };
@@ -837,22 +900,25 @@ export const consoleService = {
    * and ONE retry for what may be passing — a network failure, a timeout or a
    * 5xx. A 4xx is an answer and is not retried. Spec 056 (15.1): it also says
    * when the session ends (`session_expires_at`), which never moves.
+   *
+   * Spec 062: the retry is `request`'s, so each attempt carries its own token.
+   * It used to reuse one: when the first attempt arrived late, the API had
+   * already consumed its `jti`, answered the second with a 401, and a valid
+   * session was read as «no session».
    */
   async session(token: string): Promise<(ApiPrincipal & { session_expires_at?: string | null }) | null> {
-    const t = await mintServiceToken();
-    for (let attempt = 1; ; attempt++) {
-      try {
-        const res = await request<{ principal: ApiPrincipal; expires_at?: string | null }>(t, "/console/auth/session", {
-          method: "POST",
-          body: { token },
-          signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
-        });
-        return res?.principal ? { ...res.principal, session_expires_at: res.expires_at ?? null } : null;
-      } catch (err) {
-        if (err instanceof BackendError && err.status === 401) return null;
-        if (attempt < SESSION_ATTEMPTS && passing(err)) continue;
-        throw err;
-      }
+    try {
+      const res = await request<{ principal: ApiPrincipal; expires_at?: string | null }>(mintServiceToken, "/console/auth/session", {
+        method: "POST",
+        body: { token },
+        // A lookup: repeating it has no effect, although it is a POST.
+        idempotent: true,
+        timeoutMs: SESSION_TIMEOUT_MS,
+      });
+      return res?.principal ? { ...res.principal, session_expires_at: res.expires_at ?? null } : null;
+    } catch (err) {
+      if (err instanceof BackendError && err.status === 401) return null;
+      throw err;
     }
   },
   /**
@@ -862,20 +928,17 @@ export const consoleService = {
    * formulario — no para pintar un formulario con un error.
    */
   async startSignup(body: { email: string; locale: "es" | "en" }): Promise<void> {
-    const t = await mintServiceToken();
-    await request<{ status: "sent" }>(t, "/console/signup", { method: "POST", body });
+    await request<{ status: "sent" }>(mintServiceToken, "/console/signup", { method: "POST", body });
   },
   /** `null` cuando el enlace está muerto — los cuatro casos son el mismo. */
   async lookupSignup(token: string): Promise<SignupLookup | null> {
-    const t = await mintServiceToken();
-    return request<SignupLookup>(t, `/console/signup/${encodeURIComponent(token)}`, { optional: true });
+    return request<SignupLookup>(mintServiceToken, `/console/signup/${encodeURIComponent(token)}`, { optional: true });
   },
   async completeSignup(
     token: string,
     body: { company_name: string; password: string; display_name?: string | null },
   ): Promise<SignupCompleted> {
-    const t = await mintServiceToken();
-    return (await request<SignupCompleted>(t, `/console/signup/${encodeURIComponent(token)}/complete`, {
+    return (await request<SignupCompleted>(mintServiceToken, `/console/signup/${encodeURIComponent(token)}/complete`, {
       method: "POST",
       body,
     })) as SignupCompleted;
@@ -890,8 +953,7 @@ export const consoleService = {
    */
   async googleAvailable(): Promise<boolean> {
     try {
-      const t = await mintServiceToken();
-      const r = await request<{ available: boolean }>(t, "/console/auth/google/available");
+      const r = await request<{ available: boolean }>(mintServiceToken, "/console/auth/google/available");
       return r?.available === true;
     } catch {
       return false;
@@ -901,8 +963,7 @@ export const consoleService = {
     intent: "login" | "signup",
     returnTo?: string,
   ): Promise<{ authorization_url: string }> {
-    const t = await mintServiceToken();
-    return (await request<{ authorization_url: string }>(t, "/console/auth/google/start", {
+    return (await request<{ authorization_url: string }>(mintServiceToken, "/console/auth/google/start", {
       method: "POST",
       // `return_to` viaja al servidor, que lo valida y lo mete FIRMADO en el
       // `state`. No se pone aquí en la URL: lo que no llega firmado por
@@ -911,8 +972,7 @@ export const consoleService = {
     })) as { authorization_url: string };
   },
   async googleCallback(body: { code: string; state: string }): Promise<GoogleCallback> {
-    const t = await mintServiceToken();
-    return (await request<GoogleCallback>(t, "/console/auth/google/callback", {
+    return (await request<GoogleCallback>(mintServiceToken, "/console/auth/google/callback", {
       method: "POST",
       body,
     })) as GoogleCallback;
@@ -930,8 +990,7 @@ export const consoleService = {
    * el idioma lo decide la cuenta y no este navegador.
    */
   async startPasswordReset(body: { email: string }): Promise<void> {
-    const t = await mintServiceToken();
-    await request<{ status: "sent" }>(t, "/console/password-reset", { method: "POST", body });
+    await request<{ status: "sent" }>(mintServiceToken, "/console/password-reset", { method: "POST", body });
   },
   /**
    * Canjea el enlace por una contraseña nueva.
@@ -941,14 +1000,12 @@ export const consoleService = {
    * acaba de hacer. Se vuelve a la entrada.
    */
   async finishPasswordReset(token: string, body: { password: string }): Promise<void> {
-    const t = await mintServiceToken();
-    await request<{ status: "reset" }>(t, `/console/password-reset/${encodeURIComponent(token)}`, {
+    await request<{ status: "reset" }>(mintServiceToken, `/console/password-reset/${encodeURIComponent(token)}`, {
       method: "POST",
       body,
     });
   },
   async logout(token: string): Promise<void> {
-    const t = await mintServiceToken();
-    await request<null>(t, "/console/auth/logout", { method: "POST", body: { token } });
+    await request<null>(mintServiceToken, "/console/auth/logout", { method: "POST", body: { token } });
   },
 };
