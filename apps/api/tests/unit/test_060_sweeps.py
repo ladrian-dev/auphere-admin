@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
 import yaml
 
 from nexus_api.services.connectors.availability import CHANNEL_CONNECTORS
@@ -47,8 +48,10 @@ READS_WITHOUT_RULE: dict[str, str] = {
 }
 READ_GUARDS = frozenset({"connection_is_available"})
 
+Fn = ast.FunctionDef | ast.AsyncFunctionDef
 
-def _functions(path: Path) -> list[ast.AST]:
+
+def _functions(path: Path) -> list[Fn]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
 
@@ -65,9 +68,13 @@ def _calls(node: ast.AST) -> set[str]:
     return out
 
 
-def _innermost(path: Path, predicate: object) -> list[tuple[str, int]]:
-    """Las funciones más internas cuyo cuerpo contiene un nodo que cumple ``predicate``."""
-    found: list[tuple[str, int]] = []
+def _innermost(path: Path, predicate: object) -> list[tuple[Fn, int]]:
+    """Las funciones más internas cuyo cuerpo contiene un nodo que cumple ``predicate``.
+
+    Devuelve el nodo y no el nombre: un ``Protocol`` declara el mismo método sin
+    cuerpo, y buscarlo por nombre daba con la declaración (quedate/accounts.py).
+    """
+    found: list[tuple[Fn, int]] = []
     for fn in _functions(path):
         inner = [
             n
@@ -78,7 +85,7 @@ def _innermost(path: Path, predicate: object) -> list[tuple[str, int]]:
         nested_hits = {id(h) for i in inner for h in ast.walk(i) if predicate(h)}  # type: ignore[operator]
         for h in hits:
             if id(h) not in nested_hits:
-                found.append((fn.name, getattr(h, "lineno", 0)))  # type: ignore[attr-defined]
+                found.append((fn, getattr(h, "lineno", 0)))
     return found
 
 
@@ -103,20 +110,16 @@ def _selects_tenant_connector(node: ast.AST) -> bool:
     )
 
 
-def _fn_node(path: Path, name: str) -> ast.AST:
-    return next(f for f in _functions(path) if f.name == name)  # type: ignore[attr-defined]
-
-
 def test_every_connection_created_goes_through_the_rule() -> None:
     offenders: list[str] = []
     seen = 0
     for path in API_SRC.rglob("*.py"):
-        for fn_name, line in _innermost(path, _constructs_tenant_connector):
+        for fn, line in _innermost(path, _constructs_tenant_connector):
             seen += 1
-            if fn_name in CREATES_WITHOUT_RULE:
+            if fn.name in CREATES_WITHOUT_RULE:
                 continue
-            if not (_calls(_fn_node(path, fn_name)) & CREATE_GUARDS):
-                offenders.append(f"{path.relative_to(ROOT)}:{line} ({fn_name})")
+            if not (_calls(fn) & CREATE_GUARDS):
+                offenders.append(f"{path.relative_to(ROOT)}:{line} ({fn.name})")
     assert seen >= 4, "barrido roto: no encuentra las altas"
     assert not offenders, "altas que no pasan por la regla de la spec 060:\n" + "\n".join(offenders)
 
@@ -126,22 +129,44 @@ def test_every_connection_read_outside_the_api_goes_through_the_rule() -> None:
     seen = 0
     for root in OUTSIDE_API:
         for path in root.rglob("*.py"):
-            for fn_name, line in _innermost(path, _selects_tenant_connector):
+            for fn, line in _innermost(path, _selects_tenant_connector):
                 seen += 1
-                if fn_name in READS_WITHOUT_RULE:
+                if fn.name in READS_WITHOUT_RULE:
                     continue
-                if not (_calls(_fn_node(path, fn_name)) & READ_GUARDS):
-                    offenders.append(f"{path.relative_to(ROOT)}:{line} ({fn_name})")
+                if not (_calls(fn) & READ_GUARDS):
+                    offenders.append(f"{path.relative_to(ROOT)}:{line} ({fn.name})")
     assert seen >= 5, "barrido roto: no encuentra las lecturas"
     assert not offenders, "lecturas de una conexión sin la regla de la spec 060:\n" + "\n".join(
         offenders
     )
 
 
+@pytest.mark.parametrize("guarded", [True, False], ids=["con la regla", "sin la regla"])
+def test_a_protocol_with_the_same_name_does_not_hide_the_function(
+    tmp_path: Path, guarded: bool
+) -> None:
+    """El barrido mira la función que lee, no la primera con ese nombre: en
+    quedate/accounts.py el ``Protocol`` declara ``require_connection`` antes que la
+    implementación, y la tubería del PR 24 la dio por una lectura sin la regla."""
+    guard = "        await connection_is_available(s, t, 'x')\n" if guarded else ""
+    src = tmp_path / "store.py"
+    src.write_text(
+        "class Store(Protocol):\n"
+        "    async def read(self): ...\n"
+        "class _Db:\n"
+        "    async def read(self):\n"
+        "        select(TenantConnector)\n" + guard,
+        encoding="utf-8",
+    )
+    [(fn, line)] = _innermost(src, _selects_tenant_connector)
+    assert line == 5
+    assert bool(_calls(fn) & READ_GUARDS) is guarded
+
+
 def test_the_listed_exceptions_still_exist() -> None:
     """Una excepción que ya no existe en el código se quita de la lista."""
     names = {
-        f.name  # type: ignore[attr-defined]
+        f.name
         for root in (API_SRC, *OUTSIDE_API)
         for path in root.rglob("*.py")
         for f in _functions(path)
