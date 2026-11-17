@@ -243,10 +243,22 @@ class _ListingFields(InputModel):
     title: str = Field(..., min_length=3, max_length=120)
     description: str = Field(..., min_length=10, max_length=3000)
     property_type_id: str = Field(
-        ..., min_length=1, max_length=64, description="De quedate.listing_options."
+        ...,
+        min_length=1,
+        max_length=64,
+        description=(
+            "De quedate.listing_options, consultada en este mismo turno. Nunca lo escribas "
+            "de memoria."
+        ),
     )
     sector_id: str = Field(
-        ..., min_length=1, max_length=64, description="De quedate.list_locations."
+        ...,
+        min_length=1,
+        max_length=64,
+        description=(
+            "De quedate.list_locations, consultada en este mismo turno. Nunca lo escribas "
+            "de memoria."
+        ),
     )
     street_address: str = Field(..., min_length=3, max_length=200)
     apartment_suite: str | None = Field(None, max_length=120)

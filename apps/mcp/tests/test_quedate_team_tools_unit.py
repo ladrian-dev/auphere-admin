@@ -179,6 +179,27 @@ async def test_create_listing_without_answer_is_audited(env: Any) -> None:
     assert env.store.audits[-1][2:] == ("connector.external_write_unconfirmed", "create_listing")
 
 
+async def test_a_rejected_catalog_id_on_a_team_listing_says_to_look_it_up_again(
+    env: Any,
+) -> None:
+    """4.9, la de equipo."""
+    text = "The selected property type id is invalid."
+    env.rec.on(
+        "POST",
+        "/agent/listings",
+        422,
+        {
+            "success": False,
+            "error_code": "VALIDATION_ERROR",
+            "message": text,
+            "errors": {"property_type_id": [text]},
+        },
+    )
+    with pytest.raises(ToolError, match="No se creó nada") as caught:
+        await tool("quedate.create_listing").invoke({**LISTING_DATA, "host_id": HOST_ID})
+    assert "quedate.listing_options" in str(caught.value)
+
+
 async def test_photos_upload_is_not_retried_and_audited_on_timeout(env: Any) -> None:
     ids = env.photos.give(STAFF, 2)
     env.rec.fail("POST", f"/agent/listings/{LISTING_ID}/media", httpx.ReadTimeout("slow"))

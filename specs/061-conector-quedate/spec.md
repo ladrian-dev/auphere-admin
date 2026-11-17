@@ -169,6 +169,7 @@ Un huésped busca un apartamento para unas fechas. El agente busca, le enseña u
 6. Crear un anuncio, subir fotos y subir el documento de identidad NO DEBEN reintentarse solos. IF no hay respuesta THEN DEBE quedar en la auditoría.
 7. Las escrituras de una misma persona DEBEN ir de una en una.
 8. Toda herramienta que recibe el id de un anuncio DEBE decir, en su descripción y en la del campo, de dónde sacarlo: `quedate.my_listings` (la persona), `quedate.list_listings` (equipo) o `quedate.search_listings` (cotizar). (Staging, 2026-11-17: entre turnos el agente no conserva lo que devolvió una herramienta; sin el id del anuncio que acababa de crear, pasó la conversación a una persona.)
+9. Las herramientas que crean un anuncio DEBEN decir, en su descripción y en la de cada campo, que el tipo de propiedad sale de `quedate.listing_options` y el sector de `quedate.list_locations`, consultados en el mismo turno en que se crea. IF Quédate rechaza uno de esos dos identificadores THEN la herramienta DEBE responder que no se creó nada y que se vuelvan a buscar en ese turno. (Staging, 2026-11-17: el agente consultó el catálogo en un turno y creó el anuncio en el siguiente. El tipo de propiedad que mandó no existía. Con la persona C se recuperó solo; con la E pasó la conversación a una persona.)
 
 ### Requisito 5 — Las herramientas de equipo
 

@@ -315,6 +315,34 @@ async def test_create_my_listing_ignores_a_host_id_slipped_in(env: Any) -> None:
     assert env.rec.to("POST", "/agent/listings") == []
 
 
+def _rejected(field: str) -> dict[str, Any]:
+    """El 422 de Quédate cuando un id del catálogo no existe (staging, 2026-11-17)."""
+    text = f"The selected {field.replace('_', ' ')} is invalid."
+    return {
+        "success": False,
+        "error_code": "VALIDATION_ERROR",
+        "message": text,
+        "errors": {field: [text]},
+    }
+
+
+@pytest.mark.parametrize("field", ["property_type_id", "sector_id"])
+async def test_a_rejected_catalog_id_says_nothing_was_created_and_to_look_it_up_again(
+    env: Any, field: str
+) -> None:
+    """4.9: entre turnos el agente pierde los ids del catálogo. Un 422 no creó nada,
+    así que la respuesta le dice que los vuelva a buscar en este turno."""
+    _link(env)
+    env.rec.on("POST", "/agent/listings", 422, _rejected(field))
+    with pytest.raises(ToolError) as caught:
+        await tool("quedate.create_my_listing").invoke(LISTING_DATA)
+    said = str(caught.value)
+    assert "No se creó nada" in said
+    assert "quedate.listing_options" in said and "quedate.list_locations" in said
+    assert "mismo turno" in said
+    assert env.store.audits == []
+
+
 async def test_a_listing_create_without_answer_is_audited_once(env: Any) -> None:
     """4.6."""
     _link(env)

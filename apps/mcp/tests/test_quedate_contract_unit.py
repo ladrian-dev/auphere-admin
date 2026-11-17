@@ -205,3 +205,24 @@ def test_a_tool_that_takes_a_listing_id_says_where_to_find_it(cls: Any) -> None:
     assert finder in cls.description, cls.name
     field = cls.input_model.model_json_schema()["properties"]["listing_id"]
     assert finder in field.get("description", ""), cls.name
+
+
+CATALOG_IDS = {"property_type_id": "quedate.listing_options", "sector_id": "quedate.list_locations"}
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [t for t in tools.QUEDATE_TOOLS if "property_type_id" in t.input_model.model_fields],
+    ids=lambda c: c.name,
+)
+def test_a_tool_that_creates_a_listing_says_to_look_up_its_catalog_ids_in_the_same_turn(
+    cls: Any,
+) -> None:
+    """Staging, 2026-11-17: el agente consultó el catálogo en un turno y creó el
+    anuncio en el siguiente, con un tipo de propiedad que no existía (requisito 4.9)."""
+    assert "same turn" in cls.description, cls.name
+    props = cls.input_model.model_json_schema()["properties"]
+    for field, finder in CATALOG_IDS.items():
+        assert finder in cls.description, (cls.name, finder)
+        said = props[field].get("description", "")
+        assert finder in said and "mismo turno" in said, (cls.name, field)

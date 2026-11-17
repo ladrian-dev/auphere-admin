@@ -254,7 +254,23 @@ def _location(raw: dict[str, Any], key: str) -> str | None:
     return _str(_as_dict(raw.get("location")).get(key))
 
 
+#: Los ids del catálogo que pide crear un anuncio, con la herramienta que los da
+#: (requisito 4.9).
+_CATALOG_IDS = {
+    "property_type_id": "quedate.listing_options",
+    "sector_id": "quedate.list_locations",
+}
+_CATALOG_ID_REJECTED = (
+    "Quédate no reconoce {field}. No se creó nada. Los ids no se conservan entre turnos: "
+    "búscalos otra vez con quedate.listing_options y quedate.list_locations en este mismo "
+    "turno y vuelve a intentarlo. Nunca escribas un id de memoria."
+)
+
+
 def _friendly(exc: QuedateError) -> ToolError:
+    if isinstance(exc, QuedateValidationError) and exc.field in _CATALOG_IDS:
+        # Un 422 no creó nada, así que reintentar con los ids buenos es seguro.
+        return ToolError(_CATALOG_ID_REJECTED.format(field=exc.field))
     if isinstance(exc, QuedateUnavailable | QuedateRateLimited):
         return ToolError(_UNAVAILABLE)
     if isinstance(exc, QuedateForbidden):
@@ -916,9 +932,11 @@ class UploadMyIdentity(_PersonTool):
 class CreateMyListing(_PersonTool):
     name = "quedate.create_my_listing"
     description = (
-        "Create a draft listing for the person you are talking to, with property type and "
-        "sector ids from quedate.listing_options and quedate.list_locations. Then add photos "
-        "and send it to Quédate's review. Not retried: Quédate does not delete."
+        "Create a draft listing for the person you are talking to. Its property_type_id comes "
+        "from quedate.listing_options and its sector_id from quedate.list_locations, both "
+        "called in this same turn: ids are not kept between turns, so look them up again "
+        "right before creating. Then add photos and send it to Quédate's review. Not "
+        "retried: Quédate does not delete."
     )
     input_model = CreateMyListingInput
     output_model = ListingWriteOutput
@@ -1307,8 +1325,10 @@ class GetManagedListing(_TeamTool):
 class CreateListing(_TeamTool):
     name = "quedate.create_listing"
     description = (
-        "Create a draft listing for a host of this key (team use), with property type and "
-        "sector ids from the catalog. Not retried: Quédate does not delete."
+        "Create a draft listing for a host of this key (team use). Its property_type_id comes "
+        "from quedate.listing_options and its sector_id from quedate.list_locations, both "
+        "called in this same turn: ids are not kept between turns. Not retried: Quédate does "
+        "not delete."
     )
     input_model = CreateListingInput
     output_model = ListingWriteOutput
