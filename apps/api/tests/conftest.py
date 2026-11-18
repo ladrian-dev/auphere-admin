@@ -270,6 +270,7 @@ def _bootstrap_db() -> Iterator[None]:
     # Here and not on first use: a migration test can leave the schema below
     # head while a teardown runs, and a plan read then would miss the new tables.
     _cleanup_plan = _read_cleanup_plan()
+    _stop_autovacuum(_cleanup_plan.tables)
     db_base.reset_engine_cache()
     yield
 
@@ -546,6 +547,44 @@ def _read_cleanup_plan() -> _CleanupPlan:
             else None
         ),
     )
+
+
+def _stop_autovacuum(tables: tuple[str, ...]) -> None:
+    """Keeps rows coming back in the order they were written, as after a ``TRUNCATE``.
+
+    ``_empty_database`` deletes instead of truncating, so a table keeps its pages
+    and the space of the rows it deleted. Once (auto)vacuum records that space, a
+    new row can land in an earlier slot than one written before it, and a read
+    without ``ORDER BY`` returns them swapped. ``TRUNCATE`` handed every test fresh
+    files, so tests that read without ``ORDER BY`` and index the result never saw
+    it. Reproduced on 2026-11-18 with autovacuum at its most eager: 7 failures in
+    120 runs of ``test_connector_access_admin.py``, none with ``TRUNCATE``, none
+    with this (docs/tuberia-en-30-minutos.md).
+
+    Per table and not per server: the local test database lives in the dev
+    cluster. ``ci.yml`` also turns it off server-wide, which covers the tables a
+    migration test drops and recreates (they lose this setting).
+    """
+    import psycopg2
+
+    conn = psycopg2.connect(**_parse_dsn(TEST_DB_URL), connect_timeout=5)
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            # Partitioned parents take no storage parameters; their partitions do.
+            cur.execute(
+                "SELECT format('%%I.%%I', n.nspname, c.relname) FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE c.relkind = 'r' AND format('%%I.%%I', n.nspname, c.relname) = ANY(%s)",
+                (list(tables),),
+            )
+            for (table,) in cur.fetchall():
+                cur.execute(
+                    f"ALTER TABLE {table} SET "
+                    "(autovacuum_enabled = false, toast.autovacuum_enabled = false)"
+                )
+    finally:
+        conn.close()
 
 
 async def _empty_database(engine: Any) -> None:

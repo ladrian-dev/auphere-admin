@@ -97,8 +97,11 @@ async def test_both_views_show_and_write_the_same_decision(
         )
     ).all()
     assert len(audits) == 2
-    assert audits[0].after_json == {"enabled": False, "reason": "Solo A"}
-    assert audits[1].before_json == {"enabled": False}
+    # Cada una por lo que dice, no por su posición: sin ``ORDER BY`` Postgres no
+    # garantiza el orden de inserción (rojo en el ``ci`` del PR 28, 2026-11-18).
+    by_reason = {audit.after_json["reason"]: audit for audit in audits}
+    assert by_reason["Solo A"].after_json == {"enabled": False, "reason": "Solo A"}
+    assert by_reason["Vuelve"].before_json == {"enabled": False}
 
 
 async def test_reason_and_managed_connectors_are_checked(
