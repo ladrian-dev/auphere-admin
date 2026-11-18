@@ -130,7 +130,7 @@ apps/api/src/nexus_api/
 ├── companion/tools/proposals.py         # fuera primary_language
 ├── services/builder/agent_draft.py      # nombres de la entrada; quitar el trozo; detalle de bad_json
 ├── api/console/agent_builder.py         # «Desde una plantilla»: error con nombre
-├── services/channel_config.py           # serving_agent(), que usan _agent_of y agent_channels (D8)
+├── services/channel_config.py           # _agent_of y agent_channels, con la regla del principal (D8)
 └── api/console/channels.py (+ schemas_channels.py)  # audience_mode en el resumen
 
 apps/api/src/nexus_api/services/agent_lifecycle.py   # reason "unconfigured" en ready_no_channel (D10)

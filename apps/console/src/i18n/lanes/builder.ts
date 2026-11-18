@@ -70,6 +70,10 @@ export const builderMessages = {
     es: "Cuéntalo en {min} a {max} caracteres: con una o dos frases basta.",
     en: "Say it in {min} to {max} characters: one or two sentences are enough.",
   },
+  "builder.new.error.draft_invalid": {
+    es: "No se pudo crear desde esta plantilla. Elige otra o empieza en blanco: lo que escribiste sigue aquí.",
+    en: "This template could not be used. Pick another or start blank: what you wrote is still here.",
+  },
   "builder.new.error.generic": {
     es: "No se pudo empezar el borrador. Inténtalo de nuevo.",
     en: "The draft could not be started. Try again.",

@@ -107,7 +107,8 @@ describe("«Guardar» (23.4, 23.5)", () => {
     const user = userEvent.setup();
     screenWith({ preview: preview({ action: "save_and_connect" }) });
     await user.click(screen.getByRole("button", { name: "Guardar y conectar un canal" }));
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/channels`));
+    // Spec 063 (2.7): la pestaña Canales del agente, no Canales del cliente.
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${AGENT}?tab=channels`));
   });
 
   it("con canales: «Guardar cambios» enseña antes el diff en lenguaje llano", async () => {

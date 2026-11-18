@@ -112,7 +112,9 @@ async def test_settings_roundtrip_draft_publish_active(client, console_world, db
     assert body["draft_created"] is True and body["version"] == v1 + 1
     assert body["version_status"] == "staged" and body["active_version"] == v1
     assert body["settings"]["schedule"]["timezone"] == "Europe/Madrid"
-    assert body["settings"]["languages"]["allowed"] == ["es", "en", "pt"]
+    # Spec 063 (1.6): los idiomas solo los escribe «Cómo habla»; estos ajustes los
+    # conservan (aquí, los de por defecto: sin límite, principal es).
+    assert body["settings"]["languages"] == {"primary": "es", "allowed": ["es"], "limited": False}
     assert body["settings"]["ai_disclosure"]["decided_by"] == "console:owner-a@example.com"
 
     # Second save reuses the draft.

@@ -193,3 +193,15 @@ describe("Ajustes del agente · Revisión de pagos (spec 025)", () => {
     expect(saveAgentSettingsAction.mock.calls[0]?.[0].paymentReview).toBeUndefined();
   });
 });
+
+/**
+ * Spec 063 (requisito 1.6): los idiomas se deciden solo en «Cómo habla» del agente.
+ * Esta página ya no los cambia, así que no enseña un campo que no haría nada (§V).
+ */
+describe("Ajustes del agente · sin idiomas (spec 063)", () => {
+  it("no tiene la sección de idiomas", () => {
+    mount();
+    expect(screen.queryByText("Idioma por defecto")).toBeNull();
+    expect(screen.queryByText("Idiomas permitidos")).toBeNull();
+  });
+});

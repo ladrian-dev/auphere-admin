@@ -349,7 +349,10 @@ Cliente → Agentes → el agente:
 
 - **Decisión:**
   - **El resumen trae la audiencia:** `GET /console/clients/{ref}/channels/overview`
-    añade `audience_mode` a cada canal.
+    añade `audience_mode` a cada canal. Es la audiencia **efectiva**
+    (`client_overview.channel_audience`), no la columna tal cual: Instagram,
+    Messenger y un número que no es estricto guardan `unset` y responden con la del
+    agente publicado (lo encontró la revisión final).
   - **La tarjeta** (`channel-card.tsx`) gana «Configurar», que lleva a
     `/clients/{ref}/channels/{id}`. Esa ruta ya existe y redirige a la configuración
     dentro del agente.
@@ -368,7 +371,7 @@ Cliente → Agentes → el agente:
 
 ### D8 — Una sola regla para «qué agente atiende un número»
 
-- **Decisión:** una función, `serving_agent(channel)`, que usan las dos partes:
+- **Decisión:** la regla que ya existe y usa el turno, `agents.principal_agent_id` / `agent_for_channel`, en las dos partes (en la implementación no hizo falta una función nueva, que el plan llamaba `serving_agent`):
   - **Qué devuelve:** el agente asignado; si no hay, el vivo marcado por defecto; y si
     ninguno lo está, el vivo más antiguo.
   - **Quién la usa:** `_agent_of` (la página del canal) y `agent_channels` (la pestaña
@@ -416,8 +419,14 @@ Cliente → Agentes → el agente:
 
 - **Decisión:**
   - `cardHref` lleva `opens == "channels"` a `agentHref(ref, id) + "?tab=channels"`.
+  - `channelsHref(ref, agentId?)` (`quality-model.ts`) hace lo mismo con agente. Lo
+    usan «Guardar y conectar un canal» cuando no hay pestaña a mano
+    (`publish-bar.tsx`) y el arreglo «canal» de la revisión y de las pruebas
+    (`reviewFixLink`), que llevaban a Canales del cliente. Su propio comentario
+    decía: «Cuando el agente tenga su propia pestaña de canales (historia 10),
+    cambia aquí».
   - La lista de canales de cada agente en las tarjetas (`services/agents.py`) usa
-    `serving_agent` (D8): un número sin asignar sale en el agente que lo atiende.
+    la regla del principal (D8): un número sin asignar sale en el agente que lo atiende.
 - **Por qué:** es la causa del bucle de la queja 4 y lo que pedía la 047 (26.1).
   Con este cambio, el partner llega a la pestaña donde conecta el número dentro del
   agente (047, 30.1), así que el número nace asignado a él.

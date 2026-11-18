@@ -70,6 +70,9 @@ describe("las pruebas, los arreglos y las partes", () => {
     expect(reviewFixLink(REF, { kind: "link", target: "business/hours" })?.href).toBe(`/clients/${REF}/business#business-hours`);
     expect(reviewFixLink(REF, { kind: "link", target: "business/services" })?.href).toBe(`/clients/${REF}/business#business-services`);
     expect(reviewFixLink(REF, { kind: "link", target: "channel", channel_id: "c1" })?.href).toBe(channelsHref(REF));
+    // Spec 063 (2.7): desde un agente, su pestaña Canales, no Canales del cliente.
+    expect(reviewFixLink(REF, { kind: "link", target: "channel", channel_id: "c1" }, "a1")?.href).toBe(`/clients/${REF}/agents/a1?tab=channels`);
+    expect(channelsHref(REF, "a1")).toBe(`/clients/${REF}/agents/a1?tab=channels`);
     expect(reviewFixLink(REF, { kind: "link", target: "otra" })).toBeNull();
   });
 

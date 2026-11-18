@@ -184,7 +184,10 @@ def visible_state(
     elif "team_only" in answering:
         code = "testing"
     else:
-        code = "ready_no_channel"
+        # Spec 063 (2.6): con un número «Sin configurar» no es «sin canal»; el
+        # código y los recuentos no cambian, el motivo deja decirlo.
+        reason = "unconfigured" if "unconfigured" in answering else None
+        return VisibleState("ready_no_channel", _AGENT_TONE["ready_no_channel"], reason)
     return VisibleState(code, _AGENT_TONE[code])
 
 

@@ -27,7 +27,7 @@ Qué tiene que salir:
 | Requisito | Prueba en local |
 |---|---|
 | 1 | La regla de idioma, sin límite, con límite y sin `policies.console`, como último mensaje de sistema del turno, también con un prompt que dice «Never answer in English». La reescritura del evaluador conserva el idioma. La sincronía de `voice` a la política al guardar. Que `merge_console_policy` conserve los idiomas. Que el validador rechace `languages_limited` cambiado por el constructor. |
-| 2 | Que el resumen traiga `audience_mode`. Que `serving_agent` dé el asignado, el vivo por defecto o el vivo más antiguo, y lo mismo en la página del canal y en la pestaña del agente. Que la tarjeta enseñe «Configurar», «No responde a nadie» y el estado sin agente. Que la conexión navegue a la configuración. Que el agente se vea «Listo · número sin configurar». |
+| 2 | Que el resumen traiga `audience_mode`. Que la regla del principal (`agents.principal_agent_id`) dé el asignado, el vivo por defecto o el vivo más antiguo, y lo mismo en la página del canal y en la pestaña del agente. Que la tarjeta enseñe «Configurar», «No responde a nadie» y el estado sin agente. Que la conexión navegue a la configuración. Que el agente se vea «Listo · número sin configurar». |
 | 3 | Que, con un modelo que lo admite, la llamada lleve `response_format`, comprobado con el transporte real y el mapa local en un subproceso, y que el registro diga `json_mode`. Que un JSON válido con «```» dentro se lea entero. Que `finish_reason="length"` dé `truncated`. Que un JSON roto registre tipo y posición sin texto. |
 | 4 | Los cuatro casos de `research.md` §3 dan borrador. Una instrucción que nombra a otro cliente se quita sola. La plantilla responde `422 draft_invalid`. |
 

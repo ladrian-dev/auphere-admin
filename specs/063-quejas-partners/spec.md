@@ -193,7 +193,7 @@ Un partner tiene un cliente que se llama «Peluquería» y otro que se llama «S
 4. El agente que enseña un número en su pestaña Canales y en su tarjeta, el que lo cuenta en su estado y el agente en cuya configuración se abre ese número DEBEN ser siempre el mismo: el asignado o, si no hay, el que atiende los números sin asignar.
 5. IF el cliente no tiene ningún agente THEN el sistema DEBE decir que el número necesita un agente que lo atienda y llevar a crearlo, y NO DEBE ofrecer una configuración que no puede abrirse.
 6. WHERE un agente publicado tenga números, pero ninguno que responda a nadie porque todos están «Sin configurar», el sistema DEBE decir en su estado que tiene un número sin configurar, y NO DEBE decir «sin canal».
-7. WHEN una persona abre desde Agentes la tarjeta de un agente cuyo estado lleva a sus canales THEN el sistema DEBE abrir la página de ese agente en su pestaña Canales, y NO DEBE llevar a la página Canales del cliente.
+7. WHEN una persona sigue un enlace a «los canales» que nace en un agente THEN el sistema DEBE abrir la pestaña Canales de ese agente, y NO DEBE llevar a la página Canales del cliente. Esos enlaces son: su tarjeta en Agentes cuando espera un número, «Guardar y conectar un canal» y el arreglo «canal» de la revisión y de las pruebas.
 
 ### Requisito 3 — El borrador del constructor no se pierde por el formato
 

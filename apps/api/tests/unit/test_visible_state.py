@@ -144,7 +144,8 @@ def test_a_value_outside_the_vocabulary_is_refused(facts: ChannelFacts) -> None:
         ("published", None, (TEAM, EVERYONE), VisibleState("serving", "positive")),
         ("published", None, (TEAM, UNSET), VisibleState("testing", "info")),
         ("published", None, (), VisibleState("ready_no_channel", "info")),
-        ("published", None, (UNSET,), VisibleState("ready_no_channel", "info")),
+        # Spec 063 (2.6): con un número sin configurar lo dice el motivo.
+        ("published", None, (UNSET,), VisibleState("ready_no_channel", "info", "unconfigured")),
     ],
     ids=["archived", "paused", "draft", "serving", "testing", "no_channel", "unconfigured"],
 )

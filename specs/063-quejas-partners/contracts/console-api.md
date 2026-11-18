@@ -8,7 +8,7 @@ Cada elemento de `channels[]` gana un campo:
 
 | Campo | Tipo | Significado |
 |---|---|---|
-| `audience_mode` | `"unset" \| "team_only" \| "everyone"` | A quién responde el número. `unset` significa que no responde a nadie (047, 32.9). |
+| `audience_mode` | `"unset" \| "team_only" \| "everyone"` | A quién responde de verdad el número (audiencia efectiva, `client_overview.channel_audience`). `unset` significa que no responde a nadie (047, 32.9). |
 
 El resto no cambia. La consola lo usa para «No responde a nadie» (2.3).
 
@@ -16,7 +16,7 @@ El resto no cambia. La consola lo usa para «No responde a nadie» (2.3).
 
 Ya existe. La tarjeta de Canales del cliente y el final de la conexión llevan
 aquí. La ruta redirige a la configuración dentro del agente que atiende el
-número, que da `serving_agent` (D8): el asignado; si no hay, el vivo por defecto;
+número según la regla del principal (`agents.principal_agent_id`, D8): el asignado; si no hay, el vivo por defecto;
 y si ninguno lo es, el vivo más antiguo. Es el mismo agente que enseña el número
 en su pestaña Canales. Sin agente, la ruta vuelve a la lista. Por eso la tarjeta, sin agentes, ofrece crear uno y no este
 enlace (2.5).

@@ -135,7 +135,8 @@ export type DraftJobStatus = "queued" | "running" | "done" | "failed";
 /** `GET /console/jobs/{job_id}` de un trabajo `agent_draft`. Un fallo viaja
  *  solo como `error_code` (`builder_unavailable`, `facts_unavailable`,
  *  `name_taken`…): las palabras son de la consola. `progress.input` guarda lo
- *  que se escribió (15.8). */
+ *  que se escribió (15.8). «Desde una plantilla» responde en el acto, y si no da
+ *  borrador, `422 draft_invalid` (spec 063, 4.4). */
 export type DraftJob = {
   job_id: string;
   kind: string;
@@ -183,7 +184,9 @@ export type AgentSpec = {
   schema_version: "1";
   mode: "instructions" | "structured";
   identity: { name: string; description: string; goal?: string };
-  voice?: { tone?: string; languages?: string[]; register?: Register; greeting?: string };
+  /** Spec 063: `languages_limited` — «Responder solo en estos idiomas». Sin él, el
+   *  agente contesta en el idioma del cliente; el primero de `languages` es el principal. */
+  voice?: { tone?: string; languages?: string[]; languages_limited?: boolean; register?: Register; greeting?: string };
   instructions?: { sections?: SpecSection[]; legacy_text?: string };
   procedures?: SpecProcedure[];
   services?: { mode: "all" | "list"; service_ids?: string[]; faqs?: SpecFaq[] };

@@ -205,6 +205,8 @@ function VoiceEditor({ spec, busy, label, onSave, onCancel }: EditorProps<"voice
   const voice = spec.voice ?? {};
   const [tone, setTone] = React.useState(voice.tone ?? "");
   const [codes, setCodes] = React.useState<string[]>(() => [...new Set(voice.languages ?? [])]);
+  // Spec 063 (1.6): sin límite, contesta en el idioma del cliente.
+  const [limited, setLimited] = React.useState(Boolean(voice.languages_limited));
   const [register, setRegister] = React.useState<"" | Register>(voice.register ?? "");
   const [greeting, setGreeting] = React.useState(voice.greeting ?? "");
   const [errors, setErrors] = React.useState<Errors>({});
@@ -232,6 +234,7 @@ function VoiceEditor({ spec, busy, label, onSave, onCancel }: EditorProps<"voice
     const value: NonNullable<AgentSpec["voice"]> = {};
     if (tone.trim()) value.tone = tone.trim();
     if (checked.length) value.languages = checked;
+    if (limited && checked.length) value.languages_limited = true;
     if (register) value.register = register;
     if (greeting.trim()) value.greeting = greeting.trim();
     onSave(value);
@@ -282,8 +285,25 @@ function VoiceEditor({ spec, busy, label, onSave, onCancel }: EditorProps<"voice
             );
           })}
         </div>
-        <p className="text-sm" data-slot="voice-main-language">
-          {codes.length ? t("agentProto.languages.main", { name: nameOf(codes[0]!) }) : t("agentProto.languages.none")}
+        <label className="inline-flex min-h-6 min-w-0 cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="size-4 shrink-0 accent-primary"
+            data-slot="voice-language-limit"
+            checked={limited}
+            onChange={(e) => setLimited(e.target.checked)}
+          />
+          <span>{t("agentProto.languages.limit")}</span>
+        </label>
+        <p className="text-sm text-pretty" data-slot="voice-language-summary">
+          {!codes.length
+            ? t("agentProto.languages.none")
+            : limited
+              ? t("agentProto.languages.summary.limited", {
+                  list: codes.map(nameOf).join(", "),
+                  main: nameOf(codes[0]!),
+                })
+              : t("agentProto.languages.summary.any", { main: nameOf(codes[0]!) })}
         </p>
         <p id={hintId} className="text-xs text-pretty text-muted-foreground">
           {t("agentProto.languages.hint")}

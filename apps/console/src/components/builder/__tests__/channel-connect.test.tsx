@@ -303,7 +303,7 @@ describe("con canales: la lista (§7.2)", () => {
       },
     });
     expect(screen.getByText("WhatsApp · responde a todos salvo 2 excepciones")).toBeVisible();
-    expect(screen.getByText("WhatsApp · sin configurar: todavía no responde")).toBeVisible();
+    expect(screen.getByText("WhatsApp · sin configurar: no responde a nadie")).toBeVisible();
   });
 });
 

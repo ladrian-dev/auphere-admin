@@ -17,6 +17,30 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
 - Un número nuevo empieza **en prueba**: «Solo mi equipo» con el teléfono del
   dueño, para que nadie de fuera hable con un agente a medio hacer.
 
+### Llegar a la configuración del número (spec 063, requisito 2)
+
+- **Quién atiende un número sin agente:** el **principal** del cliente, es decir,
+  el marcado por defecto o, si ninguno lo está, el activo más antiguo
+  (`services/agents.principal_agent_id`, la regla del turno). Lo usan la página
+  del número (`_agent_of`), la pestaña Canales de cada agente (`agent_channels`) y
+  las tarjetas de Agentes. El canal interno del probador no sale en ninguna.
+- **Desde Canales del cliente:** cada tarjeta lleva a la configuración del número
+  («Configurar», `/clients/{ref}/channels/{id}`, que redirige dentro de su agente).
+  - **«Sin configurar»:** dice «No responde a nadie» en vez de «Activo», y su
+    acción principal es «Decidir a quién responde».
+  - **Sin agentes en el cliente:** la tarjeta lleva a crear uno.
+  - **Al conectar un número aquí:** al terminar, la consola abre su configuración,
+    después de la oferta del catálogo si la hay (047, 30.6).
+- **Desde un agente:** todo enlace a «los canales» lleva a su pestaña Canales
+  (`?tab=channels`), nunca a Canales del cliente. Eso incluye su tarjeta cuando
+  espera un número, «Guardar y conectar un canal» y el arreglo «canal» de la
+  revisión.
+  - **Por qué importa:** antes, un agente «Listo · sin canal» llevaba a la página
+    del cliente. El número se conectaba allí sin agente, se quedaba «Sin
+    configurar» y el partner no volvía a ver su configuración (prod, 2026-11-18).
+- **«Listo · número sin configurar»:** así sale un agente publicado cuyo único
+  número no responde a nadie (`visible_state` con `reason="unconfigured"`).
+
 ## 2. La página del canal
 
 `api/console/channel_config.py`, `services/channel_config.py`,

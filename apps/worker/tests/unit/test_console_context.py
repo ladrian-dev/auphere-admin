@@ -2,7 +2,8 @@
 
 Pins the acceptance criteria of the partner console lane ``agent-tools``:
 - ``policies.console`` renders an "Operating policy" system block (hours
-  in the tenant's timezone, languages, escalation, AI disclosure) and
+  in the tenant's timezone, escalation, AI disclosure; the languages are
+  their own rule since spec 063) and
   ``_build_handler_messages`` places it right after the channel notes;
 - the knowledge block is capped and truncation is visible;
 - the "after N turns" escalation rule overrides the classifier's intent.
@@ -70,7 +71,9 @@ def test_operating_policy_renders_hours_languages_escalation_disclosure() -> Non
     assert "You are Sofía" in block and "formal" in block
     assert "Business hours (Europe/Madrid): Monday 09:00-18:00." in block
     assert "the business is OPEN" in block
-    assert "reply in es by default; allowed: es, en" in block
+    # Spec 063: los idiomas ya no van en el bloque; son la regla propia del turno
+    # (``test_063_language_rule.py``).
+    assert "Languages:" not in block
     assert (
         "Escalate to a human when: the customer asks for a human; the conversation exceeds 3 turns."
         in block

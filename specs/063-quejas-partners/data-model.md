@@ -39,7 +39,7 @@ Cómo se mantiene:
 
 | Campo | Tipo | Ahora |
 |---|---|---|
-| `audience_mode` | `"unset" \| "team_only" \| "everyone"` | **Nuevo**, leído de `channels.audience_mode`. |
+| `audience_mode` | `"unset" \| "team_only" \| "everyone"` | **Nuevo**: la audiencia **efectiva**, con la regla de la tarjeta del agente (`client_overview.channel_audience`). Instagram, Messenger y un número no estricto llevan `unset` guardado y responden con la del agente publicado. |
 
 ## `BuilderUnavailable`
 

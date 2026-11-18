@@ -68,7 +68,7 @@ export const channelsProtoMessages = {
 
   // ── Con canales: la lista (§7.2) ──
   "channels.proto.add": { es: "Añadir otro canal", en: "Add another channel" },
-  "channels.proto.row.unset": { es: "sin configurar: todavía no responde", en: "not set up: it does not answer yet" },
+  "channels.proto.row.unset": { es: "sin configurar: no responde a nadie", en: "not set up: it answers nobody" },
   "channels.proto.row.team.one": { es: "responde solo a 1 número de prueba", en: "answers only 1 test number" },
   "channels.proto.row.team.other": { es: "responde solo a {n} números de prueba", en: "answers only {n} test numbers" },
   "channels.proto.row.everyone": { es: "responde a todos", en: "answers everyone" },

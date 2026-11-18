@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from typing import Any
 
 import structlog
 from nexus_api.core.tenant_context import tenant_scoped_session
@@ -66,25 +67,55 @@ def build_model() -> str:
     return platform_model("build")
 
 
+#: Spec 063 (3.1): lo que se pide al modelo que lo admite. El proveedor garantiza
+#: un JSON con sintaxis válida; los dos prompts que pasan por aquí (el borrador y la
+#: guía generada) ya piden JSON, como exige el modo.
+JSON_MODE: dict[str, Any] = {"response_format": {"type": "json_object"}}
+
+
 def default_complete(tenant_id: uuid.UUID) -> Complete | None:
     """El modelo de verdad; ``None`` en local con el proveedor en memoria."""
     from nexus_worker.config import get_worker_settings
-    from nexus_worker.runtime.llm import LiteLLMProvider
+    from nexus_worker.runtime import llm
 
     if get_worker_settings().llm_use_inmemory:
         return None
     # Sin reintentos del SDK: repetir una generación cortada paga lo mismo otra vez.
-    provider = LiteLLMProvider(
+    provider = llm.LiteLLMProvider(
         context_management=None, timeout_s=BUILD_CALL_TIMEOUT_S, max_retries=0
     )
     model = build_model()
+    json_mode = llm.supports_json_object(model)
+    last: dict[str, Any] = {}
 
     async def complete(messages: list[dict[str, str]]) -> str:
-        return await provider.acomplete(
-            tenant_id=tenant_id, role=ROLE, model=model, messages=messages
+        out = await provider.acomplete_detailed(
+            tenant_id=tenant_id,
+            role=ROLE,
+            model=model,
+            messages=messages,
+            extra=dict(JSON_MODE) if json_mode else None,
         )
+        last.clear()
+        last.update(
+            json_mode=json_mode, finish_reason=out.finish_reason, output_tokens=out.output_tokens
+        )
+        # Spec 063 (3.2): cómo terminó, sin una palabra de lo escrito. Si el modo JSON
+        # no está pedido en prod, aquí se ve.
+        log.info("builder.model_output", tenant_id=str(tenant_id), model=model, **last)
+        if out.finish_reason == "length":
+            raise BuilderUnavailable("truncated")
+        return out.text
 
+    complete.last = last  # type: ignore[attr-defined]
     return complete
+
+
+def last_output(complete: Complete | None) -> dict[str, Any]:
+    """Lo que la última llamada de ``complete`` dejó dicho (modo JSON, cómo terminó,
+    tokens), para el registro del fallo; vacío si no es el de verdad."""
+    found = getattr(complete, "last", None)
+    return dict(found) if isinstance(found, dict) else {}
 
 
 async def _input(ctx: JobContext) -> dict[str, str]:
@@ -110,6 +141,7 @@ def make_agent_draft_handler(*, complete_factory: CompleteFactory | None = None)
             )
         except DraftInputInvalid as exc:
             raise JobFailed(exc.code) from exc
+        complete = make_complete(ctx.tenant_id)
         try:
             async with usage_turn(
                 tenant_id=ctx.tenant_id, turn_id=f"job:{ctx.job_id}", source=SOURCE_BUILDER
@@ -118,7 +150,7 @@ def make_agent_draft_handler(*, complete_factory: CompleteFactory | None = None)
                     tenant_id=ctx.tenant_id,
                     job_id=ctx.job_id,
                     request=request,
-                    complete=make_complete(ctx.tenant_id),
+                    complete=complete,
                     progress=ctx.progress,
                     actor=data.get("actor") or "builder",
                 )
@@ -139,6 +171,9 @@ def make_agent_draft_handler(*, complete_factory: CompleteFactory | None = None)
                 why=str(exc),
                 # Solo el tipo: el mensaje del proveedor puede citar el prompt.
                 cause=type(exc.__cause__).__name__ if exc.__cause__ else None,
+                # Spec 063 (3.2): dónde y cómo, nunca qué.
+                detail=exc.detail,
+                **last_output(complete),
             )
             raise JobFailed(UNAVAILABLE) from exc
         return JobOutcome(result=result)
@@ -161,6 +196,7 @@ __all__ = [
     "UNAVAILABLE",
     "build_model",
     "default_complete",
+    "last_output",
     "make_agent_draft_handler",
     "register",
 ]

@@ -206,10 +206,19 @@ export const agentProtoMessages = {
   "agentProto.tone.direct": { es: "Directo", en: "Direct" },
   "agentProto.tone.playful": { es: "Divertido", en: "Playful" },
   "agentProto.languages.hint": {
-    es: "Marca los que habla. El primero que marques es el principal.",
-    en: "Tick the ones it speaks. The first one you tick is the main one.",
+    es: "El primero que marques es el principal: lo usa cuando no sabe en qué idioma le escriben. Los demás solo cuentan si limitas los idiomas.",
+    en: "The first one you tick is the main one: it uses it when it cannot tell the language. The others only matter if you limit the languages.",
   },
-  "agentProto.languages.main": { es: "Principal: {name}", en: "Main: {name}" },
+  // Spec 063 (1.6, 1.8): por defecto contesta en el idioma del cliente.
+  "agentProto.languages.limit": { es: "Responder solo en estos idiomas", en: "Reply only in these languages" },
+  "agentProto.languages.summary.any": {
+    es: "Contesta en el idioma del cliente. Si no lo sabe, en {main}.",
+    en: "It replies in the customer's language. If it cannot tell, in {main}.",
+  },
+  "agentProto.languages.summary.limited": {
+    es: "Solo en: {list}. Si le escriben en otro, en {main}.",
+    en: "Only in: {list}. If they write in another, in {main}.",
+  },
   "agentProto.languages.mainTag": { es: "principal", en: "main" },
   "agentProto.languages.none": { es: "Ninguno marcado", en: "None ticked" },
 } as const;

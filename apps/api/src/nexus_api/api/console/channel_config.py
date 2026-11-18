@@ -713,7 +713,11 @@ async def agent_channels(
     agent = await scope.session.get(Agent, scope.agent_id)
     assert agent is not None
     owned = Channel.agent_id == agent.id
-    if agent.is_default:
+    # Spec 063 (2.4, D8): los números sin agente, en el principal del cliente (el
+    # marcado por defecto o, sin marca, el activo más antiguo), como el turno.
+    from nexus_api.services.agents import principal_agent_id
+
+    if await principal_agent_id(scope.session) == agent.id:
         owned = sa.or_(owned, Channel.agent_id.is_(None))
     from .channels import INTERNAL_PROVIDERS
 
