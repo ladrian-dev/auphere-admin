@@ -302,9 +302,12 @@ async def test_a_late_tap_changes_nothing_and_says_who(console_world, db_session
     assert late.handled and not late.resolved
     await db_session.refresh(review)
     assert review.status == "confirmed"
-    assert (await _outbound_to(db_session, PEDRO.phone))[-1].content == (
-        "Este pago ya lo confirmó Daniela."
-    )
+    # Los dos mensajes a Pedro (la revisión y este aviso) nacen en la misma
+    # transacción con el mismo ``created_at``: el orden entre ellos no está fijado
+    # y ``[-1]`` fallaba a ratos en la tubería (develop, 2026-11-18).
+    assert "Este pago ya lo confirmó Daniela." in [
+        m.content for m in await _outbound_to(db_session, PEDRO.phone)
+    ]
     resolutions = (
         (
             await db_session.execute(
