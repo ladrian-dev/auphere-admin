@@ -3,7 +3,8 @@
 > Petición de Luis, 2026-11-18: un despliegue a producción no puede tardar dos
 > horas. Tope: 30 minutos de push a `main` a servicios rodados.
 
-**Estado: hecho y probado en local; sin medir en GitHub** (ver [lo que falta](#lo-que-falta)).
+**Estado: hecho. `ci` pasa de 1 h 31 min a 7 min 51 s, medido en GitHub; el primer
+`deploy-prod` con esto, sin medir** (ver [lo que falta](#lo-que-falta)).
 
 Fuera de la regla de Spec-Driven Development: no cambia el comportamiento del
 producto, solo cómo y dónde corren sus pruebas. Mismo caso que
@@ -111,31 +112,48 @@ Ningún rojo por el orden en ninguna de las dos pasadas, con repartos distintos:
 repartir por archivo cambia qué pruebas comparten proceso, y esta suite ya tuvo
 dependencias de orden.
 
-**Estimación para GitHub** (no medida): cada tramo, 6–9 min de `pytest` más ~1,5
-min de arranque. Si ninguna de las dos mejoras de coste por prueba se notara en
-Linux, 82 min / 6 + 1,5 ≈ 15 min. `ci` entre 9 y 15 min, y `deploy-prod` entre 16 y
-22 min: por debajo de 30 en los dos casos.
+## Medido en GitHub
+
+`ci` lanzada a mano sobre `ci/tuberia-30-min` (run 44326664712, commit 7f0584fb),
+2026-11-18: **7 min 51 s, todo en verde**. Antes, 1 h 31 min.
+
+| Job | Tiempo |
+|---|---|
+| `test-api`, los seis tramos | 5,9 – 7,8 min |
+| `test-console` | 5,5 min |
+| `test-packages` | 4,2 min |
+| El resto | menos de 3 min |
+
+- Las 10 864 pruebas de la API, las mismas que en local, repartidas en seis tramos de
+  `pytest` de 4 min 50 s a 6 min 37 s. En serie suman 33,5 min (antes, 81,7).
+- `fsync=off` en los seis Postgres. Instalar y preparar cada tramo cuesta menos de
+  15 s, y la colección, unos 25 s.
+- Ningún aviso de los 15 min.
+
+Con los JUnit de ese run se volvió a medir el reparto (`ci_durations.json`): los
+seis tramos quedan en ~5,3 min de `pytest` cada uno, así que `ci` debería quedar en
+unos 7 min.
+
+**`deploy-prod` sin medir**, porque solo corre al fusionar en `main`. Será `ci` más
+los 6,5 min de imágenes, migración y servicios: **unos 14–15 min**.
 
 ## Lo que falta
 
-1. **Medir en GitHub.** Subir la rama y lanzar `ci` a mano sobre ella:
-   ```bash
-   gh workflow run ci --ref ci/tuberia-30-min
-   ```
-2. **Volver a medir el reparto con esa pasada**, que es la buena (la de ahora es
-   del Mac):
-   ```bash
-   gh run download <run-id> -p 'junit-api-*' -D /tmp/junit
-   cd apps/api && python tests/ci_shards.py --refresh /tmp/junit/*/*.xml
-   ```
-3. Con `ci` en torno a 15 min, la razón de [`develop-sin-tuberia.md`](develop-sin-tuberia.md)
+1. **Ver el primer `deploy-prod` real** al fusionar en `main`, y entonces bajar su
+   espera a `ci` de 150 min a algo como 45.
+2. Con `ci` en 8 min, la razón de [`develop-sin-tuberia.md`](develop-sin-tuberia.md)
    desaparece. Devolver `ci` a `develop` es decisión de Luis.
 
 ## Cómo mantenerlo
 
-- **Un tramo pasa de 15 min** (aviso amarillo en el run): primero volver a medir
-  (punto 2 de arriba); si sigue, añadir un número a `matrix.shard` en `ci.yml`.
-  `--total` sale de `strategy.job-total`, no hay que tocar nada más.
+- **Volver a medir el reparto**, con los JUnit de un run de `ci` (se guardan 14 días):
+  ```bash
+  gh run download <run-id> -p 'junit-api-*' -D /tmp/junit
+  cd apps/api && python tests/ci_shards.py --refresh /tmp/junit/*/*.xml
+  ```
+- **Un tramo pasa de 15 min** (aviso amarillo en el run): primero volver a medir;
+  si sigue, añadir un número a `matrix.shard` en `ci.yml`. `--total` sale de
+  `strategy.job-total`, no hay que tocar nada más.
 - **Se borra o se renombra un archivo de prueba**: nada. La medida vieja no deja
   fuera ningún archivo; solo desequilibra el reparto hasta la próxima medida.
 - **Una tabla nueva**: nada. El plan de vaciado sigue las claves foráneas desde
