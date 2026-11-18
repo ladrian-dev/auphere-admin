@@ -108,9 +108,11 @@ propio contenedor `pgvector/pgvector:pg16` con la durabilidad apagada, en este M
 | 1.ª (reparto con la medida vieja de `ci`) | 7 min 23 s | 10 864 pruebas; 1 rojo, de este cambio: la medida vivía en `apps/api/scripts/`, que barre `test_no_agendapro`, y nombra un archivo con «agendapro». Se movió a `tests/` |
 | 2.ª (reparto definitivo, el de este commit) | **6 min 39 s** | 10 864 pruebas, **todo en verde**. Tramos de 5 min 29 s a 6 min 17 s; los 775 archivos, cada uno en un tramo |
 
-Ningún rojo por el orden en ninguna de las dos pasadas, con repartos distintos:
-repartir por archivo cambia qué pruebas comparten proceso, y esta suite ya tuvo
-dependencias de orden.
+Ningún rojo por el orden de las pruebas en ninguna de las dos pasadas, con
+repartos distintos: repartir por archivo cambia qué pruebas comparten proceso, y
+esta suite ya tuvo dependencias de orden. **Sí había una dependencia del orden de
+las filas**, que no salió aquí y salió después en GitHub: ver [el rojo del PR
+28](#el-rojo-del-pr-28-orden-de-las-filas).
 
 ## Medido en GitHub
 
@@ -148,6 +150,41 @@ Antes: `deploy-prod` 1 h 37 min (run 44196268772). Las dos APIs respondieron
 
 La espera a `ci` de los dos despliegues sigue en 150 min. No hace falta bajarla:
 deja de esperar en cuanto `ci` acaba, y cada job de `ci` tiene un tope de 30 min.
+
+## El rojo del PR 28: orden de las filas
+
+El 2026-11-18, el `ci` del PR 28 (de `main` a `develop`, solo código de la consola)
+falló en `test_connector_access_admin.py::test_both_views_show_and_write_the_same_decision`.
+Era la sexta ejecución en GitHub con este cambio; las cinco anteriores, verdes.
+
+**La causa es este cambio.** La prueba lee dos auditorías sin `ORDER BY` y espera
+la primera escrita en `[0]`. `TRUNCATE` daba a cada prueba tablas con ficheros
+nuevos, y las filas salían en el orden de inserción por casualidad. El vaciado nuevo
+borra: la tabla conserva sus páginas, el autovacuum apunta el hueco libre, y una
+fila nueva puede caer delante de otra escrita antes.
+
+Reproducido a voluntad con un Postgres con el autovacuum al máximo
+(`autovacuum_naptime=1s`, umbrales a 0), la prueba repetida 120 veces en una sesión:
+
+| `conftest` | Fallos | Tiempo |
+|---|---|---|
+| `TRUNCATE` (antes) | 0 / 120 | 8 min 16 s |
+| Vaciado nuevo | **7 / 120** | 6 min 44 s |
+| Vaciado nuevo + autovacuum apagado | **0 / 120** | 6 min 40 s |
+
+**El arreglo** devuelve la garantía de antes sin perder el vaciado barato:
+
+- El `conftest` apaga el autovacuum en cada tabla que vacía (`_stop_autovacuum`), en
+  local y en la tubería.
+- La tubería lo apaga también en todo el servidor (paso «postgres sin durabilidad ni
+  autovacuum»), que cubre las tablas que una prueba de migración borra y vuelve a
+  crear, y avisa si Postgres no lo toma.
+- La prueba busca cada auditoría por su contenido, no por su posición.
+
+No se han tocado las demás lecturas sin `ORDER BY` de las pruebas (un barrido
+encuentra 48 candidatas, la mayoría de una sola fila): con el autovacuum apagado
+vuelven a comportarse como con `TRUNCATE`. Una prueba nueva debería ordenar o buscar
+por contenido de todos modos: Postgres nunca ha garantizado el orden sin `ORDER BY`.
 
 ## `ci` vuelve a `develop`
 

@@ -108,11 +108,16 @@ jobs:
           uv pip install --system --no-deps \
             ./apps/api ./apps/worker ./apps/channels ./apps/mcp
       # Nada de esta base sobrevive al job, así que no tiene por qué esperar al
-      # disco. Los tres parámetros se aplican sin reiniciar (``pg_reload_conf``).
-      # Los servicios de GitHub no aceptan argumentos para el contenedor; por
-      # eso va aquí y no en ``options``. Es una optimización: si falla, el tramo
-      # sigue, más lento, y lo dice el aviso. No debe parar producción.
-      - name: postgres sin durabilidad
+      # disco. Se aplica sin reiniciar (``pg_reload_conf``). Los servicios de
+      # GitHub no aceptan argumentos para el contenedor; por eso va aquí y no en
+      # ``options``. Si falla, el tramo sigue —más lento— y lo dice el aviso.
+      #
+      # Sin autovacuum, además: el vaciado entre pruebas borra en vez de truncar,
+      # y un vacuum deja que una fila nueva caiga delante de otra escrita antes.
+      # Las pruebas que leen sin ``ORDER BY`` lo notan (1 rojo en 6 runs el
+      # 2026-11-18). El ``conftest`` ya lo apaga tabla a tabla; esto cubre las
+      # tablas que una prueba de migración borra y vuelve a crear.
+      - name: postgres sin durabilidad ni autovacuum
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -120,11 +125,13 @@ jobs:
             -c "ALTER SYSTEM SET fsync = off" \
             -c "ALTER SYSTEM SET synchronous_commit = off" \
             -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "ALTER SYSTEM SET autovacuum = off" \
             -c "SELECT pg_reload_conf()"
           sleep 1  # la recarga es asíncrona
-          fsync=$(docker exec ${{ job.services.postgres.id }} psql -U nexus -d nexus -tAc "SHOW fsync")
-          echo "fsync=$fsync"
-          [ "$fsync" = off ] || echo "::warning::Postgres sigue con fsync=$fsync: el tramo irá más lento."
+          got=$(docker exec ${{ job.services.postgres.id }} psql -U nexus -d nexus -tA \
+            -c "SHOW fsync" -c "SHOW autovacuum" | paste -sd ' ' -)
+          echo "fsync autovacuum = $got"
+          [ "$got" = "off off" ] || echo "::warning::Postgres no tomó la configuración de pruebas (fsync autovacuum = $got)."
       - name: alembic upgrade head (CI database)
         working-directory: apps/api
         run: alembic upgrade head
