@@ -36,6 +36,11 @@ La medida es del run de `ci` del 2026-11-03 (41690169789): 72 minutos, de los qu
 Hasta el 2026-10-22 `ci` tardaba 26–36 minutos. Desde el 2026-10-28 tarda 42–79.
 Esa subida sigue sin explicar: esta decisión la esquiva, no la arregla.
 
+> **2026-11-18:** explicada y arreglada en
+> [`tuberia-en-30-minutos.md`](tuberia-en-30-minutos.md): el vaciado entre pruebas
+> costaba más con cada tabla nueva, y la API corre ahora en tramos paralelos. `ci`
+> sigue fuera de `develop` hasta que Luis decida devolverla.
+
 ## Qué se pierde
 
 - **Nada comprueba `develop` por sí solo.** Una regresión llega a staging, y staging

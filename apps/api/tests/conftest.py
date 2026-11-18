@@ -3,9 +3,8 @@
 Strategy:
 - A single Postgres database (`nexus_test`) is created once per session.
 - Migrations apply once per session.
-- Each test runs inside a SAVEPOINT that rolls back at the end, so the DB returns
-  to the post-migration state without paying the cost of dropping/recreating
-  schemas. This is the standard SQLAlchemy "joining a transaction" pattern.
+- Commits are real, because the app under test opens its own connections. After
+  each test ``db_session`` empties what the test wrote (``_empty_database``).
 
 The fixtures override `nexus_api.config.get_settings` so the engine/redis/etc.
 read the test config when they cache.
@@ -19,6 +18,7 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass
 from typing import Any
 
 import fakeredis.aioredis
@@ -214,7 +214,11 @@ def _reset_test_db() -> None:
         "DROP SCHEMA IF EXISTS companion CASCADE; "
         "DROP SCHEMA IF EXISTS operator_auth CASCADE; "
         "CREATE EXTENSION IF NOT EXISTS pgcrypto; "
-        "CREATE EXTENSION IF NOT EXISTS vector;"
+        "CREATE EXTENSION IF NOT EXISTS vector; "
+        # A commit doesn't wait for the disk: nothing here has to survive a crash,
+        # and other connections still see it at once. For new connections on, and
+        # for this database only (docs/tuberia-en-30-minutos.md).
+        f'ALTER DATABASE "{test_db}" SET synchronous_commit = off;'
     )
     if os.environ.get("CI"):
         import psycopg2
@@ -259,9 +263,13 @@ def event_loop() -> Iterator[asyncio.AbstractEventLoop]:
 
 @pytest.fixture(scope="session", autouse=True)
 def _bootstrap_db() -> Iterator[None]:
+    global _cleanup_plan
     _ensure_test_db()
     _reset_test_db()
     _run_migrations()
+    # Here and not on first use: a migration test can leave the schema below
+    # head while a teardown runs, and a plan read then would miss the new tables.
+    _cleanup_plan = _read_cleanup_plan()
     db_base.reset_engine_cache()
     yield
 
@@ -450,15 +458,140 @@ _TRUNCATE_TABLES = (
 )
 
 
-async def _truncate_with_diagnosis(engine: Any, statement: str) -> None:
+@dataclass(frozen=True)
+class _CleanupPlan:
+    """What ``TRUNCATE <_TRUNCATE_TABLES> RESTART IDENTITY CASCADE`` reaches,
+    written out as the statements that empty it without truncating anything."""
+
+    tables: tuple[str, ...]
+    sequences: tuple[tuple[str, int], ...]
+    lock: str
+    probe: str
+    reset_sequences: str | None
+
+
+_cleanup_plan: _CleanupPlan | None = None
+
+
+def _read_cleanup_plan() -> _CleanupPlan:
+    """Follows the foreign keys and partitions from ``_TRUNCATE_TABLES``, as
+    ``CASCADE`` does, so a table added tomorrow enters the plan by itself.
+    ``tests/integration/test_empty_database.py`` compares it with what Postgres
+    itself says ``TRUNCATE`` reaches."""
+    import psycopg2
+
+    conn = psycopg2.connect(**_parse_dsn(TEST_DB_URL), connect_timeout=5)
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            # Listed by name so a missing table fails here, as TRUNCATE would.
+            cur.execute(
+                "SELECT name FROM unnest(%s::text[]) AS name WHERE to_regclass(name) IS NULL",
+                (list(_TRUNCATE_TABLES),),
+            )
+            missing = [row[0] for row in cur.fetchall()]
+            if missing:
+                raise RuntimeError(f"_TRUNCATE_TABLES names tables that do not exist: {missing}")
+            cur.execute(
+                """
+                WITH RECURSIVE reach(oid) AS (
+                    SELECT to_regclass(name)::oid FROM unnest(%s::text[]) AS name
+                    UNION
+                    SELECT next.oid FROM reach CROSS JOIN LATERAL (
+                        SELECT con.conrelid AS oid FROM pg_constraint con
+                        WHERE con.confrelid = reach.oid AND con.contype = 'f'
+                        UNION ALL
+                        SELECT inh.inhrelid FROM pg_inherits inh
+                        WHERE inh.inhparent = reach.oid
+                    ) AS next
+                )
+                SELECT format('%%I.%%I', n.nspname, c.relname)
+                FROM reach
+                JOIN pg_class c ON c.oid = reach.oid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                ORDER BY 1
+                """,
+                (list(_TRUNCATE_TABLES),),
+            )
+            tables = tuple(row[0] for row in cur.fetchall())
+            # The sequences a column owns: what RESTART IDENTITY restarts.
+            cur.execute(
+                """
+                SELECT format('%%I.%%I', n.nspname, s.relname), seq.seqstart
+                FROM pg_depend d
+                JOIN pg_class s ON s.oid = d.objid AND s.relkind = 'S'
+                JOIN pg_namespace n ON n.oid = s.relnamespace
+                JOIN pg_sequence seq ON seq.seqrelid = s.oid
+                WHERE d.classid = 'pg_class'::regclass
+                  AND d.refclassid = 'pg_class'::regclass
+                  AND d.deptype IN ('a', 'i')
+                  AND d.refobjid = ANY(%s::regclass[])
+                ORDER BY 1
+                """,
+                (list(tables),),
+            )
+            sequences = tuple((row[0], int(row[1])) for row in cur.fetchall())
+    finally:
+        conn.close()
+    return _CleanupPlan(
+        tables=tables,
+        sequences=sequences,
+        lock="LOCK TABLE " + ", ".join(tables) + " IN ACCESS EXCLUSIVE MODE",
+        probe=" UNION ALL ".join(
+            f"SELECT '{table}'::text WHERE EXISTS (SELECT 1 FROM {table})" for table in tables
+        ),
+        reset_sequences=(
+            "SELECT " + ", ".join(f"setval('{name}', {start}, false)" for name, start in sequences)
+            if sequences
+            else None
+        ),
+    )
+
+
+async def _empty_database(engine: Any) -> None:
+    """Empties everything ``TRUNCATE … RESTART IDENTITY CASCADE`` would, in one
+    transaction, without truncating.
+
+    ``TRUNCATE`` swaps the files of every table it reaches, empty or not, and
+    ``CASCADE`` reaches them all — some 170 tables with their indexes and TOAST,
+    on every test, for a test that wrote a dozen rows. It was most of what a test
+    cost and it grew with each migration (``docs/tuberia-en-30-minutos.md``). Here
+    the cost follows what the test wrote.
+
+    What stays as ``TRUNCATE`` had it:
+
+    - **The locks.** ``ACCESS EXCLUSIVE`` on all of them first, so this waits for
+      any task of the test still inside a transaction. A plain ``DELETE`` would
+      not see its uncommitted rows, and they would land in the next test.
+    - **No triggers.** ``session_replication_role = replica`` skips the row
+      triggers, as ``TRUNCATE`` does, and the foreign keys: every table that
+      references one of these is in the plan, so nothing can dangle.
+    - **The sequences** restart whether or not the table has rows.
+
+    Needs a superuser, which the ``nexus`` role of docker-compose and ``ci.yml`` is;
+    with any other role the ``SET LOCAL`` fails rather than leaving rows behind RLS.
+    """
+    plan = _cleanup_plan
+    assert plan is not None, "_bootstrap_db reads the plan before any test runs"
+    async with engine.begin() as conn:
+        await conn.execute(text("SET LOCAL session_replication_role = replica"))
+        await conn.execute(text(plan.lock))
+        written = (await conn.execute(text(plan.probe))).scalars().all()
+        for table in written:
+            await conn.execute(text(f"DELETE FROM {table}"))
+        if plan.reset_sequences:
+            await conn.execute(text(plan.reset_sequences))
+
+
+async def _empty_database_with_diagnosis(engine: Any) -> None:
     """Vacía la base y, si hay deadlock, **dice contra quién**.
 
-    CI falla de forma intermitente con ``DeadlockDetectedError`` en este
-    ``TRUNCATE``: otra conexión sostiene un lock sobre una de las tablas y
-    el vaciado sostiene otra. El mensaje de Postgres da los PID pero no las
-    consultas ("See server log for query details"), y el log del contenedor
-    de Postgres de CI no se recoge — así que el rojo llega sin la mitad que
-    hace falta para arreglarlo.
+    CI falló de forma intermitente con ``DeadlockDetectedError`` en este vaciado
+    (cuando era un ``TRUNCATE``, con los mismos locks): otra conexión sostiene un
+    lock sobre una de las tablas y el vaciado sostiene otra. El mensaje de
+    Postgres da los PID pero no las consultas ("See server log for query
+    details"), y el log del contenedor de Postgres de CI no se recoge — así que
+    el rojo llega sin la mitad que hace falta para arreglarlo.
 
     En vez de adivinar quién es, se pregunta: al detectar el deadlock se lee
     ``pg_stat_activity`` y se imprime qué estaba haciendo cada conexión viva.
@@ -470,8 +603,7 @@ async def _truncate_with_diagnosis(engine: Any, statement: str) -> None:
     """
     for intento in (1, 2):
         try:
-            async with engine.begin() as conn:
-                await conn.execute(text(statement))
+            await _empty_database(engine)
             return
         except DBAPIError as exc:
             if "DeadlockDetected" not in repr(exc.orig) or intento == 2:
@@ -504,9 +636,9 @@ async def _drain_companion_runs(timeout: float = 15.0) -> None:
     ``POST /console/companion/runs/{id}/resume`` responde **202 y sigue
     trabajando**: el run de continuación es una tarea de asyncio que escribe
     en la misma base. Un test que asserta el 202 y vuelve deja esa tarea
-    viva, y el ``TRUNCATE`` de aquí abajo pide ``AccessExclusiveLock`` sobre
-    tablas que la tarea tiene tomadas con ``AccessShareLock``: **deadlock
-    detectado**, en un test que ya había pasado.
+    viva, y el vaciado de aquí abajo pide ``AccessExclusiveLock`` sobre tablas
+    que la tarea tiene tomadas con ``AccessShareLock``: **deadlock detectado**,
+    en un test que ya había pasado.
 
     Se drena aquí y no test a test a propósito. Añadir un ``await`` en cada
     llamada a ``resume`` arregla las de hoy y no las que alguien escriba
@@ -535,7 +667,7 @@ async def _drain_companion_runs(timeout: float = 15.0) -> None:
 
 @pytest_asyncio.fixture
 async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
-    """Real session against the test DB. After each test we TRUNCATE all
+    """Real session against the test DB. After each test we empty all
     tenant-scoped tables + tenants. tool_catalog and kg_schemas keep their
     seed rows (migration-driven, not test-driven).
 
@@ -550,11 +682,8 @@ async def db_session(test_engine: Any) -> AsyncIterator[AsyncSession]:
         await session.close()
         # Antes de vaciar: que no quede ninguna tarea del Companion escribiendo.
         await _drain_companion_runs()
-        # Truncate via a fresh connection so we ignore any RLS state.
-        await _truncate_with_diagnosis(
-            test_engine,
-            "TRUNCATE TABLE " + ", ".join(_TRUNCATE_TABLES) + " RESTART IDENTITY CASCADE",
-        )
+        # Via a fresh connection so we ignore any RLS state.
+        await _empty_database_with_diagnosis(test_engine)
         async with test_engine.begin() as conn:
             # Block L — clean test-inserted tool_catalog rows. The baseline
             # rows are seeded by migrations (0003's 21 LLM-facing and the
