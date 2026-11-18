@@ -1,11 +1,14 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+
+import { axeViolations } from "@nexus/ui/test/axe";
 
 import { LocaleProvider } from "@/i18n/client";
 import type { ConnectorOut } from "@/lib/backend/agent-tools-types";
 
 import { ConnectorCard } from "../connector-card";
+import { connectApiKeyAction } from "@/app/(console)/clients/[ref]/integrations/actions";
 
 /**
  * La tarjeta de conector, rehecha con el owner el 2026-09-28.
@@ -190,5 +193,44 @@ describe("Tarjeta de conector · lo que no se conecta aquí", () => {
     mount({ slug: "googlecalendar", display_name: "Google Calendar", installed: true, status: "paused", managed_elsewhere: true });
     expect(screen.getByRole("button", { name: "Reanudar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reconectar" })).toBeNull();
+  });
+});
+
+/** El formulario del seed de Quédate, tal cual llega del catálogo. */
+const QUEDATE_FORM: ConnectorOut["credentials_form"] = [
+  { field: "api_key", label: "Clave de API", hint: "En el panel de Quédate.", placeholder: "1|...", secret: true, required: true },
+  {
+    field: "environment",
+    label: "Entorno",
+    secret: false,
+    required: false,
+    options: [
+      { value: "production", label: "Producción" },
+      { value: "dev", label: "Desarrollo" },
+    ],
+  },
+];
+
+describe("Tarjeta de conector · el formulario de la clave (spec 061, 1.7)", () => {
+  it("el entorno es un desplegable con producción de entrada, y lo largo va como ayuda, no en la etiqueta", async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectApiKeyAction).mockResolvedValue({ ok: true, data: { last_sync: null } } as never);
+    mount({ slug: "quedate", display_name: "Quédate", credentials_form: QUEDATE_FORM });
+    await user.click(screen.getByRole("button", { name: "Conectar Quédate" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conectar Quédate con clave de API" });
+
+    const entorno = within(dialog).getByRole("combobox", { name: "Entorno" });
+    expect(entorno).toHaveValue("production");
+    expect(within(entorno).getAllByRole("option").map((o) => o.textContent)).toEqual(["Producción", "Desarrollo (pruebas)"]);
+    const clave = within(dialog).getByLabelText("Clave de API");
+    expect(clave).toHaveAccessibleDescription(/Gestión de Tokens/);
+    expect(await axeViolations(dialog)).toEqual([]);
+
+    await user.type(clave, "1|abc");
+    await user.selectOptions(entorno, "dev");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar y conectar" }));
+    await waitFor(() =>
+      expect(connectApiKeyAction).toHaveBeenCalledWith({ ref: "demo", slug: "quedate", secrets: { api_key: "1|abc" }, endpoint_meta: { environment: "dev" } }),
+    );
   });
 });

@@ -89,3 +89,8 @@ description: "Tareas de la spec 061: conector de Quédate (enmienda del 2026-11-
 - [x] T065 Las herramientas que reciben `listing_id` dicen de dónde sacarlo, con su prueba en `apps/mcp/tests/test_quedate_contract_unit.py`, y la migración 0234 pone al día `tool_catalog`. _Requisitos: 4.8_
 - [x] T066 Crear un anuncio pide los ids del catálogo en el mismo turno y, si Quédate rechaza uno, dice que no se creó nada y que se vuelvan a buscar. Lleva sus pruebas en `apps/mcp/tests/` (contrato, persona y equipo), y la migración 0235 pone al día `tool_catalog`. _Requisitos: 4.9_
 - [x] T067 Quitar el punto y coma del campo de entorno en la consola (`words.test.ts`). _Requisitos: —_
+
+## Fase 9: El formulario y el logotipo (2026-11-18)
+
+- [x] T068 Un campo de `credentials_form` puede traer `options` (valor y etiqueta) y `hint`. Los dos formularios de la consola, el de la tarjeta de Conectores y `CredentialsForm`, pintan un desplegable cuando el campo trae opciones y ponen la ayuda debajo, con `Field`. El seed de Quédate lleva etiquetas cortas, la ayuda de la clave y las dos opciones del entorno, traducidas en `connectors.field.quedate.*`. Las pruebas van en `connector-card.test.tsx` y `connection-page.test.tsx`. _Requisitos: 1.1, 1.2, 1.7_
+- [x] T069 El logotipo de Quédate en `public/connector-logos/quedate.png` de la consola y del panel. El seed apunta a `/connector-logos/quedate.png`, `seed_loader` acepta esa ruta además de https (con su prueba), y la ruta `/api/connector-logo` de la consola redirige a ella. _Requisitos: 1.8_

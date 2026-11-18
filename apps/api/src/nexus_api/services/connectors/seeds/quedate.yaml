@@ -10,9 +10,10 @@
 # leaves the old hosts out of reach; the people linked to them are marked for
 # review (customer_connector_accounts.needs_review).
 #
-# environment: the client writes "dev" to point at Quédate's development
-# environment (dev-api.quedate.net); anything else, empty included, is
-# production (api-v2.quedate.net). The addresses are fixed in the code
+# environment: a dropdown (spec 061, 1.7). "production" (the default) is
+# api-v2.quedate.net and "dev" is Quédate's development environment
+# (dev-api.quedate.net); anything else, empty included (connections from
+# before the dropdown), is production. The addresses are fixed in the code
 # (nexus_mcp.servers.quedate.client.BASES): nobody types a URL.
 #
 # tenant_connectors.credentials_ref shape:
@@ -33,21 +34,33 @@ capabilities:
 auth_kind: api_key
 mcp_server_ref: internal:quedate
 provider_meta:
+  # Spec 061, 1.8: served by the console and the panel from their own
+  # public/connector-logos/ (Amacrux's mark, red house in a Q).
+  icon_url: /connector-logos/quedate.png
+  brand_color: "#DA133C"
   vendor_url: https://quedate.net
   docs_url: https://anfitrion.quedate.net/#/admin/docs
   # secret=true masks the input and routes the value to the Fernet-encrypted
-  # payload; secret=false fields land in endpoint_meta.
+  # payload; secret=false fields land in endpoint_meta. Labels fit on one line
+  # (the console truncates them): the explanation goes in hint. options makes
+  # a dropdown whose first option is the default. The console translates all
+  # of it (connectors.field.quedate.*); these are the fallback.
   credentials_form:
     - field: api_key
-      label: Clave de API (Gestión de Tokens, alcance agent:onboarding)
+      label: Clave de API
+      hint: Se crea en el panel de Quédate, en Gestión de Tokens, con el alcance agent:onboarding.
       placeholder: 1|...
       secret: true
       required: true
     - field: environment
-      label: Entorno (vacío = producción; escribe dev para pruebas)
-      placeholder: producción
+      label: Entorno
       secret: false
       required: false
+      options:
+        - value: production
+          label: Producción
+        - value: dev
+          label: Desarrollo (pruebas)
 auto_enable_on_connect: false
 auto_enable_destructive: false
 consent_link_template_name: null

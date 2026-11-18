@@ -1,4 +1,4 @@
-import type { ConnectorOut, KnowledgeErrorCode, ToolOut, CredentialsField, LastSync } from "@/lib/backend/agent-tools-types";
+import type { ConnectorOut, KnowledgeErrorCode, ToolOut, CredentialsField, CredentialsOption, LastSync } from "@/lib/backend/agent-tools-types";
 
 /** Pure helpers of lane `agent-tools` (tested in `__tests__/`). */
 
@@ -63,7 +63,7 @@ export function splitCredentials(fields: ConnectorOut["credentials_form"], value
   const secrets: Record<string, string> = {};
   const endpoint_meta: Record<string, unknown> = {};
   for (const f of fields) {
-    const v = values[f.field]?.trim() ?? "";
+    const v = credentialValue(f, values);
     if (!v) continue;
     if (f.secret) secrets[f.field] = v;
     else endpoint_meta[f.field] = v;
@@ -101,6 +101,27 @@ export function credentialFieldLabel(slug: string, field: CredentialsField, tabl
   const key = `connectors.field.${slug}.${field.field}`;
   if (key in table) return translate(key);
   return field.label ?? field.field;
+}
+
+/** The help under a field (`connectors.field.{slug}.{field}.hint`, else the seed's), so
+ *  the label can stay short: `Field` keeps it on one line (spec 061, 1.7). */
+export function credentialFieldHint(slug: string, field: CredentialsField, table: Record<string, unknown>, translate: (key: string) => string): string | undefined {
+  const key = `connectors.field.${slug}.${field.field}.hint`;
+  if (key in table) return translate(key);
+  return field.hint || undefined;
+}
+
+/** What a dropdown option says (`connectors.field.{slug}.{field}.option.{value}`, else the seed's). */
+export function credentialOptionLabel(slug: string, field: CredentialsField, option: CredentialsOption, table: Record<string, unknown>, translate: (key: string) => string): string {
+  const key = `connectors.field.${slug}.${field.field}.option.${option.value}`;
+  if (key in table) return translate(key);
+  return option.label ?? option.value;
+}
+
+/** What a field holds: what was typed or chosen, or, for a dropdown nobody touched,
+ *  its first option. What is sent is what the form shows. */
+export function credentialValue(field: CredentialsField, values: Record<string, string>): string {
+  return (values[field.field] ?? field.options?.[0]?.value ?? "").trim();
 }
 
 /** Spec 016 (R7.3): what to say about the sync that ran with the connect. */

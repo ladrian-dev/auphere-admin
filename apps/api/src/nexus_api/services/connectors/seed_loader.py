@@ -12,6 +12,7 @@ silently rewriting the row, since it implies a different credentials model.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,10 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _SEEDS_DIR = Path(__file__).resolve().parent / "seeds"
+
+#: Un logotipo que servimos nosotros: ``public/connector-logos/<archivo>`` de la consola
+#: y del panel (spec 061, 1.8). Solo esa carpeta y un nombre de archivo de imagen.
+_OWN_LOGO = re.compile(r"/connector-logos/[a-z0-9_-]+\.(png|svg|webp)")
 
 
 class ConnectorSeedInvalid(ValueError):
@@ -89,11 +94,34 @@ class ConnectorSeed(BaseModel):
                 f"'composio:'; slug={self.slug} got {self.mcp_server_ref!r}"
             )
             raise ValueError(msg)
-        # icon_url must be https when present.
+        # icon_url must be https, or one of our own logos, when present.
         icon = self.provider_meta.get("icon_url")
-        if icon and not str(icon).startswith("https://"):
-            msg = f"provider_meta.icon_url must be https; slug={self.slug} got {icon!r}"
+        if icon and not (str(icon).startswith("https://") or _OWN_LOGO.fullmatch(str(icon))):
+            msg = (
+                "provider_meta.icon_url must be https or /connector-logos/<file>; "
+                f"slug={self.slug} got {icon!r}"
+            )
             raise ValueError(msg)
+        # A dropdown field (spec 061, 1.7) lists distinct text values; the first is the default.
+        for field in self.provider_meta.get("credentials_form") or []:
+            if not isinstance(field, dict) or "options" not in field:
+                continue
+            options = field["options"]
+            values = (
+                [o.get("value") for o in options]
+                if isinstance(options, list) and all(isinstance(o, dict) for o in options)
+                else []
+            )
+            if (
+                not values
+                or not all(isinstance(v, str) and v for v in values)
+                or len(set(values)) != len(values)
+            ):
+                msg = (
+                    "credentials_form options must be a non-empty list of distinct text "
+                    f"values; slug={self.slug} field={field.get('field')!r}"
+                )
+                raise ValueError(msg)
         return self
 
 

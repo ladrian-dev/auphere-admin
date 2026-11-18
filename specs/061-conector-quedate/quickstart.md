@@ -37,7 +37,7 @@
 
 Con una clave de **dev** con alcance `agent:onboarding` (nunca la de alcance `*`), y datos ficticios: Quédate no borra, y todo lo que se cree se queda.
 
-1. Conectar Quédate en un cliente de prueba con la clave y el entorno `dev`. Una clave inválida deja la conexión en «revisar la clave».
+1. Conectar Quédate en un cliente de prueba con la clave y el entorno de desarrollo. Una clave inválida deja la conexión en «revisar la clave».
 2. Activar las herramientas en un agente de prueba y, desde un WhatsApp de prueba:
    1. Buscar alojamientos y cotizar uno: sin datos del anfitrión.
    2. Darse de alta como anfitriona con datos ficticios. El agente lee el correo y espera la confirmación.
@@ -50,6 +50,6 @@ Con una clave de **dev** con alcance `agent:onboarding` (nunca la de alcance `*`
 ## En staging, con Quédate
 
 1. Tras el despliegue, en el panel: Conectores → Quédate → «Decidir para un partner» → el partner → Habilitado, con un motivo.
-2. En la consola de un cliente de ese partner, conectar Quédate con la clave que el cliente genera en su panel de Quédate. Para probar contra su entorno de pruebas, entorno `dev`.
+2. En la consola de un cliente de ese partner, conectar Quédate con la clave que el cliente genera en su panel de Quédate. Para probar contra su entorno de pruebas, el entorno de desarrollo.
 3. Repetir el paso 2 de «Contra Quédate dev».
 4. Generar en Quédate una clave nueva y conectarla: la siguiente acción de una persona ya vinculada la deja «en revisión» y el panel lo cuenta.
