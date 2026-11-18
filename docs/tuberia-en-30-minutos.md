@@ -140,9 +140,22 @@ los 6,5 min de imágenes, migración y servicios: **unos 14–15 min**.
 ## Lo que falta
 
 1. **Ver el primer `deploy-prod` real** al fusionar en `main`, y entonces bajar su
-   espera a `ci` de 150 min a algo como 45.
-2. Con `ci` en 8 min, la razón de [`develop-sin-tuberia.md`](develop-sin-tuberia.md)
-   desaparece. Devolver `ci` a `develop` es decisión de Luis.
+   espera a `ci` (y la de `deploy-staging`) de 150 min a algo como 45.
+
+## `ci` vuelve a `develop`
+
+Decisión de Luis, 2026-11-18, en cuanto `ci` bajó a 8 minutos: se deshace
+[`develop-sin-tuberia.md`](develop-sin-tuberia.md).
+
+| Evento | Del 2026-11-03 al 18 | Desde el 2026-11-18 |
+|---|---|---|
+| PR a `develop` | Nada | `ci` |
+| Push a `develop` | Solo `deploy-staging`, sin espera (~7 min) | `ci` + `deploy-staging` esperando a `ci` (~15 min) |
+| PR a `main` | `ci` | Igual |
+| Push a `main` | `ci` + `deploy-prod` esperando a `ci` | Igual |
+
+Staging tarda unos 8 minutos más en recibir un arreglo; a cambio, un test de
+aislamiento en rojo vuelve a parar el camino a staging, que usan partners en beta.
 
 ## Cómo mantenerlo
 

@@ -1,14 +1,15 @@
 name: ci
 
-# Solo de camino a producción. En ``develop`` ya no corre sola: tardaba más de
-# una hora y frenaba cada arreglo de staging (decisión de Luis, 2026-11-03;
-# docs/develop-sin-tuberia.md). ``workflow_dispatch`` es para lanzarla a mano
-# sobre develop antes de abrir el PR a main.
+# De camino a staging y a producción: ``deploy-staging`` y ``deploy-prod``
+# esperan a este workflow en el mismo sha. Del 2026-11-03 al 2026-11-18 no
+# corría en ``develop`` porque tardaba más de una hora; desde que la API corre en
+# tramos tarda unos 8 minutos y volvió (docs/tuberia-en-30-minutos.md).
+# ``workflow_dispatch`` sirve para lanzarla a mano sobre cualquier rama.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 # Un grupo por evento: el de un PR por su número, el de un push por su rama.

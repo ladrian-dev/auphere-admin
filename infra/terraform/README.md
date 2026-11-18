@@ -240,8 +240,8 @@ se construye con ella al poblar el secreto de app.
 
 ## CI
 
-`develop` → staging automático (`.github/workflows/deploy-staging.yml`, sin
-pasar por el workflow `ci`, ver `docs/develop-sin-tuberia.md`): build+push de
+`develop` → staging automático (`.github/workflows/deploy-staging.yml`, corre
+tras el workflow `ci` verde en el mismo sha): build+push de
 imágenes, task de migración (bloqueante), `update-service
 --force-new-deployment` de los 4 servicios.
 Los parámetros de red que CI necesita (cluster, subredes, SG) los publica
