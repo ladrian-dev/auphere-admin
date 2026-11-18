@@ -210,7 +210,7 @@ export function PublishBar({
       await reload();
       if (action === "save_and_connect") {
         if (onConnect) onConnect();
-        else router.push(channelsHref(refId));
+        else router.push(channelsHref(refId, agentId));
       }
       return;
     }

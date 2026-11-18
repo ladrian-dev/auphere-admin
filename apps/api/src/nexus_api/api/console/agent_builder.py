@@ -289,6 +289,7 @@ async def start_draft(
             # 58.6: como el constructor — un AgentSpec estructurado con las pruebas
             # del caso y del sector, no un agente en modo «instrucciones».
             from nexus_api.services.builder.agent_draft import (
+                BuilderUnavailable,
                 FactsUnavailable,
                 draft_from_template,
             )
@@ -311,6 +312,10 @@ async def start_draft(
                 raise _error(FactsUnavailable.code, status.HTTP_503_SERVICE_UNAVAILABLE) from None
             except DraftInputInvalid as exc:
                 raise _error(exc.code, status.HTTP_422_UNPROCESSABLE_CONTENT) from None
+            except BuilderUnavailable as exc:
+                # Spec 063 (4.4): con nombre, nunca un 500. El motivo, al registro.
+                log.warning("console.builder.template_failed", why=str(exc))
+                raise _error("draft_invalid", status.HTTP_422_UNPROCESSABLE_CONTENT) from None
             except agent_service.AgentError as exc:
                 raise _error(exc.code, exc.status) from None
             agent = await session.get(Agent, agent_id)

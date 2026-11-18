@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import sqlalchemy as sa
@@ -42,7 +42,14 @@ from nexus_api.config import get_settings
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.core.tenant_resolver import invalidate_tenant_cache
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Channel, ChannelStatus, ChannelType, Connector
+from nexus_api.db.models import (
+    AgentConfig,
+    AgentConfigStatus,
+    Channel,
+    ChannelStatus,
+    ChannelType,
+    Connector,
+)
 from nexus_api.repositories.audit import AuditRepository
 from nexus_api.services import meta_social_service
 from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
@@ -134,6 +141,7 @@ def _detail(
     ch: Channel,
     logos: dict[str, str | None] | None = None,
     catalog_state: CatalogState | None = None,
+    audience: str | None = None,
 ) -> ChannelDetailOut:
     cfg = ch.config or {}
 
@@ -176,7 +184,52 @@ def _detail(
             cfg.get("comments_enabled") is not False if ch.type is ChannelType.INSTAGRAM else None
         ),
         comment_public_reply=_s("comment_public_reply"),
+        audience_mode=_audience_mode(audience if audience is not None else ch.audience_mode),
     )
+
+
+def _audience_mode(mode: str | None) -> Literal["unset", "team_only", "everyone"]:
+    if mode == "team_only":
+        return "team_only"
+    if mode == "everyone":
+        return "everyone"
+    return "unset"
+
+
+async def _effective_audiences(session: AsyncSession, rows: list[Channel]) -> dict[uuid.UUID, str]:
+    """Spec 063 (2.3): a quién responde de verdad cada número, con la regla de la
+    tarjeta del agente y de la puerta (``client_overview.channel_audience``): la del
+    canal si decide (WhatsApp estricto) o ya tiene una; si no, la de la versión
+    publicada del agente que lo atiende. Así Instagram, Messenger y un canal que no
+    es estricto no salen «No responde a nadie» por llevar ``unset`` guardado."""
+    from nexus_api.services.agents import principal_agent_id
+    from nexus_api.services.channel_config import partner_on_v2
+    from nexus_api.services.client_overview import channel_audience
+
+    if not rows:
+        return {}
+    v2 = await partner_on_v2(session, rows[0].tenant_id)
+    principal = await principal_agent_id(session)
+    published = {
+        agent_id: policies
+        for agent_id, policies in (
+            await session.execute(
+                sa.select(AgentConfig.agent_id, AgentConfig.policies).where(
+                    AgentConfig.status == AgentConfigStatus.ACTIVE
+                )
+            )
+        ).all()
+    }
+    out: dict[uuid.UUID, str] = {}
+    for ch in rows:
+        serving = ch.agent_id or principal
+        out[ch.id] = channel_audience(
+            ch.audience_mode,
+            strict=v2 and ch.type is ChannelType.WHATSAPP,
+            published=serving in published,
+            policies=published.get(serving) if serving is not None else None,
+        )
+    return out
 
 
 async def _all_channels(session: AsyncSession) -> list[Channel]:
@@ -262,8 +315,9 @@ async def channels_overview(
         adopted = (c.config or {}).get("catalog_id")
         if adopted and adopted != known[c.id]:
             await _catalog_skills(scope, c)
+    audiences = await _effective_audiences(scope.session, rows)
     return ChannelsOverviewOut(
-        channels=[_detail(c, logos, states.get(c.id)) for c in rows],
+        channels=[_detail(c, logos, states.get(c.id), audiences.get(c.id)) for c in rows],
         max_channels=limit,
         used_channels=used,
         can_connect=used < limit,

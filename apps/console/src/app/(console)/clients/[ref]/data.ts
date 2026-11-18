@@ -47,6 +47,8 @@ export type AgentChoice = {
   /** The agent the tab acts on; `undefined` is the principal (no `?agent=`). */
   agentId: string | undefined;
   agentName: string | null;
+  /** Spec 063 (2.5): cuántos agentes tiene el cliente; `null` si no se pudo leer. */
+  total: number | null;
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,11 +67,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function agentChoice(principal: Principal, ref: string, raw: string | undefined): Promise<AgentChoice> {
   const listed = await getAgentsCached(principal, ref);
   if (listed === null) {
-    return { agents: [], agentId: raw && UUID_RE.test(raw) ? raw : undefined, agentName: null };
+    return { agents: [], agentId: raw && UUID_RE.test(raw) ? raw : undefined, agentName: null, total: null };
   }
   const all = listed;
   const agents = all.length > 1 ? all : [];
   const picked = agents.find((a) => a.id === raw && !a.is_principal);
   const principalAgent = agents.find((a) => a.is_principal);
-  return { agents, agentId: picked?.id, agentName: (picked ?? principalAgent)?.name ?? null };
+  return { agents, agentId: picked?.id, agentName: (picked ?? principalAgent)?.name ?? null, total: all.length };
 }

@@ -66,11 +66,14 @@ describe("«Cómo habla» · los idiomas", () => {
     expect(screen.queryByRole("textbox", { name: /Idiomas/ })).toBeNull();
     // Cada uno con su nombre en su idioma, en este orden.
     const names = ["Español", "English", "Português", "Français", "Italiano", "Deutsch", "Català"];
-    const boxes = within(languages()).getAllByRole("checkbox");
+    // Los idiomas; la casilla de «Responder solo en estos idiomas» va aparte (spec 063).
+    const boxes = within(languages())
+      .getAllByRole("checkbox")
+      .filter((box) => box.getAttribute("data-slot") !== "voice-language-limit");
     expect(boxes).toHaveLength(names.length);
     names.forEach((name, i) => expect(within(languages()).getByRole("checkbox", { name })).toBe(boxes[i]));
     expect(within(languages()).getByRole("checkbox", { name: "Español" })).toBeChecked();
-    expect(screen.getByText("Principal: Español")).toBeVisible();
+    expect(screen.getByText("Contesta en el idioma del cliente. Si no lo sabe, en Español.")).toBeVisible();
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -79,7 +82,7 @@ describe("«Cómo habla» · los idiomas", () => {
     const { onSave } = editor();
     await user.click(within(languages()).getByRole("checkbox", { name: /English/ }));
     await user.click(within(languages()).getByRole("checkbox", { name: /Español/ }));
-    expect(screen.getByText("Principal: English")).toBeVisible();
+    expect(screen.getByText("Contesta en el idioma del cliente. Si no lo sabe, en English.")).toBeVisible();
     await user.click(within(languages()).getByRole("checkbox", { name: /Català/ }));
     await user.selectOptions(screen.getByRole("combobox", { name: /Tono/ }), "Formal");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
@@ -91,7 +94,7 @@ describe("«Cómo habla» · los idiomas", () => {
     const { onSave } = editor({ languages: ["pt-BR", "es"] });
     const extra = within(languages()).getByRole("checkbox", { name: /portugués de Brasil/i });
     expect(extra).toBeChecked();
-    expect(screen.getByText(/^Principal: portugués de Brasil$/i)).toBeVisible();
+    expect(screen.getByText(/Si no lo sabe, en portugués de Brasil\.$/i)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     expect(onSave).toHaveBeenCalledWith({ languages: ["pt-BR", "es"] });
   });
@@ -104,3 +107,41 @@ describe("«Cómo habla» · los idiomas", () => {
     expect(within(languages()).getByRole("checkbox", { name: /Deutsch/ })).toBeEnabled();
   });
 });
+
+/**
+ * Spec 063 (requisitos 1.6 y 1.8): por defecto el agente contesta en el idioma del
+ * cliente. «Responder solo en estos idiomas» lo limita a los marcados; si le
+ * escriben en otro, contesta en el principal. Una línea dice qué hace.
+ */
+describe("«Cómo habla» · limitar los idiomas (spec 063)", () => {
+  const limit = () => screen.getByRole("checkbox", { name: "Responder solo en estos idiomas" });
+
+  it("empieza sin límite y no lo guarda", async () => {
+    const user = userEvent.setup();
+    const { onSave } = editor({ languages: ["es", "en"] });
+    expect(limit()).not.toBeChecked();
+    expect(screen.getByText("Contesta en el idioma del cliente. Si no lo sabe, en Español.")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(onSave).toHaveBeenCalledWith({ languages: ["es", "en"] });
+  });
+
+  it("encendido, dice en cuáles y lo guarda; pasa axe", async () => {
+    const user = userEvent.setup();
+    const { onSave, container } = editor({ languages: ["es", "en"] });
+    await user.click(limit());
+    expect(screen.getByText("Solo en: Español, English. Si le escriben en otro, en Español.")).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(onSave).toHaveBeenCalledWith({ languages: ["es", "en"], languages_limited: true });
+  });
+
+  it("un agente ya limitado sale con el límite puesto, y apagarlo lo quita", async () => {
+    const user = userEvent.setup();
+    const { onSave } = editor({ languages: ["es"], languages_limited: true });
+    expect(limit()).toBeChecked();
+    await user.click(limit());
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(onSave).toHaveBeenCalledWith({ languages: ["es"] });
+  });
+});
+

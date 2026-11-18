@@ -106,13 +106,15 @@ ROLE_RANK: dict[str, int] = {
 #: justo donde se equivoca, y donde el error se convierte en un 422 que no
 #: sabe corregir— se acepta lo plano y se compone aquí.
 #:
+#: **Los idiomas no están** (spec 063, 1.6): se deciden solo en «Cómo habla» del
+#: AgentSpec, y de ahí se copian a la política.
+#:
 #: **``ai_disclosure`` no está y no se añade.** El §6.5 prohíbe desactivar la
 #: revelación de IA; dejar el campo expuesto "solo para activarla" sería
 #: dejar la palanca al alcance de una inyección de prompt para nada, porque
 #: el valor por defecto ya es ``true``.
 POLICY_FIELDS: dict[str, tuple[str, ...]] = {
     "objective": ("objective",),
-    "primary_language": ("languages", "primary"),
     "timezone": ("schedule", "timezone"),
     "closed_message": ("schedule", "closed_message"),
     "escalation_enabled": ("escalation", "enabled"),

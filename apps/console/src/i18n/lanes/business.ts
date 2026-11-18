@@ -243,6 +243,8 @@ export const businessMessages = {
   "clients.v2.agent.serving": { es: "Atendiendo", en: "Serving" },
   "clients.v2.agent.testing": { es: "En prueba", en: "Testing" },
   "clients.v2.agent.ready_no_channel": { es: "Listo · sin canal", en: "Ready · no channel" },
+  // Spec 063 (2.6): tiene número, pero sin configurar no responde a nadie.
+  "clients.v2.agent.ready_unconfigured": { es: "Listo · número sin configurar", en: "Ready · number not set up" },
   "clients.v2.agent.draft": { es: "Borrador", en: "Draft" },
   "clients.v2.agent.archived": { es: "Archivado", en: "Archived" },
   "clients.v2.agent.paused": { es: "Pausado · {reason}", en: "Paused · {reason}" },

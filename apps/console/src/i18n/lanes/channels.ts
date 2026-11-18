@@ -112,6 +112,12 @@ export const channelsMessages = {
   "ch.empty.title": { es: "Este cliente aún no tiene ningún canal", en: "This client has no channels yet" },
   "ch.empty.description": { es: "Conecta el número de WhatsApp del cliente con la cuenta de Meta del propio cliente. Auphere no ve la contraseña de nadie.", en: "Connect the client's WhatsApp number with the client's own Meta account. Auphere never sees anyone's password." },
   "ch.card.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
+  // Spec 063 (2.2, 2.3, 2.5): la tarjeta lleva a la configuración del número.
+  "ch.card.configure": { es: "Configurar", en: "Set up" },
+  "ch.card.unset": { es: "No responde a nadie", en: "Answers nobody" },
+  "ch.card.decide": { es: "Decidir a quién responde", en: "Decide who it answers" },
+  "ch.card.needsAgent": { es: "Necesita un agente que lo atienda", en: "It needs an agent to answer it" },
+  "ch.card.createAgent": { es: "Crear un agente", en: "Create an agent" },
   "ch.card.number": { es: "Número", en: "Number" },
   "ch.card.name": { es: "Nombre verificado", en: "Verified name" },
   "ch.card.quality": { es: "Calidad", en: "Quality" },

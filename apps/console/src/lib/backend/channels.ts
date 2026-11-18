@@ -53,6 +53,8 @@ export type ChannelDetail = {
   needs_attention_help?: string | null;
   comments_enabled?: boolean | null;
   comment_public_reply?: string | null;
+  /** Spec 063 (2.3): a quién responde. `unset` es «Sin configurar»: no responde a nadie. */
+  audience_mode?: "unset" | "team_only" | "everyone";
 };
 
 /** Spec 049: Instagram / Messenger this partner may connect. */

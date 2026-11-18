@@ -35,8 +35,13 @@ from nexus_api.db.models import (
     AgentStatus,
     AuditLog,
     Channel,
+    ChannelStatus,
 )
 from nexus_api.services.channel_routing import config_agent_enabled
+
+#: El canal interno del probador (``api/console/channels.INTERNAL_PROVIDERS``): no
+#: es un número del cliente y no sale en ninguna tarjeta.
+_INTERNAL_PROVIDERS: frozenset[str] = frozenset({"qa_playground"})
 
 
 class AgentError(Exception):
@@ -94,11 +99,25 @@ async def list_agents(session: AsyncSession, *, include_archived: bool = False) 
     for cid, agent_id, ident in (
         await session.execute(
             sa.select(Channel.id, Channel.agent_id, Channel.provider_identifier)
-            .where(Channel.agent_id.in_(ids))
+            # Spec 063 (2.4, D12): un número sin agente sale en la tarjeta del
+            # principal, que es quien lo atiende; nunca el canal interno del
+            # probador ni uno desconectado, como en la pestaña Canales.
+            .where(
+                sa.or_(
+                    Channel.agent_id.in_(ids),
+                    sa.and_(
+                        Channel.agent_id.is_(None),
+                        Channel.provider.not_in(_INTERNAL_PROVIDERS),
+                        Channel.status != ChannelStatus.DISCONNECTED,
+                    ),
+                )
+            )
             .order_by(Channel.created_at)
         )
     ).all():
-        channels.setdefault(agent_id, []).append((cid, str(ident)))
+        owner = agent_id if agent_id is not None else principal
+        if owner is not None:
+            channels.setdefault(owner, []).append((cid, str(ident)))
     versions: dict[uuid.UUID, dict[str, int]] = {}
     for agent_id, version, status in (
         await session.execute(

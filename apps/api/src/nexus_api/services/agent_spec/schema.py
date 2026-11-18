@@ -70,6 +70,9 @@ class Voice(_Strict):
         default=None, alias="register"
     )
     greeting: Annotated[str, Field(max_length=300)] | SkipJsonSchema[None] = None
+    #: Spec 063 (1.6): «Responder solo en estos idiomas». Sin él, el agente contesta
+    #: en el idioma del cliente. Solo lo cambia una persona (1.9, validador).
+    languages_limited: bool | SkipJsonSchema[None] = None
 
     _languages_unique = field_validator("languages")(_unique)
 

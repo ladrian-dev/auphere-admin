@@ -35,7 +35,7 @@ import json
 import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -56,6 +56,7 @@ from nexus_api.services.agent_spec.validator import (
     Context,
     end_customer_picks,
     load_context,
+    mentions,
     validate_spec,
 )
 from nexus_api.services.builder.guides import generated as guides_generated
@@ -113,9 +114,16 @@ Progress = Callable[..., Awaitable[bool]]
 
 
 class BuilderUnavailable(Exception):
-    """El modelo no respondió o no devolvió un borrador que se pueda leer."""
+    """El modelo no respondió o no devolvió un borrador que se pueda leer.
+
+    ``detail`` (spec 063, 3.2) dice dónde falló un JSON ilegible (tipo, posición,
+    longitud), nunca qué decía: va a los registros."""
 
     code = "builder_unavailable"
+
+    def __init__(self, why: str, *, detail: dict[str, Any] | None = None) -> None:
+        super().__init__(why)
+        self.detail = detail
 
 
 class FactsUnavailable(Exception):
@@ -400,8 +408,17 @@ def build_messages(
 
 def parse_output(text: str) -> dict[str, Any]:
     """El JSON del modelo, aunque venga entre ```json … ```. Cualquier otra cosa
-    es :class:`BuilderUnavailable`."""
+    es :class:`BuilderUnavailable`.
+
+    Spec 063: primero la salida entera (con el modo JSON es lo normal), para no
+    recortar un JSON válido que lleva «```» o llaves dentro de una cadena."""
     raw = (text or "").strip()
+    try:
+        whole = json.loads(raw)
+    except json.JSONDecodeError:
+        whole = None
+    if isinstance(whole, dict):
+        return whole
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
     if fenced:
         raw = fenced.group(1)
@@ -411,7 +428,14 @@ def parse_output(text: str) -> dict[str, Any]:
     try:
         out = json.loads(raw[start : end + 1])
     except json.JSONDecodeError as exc:
-        raise BuilderUnavailable("bad_json") from exc
+        detail = {
+            "error": exc.msg,
+            "pos": exc.pos,
+            "line": exc.lineno,
+            "col": exc.colno,
+            "chars": len(text or ""),
+        }
+        raise BuilderUnavailable("bad_json", detail=detail) from exc
     if not isinstance(out, dict):
         raise BuilderUnavailable("not_an_object")
     return out
@@ -453,6 +477,7 @@ def sanitize(
     facts: Facts,
     *,
     model_policy: Mapping[str, str] | None,
+    guide: ResolvedGuide | None = None,
 ) -> Draft:
     """De lo que dijo el modelo a un AgentSpec que pasa el validador. Lo que no
     cabe se quita y se cuenta; nada de lo que dijo el modelo sobre la identidad,
@@ -464,6 +489,8 @@ def sanitize(
     ninguna herramienta del agente hace salen del borrador y se anotan en
     ``missing``; nunca acaban en «Conectar {X}». El agente se queda con su
     alternativa: pasar a una persona (la sección de límites del prompt, 65.6)."""
+    # Spec 063 (4.1): lo que este cliente dio al constructor no es de otro cliente.
+    ctx = _without_own_names(ctx, request, facts, guide)
     dropped: list[dict[str, str]] = []
     connect: dict[str, str] = {}
     lacking: list[MissingCapability] = []
@@ -727,8 +754,18 @@ def sanitize(
     spec, problems = validate_spec(doc, ctx, author="builder")
     if spec is None or problems:
         # Lo que el saneado no supo arreglar no se enseña: se quita lo que falla.
-        log.warning("builder.draft.problems", codes=[p.code for p in problems])
+        # Código y sitio, nunca el texto del problema: el de ``foreign_text`` lleva
+        # el nombre de otro cliente (spec 063, 4.2).
+        log.warning(
+            "builder.draft.problems",
+            codes=[p.code for p in problems],
+            pointers=[p.pointer for p in problems],
+        )
+        foreign = [p.pointer for p in problems if p.code == "foreign_text"]
+        _drop_at(doc, foreign)
         for p in problems:
+            if p.code == "foreign_text":
+                continue
             if p.pointer.startswith("/rules/") or p.pointer.startswith("/instructions/"):
                 doc.pop("rules", None)
         spec, problems = validate_spec(doc, ctx, author="builder")
@@ -745,6 +782,80 @@ def sanitize(
         dropped_tools=dropped,
         lacking=missing.merge(lacking),
     )
+
+
+def _without_own_names(
+    ctx: Context, request: DraftRequest, facts: Facts, guide: ResolvedGuide | None
+) -> Context:
+    """Spec 063 (4.1): un nombre de otro cliente que aparece en lo que este cliente
+    dio al constructor (el nombre del agente, la descripción, la ficha, la guía) no
+    es una fuga: el constructor solo recibe datos de este cliente y guías de
+    Auphere. Vale solo para este borrador."""
+    if not ctx.foreign_names:
+        return ctx
+    own = "\n".join((request.name, request.description, render_facts(facts), _guide_block(guide)))
+    kept = tuple(n for n in ctx.foreign_names if not mentions(n, own))
+    return ctx if kept == tuple(ctx.foreign_names) else replace(ctx, foreign_names=kept)
+
+
+#: Spec 063 (4.2): dónde puede escribir el constructor por su cuenta y, por tanto,
+#: qué se puede quitar sin tocar lo demás: un elemento de estas listas…
+_DROPPABLE_LISTS: Final = (
+    ("instructions", "sections"),
+    ("procedures",),
+    ("rules",),
+    ("skills",),
+    ("connection_requests",),
+    ("services", "faqs"),
+)
+#: …o uno de estos textos sueltos.
+_DROPPABLE_TEXTS: Final = (
+    ("identity", "goal"),
+    ("voice", "tone"),
+    ("voice", "greeting"),
+    ("escalation", "message"),
+)
+
+
+def _drop_at(doc: dict[str, Any], pointers: Iterable[str]) -> None:
+    """Quita de ``doc`` el elemento o el texto de cada ``pointer`` que lo admite; los
+    demás se quedan, y el validador volverá a decir que no (``invalid_draft``)."""
+    doomed: dict[tuple[str, ...], set[int]] = {}
+    for pointer in pointers:
+        parts: tuple[str, ...] = tuple(pointer.strip("/").split("/"))
+        listed = next(
+            (
+                path
+                for path in _DROPPABLE_LISTS
+                if parts[: len(path)] == path
+                and len(parts) > len(path)
+                and parts[len(path)].isdigit()
+            ),
+            None,
+        )
+        if listed is not None:
+            doomed.setdefault(listed, set()).add(int(parts[len(listed)]))
+            continue
+        for section, key in _DROPPABLE_TEXTS:
+            if parts[:2] == (section, key):
+                found = doc.get(section)
+                if isinstance(found, dict):
+                    found.pop(key, None)
+                break
+    for path, indexes in doomed.items():
+        holder: Any = doc
+        for key in path[:-1]:
+            holder = holder.get(key) if isinstance(holder, dict) else None
+        if not isinstance(holder, dict):
+            continue
+        items = holder.get(path[-1])
+        if not isinstance(items, list):
+            continue
+        kept = [item for i, item in enumerate(items) if i not in indexes]
+        if kept or path[-1] == "sections":
+            holder[path[-1]] = kept
+        else:
+            del holder[path[-1]]
 
 
 def _skeleton(request: DraftRequest, tools: list[str]) -> dict[str, Any]:
@@ -1171,7 +1282,7 @@ async def build_agent_draft(
         except Exception as exc:  # el proveedor no respondió
             raise BuilderUnavailable("provider_failed") from exc
         raw = parse_output(text)
-    draft = sanitize(raw, request, ctx, facts, model_policy=model_policy)
+    draft = sanitize(raw, request, ctx, facts, model_policy=model_policy, guide=guide)
 
     for key in BLOCKS:
         await progress(step="writing", block=summarize_block(key, draft.spec, draft))
@@ -1408,7 +1519,7 @@ async def draft_from_template(
         source="template", label=found.label, label_key=label_key(found.label), guide=found.guide
     )
     raw = offline_output(request, facts, ctx, guide=template_guide, tools_hint=hint)
-    draft = sanitize(raw, request, ctx, facts, model_policy=model_policy)
+    draft = sanitize(raw, request, ctx, facts, model_policy=model_policy, guide=template_guide)
     client_guide = await guides_resolve.for_client(session)
     if client_guide is not None and client_guide.source == "missing":
         built, tests, _from_model = await guides_generated.generate(client_guide.label, None)

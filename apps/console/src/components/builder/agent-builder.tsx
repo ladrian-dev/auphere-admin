@@ -961,6 +961,7 @@ export function AgentBuilder({
                 {testRun.confirm}
                 <TestsBox
                   refId={refId}
+                  agentId={draft.agent_id}
                   tests={testRun}
                   review={review}
                   canWrite={writable}

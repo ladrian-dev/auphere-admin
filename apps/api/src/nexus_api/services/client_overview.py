@@ -150,6 +150,7 @@ async def read_client(
                 Agent.created_at,
                 Agent.lifecycle,
                 Agent.pause_reason,
+                Agent.is_default,
             )
             .where(Agent.tenant_id == tenant_id)
             .order_by(Agent.created_at, Agent.id)
@@ -174,7 +175,9 @@ async def read_client(
         )
     ).all()
     live = [a for a in agents if a.status != "archived"]
-    principal = live[0].id if live else None
+    # Spec 063 (2.4): los números sin agente, en el principal del turno
+    # (``agents.principal_agent_id``): el marcado por defecto o el vivo más antiguo.
+    principal = next((a.id for a in live if a.is_default), live[0].id if live else None)
     by_agent: dict[uuid.UUID | None, list[tuple[ChannelStatus, str, bool]]] = {}
     v2 = await partner_on_v2(session, tenant_id) if channels else False
     for agent_id, status, audience_mode, kind in channels:
