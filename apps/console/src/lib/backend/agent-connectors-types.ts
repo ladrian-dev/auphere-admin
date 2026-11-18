@@ -10,6 +10,8 @@
  * pantalla son «Conectores» (`words.test.ts`).
  */
 
+import type { CredentialsField } from "./agent-tools-types";
+
 /** «Solo leer», «Preguntar antes de escribir» y «Leer y escribir» (35.5). */
 export type ConnectorPermission = "read" | "ask_before_write" | "read_write";
 export const CONNECTOR_PERMISSIONS: readonly ConnectorPermission[] = ["read", "ask_before_write", "read_write"];
@@ -93,7 +95,8 @@ export type ConnectConsent = { slug: string; signed_consent_url: string; expires
 export type ConnectResult = ConnectDone | ConnectConsent;
 
 /** Un campo del formulario de credenciales del catálogo (`409 authorize_with_form`). */
-export type ConnectFormField = { field: string; label?: string; placeholder?: string; secret?: boolean; required?: boolean };
+/** The same field the Connectors card renders (`agent-tools-types`). */
+export type ConnectFormField = CredentialsField;
 
 /** `DELETE …/activations/{integration}`: lo que se queda sin el conector (35.7). */
 export type AffectedSkills = { skills: string[]; procedures: string[] };

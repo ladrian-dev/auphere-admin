@@ -18,8 +18,10 @@ import {
   NativeSelect,
 } from "@nexus/ui";
 
+import { credentialValue } from "@/components/agent-tools/lib";
+import { CredentialField } from "@/components/integrations/credential-field";
 import { useT } from "@/i18n/client";
-import { messages, type MessageKey } from "@/i18n/messages";
+import type { MessageKey } from "@/i18n/messages";
 import type { Activation, ConnectFormField, ConnectorPermission, ConnectorSettings, SettingsSchema } from "@/lib/backend/agent-connectors-types";
 import { CONNECTOR_PERMISSIONS } from "@/lib/backend/agent-connectors-types";
 
@@ -369,33 +371,25 @@ export function CredentialsForm({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const gaps: Record<string, boolean> = {};
-    for (const f of fields) if (f.required !== false && !(values[f.field] ?? "").trim()) gaps[f.field] = true;
+    for (const f of fields) if (f.required !== false && !credentialValue(f, values)) gaps[f.field] = true;
     setMissing(gaps);
     if (!Object.keys(gaps).length) onSubmit(values);
   }
 
   return (
     <form className="grid min-w-0 gap-4" onSubmit={submit} noValidate aria-busy={busy}>
-      {fields.map((f) => {
-        const id = `${formId}-${f.field}`;
-        const key = `connectors.field.${slug}.${f.field}` as MessageKey;
-        return (
-          <Field key={f.field} label={key in messages ? t(key) : (f.label ?? f.field)} htmlFor={id} required={f.required !== false} error={missing[f.field] ? t("agentConn.field.required") : undefined}>
-            {(a11y) => (
-              <Input
-                {...a11y}
-                type={f.secret ? "password" : "text"}
-                autoComplete={f.secret ? "new-password" : "off"}
-                spellCheck={false}
-                placeholder={f.placeholder}
-                value={values[f.field] ?? ""}
-                onChange={(e) => setValues((v) => ({ ...v, [f.field]: e.target.value }))}
-                disabled={busy}
-              />
-            )}
-          </Field>
-        );
-      })}
+      {fields.map((f) => (
+        <CredentialField
+          key={f.field}
+          slug={slug}
+          field={f}
+          id={`${formId}-${f.field}`}
+          values={values}
+          onChange={(value) => setValues((v) => ({ ...v, [f.field]: value }))}
+          error={missing[f.field] ? t("agentConn.field.required") : undefined}
+          disabled={busy}
+        />
+      ))}
       {error ? (
         <p role="alert" className="text-sm text-destructive text-pretty">
           {error}

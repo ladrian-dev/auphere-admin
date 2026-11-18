@@ -165,6 +165,28 @@ describe("la página de un conector · cambiar", () => {
     await waitFor(() => expect(actions.reload).toHaveBeenCalledWith({ ref: REF, connection: CONN_WOO }));
   });
 
+  it("un campo con opciones es un desplegable: sin tocarlo vale la primera, y la ayuda describe el campo (spec 061, 1.7)", async () => {
+    const user = userEvent.setup();
+    const connector = {
+      slug: "woocommerce",
+      auth_kind: "api_key",
+      credentials_form: [
+        { field: "consumer_key", secret: true, required: true, hint: "Se crea en WooCommerce." },
+        { field: "mode", label: "Modo", secret: false, required: false, options: [{ value: "live", label: "Real" }, { value: "test", label: "Pruebas" }] },
+      ],
+    } as unknown as ConnectorOut;
+    const { actions } = view(connectionPage(), { reconnect: vi.fn(async () => fail(409, "authorize_with_form", { auth_kind: "api_key" })) }, { connector });
+    await user.click(screen.getByRole("button", { name: "Reconectar" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conectar WooCommerce" });
+    const modo = within(dialog).getByRole("combobox", { name: "Modo" });
+    expect(modo).toHaveValue("live");
+    expect(within(modo).getAllByRole("option").map((o) => o.textContent)).toEqual(["Real", "Pruebas"]);
+    expect(within(dialog).getByLabelText(/Clave de consumidor/)).toHaveAccessibleDescription("Se crea en WooCommerce.");
+    await user.type(within(dialog).getByLabelText(/Clave de consumidor/), "ck_1");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar y conectar" }));
+    await waitFor(() => expect(actions.saveKey).toHaveBeenCalledWith({ ref: REF, slug: "woocommerce", secrets: { consumer_key: "ck_1" }, endpoint_meta: { mode: "live" } }));
+  });
+
   it("«Desconectar para todos» primero dice a quién afecta, y solo con la confirmación desconecta (36.4)", async () => {
     const user = userEvent.setup();
     const { actions } = view();
