@@ -88,9 +88,26 @@ en algún sitio, es de antes de ADR-032 y sobra.
 Proyecto de Vercel **`auphere-console`** (rama de producción `main`, dominio
 `console.auphere.com`). **Un proyecto por entorno**.
 
+**`NEXUS_BACKEND_URL` en producción es `https://webhooks.auphere.com`, no
+`api.auphere.com`** (spec 062, desde el 2026-11-17).
+- **Por qué:** `api.auphere.com` pasa por Cloudflare, y Cloudflare atendía las
+  llamadas de la consola (Vercel `iad1`) desde Tokio y São Paulo. El origen
+  tardaba hasta decenas de segundos y la consola fallaba.
+  `webhooks.auphere.com` es solo DNS y llega directo al mismo ALB, como hace
+  staging con `api.staging.auphere.com`.
+- **Qué cambia:**
+  - Estas llamadas de servidor a servidor no pasan por el cortafuegos de Cloudflare.
+  - Los flujos en vivo se cortan tras 60 s sin datos (el ALB), no tras 100 s.
+- **Qué no cambia:** las demás apps y los webhooks de Meta.
+- **Vuelta atrás:** devolver el valor y volver a desplegar.
+- **Pendiente:** un host propio solo DNS con su certificado. Mientras no exista,
+  la consola depende del certificado de `webhooks.auphere.com` en el listener.
+  Por qué: [[bugs/2026-11-17-consola-lenta-por-cloudflare]] en la KB.
+
 `prod.tfvars` ahora fija `https_enabled = true` y `extra_certificate_arns`
 (webhooks.auphere.com). Un apply **sin** ese tfvars sigue planeando destruir
-el listener HTTPS — no lo apliques así.
+el listener HTTPS — no lo apliques así. **Quitar ese certificado también deja
+sin API a la consola de producción** (ver arriba).
 
 Antes de apply en `prod`: las claves de `app_secret_keys` (incluida
 `NEXUS_CONSOLE_JWT_PUBLIC_KEY`) tienen que existir en `nexus/prod/app`.
