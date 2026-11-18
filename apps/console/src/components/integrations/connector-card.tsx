@@ -19,8 +19,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Input,
-  Label,
   StatusBadge,
   StatusDot,
   cn,
@@ -36,10 +34,11 @@ import {
 import {
   connectorStatusKey,
   connectorTone,
-  credentialFieldLabel,
+  credentialValue,
   lastSyncKey,
   splitCredentials,
 } from "@/components/agent-tools/lib";
+import { CredentialField } from "@/components/integrations/credential-field";
 import { useLocale, useT } from "@/i18n/client";
 import { messages, type MessageKey } from "@/i18n/messages";
 import { actionErrorText } from "@/lib/action-error";
@@ -465,7 +464,7 @@ function ApiKeyDialog({
     e.preventDefault();
     const missing: Record<string, string> = {};
     for (const f of fields)
-      if (f.required !== false && !(values[f.field] ?? "").trim())
+      if (f.required !== false && !credentialValue(f, values))
         missing[f.field] = t("connectors.apiKey.required");
     setErrors(missing);
     if (Object.keys(missing).length) return;
@@ -499,35 +498,18 @@ function ApiKeyDialog({
           <p className="text-sm text-muted-foreground">{t("connectors.apiKey.noForm")}</p>
         ) : (
           <form className="grid gap-3" onSubmit={submit} noValidate aria-busy={pending}>
-            {fields.map((f) => {
-              const id = `cred-${connector.slug}-${f.field}`;
-              return (
-                <div key={f.field} className="grid gap-1">
-                  <Label htmlFor={id}>
-                    {credentialFieldLabel(connector.slug, f, messages, (k) =>
-                      t(k as Parameters<typeof t>[0]),
-                    )}
-                  </Label>
-                  <Input
-                    id={id}
-                    type={f.secret ? "password" : "text"}
-                    autoComplete={f.secret ? "new-password" : "off"}
-                    spellCheck={false}
-                    placeholder={f.placeholder}
-                    value={values[f.field] ?? ""}
-                    onChange={(e) => setValues((v) => ({ ...v, [f.field]: e.target.value }))}
-                    aria-invalid={errors[f.field] ? true : undefined}
-                    aria-describedby={errors[f.field] ? `${id}-err` : undefined}
-                    required={f.required !== false}
-                  />
-                  {errors[f.field] ? (
-                    <p id={`${id}-err`} className="text-xs text-destructive" aria-live="polite">
-                      {errors[f.field]}
-                    </p>
-                  ) : null}
-                </div>
-              );
-            })}
+            {fields.map((f) => (
+              <CredentialField
+                key={f.field}
+                slug={connector.slug}
+                field={f}
+                id={`cred-${connector.slug}-${f.field}`}
+                values={values}
+                onChange={(value) => setValues((v) => ({ ...v, [f.field]: value }))}
+                error={errors[f.field]}
+                disabled={pending}
+              />
+            ))}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => close(false)} disabled={pending}>
                 {t("common.cancel")}

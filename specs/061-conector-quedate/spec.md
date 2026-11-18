@@ -118,12 +118,14 @@ Un huésped busca un apartamento para unas fechas. El agente busca, le enseña u
 #### Criterios de aceptación
 1. El sistema DEBE ofrecer el conector `quedate` por clave, con dos campos:
    - la clave de la API del agente, secreta;
-   - el entorno, no secreto y opcional. Vacío significa producción, y `dev` significa desarrollo.
+   - el entorno, no secreto: producción, la opción por defecto, o desarrollo. Se guarda `production` o `dev`, y una conexión de antes sin entorno sigue siendo producción.
 2. El entorno DEBE ser una elección cerrada: producción (`api-v2.quedate.net`) o desarrollo (`dev-api.quedate.net`). Cualquier otro valor es producción. Ningún cliente ni partner DEBE poder poner otra dirección.
 3. WHEN un cliente guarda la clave THEN el sistema DEBE comprobarla contra el catálogo de la API del agente del entorno elegido, antes de activar nada.
 4. IF Quédate la rechaza THEN la conexión DEBE quedar para reautorizar, sin herramientas activadas. IF Quédate no responde THEN DEBE quedar guardada sin comprobar.
 5. El conector DEBE nacer deshabilitado por defecto para los partners (spec 060), y conectar NO DEBE activar ninguna herramienta en ningún agente.
 6. La clave NO DEBE aparecer en ninguna respuesta, registro, auditoría ni mensaje de error.
+7. La consola DEBE pedir el entorno con un desplegable de dos opciones, producción y desarrollo, con producción elegida de entrada. La etiqueta de cada campo DEBE caber en una línea, y lo que explica de dónde sale la clave DEBE ir como ayuda debajo del campo. (Luis, 2026-11-18: el entorno era un campo de texto y su etiqueta se cortaba.)
+8. El conector DEBE verse con el logotipo de Quédate en la consola y en el panel, servido desde el propio origen de cada aplicación.
 
 ### Requisito 2 — Catálogos y herramientas públicas
 
@@ -230,7 +232,6 @@ Un huésped busca un apartamento para unas fechas. El agente busca, le enseña u
 - **Editar** un anfitrión o un anuncio, y **quitar o reordenar fotos**: la API no lo ofrece todavía.
 - **Reservas, calendario, mensajes y reseñas**: no están en la API del agente.
 - **El dinero, los referidos, borrar cuentas** y la configuración de Quédate.
-- **Un desplegable para el entorno** en la consola: hoy es un campo de texto opcional.
 
 ## Supuestos
 

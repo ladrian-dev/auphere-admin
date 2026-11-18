@@ -122,6 +122,78 @@ def test_icon_url_must_be_https(tmp_path: Path) -> None:
         load_seed("x", seeds_dir=tmp_path)
 
 
+def _seed_with(tmp_path: Path, provider_meta: str) -> Path:
+    path = tmp_path / "x.yaml"
+    path.write_text(
+        "slug: x\n"
+        "display_name: X\n"
+        "vendor: V\n"
+        "category: c\n"
+        "auth_kind: api_key\n"
+        "mcp_server_ref: internal:x\n"
+        "provider_meta:\n" + provider_meta,
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_icon_url_may_be_one_of_our_own_logos(tmp_path: Path) -> None:
+    """Spec 061, 1.8: un logotipo que servimos nosotros, desde ``public/connector-logos/``
+    de la consola y del panel. Solo esa carpeta y un nombre de archivo, nada más."""
+    _seed_with(tmp_path, "  icon_url: /connector-logos/x.png\n")
+    assert load_seed("x", seeds_dir=tmp_path).provider_meta["icon_url"] == "/connector-logos/x.png"
+
+
+@pytest.mark.parametrize(
+    "icon",
+    [
+        "/otra-carpeta/x.png",
+        "/connector-logos/../x.png",
+        "/connector-logos/sub/x.png",
+        "//cdn.example/connector-logos/x.png",
+        "/connector-logos/x.exe",
+    ],
+)
+def test_any_other_local_icon_is_refused(tmp_path: Path, icon: str) -> None:
+    _seed_with(tmp_path, f"  icon_url: {icon}\n")
+    with pytest.raises(ConnectorSeedInvalid, match="icon_url"):
+        load_seed("x", seeds_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        "[]",
+        "[{label: Uno}]",
+        "[{value: a}, {value: a}]",
+        "[{value: 1}]",
+    ],
+    ids=["vacía", "sin valor", "repetida", "no es texto"],
+)
+def test_a_dropdown_field_needs_distinct_text_values(tmp_path: Path, options: str) -> None:
+    _seed_with(
+        tmp_path,
+        f"  credentials_form:\n    - field: mode\n      options: {options}\n",
+    )
+    with pytest.raises(ConnectorSeedInvalid, match="options"):
+        load_seed("x", seeds_dir=tmp_path)
+
+
+def test_quedate_asks_for_the_environment_with_a_dropdown_and_short_labels() -> None:
+    """Spec 061, 1.7 y 1.8 (Luis, 2026-11-18): el entorno era un texto libre y la
+    etiqueta, con toda la explicación, se cortaba en la consola."""
+    meta = load_seed("quedate").provider_meta
+    form = {f["field"]: f for f in meta["credentials_form"]}
+    assert [o["value"] for o in form["environment"]["options"]] == ["production", "dev"]
+    assert all(len(f["label"]) <= 20 for f in form.values()), "la etiqueta cabe en una línea"
+    assert "Gestión de Tokens" in form["api_key"]["hint"]
+
+    assert meta["icon_url"] == "/connector-logos/quedate.png"
+    root = Path(__file__).resolve().parents[5]
+    for app in ("console", "admin"):
+        assert (root / "apps" / app / "public/connector-logos/quedate.png").is_file(), app
+
+
 def test_auto_enable_destructive_requires_auto_enable(tmp_path: Path) -> None:
     bad = tmp_path / "x.yaml"
     bad.write_text(

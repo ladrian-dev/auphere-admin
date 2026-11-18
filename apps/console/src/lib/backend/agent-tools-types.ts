@@ -83,7 +83,20 @@ export type ToolCatalogOut = {
 export type ToolsSaved = ToolCatalogOut & { draft_created: boolean };
 export type ToolModeOut = { tool_name: string; mode: ToolMode; set_by: string; updated_at: string };
 
-export type CredentialsField = { field: string; label?: string; placeholder?: string; secret?: boolean; required?: boolean };
+/** One option of a dropdown field, e.g. Quédate's environment (spec 061, 1.7). */
+export type CredentialsOption = { value: string; label?: string };
+/** A field of a connector's key form, from the seed's `provider_meta.credentials_form`.
+ *  `options` turns it into a dropdown whose first option is the default; `hint` goes
+ *  under the field, so the label stays on one line. */
+export type CredentialsField = {
+  field: string;
+  label?: string;
+  hint?: string;
+  placeholder?: string;
+  secret?: boolean;
+  required?: boolean;
+  options?: CredentialsOption[];
+};
 export type ConnectorOut = {
   slug: string;
   display_name: string;

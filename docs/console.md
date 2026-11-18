@@ -61,7 +61,12 @@ integraciones y observa lo que pasa. La API decide; la consola pinta y dice
    tarjeta ni su acción existen ya; las citas van por Reservas). Un conector por clave de API
    se guarda **y** sincroniza en la misma llamada; la respuesta dice qué pasó
    (`last_sync`), y las etiquetas de sus campos van en el idioma del partner
-   (`connectors.field.{slug}.{campo}`). **Spec 061**: un conector con comprobador
+   (`connectors.field.{slug}.{campo}`). Un campo puede traer `hint`, que va como ayuda
+   debajo (`….{campo}.hint`), y `options`, que lo convierte en un desplegable
+   (`….{campo}.option.{valor}`). La etiqueta se queda en una línea. El logotipo de un
+   conector sale de `provider_meta.icon_url`: una URL https que la consola pide desde su
+   servidor, o una ruta `/connector-logos/…` que sirven la consola y el panel desde
+   su `public/` (Quédate). **Spec 061**: un conector con comprobador
    (`services/connectors/key_check.py`; hoy, Quédate con `GET /agent/hosts?per_page=1`
    en el entorno elegido) comprueba la clave
    antes de activar nada. Si el proveedor la rechaza, la conexión queda en

@@ -25,7 +25,15 @@ export const dynamic = "force-dynamic";
  *
  * Sin logotipo en el catálogo → 404, y la tarjeta cae en su inicial sobre un
  * cuadro tintado, que es el respaldo que ya tenía.
+ *
+ * **Los que servimos nosotros** (spec 061, 1.8). El catálogo puede traer una ruta
+ * `/connector-logos/<archivo>` en vez de una URL: el archivo está en `public/` y la
+ * respuesta solo lleva al navegador allí, a nuestro origen. Lo que no es eso ni https
+ * no se sigue.
  */
+
+/** Un logotipo nuestro, en `public/connector-logos/`. La misma regla que `seed_loader`. */
+const PROPIO = /^\/connector-logos\/[a-z0-9_-]+\.(png|svg|webp)$/;
 
 /** Lo que aceptamos devolver. Un catálogo no puede convertirse en una vía para
  *  servir cualquier cosa desde nuestro dominio. */
@@ -55,6 +63,13 @@ export async function GET(
     return new Response(null, { status: 502 });
   }
   if (!url) return new Response(null, { status: 404 });
+  if (PROPIO.test(url)) {
+    return new Response(null, {
+      status: 302,
+      headers: { location: url, "cache-control": "private, max-age=86400" },
+    });
+  }
+  if (!url.startsWith("https://")) return new Response(null, { status: 404 });
 
   try {
     const remoto = await fetch(url, {
