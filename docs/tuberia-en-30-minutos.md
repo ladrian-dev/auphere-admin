@@ -3,8 +3,8 @@
 > Petición de Luis, 2026-11-18: un despliegue a producción no puede tardar dos
 > horas. Tope: 30 minutos de push a `main` a servicios rodados.
 
-**Estado: hecho. `ci` pasa de 1 h 31 min a 7 min 51 s, medido en GitHub; el primer
-`deploy-prod` con esto, sin medir** (ver [lo que falta](#lo-que-falta)).
+**Estado: en producción desde el 2026-11-18. `deploy-prod` pasa de 1 h 37 min a
+14 min 30 s; `ci`, de 1 h 31 min a unos 7,5 min.**
 
 Fuera de la regla de Spec-Driven Development: no cambia el comportamiento del
 producto, solo cómo y dónde corren sus pruebas. Mismo caso que
@@ -134,13 +134,20 @@ Con los JUnit de ese run se volvió a medir el reparto (`ci_durations.json`): lo
 seis tramos quedan en ~5,3 min de `pytest` cada uno, así que `ci` debería quedar en
 unos 7 min.
 
-**`deploy-prod` sin medir**, porque solo corre al fusionar en `main`. Será `ci` más
-los 6,5 min de imágenes, migración y servicios: **unos 14–15 min**.
+### El primer despliegue con esto, 2026-11-18
 
-## Lo que falta
+| Run | Tiempo | Detalle |
+|---|---|---|
+| `ci` del PR #26 a `develop` | 7 min 31 s | verde |
+| `deploy-staging` (`f6f53784`) | **15 min 38 s** | 8 min 38 s esperando a `ci`; imágenes 1:44, migración 1:08, servicios 3:47 |
+| `ci` del PR #27 a `main` | 7 min 31 s | verde |
+| `deploy-prod` (`ecbd0eda`) | **14 min 30 s** | 7 min 38 s esperando a `ci`; imágenes 1:49, migración 0:53, servicios 3:49 |
 
-1. **Ver el primer `deploy-prod` real** al fusionar en `main`, y entonces bajar su
-   espera a `ci` (y la de `deploy-staging`) de 150 min a algo como 45.
+Antes: `deploy-prod` 1 h 37 min (run 44196268772). Las dos APIs respondieron
+`{"status":"ok"}` después de desplegar; la de producción se comprobó contra el ALB.
+
+La espera a `ci` de los dos despliegues sigue en 150 min. No hace falta bajarla:
+deja de esperar en cuanto `ci` acaba, y cada job de `ci` tiene un tope de 30 min.
 
 ## `ci` vuelve a `develop`
 
