@@ -1,14 +1,15 @@
 name: ci
 
-# Solo de camino a producción. En ``develop`` ya no corre sola: tardaba más de
-# una hora y frenaba cada arreglo de staging (decisión de Luis, 2026-11-03;
-# docs/develop-sin-tuberia.md). ``workflow_dispatch`` es para lanzarla a mano
-# sobre develop antes de abrir el PR a main.
+# De camino a staging y a producción: ``deploy-staging`` y ``deploy-prod``
+# esperan a este workflow en el mismo sha. Del 2026-11-03 al 2026-11-18 no
+# corría en ``develop`` porque tardaba más de una hora; desde que la API corre en
+# tramos tarda unos 8 minutos y volvió (docs/tuberia-en-30-minutos.md).
+# ``workflow_dispatch`` sirve para lanzarla a mano sobre cualquier rama.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 # Un grupo por evento: el de un PR por su número, el de un push por su rama.
@@ -25,9 +26,26 @@ env:
   PNPM_VERSION: "10.15.0"
 
 jobs:
+  # La API, en tramos paralelos: un job por tramo, cada uno con su Postgres, así
+  # que ninguno pisa las filas de otro. En serie eran 82 minutos y crecían con
+  # cada migración (docs/tuberia-en-30-minutos.md). El reparto es por archivo y
+  # lo hace ``tests/ci_shards.py`` desde los archivos que hay en el disco:
+  # una prueba nueva entra sola, y ``tests/unit/test_ci_shards.py`` falla si el
+  # reparto deja alguna fuera. **Para añadir un tramo, se añade un número a
+  # ``shard``**; ``--total`` lo lee de ``strategy.job-total``.
   test-api:
-    name: test-api
+    name: test-api (tramo ${{ matrix.shard }})
     runs-on: ubuntu-latest
+    # Es el tope, no el aviso: el aviso sale en el log a los 15 minutos (paso
+    # de pytest, abajo). Holgado a propósito: un runner lento no debe parar
+    # producción; un tramo que se cuelga, sí.
+    timeout-minutes: 30
+    strategy:
+      # Que un tramo en rojo no corte los demás: una pasada enseña todos los
+      # fallos, no solo el primero.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -89,20 +107,121 @@ jobs:
           done
           uv pip install --system --no-deps \
             ./apps/api ./apps/worker ./apps/channels ./apps/mcp
+      # Nada de esta base sobrevive al job, así que no tiene por qué esperar al
+      # disco. Los tres parámetros se aplican sin reiniciar (``pg_reload_conf``).
+      # Los servicios de GitHub no aceptan argumentos para el contenedor; por
+      # eso va aquí y no en ``options``. Es una optimización: si falla, el tramo
+      # sigue, más lento, y lo dice el aviso. No debe parar producción.
+      - name: postgres sin durabilidad
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} psql -U nexus -d nexus -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "SELECT pg_reload_conf()"
+          sleep 1  # la recarga es asíncrona
+          fsync=$(docker exec ${{ job.services.postgres.id }} psql -U nexus -d nexus -tAc "SHOW fsync")
+          echo "fsync=$fsync"
+          [ "$fsync" = off ] || echo "::warning::Postgres sigue con fsync=$fsync: el tramo irá más lento."
       - name: alembic upgrade head (CI database)
         working-directory: apps/api
         run: alembic upgrade head
-      - name: pytest — apps/api (unit + isolation + integration)
+      - name: pytest — apps/api, tramo ${{ matrix.shard }}
         working-directory: apps/api
-        run: pytest -x --tb=short
+        # ``--maxfail`` y no ``-x``: un fallo no esconde los siguientes del tramo.
+        run: |
+          set -uo pipefail
+          python tests/ci_shards.py --total ${{ strategy.job-total }} --index ${{ matrix.shard }} \
+            > /tmp/shard-files.txt || exit 1
+          mapfile -t files < /tmp/shard-files.txt
+          echo "tramo ${{ matrix.shard }} de ${{ strategy.job-total }}: ${#files[@]} archivos"
+          rc=0
+          pytest --maxfail=10 --tb=short --junitxml=/tmp/junit-api-${{ matrix.shard }}.xml \
+            "${files[@]}" || rc=$?
+          minutes=$(( SECONDS / 60 ))
+          echo "tramo ${{ matrix.shard }}: ${minutes} min"
+          if [ "$minutes" -ge 15 ]; then
+            echo "::warning::El tramo ${{ matrix.shard }} tardó ${minutes} min (aviso a los 15, tope a los 30). Añade un tramo a la matriz o vuelve a medir: docs/tuberia-en-30-minutos.md."
+          fi
+          exit $rc
+      # Lo que tardó cada prueba, para volver a medir el reparto
+      # (``tests/ci_shards.py --refresh``).
+      # Tampoco este paso puede poner un tramo en rojo.
+      - name: junit del tramo
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-api-${{ matrix.shard }}
+          path: /tmp/junit-api-${{ matrix.shard }}.xml
+          retention-days: 14
+          if-no-files-found: ignore
+          overwrite: true
+
+  # Lo que iba detrás de la API en el mismo job, en serie (5,5 min): ahora en
+  # paralelo con los tramos. Mismo entorno y mismos servicios que ``test-api``.
+  test-packages:
+    name: test-packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus -d nexus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      NEXUS_ENVIRONMENT: ci
+      NEXUS_DATABASE_URL: postgresql+asyncpg://nexus:nexus@localhost:5432/nexus
+      NEXUS_REDIS_URL: redis://localhost:6379/0
+      NEXUS_LANGFUSE_PUBLIC_KEY: ""
+      NEXUS_LANGFUSE_SECRET_KEY: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: install uv
+        run: pip install uv
+      - name: install api + worker + channels + mcp deps (desde uv.lock)
+        # Igual que en ``test-api``; el porqué de instalar desde el lock, allí.
+        run: |
+          set -euo pipefail
+          for pkg in api worker channels mcp; do
+            ( cd "apps/$pkg" \
+              && uv export --frozen --extra dev --no-emit-project --no-hashes \
+                   > "/tmp/ci-$pkg-requirements.txt" \
+              && uv pip install --system -r "/tmp/ci-$pkg-requirements.txt" )
+          done
+          uv pip install --system --no-deps \
+            ./apps/api ./apps/worker ./apps/channels ./apps/mcp
       # Spec 031 (D14): the phone app's types are generated from this file. A
       # route that changes shape without re-exporting it fails here, not on a
       # phone.
       - name: "mobile — OpenAPI contract up to date"
         working-directory: apps/api
         run: python scripts/export_openapi.py --check
-      # CO-07. Corre por segunda vez a propósito: el paso de arriba es la
-      # barrera (ya rompe el build), y este deja el reparto del dataset y
+      # CO-07. Corre por segunda vez a propósito: ``tests/evals``, en su tramo
+      # de ``test-api``, es la barrera (ya rompe el build), y este deja el reparto del dataset y
       # los dos números de R1 —falsos positivos y recall— en su propio
       # bloque de salida. Sin él la cifra del §17 queda enterrada en un log
       # de 1.500 líneas, que es como una métrica deja de mirarse. El modo
@@ -126,6 +245,7 @@ jobs:
   test-admin:
     name: test-admin
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -172,6 +292,7 @@ jobs:
   test-console:
     name: test-console
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -253,6 +374,7 @@ jobs:
   test-mobile:
     name: test-mobile
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -280,6 +402,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -341,6 +464,7 @@ jobs:
   test-renderer:
     name: test-renderer
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -373,6 +497,7 @@ jobs:
   terraform-validate:
     name: terraform-validate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: hashicorp/setup-terraform@v3

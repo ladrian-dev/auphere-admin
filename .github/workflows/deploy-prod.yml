@@ -3,8 +3,9 @@ name: deploy-prod
 # main → producción AWS: wait-for-ci → build+push → task de migración
 # (BLOQUEANTE) → rodar los 5 servicios. Gemelo deliberado de deploy-staging.yml:
 # dos ficheros que se leen igual se comparan de un vistazo, y una diferencia
-# entre entornos que nadie ve es como se cuelan los incidentes. La secuencia
-# solo difiere en esa espera: staging ya no la hace (docs/develop-sin-tuberia.md).
+# entre entornos que nadie ve es como se cuelan los incidentes. Del 2026-11-03
+# al 2026-11-18 solo diferían en la espera a ``ci``, que staging no hacía
+# (docs/develop-sin-tuberia.md); hoy la hacen los dos.
 #
 # ── Lo que este workflow NO hace ────────────────────────────────────────────
 #
