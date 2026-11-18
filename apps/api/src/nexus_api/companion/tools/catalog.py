@@ -909,11 +909,6 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
                 description="Para qué existe el agente, en una o dos frases.",
             ),
             ToolParam(
-                name="primary_language",
-                type="string",
-                description="Idioma principal de atención (es, en, pt…).",
-            ),
-            ToolParam(
                 name="timezone",
                 type="string",
                 description="Zona horaria IANA del horario de atención.",

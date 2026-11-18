@@ -5,8 +5,6 @@ import type { BusinessRecord, Suggestion } from "@/lib/backend/client-records";
 
 import { agentHref, clientHref } from "@/components/shell/routes-v2";
 
-import { channelsHref } from "./quality-model";
-
 /**
  * Spec 047 (historias 19 y 20, T124) — la vida de un agente sin pintar nada: el
  * texto y el tono de su estado visible (los de `clients.v2.agent.*`, los mismos
@@ -26,6 +24,8 @@ export function visibleText(t: T, state: AgentVisibleState): string {
     const reason = state.reason && REASONS.has(state.reason) ? state.reason : "manual";
     return t("clients.v2.agent.paused", { reason: t(`clients.v2.pause.${reason}` as MessageKey) });
   }
+  // Spec 063 (2.6): con un número «Sin configurar», no es «sin canal».
+  if (state.code === "ready_no_channel" && state.reason === "unconfigured") return t("clients.v2.agent.ready_unconfigured");
   return CODES.has(state.code) ? t(`clients.v2.agent.${state.code}` as MessageKey) : state.code;
 }
 
@@ -33,9 +33,12 @@ export function visibleTone(state: AgentVisibleState): "positive" | "info" | "wa
   return TONES.has(state.tone) ? (state.tone as "positive" | "info" | "warn" | "danger" | "muted") : "muted";
 }
 
-/** Adónde lleva la tarjeta: a construir, a los canales o al agente (26.1). */
+/** Adónde lleva la tarjeta: a construir, a sus canales o al agente (26.1). Los
+ *  canales son la pestaña del agente, nunca Canales del cliente (spec 063, 2.7):
+ *  desde ahí el número que se conecte nace con este agente. */
 export function cardHref(refId: string, agent: Pick<ClientAgent, "id" | "opens">): string {
-  return agent.opens === "channels" ? channelsHref(refId) : agentHref(refId, agent.id);
+  const href = agentHref(refId, agent.id);
+  return agent.opens === "channels" ? `${href}?tab=channels` : href;
 }
 
 /** ¿Es el agente por defecto? Sin el campo nuevo, el principal de antes. */

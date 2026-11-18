@@ -187,6 +187,8 @@ export function BuilderNew({
       else if (res.code === "description_length")
         setErrors({ description: t("builder.new.error.description", { min: limits.description_min, max: formatNumber(limits.description_max, locale) }) });
       else if (res.code === "template_required") setErrors({ template: t("builder.alt.templates.required") });
+      // Spec 063 (4.4): la plantilla no dio un borrador; se dice y se ofrece otra o en blanco.
+      else if (res.code === "draft_invalid") setErrors({ template: t("builder.new.error.draft_invalid") });
       // Spec 047 (46.5): sin partida de construcción no se construye; se dice dónde pedir más.
       else if (res.code === "build_budget_exhausted" || res.status === 402) setErrors({ form: t("money.build.blocked") });
       else if (res.status === 401 || res.status === 403) setErrors({ form: t("common.forbidden") });

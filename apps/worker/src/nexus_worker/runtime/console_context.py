@@ -31,6 +31,7 @@ from nexus_api.db.base import get_sessionmaker
 from nexus_api.services.agent_console_policy import (
     ConsolePolicy,
     SchedulePolicy,
+    language_rule,
     read_console_policy,
     render_operating_policy,
     turn_cap_reached,
@@ -284,11 +285,18 @@ def forced_escalation(policies: dict[str, Any] | None, history: list[dict[str, A
     return bool(turn_cap_reached(policy, user_turns=user_turns))
 
 
+def render_language_rule_message(policies: dict[str, Any] | None) -> str:
+    """Spec 063 (requisito 1): la regla de idioma del turno. Va siempre, también sin
+    política de consola, y el pipeline la pone la última de los mensajes de sistema."""
+    return str(language_rule(policies))
+
+
 __all__ = [
     "KNOWLEDGE_CHAR_CAP",
     "console_policy_of",
     "forced_escalation",
     "load_knowledge_block",
     "render_knowledge_block",
+    "render_language_rule_message",
     "render_operating_policy_block",
 ]

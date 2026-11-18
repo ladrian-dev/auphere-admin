@@ -114,6 +114,14 @@ def generation_messages(label: str, *, error: str | None = None) -> list[dict[st
 
 def _json(text: str) -> Mapping[str, Any]:
     raw = (text or "").strip()
+    # Spec 063: primero la salida entera, para no recortar un JSON válido que lleva
+    # «```» o llaves dentro de una cadena.
+    try:
+        whole = json.loads(raw)
+    except json.JSONDecodeError:
+        whole = None
+    if isinstance(whole, dict):
+        return whole
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.S)
     if fenced:
         raw = fenced.group(1)

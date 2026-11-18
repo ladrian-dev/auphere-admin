@@ -248,3 +248,43 @@ describe("La fila «Catálogo» de la tarjeta (spec 022)", () => {
     expect(screen.queryByText("Catálogo")).toBeNull();
   });
 });
+
+/**
+ * Spec 063 (requisitos 2.2, 2.3 y 2.5): desde la página Canales del cliente se
+ * llega a la configuración de cada número, y un número «Sin configurar» dice que
+ * no responde a nadie en vez de «Activo». En prod (2026-11-18) la tarjeta solo
+ * dejaba elegir el agente.
+ */
+describe("La tarjeta lleva a la configuración del número (spec 063)", () => {
+  const CONFIG = "/clients/demo/channels/9f1b4e8a-6f3c-4c2a-9a6d-2f7e5c1b3d40";
+
+  function conAgentes(channel: Partial<ChannelDetail> = {}, hasAgents = true) {
+    return render(
+      <LocaleProvider locale="es">
+        <ul>
+          <ChannelCard refId="demo" channel={{ ...CANAL, ...channel }} manage showRoles hasAgents={hasAgents} />
+        </ul>
+      </LocaleProvider>,
+    );
+  }
+
+  it("«Configurar» lleva a la página del número, que se abre dentro de su agente", () => {
+    conAgentes({ audience_mode: "everyone" });
+    expect(screen.getByRole("link", { name: /Configurar/ })).toHaveAttribute("href", CONFIG);
+    expect(screen.getByText("Activo")).toBeInTheDocument();
+  });
+
+  it("un número sin configurar dice que no responde a nadie y lleva a decidirlo", () => {
+    conAgentes({ audience_mode: "unset" });
+    expect(screen.getByText("No responde a nadie")).toBeInTheDocument();
+    expect(screen.queryByText("Activo")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Decidir a quién responde" })).toHaveAttribute("href", CONFIG);
+  });
+
+  it("sin agentes no ofrece una configuración que no existe: lleva a crear uno", () => {
+    conAgentes({ audience_mode: "unset" }, false);
+    expect(screen.getByText("Necesita un agente que lo atienda")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Crear un agente" })).toHaveAttribute("href", "/clients/demo/agents/new");
+    expect(screen.queryByRole("link", { name: /Configurar|Decidir a quién responde/ })).toBeNull();
+  });
+});

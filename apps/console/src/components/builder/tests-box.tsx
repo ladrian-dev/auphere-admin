@@ -155,6 +155,7 @@ const MAIN_CHECKS = ["skills_integrations", "contradictions", "services"] as con
  */
 export function TestsBox({
   refId,
+  agentId,
   tests,
   review,
   canWrite,
@@ -166,6 +167,8 @@ export function TestsBox({
   onAll,
 }: {
   refId: string;
+  /** Spec 063 (2.7): el arreglo «canal» lleva a la pestaña Canales de este agente. */
+  agentId?: string;
   tests: TestRun;
   /** La revisión que ya leyó la pantalla; `null` si no se pinta. */
   review: ReviewSource | null;
@@ -306,7 +309,7 @@ export function TestsBox({
       ) : null}
 
       {review?.review && !running ? (
-        <ReviewChecks refId={refId} source={review} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} notOffered={notOffered} />
+        <ReviewChecks refId={refId} agentId={agentId} source={review} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} notOffered={notOffered} />
       ) : null}
 
       {suite.tests.length ? (
@@ -345,6 +348,7 @@ function TestsProgress({ running }: { running: boolean }) {
 /** «Revisión automática»: las tres del prototipo y cualquier otra que encuentre algo, cada hallazgo con su arreglo. */
 function ReviewChecks({
   refId,
+  agentId,
   source,
   canWrite,
   onEdit,
@@ -352,6 +356,7 @@ function ReviewChecks({
   notOffered,
 }: {
   refId: string;
+  agentId?: string;
   source: ReviewSource;
   canWrite: boolean;
   onEdit: (pointer: string | null) => void;
@@ -404,7 +409,7 @@ function ReviewChecks({
             )}
             <span className="min-w-0 text-pretty break-words">
               {finding.message}{" "}
-              <FindingFix refId={refId} finding={finding} source={source} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} notOffered={notOffered} />
+              <FindingFix refId={refId} agentId={agentId} finding={finding} source={source} canWrite={canWrite} onEdit={onEdit} onConnect={onConnect} notOffered={notOffered} />
             </span>
           </li>
         ));
@@ -423,6 +428,7 @@ const LINK = "cursor-pointer font-medium text-primary-text underline underline-o
  */
 function FindingFix({
   refId,
+  agentId,
   finding,
   source,
   canWrite,
@@ -431,6 +437,7 @@ function FindingFix({
   notOffered,
 }: {
   refId: string;
+  agentId?: string;
   finding: ReviewFinding;
   source: ReviewSource;
   canWrite: boolean;
@@ -451,7 +458,7 @@ function FindingFix({
         </button>
       );
     }
-    const link = reviewFixLink(refId, fix);
+    const link = reviewFixLink(refId, fix, agentId);
     return link ? (
       <Link href={link.href} className={LINK}>
         {t(link.label)}

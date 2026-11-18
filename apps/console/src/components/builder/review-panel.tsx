@@ -169,12 +169,15 @@ function OwnReview(props: {
 
 function ReviewView({
   refId,
+  agentId,
   canWrite,
   onEdit,
   onAgenda,
   source,
 }: {
   refId: string;
+  /** Spec 063 (2.7): el arreglo «canal» lleva a la pestaña Canales de este agente. */
+  agentId?: string;
   canWrite: boolean;
   onEdit?: (pointer: string | null) => void;
   onAgenda?: () => void;
@@ -221,6 +224,7 @@ function ReviewView({
                   <FindingRow
                     key={`${finding.code}-${i}`}
                     refId={refId}
+                    agentId={agentId}
                     finding={finding}
                     canWrite={canWrite}
                     applying={applying}
@@ -263,6 +267,7 @@ function CheckRow({ check }: { check: ReviewCheck }) {
 
 function FindingRow({
   refId,
+  agentId,
   finding,
   canWrite,
   applying,
@@ -271,6 +276,7 @@ function FindingRow({
   onApply,
 }: {
   refId: string;
+  agentId?: string;
   finding: ReviewFinding;
   canWrite: boolean;
   applying: string | null;
@@ -280,7 +286,7 @@ function FindingRow({
 }) {
   const t = useT();
   const fix = finding.fix;
-  const link = fix?.kind === "link" ? reviewFixLink(refId, fix) : null;
+  const link = fix?.kind === "link" ? reviewFixLink(refId, fix, agentId) : null;
   // Spec 057 (3.8): dónde está el texto que prohíbe la agenda.
   const block = finding.code === "forbids_agenda" && finding.pointer ? blockOfPointer(finding.pointer) : null;
   // Spec 057 (4.1): qué le falta a Reservas; la API lo manda en el hallazgo (o en su arreglo).

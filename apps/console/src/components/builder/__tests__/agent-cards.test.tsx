@@ -113,7 +113,8 @@ describe("la pestaña Agentes", () => {
     expect(within(cobros!).getByText("Pausado · sin saldo")).toBeVisible();
     expect(within(cobros!).queryByText("Por defecto")).toBeNull();
     expect(within(ventas!).getByText("Listo · sin canal")).toBeVisible();
-    expect(ventas).toHaveAttribute("href", `/clients/${REF}/channels`);
+    // Spec 063 (2.7): su pestaña Canales, no Canales del cliente.
+    expect(ventas).toHaveAttribute("href", `/clients/${REF}/agents/55555555-5555-4555-8555-555555555555?tab=channels`);
     expect(cobros).toHaveAttribute("href", `/clients/${REF}/agents/44444444-4444-4444-8444-444444444444`);
   });
 

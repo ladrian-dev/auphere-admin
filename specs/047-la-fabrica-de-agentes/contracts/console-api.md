@@ -467,8 +467,21 @@ cambio por eso**:
 |---|---|---|
 | `integration_unknown` | — | Solo como `missing_capabilities[].reason`: una habilidad o una petición de conexión con una integración que no es un conector ofrecido. La API la quita y la anota; ninguna ruta de la consola responde un error con este código |
 | `facts_unavailable` | — / 503 | La ficha del negocio no se pudo leer y no se escribe ningún borrador. El trabajo `agent_draft` queda `failed` con este código. `POST …/agents/draft-jobs` con `start: "template"` responde 503. La consola dice que no se pudo leer la ficha y ofrece reintentar. No ofrece «Desde una plantilla», que también la lee |
-| `builder_unavailable` | — | Como hoy. Ahora también cuando el modelo no devuelve instrucciones: ya no sale un borrador genérico |
+| `builder_unavailable` | — | Como hoy. Ahora también cuando el modelo no devuelve instrucciones: ya no sale un borrador genérico. Spec 063: el motivo (`bad_json`, `truncated`, `invalid_draft`…) y su detalle sin contenido van solo al registro |
+| `draft_invalid` | 422 | Spec 063 (4.4): `POST …/agents/draft-jobs` con `start: "template"` cuyo borrador no se puede sanear. La consola dice que no se pudo crear desde esa plantilla y deja elegir otra o empezar en blanco, sin perder lo escrito. Antes era un 500 |
 | `promises_without_tool` | 409 | Bloqueante de la revisión en `gate_blocked` (`overridable`) |
 | `no_applicable_tests` | 409 | En `gate_blocked` (`hard`): un agente `structured` sin ninguna prueba aplicable |
 | `structured_agent` | 409 | `PUT …/tools`, o `PATCH …/draft` o `POST …/agent/versions` con `tools`, sobre un agente con AgentSpec `structured` |
 | `seed_template_retired` | 410 / 422 | Las rutas de plantillas de la consola de antes, en un partner con la consola nueva |
+
+## Enmiendas de la spec 063 (2026-11-18)
+
+- `GET /console/clients/{ref}/channels/overview`: cada canal trae `audience_mode`
+  (`unset` · `team_only` · `everyone`). `unset` es «No responde a nadie».
+- Un número sin agente asignado lo atiende el principal del cliente (el marcado por
+  defecto o, sin marca, el activo más antiguo). Así lo enseñan la página del número,
+  `GET …/agents/{id}/channels` y la lista `GET …/agents`.
+- El estado visible `ready_no_channel` puede traer `reason: "unconfigured"`; la
+  consola pinta «Listo · número sin configurar».
+- `draft_invalid` (422), en la tabla de códigos de arriba.
+

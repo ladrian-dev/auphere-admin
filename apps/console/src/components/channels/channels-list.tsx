@@ -34,6 +34,7 @@ export function ChannelsList({
   empty,
   agents = [],
   agentOf = {},
+  hasAgents = true,
 }: {
   refId: string;
   channels: ChannelDetail[];
@@ -41,6 +42,8 @@ export function ChannelsList({
   /** Spec 030: the client's agents (empty with one) and who answers on each number. */
   agents?: ClientAgent[];
   agentOf?: Record<string, string>;
+  /** Spec 063 (2.5): sin agentes, un número no tiene configuración que abrir. */
+  hasAgents?: boolean;
   /** El cartel de «no hay ninguno», que trae su propia salida desde el
    *  servidor: solo la página sabe si hoy se puede conectar. */
   empty: React.ReactNode;
@@ -79,7 +82,7 @@ export function ChannelsList({
         channel.type === "instagram" || channel.type === "messenger" ? (
           <MetaSocialCard key={id} refId={refId} channel={channel} manage={manage} />
         ) : (
-          <ChannelCard key={id} refId={refId} channel={channel} manage={manage} showRoles={showRoles} agents={agents} agentId={agentOf[channel.id]} />
+          <ChannelCard key={id} refId={refId} channel={channel} manage={manage} showRoles={showRoles} agents={agents} agentId={agentOf[channel.id]} hasAgents={hasAgents} />
         )
       }
       empty={empty}

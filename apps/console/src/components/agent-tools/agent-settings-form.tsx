@@ -58,7 +58,7 @@ import {
   type AudienceMode,
 } from "@/lib/backend/agent-tools-types";
 
-import { buildConsolePolicySchema, groupSlotsByDay, parseLanguageList } from "./settings-schema";
+import { buildConsolePolicySchema, groupSlotsByDay } from "./settings-schema";
 
 /** What the form hands over: the settings plus the two lists that live next to them. */
 type SettingsPart = { settings: ConsolePolicy; audience: AudienceIn; paymentReview?: PaymentReview };
@@ -96,7 +96,6 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
   const disclosureEnabled = useWatch({ control: form.control, name: "ai_disclosure.enabled" });
   const escalationEnabled = useWatch({ control: form.control, name: "escalation.enabled" });
   const triggers = useWatch({ control: form.control, name: "escalation.triggers" });
-  const [allowedText, setAllowedText] = React.useState(data.settings.languages.allowed.join(", "));
   // Spec 024: «A quién responde». Lives next to the form, not inside it:
   // the API stores it in a different key and validates it by line.
   const audienceLocked = data.audience.locked;
@@ -199,7 +198,6 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
   function resetTo(next: { settings: ConsolePolicy; audience: Audience; payment_review?: PaymentReview | null }) {
     const reviewers = next.payment_review?.reviewers ?? [];
     form.reset(next.settings);
-    setAllowedText(next.settings.languages.allowed.join(", "));
     setAudienceMode(next.audience.mode);
     setAudienceRows(rowsOf(next.audience.numbers));
     setReviewRows(rowsOf(reviewers));
@@ -448,54 +446,7 @@ export function AgentSettingsForm({ refId, data, canWrite, actor, agentId }: Pro
           </CardContent>
         </Card>
 
-        {/* languages */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("agentSettings.section.languages")}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <FormField
-              control={form.control}
-              name="languages.primary"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("agentSettings.languages.primary")}</FormLabel>
-                  <FormControl>
-                    <Input className="font-mono" maxLength={8} placeholder="es" autoComplete="off" {...field} onChange={(e) => field.onChange(e.target.value.toLowerCase())} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="languages.allowed"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("agentSettings.languages.allowed")}</FormLabel>
-                  <FormControl>
-                    <Input
-                      className="font-mono"
-                      placeholder="es, en, pt"
-                      autoComplete="off"
-                      name={field.name}
-                      ref={field.ref}
-                      disabled={field.disabled}
-                      value={allowedText}
-                      onBlur={field.onBlur}
-                      onChange={(e) => {
-                        setAllowedText(e.target.value);
-                        field.onChange(parseLanguageList(e.target.value));
-                      }}
-                    />
-                  </FormControl>
-                  <FormDescription>{t("agentSettings.languages.allowed.help")}</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
+        {/* Spec 063 (1.6): los idiomas se deciden en «Cómo habla» del agente; aquí no. */}
 
         {/* escalation */}
         <Card>

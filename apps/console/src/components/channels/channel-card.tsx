@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageCircle, MoreHorizontal } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -18,6 +19,7 @@ import {
   NativeSelect,
   StatusBadge,
   StatusDot,
+  buttonVariants,
   formatDateTime,
 } from "@nexus/ui";
 
@@ -105,6 +107,7 @@ export function ChannelCard({
   showRoles,
   agents = [],
   agentId,
+  hasAgents = true,
 }: {
   refId: string;
   channel: ChannelDetail;
@@ -114,6 +117,8 @@ export function ChannelCard({
   agents?: ClientAgent[];
   /** The agent that answers on this number (the principal when it has none). */
   agentId?: string;
+  /** Spec 063 (2.5): sin ningún agente, el número no tiene configuración que abrir. */
+  hasAgents?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -130,6 +135,9 @@ export function ChannelCard({
   const qualityKey = (["GREEN", "YELLOW", "RED"].includes(rating) ? `ch.quality.${rating}` : "ch.quality.UNKNOWN") as "ch.quality.GREEN";
   const roleId = `role-${channel.id}`;
   const suelto = channel.status === "disconnected";
+  // Spec 063 (2.3): «Sin configurar» no responde a nadie, y la tarjeta lo dice.
+  const sinConfigurar = !suelto && channel.audience_mode === "unset";
+  const configHref = `/clients/${encodeURIComponent(refId)}/channels/${encodeURIComponent(channel.id)}`;
   const tier = tierKey(channel.messaging_tier);
   // Un paso que la API añada mañana se enseña por su nombre antes que callarlo.
   const pendientes = (channel.unlink_pending ?? []).map((step) => (PENDING_STEP[step] ? t(PENDING_STEP[step]) : step));
@@ -221,9 +229,13 @@ export function ChannelCard({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <StatusBadge tone={TONE[channel.status as keyof typeof TONE] ?? "muted"}>
-            {t(`status.${channel.status}` as "status.active")}
-          </StatusBadge>
+          {sinConfigurar ? (
+            <StatusBadge tone="warn">{t("ch.card.unset")}</StatusBadge>
+          ) : (
+            <StatusBadge tone={TONE[channel.status as keyof typeof TONE] ?? "muted"}>
+              {t(`status.${channel.status}` as "status.active")}
+            </StatusBadge>
+          )}
           {/* Se podía conectar un número y no soltarlo: desvincular no existía
               ni en la API. Un producto donde se entra y no se sale da más
               miedo al entrar del que debería. */}
@@ -253,6 +265,26 @@ export function ChannelCard({
           ) : null}
         </div>
       </div>
+
+      {/* Spec 063 (2.2, 2.3, 2.5): la configuración del número vive dentro del
+          agente que lo atiende; desde aquí se llega a ella en un clic. */}
+      {suelto ? null : !hasAgents ? (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-sm text-pretty text-muted-foreground">{t("ch.card.needsAgent")}</p>
+          <Link href={`/clients/${encodeURIComponent(refId)}/agents/new`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            {t("ch.card.createAgent")}
+          </Link>
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Link
+            href={configHref}
+            className={buttonVariants({ variant: sinConfigurar ? "default" : "outline", size: "sm" })}
+          >
+            {sinConfigurar ? t("ch.card.decide") : t("ch.card.configure")}
+          </Link>
+        </div>
+      )}
 
       <DescriptionList
         layout="inline"

@@ -30,6 +30,38 @@ Cada versión de un agente (`agent_configs`) guarda su **AgentSpec**
 - **Revisión** (`services/agent_spec/review.py`, `api/console/agent_review.py`):
   incoherencias como prometer algo sin la herramienta que lo hace; las
   bloqueantes paran la puerta.
+- **Idiomas** (spec 063, requisito 1). Se deciden en «Cómo habla»
+  (`voice.languages`, el primero es el principal; `voice.languages_limited`,
+  «Responder solo en estos idiomas», apagado por defecto). Por defecto el agente
+  contesta en el idioma del último mensaje del cliente.
+  - **Quién lo cambia:** solo una persona puede encender o apagar el límite. El
+    validador lo rechaza con `languages_limit_by_builder`, como el aviso de IA.
+  - **De dónde lo lee el turno:** al guardar, `voice` se copia a
+    `policies.console.languages` como `{primary, allowed, limited}`
+    (`api/console/agent_spec_drafts._sync_console`), y eso es lo que lee el turno.
+  - **Nadie más lo escribe:** ni los ajustes antiguos (`merge_console_policy`
+    conserva los guardados) ni el Companion.
+  - **Lo guardado antes:** una lista sin `limited` no limita nada.
+
+### La regla de idioma del turno (spec 063)
+
+`agent_console_policy.language_rule`, que el turno pone como **último mensaje de
+sistema**, detrás de la directiva del turno y delante del historial
+(`pipeline._build_handler_messages`). Va siempre, también sin política de
+consola, y en inglés como el resto de instrucciones. Dice:
+
+- **sin límite:** contesta en el idioma del último mensaje;
+- **con límite:** solo en estos, y si no, en el principal;
+- **en los dos casos:** si no sabes el idioma, sigue el de la conversación; al
+  empezar, el principal.
+
+Nombra las instrucciones que anula («always reply in …», «never answer in …»),
+porque dentro del bloque de política perdía ante un prompt con «Never answer in
+English» (staging, 2026-11-18). Sola y al final, acertó 10 de 10. Llega a todos
+los agentes publicados sin volver a publicarlos. La reescritura del evaluador
+(`_RETRY_SYSTEM_TEMPLATE`) conserva el idioma de la respuesta que rehace. Los
+textos que el turno envía sin modelo, como el mensaje de espera del número, salen
+tal como los escribió el negocio.
 
 ## 2. El constructor
 
@@ -40,6 +72,31 @@ Todo lo largo es un **trabajo** (`jobs`, `services/jobs.py`) que corre el worker
   /console/clients/{ref}/agents/draft-jobs`): «Generar borrador», «Desde una
   plantilla» o «En blanco». Lee la ficha del negocio y devuelve un AgentSpec, sus
   preguntas abiertas, las integraciones que necesita y su batería de pruebas.
+- **Cuando el modelo falla al escribir el borrador** (spec 063, requisito 3):
+  - **Modo JSON:** la llamada pide `response_format={"type": "json_object"}` si
+    LiteLLM dice que el modelo lo admite (`runtime/llm.supports_json_object`).
+  - **Cómo terminó:** cada llamada registra `builder.model_output` con
+    `json_mode`, `finish_reason` y `output_tokens`, sin nada de lo escrito.
+  - **Cortado no es ilegible:** una salida cortada (`finish_reason == "length"`) es
+    `truncated`, no `bad_json`.
+  - **El detalle del fallo:** `bad_json` lleva en `jobs.agent_draft.unavailable` el
+    tipo de error y su posición.
+  - **Cómo se lee la salida:** primero entera, y solo después buscando un bloque
+    cercado o la primera y la última llave.
+  - **Lo que no hace:** reintentar, porque cada intento se paga. Su gasto va
+    siempre a «Construcción y pruebas» del partner.
+- **Nombres de otros clientes** (garantía 5; 047 15.4; spec 063, requisito 4):
+  - **Qué se exime:** no cuenta como ajeno lo que este cliente dio al constructor
+    (nombre del agente, descripción, ficha, guía o plantilla;
+    `agent_draft._without_own_names`, con `validator.mentions`).
+  - **Qué se quita:** lo que el constructor escribe por su cuenta y nombra a otro
+    cliente, solo ese elemento (`_drop_at`: una sección, un procedimiento, una
+    regla, una habilidad, una pregunta frecuente, el objetivo, el tono, el saludo
+    o el mensaje de escalado).
+  - **Qué se registra:** código y sitio, nunca el nombre.
+  - **Si aun así no vale:** `invalid_draft`. «Desde una plantilla» responde
+    entonces `422 draft_invalid`, nunca un 500.
+  - **La prueba:** `tests/isolation/test_063_builder_foreign_names.py`.
 - **Copiloto** (`services/builder/copilot.py`): propone cambios como
   **propuestas** (`proposals`) con su diff; aceptar es aplicarlas al borrador.
 - **Herramientas pendientes de conexión** (enmienda del 2026-10-29, requisito 62,

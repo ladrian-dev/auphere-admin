@@ -14,6 +14,8 @@ describe("el estado visible (25.5)", () => {
     expect(visibleText(t, { code: "serving", tone: "positive", reason: null })).toBe("Atendiendo");
     expect(visibleText(t, { code: "testing", tone: "info", reason: null })).toBe("En prueba");
     expect(visibleText(t, { code: "ready_no_channel", tone: "info", reason: null })).toBe("Listo · sin canal");
+    // Spec 063 (2.6): con un número sin configurar, no es «sin canal».
+    expect(visibleText(t, { code: "ready_no_channel", tone: "info", reason: "unconfigured" })).toBe("Listo · número sin configurar");
     expect(visibleText(t, { code: "draft", tone: "muted", reason: null })).toBe("Borrador");
     expect(visibleText(t, { code: "archived", tone: "muted", reason: null })).toBe("Archivado");
     expect(visibleText(t, { code: "paused", tone: "warn", reason: "no_balance" })).toBe("Pausado · sin saldo");
@@ -27,7 +29,9 @@ describe("el estado visible (25.5)", () => {
 describe("la tarjeta y el ⋯", () => {
   it("la tarjeta abre la pestaña que le toca (26.1)", () => {
     expect(cardHref(REF, agent({ opens: "builder" }))).toBe(`/clients/${REF}/agents/11111111-1111-4111-8111-111111111111`);
-    expect(cardHref(REF, agent({ opens: "channels" }))).toBe(`/clients/${REF}/channels`);
+    // Spec 063 (2.7): la pestaña Canales del agente, nunca Canales del cliente.
+    expect(cardHref(REF, agent({ opens: "channels" }))).toBe(`/clients/${REF}/agents/11111111-1111-4111-8111-111111111111?tab=channels`);
+    expect(cardHref(REF, agent({ opens: "channels" }))).not.toBe(`/clients/${REF}/channels`);
     expect(cardHref(REF, agent({ opens: "overview" }))).toBe(`/clients/${REF}/agents/11111111-1111-4111-8111-111111111111`);
     expect(isDefault(agent({ is_default: undefined, is_principal: true }))).toBe(true);
     expect(isDefault(agent({ is_default: false, is_principal: true }))).toBe(false);

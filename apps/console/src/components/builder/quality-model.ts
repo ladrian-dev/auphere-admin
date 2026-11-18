@@ -208,7 +208,11 @@ export function partKey(part: string): MessageKey | null {
 }
 
 /** Adónde lleva un arreglo «link» de la revisión y con qué palabras. */
-export function reviewFixLink(refId: string, fix: Extract<ReviewFix, { kind: "link" }>): { href: string; label: MessageKey } | null {
+export function reviewFixLink(
+  refId: string,
+  fix: Extract<ReviewFix, { kind: "link" }>,
+  agentId?: string,
+): { href: string; label: MessageKey } | null {
   const base = `/clients/${encodeURIComponent(refId)}`;
   switch (fix.target) {
     case "integrations":
@@ -220,19 +224,19 @@ export function reviewFixLink(refId: string, fix: Extract<ReviewFix, { kind: "li
     case "capabilities":
       return { href: `${base}/capabilities`, label: "builder.review.fix.capabilities" };
     case "channel":
-      return { href: channelsHref(refId), label: "builder.review.fix.channel" };
+      return { href: channelsHref(refId, agentId), label: "builder.review.fix.channel" };
     default:
       return null;
   }
 }
 
 /**
- * Los canales del cliente: donde «Guardar y conectar un canal» lleva después de
- * guardar (23.4). Cuando el agente tenga su propia pestaña de canales (historia
- * 10), cambia aquí.
+ * Los canales: los de un agente son su pestaña Canales (spec 063, 2.7), donde el
+ * número que se conecte nace con él; sin agente, los del cliente.
  */
-export function channelsHref(refId: string): string {
-  return `/clients/${encodeURIComponent(refId)}/channels`;
+export function channelsHref(refId: string, agentId?: string): string {
+  const base = `/clients/${encodeURIComponent(refId)}`;
+  return agentId ? `${base}/agents/${encodeURIComponent(agentId)}?tab=channels` : `${base}/channels`;
 }
 
 /** ¿Sigue abierta la ventana de «Deshacer»? */

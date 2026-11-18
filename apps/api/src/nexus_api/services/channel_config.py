@@ -43,6 +43,7 @@ from nexus_api.db.models import (
     Agent,
     AgentConfig,
     AgentConfigStatus,
+    AgentStatus,
     AuditLog,
     Channel,
     ChannelAudienceNumber,
@@ -336,11 +337,16 @@ async def partner_on_v2(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
 
 
 async def _agent_of(session: AsyncSession, channel: Channel) -> Agent | None:
+    """Spec 063 (2.4, D8): el agente que atiende el número, con la regla del turno
+    (``agents.principal_agent_id``): el asignado o, sin uno, el activo marcado por
+    defecto y, sin marca, el activo más antiguo. Filtra por el tenant del canal
+    además de la RLS, como antes, para no depender de cómo abrió la sesión quien
+    llama."""
     if channel.agent_id is not None:
         return await session.get(Agent, channel.agent_id)
     found: Agent | None = await session.scalar(
         sa.select(Agent)
-        .where(Agent.tenant_id == channel.tenant_id, Agent.lifecycle != "archived")
+        .where(Agent.tenant_id == channel.tenant_id, Agent.status == AgentStatus.ACTIVE.value)
         .order_by(Agent.is_default.desc(), Agent.created_at, Agent.id)
         .limit(1)
     )

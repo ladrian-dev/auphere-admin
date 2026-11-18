@@ -231,6 +231,16 @@ def _pydantic_problems(exc: ValidationError) -> list[Problem]:
 _MIN_FOREIGN_NAME = 6
 
 
+def mentions(name: str, text: str) -> bool:
+    """¿Nombra ``text`` a ``name``, con el mismo criterio que la guarda de otros
+    clientes (palabra entera, sin mayúsculas, nombres de 6 letras o más)? Lo usa el
+    constructor para no contar como ajeno lo que el propio cliente le dio (063, 4.1)."""
+    n = name.strip()
+    if len(n) < _MIN_FOREIGN_NAME:
+        return False
+    return re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", text, re.I) is not None
+
+
 def _texts(doc: Mapping[str, Any]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
 
@@ -430,7 +440,31 @@ def validate_spec(
                 "El aviso de IA lo decide una persona, no el constructor.",
             )
         )
+    # Spec 063 (1.9): limitar los idiomas también lo decide una persona. Sin base
+    # (un borrador nuevo), quien no es una persona no lo deja encendido.
+    if author != "person" and _limited(spec) != _limited_of(base):
+        problems.append(
+            Problem(
+                "/voice/languages_limited",
+                "languages_limit_by_builder",
+                "Limitar los idiomas del agente lo decide una persona, no el constructor.",
+            )
+        )
     return spec, problems
+
+
+def _limited(spec: AgentSpec) -> bool:
+    return bool(spec.voice is not None and spec.voice.languages_limited)
+
+
+def _limited_of(base: AgentSpec | Mapping[str, Any] | None) -> bool:
+    """Si ``base`` limita los idiomas. Sin ``base`` o sin poder leerla, no."""
+    if isinstance(base, AgentSpec):
+        return _limited(base)
+    if isinstance(base, Mapping):
+        voice = base.get("voice")
+        return isinstance(voice, Mapping) and voice.get("languages_limited") is True
+    return False
 
 
 def _disclosure_of(base: AgentSpec | Mapping[str, Any] | None) -> AiDisclosure | None:

@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from nexus_api.db.models import Agent, AgentConfig
-from nexus_api.services.agent_console_policy import POLICY_KEY, AiDisclosurePolicy
+from nexus_api.services.agent_console_policy import POLICY_KEY, AiDisclosurePolicy, LanguagesPolicy
 from nexus_api.services.agent_spec import missing
 from nexus_api.services.agent_spec.compiler import compile_spec
 from nexus_api.services.agent_spec.legacy import (
@@ -111,7 +111,9 @@ def builder_missing(cfg: AgentConfig | None) -> list[missing.MissingCapability]:
     return missing.from_json(raw.get("missing_capabilities") if isinstance(raw, dict) else None)
 
 
-def _sync_disclosure(policies: dict[str, Any], spec: AgentSpec, *, actor: str) -> dict[str, Any]:
+def _sync_console(policies: dict[str, Any], spec: AgentSpec, *, actor: str) -> dict[str, Any]:
+    """Lo que el turno lee de ``policies.console`` y se decide en el AgentSpec: el
+    aviso de IA y, desde la spec 063 (1.6), los idiomas de «Cómo habla»."""
     out = dict(policies)
     console = dict(out.get(POLICY_KEY) or {}) if isinstance(out.get(POLICY_KEY), dict) else {}
     disclosure = spec.ai_disclosure
@@ -124,6 +126,15 @@ def _sync_disclosure(policies: dict[str, Any], spec: AgentSpec, *, actor: str) -
         ).model_dump(mode="json")
     else:
         console.pop("ai_disclosure", None)
+    voice = spec.voice
+    if voice is not None and voice.languages:
+        console["languages"] = LanguagesPolicy(
+            primary=voice.languages[0],
+            allowed=list(voice.languages),
+            limited=bool(voice.languages_limited),
+        ).model_dump(mode="json")
+    else:
+        console.pop("languages", None)
     if console:
         out[POLICY_KEY] = console
     else:
@@ -192,7 +203,7 @@ async def write_spec(
             policies[BUILDER_POLICY] = {"missing_capabilities": [m.to_json() for m in merged]}
         else:
             policies.pop(BUILDER_POLICY, None)
-    draft.policies = _sync_disclosure(policies, spec, actor=scope.principal.actor)
+    draft.policies = _sync_console(policies, spec, actor=scope.principal.actor)
     if _changes_behaviour(previous, doc):
         await mark_stale(session, agent.id)
     # Requisito 66: al cambiar las herramientas, las pruebas dejan de pedir lo de antes.

@@ -1392,10 +1392,12 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    - que no haya ninguna clave de plataforma;
    - que ninguna herramienta de cara al cliente final reciba un cliente final como argumento;
    - que el texto no lleve datos de otro cliente.
+
+   _Enmendado por la spec 063 (requisito 4): no cuenta como de otro cliente lo que este cliente dio al constructor, y lo que el constructor escribe y nombra a otro cliente se quita trozo a trozo._
 5. El constructor DEBE tratar como no confiables el nombre, la descripción, la información adicional y todo lo leído (webs, documentos y redes). Nada de eso DEBE poder cambiar herramientas, permisos ni ajustes de plataforma.
 6. Como ejemplos, el constructor DEBE usar solo plantillas y patrones de Auphere. NO DEBE usar configuraciones de otros clientes.
 7. El sistema DEBE medir el coste del constructor en la partida «Construcción y pruebas» del partner. WHEN la partida se agota THEN el constructor DEBE decirlo, y la edición a mano DEBE seguir disponible.
-8. IF el constructor no responde THEN el sistema DEBE ofrecer «Desde una plantilla» y «En blanco» sin perder lo escrito.
+8. IF el constructor no responde THEN el sistema DEBE ofrecer «Desde una plantilla» y «En blanco» sin perder lo escrito. _Enmendado por la spec 063 (4.4): «Desde una plantilla» que no da borrador responde `422 draft_invalid`, nunca un 500._
 9. El sistema DEBE registrar cada uso del constructor (la entrada resumida, la propuesta, la decisión y el coste) con el cliente y el agente.
 
 ### Requisito 16 — El AgentSpec y la compilación del prompt
@@ -1406,7 +1408,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
 1. Cada versión de agente DEBE guardar un AgentSpec tipado con:
    - nombre, descripción y objetivo;
-   - tono, idiomas, registro (tú, usted o vos) y saludo;
+   - tono, idiomas, registro (tú, usted o vos) y saludo; _enmendado por la spec 063 (requisito 1): el agente contesta en el idioma del cliente salvo que una persona limite los idiomas (`voice.languages_limited`), y el primero es el principal;_
    - instrucciones por secciones, de hasta 8.000 caracteres;
    - procedimientos en prosa que citan herramientas;
    - los servicios que atiende y sus preguntas frecuentes propias;
@@ -1565,6 +1567,8 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
 **Historia de usuario:** Como partner, quiero que el estado de cada agente diga la verdad sobre si atiende y a quién, para no creer que responde cuando no lo hace.
 
+_Enmendado por la spec 063 (2.6): un agente publicado cuyo único número está «Sin configurar» se ve «Listo · número sin configurar», no «Listo · sin canal»._
+
 #### Criterios de aceptación
 
 1. El sistema DEBE guardar el estado de vida de cada agente: borrador (nunca publicado), publicado, en pausa o archivado. La pausa DEBE llevar su motivo: manual, sin saldo, tope del agente, cliente en pausa o cliente archivado.
@@ -1594,7 +1598,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 
 1. La pestaña Agentes DEBE enseñar una tarjeta por agente con su nombre, estado, propósito, canales y consumo. Al abrirla DEBE ir a la pestaña que corresponde a su estado:
    - un borrador, a construir;
-   - «Listo · sin canal», a Canales;
+   - «Listo · sin canal», a Canales (_enmendado por la spec 063, 2.7: la pestaña Canales del agente, nunca Canales del cliente_);
    - el resto, a Rendimiento.
 2. Cada cliente con agentes DEBE tener exactamente un agente por defecto, que se puede cambiar. El cambio DEBE ser atómico.
 3. Los enlaces de conexión, la API de partners y cualquier ruta que no nombre un agente DEBEN usar el agente por defecto.
@@ -1662,7 +1666,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
    - ventana cerrada;
    - tiempo agotado;
    - error de Meta.
-6. WHEN termina la conexión THEN el sistema DEBE ofrecer vincular el catálogo de Commerce, que es opcional, y abrir la configuración del canal.
+6. WHEN termina la conexión THEN el sistema DEBE ofrecer vincular el catálogo de Commerce, que es opcional, y abrir la configuración del canal. _Enmendado por la spec 063 (2.1): también al conectar desde la página Canales del cliente._
 7. WHEN se reconecta un número THEN el sistema DEBE conservar su agente, su configuración y su catálogo. Lo nuevo que llegue de Meta DEBE combinarse con lo que había, sin sustituirlo.
 8. WHERE el número viene de la app en coexistencia, el sistema DEBE ofrecer importar su historial, hasta donde Meta lo permita, con una decisión explícita del negocio. DEBE avisar también de lo que se pierde en coexistencia.
 9. IF el cupo de números del cliente está lleno THEN la tarjeta DEBE decir el cupo («2 de 2 números») y NO DEBE ofrecer «Conectar otro número». No se enseña un botón apagado (§V).
@@ -1704,7 +1708,7 @@ Los requisitos se agrupan por bloque. La numeración es única y la citan las ta
 8. Las comprobaciones DEBEN ser de dos tipos:
    - las pruebas al día y el escalado con destinatario avisan sin bloquear;
    - «A todos» exige un agente publicado y una bolsa con saldo, como pide la spec 046 (R4) al activar. Si falta algo, la barra ofrece el arreglo en el sitio («Guardar el agente», «Asignar saldo» o «Pedir saldo»), y el error lleva un código que la consola traduce.
-9. Un número recién conectado DEBE quedar en «Solo mi equipo», con el número de quien lo conectó como número de prueba si lo tiene. Es el modo prueba que decidió el owner el 2026-10-24 (spec 046). Si no hay ese número, el canal queda «Sin configurar», y la barra ofrece «Activar solo para mi equipo», «Activar para todos» (en el alta, «Encender») y «Decidir luego».
+9. Un número recién conectado DEBE quedar en «Solo mi equipo», con el número de quien lo conectó como número de prueba si lo tiene. Es el modo prueba que decidió el owner el 2026-10-24 (spec 046). Si no hay ese número, el canal queda «Sin configurar», y la barra ofrece «Activar solo para mi equipo», «Activar para todos» (en el alta, «Encender») y «Decidir luego». _Enmendado por la spec 063 (2.3): en Canales del cliente, un número «Sin configurar» dice «No responde a nadie» y lleva a decidirlo._
 10. Los permisos de las personas del equipo que hablan con el agente (`full` y `readonly`) DEBEN quedarse en el agente.
 
 ### Requisito 33 — Escalado a personas, por canal

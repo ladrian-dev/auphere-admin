@@ -98,6 +98,7 @@ from nexus_worker.runtime.console_context import (
     forced_escalation,
     load_gated_tool_names,
     load_knowledge_for_turn,
+    render_language_rule_message,
     render_operating_policy_block,
 )
 from nexus_worker.runtime.grading_policy import decide as grading_decide
@@ -551,7 +552,9 @@ _RETRY_SYSTEM_TEMPLATE: str = (
     "{feedback}\n"
     "Rewrite the reply addressing the reason ABOVE. Do not invent "
     "data; if a tool result is missing, say so honestly. Reply with "
-    "only the corrected message — no preface, no apology to the QA."
+    "only the corrected message — no preface, no apology to the QA.\n"
+    # Spec 063 (D11): la otra vía por la que un texto del modelo llega al cliente.
+    "Keep the language of the reply you are rewriting."
 )
 
 
@@ -1586,9 +1589,9 @@ def _build_handler_messages(
 
     Order: system prompt → channel note → operating policy (console,
     CP-11/31) → KG snapshot → knowledge base (console, CP-15) → owner
-    addendum → a turn directive → conversation history → the user's
-    message. The loop appends assistant/tool messages onto this list as
-    it iterates.
+    addendum → a turn directive → the reply-language rule (spec 063) →
+    conversation history → the user's message. The loop appends
+    assistant/tool messages onto this list as it iterates.
     """
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": bundle.system_prompt},
@@ -1622,6 +1625,9 @@ def _build_handler_messages(
             ),
         }
     )
+    # Spec 063 (requisito 1): la regla de idioma, sola y la última de las de sistema,
+    # para que mande sobre cualquier línea de idioma del prompt del agente.
+    messages.append({"role": "system", "content": render_language_rule_message(bundle.policies)})
     messages.extend(state.get("history") or [])
     messages.append({"role": "user", "content": state["user_message"]})
     return messages

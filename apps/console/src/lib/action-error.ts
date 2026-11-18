@@ -14,6 +14,8 @@ const WORDED: Readonly<Record<string, MessageKey>> = {
   structured_agent: "common.error.structured_agent",
   seed_template_retired: "common.error.seed_template_retired",
   facts_unavailable: "common.error.facts_unavailable",
+  // Spec 063 (4.4): «Desde una plantilla» que no dio borrador.
+  draft_invalid: "builder.new.error.draft_invalid",
   gate_blocked: "common.error.gate_blocked",
   spec_invalid: "common.error.spec_invalid",
   tool_in_use: "common.error.tool_in_use",

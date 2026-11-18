@@ -134,6 +134,8 @@ export function WhatsAppConnect({
   // Historia 2 (spec 022): al terminar el alta, si el negocio tiene catálogo,
   // se ofrece aquí mismo; se puede saltar, y la tarjeta lo vuelve a ofrecer.
   const [offer, setOffer] = React.useState<{ channelId: string; list: CatalogList } | null>(null);
+  // Spec 063 (2.1; 047, 30.6): al terminar, la configuración del número nuevo.
+  const configOf = (channelId: string) => `/clients/${encodeURIComponent(refId)}/channels/${encodeURIComponent(channelId)}`;
   const configId = mode === "coexistence" ? meta.configIdCoexistence : meta.configIdCloudApi;
   const disabledReason = !canConnect ? t("ch.quota.full", { used, max }) : null;
 
@@ -152,6 +154,7 @@ export function WhatsAppConnect({
       router.refresh();
       const list = await listCatalogsAction({ ref: refId, channelId: res.data.channel_id });
       if (offerCatalogAfterSignup(list) && list.ok) setOffer({ channelId: res.data.channel_id, list: list.data });
+      else router.push(configOf(res.data.channel_id));
     } catch {
       toast.error(t("common.error.backend"));
     } finally {
@@ -180,7 +183,11 @@ export function WhatsAppConnect({
           channelId={offer.channelId}
           current={null}
           open
-          onOpenChange={(o) => !o && setOffer(null)}
+          onOpenChange={(o) => {
+            if (o) return;
+            setOffer(null);
+            router.push(configOf(offer.channelId));
+          }}
           offer
           preloaded={offer.list}
         />

@@ -115,6 +115,9 @@ class ChannelDetailOut(ChannelOut):
     needs_attention_help: str | None = None
     comments_enabled: bool | None = None
     comment_public_reply: str | None = None
+    #: Spec 063 (2.3): a quién responde el número. ``unset`` es «Sin configurar»:
+    #: no responde a nadie, y la tarjeta del cliente lo dice.
+    audience_mode: Literal["unset", "team_only", "everyone"] = "unset"
 
 
 class MetaSocialChannelOfferOut(BaseModel):

@@ -1235,6 +1235,47 @@ async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
 # ── litellm provider ─────────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class Completion:
+    """Spec 063 (requisito 3): una respuesta del modelo con cómo terminó, para el
+    constructor. ``finish_reason == "length"`` es una salida cortada."""
+
+    text: str
+    finish_reason: str | None
+    output_tokens: int | None
+
+
+def supports_json_object(model: str) -> bool:
+    """¿Admite el modelo ``response_format={"type": "json_object"}``? Lo dice el mapa
+    de LiteLLM; un modelo que no conoce, o un error al preguntar, es que no."""
+    try:
+        import litellm
+
+        params = litellm.get_supported_openai_params(model=model)
+    except Exception:
+        return False
+    return params is not None and "response_format" in params
+
+
+def _finish_and_tokens(response: Any) -> tuple[str | None, int | None]:
+    choice = response["choices"][0]
+    finish = getattr(choice, "finish_reason", None)
+    if finish is None and isinstance(choice, dict):
+        finish = choice.get("finish_reason")
+    usage = getattr(response, "usage", None)
+    if usage is None and isinstance(response, dict):
+        usage = response.get("usage")
+    tokens = (
+        usage.get("completion_tokens")
+        if isinstance(usage, dict)
+        else getattr(usage, "completion_tokens", None)
+    )
+    return (
+        str(finish) if finish is not None else None,
+        int(tokens) if tokens is not None else None,
+    )
+
+
 @dataclass
 class LiteLLMProvider:
     """Real provider. Imports LiteLLM eagerly in ``__post_init__`` so the
@@ -1315,6 +1356,31 @@ class LiteLLMProvider:
         if not choices:
             raise RuntimeError("provider returned no choices")
         return str(choices[0]["message"]["content"] or "")
+
+    async def acomplete_detailed(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        role: str,
+        model: str,
+        messages: list[dict[str, str]],
+        extra: dict[str, Any] | None = None,
+    ) -> Completion:
+        """``acomplete`` con cómo terminó el modelo y cuántos tokens escribió
+        (spec 063): el constructor distingue una salida cortada de una ilegible."""
+        response = await self._raw_complete(
+            tenant_id=tenant_id,
+            role=role,
+            model=model,
+            messages=messages,
+            tools=None,
+            extra=extra,
+        )
+        if not response["choices"]:
+            raise RuntimeError("provider returned no choices")
+        finish, tokens = _finish_and_tokens(response)
+        text = str(response["choices"][0]["message"]["content"] or "")
+        return Completion(text=text, finish_reason=finish, output_tokens=tokens)
 
     async def acomplete_with_tools(
         self,
@@ -2232,6 +2298,7 @@ __all__ = [
     "RETENTION_WIRE",
     "ROUTE_DECISION_EVENT",
     "TASK_BY_ROLE",
+    "Completion",
     "CooldownBook",
     "InMemoryProvider",
     "LLMCall",
@@ -2255,6 +2322,7 @@ __all__ = [
     "label_in",
     "litellm_kwargs_contract",
     "routed",
+    "supports_json_object",
     "task_for_call",
 ]
 

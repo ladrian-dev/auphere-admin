@@ -37,7 +37,7 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   const manage = can(principal.role, "channels:write");
   const api = backendFor(principal);
 
-  const [overview, { agents }, signupLinks] = await Promise.all([
+  const [overview, { agents, total }, signupLinks] = await Promise.all([
     api.channelsOverview(ref),
     agentChoice(principal, ref, undefined),
     // Spec 040 (owner, 2026-10-20): the link sent to the owner, if one still
@@ -150,6 +150,7 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
         manage={manage}
         agents={agents}
         agentOf={agentOf}
+        hasAgents={total !== 0}
         empty={
           <EmptyState
             icon={MessageCircle}

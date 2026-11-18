@@ -680,3 +680,26 @@ describe("«Nuevo agente» · la plantilla que da citas lo dice junto a su botó
     expect(note).toBeEmptyDOMElement();
   });
 });
+
+/**
+ * Spec 063 (requisito 4.4): si el borrador de una plantilla no se puede crear, la
+ * consola lo dice con nombre y ofrece las alternativas, sin perder lo escrito. En
+ * prod (2026-11-18) la API respondía 500 y aquí salía el error genérico.
+ */
+describe("«Nuevo agente» · la plantilla que no se pudo crear (spec 063)", () => {
+  it("dice qué pasó, deja elegir otra plantilla o empezar en blanco y conserva lo escrito", async () => {
+    const user = userEvent.setup();
+    const start = vi.fn<Actions["start"]>(async () => ({ ok: false as const, status: 422, message: "", code: "draft_invalid" }));
+    screenWith({ start });
+    await user.type(nameBox(), NAME);
+    await user.click(screen.getByRole("button", { name: "Empezar desde una plantilla" }));
+    await user.click(screen.getByRole("radio", { name: "Clínica" }));
+    await user.click(screen.getByRole("button", { name: "Crear desde esta plantilla" }));
+
+    expect(await screen.findByText(/No se pudo crear desde esta plantilla/)).toBeVisible();
+    expect(screen.queryByText(/Algo salió mal|Inténtalo de nuevo/)).toBeNull();
+    expect(screen.getByRole("radio", { name: "Clínica" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "En blanco" })).toBeVisible();
+    expect(nameBox()).toHaveValue(NAME);
+  });
+});

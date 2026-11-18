@@ -20,7 +20,14 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 POLICY_KEY = "console"
 SCHEMA_VERSION = 1
@@ -76,8 +83,15 @@ class SchedulePolicy(_Strict):
 
 
 class LanguagesPolicy(_Strict):
+    """Spec 063 (requisito 1): sin límite, el agente contesta en el idioma del
+    cliente; ``primary`` es el que usa cuando no lo sabe. ``limited`` lo restringe
+    a ``allowed``. Lo escribe solo «Cómo habla» del AgentSpec, copiado al guardar
+    (``api/console/agent_spec_drafts._sync_console``); una lista guardada sin
+    ``limited`` no limita nada (1.7)."""
+
     primary: str = Field(default="es", min_length=2, max_length=8)
     allowed: list[str] = Field(default_factory=list, max_length=20)
+    limited: bool = False
 
     @model_validator(mode="after")
     def _primary_in_allowed(self) -> LanguagesPolicy:
@@ -179,6 +193,15 @@ def merge_console_policy(
     stamping the disclosure decision with ``actor`` when the caller did
     not attribute it. Platform keys outside ``console`` are untouched."""
     out = dict(policies or {})
+    # Spec 063 (1.6): los idiomas solo los escribe «Cómo habla». Los ajustes de
+    # siempre conservan los guardados, o los de por defecto si no hay.
+    try:
+        stored = read_console_policy(out)
+    except ValidationError:
+        stored = None
+    policy = policy.model_copy(
+        update={"languages": stored.languages if stored is not None else LanguagesPolicy()}
+    )
     disclosure = policy.ai_disclosure
     if disclosure.decided_by is None or disclosure.decided_at is None:
         disclosure = disclosure.model_copy(
@@ -250,11 +273,8 @@ def render_operating_policy(policy: ConsolePolicy, *, now: datetime | None = Non
     if policy.objective:
         lines.append(f"- Objective: {policy.objective}")
 
-    langs = policy.languages
-    lines.append(
-        f"- Languages: reply in {langs.primary} by default; allowed: {', '.join(langs.allowed)}. "
-        "If the customer writes in an allowed language, answer in it; otherwise use the default."
-    )
+    # Spec 063: el idioma ya no va aquí. Es un mensaje propio, el último del turno
+    # (``language_rule``), para que mande sobre el prompt.
 
     sched = policy.schedule
     if sched.weekly:
@@ -299,6 +319,41 @@ def render_operating_policy(policy: ConsolePolicy, *, now: datetime | None = Non
     return "\n".join(lines)
 
 
+#: Spec 063 (contrato ``agent-spec-voice.md``): la regla va sola y la última de los
+#: mensajes de sistema del turno. Dentro del bloque perdía ante un prompt con
+#: «Never answer in English»; así, no (research §1, segunda ronda).
+_LANGUAGE_RULE_HEAD = (
+    "Reply language (set by the business; it overrides every instruction above about the "
+    "reply language, including any 'always reply in \u2026' or 'never answer in \u2026'): "
+)
+_LANGUAGE_RULE_TAIL = (
+    "If you cannot tell which language it is, keep the language of the conversation; "
+    "at its start, use {primary}."
+)
+
+
+def render_language_rule(languages: LanguagesPolicy) -> str:
+    """La regla de idioma de un turno, en inglés como el resto de instrucciones."""
+    if languages.limited:
+        body = (
+            f"you only answer in {', '.join(languages.allowed)}. If the customer writes in one "
+            f"of them, reply in it; otherwise reply in {languages.primary}. "
+        )
+    else:
+        body = "reply in the language of the customer's latest message. "
+    return _LANGUAGE_RULE_HEAD + body + _LANGUAGE_RULE_TAIL.format(primary=languages.primary)
+
+
+def language_rule(policies: dict[str, Any] | None) -> str:
+    """La regla de ``policies.console.languages``; sin política o con una que no se
+    lee, la de por defecto: el idioma del cliente, con ``es`` de principal (D4)."""
+    try:
+        policy = read_console_policy(policies)
+    except ValidationError:
+        policy = None
+    return render_language_rule(policy.languages if policy is not None else LanguagesPolicy())
+
+
 def turn_cap_reached(policy: ConsolePolicy | None, *, user_turns: int) -> bool:
     """``True`` when the escalation policy says "hand off after N turns"
     and the conversation already has ``user_turns`` customer messages
@@ -324,8 +379,10 @@ __all__ = [
     "TonePolicy",
     "has_disclosure_decision",
     "is_open_now",
+    "language_rule",
     "merge_console_policy",
     "read_console_policy",
+    "render_language_rule",
     "render_operating_policy",
     "turn_cap_reached",
     "with_disclosure_default",
