@@ -384,3 +384,100 @@ describe("Servicios · cancel", () => {
     expect(within(dialog).queryByText("¿Quieres que el agente intente llenar el hueco?")).toBeNull();
   });
 });
+
+/** Spec 064 (requisito 2): what the system closed on its own can be corrected, and put back. */
+describe("Servicios · corregir una «Atendida» (spec 064)", () => {
+  const closed = (o: Partial<ReturnType<typeof booking>>) =>
+    booking({
+      local: { date: TODAY, start: "10:00", end: "10:45" },
+      starts_at: "2026-10-22T13:00:00Z",
+      ends_at: "2026-10-22T13:45:00Z",
+      contact: { name: "Rita Mora", phone: "+56911112222", conversation_id: null },
+      ...o,
+    });
+
+  it("a closed booking offers «No asistió», because the API allows it", async () => {
+    const b = closed({ status: "done", allowed: ["noshow"] });
+    a.bookingDetailAction.mockResolvedValue({ ok: true, data: detail({ ...b }) });
+    a.bookingTransitionAction.mockResolvedValue({ ok: true, data: { ...b, status: "noshow", allowed: ["undo"] } });
+    renderView(data({ bookings: { items: [b], closed_days: [], truncated: false } }));
+    await userEvent.click(screen.getByRole("button", { name: /Rita Mora · Corte y barba · Atendida/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Reserva de Rita Mora" });
+    await userEvent.click(await within(sheet).findByRole("button", { name: "No asistió" }));
+    await waitFor(() => expect(a.bookingTransitionAction).toHaveBeenCalledWith({ id: b.id, version: b.version, action: "noshow" }));
+  });
+
+  it("undoing a no-show of a booking that already ended paints «Atendida», never «Confirmada»", async () => {
+    const b = closed({ status: "noshow", allowed: ["undo"] });
+    a.bookingDetailAction.mockResolvedValue({ ok: true, data: detail({ ...b }) });
+    let answer: (v: unknown) => void = () => {};
+    a.bookingTransitionAction.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    renderView(data({ bookings: { items: [b], closed_days: [], truncated: false } }));
+    await userEvent.click(screen.getByRole("button", { name: /Rita Mora · Corte y barba · No asistió/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Reserva de Rita Mora" });
+    await userEvent.click(await within(sheet).findByRole("button", { name: "Deshacer" }));
+    // While the API answers, the booking is already painted as what it will be.
+    // (The open sheet hides the grid from the accessibility tree: `hidden` looks behind it.)
+    expect(await screen.findByRole("button", { name: /Rita Mora · Corte y barba · Atendida/, hidden: true })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rita Mora · Corte y barba · Confirmada/, hidden: true })).toBeNull();
+    answer({ ok: true, data: { ...b, status: "done", allowed: ["noshow"] } });
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Deshecho. Vuelve a estar atendida."));
+  });
+});
+
+/** Spec 064 (requisito 3): a booking made by hand in the console carries a phone. */
+describe("Servicios · el teléfono es obligatorio (spec 064)", () => {
+  async function pickWithoutPhone() {
+    a.serviceSlotsAction.mockResolvedValue({ ok: true, data: { date: TODAY, closed: false, slots: [{ time: "18:30", staff_ids: [LUCIA] }] } });
+    renderView(data());
+    await userEvent.click(screen.getByRole("button", { name: "Nueva reserva" }));
+    const dialog = await screen.findByRole("dialog", { name: "Nueva reserva" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Rosa Díaz");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Corte y barba · 45 min" }));
+    await userEvent.click(await within(dialog).findByRole("button", { name: "18:30" }));
+    return dialog;
+  }
+
+  it("without a phone it cannot be saved, and the field says what it is for", async () => {
+    const dialog = await pickWithoutPhone();
+    const phone = within(dialog).getByRole("textbox", { name: /Teléfono/ });
+    expect(phone).toBeRequired();
+    expect(within(dialog).queryByText("Opcional")).toBeNull();
+    expect(within(dialog).getByText("Hace falta para confirmarle la reserva y recordársela por WhatsApp.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Guardar reserva" })).toBeDisabled();
+    await userEvent.click(phone);
+    await userEvent.tab();
+    expect(await within(dialog).findByText("Escribe el teléfono de quien reserva.")).toBeInTheDocument();
+    expect(a.createBookingAction).not.toHaveBeenCalled();
+  });
+
+  it("leaving the name does not say anything about the phone yet", async () => {
+    const dialog = await pickWithoutPhone();
+    await userEvent.click(within(dialog).getByRole("textbox", { name: /Cliente/ }));
+    await userEvent.tab();
+    expect(within(dialog).queryByText("Escribe el teléfono de quien reserva.")).toBeNull();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Guardar reserva" }));
+    expect(a.createBookingAction).not.toHaveBeenCalled();
+  });
+
+  it("a number with its prefix but too short says so, not that the prefix is missing", async () => {
+    const dialog = await pickWithoutPhone();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Teléfono/ }), "+56 9 1234");
+    await userEvent.tab();
+    expect(await within(dialog).findByText("El teléfono tiene que tener entre 8 y 15 cifras, contando el prefijo.")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/prefijo del país/)).toBeNull();
+  });
+
+  it("a phone without its country prefix is said on the field, and nothing is sent", async () => {
+    const dialog = await pickWithoutPhone();
+    const phone = within(dialog).getByRole("textbox", { name: /Teléfono/ });
+    await userEvent.type(phone, "600123456");
+    await userEvent.tab();
+    expect(await within(dialog).findByText("Escribe el teléfono con el prefijo del país, como +56 9 1234 5678.")).toBeInTheDocument();
+    expect(phone).toBeInvalid();
+    expect(within(dialog).getByRole("button", { name: "Guardar reserva" })).toBeDisabled();
+    await userEvent.clear(phone);
+    await userEvent.type(phone, "+34 600 123 456");
+    expect(within(dialog).getByRole("button", { name: "Guardar reserva" })).toBeEnabled();
+  });
+});

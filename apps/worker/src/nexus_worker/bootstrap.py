@@ -78,6 +78,7 @@ from nexus_worker.streams.continuous_eval_cron import run_continuous_eval_cron
 from nexus_worker.streams.cost_rollup_cron import run_cost_rollup_cron
 from nexus_worker.streams.data_retention_cron import run_data_retention_cron
 from nexus_worker.streams.grade_consumer import run_grade_consumer
+from nexus_worker.streams.inbox_autoclose_cron import run_inbox_autoclose_cron
 from nexus_worker.streams.isolation_watcher import run_isolation_watcher
 from nexus_worker.streams.memory_versions_retention import (
     run_memory_versions_retention_cron,
@@ -212,6 +213,9 @@ SCHEDULER_TASK_NAMES = frozenset(
         # pedidas solas a la WABA de cada cliente (15 min). También en
         # ``_spawn`` y en ``ALL_EXPECTED``.
         "reservation-templates-cron",
+        # Spec 064 (requisito 5) — el cierre por inactividad de la Bandeja (5 min).
+        # También en ``_spawn`` y en ``ALL_EXPECTED``.
+        "inbox-autoclose-cron",
         # Spec 047 (T037): lo entregado por Meta frente a lo guardado, por canal
         # y día. Sin persona y una vez al día: del planificador.
         "meta-reconciliation-cron",
@@ -590,6 +594,8 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("reservation-outbox-cron", run_reservation_outbox_cron(stop=ctx.stop)),
         _spawn("reservation-calendar-cron", run_reservation_calendar_cron(stop=ctx.stop)),
         _spawn("reservation-templates-cron", run_reservation_templates_cron(stop=ctx.stop)),
+        # Spec 064 (requisito 5): las conversaciones sin mensajes se resuelven solas.
+        _spawn("inbox-autoclose-cron", run_inbox_autoclose_cron(stop=ctx.stop, redis=ctx.redis)),
         _spawn("meta-reconciliation-cron", run_meta_reconciliation_cron(stop=ctx.stop)),
         _spawn("model-lifecycle-cron", run_model_lifecycle_cron(stop=ctx.stop, redis=ctx.redis)),
         _spawn("fx-rates-cron", run_fx_rates_cron(stop=ctx.stop)),

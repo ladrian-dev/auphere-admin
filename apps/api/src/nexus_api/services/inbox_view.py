@@ -611,6 +611,9 @@ def _event_detail(event: ConversationEvent) -> str | None:
         return str(event.payload.get("reason"))
     if event.kind == "agent_changed" and event.payload.get("to_agent_name"):
         return str(event.payload.get("to_agent_name"))
+    # Spec 064 (5.2): a conversation the system closed says why («inactivity»).
+    if event.kind == "resolved" and event.payload.get("reason"):
+        return str(event.payload.get("reason"))
     return None
 
 

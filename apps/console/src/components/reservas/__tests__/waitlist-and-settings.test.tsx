@@ -495,3 +495,46 @@ describe("Ajustes · Aforo", () => {
     expect(within(blocks).getByText("Lo puso Valeria Ríos")).toBeInTheDocument();
   });
 });
+
+describe("Ajustes · la antelación del agente (spec 064, requisito 1)", () => {
+  const capacityData = (): ReservasData => ({ ...servicesData(), settings: capacitySettings(), staff: null, services: null, offers: null, blocks: [] });
+
+  it("Servicios: shows the stored notice, says it is the agent's, and saves at once with the version", async () => {
+    a.patchSettingsAction.mockResolvedValueOnce({ ok: true, data: servicesSettings({ version: 5 }) });
+    renderView(servicesData(), { url: { tab: "settings" } });
+    const section = screen.getByRole("region", { name: "Citas que da el agente" });
+    const notice = within(section).getByRole("combobox", { name: "Antelación mínima del agente" });
+    expect(notice).toHaveValue("60");
+    expect(within(notice).getAllByRole("option").map((o) => o.textContent)).toEqual(["Sin antelación", "15 min", "30 min", "1 h", "2 h", "4 h", "24 h"]);
+    expect(within(section).getByText(/Solo afecta a las citas que da el agente/)).toBeInTheDocument();
+    await userEvent.selectOptions(notice, "0");
+    await waitFor(() => expect(a.patchSettingsAction).toHaveBeenCalledWith({ version: 4, patch: { agent: { min_notice_minutes: 0 } } }));
+    // What was chosen stays shown until the new read arrives, and the select keeps its focus.
+    expect(notice).toHaveValue("0");
+    expect(notice).toBeEnabled();
+    // The waitlist's own notice keeps its name: they are two different controls.
+    expect(screen.getByRole("combobox", { name: "Antelación mínima para avisar" })).toBeInTheDocument();
+  });
+
+  it("Aforo: the same control, in the words of Aforo", () => {
+    renderView(capacityData(), { url: { tab: "settings" } });
+    const section = screen.getByRole("region", { name: "Reservas que hace el agente" });
+    expect(within(section).getByRole("combobox", { name: "Antelación mínima del agente" })).toHaveValue("60");
+    expect(within(section).getByText(/Solo afecta a las reservas que hace el agente/)).toBeInTheDocument();
+  });
+
+  it("a refused save puts back what is stored", async () => {
+    a.patchSettingsAction.mockResolvedValueOnce({ ok: false, status: 500, message: "boom" });
+    renderView(servicesData(), { url: { tab: "settings" } });
+    const notice = screen.getByRole("combobox", { name: "Antelación mínima del agente" });
+    await userEvent.selectOptions(notice, "15");
+    await waitFor(() => expect(notice).toHaveValue("60"));
+  });
+
+  it("a stored value outside the list is shown as it is, not swapped for another", () => {
+    renderView({ ...servicesData(), settings: servicesSettings({ agent: { min_notice_minutes: 45, max_days_ahead: 60 } }) }, { url: { tab: "settings" } });
+    const notice = screen.getByRole("combobox", { name: "Antelación mínima del agente" });
+    expect(notice).toHaveValue("45");
+    expect(within(notice).getByRole("option", { name: "45 min" })).toBeInTheDocument();
+  });
+});

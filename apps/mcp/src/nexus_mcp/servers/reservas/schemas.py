@@ -57,6 +57,12 @@ STAFF_NAME_HELP = (
 )
 #: Las opciones para reintentar, con ``unknown_*`` o ``ambiguous_*``.
 SERVICES_OPTIONS = "With unknown_service/ambiguous_service: the services to retry with."
+#: Spec 064 (requisito 1.6): what the agent does with a time it may not give.
+TOO_SOON_HELP = (
+    "Times that are free today but closer than the notice this business asks of you. "
+    "Never offer or book them yourself. Tell the customer that the business confirms "
+    "a time that soon itself, and offer to pass the conversation to a person."
+)
 STAFF_OPTIONS = (
     "With unknown_staff/ambiguous_staff/not_offered: who does this service, to retry with."
 )
@@ -112,6 +118,8 @@ class FindSlotsOutput(OutputModel):
     why_closed: str | None = None
     slots: list[SlotOut] = Field(default_factory=list)
     first_fit: str | None = None
+    #: Spec 064 (requisito 1.5): libres, sin empezar, y fuera solo por la antelación.
+    too_soon: list[str] = Field(default_factory=list, description=TOO_SOON_HELP)
     refused: str | None = Field(default=None, description=UNRESOLVED_HELP)
     services: list[ServiceRef] = Field(default_factory=list, description=SERVICES_OPTIONS)
     staff: list[StaffRef] = Field(default_factory=list, description=STAFF_OPTIONS)

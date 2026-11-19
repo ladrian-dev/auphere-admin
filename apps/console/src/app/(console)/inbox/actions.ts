@@ -10,6 +10,7 @@ import type {
   InboxDetail,
   InboxPage,
   InboxSent,
+  InboxSettings,
   InboxThread,
   SavedReply,
 } from "@/lib/backend/inbox";
@@ -173,6 +174,23 @@ export async function setNoteAction(raw: unknown): Promise<ActionResult<{ body: 
   const principal = await inboxPrincipal();
   if (!principal) return forbidden;
   return run(() => backendFor(principal).inboxSetNote(p.id, p.body));
+}
+
+/** Spec 064 (requisito 5.1): the Inbox's settings, for a client person with the Inbox. */
+export async function inboxSettingsAction(): Promise<ActionResult<InboxSettings>> {
+  const principal = await inboxPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).inboxSettings());
+}
+
+const settingsSchema = z
+  .object({ autoclose_hours: z.union([z.literal(24), z.literal(72), z.literal(168), z.literal(720), z.null()]) })
+  .strict();
+export async function patchInboxSettingsAction(raw: unknown): Promise<ActionResult<InboxSettings>> {
+  const p = settingsSchema.parse(raw);
+  const principal = await inboxPrincipal();
+  if (!principal) return forbidden;
+  return run(() => backendFor(principal).inboxPatchSettings(p));
 }
 
 export async function repliesAction(): Promise<ActionResult<SavedReply[]>> {

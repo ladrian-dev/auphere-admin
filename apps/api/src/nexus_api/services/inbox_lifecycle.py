@@ -59,7 +59,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
@@ -67,6 +67,8 @@ import structlog
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.core.errors import IsolationViolation
+from nexus_api.core.tenant_context import require_current_tenant
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import (
     Channel,
@@ -78,15 +80,20 @@ from nexus_api.db.models import (
     ConversationEventKind,
     ConversationStatus,
     Customer,
+    Message,
+    MessageDirection,
     NotificationAudience,
     NotificationKind,
     NotificationSeverity,
     PartnerTenant,
+    Reservation,
+    ReservationOffer,
+    ReservationOutbox,
 )
 from nexus_api.db.models.conversation import WAITING_REASONS
 from nexus_api.services import conversation_control
 from nexus_api.services.inbox_stream import publish_inbox_event
-from nexus_api.services.inbox_view import display_handle
+from nexus_api.services.inbox_view import PLAYGROUND_PROVIDER, display_handle
 
 log = structlog.get_logger(__name__)
 
@@ -94,6 +101,18 @@ log = structlog.get_logger(__name__)
 AGENT = "agent"
 SYSTEM = "system"
 CONTACT = "contact"
+
+#: Spec 064 (requisito 5.1): los plazos del cierre por inactividad. ``NULL`` en
+#: ``client_access.inbox_autoclose_hours`` es «nunca».
+AUTOCLOSE_HOURS: tuple[int, ...] = (24, 72, 168, 720)
+#: Conversaciones que una pasada cierra como mucho por cliente.
+AUTOCLOSE_BATCH = 200
+#: El motivo que lleva el evento ``resolved`` de un cierre por inactividad.
+INACTIVITY = "inactivity"
+
+#: Spec 064 (requisito 4.6): cuánto sigue vigente, sin respuesta, un envío por
+#: plantilla que no viene de Reservas (la cobranza, un envío directo).
+NOTICE_VALID_FOR = timedelta(days=7)
 
 #: Spec 047: los motivos que escribe una puerta del turno. Mientras la puerta
 #: está cerrada la conversación espera a una persona; al abrirse, el agente la
@@ -444,24 +463,88 @@ async def _handle_waiting(session: AsyncSession, tenant_id: uuid.UUID, ids: list
     return int(getattr(result, "rowcount", 0) or 0)
 
 
-async def resolve(session: AsyncSession, conversation: Conversation, *, actor: str) -> bool:
+async def resolve(
+    session: AsyncSession,
+    conversation: Conversation,
+    *,
+    actor: str,
+    payload: dict[str, Any] | None = None,
+) -> bool:
     """Resuelta: sale de la lista por defecto. Si el contacto vuelve a escribir
-    responde el agente, así que el agente queda listo (idempotente)."""
+    responde el agente, así que el agente queda listo (idempotente). ``payload``
+    va al evento del hilo: el cierre por inactividad dice ahí su motivo."""
     if conversation.status == ConversationStatus.CLOSED:
         return False
     conversation.status = ConversationStatus.CLOSED
     conversation.closed_at = _now()
     conversation.assigned_user_id = None
     conversation.waiting_reason = None
+    # Spec 064 (requisito 4): un asunto cerrado. Si el contacto vuelve a escribir,
+    # o sale un aviso, el agente empieza desde aquí (``reopen``).
+    conversation.cut_on_reopen = True
     # Spec 047 (requisito 53): la derivación de Recepción dura lo que la
     # conversación; la siguiente empieza otra vez en Recepción y sin saltos.
     conversation.handled_by_agent_id = None
     conversation.reception_hops = 0
     if not conversation.agent_active:
         conversation_control.resume(conversation)
-    await record_event(session, conversation, ConversationEventKind.RESOLVED, actor)
+    await record_event(session, conversation, ConversationEventKind.RESOLVED, actor, payload)
     await session.flush()
     return True
+
+
+async def close_inactive(
+    session: AsyncSession, *, hours: int, now: datetime, limit: int = AUTOCLOSE_BATCH
+) -> list[uuid.UUID]:
+    """Resuelve las conversaciones que llevan ``hours`` sin mensajes en ningún
+    sentido (spec 064, requisito 5). Solo las que responde el agente: nunca una
+    que espera a una persona, que lleva una persona, o que no está en la
+    Bandeja. Las firma el sistema y dicen su motivo en el hilo. No avisa a
+    nadie. Devuelve sus ids, para el aviso de tiempo real tras el commit.
+
+    Corre en la sesión acotada al cliente: la RLS decide qué conversaciones ve."""
+    rows = await session.execute(
+        sa.select(Conversation)
+        .join(Channel, Channel.id == Conversation.channel_id)
+        .where(
+            # Not only the RLS: a platform session would see every client (/cso 2026-11-19).
+            Conversation.tenant_id == require_current_tenant(),
+            Conversation.status == ConversationStatus.OPEN,
+            Conversation.agent_active.is_(True),
+            Conversation.assigned_user_id.is_(None),
+            Conversation.waiting_reason.is_(None),
+            Conversation.awaiting_owner_response.is_(False),
+            sa.or_(Conversation.takeover_until.is_(None), Conversation.takeover_until <= now),
+            Conversation.attended_at.is_not(None),
+            Conversation.last_message_at <= now - timedelta(hours=hours),
+            Channel.provider != PLAYGROUND_PROVIDER,
+        )
+        .order_by(Conversation.last_message_at)
+        .limit(limit)
+        # Lo que un turno tiene cogido se deja para la próxima pasada.
+        .with_for_update(skip_locked=True, of=Conversation)
+    )
+    closed: list[uuid.UUID] = []
+    for conversation in rows.scalars().all():
+        if await resolve(session, conversation, actor=SYSTEM, payload={"reason": INACTIVITY}):
+            closed.append(conversation.id)
+    return closed
+
+
+async def autoclose_tick(
+    session: AsyncSession, tenant_id: uuid.UUID, now: datetime
+) -> list[uuid.UUID]:
+    """Una pasada del cierre por inactividad en un cliente, dentro de su sesión
+    acotada. Sin plazo (``NULL`` = nunca, el valor de partida) o sin Bandeja, no
+    hace nada."""
+    if tenant_id != require_current_tenant():
+        raise IsolationViolation("autoclose_tick: the tenant is not the session's")
+    access = await session.get(ClientAccess, tenant_id)
+    if access is None or access.inbox_autoclose_hours is None:
+        return []
+    if not (access.enabled and ClientModule.INBOX.value in (access.modules or [])):
+        return []
+    return await close_inactive(session, hours=access.inbox_autoclose_hours, now=now)
 
 
 async def clear(session: AsyncSession, conversation: Conversation) -> None:
@@ -487,10 +570,97 @@ async def archive(session: AsyncSession, conversation: Conversation, *, actor: s
     await session.flush()
 
 
+def _is_person(actor: str) -> bool:
+    """Los actores de persona llevan su cuenta (``client:ana@…``); el contacto,
+    el sistema, el eco del WhatsApp del negocio y la importación del historial,
+    una sola palabra."""
+    return ":" in actor
+
+
+async def _cut_point(session: AsyncSession, conversation: Conversation, now: datetime) -> datetime:
+    """Desde cuándo lee el agente tras una resolución (spec 064, 4.1 y 4.6).
+
+    La resolución misma, adelantada al aviso más antiguo que el contacto aún no
+    contestó y que sigue vigente. Sin él, el agente recibiría un «sí, voy» sin
+    saber a qué contesta.
+
+    Un aviso es algo que el negocio envió por su cuenta, no una respuesta:
+
+    - lo de Reservas (su fila en ``reservation_outbox`` dice de qué cita o de
+      qué oferta habla): vigente mientras la cita no ha pasado, o mientras la
+      oferta sigue ``running``;
+    - un envío por plantilla (la cobranza, un envío directo): vigente 7 días.
+
+    El texto de espera que sale cuando una puerta no deja contestar también lo
+    firma el sistema, pero es una respuesta a lo que el contacto escribió: no
+    cuenta, y lo que una persona dijera después tampoco entra por él."""
+    closed = conversation.closed_at or now
+    last_inbound = await session.scalar(
+        sa.select(sa.func.max(Message.created_at)).where(
+            Message.conversation_id == conversation.id,
+            Message.direction == MessageDirection.INBOUND,
+            Message.created_at < closed,
+        )
+    )
+    # ``jsonb_typeof``: un ``None`` explícito se guarda como ``null`` de JSON, que
+    # no es ``NULL`` de SQL. Una plantilla de verdad es un objeto.
+    is_template = sa.func.coalesce(
+        sa.func.jsonb_typeof(Message.template_payload) == "object", sa.false()
+    )
+    pending = sa.select(Message.id, Message.created_at, is_template.label("template")).where(
+        Message.conversation_id == conversation.id,
+        Message.direction == MessageDirection.OUTBOUND,
+        Message.actor_kind == SYSTEM,
+        Message.created_at < closed,
+    )
+    if last_inbound is not None:
+        pending = pending.where(Message.created_at > last_inbound)
+    sent = (await session.execute(pending.order_by(Message.created_at))).all()
+    if not sent:
+        return closed
+    about = {
+        row.message_id: (row.starts_at, row.offer_status)
+        for row in (
+            await session.execute(
+                sa.select(
+                    ReservationOutbox.message_id,
+                    Reservation.starts_at,
+                    ReservationOffer.status.label("offer_status"),
+                )
+                .outerjoin(Reservation, Reservation.id == ReservationOutbox.reservation_id)
+                .outerjoin(ReservationOffer, ReservationOffer.id == ReservationOutbox.offer_id)
+                .where(ReservationOutbox.message_id.in_([m.id for m in sent]))
+            )
+        ).all()
+    }
+    for message in sent:
+        if message.id in about:
+            starts_at, offer_status = about[message.id]
+            if offer_status is not None:
+                valid = offer_status == "running"
+            else:
+                valid = starts_at is not None and starts_at > now
+        else:
+            valid = bool(message.template) and message.created_at >= now - NOTICE_VALID_FOR
+        if valid:
+            at: datetime = message.created_at
+            return min(closed, at)
+    return closed
+
+
 async def reopen(session: AsyncSession, conversation: Conversation, *, actor: str) -> bool:
-    """Vuelve a la lista y responde el agente. Idempotente."""
+    """Vuelve a la lista y responde el agente. Idempotente.
+
+    Spec 064 (requisito 4): si la resolvieron (``cut_on_reopen``) y quien la
+    reabre es el contacto o un aviso del sistema, el agente empieza desde el
+    punto de corte. Una persona que la reabre a mano deshace la resolución: el
+    contexto sigue (4.4)."""
     if conversation.status != ConversationStatus.CLOSED:
         return False
+    if conversation.cut_on_reopen:
+        if not _is_person(actor):
+            conversation.context_from = await _cut_point(session, conversation, _now())
+        conversation.cut_on_reopen = False
     conversation.status = ConversationStatus.OPEN
     conversation.closed_at = None
     conversation.assigned_user_id = None
@@ -558,12 +728,16 @@ async def tell_escalation_recipients(
 
 __all__ = [
     "AGENT",
+    "AUTOCLOSE_HOURS",
     "CONTACT",
     "GATE_REASONS",
+    "INACTIVITY",
     "NOT_WAITING",
     "SYSTEM",
     "WaitingMark",
     "announce_waiting",
+    "autoclose_tick",
+    "close_inactive",
     "leave_gate_wait",
     "mark_waiting",
     "mark_waiting_handled",

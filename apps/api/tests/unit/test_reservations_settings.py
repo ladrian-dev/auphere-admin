@@ -122,3 +122,28 @@ def test_a_valid_patch_applies() -> None:
     assert (row.waitlist_enabled, row.waitlist_lead_minutes) == (False, 240)
     assert row.confirm_when == "same_day_12"
     assert (row.seats, row.walkin_hold, row.stay_minutes) == (70, 8, 90)
+
+
+# ── spec 064, requisito 1: la antelación del agente ──────────────────────────
+
+
+@pytest.mark.parametrize("minutes", [0, 15, 30, 60, 120, 240, 1440])
+def test_the_agent_notice_is_one_of_seven_values(minutes: int) -> None:
+    row = _row("services", None)
+    apply_patch(row, {"agent": {"min_notice_minutes": minutes}})
+    assert row.agent_min_notice_minutes == minutes
+
+
+@pytest.mark.parametrize("minutes", [-1, 45, 90, 1441])
+def test_another_agent_notice_names_the_field(minutes: int) -> None:
+    row = _row("services", None)
+    with pytest.raises(SettingsError) as err:
+        apply_patch(row, {"agent": {"min_notice_minutes": minutes}})
+    assert err.value.field == "agent.min_notice_minutes"
+    assert row.agent_min_notice_minutes == 60
+
+
+@pytest.mark.parametrize("mode", ["services", "capacity"])
+def test_the_agent_notice_still_starts_at_an_hour(mode: str) -> None:
+    """Decisión de Luis (2026-11-18): el valor de partida no cambia."""
+    assert _row(mode, "restaurant" if mode == "capacity" else None).agent_min_notice_minutes == 60

@@ -128,6 +128,65 @@ export function WaitlistSettings() {
   );
 }
 
+/** Spec 064 (1.2): what the API takes for the agent's notice; 0 is «sin antelación». */
+const NOTICES = [0, 15, 30, 60, 120, 240, 1440] as const;
+
+/**
+ * Spec 064 (requisito 1): how soon the agent may give a time. It is the
+ * agent's rule only — the business books any future time from here — and it is
+ * not the waitlist's «antelación para avisar», which keeps its own name. A
+ * stored value outside the list (set by hand through the API) is shown as it
+ * is until someone changes it.
+ */
+export function AgentNoticeSettings() {
+  const { t, settings, mode } = useReservas();
+  const { patch, busy } = useSettingsPatch();
+  const current = settings.agent.min_notice_minutes;
+  // What was just chosen shows at once, until the new read arrives (`over` is the
+  // value it was chosen over). A refusal puts back what is stored.
+  const [chosen, setChosen] = React.useState<{ value: number; over: number } | null>(null);
+  const shown = chosen && chosen.over === current ? chosen.value : current;
+  const options = (NOTICES as readonly number[]).includes(current) ? [...NOTICES] : [...NOTICES, current].sort((x, y) => x - y);
+  const label = (m: number) =>
+    m === 0
+      ? t("reservas.settings.notice.none")
+      : m % 60 === 0
+        ? t("reservas.settings.notice.hours", { hours: m / 60 })
+        : t("reservas.settings.notice.minutes", { minutes: m });
+  return (
+    <Section title={t(mode === "services" ? "reservas.settings.agent.title.services" : "reservas.settings.agent.title.capacity")}>
+      <Field
+        label={t("reservas.settings.notice")}
+        hint={t(mode === "services" ? "reservas.settings.notice.hint.services" : "reservas.settings.notice.hint.capacity")}
+      >
+        {(a11y) => (
+          <NativeSelect
+            {...a11y}
+            value={shown}
+            // Not `disabled`: it would drop the focus of the select it is on.
+            aria-disabled={busy || undefined}
+            onChange={(e) => {
+              if (busy) return;
+              const value = Number(e.target.value);
+              setChosen({ value, over: current });
+              void patch({ agent: { min_notice_minutes: value } }).then((ok) => {
+                if (!ok) setChosen(null);
+              });
+            }}
+            wrapperClassName="w-48"
+          >
+            {options.map((m) => (
+              <option key={m} value={m}>
+                {label(m)}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
+      </Field>
+    </Section>
+  );
+}
+
 export function BusinessHoursSection() {
   const { t, settings } = useReservas();
   const [editing, setEditing] = React.useState(false);

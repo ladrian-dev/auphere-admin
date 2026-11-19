@@ -302,6 +302,46 @@ duración de 5 a 480 en pasos de 5, precio `none`/`free`/`amount`, importe de 0 
 - Estados: `pending` (Sin confirmar), `confirmed`, `arrived` (solo Aforo), `done`,
   `noshow`, `cancelled`. «Llega tarde» y el choque se calculan.
 
+### La antelación, el teléfono y corregir una «Atendida» (spec 064)
+
+**La antelación del agente** (`reservation_settings.agent_min_notice_minutes`, 60 de
+partida) la decide el negocio en Reservas → Ajustes, sección «Citas que da el
+agente» (`settings/shared-sections.tsx`, `AgentNoticeSettings`). La API acepta siete
+valores (`settings.NOTICE_MINUTES`: 0, 15, 30, 60, 120, 240 y 1440) y rechaza otro
+con 422 y su campo. Afecta solo al agente: la consola y la app reservan cualquier
+hora futura. No es la «antelación mínima para avisar», que es la de la lista de
+espera y conserva su nombre.
+
+`reservas.find_slots` lee los huecos una vez, desde ahora, y los parte: `slots`
+trae los que el agente puede dar y `too_soon` los que están libres pero quedan
+dentro de la antelación. Con `too_soon` el agente no dice que no hay disponibilidad:
+dice que esa hora la confirma el negocio y ofrece pasar la conversación. `create` y
+`reschedule` responden `too_soon` si se intenta.
+
+**El teléfono es obligatorio al reservar a mano desde la consola**, en los dos
+modos: empieza por `+` y tiene de 8 a 15 dígitos (`model/phone.ts`, `validPhone`).
+Lo exigen el formulario y su acción de servidor (`createSchema`). No lo piden la
+llegada sin reserva, mover una reserva que no lo tiene ni la lista de espera.
+**La API no cambia**: `contact.phone` sigue siendo opcional, porque la app móvil de
+hoy lo manda vacío. Con teléfono, la reserva se enlaza al contacto del negocio con
+ese número exacto, que la ve con `reservas.list_mine` y recibe sus avisos
+(`tests/isolation/test_reservas_customer_axis.py`).
+
+**Corregir una «Atendida».** Lo que `reservations-cron` cierra como `done` deja de
+ser definitivo en Servicios: durante 7 días desde `ends_at`
+(`core.CORRECTION_WINDOW`), `allowed` trae `noshow` sobre una `done`, y `undo` sobre
+un `noshow` cuya hora de fin ya pasó. Ese `undo` deja `done`, no `confirmed`. Cada
+corrección queda en el historial con la persona y no escribe al cliente final. En
+Aforo no se ofrece: allí `done` llega después de que alguien marcara «Llegó».
+
+**La pantalla se pone al día sola** (`reservas-view.tsx`): con la pestaña visible
+relee cada 45 s, y al volver a verse si la lectura tiene más de 15 s. Lo hace con
+`router.refresh()`, fuera de la transición que atenúa la pantalla, así que un
+diálogo abierto y lo escrito en él siguen ahí. Si la relectura llega vacía o con
+una parte en error, se conserva la última lectura entera de ese periodo y la
+pantalla dice «Puede que esto no esté al día», igual que si pasan más de 150 s sin
+una lectura nueva.
+
 ## API (`/console/lite/reservas/*`)
 
 Contrato: [`contracts/lite-api.md`](../specs/043-reservas/contracts/lite-api.md).

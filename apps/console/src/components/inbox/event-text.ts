@@ -54,6 +54,8 @@ export function eventText(kind: string | null, author: InboxAuthor | null, detai
     case "released":
       return me ? t("inbox.event.released.you") : t("inbox.event.released", { who });
     case "resolved":
+      // Spec 064 (5.2): the system closed it; it says why, not who.
+      if (detail === "inactivity") return t("inbox.event.resolved.inactivity");
       return me ? t("inbox.event.resolved.you") : t("inbox.event.resolved", { who });
     case "reopened":
       if (author?.kind === "contact") return t("inbox.event.reopened.contact");

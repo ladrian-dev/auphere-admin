@@ -13,9 +13,9 @@ import type { Booking, CapacitySlot } from "@/lib/backend/reservas";
 import { useReservas, useWords, type NewPrefill } from "../context";
 import { openDays, weekdayOf } from "../model/dates";
 import { useIdempotencyKey } from "../model/idempotency";
+import { PHONE_PROBLEM_KEY, phoneProblem } from "../model/phone";
 import { useActionLoad } from "../model/use-load";
 import { failureMessage } from "../model/vocab";
-import { PHONE_RE } from "../services/booking-dialog";
 import { Chip, ChipGroup, Stepper } from "../shared";
 
 /** Slots grouped under their shift, in order (one unnamed group for the «franjas» model). */
@@ -51,6 +51,8 @@ export function CapacityBookingDialog({ booking, prefill, onClose }: { booking: 
   const [time, setTime] = React.useState(moving ? "" : (prefill.time ?? ""));
   const [note, setNote] = React.useState(booking?.note ?? "");
   const [touched, setTouched] = React.useState(false);
+  // Spec 064: the phone says what is wrong only once it was left, or on «Guardar».
+  const [phoneTouched, setPhoneTouched] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [reload, setReload] = React.useState(0);
@@ -72,12 +74,15 @@ export function CapacityBookingDialog({ booking, prefill, onClose }: { booking: 
   const chosen = all.find((s) => s.time === time && s.fits) ?? null;
 
   const nameOk = moving || name.trim() !== "";
-  const phoneOk = moving || !phone.trim() || PHONE_RE.test(phone.trim());
+  // Spec 064 (requisito 3): a booking made by hand carries a phone, with its country prefix.
+  const problem = moving ? null : phoneProblem(phone);
+  const phoneOk = problem === null;
   const ready = !!chosen && nameOk && phoneOk;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
+    setPhoneTouched(true);
     setError(null);
     if (!ready) return;
     setBusy(true);
@@ -98,7 +103,7 @@ export function CapacityBookingDialog({ booking, prefill, onClose }: { booking: 
               date,
               time,
               party_size: people,
-              contact: { name: name.trim(), phone: phone.trim() || null },
+              contact: { name: name.trim(), phone: phone.trim() },
               note: nextNote,
               join_waitlist: false,
               notify: true,
@@ -157,11 +162,13 @@ export function CapacityBookingDialog({ booking, prefill, onClose }: { booking: 
                 </Field>
                 <Field
                   label={t("reservas.form.phone")}
-                  optionalLabel={t("reservas.optional")}
-                  error={touched && !phoneOk ? t("reservas.form.phoneInvalid") : null}
+                  required
+                  requiredLabel={t("reservas.required")}
+                  hint={t("reservas.form.phone.hint")}
+                  error={phoneTouched && problem ? t(PHONE_PROBLEM_KEY[problem]) : null}
                 >
                   {(a11y) => (
-                    <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.phone.placeholder")} maxLength={32} autoComplete="off" />
+                    <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhoneTouched(true)} placeholder={t("reservas.form.phone.placeholder")} maxLength={32} autoComplete="off" />
                   )}
                 </Field>
               </div>

@@ -645,3 +645,15 @@ async def test_a_staff_email_must_be_an_email(client, shop) -> None:
     )
     assert ok.status_code == 201, ok.text
     assert ok.json()["email"] == "nora@cultor.cl"
+
+
+async def test_the_api_still_takes_a_booking_without_a_phone(client, shop) -> None:
+    """Spec 064 (3.5): el teléfono obligatorio es de la consola. La app móvil de
+    hoy lo manda vacío, y la API tiene que seguir aceptándolo."""
+    r = await client.post(
+        f"{BASE}/bookings",
+        headers=shop["headers"](),
+        json=_new(shop, future_day(), "10:00", contact={"name": "Ana Pérez", "phone": None}),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["contact"]["phone"] is None

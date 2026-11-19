@@ -243,16 +243,26 @@ describe("Aforo · new booking and blocks", () => {
     await userEvent.click(screen.getByRole("button", { name: "Nueva reserva" }));
     const dialog = await screen.findByRole("dialog", { name: "Nueva reserva" });
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Nombre/ }), "Cumpleaños Soto");
+    // Spec 064 (3.1): a booking made by hand carries a phone, in Aforo too.
+    const phone = within(dialog).getByRole("textbox", { name: /Teléfono/ });
+    expect(phone).toBeRequired();
     const more = within(dialog).getByRole("button", { name: "Subir Comensales" });
     for (let i = 0; i < 10; i++) await userEvent.click(more);
     expect(within(dialog).getByText("Más de 10: el agente no acepta reservas así de grandes, pero tú sí puedes hacerla.")).toBeInTheDocument();
     expect(await within(dialog).findByRole("button", { name: "20:30, Completo" })).toBeDisabled();
     await userEvent.click(within(dialog).getByRole("button", { name: "20:00, quedan 22" }));
     expect(within(dialog).getByText("12 comensales · hoy a las 20:00")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Guardar reserva" })).toBeDisabled();
+    await userEvent.type(phone, "911112222");
+    await userEvent.tab();
+    expect(await within(dialog).findByText("Escribe el teléfono con el prefijo del país, como +56 9 1234 5678.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Guardar reserva" })).toBeDisabled();
+    await userEvent.clear(phone);
+    await userEvent.type(phone, "+56 9 1111 2222");
     await userEvent.click(within(dialog).getByRole("button", { name: "Guardar reserva" }));
     await waitFor(() =>
       expect(a.createBookingAction).toHaveBeenCalledWith(
-        expect.objectContaining({ date: TODAY, time: "20:00", party_size: 12, contact: { name: "Cumpleaños Soto", phone: null } }),
+        expect.objectContaining({ date: TODAY, time: "20:00", party_size: 12, contact: { name: "Cumpleaños Soto", phone: "+56 9 1111 2222" } }),
       ),
     );
   });

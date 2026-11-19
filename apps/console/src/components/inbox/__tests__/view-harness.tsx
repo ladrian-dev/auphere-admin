@@ -32,6 +32,9 @@ export const a = {
   createReplyAction: vi.fn(),
   editReplyAction: vi.fn(),
   archiveReplyAction: vi.fn(),
+  // Spec 064 (5.1): the Inbox's settings, asked only when their dialog opens.
+  inboxSettingsAction: vi.fn(),
+  patchInboxSettingsAction: vi.fn(),
 };
 
 export class FakeEventSource {

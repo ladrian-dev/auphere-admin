@@ -29,21 +29,24 @@ export const OPTIMISTIC_STATUS: Partial<Record<BookingTransition, Booking["statu
 
 /** Run a state transition from `allowed`, optimistic, told by `useWrite`. Resolves with whether it went through. */
 export function useTransitionAction() {
-  const { t, touch } = useReservas();
+  const { t, touch, now } = useReservas();
   const write = useWrite();
   return React.useCallback(
     async (b: Booking, action: BookingTransition): Promise<boolean> => {
+      // Spec 064 (2.3): undoing the no-show of a Servicios booking that already
+      // ended puts it back to «Atendida», as the API does, never to «Confirmada».
+      const over = action === "undo" && b.mode === "services" && b.status === "noshow" && new Date(b.ends_at) <= now;
       // An urgent update, not a transition: it paints now, while the API answers.
-      const status = OPTIMISTIC_STATUS[action];
+      const status = over ? "done" : OPTIMISTIC_STATUS[action];
       if (status) touch(b.id, { status, allowed: [] });
       const res = await write(() => bookingTransitionAction({ id: b.id, version: b.version, action }), {
-        success: t(`reservas.done.${action}` as MessageKey),
+        success: t((over ? "reservas.done.undo.done" : `reservas.done.${action}`) as MessageKey),
       });
       // Refused: the mark goes and the booking shows what is true (a new read follows on 409/412).
       if (!res.ok && status) touch(b.id, null);
       return res.ok;
     },
-    [t, touch, write],
+    [t, touch, write, now],
   );
 }
 

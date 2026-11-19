@@ -30,6 +30,7 @@ export const reservasMessages = {
     es: "Parte de la información no se pudo cargar. Lo demás está al día.",
     en: "Part of the information could not load. The rest is up to date.",
   },
+  "reservas.stale": { es: "Puede que esto no esté al día.", en: "This may not be up to date." },
   "reservas.error.title": { es: "No pudimos cargar Reservas", en: "We couldn't load Bookings" },
   "reservas.error.body": { es: "Inténtalo de nuevo en un momento.", en: "Try again in a moment." },
   "reservas.hoursMissing.title": { es: "Falta el horario del negocio", en: "Business hours are missing" },
@@ -143,6 +144,7 @@ export const reservasMessages = {
   "reservas.done.arrive": { es: "Marcada como llegada.", en: "Marked as arrived." },
   "reservas.done.noshow": { es: "Marcada como no vino.", en: "Marked as a no-show." },
   "reservas.done.undo": { es: "Deshecho. Vuelve a estar confirmada.", en: "Undone. It is confirmed again." },
+  "reservas.done.undo.done": { es: "Deshecho. Vuelve a estar atendida.", en: "Undone. It is attended again." },
 
   // ── errors ───────────────────────────────────────────────────────────
   "reservas.error.stale": {
@@ -323,8 +325,8 @@ export const reservasMessages = {
   "reservas.form.phone": { es: "Teléfono", en: "Phone" },
   "reservas.form.phone.placeholder": { es: "+56 9 1234 5678", en: "+56 9 1234 5678" },
   "reservas.form.phone.hint": {
-    es: "Con teléfono, el agente le confirma por WhatsApp.",
-    en: "With a phone, the agent confirms on WhatsApp.",
+    es: "Hace falta para confirmarle la reserva y recordársela por WhatsApp.",
+    en: "It is needed to confirm the booking and remind them on WhatsApp.",
   },
   "reservas.form.service": { es: "Servicio", en: "Service" },
   "reservas.form.serviceChip": { es: "{name} · {duration}", en: "{name} · {duration}" },
@@ -354,6 +356,19 @@ export const reservasMessages = {
   "reservas.form.phoneInvalid": {
     es: "Escribe el teléfono con su código, como +56 9 1234 5678.",
     en: "Write the phone with its code, like +56 9 1234 5678.",
+  },
+  "reservas.form.phonePrefix": {
+    es: "Escribe el teléfono con el prefijo del país, como +56 9 1234 5678.",
+    en: "Write the phone with its country prefix, like +56 9 1234 5678.",
+  },
+  "reservas.form.phoneRequired": { es: "Escribe el teléfono de quien reserva.", en: "Write the phone of who is booking." },
+  "reservas.form.phoneChars": {
+    es: "Usa solo cifras, espacios, guiones o paréntesis después del prefijo.",
+    en: "Use only digits, spaces, dashes or brackets after the prefix.",
+  },
+  "reservas.form.phoneLength": {
+    es: "El teléfono tiene que tener entre 8 y 15 cifras, contando el prefijo.",
+    en: "The phone must have 8 to 15 digits, counting the prefix.",
   },
   "reservas.form.saved": { es: "Reserva guardada para {when}.", en: "Booking saved for {when}." },
   "reservas.form.moved": { es: "Reserva movida a {when}.", en: "Booking moved to {when}." },
@@ -705,6 +720,20 @@ export const reservasMessages = {
     en: "If someone cancels with less time, the slot stays free and the list is not told.",
   },
   "reservas.settings.lead.option": { es: "{hours} h antes", en: "{hours} h before" },
+  "reservas.settings.agent.title.services": { es: "Citas que da el agente", en: "Appointments the agent gives" },
+  "reservas.settings.agent.title.capacity": { es: "Reservas que hace el agente", en: "Bookings the agent makes" },
+  "reservas.settings.notice": { es: "Antelación mínima del agente", en: "The agent's minimum notice" },
+  "reservas.settings.notice.hint.services": {
+    es: "Solo afecta a las citas que da el agente. Desde aquí puedes reservar cualquier hora. Si alguien pide una hora más cercana, el agente le dice que la confirmas tú.",
+    en: "It only affects the appointments the agent gives. From here you can book any time. If someone asks for a sooner time, the agent says you confirm it yourself.",
+  },
+  "reservas.settings.notice.hint.capacity": {
+    es: "Solo afecta a las reservas que hace el agente. Desde aquí puedes reservar cualquier hora. Si alguien pide una hora más cercana, el agente le dice que la confirmas tú.",
+    en: "It only affects the bookings the agent makes. From here you can book any time. If someone asks for a sooner time, the agent says you confirm it yourself.",
+  },
+  "reservas.settings.notice.none": { es: "Sin antelación", en: "No notice" },
+  "reservas.settings.notice.minutes": { es: "{minutes} min", en: "{minutes} min" },
+  "reservas.settings.notice.hours": { es: "{hours} h", en: "{hours} h" },
   "reservas.settings.reminders.title": { es: "Recordatorios", en: "Reminders" },
   "reservas.settings.reminder": { es: "Recordatorio por WhatsApp 24 horas antes", en: "WhatsApp reminder 24 hours before" },
   "reservas.settings.reminder.hint": {

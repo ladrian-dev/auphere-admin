@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 
+import { validPhone } from "@/components/reservas/model/phone";
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
 import type { Hours } from "@/lib/backend/business-sections";
@@ -58,6 +59,13 @@ const phone = z
   .max(32)
   .regex(/^\+?[0-9 ()-]{6,24}$/)
   .nullable();
+/**
+ * Spec 064 (requisito 3): a booking made by hand carries a phone with its
+ * country prefix. The form says it first, and this is what holds: the action is
+ * the console's last word before the API, which still takes none (the mobile
+ * app of today sends it empty).
+ */
+const bookingPhone = z.string().trim().max(32).refine(validPhone);
 const note = z.string().trim().max(500).nullable();
 const party = z.number().int().min(1).max(1000);
 
@@ -112,7 +120,7 @@ const createSchema = z.object({
   staff_id: id.nullable().optional(),
   service_id: id.nullable().optional(),
   party_size: party.nullable().optional(),
-  contact: z.object({ name, phone }),
+  contact: z.object({ name, phone: bookingPhone }),
   note: note.default(null),
   join_waitlist: z.boolean().default(false),
   notify: z.boolean().default(true),
@@ -267,7 +275,10 @@ const patchSchema = z
       .optional(),
     agent: z
       .object({
-        min_notice_minutes: z.number().int().min(0).max(1440).optional(),
+        // Spec 064 (1.2): the seven values the API takes; 0 is «sin antelación».
+        min_notice_minutes: z
+          .union([z.literal(0), z.literal(15), z.literal(30), z.literal(60), z.literal(120), z.literal(240), z.literal(1440)])
+          .optional(),
         max_days_ahead: z.number().int().min(1).max(365).optional(),
       })
       .strict()

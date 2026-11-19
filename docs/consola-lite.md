@@ -258,6 +258,51 @@ frontera. Lo que impide que sea un agujero:
 - **Auditoría** `inbox.*` con `client:<correo>` y sin contenido: longitudes y
   nombres de etiqueta, nunca el texto ni la nota.
 
+**Una conversación resuelta empieza de cero** (spec 064, requisitos 4 y 5). Sigue
+habiendo un solo hilo por contacto y número, y la Bandeja lo enseña entero. Lo que
+cambia es desde dónde lee el agente:
+
+- `conversations.context_from` es desde cuándo lee el agente. `NULL` = desde
+  `attended_at`. El worker lee desde el mayor de los dos
+  (`pipeline._load_recent_history`). La Bandeja no lo usa.
+- `resolve` pone `conversations.cut_on_reopen`. `reopen` lo consume:
+  - si reabre el contacto, un aviso del sistema, el eco del WhatsApp del negocio o
+    la importación del historial, fija `context_from` en el punto de corte;
+  - si reabre una persona desde la Bandeja (`client:…`), no corta: deshizo la
+    resolución y el contexto sigue.
+- **El punto de corte** (`inbox_lifecycle._cut_point`) es `closed_at`, adelantado
+  al aviso de sistema más antiguo que el contacto aún no contestó y que sigue
+  vigente: una petición de confirmación o un recordatorio de una cita que no ha
+  pasado, una oferta de la lista que sigue `running`, o un envío por plantilla
+  (cobranza, envío directo) de los últimos 7 días. Sin eso, un «sí, voy» llegaría
+  sin saber a qué contesta. El texto de espera de una puerta cerrada también lo
+  firma el sistema, pero es una respuesta y no cuenta.
+- Una conversación resuelta antes de la migración `0236` tiene `cut_on_reopen =
+  false`: no corta hasta que se vuelva a resolver.
+- **Lo mínimo que conserva el agente**: con `context_from` puesto, el historial
+  del turno termina con una nota de sistema que dice que ya es un contacto del
+  negocio y su nombre. El nombre viene del perfil de WhatsApp, que escribe el
+  cliente final: se normaliza (NFKC), se queda en letras, espacios y `.'-`, con
+  3 palabras y 30 caracteres como mucho (`pipeline._safe_contact_name`), y entra
+  con el vallado común (`core/guardrails/untrusted.fence`, etiqueta
+  `<client_name>`) y la advertencia de que es dato y nunca instrucción.
+- «Vaciar el chat» y «Eliminar» siguen moviendo `attended_at`, que quita los
+  mensajes también de la Bandeja.
+
+**El cierre por inactividad** es un ajuste del cliente, apagado de partida:
+`client_access.inbox_autoclose_hours` (`NULL`, 24, 72, 168 o 720). Se lee y se
+cambia en `GET` y `PATCH /console/lite/inbox/settings`, desde el botón «Ajustes de
+la Bandeja» de la cabecera de la lista (`components/inbox/inbox-settings.tsx`), y
+cada cambio deja `inbox.settings_changed` en la auditoría. `inbox-autoclose-cron`
+(planificador, cada 5 min) recorre los clientes activos, cada uno en su sesión
+acotada, y `inbox_lifecycle.autoclose_tick` resuelve las conversaciones `OPEN` que
+lleva el agente y que pasaron el plazo sin un mensaje en ningún sentido. Nunca
+cierra una que espera a una persona, que lleva una persona (asignada, con el
+agente en pausa, en espera del dueño o tras un eco del negocio) o que no está en
+la Bandeja. El evento `resolved` lo firma `system` con `{"reason": "inactivity"}`,
+y el hilo lo dice como «Se cerró por inactividad». No avisa a nadie. El aviso de
+tiempo real sale después del commit.
+
 **El escalado, en un solo sitio y en dos pasos** (`services/inbox_lifecycle`).
 `escalate.escalate_to_human` llama a `mark_waiting` **dentro** de su
 transacción (estado, evento y, *solo con Bandeja*, el agente callado) y a
