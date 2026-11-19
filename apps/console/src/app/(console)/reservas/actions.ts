@@ -200,19 +200,26 @@ export async function removeBlockAction(raw: unknown): Promise<ActionResult<null
 
 // ── waitlist and offers ──────────────────────────────────────────────────
 
+/**
+ * Spec 064 (3.7): putting someone on the waitlist needs the phone, as booking
+ * does — an offer of a slot only reaches them by WhatsApp. Someone who is there,
+ * at the door of an Aforo business (`in_person`), is called by their name.
+ */
 const waitlistSchema = z.union([
+  z
+    .object({
+      name,
+      phone,
+      party_size: party,
+      date: day,
+      time,
+      in_person: z.boolean().default(false),
+      idempotencyKey: key,
+    })
+    .refine((v) => v.in_person || (v.phone !== null && validPhone(v.phone)), { path: ["phone"] }),
   z.object({
     name,
-    phone,
-    party_size: party,
-    date: day,
-    time,
-    in_person: z.boolean().default(false),
-    idempotencyKey: key,
-  }),
-  z.object({
-    name,
-    phone,
+    phone: bookingPhone,
     service_id: id,
     staff_id: id.nullable(),
     date: day.nullable(),

@@ -7,7 +7,7 @@ import type { MessageKey } from "@/i18n/messages";
  *
  * The prefix is required because the booking is linked to the business's
  * contact with exactly that number, who then gets its notices: a local number
- * could be anyone's. The waitlist keeps its own, looser rule (`PHONE_RE`).
+ * could be anyone's. The waitlist asks for it with the same rule (spec 064, 3.7).
  */
 const SHAPE = /^\+[0-9 ()-]*$/;
 

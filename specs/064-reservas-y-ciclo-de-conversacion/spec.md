@@ -23,6 +23,7 @@
 | Spec 043, clarificación «¿Antelación para reservar?» y **R2** (ajustes del negocio) | El agente reserva con al menos 60 min de antelación. Es un ajuste, pero ninguna pantalla lo enseña ni lo cambia. | El negocio lo ve y lo cambia en los Ajustes de la consola. El valor por defecto sigue en 60 minutos (requisito 1). |
 | Spec 043, **R6** (herramientas del agente) | `reservas.find_slots` devuelve las horas que el agente puede dar y nada más. | También dice cuándo hay horas libres más cercanas que el agente no puede dar (requisito 1.5). |
 | Spec 043, clarificación «¿Cliente final sin teléfono?» y **R5.2** (crear una reserva) | La reserva lleva nombre y, si hay, teléfono. | Una reserva hecha a mano desde la consola lleva nombre y teléfono. La llegada sin reserva sigue sin pedirlo, y la app móvil sigue como está hasta que se ponga al día (requisito 3). |
+| Spec 043, «Apuntar a alguien» en la lista de espera (y spec 056, 11.1) | El teléfono es opcional: sin él, la entrada no recibe ofertas. | Desde la consola es obligatorio, con la misma regla que al reservar. Quien se apunta en persona en Aforo sigue sin pedirlo (requisito 3.7, enmienda del 2026-11-19). |
 | Spec 043, **R5.4** y clarificación «¿`done` se guarda o se calcula?» | «No vino» y «Deshacer» solo valen el mismo día y mientras la reserva sigue abierta. Lo que el sistema cierra como «Atendida» ya no se toca. | En Servicios, el negocio puede corregir una «Atendida» a «No vino», y al revés, durante los 7 días siguientes (requisito 2). |
 | Spec 043, **R8** (pantallas de Reservas en la consola) | No dice cuándo se relee. Hoy la pantalla lee al entrar y tras cada acción. | Relee sola mientras está abierta (requisito 2.6). |
 | Spec 030, **R12.2** (el contacto escribe en una conversación resuelta) | Se reabre y responde el agente, que lee el hilo anterior. | Se reabre y responde el agente, que empieza sin lo anterior (requisito 4). |
@@ -60,6 +61,10 @@ la aclaración.
   - «No vino» se puede corregir hasta 7 días después de la cita, y solo en Servicios;
   - «lo mínimo» que conserva el agente es el nombre del contacto y que ya es un contacto del negocio;
   - el cierre por inactividad viene apagado, con plazos de 24 horas, 3 días, 7 días y 30 días.
+
+### Session 2026-11-19 (enmienda, ya en producción)
+
+- Q: ¿En la lista de espera el teléfono también es obligatorio? → A: Sí. Se sube como hotfix sobre `main` (Luis). Una entrada sin teléfono no puede recibir la oferta de un hueco, que es para lo que sirve la lista. Queda fuera quien se apunta en persona en la puerta (Aforo): está allí, y se le llama por su nombre.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -155,7 +160,7 @@ Otro negocio no quiere resolver a mano. En los ajustes de la Bandeja elige «Cer
 - **Hay un diálogo abierto con algo escrito.** Releer la agenda no lo cierra ni borra lo escrito.
 - **La consola no puede releer** (sin red, API caída). Deja lo que tenía y dice que puede estar desactualizado. No lo pinta como al día.
 - **La app móvil de hoy.** Sigue funcionando sin cambios: guarda reservas con o sin teléfono, y abre una reserva ya cerrada aunque la API ofrezca sobre ella una acción que la app no conoce (requisitos 2.12 y 3.5).
-- **La lista de espera** sigue aceptando una entrada sin teléfono, como hoy. Ver Fuera de alcance.
+- **La lista de espera** pide teléfono al apuntar a alguien desde la consola (3.7). Quien se apunta en persona en la puerta (Aforo) no.
 - **Un teléfono válido pero de otra persona.** El sistema no puede saberlo. Por eso valida el formato, y la reserva guardada enseña su teléfono.
 - **«Vaciar el chat» y «Eliminar»** siguen como están: quitan los mensajes también de la Bandeja. Resolver no quita nada de la Bandeja.
 - **Un aviso del negocio reabre la conversación** (un recordatorio de cita, uno de cobranza). Ese aviso es el primer mensaje de la conversación nueva, y el agente lo tiene en cuenta cuando el contacto contesta.
@@ -210,6 +215,7 @@ Otro negocio no quiere resolver a mano. En los ajustes de la Bandeja elige «Cer
 4. La llegada sin reserva NO DEBE pedir teléfono. Las reservas que ya existen sin teléfono DEBEN poder seguir moviéndose, cancelándose y cerrándose sin añadirlo.
 5. El sistema DEBE seguir aceptando las reservas que envía la app móvil de hoy, con o sin teléfono, hasta que la app se ponga al día (decisión de Luis, 2026-11-18).
 6. Una prueba de aislamiento DEBE fijar que una reserva hecha a mano solo se enlaza al contacto del mismo negocio cuyo número coincide entero, y que ningún otro contacto la ve ni recibe sus avisos (garantía 8).
+7. WHEN una persona apunta a alguien en la lista de espera desde la consola THEN la consola DEBE exigir el teléfono con la misma regla y los mismos mensajes que al reservar (3.2, 3.3), y su acción de servidor DEBE rechazar la entrada sin él. Quien se apunta en persona en Aforo NO DEBE necesitarlo, y la API DEBE seguir aceptando lo que envía la app móvil (enmienda del 2026-11-19).
 
 ### Requisito 4 — Una conversación resuelta empieza de cero
 
@@ -270,7 +276,6 @@ No hay entidades nuevas. Se tocan estas:
 - **Los avisos de retoque tras la cita.** Son una función nueva, con su plantilla de Meta y su consentimiento. Va en su propia spec.
 - **Cambiar cuándo sale el recordatorio.** Sigue 24 horas antes, y una reserva hecha con menos de 24 horas sigue sin recordatorio (043). El teléfono es necesario para avisar, pero no cambia esas reglas.
 - **Las plantillas de Meta.** Fuera de la ventana de 24 horas, un aviso sigue necesitando su plantilla aprobada (043, R15).
-- **Exigir teléfono en la lista de espera.** No se pidió. Una entrada sin teléfono sigue sin poder recibir ofertas, como hoy.
 - **Cerrar sola en Aforo la reserva confirmada que nunca llegó.** La 043 lo dejó manual y nadie lo pidió.
 - **Cambiar el paso de la rejilla de huecos.** La API ya lo acepta, pero no forma parte de la recomendación.
 - **Un resumen de la conversación anterior para el agente.** «Lo mínimo» es el nombre y sus citas. Resumir lo hablado sería otra función, con su gasto de modelo.

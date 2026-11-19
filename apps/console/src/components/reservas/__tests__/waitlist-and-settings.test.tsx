@@ -109,7 +109,7 @@ describe("Lista de espera", () => {
     expect(within(people).getByText("Adelantar su reserva")).toBeInTheDocument();
   });
 
-  it("Servicios: «Apuntar a alguien» — name, optional phone, service, with whom, any opening until a day", async () => {
+  it("Servicios: «Apuntar a alguien» — name, phone, service, with whom, any opening until a day", async () => {
     a.addWaitlistAction.mockResolvedValue({ ok: true, data: waitlistEntry() });
     renderView(servicesData(), { url: { tab: "waitlist" } });
     const people = screen.getByRole("region", { name: "Personas en la lista" });
@@ -125,7 +125,11 @@ describe("Lista de espera", () => {
     expect(a.addWaitlistAction).not.toHaveBeenCalled();
 
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Inés Rubio");
-    await userEvent.type(within(dialog).getByRole("textbox", { name: /Teléfono/ }), "+56 9 4444 5555");
+    // Spec 064 (3.7): the phone is required, as when booking — without it no offer can reach her.
+    const phone = within(dialog).getByRole("textbox", { name: /Teléfono/ });
+    expect(phone).toBeRequired();
+    expect(within(dialog).getByText("Hace falta para avisarle por WhatsApp cuando se libere un hueco.")).toBeInTheDocument();
+    await userEvent.type(phone, "+56 9 4444 5555");
     await userEvent.click(within(dialog).getByRole("button", { name: "Corte y barba · 45 min" }));
     const withWhom = within(dialog).getByRole("group", { name: "Con" });
     expect(within(withWhom).getByRole("button", { name: "Cualquiera", pressed: true })).toBeInTheDocument();
@@ -158,11 +162,14 @@ describe("Lista de espera", () => {
     await userEvent.click(screen.getByRole("button", { name: "Apuntar a alguien" }));
     const dialog = await screen.findByRole("dialog", { name: "Apuntar en la lista de espera" });
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Tomás Vera");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Teléfono/ }), "+56 9 1111 0000");
     await userEvent.click(within(dialog).getByRole("button", { name: "Barba · 30 min" }));
     expect(within(dialog).queryByRole("group", { name: "Con" })).toBeNull();
     await userEvent.click(within(dialog).getByRole("button", { name: "Apuntar" }));
     await waitFor(() =>
-      expect(a.addWaitlistAction).toHaveBeenCalledWith(expect.objectContaining({ name: "Tomás Vera", phone: null, service_id: BARBA, staff_id: null })),
+      expect(a.addWaitlistAction).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Tomás Vera", phone: "+56 9 1111 0000", service_id: BARBA, staff_id: null }),
+      ),
     );
   });
 
@@ -174,10 +181,11 @@ describe("Lista de espera", () => {
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Inés Rubio");
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Teléfono/ }), "abc");
     await userEvent.click(within(dialog).getByRole("button", { name: "Corte y barba · 45 min" }));
-    expect(within(dialog).getByText("Escribe el teléfono con su código, como +56 9 1234 5678.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Escribe el teléfono con el prefijo del país, como +56 9 1234 5678.")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Apuntar" })).toBeDisabled();
     expect(a.addWaitlistAction).not.toHaveBeenCalled();
     await userEvent.clear(within(dialog).getByRole("textbox", { name: /Teléfono/ }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Teléfono/ }), "+56 9 4444 5555");
     await userEvent.click(within(dialog).getByRole("button", { name: "Apuntar" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("No se pudo hablar con el servidor.");
     a.addWaitlistAction.mockResolvedValueOnce({ ok: true, data: waitlistEntry() });
@@ -185,6 +193,26 @@ describe("Lista de espera", () => {
     await waitFor(() => expect(a.addWaitlistAction).toHaveBeenCalledTimes(2));
     const [first, second] = a.addWaitlistAction.mock.calls.map((c) => (c[0] as { idempotencyKey: string }).idempotencyKey);
     expect(second).toBe(first);
+  });
+
+  it("Servicios (spec 064, 3.7): without a phone nobody is put on the list, and the field says what is wrong", async () => {
+    renderView(servicesData(), { url: { tab: "waitlist" } });
+    await userEvent.click(screen.getByRole("button", { name: "Apuntar a alguien" }));
+    const dialog = await screen.findByRole("dialog", { name: "Apuntar en la lista de espera" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Cliente/ }), "Tomás Vera");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Barba · 30 min" }));
+    // Leaving the name says nothing about the phone yet.
+    expect(within(dialog).queryByText("Escribe el teléfono de quien se apunta.")).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Apuntar" })).toBeDisabled();
+    const phone = within(dialog).getByRole("textbox", { name: /Teléfono/ });
+    await userEvent.click(phone);
+    await userEvent.tab();
+    expect(await within(dialog).findByText("Escribe el teléfono de quien se apunta.")).toBeInTheDocument();
+    await userEvent.type(phone, "+56 9 1234");
+    await userEvent.tab();
+    expect(await within(dialog).findByText("El teléfono tiene que tener entre 8 y 15 cifras, contando el prefijo.")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Apuntar" }));
+    expect(a.addWaitlistAction).not.toHaveBeenCalled();
   });
 
   it("closing with something written asks before discarding it (spec 056, 12.3)", async () => {
