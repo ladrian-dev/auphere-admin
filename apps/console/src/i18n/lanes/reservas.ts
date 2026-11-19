@@ -353,10 +353,6 @@ export const reservasMessages = {
   "reservas.form.move.save": { es: "Mover reserva", en: "Move booking" },
   "reservas.form.notifyMove": { es: "Avisar a {name} del cambio por WhatsApp", en: "Tell {name} about the change on WhatsApp" },
   "reservas.form.nameRequired": { es: "Escribe el nombre de quien reserva.", en: "Write the name of who is booking." },
-  "reservas.form.phoneInvalid": {
-    es: "Escribe el teléfono con su código, como +56 9 1234 5678.",
-    en: "Write the phone with its code, like +56 9 1234 5678.",
-  },
   "reservas.form.phonePrefix": {
     es: "Escribe el teléfono con el prefijo del país, como +56 9 1234 5678.",
     en: "Write the phone with its country prefix, like +56 9 1234 5678.",
@@ -681,9 +677,10 @@ export const reservasMessages = {
     en: "If a matching opening frees up, the agent offers it on WhatsApp.",
   },
   "reservas.wl.add.phone.hint": {
-    es: "Sin teléfono no se le puede avisar por WhatsApp.",
-    en: "Without a phone they can't be told on WhatsApp.",
+    es: "Hace falta para avisarle por WhatsApp cuando se libere un hueco.",
+    en: "It is needed to tell them on WhatsApp when a slot opens up.",
   },
+  "reservas.wl.add.phoneRequired": { es: "Escribe el teléfono de quien se apunta.", en: "Write the phone of who is joining." },
   "reservas.wl.add.until": { es: "Cualquier hueco hasta", en: "Any opening until" },
   "reservas.wl.add.until.hint": { es: "Pasado ese día, sale de la lista.", en: "After that day, they leave the list." },
   "reservas.wl.add.nameRequired": { es: "Escribe el nombre del cliente.", en: "Write the client's name." },

@@ -12,8 +12,8 @@ import type { MessageKey } from "@/i18n/messages";
 import { useReservas } from "../context";
 import { addDays, formatMinutes, isDay } from "../model/dates";
 import { useIdempotencyKey } from "../model/idempotency";
+import { PHONE_PROBLEM_KEY, phoneProblem } from "../model/phone";
 import { failureMessage } from "../model/vocab";
-import { PHONE_RE } from "../services/booking-dialog";
 import { Chip } from "../shared";
 
 /** «Cualquier hueco hasta» starts a week ahead: the design's «Cualquier hueco esta semana». */
@@ -22,9 +22,9 @@ const DEFAULT_UNTIL_DAYS = 7;
 /**
  * «Apuntar a alguien» of Servicios (spec 043, T025; design §3.1 «el equipo
  * también puede apuntar»): a loose entry, without a booking — the name, the
- * phone if there is one (without it nobody can be told on WhatsApp), the
- * service, «Con» someone or anyone, and the last day any opening is good
- * for. `POST /waitlist` with the submit's Idempotency-Key, kept on a retry.
+ * phone (spec 064, 3.7: required, as when booking, because an offer of a slot
+ * only reaches someone by WhatsApp), the service, «Con» someone or anyone, and
+ * the last day any opening is good for. `POST /waitlist` with the submit's Idempotency-Key, kept on a retry.
  *
  * Spec 056: it validates like «Nueva reserva» (11.1) — each field says what is
  * missing when one leaves it, and «Apuntar» waits until the name, the service
@@ -43,6 +43,8 @@ export function AddWaitlistDialog({ onClose }: { onClose: () => void }) {
   const [staffId, setStaffId] = React.useState("");
   const [until, setUntil] = React.useState(addDays(today, DEFAULT_UNTIL_DAYS));
   const [touched, setTouched] = React.useState(false);
+  // Spec 064: the phone says what is wrong only once it was left, or on «Apuntar».
+  const [phoneTouched, setPhoneTouched] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -53,7 +55,10 @@ export function AddWaitlistDialog({ onClose }: { onClose: () => void }) {
   const lastDay = addDays(today, settings.agent.max_days_ahead);
 
   const nameOk = name.trim() !== "";
-  const phoneOk = !phone.trim() || PHONE_RE.test(phone.trim());
+  const problem = phoneProblem(phone);
+  const phoneOk = problem === null;
+  const phoneError =
+    phoneTouched && problem ? t(problem === "required" ? "reservas.wl.add.phoneRequired" : PHONE_PROBLEM_KEY[problem]) : null;
   const untilOk = isDay(until) && until >= today;
   const ready = nameOk && phoneOk && !!service && untilOk;
   const dirty = name.trim() !== "" || phone.trim() !== "" || serviceId !== firstService || staffId !== "" || until !== addDays(today, DEFAULT_UNTIL_DAYS);
@@ -62,11 +67,12 @@ export function AddWaitlistDialog({ onClose }: { onClose: () => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
+    setPhoneTouched(true);
     setError(null);
     if (!ready || !service) return;
     setBusy(true);
     try {
-      const payload = { name: name.trim(), phone: phone.trim() || null, service_id: service.id, staff_id: staffFor || null, date: null, until };
+      const payload = { name: name.trim(), phone: phone.trim(), service_id: service.id, staff_id: staffFor || null, date: null, until };
       const res = await addWaitlistAction({ ...payload, idempotencyKey: key.take(payload) });
       if (res.ok) {
         key.done();
@@ -116,9 +122,10 @@ export function AddWaitlistDialog({ onClose }: { onClose: () => void }) {
               </Field>
               <Field
                 label={t("reservas.form.phone")}
-                optionalLabel={t("reservas.optional")}
+                required
+                requiredLabel={t("reservas.required")}
                 hint={t("reservas.wl.add.phone.hint")}
-                error={touched && !phoneOk ? t("reservas.form.phoneInvalid") : null}
+                error={phoneError}
               >
                 {(a11y) => (
                   <Input
@@ -127,7 +134,7 @@ export function AddWaitlistDialog({ onClose }: { onClose: () => void }) {
                     inputMode="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    onBlur={() => setTouched(true)}
+                    onBlur={() => setPhoneTouched(true)}
                     placeholder={t("reservas.form.phone.placeholder")}
                     autoComplete="off"
                     maxLength={32}

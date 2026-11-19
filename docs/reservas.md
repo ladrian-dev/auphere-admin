@@ -320,8 +320,11 @@ dice que esa hora la confirma el negocio y ofrece pasar la conversación. `creat
 
 **El teléfono es obligatorio al reservar a mano desde la consola**, en los dos
 modos: empieza por `+` y tiene de 8 a 15 dígitos (`model/phone.ts`, `validPhone`).
-Lo exigen el formulario y su acción de servidor (`createSchema`). No lo piden la
-llegada sin reserva, mover una reserva que no lo tiene ni la lista de espera.
+Lo exigen el formulario y su acción de servidor (`createSchema`). Desde la enmienda
+del 2026-11-19 (3.7) también «Apuntar a alguien» en la lista de espera
+(`waitlist/add-waitlist-dialog.tsx`, `waitlistSchema`): sin teléfono la entrada no
+puede recibir la oferta de un hueco. No lo piden la llegada sin reserva, quien se
+apunta en persona en Aforo (`in_person`) ni mover una reserva que no lo tiene.
 **La API no cambia**: `contact.phone` sigue siendo opcional, porque la app móvil de
 hoy lo manda vacío. Con teléfono, la reserva se enlaza al contacto del negocio con
 ese número exacto, que la ve con `reservas.list_mine` y recibe sus avisos

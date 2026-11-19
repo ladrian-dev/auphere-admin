@@ -51,10 +51,16 @@ describe("reservas actions", () => {
       await expect(actions.createBookingAction({ ...body, contact: { name: "Ana Pérez", phone } })).rejects.toThrow();
     }
     expect(h.backend.reservasCreateBooking.mock.calls.length).toBe(before);
-    // The waitlist keeps its own rule: a phone is still optional there.
+    // Spec 064 (3.7): putting someone on the waitlist from the console needs the phone too…
+    for (const phone of [null, "", "600123456", "+34 600"]) {
+      await expect(actions.addWaitlistAction({ name: "Ana", phone, service_id: SERVICE, staff_id: null, date: null, until: null, idempotencyKey: KEY })).rejects.toThrow();
+      await expect(actions.addWaitlistAction({ name: "Ana", phone, party_size: 2, date: "2026-10-23", time: "20:30", idempotencyKey: KEY })).rejects.toThrow();
+    }
+    expect(h.backend.reservasAddWaitlist).not.toHaveBeenCalled();
+    // …except someone who is there, at the door of an Aforo business.
     h.backend.reservasAddWaitlist.mockResolvedValue({ id: ID });
-    await actions.addWaitlistAction({ name: "Ana", phone: null, service_id: SERVICE, staff_id: null, date: null, until: null, idempotencyKey: KEY });
-    expect(h.backend.reservasAddWaitlist).toHaveBeenCalled();
+    await actions.addWaitlistAction({ name: "Ana", phone: null, party_size: 2, date: "2026-10-23", time: "20:30", in_person: true, idempotencyKey: KEY });
+    expect(h.backend.reservasAddWaitlist).toHaveBeenCalledWith({ name: "Ana", phone: null, party_size: 2, date: "2026-10-23", time: "20:30", in_person: true }, KEY);
   });
 
   it("move, cancel and every transition carry the version they read (If-Match)", async () => {
@@ -202,9 +208,9 @@ describe("reservas actions", () => {
     );
     await actions.walkinAction({ party_size: 4, name: null, idempotencyKey: KEY });
     expect(h.backend.reservasWalkin).toHaveBeenCalledWith({ party_size: 4, name: null }, KEY);
-    await actions.addWaitlistAction({ name: "Marta", phone: null, party_size: 2, date: "2026-10-23", time: "20:30", idempotencyKey: KEY });
+    await actions.addWaitlistAction({ name: "Marta", phone: "+56 9 2222 3333", party_size: 2, date: "2026-10-23", time: "20:30", idempotencyKey: KEY });
     expect(h.backend.reservasAddWaitlist).toHaveBeenCalledWith(
-      { name: "Marta", phone: null, party_size: 2, date: "2026-10-23", time: "20:30", in_person: false },
+      { name: "Marta", phone: "+56 9 2222 3333", party_size: 2, date: "2026-10-23", time: "20:30", in_person: false },
       KEY,
     );
     // Servicios: «Apuntar a alguien» — a service, anyone or someone, any opening until a day.

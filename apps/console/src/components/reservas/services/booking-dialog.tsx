@@ -18,9 +18,6 @@ import { useActionLoad } from "../model/use-load";
 import { failureMessage, firstName } from "../model/vocab";
 import { Chip, ChipGroup } from "../shared";
 
-/** The waitlist's phone, which stays optional (a booking made by hand uses `validPhone`). */
-export const PHONE_RE = /^\+?[0-9 ()-]{6,24}$/;
-
 /**
  * «Nueva reserva» and «Mover la reserva» of Servicios (spec 043, T023): the
  * same dialog. Time chips are the **real** openings (`GET /slots`, never

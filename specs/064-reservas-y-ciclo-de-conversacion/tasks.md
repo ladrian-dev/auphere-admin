@@ -391,14 +391,27 @@ Las historias 1, 2 y 3 no dependen de esta fase.
 
   Después de los arreglos: `verify.sh lint` en verde, 87 pruebas de la API y 32 del worker sobre lo tocado, y los generados de la app al día.
 
-- [ ] T047 Recorrido en el navegador con la consola en local ([quickstart.md](quickstart.md), «En el navegador»), o anotar por qué no se pudo.
+- [x] T047 Recorrido en el navegador con la consola en local ([quickstart.md](quickstart.md), «En el navegador»), o anotar por qué no se pudo.
 
   _Requisitos: 1.1, 2.1, 2.6, 3.1, 5.1_
 
-  **No hecho (2026-11-18).** Verlo de verdad pide la API de esta rama con la migración `0236` aplicada, la consola de esta rama y una persona de cliente con sesión. La API que corre en local es la imagen del checkout principal, sobre una base sin la migración, y montar otra pila con su inicio de sesión no cabía en esta sesión. Lo cubren por ahora las pruebas de componente y `next build`. Queda pendiente, aquí o en staging (T048).
+  **Hecho en staging el 2026-11-19**, no en local, con la persona de «Jemma's Hair OLD» en el navegador de la app (`develop` `39a4dc37`). Ver T048.
 - [ ] T048 En staging, después de fusionar en `develop`: los seis pasos de [quickstart.md](quickstart.md) (CE-001 a CE-009).
 
   _Requisitos: CE-001 a CE-009_
+
+  **En curso (2026-11-19, `develop` `39a4dc37`).** Despliegue en verde, con la tubería `ci` en verde en el mismo commit. La migración `0236` se aplicó y `inbox-autoclose-cron` arrancó en el planificador a las 18:38 UTC. Probado en la consola, con la persona de «Jemma's Hair OLD»:
+  - **Antelación (1.1 a 1.3, 1.7):** «Citas que da el agente» sale en Ajustes con 1 h, el valor de siempre. Pasar a «Sin antelación» dice «Guardado.» y se mantiene al recargar.
+  - **Teléfono (3.1 a 3.3):** obligatorio, sin «Opcional» y con su ayuda. Salir del nombre no muestra el error del teléfono. Vacío, `600123456` y `+56 9 1234` dan cada uno su error. Con `+56 9 1111 2222` no hay error. Se cerró sin guardar.
+  - **Corregir «Atendida» (2.1 a 2.4):** sobre «QA sincronización Google», del lunes 16 y atendida, «No asistió» la deja en no-show con su línea en el historial («Luis Matos (Auphere) la marcó como no asistió»). «Deshacer» la devuelve a «Atendida» con su línea («deshizo la última marca»). Quedó como estaba.
+  - **Ajustes de la Bandeja (5.1):** el engranaje (32×32) abre el diálogo con «Nunca». «Tras 30 días» dice «Guardado.», y se volvió a «Nunca».
+  - **Visto de paso:** el aviso de «No asistió» en Servicios dice «Marcada como no vino.». El texto es anterior a esta spec y no sigue el vocabulario del modo.
+
+  Falta:
+  - **CE-001, CE-002 y CE-007:** lo que dice el agente. Se intentó por WhatsApp el 2026-11-19 y no llegó nada a staging. El único número de los dos clientes de Jemma (`+58 422 405 0077`) está desconectado en staging, y en la última hora y media no entró ningún webhook. CE-001 y CE-002 se pueden probar en el probador del agente, desde la consola del partner de Jemma. CE-007 necesita un número conectado. La antelación de «Jemma's Hair OLD» se devolvió a 1 h.
+  - **CE-005:** que la agenda se ponga al día sola cuando termina una cita.
+  - **CE-008:** el cierre por inactividad, al día siguiente.
+  - **CE-009:** la app móvil.
 
 ---
 
@@ -408,6 +421,30 @@ Las historias 1, 2 y 3 no dependen de esta fase.
 - **T043.** Con el código final: los 13 ficheros de la API de esta spec y sus vecinos, 154 pruebas; los 4 del worker, 35. Antes de los tres últimos cambios (la frase de auditoría, el vallado del nombre y qué cuenta como aviso), las suites anchas dieron: API unitarias 3368 bien y 1 en rojo (`test_console_audit_words`, la frase que faltaba, ya añadida y en verde), Reservas + lite + 064 de integración 415, y aislamiento entero 3984. Después terminaron también el worker entero (1049) y `apps/mcp` (329), en verde. **Las suites anchas no se repitieron después de esos tres cambios.**
 - **T044.** `pnpm build` de la consola en verde. La primera vez falló: un componente de cliente importaba un valor de un módulo de servidor. Consola entera: 2335 pruebas en 259 ficheros, `tsc` y `eslint` sin avisos. App móvil con los tres generados al día: `tsc`, `gen:check` y 442 pruebas de jest en verde.
 - **Pendiente:** T047 (navegador) y T048 (staging). T045 y T046 se cerraron el 2026-11-19.
+
+---
+
+## Phase 9: Enmienda del 2026-11-19 — el teléfono también en la lista de espera (hotfix)
+
+**Goal**: apuntar a alguien en la lista de espera desde la consola pide teléfono, como reservar. Va como hotfix sobre `main`, rama `hotfix/064-telefono-lista-de-espera`.
+
+- [x] T049 [US3] Pruebas en rojo:
+  - `apps/console/src/components/reservas/__tests__/waitlist-and-settings.test.tsx`: «Apuntar a alguien» no deja apuntar sin teléfono. El campo es obligatorio, sin «Opcional» y con su ayuda. Vacío, sin prefijo y demasiado corto dan cada uno su error. Salir del nombre no muestra el del teléfono.
+  - `apps/console/src/app/(console)/reservas/__tests__/actions.test.ts`: `addWaitlistAction` sin teléfono, o con uno no válido, lanza y no llama al backend. La llegada en persona de Aforo (`in_person: true`) sigue sin teléfono.
+
+  _Requisitos: 3.7_
+- [x] T050 [US3] En `apps/console/src/components/reservas/waitlist/add-waitlist-dialog.tsx`: `phoneProblem` y `PHONE_PROBLEM_KEY`, con su propio «tocado». En `apps/console/src/app/(console)/reservas/actions.ts`: `waitlistSchema` exige `bookingPhone` salvo con `in_person`. Textos en `apps/console/src/i18n/lanes/reservas.ts`. `docs/reservas.md` al día. T049 en verde.
+
+  _Requisitos: 3.7_
+- [x] T051 `verify.sh lint`, las pruebas de Reservas de la consola y `next build`, y los generados de la app al día.
+
+  _Requisitos: 3.7_
+
+  Resultado (2026-11-19, rama `hotfix/064-telefono-lista-de-espera` sobre `main` `71cf0856`):
+  - consola: `src/components/reservas`, las acciones de Reservas y `src/i18n`, 280 pruebas;
+  - `tsc` y `eslint` sin avisos, y `next build` en verde;
+  - los textos de la app, al día;
+  - `verify.sh lint` no hacía falta: no se tocó Python.
 
 ## Dependencies & Execution Order
 
