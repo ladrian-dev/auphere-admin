@@ -216,6 +216,15 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     last_attended_inbound_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Spec 064 (migración 0236): una conversación resuelta empieza de cero.
+    #: Desde cuándo lee el agente el hilo. ``NULL`` = desde ``attended_at``. La
+    #: Bandeja no lo usa: sigue enseñando el hilo entero.
+    context_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Lo pone ``inbox_lifecycle.resolve``: la próxima reapertura por el
+    #: contacto o por un aviso del sistema corta. Una persona que reabre no.
+    cut_on_reopen: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     # Spec 047 (migración 0176). Todo entrante se guarda antes de las puertas;
     # la puerta que no deja contestar escribe aquí su código (``WAITING_REASONS``)
     # y la conversación pasa a la Bandeja con él.

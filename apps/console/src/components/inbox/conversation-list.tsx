@@ -7,6 +7,7 @@ import { useT } from "@/i18n/client";
 import type { InboxCounts, InboxFilter, InboxPage } from "@/lib/backend/inbox";
 
 import { ConversationRow } from "./conversation-row";
+import { InboxSettings } from "./inbox-settings";
 
 /** The id the global search (⌘K) focuses — R7.4. */
 export const INBOX_SEARCH_ID = "inbox-search";
@@ -93,19 +94,23 @@ export function ConversationList({
   return (
     <section aria-label={t("inbox.list")} className="flex min-h-0 min-w-0 flex-col">
       <div className="flex flex-col gap-2 p-3">
-        <label className="flex h-8 items-center gap-2 rounded-sm border border-border-strong bg-card px-3 text-muted-foreground focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring">
-          <Search className="size-4 shrink-0" aria-hidden="true" />
-          <span className="sr-only">{t("inbox.search.label")}</span>
-          <input
-            id={INBOX_SEARCH_ID}
-            type="search"
-            value={query}
-            onChange={(e) => onQuery(e.target.value)}
-            placeholder={t("inbox.search")}
-            maxLength={120}
-            className="min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-          />
-        </label>
+        <div className="flex min-w-0 items-center gap-1">
+          <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-sm border border-border-strong bg-card px-3 text-muted-foreground focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring">
+            <Search className="size-4 shrink-0" aria-hidden="true" />
+            <span className="sr-only">{t("inbox.search.label")}</span>
+            <input
+              id={INBOX_SEARCH_ID}
+              type="search"
+              value={query}
+              onChange={(e) => onQuery(e.target.value)}
+              placeholder={t("inbox.search")}
+              maxLength={120}
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            />
+          </label>
+          {/* Spec 064 (5.1): the Inbox's settings, next to what the list is searched by. */}
+          <InboxSettings />
+        </div>
         <div role="group" aria-label={t("inbox.filters")} className="flex flex-wrap gap-1">
           {FILTERS.map((f) => (
             <Button

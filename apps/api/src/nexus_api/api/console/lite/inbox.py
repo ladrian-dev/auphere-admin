@@ -33,6 +33,7 @@ from nexus_api.db.models import (
     Channel,
     ChannelStatus,
     ChannelType,
+    ClientAccess,
     ContactNote,
     Conversation,
     ConversationEventKind,
@@ -1000,6 +1001,62 @@ async def set_note(
 
 def _reply_out(r: SavedReply) -> ReplyOut:
     return ReplyOut(id=r.id, title=r.title, body=r.body)
+
+
+# ── settings (spec 064, requisito 5) ───────────────────────────────────
+
+
+class InboxSettingsOut(BaseModel):
+    #: Hours without messages after which a conversation the agent answers is
+    #: resolved on its own. ``None`` = never (the starting value).
+    autoclose_hours: int | None
+
+
+class InboxSettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    autoclose_hours: int | None
+
+
+async def _access(scope: LiteScope) -> ClientAccess:
+    """The client's own row, under its RLS: the client is the request's, never
+    a field of the body."""
+    access = await scope.session.get(ClientAccess, scope.principal.tenant_id)
+    if access is None:  # the scope already needs the module, which lives in this row
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No inbox settings")
+    return access
+
+
+@router.get("/settings", response_model=InboxSettingsOut)
+async def read_settings(scope: LiteScope = Depends(lite_scope("inbox"))) -> InboxSettingsOut:
+    return InboxSettingsOut(autoclose_hours=(await _access(scope)).inbox_autoclose_hours)
+
+
+@router.patch("/settings", response_model=InboxSettingsOut)
+async def patch_settings(
+    body: InboxSettingsIn, scope: LiteScope = Depends(lite_scope("inbox"))
+) -> InboxSettingsOut:
+    hours = body.autoclose_hours
+    if hours is not None and hours not in inbox_lifecycle.AUTOCLOSE_HOURS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "invalid", "field": "autoclose_hours"},
+        )
+    access = await _access(scope)
+    before = access.inbox_autoclose_hours
+    if hours != before:
+        access.inbox_autoclose_hours = hours
+        scope.session.add(
+            AuditLog(
+                tenant_id=scope.principal.tenant_id,
+                actor=scope.principal.actor,
+                action="inbox.settings_changed",
+                target=f"tenant:{scope.principal.tenant_id}",
+                before_json={"autoclose_hours": before},
+                after_json={"autoclose_hours": hours},
+            )
+        )
+        await scope.session.flush()
+    return InboxSettingsOut(autoclose_hours=hours)
 
 
 @router.get("/replies", response_model=list[ReplyOut])

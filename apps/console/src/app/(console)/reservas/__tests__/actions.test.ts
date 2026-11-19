@@ -43,6 +43,20 @@ describe("reservas actions", () => {
     );
   });
 
+  it("spec 064 (3.1, 3.2): a booking made by hand needs a phone with its country prefix, checked before asking the API", async () => {
+    h.setClient(["reservas"]);
+    const before = h.backend.reservasCreateBooking.mock.calls.length;
+    const body = { date: "2026-10-23", time: "10:00", staff_id: STAFF, service_id: SERVICE, idempotencyKey: KEY };
+    for (const phone of [null, "", "600123456", "+34 600", "+34 6oo 123 456"]) {
+      await expect(actions.createBookingAction({ ...body, contact: { name: "Ana Pérez", phone } })).rejects.toThrow();
+    }
+    expect(h.backend.reservasCreateBooking.mock.calls.length).toBe(before);
+    // The waitlist keeps its own rule: a phone is still optional there.
+    h.backend.reservasAddWaitlist.mockResolvedValue({ id: ID });
+    await actions.addWaitlistAction({ name: "Ana", phone: null, service_id: SERVICE, staff_id: null, date: null, until: null, idempotencyKey: KEY });
+    expect(h.backend.reservasAddWaitlist).toHaveBeenCalled();
+  });
+
   it("move, cancel and every transition carry the version they read (If-Match)", async () => {
     h.setClient(["reservas"]);
     await actions.moveBookingAction({ id: ID, version: 3, date: "2026-10-24", time: "11:30", notify: false });
@@ -69,7 +83,7 @@ describe("reservas actions", () => {
       date: "2026-10-23",
       time: "21:00",
       party_size: 10,
-      contact: { name: "Grupo", phone: null },
+      contact: { name: "Grupo", phone: "+56 9 1111 2222" },
       idempotencyKey: KEY,
     });
     expect(r).toMatchObject({ ok: false, status: 409, code: "slot_taken", info: { first_fit: { time: "21:30" } } });
@@ -217,7 +231,7 @@ describe("reservas actions", () => {
         date: "2026-10-23",
         time: "10:00",
         party_size: 2,
-        contact: { name: "Ana", phone: null },
+        contact: { name: "Ana", phone: "+56 9 1111 2222" },
         idempotencyKey: KEY,
       }),
     ).toEqual(forbidden);
@@ -228,13 +242,13 @@ describe("reservas actions", () => {
   it("validates before asking: no write leaves without its key, a name, a real day", async () => {
     h.setClient(["reservas"]);
     await expect(
-      actions.createBookingAction({ date: "2026-10-23", time: "10:00", contact: { name: "Ana", phone: null } }),
+      actions.createBookingAction({ date: "2026-10-23", time: "10:00", contact: { name: "Ana", phone: "+56 9 1111 2222" } }),
     ).rejects.toThrow();
     await expect(
-      actions.createBookingAction({ date: "2026-10-23", time: "10:00", contact: { name: "   ", phone: null }, idempotencyKey: KEY }),
+      actions.createBookingAction({ date: "2026-10-23", time: "10:00", contact: { name: "   ", phone: "+56 9 1111 2222" }, idempotencyKey: KEY }),
     ).rejects.toThrow();
     await expect(
-      actions.createBookingAction({ date: "23/10/2026", time: "10:00", contact: { name: "Ana", phone: null }, idempotencyKey: KEY }),
+      actions.createBookingAction({ date: "23/10/2026", time: "10:00", contact: { name: "Ana", phone: "+56 9 1111 2222" }, idempotencyKey: KEY }),
     ).rejects.toThrow();
     await expect(actions.moveBookingAction({ id: ID, notify: true })).rejects.toThrow();
     await expect(actions.bookingDetailAction({ id: "not-a-uuid" })).rejects.toThrow();

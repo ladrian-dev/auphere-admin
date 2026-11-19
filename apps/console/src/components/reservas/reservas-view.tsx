@@ -41,6 +41,70 @@ export type ReservasInitial = {
   booking?: string | null;
 };
 
+/** Spec 064 (2.6): how often the open screen reads again, while the tab is visible. */
+const REFRESH_MS = 45_000;
+/** Coming back to the tab reads at once, unless the read on screen is this recent. */
+const FRESH_MS = 15_000;
+/** Spec 064 (2.9): with no new read for this long, the screen says it may be out of date. */
+const STALE_MS = 150_000;
+
+const urlKey = (u: ReservasUrl) => [u.tab, u.view, u.period, u.date, u.staff ?? ""].join("|");
+
+/**
+ * Spec 064 (2.9): a read that comes back empty, or with a part that failed,
+ * does not take away what the person had in front of them. The last whole read
+ * of the same tab and period stays on screen, and `kept` says it is not fresh.
+ * The first read has nothing to fall back on: it shows its error as before.
+ */
+function useLastGood(initial: ReservasInitial): { shown: ReservasInitial; kept: boolean } {
+  const whole = initial.data !== null && initial.errors.length === 0;
+  const [good, setGood] = React.useState<ReservasInitial | null>(whole ? initial : null);
+  if (whole && good !== initial) setGood(initial);
+  if (!whole && good && urlKey(good.url) === urlKey(initial.url)) return { shown: good, kept: true };
+  return { shown: initial, kept: false };
+}
+
+/**
+ * Spec 064 (2.6 a 2.8): the server reads again every 45 s while the tab is
+ * visible, and at once when it is seen again after a while. `router.refresh()`
+ * keeps the state of the client components, so an open dialog and what is typed
+ * in it stay; it runs outside the transition that dims the screen. `read` is the
+ * server's instant of the read on screen: when it stops changing, the screen
+ * says so (`true`).
+ */
+function useAutoRefresh(read: string): boolean {
+  const router = useRouter();
+  const readAt = React.useRef(0);
+  const [overdue, setOverdue] = React.useState(false);
+  const [seen, setSeen] = React.useState(read);
+  if (seen !== read) {
+    setSeen(read);
+    setOverdue(false);
+  }
+  React.useEffect(() => {
+    readAt.current = Date.now();
+  }, [read]);
+  React.useEffect(() => {
+    const visible = () => document.visibilityState === "visible";
+    const again = () => {
+      if (Date.now() - readAt.current > STALE_MS) setOverdue(true);
+      router.refresh();
+    };
+    const id = window.setInterval(() => {
+      if (visible()) again();
+    }, REFRESH_MS);
+    const onVisibility = () => {
+      if (visible() && Date.now() - readAt.current > FRESH_MS) again();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [router]);
+  return overdue;
+}
+
 /** «Now», ticking every 30 s from the server's instant. */
 function useNow(iso: string): Date {
   const [now, setNow] = React.useState(() => new Date(iso));
@@ -60,7 +124,9 @@ function useNow(iso: string): Date {
 export function ReservasView({ initial }: { initial: ReservasInitial }) {
   const t = useT();
   const router = useRouter();
-  if (initial.data === null) {
+  const { shown, kept } = useLastGood(initial);
+  const overdue = useAutoRefresh(initial.nowIso);
+  if (shown.data === null) {
     return (
       <>
         <PageHeader title={t("reservas.title")} size="compact" />
@@ -68,10 +134,10 @@ export function ReservasView({ initial }: { initial: ReservasInitial }) {
       </>
     );
   }
-  return <Loaded initial={initial} data={initial.data} />;
+  return <Loaded initial={shown} data={shown.data} stale={kept || overdue} />;
 }
 
-function Loaded({ initial, data }: { initial: ReservasInitial; data: ReservasData }) {
+function Loaded({ initial, data, stale }: { initial: ReservasInitial; data: ReservasData; stale: boolean }) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
@@ -129,6 +195,20 @@ function Loaded({ initial, data }: { initial: ReservasInitial; data: ReservasDat
     <ReservasProvider value={ctx}>
       <Header />
       {settings.hours_missing ? <HoursMissing /> : null}
+      {/* Always mounted, so a screen reader hears it when it appears (WCAG 4.1.3). */}
+      <p role="status" data-slot="reservas-stale-live" className="sr-only">
+        {stale ? t("reservas.stale") : ""}
+      </p>
+      {stale ? (
+        <Alert role="none">
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            {t("reservas.stale")}
+            <Button size="xs" variant="outline" onClick={ctx.refresh}>
+              {t("common.retry")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {initial.errors.length > 0 ? (
         <Alert role="status">
           <AlertDescription className="flex flex-wrap items-center gap-2">

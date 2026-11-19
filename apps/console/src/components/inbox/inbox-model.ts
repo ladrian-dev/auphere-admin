@@ -139,3 +139,7 @@ export function initialsOf(name: string | null | undefined): string {
 export function isMe(author: InboxAuthor | null | undefined): boolean {
   return Boolean(author && author.kind === "member" && author.is_me);
 }
+
+/** Spec 064 (requisito 5.1): the terms the Inbox offers for closing a silent conversation, in hours. */
+export const INBOX_AUTOCLOSE_HOURS = [24, 72, 168, 720] as const;
+export type InboxAutoclose = (typeof INBOX_AUTOCLOSE_HOURS)[number];

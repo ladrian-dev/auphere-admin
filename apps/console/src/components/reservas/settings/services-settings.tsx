@@ -46,7 +46,7 @@ import { failureMessage } from "../model/vocab";
 import { Initials } from "../shared";
 import { HoursEditor } from "./hours-editor";
 import { ReservasTemplatesSection } from "./reservas-templates";
-import { BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
+import { AgentNoticeSettings, BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
 import { StaffCalendarsSection } from "./staff-calendars";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -75,6 +75,7 @@ export function ServicesSettings() {
   return (
     <div className="grid min-w-0 gap-6 xl:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-6">
+        <AgentNoticeSettings />
         <WaitlistSettings />
         <Reminders />
         <ReservasTemplatesSection />

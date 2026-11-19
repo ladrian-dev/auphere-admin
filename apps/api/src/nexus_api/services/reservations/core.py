@@ -50,6 +50,9 @@ ARRIVE_EARLY = timedelta(minutes=30)
 LATE_AFTER = timedelta(minutes=15)
 #: «Pedir confirmación» no se repite antes de 30 min.
 ASK_AGAIN_AFTER = timedelta(minutes=30)
+#: Spec 064 (requisito 2): cuánto tiempo, desde su hora de fin, se puede corregir
+#: una cita de Servicios que el sistema cerró como ``done``.
+CORRECTION_WINDOW = timedelta(days=7)
 
 
 class ReservationError(Exception):
@@ -873,6 +876,14 @@ def allowed_actions(ctx: Ctx, res: Reservation, now: datetime) -> list[str]:
         out.append("noshow")
     if res.status in ("arrived", "noshow") and today and res.origin != "walkin":
         out.append("undo")
+    # Spec 064 (2.1, 2.3, 2.5): lo que el sistema cerró solo se puede corregir, y
+    # volver atrás, durante 7 días. Solo en Servicios: en Aforo ``done`` llega
+    # después de que alguien marcara «Llegó».
+    if res.mode == "services" and res.ends_at <= now <= res.ends_at + CORRECTION_WINDOW:
+        if res.status == "done":
+            out.append("noshow")
+        elif res.status == "noshow" and "undo" not in out:
+            out.append("undo")
     return out
 
 
@@ -899,7 +910,10 @@ async def transition(
         res.status = "noshow"
         add_event(session, res, "noshow", actor)
     elif action == "undo":
-        res.status = "confirmed"
+        # Spec 064 (2.3): una cita de Servicios ya terminada vuelve a «Atendida»,
+        # nunca a «Confirmada», y no espera al cron para cerrarse otra vez.
+        over = res.mode == "services" and res.status == "noshow" and res.ends_at <= now
+        res.status = "done" if over else "confirmed"
         res.arrived_at = None
         add_event(session, res, "undone", actor)
     elif action == "request_confirmation":
@@ -928,6 +942,7 @@ def late_minutes(res: Reservation, now: datetime) -> int | None:
 
 
 __all__ = [
+    "CORRECTION_WINDOW",
     "EVENT_MOVED",
     "SYSTEM",
     "Actor",

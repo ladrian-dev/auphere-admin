@@ -93,6 +93,9 @@ ALL_EXPECTED = {
     # se piden solas a Meta cada 15 min. En ``SCHEDULER_TASK_NAMES``, ``_spawn``
     # y aquí.
     "reservation-templates-cron",
+    # Spec 064 (requisito 5): el cierre por inactividad de la Bandeja, cada 5 min.
+    # En ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
+    "inbox-autoclose-cron",
     # Spec 047 (T037): la conciliación diaria con Meta.
     "meta-reconciliation-cron",
     # Spec 047 (T149): retiradas, cambios de precio y «No disponible» del catálogo.

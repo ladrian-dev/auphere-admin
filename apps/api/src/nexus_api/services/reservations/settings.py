@@ -23,6 +23,9 @@ class SettingsError(ValueError):
 
 
 LEAD_MINUTES: Final = (60, 120, 240, 1440)
+#: Spec 064 (requisito 1.2): la antelación mínima con la que el agente da
+#: citas. 0 es «sin antelación». El valor de partida sigue siendo 60.
+NOTICE_MINUTES: Final = (0, 15, 30, 60, 120, 240, 1440)
 SLOT_STEPS: Final = (15, 30, 60)
 SCHEDULE_STEPS: Final = (15, 30, 60, 90, 120)
 
@@ -182,10 +185,9 @@ def apply_patch(row: ReservationSettings, patch: dict[str, Any]) -> None:
     if "agent" in patch:
         a = patch["agent"] or {}
         if "min_notice_minutes" in a:
-            v = int(a["min_notice_minutes"])
-            if not 0 <= v <= 1440:
-                raise SettingsError("agent.min_notice_minutes", "0 to 1440")
-            row.agent_min_notice_minutes = v
+            if a["min_notice_minutes"] not in NOTICE_MINUTES:
+                raise SettingsError("agent.min_notice_minutes", f"one of {NOTICE_MINUTES}")
+            row.agent_min_notice_minutes = int(a["min_notice_minutes"])
         if "max_days_ahead" in a:
             v = int(a["max_days_ahead"])
             if not 1 <= v <= 365:
@@ -238,6 +240,7 @@ def _apply_capacity(row: ReservationSettings, c: dict[str, Any]) -> None:
 __all__ = [
     "KIND_DEFAULTS",
     "LEAD_MINUTES",
+    "NOTICE_MINUTES",
     "SettingsError",
     "apply_defaults",
     "apply_patch",

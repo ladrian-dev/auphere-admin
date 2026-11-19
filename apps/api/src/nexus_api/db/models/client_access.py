@@ -23,6 +23,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     text,
 )
@@ -89,6 +90,10 @@ class ClientAccess(TimestampMixin, Base):
             "modules <@ ARRAY['panel','inbox','usage','reservas']::varchar[]",
             name="ck_client_access_modules",
         ),
+        CheckConstraint(
+            "inbox_autoclose_hours IS NULL OR inbox_autoclose_hours IN (24, 72, 168, 720)",
+            name="ck_client_access_inbox_autoclose",
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -104,6 +109,9 @@ class ClientAccess(TimestampMixin, Base):
         ARRAY(String(16)), nullable=False, default=list, server_default=text("'{}'")
     )
     updated_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    #: Spec 064 (migración 0236, requisito 5): el plazo sin mensajes tras el que
+    #: una conversación que lleva el agente se resuelve sola. ``NULL`` = nunca.
+    inbox_autoclose_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     def ordered_modules(self, *, also: tuple[str, ...] = ()) -> tuple[str, ...]:
         """Los módulos del cliente en el orden de la barra, sin repetidos.

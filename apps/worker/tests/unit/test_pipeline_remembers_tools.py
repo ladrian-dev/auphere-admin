@@ -99,7 +99,10 @@ async def test_the_note_goes_after_the_history_and_outside_the_cached_header(
 
     class _Session:
         async def execute(self, _query: Any) -> Any:
-            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
+            # The messages, and (spec 064) the conversation's cut: none here.
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: rows), first=lambda: None
+            )
 
     @asynccontextmanager
     async def _sessions() -> AsyncIterator[_Session]:

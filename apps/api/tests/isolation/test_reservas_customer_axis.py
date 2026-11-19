@@ -274,3 +274,81 @@ async def test_without_the_module_no_tool_works(shop, db_session) -> None:
     await db_session.commit()
     with pytest.raises(ToolError, match="Reservas no está activo"):
         await _call(shop["registry"], shop["tenant_id"], shop["ana"], "reservas.services", {})
+
+
+# ── spec 064, requisito 3.6: la reserva hecha a mano y su contacto ───────────
+#
+# Con el teléfono obligatorio en la consola, toda reserva hecha a mano queda
+# enlazada a un contacto del negocio, que luego la ve con ``reservas.list_mine``
+# y recibe sus avisos. El enlace es por el número entero, dentro del negocio.
+
+LITE = "/console/lite/reservas"
+
+
+async def _by_hand(client: Any, shop: dict[str, Any], phone: str, at: str) -> uuid.UUID:
+    r = await client.post(
+        f"{LITE}/bookings",
+        headers=shop["headers"](),
+        json={
+            "date": future_day().isoformat(),
+            "time": at,
+            "staff_id": str(shop["lucia"]),
+            "service_id": str(shop["corte"]),
+            "contact": {"name": "Quien llama", "phone": phone},
+        },
+    )
+    assert r.status_code == 201, r.text
+    return uuid.UUID(r.json()["id"])
+
+
+async def _customer_of(tenant_id: uuid.UUID, booking_id: uuid.UUID) -> uuid.UUID | None:
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, tenant_id):
+        row = await session.get(Reservation, booking_id)
+        assert row is not None
+        return row.customer_id
+
+
+async def test_a_booking_made_by_hand_belongs_to_the_contact_with_that_number(client, shop) -> None:
+    r, tid = shop["registry"], shop["tenant_id"]
+    booking = await _by_hand(client, shop, "+56 9 1111 0000", "10:00")
+    assert await _customer_of(tid, booking) == shop["ana"]
+    mine = (await _call(r, tid, shop["ana"], "reservas.list_mine", {}))["bookings"]
+    assert [b["id"] for b in mine] == [str(booking)]
+    assert (await _call(r, tid, shop["bruno"], "reservas.list_mine", {}))["bookings"] == []
+
+
+@pytest.mark.parametrize(
+    "phone",
+    [
+        "+5692222000",  # el de Bruno sin su última cifra
+        "+569222200001",  # el de Bruno con una cifra más
+        "+2222 0000",  # solo su final
+    ],
+)
+async def test_a_number_that_only_looks_like_anothers_is_not_theirs(client, shop, phone) -> None:
+    r, tid = shop["registry"], shop["tenant_id"]
+    booking = await _by_hand(client, shop, phone, "11:00")
+    owner = await _customer_of(tid, booking)
+    assert owner is not None and owner not in (shop["ana"], shop["bruno"])
+    for who in ("ana", "bruno"):
+        assert (await _call(r, tid, shop[who], "reservas.list_mine", {}))["bookings"] == []
+
+
+async def test_the_same_number_in_another_business_is_another_contact(
+    client, shop, db_session, console_world
+) -> None:
+    other = console_world["b"]
+    theirs = await make_reservas(
+        db_session, partner_id=other["partner_id"], tenant_id=other["tenant_id"]
+    )
+    booking = await _by_hand(client, theirs, "+56 9 1111 0000", "10:00")
+    owner = await _customer_of(theirs["tenant_id"], booking)
+    assert owner is not None and owner != shop["ana"]
+    sm = get_sessionmaker()
+    async with sm() as session, tenant_scoped_session(session, theirs["tenant_id"]):
+        row = await session.get(Customer, owner)
+        assert row is not None and row.tenant_id == theirs["tenant_id"]
+    # Y Ana, en su negocio, no ve la reserva del otro.
+    mine = await _call(shop["registry"], shop["tenant_id"], shop["ana"], "reservas.list_mine", {})
+    assert mine["bookings"] == []

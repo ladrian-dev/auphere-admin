@@ -102,6 +102,13 @@ export type InboxCommentPost = { text: string | null; image_url: string | null; 
 export type InboxThread = { items: InboxThreadItem[]; next_before: string | null };
 export type InboxSent = { id: string; at: string; delivery: string };
 export type SavedReply = { id: string; title: string; body: string };
+/**
+ * Spec 064 (requisito 5.1): after how many hours without messages a conversation
+ * the agent answers is resolved on its own — 24, 72, 168 or 720. `null` = never,
+ * where it starts. (The list the screen offers lives in `components/inbox/inbox-model.ts`:
+ * this module is server-only, and a client component may only take its types.)
+ */
+export type InboxSettings = { autoclose_hours: 24 | 72 | 168 | 720 | null };
 
 /** Backend paths the BFF route handlers proxy. */
 export const inboxStreamPath = "/console/lite/inbox/stream";
@@ -145,6 +152,9 @@ export function inboxApi(call: Call) {
     inboxSuggestedTags: () => call<{ tags: string[] }>("/console/lite/inbox/tags"),
     inboxSetNote: (id: string, body: string) =>
       call<{ body: string; updated_at: string | null }>(`${C}/${enc(id)}/note`, { method: "PUT", body: { body } }),
+    inboxSettings: () => call<InboxSettings>("/console/lite/inbox/settings"),
+    inboxPatchSettings: (body: InboxSettings) =>
+      call<InboxSettings>("/console/lite/inbox/settings", { method: "PATCH", body }),
     inboxReplies: () => call<SavedReply[]>("/console/lite/inbox/replies"),
     inboxCreateReply: (body: { title: string; body: string }) =>
       call<SavedReply>("/console/lite/inbox/replies", { method: "POST", body }),

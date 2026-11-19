@@ -13,10 +13,12 @@ import type { Booking } from "@/lib/backend/reservas";
 import { useReservas, useWords, type NewPrefill } from "../context";
 import { formatMinutes, fromMinutes, openDays, toMinutes, weekdayOf } from "../model/dates";
 import { useIdempotencyKey } from "../model/idempotency";
+import { PHONE_PROBLEM_KEY, phoneProblem, validPhone } from "../model/phone";
 import { useActionLoad } from "../model/use-load";
 import { failureMessage, firstName } from "../model/vocab";
 import { Chip, ChipGroup } from "../shared";
 
+/** The waitlist's phone, which stays optional (a booking made by hand uses `validPhone`). */
 export const PHONE_RE = /^\+?[0-9 ()-]{6,24}$/;
 
 /**
@@ -52,6 +54,8 @@ export function ServicesBookingDialog({
   const [notify, setNotify] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [touched, setTouched] = React.useState(false);
+  // Spec 064: the phone says what is wrong only once it was left, or on «Guardar».
+  const [phoneTouched, setPhoneTouched] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [reload, setReload] = React.useState(0);
 
@@ -72,8 +76,10 @@ export function ServicesBookingDialog({
   const staffFor = chosen ? (staffId || chosen.staff_ids[0] || "") : staffId;
   const staffName = team.find((p) => p.id === staffFor)?.name ?? "";
   const nameError = !moving && touched && !name.trim() ? t("reservas.form.nameRequired") : null;
-  const phoneError = !moving && touched && phone.trim() && !PHONE_RE.test(phone.trim()) ? t("reservas.form.phoneInvalid") : null;
-  const ready = !!chosen && !!service && !!staffFor && (moving || (name.trim() !== "" && (!phone.trim() || PHONE_RE.test(phone.trim()))));
+  // Spec 064 (requisito 3): a booking made by hand carries a phone, with its country prefix.
+  const problem = moving ? null : phoneProblem(phone);
+  const phoneError = phoneTouched && problem ? t(PHONE_PROBLEM_KEY[problem]) : null;
+  const ready = !!chosen && !!service && !!staffFor && (moving || (name.trim() !== "" && validPhone(phone)));
   const contactName = booking?.contact.name ?? "";
   // Spec 056 (12.3): something written or chosen is not lost on a stray close.
   const [initial] = React.useState({ serviceId, staffId, date, time });
@@ -89,6 +95,7 @@ export function ServicesBookingDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
+    setPhoneTouched(true);
     setError(null);
     if (!ready || !service || !chosen) return;
     setBusy(true);
@@ -108,7 +115,7 @@ export function ServicesBookingDialog({
               time,
               staff_id: staffFor,
               service_id: service.id,
-              contact: { name: name.trim(), phone: phone.trim() || null },
+              contact: { name: name.trim(), phone: phone.trim() },
               note: null,
               join_waitlist: settings.waitlist.enabled && joinWaitlist,
               notify: true,
@@ -163,9 +170,9 @@ export function ServicesBookingDialog({
                     <Input {...a11y} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.client.placeholder")} autoComplete="off" maxLength={120} />
                   )}
                 </Field>
-                <Field label={t("reservas.form.phone")} optionalLabel={t("reservas.optional")} hint={t("reservas.form.phone.hint")} error={phoneError}>
+                <Field label={t("reservas.form.phone")} required requiredLabel={t("reservas.required")} hint={t("reservas.form.phone.hint")} error={phoneError}>
                   {(a11y) => (
-                    <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setTouched(true)} placeholder={t("reservas.form.phone.placeholder")} autoComplete="off" maxLength={32} />
+                    <Input {...a11y} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setPhoneTouched(true)} placeholder={t("reservas.form.phone.placeholder")} autoComplete="off" maxLength={32} />
                   )}
                 </Field>
               </div>

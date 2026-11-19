@@ -16,7 +16,7 @@ import { seatsStep } from "../model/occupancy";
 import { kindOf, stayOptions, stayTitleKey } from "../model/vocab";
 import { Segmented, Stepper, useWrite } from "../shared";
 import { ReservasTemplatesSection } from "./reservas-templates";
-import { BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
+import { AgentNoticeSettings, BusinessHoursSection, SwitchRow, WaitlistSettings, useSettingsPatch } from "./shared-sections";
 
 const STEPS = [15, 30, 60, 90, 120] as const;
 const WHEN: readonly ConfirmationWhen[] = ["24h", "same_day_12", "3h"];
@@ -42,6 +42,7 @@ export function CapacitySettings() {
         <div className="flex min-w-0 flex-col gap-6">
           <ConfirmationSection />
           <ReservasTemplatesSection />
+          <AgentNoticeSettings />
           <WaitlistSettings />
           <BusinessHoursSection />
           <BlocksSection />

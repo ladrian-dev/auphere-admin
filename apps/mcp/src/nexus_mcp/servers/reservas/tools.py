@@ -370,8 +370,12 @@ class FindSlots(ToolBase):
         "Free times on a day, only within the business's opening hours and its rules. "
         "Services mode: pass the service (service_id, or service_name as the customer said "
         "it) and the team member (staff_id or staff_name, or omit both for anyone). Capacity "
-        "mode: pass party_size. Offer only the returned times; if closed or empty, say so "
-        "and suggest first_fit or another day. If refused is unknown_service, unknown_staff, "
+        "mode: pass party_size. Offer only the times in slots; if closed or empty, say so "
+        "and suggest first_fit or another day. too_soon lists times that are free but closer "
+        "than the notice this business asks of you: do not offer or book them, and never say "
+        "there is no availability while too_soon has times; say the business confirms a time "
+        "that soon itself and offer to pass the conversation to a person. "
+        "If refused is unknown_service, unknown_staff, "
         "ambiguous_service or ambiguous_staff, the service or person was not recognised and "
         "nothing was searched: call again with one of the returned services/staff, or ask "
         "the customer; it says nothing about free times."
@@ -421,33 +425,41 @@ class FindSlots(ToolBase):
                     )
                 if not await staff_for_service(session, svc):
                     return FindSlotsOutput(date=payload.date, closed=True, why_closed=NO_STAFF)
+                # Spec 064 (1.5): one read from now on, split by the agent's notice.
                 free = await services_free(
                     session,
                     ctx,
                     day=payload.date,
                     service=svc,
                     staff_ids=[picked.staff_id] if picked.staff_id else None,
-                    not_before=not_before,
+                    not_before=now,
                 )
                 names = {s.id: s.name for s in await staff_for_service(session, svc)}
+                mine = {t: ids for t, ids in free.items() if _at(ctx, payload, t) >= not_before}
                 return FindSlotsOutput(
                     date=payload.date,
                     closed=False,
                     slots=[
                         SlotOut(time=t, staff=[StaffRef(id=i, name=names.get(i, "—")) for i in ids])
-                        for t, ids in free.items()
+                        for t, ids in mine.items()
                     ],
+                    too_soon=[t for t in free if t not in mine],
                 )
             n = payload.party_size or 1
             if n > (ctx.settings.max_party or n):
                 return FindSlotsOutput(date=payload.date, closed=False, why_closed="too_large")
             cap = await capacity_day(session, ctx, payload.date)
             slots: list[SlotOut] = []
+            too_soon: list[str] = []
             for s in cap.slots:
-                if s.at < not_before:
+                if s.at < now:
                     continue
                 fit = capacity_fit(cap.slots, cap.blocked, cap.people, cap.rules, s.at, n, now=now)
-                if fit.fits:
+                if not fit.fits:
+                    continue
+                if s.at < not_before:
+                    too_soon.append(s.at.strftime("%H:%M"))
+                else:
                     slots.append(SlotOut(time=s.at.strftime("%H:%M"), left=fit.left))
             nxt = first_fit(cap.slots, cap.blocked, cap.people, cap.rules, n, now=not_before)
             return FindSlotsOutput(
@@ -455,11 +467,18 @@ class FindSlots(ToolBase):
                 closed=not cap.slots,
                 slots=slots,
                 first_fit=nxt.strftime("%H:%M") if nxt else None,
+                too_soon=too_soon,
             )
 
 
 def _notice(ctx: Ctx) -> timedelta:
     return timedelta(minutes=ctx.settings.agent_min_notice_minutes)
+
+
+def _at(ctx: Ctx, payload: FindSlotsInput, hhmm: str) -> datetime:
+    """A slot's ``HH:MM`` on the searched day, in the business's time zone."""
+    at: datetime = ctx.at(payload.date, time.fromisoformat(hhmm))
+    return at
 
 
 class ListMine(ToolBase):
@@ -511,8 +530,10 @@ class Create(ToolBase):
         "is unknown_service, unknown_staff, ambiguous_service or ambiguous_staff, the time "
         "was NOT checked: call again in this turn with one of the returned services/staff, "
         "or ask the customer which one; never tell them the time is taken. Only 'slot_taken' "
-        "means the time is taken. Confirm the booking to the customer only when booking is "
-        "returned."
+        "means the time is taken. If refused is 'too_soon', the time is closer than the "
+        "notice this business asks of you: say the business confirms a time that soon itself "
+        "and offer to pass the conversation to a person; do not say it is taken. Confirm the "
+        "booking to the customer only when booking is returned."
     )
     input_model = CreateInput
     output_model = CreateOutput
@@ -595,7 +616,9 @@ class Reschedule(ToolBase):
         "in this turn). A booking that is not theirs reads as not found. If refused is "
         "unknown_staff or ambiguous_staff, the person was not recognised and nothing was "
         "moved: retry with one of the returned staff or ask the customer; never say the "
-        "time is taken."
+        "time is taken. If refused is 'too_soon', the new time is closer than the notice "
+        "this business asks of you: say the business confirms it itself and offer to pass "
+        "the conversation to a person."
     )
     input_model = RescheduleInput
     output_model = RescheduleOutput
