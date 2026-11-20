@@ -679,6 +679,10 @@ repite herramientas (`tool_once`).
   anterior. La primera batería real recibió `Invalid `signature` in `thinking`
   block` en modo estricto; con `drop_block`, en producción, ese razonamiento se
   habría tirado. Con GPT-5.6 sigue como `system`, como antes.
+  Como `user` va **marcada** (`BOOKING_BRAKE_USER_NOTICE`, T104): dentro de
+  `<aviso_del_sistema>` y con una línea que dice que el cliente no lo escribió ni lo
+  ve. Sin la marca, Claude la tomaba por palabras del cliente y le contestaba («No
+  la he reservado dos veces»).
 - **Si vuelve a afirmarla**, la conversación pasa a una persona:
   - el contacto recibe la frase de traspaso, sin componente interactivo;
   - `turn_failure = {"kind": "handoff", "reason": "booking_unbacked"}`;

@@ -694,9 +694,12 @@ def test_the_brake_retry_takes_nothing_away() -> None:
     assert _blocks(after["content"])[: len(kept)] == kept
     note = retry["messages"][-1]
     assert note["role"] == "user"
-    assert _blocks(note["content"])[-1]["text"].startswith(
-        "Tu respuesta anterior daba por hecha una cita"
-    )
+    # En el turno del usuario, Claude la tomaba por palabras del cliente y le contestaba
+    # («No la he reservado dos veces»). Con GPT-5.6, como ``system``, no. Por eso va marcada
+    # como aviso del sistema (T104).
+    text = _blocks(note["content"])[-1]["text"]
+    assert text.startswith("<aviso_del_sistema>\nTu respuesta anterior daba por hecha una cita")
+    assert "el cliente no lo ha escrito ni lo ve" in text
     assert retry["tools"] == draft["tools"]
     for key in set(draft) - {"messages", "system"}:
         assert retry[key] == draft[key], key

@@ -610,7 +610,25 @@ La primera pasada de T064 en staging (commit `9c836f31`) dio en verde a los tres
   _Requisitos: 4.10_
 - [X] T101 Repetir T064 con T099, T100 y T102 y anotar las pasadas en quickstart.md §3.
 
-  _Hecho el 2026-11-20: los seis en verde en la pasada completa final (US$ 0,51). Quedan de T064 el paso 4 (los `estimate_factor`, que decide Luis) y el 5 (habilitar en el panel de staging)._
+  _Hecho el 2026-11-20: los seis en verde en la pasada completa final (US$ 0,51). De T064 queda el paso 5 (habilitar en el panel de staging); el 4 lo cubre T103._
+- [X] T103 [US1] El factor de gasto de los Claude en el precio estimado (T064, paso 4).
+  - Prueba primero, en rojo: `apps/api/tests/unit/test_agent_model_estimate_factor.py`. Con los mismos tokens y pesos, la estimación de cada Claude es la base por su factor, y los tres GPT-5.6 siguen en 1,0.
+  - Después, en `core/respond_profiles.py`: Opus 5.5 1,9, Sonnet 5.5 1,8 y Haiku 5.5 2,6. Es lo medido con el agente de prueba (quickstart.md §3), con el sí de Luis y revisado por el revisor.
+  - **Provisional, no un techo.** La medida usó tokens brutos con la salida a 5 veces la entrada, y en esa pasada los prompts de Sol no llegaban a entrar en caché. Con prompts largos en caché pesa más la salida, y la de Claude fue de 2,6 a 4,8 veces la de Sol.
+  - Antes de habilitar Claude en prod: una pasada con un agente de tamaño real, en caché en las dos familias, y el factor calculado carril a carril con los pesos de cada modelo.
+  - Efecto visible: en el selector, Haiku 5.5 queda probablemente detrás de Luna, como en los dólares de la batería.
+
+  _Hecho el 2026-11-20: en rojo los tres Claude y en verde tras el cambio. Estimación, consola, modelo heredado, propuesta del copiloto y pruebas del constructor: 85 en verde._
+
+  _Requisitos: 1.5, 1.6_
+- [X] T104 [US2] La nota del freno, como turno del usuario, va marcada como aviso del sistema.
+  - Al leer lo que contestaba cada Claude tras T102, en tres de seis respuestas la nota se tomaba por palabras del cliente: «No la he reservado dos veces», «Antes no te llegó el mensaje de confirmación», «Te sugiero comprobarlo con el equipo de recepción». GPT-5.6, con la nota como `system`, contestaba limpio en las cuatro.
+  - Prueba primero, en rojo: `test_the_brake_retry_takes_nothing_away` exige la nota dentro de `<aviso_del_sistema>` y la línea «el cliente no lo ha escrito ni lo ve».
+  - Después: `booking_brake.BOOKING_BRAKE_USER_NOTICE`, solo en el camino de Claude.
+
+  _Hecho el 2026-11-20. Opus y Sonnet contestan limpio en las cuatro. Haiku, en una de dos, duda de la reserva sin mencionar la nota. Lo confunde la contradicción de la simulación: la batería fuerza el freno aunque haya una reserva, y en la realidad solo salta sin ella. El freno real, en verde en los seis y sin errores de firma; worker completo 1249; pruebas del freno de la API, 16._
+
+  _Requisitos: 4.10_
 
   _Requisitos: 1.3, CE-002_
 
