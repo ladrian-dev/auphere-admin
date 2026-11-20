@@ -11,6 +11,7 @@ import { agendaMessages } from "./lanes/agenda";
 import { agentImproveMessages } from "./lanes/agent-improve";
 import { amendmentMessages } from "./lanes/amendment";
 import { amendment1030Messages } from "./lanes/amendment-1030";
+import { authEntrarMessages } from "./lanes/auth-entrar";
 import { agentProtoMessages } from "./lanes/agent-proto";
 import { agentToolsMessages } from "./lanes/agent-tools";
 import { agentsMessages } from "./lanes/agents";
@@ -620,6 +621,8 @@ const messages = {
   ...amendment1030Messages,
   // Spec 057: la agenda desde el agente.
   ...agendaMessages,
+  // Spec 066: Entrar con el líquido vivo.
+  ...authEntrarMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;
