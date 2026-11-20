@@ -45,6 +45,14 @@
   --text-xs--line-height: 1.45;
 }
 
+/* Las variantes de letra que `@nexus/ui` enciende son de Inter («ss01» son sus
+   cifras abiertas, «cv11» su «a» de un piso). En Helvena «ss01» cambia la «m» y
+   la «n» por una forma decorativa, así que en la consola van apagadas. */
+html,
+body {
+  font-feature-settings: normal;
+}
+
 /* El cuerpo baja a 15 px en escritorio. En el teléfono se queda en 16: por
    debajo, iOS amplía la página al tocar un campo. */
 @media (min-width: 48rem) {

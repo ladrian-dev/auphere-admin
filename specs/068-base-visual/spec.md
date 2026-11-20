@@ -36,6 +36,7 @@ Se hace **solo con tokens, en la consola**. Un `@theme` de `apps/console/src/app
 ## Requisitos
 
 1. **Letra.** Toda la consola usa Helvena, el archivo variable de `public/fonts`. Se precarga con `next/font/local`, y la letra de reserva se ajusta para que nada salte al llegar. Ni Inter ni otra familia.
+1b. **Sin las variantes de Inter.** `@nexus/ui` enciende `ss01` y `cv11` en el `body`. Son de Inter, y en Helvena `ss01` cambia la «m» y la «n» por una forma decorativa (lo vio el owner el 2026-11-21). En la consola van apagadas (`font-feature-settings: normal`).
 2. **Pesos.** Nada más grueso que 600. `font-bold`, `font-extrabold` y `font-black` salen a 600.
 3. **Escala.**
    - `text-display` 26 px (interletrado −0,015 em);
