@@ -367,7 +367,7 @@ describe("spec 049: Instagram y Messenger para un partner con el canal en beta",
     await userEvent.click(instagram);
 
     await waitFor(() => expect(sdk.metaSocialConnectAction).toHaveBeenCalledWith({ ref: REF, kind: "instagram", code: "CODE" }));
-    expect(sdk.loginForCode).toHaveBeenCalledWith({ appId: "123", version: "v26.0", configId: "cfg-ig" });
+    expect(sdk.loginForCode).toHaveBeenCalledWith({ appId: "123", version: "v26.0", configId: "cfg-ig", prompt: "login" });
     await waitFor(() => expect(actions.connect!.move).toHaveBeenCalledWith({ ref: REF, channel: CH3, to: RECEPCION }));
     expect(toast.success).toHaveBeenCalledWith("@demo.store conectado. Configura a quién responde para que el agente empiece.");
     // Like a WhatsApp number: straight to its page to set it up.

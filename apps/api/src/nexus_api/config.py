@@ -187,7 +187,13 @@ class Settings(BaseSettings):
     # Spec 049 — Instagram (Unified Login) and Messenger. Same Meta App, two
     # more Facebook Login for Business configurations; both issue a business
     # integration system-user token that does not expire. Public values.
-    meta_config_id_instagram: str = "1157578836735566"
+    # Spec 049, requirement 8: «Auphere Instagram», the configuration Meta
+    # marks as Instagram Login compatible (only the Instagram account and
+    # instagram_basic / _manage_messages / _manage_comments), so the business
+    # can sign in with Instagram as well as Facebook. The old one,
+    # 1157578836735566, asks for Pages since INC-53 and only offers Facebook;
+    # accounts connected with it keep working.
+    meta_config_id_instagram: str = "29353122964304011"
     meta_config_id_messenger: str = "2188508105420190"
     # The version the Instagram and Page webhooks are subscribed at.
     meta_social_graph_api_version: str = "v26.0"

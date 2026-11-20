@@ -89,7 +89,11 @@ export function useMetaSocialConnect({
     setWorking(true);
     setWaitingMeta(true);
     try {
-      const code = await loginForCode({ appId: offer.app_id, version: offer.graph_version, configId });
+      // Spec 049, R8: Instagram's configuration lets the business sign in
+      // with Instagram too; `prompt` keeps an open Facebook session from
+      // skipping that choice. Messenger only signs in with Facebook.
+      const prompt = kind === "instagram" ? { prompt: "login" as const } : {};
+      const code = await loginForCode({ appId: offer.app_id, version: offer.graph_version, configId, ...prompt });
       if (attempt.current !== mine) return;
       setWaitingMeta(false);
       const res = await metaSocialConnectAction({ ref: refId, kind, code });

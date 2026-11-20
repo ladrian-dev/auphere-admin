@@ -12,7 +12,7 @@ Fecha: 2026-10-29. Se cruzan tres fuentes: la documentación oficial de Meta (`d
 
 | Punto | Dashboard / spec | Documentación oficial |
 |---|---|---|
-| Vía de Instagram | Configuración «Instagram API (Unified Login)» `1157578836735566`, etiqueta «Compatible con el inicio de sesión de Instagram» | «Recommended setup for new integrations». El login con Instagram solo sale con configuraciones «Instagram Login Compatible» ([unified login](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/)) |
+| Vía de Instagram | Configuración «Instagram API (Unified Login)» `1157578836735566`, etiqueta «Compatible con el inicio de sesión de Instagram». **Nota del 2026-11-20:** perdió la etiqueta al pedir Páginas por INC-53; desde el requisito 8, Instagram usa «Auphere Instagram» `29353122964304011`, que sí la tiene | «Recommended setup for new integrations». El login con Instagram solo sale con configuraciones «Instagram Login Compatible» ([unified login](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/)) |
 | Token | SUAT, caducidad «Nunca» | El SUAT pertenece al portfolio del cliente y por defecto no caduca. Exclusivo de Tech Providers y solo desde web ([FBL4B](https://developers.facebook.com/docs/facebook-login/facebook-login-for-business/)) |
 | Permisos de Instagram | `instagram_basic`, `instagram_manage_messages`, `instagram_manage_comments` | Los dos primeros son obligatorios en Unified Login. Comentarios hace falta para las respuestas privadas |
 | Fuera de alcance | Quitados `instagram_content_publish` y `ads_*` | Pedir permisos que no se usan es motivo de rechazo |

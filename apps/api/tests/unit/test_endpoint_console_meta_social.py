@@ -122,10 +122,14 @@ async def test_overview_offers_the_enabled_channels(
     client, console_world, db_session, graph
 ) -> None:
     a = console_world["a"]
-    await _beta(db_session, a["partner_id"], ["instagram"])
+    await _beta(db_session, a["partner_id"], ["instagram", "messenger"])
     body = (await client.get(_url(a, "overview"), headers=a["headers"]())).json()
+    # Spec 049, requisito 8: Instagram abre «Auphere Instagram», la
+    # configuración que Meta marca como compatible con entrar con Instagram
+    # (solo la cuenta y los tres permisos de Instagram); Messenger no cambia.
     assert body["meta_social"]["channels"] == [
-        {"kind": "instagram", "config_id": "1157578836735566"}
+        {"kind": "instagram", "config_id": "29353122964304011"},
+        {"kind": "messenger", "config_id": "2188508105420190"},
     ]
     assert body["meta_social"]["app_id"] == "957213733862330"
 

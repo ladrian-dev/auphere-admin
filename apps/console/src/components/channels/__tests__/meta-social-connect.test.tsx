@@ -154,3 +154,49 @@ describe("cancelar la espera de la ventana de Meta", () => {
     reply({ ok: false, status: 409, message: "x", code: "no_page" });
   });
 });
+
+/**
+ * Spec 049, requisito 8: la ventana de Instagram ofrece entrar con Instagram
+ * y con Facebook aunque haya una sesión de Facebook abierta (`prompt=login`).
+ * La de Messenger no cambia.
+ */
+describe("qué pide cada canal a la ventana de Meta (spec 049, requisito 8)", () => {
+  const BOTH: MetaSocialOffer = {
+    app_id: "1",
+    graph_version: "v26.0",
+    channels: [
+      { kind: "instagram", config_id: "IG" },
+      { kind: "messenger", config_id: "PAGE" },
+    ],
+  };
+
+  function Both() {
+    const { start, dialog } = useMetaSocialConnect({ refId: "flor", offer: BOTH });
+    return (
+      <>
+        <button type="button" onClick={() => void start("instagram")}>
+          ig
+        </button>
+        <button type="button" onClick={() => void start("messenger")}>
+          page
+        </button>
+        {dialog}
+      </>
+    );
+  }
+
+  it("Instagram pide prompt=login con su configuración; Messenger, no", async () => {
+    const user = userEvent.setup();
+    actions.metaSocialConnectAction.mockResolvedValue({ ok: false, status: 409, message: "x", code: "no_page" });
+    render(
+      <LocaleProvider locale="es">
+        <Both />
+      </LocaleProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "ig" }));
+    expect(sdk.loginForCode).toHaveBeenLastCalledWith({ appId: "1", version: "v26.0", configId: "IG", prompt: "login" });
+    await user.click(await screen.findByRole("button", { name: "Cerrar" }));
+    await user.click(screen.getByRole("button", { name: "page" }));
+    expect(sdk.loginForCode).toHaveBeenLastCalledWith({ appId: "1", version: "v26.0", configId: "PAGE" });
+  });
+});
