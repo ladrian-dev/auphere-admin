@@ -55,6 +55,9 @@ describe("GoogleButton", () => {
   it("IDEAL: con Google disponible, el botón está", () => {
     mount(true);
     expect(screen.getByRole("button", { name: /Google/i })).toBeInTheDocument();
+    // Spec 067: lleva la «G» de Google, decorativa (el texto ya dice qué es).
+    const mark = screen.getByRole("button", { name: /Google/i }).querySelector("[data-testid=google-mark]");
+    expect(mark).toHaveAttribute("aria-hidden", "true");
   });
 
   it("EMPTY: sin Google el botón NO está — ausente, no deshabilitado", () => {
