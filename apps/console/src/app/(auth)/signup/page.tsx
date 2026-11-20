@@ -36,11 +36,27 @@ export default async function SignupPage() {
   return (
     <section className="flex min-w-0 flex-col gap-6">
       <div className="flex min-w-0 flex-col gap-2">
+        {/* Spec 067 (R2.1): dónde estás en el arranque. */}
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{t("signup.stepOf")}</p>
         <h1 className="text-balance text-3xl font-semibold">{t("signup.title")}</h1>
         <p className="text-pretty text-muted-foreground">{t("signup.body")}</p>
       </div>
-      <SignupForm />
-      <GoogleButton intent="signup" available={googleAvailable} />
+      {/* R2.2: Google primero; sin Google, ni botón ni separador (spec 006,
+          5.6). Va dentro del formulario para irse con él al «enviado». */}
+      <SignupForm
+        google={
+          googleAvailable ? (
+            <div className="flex min-w-0 flex-col gap-4" data-testid="signup-google">
+              <GoogleButton intent="signup" available />
+              <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+                <span className="h-px flex-1 bg-border" />
+                {t("signup.orEmail")}
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          ) : null
+        }
+      />
     </section>
   );
 }

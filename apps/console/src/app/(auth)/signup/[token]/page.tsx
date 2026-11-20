@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@nexus/ui";
 
@@ -28,13 +29,23 @@ export default async function SignupTokenPage({ params }: { params: Promise<{ to
   const valid = /^[A-Za-z0-9_-]{16,128}$/.test(token);
   const signup = valid ? await consoleService.lookupSignup(token) : null;
   if (!signup) {
+    // Spec 067 (R4.6): la misma pantalla para los cuatro casos, con salida.
     return (
-      <EmptyState title={t("signup.invalidLink")} description={t("signup.invalidLink.body")} readonly />
+      <EmptyState
+        title={t("signup.invalidLink")}
+        description={t("signup.invalidLink.body")}
+        action={
+          <Link href="/signup" className="text-sm font-medium underline underline-offset-4">
+            {t("signup.askAnother")}
+          </Link>
+        }
+      />
     );
   }
   return (
     <section className="flex min-w-0 flex-col gap-6">
       <div className="flex min-w-0 flex-col gap-2">
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{t("signup.stepOf")}</p>
         <h1 className="text-balance text-3xl font-semibold">{t("signup.finish.title")}</h1>
         <p className="text-pretty text-muted-foreground">{t("signup.finish.body")}</p>
       </div>

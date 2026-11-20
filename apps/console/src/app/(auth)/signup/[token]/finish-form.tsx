@@ -1,9 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { BadgeCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -17,22 +18,25 @@ import {
   FormLabel,
   FormMessage,
   Input,
-  Label,
 } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
+import { PasswordRule } from "@/components/auth/password-rule";
+import { PasswordToggle } from "@/components/auth/password-toggle";
 import { completeSignupAction } from "@/lib/auth-actions";
 
 type Values = { company: string; name: string; password: string };
 
 /**
- * El correo va fijo y en solo lectura: **no es un campo y no se manda**. La
- * API lo lee de la solicitud, que es lo único que sabe a quién se verificó.
+ * El correo va fijo: **no es un campo y no se manda**. La API lo lee de la
+ * solicitud, que es lo único que sabe a quién se verificó. Spec 067 (R4.2): se
+ * enseña como texto legible con su icono, no como un campo gris deshabilitado.
  */
 export function FinishForm({ token, email }: { token: string; email: string }) {
   const t = useT();
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
+  const [show, setShow] = React.useState(false);
   const schema = React.useMemo(
     () =>
       z.object({
@@ -46,6 +50,8 @@ export function FinishForm({ token, email }: { token: string; email: string }) {
     resolver: zodResolver(schema),
     defaultValues: { company: "", name: "", password: "" },
   });
+  // R4.3: la regla se marca mientras se escribe, antes de fallar.
+  const password = useWatch({ control: form.control, name: "password" });
 
   function submit(values: Values) {
     startTransition(async () => {
@@ -73,9 +79,14 @@ export function FinishForm({ token, email }: { token: string; email: string }) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(submit)} noValidate className="flex min-w-0 flex-col gap-4" aria-busy={pending}>
-        <div className="grid min-w-0 gap-2">
-          <Label htmlFor="signup-email">{t("login.email")}</Label>
-          <Input id="signup-email" value={email} readOnly disabled />
+        <div className="flex min-w-0 items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2">
+          <BadgeCheck className="size-5 shrink-0 text-primary" aria-hidden />
+          <div className="flex min-w-0 flex-col">
+            <span className="text-xs text-muted-foreground">{t("signup.verifiedEmail")}</span>
+            <span className="truncate text-sm font-medium" data-testid="signup-email">
+              {email}
+            </span>
+          </div>
         </div>
         <FormField
           control={form.control}
@@ -110,14 +121,30 @@ export function FinishForm({ token, email }: { token: string; email: string }) {
           render={({ field }) => (
             <FormItem className="min-w-0">
               <FormLabel>{t("login.password")}</FormLabel>
-              <FormControl>
-                <Input type="password" autoComplete="new-password" {...field} />
-              </FormControl>
+              <div className="relative">
+                <FormControl>
+                  <Input type={show ? "text" : "password"} autoComplete="new-password" className="pr-11" {...field} />
+                </FormControl>
+                <PasswordToggle
+                  shown={show}
+                  onToggle={() => setShow((v) => !v)}
+                  showLabel={t("auth.password.show")}
+                  hideLabel={t("auth.password.hide")}
+                />
+              </div>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button type="submit" disabled={pending}>
+        <ul className="flex flex-col gap-2 text-sm" aria-live="polite" data-testid="signup-rules">
+          <PasswordRule
+            ok={password.length >= 12}
+            label={t("reset.rule.length")}
+            met={t("reset.rule.met")}
+            unmet={t("reset.rule.unmet")}
+          />
+        </ul>
+        <Button type="submit" size="lg" disabled={pending}>
           {t("signup.finish.submit")}
         </Button>
       </form>

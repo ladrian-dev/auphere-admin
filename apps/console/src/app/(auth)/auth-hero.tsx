@@ -2,6 +2,8 @@ import { BrandLockup } from "@nexus/ui";
 
 import { LiquidBackdropLazy } from "@/components/auth/liquid-backdrop-lazy";
 
+import { AuthHeroCopy, type HeroCopy } from "./auth-hero-copy";
+
 /**
  * El panel del líquido — spec 066, requisitos 1 a 3.
  *
@@ -12,20 +14,13 @@ import { LiquidBackdropLazy } from "@/components/auth/liquid-backdrop-lazy";
  * 2. el lienzo del líquido, que aparece con un fundido encima del respaldo;
  * 3. un velo oscuro abajo, para que el titular se lea sobre cualquier color del
  *    líquido (R3.4);
- * 4. el logo, «Beta» y el titular.
+ * 4. el logo, «Beta» y el titular, que en el alta lleva los tres pasos del
+ *    arranque (spec 067, `auth-hero-copy.tsx`).
  *
  * El titular no es un `h1`: el `h1` es el de cada página («Inicia sesión.»,
  * «Recupera tu cuenta.»), que es lo que la persona viene a hacer.
  */
-export function AuthHero({
-  eyebrow,
-  title,
-  beta,
-}: {
-  eyebrow: string;
-  title: string;
-  beta: string;
-}) {
+export function AuthHero({ base, signup, beta }: { base: HeroCopy; signup: HeroCopy; beta: string }) {
   return (
     <div className="auth-hero" data-testid="auth-hero">
       <div className="auth-hero-bg" aria-hidden="true">
@@ -43,10 +38,7 @@ export function AuthHero({
             ámbar es de los avisos y esto no avisa de nada (R3.2). */}
         <span className="auth-beta">{beta}</span>
       </div>
-      <div className="auth-hero-copy">
-        <p className="auth-hero-eyebrow">{eyebrow}</p>
-        <p className="auth-hero-title">{title}</p>
-      </div>
+      <AuthHeroCopy base={base} signup={signup} />
     </div>
   );
 }
